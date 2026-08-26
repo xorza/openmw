@@ -207,7 +207,7 @@ game's fog is currently far denser. Do it where `shot` can be compared against a
 
 ## F. Upstream: `setObjectRoot` drops the carried light
 
-`Animation::setObjectRoot` (`animation.cpp:1545-1556`) removes the subtree that owns
+`Animation::setObjectRoot` (`animation.cpp:1546-1556`) removes the subtree that owns
 `mExtraLightSource` and never re-adds it, so an actor whose object root is rebuilt loses its carried
 light **permanently** — not for a frame. This is upstream's and affects both renderers; it is just
 more visible here, because here a torch is the only thing lighting the scene.
