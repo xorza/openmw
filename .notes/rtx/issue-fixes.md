@@ -4,9 +4,8 @@ The route, and only what is left of it. A step that is done is **deleted** rathe
 the same rule `ISSUES.md` keeps, and for the same reason: what a finished step knew now lives in the
 code that does it, and a plan annotated with its own history stops being a plan.
 
-Two of the three entries in `ISSUES.md` are not two bugs. They fall into two causes. The third is a
-stale comment in `instance.cpp` and belongs to no cause. Ordered by what unblocks what, then by risk.
-The letters name a group rather than count one, so a gap in them is a group that is finished.
+Two entries are left in `ISSUES.md`. One is the actor range flip below, which is not a fix until a
+measurement says so; the other is a stale comment in `instance.cpp` and belongs to no cause.
 
 ---
 
@@ -29,33 +28,6 @@ whether it fires at a distance where a torch still contributes. If it does, the 
 mirror stops reading "not simulated" as "not in the picture" — not hysteresis.
 
 ---
-
-## D. Frame-to-frame state with no owner
-
-**Retires: auto-exposure.**
-
-A value that should carry across frames and carries nothing at all. It has no place to live, and the
-renderer has no statement of what a frame hands to the next.
-
-### D1 — auto-exposure has no time constant
-
-The histogram is measured on the frame the curve is about to map and applied to that same frame
-(`vulkanrenderer.cpp:766-772`), with nothing carried between them. The picture's brightness is a pure
-function of what is on screen *now*, so any one-frame excursion in the histogram is a one-frame
-excursion in the whole image, and the degenerate branch (`rtxvulkan/shaders/exposure.comp:78-82`) can snap a night
-exterior from an exposure of order tens to exactly `1.0` between two frames.
-
-Measured stable at Seyda Neen at night — 0.5% across DLSS convergence, 0.2% across sub-frame camera
-steps — so this is a latent sharp edge rather than something visible today. It is still the only term
-in the frame with no time constant, and adaptation is a time-domain phenomenon.
-
-Read the previous value, move toward the measured target at a rate in seconds —
-`alpha = 1 - exp(-dt / tau)`, so it is frame-rate independent — and take the target outright on the
-first frame and on a history reset. `sinceLastMs` already reaches the frame. Two constants, `tau` up
-and `tau` down, because the eye is not symmetric.
-
-**Changes the picture.** Wants a moving `bench` route and a look, not a still.
-
 ---
 
 ## Plan
@@ -65,8 +37,6 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 2 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Step 1 changes how the game looks and wants a moving camera to judge. Step 2 is not a fix until a
-measurement says there is one.
+Step 1 is not a fix until a measurement says there is one.

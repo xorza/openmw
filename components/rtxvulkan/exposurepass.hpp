@@ -32,10 +32,20 @@ namespace Rtx
         ExposurePass(const ExposurePass&) = delete;
         ExposurePass& operator=(const ExposurePass&) = delete;
 
-        /// Measures `frame` and leaves the answer where `getExposure` points.
+        /// Measures `frame` and moves the answer toward it, where `getExposure` points.
+        ///
+        /// **What is written is not what was measured.** The exposure carries between frames and
+        /// approaches the measurement at a rate in seconds, because adaptation is a time-domain
+        /// thing and a brightness that was a pure function of the frame on screen turned every
+        /// one-frame excursion in the histogram into a one-frame excursion in the whole image.
         ///
         /// @param frame the finished frame in linear radiance, in `VK_IMAGE_LAYOUT_GENERAL`.
-        void record(VkCommandBuffer commands, const Image& frame) const;
+        /// @param elapsedSeconds since the previous frame. A run that alternated measured frames
+        ///        with fixed ones would want the time since the previous *measurement* instead, and
+        ///        nothing does: a fixed exposure is pinned for a whole run or not at all.
+        /// @param reset true where there is no previous exposure to move from — the first frame, and
+        ///        any frame the renderer was told has no past. The measurement is taken outright.
+        void record(VkCommandBuffer commands, const Image& frame, float elapsedSeconds, bool reset) const;
 
         /// Writes `value` there instead, measuring nothing.
         ///

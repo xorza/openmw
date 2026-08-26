@@ -56,6 +56,14 @@ namespace Rtx::Shaders
     {
         /// Pixels binned, so the black bin can be discounted from the divisor.
         uint mPixels;
+
+        /// Seconds since the previous measurement, which is what makes the approach a rate rather
+        /// than a fraction per frame.
+        float mElapsed;
+
+        /// One where there is no previous exposure to move away from — the first frame, and any
+        /// frame the renderer was told has no past. The measured value is taken outright.
+        uint mReset;
     };
 
 #ifdef RTX_HOST

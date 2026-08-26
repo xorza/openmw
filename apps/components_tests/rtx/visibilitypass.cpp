@@ -4302,6 +4302,78 @@ namespace Rtx
                 << "the accumulated mean is " << settledMean << " against a converged " << referenceMean;
         }
 
+        /// The exposure moves toward what it measured rather than snapping to it.
+        ///
+        /// **Adaptation is a time-domain thing, and this was the only term in the frame without
+        /// one.** The histogram was measured on the frame the curve was about to map and applied to
+        /// that same frame, so any one-frame excursion in it was a one-frame excursion in the whole
+        /// image — and the degenerate branch could take a night exterior from an exposure of order
+        /// tens to exactly one between two frames.
+        ///
+        /// Two skies a factor of thirty-two apart and nothing else in the picture, so the histogram
+        /// is the only thing that changed. Both halves are claimed: told it has no past, the eye
+        /// arrives at once; told it has one, it has barely moved a frame later.
+        ///
+        /// **Driven frame by frame rather than through `countHits`**, because that helper calls
+        /// `setScene` every time and a new scene clears the previous camera — which is a reset, and
+        /// a reset is exactly what the middle frame here must not have.
+        TEST_F(RtxVisibilityTest, theExposureMovesTowardWhatItMeasuresRatherThanSnappingToIt)
+        {
+            constexpr std::uint32_t size = 32;
+
+            Shaders::VisibilityConstants bright = makeCamera(
+                osg::Vec3f(0.0f, 0.0f, 200.0f), osg::Vec3f(0.0f, 1000.0f, 200.0f), 60.0f, size, size, 100000.0f);
+            bright.mSkyHorizon = osg::Vec3f(0.8f, 0.8f, 0.8f);
+            bright.mSkyZenith = bright.mSkyHorizon;
+
+            Shaders::VisibilityConstants dim = bright;
+            dim.mSkyHorizon = bright.mSkyHorizon / 32.0f;
+            dim.mSkyZenith = dim.mSkyHorizon;
+
+            std::vector<std::uint8_t> pixels;
+
+            const auto meanByte = [&pixels] {
+                double sum = 0.0;
+                std::size_t counted = 0;
+                for (std::size_t i = 0; i < pixels.size(); i += 4)
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                    {
+                        sum += pixels[i + channel];
+                        ++counted;
+                    }
+
+                return counted > 0 ? sum / static_cast<double>(counted) : 0.0;
+            };
+
+            // The exposure measured rather than pinned, which is the whole subject.
+            const auto shot = [&](const Shaders::VisibilityConstants& camera) {
+                mRenderer->renderFrame(camera, FrameOptions{ .mExposure = std::nullopt });
+                mRenderer->readPixels(pixels);
+                return meanByte();
+            };
+
+            // Nothing to hit, so every pixel is the sky and the mean of the frame is the sky. The
+            // scene is set once: setting it again would clear the previous camera and reset the eye.
+            mRenderer->resize(size, size);
+            mRenderer->setScene(Rtx::sWorld, SceneDesc{}, {}, SeaState{});
+
+            const double lit = shot(bright);
+            ASSERT_GT(lit, 0.0) << "the bright sky rendered as black";
+
+            // The same sky thirty-two times darker, one frame later and with a past to move from.
+            // The eye has had a few milliseconds against a time constant of a second and a half, so
+            // it has gone almost nowhere — a stall of a third of a second would still leave it so.
+            const double justAfter = shot(dim);
+
+            // And the same sky again with no past, which is where it is headed.
+            mRenderer->resetHistory();
+            const double adapted = shot(dim);
+
+            EXPECT_GT(adapted, 0.0) << "the dark sky rendered as black even with the eye open";
+            EXPECT_LT(justAfter, 0.5 * adapted)
+                << "the exposure arrived in one frame: " << justAfter << " against " << adapted;
+        }
+
         /// A reset survives a frame that has no history to reset.
         ///
         /// **`resetHistory` is spent by the frame that answers it, and a frame with neither denoiser

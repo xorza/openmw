@@ -73,8 +73,12 @@ namespace Rtx
                 .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
                 .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                 .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                // **Read as well as written**, because the reduction now moves the previous frame's
+                // exposure toward this frame's measurement: the write before it has to be visible
+                // and not merely ordered.
                 .dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+                    | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .buffer = mExposure.getHandle(),
@@ -121,7 +125,7 @@ namespace Rtx
         handOver(commands);
     }
 
-    void ExposurePass::record(VkCommandBuffer commands, const Image& frame) const
+    void ExposurePass::record(VkCommandBuffer commands, const Image& frame, float elapsedSeconds, bool reset) const
     {
         beforeWrite(commands);
 
@@ -195,6 +199,8 @@ namespace Rtx
 
         const Shaders::ExposureConstants counted{
             .mPixels = frame.getWidth() * frame.getHeight(),
+            .mElapsed = elapsedSeconds,
+            .mReset = reset ? 1u : 0u,
         };
 
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mReducePipeline.getHandle());

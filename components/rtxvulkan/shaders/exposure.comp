@@ -49,6 +49,22 @@ const float ADAPTATION = 0.75;
 const float MIN_EXPOSURE = 0.05;
 const float MAX_EXPOSURE = 200.0;
 
+/// How long the exposure takes to open, as the time constant of an exponential approach.
+///
+/// **The eye is not symmetric, so neither is this.** Adapting to darkness is the slow half — minutes,
+/// in a real eye — and adapting to light is the fast one. Held to a second and a half rather than to
+/// anything like the real figure, because a cave that stayed black for a minute is a renderer nobody
+/// can play; what the asymmetry buys is that stepping out of a door still dazzles and stepping into
+/// one still takes a moment to resolve.
+///
+/// Set by eye, like `ADAPTATION` above. What is not by eye is the shape: a gap closed at
+/// `1 - exp(-dt / tau)` closes by the same fraction per second whatever the frame rate, so the
+/// picture does not change when the frame time does.
+const float TAU_RISING = 1.5;
+
+/// And how long it takes to close, which is the eye meeting light rather than losing it.
+const float TAU_FALLING = 0.5;
+
 shared uint weighted[EXPOSURE_BINS];
 
 void main()
@@ -75,20 +91,47 @@ void main()
     // contributing nothing to the sum — an interior is mostly them, and counting them would pull the
     // average onto the floor and open the exposure until the lit parts blew out.
     const uint black = bins[0];
+
+    // **What this frame asks for, which is not yet what it gets.** Every branch below settles a
+    // target and exactly one write happens after them, so the degenerate case is smoothed like any
+    // other: it used to snap a night exterior from an exposure of order tens to exactly one between
+    // two frames.
+    float target;
     if (frame.mPixels <= black)
     {
         // Nothing was bright enough to bin, so there is nothing to expose for.
-        exposure = 1.0;
+        target = 1.0;
+    }
+    else
+    {
+        const float lit = float(frame.mPixels - black);
+        const float meanBin = float(weighted[0]) / lit;
+
+        // Undo the binning: bin one is the darkest resolved value, so the scale spans `BINS - 2`.
+        const float span = MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE;
+        const float meanLog = (meanBin - 1.0) / float(EXPOSURE_BINS - 2u) * span + MIN_LOG_LUMINANCE;
+        const float meanLuminance = exp2(meanLog);
+
+        target = clamp(pow(KEY / max(meanLuminance, 1e-6), ADAPTATION), MIN_EXPOSURE, MAX_EXPOSURE);
+    }
+
+    // **A frame with no past takes the target outright**, which is the first frame of a run and any
+    // frame the renderer was told to reconstruct without one. The buffer holds whatever it held, and
+    // on the very first frame that is uninitialised device memory.
+    if (frame.mReset != 0u || !(frame.mElapsed > 0.0))
+    {
+        exposure = target;
         return;
     }
 
-    const float lit = float(frame.mPixels - black);
-    const float meanBin = float(weighted[0]) / lit;
+    // **Adaptation happens over time, and this was the only term in the frame that did not.** The
+    // rate is asymmetric because the eye is: opening in the dark is slow and closing in the light is
+    // quick.
+    const float held = exposure;
+    const float tau = target > held ? TAU_RISING : TAU_FALLING;
 
-    // Undo the binning: bin one is the darkest resolved value, so the scale spans `BINS - 2`.
-    const float span = MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE;
-    const float meanLog = (meanBin - 1.0) / float(EXPOSURE_BINS - 2u) * span + MIN_LOG_LUMINANCE;
-    const float meanLuminance = exp2(meanLog);
-
-    exposure = clamp(pow(KEY / max(meanLuminance, 1e-6), ADAPTATION), MIN_EXPOSURE, MAX_EXPOSURE);
+    // `1 - exp(-dt / tau)` and not a fixed fraction per frame: the same share of the gap closes per
+    // second whether the second held one frame or two hundred, so the picture does not change when
+    // the frame time does.
+    exposure = mix(held, target, clamp(1.0 - exp(-frame.mElapsed / tau), 0.0, 1.0));
 }

@@ -767,7 +767,12 @@ namespace Rtx
             if (options.mExposure.has_value())
                 mExposure.recordFixed(commands, *options.mExposure);
             else
-                mExposure.record(commands, *shown);
+            {
+                // **The third thing that reads a lost history**, and the only one that reads it on
+                // every frame: the eye has no past to adapt from either.
+                mExposure.record(commands, *shown, 0.001f * sinceLastMs, historyLost);
+                historyAnswered = true;
+            }
             mTimer.close(commands);
 
             mTimer.open(commands, "tone");
