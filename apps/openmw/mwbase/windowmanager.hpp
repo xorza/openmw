@@ -382,9 +382,6 @@ namespace MWBase
         /// Sets the cull masks for all applicable views
         virtual void setCullMask(uint32_t mask) = 0;
 
-        /// Same as viewer->getCamera()->getCullMask(), provided for consistency.
-        virtual uint32_t getCullMask() = 0;
-
         virtual void inventoryUpdated(const MWWorld::Ptr& ptr) const = 0;
 
         /// Return the window that should receive controller events

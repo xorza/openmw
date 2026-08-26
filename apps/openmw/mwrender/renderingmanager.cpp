@@ -746,15 +746,11 @@ namespace MWRender
         }
         else if (mode == Render_Scene)
         {
-            const auto wm = MWBase::Environment::get().getWindowManager();
-            unsigned int mask = wm->getCullMask();
-            bool enabled = !(mask & SceneUtil::sToggleWorldMask);
-            if (enabled)
-                mask |= SceneUtil::sToggleWorldMask;
-            else
-                mask &= ~SceneUtil::sToggleWorldMask;
+            // **Asked of the renderer, because a cull mask is one renderer's way of saying it.**
+            // Edited here, this reached the rasterizer and nothing else: under the ray tracer `tws`
+            // took the water out and left the rest of the world traced.
+            const bool enabled = mRenderer.toggleWorld();
             mWater->showWorld(enabled);
-            wm->setCullMask(mask);
             return enabled;
         }
         else if (mode == Render_NavMesh)

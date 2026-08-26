@@ -4,9 +4,9 @@ The route, and only what is left of it. A step that is done is **deleted** rathe
 the same rule `ISSUES.md` keeps, and for the same reason: what a finished step knew now lives in the
 code that does it, and a plan annotated with its own history stops being a plan.
 
-Four of the five entries in `ISSUES.md` are not four bugs. They fall into three causes, and the
+Three of the four entries in `ISSUES.md` are not three bugs. They fall into three causes, and the
 largest of them is one mistake made over and over: **this engine now has two hosts, and each derives
-for itself what only one of them should decide.** The fifth is a stale comment in `instance.cpp` and
+for itself what only one of them should decide.** The fourth is a stale comment in `instance.cpp` and
 belongs to no cause. Ordered by what unblocks what, then by risk. The letters name a group rather
 than count one, so a gap in them is a group that is finished.
 
@@ -48,21 +48,10 @@ game's fog is currently far denser. Do it where `shot` can be compared against a
 
 ## C. The game says it with a mask, and this renderer reads none of them
 
-**Retires: `tws`, and part of the actor flip.**
+**Retires: part of the actor flip.**
 
-A cull mask is the rasterizer's vocabulary. `Renderer::showWorld` is the shape that replaced one
-already; these are what is left.
-
-### C1 — `tws` hides half the world
-
-`RenderingManager::toggleRenderMode(Render_Scene)` (`renderingmanager.cpp:746-756`) hides the world
-by flipping `sToggleWorldMask` in the master camera's cull mask. The RT path culls nothing and reads
-that mask nowhere, so the console command does nothing to the traced picture — except the water,
-which goes through `Water::showWorld` and works. Half a toggle is worse than none.
-
-Say it on the seam, as `showWorld` already does. It is a second, independent reason not to show the
-world — a loading screen during `tws`-off must not turn it back on — so the renderer holds two
-answers and shows the world when both say so.
+A cull mask is the rasterizer's vocabulary. `Renderer::showWorld` and `Renderer::toggleWorld` are the
+shape that replaced two already; this is what is left.
 
 ### C2 — the actor processing range flip (measure first, then decide)
 
@@ -112,13 +101,11 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
-| 2 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 3 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 4 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 2 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 3 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Step 1 is one decision moved to where it can only be made once. Steps 2 and 3 change how the game
-looks most and both want a moving camera to judge, so they come after everything that would move the
-frame underneath them. Step 4 is not a fix until a measurement says there is one.
+Steps 1 and 2 change how the game looks most and both want a moving camera to judge, so they come
+last of the fixes. Step 3 is not a fix until a measurement says there is one.
 
-Nothing here is a rewrite. The largest single change is step 2, and it is one call site each side.
+Nothing here is a rewrite. The largest single change is step 1, and it is one call site each side.

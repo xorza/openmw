@@ -338,7 +338,7 @@ namespace MWRender
         // **Not behind a loading screen.** What the rasterizer says with a blanked traversal mask
         // this says by not walking. The eye below still updates, as it does under that blanked mask:
         // the master camera's own bits are not among the ones it clears.
-        if (mWorldShown)
+        if (drawsWorld())
             mSceneRoot->accept(*mUpdateVisitor);
 
         // **And the eye, which is not in the graph.** `MWRender::Camera` puts where the player is
@@ -588,7 +588,7 @@ namespace MWRender
         // **The emitter clock stops with it**, which is what a clock of its own is for: it counts
         // the seconds this renderer has shown, so a plume resumes where it left off rather than
         // being handed the loading screen in one step.
-        if (!mWorldShown)
+        if (!drawsWorld())
         {
             finishFrame();
             return;

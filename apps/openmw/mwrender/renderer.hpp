@@ -161,6 +161,26 @@ namespace MWRender
         /// no cull at all and answers by not walking the scene and not tracing it.
         virtual void showWorld(bool shown) = 0;
 
+        /// Turns the world off and back on, and says which it now is. The `tws` console command.
+        ///
+        /// **A second and independent reason, and not the one `showWorld` carries.** That one says
+        /// whether a screen is over the world right now; this one says whether the player asked to
+        /// see the world at all, and a loading screen that ends while `tws` is off must not bring it
+        /// back. The world is drawn when both say so.
+        ///
+        /// **Asked here rather than by editing a cull mask.** A mask is the rasterizer's vocabulary,
+        /// and the renderer that culls nothing had no way to hear it said: `tws` moved the water and
+        /// left every other thing in the world traced, which is worse than a toggle that does
+        /// nothing at all.
+        ///
+        /// **The two renderers leave different pictures behind, and that is not hidden.** The
+        /// rasterizer drops the five categories `SceneUtil::sToggleWorldMask` names and keeps its
+        /// sky and its sea over the emptiness; the ray tracer stops tracing, so what is left is the
+        /// interface over nothing. Matching the first would mean taking those categories out of the
+        /// mirror and letting the next sweep retire them, which is a larger change than a debug
+        /// command has yet asked for.
+        virtual bool toggleWorld() = 0;
+
         /// The shader chain over the frame, or null where this renderer has none.
         ///
         /// **Owned here and not by the world.** It is a renderer's answer to "what happens between

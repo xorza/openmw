@@ -11,11 +11,6 @@
   with nothing carried between frames, so the picture's brightness is a pure function of what is on
   screen this frame.
 
-- `RenderingManager::toggleRenderMode(Render_Scene)` — the `tws` console command
-  (`apps/openmw/mwrender/renderingmanager.cpp:746`) — hides the world by flipping `sToggleWorldMask`
-  in the master camera's cull mask, which the RTX path never reads. The water half goes through
-  `Water::showWorld` and works; the rest of the world stays traced.
-
 - `MWMechanics::Actors` (`apps/openmw/mwmechanics/actors.cpp:1243`) sets an actor's base node mask
   to zero beyond `actors processing range` and back on the frame after, so an actor oscillating
   across that distance takes its carried light in and out of the walk a frame at a time.

@@ -1458,11 +1458,6 @@ namespace MWGui
         mStage.getCamera().setCullMaskRight(mask);
     }
 
-    uint32_t WindowManager::getCullMask()
-    {
-        return mStage.getCamera().getCullMask();
-    }
-
     void WindowManager::popGuiMode(bool forceExit)
     {
         if (mDragAndDrop && mDragAndDrop->mIsOnDragAndDrop)

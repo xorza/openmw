@@ -611,7 +611,6 @@ namespace MWGui
         void pushGuiMode(GuiMode mode, const MWWorld::Ptr& arg, bool force);
 
         void setCullMask(uint32_t mask) override;
-        uint32_t getCullMask() override;
 
         void setActiveMap(const MWWorld::Cell& cell);
         ///< set the indices of the map texture that should be used

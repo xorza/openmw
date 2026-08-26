@@ -77,6 +77,7 @@ namespace MWRender
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
         void setSceneRoot(osg::Group& root) override;
         void showWorld(bool shown) override;
+        bool toggleWorld() override;
 
         PostProcessor* getPostProcessor() override { return mPostProcessor.get(); }
 
@@ -143,6 +144,9 @@ namespace MWRender
         /// rather than defaulted, because somebody else chose them.
         unsigned int mShownUpdateMask = 0;
         unsigned int mShownCullMask = 0;
+
+        /// Writes `mask` to the master camera and to the stereo pair, which are no-ops in mono.
+        void cull(unsigned int mask);
 
         osg::ref_ptr<SceneUtil::SelectDepthFormatOperation> mSelectDepthFormatOperation;
         osg::ref_ptr<SceneUtil::Color::SelectColorFormatOperation> mSelectColorFormatOperation;

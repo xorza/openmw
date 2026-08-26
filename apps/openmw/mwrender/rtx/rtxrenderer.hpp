@@ -103,6 +103,7 @@ namespace MWRender
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
         void setSceneRoot(osg::Group& root) override;
         void showWorld(bool shown) override { mWorldShown = shown; }
+        bool toggleWorld() override { return mWorldToggled = !mWorldToggled; }
 
         void advance(double simulationTime) override;
         void eventTraversal() override;
@@ -241,9 +242,19 @@ namespace MWRender
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
 
-        /// Whether the world is being shown. False behind a loading screen and the main menu's
+        /// Whether a screen is over the world. False behind a loading screen and the main menu's
         /// cover, where the walk would read a world nothing is updating. `Renderer::showWorld`.
         bool mWorldShown = true;
+
+        /// Whether the player asked to see the world at all. The `tws` console command, and a
+        /// second answer rather than the same one: a loading screen that ends while `tws` is off
+        /// must not bring the world back. `Renderer::toggleWorld`.
+        bool mWorldToggled = true;
+
+        /// Whether this frame has a world in it, which is both of the answers above and nothing
+        /// else. Said once, because a frame that walked on one of them and traced on the other
+        /// would mirror a world it then threw away.
+        bool drawsWorld() const { return mWorldShown && mWorldToggled; }
 
         /// The world's, for a picture that has to resolve textures of its own. Null until
         /// `attachWorld`.

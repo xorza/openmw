@@ -68,6 +68,12 @@
 
 namespace
 {
+    /// What the cull mask is left at while a screen covers the world.
+    ///
+    /// **It doubles as the record of which way round `showWorld` is**: nothing else leaves the mask
+    /// at exactly the two bits the interface is drawn with.
+    constexpr unsigned int sCoveredCullMask = SceneUtil::Mask_GUI | SceneUtil::Mask_PreCompile;
+
     void checkSDLError(int ret)
     {
         if (ret != 0)
@@ -413,31 +419,51 @@ namespace MWRender
         mViewer->setSceneData(&root);
     }
 
+    void GlRenderer::cull(unsigned int mask)
+    {
+        // The stereo pair goes with the one whatever the mode: both are no-ops in mono.
+        mViewer->getCamera()->setCullMask(mask);
+        mViewer->getCamera()->setCullMaskLeft(mask);
+        mViewer->getCamera()->setCullMaskRight(mask);
+    }
+
     void GlRenderer::showWorld(bool shown)
     {
-        // The cull mask doubles as the record of which way round this is: nothing else leaves it at
-        // exactly the two bits the interface is drawn with.
-        constexpr unsigned int hidden = SceneUtil::Mask_GUI | SceneUtil::Mask_PreCompile;
-
-        const auto cull = [this](unsigned int mask) {
-            // The stereo pair goes with the one whatever the mode: both are no-ops in mono.
-            mViewer->getCamera()->setCullMask(mask);
-            mViewer->getCamera()->setCullMaskLeft(mask);
-            mViewer->getCamera()->setCullMaskRight(mask);
-        };
-
-        if (!shown && mViewer->getCamera()->getCullMask() != hidden)
+        if (!shown && mViewer->getCamera()->getCullMask() != sCoveredCullMask)
         {
             mShownUpdateMask = mViewer->getUpdateVisitor()->getTraversalMask();
             mShownCullMask = mViewer->getCamera()->getCullMask();
-            mViewer->getUpdateVisitor()->setTraversalMask(hidden);
-            cull(hidden);
+            mViewer->getUpdateVisitor()->setTraversalMask(sCoveredCullMask);
+            cull(sCoveredCullMask);
         }
-        else if (shown && mViewer->getCamera()->getCullMask() == hidden)
+        else if (shown && mViewer->getCamera()->getCullMask() == sCoveredCullMask)
         {
             mViewer->getUpdateVisitor()->setTraversalMask(mShownUpdateMask);
             cull(mShownCullMask);
         }
+    }
+
+    bool GlRenderer::toggleWorld()
+    {
+        // **Edited where the shown mask actually is.** `showWorld` parks it in `mShownCullMask`
+        // while a screen covers the world, so writing the camera's own mask then would edit the two
+        // bits the interface is drawn with — and the toggle would be thrown away when the screen
+        // ended and the parked mask came back.
+        const bool covered = mViewer->getCamera()->getCullMask() == sCoveredCullMask;
+        unsigned int mask = covered ? mShownCullMask : mViewer->getCamera()->getCullMask();
+
+        const bool shown = (mask & SceneUtil::sToggleWorldMask) == 0;
+        if (shown)
+            mask |= SceneUtil::sToggleWorldMask;
+        else
+            mask &= ~SceneUtil::sToggleWorldMask;
+
+        if (covered)
+            mShownCullMask = mask;
+        else
+            cull(mask);
+
+        return shown;
     }
 
     void GlRenderer::advance(double simulationTime)
