@@ -4,7 +4,7 @@ The route, and only what is left of it. A step that is done is **deleted** rathe
 the same rule `ISSUES.md` keeps, and for the same reason: what a finished step knew now lives in the
 code that does it, and a plan annotated with its own history stops being a plan.
 
-Seven entries in `ISSUES.md` are not seven bugs. They fall into four causes, and the largest of them
+Six entries in `ISSUES.md` are not six bugs. They fall into three causes, and the largest of them
 is one mistake made twice: **this engine now has two hosts, and each derives for itself what only one
 of them should decide.** Ordered by what unblocks what, then by risk. The letters name a group rather
 than count one, so a gap in them is a group that is finished.
@@ -57,23 +57,6 @@ and already owns "this is not a light" for a radius; a colour with a negative ch
 statement about the same thing. Moving it there makes the two agree by construction and leaves the
 record's flag as what it is — a record property, still worth reading early.
 ---
-
-## B. The mirror's answer to "which children are in the picture"
-
-`MirrorTraversal::descend` honours `osg::Switch`, deliberately does not honour `osg::LOD` — a ray is
-owed the finest child, not the one a distance test picked for an eye — and has no answer at all for
-`osg::Sequence`, which is the third node in the tree that selects among its children.
-
-`osg::Sequence` visits every child under `TRAVERSE_ALL_CHILDREN` **and** advances its own clock only
-under `TRAVERSE_ACTIVE_CHILDREN`. `NifOsg` builds one for every `NiFltAnimationNode`
-(`nifloader.cpp:987`), which is Morrowind's flipbook animation, so every frame of a flipbook is
-traced at once, in the same place, and none of them ever advances.
-
-The fix is one more branch in `descend`, and a decision written down once for all three: a switch is
-honoured, a sequence is honoured *and stepped*, an LOD is not. Stepping is the part that is not
-obvious — like `osgParticle`, the clock lives in a traversal this renderer does not run, so the walk
-has to be what runs it.
-
 ---
 
 ## C. The game says it with a mask, and this renderer reads none of them
@@ -142,15 +125,14 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | B — `descend` honours and steps `osg::Sequence` | flipbooks | low | yes, animated textures |
-| 2 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
-| 3 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
-| 4 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 5 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 6 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
+| 2 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
+| 3 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 4 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 5 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Steps 1 to 3 are each one decision moved to where it can only be made once. Steps 4 and 5 change how
+Steps 1 and 2 are each one decision moved to where it can only be made once. Steps 3 and 4 change how
 the game looks most and both want a moving camera to judge, so they come after everything that would
-move the frame underneath them. Step 6 is not a fix until a measurement says there is one.
+move the frame underneath them. Step 5 is not a fix until a measurement says there is one.
 
-Nothing here is a rewrite. The largest single change is step 4, and it is one call site each side.
+Nothing here is a rewrite. The largest single change is step 3, and it is one call site each side.

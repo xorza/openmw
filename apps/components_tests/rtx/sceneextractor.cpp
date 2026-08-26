@@ -11,6 +11,7 @@
 #include <osg/Image>
 #include <osg/Material>
 #include <osg/MatrixTransform>
+#include <osg/Sequence>
 #include <osg/Switch>
 #include <osg/Texture2D>
 #include <osg/observer_ptr>
@@ -134,6 +135,54 @@ namespace Rtx
             EXPECT_EQ(stats.mMeshesReused, 0u);
             EXPECT_EQ(stats.mInstances, 2u);
             EXPECT_EQ(scene.getTriangleCount(), 4u);
+        }
+
+        /// A flipbook shows one frame at a time, and this walk is what advances it.
+        ///
+        /// **`NifOsg` builds an `osg::Sequence` for every `NiFltAnimationNode`** — Morrowind's fires,
+        /// forges and lava flows. A sequence hands over every child under `TRAVERSE_ALL_CHILDREN`,
+        /// so all of its frames are traced at once and in the same place, and the branch of
+        /// `Sequence::traverse` that moves its clock is never reached.
+        ///
+        /// Two frames a second apart, read at two times. One instance each time, and the second
+        /// read is the other frame. Both halves are claimed: honouring it without stepping it shows
+        /// frame zero for ever, and stepping it without honouring it shows both frames at once.
+        TEST(RtxSceneExtractorTest, aFlipbookShowsOneFrameAndThisWalkIsWhatAdvancesIt)
+        {
+            osg::ref_ptr<osg::MatrixTransform> first = new osg::MatrixTransform(osg::Matrix::translate(10.0, 0.0, 0.0));
+            first->addChild(makeQuad());
+            osg::ref_ptr<osg::MatrixTransform> second
+                = new osg::MatrixTransform(osg::Matrix::translate(0.0, 20.0, 0.0));
+            second->addChild(makeQuad());
+
+            // What `NifOsg::LoaderImpl` builds for a looping two-frame node lasting two seconds.
+            osg::ref_ptr<osg::Sequence> frames = new osg::Sequence;
+            frames->addChild(first);
+            frames->addChild(second);
+            frames->setDefaultTime(1.0);
+            frames->setInterval(osg::Sequence::LOOP, 0, -1);
+            frames->setDuration(1.0f, -1);
+            frames->setMode(osg::Sequence::START);
+
+            // A scene of its own each time, because the claim is what one walk put there. The clock
+            // is the node's, so it carries across the two.
+            const auto shownAt = [&frames](double seconds) {
+                Rtx::SceneDesc scene;
+                SceneExtractor extractor(scene);
+                extractor.setSimulationTime(seconds);
+                extractor.extract(*frames, osg::Matrixf::identity(), 0);
+
+                std::vector<osg::Vec3f> placed;
+                for (const MeshInstance& instance : scene.getInstances())
+                    placed.push_back(osg::Vec3f(0.0f, 0.0f, 0.0f) * instance.mTransform);
+
+                return placed;
+            };
+
+            EXPECT_EQ(shownAt(0.0), std::vector<osg::Vec3f>{ osg::Vec3f(10.0f, 0.0f, 0.0f) })
+                << "the first frame alone, and not both of them";
+            EXPECT_EQ(shownAt(1.5), std::vector<osg::Vec3f>{ osg::Vec3f(0.0f, 20.0f, 0.0f) })
+                << "and a second later the clock has moved on to the other";
         }
 
         /// A walk leaves out whatever the loader was told a hidden node carries.

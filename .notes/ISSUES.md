@@ -11,11 +11,6 @@
   with nothing carried between frames, so the picture's brightness is a pure function of what is on
   screen this frame.
 
-- The mirror walk is `TRAVERSE_ALL_CHILDREN` (`components/rtx/sceneextractor.cpp:284`), and
-  `osg::Sequence` both visits every child under that mode and advances its own clock only under
-  `TRAVERSE_ACTIVE_CHILDREN`. A `NiFltAnimationNode` flipbook (`components/nifosg/nifloader.cpp:987`)
-  is therefore traced as all of its frames standing in the same place at once, and never animates.
-
 - A `LIGH` record flagged `Negative` is dropped by `Rtx::makeLight(const ESM::Light&)` as something
   a ray tracer cannot express, but the game's scene graph builds one anyway:
   `SceneUtil::createLightSource` (`components/sceneutil/lightutil.cpp:130`) negates the diffuse
@@ -34,3 +29,12 @@
   that fails to start leaves "the game carries on with OpenGL". `MWRender::RtxRenderer` throws on a
   null backend (`apps/openmw/mwrender/rtx/rtxrenderer.cpp:184`), and with the ray tracer on no GL
   context exists to carry on with.
+
+- `RtxTool::World::buildTerrain` (`apps/rtxtool/world.cpp:270`) unions each arriving cell into
+  `mActiveGrid` and never narrows it, so the grid handed to `Terrain::World::setActiveGrid` is every
+  cell the run has ever loaded. `dropCellsOutside` (`apps/rtxtool/cellscene.cpp:121`) meanwhile keeps
+  only the 3×3 square around the centre. A cell between the two is in neither picture:
+  `ObjectPaging::getChunk` (`components/terrain/objectpaging.cpp:39`) returns nothing for a chunk the
+  quad tree marked active-grid, and the harness builds it with `pageActiveGrid=false`. The ground
+  survives because `Terrain::ChunkManager` makes no such refusal, so a camera that moves leaves a
+  corridor of ground with no statics on it.

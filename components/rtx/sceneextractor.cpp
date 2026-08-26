@@ -12,6 +12,7 @@
 #include <osg/Geometry>
 #include <osg/Image>
 #include <osg/NodeVisitor>
+#include <osg/Sequence>
 #include <osg/Switch>
 #include <osg/Texture2D>
 #include <osg/TriangleIndexFunctor>
@@ -195,6 +196,24 @@ namespace Rtx
     }
 
     /// Walks the graph and hands every geometry it meets to the extractor.
+    /// Runs an `osg::Sequence`'s clock, and reaches nothing. See `MirrorTraversal::descend`.
+    ///
+    /// **A visitor of its own, because the claim it makes is one the mirror may not carry.**
+    /// `Sequence::traverse` moves its clock only for a visitor that says it is an update traversal
+    /// *and* walks in `TRAVERSE_ACTIVE_CHILDREN`; either one alone leaves the frame number at -1 and
+    /// nothing is shown at all. Neither claim is true of the mirror.
+    struct SequenceClock : osg::NodeVisitor
+    {
+        SequenceClock()
+            : osg::NodeVisitor(UPDATE_VISITOR, TRAVERSE_ACTIVE_CHILDREN)
+        {
+        }
+
+        /// The frame the sequence settles on is walked by the mirror afterwards, not by this —
+        /// which is what keeps a flipbook's subtree from being reached twice a frame.
+        void apply(osg::Node&) override {}
+    };
+
     class MirrorTraversal : public osg::NodeVisitor
     {
     public:
@@ -242,8 +261,11 @@ namespace Rtx
 
         /// Set up once and never rebuilt, which is most of why the walk is a member rather than a
         /// local: a state graph, a render stage, a viewport and two matrices per frame is an
-        /// allocation apiece for a traversal that is the same one every time.
+        /// allocation apiece for a traversal that is the same one every time. `mSequenceClock` is a
+        /// member for the same reason.
         PoseCull mPose;
+
+        SequenceClock mSequenceClock;
 
         /// **The emitters' own clock, and it is not the world's.**
         ///
@@ -287,6 +309,7 @@ namespace Rtx
     {
         setFrameStamp(mStamp);
         mPose.setFrameStamp(mStamp);
+        mSequenceClock.setFrameStamp(mStamp);
     }
 
     void MirrorTraversal::begin(
@@ -374,15 +397,29 @@ namespace Rtx
 
     /// Descends into the children of `node` that are in the world.
     ///
-    /// **`osg::Switch` is the one node whose children are not all of them.** Its `traverse` visits
-    /// every child under `TRAVERSE_ALL_CHILDREN`, so a branch that is switched off is mirrored
-    /// anyway: `MWRender`'s `DayNightCallback` leaves the night lamp traced at noon and the day mesh
-    /// traced at midnight, both at once, and a harvested plant is traced through the unharvested one
-    /// it replaced. This is geometry and not only light.
+    /// **Three node types in this tree choose among their children, and they get three answers.**
+    /// A switch is honoured. A sequence is honoured *and stepped*. An LOD is not honoured at all,
+    /// because a ray is owed the finest child a node has rather than the one a distance test picked
+    /// for an eye. That is the whole of the decision, and it is why the walk stays in
+    /// `TRAVERSE_ALL_CHILDREN`: the one mode that would answer the first two also answers the third,
+    /// and it answers it wrongly.
     ///
-    /// **Asked here rather than by walking in `TRAVERSE_ACTIVE_CHILDREN`**, because that mode also
-    /// picks an `osg::LOD`'s child by a distance test made for an eye, and a ray tracer owes a ray
-    /// the finest child it has.
+    /// **`osg::Switch`**: its `traverse` visits every child under `TRAVERSE_ALL_CHILDREN`, so a
+    /// branch that is switched off is mirrored anyway. `MWRender`'s `DayNightCallback` leaves the
+    /// night lamp traced at noon and the day mesh traced at midnight, both at once, and a harvested
+    /// plant is traced through the unharvested one it replaced. This is geometry and not only light.
+    ///
+    /// **`osg::Sequence`**: `NifOsg` builds one for every `NiFltAnimationNode`, which is Morrowind's
+    /// flipbook — a fire, a forge, a lava flow. Under `TRAVERSE_ALL_CHILDREN` every frame of it is
+    /// traced at once and in the same place, and its clock never moves. Stepping it here is the same
+    /// statement `stepParticles` makes below: the clock lives in a traversal this renderer does not
+    /// run, so this walk is what has to run it. `SequenceClock` is what makes the claim that clock
+    /// wants, and then the frame it settled on is walked by the mirror itself — measured, because
+    /// handing `Sequence::traverse` only the traversal mode leaves its frame at -1 and shows nothing.
+    ///
+    /// **Unlike a particle step, a sequence step may be taken twice.** `Sequence` reads the frame
+    /// stamp's simulation time outright, so two calls at the same time settle on the same frame —
+    /// which is what makes it safe on the `stepOnly` pass as well as on a mirrored frame.
     ///
     /// A branch that is off is off for its emitters too, and an `osgParticle` step is the difference
     /// between one frame stamp and the last one that reached it — so a system that comes back on
@@ -395,6 +432,19 @@ namespace Rtx
             for (unsigned int at = 0; at < branches->getNumChildren(); ++at)
                 if (branches->getValue(at))
                     branches->getChild(at)->accept(*this);
+
+            return;
+        }
+
+        // Cast the group and not the node: this walk reaches far more drawables than groups, and
+        // only a group can be a sequence.
+        if (auto* frames = dynamic_cast<osg::Sequence*>(node.asGroup()))
+        {
+            frames->traverse(mSequenceClock);
+
+            const int shown = frames->getValue();
+            if (shown >= 0 && shown < static_cast<int>(frames->getNumChildren()))
+                frames->getChild(shown)->accept(*this);
 
             return;
         }
