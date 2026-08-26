@@ -61,20 +61,26 @@ namespace Rtx
             // what the stretch below was set against and is no longer read from.
             constexpr float view = 7168.0f;
 
-            // Ten times the range is a tenth of the extinction: an exponential's half-life is
-            // exactly the distance it is measured over.
-            EXPECT_FLOAT_EQ(sInteriorFogReach, 10.0f * view);
-            EXPECT_NEAR(fogExtinction(0.69f, sInteriorFogReach) / fogExtinction(0.69f, view), 0.1f, 1e-6f)
+            // **The dial itself, pinned once**, so moving it is a deliberate line and never a
+            // surprise. Everything below this is a property that holds at whatever it is set to.
+            EXPECT_FLOAT_EQ(sInteriorFogReach, 25.0f * view);
+
+            // A longer range is exactly that much less extinction: an exponential's half-life is
+            // precisely the distance it is measured over. A ratio of a fortieth carries about four
+            // billionths of float noise, so the bound is two orders above that and still far under
+            // any drift a changed rule would cause.
+            EXPECT_NEAR(
+                fogExtinction(0.69f, sInteriorFogReach) / fogExtinction(0.69f, view), view / sInteriorFogReach, 1e-7f)
                 << "a room is thinner than the ramp it came from, by the stretch and by nothing else";
 
-            // The Seyda Neen customs office, whose depth of 0.75 is what the numbers in
-            // `sInteriorFogReach` were measured against:
+            // The Seyda Neen customs office, whose depth of 0.75 is what the stretch was set
+            // against:
             //
-            //   sigma = ln(2) / (10 * 7168 * (1 - 0.375)) = 1.5472e-5 per unit
+            //   sigma = ln(2) / (25 * 7168 * (1 - 0.375)) = 0.693147 / 112000 = 6.1888e-6 per unit
             //
             // against the 1.5472e-4 the unstretched conversion gives, which is what put a tenth of a
             // lamp-lit medium between the eye and a wall seven hundred units away.
-            EXPECT_NEAR(fogExtinction(0.75f, sInteriorFogReach), 1.5472e-5f, 1e-9f);
+            EXPECT_NEAR(fogExtinction(0.75f, sInteriorFogReach), 6.1888e-6f, 1e-10f);
 
             // **Proportional and not a floor**, so a denser room is still the denser one: foggy's
             // 1.0 against clear's 0.69 keeps exactly the ratio it had before the stretch.
@@ -100,7 +106,7 @@ namespace Rtx
             room.mAmbi.mFog = 0x00808080;
 
             const float thick = interiorFog(room).mExtinction;
-            EXPECT_NEAR(thick, 1.5472e-5f, 1e-9f) << "the customs office, from its own record alone";
+            EXPECT_NEAR(thick, 6.1888e-6f, 1e-10f) << "the customs office, from its own record alone";
 
             Settings::camera().mViewingDistance.set(4.0f * 8192.0f);
             EXPECT_FLOAT_EQ(interiorFog(room).mExtinction, thick) << "a cellar cleared because the sky got bigger";

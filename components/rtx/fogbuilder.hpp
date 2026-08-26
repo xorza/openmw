@@ -43,12 +43,11 @@ namespace Rtx
     /// range in both. A room is faint because it is small, not because its dial means something
     /// different — which is the answer a separate indoor scale was standing in for.
     ///
-    /// @param over the distance the half-life is measured across. **A parameter and not the
-    ///        rasterizer's `viewing distance`**, because outdoors this path builds a world to its
-    ///        own reach and air tuned to a shorter one swallows every bit of it — a ring of ground
-    ///        four cells out then renders identically to one none. Indoors it stays `viewing
-    ///        distance`, which is what the original engine measured a room against and what keeps a
-    ///        cellar from clearing because the sky got bigger.
+    /// @param over the distance the half-life is measured across. **A parameter and never a
+    ///        setting**, because outdoors this path builds a world to its own reach and air tuned to
+    ///        a shorter one swallows every bit of it — a ring of ground four cells out then renders
+    ///        identically to one none. `distantLandReach` out of doors, `sInteriorFogReach` in a
+    ///        room, and neither of them moves when a player changes what they asked to see.
     float fogExtinction(float depth, float over);
 
     /// The distance a room's air is measured over.
@@ -57,7 +56,7 @@ namespace Rtx
     /// original engine measures a room's ramp against `viewing distance`, so raising that setting
     /// thinned the air in every cellar in the game — which is a knob about how much world is built
     /// saying how thick the air in a windowless room is. This is that range's shipped default,
-    /// 7168, stretched by the ten below, and nothing reads the live setting.
+    /// 7168, stretched by the factor below, and nothing reads the live setting.
     ///
     /// **The two shapes cannot be reconciled indoors, and `fogExtinction` above says only half of
     /// why.** A ramp is *clear* until `view * (1 - depth)` — 1792 units for the Seyda Neen customs
@@ -70,10 +69,11 @@ namespace Rtx
     /// dozen candles in it scatters far more than the recorded colour ever stood for. The two are
     /// not the same quantity, which is why matching one over-delivers the other.
     ///
-    /// **Ten, and it is the one number here set by eye.** What it was set against is not: unstretched,
-    /// the air in that customs office lifts the frame's black level to 48 of 255 and lays a grey wash
-    /// over the whole room; at ten it comes to 22, which is candlelight still hanging in the air
-    /// under the chandelier and nothing on the floor beneath it.
+    /// **The stretch is the one number here set by eye**, and what it was set against is not:
+    /// unstretched, the air in that customs office lifts the frame's black level to 48 of 255 and
+    /// lays a grey wash over the whole room. At a stretch of ten it came to 22, which is candlelight
+    /// still hanging in the air under the chandelier and nothing on the floor beneath it, and it has
+    /// since been opened further — the room is what says whether it is far enough.
     ///
     /// **Nothing outdoors is stretched.** Aerial perspective does start at the eye, there is no
     /// clear zone to reproduce, and what the air scatters there is the sky — which is the colour the
