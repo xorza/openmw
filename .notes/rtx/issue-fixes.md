@@ -96,6 +96,30 @@ the same step, and its disappearance is part of the proof.
 **Changes the picture.** `shot --view=seyda-neen-customs` and `--view=balmora-mages-guild` before and
 after; a Light spell has no harness view, so a game frame is the only check for that half.
 
+**Done**, as `Rtx::lightColour`, and it turned out to be three defects rather than two. The third was
+the one the header had already written down and nobody had wired up: `decodeColour(const
+osg::Vec4f&)` exists precisely because "every colour read off a light, a fog or the sky is the file's
+own number divided by 255", and every colour in the frame went through it *except* a light's. So the
+game's lamps were the one thing in the picture standing in display space, while the harness's — which
+decode inside `makeLight(const ESM::Light&)` — were not. `lightColour` is the decode and the sum, and
+the test that matters cross-checks the two paths: for one `LIGH` record, the light built from the
+record and the light built from the `SceneUtil::Light` the graph holds now agree bit for bit.
+
+**The picture moves most where the lamps are coloured.** Balmora's mages' guild is the case: its wall
+lamps were a swimming-pool teal and are blue, because the decode pulls a mid green down much further
+than a high blue. The census office, lit by candles that are nearly white, moves in contrast and
+falloff rather than in hue.
+
+The harness override went with it and its disappearance is the proof it was: light counts are
+identical across eight views with both the override and the `getEmpty` test gone — 23 in the census
+office, exactly what the deleted comment said it was rescuing. `scene`'s exterior *triangle* line
+turned out not to be usable as a control at all, which is now in `ISSUES.md`: adding one unused
+`#include` to `lightbuilder.cpp` moves Balmora by two triangles.
+
+`makeLight(const ESM::Light&)` drops a `Negative` record and `createLightSource` builds one with a
+negated diffuse, so the two paths still disagree about that one. It is in `ISSUES.md` rather than
+here, being a defect of its own rather than part of this.
+
 ### A4 — the actor processing range flip (measure first, then decide)
 
 `MWMechanics::Actors` (`actors.cpp:1243-1250`) sets an actor's base node mask to zero past `actors
@@ -257,7 +281,7 @@ route. No step depends on a later one.
 |---|------|---------|------|---------|
 | 1 | **done** — A1, exclude `Mask_UpdateVisitor` from `sWorldTraversal` | hidden nodes | none | visibility animation only |
 | 2 | **done** — A2, descend only the branches an `osg::Switch` has on | switch branches | low | day/night and herbalism only |
-| 3 | A3 — one function for what a light radiates; drop `getEmpty`; delete the harness override | glow lights, `getEmpty` | low | yes |
+| 3 | **done** — A3, `lightColour`: both terms and the decode; drop `getEmpty`; delete the harness override | glow lights, `getEmpty`, the missing decode | low | yes, coloured lamps most |
 | 4 | B1 — stop parenting the scene root under the camera | double traversal | medium | no |
 | 5 | B2 — replace `enableScene`'s mask reach-in; drop `Stage::getUpdateVisitor` | shared visitor | low | no |
 | 6 | F — re-attach `mExtraLightSource` in `setObjectRoot` | carried light | low | yes |

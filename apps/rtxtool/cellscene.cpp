@@ -275,19 +275,7 @@ namespace RtxTool
                 // flame has to be instanced somewhere it can run still stands where it stood and
                 // still lights the street; attaching after the prop test lost every one of them.
                 if (object.mLight != nullptr)
-                {
-                    const osg::ref_ptr<SceneUtil::LightSource> source = SceneUtil::addLight(
-                        where, SceneUtil::LightCommon(*object.mLight), sLightMask, cell.isExterior());
-
-                    // **A prop's transform carries the light and nothing else, and `addLight` calls
-                    // that empty.** The flag exists so the game can skip a light on something with
-                    // nothing to draw; here the model is not missing, it is being instanced
-                    // somewhere it can run its flame. Left alone this dropped every candle, every
-                    // lamp and every torch in the game — twenty-three of them in the census office
-                    // alone, which reported no lights at all.
-                    if (prop)
-                        source->setEmpty(false);
-                }
+                    SceneUtil::addLight(where, SceneUtil::LightCommon(*object.mLight), sLightMask, cell.isExterior());
 
                 // A prop with no light leaves an empty transform, which is nothing to place.
                 if (where->getNumChildren() > 0)

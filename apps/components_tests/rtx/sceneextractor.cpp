@@ -26,6 +26,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/skeleton.hpp>
@@ -186,6 +187,65 @@ namespace Rtx
             EXPECT_FALSE(scene.getInstances()[0].isPlaced()) << "the day branch outlived the sweep";
             ASSERT_TRUE(scene.getInstances()[1].isPlaced());
             EXPECT_EQ(origin * scene.getInstances()[1].mTransform, osg::Vec3f(0.0f, 20.0f, 0.0f));
+        }
+
+        /// A light in the graph, placed where the walk found it.
+        osg::ref_ptr<SceneUtil::LightSource> makeLightSource(
+            float radius, const osg::Vec4f& diffuse, const osg::Vec4f& ambient = osg::Vec4f())
+        {
+            osg::ref_ptr<SceneUtil::Light> light = new SceneUtil::Light;
+            light->setDiffuse(diffuse);
+            light->setAmbient(ambient);
+
+            osg::ref_ptr<SceneUtil::LightSource> source = new SceneUtil::LightSource;
+            source->setRadius(radius);
+            source->setLight(light);
+            return source;
+        }
+
+        /// **What the walk asks a `LightSource` is what it radiates, and nothing else.**
+        ///
+        /// Two things it used to ask instead. `getEmpty` means the model this light hangs on has no
+        /// geometry — a rasterizer's reason to skip drawing one, not a statement that the light is
+        /// off — and a `LIGH` whose mesh is empty still burns. And the diffuse alone is not a light's
+        /// colour: `Animation::setLightEffect` puts a glow light's whole colour in the ambient, so a
+        /// Light spell read that way lit nothing at all.
+        TEST(RtxSceneExtractorTest, aLightIsMirroredForWhatItRadiatesRatherThanForWhatItHangsOn)
+        {
+            osg::ref_ptr<SceneUtil::LightSource> lamp = makeLightSource(100.0f, osg::Vec4f(1, 1, 1, 1));
+
+            // The flag the game sets on a light whose model draws nothing. It says nothing about
+            // whether the light is lit.
+            osg::ref_ptr<SceneUtil::LightSource> bare = makeLightSource(100.0f, osg::Vec4f(1, 1, 1, 1));
+            bare->setEmpty(true);
+
+            // A glow light: no diffuse at all, and 1.5 of ambient.
+            osg::ref_ptr<SceneUtil::LightSource> glow
+                = makeLightSource(100.0f, osg::Vec4f(0, 0, 0, 0), osg::Vec4f(1.5f, 1.5f, 1.5f, 1));
+
+            osg::ref_ptr<osg::MatrixTransform> where
+                = new osg::MatrixTransform(osg::Matrix::translate(10.0, 20.0, 30.0));
+            where->addChild(lamp);
+            where->addChild(bare);
+            where->addChild(glow);
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+            const ExtractionStats stats = extractor.extract(*where, osg::Matrixf::identity(), 0);
+
+            EXPECT_EQ(stats.mLights, 3u);
+            ASSERT_EQ(scene.getLights().size(), 3u);
+
+            for (const Rtx::Light& light : scene.getLights())
+                EXPECT_EQ(light.mPosition, osg::Vec3f(10.0f, 20.0f, 30.0f)) << "a light stood somewhere else";
+
+            // 100 * 100 * 0.25 * pi = 7853.98, and white decodes to one.
+            EXPECT_NEAR(scene.getLights()[0].mIntensity.x(), 7853.98f, 0.01f);
+            EXPECT_EQ(scene.getLights()[1].mIntensity, scene.getLights()[0].mIntensity)
+                << "an empty model dimmed the light hanging on it";
+
+            // The same lamp scaled by what 1.5 of ambient decodes to: 7853.98 * 2.53716 = 19926.77.
+            EXPECT_NEAR(scene.getLights()[2].mIntensity.x(), 19926.77f, 0.05f);
         }
 
         TEST(RtxSceneExtractorTest, theRootTransformIsAppliedAfterTheGraphsOwn)

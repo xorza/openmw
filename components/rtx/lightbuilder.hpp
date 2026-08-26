@@ -16,6 +16,11 @@ namespace ESM
     struct Region;
 }
 
+namespace SceneUtil
+{
+    class Light;
+}
+
 namespace Rtx
 {
     /// The light a `LIGH` reference casts, or nothing where it casts none.
@@ -32,9 +37,27 @@ namespace Rtx
     /// records and the game reads the `SceneUtil::LightSource` nodes its own scene graph already
     /// holds, and the two must not come to disagree about how bright a candle is.
     ///
-    /// @param colour linear, as the game's own lighting already is.
+    /// @param colour linear. `lightColour` and `decodeColour` are the two ways of getting one there.
     /// @param radius the recorded one. Null where it is not a size a light can have.
     std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
+
+    /// What a light in the game's scene graph radiates, in the renderer's units.
+    ///
+    /// **Both terms, because the content uses both.** A fixed-function pipeline had a diffuse and an
+    /// ambient because it had two different things to do with them; a ray tracer has one, and it is
+    /// their sum. Two places in the game write the ambient and mean light by it:
+    /// `Animation::setLightEffect` gives a glow light a zero diffuse and a bright ambient, so every
+    /// Light spell and every enchanted item radiates exactly nothing to anything that reads the
+    /// diffuse alone; and `ActorAnimation::addHiddenItemLight` adds a white one on top of the
+    /// record's own colour, so a lamp carried in a pack lights its bearer more, and whiter, than the
+    /// same lamp on a table.
+    ///
+    /// **Decoded, because what the game hands over is not linear.** `SceneUtil::colourFromRGB`
+    /// divides a record's bytes by 255 and stops, so a `SceneUtil::Light` carries the file's own
+    /// numbers exactly as the record does — and this is the same decode `makeLight(const ESM::Light&)`
+    /// makes, which is what keeps a candle in a played frame as bright as the same candle in a
+    /// screenshot.
+    osg::Vec3f lightColour(const SceneUtil::Light& light);
 
     /// What a weather says about the sky at one hour, in the renderer's own units.
     ///

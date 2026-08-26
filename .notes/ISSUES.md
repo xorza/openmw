@@ -20,11 +20,6 @@
   `sWorldTraversal`. While it is in effect the update reaches no scene node and the mirror still
   reads what the update no longer refreshes.
 
-- Glow lights carry their colour in the ambient term — `Animation::setLightEffect`
-  (`apps/openmw/mwrender/animation.cpp:1920`) sets a zero diffuse and a bright ambient — and
-  `SceneExtractor::addLight` (`components/rtx/sceneextractor.cpp:741`) reads only the diffuse. Light
-  spells and enchanted items light nothing in the RTX path.
-
 - `mTarget` is discarded from `VK_IMAGE_LAYOUT_UNDEFINED` with a `TOP_OF_PIPE` source scope at the
   top of every frame (`components/rtxvulkan/vulkanrenderer.cpp:634`) while the presenter's blit out
   of it may still be running: `Presenter::present` submits asynchronously and waits its fence only
@@ -43,15 +38,23 @@
   owns `mExtraLightSource` and never re-adds it, so an actor whose object root is rebuilt loses its
   carried light permanently.
 
-- `LightSource::getEmpty` means "the model this light hangs on has no geometry", decided once by
-  `CheckEmptyLightVisitor` (`components/sceneutil/lightutil.cpp:106`) — and
-  `SceneExtractor::addLight` (`components/rtx/sceneextractor.cpp:730`) reads it as a reason to drop
-  the light. A `LIGH` record with an empty mesh is therefore never lit in the RTX path.
-
 - The mirror walk is `TRAVERSE_ALL_CHILDREN` (`components/rtx/sceneextractor.cpp:284`), and
   `osg::Sequence` both visits every child under that mode and advances its own clock only under
   `TRAVERSE_ACTIVE_CHILDREN`. A `NiFltAnimationNode` flipbook (`components/nifosg/nifloader.cpp:987`)
   is therefore traced as all of its frames standing in the same place at once, and never animates.
+
+- The harness's exterior triangle census is sensitive to the binary's layout rather than to the
+  content. Adding one unused `#include` to `components/rtx/lightbuilder.cpp`, with no other change
+  anywhere, moves `openmw-rtxtool scene --view=balmora` from 2,882,873 triangles to 2,882,875 and
+  `--view=ald-ruhn` from 3,079,829 to 3,079,831, while instances, meshes, materials, textures and
+  lights all stay put. Interiors are unaffected; both cells that move are exteriors with paged
+  distant-land objects. Each build is stable across runs, so the number is reproducible but not
+  comparable across builds.
+
+- A `LIGH` record flagged `Negative` is dropped by `Rtx::makeLight(const ESM::Light&)` as something
+  a ray tracer cannot express, but the game's scene graph builds one anyway:
+  `SceneUtil::createLightSource` (`components/sceneutil/lightutil.cpp:130`) negates the diffuse
+  instead, so the walk mirrors a light of negative intensity where the harness places none.
 
 - `MWMechanics::Actors` (`apps/openmw/mwmechanics/actors.cpp:1243`) sets an actor's base node mask
   to zero beyond `actors processing range` and back on the frame after, so an actor oscillating

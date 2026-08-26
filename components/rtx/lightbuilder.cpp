@@ -10,6 +10,7 @@
 #include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/fallback/fallback.hpp>
+#include <components/sceneutil/lightmanager.hpp>
 #include <components/sky/sun.hpp>
 #include <components/sky/timeofday.hpp>
 #include <components/weather/downpour.hpp>
@@ -317,6 +318,11 @@ namespace Rtx
             .mReach = radius * sReachScale + sReachBonus,
             .mRadius = radius * sSourceFraction,
         };
+    }
+
+    osg::Vec3f lightColour(const SceneUtil::Light& light)
+    {
+        return decodeColour(light.getDiffuse()) + decodeColour(light.getAmbient());
     }
 
     std::optional<Light> makeLight(const ESM::Light& record, const osg::Vec3f& position)

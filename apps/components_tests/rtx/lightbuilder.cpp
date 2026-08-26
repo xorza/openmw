@@ -7,6 +7,7 @@
 #include <components/fallback/fallback.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/shaders/visibility.h>
+#include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/weather/downpour.hpp>
 
@@ -21,6 +22,14 @@ namespace Rtx
             record.mData.mColor = colour;
             record.mData.mFlags = flags;
             return record;
+        }
+
+        osg::ref_ptr<SceneUtil::Light> makeGraphLight(const osg::Vec4f& diffuse, const osg::Vec4f& ambient)
+        {
+            osg::ref_ptr<SceneUtil::Light> light = new SceneUtil::Light;
+            light->setDiffuse(diffuse);
+            light->setAmbient(ambient);
+            return light;
         }
 
         /// The packing is `0xAABBGGRR`: red in the low byte.
@@ -61,6 +70,52 @@ namespace Rtx
 
             // The same mid grey, reached the other way: 128 of 255 encoded is 0.21586 linear.
             EXPECT_NEAR(decodeColour(osg::Vec4f(128.0f / 255.0f, 0.0f, 0.0f, 1.0f)).x(), 0.21586f, 1e-5f);
+        }
+
+        /// What a light in the graph radiates is both of its terms, decoded — and it has to be the
+        /// same answer the record gives, or a played frame and a screenshot are lit differently.
+        ///
+        /// **The ambient is not a second kind of light here.** A fixed-function pipeline had two
+        /// terms because it had two things to do with them; a tracer has one. `setLightEffect` puts
+        /// a glow light's whole colour in the ambient and leaves the diffuse at zero, so reading the
+        /// diffuse alone is reading every Light spell in the game as unlit.
+        TEST(RtxLightBuilderTest, aGraphLightRadiatesBothItsTermsAndTakesTheRecordsDecode)
+        {
+            // 128 of 255 is 0.50196 encoded, and ((0.50196 + 0.055) / 1.055)^2.4 = 0.21586 linear.
+            const osg::Vec4f grey(128.0f / 255.0f, 0.0f, 0.0f, 1.0f);
+            EXPECT_NEAR(lightColour(*makeGraphLight(grey, osg::Vec4f())).x(), 0.21586f, 1e-5f);
+
+            // What `Animation::setLightEffect` builds: nothing in the diffuse, 1.5 in the ambient.
+            // ((1.5 + 0.055) / 1.055)^2.4 = 2.53716, and a walk reading the diffuse alone gets zero.
+            const osg::Vec3f glow
+                = lightColour(*makeGraphLight(osg::Vec4f(0, 0, 0, 0), osg::Vec4f(1.5f, 1.5f, 1.5f, 1)));
+            EXPECT_NEAR(glow.x(), 2.53716f, 1e-4f);
+            EXPECT_NEAR(glow.z(), 2.53716f, 1e-4f);
+
+            // Both at once add as light adds, after each is decoded and not before: 0.21586 of red
+            // on top of 2.53716 of white.
+            const osg::Vec3f both = lightColour(*makeGraphLight(grey, osg::Vec4f(1.5f, 1.5f, 1.5f, 1)));
+            EXPECT_NEAR(both.x(), 2.75302f, 1e-4f);
+            EXPECT_NEAR(both.y(), 2.53716f, 1e-4f);
+
+            // **The property the whole function exists for.** The harness reads a cell's `LIGH`
+            // records and the game reads the `SceneUtil::LightSource` nodes its graph already holds;
+            // for one record those two have to be one light, down to the last bit of the intensity.
+            for (const std::uint32_t packed : { 0x00000000u, 0x00808080u, 0x000080FFu, 0x00FFFFFFu })
+            {
+                const ESM::Light record = makeRecord(100, packed, 0);
+                const std::optional<Rtx::Light> fromRecord = makeLight(record, osg::Vec3f(1, 2, 3));
+
+                const osg::ref_ptr<SceneUtil::Light> graph
+                    = makeGraphLight(SceneUtil::colourFromRGB(packed), osg::Vec4f());
+                const std::optional<Rtx::Light> fromGraph = makeLight(lightColour(*graph), 100.0f, osg::Vec3f(1, 2, 3));
+
+                ASSERT_TRUE(fromRecord.has_value() && fromGraph.has_value()) << "packed " << packed;
+                EXPECT_EQ(fromRecord->mIntensity, fromGraph->mIntensity) << "packed " << packed;
+                EXPECT_EQ(fromRecord->mReach, fromGraph->mReach);
+                EXPECT_EQ(fromRecord->mRadius, fromGraph->mRadius);
+                EXPECT_EQ(fromRecord->mPosition, fromGraph->mPosition);
+            }
         }
 
         /// Brightness, reach and the size of the flame all come off the one number the record

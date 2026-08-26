@@ -760,10 +760,6 @@ namespace Rtx
     void SceneExtractor::addLight(
         const SceneUtil::LightSource& source, const osg::Matrixf& place, std::size_t frame, ExtractionStats& stats)
     {
-        // A source the game has switched off contributes nothing and is not a light.
-        if (source.getEmpty())
-            return;
-
         // **The buffer update has just finished writing.** A `LightSource` is double buffered
         // because the draw thread may be reading the other one, and the mirror runs between the two
         // — after `updateTraversal` and before `renderingTraversals` — so the frame the game is
@@ -772,10 +768,11 @@ namespace Rtx
         if (light == nullptr)
             return;
 
-        const osg::Vec4f colour = light->getDiffuse();
-
-        const std::optional<Light> made
-            = makeLight(osg::Vec3f(colour.r(), colour.g(), colour.b()), source.getRadius(), place.getTrans());
+        // **`LightSource::getEmpty` is not asked**, and that is deliberate: it means the model this
+        // light hangs on has no geometry (`CheckEmptyLightVisitor`, `lightutil.cpp:17-38`), which is
+        // a rasterizer's reason to skip a light and not a statement that the light is off. A `LIGH`
+        // whose mesh is empty still burns.
+        const std::optional<Light> made = makeLight(lightColour(*light), source.getRadius(), place.getTrans());
         if (!made.has_value())
             return;
 
