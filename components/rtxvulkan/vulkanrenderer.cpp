@@ -126,11 +126,6 @@ namespace Rtx
         mColour = std::make_unique<Image>(mDevice, mRenderWidth, mRenderHeight, VK_FORMAT_R32G32B32A32_SFLOAT,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "colour");
 
-        // **Always shareable, not only when something asks.** The only cost is which memory type
-        // the driver picks, and it does not move the frame: Balmora at 1080p, best of thirty, reads
-        // 6.19 ms shareable against 6.10 to 6.26 across four runs before it, and the picture is
-        // byte-identical. The alternative is an option every caller has to know to set before the
-        // frame it wants can leave the device.
         // **Two, and interchangeable**, because the frame after this one must not rewrite the image
         // the present is still blitting out of. They swap roles every present; anything that told
         // them apart would break the frame they swapped on.
@@ -140,7 +135,7 @@ namespace Rtx
                 // GUI rasterises over what that left.
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
                     | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-                name, Sharing::Exportable);
+                name);
         };
 
         // Numbered rather than named: which one is being written changes every present, so a name
@@ -467,13 +462,6 @@ namespace Rtx
         // The images about to be replaced may still be in flight.
         mDevice.waitIdle();
         createTargets(width, height);
-    }
-
-    SharedFrame VulkanRenderer::shareFrame()
-    {
-        assert(mTarget != nullptr);
-
-        return SharedFrame{ .mMemory = mTarget->exportMemory(), .mBytes = mTarget->getMemoryBytes() };
     }
 
     std::uint32_t VulkanRenderer::addGuiTexture(std::uint32_t width, std::uint32_t height)

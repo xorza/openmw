@@ -1,6 +1,5 @@
 #include "image.hpp"
 
-#include <cassert>
 #include <cstring>
 
 #include <components/rtx/error.hpp>
@@ -41,18 +40,8 @@ namespace Rtx
         }
     }
 
-    namespace
-    {
-        /// What an exportable or imported image has to be created with, so that its layout is one
-        /// both sides agree on rather than one this driver chose privately.
-        constexpr VkExternalMemoryImageCreateInfo sShareable{
-            .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
-            .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
-        };
-    }
-
     Image::Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format,
-        VkImageUsageFlags usage, std::string_view name, Sharing sharing)
+        VkImageUsageFlags usage, std::string_view name)
         : mDevice(device)
         , mWidth(width)
         , mHeight(height)
@@ -60,11 +49,8 @@ namespace Rtx
         , mUsage(usage)
         , mTexelBytes(texelBytesOf(format))
     {
-        const bool exportable = sharing == Sharing::Exportable;
-
         const VkImageCreateInfo create{
             .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .pNext = exportable ? &sShareable : nullptr,
             .imageType = VK_IMAGE_TYPE_2D,
             .format = format,
             .extent = { width, height, 1 },
@@ -80,54 +66,8 @@ namespace Rtx
 
         VkMemoryRequirements requirements{};
         vkGetImageMemoryRequirements(device.getHandle(), mHandle, &requirements);
-        mMemory = DeviceMemory(device, requirements.size, requirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false, exportable);
-        checkVk(vkBindImageMemory(device.getHandle(), mHandle, mMemory.getHandle(), 0), "vkBindImageMemory");
-
-        const VkImageViewCreateInfo view{
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = mHandle,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = format,
-            .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
-        };
-        checkVk(vkCreateImageView(device.getHandle(), &view, nullptr, &mView), "vkCreateImageView");
-
-        device.setName(VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>(mHandle), name);
-        device.setName(VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<std::uint64_t>(mView), name);
-    }
-
-    Image::Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format,
-        VkImageUsageFlags usage, std::string_view name, int memory, VkDeviceSize bytes)
-        : mDevice(device)
-        , mWidth(width)
-        , mHeight(height)
-        , mFormat(format)
-        , mUsage(usage)
-        , mTexelBytes(texelBytesOf(format))
-    {
-        // **Created shareable as well as bound to shared memory.** The flag is what makes the
-        // driver lay the image out the way both sides agreed rather than however it would privately,
-        // and an import onto an image created without it aliases the right bytes in the wrong order.
-        const VkImageCreateInfo create{
-            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .pNext = &sShareable,
-            .imageType = VK_IMAGE_TYPE_2D,
-            .format = format,
-            .extent = { width, height, 1 },
-            .mipLevels = 1,
-            .arrayLayers = 1,
-            .samples = VK_SAMPLE_COUNT_1_BIT,
-            .tiling = VK_IMAGE_TILING_OPTIMAL,
-            .usage = usage,
-            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        };
-        checkVk(vkCreateImage(device.getHandle(), &create, nullptr, &mHandle), "vkCreateImage");
-
-        VkMemoryRequirements requirements{};
-        vkGetImageMemoryRequirements(device.getHandle(), mHandle, &requirements);
-        mMemory = DeviceMemory(device, bytes, requirements.memoryTypeBits, memory);
+        mMemory = DeviceMemory(
+            device, requirements.size, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
         checkVk(vkBindImageMemory(device.getHandle(), mHandle, mMemory.getHandle(), 0), "vkBindImageMemory");
 
         const VkImageViewCreateInfo view{

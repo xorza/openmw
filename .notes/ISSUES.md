@@ -30,12 +30,6 @@
   in the master camera's cull mask, which the RTX path never reads. The water half goes through
   `Water::showWorld` and works; the rest of the world stays traced.
 
-- `Rtx::Renderer::shareFrame` describes the OpenGL interop path — "the SDL window stays OpenGL's, and
-  Vulkan renders offscreen into an image OpenGL imports" — which this fork does not have and does not
-  intend to: with the ray tracer on, no GL context is created at all. It has no caller outside the
-  test stub, and the frame image is now one of a pair swapped every present, so a single exported
-  allocation could not answer for it even if something did import one.
-
 - `MWMechanics::Actors` (`apps/openmw/mwmechanics/actors.cpp:1243`) sets an actor's base node mask
   to zero beyond `actors processing range` and back on the frame after, so an actor oscillating
   across that distance takes its carried light in and out of the walk a frame at a time.
@@ -45,3 +39,8 @@
   update traversal included. A `NifOsg::VisController` on such a node
   (`components/nifosg/controller.cpp:388`) therefore never runs, so a node the content hides at load
   and animates visible later stays hidden for the life of an `openmw-rtxtool` run.
+
+- `Rtx::Instance`'s constructor comment (`components/rtxvulkan/instance.cpp:182`) says a renderer
+  that fails to start leaves "the game carries on with OpenGL". `MWRender::RtxRenderer` throws on a
+  null backend (`apps/openmw/mwrender/rtx/rtxrenderer.cpp:184`), and with the ray tracer on no GL
+  context exists to carry on with.

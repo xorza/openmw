@@ -91,7 +91,6 @@ namespace Rtx
         void resize(std::uint32_t width, std::uint32_t height) override;
         FrameExtents getExtents() const override;
         FrameResult renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;
-        SharedFrame shareFrame() override;
         bool presentFrame() override;
 
         std::uint32_t addViewScene() override;

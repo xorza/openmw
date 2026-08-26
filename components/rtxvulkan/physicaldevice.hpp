@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -29,14 +28,6 @@ namespace Rtx
         VkPhysicalDevice getHandle() const { return mHandle; }
 
         const DeviceProperties& getProperties() const { return *mProperties; }
-
-        /// The sixteen bytes the driver identifies this device by.
-        ///
-        /// **What tells OpenGL it is looking at the same GPU.** An allocation exported here is only
-        /// importable by the driver that made it, and a machine with two of them can put the window
-        /// on one and the tracer on the other — where the import does not fail, it succeeds and the
-        /// texture is rubbish.
-        std::array<std::uint8_t, VK_UUID_SIZE> getUuid() const;
 
         /// Queue family with graphics and compute, which on the target hardware is also the one
         /// that can present. A separate transfer queue is an M12 question.

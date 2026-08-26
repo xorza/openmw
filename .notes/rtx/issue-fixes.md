@@ -4,8 +4,8 @@ The route, and only what is left of it. A step that is done is **deleted** rathe
 the same rule `ISSUES.md` keeps, and for the same reason: what a finished step knew now lives in the
 code that does it, and a plan annotated with its own history stops being a plan.
 
-Nine entries in `ISSUES.md` are not nine bugs. They fall into five causes, and the largest of them is
-one mistake made three times: **this engine now has two hosts, and only one of them was ever
+Eight entries in `ISSUES.md` are not eight bugs. They fall into four causes, and the largest of them
+is one mistake made three times: **this engine now has two hosts, and only one of them was ever
 configured.** Ordered by what unblocks what, then by risk. The letters name a group rather than count
 one, so a gap in them is a group that is finished.
 
@@ -175,20 +175,6 @@ the frame after.
 
 ---
 
-## E. A surface describing a design this fork does not have
-
-`Rtx::Renderer::shareFrame` documents the OpenGL interop path — "the SDL window stays OpenGL's, and
-Vulkan renders offscreen into an image OpenGL imports and draws under the GUI". That is the design
-this fork explicitly abandoned: with the ray tracer on, no GL context is created at all. It has no
-caller outside a test stub, and the frame is now one of a pair swapped every present, so a single
-exported allocation could not answer for it even if something did import one.
-
-Delete it — the virtual, both implementations and the `SharedFrame` type. The Metal backend is the
-one question to settle first, and it is the same answer: a backend that owns its own surface presents
-through it.
-
----
-
 ## Plan
 
 Each step ends with the build, the filtered test binary, and — where marked — a `shot` or a `bench`
@@ -196,19 +182,18 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | E — delete `shareFrame` and `SharedFrame` | dead interop | none | no |
-| 2 | D2 — clear `mHistoryStale` where it is consumed | dropped reset | none | no |
-| 3 | A3 — one engine preparation both hosts make | harness hidden mask | low | harness only |
-| 4 | B — `descend` honours and steps `osg::Sequence` | flipbooks | low | yes, animated textures |
-| 5 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
-| 6 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
-| 7 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 8 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 9 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | D2 — clear `mHistoryStale` where it is consumed | dropped reset | none | no |
+| 2 | A3 — one engine preparation both hosts make | harness hidden mask | low | harness only |
+| 3 | B — `descend` honours and steps `osg::Sequence` | flipbooks | low | yes, animated textures |
+| 4 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
+| 5 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
+| 6 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 7 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 8 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Steps 1 and 2 are free. Steps 3 to 6 are each one decision moved to where it can only be made once.
-Steps 7 and 8 change how the game looks most and both want a moving camera to judge, so they come
-after everything that would move the frame underneath them. Step 9 is not a fix until a measurement
-says there is one.
+Step 1 is free. Steps 2 to 5 are each one decision moved to where it can only be made once. Steps 6
+and 7 change how the game looks most and both want a moving camera to judge, so they come after
+everything that would move the frame underneath them. Step 8 is not a fix until a measurement says
+there is one.
 
-Nothing here is a rewrite. The largest single change is step 7, and it is one call site each side.
+Nothing here is a rewrite. The largest single change is step 6, and it is one call site each side.

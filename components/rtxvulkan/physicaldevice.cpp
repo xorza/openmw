@@ -1,7 +1,5 @@
 #include "physicaldevice.hpp"
 
-#include <cstring>
-
 #include <algorithm>
 #include <sstream>
 #include <string_view>
@@ -192,13 +190,6 @@ namespace Rtx
             throw Error("no Vulkan device meets this renderer's requirements:" + rejections);
 
         return best;
-    }
-
-    std::array<std::uint8_t, VK_UUID_SIZE> PhysicalDevice::getUuid() const
-    {
-        std::array<std::uint8_t, VK_UUID_SIZE> uuid{};
-        std::memcpy(uuid.data(), mProperties->mVulkan11.deviceUUID, uuid.size());
-        return uuid;
     }
 
     std::string PhysicalDevice::describe() const

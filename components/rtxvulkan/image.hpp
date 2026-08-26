@@ -13,21 +13,6 @@ namespace Rtx
     class CommandPool;
     class Device;
 
-    /// Whether an image's memory can leave this device.
-    enum class Sharing
-    {
-        /// Ordinary. The allocation is this device's and nothing else can see it.
-        Private,
-
-        /// Allocated so another API can import it, and importable from another one's export.
-        ///
-        /// **The in-game path hands its frame to OpenGL rather than to a swapchain**, because the
-        /// character doll, the local map, the global map and video playback are all OSG
-        /// render-to-texture users and a Vulkan window would mean reimplementing every one of them
-        /// before the game was playable again.
-        Exportable,
-    };
-
     /// A 2D image, its allocation and its view.
     class Image
     {
@@ -36,16 +21,7 @@ namespace Rtx
         ///        Required, and not because every image deserves prose: they all used to be called
         ///        "target", so a report naming one said nothing about which it was.
         Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format, VkImageUsageFlags usage,
-            std::string_view name, Sharing sharing = Sharing::Private);
-
-        /// The same image, backed by an allocation another device or API already made.
-        ///
-        /// @param memory a file descriptor from `exportMemory`, whose ownership this takes: Vulkan
-        ///        closes it when the import succeeds, and this closes it when the import throws.
-        /// @param bytes the size that export reported. **Not width times height times bytes** — a
-        ///        driver pads, and importing at the arithmetic size fails.
-        Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format, VkImageUsageFlags usage,
-            std::string_view name, int memory, VkDeviceSize bytes);
+            std::string_view name);
 
         ~Image();
 
@@ -71,13 +47,6 @@ namespace Rtx
         /// Moves the whole image to `layout`, recording into `commands`.
         void transition(VkCommandBuffer commands, VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 srcStage,
             VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage, VkAccessFlags2 dstAccess) const;
-
-        /// A file descriptor another API can import this image's memory through, and how large that
-        /// allocation is. The caller owns the descriptor and must close it.
-        ///
-        /// Only where the image was made `Sharing::Exportable`, which is asserted.
-        int exportMemory() const { return mMemory.exportFd(); }
-        VkDeviceSize getMemoryBytes() const { return mMemory.getSize(); }
 
         /// Copies the image to host memory, `getTexelBytes()` per pixel, tightly packed, row by row.
         ///

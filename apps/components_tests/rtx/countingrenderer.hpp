@@ -79,7 +79,6 @@ namespace Rtx::Testing
         {
             return {};
         }
-        Rtx::SharedFrame shareFrame() override { return {}; }
         bool presentFrame() override { return true; }
 
         /// The GUI is not what this counts. Slots go up and nothing is drawn.
