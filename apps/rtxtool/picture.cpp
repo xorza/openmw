@@ -34,10 +34,13 @@ namespace RtxTool
 {
     namespace
     {
-        /// **Everything, because the one bit the game leaves out is not in reach.** `Mask_*` lives
-        /// in `apps/openmw/mwrender/vismask.hpp` and the harness does not link the game; nothing a
-        /// harness assembles carries `Mask_UpdateVisitor` either, so the two walks see the same
-        /// nodes. A run that wants to reproduce a different mask says so on the command line.
+        /// **Everything, because what the game excludes is out of reach here and is not there
+        /// anyway.** `Mask_*` lives in `apps/openmw/mwrender/vismask.hpp` and the harness does not
+        /// link the game. The bit that matters is `Mask_UpdateVisitor`: the game's walk leaves it
+        /// out because `RenderingManager` installs it as `NifOsg::Loader`'s hidden node mask, and
+        /// the harness installs no hidden mask at all — so a hidden node here carries no bits and
+        /// every walk skips it already. The same nodes by two routes. A run that wants a different
+        /// mask says so on the command line.
         constexpr osg::Node::NodeMask sEverything = ~0u;
 
         /// The game's own inventory framing (`MWRender::InventoryPreview`): 512 by 1024, from seven

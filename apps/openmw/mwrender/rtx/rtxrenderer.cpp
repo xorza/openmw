@@ -80,8 +80,15 @@ namespace MWRender
         /// mean "the weather subtree" extracted every storm in the game with all of its particles
         /// missing, because `Resource::SceneManager` marks a `ParticleSystem` drawable
         /// `Mask_ParticleSystem` and a blizzard's own particles are not categorised as weather.
+        ///
+        /// **Two kinds of exclusion.** The sky, the sun and the simple water are what this renderer
+        /// draws for itself. `Mask_UpdateVisitor` is what the content says is not there:
+        /// `RenderingManager` installs it as `NifOsg::Loader`'s hidden node mask, and a
+        /// `NifOsg::VisController` animating visibility swaps a node between it and every bit. It is
+        /// bit zero rather than no bits at all so that the update traversal still reaches a hidden
+        /// bone to animate it — which is why a walk that ignores it traces what nothing draws.
         constexpr osg::Node::NodeMask sWorldTraversal
-            = ~static_cast<osg::Node::NodeMask>(Mask_Sky | Mask_Sun | Mask_SimpleWater);
+            = ~static_cast<osg::Node::NodeMask>(Mask_UpdateVisitor | Mask_Sky | Mask_Sun | Mask_SimpleWater);
     }
 
     namespace

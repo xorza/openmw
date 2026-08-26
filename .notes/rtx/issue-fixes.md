@@ -33,6 +33,19 @@ node a model marks hidden is mirrored and traced. `CharacterPreview` already get
 
 Add `Mask_UpdateVisitor` to the exclusion. One line.
 
+**Done.** What it actually buys is narrower and sharper than "hidden nodes stop being traced":
+`nifloader.cpp:872-887` already skips creating meshes for a hidden node *unless* it carries a
+`NiVisController`, so most hidden nodes had no geometry to trace either way. The ones that do are
+exactly the nodes whose visibility is animated — and `NifOsg::VisController` animates it by swapping
+the node between the hidden mask and every bit (`components/nifosg/controller.cpp:393`). So the walk
+ignored NIF visibility animation entirely; now it follows it.
+
+Measured as a negative control: the census office builds 207 meshes into 817 instances with 8 lights
+before and after, so nothing was wrongly excluded. `apps/rtxtool/picture.cpp:37` carried narration
+that this change made stale — the harness installs no hidden mask, so a hidden node there has no bits
+at all and is skipped by every visitor already; the two walks still agree, by two different routes.
+That in turn is a harness quirk of its own, and it is in `ISSUES.md`.
+
 ### A2 — honour `osg::Switch`
 
 `osg::Switch::traverse` visits **every** child under `TRAVERSE_ALL_CHILDREN`, so a branch
@@ -224,7 +237,7 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | A1 — exclude `Mask_UpdateVisitor` from `sWorldTraversal` | hidden nodes | none | yes, small |
+| 1 | **done** — A1, exclude `Mask_UpdateVisitor` from `sWorldTraversal` | hidden nodes | none | visibility animation only |
 | 2 | A2 — `MirrorTraversal::apply(osg::Switch&)` | switch branches | low | yes |
 | 3 | A3 — one function for what a light radiates; drop `getEmpty`; delete the harness override | glow lights, `getEmpty` | low | yes |
 | 4 | B1 — stop parenting the scene root under the camera | double traversal | medium | no |

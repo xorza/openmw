@@ -25,10 +25,6 @@
   `SceneExtractor::addLight` (`components/rtx/sceneextractor.cpp:741`) reads only the diffuse. Light
   spells and enchanted items light nothing in the RTX path.
 
-- `sWorldTraversal` (`apps/openmw/mwrender/rtx/rtxrenderer.cpp:83`) does not exclude
-  `Mask_UpdateVisitor`, which `RenderingManager` installs as `NifOsg::Loader`'s hidden node mask, so
-  NIF nodes the game marks hidden are mirrored and traced.
-
 - `mTarget` is discarded from `VK_IMAGE_LAYOUT_UNDEFINED` with a `TOP_OF_PIPE` source scope at the
   top of every frame (`components/rtxvulkan/vulkanrenderer.cpp:634`) while the presenter's blit out
   of it may still be running: `Presenter::present` submits asynchronously and waits its fence only
@@ -60,3 +56,9 @@
 - `MWMechanics::Actors` (`apps/openmw/mwmechanics/actors.cpp:1243`) sets an actor's base node mask
   to zero beyond `actors processing range` and back on the frame after, so an actor oscillating
   across that distance takes its carried light in and out of the walk a frame at a time.
+
+- The harness installs no `NifOsg::Loader::setHiddenNodeMask`, so a NIF node hidden at load carries
+  a node mask of zero rather than the game's `Mask_UpdateVisitor` and no visitor reaches it — the
+  update traversal included. A `NifOsg::VisController` on such a node
+  (`components/nifosg/controller.cpp:388`) therefore never runs, so a node the content hides at load
+  and animates visible later stays hidden for the life of an `openmw-rtxtool` run.
