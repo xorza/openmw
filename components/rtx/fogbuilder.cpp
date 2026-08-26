@@ -3,7 +3,6 @@
 #include <cmath>
 
 #include <components/esm3/loadcell.hpp>
-#include <components/settings/values.hpp>
 
 #include "lightbuilder.hpp"
 
@@ -19,11 +18,6 @@ namespace Rtx
         return std::log(2.0f) / (over * (1.0f - 0.5f * depth));
     }
 
-    float interiorFogReach(float measured)
-    {
-        return measured * 10.0f;
-    }
-
     Fog interiorFog(const ESM::Cell& cell)
     {
         if (!cell.mHasAmbi)
@@ -32,12 +26,10 @@ namespace Rtx
         return Fog{
             .mColour = decodeColour(cell.mAmbi.mFog),
 
-            // A room is measured against the view range the original engine measured it against, and
-            // not against how much world is built outside it: a cellar does not clear because the
-            // sky got bigger. Stretched from there, because a medium is not the ramp that range was
-            // written for — `interiorFogReach` is where that is said.
-            .mExtinction
-            = fogExtinction(cell.mAmbi.mFogDensity, interiorFogReach(Settings::camera().mViewingDistance)),
+            // A room is measured against one fixed distance and not against how much world is
+            // built outside it, nor against how much the player asked to see: a cellar does not
+            // clear because the sky got bigger. `sInteriorFogReach` is where that is said.
+            .mExtinction = fogExtinction(cell.mAmbi.mFogDensity, sInteriorFogReach),
 
             // A room is smaller than one bank of fog, and its air is still.
             .mUniform = 1.0f,

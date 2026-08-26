@@ -167,6 +167,17 @@ namespace MWRender
         /// what it models down there is the water itself.
         FogBand mAir;
 
+        /// What the content recorded, before `MWRender::FogManager` made a ramp of it.
+        ///
+        /// **The record and not the ramp, because the ramp is a rasterizer's workaround.** Its start
+        /// and end exist to hide a far clip plane, and a renderer with no far clip has nothing to
+        /// hide: `Rtx::fogExtinction` reads this depth over the distance the picture actually
+        /// reaches, which is the same thing `openmw-rtxtool` reads out of the content files. Two
+        /// hosts, one derivation.
+        ///
+        /// A weather's blended `Land_Fog_Depth` outdoors, and a cell's `AMBI` density indoors.
+        float mFogDepth = 0.0f;
+
         float mNearClip = 0.0f;
         float mViewDistance = 0.0f;
         osg::Matrixf mProjectionMatrix;

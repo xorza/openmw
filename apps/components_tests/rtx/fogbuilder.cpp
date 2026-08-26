@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <components/esm3/loadcell.hpp>
 #include <components/rtx/fogbuilder.hpp>
 #include <components/settings/values.hpp>
 
@@ -46,41 +47,68 @@ namespace Rtx
                 << "the air did not stretch with the world";
         }
 
-        /// A room's air is thinner than the conversion above makes it, and by one shared number.
+        /// A room's air is thinner than the conversion above makes it, and by one fixed number.
         ///
-        /// **The ramp and the medium part company indoors** — `interiorFogReach` says at length why,
-        /// and the short of it is that the ramp is clear across the whole of a room where a medium
-        /// cannot be, and that a lit medium is not a colour a pixel is mixed toward. What is checked
-        /// here is that the stretch is applied and that it is the *only* thing separating a room's
-        /// extinction from the raw conversion, since the game reaches the same number by a different
-        /// route and the two may not drift.
+        /// **The ramp and the medium part company indoors** — `sInteriorFogReach` says at length
+        /// why, and the short of it is that the ramp is clear across the whole of a room where a
+        /// medium cannot be, and that a lit medium is not a colour a pixel is mixed toward. What is
+        /// checked here is that the stretch is applied and that it is the *only* thing separating a
+        /// room's extinction from the raw conversion, since the game reaches the same number by a
+        /// different route and the two may not drift.
         TEST(RtxFogTest, aRoomsAirIsStretchedPastTheRangeItsRecordWasWrittenAgainst)
         {
+            // The shipped default of the range the original engine measures a room against, which is
+            // what the stretch below was set against and is no longer read from.
             constexpr float view = 7168.0f;
 
             // Ten times the range is a tenth of the extinction: an exponential's half-life is
             // exactly the distance it is measured over.
-            EXPECT_FLOAT_EQ(interiorFogReach(view), 10.0f * view);
-            EXPECT_NEAR(fogExtinction(0.69f, interiorFogReach(view)) / fogExtinction(0.69f, view), 0.1f, 1e-6f)
+            EXPECT_FLOAT_EQ(sInteriorFogReach, 10.0f * view);
+            EXPECT_NEAR(fogExtinction(0.69f, sInteriorFogReach) / fogExtinction(0.69f, view), 0.1f, 1e-6f)
                 << "a room is thinner than the ramp it came from, by the stretch and by nothing else";
 
             // The Seyda Neen customs office, whose depth of 0.75 is what the numbers in
-            // `interiorFogReach` were measured against:
+            // `sInteriorFogReach` were measured against:
             //
             //   sigma = ln(2) / (10 * 7168 * (1 - 0.375)) = 1.5472e-5 per unit
             //
             // against the 1.5472e-4 the unstretched conversion gives, which is what put a tenth of a
             // lamp-lit medium between the eye and a wall seven hundred units away.
-            EXPECT_NEAR(fogExtinction(0.75f, interiorFogReach(view)), 1.5472e-5f, 1e-9f);
+            EXPECT_NEAR(fogExtinction(0.75f, sInteriorFogReach), 1.5472e-5f, 1e-9f);
 
             // **Proportional and not a floor**, so a denser room is still the denser one: foggy's
             // 1.0 against clear's 0.69 keeps exactly the ratio it had before the stretch.
-            EXPECT_NEAR(fogExtinction(1.0f, interiorFogReach(view)) / fogExtinction(0.69f, interiorFogReach(view)),
+            EXPECT_NEAR(fogExtinction(1.0f, sInteriorFogReach) / fogExtinction(0.69f, sInteriorFogReach),
                 fogExtinction(1.0f, view) / fogExtinction(0.69f, view), 1e-5f);
 
             // And a room the record gives no fog at all still has none, however far it is measured
             // over — the stretch scales an extinction and never creates one.
-            EXPECT_EQ(fogExtinction(0.0f, interiorFogReach(view)), 0.0f);
+            EXPECT_EQ(fogExtinction(0.0f, sInteriorFogReach), 0.0f);
+        }
+
+        /// A room's air does not move when the player changes how much world they want to see.
+        ///
+        /// **That was the whole reason for a constant.** The original engine measures a room's ramp
+        /// against `viewing distance`, so raising the setting thinned the air in every windowless
+        /// cellar in the game — a knob about how much world is built saying how a room feels. The
+        /// value is that range's shipped default and it is now written down rather than read.
+        TEST(RtxFogTest, aRoomsAirIsWhatTheContentSaidAndNotWhatTheViewDistanceIs)
+        {
+            ESM::Cell room;
+            room.mHasAmbi = true;
+            room.mAmbi.mFogDensity = 0.75f;
+            room.mAmbi.mFog = 0x00808080;
+
+            const float thick = interiorFog(room).mExtinction;
+            EXPECT_NEAR(thick, 1.5472e-5f, 1e-9f) << "the customs office, from its own record alone";
+
+            Settings::camera().mViewingDistance.set(4.0f * 8192.0f);
+            EXPECT_FLOAT_EQ(interiorFog(room).mExtinction, thick) << "a cellar cleared because the sky got bigger";
+
+            Settings::camera().mViewingDistance.set(2048.0f);
+            EXPECT_FLOAT_EQ(interiorFog(room).mExtinction, thick) << "and thickened because it got smaller";
+
+            Settings::camera().mViewingDistance.set(7168.0f);
         }
     }
 }

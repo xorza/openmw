@@ -5,7 +5,6 @@
 #include <cstring>
 #include <format>
 #include <limits>
-#include <numbers>
 #include <optional>
 #include <stdexcept>
 
@@ -770,18 +769,19 @@ namespace MWRender
         // records: one colour for the air, and one for the dome it fades into overhead.
         const osg::Vec3f haze = Rtx::decodeColour(world.mAir.mColour);
 
-        // **The fog is a linear ramp there and a medium here**, so what is matched is where each is
-        // half gone: the ramp at the midpoint of start and end, an exponential at `ln(2) / sigma`.
-        // The same derivation `Rtx::fogExtinction` makes from a recorded depth, reached instead
-        // from the distances the game has already computed.
+        // **The recorded depth, and not the ramp `MWRender::FogManager` made of it.** That ramp
+        // exists to hide a far clip plane and this renderer has no far clip to hide, so per the
+        // fork's own rule it does not come across. What is read instead is the number the content
+        // wrote, over the distance this picture actually reaches — which is what `openmw-rtxtool`
+        // reads out of the same records, so a screenshot and a played frame stand in one air.
         //
-        // **A room is stretched past that and the open air is not**, because indoors the match
-        // over-delivers: the ramp is clear across the whole of a room where the medium is not, and
-        // the medium is lit by every lamp in it where the ramp was only a colour. The one number
-        // that says by how much is `Rtx::interiorFogReach`, so the harness and this cannot come to
-        // haze one room two ways.
-        const float midpoint = 0.5f * (world.mAir.mStart + world.mAir.mEnd);
-        const float half = world.isInteriorCell() ? Rtx::interiorFogReach(midpoint) : midpoint;
+        // **A room is measured against a fixed distance and the open air against the world's
+        // reach.** The original engine measured both against `viewing distance`, which is shorter
+        // than one cell: air tuned to it swallows everything past the active grid, and a world built
+        // four cells out then renders identically to one built none. A room takes a constant
+        // instead, because how thick the air in a windowless cellar is belongs to the content and
+        // not to how much world the player asked for — `Rtx::sInteriorFogReach` says the rest.
+        const float reach = world.isInteriorCell() ? Rtx::sInteriorFogReach : Rtx::distantLandReach();
 
         // **The sun is not assembled here.** Everything the world says about it goes to the one
         // builder that decides what a sun may be — which is what keeps the game and the harness
@@ -807,7 +807,7 @@ namespace MWRender
             .mSkyZenith = world.isOutdoors() ? Rtx::decodeColour(world.mSkyColour) : haze,
 
             .mAir = { .mColour = haze,
-                .mExtinction = half > 0.0f ? std::numbers::ln2_v<float> / half : 0.0f,
+                .mExtinction = Rtx::fogExtinction(world.mFogDepth, reach),
 
                 // **One indoors and nothing out of doors.** Banks are what weather does to a
                 // landscape, and a room running the outdoor coverage field reads as a rendering

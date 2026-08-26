@@ -770,12 +770,16 @@ namespace MWRender
 
     void RenderingManager::configureFog(const MWWorld::Cell& cell)
     {
+        // **Kept as it was recorded, beside the ramp it is about to become.** A renderer whose fog
+        // is a medium has no use for a start and an end; it wants the number the content wrote.
+        mFogDepth = cell.getMood().mFogDensity;
         mFog->configure(mViewDistance, cell);
     }
 
     void RenderingManager::configureFog(
         float fogDepth, float underwaterFog, float dlFactor, float dlOffset, const osg::Vec4f& color)
     {
+        mFogDepth = fogDepth;
         mFog->configure(mViewDistance, fogDepth, underwaterFog, dlFactor, dlOffset, color);
     }
 
@@ -889,6 +893,7 @@ namespace MWRender
             .mUnderwater = underwater,
             .mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) },
             .mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) },
+            .mFogDepth = mFogDepth,
             .mNearClip = mNearClip,
             .mViewDistance = mViewDistance,
             .mProjectionMatrix = mPerViewUniformStateUpdater->getProjectionMatrix(),

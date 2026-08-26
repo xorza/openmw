@@ -400,6 +400,9 @@ namespace MWRender
         std::unique_ptr<SkyManager> mSky;
         std::unique_ptr<FogManager> mFog;
 
+        /// What was last handed to `configureFog`, before it became a ramp. `SceneFrame::mFogDepth`.
+        float mFogDepth = 0.0f;
+
         std::unique_ptr<EffectManager> mEffectManager;
         std::unique_ptr<SceneUtil::ShadowManager> mShadowManager;
 

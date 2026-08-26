@@ -4,45 +4,9 @@ The route, and only what is left of it. A step that is done is **deleted** rathe
 the same rule `ISSUES.md` keeps, and for the same reason: what a finished step knew now lives in the
 code that does it, and a plan annotated with its own history stops being a plan.
 
-Three of the four entries in `ISSUES.md` are not three bugs. They fall into three causes, and the
-largest of them is one mistake made over and over: **this engine now has two hosts, and each derives
-for itself what only one of them should decide.** The fourth is a stale comment in `instance.cpp` and
-belongs to no cause. Ordered by what unblocks what, then by risk. The letters name a group rather
-than count one, so a gap in them is a group that is finished.
-
----
-
-## A. Two hosts derive for themselves what one of them should decide
-
-**Retires: the fog mismatch.**
-
-`RenderingManager` and `openmw-rtxtool` both build the same components and both hand the renderer a
-frame's inputs. Nothing says how a host does that, so each divergence has had to be found in a
-picture: what a lamp radiates was one, what a `Negative` record is worth was another, the loader's
-process-global state a third, and the fog is what is left.
-
-`Rtx::makeLight` is what the answer looks like — one function, two callers, no way to disagree, and
-every refusal said once where both routes pass through. Fog is not there yet.
-
-### A1 — one fog derivation, and not the rasterizer's ramp
-
-The harness measures extinction over `Rtx::distantLandReach()` and the recorded depth
-(`lightbuilder.cpp:186`): `ln2 / (reach * (1 - depth/2))`. The game measures it over the midpoint of
-the ramp `MWRender::FogManager` built from `viewing distance` (`rtxrenderer.cpp:779-780`):
-`ln2 / midpoint`. Both say "where half the light is gone"; they say it about different distances. At
-the shipped defaults those are 32768 and 7168 units, so a screenshot and a played frame stand in
-different air.
-
-The distances differ because the *sources* do, and one of them is a rasterizer workaround:
-`FogManager`'s linear ramp exists to hide a far clip plane, and this renderer has no far clip to
-hide. Per the fork's own rule, it does not come across.
-
-So the game hands `Rtx::fogExtinction` the weather's recorded depth and the reach the renderer draws
-to, exactly as the harness does, and the ramp is not consulted. One derivation, one call site each
-side, agreeing by construction rather than by two numbers matching.
-
-**Changes the picture**, and it is the entry most likely to look wrong before it looks right — the
-game's fog is currently far denser. Do it where `shot` can be compared against a played frame.
+Two of the three entries in `ISSUES.md` are not two bugs. They fall into two causes. The third is a
+stale comment in `instance.cpp` and belongs to no cause. Ordered by what unblocks what, then by risk.
+The letters name a group rather than count one, so a gap in them is a group that is finished.
 
 ---
 
@@ -101,11 +65,8 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 2 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 3 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 2 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Steps 1 and 2 change how the game looks most and both want a moving camera to judge, so they come
-last of the fixes. Step 3 is not a fix until a measurement says there is one.
-
-Nothing here is a rewrite. The largest single change is step 1, and it is one call site each side.
+Step 1 changes how the game looks and wants a moving camera to judge. Step 2 is not a fix until a
+measurement says there is one.

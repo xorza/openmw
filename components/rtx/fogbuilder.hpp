@@ -51,8 +51,13 @@ namespace Rtx
     ///        cellar from clearing because the sky got bigger.
     float fogExtinction(float depth, float over);
 
-    /// The distance a room's air is measured over, against the one the original engine measured it
-    /// against.
+    /// The distance a room's air is measured over.
+    ///
+    /// **A constant, because a room's mood belongs to the content and not to a graphics dial.** The
+    /// original engine measures a room's ramp against `viewing distance`, so raising that setting
+    /// thinned the air in every cellar in the game — which is a knob about how much world is built
+    /// saying how thick the air in a windowless room is. This is that range's shipped default,
+    /// 7168, stretched by the ten below, and nothing reads the live setting.
     ///
     /// **The two shapes cannot be reconciled indoors, and `fogExtinction` above says only half of
     /// why.** A ramp is *clear* until `view * (1 - depth)` — 1792 units for the Seyda Neen customs
@@ -74,11 +79,9 @@ namespace Rtx
     /// clear zone to reproduce, and what the air scatters there is the sky — which is the colour the
     /// record already names.
     ///
-    /// @param measured the distance the record's ramp was written against — the view range for the
-    ///        harness, and for the game the midpoint of the ramp `MWRender::FogManager` has already
-    ///        built. **One number and two callers**: a room hazed one way in a screenshot and
-    ///        another in play is two renderers.
-    float interiorFogReach(float measured);
+    /// **One number and two hosts**: a room hazed one way in a screenshot and another in play is
+    /// two renderers.
+    constexpr float sInteriorFogReach = 25.0f * 7168.0f;
 
     /// An interior's own fog, out of its `AMBI` record. Only interiors carry one; an exterior's air
     /// belongs to the weather.
