@@ -25,10 +25,13 @@ namespace Rtx
 {
     /// The light a `LIGH` reference casts, or nothing where it casts none.
     ///
-    /// Three kinds of record place no light. A **carried** one is a torch in a pack, lit only when
-    /// something equips it. An **off by default** one does not burn while it sits in a cell. And a
-    /// **negative** one *subtracts* illumination — a trick available to a renderer accumulating into
-    /// a framebuffer and meaningless to anything that traces a ray to an emitter.
+    /// Two kinds of record place no light. A **carried** one is a torch in a pack, lit only when
+    /// something equips it, and an **off by default** one does not burn while it sits in a cell.
+    ///
+    /// A **negative** record is refused further down. It *subtracts* illumination — a trick
+    /// available to a renderer accumulating into a framebuffer and meaningless to anything that
+    /// traces a ray to an emitter — and this describes it as the negative colour the game's scene
+    /// graph builds, so the overload below refuses both paths with one test.
     std::optional<Light> makeLight(const ESM::Light& record, const osg::Vec3f& position);
 
     /// The same light, from a colour and a radius rather than from a record.
@@ -38,6 +41,8 @@ namespace Rtx
     /// holds, and the two must not come to disagree about how bright a candle is.
     ///
     /// @param colour linear. `lightColour` and `decodeColour` are the two ways of getting one there.
+    ///        Null where a channel of it is negative, which is what a light that subtracts looks
+    ///        like by either route.
     /// @param radius the recorded one. Null where it is not a size a light can have.
     std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 

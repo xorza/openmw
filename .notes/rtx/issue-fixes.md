@@ -4,9 +4,9 @@ The route, and only what is left of it. A step that is done is **deleted** rathe
 the same rule `ISSUES.md` keeps, and for the same reason: what a finished step knew now lives in the
 code that does it, and a plan annotated with its own history stops being a plan.
 
-Five of the six entries in `ISSUES.md` are not five bugs. They fall into three causes, and the
+Four of the five entries in `ISSUES.md` are not four bugs. They fall into three causes, and the
 largest of them is one mistake made over and over: **this engine now has two hosts, and each derives
-for itself what only one of them should decide.** The sixth is a stale comment in `instance.cpp` and
+for itself what only one of them should decide.** The fifth is a stale comment in `instance.cpp` and
 belongs to no cause. Ordered by what unblocks what, then by risk. The letters name a group rather
 than count one, so a gap in them is a group that is finished.
 
@@ -14,16 +14,15 @@ than count one, so a gap in them is a group that is finished.
 
 ## A. Two hosts derive for themselves what one of them should decide
 
-**Retires: the fog mismatch, and negative lights.**
+**Retires: the fog mismatch.**
 
 `RenderingManager` and `openmw-rtxtool` both build the same components and both hand the renderer a
 frame's inputs. Nothing says how a host does that, so each divergence has had to be found in a
-picture: the lights were one (`lightColour`, since fixed), the loader's process-global state was
-another, and these are the rest.
+picture: what a lamp radiates was one, what a `Negative` record is worth was another, the loader's
+process-global state a third, and the fog is what is left.
 
-**Derivations each host makes for itself.** `Rtx::makeLight` is what this should look like — one
-function, two callers, no way to disagree. Fog is not there yet, and neither is what a `LIGH` record
-is worth once the graph has built it.
+`Rtx::makeLight` is what the answer looks like — one function, two callers, no way to disagree, and
+every refusal said once where both routes pass through. Fog is not there yet.
 
 ### A1 — one fog derivation, and not the rasterizer's ramp
 
@@ -45,19 +44,6 @@ side, agreeing by construction rather than by two numbers matching.
 **Changes the picture**, and it is the entry most likely to look wrong before it looks right — the
 game's fog is currently far denser. Do it where `shot` can be compared against a played frame.
 
-### A2 — `makeLight` owns what a ray tracer cannot express
-
-`makeLight(const ESM::Light&)` drops a `Negative` record, because a light that *subtracts*
-illumination is a trick available to a renderer accumulating into a framebuffer and meaningless to
-one that traces a ray to an emitter. The graph path never sees that flag:
-`SceneUtil::createLightSource` (`lightutil.cpp:130`) negates the diffuse instead, so the walk mirrors
-a light of negative intensity exactly where the harness places none.
-
-The flag test is in the wrong place. `makeLight(colour, radius, position)` is where both paths meet
-and already owns "this is not a light" for a radius; a colour with a negative channel is the same
-statement about the same thing. Moving it there makes the two agree by construction and leaves the
-record's flag as what it is — a record property, still worth reading early.
----
 ---
 
 ## C. The game says it with a mask, and this renderer reads none of them
@@ -126,14 +112,13 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
-| 2 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
-| 3 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 4 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 5 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
+| 2 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 3 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 4 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Steps 1 and 2 are each one decision moved to where it can only be made once. Steps 3 and 4 change how
-the game looks most and both want a moving camera to judge, so they come after everything that would
-move the frame underneath them. Step 5 is not a fix until a measurement says there is one.
+Step 1 is one decision moved to where it can only be made once. Steps 2 and 3 change how the game
+looks most and both want a moving camera to judge, so they come after everything that would move the
+frame underneath them. Step 4 is not a fix until a measurement says there is one.
 
-Nothing here is a rewrite. The largest single change is step 3, and it is one call site each side.
+Nothing here is a rewrite. The largest single change is step 2, and it is one call site each side.

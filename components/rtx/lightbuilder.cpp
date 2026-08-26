@@ -312,6 +312,14 @@ namespace Rtx
         if (!(radius > 0.0f))
             return std::nullopt;
 
+        // **A light that subtracts is not one a ray can reach.** Negative illumination is a trick
+        // for a renderer accumulating into a framebuffer, and it arrives here as a colour with a
+        // negative channel — which is what `SceneUtil::createLightSource` builds out of a `Negative`
+        // record, and what `makeLight(const ESM::Light&)` builds to match. Said here, where the two
+        // paths meet, so neither can come to a different answer about the same lamp.
+        if (colour.x() < 0.0f || colour.y() < 0.0f || colour.z() < 0.0f)
+            return std::nullopt;
+
         return Light{
             .mPosition = position,
             .mIntensity = colour * (radius * radius * sIntensity),
@@ -327,10 +335,18 @@ namespace Rtx
 
     std::optional<Light> makeLight(const ESM::Light& record, const osg::Vec3f& position)
     {
-        constexpr int notPlaced = ESM::Light::Carry | ESM::Light::Negative | ESM::Light::OffDefault;
+        constexpr int notPlaced = ESM::Light::Carry | ESM::Light::OffDefault;
         if ((record.mData.mFlags & notPlaced) != 0)
             return std::nullopt;
 
-        return makeLight(decodeColour(record.mData.mColor), static_cast<float>(record.mData.mRadius), position);
+        // **The colour the graph would build, rather than the one the record wrote.**
+        // `SceneUtil::createLightSource` turns a `Negative` record into a light by negating its
+        // diffuse, so describing one the same way here leaves the single test above to decide that a
+        // light which subtracts is not one this renderer places. The flag is read as what it is — a
+        // property of the record — and not as a second rule about what may be placed.
+        const osg::Vec3f recorded = decodeColour(record.mData.mColor);
+        const bool negative = (record.mData.mFlags & ESM::Light::Negative) != 0;
+
+        return makeLight(negative ? -recorded : recorded, static_cast<float>(record.mData.mRadius), position);
     }
 }

@@ -7,8 +7,11 @@
 #include <components/fallback/fallback.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/shaders/visibility.h>
+#include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightmanager.hpp>
+#include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/util.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/weather/downpour.hpp>
 
 namespace Rtx
@@ -435,6 +438,39 @@ namespace Rtx
             // broken contract.
             EXPECT_FALSE(makeLight(makeRecord(0, 0x00FFFFFF, 0), osg::Vec3f()).has_value());
             EXPECT_FALSE(makeLight(makeRecord(-50, 0x00FFFFFF, 0), osg::Vec3f()).has_value());
+        }
+
+        /// A light that subtracts is refused by both routes to one, and the graph was the half that
+        /// was wrong.
+        ///
+        /// **`SceneUtil::createLightSource` has no notion of "not a light".** It answers a `Negative`
+        /// record by negating the diffuse and handing back a `LightSource` like any other, so the
+        /// walk mirrored a lamp of negative intensity exactly where the harness placed none. The
+        /// refusal now lives where a colour and a radius meet, which is the one place both routes
+        /// pass through — and this builds the graph the game builds rather than a negative colour by
+        /// hand, so it is the real path that is refused.
+        TEST(RtxLightBuilderTest, aLightThatSubtractsIsRefusedByBothRoutesToOne)
+        {
+            const ESM::Light subtracting = makeRecord(100, 0x00FFFFFF, ESM::Light::Negative);
+
+            const osg::ref_ptr<SceneUtil::LightSource> built = SceneUtil::createLightSource(
+                SceneUtil::LightCommon(subtracting), SceneUtil::Mask_Lighting, /*isExterior=*/false);
+            ASSERT_NE(built, nullptr);
+
+            const osg::Vec3f radiated = lightColour(*built->getLight(0));
+            ASSERT_LT(radiated.x(), 0.0f) << "the graph did not build a light that subtracts, so this proves nothing";
+
+            EXPECT_FALSE(makeLight(radiated, 100.0f, osg::Vec3f()).has_value()) << "the walk mirrored it anyway";
+            EXPECT_FALSE(makeLight(subtracting, osg::Vec3f()).has_value()) << "and the record it was built from";
+
+            // The same record without the flag is an ordinary white lamp by both routes, so what the
+            // two agree on is the flag and not the light.
+            const ESM::Light ordinary = makeRecord(100, 0x00FFFFFF, 0);
+            const osg::ref_ptr<SceneUtil::LightSource> lit = SceneUtil::createLightSource(
+                SceneUtil::LightCommon(ordinary), SceneUtil::Mask_Lighting, /*isExterior=*/false);
+
+            EXPECT_TRUE(makeLight(lightColour(*lit->getLight(0)), 100.0f, osg::Vec3f()).has_value());
+            EXPECT_TRUE(makeLight(ordinary, osg::Vec3f()).has_value());
         }
     }
 }

@@ -11,11 +11,6 @@
   with nothing carried between frames, so the picture's brightness is a pure function of what is on
   screen this frame.
 
-- A `LIGH` record flagged `Negative` is dropped by `Rtx::makeLight(const ESM::Light&)` as something
-  a ray tracer cannot express, but the game's scene graph builds one anyway:
-  `SceneUtil::createLightSource` (`components/sceneutil/lightutil.cpp:130`) negates the diffuse
-  instead, so the walk mirrors a light of negative intensity where the harness places none.
-
 - `RenderingManager::toggleRenderMode(Render_Scene)` — the `tws` console command
   (`apps/openmw/mwrender/renderingmanager.cpp:746`) — hides the world by flipping `sToggleWorldMask`
   in the master camera's cull mask, which the RTX path never reads. The water half goes through
