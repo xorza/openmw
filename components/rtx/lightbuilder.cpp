@@ -339,11 +339,14 @@ namespace Rtx
         if ((record.mData.mFlags & notPlaced) != 0)
             return std::nullopt;
 
-        // **The colour the graph would build, rather than the one the record wrote.**
+        // **Described the way the graph describes it, so the test above answers for both.**
         // `SceneUtil::createLightSource` turns a `Negative` record into a light by negating its
-        // diffuse, so describing one the same way here leaves the single test above to decide that a
-        // light which subtracts is not one this renderer places. The flag is read as what it is — a
-        // property of the record — and not as a second rule about what may be placed.
+        // diffuse, and this negates the colour it decoded. The two do that on opposite sides of the
+        // sRGB conversion, so what they agree on is the *sign* and not the magnitude — which is the
+        // whole of what a refusal reads, and the magnitude of a light nobody places is nothing.
+        //
+        // The flag is read here as what it is, a property of the record, and not as a second rule
+        // about what may be placed.
         const osg::Vec3f recorded = decodeColour(record.mData.mColor);
         const bool negative = (record.mData.mFlags & ESM::Light::Negative) != 0;
 

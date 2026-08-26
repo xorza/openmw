@@ -471,6 +471,16 @@ namespace Rtx
 
             EXPECT_TRUE(makeLight(lightColour(*lit->getLight(0)), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(ordinary, osg::Vec3f()).has_value());
+
+            // **A black record subtracts nothing, so the flag on it decides nothing either.** Both
+            // routes place a lamp that radiates zero, which is what they already did for a black
+            // record without the flag — the record path used to drop this one and disagree.
+            const ESM::Light unlit = makeRecord(100, 0x00000000, ESM::Light::Negative);
+            const osg::ref_ptr<SceneUtil::LightSource> dark = SceneUtil::createLightSource(
+                SceneUtil::LightCommon(unlit), SceneUtil::Mask_Lighting, /*isExterior=*/false);
+
+            EXPECT_TRUE(makeLight(lightColour(*dark->getLight(0)), 100.0f, osg::Vec3f()).has_value());
+            EXPECT_TRUE(makeLight(unlit, osg::Vec3f()).has_value());
         }
     }
 }
