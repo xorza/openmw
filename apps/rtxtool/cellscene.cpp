@@ -2,9 +2,9 @@
 
 #include <osg/MatrixTransform>
 
+#include <components/misc/cellgrid.hpp>
 #include <components/misc/constants.hpp>
 
-#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -36,40 +36,16 @@ namespace RtxTool
         /// An interior is its own region: it has no neighbours to have. An exterior square that runs
         /// off the edge of the world, or over open sea, simply finds fewer cells — a coastline is
         /// not an error.
-        /// The square of cells the game keeps active, and the order it fills it in.
+        /// The square of cells this harness keeps loaded, around the cell the caller named.
         ///
-        /// **Copied from `MWWorld::Scene`, deliberately, rather than shared.** The originals —
-        /// `iterateOverCellsAround` and `sortCellsToLoad` — sit in an anonymous namespace in
-        /// `apps/openmw/mwworld/scene.cpp`, so nothing outside that file can link to them, and
-        /// lifting them into `components/` costs three upstream files to share twenty lines of
-        /// arithmetic. Twenty lines is the cheaper copy.
-        ///
-        /// **What it has to keep is the order.** Nearest first, ties broken by distance to the
-        /// origin. The scanline fill this replaced put the cells in an order the game never uses,
-        /// which for a benchmark that times a camera crossing a boundary is the whole measurement.
-        /// If `Scene` ever changes how it sorts, this has to follow it, and nothing here will say
-        /// so — that is what the copy costs.
-        std::vector<std::pair<int, int>> squareAround(int centreX, int centreY)
+        /// **Derived once, and the terrain is told this very grid.** `World::setActiveCellGrid`
+        /// takes it, so which cells are standing and which square `Terrain::ObjectPaging` refuses
+        /// to page are two views of one answer rather than two rules that can drift apart. The
+        /// order the cells come out in is the game's, which matters to anything timing a camera
+        /// across a boundary. `Misc::CellGrid` owns both.
+        Misc::CellGrid gridAround(const ESM::Cell& centre)
         {
-            const int range = Constants::CellGridRadius;
-            const auto side = static_cast<std::size_t>(2 * range + 1);
-
-            std::vector<std::pair<int, int>> square;
-            square.reserve(side * side);
-
-            for (int x = centreX - range; x <= centreX + range; ++x)
-                for (int y = centreY - range; y <= centreY + range; ++y)
-                    square.emplace_back(x, y);
-
-            const auto priority = [&](const std::pair<int, int>& cell) {
-                return std::make_pair(std::abs(cell.first - centreX) + std::abs(cell.second - centreY),
-                    std::abs(cell.first) + std::abs(cell.second));
-            };
-
-            std::sort(square.begin(), square.end(),
-                [&](const std::pair<int, int>& a, const std::pair<int, int>& b) { return priority(a) < priority(b); });
-
-            return square;
+            return Misc::CellGrid(osg::Vec2i(centre.getGridX(), centre.getGridY()), Constants::CellGridRadius);
         }
 
         /// How a cell is keyed, and it has to be what the grid walk builds or nothing matches.
@@ -90,9 +66,12 @@ namespace RtxTool
                 return;
             }
 
-            for (const auto& [x, y] : squareAround(centre.getGridX(), centre.getGridY()))
+            std::vector<osg::Vec2i> square;
+            gridAround(centre).listCells(square);
+
+            for (const osg::Vec2i& position : square)
             {
-                std::string spec = std::to_string(x) + ',' + std::to_string(y);
+                std::string spec = std::to_string(position.x()) + ',' + std::to_string(position.y());
                 if (loaded.contains(spec))
                     continue;
 
@@ -124,9 +103,12 @@ namespace RtxTool
         if (!centre.isExterior())
             return 0;
 
+        std::vector<osg::Vec2i> square;
+        gridAround(centre).listCells(square);
+
         std::set<std::string> keep;
-        for (const auto& [x, y] : squareAround(centre.getGridX(), centre.getGridY()))
-            keep.insert(std::to_string(x) + ',' + std::to_string(y));
+        for (const osg::Vec2i& position : square)
+            keep.insert(std::to_string(position.x()) + ',' + std::to_string(position.y()));
 
         std::uint32_t went = 0;
         for (auto entry = loaded.begin(); entry != loaded.end();)
@@ -166,6 +148,12 @@ namespace RtxTool
         //
         // Pointers into the loaded content, which outlives every call.
         std::vector<const ESM::Cell*> arrived;
+
+        // **Before a chunk is built, and it is the same grid the walk below fills.** The terrain
+        // reads it as the square it must not page, so a grid that said anything else would leave
+        // the cells between the two answers with their ground and none of their statics.
+        if (centre.isExterior())
+            world.setActiveCellGrid(gridAround(centre));
 
         // Terrain first, because `World::buildTerrain` accumulates chunks under one node and hands
         // that same node back each time: the objects go under groups of their own, and the ground

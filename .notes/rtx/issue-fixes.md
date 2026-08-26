@@ -4,9 +4,9 @@ The route, and only what is left of it. A step that is done is **deleted** rathe
 the same rule `ISSUES.md` keeps, and for the same reason: what a finished step knew now lives in the
 code that does it, and a plan annotated with its own history stops being a plan.
 
-Six of the seven entries in `ISSUES.md` are not six bugs. They fall into four causes, and the largest
-of them is one mistake made over and over: **this engine now has two hosts, and each derives for
-itself what only one of them should decide.** The seventh is a stale comment in `instance.cpp` and
+Five of the six entries in `ISSUES.md` are not five bugs. They fall into three causes, and the
+largest of them is one mistake made over and over: **this engine now has two hosts, and each derives
+for itself what only one of them should decide.** The sixth is a stale comment in `instance.cpp` and
 belongs to no cause. Ordered by what unblocks what, then by risk. The letters name a group rather
 than count one, so a gap in them is a group that is finished.
 
@@ -121,49 +121,18 @@ and `tau` down, because the eye is not symmetric.
 
 ## F. The harness derives for itself what the game derives once
 
-**Retires: the corridor of ground with no statics on it.**
-
-Group A is two hosts configuring one engine. This is the same mistake one level up: two hosts
-deciding what a cell grid *is*, and only one of them from a rule.
-`MWWorld::Scene::changeCellGrid` takes a centre and a half size and answers both questions from them
-in the one function — which cells are loaded (`iterateOverCellsAround`) and what rectangle the
-terrain is handed (`gridCenterToBounds`). The harness answers the first the same way, by a copy, and
-the second by a rule that exists nowhere else.
-
-`RtxTool::World::buildTerrain` is called once per arriving cell and unions each into `mActiveGrid`
-(`world.cpp:270`), so what reaches `Terrain::World::setActiveGrid` is every cell the run has ever
-loaded. `dropCellsOutside` meanwhile keeps the 3×3 square around the centre. A cell between the two
-is in neither picture: its own group is gone, and `ObjectPaging::getChunk` returns nothing for a
-chunk the quad tree marked active-grid — which is what the harness asked for with
-`pageActiveGrid=false`, so that a loaded cell is not stood twice. The ground survives because
-`Terrain::ChunkManager` makes no such refusal, so a camera that moves leaves a corridor of ground
-with the trees taken off it.
+`MWWorld::Scene` and `openmw-rtxtool` build the same world out of the same components, and wherever
+the harness cannot reach a game header it writes the answer out again. The cell grid was one of
+those, and it cost a corridor of ground with the trees taken off it: two derivations of one square,
+and the second only ever widened. What is left of the pattern is smaller and has not bitten yet.
 
 **Reusing `MWWorld::Scene` is not the answer, and saying so once should stop the question coming
 back.** It needs `MWWorld::World`, `WorldModel`, `CellStore`, `MWPhysics`, `DetourNavigator`,
 `MWBase::Environment` and a `Loading::Listener` — which is the game, and the harness exists to run
 without it. The reuse available is downward, not sideways: what both hosts *derive* belongs in
-`components/`, and the orchestration stays two. Group A moved three such derivations already
-(`makeLight`, `makeSkylight`, the loader's configuration), and each one closed a divergence that had
-to be found in a picture first.
-
-### F1 — one cell grid, from a centre and a half size
-
-Give `components/` a value that owns a centre and a half size and answers everything either host asks
-of a cell grid: the `osg::Vec4i` `Terrain::World::setActiveGrid` takes, the square of cells in the
-order the game fills it — nearest first, ties by distance to the origin — and whether a cell is in
-it. `MWWorld::Scene` drops `gridCenterToBounds`, `iterateOverCellsAround` and `sortCellsToLoad` for
-it. The harness drops `squareAround` and stops accumulating: `readRegion`, `dropCellsOutside` and the
-call to `setActiveGrid` all read the one grid, so the loaded set and the rectangle cannot say
-different things.
-
-`cellscene.cpp:41` argues that twenty lines of arithmetic are a cheaper copy than lifting three
-upstream files. This bug is what the copy cost, and it was not the arithmetic that drifted — it was
-the fourth caller nobody thought of.
-
-**Its own negative control**: cross a route and come back, and the statics have to come back with the
-camera. `RtxCrossingTest.walkingAcrossManyCellsHoldsAGridRatherThanEverythingVisited` already stands
-next door and asserts the loaded set is bounded, which is the half that was right.
+`components/`, and the orchestration stays two. `Misc::CellGrid`, `Rtx::makeLight`,
+`Rtx::makeSkylight` and `NifOsg::Loader::configure` are what that looks like, and every one of them
+closed a divergence that had to be found in a picture first.
 
 ### F2 — one table of node-mask bits
 
@@ -188,18 +157,16 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | F1 — one cell grid, from a centre and a half size | vanishing statics | low | **yes, harness** |
-| 2 | F2 — one table of node-mask bits | three copied constants | none | no |
-| 3 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
-| 4 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
-| 5 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 6 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 7 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | F2 — one table of node-mask bits | three copied constants | none | no |
+| 2 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
+| 3 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
+| 4 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 5 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 6 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Step 1 is the only outright breakage left and comes first. Steps 2 to 4 are each one decision moved
-to where it can only be made once, and step 2 is what step 4 wants to say `tws` at the seam. Steps 5
-and 6 change how the game looks most and both want a moving camera to judge, so they come after
-everything that would move the frame underneath them. Step 7 is not a fix until a measurement says
-there is one.
+Steps 1 to 3 are each one decision moved to where it can only be made once, and step 1 is what step 3
+wants in order to say `tws` at the seam. Steps 4 and 5 change how the game looks most and both want a
+moving camera to judge, so they come after everything that would move the frame underneath them. Step
+6 is not a fix until a measurement says there is one.
 
-Nothing here is a rewrite. The widest change is step 2, and every line of it is a move.
+Nothing here is a rewrite. The widest change is step 1, and every line of it is a move.

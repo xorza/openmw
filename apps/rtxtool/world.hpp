@@ -9,12 +9,12 @@
 
 #include <osg/Matrixf>
 #include <osg/Vec3f>
-#include <osg/Vec4i>
 
 #include <components/esm/refid.hpp>
 #include <components/esm3/readerscache.hpp>
 #include <components/esmloader/esmdata.hpp>
 #include <components/files/collections.hpp>
+#include <components/misc/cellgrid.hpp>
 #include <components/misc/strings/algorithm.hpp>
 #include <components/toutf8/toutf8.hpp>
 #include <components/vfs/manager.hpp>
@@ -164,6 +164,16 @@ namespace RtxTool
         /// The returned node lives as long as this `World` does.
         osg::ref_ptr<osg::Group> buildTerrain(const ESM::Cell& cell);
 
+        /// Says which square of cells is loaded, which the terrain needs and the caller owns.
+        ///
+        /// **Told rather than accumulated from the cells that arrive.** `Terrain::ObjectPaging`
+        /// reads this square as the one it must not page, because the caller stands those cells
+        /// itself — so a square that only ever widened left every cell the run had passed through
+        /// in neither picture: its references unloaded, and its distant statics still refused. The
+        /// caller derives this from the centre exactly as it derives the loaded set, which is what
+        /// keeps the two from disagreeing. See `Misc::CellGrid`.
+        void setActiveCellGrid(const Misc::CellGrid& grid);
+
         /// Takes one exterior cell's chunks back out of that graph.
         ///
         /// **The other half of `buildTerrain`, and the harness went without it for a while.** A
@@ -281,9 +291,8 @@ namespace RtxTool
         /// Non-null only for a paged world, which is the only one that hides its chunks.
         std::unique_ptr<Rtx::TerrainResidency> mResident;
 
-        /// The square of cells the paged world is told to hold, grown as cells are loaded. A grid
-        /// nothing has been put in yet holds no ground at all.
-        std::optional<osg::Vec4i> mActiveGrid;
+        /// The square of cells the caller says is loaded. See `setActiveCellGrid`.
+        Misc::CellGrid mActiveGrid;
 
         /// Arrivals found so far, by the cell they lead to. Nothing here holds a reference to
         /// anything above, so it sits outside the ordering the comment at the top of these members

@@ -29,12 +29,3 @@
   that fails to start leaves "the game carries on with OpenGL". `MWRender::RtxRenderer` throws on a
   null backend (`apps/openmw/mwrender/rtx/rtxrenderer.cpp:184`), and with the ray tracer on no GL
   context exists to carry on with.
-
-- `RtxTool::World::buildTerrain` (`apps/rtxtool/world.cpp:270`) unions each arriving cell into
-  `mActiveGrid` and never narrows it, so the grid handed to `Terrain::World::setActiveGrid` is every
-  cell the run has ever loaded. `dropCellsOutside` (`apps/rtxtool/cellscene.cpp:121`) meanwhile keeps
-  only the 3×3 square around the centre. A cell between the two is in neither picture:
-  `ObjectPaging::getChunk` (`components/terrain/objectpaging.cpp:39`) returns nothing for a chunk the
-  quad tree marked active-grid, and the harness builds it with `pageActiveGrid=false`. The ground
-  survives because `Terrain::ChunkManager` makes no such refusal, so a camera that moves leaves a
-  corridor of ground with no statics on it.

@@ -264,14 +264,9 @@ namespace RtxTool
             mTerrain->setViewDistance(mTerrainViewDistance.value_or(Settings::camera().mViewingDistance));
         }
 
-        // **A grid and not a cell, for the paged world.** It holds what the grid names and nothing
-        // else, so a cell arriving widens the square rather than being loaded into it.
-        const osg::Vec4i square(cell.getGridX(), cell.getGridY(), cell.getGridX() + 1, cell.getGridY() + 1);
-        mActiveGrid = mActiveGrid.has_value()
-            ? osg::Vec4i(std::min(mActiveGrid->x(), square.x()), std::min(mActiveGrid->y(), square.y()),
-                  std::max(mActiveGrid->z(), square.z()), std::max(mActiveGrid->w(), square.w()))
-            : square;
-        mTerrain->setActiveGrid(*mActiveGrid);
+        // The terrain may have been stood up by this very call, so the grid the caller already
+        // named is installed here rather than only in `setActiveCellGrid`.
+        mTerrain->setActiveGrid(mActiveGrid.getBounds());
         mTerrain->enable(true);
 
         mTerrain->loadCell(cell.getGridX(), cell.getGridY());
@@ -290,6 +285,16 @@ namespace RtxTool
     {
         if (mResident != nullptr)
             mResident->setViewPoint(where);
+    }
+
+    void World::setActiveCellGrid(const Misc::CellGrid& grid)
+    {
+        mActiveGrid = grid;
+
+        // Null until the first exterior cell arrives, and `buildTerrain` installs what it finds
+        // here when it does.
+        if (mTerrain != nullptr)
+            mTerrain->setActiveGrid(grid.getBounds());
     }
 
     void World::unloadTerrain(int x, int y)

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -177,6 +178,80 @@ namespace RtxTool
             }
 
             return tally;
+        }
+
+        /// The ground a camera leaves gets its statics back.
+        ///
+        /// **The active grid follows the camera, and it used to only ever widen.** `readRegion`
+        /// keeps the three-by-three square around the centre and `dropCellsOutside` takes the rest
+        /// away, but the square the terrain was told was the union of every cell the run had ever
+        /// loaded. A cell between the two answers stood in neither picture: its own references gone
+        /// with the cell, and `ObjectPaging` still refusing to page what it believed was the active
+        /// grid. What that looked like was ground with the trees taken off it, behind the camera,
+        /// for the rest of the run.
+        ///
+        /// Two placements of one cell, differing in nothing but what came before: a fresh one, and
+        /// one that went two cells east and came back. The statics standing past the grid have to
+        /// come to the same count, because it is the same world seen from the same place.
+        TEST(RtxPagedTerrainTest, theGroundACameraLeavesGetsItsStaticsBack)
+        {
+            Files::ConfigurationManager config;
+            bpo::variables_map variables;
+
+            const std::unique_ptr<World> world = openWorld(config, variables);
+            if (world == nullptr)
+                GTEST_SKIP() << "no Morrowind installation configured";
+
+            const ESM::Cell* home = world->findCell(std::string(sBuiltUp));
+            ASSERT_NE(home, nullptr);
+
+            // Two cells east, so the square the camera leaves behind is clear of the one it comes
+            // back to — a neighbour would share a column with home and hide half the answer.
+            const ESM::Cell* away = world->findCell("-1,-2");
+            ASSERT_NE(away, nullptr);
+
+            world->pageTerrain(true);
+            world->setTerrainViewDistance(2.0f * sCellSize);
+
+            /// Walks `route`, staging each stop the way a moving camera does, and leaves the scene
+            /// holding what the last stop placed.
+            const auto travel = [&](std::span<const ESM::Cell* const> route, Rtx::SceneDesc& scene) {
+                const osg::ref_ptr<osg::Group> root = new osg::Group;
+                LoadedCells loaded;
+                Rtx::SceneExtractor extractor(scene);
+
+                for (const ESM::Cell* stop : route)
+                {
+                    readRegion(*world, *stop, *root, scene, extractor, loaded, /*liveProps=*/false);
+                    dropCellsOutside(*world, *stop, *root, scene, extractor, loaded);
+
+                    // Only after the first stop is there a paged world to follow.
+                    extractor.follow(world->getTerrainResidency());
+                    world->setTerrainViewPoint(
+                        osg::Vec3f(stop->getGridX() * sCellSize, stop->getGridY() * sCellSize, 0.0f));
+
+                    scene.clearPlacement();
+                    extractor.extractWorld(*root, osg::Matrixf::identity(), 0);
+                    extractor.advance();
+                    extractor.retire();
+                }
+            };
+
+            const osg::Vec2f middle = middleOf(*home);
+
+            const std::array<const ESM::Cell*, 1> stay{ home };
+            Rtx::SceneDesc fresh;
+            travel(stay, fresh);
+
+            const std::uint32_t stood = standingBeyond(fresh, middle, sGridReach);
+            ASSERT_GT(stood, 0u) << "the distant ground came up bare, so this proves nothing";
+
+            const std::array<const ESM::Cell*, 3> roundTrip{ home, away, home };
+            Rtx::SceneDesc returned;
+            travel(roundTrip, returned);
+
+            EXPECT_EQ(standingBeyond(returned, middle, sGridReach), stood)
+                << "the cells the camera passed through kept their ground and lost their statics";
         }
 
         /// A paged world's ground reaches the mirror, and only because it was asked for.
