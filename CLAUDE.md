@@ -85,6 +85,14 @@ that cost is paid rather than abstracted away.
 run is not built, tested or debugged here; its skipped tests are the result, not a gap to close. The
 core is the exception — a mistake there is one nobody here can see.
 
+### Where it lives, and what a frame does
+
+`components/rtx/` is the core — scene description, no graphics API, no game headers.
+`components/rtxvulkan/` and `components/rtxmetal/` are the backends, picked by
+`components/rtxbackends/`; `components/myguirtx/` is MyGUI's backend, `components/surface/` is what
+the content says a surface is. `apps/openmw/mwrender/rtx/` is the game-side owner, `apps/rtxtool/`
+the harness, and `MWRender::Renderer` the seam against `mwrender/gl/`.
+
 ## Traps
 
 The build is already configured in `build/`; `openmw-rtxtool --help` lists the harness, and the
