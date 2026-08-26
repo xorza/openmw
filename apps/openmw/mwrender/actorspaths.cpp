@@ -1,6 +1,6 @@
 #include "actorspaths.hpp"
 
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 #include <components/detournavigator/settings.hpp>
 #include <components/resource/resourcesystem.hpp>
@@ -79,7 +79,7 @@ namespace MWRender
 
         osg::ref_ptr<osg::Group> newGroup
             = SceneUtil::createAgentPathGroup(path, agentBounds, start, end, settings.mRecast, mDebugDrawStateSet);
-        newGroup->setNodeMask(Mask_Debug);
+        newGroup->setNodeMask(SceneUtil::Mask_Debug);
         newGroup->setStateSet(mGroupStateSet);
 
         MWBase::Environment::get().getResourceSystem()->getSceneManager()->recreateShaders(newGroup, "debug");

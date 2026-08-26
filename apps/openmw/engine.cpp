@@ -63,7 +63,7 @@
 #include "mwrender/renderer.hpp"
 #include "mwrender/renderingmanager.hpp"
 #include "mwrender/stage.hpp"
-#include "mwrender/vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 #include "mwclass/classes.hpp"
 
@@ -456,7 +456,7 @@ void OMW::Engine::prepareEngine()
 
     osg::ref_ptr<osg::Group> guiRoot = new osg::Group;
     guiRoot->setName("GUI Root");
-    guiRoot->setNodeMask(MWRender::Mask_GUI);
+    guiRoot->setNodeMask(SceneUtil::Mask_GUI);
     if (Stereo::Manager* stereo = Stereo::Manager::instancePtr())
         stereo->disableStereoForNode(guiRoot);
     rootNode->addChild(guiRoot);

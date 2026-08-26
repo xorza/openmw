@@ -119,37 +119,6 @@ and `tau` down, because the eye is not symmetric.
 
 ---
 
-## F. The harness derives for itself what the game derives once
-
-`MWWorld::Scene` and `openmw-rtxtool` build the same world out of the same components, and wherever
-the harness cannot reach a game header it writes the answer out again. The cell grid was one of
-those, and it cost a corridor of ground with the trees taken off it: two derivations of one square,
-and the second only ever widened. What is left of the pattern is smaller and has not bitten yet.
-
-**Reusing `MWWorld::Scene` is not the answer, and saying so once should stop the question coming
-back.** It needs `MWWorld::World`, `WorldModel`, `CellStore`, `MWPhysics`, `DetourNavigator`,
-`MWBase::Environment` and a `Loading::Listener` — which is the game, and the harness exists to run
-without it. The reuse available is downward, not sideways: what both hosts *derive* belongs in
-`components/`, and the orchestration stays two. `Misc::CellGrid`, `Rtx::makeLight`,
-`Rtx::makeSkylight` and `NifOsg::Loader::configure` are what that looks like, and every one of them
-closed a divergence that had to be found in a picture first.
-
-### F2 — one table of node-mask bits
-
-`MWRender::VisMask` lives in `apps/openmw/mwrender/vismask.hpp`, which the harness does not link, so
-it writes the bits out by hand: `sWaterMask` is `1u << 6` (`waterplane.hpp:18`), `sLightMask` is
-`1u << 19` (`cellscene.cpp:211`), and the hidden node mask is `1u << 0` (`world.cpp`). Each carries a
-comment naming the constant it copies, which is the tell.
-
-Move the table to `components/`, rewrite its thirty-three includes, and let the harness name what it
-means. `sToggleWorldMask` goes with it, which is what C1 wants at the seam. OpenCS keeps its own
-enum: that is a different application's vocabulary rather than a copy of this one.
-
-Nothing about the picture changes. It is a move, and its value is that the next copied constant
-cannot be written.
-
----
-
 ## Plan
 
 Each step ends with the build, the filtered test binary, and — where marked — a `shot` or a `bench`
@@ -157,16 +126,14 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | F2 — one table of node-mask bits | three copied constants | none | no |
-| 2 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
-| 3 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
-| 4 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 5 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 6 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
+| 2 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
+| 3 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 4 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 5 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Steps 1 to 3 are each one decision moved to where it can only be made once, and step 1 is what step 3
-wants in order to say `tws` at the seam. Steps 4 and 5 change how the game looks most and both want a
-moving camera to judge, so they come after everything that would move the frame underneath them. Step
-6 is not a fix until a measurement says there is one.
+Steps 1 and 2 are each one decision moved to where it can only be made once. Steps 3 and 4 change how
+the game looks most and both want a moving camera to judge, so they come after everything that would
+move the frame underneath them. Step 5 is not a fix until a measurement says there is one.
 
-Nothing here is a rewrite. The widest change is step 1, and every line of it is a move.
+Nothing here is a rewrite. The largest single change is step 3, and it is one call site each side.

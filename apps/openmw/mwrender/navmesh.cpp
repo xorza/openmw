@@ -1,6 +1,6 @@
 #include "navmesh.hpp"
 
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 #include <components/detournavigator/guardednavmeshcacheitem.hpp>
 #include <components/detournavigator/navmeshcacheitem.hpp>
@@ -163,7 +163,7 @@ namespace MWRender
                     removedTiles.push_back(position);
                     continue;
                 }
-                group->setNodeMask(Mask_Debug);
+                group->setNodeMask(SceneUtil::Mask_Debug);
                 group->setStateSet(mGroupStateSet);
                 MWBase::Environment::get().getResourceSystem()->getSceneManager()->recreateShaders(group, "debug");
                 updatedTiles.emplace_back(position, Tile{ version, std::move(group) });

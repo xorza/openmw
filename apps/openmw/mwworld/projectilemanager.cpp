@@ -54,7 +54,7 @@
 #include "../mwrender/animation.hpp"
 #include "../mwrender/renderingmanager.hpp"
 #include "../mwrender/util.hpp"
-#include "../mwrender/vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwsound/sound.hpp"
 
@@ -220,7 +220,7 @@ namespace MWWorld
         VFS::Path::NormalizedView texture)
     {
         state.mNode = new osg::PositionAttitudeTransform;
-        state.mNode->setNodeMask(MWRender::Mask_Effect);
+        state.mNode->setNodeMask(SceneUtil::Mask_Effect);
         state.mNode->setPosition(pos);
         state.mNode->setAttitude(orient);
 
@@ -265,7 +265,7 @@ namespace MWWorld
             projectileLight->setPosition(osg::Vec4(pos, 1.0));
 
             SceneUtil::LightSource* projectileLightSource = new SceneUtil::LightSource;
-            projectileLightSource->setNodeMask(MWRender::Mask_Lighting);
+            projectileLightSource->setNodeMask(SceneUtil::Mask_Lighting);
             projectileLightSource->setRadius(66.f);
 
             state.mNode->addChild(projectileLightSource);

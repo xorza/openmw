@@ -15,7 +15,7 @@
 #include <components/stereo/multiview.hpp>
 #include <components/stereo/stereomanager.hpp>
 
-#include "../vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {
@@ -93,7 +93,7 @@ namespace MWRender
             osgUtil::RenderLeaf* rl = *rit;
             const osg::StateSet* ss = rl->_parent->getStateSet();
 
-            if (rl->_drawable->getNodeMask() == Mask_ParticleSystem)
+            if (rl->_drawable->getNodeMask() == SceneUtil::Mask_ParticleSystem)
                 continue;
 
             if (mWater && rl->_drawable.get() == mWater->getDrawable())

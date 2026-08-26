@@ -63,7 +63,7 @@
 #include "actorutil.hpp"
 #include "rotatecontroller.hpp"
 #include "util.hpp"
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace
 {
@@ -1701,7 +1701,7 @@ namespace MWRender
     {
         bool exterior = mPtr.isInCell() && mPtr.getCell()->getCell()->isExterior();
 
-        mExtraLightSource = SceneUtil::addLight(parent, esmLight, Mask_Lighting, exterior);
+        mExtraLightSource = SceneUtil::addLight(parent, esmLight, SceneUtil::Mask_Lighting, exterior);
         mExtraLightSource->setActorFade(mActorFade);
     }
 
@@ -1784,7 +1784,7 @@ namespace MWRender
         SceneUtil::FindMaxControllerLengthVisitor findMaxLengthVisitor;
         node->accept(findMaxLengthVisitor);
 
-        node->setNodeMask(Mask_Effect);
+        node->setNodeMask(SceneUtil::Mask_Effect);
 
         params.mMaxControllerLength = findMaxLengthVisitor.getMaxLength();
         params.mLoop = loop;
@@ -1935,7 +1935,7 @@ namespace MWRender
                 SceneUtil::configureLight(light, radius, isExterior);
 
                 mGlowLight = new SceneUtil::LightSource;
-                mGlowLight->setNodeMask(Mask_Lighting);
+                mGlowLight->setNodeMask(SceneUtil::Mask_Lighting);
                 mInsert->addChild(mGlowLight);
                 mGlowLight->setLight(light);
             }

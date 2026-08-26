@@ -6,6 +6,7 @@
 
 #include <components/esm3/loadcell.hpp>
 #include <components/misc/constants.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/sceneutil/waterutil.hpp>
 
 namespace RtxTool
@@ -26,7 +27,10 @@ namespace RtxTool
     {
         const osg::ref_ptr<osg::Geometry> sheet = SceneUtil::createWaterGeometry(
             static_cast<float>(Constants::CellSizeInUnits) * sCells, sSegments, sTextureRepeats);
-        sheet->setNodeMask(sWaterMask);
+        // **The whole of the mask and not a bit inside it.** A node mask is a filter over passes
+        // and its default is every bit set, so what names the water is that no *other* pass may see
+        // it — which is what `SceneExtractor::setWaterMask` tests for.
+        sheet->setNodeMask(SceneUtil::Mask_Water);
         sheet->setName("Water Geometry");
 
         mNode = new osg::PositionAttitudeTransform;

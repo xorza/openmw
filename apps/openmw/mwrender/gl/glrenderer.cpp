@@ -1,6 +1,6 @@
 #include "glrenderer.hpp"
 
-#include "../vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 #include <atomic>
 #include <cmath>
@@ -417,7 +417,7 @@ namespace MWRender
     {
         // The cull mask doubles as the record of which way round this is: nothing else leaves it at
         // exactly the two bits the interface is drawn with.
-        constexpr unsigned int hidden = Mask_GUI | Mask_PreCompile;
+        constexpr unsigned int hidden = SceneUtil::Mask_GUI | SceneUtil::Mask_PreCompile;
 
         const auto cull = [this](unsigned int mask) {
             // The stereo pair goes with the one whatever the mode: both are no-ops in mono.

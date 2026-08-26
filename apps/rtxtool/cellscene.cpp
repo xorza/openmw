@@ -21,6 +21,7 @@
 #include <components/rtx/texturebuilder.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightutil.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/weather/downpour.hpp>
 
 namespace RtxTool
@@ -192,12 +193,6 @@ namespace RtxTool
 
     namespace
     {
-        /// What the game marks a light node with (`MWRender::Mask_Lighting`).
-        ///
-        /// **The mirror does not filter on it**, so it decides nothing here; it is the game's value
-        /// so that the two graphs look the same to anything that ever does.
-        constexpr unsigned int sLightMask = 1u << 19;
-
         osg::ref_ptr<osg::Group> readObjects(
             World& world, const ESM::Cell& cell, osg::Group& root, CellReport& report, bool liveProps)
         {
@@ -263,7 +258,11 @@ namespace RtxTool
                 // flame has to be instanced somewhere it can run still stands where it stood and
                 // still lights the street; attaching after the prop test lost every one of them.
                 if (object.mLight != nullptr)
-                    SceneUtil::addLight(where, SceneUtil::LightCommon(*object.mLight), sLightMask, cell.isExterior());
+                    // **The mirror does not filter on it**, so it decides nothing here. It is what
+                    // the game marks a light node with, so the two graphs look the same to anything
+                    // that ever does.
+                    SceneUtil::addLight(
+                        where, SceneUtil::LightCommon(*object.mLight), SceneUtil::Mask_Lighting, cell.isExterior());
 
                 // A prop with no light leaves an empty transform, which is nothing to place.
                 if (where->getNumChildren() > 0)

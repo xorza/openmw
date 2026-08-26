@@ -2,3 +2,5 @@
 - specular
 - rr 4.5
 - audit alloc tests
+- audit includes
+- audit #pragmas

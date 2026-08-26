@@ -36,7 +36,7 @@
 #include "../mwworld/ptr.hpp"
 
 #include "actorutil.hpp"
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {
@@ -560,8 +560,8 @@ namespace MWRender
         bool exterior = mPtr.isInCell() && mPtr.getCell()->getCell()->isExterior();
 
         osg::Vec4f ambient(1, 1, 1, 1);
-        osg::ref_ptr<SceneUtil::LightSource> lightSource
-            = SceneUtil::createLightSource(SceneUtil::LightCommon(*esmLight), Mask_Lighting, exterior, ambient);
+        osg::ref_ptr<SceneUtil::LightSource> lightSource = SceneUtil::createLightSource(
+            SceneUtil::LightCommon(*esmLight), SceneUtil::Mask_Lighting, exterior, ambient);
 
         mInsert->addChild(lightSource);
 

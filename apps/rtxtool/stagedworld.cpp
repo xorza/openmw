@@ -8,6 +8,7 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/resource/resourcesystem.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/weather/downpour.hpp>
 
 #include "cellscene.hpp"
@@ -64,7 +65,7 @@ namespace RtxTool
         // **Without this the sea is shaded as ordinary geometry.** `isWater` answers no for every
         // mask until it is told which one names the water, and the game tells its own extractor the
         // same thing at `rtxrenderer.cpp:172`.
-        mExtractor.setWaterMask(sWaterMask);
+        mExtractor.setWaterMask(SceneUtil::Mask_Water);
 
         mRegion = cell.mRegion;
 

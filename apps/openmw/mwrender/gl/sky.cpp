@@ -35,8 +35,8 @@
 
 #include "../renderbin.hpp"
 #include "../util.hpp"
-#include "../vismask.hpp"
 #include "skyutil.hpp"
+#include <components/sceneutil/vismask.hpp>
 #include <components/weather/precipitation.hpp>
 
 namespace
@@ -57,8 +57,8 @@ namespace
         {
             camera->setReferenceFrame(osg::Camera::RELATIVE_RF);
             camera->setName("SkyCamera");
-            camera->setNodeMask(MWRender::Mask_RenderToTexture);
-            camera->setCullMask(MWRender::Mask_Sky);
+            camera->setNodeMask(SceneUtil::Mask_RenderToTexture);
+            camera->setCullMask(SceneUtil::Mask_Sky);
             camera->addChild(mEarlyRenderBinRoot);
             SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*camera->getOrCreateStateSet());
         }
@@ -107,7 +107,7 @@ namespace MWRender
         }
 
         mSkyNode = new osg::Group;
-        mSkyNode->setNodeMask(Mask_Sky);
+        mSkyNode->setNodeMask(SceneUtil::Mask_Sky);
         mSkyNode->addChild(mEarlyRenderBinRoot);
         mSkyRootNode->addChild(mSkyNode);
 
@@ -116,9 +116,10 @@ namespace MWRender
         // **Under the sky's own node, and so behind its mask.** The rain is a box that follows the
         // eye, which is what the camera-relative root above gives it — and a walk that took this
         // subtree along with the world would place every drop where the world's origin is. Whoever
-        // wants it asks for it and walks it on its own terms; `Mask_WeatherParticles` is what says
+        // wants it asks for it and walks it on its own terms; `SceneUtil::Mask_WeatherParticles` is what says
         // which part of it they meant.
-        mPrecipitation = std::make_unique<Weather::Precipitation>(mSkyNode, *mSceneManager, Mask_WeatherParticles);
+        mPrecipitation
+            = std::make_unique<Weather::Precipitation>(mSkyNode, *mSceneManager, SceneUtil::Mask_WeatherParticles);
 
         mPrecipitationOcclusion = Settings::shaders().mWeatherParticleOcclusion;
         mPrecipitationOccluder = std::make_unique<PrecipitationOccluder>(mSkyRootNode, parentNode, rootNode, camera);
@@ -280,7 +281,7 @@ namespace MWRender
         if (enabled && !mCreated)
             create();
 
-        const osg::Node::NodeMask mask = enabled ? Mask_Sky : 0u;
+        const osg::Node::NodeMask mask = enabled ? SceneUtil::Mask_Sky : 0u;
 
         mEarlyRenderBinRoot->setNodeMask(mask);
         mSkyNode->setNodeMask(mask);

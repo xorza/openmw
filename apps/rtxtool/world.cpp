@@ -28,6 +28,7 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/shadow.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
 #include <components/terrain/chunkmanager.hpp>
@@ -151,19 +152,17 @@ namespace RtxTool
     {
         Fallback::Map::init(variables["fallback"].as<Fallback::FallbackMap>().mMap);
 
-        // **Before a single model is read, because this is what a hidden node will carry.** Which
-        // bit is arbitrary here — nothing in this process reads a node mask it did not stamp — but
-        // it may not be nothing: a node with no bits at all is skipped by the update traversal too,
-        // so the `NifOsg::VisController` that would show it later never runs and what the content
-        // hid at load stays hidden for the run. The game reaches the same answer with
-        // `MWRender::Mask_UpdateVisitor`, which is this bit; `Rtx::SceneExtractor` and
+        // **Before a single model is read, because this is what a hidden node will carry.** It may
+        // not be nothing: a node with no bits at all is skipped by the update traversal too, so the
+        // `NifOsg::VisController` that would show it later never runs and what the content hid at
+        // load stays hidden for the run. The game names the same bit, and `Rtx::SceneExtractor` and
         // `Terrain::ObjectPaging` both ask the loader for it rather than being told twice.
         //
         // Collision-disabled nodes keep their ordinary mask, which is right where nothing tests for
         // an intersection: the mirror is owed those nodes, since a switch that stops a crosshair
         // does not stop a ray.
         NifOsg::Loader::configure({
-            .mHiddenNodeMask = 1u << 0,
+            .mHiddenNodeMask = SceneUtil::Mask_UpdateVisitor,
             .mSoftEffects = Settings::shaders().mSoftParticles,
         });
 

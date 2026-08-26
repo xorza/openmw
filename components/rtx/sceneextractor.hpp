@@ -236,8 +236,8 @@ namespace Rtx
         /// Which nodes the walks may descend into, as an `osg` traversal mask.
         ///
         /// **What keeps the mirror out of subtrees the ray tracer answers for itself.** The engine
-        /// already marks them — OpenMW's sky is `Mask_Sky` — and a mask is how OSG is asked to skip
-        /// one, so nothing here has to know what a sky is.
+        /// already marks them — the sky is `SceneUtil::Mask_Sky` — and a mask is how OSG is asked
+        /// to skip one, so nothing here has to know what a sky is.
         ///
         /// Everything the content did not hide, by default. A host with more to leave out says so,
         /// and says it with the hidden bit still out — see the constructor.

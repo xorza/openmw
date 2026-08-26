@@ -26,7 +26,7 @@
 #include <components/stereo/multiview.hpp>
 
 #include "../util.hpp"
-#include "../vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {
@@ -176,7 +176,7 @@ namespace MWRender
             , mClearColour(spec.mClearColour)
             , mFromWorld(spec.mFromWorld)
         {
-            setNodeMask(Mask_RenderToTexture);
+            setNodeMask(SceneUtil::Mask_RenderToTexture);
             setColorBufferInternalFormat(spec.mClearColour.a() < 1.f ? GL_RGBA : GL_RGB);
             setDepthBufferInternalFormat(GL_DEPTH24_STENCIL8);
 
@@ -208,7 +208,7 @@ namespace MWRender
 
             SceneUtil::setCameraClearDepth(camera);
 
-            camera->setNodeMask(Mask_RenderToTexture);
+            camera->setNodeMask(SceneUtil::Mask_RenderToTexture);
             camera->addChild(mGroup);
 
             if (mCopy)
@@ -430,7 +430,7 @@ namespace MWRender
 
     void GlOffscreenView::redraw()
     {
-        mNode->setNodeMask(Mask_RenderToTexture);
+        mNode->setNodeMask(SceneUtil::Mask_RenderToTexture);
         mDrawOnce->redrawNextFrame();
     }
 

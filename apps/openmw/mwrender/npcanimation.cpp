@@ -44,7 +44,7 @@
 #include "renderbin.hpp"
 #include "renderingmanager.hpp"
 #include "rotatecontroller.hpp"
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace
 {
@@ -541,7 +541,7 @@ namespace MWRender
 
         if (is1stPerson)
         {
-            mObjectRoot->setNodeMask(Mask_FirstPerson);
+            mObjectRoot->setNodeMask(SceneUtil::Mask_FirstPerson);
             mObjectRoot->addCullCallback(new OverrideFieldOfViewCallback(
                 mFirstPersonFieldOfView, MWBase::Environment::get().getWorld()->getRenderingManager()));
         }

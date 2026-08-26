@@ -35,7 +35,7 @@
 #include "../../mwbase/environment.hpp"
 
 #include "../renderbin.hpp"
-#include "../vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace
 {
@@ -622,7 +622,7 @@ namespace MWRender
     }
 
     Sun::Sun(osg::Group* parentNode, Resource::SceneManager& sceneManager)
-        : CelestialBody(parentNode, 1.0f, 1, Mask_Sun)
+        : CelestialBody(parentNode, 1.0f, 1, SceneUtil::Mask_Sun)
         , mUpdater(new SunUpdater)
     {
         mTransform->addUpdateCallback(mUpdater);

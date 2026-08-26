@@ -23,7 +23,7 @@
 
 #include "offscreenview.hpp"
 #include "renderer.hpp"
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace
 {
@@ -157,7 +157,8 @@ namespace MWRender
             // and this selects nothing — see `OffscreenViewSpec::mMask`. It is an inclusion mask
             // either way, which is deliberate here: a chart wants the ground and the buildings and
             // not the smoke over them.
-            spec.mMask = Mask_Scene | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static;
+            spec.mMask = SceneUtil::Mask_Scene | SceneUtil::Mask_SimpleWater | SceneUtil::Mask_Terrain
+                | SceneUtil::Mask_Object | SceneUtil::Mask_Static;
             spec.mProjection = OffscreenViewSpec::Orthographic{ .mWidth = static_cast<float>(mMapWorldSize),
                 .mHeight = static_cast<float>(mMapWorldSize) };
             spec.mNear = sMapNear;
@@ -295,7 +296,8 @@ namespace MWRender
     void LocalMap::requestInteriorMap(const MWWorld::CellStore* cell)
     {
         osg::ComputeBoundsVisitor computeBoundsVisitor;
-        computeBoundsVisitor.setTraversalMask(Mask_Scene | Mask_Terrain | Mask_Object | Mask_Static);
+        computeBoundsVisitor.setTraversalMask(
+            SceneUtil::Mask_Scene | SceneUtil::Mask_Terrain | SceneUtil::Mask_Object | SceneUtil::Mask_Static);
         mSceneRoot->accept(computeBoundsVisitor);
 
         osg::BoundingBox bounds = computeBoundsVisitor.getBoundingBox();

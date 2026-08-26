@@ -16,7 +16,7 @@
 #include <osg/StateSet>
 
 #include "bulletdebugdraw.hpp"
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -39,8 +39,8 @@ namespace MWRender
         {
             mLinesGeometry = new osg::Geometry;
             mTrisGeometry = new osg::Geometry;
-            mLinesGeometry->setNodeMask(Mask_Debug);
-            mTrisGeometry->setNodeMask(Mask_Debug);
+            mLinesGeometry->setNodeMask(SceneUtil::Mask_Debug);
+            mTrisGeometry->setNodeMask(SceneUtil::Mask_Debug);
 
             mLinesVertices = new osg::Vec3Array;
             mTrisVertices = new osg::Vec3Array;
@@ -81,7 +81,7 @@ namespace MWRender
             mShapesRoot = new osg::Group;
             mShapesRoot->setStateSet(stateSet);
             mShapesRoot->setDataVariance(osg::Object::DYNAMIC);
-            mShapesRoot->setNodeMask(Mask_Debug);
+            mShapesRoot->setNodeMask(SceneUtil::Mask_Debug);
             mParentNode->addChild(mShapesRoot);
 
             MWBase::Environment::get().getResourceSystem()->getSceneManager()->recreateShaders(mLinesGeometry, "debug");

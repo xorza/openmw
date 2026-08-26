@@ -21,7 +21,7 @@
 #include "npcanimation.hpp"
 #include "offscreenview.hpp"
 #include "renderer.hpp"
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace
 {
@@ -65,7 +65,7 @@ namespace MWRender
         spec.mHeight = sizeY;
         // Everything: the one bit left out is the one that tells an update traversal apart from a
         // cull, and nothing in the subtree carries it.
-        spec.mMask = ~Mask_UpdateVisitor;
+        spec.mMask = ~SceneUtil::Mask_UpdateVisitor;
         spec.mProjection = OffscreenViewSpec::Perspective{ .mFieldOfView = 12.3f };
         spec.mNear = 4.f;
         spec.mFar = 10000.f;

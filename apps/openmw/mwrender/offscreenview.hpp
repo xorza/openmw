@@ -53,7 +53,7 @@ namespace MWRender
         int mWidth = 0;
         int mHeight = 0;
 
-        /// Only the nodes these bits select; `vismask.hpp`.
+        /// Only the nodes these bits select; `SceneUtil::VisMask`.
         ///
         /// **An inclusion mask, AND-ed at every node**, so a category left out of it is dropped
         /// wherever it appears below — which is a shape worth naming, because the same shape once

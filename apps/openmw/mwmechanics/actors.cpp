@@ -38,7 +38,7 @@
 
 #include "../mwmechanics/aibreathe.hpp"
 
-#include "../mwrender/vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwsound/constants.hpp"
 
@@ -1247,7 +1247,7 @@ namespace MWMechanics
             return;
         }
         else
-            ptr.getRefData().getBaseNode()->setNodeMask(MWRender::Mask_Actor);
+            ptr.getRefData().getBaseNode()->setNodeMask(SceneUtil::Mask_Actor);
 
         // Fade away actors on large distance (>90% of actor's processing distance)
         float visibilityRatio = 1.0;
@@ -1713,7 +1713,7 @@ namespace MWMechanics
                     continue;
                 }
 
-                actor.getPtr().getRefData().getBaseNode()->setNodeMask(MWRender::Mask_Actor);
+                actor.getPtr().getRefData().getBaseNode()->setNodeMask(SceneUtil::Mask_Actor);
                 world->setActorCollisionMode(actor.getPtr(), true,
                     !actor.getPtr().getClass().getCreatureStats(actor.getPtr()).isDeathAnimationFinished());
 

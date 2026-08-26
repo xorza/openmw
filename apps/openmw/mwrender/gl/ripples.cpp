@@ -17,7 +17,7 @@
 
 #include "../../mwmechanics/actorutil.hpp"
 
-#include "../vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {
@@ -318,7 +318,7 @@ namespace MWRender
         getOrCreateStateSet()->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF);
         setRenderOrder(osg::Camera::PRE_RENDER);
         setReferenceFrame(osg::Camera::ABSOLUTE_RF);
-        setNodeMask(Mask_RenderToTexture);
+        setNodeMask(SceneUtil::Mask_RenderToTexture);
         setClearMask(GL_NONE);
         setViewport(0, 0, RipplesSurface::sRTTSize, RipplesSurface::sRTTSize);
         addChild(mRipples);

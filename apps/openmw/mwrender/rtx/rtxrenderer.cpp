@@ -62,7 +62,7 @@
 
 #include "../renderingmanager.hpp"
 #include "../screenshotwriter.hpp"
-#include "../vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 #include "tracedview.hpp"
 
@@ -77,16 +77,16 @@ namespace MWRender
         /// have to be read as "which categories may be seen at all" — which is a different question
         /// from "which subtree am I walking", and that one is answered by where the walk starts.
         ///
-        /// Conflating the two is a silent, total failure: naming `Mask_WeatherParticles` here to
+        /// Conflating the two is a silent, total failure: naming `SceneUtil::Mask_WeatherParticles` here to
         /// mean "the weather subtree" extracted every storm in the game with all of its particles
         /// missing, because `Resource::SceneManager` marks a `ParticleSystem` drawable
-        /// `Mask_ParticleSystem` and a blizzard's own particles are not categorised as weather.
+        /// `SceneUtil::Mask_ParticleSystem` and a blizzard's own particles are not categorised as weather.
         ///
         /// The sky, the sun and the simple water are what this renderer draws for itself. What the
         /// content says is not there is a second exclusion, and it is asked of the loader that
         /// stamped it rather than named again here — see where this is installed.
-        constexpr osg::Node::NodeMask sWorldTraversal
-            = ~static_cast<osg::Node::NodeMask>(Mask_Sky | Mask_Sun | Mask_SimpleWater);
+        constexpr osg::Node::NodeMask sWorldTraversal = ~static_cast<osg::Node::NodeMask>(
+            SceneUtil::Mask_Sky | SceneUtil::Mask_Sun | SceneUtil::Mask_SimpleWater);
     }
 
     namespace
@@ -194,21 +194,21 @@ namespace MWRender
         // lost by leaving it out: a ray that reaches the sky has missed everything, and what it
         // gets then is this renderer's own sky rather than the dome the rasterizer draws.
         //
-        // **And `Mask_SimpleWater` with them, which is a duplicate rather than a subtree to skip.**
+        // **And `SceneUtil::Mask_SimpleWater` with them, which is a duplicate rather than a subtree to skip.**
         // `MWRender::Water` hangs two coplanar quads under one node — the world's water under
-        // `Mask_Water`, and a deep copy of it under `Mask_SimpleWater` that exists for the local
+        // `SceneUtil::Mask_Water`, and a deep copy of it under `SceneUtil::Mask_SimpleWater` that exists for the local
         // map — and the rasterizer picks between them with the drawing camera's traversal mask.
         // A mirror that walks both places the sea twice, at the same height, as two meshes.
         //
         // **And what the content hides, which the loader is asked for rather than named twice.**
-        // `RenderingManager` installs `Mask_UpdateVisitor` as the hidden node mask, and a
+        // `RenderingManager` installs `SceneUtil::Mask_UpdateVisitor` as the hidden node mask, and a
         // `NifOsg::VisController` animating visibility swaps a node between it and every bit. It is
         // one bit rather than no bits at all so that the update traversal still reaches a hidden
         // bone to animate it — which is why a walk that ignores it traces what nothing draws.
         mExtractor->setTraversalMask(sWorldTraversal & ~NifOsg::Loader::getHiddenNodeMask());
 
         // What is left of the two is the world's own water, and it is the sea.
-        mExtractor->setWaterMask(Mask_Water);
+        mExtractor->setWaterMask(SceneUtil::Mask_Water);
 
         // **The negative test, and it is the whole claim of this path in one line.** Nothing above
         // here may have made a GL context: not the window, not a realize operation, not an

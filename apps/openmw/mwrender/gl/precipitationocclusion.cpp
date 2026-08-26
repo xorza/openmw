@@ -15,7 +15,7 @@
 
 #include "../../mwbase/environment.hpp"
 
-#include "../vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace
 {
@@ -109,8 +109,8 @@ namespace MWRender
         mCamera->setRenderOrder(osg::Camera::PRE_RENDER);
         mCamera->setRenderTargetImplementation(osg::Camera::FRAME_BUFFER_OBJECT);
         mCamera->setReferenceFrame(osg::Camera::ABSOLUTE_RF_INHERIT_VIEWPOINT);
-        mCamera->setNodeMask(Mask_RenderToTexture);
-        mCamera->setCullMask(Mask_Scene | Mask_Object | Mask_Static);
+        mCamera->setNodeMask(SceneUtil::Mask_RenderToTexture);
+        mCamera->setCullMask(SceneUtil::Mask_Scene | SceneUtil::Mask_Object | SceneUtil::Mask_Static);
         mCamera->setViewport(0, 0, rttSize, rttSize);
         mCamera->attach(osg::Camera::DEPTH_BUFFER, mDepthTexture);
         mCamera->addChild(mSceneNode);

@@ -20,7 +20,7 @@
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/esmstore.hpp"
 
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {
@@ -81,7 +81,7 @@ namespace MWRender
         {
             // add path grid meshes to already loaded cells
             mPathGridRoot = new osg::Group;
-            mPathGridRoot->setNodeMask(Mask_Debug);
+            mPathGridRoot->setNodeMask(SceneUtil::Mask_Debug);
             mRootNode->addChild(mPathGridRoot);
 
             for (const MWWorld::CellStore* cell : mActiveCells)

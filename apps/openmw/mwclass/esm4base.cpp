@@ -9,7 +9,7 @@
 
 #include "../mwrender/objects.hpp"
 #include "../mwrender/renderinginterface.hpp"
-#include "../mwrender/vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwphysics/physicssystem.hpp"
 #include "../mwworld/ptr.hpp"
@@ -22,7 +22,7 @@ namespace MWClass
         if (!model.empty())
         {
             renderingInterface.getObjects().insertModel(ptr, model);
-            ptr.getRefData().getBaseNode()->setNodeMask(MWRender::Mask_Static);
+            ptr.getRefData().getBaseNode()->setNodeMask(SceneUtil::Mask_Static);
         }
     }
 

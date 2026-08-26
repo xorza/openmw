@@ -22,7 +22,7 @@
 
 #include "../mwworld/groundcoverstore.hpp"
 
-#include "vismask.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {
@@ -454,7 +454,7 @@ namespace MWRender
         group->addCullCallback(new ViewDistanceCallback(getViewDistance(), box));
 
         group->setStateSet(mStateset);
-        group->setNodeMask(Mask_Groundcover);
+        group->setNodeMask(SceneUtil::Mask_Groundcover);
         if (Settings::groundcover().mPointLighting)
             group->addCullCallback(new SceneUtil::LightListCallback);
         mSceneManager->recreateShaders(group, "groundcover", mProgramTemplate);
@@ -465,7 +465,7 @@ namespace MWRender
 
     unsigned int Groundcover::getNodeMask()
     {
-        return Mask_Groundcover;
+        return SceneUtil::Mask_Groundcover;
     }
 
     void Groundcover::reportStats(unsigned int frameNumber, osg::Stats* stats) const

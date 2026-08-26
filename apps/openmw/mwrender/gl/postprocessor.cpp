@@ -36,7 +36,6 @@
 #include "../renderer.hpp"
 #include "../renderingmanager.hpp"
 #include "../stage.hpp"
-#include "../vismask.hpp"
 #include "distortion.hpp"
 #include "opaqueblit.hpp"
 #include "pingpongcull.hpp"
@@ -44,6 +43,7 @@
 #include "transparentpass.hpp"
 #include "water.hpp"
 #include "waterawaretransparentbin.hpp"
+#include <components/sceneutil/vismask.hpp>
 
 namespace
 {
@@ -147,7 +147,7 @@ namespace MWRender
         mHUDCamera->setProjectionMatrix(osg::Matrix::ortho2D(0, 1, 0, 1));
         mHUDCamera->setAllowEventFocus(false);
         mHUDCamera->setViewport(0, 0, mWidth, mHeight);
-        mHUDCamera->setNodeMask(Mask_RenderToTexture);
+        mHUDCamera->setNodeMask(SceneUtil::Mask_RenderToTexture);
         mHUDCamera->getOrCreateStateSet()->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF);
         mHUDCamera->addChild(mCanvases[0]);
         mHUDCamera->addChild(mCanvases[1]);

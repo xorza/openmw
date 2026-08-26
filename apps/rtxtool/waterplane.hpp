@@ -10,13 +10,6 @@ namespace ESM
 
 namespace RtxTool
 {
-    /// `MWRender::Mask_Water`, which `SceneExtractor::setWaterMask` has to be told before a walk can
-    /// tell the sea from anything else.
-    ///
-    /// **The whole of the mask and not a bit inside it.** A node mask is a filter over passes and
-    /// its default is every bit set, so what names the water is that no *other* pass may see it.
-    constexpr unsigned int sWaterMask = 1u << 6;
-
     /// The world's water, as one plane the way the game builds it.
     ///
     /// **Not a quad per cell.** `MWRender::Water` makes a single sheet a hundred and fifty cells
