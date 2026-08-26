@@ -565,10 +565,14 @@ namespace Rtx
             ++freedMaterials;
         }
 
-        // Every placement the walk did not meet has already been dropped by whoever swept it, and
-        // the per-frame lists are refilled by the walk that comes next.
-        clearPlacement();
-
+        // **The per-frame lists are left as the walk left them.** Emptying them here read as "the
+        // walk that comes next refills them", and that walk is the *next frame's* — one frame after
+        // the picture this one is about to hand over, so a caller that uploads in between drew a
+        // frame with no lights, sprites or emitters in it at all.
+        //
+        // Nothing in them can be stale either: a sweep is only sound straight after a walk of the
+        // whole world (`SceneExtractor::retire`), so what is in them came from nodes that walk met —
+        // the survivors, by the same marking this frees against.
         if (freedMeshes > 0)
         {
             // **Not a structure change.** Nothing arrived and nothing moved: the structures built

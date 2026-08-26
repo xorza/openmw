@@ -279,17 +279,6 @@ namespace RtxTool
         if (crossed.mDeparted > 0)
             mExtractor.retire();
 
-        // **A second walk, because the sweep emptied what the first one filled.**
-        // `SceneDesc::release` clears the sprites, the emitters and the light table on the frames a
-        // cell dies, on the understanding that the walk which comes next refills them — true of the
-        // game, which walks every frame, and false here, where a walk happens only when the ring
-        // moves. Bringing that next walk forward is what the understanding actually asks for.
-        if (crossed.mDeparted > 0)
-        {
-            mirror(0);
-            mExtractor.advance();
-        }
-
         if (mPosed == nullptr)
             return crossed;
 

@@ -27,14 +27,12 @@
 
 - `sWorldTraversal` (`apps/openmw/mwrender/rtx/rtxrenderer.cpp:83`) does not exclude
   `Mask_UpdateVisitor`, which `RenderingManager` installs as `NifOsg::Loader`'s hidden node mask, so
-  NIF nodes the game marks hidden are mirrored and traced. `CharacterPreview` excludes it; the world
-  walk does not.
+  NIF nodes the game marks hidden are mirrored and traced.
 
 - `mTarget` is discarded from `VK_IMAGE_LAYOUT_UNDEFINED` with a `TOP_OF_PIPE` source scope at the
   top of every frame (`components/rtxvulkan/vulkanrenderer.cpp:634`) while the presenter's blit out
   of it may still be running: `Presenter::present` submits asynchronously and waits its fence only
-  when that swapchain image comes round again (`components/rtxvulkan/presenter.cpp:175`). `GBuffer::begin`
-  declines to do exactly this and says why.
+  when that swapchain image comes round again (`components/rtxvulkan/presenter.cpp:175`).
 
 - `mHistoryStale` is cleared at the end of every frame (`components/rtxvulkan/vulkanrenderer.cpp:767`)
   whether or not anything read it. With no upscaler and no wavelet neither consumer runs, so a
@@ -44,3 +42,21 @@
   map and the result is applied to that same frame (`components/rtxvulkan/vulkanrenderer.cpp:739`),
   with nothing carried between frames, so the picture's brightness is a pure function of what is on
   screen this frame.
+
+- `Animation::setObjectRoot` (`apps/openmw/mwrender/animation.cpp:1545`) tears off the subtree that
+  owns `mExtraLightSource` and never re-adds it, so an actor whose object root is rebuilt loses its
+  carried light permanently.
+
+- `LightSource::getEmpty` means "the model this light hangs on has no geometry", decided once by
+  `CheckEmptyLightVisitor` (`components/sceneutil/lightutil.cpp:106`) — and
+  `SceneExtractor::addLight` (`components/rtx/sceneextractor.cpp:730`) reads it as a reason to drop
+  the light. A `LIGH` record with an empty mesh is therefore never lit in the RTX path.
+
+- The mirror walk is `TRAVERSE_ALL_CHILDREN` (`components/rtx/sceneextractor.cpp:280`), so
+  `osg::Switch::traverse` visits every child — a light under the branch `DayNightCallback`
+  (`apps/openmw/mwrender/animation.cpp:107`) switched off is extracted where the rasterizer draws
+  nothing.
+
+- `MWMechanics::Actors` (`apps/openmw/mwmechanics/actors.cpp:1243`) sets an actor's base node mask
+  to zero beyond `actors processing range` and back on the frame after, so an actor oscillating
+  across that distance takes its carried light in and out of the walk a frame at a time.

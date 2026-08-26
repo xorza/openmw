@@ -674,6 +674,37 @@ namespace Rtx
             EXPECT_TRUE(scene.getFreedTextures().empty());
         }
 
+        /// A sweep leaves the per-frame lists as the walk left them, because the frame it happens on
+        /// is about to be drawn from them. Emptying them here left every lamp in the world dark for
+        /// exactly one frame, on the frames a sweep freed something.
+        TEST(RtxSceneDescTest, aSweepLeavesTheListsTheWalkFilled)
+        {
+            SceneDesc scene;
+            const Index kept = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices);
+            scene.addMesh(sQuadPositions, {}, {}, sQuadIndices);
+
+            scene.addLight(Light{ .mPosition = osg::Vec3f(1.0f, 2.0f, 3.0f),
+                .mIntensity = osg::Vec3f(4.0f, 5.0f, 6.0f),
+                .mReach = 256.0f });
+            scene.addLight(Light{ .mPosition = osg::Vec3f(-7.0f, 8.0f, 9.0f),
+                .mIntensity = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mReach = 512.0f });
+
+            const std::array meshes{ kept };
+            const std::array<Index, 0> noMaterials{};
+            ASSERT_TRUE(scene.release(meshes, noMaterials)) << "the second mesh should have gone";
+
+            ASSERT_EQ(scene.getLights().size(), 2u) << "the sweep emptied the light table the walk had just filled";
+            EXPECT_EQ(scene.getLights()[0].mPosition, osg::Vec3f(1.0f, 2.0f, 3.0f));
+            EXPECT_EQ(scene.getLights()[0].mReach, 256.0f);
+            EXPECT_EQ(scene.getLights()[1].mPosition, osg::Vec3f(-7.0f, 8.0f, 9.0f));
+            EXPECT_EQ(scene.getLights()[1].mReach, 512.0f);
+
+            // Emptying them is still `clearPlacement`'s, which is what the next walk begins with.
+            scene.clearPlacement();
+            EXPECT_TRUE(scene.getLights().empty());
+        }
+
         /// A texture goes with the last material that names it, and not with the first.
         ///
         /// **The case a sweep could only answer on some frames.** Freeing used to be a walk of the
