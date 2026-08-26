@@ -4,7 +4,7 @@ The route, and only what is left of it. A step that is done is **deleted** rathe
 the same rule `ISSUES.md` keeps, and for the same reason: what a finished step knew now lives in the
 code that does it, and a plan annotated with its own history stops being a plan.
 
-Ten entries in `ISSUES.md` are not ten bugs. They fall into six causes, and the largest of them is
+Nine entries in `ISSUES.md` are not nine bugs. They fall into five causes, and the largest of them is
 one mistake made three times: **this engine now has two hosts, and only one of them was ever
 configured.** Ordered by what unblocks what, then by risk. The letters name a group rather than count
 one, so a gap in them is a group that is finished.
@@ -189,29 +189,6 @@ through it.
 
 ---
 
-## F. A number that is not a function of the content
-
-`openmw-rtxtool scene` reports an exterior's triangle count, and that count changes when the binary's
-layout does: one unused `#include` in `lightbuilder.cpp` moves Balmora from 2,882,873 to 2,882,875
-and Ald-ruhn by the same two, while instances, meshes, materials, textures and lights all hold.
-
-**The cause is a pointer-ordered map.** `Terrain::ObjectPaging` collects a chunk's templates into
-`std::map<osg::ref_ptr<const osg::Node>, InstanceList>` (`objectpaging.cpp:433`) and iterates it at
-`:562` to build what gets merged. `std::map` on a `ref_ptr` orders by address, so which geometries
-land adjacent in a merged drawable follows the allocator, and how many degenerate triangles the merge
-leaves — which the mirror's `TriangleCollector` drops — follows that.
-
-The triangles are the same triangles either way, so nothing about the picture changes. What it costs
-is the control: the one census the harness prints for an exterior cannot be compared across builds,
-and that is how every step in this list gets checked.
-
-Fix the order, not the symptom. The refs it is built from arrive through `std::map<ESM::RefNum, ...>`
-and are already deterministic; keep first-encounter order in a vector and use the pointer map only as
-the dedup index. Distant land then builds the same way in every build, and the number means what it
-says.
-
----
-
 ## Plan
 
 Each step ends with the build, the filtered test binary, and — where marked — a `shot` or a `bench`
@@ -219,21 +196,19 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | F — deterministic paging order; the census becomes a control | census drift | low | no |
-| 2 | E — delete `shareFrame` and `SharedFrame` | dead interop | none | no |
-| 3 | D2 — clear `mHistoryStale` where it is consumed | dropped reset | none | no |
-| 4 | A3 — one engine preparation both hosts make | harness hidden mask | low | harness only |
-| 5 | B — `descend` honours and steps `osg::Sequence` | flipbooks | low | yes, animated textures |
-| 6 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
-| 7 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
-| 8 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 9 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 10 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | E — delete `shareFrame` and `SharedFrame` | dead interop | none | no |
+| 2 | D2 — clear `mHistoryStale` where it is consumed | dropped reset | none | no |
+| 3 | A3 — one engine preparation both hosts make | harness hidden mask | low | harness only |
+| 4 | B — `descend` honours and steps `osg::Sequence` | flipbooks | low | yes, animated textures |
+| 5 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
+| 6 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
+| 7 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 8 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 9 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Step 1 first, because it is what makes the check the other nine end with mean anything. Steps 2 and 3
-are free. Steps 4 to 7 are each one decision moved to where it can only be made once. Steps 8 and 9
-change how the game looks most and both want a moving camera to judge, so they come after everything
-that would move the frame underneath them. Step 10 is not a fix until a measurement says there is
-one.
+Steps 1 and 2 are free. Steps 3 to 6 are each one decision moved to where it can only be made once.
+Steps 7 and 8 change how the game looks most and both want a moving camera to judge, so they come
+after everything that would move the frame underneath them. Step 9 is not a fix until a measurement
+says there is one.
 
-Nothing here is a rewrite. The largest single change is step 8, and it is one call site each side.
+Nothing here is a rewrite. The largest single change is step 7, and it is one call site each side.

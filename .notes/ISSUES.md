@@ -20,14 +20,6 @@
   `TRAVERSE_ACTIVE_CHILDREN`. A `NiFltAnimationNode` flipbook (`components/nifosg/nifloader.cpp:987`)
   is therefore traced as all of its frames standing in the same place at once, and never animates.
 
-- The harness's exterior triangle census is sensitive to the binary's layout rather than to the
-  content. Adding one unused `#include` to `components/rtx/lightbuilder.cpp`, with no other change
-  anywhere, moves `openmw-rtxtool scene --view=balmora` from 2,882,873 triangles to 2,882,875 and
-  `--view=ald-ruhn` from 3,079,829 to 3,079,831, while instances, meshes, materials, textures and
-  lights all stay put. Interiors are unaffected; both cells that move are exteriors with paged
-  distant-land objects. Each build is stable across runs, so the number is reproducible but not
-  comparable across builds.
-
 - A `LIGH` record flagged `Negative` is dropped by `Rtx::makeLight(const ESM::Light&)` as something
   a ray tracer cannot express, but the game's scene graph builds one anyway:
   `SceneUtil::createLightSource` (`components/sceneutil/lightutil.cpp:130`) negates the diffuse

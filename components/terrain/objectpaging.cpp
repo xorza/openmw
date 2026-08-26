@@ -426,12 +426,24 @@ namespace Terrain
             static_cast<int>(std::ceil(maxBound.x())), static_cast<int>(std::ceil(maxBound.y())));
         struct InstanceList
         {
+            osg::ref_ptr<const osg::Node> mTemplate;
             std::vector<const PagedCellRef*> mInstances;
             AnalyzeVisitor::Result mAnalyzeResult;
             bool mNeedCompile = false;
         };
-        typedef std::map<osg::ref_ptr<const osg::Node>, InstanceList> NodeMap;
-        NodeMap nodes;
+
+        // **In the order the references named them, and not in the order the allocator handed them
+        // out.** These were a `std::map` keyed on the template's `ref_ptr`, which orders by address:
+        // which geometries ended up adjacent in a merged drawable followed where the templates
+        // happened to be in memory, and so did how many degenerate triangles the merge left behind.
+        // The chunk was the same chunk either way, but the count of its triangles was a property of
+        // the binary rather than of the content — one unused `#include` elsewhere moved Balmora by
+        // two — and that is the number the ray tracer's harness prints as a control.
+        //
+        // `refs` is a `std::map<ESM::RefNum, ...>`, so first-encounter order is already the content's
+        // own. The map below is the dedup index and nothing else.
+        std::vector<InstanceList> nodes;
+        std::unordered_map<const osg::Node*, std::size_t> byTemplate;
         const osg::ref_ptr<RefnumSet> refnumSet = activeGrid ? new RefnumSet : nullptr;
 
         // **What the loader hid, and asked from the loader.** A NIF loader marks two kinds of node
@@ -537,19 +549,23 @@ namespace Terrain
                 continue;
             }
 
-            const auto emplaced = nodes.emplace(std::move(cnode), InstanceList());
+            const osg::Node* const nodePtr = cnode.get();
+            const auto emplaced = byTemplate.emplace(nodePtr, nodes.size());
             if (emplaced.second)
             {
+                // Moved rather than copied, because `mNeedCompile` below counts the references to
+                // this template and a second one held here would be one too many.
+                nodes.push_back(InstanceList{ .mTemplate = std::move(cnode) });
+
                 analyzeVisitor.mDistances = lodDistances / ref.mScale;
-                const osg::Node* const nodePtr = emplaced.first->first.get();
                 // const-trickery required because there is no const version of NodeVisitor
                 const_cast<osg::Node*>(nodePtr)->accept(analyzeVisitor);
-                emplaced.first->second.mAnalyzeResult = analyzeVisitor.retrieveResult();
-                emplaced.first->second.mNeedCompile = compile && nodePtr->referenceCount() <= 2;
+                nodes.back().mAnalyzeResult = analyzeVisitor.retrieveResult();
+                nodes.back().mNeedCompile = compile && nodePtr->referenceCount() <= 2;
             }
             else
-                analyzeVisitor.addInstance(emplaced.first->second.mAnalyzeResult);
-            emplaced.first->second.mInstances.push_back(&ref);
+                analyzeVisitor.addInstance(nodes[emplaced.first->second].mAnalyzeResult);
+            nodes[emplaced.first->second].mInstances.push_back(&ref);
         }
 
         const osg::Vec3f worldCenter
@@ -559,11 +575,11 @@ namespace Terrain
         osg::ref_ptr<Resource::TemplateMultiRef> templateRefs = new Resource::TemplateMultiRef;
         osgUtil::StateToCompile stateToCompile(0, nullptr);
         CopyOp copyop(activeGrid, copyMask);
-        for (const auto& pair : nodes)
+        for (const InstanceList& entry : nodes)
         {
-            const osg::Node* cnode = pair.first;
+            const osg::Node* cnode = entry.mTemplate.get();
 
-            const AnalyzeVisitor::Result& analyzeResult = pair.second.mAnalyzeResult;
+            const AnalyzeVisitor::Result& analyzeResult = entry.mAnalyzeResult;
 
             const float mergeCost = analyzeResult.mNumVerts * size;
             const float mergeBenefit = analyzeVisitor.getMergeBenefit(analyzeResult) * mMergeFactor;
@@ -575,7 +591,7 @@ namespace Terrain
             const float minSizeMerged = minSizeMergeFactor2 > 0 ? mMinSize * minSizeMergeFactor2 : mMinSize;
 
             unsigned int numinstances = 0;
-            for (const PagedCellRef* refPtr : pair.second.mInstances)
+            for (const PagedCellRef* refPtr : entry.mInstances)
             {
                 const PagedCellRef& ref = *refPtr;
 
@@ -647,7 +663,7 @@ namespace Terrain
                 // in addition, we hint to the cache that it's still being used and should be kept in cache
                 templateRefs->addRef(cnode);
 
-                if (pair.second.mNeedCompile)
+                if (entry.mNeedCompile)
                 {
                     int mode = osgUtil::GLObjectsVisitor::COMPILE_STATE_ATTRIBUTES;
                     if (!merge)
