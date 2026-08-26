@@ -4302,6 +4302,91 @@ namespace Rtx
                 << "the accumulated mean is " << settledMean << " against a converged " << referenceMean;
         }
 
+        /// A reset survives a frame that has no history to reset.
+        ///
+        /// **`resetHistory` is spent by the frame that answers it, and a frame with neither denoiser
+        /// answers nothing.** `Denoiser::None` runs no accumulator and `Upscale::Off` runs no
+        /// upscaler, so nothing reads the signal — and a renderer that cleared it at the end of every
+        /// frame regardless dropped the reset rather than deferring it. What the game does with that
+        /// is walk through a door on an unfiltered frame and reproject one room onto another on the
+        /// next filtered one.
+        ///
+        /// **The claim is exact rather than statistical.** An accumulator that was reset writes the
+        /// frame's own sample and reads no past at all, so the picture is the one the same trace
+        /// makes from a fresh reset — value for value, since the frame index is what seeds the
+        /// sampler and the camera never moves. The accumulated frame between them is what proves the
+        /// comparison can tell a history from none.
+        TEST_F(RtxVisibilityTest, aResetSurvivesAFrameThatHasNoHistoryToReset)
+        {
+            constexpr std::uint32_t size = 64;
+
+            // The index every measured frame is drawn at, so the three of them differ only in what
+            // the accumulator was handed. The frames around them take other indices.
+            constexpr std::uint32_t measured = 3;
+
+            SceneDesc scene;
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(makeSheet(40000.0f, 0.0f), {}, {}, sQuadIndices) });
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -8000.0f, 200.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+            camera.mSkyHorizon = osg::Vec3f(0.20f, 0.15f, 0.60f);
+            camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
+
+            mRenderer->resize(size, size);
+            mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
+
+            const auto renderOne = [&](std::uint32_t frame, bool filter) {
+                Shaders::VisibilityConstants sampled = camera;
+                sampled.mFrame = frame;
+                mRenderer->renderFrame(sampled, FrameOptions{ .mAccumulate = 0, .mFilter = filter, .mExposure = 1.0f });
+            };
+
+            const auto radiance = [&] {
+                std::vector<float> values;
+                mRenderer->readChannel(Channel::Radiance, values);
+                return values;
+            };
+
+            const auto mostTheyDifferBy = [](const std::vector<float>& left, const std::vector<float>& right) {
+                float most = 0.0f;
+                for (std::size_t i = 0; i < left.size(); ++i)
+                    most = std::max(most, std::abs(left[i] - right[i]));
+
+                return most;
+            };
+
+            // A previous camera to reproject against, so nothing below is reset by the zero basis
+            // that catches a renderer's first frame instead of by the flag under test.
+            renderOne(measured + 1, true);
+
+            mRenderer->resetHistory();
+            renderOne(measured, true);
+            const std::vector<float> single = radiance();
+
+            // The same trace with a history behind it, at indices the sampler has not drawn yet so
+            // the mean is over genuinely different draws.
+            for (std::uint32_t frame = 0; frame < Shaders::ACCUMULATE_FRAMES; ++frame)
+                renderOne(frame + 100, true);
+
+            renderOne(measured, true);
+            const std::vector<float> accumulated = radiance();
+
+            ASSERT_EQ(accumulated.size(), single.size());
+            ASSERT_GT(mostTheyDifferBy(accumulated, single), 0.0f)
+                << "a history behind the same trace has to change the picture, or this proves nothing";
+
+            // The frame under test sits between the reset and the frame that can act on it, and
+            // reads the signal nowhere.
+            mRenderer->resetHistory();
+            renderOne(measured + 2, false);
+            renderOne(measured, true);
+            const std::vector<float> carried = radiance();
+
+            ASSERT_EQ(carried.size(), single.size());
+            EXPECT_EQ(mostTheyDifferBy(carried, single), 0.0f) << "the unfiltered frame spent a reset it could not use";
+        }
+
         /// What the history is worth where the cascade has nothing to borrow from.
         ///
         /// **The grazing sheet above is the wavelet's best case and cannot answer this.** Every pixel

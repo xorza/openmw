@@ -643,6 +643,14 @@ namespace Rtx
         // renderer was already being sent. Both denoisers ask it, so it is answered once.
         const bool historyLost = mHistoryStale || mPreviousCamera.mCamera.mForward.length2() <= 0.0f;
 
+        // **Spent by the frame that answers it, not by the frame that ends.** Only a reconstruction
+        // carrying a past reads `historyLost`, and a frame with neither denoiser carries none — so
+        // the signal has to survive such a frame. Cleared at the end regardless, a `resetHistory`
+        // before an unfiltered frame would be dropped rather than deferred to the frame that can
+        // act on it. Recorded where it is read rather than derived a second time from the switches
+        // below, which is what would go quietly wrong when one of them moved.
+        bool historyAnswered = false;
+
         const auto start = std::chrono::steady_clock::now();
 
         mPool.submitAndWait([&](VkCommandBuffer commands) {
@@ -690,6 +698,7 @@ namespace Rtx
                 // than only at an edge in the geometry.
                 mTimer.open(commands, "accumulate");
                 const Image& moments = mAccumulate.record(commands, *mChannels, sampled.mCamera, historyLost);
+                historyAnswered = true;
                 mTimer.close(commands);
 
                 // The cascade reads what the accumulator just wrote, in both channels.
@@ -739,6 +748,7 @@ namespace Rtx
                         .mFrameDeltaMs = sinceLastMs,
                         .mReset = historyLost,
                     });
+                historyAnswered = true;
 
                 // What NGX recorded is its own; nothing here knows which stages it used.
                 mUpscaled->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
@@ -771,6 +781,8 @@ namespace Rtx
         // where inside a pixel this frame sampled, not where the eye was.
         mPreviousCamera = camera;
 
+        // Read after the last of the frame's submits has been waited on, which every one of them
+        // has: the pool fences each before it returns.
         std::uint32_t hits = 0;
         if (mCountHits)
         {
@@ -778,10 +790,8 @@ namespace Rtx
             mHitCount.unmap();
         }
 
-        // Read after the last of the frame's submits has been waited on, which every one of them
-        // has: the pool fences each before it returns.
-        // Spent on the frame that was just recorded, so the next one reprojects against it normally.
-        mHistoryStale = false;
+        if (historyAnswered)
+            mHistoryStale = false;
 
         return FrameResult{
             .mHits = hits, .mTraceMs = ms, .mGpu = mTimer.resolve(), .mReconstruction = reconstruction

@@ -6,10 +6,6 @@
   (`apps/openmw/mwrender/rtx/rtxrenderer.cpp`). At the shipped defaults those are 32768 and 7168
   units, so a screenshot and a played frame stand in different air.
 
-- `mHistoryStale` is cleared at the end of every frame (`components/rtxvulkan/vulkanrenderer.cpp:767`)
-  whether or not anything read it. With no upscaler and no wavelet neither consumer runs, so a
-  `resetHistory` is dropped rather than deferred.
-
 - Auto-exposure has no time constant. The histogram is measured on the frame the curve is about to
   map and the result is applied to that same frame (`components/rtxvulkan/vulkanrenderer.cpp:739`),
   with nothing carried between frames, so the picture's brightness is a pure function of what is on

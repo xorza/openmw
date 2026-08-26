@@ -157,7 +157,7 @@ namespace Rtx
         Preset mPreset = Preset::Default;
 
         /// Whether the next frame has to be reconstructed without a past. Set by `resetHistory` and
-        /// spent by the frame that follows it.
+        /// spent by the next frame that reconstructs from one, which is not always the one after.
         bool mHistoryStale = false;
 
         /// When the last frame was recorded, so the next can say how long ago that was.

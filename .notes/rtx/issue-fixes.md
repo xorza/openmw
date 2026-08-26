@@ -138,11 +138,10 @@ mirror stops reading "not simulated" as "not in the picture" — not hysteresis.
 
 ## D. Frame-to-frame state with no owner
 
-**Retires: the dropped history reset, and auto-exposure.**
+**Retires: auto-exposure.**
 
-Two values that should carry across frames. One is cleared by whoever ends the frame rather than by
-whoever reads it; the other carries nothing at all. Neither has a place to live, and the renderer has
-no statement of what a frame hands to the next.
+A value that should carry across frames and carries nothing at all. It has no place to live, and the
+renderer has no statement of what a frame hands to the next.
 
 ### D1 — auto-exposure has no time constant
 
@@ -163,16 +162,6 @@ and `tau` down, because the eye is not symmetric.
 
 **Changes the picture.** Wants a moving `bench` route and a look, not a still.
 
-### D2 — `mHistoryStale` is cleared whether or not anything read it
-
-`vulkanrenderer.cpp:796` clears it at the end of every frame, but it is consumed only where the
-wavelet runs or an upscaler exists. With neither, a `resetHistory` is dropped rather than deferred.
-Clear it where it is consumed, or carry it until it is — and note that D1 adds a third consumer, so
-this is the cheaper half of the same statement.
-
-Small, and it wants a test: `resetHistory` followed by a frame with `Denoiser::None` must still reset
-the frame after.
-
 ---
 
 ## Plan
@@ -182,18 +171,16 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | D2 — clear `mHistoryStale` where it is consumed | dropped reset | none | no |
-| 2 | A3 — one engine preparation both hosts make | harness hidden mask | low | harness only |
-| 3 | B — `descend` honours and steps `osg::Sequence` | flipbooks | low | yes, animated textures |
-| 4 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
-| 5 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
-| 6 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 7 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 8 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | A3 — one engine preparation both hosts make | harness hidden mask | low | harness only |
+| 2 | B — `descend` honours and steps `osg::Sequence` | flipbooks | low | yes, animated textures |
+| 3 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
+| 4 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
+| 5 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 6 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 7 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Step 1 is free. Steps 2 to 5 are each one decision moved to where it can only be made once. Steps 6
-and 7 change how the game looks most and both want a moving camera to judge, so they come after
-everything that would move the frame underneath them. Step 8 is not a fix until a measurement says
-there is one.
+Steps 1 to 4 are each one decision moved to where it can only be made once. Steps 5 and 6 change how
+the game looks most and both want a moving camera to judge, so they come after everything that would
+move the frame underneath them. Step 7 is not a fix until a measurement says there is one.
 
-Nothing here is a rewrite. The largest single change is step 6, and it is one call site each side.
+Nothing here is a rewrite. The largest single change is step 5, and it is one call site each side.
