@@ -32,6 +32,7 @@
 #include <components/debug/debuglog.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguirtx/rendermanager.hpp>
+#include <components/nifosg/nifloader.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/distantland.hpp>
 #include <components/rtx/error.hpp>
@@ -81,14 +82,11 @@ namespace MWRender
         /// missing, because `Resource::SceneManager` marks a `ParticleSystem` drawable
         /// `Mask_ParticleSystem` and a blizzard's own particles are not categorised as weather.
         ///
-        /// **Two kinds of exclusion.** The sky, the sun and the simple water are what this renderer
-        /// draws for itself. `Mask_UpdateVisitor` is what the content says is not there:
-        /// `RenderingManager` installs it as `NifOsg::Loader`'s hidden node mask, and a
-        /// `NifOsg::VisController` animating visibility swaps a node between it and every bit. It is
-        /// bit zero rather than no bits at all so that the update traversal still reaches a hidden
-        /// bone to animate it — which is why a walk that ignores it traces what nothing draws.
+        /// The sky, the sun and the simple water are what this renderer draws for itself. What the
+        /// content says is not there is a second exclusion, and it is asked of the loader that
+        /// stamped it rather than named again here — see where this is installed.
         constexpr osg::Node::NodeMask sWorldTraversal
-            = ~static_cast<osg::Node::NodeMask>(Mask_UpdateVisitor | Mask_Sky | Mask_Sun | Mask_SimpleWater);
+            = ~static_cast<osg::Node::NodeMask>(Mask_Sky | Mask_Sun | Mask_SimpleWater);
     }
 
     namespace
@@ -201,7 +199,13 @@ namespace MWRender
         // `Mask_Water`, and a deep copy of it under `Mask_SimpleWater` that exists for the local
         // map — and the rasterizer picks between them with the drawing camera's traversal mask.
         // A mirror that walks both places the sea twice, at the same height, as two meshes.
-        mExtractor->setTraversalMask(sWorldTraversal);
+        //
+        // **And what the content hides, which the loader is asked for rather than named twice.**
+        // `RenderingManager` installs `Mask_UpdateVisitor` as the hidden node mask, and a
+        // `NifOsg::VisController` animating visibility swaps a node between it and every bit. It is
+        // one bit rather than no bits at all so that the update traversal still reaches a hidden
+        // bone to animate it — which is why a walk that ignores it traces what nothing draws.
+        mExtractor->setTraversalMask(sWorldTraversal & ~NifOsg::Loader::getHiddenNodeMask());
 
         // What is left of the two is the world's own water, and it is the sea.
         mExtractor->setWaterMask(Mask_Water);

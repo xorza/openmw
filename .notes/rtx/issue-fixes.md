@@ -4,38 +4,21 @@ The route, and only what is left of it. A step that is done is **deleted** rathe
 the same rule `ISSUES.md` keeps, and for the same reason: what a finished step knew now lives in the
 code that does it, and a plan annotated with its own history stops being a plan.
 
-Eight entries in `ISSUES.md` are not eight bugs. They fall into four causes, and the largest of them
-is one mistake made three times: **this engine now has two hosts, and only one of them was ever
-configured.** Ordered by what unblocks what, then by risk. The letters name a group rather than count
-one, so a gap in them is a group that is finished.
+Seven entries in `ISSUES.md` are not seven bugs. They fall into four causes, and the largest of them
+is one mistake made twice: **this engine now has two hosts, and each derives for itself what only one
+of them should decide.** Ordered by what unblocks what, then by risk. The letters name a group rather
+than count one, so a gap in them is a group that is finished.
 
 ---
 
-## A. Two hosts stand up one engine, and only one was configured
+## A. Two hosts derive for themselves what one of them should decide
 
-**Retires: the fog mismatch, negative lights, and the harness's hidden node mask.**
+**Retires: the fog mismatch, and negative lights.**
 
 `RenderingManager` and `openmw-rtxtool` both build the same components and both hand the renderer a
 frame's inputs. Nothing says how a host does that, so each divergence has had to be found in a
-picture: the lights were one (`lightColour`, since fixed), and these are the rest.
-
-Two different shapes of divergence, and they want different answers.
-
-**Process-global configuration a second host does not know to set.** `NifOsg::Loader` keeps three
-statics — `setHiddenNodeMask`, `setIntersectionDisabledNodeMask`, `setSoftEffectEnabled` — and
-`renderingmanager.cpp:407-409` is the only place any of them is written. `sHiddenNodeMask` defaults
-to **zero** (`nifloader.cpp:315`), and zero is not a harmless default: a node the content hides gets
-a node mask of nothing, so no visitor reaches it, so the `NifOsg::VisController` that would animate
-it visible never runs. A node hidden at load stays hidden for the life of a harness run.
-
-`Terrain::ObjectPaging` reads the same static back (`objectpaging.cpp:442`) to decide what to copy
-into distant land, so under the harness `copyMask` is `~0` — it copies everything, and only avoids
-copying a town's collision meshes into its hills because those nodes carry no bits at all. Two
-wrongs, agreeing.
-
-The fix is not to teach the harness the three calls. It is that "nobody set it" must stop being a
-state the engine runs in: one initialiser both hosts make, and a hidden mask whose default cannot be
-a value that silently disables a feature.
+picture: the lights were one (`lightColour`, since fixed), the loader's process-global state was
+another, and these are the rest.
 
 **Derivations each host makes for itself.** `Rtx::makeLight` is what this should look like — one
 function, two callers, no way to disagree. Fog is not there yet, and neither is what a `LIGH` record
@@ -73,18 +56,6 @@ The flag test is in the wrong place. `makeLight(colour, radius, position)` is wh
 and already owns "this is not a light" for a radius; a colour with a negative channel is the same
 statement about the same thing. Moving it there makes the two agree by construction and leaves the
 record's flag as what it is — a record property, still worth reading early.
-
-### A3 — one preparation, made by both hosts
-
-Give the engine a single call that says "prepare this for the ray tracer", made by
-`RenderingManager` and by the harness, carrying the loader's three statics. Then make the hidden node
-mask impossible to leave unset — a default of zero is a working-looking configuration in which
-NIF visibility animation does not exist.
-
-**Its own negative control**: with the harness setting a real mask, a hidden node stops being skipped
-for lack of bits and starts being skipped for the mask the walk excludes — the same answer by the
-route the game takes. The census must not move.
-
 ---
 
 ## B. The mirror's answer to "which children are in the picture"
@@ -171,16 +142,15 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | A3 — one engine preparation both hosts make | harness hidden mask | low | harness only |
-| 2 | B — `descend` honours and steps `osg::Sequence` | flipbooks | low | yes, animated textures |
-| 3 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
-| 4 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
-| 5 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 6 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 7 | C2 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | B — `descend` honours and steps `osg::Sequence` | flipbooks | low | yes, animated textures |
+| 2 | A2 — `makeLight` rejects what it cannot express | negative lights | none | rare, and wrong today |
+| 3 | C1 — `tws` through the renderer seam | half a toggle | low | debug only |
+| 4 | A1 — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 5 | D1 — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 6 | C2 — measure the actor range flip, then decide | actor flip | — | — |
 
-Steps 1 to 4 are each one decision moved to where it can only be made once. Steps 5 and 6 change how
+Steps 1 to 3 are each one decision moved to where it can only be made once. Steps 4 and 5 change how
 the game looks most and both want a moving camera to judge, so they come after everything that would
-move the frame underneath them. Step 7 is not a fix until a measurement says there is one.
+move the frame underneath them. Step 6 is not a fix until a measurement says there is one.
 
-Nothing here is a rewrite. The largest single change is step 5, and it is one call site each side.
+Nothing here is a rewrite. The largest single change is step 4, and it is one call site each side.

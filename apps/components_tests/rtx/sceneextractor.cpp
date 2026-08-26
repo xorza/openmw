@@ -22,6 +22,7 @@
 #include <osgParticle/RadialShooter>
 #include <osgUtil/UpdateVisitor>
 
+#include <components/nifosg/nifloader.hpp>
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
@@ -92,6 +93,33 @@ namespace Rtx
             return geometry;
         }
 
+        /// Says what the loader answers about a hidden node, and puts back what the binary had.
+        ///
+        /// **Process-global, and `SceneExtractor` reads it when it is built**, so a test that left
+        /// its own answer behind would move the default of every extractor built after it.
+        class ConfiguredLoader
+        {
+        public:
+            explicit ConfiguredLoader(unsigned int hiddenNodeMask)
+                : mHeld{ .mHiddenNodeMask = NifOsg::Loader::getHiddenNodeMask(),
+                    .mIntersectionDisabledNodeMask = NifOsg::Loader::getIntersectionDisabledNodeMask(),
+                    .mSoftEffects = NifOsg::Loader::getSoftEffectEnabled(),
+                    .mShowMarkers = NifOsg::Loader::getShowMarkers() }
+            {
+                NifOsg::Loader::Configuration asked = mHeld;
+                asked.mHiddenNodeMask = hiddenNodeMask;
+                NifOsg::Loader::configure(asked);
+            }
+
+            ~ConfiguredLoader() { NifOsg::Loader::configure(mHeld); }
+
+            ConfiguredLoader(const ConfiguredLoader&) = delete;
+            ConfiguredLoader& operator=(const ConfiguredLoader&) = delete;
+
+        private:
+            NifOsg::Loader::Configuration mHeld;
+        };
+
         TEST(RtxSceneExtractorTest, twoDrawablesBecomeTwoMeshesAndTwoInstances)
         {
             osg::ref_ptr<osg::Group> root = new osg::Group;
@@ -106,6 +134,41 @@ namespace Rtx
             EXPECT_EQ(stats.mMeshesReused, 0u);
             EXPECT_EQ(stats.mInstances, 2u);
             EXPECT_EQ(scene.getTriangleCount(), 4u);
+        }
+
+        /// A walk leaves out whatever the loader was told a hidden node carries.
+        ///
+        /// **The bit is asked of the loader that stamps it**, rather than named a second time here
+        /// where the two could disagree — the same question `Terrain::ObjectPaging` asks to decide
+        /// what distant land may copy. A host that answered nothing walks with a mask of all ones
+        /// and reaches nodes the content said are not there.
+        ///
+        /// The same graph twice under two answers, because a mask taken from the wrong place still
+        /// skips a node whose own mask is zero. The marked node here carries a real bit, so only a
+        /// walk that took the loader's answer can tell the two runs apart.
+        TEST(RtxSceneExtractorTest, aWalkLeavesOutWhatTheLoaderSaysAHiddenNodeCarries)
+        {
+            constexpr osg::Node::NodeMask marked = 1u << 3;
+            constexpr osg::Node::NodeMask elsewhere = 1u << 4;
+
+            const auto instancesWhenHiddenIs = [](unsigned int hiddenNodeMask) {
+                const ConfiguredLoader told(hiddenNodeMask);
+
+                osg::ref_ptr<osg::Group> quiet = new osg::Group;
+                quiet->setNodeMask(marked);
+                quiet->addChild(makeQuad());
+
+                osg::ref_ptr<osg::Group> root = new osg::Group;
+                root->addChild(quiet);
+                root->addChild(makeQuad());
+
+                Rtx::SceneDesc scene;
+                SceneExtractor extractor(scene);
+                return extractor.extract(*root, osg::Matrixf::identity(), 0).mInstances;
+            };
+
+            EXPECT_EQ(instancesWhenHiddenIs(marked), 1u) << "the marked subtree is not in the picture";
+            EXPECT_EQ(instancesWhenHiddenIs(elsewhere), 2u) << "and it is, where the loader named another bit";
         }
 
         /// The same geometry under two parents is one mesh and two placements. Getting this wrong is

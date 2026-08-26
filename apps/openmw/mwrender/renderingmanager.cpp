@@ -404,9 +404,11 @@ namespace MWRender
 
         auto mask = ~(Mask_UpdateVisitor | Mask_SimpleWater);
         MWBase::Environment::get().getWindowManager()->setCullMask(mask);
-        NifOsg::Loader::setHiddenNodeMask(Mask_UpdateVisitor);
-        NifOsg::Loader::setIntersectionDisabledNodeMask(Mask_Effect);
-        NifOsg::Loader::setSoftEffectEnabled(Settings::shaders().mSoftParticles);
+        NifOsg::Loader::configure({
+            .mHiddenNodeMask = Mask_UpdateVisitor,
+            .mIntersectionDisabledNodeMask = Mask_Effect,
+            .mSoftEffects = Settings::shaders().mSoftParticles,
+        });
 
         mStateUpdater->setFogEnd(mViewDistance);
 

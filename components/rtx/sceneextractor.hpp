@@ -237,7 +237,10 @@ namespace Rtx
         ///
         /// **What keeps the mirror out of subtrees the ray tracer answers for itself.** The engine
         /// already marks them — OpenMW's sky is `Mask_Sky` — and a mask is how OSG is asked to skip
-        /// one, so nothing here has to know what a sky is. Everything by default.
+        /// one, so nothing here has to know what a sky is.
+        ///
+        /// Everything the content did not hide, by default. A host with more to leave out says so,
+        /// and says it with the hidden bit still out — see the constructor.
         void setTraversalMask(osg::Node::NodeMask mask) { mTraversalMask = mask; }
 
         /// Which nodes are the world's water, as an `osg` node mask. None by default.
@@ -527,7 +530,8 @@ namespace Rtx
         Traversals mOwnTraversals;
         Traversals& mTraversals;
 
-        osg::Node::NodeMask mTraversalMask = ~0u;
+        /// Set in the constructor, because the default is asked of the loader rather than named.
+        osg::Node::NodeMask mTraversalMask;
 
         /// Which drawables are the sea. Zero means none of them, which is every caller that has not
         /// said otherwise.

@@ -37,32 +37,46 @@ namespace NifOsg
         /// Load keyframe controllers from the given kf file.
         static void loadKf(Nif::FileView kf, SceneUtil::KeyframeHolder& target);
 
-        /// Set whether or not nodes marked as "MRK" should be shown.
-        /// These should be hidden ingame, but visible in the editor.
-        /// Default: false.
-        static void setShowMarkers(bool show);
+        /// What a host tells the loader before it reads any content.
+        ///
+        /// **One call, because these are one decision taken once for the process.** Several hosts
+        /// stand up this loader — the game, `openmw-rtxtool` and the editor — and a setter apiece
+        /// was four chances for one of them to be configured by nobody at all. `load` asserts that
+        /// this call was made.
+        struct Configuration
+        {
+            /// What a node the content hides carries, and so what every walk has to leave out.
+            ///
+            /// **Zero is an answer here and not an absence.** A node with no bits is skipped by
+            /// every visitor rather than by the one that meant to skip it, so the `VisController`
+            /// that would show it later never runs and it stays hidden for the life of the process.
+            /// `Terrain::ObjectPaging` and `Rtx::SceneExtractor` both read it back, the first to
+            /// decide what distant land may copy and the second to decide what a ray may reach.
+            unsigned int mHiddenNodeMask = 0;
+
+            /// What a `NiCollisionSwitch` with its collision off carries, so an intersection walk
+            /// can leave it out. All ones keeps the node's ordinary mask, which is the answer for a
+            /// host that tests for no intersections.
+            unsigned int mIntersectionDisabledNodeMask = ~0u;
+
+            /// Whether a material that asks for a soft edge is given one.
+            bool mSoftEffects = false;
+
+            /// Whether nodes marked "MRK" are built. Hidden in a game and shown in the editor.
+            bool mShowMarkers = false;
+        };
+
+        /// Installs `configuration`, which every host does before it loads any content.
+        static void configure(const Configuration& configuration);
 
         static bool getShowMarkers();
-
-        /// Set the mask to use for hidden nodes. The default is 0, i.e. updates to those nodes can no longer happen.
-        /// If you need to run animations or physics for hidden nodes, you may want to set this to a non-zero mask and
-        /// remove exactly that mask from the camera's cull mask.
-        static void setHiddenNodeMask(unsigned int mask);
         static unsigned int getHiddenNodeMask();
-
-        // Set the mask to use for nodes that ignore the crosshair intersection. The default is the default node mask.
-        // This is used for NiCollisionSwitch nodes with NiCollisionSwitch state set to disabled.
-        static void setIntersectionDisabledNodeMask(unsigned int mask);
         static unsigned int getIntersectionDisabledNodeMask();
-
-        static void setSoftEffectEnabled(bool enabled);
         static bool getSoftEffectEnabled();
 
     private:
-        static unsigned int sHiddenNodeMask;
-        static unsigned int sIntersectionDisabledNodeMask;
-        static bool sShowMarkers;
-        static bool sSoftEffectEnabled;
+        static Configuration sConfiguration;
+        static bool sConfigured;
     };
 
 }

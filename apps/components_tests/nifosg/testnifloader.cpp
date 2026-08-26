@@ -41,6 +41,11 @@ namespace
 
         BaseNifOsgLoaderTest()
         {
+            // The loader asks its host what a hidden node carries before it reads anything, and a
+            // test that calls `Loader::load` directly is a host. Nothing here hides a node, so the
+            // answer is the one a caller that does not care gives.
+            Loader::configure({});
+
             SceneUtil::registerSerializers();
 
             if (mReaderWriter == nullptr)

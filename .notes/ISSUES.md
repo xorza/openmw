@@ -30,12 +30,6 @@
   to zero beyond `actors processing range` and back on the frame after, so an actor oscillating
   across that distance takes its carried light in and out of the walk a frame at a time.
 
-- The harness installs no `NifOsg::Loader::setHiddenNodeMask`, so a NIF node hidden at load carries
-  a node mask of zero rather than the game's `Mask_UpdateVisitor` and no visitor reaches it — the
-  update traversal included. A `NifOsg::VisController` on such a node
-  (`components/nifosg/controller.cpp:388`) therefore never runs, so a node the content hides at load
-  and animates visible later stays hidden for the life of an `openmw-rtxtool` run.
-
 - `Rtx::Instance`'s constructor comment (`components/rtxvulkan/instance.cpp:182`) says a renderer
   that fails to start leaves "the game carries on with OpenGL". `MWRender::RtxRenderer` throws on a
   null backend (`apps/openmw/mwrender/rtx/rtxrenderer.cpp:184`), and with the ray tracer on no GL

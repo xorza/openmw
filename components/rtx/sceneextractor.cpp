@@ -27,6 +27,7 @@
 #include <functional>
 #include <span>
 
+#include <components/nifosg/nifloader.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
@@ -521,10 +522,16 @@ namespace Rtx
         mShading.resize(held);
     }
 
+    /// **Everything the content did not hide**, asked of the loader that stamped the bit rather
+    /// than named a second time here. `NifOsg::Loader` is what marks a hidden node and a collision
+    /// shape, and `Terrain::ObjectPaging` asks it the same question to decide what distant land may
+    /// copy — so a host that never configured the loader gets a mask of all ones and walks into
+    /// nodes the content said are not there.
     SceneExtractor::SceneExtractor(SceneDesc& scene, Traversals* traversals)
         : mScene(scene)
         , mWalk(std::make_unique<MirrorTraversal>(*this))
         , mTraversals(traversals == nullptr ? mOwnTraversals : *traversals)
+        , mTraversalMask(~NifOsg::Loader::getHiddenNodeMask())
     {
     }
 

@@ -20,6 +20,7 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/files/conversion.hpp>
+#include <components/nifosg/nifloader.hpp>
 #include <components/rtx/offscreentrace.hpp>
 #include <components/rtx/png.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -34,15 +35,6 @@ namespace RtxTool
 {
     namespace
     {
-        /// **Everything, because what the game excludes is out of reach here and is not there
-        /// anyway.** `Mask_*` lives in `apps/openmw/mwrender/vismask.hpp` and the harness does not
-        /// link the game. The bit that matters is `Mask_UpdateVisitor`: the game's walk leaves it
-        /// out because `RenderingManager` installs it as `NifOsg::Loader`'s hidden node mask, and
-        /// the harness installs no hidden mask at all — so a hidden node here carries no bits and
-        /// every walk skips it already. The same nodes by two routes. A run that wants a different
-        /// mask says so on the command line.
-        constexpr osg::Node::NodeMask sEverything = ~0u;
-
         /// The game's own inventory framing (`MWRender::InventoryPreview`): 512 by 1024, from seven
         /// hundred units in front of the figure at the height of its head.
         constexpr float sDollFieldOfView = 12.3f;
@@ -152,7 +144,11 @@ namespace RtxTool
 
         const std::uint32_t slot = renderer->addGuiTexture(request.mWidth, request.mHeight);
 
-        Rtx::OffscreenTrace trace(*renderer, request.mWidth, request.mHeight, actor.getRoot(), sEverything);
+        // **Everything the content did not hide**, which is what `Rtx::SceneExtractor` walks the
+        // world with and what `World` chose the bit for. The game's other exclusions — sky, sun,
+        // simple water — name nodes a doll's subtree does not have.
+        Rtx::OffscreenTrace trace(
+            *renderer, request.mWidth, request.mHeight, actor.getRoot(), ~NifOsg::Loader::getHiddenNodeMask());
 
         trace.setPerspective(sDollFieldOfView, sDollNear, sDollFar);
         trace.setClearColour(clear);

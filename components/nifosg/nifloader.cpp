@@ -300,51 +300,33 @@ namespace
 
 namespace NifOsg
 {
-    bool Loader::sShowMarkers = false;
+    Loader::Configuration Loader::sConfiguration;
+    bool Loader::sConfigured = false;
 
-    void Loader::setShowMarkers(bool show)
+    void Loader::configure(const Configuration& configuration)
     {
-        sShowMarkers = show;
+        sConfiguration = configuration;
+        sConfigured = true;
     }
 
     bool Loader::getShowMarkers()
     {
-        return sShowMarkers;
+        return sConfiguration.mShowMarkers;
     }
 
-    unsigned int Loader::sHiddenNodeMask = 0;
-
-    void Loader::setHiddenNodeMask(unsigned int mask)
-    {
-        sHiddenNodeMask = mask;
-    }
     unsigned int Loader::getHiddenNodeMask()
     {
-        return sHiddenNodeMask;
-    }
-
-    unsigned int Loader::sIntersectionDisabledNodeMask = ~0u;
-
-    void Loader::setIntersectionDisabledNodeMask(unsigned int mask)
-    {
-        sIntersectionDisabledNodeMask = mask;
+        return sConfiguration.mHiddenNodeMask;
     }
 
     unsigned int Loader::getIntersectionDisabledNodeMask()
     {
-        return sIntersectionDisabledNodeMask;
-    }
-
-    bool Loader::sSoftEffectEnabled = false;
-
-    void Loader::setSoftEffectEnabled(bool enabled)
-    {
-        sSoftEffectEnabled = enabled;
+        return sConfiguration.mIntersectionDisabledNodeMask;
     }
 
     bool Loader::getSoftEffectEnabled()
     {
-        return sSoftEffectEnabled;
+        return sConfiguration.mSoftEffects;
     }
 
     class LoaderImpl
@@ -3119,6 +3101,13 @@ namespace NifOsg
     osg::ref_ptr<osg::Node> Loader::load(
         Nif::FileView file, Resource::ImageManager* imageManager, Resource::BgsmFileManager* materialManager)
     {
+        // **A hard failure naming itself, and not an assert.** This tree ships with `NDEBUG`, so an
+        // assert here would state the contract in no build anybody runs — and the state it guards
+        // against is one that looks like it works: a hidden node carrying no bits is skipped by
+        // every visitor, so nothing draws it and nothing reports it either.
+        if (!sConfigured)
+            throw Nif::Exception("NifOsg::Loader::configure was never called", file.getFilename());
+
         LoaderImpl impl(file.getFilename(), file.getVersion(), file.getUserVersion(), file.getBethVersion());
         impl.mMaterialManager = materialManager;
         impl.mImageManager = imageManager;

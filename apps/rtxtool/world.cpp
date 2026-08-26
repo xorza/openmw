@@ -23,6 +23,7 @@
 #include <components/misc/convert.hpp>
 #include <components/misc/resourcehelpers.hpp>
 #include <components/misc/strings/algorithm.hpp>
+#include <components/nifosg/nifloader.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/lightmanager.hpp>
@@ -149,6 +150,22 @@ namespace RtxTool
         , mObjectStorage(mEsmData)
     {
         Fallback::Map::init(variables["fallback"].as<Fallback::FallbackMap>().mMap);
+
+        // **Before a single model is read, because this is what a hidden node will carry.** Which
+        // bit is arbitrary here — nothing in this process reads a node mask it did not stamp — but
+        // it may not be nothing: a node with no bits at all is skipped by the update traversal too,
+        // so the `NifOsg::VisController` that would show it later never runs and what the content
+        // hid at load stays hidden for the run. The game reaches the same answer with
+        // `MWRender::Mask_UpdateVisitor`, which is this bit; `Rtx::SceneExtractor` and
+        // `Terrain::ObjectPaging` both ask the loader for it rather than being told twice.
+        //
+        // Collision-disabled nodes keep their ordinary mask, which is right where nothing tests for
+        // an intersection: the mirror is owed those nodes, since a switch that stops a crosshair
+        // does not stop a ray.
+        NifOsg::Loader::configure({
+            .mHiddenNodeMask = 1u << 0,
+            .mSoftEffects = Settings::shaders().mSoftParticles,
+        });
 
         const auto& archives = variables["fallback-archive"].as<StringsVector>();
         VFS::registerArchives(&mVfs, mFileCollections, archives, true, &mEncoder.getStatelessEncoder());
