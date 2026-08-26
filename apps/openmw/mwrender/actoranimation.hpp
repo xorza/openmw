@@ -45,6 +45,9 @@ namespace MWRender
 
         void removeFromScene() override;
 
+        /// The lights an actor is carrying in its pack go with it, which `Animation` cannot reach.
+        void setAlpha(float actorFade, float alpha) override;
+
     protected:
         osg::Group* getBoneByName(std::string_view boneName) const;
         void updateHolsteredWeapon(bool showHolsteredWeapons);

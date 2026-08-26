@@ -563,12 +563,27 @@ namespace MWRender
         osg::ref_ptr<SceneUtil::LightSource> lightSource = SceneUtil::createLightSource(
             SceneUtil::LightCommon(*esmLight), SceneUtil::Mask_Lighting, exterior, ambient);
 
+        // As visible as its owner already is, rather than at full strength until the next time
+        // something moves. `setAlpha` keeps it there.
+        lightSource->setActorFade(mActorFade);
+
         mInsert->addChild(lightSource);
 
         if (mLightListCallback && mPtr == MWMechanics::getPlayer())
             mLightListCallback->getIgnoredLightSources().insert(lightSource.get());
 
         mItemLights.insert(std::make_pair(item, lightSource));
+    }
+
+    void ActorAnimation::setAlpha(float actorFade, float alpha)
+    {
+        // **Before the base, and unconditionally.** `Animation::setAlpha` returns early where
+        // nothing moved, and these have to be right after a light is added as well as after the
+        // actor's own visibility changes.
+        for (const auto& [item, light] : mItemLights)
+            light->setActorFade(actorFade);
+
+        Animation::setAlpha(actorFade, alpha);
     }
 
     void ActorAnimation::removeHiddenItemLight(const MWWorld::ConstPtr& item)

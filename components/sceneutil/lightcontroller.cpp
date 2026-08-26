@@ -32,16 +32,20 @@ namespace SceneUtil
         if (mStartTime == 0)
             mStartTime = time;
 
-        // disabled early out, light state needs to be set every frame regardless of change, due to the double buffering
-        // if (time == mLastTime)
-        //    return;
+        // **No early out on an unchanged clock.** The light is double buffered, so a frame that
+        // wrote nothing leaves the other buffer holding whatever it held two frames ago.
 
         SceneUtil::Light* light = node->getLight(nv->getTraversalNumber());
 
         if (mType == LT_Normal)
         {
-            light->setDiffuse(mDiffuseColor);
-            light->setSpecular(mSpecularColor);
+            // **Every type follows its owner, and not the animated ones alone.** A light an actor
+            // carries is dimmed by whatever is hiding that actor — the distance fade, Invisibility,
+            // Chameleon — and twenty of the carriable lights the game ships take this branch. Every
+            // one of them is a lantern.
+            const float fade = node->getActorFade();
+            light->setDiffuse(mDiffuseColor * fade);
+            light->setSpecular(mSpecularColor * fade);
             traverse(node, nv);
             return;
         }
