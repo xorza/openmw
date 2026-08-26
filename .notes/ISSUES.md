@@ -9,11 +9,6 @@
   picture at 7168 units and does blink. A node mask of zero is excluded by every traversal mask, so
   no mask the mirror chooses can include it.
 
-- `Rtx::Instance`'s constructor comment (`components/rtxvulkan/instance.cpp:182`) says a renderer
-  that fails to start leaves "the game carries on with OpenGL". `MWRender::RtxRenderer` throws on a
-  null backend (`apps/openmw/mwrender/rtx/rtxrenderer.cpp:184`), and with the ray tracer on no GL
-  context exists to carry on with.
-
 - An actor's transparency does not reach the traced picture. `MWRender::TransparencyUpdater`
   (`apps/openmw/mwrender/animation.cpp:428`) carries it as two uniforms, `alpha` and `actorFade`,
   and `Rtx::SceneExtractor` reads only the texture-unit uniforms

@@ -179,9 +179,13 @@ namespace Rtx
 
         checkVk(vkCreateInstance(&createInfo, nullptr, &mHandle), "vkCreateInstance");
 
-        // A constructor that throws runs no destructor, and failing to start the renderer is a
-        // supported outcome rather than the end of the process — the game carries on with OpenGL.
-        // So anything after a successful create cleans up before it rethrows.
+        // **A constructor that throws runs no destructor**, and this throw does not take the process
+        // with it: `createVulkanRenderer` catches it and hands the caller a reason instead. So
+        // anything after a successful create cleans up before it rethrows, or the instance outlives
+        // every reference to it.
+        //
+        // What a caller makes of that reason is its own business, and none of them falls back to
+        // another renderer: the game names it and stops, the harness prints it and exits.
         try
         {
             if (validation)
