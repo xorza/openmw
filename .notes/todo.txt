@@ -8,3 +8,4 @@
 - shimering lights
 - translucent leaves
 - remove metal
+- precipitation interact with lightsources
