@@ -6,15 +6,6 @@
   (`apps/openmw/mwrender/rtx/rtxrenderer.cpp`). At the shipped defaults those are 32768 and 7168
   units, so a screenshot and a played frame stand in different air.
 
-- The update traversal walks the whole scene twice a frame. `RtxRenderer::updateTraversal`
-  (`apps/openmw/mwrender/rtx/rtxrenderer.cpp:332`) accepts the update visitor on the master camera
-  to reach `MWRender::Camera`'s callback, and `Stage::adopt` (`apps/openmw/mwrender/stage.cpp:82`)
-  has parented the scene root under that camera — so `UpdateRenderCameraCallback`'s `traverse`
-  descends the whole world again at the same traversal number. Every animation controller, every
-  `LightController` and `LightManager::update` runs twice per frame, and on the second pass the node
-  path starts at an `ABSOLUTE_RF` camera, so the view matrix is folded into each light's world
-  transform.
-
 - `WindowManager::enableScene` (`apps/openmw/mwgui/windowmanagerimp.cpp:629`) blanks the traversal
   mask of the update visitor the RTX renderer owns, while the mirror walk keeps its own
   `sWorldTraversal`. While it is in effect the update reaches no scene node and the mirror still

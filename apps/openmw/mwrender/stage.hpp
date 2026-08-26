@@ -79,6 +79,18 @@ namespace MWRender
         /// about what is topmost.
         void setSceneRoot(osg::Group& root);
 
+        /// Runs the master camera's own update callback, and nothing below it.
+        ///
+        /// **The counterpart of the parenting above**, for a renderer that has already walked the
+        /// scene from its own root. A plain accept on the camera descends the world a second time —
+        /// every animation controller, every `LightController` and `LightManager::update` twice in
+        /// one frame — and does it down a node path that starts at an `ABSOLUTE_RF` camera, so
+        /// anything reading a world transform off the visitor gets the view matrix folded into it.
+        ///
+        /// Does nothing where the camera carries no callback, which is every frame before
+        /// `MWRender::Camera` has hung the eye on it.
+        void updateEye(osgUtil::UpdateVisitor& visitor) const;
+
     private:
         osg::ref_ptr<osg::Camera> mCamera;
         osg::ref_ptr<osg::FrameStamp> mFrameStamp;

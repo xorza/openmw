@@ -336,8 +336,10 @@ namespace MWRender
         // looking onto the master camera from an update callback, exactly as the viewer's own update
         // traversal reaches it. Without this the view matrix is whatever it was made with, and every
         // frame is traced from the origin looking down.
-        if (mCamera->getUpdateCallback() != nullptr)
-            mCamera->accept(*mUpdateVisitor);
+        //
+        // Through the stage, because the stage is what parented the world under that camera and so
+        // is what knows why accepting on it would walk the world twice.
+        mStage.updateEye(*mUpdateVisitor);
     }
 
     void RtxRenderer::fitToWindow()

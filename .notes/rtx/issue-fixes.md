@@ -166,6 +166,29 @@ before and after.
 **Worth measuring**: this is half of every update traversal in the game, and it is the one place in
 this list where the number is likely to be large.
 
+**That fix is a trap too, and the tree already said so.** `Stage::setSceneRoot` carries a comment
+explaining exactly why the parenting is there, and it is not `osgViewer`:
+`RenderingManager::castCameraToViewportRay` builds its ray in **projection** coordinates and accepts
+an intersection visitor on the camera, so the camera's own matrices are what put that ray into the
+world. Unparent the root on this path and the camera answers "nothing" to every activation in the
+game — no door, no container, no person. So the parenting stays.
+
+**Done**, the other way round: the world is walked once from its own root, exactly as before, and the
+camera's callback is then run *without descending* — `Stage::updateEye` sets `TRAVERSE_NONE` for the
+one accept and hands the visitor back as it found it. It sits on `Stage` and not in the renderer
+because `Stage` is what parented the world under the camera, so the two halves of that decision are
+one thing to read.
+
+Tested in `apps/openmw_tests/mwrender/stage.cpp`, which is a new directory: one test pins the
+parenting picking depends on and that saying it twice means what saying it once meant, one pins that
+the eye is updated while the world's callback fires exactly once, and one pins the main-menu case
+where the camera carries no callback at all. Without the `TRAVERSE_NONE` the middle one fails at two
+world traversals against one, which is the bug stated as a number.
+
+**Not measured.** *Do not bench until the renderer draws everything the game has* applies, and the
+harness cannot reach this code at all: `openmw-rtxtool` has no `RtxRenderer`, so the saving is a
+count of traversals rather than a time.
+
 ### B2 — `enableScene` mutates a visitor it does not own
 
 `WindowManager::enableScene` (`windowmanagerimp.cpp:622-637`) blanks the traversal mask of the update
@@ -282,7 +305,7 @@ route. No step depends on a later one.
 | 1 | **done** — A1, exclude `Mask_UpdateVisitor` from `sWorldTraversal` | hidden nodes | none | visibility animation only |
 | 2 | **done** — A2, descend only the branches an `osg::Switch` has on | switch branches | low | day/night and herbalism only |
 | 3 | **done** — A3, `lightColour`: both terms and the decode; drop `getEmpty`; delete the harness override | glow lights, `getEmpty`, the missing decode | low | yes, coloured lamps most |
-| 4 | B1 — stop parenting the scene root under the camera | double traversal | medium | no |
+| 4 | **done** — B1, run the camera's callback without descending; the parenting stays | double traversal | medium | no |
 | 5 | B2 — replace `enableScene`'s mask reach-in; drop `Stage::getUpdateVisitor` | shared visitor | low | no |
 | 6 | F — re-attach `mExtraLightSource` in `setObjectRoot` | carried light | low | yes |
 | 7 | C1 — double-buffer `mTarget` | present race | low | no |

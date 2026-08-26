@@ -82,4 +82,18 @@ namespace MWRender
         if (!mCamera->containsNode(&root))
             mCamera->addChild(&root);
     }
+
+    void Stage::updateEye(osgUtil::UpdateVisitor& visitor) const
+    {
+        osg::Camera& camera = getCamera();
+        if (camera.getUpdateCallback() == nullptr)
+            return;
+
+        // Restored rather than assumed: the mode is the visitor's own property and a caller that
+        // handed one over is entitled to get it back as it was.
+        const osg::NodeVisitor::TraversalMode was = visitor.getTraversalMode();
+        visitor.setTraversalMode(osg::NodeVisitor::TRAVERSE_NONE);
+        camera.accept(visitor);
+        visitor.setTraversalMode(was);
+    }
 }
