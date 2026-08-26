@@ -20,10 +20,6 @@
   with nothing carried between frames, so the picture's brightness is a pure function of what is on
   screen this frame.
 
-- `Animation::setObjectRoot` (`apps/openmw/mwrender/animation.cpp:1545`) tears off the subtree that
-  owns `mExtraLightSource` and never re-adds it, so an actor whose object root is rebuilt loses its
-  carried light permanently.
-
 - The mirror walk is `TRAVERSE_ALL_CHILDREN` (`components/rtx/sceneextractor.cpp:284`), and
   `osg::Sequence` both visits every child under that mode and advances its own clock only under
   `TRAVERSE_ACTIVE_CHILDREN`. A `NiFltAnimationNode` flipbook (`components/nifosg/nifloader.cpp:987`)

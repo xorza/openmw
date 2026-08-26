@@ -117,18 +117,6 @@ game's fog is currently far denser. Do it where `shot` can be compared against a
 
 ---
 
-## F. Upstream: `setObjectRoot` drops the carried light
-
-`Animation::setObjectRoot` (`animation.cpp:1546-1556`) removes the subtree that owns
-`mExtraLightSource` and never re-adds it, so an actor whose object root is rebuilt loses its carried
-light **permanently** — not for a frame. This is upstream's and affects both renderers; it is just
-more visible here, because here a torch is the only thing lighting the scene.
-
-Re-attach the light in `setObjectRoot` after the new root is in. Standalone, no dependency on
-anything above.
-
----
-
 ## Plan
 
 Each step ends with the build, the filtered test binary, and — where marked — a `shot` or a `bench`
@@ -136,14 +124,13 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | F — re-attach `mExtraLightSource` in `setObjectRoot` | carried light | low | yes |
-| 2 | C1 — double-buffer `mTarget` | present race | low | no |
-| 3 | C2 — clear `mHistoryStale` where it is consumed | dropped reset | none | no |
-| 4 | E — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 5 | D — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 6 | A4 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | C1 — double-buffer `mTarget` | present race | low | no |
+| 2 | C2 — clear `mHistoryStale` where it is consumed | dropped reset | none | no |
+| 3 | E — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 4 | D — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 5 | A4 — measure the actor range flip, then decide | actor flip | — | — |
 
-Steps 1 to 3 are the cheap ones and none of them needs a judgement about how the game looks. Steps 4
-and 5 change how it looks most, and both want a moving camera to judge — which is also why they come
-after everything that would move the frame underneath them. Step 6 is not a fix at all until the
+Steps 1 and 2 are the cheap ones and neither needs a judgement about how the game looks. Steps 3 and
+4 change how it looks most, and both want a moving camera to judge — which is also why they come
+after everything that would move the frame underneath them. Step 5 is not a fix at all until the
 measurement says there is one.

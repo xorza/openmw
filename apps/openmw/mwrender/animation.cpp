@@ -1,6 +1,7 @@
 #include "animation.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <limits>
 
 #include <osg/BlendFunc>
@@ -1545,6 +1546,14 @@ namespace MWRender
 
     void Animation::setObjectRoot(const std::string& model, bool forceskeleton, bool baseonly, bool isCreature)
     {
+        // **Everything under the object root goes with it below**, and the carried light is the one
+        // such thing with an owner outside. No caller has one yet: `addExtraLight` runs once, in
+        // `ObjectAnimation`'s constructor, after its only call here. Re-attaching the node would not
+        // be the fix if one ever did — `SceneUtil::addLight` hangs a light on the model's own
+        // `AttachLight`, so one carried across to a new root would light from the origin rather than
+        // from the wick.
+        assert(!mExtraLightSource && "rebuilding the object root would drop the carried light");
+
         osg::ref_ptr<osg::StateSet> previousStateset;
         if (mObjectRoot)
         {
