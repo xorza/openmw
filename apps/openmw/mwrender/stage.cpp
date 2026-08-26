@@ -17,13 +17,11 @@ namespace MWRender
 
     Stage::~Stage() = default;
 
-    void Stage::adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue& events,
-        osgUtil::UpdateVisitor& updateVisitor, osg::Stats& stats)
+    void Stage::adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue& events, osg::Stats& stats)
     {
         mCamera = &camera;
         mFrameStamp = &frameStamp;
         mEvents = &events;
-        mUpdateVisitor = &updateVisitor;
         mStats = &stats;
     }
 
@@ -43,12 +41,6 @@ namespace MWRender
     {
         assert(mEvents != nullptr && "the event queue is the renderer's to adopt, and nothing has yet");
         return *mEvents;
-    }
-
-    osgUtil::UpdateVisitor& Stage::getUpdateVisitor() const
-    {
-        assert(mUpdateVisitor != nullptr && "the update visitor is the renderer's to adopt, and nothing has yet");
-        return *mUpdateVisitor;
     }
 
     osg::Stats& Stage::getStats() const
@@ -89,8 +81,7 @@ namespace MWRender
         if (camera.getUpdateCallback() == nullptr)
             return;
 
-        // Restored rather than assumed: the mode is the visitor's own property and a caller that
-        // handed one over is entitled to get it back as it was.
+        // The mode is the visitor's own property, and a caller that lent one gets it back as it was.
         const osg::NodeVisitor::TraversalMode was = visitor.getTraversalMode();
         visitor.setTraversalMode(osg::NodeVisitor::TRAVERSE_NONE);
         camera.accept(visitor);

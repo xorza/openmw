@@ -414,9 +414,6 @@ namespace MWGui
         std::vector<std::string_view> getAllowedWindowIds(GuiMode mode) const override;
 
     private:
-        unsigned int mOldUpdateMask;
-        unsigned int mOldCullMask;
-
         const MWWorld::ESMStore* mStore;
         Resource::ResourceSystem* mResourceSystem;
         osg::ref_ptr<SceneUtil::WorkQueue> mWorkQueue;
@@ -608,8 +605,6 @@ namespace MWGui
         void setMenuTransparency(float value);
 
         void updatePinnedWindows();
-
-        void enableScene(bool enable);
 
         void handleScheduledMessageBoxes();
 

@@ -76,6 +76,7 @@ namespace MWRender
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
         void setSceneRoot(osg::Group& root) override;
+        void showWorld(bool shown) override;
 
         PostProcessor* getPostProcessor() override { return mPostProcessor.get(); }
 
@@ -137,6 +138,11 @@ namespace MWRender
         osg::ref_ptr<SDLUtil::GraphicsWindowSDL2> mGraphicsWindow;
 
         osg::ref_ptr<osgViewer::Viewer> mViewer;
+
+        /// What the update traversal and the cull were set to before the world was hidden. Restored
+        /// rather than defaulted, because somebody else chose them.
+        unsigned int mShownUpdateMask = 0;
+        unsigned int mShownCullMask = 0;
 
         osg::ref_ptr<SceneUtil::SelectDepthFormatOperation> mSelectDepthFormatOperation;
         osg::ref_ptr<SceneUtil::Color::SelectColorFormatOperation> mSelectColorFormatOperation;

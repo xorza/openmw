@@ -102,6 +102,7 @@ namespace MWRender
 
         void attachWorld(RenderingManager& world, osg::Group& worldRoot) override;
         void setSceneRoot(osg::Group& root) override;
+        void showWorld(bool shown) override { mWorldShown = shown; }
 
         void advance(double simulationTime) override;
         void eventTraversal() override;
@@ -227,6 +228,10 @@ namespace MWRender
         /// Hands MyGUI's triangles to the renderer, where there is a GUI up at all.
         void drawGui();
 
+        /// The interface, then the surface — the two things a frame owes whether or not there was a
+        /// world in it.
+        void finishFrame();
+
         /// Draws whatever asked before there was a world to draw it against.
         void drawDeferredViews();
 
@@ -235,6 +240,10 @@ namespace MWRender
 
         /// Whether the world has been handed to the backend at least once.
         bool mHasScene = false;
+
+        /// Whether the world is being shown. False behind a loading screen and the main menu's
+        /// cover, where the walk would read a world nothing is updating. `Renderer::showWorld`.
+        bool mWorldShown = true;
 
         /// The world's, for a picture that has to resolve textures of its own. Null until
         /// `attachWorld`.

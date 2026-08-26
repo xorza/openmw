@@ -26,19 +26,22 @@ namespace MWRender
     /// The frame, the eye and the input queue — where the game reads them, whatever draws.
     ///
     /// **`osgViewer::Viewer` was two things and thirteen classes wanted the smaller one.** It
-    /// bundles the frame stamp, the master camera, the event queue and the update traversal — none
-    /// of which touches OpenGL — with a graphics context, a threading model and a draw dispatcher.
-    /// Everything from the GUI to the input wrapper had to import `osgViewer` to reach the first
-    /// half, and that is a good part of why the renderer looked unswappable. `Stage` is the first
-    /// half, named; `MWRender::Renderer` is the second.
+    /// bundles the frame stamp, the master camera and the event queue — none of which touches
+    /// OpenGL — with a graphics context, a threading model and a draw dispatcher. Everything from
+    /// the GUI to the input wrapper had to import `osgViewer` to reach the first half, and that is a
+    /// good part of why the renderer looked unswappable. `Stage` is the first half, named;
+    /// `MWRender::Renderer` is the second.
     ///
     /// **Filled in by the renderer rather than filled in for it.** Every renderer needs a camera, a
     /// frame stamp, an input queue and somewhere to count things, and one built on `osgViewer` gets
-    /// all four already wired to each other — the update and event visitors hold the frame stamp,
-    /// and swapping the objects underneath without swapping those references is a bug that only
-    /// shows up frames later. So the renderer says which objects it drives the frame from and the
-    /// stage remembers them, which costs a renderer that owns its own surface one constructor call
-    /// and costs this one nothing at all.
+    /// all four already wired to each other — swapping the objects underneath without swapping the
+    /// references to them is a bug that only shows up frames later. So the renderer says which
+    /// objects it drives the frame from and the stage remembers them, which costs a renderer that
+    /// owns its own surface one constructor call and costs this one nothing at all.
+    ///
+    /// **The update visitor is not among them, and that is deliberate.** It is the one thing here a
+    /// renderer *drives* rather than holds, and while it was reachable `WindowManager` used it to
+    /// blank a traversal the renderer owned. What that was asking is now `Renderer::showWorld`.
     class Stage
     {
     public:
@@ -49,8 +52,7 @@ namespace MWRender
         Stage& operator=(const Stage&) = delete;
 
         /// Called once, by the renderer being constructed, before anything above it exists.
-        void adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue& events,
-            osgUtil::UpdateVisitor& updateVisitor, osg::Stats& stats);
+        void adopt(osg::Camera& camera, osg::FrameStamp& frameStamp, osgGA::EventQueue& events, osg::Stats& stats);
 
         /// View, projection, viewport and cull mask. Whether there is a graphics context behind it
         /// is the renderer's business, and under one that owns its own surface there is none.
@@ -61,8 +63,6 @@ namespace MWRender
 
         /// Where SDL puts what it read, and where the scene graph's own handlers read it from.
         osgGA::EventQueue& getEvents() const;
-
-        osgUtil::UpdateVisitor& getUpdateVisitor() const;
 
         /// Per-frame counters, keyed by frame number. Every subsystem reports into this one.
         osg::Stats& getStats() const;
@@ -86,16 +86,12 @@ namespace MWRender
         /// every animation controller, every `LightController` and `LightManager::update` twice in
         /// one frame — and does it down a node path that starts at an `ABSOLUTE_RF` camera, so
         /// anything reading a world transform off the visitor gets the view matrix folded into it.
-        ///
-        /// Does nothing where the camera carries no callback, which is every frame before
-        /// `MWRender::Camera` has hung the eye on it.
         void updateEye(osgUtil::UpdateVisitor& visitor) const;
 
     private:
         osg::ref_ptr<osg::Camera> mCamera;
         osg::ref_ptr<osg::FrameStamp> mFrameStamp;
         osg::ref_ptr<osgGA::EventQueue> mEvents;
-        osg::ref_ptr<osgUtil::UpdateVisitor> mUpdateVisitor;
         osg::ref_ptr<osg::Stats> mStats;
         osg::ref_ptr<osg::Group> mSceneRoot;
     };

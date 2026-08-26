@@ -49,7 +49,7 @@ namespace MWRender
                 mCamera->addUpdateCallback(mEye);
                 mSceneRoot->addUpdateCallback(mWorld);
 
-                mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mUpdateVisitor, *mStats);
+                mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mStats);
                 mStage.setSceneRoot(*mSceneRoot);
             }
         };

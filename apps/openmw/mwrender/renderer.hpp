@@ -150,6 +150,17 @@ namespace MWRender
         /// under: the rasterizer wraps it in its post-processing group and hands back the wrapper.
         virtual void setSceneRoot(osg::Group& root) = 0;
 
+        /// Whether the world is being shown at all. The interface is drawn either way.
+        ///
+        /// **A loading screen and the main menu's cover are the two that say no**, and what they
+        /// want is a frame that is the interface and nothing else: nothing animating behind it, and
+        /// nothing drawn that the interface is about to cover.
+        ///
+        /// **Said as intent, because the two renderers have nothing to share here.** The rasterizer
+        /// answers it by blanking its update traversal and culling to the GUI's masks; this one has
+        /// no cull at all and answers by not walking the scene and not tracing it.
+        virtual void showWorld(bool shown) = 0;
+
         /// The shader chain over the frame, or null where this renderer has none.
         ///
         /// **Owned here and not by the world.** It is a renderer's answer to "what happens between

@@ -6,11 +6,6 @@
   (`apps/openmw/mwrender/rtx/rtxrenderer.cpp`). At the shipped defaults those are 32768 and 7168
   units, so a screenshot and a played frame stand in different air.
 
-- `WindowManager::enableScene` (`apps/openmw/mwgui/windowmanagerimp.cpp:629`) blanks the traversal
-  mask of the update visitor the RTX renderer owns, while the mirror walk keeps its own
-  `sWorldTraversal`. While it is in effect the update reaches no scene node and the mirror still
-  reads what the update no longer refreshes.
-
 - `mTarget` is discarded from `VK_IMAGE_LAYOUT_UNDEFINED` with a `TOP_OF_PIPE` source scope at the
   top of every frame (`components/rtxvulkan/vulkanrenderer.cpp:634`) while the presenter's blit out
   of it may still be running: `Presenter::present` submits asynchronously and waits its fence only
@@ -46,6 +41,11 @@
   a ray tracer cannot express, but the game's scene graph builds one anyway:
   `SceneUtil::createLightSource` (`components/sceneutil/lightutil.cpp:130`) negates the diffuse
   instead, so the walk mirrors a light of negative intensity where the harness places none.
+
+- `RenderingManager::toggleRenderMode(Render_Scene)` — the `tws` console command
+  (`apps/openmw/mwrender/renderingmanager.cpp:746`) — hides the world by flipping `sToggleWorldMask`
+  in the master camera's cull mask, which the RTX path never reads. The water half goes through
+  `Water::showWorld` and works; the rest of the world stays traced.
 
 - `MWMechanics::Actors` (`apps/openmw/mwmechanics/actors.cpp:1243`) sets an actor's base node mask
   to zero beyond `actors processing range` and back on the frame after, so an actor oscillating

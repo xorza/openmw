@@ -1,5 +1,7 @@
 #include "glrenderer.hpp"
 
+#include "../vismask.hpp"
+
 #include <atomic>
 #include <cmath>
 #include <fstream>
@@ -146,8 +148,8 @@ namespace MWRender
         // Taken from the viewer rather than made and handed to it: the viewer wires its update and
         // event visitors to the frame stamp at construction, and substituting objects underneath
         // without substituting those references is a bug that shows up frames later.
-        mStage.adopt(*mViewer->getCamera(), *mViewer->getFrameStamp(), *mViewer->getEventQueue(),
-            *mViewer->getUpdateVisitor(), *mViewer->getViewerStats());
+        mStage.adopt(
+            *mViewer->getCamera(), *mViewer->getFrameStamp(), *mViewer->getEventQueue(), *mViewer->getViewerStats());
 
         createWindow(spec.mResourceDir);
 
@@ -409,6 +411,33 @@ namespace MWRender
     {
         mStage.setSceneRoot(root);
         mViewer->setSceneData(&root);
+    }
+
+    void GlRenderer::showWorld(bool shown)
+    {
+        // The cull mask doubles as the record of which way round this is: nothing else leaves it at
+        // exactly the two bits the interface is drawn with.
+        constexpr unsigned int hidden = Mask_GUI | Mask_PreCompile;
+
+        const auto cull = [this](unsigned int mask) {
+            // The stereo pair goes with the one whatever the mode: both are no-ops in mono.
+            mViewer->getCamera()->setCullMask(mask);
+            mViewer->getCamera()->setCullMaskLeft(mask);
+            mViewer->getCamera()->setCullMaskRight(mask);
+        };
+
+        if (!shown && mViewer->getCamera()->getCullMask() != hidden)
+        {
+            mShownUpdateMask = mViewer->getUpdateVisitor()->getTraversalMask();
+            mShownCullMask = mViewer->getCamera()->getCullMask();
+            mViewer->getUpdateVisitor()->setTraversalMask(hidden);
+            cull(hidden);
+        }
+        else if (shown && mViewer->getCamera()->getCullMask() == hidden)
+        {
+            mViewer->getUpdateVisitor()->setTraversalMask(mShownUpdateMask);
+            cull(mShownCullMask);
+        }
     }
 
     void GlRenderer::advance(double simulationTime)

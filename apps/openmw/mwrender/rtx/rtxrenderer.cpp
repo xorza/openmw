@@ -141,7 +141,7 @@ namespace MWRender
         mWidth = static_cast<std::uint32_t>(std::max(width, 1));
         mHeight = static_cast<std::uint32_t>(std::max(height, 1));
 
-        mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mUpdateVisitor, *mStats);
+        mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mStats);
 
         const std::string wanted = Settings::rtx().mUpscale;
 
@@ -330,7 +330,12 @@ namespace MWRender
         mUpdateVisitor->reset();
         mUpdateVisitor->setFrameStamp(mFrameStamp);
         mUpdateVisitor->setTraversalNumber(mFrameStamp->getFrameNumber());
-        mSceneRoot->accept(*mUpdateVisitor);
+
+        // **Not behind a loading screen.** What the rasterizer says with a blanked traversal mask
+        // this says by not walking. The eye below still updates, as it does under that blanked mask:
+        // the master camera's own bits are not among the ones it clears.
+        if (mWorldShown)
+            mSceneRoot->accept(*mUpdateVisitor);
 
         // **And the eye, which is not in the graph.** `MWRender::Camera` puts where the player is
         // looking onto the master camera from an update callback, exactly as the viewer's own update
@@ -369,6 +374,22 @@ namespace MWRender
         // meant for radiance is how a menu comes out grey.
         if (MyGUIRtx::RenderManager* gui = MyGUIRtx::RenderManager::getInstancePtr())
             gui->collectDrawCalls();
+    }
+
+    /// **The frame the trace made, on the screen, before the call that made it returns.** No
+    /// composite, no interop and no rasterized frame underneath, which is what takes an interop
+    /// path's frame of latency out.
+    ///
+    /// **Traced or not, the frame is presented.** A walk that placed nothing, an eye with no roll
+    /// and a world nobody is being shown are all reasons to leave the target as it is; none is a
+    /// reason to stop feeding the surface, and a window that stops answering is one the compositor
+    /// eventually says so about.
+    void RtxRenderer::finishFrame()
+    {
+        drawGui();
+
+        if (!mRenderer->presentFrame())
+            fitToWindow();
     }
 
     void RtxRenderer::deferRedraw(TracedView& view)
@@ -555,6 +576,20 @@ namespace MWRender
 
         mFrame = when.getFrameNumber();
 
+        // **A frame with the world hidden is the interface and nothing else.** No walk, because the
+        // update traversal did not run either; no trace, because the interface covers every pixel of
+        // it; and no sweep, because a walk that did not happen has marked nothing and the sweep
+        // would take the world.
+        //
+        // **The emitter clock stops with it**, which is what a clock of its own is for: it counts
+        // the seconds this renderer has shown, so a plume resumes where it left off rather than
+        // being handed the loading screen in one step.
+        if (!mWorldShown)
+        {
+            finishFrame();
+            return;
+        }
+
         // **The world's clock and not this renderer's.** Everything the graph animates under its own
         // controller reads it off the walk's frame stamp, and the sea off the frame's constants; a
         // clock of our own would run both while the game was paused and neither in step with the
@@ -619,20 +654,9 @@ namespace MWRender
             // One walk over the whole graph, where every path is already distinct.
             = mExtractor->extractWorld(frame.mScene, osg::Matrixf::identity(), 0, mFrame);
 
-        // **Traced or not, the frame is presented.** A walk that placed nothing and an eye with no
-        // roll are both reasons to leave the target holding whatever it last held; neither is a
-        // reason to stop feeding the surface. Skipping the present would freeze the window on every
-        // frame with no world in it — which is every frame of the main menu — and a window that
-        // stops answering is one the compositor eventually says so about.
         const bool traced = traceWorld(frame, found);
 
-        // **The frame the trace made, on the screen, before this call returns.** No composite, no
-        // interop and no rasterized frame underneath — which is what takes an interop path's
-        // frame of latency out: the image presented is the one just traced.
-        drawGui();
-
-        if (!mRenderer->presentFrame())
-            fitToWindow();
+        finishFrame();
 
         // **After the frame and not before the walk.** Where everything stood this frame is what
         // the next one measures its motion against, and saying so any earlier would have this frame

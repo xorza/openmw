@@ -9,7 +9,6 @@
 #include <osg/Camera>
 #include <osg/FrameStamp>
 
-#include <osgUtil/UpdateVisitor>
 
 #include <MyGUI_ClipboardManager.h>
 #include <MyGUI_FactoryManager.h>
@@ -68,7 +67,6 @@
 
 #include "../mwrender/renderer.hpp"
 #include "../mwrender/stage.hpp"
-#include "../mwrender/vismask.hpp"
 
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/class.hpp"
@@ -156,9 +154,7 @@ namespace MWGui
         Resource::ResourceSystem* resourceSystem, SceneUtil::WorkQueue* workQueue, const std::filesystem::path& logpath,
         bool consoleOnlyScripts, Translation::Storage& translationDataStorage, ToUTF8::FromType encoding,
         bool exportFonts, const std::string& versionDescription, Files::ConfigurationManager& cfgMgr)
-        : mOldUpdateMask(0)
-        , mOldCullMask(0)
-        , mStore(nullptr)
+        : mStore(nullptr)
         , mResourceSystem(resourceSystem)
         , mWorkQueue(workQueue)
         , mRenderer(renderer)
@@ -619,23 +615,6 @@ namespace MWGui
         mGarbageDialogs.clear();
     }
 
-    void WindowManager::enableScene(bool enable)
-    {
-        unsigned int disablemask = MWRender::Mask_GUI | MWRender::Mask_PreCompile;
-        if (!enable && getCullMask() != disablemask)
-        {
-            mOldUpdateMask = mStage.getUpdateVisitor().getTraversalMask();
-            mOldCullMask = getCullMask();
-            mStage.getUpdateVisitor().setTraversalMask(disablemask);
-            setCullMask(disablemask);
-        }
-        else if (enable && getCullMask() == disablemask)
-        {
-            mStage.getUpdateVisitor().setTraversalMask(mOldUpdateMask);
-            setCullMask(mOldCullMask);
-        }
-    }
-
     void WindowManager::updateConsoleObjectPtr(const MWWorld::Ptr& currentPtr, const MWWorld::Ptr& newPtr)
     {
         mConsole->updateSelectedObjectPtr(currentPtr, newPtr);
@@ -648,7 +627,7 @@ namespace MWGui
         bool mainmenucover = containsMode(GM_MainMenu)
             && MWBase::Environment::get().getStateManager()->getState() == MWBase::StateManager::State_NoGame;
 
-        enableScene(!loading && !mainmenucover);
+        mRenderer.showWorld(!loading && !mainmenucover);
 
         if (!mMap)
             return; // UI not created yet
@@ -2118,7 +2097,7 @@ namespace MWGui
             mVideoBackground->eventKeyButtonPressed += MyGUI::newDelegate(this, &WindowManager::onVideoKeyPressed);
         }
 
-        enableScene(false);
+        mRenderer.showWorld(false);
 
         MyGUI::IntSize screenSize = MyGUI::RenderManager::getInstance().getViewSize();
         sizeVideo(screenSize.width, screenSize.height);
