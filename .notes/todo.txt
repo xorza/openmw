@@ -1,12 +1,4 @@
- i want you to review diff between this branch and master. make sure renderer split if designed well and separation is clean. make sure no internal renderer knowledge exposed and renderers are symmetrical and no external code know which renderer currently running. i expect to be only one ifdef RTX - in renderer constructor. also make sure there now new bugs and performance regressions. output your findings into md file with a plan with steps on how to address. see what could be simplified, improved, optimized, consolidates, encapsulated
-
-
-distant view
-
-rtx bridge- do we need it?
-
-cnn or transformer dlss
-
-specular
-
-rr 4.5
+- cnn or transformer dlss
+- specular
+- rr 4.5
+- audit alloc tests
