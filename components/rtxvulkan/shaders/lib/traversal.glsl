@@ -50,8 +50,43 @@ bool alphaPasses(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, ve
     return texel.a >= material.mAlphaCutoff;
 }
 
-/// The candidate loop, run to completion, confirming every hit that lands on the material rather
-/// than in one of its holes.
+/// Whether what is behind this candidate's surface is meant to show through it.
+///
+/// One number and no mode, for the reason `GpuMaterial::mOpacity` gives: a leaf card and a pane of
+/// glass carry the same alpha mode, and the host is what tells them apart.
+bool candidateIsTranslucent(uint instanceIndex)
+{
+    return materials[instances[instanceIndex].mMaterial].mOpacity < 1.0;
+}
+
+/// How much of a ray a translucent candidate lets past it.
+///
+/// **The texture's alpha and the material's, multiplied**, which is what a blend does: a stained
+/// pane's texture says where the lead is and its material says how much glass there is.
+float candidateTransmittance(
+    uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth)
+{
+    const GpuInstance instance = instances[instanceIndex];
+    const GpuMaterial material = materials[instance.mMaterial];
+
+    vec2 uv[3];
+    triangleUvs(triangleCorners(meshes[instance.mMesh], primitive), uv);
+
+    // **Guarded where `alphaPasses` needs no guard.** A cutout is one only where it has a mask to
+    // read, so that path never meets `NO_TEXTURE`; a material is translucent on its own alpha alone,
+    // and an untextured pane is all glass and no lead.
+    const float covered = material.mDiffuse == NO_TEXTURE
+        ? 1.0
+        : sampleDiffuse(material.mDiffuse, uv, cornerWeights(bary), material.mTextureTransform, crossed, direction,
+            coneWidth)
+              .a;
+
+    return 1.0 - clamp(covered * material.mOpacity, 0.0, 1.0);
+}
+
+/// The candidate loop, run to completion. It confirms every hit that lands on the material rather
+/// than in one of its holes, and — where the caller asks — walks past a translucent one instead,
+/// keeping what it let through.
 ///
 /// **A macro because `glslc` rejects `rayQueryEXT` as an `out` or `inout` parameter**, so a
 /// traversal cannot be handed to a function and this cannot be one. It was written out twice, and
@@ -63,24 +98,41 @@ bool alphaPasses(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, ve
 /// @param cone how wide the ray's cone is *at this candidate*, which is what decides how much of the
 ///        mask one pixel is looking at. Nought for a ray that carries no cone, which reads the
 ///        finest level — every shadow ray. Substituted textually, so it may name the traversal.
-#define RTX_RESOLVE_CUTOUTS(query, along, cone)                                                              \
-    while (rayQueryProceedEXT(query))                                                                        \
-    {                                                                                                        \
-        if (rayQueryGetIntersectionTypeEXT(query, false) != gl_RayQueryCandidateIntersectionTriangleEXT)      \
-            continue;                                                                                        \
-                                                                                                             \
-        vec3 candidateCorners[3];                                                                            \
-        rayQueryGetIntersectionTriangleVertexPositionsEXT(query, false, candidateCorners);                    \
-                                                                                                             \
-        if (alphaPasses(rayQueryGetIntersectionInstanceCustomIndexEXT(query, false),                          \
-                rayQueryGetIntersectionPrimitiveIndexEXT(query, false),                                       \
-                rayQueryGetIntersectionBarycentricsEXT(query, false),                                         \
-                triangleCross(candidateCorners, rayQueryGetIntersectionObjectToWorldEXT(query, false)),       \
-                (along), (cone)))                                                                             \
-            rayQueryConfirmIntersectionEXT(query);                                                            \
+/// @param through an lvalue every translucent candidate multiplies what it let past into. Untouched
+///        where `seeThrough` is false, which the compiler folds away with the branch.
+/// @param seeThrough whether a translucent candidate is walked past or resolved against its cutoff
+///        like any other. **A literal, so that it folds**: a ray that sees through cannot commit the
+///        surface it saw through, so a caller with no use for `through` must say false and get the
+///        surface. Only the shadow ray says true today — its answer is a product, and a product does
+///        not care what order its factors arrived in.
+#define RTX_RESOLVE(query, along, cone, through, seeThrough)                                                \
+    while (rayQueryProceedEXT(query))                                                                       \
+    {                                                                                                       \
+        if (rayQueryGetIntersectionTypeEXT(query, false) != gl_RayQueryCandidateIntersectionTriangleEXT)    \
+            continue;                                                                                       \
+                                                                                                            \
+        const uint candidateInstance = rayQueryGetIntersectionInstanceCustomIndexEXT(query, false);         \
+        const uint candidatePrimitive = rayQueryGetIntersectionPrimitiveIndexEXT(query, false);             \
+        const vec2 candidateBary = rayQueryGetIntersectionBarycentricsEXT(query, false);                    \
+                                                                                                            \
+        vec3 candidateCorners[3];                                                                           \
+        rayQueryGetIntersectionTriangleVertexPositionsEXT(query, false, candidateCorners);                  \
+        const vec3 candidateCross                                                                           \
+            = triangleCross(candidateCorners, rayQueryGetIntersectionObjectToWorldEXT(query, false));       \
+                                                                                                            \
+        if ((seeThrough) && candidateIsTranslucent(candidateInstance))                                      \
+        {                                                                                                   \
+            (through) *= candidateTransmittance(                                                            \
+                candidateInstance, candidatePrimitive, candidateBary, candidateCross, (along), (cone));     \
+            continue;                                                                                       \
+        }                                                                                                   \
+                                                                                                            \
+        if (alphaPasses(                                                                                    \
+                candidateInstance, candidatePrimitive, candidateBary, candidateCross, (along), (cone)))     \
+            rayQueryConfirmIntersectionEXT(query);                                                          \
     }
 
-/// Whether anything stands between `from` and a light `reach` away along `towards`.
+/// How much of a light `reach` away along `towards` reaches `from`.
 ///
 /// No cone here, so the cutout is decided at the finest mip. A shadow ray carries no footprint, and
 /// aliasing in a leaf's shadow is worth far less than aliasing on the leaf.
@@ -90,17 +142,28 @@ bool alphaPasses(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, ve
 /// `tmax` under its `tmin` is undefined — which is a hang or a garbage answer rather than an empty
 /// one. Nothing fits in that gap anyway: the bias is what a hit point's own surface needs to be
 /// clear of, so a light inside it is a light nothing can stand between.
-bool occluded(vec3 from, vec3 towards, float distance)
+/// **A translucent surface dims the light rather than stopping it**, and the order it is met in does
+/// not matter: the answer is a product, and a product does not care. That is what makes the shadow
+/// the cheap half of transparency — the eye needs its layers sorted and this needs nothing at all.
+///
+/// **`TerminateOnFirstHit` stays.** A translucent candidate is never confirmed, so traversal walks
+/// past it and keeps the early out for the first thing that does stop the ray.
+float lightThrough(vec3 from, vec3 towards, float distance)
 {
     if (distance <= SHADOW_BIAS)
-        return false;
+        return 1.0;
+
+    float through = 1.0;
 
     rayQueryEXT query;
     rayQueryInitializeEXT(
         query, sceneTop, gl_RayFlagsTerminateOnFirstHitEXT, MASK_SOLID, from, SHADOW_BIAS, towards, distance);
-    RTX_RESOLVE_CUTOUTS(query, towards, 0.0)
+    RTX_RESOLVE(query, towards, 0.0, through, true)
 
-    return rayQueryGetIntersectionTypeEXT(query, true) != gl_RayQueryCommittedIntersectionNoneEXT;
+    if (rayQueryGetIntersectionTypeEXT(query, true) != gl_RayQueryCommittedIntersectionNoneEXT)
+        return 0.0;
+
+    return through;
 }
 
 /// What a ray found, resolved down to the inputs shading needs.
@@ -166,7 +229,11 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     // whether traversal stops to ask, and forcing opacity here would override them and put every
     // leaf back inside the card it was painted on.
     rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, mask, origin, tmin, direction, frame.mFar);
-    RTX_RESOLVE_CUTOUTS(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false))
+
+    // The eye keeps nothing it passed through yet, so it takes every candidate against its cutoff —
+    // which is what leaves a pane of glass drawn as the half of its mask that survives one.
+    float passed = 1.0;
+    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), passed, false)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT)
         return surface;

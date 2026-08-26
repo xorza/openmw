@@ -149,6 +149,24 @@ namespace Rtx
         /// candidate loop. A cutoff with no texture to sample is not one — the mask lives in the
         /// diffuse map's alpha and there is nothing else to read.
         bool isCutout() const { return getAlphaCutoff() > 0.0f && mDiffuse != sNoIndex; }
+
+        /// Whether what is behind this surface is meant to show through it.
+        ///
+        /// **`AlphaMode::Blend` alone does not say so, and this is the whole difficulty.** Morrowind
+        /// keeps its foliage under `NiAlphaProperty`, so a leaf card and a pane of glass carry the
+        /// same mode: the leaf is fully opaque where its painted mask is opaque, and the pane is
+        /// translucent everywhere. What tells them apart is the *material's* own alpha, which
+        /// `NiMaterialProperty` records and `NifOsg::AlphaController` animates.
+        ///
+        /// Told apart because the two want opposite answers from traversal. A mask averaged over the
+        /// ray cone and tested is right for the leaf and wrong for the pane; light attenuated as it
+        /// passes is right for the pane and turns the leaf to gauze.
+        ///
+        /// **Not the opposite of `isCutout`, and a pane is both.** `getAlphaCutoff` hands a blended
+        /// material a stand-in threshold, so the build marks a pane non-opaque and traversal stops
+        /// for it — which is what a transmittance needs anyway. A reader deciding what to do with a
+        /// candidate asks this one first.
+        bool isTranslucent() const { return mAlphaMode == AlphaMode::Blend && mDiffuseColour.a() < 1.0f; }
     };
 
     /// One layer of a terrain material: a ground texture and the weights that place it.

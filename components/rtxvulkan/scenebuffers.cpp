@@ -36,6 +36,10 @@ namespace Rtx
                 .mKind = static_cast<std::uint32_t>(material.mKind),
                 .mDiffuse = material.mDiffuse,
                 .mAlphaCutoff = material.isCutout() ? material.getAlphaCutoff() : 0.0f,
+
+                // One where the surface is all there, so traversal branches on a number rather than
+                // on a mode it was never sent.
+                .mOpacity = material.isTranslucent() ? material.mDiffuseColour.a() : 1.0f,
                 .mLayerOffset = material.mLayerOffset,
                 .mLayerCount = material.mLayerCount,
                 .mEmissive = material.mEmissive,
@@ -200,6 +204,7 @@ namespace Rtx
             .mKind = Shaders::KIND_SURFACE,
             .mDiffuse = Shaders::NO_TEXTURE,
             .mAlphaCutoff = 0.0f,
+            .mOpacity = 1.0f,
             .mLayerOffset = 0,
             .mLayerCount = 0,
             .mEmissive = Shaders::NO_TEXTURE,

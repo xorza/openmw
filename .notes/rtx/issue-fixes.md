@@ -41,45 +41,20 @@ opaque under the ray tracer.
 **And a partial opacity has nowhere to go anyway.** `Material::getAlphaCutoff` turns
 `AlphaMode::Blend` into a cutoff of 0.5, so a blended surface is drawn in or out and never through.
 
-**What that is not.** It is not "a third of the game is wrong", though the census reads that way:
-242 of 832 materials on the ship at Seyda Neen are blend-mode, and 356 of 957 in Vivec. Nearly all of
-them are foliage, whose texture alpha is a painted mask that really is binary, and the comment above
-`alphaPasses` argues at length that averaging that mask over the ray cone is the better of the two
-available errors. That case is served correctly and on purpose. What is dropped is the *other*
-carrier of opacity — the material's own — which is glass, a ghost, a spell effect, and every actor
-the game is trying to fade out.
+**What that is not, and the census now says so outright.** 242 of 832 materials on the ship at Seyda
+Neen are blend-mode and 356 of 957 in Vivec, which reads like a third of the game. It is not: of
+those, the materials whose *own* alpha is under one number **0, 0, 4, 0, 0 and 2** across the ship,
+the customs office, Vivec, the canalworks, Wolverine Hall and Balmora. Everything else is foliage,
+whose texture alpha is a painted mask that really is binary, and the comment above `alphaPasses`
+argues at length that averaging that mask over the ray cone is the better of the two available
+errors. That case is served correctly and on purpose.
 
-### G1 — the material's alpha reaches the material
+**So the static world is not the customer.** Two to four surfaces a cell is not what a light-transport
+feature is built for. What is built for is the opacity nothing static carries and nothing can count:
+an actor's distance fade, Invisibility and Chameleon, which exist only while the game runs. The steps
+below are worth doing for those, and the handful of panes come free.
 
-**First, and not because it is small.** It is what tells a translucent surface from a painted mask,
-and every step below needs that answer before it can act.
-
-`traversal.glsl:254` takes `.rgb` of a `vec4` that has the opacity in its fourth component. The
-mirror fills it, `SceneBuffers` uploads it, and the shader reads three quarters of it — so the number
-`NifOsg::AlphaController` animates arrives on the device and is dropped one line short.
-
-Nothing changes on screen until G2. What changes is that traversal can finally distinguish the two
-populations that `AlphaMode::Blend` currently lumps together: a leaf card, whose material is fully
-opaque and whose texture carries a painted binary mask, and a pane of glass, whose material says 0.3.
-Without that, giving a blended surface transmittance turns every leaf in Vvardenfell into gauze.
-
-Wants the `scene` census extended to count materials whose diffuse alpha is under one, which is the
-number that says how much of the game this is about and which nothing prints today.
-
-### G2 — a blended surface casts a blended shadow
-
-`occluded` stops committing a candidate whose material is translucent and multiplies a throughput
-instead. Exact, ordered, free of noise, and the cheapest of the three: a shadow ray already runs to
-completion through the same macro, and nothing about the answer depends on which candidate arrived
-first.
-
-**The precedent is direct.** RTX Remix ships `rtx.enableDirectAlphaBlendShadows` and
-`rtx.enableIndirectAlphaBlendShadows` on by default, and keeps coloured translucent shadows behind a
-separate option that is off. So: attenuate first, tint later or never.
-
-A half-opaque pane halves the light under it. A cutout keeps the branch it has today.
-
-### G3 — the camera walks the blended layers in order
+### G1 — the camera walks the blended layers in order
 
 `traceSurface` keeps the nearest few translucent candidates by distance and composites them over the
 opaque hit it commits. Noise-free, and this is where Morrowind's glass, ghosts and faded actors
@@ -99,11 +74,13 @@ A fixed, small layer budget. Past it the furthest layer is dropped, which is wha
 
 **Changes the picture**, and it is the step that makes glass glass.
 
-### G4 — an actor's fade, Invisibility and Chameleon reach the surface
+### G2 — an actor's fade, Invisibility and Chameleon reach the surface
 
 Two named uniforms — `alpha` and `actorFade` — read where the texture-unit uniforms already are and
-multiplied into the material's opacity. The same statement as G1 arriving by a different carrier, so
-it lands after the transport that gives it somewhere to go.
+multiplied into the material's opacity, which `Material::isTranslucent` and `GpuMaterial::mOpacity`
+already carry to the device. The carrier is new and the destination is not, so this lands after the
+transport that gives it somewhere to go — and it is the step the rest are really for. A faded actor
+already casts a faded shadow; what is left is the actor.
 
 **Its own negative control**: with the fade working, an actor at nine tenths of `actors processing
 range` is already invisible when the mask cuts, which is what upstream built the fade for. The light
@@ -111,7 +88,7 @@ that actor carries already fades — `SceneUtil::LightController` multiplies the
 `LightSource::getActorFade` and the mirror reads that diffuse — so once the geometry follows it, the
 cut at `actors processing range` has nothing left to take away.
 
-### G5 — bounces resolve probabilistically, and only when the cost says so
+### G3 — bounces resolve probabilistically, and only when the cost says so
 
 The coin toss, kept where nobody can see it. A translucent candidate on an indirect ray is accepted
 or passed through by one draw against its opacity rather than by an ordered walk, which is what makes
@@ -123,7 +100,8 @@ the camera moves" — and that is a primary-ray argument. Remix reaches the same
 other side: `rtx.enableProbabilisticUnorderedResolveInIndirectRays` is on by default, confined to the
 first indirect bounce, "as particles matter less in higher bounces".
 
-**Not until a measurement asks for it.** G3 may be affordable at every depth in a world this small.
+**Not until a measurement asks for it.** G1 may be affordable at every depth in a world this small,
+and the census says how little of it there is to walk.
 
 ---
 
@@ -134,15 +112,14 @@ route. No step depends on a later one except where the table says so.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | G1 — the material's alpha reaches the material | — | none | no, on its own |
-| 2 | G2 — a blended surface casts a blended shadow | — | low | **yes** |
-| 3 | G3 — the camera walks the blended layers in order | — | medium | **yes, large** |
-| 4 | G4 — the fade, Invisibility and Chameleon reach it | actor transparency | low, after 3 | **yes** |
-| 5 | G5 — bounces resolve probabilistically | — | — | — |
+| 1 | G1 — the camera walks the blended layers in order | — | medium | **yes, large** |
+| 2 | G2 — the fade, Invisibility and Chameleon reach it | actor transparency | low, after 1 | **yes** |
+| 3 | G3 — bounces resolve probabilistically | — | — | — |
 
-Step 1 changes nothing on screen and unblocks everything: without it a leaf card and a pane of glass
-are the same thing to traversal. Steps 2 and 3 are the light transport, cheapest first. Step 4 is a
-number that already exists arriving where it was always going. Step 5 is not a fix until a
+Step 1 is what is left of the light transport, and it is the half that needs sorting: a shadow's
+answer is a product and does not care about order, where the eye's is a composite and does. Step 2 is
+the one the rest are for, and the acceptance test is an actor at a fade rather than a pane of glass —
+the census says the static world holds two to four panes a cell. Step 3 is not a fix until a
 measurement asks for it.
 
 **Where the shape came from.** Neither shipped path tracer of an old game picks one of the three

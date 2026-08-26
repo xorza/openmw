@@ -409,7 +409,7 @@ vec4 fogAlong(vec3 origin, vec3 direction, float distance, float offset)
             const float reach = fogDepth(float((stretch + 1u) * FOG_STEPS_PER_RAY) / float(FOG_STEPS)) * span;
             const vec3 probe = origin + direction * mix(behind, reach, offset);
 
-            visible = occluded(probe, frame.mSunPosition, frame.mFar) ? 0.0 : 1.0;
+            visible = lightThrough(probe, frame.mSunPosition, frame.mFar);
         }
 
         for (uint k = 0u; k < FOG_STEPS_PER_RAY; ++k)

@@ -1913,6 +1913,70 @@ namespace Rtx
             EXPECT_EQ(render(slanted, bright, false), 111) << "or the same again from a slant";
         }
 
+        /// A translucent occluder dims the sun rather than stopping it.
+        ///
+        /// **The cheap half of transparency, and the reason it is cheap is order.** A shadow ray's
+        /// answer is a product of what it passed through, and a product does not care which factor
+        /// came first — so this needs no sorting, no layer budget and no second pass, where the eye
+        /// needs all three.
+        ///
+        /// Measured against the neighbouring test's own numbers rather than against a byte worked out
+        /// here: the tone curve is not the sRGB encode, so half a radiance is not half a byte. What
+        /// *is* exact is that a half-transmitting pane and a half-bright sun are the same
+        /// multiplication, so they have to land on the same pixel.
+        TEST_F(RtxVisibilityTest, aTranslucentOccluderDimsTheSunRatherThanStoppingIt)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            const Shaders::VisibilityConstants base = makeCamera(
+                osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+
+            const std::array occluder{
+                osg::Vec3f(-10.0f, -25.0f, -10.0f),
+                osg::Vec3f(10.0f, -25.0f, -10.0f),
+                osg::Vec3f(10.0f, -25.0f, 10.0f),
+                osg::Vec3f(-10.0f, -25.0f, 10.0f),
+            };
+
+            /// @param opacity how much of the pane is there, or nothing at all for no pane.
+            const auto render = [&](const osg::Vec3f& irradiance, std::optional<float> opacity) {
+                SceneDesc scene = makeWall();
+                if (opacity.has_value())
+                {
+                    const Index pane = scene.addMaterial(Material{
+                        .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, *opacity),
+                        .mAlphaMode = AlphaMode::Blend,
+                    });
+
+                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(occluder, {}, {}, sQuadIndices),
+                        .mMaterial = pane });
+                }
+
+                Shaders::VisibilityConstants camera = base;
+                camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
+                camera.mSunIrradiance = irradiance;
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
+                return pixels[centre];
+            };
+
+            const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
+
+            EXPECT_EQ(render(bright, std::nullopt), 153) << "square to the sun, as the test above says";
+            EXPECT_EQ(render(bright, 1.0f), 0) << "a pane that is all there is not translucent at all";
+
+            // Half the sun through the pane is the same multiplication as half a sun with none, and
+            // the test above pins that at 111.
+            EXPECT_EQ(render(bright, 0.5f), 111) << "and half of it through half a pane";
+            EXPECT_EQ(render(osg::Vec3f(1.0f, 1.0f, 1.0f), std::nullopt), 111) << "which is where it came from";
+
+            // A pane that stops nothing is a pane that is not there.
+            EXPECT_EQ(render(bright, 0.0f), 153);
+        }
+
         /// A ray that hits nothing comes back with the sky the weather named, not a constant.
         TEST_F(RtxVisibilityTest, theSkyIsTheWeathersOwnColourAndRunsFromHorizonToZenith)
         {

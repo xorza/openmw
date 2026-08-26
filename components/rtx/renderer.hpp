@@ -164,9 +164,13 @@ namespace Rtx
     {
         std::uint32_t mInstances = 0;
 
-        /// How many of those traversal has to stop and ask about — the cost of the cutout, as a
-        /// number, so a material change that marks half a cell non-opaque shows up before a frame
-        /// time does.
+        /// How many of those traversal has to stop and ask where the holes are — the cost of the
+        /// cutout, as a number, so a material change that marks half a cell non-opaque shows up
+        /// before a frame time does.
+        ///
+        /// **Not every instance traversal stops for.** A translucent one is stopped for as well, and
+        /// is counted here nowhere: what it costs is a different question, since it is never
+        /// answered by a micromap and never ends the ray.
         std::uint32_t mCutoutInstances = 0;
 
         /// How many of those an opacity micromap answers for, so traversal stops only where the mask

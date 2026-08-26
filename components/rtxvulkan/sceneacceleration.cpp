@@ -362,7 +362,11 @@ namespace Rtx
                 continue;
 
             const Material& worn = scene.getMaterials()[material];
-            if (!worn.isCutout())
+
+            // **A translucent surface is given none.** A micromap resolves a microtriangle as opaque
+            // from the same mask this is built out of, and an opaque microtriangle commits the hit —
+            // which is the end of the ray, and a pane of glass with it.
+            if (!worn.isCutout() || worn.isTranslucent())
                 continue;
 
             const TextureData* mask = textureAt(textures, worn.mDiffuse);
@@ -877,7 +881,13 @@ namespace Rtx
 
             // Morrowind's sheet geometry is lit and hit from both faces, so nothing is culled.
             VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-            if (record.mCutout)
+            if (record.mTranslucent)
+            {
+                // Nothing built one for it, and forcing is the whole of how a candidate reaches the
+                // shader that measures how much of it there is.
+                flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
+            }
+            else if (record.mCutout)
             {
                 // Counted here rather than in a pass of its own: this loop already visits every
                 // record and skips the same gaps, and a scene is tens of thousands of them.

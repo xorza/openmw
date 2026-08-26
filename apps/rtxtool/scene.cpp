@@ -41,19 +41,23 @@ namespace RtxTool
         for (const auto& [format, count] : stats.mTextureFormats)
             out << "  " << count << " x " << format << '\n';
 
-        // Which materials traversal will have to stop and ask about, and which of those asked for it
-        // outright. The second number being the small one is the point: Morrowind keeps its foliage
-        // under `NiAlphaProperty` rather than under an alpha test.
+        // Which materials traversal will have to stop and ask about, which of those asked for it
+        // outright, and which of them a cutoff cannot answer for at all. The second and third being
+        // the small ones is the point: Morrowind keeps its foliage under `NiAlphaProperty` rather
+        // than under an alpha test, and almost nothing it ships is translucent in its own right.
         std::uint32_t cutouts = 0;
         std::uint32_t tested = 0;
+        std::uint32_t translucent = 0;
         std::uint32_t glowing = 0;
         for (const Rtx::Material& material : scene.getMaterials())
         {
             cutouts += material.isCutout() ? 1 : 0;
             tested += material.mAlphaMode == Rtx::AlphaMode::Cutout ? 1 : 0;
+            translucent += material.isTranslucent() ? 1 : 0;
             glowing += material.mEmissiveColour.length2() > 0.0f || material.mEmissive != Rtx::sNoIndex ? 1 : 0;
         }
         out << "  cutout materials:     " << cutouts << ", " << tested << " of them alpha-tested outright\n"
+            << "  translucent:          " << translucent << ", which a cutoff cannot answer for\n"
             << "  emissive materials:   " << glowing << '\n'
             << "  lights:               " << staged.getScene().getLights().size() << " casting, ambient "
             << report.mAmbient.x() << ", " << report.mAmbient.y() << ", " << report.mAmbient.z() << '\n'

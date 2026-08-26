@@ -133,6 +133,43 @@ namespace Rtx
             EXPECT_FALSE(untextured.isCutout());
         }
 
+        /// A leaf card and a pane of glass carry the same alpha mode, and the material's own alpha is
+        /// what tells them apart.
+        ///
+        /// **The mode says nothing about it**, because Morrowind keeps its foliage under
+        /// `NiAlphaProperty`: a leaf is fully opaque wherever its painted mask is, and a pane is
+        /// translucent everywhere. The two want opposite answers from traversal — a mask averaged
+        /// over the ray cone and tested is right for the leaf and turns the pane solid; light
+        /// attenuated as it passes is right for the pane and turns the leaf to gauze — so nothing may
+        /// act on the mode alone.
+        ///
+        /// `NiMaterialProperty` records that alpha and `NifOsg::AlphaController` animates it, so a
+        /// surface can cross this line while the game runs.
+        TEST(RtxSceneDescTest, theMaterialsOwnAlphaIsWhatTellsAPaneOfGlassFromALeaf)
+        {
+            constexpr Index texture = 3;
+
+            const Material leaf{ .mDiffuse = texture, .mAlphaMode = AlphaMode::Blend };
+            EXPECT_FALSE(leaf.isTranslucent()) << "a painted mask on an opaque material";
+            EXPECT_TRUE(leaf.isCutout()) << "and it keeps the branch it has";
+
+            const Material pane{ .mDiffuse = texture,
+                .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.3f),
+                .mAlphaMode = AlphaMode::Blend };
+            EXPECT_TRUE(pane.isTranslucent());
+
+            // The mode is half of it: a faded material the content never asked to blend is drawn as
+            // it was authored, and a cutout stays a cutout however faint its own colour is.
+            const Material faded{ .mDiffuse = texture, .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.3f) };
+            EXPECT_FALSE(faded.isTranslucent()) << "opaque mode, whatever the colour says";
+
+            const Material tested{ .mDiffuse = texture,
+                .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.3f),
+                .mAlphaRef = 0.3f,
+                .mAlphaMode = AlphaMode::Cutout };
+            EXPECT_FALSE(tested.isTranslucent()) << "a mask the content asked to test is a mask";
+        }
+
         /// A deformed mesh keeps its slot and its topology, and says so.
         ///
         /// The second mesh is what makes the test worth running: an update that wrote at the wrong

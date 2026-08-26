@@ -123,9 +123,13 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     // penumbra — the only part of the integral the disc is wide enough to matter to — no better
     // resolved for it.
     const float sunCosine = dot(normal, frame.mSunPosition);
-    if (sunCosine > 0.0 && frame.mSunIrradiance != vec3(0.0)
-        && !occluded(position, coneDirection(frame.mSunPosition, sin(SUN_ANGULAR_RADIUS), sunDraw), frame.mFar))
-        radiance += frame.mSunIrradiance * sunThroughWater(position, footprint) * (sunCosine * INV_PI);
+    if (sunCosine > 0.0 && frame.mSunIrradiance != vec3(0.0))
+    {
+        const float through
+            = lightThrough(position, coneDirection(frame.mSunPosition, sin(SUN_ANGULAR_RADIUS), sunDraw), frame.mFar);
+
+        radiance += frame.mSunIrradiance * sunThroughWater(position, footprint) * (sunCosine * INV_PI * through);
+    }
 
     // A lamp loses nothing to the water, where the sun and the sky both lose the column above the
     // point: it is usually standing in the same water as what it lights, and the depth over the two
@@ -192,8 +196,9 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     if (kept.mWeight > 0.0)
     {
         const vec3 towards = coneDirection(kept.mTowards, min(kept.mRadius / kept.mDistance, 1.0), lampDraw);
-        if (!occluded(position, towards, kept.mDistance - max(kept.mRadius, SHADOW_BIAS)))
-            radiance += kept.mRadiance * (kept.mTotal / kept.mWeight);
+        const float through = lightThrough(position, towards, kept.mDistance - max(kept.mRadius, SHADOW_BIAS));
+
+        radiance += kept.mRadiance * (kept.mTotal / kept.mWeight) * through;
     }
 
     return radiance;

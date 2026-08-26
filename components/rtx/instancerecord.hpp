@@ -62,6 +62,14 @@ namespace Rtx
         /// meets, and a canopy stays the rectangle it was painted on.
         bool mCutout = false;
 
+        /// Whether traversal must stop and ask the shader how much of a hit there is.
+        ///
+        /// **Separate from `mCutout` because a micromap answers one and not the other.** A micromap
+        /// resolves a microtriangle as opaque from the same mask a cutout is tested against, and a
+        /// committed hit is the end of the ray — which is right for a leaf and loses a pane of glass
+        /// entirely. So a translucent instance is forced non-opaque and is given no micromap.
+        bool mTranslucent = false;
+
         /// Whether the slot this record sits in holds a placement.
         ///
         /// **Records are addressed by slot and slots have gaps**, because a slot index is what a hit

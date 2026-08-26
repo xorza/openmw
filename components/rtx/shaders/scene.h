@@ -467,6 +467,17 @@ namespace Rtx::Shaders
         /// number.
         float mAlphaCutoff;
 
+        /// How much of the surface is there, or one for a surface that is all there.
+        ///
+        /// **The mode does not survive the trip here either.** `Material::isTranslucent` is what
+        /// decides, and it settles on the host for the same reason the cutoff does: a leaf card and
+        /// a pane of glass carry the same alpha mode, and only the material's own alpha separates
+        /// them. A surface that is all there stores a one that nothing has to branch on.
+        ///
+        /// Multiplied by the texture's alpha at the candidate, which is what a blend does: a stained
+        /// pane's texture says where the lead is and this says how much glass there is.
+        float mOpacity;
+
         /// Where this material's terrain layers are, or a count of zero for a single-textured
         /// surface — which is everything but the ground.
         uint mLayerOffset;
@@ -503,7 +514,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuLight) == 32, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
-    static_assert(sizeof(GpuMaterial) == 68, "GpuMaterial must be scalar-packed on every side");
+    static_assert(sizeof(GpuMaterial) == 72, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 48, "GpuSprite must be scalar-packed on every side");
     static_assert(sizeof(GpuEmitter) == 56, "GpuEmitter must be scalar-packed on every side");
 #endif
