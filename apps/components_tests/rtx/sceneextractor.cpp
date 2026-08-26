@@ -11,6 +11,7 @@
 #include <osg/Image>
 #include <osg/Material>
 #include <osg/MatrixTransform>
+#include <osg/Switch>
 #include <osg/Texture2D>
 #include <osg/observer_ptr>
 #include <osgParticle/ConstantRateCounter>
@@ -134,6 +135,56 @@ namespace Rtx
 
             const osg::Vec3f origin(0.0f, 0.0f, 0.0f);
             EXPECT_EQ(origin * scene.getInstances()[0].mTransform, osg::Vec3f(10.0f, 0.0f, 0.0f));
+            EXPECT_EQ(origin * scene.getInstances()[1].mTransform, osg::Vec3f(0.0f, 20.0f, 0.0f));
+        }
+
+        /// **A branch a switch has turned off is not in the picture, and `osg::Switch::traverse`
+        /// does not say so** — under `TRAVERSE_ALL_CHILDREN` it visits every child it has. Left
+        /// alone, `MWRender`'s `DayNightCallback` traces the night lamp at noon and the day mesh at
+        /// midnight at the same time, and a harvested plant is traced through the unharvested one it
+        /// replaced.
+        TEST(RtxSceneExtractorTest, onlyTheBranchASwitchHasOnIsMirrored)
+        {
+            osg::ref_ptr<osg::MatrixTransform> day = new osg::MatrixTransform(osg::Matrix::translate(10.0, 0.0, 0.0));
+            day->addChild(makeQuad());
+            osg::ref_ptr<osg::MatrixTransform> night = new osg::MatrixTransform(osg::Matrix::translate(0.0, 20.0, 0.0));
+            night->addChild(makeQuad());
+
+            osg::ref_ptr<osg::Switch> root = new osg::Switch;
+            root->addChild(day);
+            root->addChild(night);
+            root->setSingleChildOn(0);
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+
+            const ExtractionStats noon = extractor.extract(*root, osg::Matrixf::identity(), 0);
+            ASSERT_TRUE(extractor.retire().empty()) << "the first walk swept something it had just placed";
+
+            const osg::Vec3f origin(0.0f, 0.0f, 0.0f);
+
+            // The night branch was not walked, so it is not a mesh either: one added rather than two.
+            EXPECT_EQ(noon.mMeshesAdded, 1u);
+            EXPECT_EQ(noon.mInstances, 1u);
+            ASSERT_EQ(scene.getInstances().size(), 1u);
+            EXPECT_EQ(origin * scene.getInstances()[0].mTransform, osg::Vec3f(10.0f, 0.0f, 0.0f));
+
+            root->setSingleChildOn(1);
+            scene.clearPlacement();
+            const ExtractionStats midnight = extractor.extract(*root, osg::Matrixf::identity(), 1);
+
+            EXPECT_EQ(midnight.mMeshesAdded, 1u) << "the branch that came on had never been read";
+            EXPECT_EQ(midnight.mMeshesReused, 0u);
+            EXPECT_EQ(midnight.mInstances, 1u);
+
+            // The branch that went off is standing until the sweep, which is what any placement
+            // leaving the graph costs — and gone after it, in its own slot rather than by
+            // renumbering the one that arrived.
+            EXPECT_EQ(extractor.retire().mMeshes, 1u);
+            EXPECT_EQ(scene.getPlacedCount(), 1u);
+            ASSERT_EQ(scene.getInstances().size(), 2u);
+            EXPECT_FALSE(scene.getInstances()[0].isPlaced()) << "the day branch outlived the sweep";
+            ASSERT_TRUE(scene.getInstances()[1].isPlaced());
             EXPECT_EQ(origin * scene.getInstances()[1].mTransform, osg::Vec3f(0.0f, 20.0f, 0.0f));
         }
 

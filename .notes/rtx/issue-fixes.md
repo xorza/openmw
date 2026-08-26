@@ -57,6 +57,24 @@ over changing the traversal mode, because the walk *wants* all children everywhe
 `osg::LOD` should give the ray tracer its finest child, not the one a distance test picked for an eye
 that does not constrain a ray.
 
+**Done**, as a `MirrorTraversal::descend` rather than an `apply(osg::Switch&)`. The override would
+have had to repeat the state-set push and pop that brackets the descent, and that bracket is the one
+thing in the walk a second copy would silently drift from; asking `asSwitch()` at the one place the
+walk goes down costs a virtual call next to the four `dynamic_cast`s already in that function and
+keeps
+the shading in a single place. The step-only walk goes through it too, so an emitter under a dead
+branch is dead with it — which is what the rasterizer's cull does with the same graph, and it means
+a branch coming back on after an hour is handed the hour as one `osgParticle` step.
+
+Measured as a negative control across eight harness views — Balmora, Ald-ruhn, Sadrith Mora, Dagon
+Fel, the mages' guild, the census office, Arkngthand, Addamasartus — where every line of `scene` is
+identical before and after: instances, meshes, materials, lights and emitters. None of them holds a
+switch with a branch off, which is the expected result rather than a weak one. `NiSwitchNode` turns a
+single child on at load (`nifloader.cpp:630`), `DayNightCallback` hangs off a `NightDaySwitch` and
+`HarvestVisitor` off a `Herbalism` one (`animation.cpp:141`, `:158`) — so what this buys is a
+day/night lamp and a picked plant that stop being traced in both states at once, and no view here
+has either.
+
 ### A3 — what a `LightSource` is worth to a ray tracer
 
 Two defects, one cause: `SceneExtractor::addLight` (`sceneextractor.cpp:726-750`) reads a
@@ -238,7 +256,7 @@ route. No step depends on a later one.
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
 | 1 | **done** — A1, exclude `Mask_UpdateVisitor` from `sWorldTraversal` | hidden nodes | none | visibility animation only |
-| 2 | A2 — `MirrorTraversal::apply(osg::Switch&)` | switch branches | low | yes |
+| 2 | **done** — A2, descend only the branches an `osg::Switch` has on | switch branches | low | day/night and herbalism only |
 | 3 | A3 — one function for what a light radiates; drop `getEmpty`; delete the harness override | glow lights, `getEmpty` | low | yes |
 | 4 | B1 — stop parenting the scene root under the camera | double traversal | medium | no |
 | 5 | B2 — replace `enableScene`'s mask reach-in; drop `Stage::getUpdateVisitor` | shared visitor | low | no |

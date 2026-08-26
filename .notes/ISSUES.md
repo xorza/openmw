@@ -48,10 +48,10 @@
   `SceneExtractor::addLight` (`components/rtx/sceneextractor.cpp:730`) reads it as a reason to drop
   the light. A `LIGH` record with an empty mesh is therefore never lit in the RTX path.
 
-- The mirror walk is `TRAVERSE_ALL_CHILDREN` (`components/rtx/sceneextractor.cpp:280`), so
-  `osg::Switch::traverse` visits every child — a light under the branch `DayNightCallback`
-  (`apps/openmw/mwrender/animation.cpp:107`) switched off is extracted where the rasterizer draws
-  nothing.
+- The mirror walk is `TRAVERSE_ALL_CHILDREN` (`components/rtx/sceneextractor.cpp:284`), and
+  `osg::Sequence` both visits every child under that mode and advances its own clock only under
+  `TRAVERSE_ACTIVE_CHILDREN`. A `NiFltAnimationNode` flipbook (`components/nifosg/nifloader.cpp:987`)
+  is therefore traced as all of its frames standing in the same place at once, and never animates.
 
 - `MWMechanics::Actors` (`apps/openmw/mwmechanics/actors.cpp:1243`) sets an actor's base node mask
   to zero beyond `actors processing range` and back on the frame after, so an actor oscillating

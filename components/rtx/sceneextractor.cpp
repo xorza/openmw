@@ -12,6 +12,7 @@
 #include <osg/Geometry>
 #include <osg/Image>
 #include <osg/NodeVisitor>
+#include <osg/Switch>
 #include <osg/Texture2D>
 #include <osg/TriangleIndexFunctor>
 #include <osgParticle/Particle>
@@ -219,6 +220,9 @@ namespace Rtx
         void apply(osg::Drawable& drawable) override;
 
     private:
+        /// Descends into the children of `node` that are in the world. See below.
+        void descend(osg::Node& node);
+
         /// Runs one node of an `osgParticle` simulation, if that is what this node is. See below.
         bool stepParticles(osg::Node& node);
 
@@ -319,7 +323,7 @@ namespace Rtx
         if (mStepOnly)
         {
             if (!stepParticles(node))
-                traverse(node);
+                descend(node);
             return;
         }
 
@@ -362,9 +366,39 @@ namespace Rtx
         if (const osg::StateSet* animated = mExtractor.animate(node))
             mShading.push_back(Shading{ .mStateSet = animated, .mAnimated = true });
 
-        traverse(node);
+        descend(node);
 
         mShading.resize(held);
+    }
+
+    /// Descends into the children of `node` that are in the world.
+    ///
+    /// **`osg::Switch` is the one node whose children are not all of them.** Its `traverse` visits
+    /// every child under `TRAVERSE_ALL_CHILDREN`, so a branch that is switched off is mirrored
+    /// anyway: `MWRender`'s `DayNightCallback` leaves the night lamp traced at noon and the day mesh
+    /// traced at midnight, both at once, and a harvested plant is traced through the unharvested one
+    /// it replaced. This is geometry and not only light.
+    ///
+    /// **Asked here rather than by walking in `TRAVERSE_ACTIVE_CHILDREN`**, because that mode also
+    /// picks an `osg::LOD`'s child by a distance test made for an eye, and a ray tracer owes a ray
+    /// the finest child it has.
+    ///
+    /// A branch that is off is off for its emitters too, and an `osgParticle` step is the difference
+    /// between one frame stamp and the last one that reached it — so a system that comes back on
+    /// after an hour is handed the hour in one step. That is what the rasterizer's cull does with the
+    /// same graph, and it is a property of `osgParticle`'s clock rather than of this walk.
+    void MirrorTraversal::descend(osg::Node& node)
+    {
+        if (osg::Switch* branches = node.asSwitch())
+        {
+            for (unsigned int at = 0; at < branches->getNumChildren(); ++at)
+                if (branches->getValue(at))
+                    branches->getChild(at)->accept(*this);
+
+            return;
+        }
+
+        traverse(node);
     }
 
     /// Runs one node of an `osgParticle` simulation, and says whether that is what this node was.
