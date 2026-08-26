@@ -6,11 +6,6 @@
   (`apps/openmw/mwrender/rtx/rtxrenderer.cpp`). At the shipped defaults those are 32768 and 7168
   units, so a screenshot and a played frame stand in different air.
 
-- `mTarget` is discarded from `VK_IMAGE_LAYOUT_UNDEFINED` with a `TOP_OF_PIPE` source scope at the
-  top of every frame (`components/rtxvulkan/vulkanrenderer.cpp:634`) while the presenter's blit out
-  of it may still be running: `Presenter::present` submits asynchronously and waits its fence only
-  when that swapchain image comes round again (`components/rtxvulkan/presenter.cpp:175`).
-
 - `mHistoryStale` is cleared at the end of every frame (`components/rtxvulkan/vulkanrenderer.cpp:767`)
   whether or not anything read it. With no upscaler and no wavelet neither consumer runs, so a
   `resetHistory` is dropped rather than deferred.
@@ -42,6 +37,12 @@
   (`apps/openmw/mwrender/renderingmanager.cpp:746`) — hides the world by flipping `sToggleWorldMask`
   in the master camera's cull mask, which the RTX path never reads. The water half goes through
   `Water::showWorld` and works; the rest of the world stays traced.
+
+- `Rtx::Renderer::shareFrame` describes the OpenGL interop path — "the SDL window stays OpenGL's, and
+  Vulkan renders offscreen into an image OpenGL imports" — which this fork does not have and does not
+  intend to: with the ray tracer on, no GL context is created at all. It has no caller outside the
+  test stub, and the frame image is now one of a pair swapped every present, so a single exported
+  allocation could not answer for it even if something did import one.
 
 - `MWMechanics::Actors` (`apps/openmw/mwmechanics/actors.cpp:1243`) sets an actor's base node mask
   to zero beyond `actors processing range` and back on the frame after, so an actor oscillating

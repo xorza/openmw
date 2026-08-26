@@ -131,28 +131,44 @@ namespace Rtx
         // 6.19 ms shareable against 6.10 to 6.26 across four runs before it, and the picture is
         // byte-identical. The alternative is an option every caller has to know to set before the
         // frame it wants can leave the device.
-        mTarget = std::make_unique<Image>(mDevice, mOutputWidth, mOutputHeight, sTargetFormat,
-            // Drawn into as well as written: the tone curve writes it as a storage image and the GUI
-            // rasterises over what that left.
-            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
-                | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-            "target", Sharing::Exportable);
+        // **Two, and interchangeable**, because the frame after this one must not rewrite the image
+        // the present is still blitting out of. They swap roles every present; anything that told
+        // them apart would break the frame they swapped on.
+        const auto makeTarget = [&](const char* name) {
+            return std::make_unique<Image>(mDevice, mOutputWidth, mOutputHeight, sTargetFormat,
+                // Drawn into as well as written: the tone curve writes it as a storage image and the
+                // GUI rasterises over what that left.
+                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
+                    | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                name, Sharing::Exportable);
+        };
 
-        // **Black and in `GENERAL` from the moment it exists.** Everything that reads the target
-        // expects that layout, and the GUI is drawn over the target whether or not a frame has been
-        // traced into it — a main menu and a loading screen have no world behind them.
+        // Numbered rather than named: which one is being written changes every present, so a name
+        // that said so would be wrong on half the frames it appeared in.
+        mTarget = makeTarget("target 0");
+        mSpare = makeTarget("target 1");
+        mPresented = nullptr;
+
+        // **Black and in `GENERAL` from the moment they exist.** Everything that reads a target
+        // expects that layout, and the GUI is drawn over one whether or not a frame has been traced
+        // into it — a main menu and a loading screen have no world behind them.
         mPool.submitAndWait([&](VkCommandBuffer commands) {
-            mTarget->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
-
             const VkClearColorValue black{ .float32 = { 0.0f, 0.0f, 0.0f, 1.0f } };
             const VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-            vkCmdClearColorImage(
-                commands, mTarget->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &whole);
 
-            mTarget->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+            for (const Image* target : { mTarget.get(), mSpare.get() })
+            {
+                target->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                    VK_ACCESS_2_TRANSFER_WRITE_BIT);
+
+                vkCmdClearColorImage(
+                    commands, target->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &whole);
+
+                target->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+            }
         });
 
         mChannels = std::make_unique<GBuffer>(mDevice, mRenderWidth, mRenderHeight);
@@ -526,7 +542,20 @@ namespace Rtx
         assert(mPresenter != nullptr && "presentFrame on a renderer that was given no window");
         assert(mTarget != nullptr);
 
-        return mPresenter->present(*mTarget);
+        const bool shown = mPresenter->present(*mTarget);
+
+        // **The next frame writes the other one.** The blit `present` queued reads this image long
+        // after the call returns, and the discard at the top of a frame waits for nothing.
+        mPresented = mTarget.get();
+        mTarget.swap(mSpare);
+
+        // **Here rather than at the first write, which is what makes it free.** Two presents have
+        // gone by since this image was last read, so the fence is signalled and the wait returns at
+        // once; asking at the first write instead would put a frame face to face with the present
+        // before it, and that one can still be waiting on the presentation engine.
+        mPresenter->waitForLastUse(*mTarget);
+
+        return shown;
     }
 
     FrameExtents VulkanRenderer::getExtents() const
@@ -931,7 +960,12 @@ namespace Rtx
     void VulkanRenderer::readPixels(std::vector<std::uint8_t>& pixels)
     {
         assert(mTarget != nullptr);
-        mTarget->read(mPool, VK_IMAGE_LAYOUT_GENERAL, pixels);
+
+        // **The frame that was finished, not the one the next will be written into.** A present has
+        // already swapped those two; with no window nothing presents, nothing swaps, and the frame
+        // just written is still the one `mTarget` names.
+        const Image& frame = mPresented != nullptr ? *mPresented : *mTarget;
+        frame.read(mPool, VK_IMAGE_LAYOUT_GENERAL, pixels);
     }
 
     void VulkanRenderer::readChannel(Channel channel, std::vector<float>& values)

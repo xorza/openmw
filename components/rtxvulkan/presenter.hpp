@@ -54,6 +54,19 @@ namespace Rtx
         ///        left in that layout, which is where the next frame's passes expect it.
         bool present(const Image& frame);
 
+        /// Waits until the present that last read `frame` has finished with it.
+        ///
+        /// **A present's blit outlives the call that queued it.** `present` submits and returns; the
+        /// blit itself waits the acquire semaphore, which under FIFO is not signalled until the
+        /// presentation engine has let that swapchain image go. No barrier's source scope reaches
+        /// across a submit, so a renderer about to discard and rewrite an image it presented earlier
+        /// has to be told when that blit finished, and this is the only thing that can say.
+        ///
+        /// A no-op for an image this has never presented, and for one whose fence has since been
+        /// remade — a swapchain rebuild waits the device idle first, so what it forgets was already
+        /// finished.
+        void waitForLastUse(const Image& frame);
+
         /// Rebuilds at `extent`. Waits for everything in flight, so it is a stall by construction.
         void resize(VkExtent2D extent);
 
@@ -63,6 +76,9 @@ namespace Rtx
         /// One semaphore, one fence and one command buffer per swapchain image, made again whenever
         /// the count changes.
         void remakeImageSync();
+
+        /// Records that `image` was read by the present `fence` will signal.
+        void rememberUse(VkImage image, VkFence fence);
 
         void destroy();
 
@@ -89,6 +105,15 @@ namespace Rtx
         std::vector<VkFence> mPresenting;
 
         std::vector<VkCommandBuffer> mCommands;
+
+        /// Which present a frame image was last read by. One entry per image the renderer alternates
+        /// between, so a linear scan is the whole lookup.
+        struct ImageUse
+        {
+            VkImage mImage = VK_NULL_HANDLE;
+            VkFence mFence = VK_NULL_HANDLE;
+        };
+        std::vector<ImageUse> mLastUse;
 
         /// Whether the surface stopped matching the window since the last rebuild.
         ///

@@ -140,6 +140,12 @@ namespace Rtx
         for (VkFence& fence : mPresenting)
             fence = makeSignalledFence(mDevice.getHandle());
 
+        // The fences those entries name have just been destroyed, and forgetting is the whole of
+        // what is owed: the device was waited idle to get here, so every one of them had signalled.
+        // It is also what keeps an entry from meeting a new image on a recycled handle — a renderer
+        // resizes its targets through this, and always after this.
+        mLastUse.clear();
+
         mCommands = mPool->allocate(images);
     }
 
@@ -261,10 +267,37 @@ namespace Rtx
         };
         checkVk(vkQueueSubmit2(mDevice.getQueue(), 1, &submit, mPresenting[index]), "vkQueueSubmit2");
 
+        rememberUse(frame.getHandle(), mPresenting[index]);
+
         if (mSwapchain->present(mRendered[index], index))
             return true;
 
         mStale = true;
         return false;
+    }
+
+    void Presenter::rememberUse(VkImage image, VkFence fence)
+    {
+        for (ImageUse& use : mLastUse)
+            if (use.mImage == image)
+            {
+                use.mFence = fence;
+                return;
+            }
+
+        mLastUse.push_back(ImageUse{ .mImage = image, .mFence = fence });
+    }
+
+    void Presenter::waitForLastUse(const Image& frame)
+    {
+        for (const ImageUse& use : mLastUse)
+            if (use.mImage == frame.getHandle())
+            {
+                // The fence may have been reset and signalled again by a later present of another
+                // image. That is conservative and not wrong: a queue signals its fences in submission
+                // order, so the later one having finished means this one had.
+                awaitVk(mDevice.getHandle(), use.mFence, "the present that last read this frame");
+                return;
+            }
     }
 }

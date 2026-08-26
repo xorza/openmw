@@ -40,32 +40,6 @@ conflating "not simulated" with "not in the picture" for the mirror — not to a
 
 ## C. Frame-lifetime GPU state with no single owner
 
-### C1 — `mTarget` is discarded while the presenter may still be reading it
-
-`renderFrame` discards `mTarget` from `VK_IMAGE_LAYOUT_UNDEFINED` with a `TOP_OF_PIPE` source scope
-(`vulkanrenderer.cpp:634-637`) — a barrier that waits for nothing. `Presenter::present` submits its
-blit **asynchronously** and waits `mPresenting[index]` only when that swapchain image comes round
-again (`presenter.cpp:175`). Nothing orders the discard against the blit.
-
-`GBuffer::begin` (`gbuffer.cpp:110-121`) has the shape to copy but not the whole answer: it discards
-from `UNDEFINED` too, and orders the write-after-read by sourcing the barrier at `COMPUTE_SHADER`
-rather than `TOP_OF_PIPE` — which works because its reader is in the same submit. `mTarget`'s reader
-is the presenter's own submit, and no source scope reaches across one; this needs a fence, a
-semaphore, or a second image.
-
-It survives today because `placeScene` interposes a waited submit on the same queue, which is an
-accident of scheduling and not a guarantee.
-
-Two honest fixes:
-
-- **Wait**: give `Presenter` a `waitForLastUse()` and call it before the first write. Correct, one
-  line, and it can stall the frame on the previous present.
-- **Double-buffer the target**: the frame never writes the image being presented. No stall, one more
-  full-size image.
-
-Prefer the second. A stall that depends on the compositor is exactly the spike the frame-time rule is
-about, and one image is cheap against the structures already resident.
-
 ### C2 — `mHistoryStale` is cleared whether or not anything read it
 
 `vulkanrenderer.cpp:767` clears it at the end of every frame, but it is consumed only when the
@@ -124,13 +98,12 @@ route. No step depends on a later one.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | C1 — double-buffer `mTarget` | present race | low | no |
-| 2 | C2 — clear `mHistoryStale` where it is consumed | dropped reset | none | no |
-| 3 | E — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
-| 4 | D — give exposure a time constant | no adaptation | medium | **yes, large** |
-| 5 | A4 — measure the actor range flip, then decide | actor flip | — | — |
+| 1 | C2 — clear `mHistoryStale` where it is consumed | dropped reset | none | no |
+| 2 | E — one fog derivation, drop the rasterizer ramp | fog mismatch | medium | **yes, large** |
+| 3 | D — give exposure a time constant | no adaptation | medium | **yes, large** |
+| 4 | A4 — measure the actor range flip, then decide | actor flip | — | — |
 
-Steps 1 and 2 are the cheap ones and neither needs a judgement about how the game looks. Steps 3 and
-4 change how it looks most, and both want a moving camera to judge — which is also why they come
-after everything that would move the frame underneath them. Step 5 is not a fix at all until the
-measurement says there is one.
+Step 1 is cheap and needs no judgement about how the game looks. Steps 2 and 3 change how it looks
+most, and both want a moving camera to judge — which is also why they come after everything that
+would move the frame underneath them. Step 4 is not a fix at all until the measurement says there is
+one.

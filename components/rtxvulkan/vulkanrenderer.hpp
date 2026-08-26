@@ -182,7 +182,22 @@ namespace Rtx
         std::unique_ptr<Image> mColour;
 
         /// The frame as bytes at the output extent, which is what anything outside this reads.
+        ///
+        /// **Two of them, swapped by every present.** A present's blit reads its image long after
+        /// the call that queued it returned — it waits the acquire semaphore, which under FIFO the
+        /// presentation engine signals when it lets that swapchain image go — and the discard a
+        /// frame opens with is sourced at `TOP_OF_PIPE`, which waits for nothing. One image would
+        /// have each frame rewriting what the last is still being read out of, and no barrier can
+        /// order that: a source scope does not reach across a submit.
         std::unique_ptr<Image> mTarget;
+
+        /// The other one. Which of the two is which changes every present, so neither is special.
+        std::unique_ptr<Image> mSpare;
+
+        /// The one the last present read — which is `mSpare`, since the swap is what put it there —
+        /// or null where nothing has presented at all. Named separately because that null is the
+        /// whole question `readPixels` asks, and a headless run never answers it.
+        const Image* mPresented = nullptr;
 
         /// The running sum, and null until a frame asks to be averaged into one.
         ///
