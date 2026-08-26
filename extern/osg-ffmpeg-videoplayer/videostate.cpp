@@ -8,7 +8,8 @@
 #include <thread>
 #include <chrono>
 
-#include <osg/Texture2D>
+#include <osg/Image>
+#include <osg/Notify>
 #include <utility>
 
 #if defined(_MSC_VER)
@@ -81,7 +82,7 @@ struct PacketListFree
 
 VideoState::VideoState()
     : mAudioFactory(nullptr)
-    , mTexture(nullptr)
+    , mImage(nullptr)
     , mStagingImage(nullptr)
     , mImageIsStaged(false)
     , mStagingMutex()
@@ -316,14 +317,9 @@ void VideoState::video_display(VideoPicture *vp)
             alignof(uint8_t));
         mStagingImage->dirty();
 
-        if (!mTexture.get())
+        if (!mImage.get())
         {
-            mTexture = new osg::Texture2D;
-            mTexture->setDataVariance(osg::Object::DYNAMIC);
-            mTexture->setResizeNonPowerOfTwoHint(false);
-            mTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::REPEAT);
-            mTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::REPEAT);
-            mTexture->setImage(mStagingImage);
+            mImage = mStagingImage;
             mStagingImage = nullptr;
         }
         else
@@ -679,9 +675,7 @@ void VideoState::commitFrame()
     std::lock_guard lock(mStagingMutex);
     if (mImageIsStaged)
     {
-        osg::ref_ptr<osg::Image> otherImage = mTexture->getImage();
-        mTexture->setImage(mStagingImage);
-        mStagingImage = otherImage;
+        mImage.swap(mStagingImage);
         mImageIsStaged = false;
     }
 }
@@ -897,12 +891,7 @@ void VideoState::deinit()
         avformat_close_input(&this->format_ctx);
     }
 
-    if (mTexture)
-    {
-        // reset Image separately, it's pointing to *this and there might still be outside references to mTexture
-        mTexture->setImage(nullptr);
-        mTexture = nullptr;
-    }
+    mImage = nullptr;
 
     // Deallocate RGBA frame queue.
     for (auto & i : this->pictq)

@@ -2,10 +2,10 @@
 
 #include <MyGUI_Timer.h>
 
+#include <osg/BlendFunc>
 #include <osg/Drawable>
+#include <osg/StateSet>
 #include <osg/Texture2D>
-
-#include <osgViewer/Viewer>
 
 #include <osgGA/GUIEventHandler>
 
@@ -344,15 +344,19 @@ namespace MyGUIPlatform
     // ---------------------------------------------------------------------------
 
     RenderManager::RenderManager(
-        osgViewer::Viewer* viewer, osg::Group* sceneroot, Resource::ImageManager* imageManager, float scalingFactor)
-        : mViewer(viewer)
-        , mSceneRoot(sceneroot)
+        const osg::Camera& eye, osg::Group* sceneroot, Resource::ImageManager* imageManager, float scalingFactor)
+        : mSceneRoot(sceneroot)
         , mImageManager(imageManager)
         , mUpdate(false)
         , mIsInitialise(false)
         , mInvScalingFactor(1.f)
-        , mInjectState(nullptr)
     {
+        mAdditiveState = new osg::StateSet;
+        mAdditiveState->setAttributeAndModes(new osg::BlendFunc(osg::BlendFunc::SRC_ALPHA, osg::BlendFunc::ONE));
+
+        const osg::Viewport& viewport = *eye.getViewport();
+        mInitialViewSize.set(static_cast<int>(viewport.width()), static_cast<int>(viewport.height()));
+
         if (scalingFactor != 0.f)
             mInvScalingFactor = 1.f / scalingFactor;
     }
@@ -365,7 +369,6 @@ namespace MyGUIPlatform
             mSceneRoot->removeChild(mGuiRoot.get());
         mGuiRoot = nullptr;
         mSceneRoot = nullptr;
-        mViewer = nullptr;
 
         MYGUI_PLATFORM_LOG(Info, getClassTypeName() << " successfully shutdown");
         mIsInitialise = false;
@@ -395,8 +398,7 @@ namespace MyGUIPlatform
         mGuiRoot = camera;
         mSceneRoot->addChild(mGuiRoot.get());
 
-        osg::ref_ptr<osg::Viewport> vp = mViewer->getCamera()->getViewport();
-        setViewSize(static_cast<int>(vp->width()), static_cast<int>(vp->height()));
+        setViewSize(mInitialViewSize.width, mInitialViewSize.height);
 
         MYGUI_PLATFORM_LOG(Info, getClassTypeName() << " successfully initialized");
         mIsInitialise = true;
@@ -443,21 +445,25 @@ namespace MyGUIPlatform
 
         if (OSGTexture* osgtexture = static_cast<OSGTexture*>(texture))
         {
+            // **What tells it the draw traversal has seen this picture**, and so that the next write
+            // to it may not land in the image it is about to read.
+            osgtexture->markDrawn();
+
             batch.mTexture = osgtexture->getTexture();
             if (batch.mTexture->getDataVariance() == osg::Object::DYNAMIC)
                 mDrawable->setDataVariance(osg::Object::DYNAMIC); // only for this frame, reset in begin()
-            if (!mInjectState && osgtexture->getInjectState())
+            if (!mAdditive && osgtexture->getInjectState())
                 batch.mStateSet = osgtexture->getInjectState();
         }
-        if (mInjectState)
-            batch.mStateSet = mInjectState;
+        if (mAdditive)
+            batch.mStateSet = mAdditiveState;
 
         mDrawable->addBatch(batch);
     }
 
-    void RenderManager::setInjectState(osg::StateSet* stateSet)
+    void RenderManager::setAdditiveBlend(bool additive)
     {
-        mInjectState = stateSet;
+        mAdditive = additive;
     }
 
     void RenderManager::end() {}

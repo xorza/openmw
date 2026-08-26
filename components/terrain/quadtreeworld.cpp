@@ -489,14 +489,7 @@ namespace Terrain
             mRootNode->traverseNodes(vd, viewPoint, &lodCallback);
         }
 
-        const float cellWorldSize = static_cast<float>(ESM::getCellSize(mWorldspace));
-
-        for (unsigned int i = 0; i < vd->getNumEntries(); ++i)
-        {
-            ViewDataEntry& entry = vd->getEntry(i);
-            loadRenderingNode(entry, vd, cellWorldSize, mActiveGrid, false);
-            entry.mRenderingNode->accept(nv);
-        }
+        handOver(vd, nv);
 
         if (mHeightCullCallback && isCullVisitor)
             updateWaterCullingView(mHeightCullCallback, vd, static_cast<osgUtil::CullVisitor*>(&nv),
@@ -510,6 +503,48 @@ namespace Terrain
             vd->setLastUsageTimeStamp(referenceTime);
             mViewDataMap->clearUnusedViews(referenceTime);
         }
+    }
+
+    void QuadTreeWorld::handOver(ViewData* vd, osg::NodeVisitor& visitor)
+    {
+        const float cellWorldSize = static_cast<float>(ESM::getCellSize(mWorldspace));
+
+        for (unsigned int i = 0; i < vd->getNumEntries(); ++i)
+        {
+            ViewDataEntry& entry = vd->getEntry(i);
+            loadRenderingNode(entry, vd, cellWorldSize, mActiveGrid, false);
+            entry.mRenderingNode->accept(visitor);
+        }
+    }
+
+    void QuadTreeWorld::collect(View* view, const osg::Vec3f& viewPoint, osg::NodeVisitor& visitor)
+    {
+        // **A view of the caller's and not one keyed on a camera.** `accept` looks its `ViewData` up
+        // by the camera culling, reuses it where another camera stood close enough, and skips the
+        // traversal when it does; none of that applies to something asking what exists. This is
+        // handed a view it owns and always resolves it.
+        if (view == nullptr)
+            return;
+
+        ensureQuadTreeBuilt();
+
+        // **Disabled means gone, as it does for a walk.** `enable(false)` takes the root off the
+        // terrain node, so a cull finds nothing there; going to the root directly would keep handing
+        // over an exterior's ground while the player stood in a cave. The mask is the other half of
+        // the same question — what a visitor reaching `mTerrainRoot` would have been allowed to see.
+        if (mRootNode == nullptr || mRootNode->getNumParents() == 0 || !visitor.validNodeMask(*mTerrainRoot))
+            return;
+
+        ViewData* vd = static_cast<ViewData*>(view);
+        vd->setViewPoint(viewPoint);
+        vd->setActiveGrid(mActiveGrid);
+        vd->reset();
+
+        DefaultLodCallback lodCallback(mLodFactor, mMinSize, mViewDistance, mActiveGrid, ESM::getCellSize(mWorldspace));
+        mRootNode->traverseNodes(vd, viewPoint, &lodCallback);
+
+        handOver(vd, visitor);
+        vd->resetChanged();
     }
 
     void QuadTreeWorld::ensureQuadTreeBuilt()

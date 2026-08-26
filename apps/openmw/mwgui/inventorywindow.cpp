@@ -14,8 +14,6 @@
 
 #include <components/misc/strings/algorithm.hpp>
 
-#include <components/myguiplatform/myguitexture.hpp>
-
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -80,7 +78,7 @@ namespace MWGui
         }
     }
 
-    InventoryWindow::InventoryWindow(DragAndDrop& dragAndDrop, ItemTransfer& itemTransfer, osg::Group* parent,
+    InventoryWindow::InventoryWindow(DragAndDrop& dragAndDrop, ItemTransfer& itemTransfer, MWRender::Renderer& renderer,
         Resource::ResourceSystem* resourceSystem)
         : WindowPinnableBase("openmw_inventory_window.layout")
         , mDragAndDrop(&dragAndDrop)
@@ -91,13 +89,11 @@ namespace MWGui
         , mGuiMode(GM_Inventory)
         , mLastXSize(0)
         , mLastYSize(0)
-        , mPreview(std::make_unique<MWRender::InventoryPreview>(parent, resourceSystem, MWMechanics::getPlayer()))
+        , mPreview(std::make_unique<MWRender::InventoryPreview>(renderer, resourceSystem, MWMechanics::getPlayer()))
         , mTrading(false)
         , mUpdateNextFrame(false)
         , mPendingControllerAction(ControllerAction::None)
     {
-        mPreviewTexture
-            = std::make_unique<MyGUIPlatform::OSGTexture>(mPreview->getTexture(), mPreview->getTextureStateSet());
         mPreview->rebuild();
 
         mMainWidget->castType<MyGUI::Window>()->eventWindowChangeCoord
@@ -117,7 +113,7 @@ namespace MWGui
         getWidget(mFilterEdit, "FilterEdit");
 
         mAvatarImage->eventMouseButtonClick += MyGUI::newDelegate(this, &InventoryWindow::onAvatarClicked);
-        mAvatarImage->setRenderItemTexture(mPreviewTexture.get());
+        mAvatarImage->setRenderItemTexture(&mPreview->getTexture());
         // The widget is Y-down, the RTT image is Y-up, so this UV is inverted
         mAvatarImage->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
 

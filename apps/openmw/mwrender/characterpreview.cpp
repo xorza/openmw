@@ -1,29 +1,16 @@
 #include "characterpreview.hpp"
 
+#include <algorithm>
 #include <cmath>
 
-#include <osg/BlendFunc>
-#include <osg/Camera>
-#include <osg/Fog>
+#include <osg/Group>
+#include <osg/Matrixf>
 #include <osg/PositionAttitudeTransform>
-#include <osg/Texture2D>
-#include <osg/ValueObject>
-#include <osgUtil/IntersectionVisitor>
-#include <osgUtil/LineSegmentIntersector>
 
 #include <components/debug/debuglog.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/resource/resourcesystem.hpp>
-#include <components/resource/scenemanager.hpp>
-#include <components/sceneutil/depth.hpp>
-#include <components/sceneutil/fog.hpp>
-#include <components/sceneutil/lightmanager.hpp>
-#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/nodecallback.hpp>
-#include <components/sceneutil/rtt.hpp>
-#include <components/sceneutil/shadow.hpp>
-#include <components/settings/values.hpp>
-#include <components/stereo/multiview.hpp>
 
 #include "../mwworld/class.hpp"
 #include "../mwworld/inventorystore.hpp"
@@ -32,184 +19,37 @@
 #include "../mwmechanics/weapontype.hpp"
 
 #include "npcanimation.hpp"
-#include "util.hpp"
+#include "offscreenview.hpp"
+#include "renderer.hpp"
 #include "vismask.hpp"
+
+namespace
+{
+    /// How Morrowind lights the figure in the inventory and the one on the race screen: one
+    /// directional light, from the game's own fallback settings, and no other.
+    void describeInventoryLight(MWRender::OffscreenViewSpec& spec)
+    {
+        const float azimuth = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationX"));
+        const float altitude = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationY"));
+
+        spec.mSunDirection = osg::Vec3f(
+            -std::cos(azimuth) * std::sin(altitude), std::sin(azimuth) * std::sin(altitude), std::cos(altitude));
+        spec.mSunDiffuse = osg::Vec4f(Fallback::Map::getFloat("Inventory_DirectionalDiffuseR"),
+            Fallback::Map::getFloat("Inventory_DirectionalDiffuseG"),
+            Fallback::Map::getFloat("Inventory_DirectionalDiffuseB"), 1.f);
+        spec.mSunAmbient = osg::Vec4f(Fallback::Map::getFloat("Inventory_DirectionalAmbientR"),
+            Fallback::Map::getFloat("Inventory_DirectionalAmbientG"),
+            Fallback::Map::getFloat("Inventory_DirectionalAmbientB"), 1.f);
+    }
+}
 
 namespace MWRender
 {
 
-    class DrawOnceCallback : public SceneUtil::NodeCallback<DrawOnceCallback>
-    {
-    public:
-        DrawOnceCallback(osg::Node* subgraph)
-            : mRendered(false)
-            , mLastRenderedFrame(0)
-            , mSubgraph(subgraph)
-        {
-        }
-
-        void operator()(osg::Node* node, osg::NodeVisitor* nv)
-        {
-            if (!mRendered)
-            {
-                mRendered = true;
-
-                mLastRenderedFrame = nv->getTraversalNumber();
-
-                osg::ref_ptr<osg::FrameStamp> previousFramestamp = const_cast<osg::FrameStamp*>(nv->getFrameStamp());
-                osg::FrameStamp* fs = new osg::FrameStamp(*previousFramestamp);
-                fs->setSimulationTime(0.0);
-
-                nv->setFrameStamp(fs);
-
-                // Update keyframe controllers in the scene graph first...
-                // RTTNode does not continue update traversal, so manually continue the update traversal since we need
-                // it.
-                mSubgraph->accept(*nv);
-                traverse(node, nv);
-
-                nv->setFrameStamp(previousFramestamp);
-            }
-            else
-            {
-                node->setNodeMask(0);
-            }
-        }
-
-        void redrawNextFrame() { mRendered = false; }
-
-        unsigned int getLastRenderedFrame() const { return mLastRenderedFrame; }
-
-    private:
-        bool mRendered;
-        unsigned int mLastRenderedFrame;
-        osg::ref_ptr<osg::Node> mSubgraph;
-    };
-
-    // Set up alpha blending mode to avoid issues caused by transparent objects writing onto the alpha value of the FBO
-    // This makes the RTT have premultiplied alpha, though, so the source blend factor must be GL_ONE when it's applied
-    class SetUpBlendVisitor : public osg::NodeVisitor
-    {
-    public:
-        SetUpBlendVisitor()
-            : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
-        {
-        }
-
-        void apply(osg::Node& node) override
-        {
-            if (osg::ref_ptr<osg::StateSet> stateset = node.getStateSet())
-            {
-                osg::ref_ptr<osg::StateSet> newStateSet;
-                if (stateset->getAttribute(osg::StateAttribute::BLENDFUNC)
-                    || stateset->getBinNumber() == osg::StateSet::TRANSPARENT_BIN)
-                {
-                    osg::BlendFunc* blendFunc
-                        = static_cast<osg::BlendFunc*>(stateset->getAttribute(osg::StateAttribute::BLENDFUNC));
-
-                    if (blendFunc)
-                    {
-                        newStateSet = new osg::StateSet(*stateset, osg::CopyOp::SHALLOW_COPY);
-                        node.setStateSet(newStateSet);
-                        osg::ref_ptr<osg::BlendFunc> newBlendFunc = new osg::BlendFunc(*blendFunc);
-                        newStateSet->setAttribute(newBlendFunc, osg::StateAttribute::ON);
-                        // I *think* (based on some by-hand maths) that the RGB and dest alpha factors are unchanged,
-                        // and only dest determines source alpha factor This has the benefit of being idempotent if we
-                        // assume nothing used glBlendFuncSeparate before we touched it
-                        if (blendFunc->getDestination() == osg::BlendFunc::ONE_MINUS_SRC_ALPHA)
-                            newBlendFunc->setSourceAlpha(osg::BlendFunc::ONE);
-                        else if (blendFunc->getDestination() == osg::BlendFunc::ONE)
-                            newBlendFunc->setSourceAlpha(osg::BlendFunc::ZERO);
-                        // Other setups barely exist in the wild and aren't worth supporting as they're not equippable
-                        // gear
-                        else
-                            Log(Debug::Info) << "Unable to adjust blend mode for character preview. Source factor 0x"
-                                             << std::hex << blendFunc->getSource() << ", destination factor 0x"
-                                             << blendFunc->getDestination() << std::dec;
-                    }
-                }
-                if (stateset->getMode(GL_BLEND) & osg::StateAttribute::ON)
-                {
-                    if (!newStateSet)
-                    {
-                        newStateSet = new osg::StateSet(*stateset, osg::CopyOp::SHALLOW_COPY);
-                        node.setStateSet(newStateSet);
-                    }
-                    newStateSet->setDefine("FORCE_OPAQUE", "0", osg::StateAttribute::ON);
-                }
-            }
-            traverse(node);
-        }
-    };
-
-    class CharacterPreviewRTTNode : public SceneUtil::RTTNode
-    {
-    public:
-        CharacterPreviewRTTNode(uint32_t sizeX, uint32_t sizeY)
-            : RTTNode(sizeX, sizeY, Settings::video().mAntialiasing, false, 0,
-                StereoAwareness::Unaware_MultiViewShaders, shouldAddMSAAIntermediateTarget())
-            , mAspectRatio(static_cast<float>(sizeX) / static_cast<float>(sizeY))
-        {
-            if (SceneUtil::AutoDepth::isReversed())
-                mPerspectiveMatrix = static_cast<osg::Matrixf>(
-                    SceneUtil::getReversedZProjectionMatrixAsPerspective(fovYDegrees, mAspectRatio, znear, zfar));
-            else
-                mPerspectiveMatrix = osg::Matrixf::perspective(fovYDegrees, mAspectRatio, znear, zfar);
-            mGroup->getOrCreateStateSet()->addUniform(new osg::Uniform("projectionMatrix", mPerspectiveMatrix));
-            mViewMatrix = osg::Matrixf::identity();
-            setColorBufferInternalFormat(GL_RGBA);
-            setDepthBufferInternalFormat(GL_DEPTH24_STENCIL8);
-        }
-
-        void setDefaults(osg::Camera* camera) override
-        {
-            camera->setName("CharacterPreview");
-            camera->setReferenceFrame(osg::Camera::ABSOLUTE_RF);
-            camera->setRenderTargetImplementation(osg::Camera::FRAME_BUFFER_OBJECT, osg::Camera::PIXEL_BUFFER_RTT);
-            camera->setClearColor(osg::Vec4(0.f, 0.f, 0.f, 0.f));
-            camera->setClearMask(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-            camera->setProjectionMatrixAsPerspective(fovYDegrees, mAspectRatio, znear, zfar);
-            camera->setViewport(0, 0, width(), height());
-            camera->setRenderOrder(osg::Camera::PRE_RENDER);
-            camera->setCullMask(~(Mask_UpdateVisitor));
-            camera->setComputeNearFarMode(osg::Camera::DO_NOT_COMPUTE_NEAR_FAR);
-            SceneUtil::setCameraClearDepth(camera);
-
-            camera->setNodeMask(Mask_RenderToTexture);
-            camera->addChild(mGroup);
-        }
-
-        void apply(osg::Camera* camera) override
-        {
-            if (mCameraStateset)
-                camera->setStateSet(mCameraStateset);
-            camera->setViewMatrix(mViewMatrix);
-
-            if (shouldDoTextureArray())
-                Stereo::setMultiviewMatrices(mGroup->getOrCreateStateSet(), { mPerspectiveMatrix, mPerspectiveMatrix });
-        }
-
-        void addChild(osg::Node* node) { mGroup->addChild(node); }
-
-        void setCameraStateset(osg::StateSet* stateset) { mCameraStateset = stateset; }
-
-        void setViewMatrix(const osg::Matrixf& viewMatrix) { mViewMatrix = viewMatrix; }
-
-        osg::ref_ptr<osg::Group> mGroup = new osg::Group;
-        osg::Matrixf mPerspectiveMatrix;
-        osg::Matrixf mViewMatrix;
-        osg::ref_ptr<osg::StateSet> mCameraStateset;
-        float mAspectRatio;
-
-        static constexpr float fovYDegrees = 12.3f;
-        static constexpr float znear = 4.0f;
-        static constexpr float zfar = 10000.f;
-    };
-
-    CharacterPreview::CharacterPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem,
+    CharacterPreview::CharacterPreview(Renderer& renderer, Resource::ResourceSystem* resourceSystem,
         const MWWorld::Ptr& character, int sizeX, int sizeY, const osg::Vec3f& position, const osg::Vec3f& lookAt)
-        : mParent(parent)
-        , mResourceSystem(resourceSystem)
+        : mResourceSystem(resourceSystem)
+        , mScene(new osg::Group)
         , mPosition(position)
         , mLookAt(lookAt)
         , mCharacter(character)
@@ -217,93 +57,28 @@ namespace MWRender
         , mSizeX(sizeX)
         , mSizeY(sizeY)
     {
-        mTextureStateSet = new osg::StateSet;
-        mTextureStateSet->setAttribute(new osg::BlendFunc(osg::BlendFunc::ONE, osg::BlendFunc::ONE_MINUS_SRC_ALPHA));
-
-        mRTTNode = new CharacterPreviewRTTNode(sizeX, sizeY);
-        mRTTNode->setNodeMask(Mask_RenderToTexture);
-
-        osg::ref_ptr<SceneUtil::LightManager> lightManager = new SceneUtil::LightManager(
-            SceneUtil::LightSettings{
-                .mClusteredLighting = Settings::shaders().mClusteredLighting,
-                .mMaxLights = Settings::shaders().mMaxLights,
-                .mMaximumLightDistance = Settings::shaders().mMaximumLightDistance,
-                .mLightFadeStart = Settings::shaders().mLightFadeStart,
-                .mLightRadiusMultiplier = Settings::shaders().mLightRadiusMultiplier,
-                .mClusteredGridSize = { 1, 1, 1 },
-                .mClusteredWorkGroupSize = 1,
-            },
-            resourceSystem);
-        osg::ref_ptr<osg::StateSet> stateset = lightManager->getOrCreateStateSet();
-        stateset->setDefine("FORCE_OPAQUE", "1", osg::StateAttribute::ON);
-        stateset->setMode(GL_NORMALIZE, osg::StateAttribute::ON);
-        stateset->setMode(GL_CULL_FACE, osg::StateAttribute::ON);
-        osg::ref_ptr<SceneUtil::Material> defaultMat(new SceneUtil::Material);
-        defaultMat->updateStateSet(stateset);
-        stateset->setAttribute(defaultMat);
-
-        SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*stateset);
-
-        SceneUtil::disableFog(*stateset, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
-
-        // TODO: Clean up this mess of loose uniforms that shaders depend on.
-        // turn off sky blending
-        stateset->addUniform(new osg::Uniform("far", 10000000.0f));
-        stateset->addUniform(new osg::Uniform("near", CharacterPreviewRTTNode::znear));
-        stateset->addUniform(new osg::Uniform("skyBlendingStart", 8000000.0f));
-        stateset->addUniform(
-            new osg::Uniform("screenRes", osg::Vec2f{ static_cast<float>(sizeX), static_cast<float>(sizeY) }));
-        stateset->addUniform(new osg::Uniform("alpha", 1.f));
-        stateset->addUniform(new osg::Uniform("actorFade", 1.f));
-
-        osg::ref_ptr<osg::Texture2D> dummyTexture = new osg::Texture2D();
-        dummyTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
-        dummyTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
-        dummyTexture->setInternalFormat(GL_DEPTH_COMPONENT);
-        dummyTexture->setTextureSize(1, 1);
-        // This might clash with a shadow map, so make sure it doesn't cast shadows
-        dummyTexture->setShadowComparison(true);
-        dummyTexture->setShadowCompareFunc(osg::Texture::ShadowCompareFunc::ALWAYS);
-        stateset->setTextureAttribute(7, dummyTexture, osg::StateAttribute::ON);
-
-        osg::ref_ptr<SceneUtil::Light> light = new SceneUtil::Light;
-        float diffuseR = Fallback::Map::getFloat("Inventory_DirectionalDiffuseR");
-        float diffuseG = Fallback::Map::getFloat("Inventory_DirectionalDiffuseG");
-        float diffuseB = Fallback::Map::getFloat("Inventory_DirectionalDiffuseB");
-        float ambientR = Fallback::Map::getFloat("Inventory_DirectionalAmbientR");
-        float ambientG = Fallback::Map::getFloat("Inventory_DirectionalAmbientG");
-        float ambientB = Fallback::Map::getFloat("Inventory_DirectionalAmbientB");
-        float azimuth = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationX"));
-        float altitude = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationY"));
-        float positionX = -std::cos(azimuth) * std::sin(altitude);
-        float positionY = std::sin(azimuth) * std::sin(altitude);
-        float positionZ = std::cos(altitude);
-        light->setPosition(osg::Vec4(positionX, positionY, positionZ, 0.0));
-        light->setDiffuse(osg::Vec4(diffuseR, diffuseG, diffuseB, 1));
-        light->setAmbient(osg::Vec4(ambientR, ambientG, ambientB, 1));
-        light->setSpecular(osg::Vec4(0, 0, 0, 0));
-        light->setConstantAttenuation(1.f);
-        light->setLinearAttenuation(0.f);
-        light->setQuadraticAttenuation(0.f);
-        lightManager->setSunlight(light);
-
-        mRTTNode->addChild(lightManager);
-
         mNode = new osg::PositionAttitudeTransform;
-        lightManager->addChild(mNode);
+        mScene->addChild(mNode);
 
-        mDrawOnceCallback = new DrawOnceCallback(mRTTNode->mGroup);
-        mRTTNode->addUpdateCallback(mDrawOnceCallback);
+        OffscreenViewSpec spec{ *mScene };
+        spec.mWidth = sizeX;
+        spec.mHeight = sizeY;
+        // Everything: the one bit left out is the one that tells an update traversal apart from a
+        // cull, and nothing in the subtree carries it.
+        spec.mMask = ~Mask_UpdateVisitor;
+        spec.mProjection = OffscreenViewSpec::Perspective{ .mFieldOfView = 12.3f };
+        spec.mNear = 4.f;
+        spec.mFar = 10000.f;
+        // Transparent: the figure is composited over the window behind it.
+        spec.mClearColour = osg::Vec4f(0.f, 0.f, 0.f, 0.f);
+        describeInventoryLight(spec);
 
-        mParent->addChild(mRTTNode);
+        mView = renderer.createOffscreenView(spec);
 
         mCharacter.mCell = nullptr;
     }
 
-    CharacterPreview::~CharacterPreview()
-    {
-        mParent->removeChild(mRTTNode);
-    }
+    CharacterPreview::~CharacterPreview() = default;
 
     int CharacterPreview::getTextureWidth() const
     {
@@ -317,8 +92,7 @@ namespace MWRender
 
     void CharacterPreview::setBlendMode()
     {
-        SetUpBlendVisitor visitor;
-        mNode->accept(visitor);
+        mView->sceneChanged();
     }
 
     void CharacterPreview::onSetup()
@@ -326,9 +100,9 @@ namespace MWRender
         setBlendMode();
     }
 
-    osg::ref_ptr<osg::Texture2D> CharacterPreview::getTexture()
+    MyGUI::ITexture& CharacterPreview::getTexture()
     {
-        return static_cast<osg::Texture2D*>(mRTTNode->getColorTexture(nullptr));
+        return mView->getTexture();
     }
 
     void CharacterPreview::rebuild()
@@ -345,31 +119,26 @@ namespace MWRender
 
     void CharacterPreview::redraw()
     {
-        mRTTNode->setNodeMask(Mask_RenderToTexture);
-        mDrawOnceCallback->redrawNextFrame();
+        mView->redraw();
     }
 
     // --------------------------------------------------------------------------------------------------
 
     InventoryPreview::InventoryPreview(
-        osg::Group* parent, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character)
-        : CharacterPreview(parent, resourceSystem, character, 512, 1024, osg::Vec3f(0, 700, 71), osg::Vec3f(0, 0, 71))
+        Renderer& renderer, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character)
+        : CharacterPreview(renderer, resourceSystem, character, 512, 1024, osg::Vec3f(0, 700, 71), osg::Vec3f(0, 0, 71))
     {
     }
 
     void InventoryPreview::setViewport(int sizeX, int sizeY)
     {
-        sizeX = std::max(sizeX, 0);
-        sizeY = std::max(sizeY, 0);
+        mExtentX = std::clamp(sizeX, 0, mSizeX);
+        mExtentY = std::clamp(sizeY, 0, mSizeY);
 
-        // NB Camera::setViewport has threading issues
-        osg::ref_ptr<osg::StateSet> stateset = new osg::StateSet;
-        // This expects Y-down convention; historically the origin was (0, mSizeY - sizeY)
-        mViewport = new osg::Viewport(0, 0, std::min(mSizeX, sizeX), std::min(mSizeY, sizeY));
-        stateset->setAttributeAndModes(mViewport);
-        mRTTNode->setCameraStateset(stateset);
+        mView->setExtent(mExtentX, mExtentY);
 
-        redraw();
+        // The extent is a description; asking for the picture again is this caller's to do.
+        mView->redraw();
     }
 
     void InventoryPreview::update()
@@ -441,36 +210,17 @@ namespace MWRender
 
     int InventoryPreview::getSlotSelected(int posX, int posY)
     {
-        if (!mViewport)
+        if (mExtentX <= 0 || mExtentY <= 0)
             return -1;
-        double projX = (posX / mViewport->width()) * 2 - 1;
-        double projY = (posY / mViewport->height()) * 2 - 1;
-        // With Intersector::WINDOW, the intersection ratios are slightly inaccurate. Seems to be a
-        // precision issue - compiling with OSG_USE_FLOAT_MATRIX=0, Intersector::WINDOW works ok.
-        // Using Intersector::PROJECTION results in better precision because the start/end points and the model matrices
-        // don't go through as many transformations.
-        osg::ref_ptr<osgUtil::LineSegmentIntersector> intersector(
-            new osgUtil::LineSegmentIntersector(osgUtil::Intersector::PROJECTION, projX, projY));
 
-        intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
-        osgUtil::IntersectionVisitor visitor(intersector);
-        visitor.setTraversalMode(osg::NodeVisitor::TRAVERSE_ACTIVE_CHILDREN);
-        // Set the traversal number from the last draw, so that the frame switch used for RigGeometry double buffering
-        // works correctly
-        visitor.setTraversalNumber(mDrawOnceCallback->getLastRenderedFrame());
+        const float projX = (posX / static_cast<float>(mExtentX)) * 2 - 1;
+        const float projY = (posY / static_cast<float>(mExtentY)) * 2 - 1;
 
-        auto* camera = mRTTNode->getCamera(nullptr);
-        osg::Node::NodeMask nodeMask = camera->getNodeMask();
-        camera->setNodeMask(~0u);
-        camera->accept(visitor);
-        camera->setNodeMask(nodeMask);
+        osg::NodePath hit;
+        if (!mView->pick(projX, projY, hit))
+            return -1;
 
-        if (intersector->containsIntersections())
-        {
-            osgUtil::LineSegmentIntersector::Intersection intersection = intersector->getFirstIntersection();
-            return mAnimation->getSlot(intersection.nodePath);
-        }
-        return -1;
+        return mAnimation->getSlot(hit);
     }
 
     void InventoryPreview::updatePtr(const MWWorld::Ptr& ptr)
@@ -486,15 +236,14 @@ namespace MWRender
 
         mNode->setScale(scale);
 
-        auto viewMatrix = osg::Matrixf::lookAt(mPosition * scale.z(), mLookAt * scale.z(), osg::Vec3f(0, 0, 1));
-        mRTTNode->setViewMatrix(viewMatrix);
+        mView->setView(osg::Matrixf::lookAt(mPosition * scale.z(), mLookAt * scale.z(), osg::Vec3f(0, 0, 1)));
     }
 
     // --------------------------------------------------------------------------------------------------
 
-    RaceSelectionPreview::RaceSelectionPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem)
+    RaceSelectionPreview::RaceSelectionPreview(Renderer& renderer, Resource::ResourceSystem* resourceSystem)
         : CharacterPreview(
-            parent, resourceSystem, MWMechanics::getPlayer(), 512, 512, osg::Vec3f(0, 125, 8), osg::Vec3f(0, 0, 8))
+            renderer, resourceSystem, MWMechanics::getPlayer(), 512, 512, osg::Vec3f(0, 125, 8), osg::Vec3f(0, 0, 8))
         , mBase(*mCharacter.get<ESM::NPC>()->mBase)
         , mRef(ESM::makeBlankCellRef(), &mBase)
         , mPitchRadians(osg::DegreesToRadians(6.f))
@@ -517,18 +266,24 @@ namespace MWRender
         rebuild();
     }
 
-    class UpdateCameraCallback : public SceneUtil::NodeCallback<UpdateCameraCallback, CharacterPreviewRTTNode*>
+    /// Puts the eye a fixed offset from the head, once the head has been posed.
+    ///
+    /// **On the subtree and not beside it.** The head's world position is only right after the
+    /// keyframe controllers under it have run, and the only traversal that runs them is the one the
+    /// view makes on its way to drawing — so this has to be inside the thing being drawn.
+    class UpdateCameraCallback : public SceneUtil::NodeCallback<UpdateCameraCallback>
     {
     public:
-        UpdateCameraCallback(
-            osg::ref_ptr<const osg::Node> nodeToFollow, const osg::Vec3& posOffset, const osg::Vec3& lookAtOffset)
-            : mNodeToFollow(std::move(nodeToFollow))
+        UpdateCameraCallback(OffscreenView& view, osg::ref_ptr<const osg::Node> nodeToFollow,
+            const osg::Vec3& posOffset, const osg::Vec3& lookAtOffset)
+            : mView(view)
+            , mNodeToFollow(std::move(nodeToFollow))
             , mPosOffset(posOffset)
             , mLookAtOffset(lookAtOffset)
         {
         }
 
-        void operator()(CharacterPreviewRTTNode* node, osg::NodeVisitor* nv)
+        void operator()(osg::Node* node, osg::NodeVisitor* nv)
         {
             // Update keyframe controllers in the scene graph first...
             traverse(node, nv);
@@ -540,12 +295,12 @@ namespace MWRender
             osg::Matrix worldMat = osg::computeLocalToWorld(nodepaths[0]);
             osg::Vec3 headOffset = worldMat.getTrans();
 
-            auto viewMatrix
-                = osg::Matrixf::lookAt(headOffset + mPosOffset, headOffset + mLookAtOffset, osg::Vec3(0, 0, 1));
-            node->setViewMatrix(viewMatrix);
+            mView.setView(
+                osg::Matrixf::lookAt(headOffset + mPosOffset, headOffset + mLookAtOffset, osg::Vec3(0, 0, 1)));
         }
 
     private:
+        OffscreenView& mView;
         osg::ref_ptr<const osg::Node> mNodeToFollow;
         osg::Vec3 mPosOffset;
         osg::Vec3 mLookAtOffset;
@@ -559,13 +314,13 @@ namespace MWRender
 
         // attach camera to follow the head node
         if (mUpdateCameraCallback)
-            mRTTNode->removeUpdateCallback(mUpdateCameraCallback);
+            mScene->removeUpdateCallback(mUpdateCameraCallback);
 
         const osg::Node* head = mAnimation->getNode("Bip01 Head");
         if (head)
         {
-            mUpdateCameraCallback = new UpdateCameraCallback(head, mPosition, mLookAt);
-            mRTTNode->addUpdateCallback(mUpdateCameraCallback);
+            mUpdateCameraCallback = new UpdateCameraCallback(*mView, head, mPosition, mLookAt);
+            mScene->addUpdateCallback(mUpdateCameraCallback);
         }
         else
             Log(Debug::Error) << "Error: Bip01 Head node not found";

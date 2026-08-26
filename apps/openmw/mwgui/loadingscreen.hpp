@@ -10,14 +10,10 @@
 
 #include <components/loadinglistener/loadinglistener.hpp>
 
-namespace osgViewer
+namespace MWRender
 {
-    class Viewer;
-}
-
-namespace osg
-{
-    class Texture2D;
+    class Renderer;
+    class Stage;
 }
 
 namespace Resource
@@ -28,12 +24,11 @@ namespace Resource
 namespace MWGui
 {
     class BackgroundImage;
-    class CopyFramebufferToTextureCallback;
 
     class LoadingScreen : public WindowBase, public Loading::Listener
     {
     public:
-        LoadingScreen(Resource::ResourceSystem* resourceSystem, osgViewer::Viewer* viewer);
+        LoadingScreen(Resource::ResourceSystem* resourceSystem, MWRender::Renderer& renderer, MWRender::Stage& stage);
         virtual ~LoadingScreen();
 
         /// Overridden from Loading::Listener, see the Loading::Listener documentation for usage details
@@ -52,10 +47,11 @@ namespace MWGui
         void findSplashScreens();
         bool needToDrawLoadingScreen();
 
-        void setupCopyFramebufferToTextureCallback();
+        void showFrozenFrame();
 
         Resource::ResourceSystem* mResourceSystem;
-        osg::ref_ptr<osgViewer::Viewer> mViewer;
+        MWRender::Renderer& mRenderer;
+        MWRender::Stage& mStage;
 
         double mTargetFrameRate;
 
@@ -82,10 +78,6 @@ namespace MWGui
         BackgroundImage* mSceneImage;
 
         std::vector<std::string> mSplashScreens;
-
-        osg::ref_ptr<osg::Texture2D> mTexture;
-        osg::ref_ptr<CopyFramebufferToTextureCallback> mCopyFramebufferToTextureCallback;
-        std::unique_ptr<MyGUI::ITexture> mGuiTexture;
 
         void changeWallpaper();
 

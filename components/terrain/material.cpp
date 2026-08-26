@@ -12,6 +12,7 @@
 #include <components/sceneutil/util.hpp>
 #include <components/shader/shadermanager.hpp>
 #include <components/stereo/stereomanager.hpp>
+#include <components/surface/material.hpp>
 
 #include <mutex>
 
@@ -194,6 +195,11 @@ namespace Terrain
 
             osg::ref_ptr<osg::StateSet> stateset(new osg::StateSet);
 
+            // What this layer is, said once rather than left to be recovered from which unit each
+            // texture was bound to. The blend map is not in here: it is not what the ground is made
+            // of, it is how much of this layer there is, and that belongs to the chunk.
+            Surface::Material surface;
+
             if (!blendmaps.empty())
             {
                 stateset->setMode(GL_BLEND, osg::StateAttribute::ON);
@@ -214,6 +220,7 @@ namespace Terrain
 
             stateset->setTextureAttribute(0, it->mDiffuseMap);
             stateset->addUniform(UniformCollection::value().mDiffuseMap);
+            surface.setTexture(Surface::TextureRole::Diffuse, it->mDiffuseMap);
 
             if (layerTileSize != 1.f)
                 stateset->addUniform(LayerTexMat::value(layerTileSize));
@@ -258,6 +265,10 @@ namespace Terrain
                     }
                 }
 
+                if (it->mNormalMap)
+                    surface.setTexture(
+                        parallax ? Surface::TextureRole::NormalHeight : Surface::TextureRole::Normal, it->mNormalMap);
+
                 Shader::ShaderManager::DefineMap defineMap;
                 defineMap["normalMap"] = (it->mNormalMap) ? "1" : "0";
                 defineMap["blendMap"] = (!blendmaps.empty()) ? "1" : "0";
@@ -270,6 +281,7 @@ namespace Terrain
                 stateset->addUniform(UniformCollection::value().mColorMode);
             }
 
+            Surface::setMaterial(*stateset, surface);
             passes.push_back(stateset);
         }
         return passes;

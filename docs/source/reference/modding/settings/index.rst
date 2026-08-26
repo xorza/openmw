@@ -66,6 +66,7 @@ The ranges included with each setting are the physically possible ranges, not re
         Navigator <navigator>
         Physics <physics>
         Post-Processing <postprocessing>
+        RTX <rtx>
         Shaders <shaders>
         Shadows <shadows>
         Saves <saves>

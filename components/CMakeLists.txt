@@ -144,6 +144,10 @@ add_component_dir (sceneutil
     cullsafeboundsvisitor keyframe nodecallback textkeymap glextensions fog texmat material
     )
 
+add_component_dir (surface
+    material
+    )
+
 add_component_dir (nif
     base controller data effect extra niffile nifkey nifstream niftypes node parent particle physics property record recordptr texture
     )
@@ -345,7 +349,7 @@ add_component_dir (translation
 
 add_component_dir (terrain
     storage world buffercache defs terraingrid material terraindrawable texturemanager chunkmanager compositemaprenderer
-    quadtreeworld quadtreenode viewdata cellborder view heightcull
+    quadtreeworld quadtreenode viewdata cellborder view heightcull objectpaging objectstorage
     )
 
 add_component_dir (loadinglistener
@@ -354,6 +358,7 @@ add_component_dir (loadinglistener
 
 add_component_dir (myguiplatform
     myguirendermanager myguidatamanager myguiplatform myguitexture myguiloglistener additivelayer scalinglayer
+    guirendermanager picture pixels regiontexture
     )
 
 add_component_dir (widgets
@@ -380,8 +385,20 @@ add_component_dir (version
     version
     )
 
+add_component_dir (features
+    features
+    )
+
 add_component_dir (fallback
     fallback validate
+    )
+
+add_component_dir (sky
+    clouds moonmodel sun skyroll timeofday
+    )
+
+add_component_dir (weather
+    downpour precipitation
     )
 
 add_component_dir (lua_ui
@@ -585,6 +602,13 @@ if (OPENMW_USE_SYSTEM_SQLITE3)
 endif()
 
 add_library(components STATIC ${COMPONENT_FILES})
+
+# **So that `Features::hasRayTracing` can answer without anything else asking.** The option is a fact
+# about the binary and every program in this tree links this library; spelling it here is what keeps
+# the launcher and the settings page from each repeating the macro.
+if (OPENMW_RTX)
+    target_compile_definitions(components PUBLIC OPENMW_RTX)
+endif()
 
 if (ANDROID)
     set_property(TARGET components PROPERTY POSITION_INDEPENDENT_CODE ON)

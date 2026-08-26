@@ -1,0 +1,49 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// Scene-referred radiance to bytes a display understands.
+//
+// **The one pass that knows what a display is**, and the last thing in the frame for that reason:
+// everything before it works in linear radiance, including the upscaler, which reconstructs from
+// several frames of it.
+//
+// Exposure is a multiply and not a curve. There is no tone-mapping operator here yet, so what the
+// sun does above one is still clipped rather than rolled off.
+
+#include "colour.h"
+#include "tone.h"
+
+layout(local_size_x = TONE_WORKGROUP, local_size_y = TONE_WORKGROUP) in;
+
+/// The finished frame in linear radiance, at whatever resolution the pass before this produced.
+layout(set = 0, binding = 0, rgba32f) uniform readonly image2D colour;
+
+/// The picture, as bytes a display understands.
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D target;
+
+/// What to scale the frame by before the curve — measured off this same image by the two passes
+/// before this one, or written straight in where a caller named a fixed value.
+layout(set = 0, binding = 2, scalar) readonly buffer Exposure
+{
+    float exposure;
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    ToneConstants frame;
+};
+
+void main()
+{
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (pixel.x >= frame.mWidth || pixel.y >= frame.mHeight)
+        return;
+
+    const ivec2 at = ivec2(pixel);
+    const vec4 lit = imageLoad(colour, at);
+
+    // The curve maps radiance to a display; coverage is not radiance and passes through it.
+    imageStore(target, at, vec4(encodeSrgb(lit.rgb * exposure), lit.a));
+}

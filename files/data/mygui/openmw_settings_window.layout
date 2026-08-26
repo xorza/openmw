@@ -803,7 +803,6 @@
                             </Widget>
                         </Widget>
                     </Widget>
-
                     <Widget type="TabItem">
                         <Property key="Caption" value=" #{OMWEngine:Shadows} "/>
 
@@ -933,6 +932,41 @@
                                 <UserString key="SettingLabelWidget" value="ShadowsMaxDistanceText"/>
                                 <UserString key="SettingLabelCaption" value="ShadowsMaxDistanceValue"/>
                             </Widget>
+                        </Widget>
+                    </Widget>
+
+                    <Widget type="TabItem">
+                        <Property key="Caption" value=" #{OMWEngine:RayTracing} "/>
+
+                        <Widget type="VBox" position_real="0 0 1 1" align="Stretch">
+
+                            <Widget type="HBox" align="Stretch">
+                                <UserString key="HStretch" value="true"/>
+                                <UserString key="VStretch" value="false"/>
+                                <Widget type="AutoSizedButton" skin="MW_Button" name="RayTracingButton">
+                                    <UserString key="SettingCategory" value="RTX"/>
+                                    <UserString key="SettingName" value="enabled"/>
+                                    <UserString key="SettingType" value="CheckButton"/>
+                                </Widget>
+                                <Widget type="AutoSizedTextBox" skin="SandText">
+                                    <Property key="Caption" value="#{OMWEngine:RayTracingEnabled}"/>
+                                </Widget>
+                                <Widget type="Spacer"/>
+                            </Widget>
+
+                            <Widget type="Widget" position="0 0 0 8" align="Top HStretch">
+                                <UserString key="HStretch" value="true"/>
+                            </Widget>
+
+                            <Widget type="AutoSizedTextBox" skin="SandText" name="RayTracingRestartHint">
+                                <Property key="Caption" value="#{OMWEngine:RayTracingRestart}"/>
+                            </Widget>
+
+                            <Widget type="AutoSizedTextBox" skin="SandText" name="RayTracingUnavailableHint">
+                                <Property key="Caption" value="#{OMWEngine:RayTracingUnavailable}"/>
+                            </Widget>
+
+                            <Widget type="Spacer"/>
                         </Widget>
                     </Widget>
                 </Widget>

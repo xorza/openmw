@@ -8,11 +8,9 @@
 
 #include <iosfwd>
 
-#include <osg/Texture2D>
-
 namespace osg
 {
-    class Texture2D;
+    class Image;
 }
 
 namespace Video
@@ -66,8 +64,9 @@ namespace Video
         /// Stop the currently playing video, if a video is playing.
         void close();
 
-        /// Return the texture of the currently playing video, or a null pointer if no video is playing.
-        osg::ref_ptr<osg::Texture2D> getVideoTexture();
+        /// The frame the last `commitFrame` settled on, or null where no video is playing. Owned by
+        /// the player and swapped out under `commitFrame`, so it is read between one and the next.
+        const osg::Image* getVideoImage() const;
 
         /// Return the width of the currently playing video, or 0 if no video is playing.
         int getVideoWidth();

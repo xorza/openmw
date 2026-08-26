@@ -71,6 +71,11 @@ namespace Stereo
         //! Gets the singleton instance
         static Manager& instance();
 
+        /// Null where no renderer made one. Stereo is the rasterizer's, and a renderer that owns
+        /// its own surface never brings this up — so the two places that reach for it whether or
+        /// not stereo is on have to ask first.
+        static Manager* instancePtr();
+
         //! Constructor
         //!
         //! @Param viewer the osg viewer whose stereo should be managed.

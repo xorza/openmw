@@ -1,0 +1,138 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// One level of an edge-stopping à-trous wavelet, over the indirect channel alone.
+//
+// **It filters light and never a surface.** The trace divided the albedo out, so what is here is
+// what varies slowly across a wall — the part a blur can average without destroying anything — and
+// the composite multiplies the texture back in afterwards at full sharpness. Filtering a finished
+// picture instead is what makes a denoiser look like a smear.
+//
+// The channel also carries what the water and the air took off that light on the way to the eye,
+// which varies as slowly as fog does and so averages without harm.
+//
+// Dammertz et al. 2010 for the cascade, and SVGF for the normal test and its exponent of 128.
+//
+// **The other two edge-stopping functions are not SVGF's.** Its depth term divides by the depth
+// gradient along the tap, `exp(-|z(p) - z(q)| / (sigma_z * |grad z . (p - q)| + eps))`; what is
+// below is a plane-distance test, which is what the denoisers written since — NRD's among them —
+// settled on, and which handles a grazing floor without needing a derivative that a ray tracer has
+// no rasterizer to hand it. And SVGF's luminance term is missing outright: it weighs by the
+// variance of an accumulated history, and there is no history here yet.
+
+#include "atrous.h"
+#include "camera.h"
+#include "colour.h"
+#include "gbuffer.h"
+
+layout(local_size_x = ATROUS_WORKGROUP, local_size_y = ATROUS_WORKGROUP) in;
+
+/// One bounce, albedo divided out, as the last level left it.
+layout(set = 0, binding = 0, GBUFFER_RADIANCE) uniform readonly image2D source;
+
+/// Where this level puts what it made of it.
+layout(set = 0, binding = 1, GBUFFER_RADIANCE) uniform writeonly image2D filtered;
+
+/// The shading normal in `xyz`. A ray that hit nothing left a zero normal, which no surface can
+/// match, so the sky neither contributes nor gets filtered. `w` is roughness, which this does not
+/// read: the edge tests are about where a surface is, not what it is made of.
+layout(set = 0, binding = 2, GBUFFER_GUIDE) uniform readonly image2D guide;
+
+/// Clip depth in `r` and the distance from the eye in `g`. This reads the second, in world units,
+/// because a tolerance against a clip value would mean something different at every distance.
+layout(set = 0, binding = 3, GBUFFER_DEPTH) uniform readonly image2D depth;
+
+/// The estimator's own variance in `b`, written by the accumulator in front of this cascade. One
+/// where a pixel has no history to have measured a spread with, which reads as "trust the
+/// neighbours entirely" and is the honest answer for a single sample.
+layout(set = 0, binding = 4, GBUFFER_RADIANCE) uniform readonly image2D moments;
+
+layout(push_constant, scalar) uniform Push
+{
+    AtrousConstants level;
+};
+
+/// The B3 spline the wavelet is built from, as its 1D row.
+const float KERNEL[5] = float[](1.0 / 16.0, 1.0 / 4.0, 3.0 / 8.0, 1.0 / 4.0, 1.0 / 16.0);
+
+/// Where the trace's ray through `pixel` ended up, `away` along it.
+///
+/// **The trace's own `rayAt`, so these are the rays that were actually shaded.** The eye's place
+/// drops out because every use of this is a difference between two of them, which is why `Camera`
+/// does not carry one.
+vec3 positionAt(ivec2 pixel, float away)
+{
+    const Ray ray = rayAt(level.mCamera, vec2(pixel));
+
+    return ray.mOffset + ray.mDirection * away;
+}
+
+void main()
+{
+    const ivec2 at = ivec2(gl_GlobalInvocationID.xy);
+    if (at.x >= int(level.mCamera.mWidth) || at.y >= int(level.mCamera.mHeight))
+        return;
+
+    const vec3 normal = imageLoad(guide, at).xyz;
+
+    // A pixel with no surface under it has nothing to filter and nothing to say to its neighbours.
+    if (dot(normal, normal) <= 0.0)
+    {
+        imageStore(filtered, at, imageLoad(source, at));
+        return;
+    }
+
+    const float away = imageLoad(depth, at).g;
+    const vec3 position = positionAt(at, away);
+
+    // What one pixel covers where this surface is, which is the scale every plane offset below is
+    // measured against. Never zero, or a surface at the eye would reject every neighbour.
+    //
+    // **A parallel projection's is a constant**, one pixel of the box wide for the whole of the
+    // ray, which is the same figure the trace picks its mip level with. Reading `mSpreadAngle` for
+    // it instead lands on nought, and a footprint of nought rejects every tap but the centre — so a
+    // map tile used to run five levels of this and come out exactly as it went in.
+    const Cone cone = coneAt(level.mCamera);
+    const float footprint = max(cone.mWidth + cone.mSpread * away, 1e-4);
+
+    // **How noisy this pixel still is, which is what makes the brightness test mean anything.** A
+    // difference of one against a variance of four is nothing; the same difference against a settled
+    // pixel is an edge. The epsilon is a divide guard and nothing else.
+    const float spread = level.mLuminanceSigma * sqrt(imageLoad(moments, at).b) + 1e-4;
+    const float here = dot(imageLoad(source, at).rgb, LUMINANCE_WEIGHTS);
+
+    vec3 sum = vec3(0.0);
+    float weight = 0.0;
+
+    for (int y = -2; y <= 2; ++y)
+        for (int x = -2; x <= 2; ++x)
+        {
+            const ivec2 tap = at + ivec2(x, y) * int(level.mStep);
+            if (tap.x < 0 || tap.y < 0 || tap.x >= int(level.mCamera.mWidth) || tap.y >= int(level.mCamera.mHeight))
+                continue;
+
+            const vec3 facingThere = imageLoad(guide, tap).xyz;
+            if (dot(facingThere, facingThere) <= 0.0)
+                continue;
+
+            // Two surfaces are the same surface where they face the same way and lie in the same
+            // plane. Both tests are needed: a facing test alone joins two parallel walls a room
+            // apart, and a plane test alone joins a floor to the wall standing on it.
+            const float facing = pow(max(dot(normal, facingThere), 0.0), level.mNormalPower);
+            const float offset = abs(dot(normal, positionAt(tap, imageLoad(depth, tap).g) - position));
+            const float coplanar = exp(-offset / (level.mPlaneSigma * footprint));
+
+            // The third of SVGF's three, and the only one about the light rather than the surface.
+            const vec3 light = imageLoad(source, tap).rgb;
+            const float lit = exp(-abs(here - dot(light, LUMINANCE_WEIGHTS)) / spread);
+
+            const float w = KERNEL[x + 2] * KERNEL[y + 2] * facing * coplanar * lit;
+            sum += light * w;
+            weight += w;
+        }
+
+    // The centre always passes its own tests, so the weight can only be zero if it underflowed.
+    imageStore(filtered, at, vec4(weight > 0.0 ? sum / weight : imageLoad(source, at).rgb, 1.0));
+}

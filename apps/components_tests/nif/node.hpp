@@ -35,6 +35,8 @@ namespace Nif::Testing
         init(static_cast<NiAVObject&>(value));
         value.mData = NiGeometryDataPtr(nullptr);
         value.mSkin = NiSkinInstancePtr(nullptr);
+        value.mShaderProperty = BSShaderPropertyPtr(nullptr);
+        value.mAlphaProperty = NiAlphaPropertyPtr(nullptr);
     }
 
     inline void init(NiTriShape& value)

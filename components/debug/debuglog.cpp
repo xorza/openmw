@@ -1,6 +1,11 @@
 #include "debuglog.hpp"
 
+#include <cstdio>
 #include <mutex>
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include <components/files/conversion.hpp>
 #include <components/misc/strings/conversion.hpp>
@@ -9,6 +14,32 @@ static std::mutex sLock;
 
 Debug::Level Log::sMinDebugLevel = Debug::All;
 bool Log::sWriteLevel = false;
+
+namespace
+{
+    bool sFatalDialogs = true;
+}
+
+namespace Debug
+{
+    void setFatalDialogs(const bool allowed)
+    {
+        sFatalDialogs = allowed;
+    }
+
+    bool wantsFatalDialog()
+    {
+        if (!sFatalDialogs)
+            return false;
+
+#ifndef _WIN32
+        if (isatty(fileno(stdout)) || isatty(fileno(stderr)))
+            return false;
+#endif
+
+        return true;
+    }
+}
 
 Log::Log(Debug::Level level)
     : mShouldLog(level <= sMinDebugLevel)

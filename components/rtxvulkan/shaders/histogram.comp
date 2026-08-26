@@ -1,0 +1,64 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// How bright the frame is, as a histogram of log luminance.
+//
+// **The frame the display curve is about to map**, which is the upscaled one wherever something
+// upscales. Measuring the render-resolution frame instead reads it as darker than it is: the
+// histogram bins `log2(luminance)` per pixel, the mean of a log sits below the log of the mean by
+// roughly the variance, and attaching an upscaler turns the denoiser off — so what exposure would be
+// reading is one path-traced sample per pixel. The reference implementation measured that as a
+// uniform 2.7% bias, and the whole of the fix is which image these two passes are bound to.
+
+#include "colour.h"
+#include "exposure.h"
+
+layout(local_size_x = HISTOGRAM_WORKGROUP, local_size_y = HISTOGRAM_WORKGROUP) in;
+
+/// The finished frame in linear radiance.
+layout(set = 0, binding = 0, rgba32f) uniform readonly image2D source;
+
+layout(set = 0, binding = 1, scalar) buffer Histogram
+{
+    uint bins[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    HistogramConstants frame;
+};
+
+/// A workgroup's own tally, so its 256 pixels contend for shared memory rather than for one global
+/// atomic each. The buffer then sees one atomic per bin per workgroup instead of one per pixel.
+shared uint localBins[EXPOSURE_BINS];
+
+uint binOf(float luminance)
+{
+    if (luminance < EXPOSURE_BLACK)
+        return 0u;
+
+    // Bin zero is reserved for black, so the resolved range starts at one.
+    const float span = MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE;
+    const float normalised = (log2(luminance) - MIN_LOG_LUMINANCE) / span;
+    return uint(clamp(normalised, 0.0, 1.0) * float(EXPOSURE_BINS - 2u)) + 1u;
+}
+
+void main()
+{
+    localBins[gl_LocalInvocationIndex] = 0u;
+    barrier();
+
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (pixel.x < frame.mWidth && pixel.y < frame.mHeight)
+    {
+        const float luminance = dot(imageLoad(source, ivec2(pixel)).rgb, LUMINANCE_WEIGHTS);
+        atomicAdd(localBins[binOf(luminance)], 1u);
+    }
+    barrier();
+
+    const uint count = localBins[gl_LocalInvocationIndex];
+    if (count > 0u)
+        atomicAdd(bins[gl_LocalInvocationIndex], count);
+}

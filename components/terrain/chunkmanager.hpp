@@ -1,6 +1,7 @@
 #ifndef OPENMW_COMPONENTS_TERRAIN_CHUNKMANAGER_H
 #define OPENMW_COMPONENTS_TERRAIN_CHUNKMANAGER_H
 
+#include <limits>
 #include <tuple>
 
 #include <components/resource/resourcemanager.hpp>
@@ -70,6 +71,14 @@ namespace Terrain
     {
         return TemplateKey{ .mCenter = l.mCenter, .mLod = l.mLod } < r;
     }
+
+    /// A `composite map level` no chunk can reach, so `createChunk` never builds a composite map.
+    ///
+    /// **For a renderer with no OpenGL context.** A composite map is an `osg::Texture2D` with no
+    /// image, filled in by `CompositeMapRenderer` drawing the layer stack into it; a path that never
+    /// initialises GL has nothing to draw it with, and a chunk that got one carries a diffuse
+    /// nothing can open. Passed instead of a level, every chunk arrives as its layer stack.
+    inline constexpr float sNoCompositeMap = std::numeric_limits<float>::infinity();
 
     /// @brief Handles loading and caching of terrain chunks
     class ChunkManager : public Resource::GenericResourceManager<ChunkKey>, public QuadTreeWorld::ChunkManager

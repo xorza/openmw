@@ -114,6 +114,11 @@ namespace Stereo
         return *sInstance;
     }
 
+    Manager* Manager::instancePtr()
+    {
+        return sInstance;
+    }
+
     Manager::Manager(osgViewer::Viewer* viewer, bool enableStereo, float near, float far)
         : mViewer(viewer)
         , mMainCamera(mViewer->getCamera())

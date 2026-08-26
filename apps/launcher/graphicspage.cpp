@@ -2,6 +2,7 @@
 
 #include "sdlinit.hpp"
 
+#include <components/features/features.hpp>
 #include <components/misc/display.hpp>
 #include <components/settings/values.hpp>
 
@@ -92,6 +93,19 @@ bool Launcher::GraphicsPage::loadSettings()
     if (Settings::video().mWindowBorder)
         windowBorderCheckBox->setCheckState(Qt::Checked);
 
+    if (Settings::rtx().mEnabled)
+        rayTracingCheckBox->setCheckState(Qt::Checked);
+
+    // The setting exists in every build so a config file survives moving between them; the switch
+    // is shown dead rather than hidden, because a control that silently does nothing is worse than
+    // one that says why. Asked of the build rather than of the preprocessor — see
+    // `Features::hasRayTracing`.
+    if (!Features::hasRayTracing())
+    {
+        rayTracingCheckBox->setEnabled(false);
+        rayTracingCheckBox->setToolTip(tr("This build was made without the ray tracing renderer."));
+    }
+
     // aaValue is the actual value (0, 1, 2, 4, 8, 16)
     const int aaValue = Settings::video().mAntialiasing;
     // aaIndex is the index into the allowed values in the pull down.
@@ -136,6 +150,8 @@ void Launcher::GraphicsPage::saveSettings()
     Settings::video().mWindowMode.set(static_cast<Settings::WindowMode>(windowModeComboBox->currentIndex()));
     Settings::video().mWindowBorder.set(windowBorderCheckBox->checkState() == Qt::Checked);
     Settings::video().mAntialiasing.set(antiAliasingComboBox->currentText().toInt());
+
+    Settings::rtx().mEnabled.set(rayTracingCheckBox->checkState() == Qt::Checked);
 
     int cWidth = 0;
     int cHeight = 0;

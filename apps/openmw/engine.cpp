@@ -5,15 +5,12 @@
 #include <future>
 #include <system_error>
 
-#include <osgDB/ReaderWriter>
-#include <osgDB/Registry>
-#include <osgViewer/Renderer>
-#include <osgViewer/ViewerEventHandlers>
-
 #include <SDL.h>
 
+#include <osg/Version>
+#include <osg/ref_ptr>
+
 #include <components/debug/debuglog.hpp>
-#include <components/debug/gldebug.hpp>
 
 #include <components/misc/rng.hpp>
 #include <components/misc/strings/format.hpp>
@@ -21,18 +18,13 @@
 #include <components/vfs/manager.hpp>
 #include <components/vfs/registerarchives.hpp>
 
-#include <components/sdlutil/imagetosurface.hpp>
-#include <components/sdlutil/sdlgraphicswindow.hpp>
-
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/resource/stats.hpp>
 
 #include <components/compiler/extensions0.hpp>
 
 #include <components/stereo/stereomanager.hpp>
 
-#include <components/sceneutil/glextensions.hpp>
 #include <components/sceneutil/workqueue.hpp>
 
 #include <components/files/configurationmanager.hpp>
@@ -46,11 +38,7 @@
 
 #include <components/misc/frameratelimiter.hpp>
 
-#include <components/sceneutil/color.hpp>
-#include <components/sceneutil/depth.hpp>
-#include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/unrefqueue.hpp>
-#include <components/sceneutil/util.hpp>
 
 #include <components/settings/shadermanager.hpp>
 #include <components/settings/values.hpp>
@@ -72,6 +60,9 @@
 #include "mwworld/datetimemanager.hpp"
 #include "mwworld/worldimp.hpp"
 
+#include "mwrender/renderer.hpp"
+#include "mwrender/renderingmanager.hpp"
+#include "mwrender/stage.hpp"
 #include "mwrender/vismask.hpp"
 
 #include "mwclass/classes.hpp"
@@ -85,95 +76,6 @@
 #include "mwstate/statemanagerimp.hpp"
 
 #include "profile.hpp"
-
-namespace
-{
-    void checkSDLError(int ret)
-    {
-        if (ret != 0)
-            Log(Debug::Error) << "SDL error: " << SDL_GetError();
-    }
-
-    void initStatsHandler(Resource::Profiler& profiler)
-    {
-        const osg::Vec4f textColor(1.f, 1.f, 1.f, 1.f);
-        const osg::Vec4f barColor(1.f, 1.f, 1.f, 1.f);
-        const float multiplier = 1000;
-        const bool average = true;
-        const bool averageInInverseSpace = false;
-        const float maxValue = 10000;
-
-        OMW::forEachUserStatsValue([&](const OMW::UserStats& v) {
-            profiler.addUserStatsLine(v.mLabel, textColor, barColor, v.mTaken, multiplier, average,
-                averageInInverseSpace, v.mBegin, v.mEnd, maxValue);
-        });
-        // the forEachUserStatsValue loop is "run" at compile time, hence the settings manager is not available.
-        // Unconditionnally add the async physics stats, and then remove it at runtime if necessary
-        if (Settings::physics().mAsyncNumThreads == 0)
-            profiler.removeUserStatsLine(" -Async");
-    }
-
-    struct ScreenCaptureMessageBox
-    {
-        void operator()(std::string filePath) const
-        {
-            if (filePath.empty())
-            {
-                MWBase::Environment::get().getWindowManager()->scheduleMessageBox(
-                    "#{OMWEngine:ScreenshotFailed}", MWGui::ShowInDialogueMode_Never);
-
-                return;
-            }
-
-            auto l10n = MWBase::Environment::get().getL10nManager()->getContext("OMWEngine");
-            std::string message = l10n->formatMessage("ScreenshotMade", { "file" }, { L10n::toUnicode(filePath) });
-
-            MWBase::Environment::get().getWindowManager()->scheduleMessageBox(
-                std::move(message), MWGui::ShowInDialogueMode_Never);
-        }
-    };
-
-    struct IgnoreString
-    {
-        void operator()(std::string) const {}
-    };
-
-    class IdentifyOpenGLOperation : public osg::GraphicsOperation
-    {
-    public:
-        IdentifyOpenGLOperation()
-            : GraphicsOperation("IdentifyOpenGLOperation", false)
-        {
-        }
-
-        void operator()(osg::GraphicsContext* graphicsContext) override
-        {
-            Log(Debug::Info) << "OpenGL Vendor: " << glGetString(GL_VENDOR);
-            Log(Debug::Info) << "OpenGL Renderer: " << glGetString(GL_RENDERER);
-            Log(Debug::Info) << "OpenGL Version: " << glGetString(GL_VERSION);
-            glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &mMaxTextureImageUnits);
-        }
-
-        int getMaxTextureImageUnits() const
-        {
-            if (mMaxTextureImageUnits == 0)
-                throw std::logic_error("mMaxTextureImageUnits is not initialized");
-            return mMaxTextureImageUnits;
-        }
-
-    private:
-        int mMaxTextureImageUnits = 0;
-    };
-
-    void reportStats(unsigned frameNumber, osgViewer::Viewer& viewer, std::ostream& stream)
-    {
-        viewer.getViewerStats()->report(stream, frameNumber);
-        osgViewer::Viewer::Cameras cameras;
-        viewer.getCameras(cameras);
-        for (osg::Camera* camera : cameras)
-            camera->getStats()->report(stream, frameNumber);
-    }
-}
 
 void OMW::Engine::executeLocalScripts()
 {
@@ -190,9 +92,9 @@ void OMW::Engine::executeLocalScripts()
 
 bool OMW::Engine::frame(unsigned frameNumber, float frametime)
 {
-    const osg::Timer_t frameStart = mViewer->getStartTick();
+    const osg::Timer_t frameStart = mRenderer->getStartTick();
     const osg::Timer* const timer = osg::Timer::instance();
-    osg::Stats* const stats = mViewer->getViewerStats();
+    osg::Stats* const stats = &mStage->getStats();
 
     mEnvironment.setFrameDuration(frametime);
 
@@ -343,10 +245,11 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
         stats->setAttribute(frameNumber, "StringRefId Count", static_cast<double>(ESM::StringRefId::totalCount()));
     }
 
-    mStereoManager->updateSettings(Settings::camera().mNearClip, Settings::camera().mViewingDistance);
+    if (Stereo::Manager* stereo = Stereo::Manager::instancePtr())
+        stereo->updateSettings(Settings::camera().mNearClip, Settings::camera().mViewingDistance);
 
-    mViewer->eventTraversal();
-    mViewer->updateTraversal();
+    mRenderer->eventTraversal();
+    mRenderer->updateTraversal();
 
     // update focus object for GUI
     {
@@ -357,7 +260,10 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
     // if there is a separate Lua thread, it starts the update now
     mLuaWorker->allowUpdate(frameStart, frameNumber, *stats);
 
-    mViewer->renderingTraversals();
+    // **The world describes its own frame.** What is lit and where the eye is has met in
+    // `RenderingManager` by now; a renderer that culls ignores all of it and a renderer that does
+    // not needs every field.
+    mWorld->getRenderingManager()->renderFrame();
 
     mLuaWorker->finishUpdate(frameStart, frameNumber, *stats);
 
@@ -369,12 +275,7 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
 }
 
 OMW::Engine::Engine(Files::ConfigurationManager& configurationManager)
-    : mWindow(nullptr)
-    , mEncoding(ToUTF8::WINDOWS_1252)
-    , mScreenCaptureOperation(nullptr)
-    , mSelectDepthFormatOperation(new SceneUtil::SelectDepthFormatOperation())
-    , mSelectColorFormatOperation(new SceneUtil::Color::SelectColorFormatOperation())
-    , mStereoManager(nullptr)
+    : mEncoding(ToUTF8::WINDOWS_1252)
     , mSkipMenu(false)
     , mUseSound(true)
     , mCompileAll(false)
@@ -387,7 +288,6 @@ OMW::Engine::Engine(Files::ConfigurationManager& configurationManager)
     , mRandomSeed(0)
     , mNewGame(false)
     , mCfgMgr(configurationManager)
-    , mGlMaxTextureImageUnits(0)
 {
 #if SDL_VERSION_ATLEAST(2, 24, 0)
     SDL_SetHint(SDL_HINT_MAC_OPENGL_ASYNC_DISPATCH, "1");
@@ -408,20 +308,12 @@ OMW::Engine::Engine(Files::ConfigurationManager& configurationManager)
 
 OMW::Engine::~Engine()
 {
-    if (mScreenCaptureOperation != nullptr)
-    {
-        mScreenCaptureOperation->stop();
-        mScreenCaptureOperation = nullptr;
-    }
-    mScreenCaptureHandler = nullptr;
-
     mMechanicsManager = nullptr;
     mDialogueManager = nullptr;
     mJournal = nullptr;
     mWindowManager = nullptr;
     mScriptManager = nullptr;
     mWorld = nullptr;
-    mStereoManager = nullptr;
     mSoundManager = nullptr;
     mInputManager = nullptr;
     mStateManager = nullptr;
@@ -431,20 +323,16 @@ OMW::Engine::~Engine()
 
     mScriptContext = nullptr;
 
+    mRenderer = nullptr;
+
     mUnrefQueue = nullptr;
     mWorkQueue = nullptr;
 
-    mViewer = nullptr;
+    mStage = nullptr;
 
     mResourceSystem.reset();
 
     mEncoder = nullptr;
-
-    if (mWindow)
-    {
-        SDL_DestroyWindow(mWindow);
-        mWindow = nullptr;
-    }
 
     SDL_Quit();
 
@@ -497,252 +385,13 @@ void OMW::Engine::setSkipMenu(bool skipMenu, bool newGame)
     mNewGame = newGame;
 }
 
-void OMW::Engine::createWindow()
-{
-    const int screen = Settings::video().mScreen;
-    const int width = Settings::video().mResolutionX;
-    const int height = Settings::video().mResolutionY;
-    const Settings::WindowMode windowMode = Settings::video().mWindowMode;
-    const bool windowBorder = Settings::video().mWindowBorder;
-    const SDLUtil::VSyncMode vsync = Settings::video().mVsyncMode;
-    unsigned antialiasing = static_cast<unsigned>(Settings::video().mAntialiasing);
-
-    int posX = SDL_WINDOWPOS_CENTERED_DISPLAY(screen);
-    int posY = SDL_WINDOWPOS_CENTERED_DISPLAY(screen);
-
-    if (windowMode == Settings::WindowMode::Fullscreen || windowMode == Settings::WindowMode::WindowedFullscreen)
-    {
-        posX = SDL_WINDOWPOS_UNDEFINED_DISPLAY(screen);
-        posY = SDL_WINDOWPOS_UNDEFINED_DISPLAY(screen);
-    }
-
-    Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
-    if (windowMode == Settings::WindowMode::Fullscreen)
-        flags |= SDL_WINDOW_FULLSCREEN;
-    else if (windowMode == Settings::WindowMode::WindowedFullscreen)
-        flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-
-    // Allows for Windows snapping features to properly work in borderless window
-    SDL_SetHint("SDL_BORDERLESS_WINDOWED_STYLE", "1");
-    SDL_SetHint("SDL_BORDERLESS_RESIZABLE_STYLE", "1");
-
-    if (!windowBorder)
-        flags |= SDL_WINDOW_BORDERLESS;
-
-    SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, Settings::video().mMinimizeOnFocusLoss ? "1" : "0");
-
-    checkSDLError(SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8));
-    checkSDLError(SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8));
-    checkSDLError(SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8));
-    checkSDLError(SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0));
-    checkSDLError(SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24));
-    if (Debug::shouldDebugOpenGL())
-        checkSDLError(SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG));
-
-    if (antialiasing > 0)
-    {
-        checkSDLError(SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1));
-        checkSDLError(SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, antialiasing));
-    }
-
-    osg::ref_ptr<SDLUtil::GraphicsWindowSDL2> graphicsWindow;
-    while (!graphicsWindow || !graphicsWindow->valid())
-    {
-        while (!mWindow)
-        {
-            mWindow = SDL_CreateWindow("OpenMW", posX, posY, width, height, flags);
-            if (!mWindow)
-            {
-                // Try with a lower AA
-                if (antialiasing > 0)
-                {
-                    Log(Debug::Warning) << "Warning: " << antialiasing << "x antialiasing not supported, trying "
-                                        << antialiasing / 2;
-                    antialiasing /= 2;
-                    Settings::video().mAntialiasing.set(antialiasing);
-                    checkSDLError(SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, antialiasing));
-                    continue;
-                }
-                else
-                {
-                    std::stringstream error;
-                    error << "Failed to create SDL window: " << SDL_GetError();
-                    throw std::runtime_error(error.str());
-                }
-            }
-        }
-
-        // Since we use physical resolution internally, we have to create the window with scaled resolution,
-        // but we can't get the scale before the window exists, so instead we have to resize aftewards.
-        int w, h;
-        SDL_GetWindowSize(mWindow, &w, &h);
-        int dw, dh;
-        SDL_GL_GetDrawableSize(mWindow, &dw, &dh);
-        if (dw != w || dh != h)
-        {
-            SDL_SetWindowSize(mWindow, width / (dw / w), height / (dh / h));
-        }
-
-        setWindowIcon();
-
-        osg::ref_ptr<osg::GraphicsContext::Traits> traits = new osg::GraphicsContext::Traits;
-        SDL_GetWindowPosition(mWindow, &traits->x, &traits->y);
-        SDL_GL_GetDrawableSize(mWindow, &traits->width, &traits->height);
-        traits->windowName = SDL_GetWindowTitle(mWindow);
-        traits->windowDecoration = !(SDL_GetWindowFlags(mWindow) & SDL_WINDOW_BORDERLESS);
-        traits->screenNum = SDL_GetWindowDisplayIndex(mWindow);
-        traits->vsync = 0;
-        traits->inheritedWindowData = new SDLUtil::GraphicsWindowSDL2::WindowData(mWindow);
-
-        graphicsWindow = new SDLUtil::GraphicsWindowSDL2(traits, vsync);
-        if (!graphicsWindow->valid())
-            throw std::runtime_error("Failed to create GraphicsContext");
-
-        if (traits->samples < antialiasing)
-        {
-            Log(Debug::Warning) << "Warning: Framebuffer MSAA level is only " << traits->samples << "x instead of "
-                                << antialiasing << "x. Trying " << antialiasing / 2 << "x instead.";
-            graphicsWindow->closeImplementation();
-            SDL_DestroyWindow(mWindow);
-            mWindow = nullptr;
-            antialiasing /= 2;
-            Settings::video().mAntialiasing.set(antialiasing);
-            checkSDLError(SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, antialiasing));
-            continue;
-        }
-
-        if (traits->red < 8)
-            Log(Debug::Warning) << "Warning: Framebuffer only has a " << traits->red << " bit red channel.";
-        if (traits->green < 8)
-            Log(Debug::Warning) << "Warning: Framebuffer only has a " << traits->green << " bit green channel.";
-        if (traits->blue < 8)
-            Log(Debug::Warning) << "Warning: Framebuffer only has a " << traits->blue << " bit blue channel.";
-        if (traits->depth < 24)
-            Log(Debug::Warning) << "Warning: Framebuffer only has " << traits->depth << " bits of depth precision.";
-
-        traits->alpha = 0; // set to 0 to stop ScreenCaptureHandler reading the alpha channel
-    }
-
-    osg::ref_ptr<osg::Camera> camera = mViewer->getCamera();
-    camera->setGraphicsContext(graphicsWindow);
-    camera->setViewport(0, 0, graphicsWindow->getTraits()->width, graphicsWindow->getTraits()->height);
-
-    osg::ref_ptr<SceneUtil::OperationSequence> realizeOperations = new SceneUtil::OperationSequence(false);
-    mViewer->setRealizeOperation(realizeOperations);
-    osg::ref_ptr<IdentifyOpenGLOperation> identifyOp = new IdentifyOpenGLOperation();
-    realizeOperations->add(identifyOp);
-    realizeOperations->add(new SceneUtil::GetGLExtensionsOperation());
-
-    if (Debug::shouldDebugOpenGL())
-        realizeOperations->add(new Debug::EnableGLDebugOperation());
-
-    realizeOperations->add(mSelectDepthFormatOperation);
-    realizeOperations->add(mSelectColorFormatOperation);
-
-    if (Stereo::getStereo())
-    {
-        Stereo::Settings settings;
-
-        settings.mMultiview = Settings::stereo().mMultiview;
-        settings.mAllowDisplayListsForMultiview = Settings::stereo().mAllowDisplayListsForMultiview;
-        settings.mSharedShadowMaps = Settings::stereo().mSharedShadowMaps;
-
-        if (Settings::stereo().mUseCustomView)
-        {
-            const osg::Vec3 leftEyeOffset(Settings::stereoView().mLeftEyeOffsetX,
-                Settings::stereoView().mLeftEyeOffsetY, Settings::stereoView().mLeftEyeOffsetZ);
-
-            const osg::Quat leftEyeOrientation(Settings::stereoView().mLeftEyeOrientationX,
-                Settings::stereoView().mLeftEyeOrientationY, Settings::stereoView().mLeftEyeOrientationZ,
-                Settings::stereoView().mLeftEyeOrientationW);
-
-            const osg::Vec3 rightEyeOffset(Settings::stereoView().mRightEyeOffsetX,
-                Settings::stereoView().mRightEyeOffsetY, Settings::stereoView().mRightEyeOffsetZ);
-
-            const osg::Quat rightEyeOrientation(Settings::stereoView().mRightEyeOrientationX,
-                Settings::stereoView().mRightEyeOrientationY, Settings::stereoView().mRightEyeOrientationZ,
-                Settings::stereoView().mRightEyeOrientationW);
-
-            settings.mCustomView = Stereo::CustomView{
-                .mLeft = Stereo::View{
-                    .pose = Stereo::Pose{
-                        .position = leftEyeOffset,
-                        .orientation = leftEyeOrientation,
-                    },
-                    .fov = Stereo::FieldOfView{
-                        .angleLeft = Settings::stereoView().mLeftEyeFovLeft,
-                        .angleRight = Settings::stereoView().mLeftEyeFovRight,
-                        .angleUp = Settings::stereoView().mLeftEyeFovUp,
-                        .angleDown = Settings::stereoView().mLeftEyeFovDown,
-                    },
-                },
-                .mRight = Stereo::View{
-                    .pose = Stereo::Pose{
-                        .position = rightEyeOffset,
-                        .orientation = rightEyeOrientation,
-                    },
-                    .fov = Stereo::FieldOfView{
-                        .angleLeft = Settings::stereoView().mRightEyeFovLeft,
-                        .angleRight = Settings::stereoView().mRightEyeFovRight,
-                        .angleUp = Settings::stereoView().mRightEyeFovUp,
-                        .angleDown = Settings::stereoView().mRightEyeFovDown,
-                    },
-                },
-            };
-        }
-
-        if (Settings::stereo().mUseCustomEyeResolution)
-            settings.mEyeResolution
-                = osg::Vec2i(Settings::stereoView().mEyeResolutionX, Settings::stereoView().mEyeResolutionY);
-
-        realizeOperations->add(new Stereo::InitializeStereoOperation(settings));
-    }
-
-    mViewer->realize();
-    mGlMaxTextureImageUnits = identifyOp->getMaxTextureImageUnits();
-
-    mViewer->getEventQueue()->getCurrentEventState()->setWindowRectangle(
-        0, 0, graphicsWindow->getTraits()->width, graphicsWindow->getTraits()->height);
-}
-
-void OMW::Engine::setWindowIcon()
-{
-    std::ifstream windowIconStream;
-    const auto windowIcon = mResDir / "openmw.png";
-    windowIconStream.open(windowIcon, std::ios_base::in | std::ios_base::binary);
-    if (windowIconStream.fail())
-        Log(Debug::Error) << "Error: Failed to open " << windowIcon;
-    osgDB::ReaderWriter* reader = osgDB::Registry::instance()->getReaderWriterForExtension("png");
-    if (!reader)
-    {
-        Log(Debug::Error) << "Error: Failed to read window icon, no png readerwriter found";
-        return;
-    }
-    osgDB::ReaderWriter::ReadResult result = reader->readImage(windowIconStream);
-    if (!result.success())
-        Log(Debug::Error) << "Error: Failed to read " << windowIcon << ": " << result.message() << " code "
-                          << result.status();
-    else
-    {
-        osg::ref_ptr<osg::Image> image = result.getImage();
-        auto surface = SDLUtil::imageToSurface(image, true);
-        SDL_SetWindowIcon(mWindow, surface.get());
-    }
-}
-
 void OMW::Engine::prepareEngine()
 {
     mStateManager = std::make_unique<MWState::StateManager>(mCfgMgr.getUserDataPath() / "saves", mContentFiles);
     mEnvironment.setStateManager(*mStateManager);
 
-    const bool stereoEnabled = Settings::stereo().mStereoEnabled || osg::DisplaySettings::instance().get()->getStereo();
-    mStereoManager = std::make_unique<Stereo::Manager>(
-        mViewer, stereoEnabled, Settings::camera().mNearClip, Settings::camera().mViewingDistance);
-
     osg::ref_ptr<osg::Group> rootNode(new osg::Group);
-    mViewer->setSceneData(rootNode);
-
-    createWindow();
+    mRenderer->setSceneRoot(*rootNode);
 
     mVFS = std::make_unique<VFS::Manager>();
 
@@ -750,7 +399,7 @@ void OMW::Engine::prepareEngine()
 
     mResourceSystem = std::make_unique<Resource::ResourceSystem>(
         mVFS.get(), Settings::cells().mCacheExpiryDelay, &mEncoder.get()->getStatelessEncoder());
-    mResourceSystem->getSceneManager()->getShaderManager().setMaxTextureUnits(mGlMaxTextureImageUnits);
+    mResourceSystem->getSceneManager()->getShaderManager().setMaxTextureUnits(mRenderer->getMaxTextureUnits());
     mResourceSystem->getSceneManager()->setUnRefImageDataAfterApply(
         false); // keep to Off for now to allow better state sharing
     mResourceSystem->getSceneManager()->setFilterSettings(Settings::general().mTextureMagFilter,
@@ -758,18 +407,7 @@ void OMW::Engine::prepareEngine()
         static_cast<float>(Settings::general().mAnisotropy));
     mEnvironment.setResourceSystem(*mResourceSystem);
 
-    mWorkQueue = new SceneUtil::WorkQueue(Settings::cells().mPreloadNumThreads);
     mUnrefQueue = std::make_unique<SceneUtil::UnrefQueue>();
-
-    mScreenCaptureOperation = new SceneUtil::AsyncScreenCaptureOperation(mWorkQueue,
-        new SceneUtil::WriteScreenshotToFileOperation(mCfgMgr.getScreenshotPath(),
-            Settings::general().mScreenshotFormat,
-            Settings::general().mNotifyOnSavedScreenshot ? std::function<void(std::string)>(ScreenCaptureMessageBox{})
-                                                         : std::function<void(std::string)>(IgnoreString{})));
-
-    mScreenCaptureHandler = new osgViewer::ScreenCaptureHandler(mScreenCaptureOperation);
-
-    mViewer->addEventHandler(mScreenCaptureHandler);
 
     mL10nManager = std::make_unique<L10n::Manager>(mVFS.get());
     mL10nManager->setPreferredLocales(Settings::general().mPreferredLocales, Settings::general().mGmstOverridesL10n);
@@ -816,26 +454,19 @@ void OMW::Engine::prepareEngine()
     // gui needs our shaders path before everything else
     mResourceSystem->getSceneManager()->setShaderPath(mResDir / "shaders");
 
-    osg::GLExtensions& exts = SceneUtil::getGLExtensions();
-
-#if OSG_VERSION_LESS_THAN(3, 6, 6)
-    // hack fix for https://github.com/openscenegraph/OpenSceneGraph/issues/1028
-    if (!osg::isGLExtensionSupported(exts.contextID, "NV_framebuffer_multisample_coverage"))
-        exts.glRenderbufferStorageMultisampleCoverageNV = nullptr;
-#endif
-
     osg::ref_ptr<osg::Group> guiRoot = new osg::Group;
     guiRoot->setName("GUI Root");
     guiRoot->setNodeMask(MWRender::Mask_GUI);
-    mStereoManager->disableStereoForNode(guiRoot);
+    if (Stereo::Manager* stereo = Stereo::Manager::instancePtr())
+        stereo->disableStereoForNode(guiRoot);
     rootNode->addChild(guiRoot);
 
-    mWindowManager = std::make_unique<MWGui::WindowManager>(mWindow, mViewer, guiRoot, mResourceSystem.get(),
+    mWindowManager = std::make_unique<MWGui::WindowManager>(*mRenderer, *mStage, guiRoot, mResourceSystem.get(),
         mWorkQueue.get(), mCfgMgr.getLogPath(), mScriptConsoleMode, mTranslationDataStorage, mEncoding, mExportFonts,
         Version::getOpenmwVersionDescription(), mCfgMgr);
     mEnvironment.setWindowManager(*mWindowManager);
 
-    mInputManager = std::make_unique<MWInput::InputManager>(mWindow, mViewer, mScreenCaptureHandler, keybinderUser,
+    mInputManager = std::make_unique<MWInput::InputManager>(mRenderer->getWindow(), *mRenderer, *mStage, keybinderUser,
         keybinderUserExists, userGameControllerdb, gameControllerdb, mGrab);
     mEnvironment.setInputManager(*mInputManager);
 
@@ -912,7 +543,7 @@ void OMW::Engine::prepareEngine()
     }
     listener->loadingOff();
 
-    mWorld->init(mMaxRecastLogLevel, mViewer, std::move(rootNode), mWorkQueue.get(), *mUnrefQueue);
+    mWorld->init(mMaxRecastLogLevel, *mRenderer, *mStage, std::move(rootNode), mWorkQueue.get(), *mUnrefQueue);
     mEnvironment.setWorldScene(mWorld->getWorldScene());
     mWorld->setupPlayer();
     mWorld->setRandomSeed(mRandomSeed);
@@ -959,14 +590,20 @@ void OMW::Engine::go()
     // Create encoder
     mEncoder = std::make_unique<ToUTF8::Utf8Encoder>(mEncoding);
 
-    // Setup viewer
-    mViewer = new osgViewer::Viewer;
-    mViewer->getCamera()->getOrCreateStateSet()->removeAttribute(osg::StateAttribute::MATERIAL);
-    SceneUtil::disableFFPStateForRenderer(static_cast<osgViewer::Renderer*>(mViewer->getCamera()->getRenderer()));
-    mViewer->setReleaseContextAtEndOfFrameHint(false);
+    mStage = std::make_unique<MWRender::Stage>();
+    mWorkQueue = new SceneUtil::WorkQueue(Settings::cells().mPreloadNumThreads);
+    // **Decided once, before the window exists, and never revisited.** `-DOPENMW_RTX=ON` decides
+    // whether the ray tracer is built; this decides whether it runs.
+    const std::string_view wanted = Settings::rtx().mEnabled ? "raytrace" : "opengl";
+    Log(Debug::Info) << "Renderer: " << wanted;
 
-    // Do not try to outsmart the OS thread scheduler (see bug #4785).
-    mViewer->setUseConfigureAffinity(false);
+    mRenderer = MWRender::createRenderer(wanted,
+        MWRender::RendererSpec{
+            .mStage = *mStage,
+            .mWorkQueue = *mWorkQueue,
+            .mResourceDir = mResDir,
+            .mScreenshotPath = mCfgMgr.getScreenshotPath(),
+        });
 
     mEnvironment.setFrameRateLimit(Settings::video().mFramerateLimit);
 
@@ -993,18 +630,7 @@ void OMW::Engine::go()
                                 << "\": " << std::generic_category().message(errno);
     }
 
-    // Setup profiler
-    osg::ref_ptr<Resource::Profiler> statsHandler = new Resource::Profiler(stats.is_open(), *mVFS);
-
-    initStatsHandler(*statsHandler);
-
-    mViewer->addEventHandler(statsHandler);
-
-    osg::ref_ptr<Resource::StatsHandler> resourcesHandler = new Resource::StatsHandler(stats.is_open(), *mVFS);
-    mViewer->addEventHandler(resourcesHandler);
-
-    if (stats.is_open())
-        Resource::collectStatistics(*mViewer);
+    mRenderer->installStatsOverlay(*mVFS, stats.is_open());
 
     // Start the game
     if (!mSaveGameFile.empty())
@@ -1039,16 +665,16 @@ void OMW::Engine::go()
     MWWorld::DateTimeManager& timeManager = *mWorld->getTimeManager();
     Misc::FrameRateLimiter frameRateLimiter = Misc::makeFrameRateLimiter(mEnvironment.getFrameRateLimit());
     const std::chrono::steady_clock::duration maxSimulationInterval(std::chrono::milliseconds(200));
-    while (!mViewer->done() && !mStateManager->hasQuitRequest())
+    while (!mRenderer->done() && !mStateManager->hasQuitRequest())
     {
         const double dt = std::chrono::duration_cast<std::chrono::duration<double>>(
                               std::min(frameRateLimiter.getLastFrameDuration(), maxSimulationInterval))
                               .count()
             * timeManager.getSimulationTimeScale();
 
-        mViewer->advance(timeManager.getRenderingSimulationTime());
+        mRenderer->advance(timeManager.getRenderingSimulationTime());
 
-        const unsigned frameNumber = mViewer->getFrameStamp()->getFrameNumber();
+        const unsigned frameNumber = mStage->getFrameStamp().getFrameNumber();
 
         if (!frame(frameNumber, static_cast<float>(dt)))
         {
@@ -1071,9 +697,9 @@ void OMW::Engine::go()
             {
                 // Viewer frame number can be different from frameNumber because of loading screens which render new
                 // frames inside a simulation frame.
-                const unsigned currentFrameNumber = mViewer->getFrameStamp()->getFrameNumber();
+                const unsigned currentFrameNumber = mStage->getFrameStamp().getFrameNumber();
                 for (unsigned i = frameNumber; i <= currentFrameNumber; ++i)
-                    reportStats(i - statsReportDelay, *mViewer, stats);
+                    mRenderer->reportStats(i - statsReportDelay, stats);
             }
         }
 

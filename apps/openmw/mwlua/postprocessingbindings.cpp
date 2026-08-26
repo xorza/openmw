@@ -7,7 +7,7 @@
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/world.hpp"
-#include "../mwrender/postprocessor.hpp"
+#include "../mwrender/gl/postprocessor.hpp"
 
 #include "context.hpp"
 #include "luamanagerimp.hpp"
@@ -61,15 +61,28 @@ namespace MWLua
             = Action_None;
     };
 
+    namespace
+    {
+        /// The shader chain, or a Lua error naming why there is none.
+        ///
+        /// **Raised rather than ignored.** A script that sets a uniform on a renderer with no shader
+        /// chain has asked for something that will not happen, and silently doing nothing would
+        /// leave it looking for the mistake in its own arithmetic.
+        MWRender::PostProcessor& postProcessor()
+        {
+            MWRender::PostProcessor* post = MWBase::Environment::get().getWorld()->getPostProcessor();
+            if (post == nullptr)
+                throw std::runtime_error("this renderer has no post-processing chain");
+            return *post;
+        }
+    }
+
     template <class T>
     auto getSetter(const Context& context)
     {
         return [context](const Shader& shader, const std::string& name, const T& value) {
             context.mLuaManager->addAction(
-                [=] {
-                    MWBase::Environment::get().getWorld()->getPostProcessor()->setUniform(shader.mShader, name, value);
-                },
-                "SetUniformShaderAction");
+                [=] { postProcessor().setUniform(shader.mShader, name, value); }, "SetUniformShaderAction");
         };
     }
 
@@ -77,8 +90,7 @@ namespace MWLua
     auto getArraySetter(const Context& context)
     {
         return [context](const Shader& shader, const std::string& name, const sol::table& table) {
-            auto targetSize
-                = MWBase::Environment::get().getWorld()->getPostProcessor()->getUniformSize(shader.mShader, name);
+            auto targetSize = postProcessor().getUniformSize(shader.mShader, name);
 
             if (!targetSize.has_value())
                 throw std::runtime_error(Misc::StringUtils::format("Failed setting uniform array '%s'", name));
@@ -100,7 +112,7 @@ namespace MWLua
 
             context.mLuaManager->addAction(
                 [shader, name, values = std::move(values)] {
-                    MWBase::Environment::get().getWorld()->getPostProcessor()->setUniform(shader.mShader, name, values);
+                    postProcessor().setUniform(shader.mShader, name, values);
                 },
                 "SetUniformShaderAction");
         };
@@ -126,8 +138,7 @@ namespace MWLua
                 context.mLuaManager->addAction([=, &self] {
                     self.mQueuedAction = Shader::Action_None;
 
-                    if (MWBase::Environment::get().getWorld()->getPostProcessor()->enableTechnique(self.mShader, pos)
-                        == MWRender::PostProcessor::Status_Error)
+                    if (postProcessor().enableTechnique(self.mShader, pos) == MWRender::PostProcessor::Status_Error)
                         throw std::runtime_error("Failed enabling shader '" + self.mShader->getName() + "'");
                 });
             };
@@ -138,8 +149,7 @@ namespace MWLua
                 context.mLuaManager->addAction([&] {
                     self.mQueuedAction = Shader::Action_None;
 
-                    if (MWBase::Environment::get().getWorld()->getPostProcessor()->disableTechnique(self.mShader)
-                        == MWRender::PostProcessor::Status_Error)
+                    if (postProcessor().disableTechnique(self.mShader) == MWRender::PostProcessor::Status_Error)
                         throw std::runtime_error("Failed disabling shader '" + self.mShader->getName() + "'");
                 });
             };
@@ -149,7 +159,7 @@ namespace MWLua
                     return true;
                 else if (self.mQueuedAction == Shader::Action_Disable)
                     return false;
-                return MWBase::Environment::get().getWorld()->getPostProcessor()->isTechniqueEnabled(self.mShader);
+                return postProcessor().isTechniqueEnabled(self.mShader);
             };
 
             shader["name"] = sol::readonly_property(
@@ -176,7 +186,7 @@ namespace MWLua
         }
 
         api["load"] = [](const std::string& name) {
-            Shader shader{ MWBase::Environment::get().getWorld()->getPostProcessor()->loadTechnique(name, false) };
+            Shader shader{ postProcessor().loadTechnique(name, false) };
 
             if (!shader.mShader || !shader.mShader->isValid())
                 throw std::runtime_error(Misc::StringUtils::format("Failed loading shader '%s'", name));
@@ -187,7 +197,7 @@ namespace MWLua
         api["getChain"] = [context]() {
             sol::table chain(context.sol(), sol::create);
 
-            for (const auto& shader : MWBase::Environment::get().getWorld()->getPostProcessor()->getChain())
+            for (const auto& shader : postProcessor().getChain())
             {
                 // Don't expose internal shaders to the API, they should be invisible to the user
                 if (shader->getInternal())

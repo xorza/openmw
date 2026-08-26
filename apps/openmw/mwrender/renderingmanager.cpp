@@ -1,16 +1,20 @@
 #include "renderingmanager.hpp"
 
+#include <algorithm>
+
 #include <cstdlib>
 
+#include <osg/Camera>
 #include <osg/ClipControl>
 #include <osg/ComputeBoundsVisitor>
+#include <osg/FrameStamp>
 #include <osg/Group>
 #include <osg/Matrix>
+#include <osg/Stats>
 #include <osg/UserDataContainer>
 
+#include <osgUtil/IncrementalCompileOperation>
 #include <osgUtil/LineSegmentIntersector>
-
-#include <osgViewer/Viewer>
 
 #include <components/nifosg/nifloader.hpp>
 
@@ -28,6 +32,7 @@
 
 #include <components/settings/values.hpp>
 
+#include <components/fx/stateupdater.hpp>
 #include <components/sceneutil/cullsafeboundsvisitor.hpp>
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/lightmanager.hpp>
@@ -43,6 +48,7 @@
 
 #include <components/misc/constants.hpp>
 
+#include <components/terrain/objectpaging.hpp>
 #include <components/terrain/quadtreeworld.hpp>
 #include <components/terrain/terraingrid.hpp>
 
@@ -65,24 +71,27 @@
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
 #include "../mwbase/world.hpp"
+#include "../mwworld/datetimemanager.hpp"
 
 #include "actorspaths.hpp"
 #include "camera.hpp"
 #include "effectmanager.hpp"
 #include "fogmanager.hpp"
+#include "gl/postprocessor.hpp"
+#include "gl/sky.hpp"
+#include "gl/water.hpp"
 #include "groundcover.hpp"
 #include "navmesh.hpp"
 #include "npcanimation.hpp"
-#include "objectpaging.hpp"
 #include "pathgrid.hpp"
-#include "postprocessor.hpp"
 #include "recastmesh.hpp"
-#include "screenshotmanager.hpp"
-#include "sky.hpp"
+#include "renderer.hpp"
+#include "sceneframe.hpp"
+#include "stage.hpp"
 #include "terrainstorage.hpp"
 #include "util.hpp"
 #include "vismask.hpp"
-#include "water.hpp"
+#include <components/weather/precipitation.hpp>
 
 namespace
 {
@@ -188,12 +197,13 @@ namespace MWRender
         Resource::ResourceSystem* mResourceSystem;
     };
 
-    RenderingManager::RenderingManager(osgViewer::Viewer* viewer, osg::ref_ptr<osg::Group> rootNode,
+    RenderingManager::RenderingManager(Renderer& renderer, Stage& stage, osg::ref_ptr<osg::Group> rootNode,
         Resource::ResourceSystem* resourceSystem, SceneUtil::WorkQueue* workQueue,
         DetourNavigator::Navigator& navigator, const MWWorld::GroundcoverStore& groundcoverStore,
         SceneUtil::UnrefQueue& unrefQueue)
         : mSkyBlending(Settings::fog().mSkyBlending)
-        , mViewer(viewer)
+        , mRenderer(renderer)
+        , mStage(stage)
         , mRootNode(rootNode)
         , mResourceSystem(resourceSystem)
         , mWorkQueue(workQueue)
@@ -292,15 +302,18 @@ namespace MWRender
 
         if (getenv("OPENMW_DONT_PRECOMPILE") == nullptr)
         {
-            mViewer->setIncrementalCompileOperation(new osgUtil::IncrementalCompileOperation);
-            mViewer->getIncrementalCompileOperation()->setTargetFrameRate(Settings::cells().mTargetFramerate);
+            // Offered rather than installed: a renderer with no OpenGL objects to build has nothing
+            // to spread over several frames and keeps none of it.
+            mRenderer.setCompileOperation(new osgUtil::IncrementalCompileOperation);
+            if (osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
+                ico->setTargetFrameRate(Settings::cells().mTargetFramerate);
         }
 
         mDebugDraw = new Debug::DebugDrawer(mResourceSystem->getSceneManager()->getShaderManager());
         mDebugDraw->setNodeMask(Mask_Debug);
         sceneRoot->addChild(mDebugDraw);
 
-        mResourceSystem->getSceneManager()->setIncrementalCompileOperation(mViewer->getIncrementalCompileOperation());
+        mResourceSystem->getSceneManager()->setIncrementalCompileOperation(mRenderer.getCompileOperation());
 
         mEffectManager = std::make_unique<EffectManager>(sceneRoot, mResourceSystem);
 
@@ -331,26 +344,20 @@ namespace MWRender
                 Shader::ShaderManager::Slot::OpaqueColorTexture));
         rootNode->addCullCallback(mPerViewUniformStateUpdater);
 
-        mPostProcessor = new PostProcessor(*this, viewer, mRootNode, resourceSystem->getVFS());
-        resourceSystem->getSceneManager()->setOpaqueDepthTex(
-            mPostProcessor->getTexture(PostProcessor::Tex_OpaqueDepth, 0),
-            mPostProcessor->getTexture(PostProcessor::Tex_OpaqueDepth, 1));
-        resourceSystem->getSceneManager()->setOpaqueColorTex(
-            mPostProcessor->getTexture(PostProcessor::Tex_OpaqueColor, 0),
-            mPostProcessor->getTexture(PostProcessor::Tex_OpaqueColor, 1));
-        resourceSystem->getSceneManager()->setSupportsNormalsRT(mPostProcessor->getSupportsNormalsRT());
+        // **The world exists now, so the renderer can build what goes in front of it.** Whether
+        // that is a shader chain, nothing at all, or something a third renderer thinks of is not a
+        // question asked here.
+        mRenderer.attachWorld(*this, *mRootNode);
+
         resourceSystem->getSceneManager()->setWeatherParticleOcclusion(Settings::shaders().mWeatherParticleOcclusion);
 
         // water goes after terrain for correct waterculling order
         mWater = std::make_unique<Water>(
-            sceneRoot->getParent(0), sceneRoot, mResourceSystem, mViewer->getIncrementalCompileOperation());
-        mPostProcessor->setupTransparentBin(mWater.get());
+            sceneRoot->getParent(0), sceneRoot, mResourceSystem, mRenderer.getCompileOperation());
+        if (PostProcessor* postProcessor = mRenderer.getPostProcessor())
+            postProcessor->setupTransparentBin(mWater.get());
 
-        mCamera = std::make_unique<Camera>(mViewer->getCamera());
-
-        mScreenshotManager = std::make_unique<ScreenshotManager>(viewer);
-
-        mViewer->setLightingMode(osgViewer::View::NO_LIGHT);
+        mCamera = std::make_unique<Camera>(&mStage.getCamera());
 
         mSunLight = new SceneUtil::Light;
         mSunLight->setDiffuse(osg::Vec4f(0, 0, 0, 1));
@@ -373,7 +380,7 @@ namespace MWRender
         mFog = std::make_unique<FogManager>();
 
         mSky = std::make_unique<SkyManager>(
-            sceneRoot, mRootNode, mViewer->getCamera(), resourceSystem->getSceneManager(), mSkyBlending);
+            sceneRoot, mRootNode, &mStage.getCamera(), resourceSystem->getSceneManager(), mSkyBlending);
         if (mSkyBlending)
         {
             int skyTextureUnit = mResourceSystem->getSceneManager()->getShaderManager().reserveGlobalTextureUnits(
@@ -387,13 +394,13 @@ namespace MWRender
             cullingMode &= ~(osg::CullStack::SMALL_FEATURE_CULLING);
         else
         {
-            mViewer->getCamera()->setSmallFeatureCullingPixelSize(Settings::camera().mSmallFeatureCullingPixelSize);
+            mStage.getCamera().setSmallFeatureCullingPixelSize(Settings::camera().mSmallFeatureCullingPixelSize);
             cullingMode |= osg::CullStack::SMALL_FEATURE_CULLING;
         }
 
-        mViewer->getCamera()->setComputeNearFarMode(osg::Camera::DO_NOT_COMPUTE_NEAR_FAR);
-        mViewer->getCamera()->setCullingMode(cullingMode);
-        mViewer->getCamera()->setName(Constants::SceneCamera);
+        mStage.getCamera().setComputeNearFarMode(osg::Camera::DO_NOT_COMPUTE_NEAR_FAR);
+        mStage.getCamera().setCullingMode(cullingMode);
+        mStage.getCamera().setName(Constants::SceneCamera);
 
         auto mask = ~(Mask_UpdateVisitor | Mask_SimpleWater);
         MWBase::Environment::get().getWindowManager()->setCullMask(mask);
@@ -404,7 +411,7 @@ namespace MWRender
         mStateUpdater->setFogEnd(mViewDistance);
 
         // Hopefully, anything genuinely requiring the default alpha func of GL_ALWAYS explicitly sets it
-        mViewer->getSceneData()->getOrCreateStateSet()->setAttribute(Shader::RemovedAlphaFunc::getInstance(GL_ALWAYS));
+        mStage.getSceneRoot().getOrCreateStateSet()->setAttribute(Shader::RemovedAlphaFunc::getInstance(GL_ALWAYS));
         // The transparent renderbin sets alpha testing on because that was faster on old GPUs. It's now slower and
         // breaks things.
         mRootNode->getOrCreateStateSet()->setMode(GL_ALPHA_TEST, osg::StateAttribute::OFF);
@@ -417,16 +424,16 @@ namespace MWRender
             mRootNode->getOrCreateStateSet()->setAttributeAndModes(clipcontrol, osg::StateAttribute::ON);
         }
 
-        SceneUtil::initTexMatForStateSet(*mViewer->getSceneData()->getOrCreateStateSet());
+        SceneUtil::initTexMatForStateSet(*mStage.getSceneRoot().getOrCreateStateSet());
 
         mRootNode->getOrCreateStateSet()->setMode(
             GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::PROTECTED | osg::StateAttribute::OVERRIDE);
 
-        SceneUtil::setCameraClearDepth(mViewer->getCamera());
+        SceneUtil::setCameraClearDepth(&mStage.getCamera());
 
         updateProjectionMatrix();
 
-        mViewer->getCamera()->setClearMask(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        mStage.getCamera().setClearMask(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     }
 
     RenderingManager::~RenderingManager()
@@ -437,7 +444,7 @@ namespace MWRender
 
     osgUtil::IncrementalCompileOperation* RenderingManager::getIncrementalCompileOperation()
     {
-        return mViewer->getIncrementalCompileOperation();
+        return mRenderer.getCompileOperation();
     }
 
     MWRender::Objects& RenderingManager::getObjects()
@@ -483,7 +490,7 @@ namespace MWRender
 
     double RenderingManager::getReferenceTime() const
     {
-        return mViewer->getFrameStamp()->getReferenceTime();
+        return mStage.getFrameStamp().getReferenceTime();
     }
 
     SceneUtil::LightManager* RenderingManager::getLightRoot()
@@ -558,9 +565,17 @@ namespace MWRender
         // This is total nonsense but it's what Morrowind uses
         static const osg::Vec4f interiorSunPos
             = osg::Vec4f(-1.f, osg::DegreesToRadians(45.f), osg::DegreesToRadians(45.f), 0.f);
-        mPostProcessor->getStateUpdater()->setSunPos(interiorSunPos, false);
-        mPostProcessor->getStateUpdater()->setSunVec(-interiorSunPos);
+        mSunPosition = interiorSunPos;
+        mSunVector = -interiorSunPos;
+        mSunAtNight = false;
         mSunLight->setPosition(interiorSunPos);
+
+        // **A room's sun is all there, and saying so is what stops it being the last outdoor
+        // hour's.** The weather system stops running the moment the player steps inside, so nothing
+        // else would write these again until they step out — and a renderer that scales its sunlight
+        // by the share would light an interior with whatever fraction of a sunset it walked in on.
+        mSunDiscColour = osg::Vec4f(1.f, 1.f, 1.f, 1.f);
+        mSunGlare = 1.f;
     }
 
     void RenderingManager::setSunColour(const osg::Vec4f& diffuse, const osg::Vec4f& specular, float sunVis)
@@ -569,8 +584,7 @@ namespace MWRender
         mSunLight->setDiffuse(diffuse);
         mSunLight->setSpecular(osg::Vec4f(specular.x(), specular.y(), specular.z(), specular.w() * sunVis));
 
-        mPostProcessor->getStateUpdater()->setSunColor(diffuse);
-        mPostProcessor->getStateUpdater()->setSunVis(sunVis);
+        mSunVisibility = sunVis;
     }
 
     const osg::Vec4f& RenderingManager::getSunLightPosition() const
@@ -582,7 +596,9 @@ namespace MWRender
     {
         osg::Vec3f position = -direction;
 
-        // This is based on the exterior sun orbit and won't make sense for interiors, see WeatherManager::update
+        // This is based on the exterior sun orbit and won't make sense for interiors, see
+        // `Sky::sunAt`, which is where the same line lives for everything that asks the arithmetic
+        // directly rather than being handed a direction.
         position.z() = 400.f - std::abs(position.x());
 
         // The sun is not always synchronized with the sunlight because reasons
@@ -592,8 +608,9 @@ namespace MWRender
 
         mSky->setSunDirection(position);
 
-        mPostProcessor->getStateUpdater()->setSunPos(osg::Vec4f(position, 0.f), mNight);
-        mPostProcessor->getStateUpdater()->setSunVec(osg::Vec4f(-sunlightPos, 0.f));
+        mSunPosition = osg::Vec4f(position, 0.f);
+        mSunVector = osg::Vec4f(-sunlightPos, 0.f);
+        mSunAtNight = mNight;
     }
 
     void RenderingManager::addCell(const MWWorld::CellStore* store)
@@ -641,6 +658,58 @@ namespace MWRender
         mTerrain->enable(enable);
     }
 
+    void RenderingManager::setWeather(const WeatherResult& weather)
+    {
+        mSky->setWeather(weather);
+
+        // Kept apart rather than multiplied together: the alpha is how much of the sun is over the
+        // horizon and the glare is how much of it this weather lets through, and only the first of
+        // them says whether there is a sun to light anything at all.
+        // **Everything `WorldState` says about the sky is taken from here**, off the weather the
+        // world settled on, and nothing is read back out of the sky manager. It answers only when it
+        // has been created, and it is created by whichever renderer is drawing — so a ray-traced
+        // frame that asked it for the sky's colour got the black an unbuilt one starts at.
+        mSkyColour = weather.mSkyColor;
+        mCloudFog = weather.mFogColor;
+        mCloudSpeed = weather.mCloudSpeed;
+        mSunDiscColour = weather.mSunDiscColor;
+        mSunGlare = weather.mGlareView;
+        mCloudBlend = std::clamp(weather.mCloudBlendFactor, 0.f, 1.f);
+        mNightFade = weather.mNight ? weather.mNightFade : 0.f;
+    }
+
+    void RenderingManager::setStormParticleDirection(const osg::Vec3f& direction)
+    {
+        mStormParticleDirection = direction;
+    }
+
+    void RenderingManager::setSunVisible(bool visible)
+    {
+        if (visible)
+            mSky->sunEnable();
+        else
+            mSky->sunDisable();
+    }
+
+    void RenderingManager::setGlareTimeOfDayFade(float fade)
+    {
+        mSky->setGlareTimeOfDayFade(fade);
+    }
+
+    void RenderingManager::setMoonStates(const MoonState& masser, const MoonState& secunda)
+    {
+        mMoonStates[0] = masser;
+        mMoonStates[1] = secunda;
+
+        mSky->setMasserState(masser);
+        mSky->setSecundaState(secunda);
+    }
+
+    Weather::Precipitation* RenderingManager::getPrecipitation()
+    {
+        return mSky->getPrecipitation();
+    }
+
     void RenderingManager::setSkyEnabled(bool enabled)
     {
         mSky->setEnabled(enabled);
@@ -648,7 +717,6 @@ namespace MWRender
             mShadowManager->enableOutdoorMode();
         else
             mShadowManager->enableIndoorMode(Settings::shadows());
-        mPostProcessor->getStateUpdater()->setIsInterior(!enabled);
     }
 
     bool RenderingManager::toggleBorders()
@@ -722,7 +790,7 @@ namespace MWRender
     {
         reportStats();
 
-        mResourceSystem->getSceneManager()->getShaderManager().update(*mViewer);
+        mRenderer.reloadChangedShaders(mResourceSystem->getSceneManager()->getShaderManager());
 
         mWater->setRainIntensity(mSky->getRainRipplesEnabled() ? mSky->getPrecipitationAlpha() : 0.f);
 
@@ -730,7 +798,28 @@ namespace MWRender
         if (!paused)
         {
             mEffectManager->update(dt);
-            mSky->update(dt);
+
+            // **The sky's clock is turned here and handed down, not kept inside the sky manager.**
+            // That manager belongs to one of the two renderers and is built lazily, so a ray-traced
+            // frame that asked it how far the clouds had scrolled was asking something that might
+            // never have been created — and got a nought that never moved.
+            mSkyRoll.advance(dt, mCloudSpeed,
+                MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale(), Sky::timescaleClouds());
+            mSky->setRoll(mSkyRoll);
+
+            // **The whole of driving the weather, in one call and from the one place that holds
+            // all three answers.** The eye is the camera's, whether it is submerged is the water's,
+            // and which way a storm blows arrived from the weather system — no other object has
+            // more than one of them, which is why this used to be four calls across two classes and
+            // why the harness reproduced only half of them.
+            const osg::Vec3f eye = mCamera->getPosition();
+            mSky->getPrecipitation()->update(Weather::Conditions{
+                .mEye = eye,
+                .mStormDirection = mStormParticleDirection,
+                .mUnderwater = mWater->isUnderwater(eye),
+            });
+
+            mSky->update();
 
             const MWWorld::Ptr& player = mPlayerAnimation->getPtr();
             osg::Vec3f playerPos(player.getRefData().getPosition().asVec3());
@@ -767,22 +856,75 @@ namespace MWRender
         mStateUpdater->setUnderwaterFogEnd(fogUnderwaterEnd);
         mStateUpdater->setUnderwaterFogColor(fogUnderwaterColor);
 
-        mViewer->getCamera()->setClearColor(isUnderwater ? fogUnderwaterColor : fogColor);
+        mStage.getCamera().setClearColor(isUnderwater ? fogUnderwaterColor : fogColor);
+    }
 
-        auto world = MWBase::Environment::get().getWorld();
-        const auto& stateUpdater = mPostProcessor->getStateUpdater();
+    WorldState RenderingManager::describeWorld() const
+    {
+        const MWBase::World& world = *MWBase::Environment::get().getWorld();
+        const bool underwater = mWater->isUnderwater(mCamera->getPosition());
 
-        stateUpdater->setFogRange(fogStart, fogEnd);
-        stateUpdater->setNearFar(mNearClip, mViewDistance);
-        stateUpdater->setIsUnderwater(isUnderwater);
-        stateUpdater->setFogColor(fogColor);
-        stateUpdater->setGameHour(world->getTimeStamp().getHour());
-        stateUpdater->setWeatherId(world->getCurrentWeatherScriptId());
-        stateUpdater->setNextWeatherId(world->getNextWeatherScriptId());
-        stateUpdater->setWeatherTransition(world->getWeatherTransition());
-        stateUpdater->setWindSpeed(world->getWindSpeed());
-        stateUpdater->setSkyColor(mSky->getSkyColor());
-        mPostProcessor->setUnderwaterFlag(isUnderwater);
+        // The world's "no transition" is -1, and `WorldState` would rather say it in the type.
+        const int next = world.getNextWeatherScriptId();
+        const std::optional<int> nextWeather = next < 0 ? std::nullopt : std::optional(next);
+
+        return WorldState{
+            .mSunPosition = mSunPosition,
+            .mSunVector = mSunVector,
+            .mSunAtNight = mSunAtNight,
+            .mSunColour = mSunLight->getDiffuse(),
+            .mSunVisibility = mSunVisibility,
+            .mSunDiscColour = mSunDiscColour,
+            .mSunGlare = mSunGlare,
+            .mCloudBlend = mCloudBlend,
+            .mNightFade = mNightFade,
+            .mCloudFog = mCloudFog,
+            .mPrecipitation = mSky->getPrecipitation(),
+            .mSkyRoll = mSkyRoll,
+            .mAmbientColour = mSunLight->getAmbient(),
+            .mSkyColour = mSkyColour,
+            .mLocation = world.isCellExterior() ? Location::Exterior
+                : world.isCellQuasiExterior()   ? Location::QuasiExterior
+                                                : Location::Interior,
+            .mWaterEnabled = mWaterEnabled,
+            .mWaterHeight = mWaterHeight,
+            .mUnderwater = underwater,
+            .mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) },
+            .mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) },
+            .mNearClip = mNearClip,
+            .mViewDistance = mViewDistance,
+            .mProjectionMatrix = mPerViewUniformStateUpdater->getProjectionMatrix(),
+            .mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView,
+            .mGameHour = world.getTimeStamp().getHour(),
+            .mWeatherId = world.getCurrentWeatherScriptId(),
+            .mNextWeatherId = nextWeather,
+            .mWeatherTransition = world.getWeatherTransition(),
+            .mWindSpeed = world.getWindSpeed(),
+            .mMoons = { mMoonStates[0], mMoonStates[1] },
+            .mStormDirection = mStormParticleDirection,
+        };
+    }
+
+    void RenderingManager::renderFrame()
+    {
+        const WorldState world = describeWorld();
+
+        // **The eye, which is what a cull would have used.** The detail a chunk is built at has to
+        // be the detail the primary rays hit, and asking from anywhere else would put the ground a
+        // reflection sees at a different level from the ground beside it.
+        mResident.follow(mTerrain);
+        mResident.setViewPoint(mStage.getCamera().getInverseViewMatrix().getTrans());
+
+        const SceneFrame frame{
+            .mScene = *mSceneRoot,
+            .mCamera = mStage.getCamera(),
+            .mWhen = mStage.getFrameStamp(),
+            .mWorld = world,
+            .mImages = *mResourceSystem->getImageManager(),
+            .mResident = &mResident,
+        };
+
+        mRenderer.renderFrame(frame);
     }
 
     void RenderingManager::updatePlayerPtr(const MWWorld::Ptr& ptr)
@@ -832,34 +974,39 @@ namespace MWRender
 
     void RenderingManager::setWaterEnabled(bool enabled)
     {
+        mWaterEnabled = enabled;
+
         mWater->setEnabled(enabled);
         mSky->setWaterEnabled(enabled);
         mStateUpdater->setWaterEnabled(mWater->isVisible());
 
-        mPostProcessor->getStateUpdater()->setIsWaterEnabled(enabled);
+        if (PostProcessor* postProcessor = mRenderer.getPostProcessor())
+            postProcessor->getStateUpdater()->setIsWaterEnabled(enabled);
     }
 
     void RenderingManager::setWaterHeight(float height)
     {
+        mWaterHeight = height;
+
         mWater->setCullCallback(mTerrain->getHeightCullCallback(height, Mask_Water));
         mWater->setHeight(height);
         mSky->setWaterHeight(height);
         mStateUpdater->setWaterHeight(height);
 
-        mPostProcessor->getStateUpdater()->setWaterHeight(height);
+        if (PostProcessor* postProcessor = mRenderer.getPostProcessor())
+            postProcessor->getStateUpdater()->setWaterHeight(height);
     }
 
     void RenderingManager::screenshot(osg::Image* image, int w, int h)
     {
-        mScreenshotManager->screenshot(image, w, h);
+        mRenderer.capture(*image, w, h);
     }
 
     osg::Vec2f RenderingManager::getScreenCoords(const osg::BoundingBox& bb)
     {
         if (bb.valid())
         {
-            const osg::Matrix viewProj
-                = mViewer->getCamera()->getViewMatrix() * mViewer->getCamera()->getProjectionMatrix();
+            const osg::Matrix viewProj = mStage.getCamera().getViewMatrix() * mStage.getCamera().getProjectionMatrix();
             const osg::Vec3f worldPoint((bb.xMin() + bb.xMax()) * 0.5f, (bb.yMin() + bb.yMax()) * 0.5f, bb.zMax());
             const osg::Vec4f clipPoint = osg::Vec4f(worldPoint, 1.0f) * viewProj;
             if (clipPoint.w() > 0.f)
@@ -887,7 +1034,7 @@ namespace MWRender
 
         auto test = [&](const osgUtil::LineSegmentIntersector::Intersection& intersection) {
             PtrHolder* ptrHolder = nullptr;
-            std::vector<RefnumMarker*> refnumMarkers;
+            std::vector<Terrain::RefnumMarker*> refnumMarkers;
             bool hitNonObjectWorld = false;
             for (osg::Node* node : intersection.nodePath)
             {
@@ -907,7 +1054,8 @@ namespace MWRender
                             ptrHolder = p;
                         }
                     }
-                    if (RefnumMarker* r = dynamic_cast<RefnumMarker*>(userDataContainer->getUserObject(i)))
+                    if (Terrain::RefnumMarker* r
+                        = dynamic_cast<Terrain::RefnumMarker*>(userDataContainer->getUserObject(i)))
                     {
                         refnumMarkers.push_back(r);
                     }
@@ -1033,8 +1181,8 @@ namespace MWRender
             }
         }
 
-        mIntersectionVisitor->setTraversalNumber(mViewer->getFrameStamp()->getFrameNumber());
-        mIntersectionVisitor->setFrameStamp(mViewer->getFrameStamp());
+        mIntersectionVisitor->setTraversalNumber(mStage.getFrameStamp().getFrameNumber());
+        mIntersectionVisitor->setFrameStamp(&mStage.getFrameStamp());
         mIntersectionVisitor->setIntersector(intersector);
 
         unsigned int mask = ~0u;
@@ -1071,14 +1219,14 @@ namespace MWRender
 
         osg::Vec3d dist(0.f, 0.f, -maxDistance);
 
-        dist = dist * mViewer->getCamera()->getProjectionMatrix();
+        dist = dist * mStage.getCamera().getProjectionMatrix();
 
         osg::Vec3d end = intersector->getEnd();
         end.z() = dist.z();
         intersector->setEnd(end);
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
-        mViewer->getCamera()->accept(*getIntersectionVisitor(intersector, ignorePlayer, ignoreActors, ignoreTerrain));
+        mStage.getCamera().accept(*getIntersectionVisitor(intersector, ignorePlayer, ignoreActors, ignoreTerrain));
 
         return getIntersectionResult(intersector, mIntersectionVisitor);
     }
@@ -1105,6 +1253,11 @@ namespace MWRender
     {
         mEffectManager->clear();
         mWater->clearRipples();
+
+        // What the traced path cannot work out for itself: the mirror of a world that was swapped
+        // looks exactly like the mirror of one that was walked across. Nothing for the rasterizer,
+        // which keeps no history to invalidate.
+        mRenderer.notifyWorldSpaceChanged();
     }
 
     void RenderingManager::clear()
@@ -1134,7 +1287,7 @@ namespace MWRender
 
     PostProcessor* RenderingManager::getPostProcessor()
     {
-        return mPostProcessor;
+        return mRenderer.getPostProcessor();
     }
 
     void RenderingManager::setupPlayer(const MWWorld::Ptr& player)
@@ -1229,7 +1382,7 @@ namespace MWRender
         }
 
         // We always set the cameras projection matrix to the un-reversed variant for correct frustum culling.
-        mViewer->getCamera()->setProjectionMatrix(unreversedProjectionMatrix);
+        mStage.getCamera().setProjectionMatrix(unreversedProjectionMatrix);
 
         mPerViewUniformStateUpdater->setProjectionMatrix(projectionMatrix);
 
@@ -1247,16 +1400,7 @@ namespace MWRender
             setScreenRes(width, height);
         }
 
-        // Since our fog is not radial yet, we should take FOV in account, otherwise terrain near viewing distance may
-        // disappear. Limit FOV here just for sure, otherwise viewing distance can be too high.
-        float distanceMult = std::cos(osg::DegreesToRadians(std::min(fov, 140.f)) / 2.f);
-        mTerrain->setViewDistance(mViewDistance * (distanceMult ? 1.f / distanceMult : 1.f));
-
-        if (mPostProcessor)
-        {
-            mPostProcessor->getStateUpdater()->setProjectionMatrix(mPerViewUniformStateUpdater->getProjectionMatrix());
-            mPostProcessor->getStateUpdater()->setFov(fov);
-        }
+        mTerrain->setViewDistance(mRenderer.getTerrainViewDistance(mViewDistance, fov));
     }
 
     void RenderingManager::setScreenRes(int width, int height)
@@ -1266,7 +1410,7 @@ namespace MWRender
 
     void RenderingManager::updateTextureFiltering()
     {
-        mViewer->stopThreading();
+        mRenderer.suspendDraw();
 
         mResourceSystem->getSceneManager()->setFilterSettings(Settings::general().mTextureMagFilter,
             Settings::general().mTextureMinFilter, Settings::general().mTextureMipmap,
@@ -1275,7 +1419,7 @@ namespace MWRender
         mTerrain->updateTextureFiltering();
         mWater->processChangedSettings({});
 
-        mViewer->startThreading();
+        mRenderer.resumeDraw();
     }
 
     void RenderingManager::updateAmbient()
@@ -1287,7 +1431,6 @@ namespace MWRender
 
         mSunLight->setAmbient(color);
 
-        mPostProcessor->getStateUpdater()->setAmbientColor(color);
         mStateUpdater->setAmbientColor(color);
     }
 
@@ -1300,13 +1443,17 @@ namespace MWRender
 
         const float lodFactor = Settings::terrain().mLodFactor;
         const bool groundcover = Settings::groundcover().mEnabled && worldspace == ESM::Cell::sDefaultWorldspaceId;
-        const bool distantTerrain = Settings::terrain().mDistantTerrain;
+        const bool paged = mRenderer.wantsPagedTerrain();
         const double expiryDelay = Settings::cells().mCacheExpiryDelay;
-        if (distantTerrain || groundcover)
+        if (paged || groundcover)
         {
             const int compMapResolution = Settings::terrain().mCompositeMapResolution;
-            const int compMapPower = Settings::terrain().mCompositeMapLevel;
-            const float compMapLevel = static_cast<float>(std::pow(2, compMapPower));
+
+            // **Whether a composite map can be made at all is the renderer's to say**, not a
+            // tuning knob's: it is a render target, and the ray tracing path initialises no OpenGL.
+            // `Terrain::sNoCompositeMap` is what that one answers, so every chunk arrives as its
+            // layer stack and `Rtx::TerrainComposite` bakes the flattened texture on the CPU.
+            const float compMapLevel = mRenderer.getTerrainCompositeMapLevel();
             const int vertexLodMod = Settings::terrain().mVertexLodMod;
             const float maxCompGeometrySize = Settings::terrain().mMaxCompositeGeometrySize;
             const bool debugChunks = Settings::terrain().mDebugChunks;
@@ -1315,8 +1462,8 @@ namespace MWRender
                 lodFactor, vertexLodMod, maxCompGeometrySize, debugChunks, worldspace, expiryDelay);
             if (Settings::terrain().mObjectPaging)
             {
-                newChunkMgr.mObjectPaging
-                    = std::make_unique<ObjectPaging>(mResourceSystem->getSceneManager(), worldspace);
+                newChunkMgr.mObjectPaging = std::make_unique<Terrain::ObjectPaging>(mResourceSystem->getSceneManager(),
+                    mObjectStorage, worldspace, Mask_Static, Settings::terrain().mObjectPagingActiveGrid);
                 quadTreeWorld->addChunkManager(newChunkMgr.mObjectPaging.get());
                 mResourceSystem->addResourceManager(newChunkMgr.mObjectPaging.get());
             }
@@ -1337,8 +1484,7 @@ namespace MWRender
                 mTerrainStorage.get(), Mask_Terrain, worldspace, expiryDelay, Mask_PreCompile, Mask_Debug);
 
         newChunkMgr.mTerrain->setTargetFrameRate(Settings::cells().mTargetFramerate);
-        float distanceMult = std::cos(osg::DegreesToRadians(std::min(mFieldOfView, 140.f)) / 2.f);
-        newChunkMgr.mTerrain->setViewDistance(mViewDistance * (distanceMult ? 1.f / distanceMult : 1.f));
+        newChunkMgr.mTerrain->setViewDistance(mRenderer.getTerrainViewDistance(mViewDistance, mFieldOfView));
         newChunkMgr.mTerrain->enableHeightCullCallback(Settings::terrain().mWaterCulling);
 
         return mWorldspaceChunks.emplace(worldspace, std::move(newChunkMgr)).first->second;
@@ -1346,8 +1492,8 @@ namespace MWRender
 
     void RenderingManager::reportStats() const
     {
-        osg::Stats* stats = mViewer->getViewerStats();
-        unsigned int frameNumber = mViewer->getFrameStamp()->getFrameNumber();
+        osg::Stats* stats = &mStage.getStats();
+        unsigned int frameNumber = mStage.getFrameStamp().getFrameNumber();
         if (stats->collectStats("resource"))
         {
             mTerrain->reportStats(frameNumber, stats);
@@ -1392,7 +1538,7 @@ namespace MWRender
                 && (it->second == "force per pixel lighting" || it->second == "classic falloff"
                     || it->second == "clamp lighting"))
             {
-                mViewer->stopThreading();
+                mRenderer.suspendDraw();
 
                 auto defines = mResourceSystem->getSceneManager()->getShaderManager().getGlobalDefines();
                 defines["forcePPL"] = Settings::shaders().mForcePerPixelLighting ? "1" : "0";
@@ -1403,7 +1549,7 @@ namespace MWRender
                 if (MWMechanics::getPlayer().isInCell() && it->second == "classic falloff")
                     configureAmbient(*MWMechanics::getPlayer().getCell()->getCell());
 
-                mViewer->startThreading();
+                mRenderer.resumeDraw();
             }
             else if (it->first == "Shaders"
                 && (it->second == "light radius multiplier" || it->second == "maximum light distance"
@@ -1419,10 +1565,10 @@ namespace MWRender
                 if (it->second == "max lights" || it->second == "clustered lighting"
                     || it->second == "particle point lighting")
                 {
-                    mViewer->stopThreading();
+                    mRenderer.suspendDraw();
 
                     visitor.setDoThreadUnsafeOps(true);
-                    mViewer->getSceneData()->accept(visitor);
+                    mStage.getSceneRoot().accept(visitor);
                     lightManagersUpdated = true;
 
                     auto defines = mResourceSystem->getSceneManager()->getShaderManager().getGlobalDefines();
@@ -1433,11 +1579,11 @@ namespace MWRender
 
                     mStateUpdater->reset();
 
-                    mViewer->startThreading();
+                    mRenderer.resumeDraw();
                 }
 
                 if (!lightManagersUpdated)
-                    mViewer->getSceneData()->accept(visitor);
+                    mStage.getSceneRoot().accept(visitor);
             }
             else if (it->first == "Shadows")
             {
@@ -1458,19 +1604,20 @@ namespace MWRender
                         defines.erase(key);
                     for (const auto& [key, value] : shadowDefines)
                         defines[key] = value;
-                    mViewer->stopThreading();
+                    mRenderer.suspendDraw();
                     mResourceSystem->getSceneManager()->getShaderManager().setGlobalDefines(defines);
-                    mViewer->startThreading();
+                    mRenderer.resumeDraw();
                     mAppliedShadowDefines = shadowDefines;
                 }
             }
-            else if (it->first == "Post Processing" && it->second == "enabled")
+            else if (it->first == "Post Processing" && it->second == "enabled"
+                && mRenderer.getPostProcessor() != nullptr)
             {
                 if (Settings::postProcessing().mEnabled)
-                    mPostProcessor->enable();
+                    mRenderer.getPostProcessor()->enable();
                 else
                 {
-                    mPostProcessor->disable();
+                    mRenderer.getPostProcessor()->disable();
                     if (auto* hud = MWBase::Environment::get().getWindowManager()->getPostProcessorHud())
                         hud->setVisible(false);
                 }
@@ -1481,6 +1628,19 @@ namespace MWRender
         {
             updateProjectionMatrix();
         }
+    }
+
+    float RenderingManager::getTerrainReach() const
+    {
+        if (!mRenderer.wantsPagedTerrain())
+            return 0.f;
+
+        // **Straight ahead, and not the corners of a frustum.** `getTerrainViewDistance` widens the
+        // rasterizer's answer by the field of view, because its fog is not radial and the corners
+        // reach further than the middle — which is about where ground has to be *built* and not
+        // about how much world there is. A zero angle is the width this question actually has, and
+        // it is what leaves the rasterizer's map exactly the size upstream draws it.
+        return mRenderer.getTerrainViewDistance(mViewDistance, 0.0f);
     }
 
     void RenderingManager::setViewDistance(float distance, bool delay)
@@ -1601,7 +1761,7 @@ namespace MWRender
     void RenderingManager::exportSceneGraph(
         const MWWorld::Ptr& ptr, const std::filesystem::path& filename, const std::string& format)
     {
-        osg::Node* node = mViewer->getSceneData();
+        osg::Node* node = &mStage.getSceneRoot();
         if (!ptr.isEmpty())
             node = ptr.getRefData().getBaseNode();
 

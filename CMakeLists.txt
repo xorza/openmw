@@ -45,6 +45,11 @@ option(BUILD_NAVMESHTOOL        "Build navmesh tool" ON)
 option(BUILD_BULLETOBJECTTOOL   "Build Bullet object tool" ON)
 option(BUILD_OPENCS_TESTS       "Build OpenMW Construction Set tests" OFF)
 option(BUILD_OPENMW_TESTS       "Build OpenMW tests" OFF)
+option(OPENMW_RTX               "Build the experimental ray tracing renderer" OFF)
+option(OPENMW_RTX_VULKAN        "Build its Vulkan backend" ON)
+option(OPENMW_RTX_METAL         "Build its Metal backend" ${APPLE})
+option(OPENMW_RTX_DLSS          "Upscale and denoise with DLSS Ray Reconstruction" ON)
+option(OPENMW_RTX_BENCH         "Compile the in-game benchmark, which OPENMW_RTX_BENCH= then runs" OFF)
 option(PRECOMPILE_HEADERS_WITH_MSVC "Precompile most common used headers with MSVC (alternative to ccache)" ON)
 
 set(OpenGL_GL_PREFERENCE LEGACY)  # Use LEGACY as we use GL2; GLNVD is for GL3 and up.
@@ -669,6 +674,71 @@ endif()
 # Components
 add_subdirectory (components)
 
+if (OPENMW_RTX)
+    # How this fork's own code is compiled, in one place rather than once per target.
+    #
+    # Warnings are errors here and nowhere else: the tree around this belongs to upstream and
+    # `extern/` to third parties, and breaking the build on their warnings would only mean turning
+    # this off again. The extra warnings were measured before being adopted — each of them costs
+    # nothing today. Three more were tried and rejected: `-Wfloat-equal` fires 29 times on deliberate
+    # sentinels, and `-Wold-style-cast` and `-Wuseless-cast` fire inside OpenMW's own headers.
+    #
+    # `-Wno-missing-field-initializers` is the one subtraction. Vulkan's create-info structs are
+    # filled with designated initializers, which value-initialise every field not named — that is the
+    # point of using them, and GCC does not distinguish it from an accidentally short aggregate.
+    if (CMAKE_CXX_COMPILER_ID STREQUAL GNU OR CMAKE_CXX_COMPILER_ID MATCHES Clang)
+        set(OPENMW_RTX_COMPILE_OPTIONS
+            -Werror
+            -Wno-missing-field-initializers
+            -Wsuggest-override
+            -Wzero-as-null-pointer-constant
+            -Wnull-dereference
+            -Wcast-qual
+        )
+
+        # `-Wdouble-promotion` is GCC's only. Clang applies it to implicit argument conversions as
+        # well as to arithmetic, which fires nine times inside `components/misc/convert.hpp` — an
+        # upstream header whose whole job is handing `osg`'s floats to a double-precision Bullet.
+        # The promotion there is the point, the header is not this fork's to change, and the flag
+        # still costs nothing on the compiler it was measured on.
+        if (CMAKE_CXX_COMPILER_ID STREQUAL GNU)
+            list(APPEND OPENMW_RTX_COMPILE_OPTIONS -Wdouble-promotion)
+        endif()
+    endif()
+
+    # Where the RTX resources land. Not `OPENMW_RESOURCES_ROOT`: the top level only defines that for
+    # non-Apple builds, and macOS derives its own — the bundle's `Contents/Resources` — inside
+    # `apps/openmw/CMakeLists.txt`, which is configured after these subdirectories. Both roots it
+    # would resolve to are known here, so this settles it once instead of depending on the order two
+    # subdirectories happen to be added in.
+    if (APPLE)
+        set(RTX_RESOURCES_ROOT "${APP_BUNDLE_DIR}/Contents/Resources")
+    else()
+        set(RTX_RESOURCES_ROOT "${OpenMW_BINARY_DIR}")
+    endif()
+
+    # Where the structures shared with every shader language live. Both backends compile against
+    # them, so the path is settled once rather than in each.
+    set(RTX_SHADER_INCLUDE "${OpenMW_SOURCE_DIR}/components/rtx/shaders")
+
+    add_subdirectory (components/rtx)
+
+    if (OPENMW_RTX_VULKAN)
+        add_subdirectory (components/rtxvulkan)
+    endif()
+
+    if (OPENMW_RTX_METAL)
+        if (NOT APPLE)
+            message(FATAL_ERROR "OPENMW_RTX_METAL needs an Apple platform")
+        endif()
+        add_subdirectory (components/rtxmetal)
+    endif()
+
+    add_subdirectory (components/myguirtx)
+    add_subdirectory (components/rtxbackends)
+    add_subdirectory (apps/rtxtool)
+endif()
+
 # Apps and tools
 if (BUILD_OPENMW OR BUILD_OPENMW_TESTS)
     add_subdirectory( apps/openmw )
@@ -794,8 +864,9 @@ endif()
 
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CUSTOM_CPACK_OS_NAME}-${CUSTOM_CPACK_ARCHITECTURE}")
 
-# Apple bundling
-if (APPLE)
+# Apple bundling. Needs Qt: the bundle embeds Qt platform plugins, whose targets exist only when a
+# Qt tool is built. With none built there is nothing to package; the binaries still land in the bundle.
+if (APPLE AND USE_QT)
     if(CMAKE_VERSION VERSION_LESS 3.19)
         message(FATAL_ERROR "macOS packaging requires CMake 3.19 or higher to sign macOS app bundles.")
     endif()
@@ -1083,7 +1154,7 @@ elseif(NOT APPLE)
         # Install resources
         INSTALL(DIRECTORY "${INSTALL_SOURCE}/resources" DESTINATION "${DATADIR}" COMPONENT "Resources")
     endif(WIN32)
-endif(APPLE)
+endif()
 
 # what is necessary to build documentation
 if ( BUILD_DOCS )

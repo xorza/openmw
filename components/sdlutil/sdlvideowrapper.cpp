@@ -1,19 +1,15 @@
 #include "sdlvideowrapper.hpp"
 
 #include <components/debug/debuglog.hpp>
-#include <components/sdlutil/sdlgraphicswindow.hpp>
 #include <components/settings/settings.hpp>
-
-#include <osgViewer/Viewer>
 
 #include <SDL_video.h>
 
 namespace SDLUtil
 {
 
-    VideoWrapper::VideoWrapper(SDL_Window* window, osg::ref_ptr<osgViewer::Viewer> viewer)
+    VideoWrapper::VideoWrapper(SDL_Window* window)
         : mWindow(window)
-        , mViewer(std::move(viewer))
         , mGamma(1.f)
         , mContrast(1.f)
         , mHasSetGammaContrast(false)
@@ -28,22 +24,6 @@ namespace SDLUtil
         // If user hasn't touched the defaults no need to restore
         if (mHasSetGammaContrast)
             SDL_SetWindowGammaRamp(mWindow, mOldSystemGammaRamp, &mOldSystemGammaRamp[256], &mOldSystemGammaRamp[512]);
-    }
-
-    void VideoWrapper::setSyncToVBlank(VSyncMode vsyncMode)
-    {
-        osgViewer::Viewer::Windows windows;
-        mViewer->getWindows(windows);
-        mViewer->stopThreading();
-        for (osgViewer::Viewer::Windows::iterator it = windows.begin(); it != windows.end(); ++it)
-        {
-            osgViewer::GraphicsWindow* win = *it;
-            if (GraphicsWindowSDL2* sdl2win = dynamic_cast<GraphicsWindowSDL2*>(win))
-                sdl2win->setSyncToVBlank(vsyncMode);
-            else
-                win->setSyncToVBlank(vsyncMode != VSyncMode::Disabled);
-        }
-        mViewer->startThreading();
     }
 
     void VideoWrapper::setGammaContrast(float gamma, float contrast)

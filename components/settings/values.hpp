@@ -16,6 +16,7 @@
 #include "categories/navigator.hpp"
 #include "categories/physics.hpp"
 #include "categories/postprocessing.hpp"
+#include "categories/rtx.hpp"
 #include "categories/saves.hpp"
 #include "categories/shaders.hpp"
 #include "categories/shadows.hpp"
@@ -63,6 +64,7 @@ namespace Settings
         StereoCategory mStereo{ mIndex };
         StereoViewCategory mStereoView{ mIndex };
         PostProcessingCategory mPostProcessing{ mIndex };
+        RTXCategory mRTX{ mIndex };
     };
 
     class StaticValues
@@ -217,6 +219,11 @@ namespace Settings
     inline PostProcessingCategory& postProcessing()
     {
         return values().mPostProcessing;
+    }
+
+    inline RTXCategory& rtx()
+    {
+        return values().mRTX;
     }
 
     template <class T>

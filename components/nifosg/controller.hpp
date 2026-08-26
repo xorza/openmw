@@ -14,6 +14,7 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
+#include <components/surface/material.hpp>
 
 namespace osg
 {
@@ -367,6 +368,12 @@ namespace NifOsg
     {
     private:
         int mTexSlot{ 0 };
+
+        /// What the swapped texture is for, so the surface's description follows the unit. Empty
+        /// where the caller gave a slot number and nothing else — the water and the ripples build
+        /// their own state sets and describe nothing.
+        std::optional<Surface::TextureRole> mRole;
+
         float mDelta{ 0.f };
         std::vector<osg::ref_ptr<osg::Texture2D>> mTextures;
         FloatInterpolator mData;

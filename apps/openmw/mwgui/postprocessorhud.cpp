@@ -26,7 +26,7 @@
 
 #include <components/widgets/box.hpp>
 
-#include "../mwrender/postprocessor.hpp"
+#include "../mwrender/gl/postprocessor.hpp"
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"

@@ -427,6 +427,11 @@ static void crash_catcher(int signum, siginfo_t* siginfo, void* /*context*/)
         kill(crash_info.pid, SIGKILL);
     }
 
+    // The whole crash report has gone to the standard streams by this point, so whether a box adds
+    // anything is a question about who is watching them rather than about the crash.
+    if (!Debug::wantsFatalDialog())
+        exit(0);
+
     // delay between killing of the crashed process and showing the message box to
     // work around occasional X server lock-up. this can only be a bug in X11 since
     // even faulty applications shouldn't be able to freeze the X server.

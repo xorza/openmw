@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 
@@ -11,9 +12,16 @@
 #include <osg/Quat>
 #include <osg/ref_ptr>
 
+#include <components/myguiplatform/picture.hpp>
+
 namespace MWWorld
 {
     class CellStore;
+}
+
+namespace MyGUI
+{
+    class ITexture;
 }
 
 namespace ESM
@@ -23,16 +31,15 @@ namespace ESM
 
 namespace osg
 {
-    class Texture2D;
-    class Image;
-    class Camera;
     class Group;
+    class Image;
     class Node;
 }
 
 namespace MWRender
 {
-    class LocalMapRenderToTexture;
+    class OffscreenView;
+    class Renderer;
 
     ///
     /// \brief Local map rendering
@@ -40,7 +47,9 @@ namespace MWRender
     class LocalMap
     {
     public:
-        LocalMap(osg::Group* root);
+        /// @param root where the world was built; the map is a picture of what is named "Scene Root"
+        ///        inside it, which is the whole of what the map has to do with the graph.
+        LocalMap(Renderer& renderer, osg::Group& root);
         ~LocalMap();
 
         /**
@@ -59,16 +68,22 @@ namespace MWRender
 
         void removeCell(MWWorld::CellStore* cell);
 
-        osg::ref_ptr<osg::Texture2D> getMapTexture(int x, int y);
+        /// The picture of this segment, for a widget to show. Null where the cell has not been
+        /// mapped.
+        MyGUI::ITexture* getMapTexture(int x, int y);
 
-        osg::ref_ptr<osg::Texture2D> getFogOfWarTexture(int x, int y);
+        /// The same picture in main memory, for the global map to composite into its overlay, or
+        /// null while the render has not come back off the device yet — ask again next frame.
+        ///
+        /// **Asking is what starts it, which is why this is not `const`.** A copy costs a read back
+        /// off the device, and the world map wants one for the cell the player walked into: one of
+        /// the nine an arrival draws. Keeping one for every tile drawn spent that read eight times
+        /// over on pictures nothing ever looked at — measured at 1.2 ms each, on the frame a cell
+        /// arrives, which is the frame with the least room for it.
+        const osg::Image* getMapImage(int x, int y);
 
-        /**
-         * Removes cameras that have already been rendered. Should be called every frame to ensure that
-         * we do not render the same map more than once. Note, this cleanup is difficult to implement in an
-         * automated fashion, since we can't alter the scene graph structure from within an update callback.
-         */
-        void cleanupCameras();
+        /// What the widget over a tile darkens it with, or null where the cell has no fog state.
+        MyGUI::ITexture* getFogOfWarTexture(int x, int y);
 
         /**
          * Set the position & direction of the player, and returns the position in map space through the reference
@@ -97,16 +112,11 @@ namespace MWRender
          */
         bool isPositionExplored(float nX, float nY, int x, int y);
 
-        osg::Group* getRoot();
-
         MyGUI::IntRect getInteriorGrid() const;
 
     private:
-        osg::ref_ptr<osg::Group> mRoot;
+        Renderer& mRenderer;
         osg::ref_ptr<osg::Node> mSceneRoot;
-
-        typedef std::vector<osg::ref_ptr<LocalMapRenderToTexture>> RTTVector;
-        RTTVector mLocalMapRTTs;
 
         enum NeighbourCellFlag : std::uint8_t
         {
@@ -125,12 +135,23 @@ namespace MWRender
             void initFogOfWar();
             void loadFogOfWar(const ESM::FogTexture& fog);
             void saveFogOfWar(ESM::FogTexture& fog) const;
-            void createFogOfWarTexture();
+
+            /// The fog image is written a texel at a time as the player walks; this is what puts the
+            /// result in front of the GUI, and it is called only on the frames that changed it.
+            void showFogOfWar();
 
             std::uint8_t mLastRenderNeighbourFlags = 0;
             bool mHasFogState = false;
-            osg::ref_ptr<osg::Texture2D> mMapTexture;
-            osg::ref_ptr<osg::Texture2D> mFogOfWarTexture;
+
+            /// Whether anything has asked this segment for a copy in main memory. Only the world
+            /// map does, and only for the cell the player walked into.
+            bool mCopyAsked = false;
+
+            /// The picture of this piece of the world, drawn once when the cell is entered and
+            /// again when a neighbour arriving makes a better one possible.
+            std::unique_ptr<OffscreenView> mView;
+
+            MyGUIPlatform::Picture mFogOfWar{ "fog of war" };
             osg::ref_ptr<osg::Image> mFogOfWarImage;
         };
 
@@ -154,8 +175,8 @@ namespace MWRender
         void requestExteriorMap(const MWWorld::CellStore* cell, MapSegment& segment);
         void requestInteriorMap(const MWWorld::CellStore* cell);
 
-        void setupRenderToTexture(
-            int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax);
+        /// The segment's view, made the first time it is asked for and redrawn every time after.
+        void draw(int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector);
 
         osg::BoundingBox mBounds;
         osg::Vec2f mCenter;

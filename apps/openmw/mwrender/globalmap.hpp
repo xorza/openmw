@@ -1,18 +1,21 @@
 #ifndef GAME_RENDER_GLOBALMAP_H
 #define GAME_RENDER_GLOBALMAP_H
 
-#include <map>
-#include <string>
+#include <cstdint>
 #include <vector>
 
 #include <osg/ref_ptr>
 
+#include <components/myguiplatform/picture.hpp>
+
+namespace MyGUI
+{
+    class ITexture;
+}
+
 namespace osg
 {
-    class Texture2D;
     class Image;
-    class Group;
-    class Camera;
 }
 
 namespace ESM
@@ -30,11 +33,23 @@ namespace MWRender
 
     class CreateMapWorkItem;
 
+    /// The world map: the land painted from its own heightmap, and over it the pieces of it the
+    /// player has walked.
+    ///
+    /// **All of it is in main memory and none of it is rendered.** The overlay is composed out of
+    /// local map tiles, which is what it always was; the render-to-texture it used to go through
+    /// existed to do one downscale on the device, and paid for that with a camera per cell, a
+    /// shader, a second copy of the image and a read back to keep the two in step. A box filter over
+    /// the tile is both cheaper and better — the device sampled four texels of a picture it was
+    /// shrinking fourteen-fold.
     class GlobalMap
     {
     public:
-        GlobalMap(osg::Group* root, SceneUtil::WorkQueue* workQueue);
+        explicit GlobalMap(SceneUtil::WorkQueue* workQueue);
         ~GlobalMap();
+
+        GlobalMap(const GlobalMap&) = delete;
+        GlobalMap& operator=(const GlobalMap&) = delete;
 
         void render();
 
@@ -43,32 +58,21 @@ namespace MWRender
 
         void worldPosToImageSpace(float x, float z, float& imageX, float& imageY);
 
-        void exploreCell(int cellX, int cellY, osg::ref_ptr<osg::Texture2D> localMapTexture);
+        /// Paint a cell the player has walked into the overlay.
+        ///
+        /// @param tile the local map's picture of that cell, RGBA and one byte a channel, or null
+        ///        while it has not been drawn yet.
+        /// @return whether it was painted. A caller handed nothing asks again later.
+        bool exploreCell(int cellX, int cellY, const osg::Image* tile);
 
         /// Clears the overlay
         void clear();
 
-        /**
-         * Removes cameras that have already been rendered. Should be called every frame to ensure that
-         * we do not render the same map more than once. Note, this cleanup is difficult to implement in an
-         * automated fashion, since we can't alter the scene graph structure from within an update callback.
-         */
-        void cleanupCameras();
-
-        void removeCamera(osg::Camera* cam);
-
-        bool copyResult(osg::Camera* cam, unsigned int frame);
-
-        /**
-         * Mark a camera for cleanup in the next update. For internal use only.
-         */
-        void markForRemoval(osg::Camera* camera);
-
         void write(ESM::GlobalMap& map);
         void read(ESM::GlobalMap& map);
 
-        osg::ref_ptr<osg::Texture2D> getBaseTexture();
-        osg::ref_ptr<osg::Texture2D> getOverlayTexture();
+        MyGUI::ITexture& getBaseTexture();
+        MyGUI::ITexture& getOverlayTexture();
 
         void ensureLoaded();
 
@@ -77,58 +81,31 @@ namespace MWRender
     private:
         struct WritePng;
 
-        /**
-         * Request rendering a 2d quad onto mOverlayTexture.
-         * x, y, width and height are the destination coordinates (top-left coordinate origin)
-         * @param cpuCopy copy the resulting render onto mOverlayImage as well?
-         */
-        void requestOverlayTextureUpdate(int x, int y, int width, int height, osg::ref_ptr<osg::Texture2D> texture,
-            bool clear, bool cpuCopy, float srcLeft = 0.f, float srcTop = 0.f, float srcRight = 1.f,
-            float srcBottom = 1.f);
-
-        osg::ref_ptr<osg::Group> mRoot;
-
-        typedef std::vector<osg::ref_ptr<osg::Camera>> CameraVector;
-        CameraVector mActiveCameras;
-
-        CameraVector mCamerasPendingRemoval;
-
-        struct ImageDest
-        {
-            ImageDest()
-                : mX(0)
-                , mY(0)
-                , mFrameDone(0)
-            {
-            }
-
-            osg::ref_ptr<osg::Image> mImage;
-            int mX, mY;
-            unsigned int mFrameDone;
-        };
-
-        typedef std::map<osg::ref_ptr<osg::Camera>, ImageDest> ImageDestMap;
-
-        ImageDestMap mPendingImageDest;
-
-        osg::ref_ptr<osg::Texture2D> mBaseTexture;
-        osg::ref_ptr<osg::Texture2D> mAlphaTexture;
-
-        // GPU copy of overlay
-        // Note, uploads are pushed through a Camera, instead of through mOverlayImage
-        osg::ref_ptr<osg::Texture2D> mOverlayTexture;
-
-        // CPU copy of overlay
-        osg::ref_ptr<osg::Image> mOverlayImage;
-
         osg::ref_ptr<SceneUtil::WorkQueue> mWorkQueue;
         osg::ref_ptr<CreateMapWorkItem> mWorkItem;
         osg::ref_ptr<WritePng> mWritePng;
 
-        int mWidth;
-        int mHeight;
+        /// Where the land is above water. What stops an explored tile from painting its cell's sea
+        /// over the map's own; the land itself goes straight into a texture and is not kept.
+        osg::ref_ptr<osg::Image> mAlphaImage;
 
-        int mMinX, mMaxX, mMinY, mMaxY;
+        /// What the player has walked, and the only copy of it: this is what is saved.
+        osg::ref_ptr<osg::Image> mOverlayImage;
+
+        /// The two pictures the GUI shows, which is what `MyGUIPlatform::Picture` is for: making
+        /// the texture, keeping it while its shape holds, and writing part of it where the backend
+        /// can take part of one.
+        MyGUIPlatform::Picture mBase{ "global map" };
+        MyGUIPlatform::Picture mOverlay{ "global map overlay" };
+
+        /// One cell's worth of composited pixels, kept so that painting one allocates nothing and
+        /// so that a repaint that changes nothing can be recognised before the upload.
+        std::vector<std::uint8_t> mCellScratch;
+
+        int mWidth = 0;
+        int mHeight = 0;
+
+        int mMinX = 0, mMaxX = 0, mMinY = 0, mMaxY = 0;
     };
 
 }

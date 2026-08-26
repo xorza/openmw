@@ -62,6 +62,14 @@ namespace SceneUtil
 
         osg::ref_ptr<osg::Geometry> getSourceGeometry() const;
 
+        /// What the last cull traversal skinned: the source's topology and shading, with deformed
+        /// positions and normals in place of the bind pose's.
+        ///
+        /// **One frame behind anything that runs before the cull traversal**, which is where the
+        /// skinning happens — and the pointer alternates between two buffers, so it identifies a
+        /// pose and never the mesh. Null until a source geometry has been set.
+        const osg::Geometry* getDeformedGeometry() const { return getGeometry(mLastFrameNumber); }
+
         void accept(osg::NodeVisitor& nv) override;
         bool supports(const osg::PrimitiveFunctor&) const override { return true; }
         void accept(osg::PrimitiveFunctor&) const override;

@@ -8,16 +8,12 @@
 namespace MWRender
 {
     class RaceSelectionPreview;
+    class Renderer;
 }
 
 namespace ESM
 {
     struct NPC;
-}
-
-namespace osg
-{
-    class Group;
 }
 
 namespace Resource
@@ -30,7 +26,7 @@ namespace MWGui
     class RaceDialog : public WindowModal
     {
     public:
-        RaceDialog(osg::Group* parent, Resource::ResourceSystem* resourceSystem);
+        RaceDialog(MWRender::Renderer& renderer, Resource::ResourceSystem* resourceSystem);
 
         enum Gender
         {
@@ -92,7 +88,7 @@ namespace MWGui
 
         void getBodyParts(int part, std::vector<ESM::RefId>& out);
 
-        osg::Group* mParent;
+        MWRender::Renderer& mRenderer;
         Resource::ResourceSystem* mResourceSystem;
 
         std::vector<ESM::RefId> mAvailableHeads;
@@ -117,7 +113,6 @@ namespace MWGui
         float mCurrentAngle;
 
         std::unique_ptr<MWRender::RaceSelectionPreview> mPreview;
-        std::unique_ptr<MyGUI::ITexture> mPreviewTexture;
 
         bool mPreviewDirty;
 

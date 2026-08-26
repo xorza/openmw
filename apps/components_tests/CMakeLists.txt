@@ -20,6 +20,9 @@ file(GLOB UNITTEST_SRC_FILES
     lua/testutilpackage.cpp
     lua/testyaml.cpp
 
+    myguiplatform/pixels.cpp
+    myguiplatform/texture.cpp
+
     misc/compression.cpp
     misc/progressreporter.cpp
     misc/testendianness.cpp
@@ -90,6 +93,8 @@ file(GLOB UNITTEST_SRC_FILES
 
     sceneutil/osgacontroller.cpp
 
+    surface/material.cpp
+
     bsa/testbsafile.cpp
     bsa/testcompressedbsafile.cpp
 
@@ -99,6 +104,69 @@ file(GLOB UNITTEST_SRC_FILES
 
 source_group(apps\\components-tests FILES ${UNITTEST_SRC_FILES})
 
+if (OPENMW_RTX)
+    set(RTX_TEST_FILES
+        rtx/allocations.cpp
+        rtx/allocations.hpp
+        rtx/alphabounds.cpp
+        rtx/alphaimage.cpp
+        rtx/bluenoise.cpp
+        rtx/computepipeline.cpp
+        rtx/device.cpp
+        rtx/dlss.cpp
+        rtx/fogbuilder.cpp
+        rtx/frameimage.cpp
+        rtx/frametimes.cpp
+        rtx/frameworld.cpp
+        rtx/gputimer.cpp
+        rtx/guipass.cpp
+        rtx/guitextures.cpp
+        rtx/harness.cpp
+        rtx/harness.hpp
+        rtx/lightbuilder.cpp
+        rtx/lightgrid.cpp
+        rtx/micromap.cpp
+        rtx/microtriangles.cpp
+        rtx/moonbuilder.cpp
+        rtx/offscreentrace.cpp
+        rtx/pipelinecache.cpp
+        rtx/probe.cpp
+        rtx/reconstruction.cpp
+        rtx/requirements.cpp
+        rtx/scenedesc.cpp
+        rtx/sceneextractor.cpp
+        rtx/sceneuploader.cpp
+        rtx/shadingmap.cpp
+        rtx/spanallocator.cpp
+        rtx/spritetiles.cpp
+        rtx/terraincomposite.cpp
+        rtx/structurestorage.cpp
+        rtx/texturebuilder.cpp
+        rtx/visibilitypass.cpp
+        rtx/wavespectrum.cpp
+        rtxtool/actor.cpp
+        rtxtool/benchsuite.cpp
+        rtxtool/contactsheet.cpp
+        rtxtool/crossing.cpp
+        rtxtool/framing.cpp
+        rtxtool/installation.cpp
+        rtxtool/material.cpp
+        rtxtool/pagedterrain.cpp
+        rtxtool/perfcontrol.cpp
+        rtxtool/props.cpp
+        rtxtool/retire.cpp
+        rtxtool/stability.cpp
+        rtxtool/terrainstorage.cpp
+        rtxtool/validationchoice.cpp
+        rtxtool/verify.cpp
+        rtxtool/view.cpp
+        sky/skyroll.cpp
+        sky/sun.cpp
+        weather/downpour.cpp
+    )
+    list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES})
+endif()
+
 openmw_add_executable(components-tests ${UNITTEST_SRC_FILES})
 
 target_link_libraries(components-tests
@@ -106,6 +174,15 @@ target_link_libraries(components-tests
     GMock::GMock
     components
 )
+
+if (OPENMW_RTX)
+    target_link_libraries(components-tests openmw-rtx openmw-rtx-backends openmw-rtx-vulkan
+                          openmw-rtxtool-lib)
+
+    # Per file rather than per target: this binary holds upstream's tests as well as this fork's, and
+    # only the latter are ours to keep warning-free.
+    set_source_files_properties(${RTX_TEST_FILES} PROPERTIES COMPILE_OPTIONS "${OPENMW_RTX_COMPILE_OPTIONS}")
+endif()
 
 if (WIN32)
     target_sources(components-tests PRIVATE ${CMAKE_SOURCE_DIR}/files/windows/other-apps.manifest)

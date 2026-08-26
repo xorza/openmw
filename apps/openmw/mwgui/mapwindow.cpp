@@ -16,12 +16,13 @@
 
 #include <components/esm3/esmwriter.hpp>
 #include <components/esm3/globalmap.hpp>
-#include <components/myguiplatform/myguitexture.hpp>
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
 #include "../mwbase/world.hpp"
+
+#include "../mwrender/renderingmanager.hpp"
 
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/esmstore.hpp"
@@ -93,10 +94,14 @@ namespace MWGui
     {
         if (!Settings::map().mAllowZooming)
             return Constants::CellGridRadius;
-        if (!Settings::terrain().mDistantTerrain)
-            return Constants::CellGridRadius;
-        const int viewingDistanceInCells
-            = static_cast<int>(Settings::camera().mViewingDistance / Constants::CellSizeInUnits);
+        // **How much world there is, which is the renderer's answer and not a setting's.**
+        // Upstream reads `distant terrain` and `viewing distance`; those are the rasterizer's two
+        // answers to this one question and the ray tracer's are different ones, so asking for the
+        // distance itself is what keeps the map the size of the world under both. A world that
+        // reaches no further than the loaded cells answers nought, which the clamp below turns back
+        // into the grid radius upstream returned outright.
+        const float reach = MWBase::Environment::get().getWorld()->getRenderingManager()->getTerrainReach();
+        const int viewingDistanceInCells = static_cast<int>(reach / Constants::CellSizeInUnits);
         return std::clamp(
             viewingDistanceInCells, Constants::CellGridRadius, Settings::map().mMaxLocalViewingDistance.get());
     }
@@ -243,7 +248,8 @@ namespace MWGui
             for (auto& entry : mMaps)
             {
                 entry.mFogWidget->setImageTexture({});
-                entry.mFogTexture.reset();
+                entry.mFogTexture = nullptr;
+                entry.mFogAsked = false;
             }
         }
 
@@ -460,8 +466,9 @@ namespace MWGui
             }
             entry.mMapWidget->setRenderItemTexture(nullptr);
             entry.mFogWidget->setRenderItemTexture(nullptr);
-            entry.mMapTexture.reset();
-            entry.mFogTexture.reset();
+            entry.mMapTexture = nullptr;
+            entry.mFogTexture = nullptr;
+            entry.mFogAsked = false;
         };
 
         std::size_t usedEntries = 0;
@@ -624,33 +631,29 @@ namespace MWGui
                     requestMapRender(&MWBase::Environment::get().getWorldModel()->getExterior(
                         ESM::ExteriorCellLocation(entry.mCellX, entry.mCellY, ESM::Cell::sDefaultWorldspaceId)));
 
-                osg::ref_ptr<osg::Texture2D> texture = mLocalMapRender->getMapTexture(entry.mCellX, entry.mCellY);
-                if (texture)
+                if (MyGUI::ITexture* texture = mLocalMapRender->getMapTexture(entry.mCellX, entry.mCellY))
                 {
-                    entry.mMapTexture = std::make_unique<MyGUIPlatform::OSGTexture>(texture);
-                    entry.mMapWidget->setRenderItemTexture(entry.mMapTexture.get());
-                    // The widget is Y-down, the RTT image is Y-up, so this UV is inverted
+                    entry.mMapTexture = texture;
+                    entry.mMapWidget->setRenderItemTexture(texture);
+                    // The widget is Y-down, the offscreen picture is Y-up, so this UV is inverted
                     entry.mMapWidget->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
                     needRedraw = true;
                 }
-                else
-                    entry.mMapTexture = std::make_unique<MyGUIPlatform::OSGTexture>(std::string(), nullptr);
             }
-            if (!entry.mFogTexture && mFogOfWarToggled && mFogOfWarEnabled)
+            if (!entry.mFogAsked && mFogOfWarToggled && mFogOfWarEnabled)
             {
-                osg::ref_ptr<osg::Texture2D> tex = mLocalMapRender->getFogOfWarTexture(entry.mCellX, entry.mCellY);
-                if (tex)
+                entry.mFogAsked = true;
+
+                if (MyGUI::ITexture* fog = mLocalMapRender->getFogOfWarTexture(entry.mCellX, entry.mCellY))
                 {
-                    entry.mFogTexture = std::make_unique<MyGUIPlatform::OSGTexture>(tex);
-                    entry.mFogWidget->setRenderItemTexture(entry.mFogTexture.get());
+                    entry.mFogTexture = fog;
+                    entry.mFogWidget->setRenderItemTexture(fog);
                     // For inexplicable historical reasons the fog texture is Y-down so this UV is *not* inverted
                     entry.mFogWidget->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 0.f, 1.f, 1.f));
                 }
                 else
-                {
                     entry.mFogWidget->setImageTexture("black");
-                    entry.mFogTexture = std::make_unique<MyGUIPlatform::OSGTexture>(std::string(), nullptr);
-                }
+
                 needRedraw = true;
                 // Newly uncovered chunk, make sure to draw door markers right away instead of waiting for a cell
                 // transition
@@ -799,7 +802,7 @@ namespace MWGui
         , mGlobalMapOverlay(nullptr)
         , mEventBoxGlobal(nullptr)
         , mEventBoxLocal(nullptr)
-        , mGlobalMapRender(std::make_unique<MWRender::GlobalMap>(localMapRender->getRoot(), workQueue))
+        , mGlobalMapRender(std::make_unique<MWRender::GlobalMap>(workQueue))
         , mEditNoteDialog()
     {
         [[maybe_unused]] static const bool registered = [] {
@@ -1152,8 +1155,21 @@ namespace MWGui
 
     void MapWindow::cellExplored(int x, int y)
     {
-        mGlobalMapRender->cleanupCameras();
-        mGlobalMapRender->exploreCell(x, y, mLocalMapRender->getMapTexture(x, y));
+        const std::pair<int, int> cell(x, y);
+        if (std::find(mExploredPending.begin(), mExploredPending.end(), cell) == mExploredPending.end())
+            mExploredPending.push_back(cell);
+
+        paintExplored();
+    }
+
+    void MapWindow::paintExplored()
+    {
+        // The picture of a cell just walked into has been asked for and not yet drawn, so what the
+        // world map wants is a frame or two away. Nothing else is waiting on it.
+        std::erase_if(mExploredPending, [&](const std::pair<int, int>& cell) {
+            return mGlobalMapRender->exploreCell(
+                cell.first, cell.second, mLocalMapRender->getMapImage(cell.first, cell.second));
+        });
     }
 
     void MapWindow::onFrame(float dt)
@@ -1325,18 +1341,17 @@ namespace MWGui
 
     void MapWindow::ensureGlobalMapLoaded()
     {
-        if (!mGlobalMapTexture.get())
+        if (mGlobalMapTexture == nullptr)
         {
             // The generated unexplored map and explored map RTT images are Y-up so the UVs are inverted
             // The unexplored map isn't saved so we *could* consider generating it the "right" way
             // but mixing conventions for map images could make things confusing
-            mGlobalMapTexture = std::make_unique<MyGUIPlatform::OSGTexture>(mGlobalMapRender->getBaseTexture());
-            mGlobalMapImage->setRenderItemTexture(mGlobalMapTexture.get());
+            mGlobalMapTexture = &mGlobalMapRender->getBaseTexture();
+            mGlobalMapImage->setRenderItemTexture(mGlobalMapTexture);
             mGlobalMapImage->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
 
-            mGlobalMapOverlayTexture
-                = std::make_unique<MyGUIPlatform::OSGTexture>(mGlobalMapRender->getOverlayTexture());
-            mGlobalMapOverlay->setRenderItemTexture(mGlobalMapOverlayTexture.get());
+            mGlobalMapOverlayTexture = &mGlobalMapRender->getOverlayTexture();
+            mGlobalMapOverlay->setRenderItemTexture(mGlobalMapOverlayTexture);
             mGlobalMapOverlay->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
 
             // Redraw children in proper order
@@ -1347,6 +1362,7 @@ namespace MWGui
     void MapWindow::clear()
     {
         mMarkers.clear();
+        mExploredPending.clear();
 
         mGlobalMapRender->clear();
         mActiveCell = nullptr;

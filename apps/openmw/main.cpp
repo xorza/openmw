@@ -9,6 +9,8 @@
 
 #include "mwgui/debugwindow.hpp"
 
+#include <osg/Notify>
+
 #include "engine.hpp"
 #include "options.hpp"
 

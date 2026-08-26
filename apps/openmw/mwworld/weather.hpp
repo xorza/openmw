@@ -12,10 +12,14 @@
 
 #include <components/esm/refid.hpp>
 #include <components/fallback/fallback.hpp>
+#include <components/sky/clouds.hpp>
+#include <components/sky/moonmodel.hpp>
+#include <components/sky/sun.hpp>
+#include <components/sky/timeofday.hpp>
 
 #include "../mwbase/soundmanager.hpp"
 
-#include "../mwrender/skyutil.hpp"
+#include "../mwrender/weatherresult.hpp"
 
 namespace ESM
 {
@@ -59,89 +63,12 @@ namespace MWWorld
         InteriorDay = 2
     };
 
-    struct WeatherSetting
-    {
-        float mPreSunriseTime;
-        float mPostSunriseTime;
-        float mPreSunsetTime;
-        float mPostSunsetTime;
-    };
-
-    struct TimeOfDaySettings
-    {
-        float mNightStart;
-        float mNightEnd;
-        float mDayStart;
-        float mDayEnd;
-
-        std::map<std::string, WeatherSetting> mSunriseTransitions;
-
-        float mStarsPostSunsetStart;
-        float mStarsPreSunriseFinish;
-        float mStarsFadingDuration;
-
-        WeatherSetting getSetting(const std::string& type) const
-        {
-            std::map<std::string, WeatherSetting>::const_iterator it = mSunriseTransitions.find(type);
-            if (it != mSunriseTransitions.end())
-            {
-                return it->second;
-            }
-            else
-            {
-                return { 1.f, 1.f, 1.f, 1.f };
-            }
-        }
-
-        void addSetting(const std::string& type)
-        {
-            WeatherSetting setting = { Fallback::Map::getFloat("Weather_" + type + "_Pre-Sunrise_Time"),
-                Fallback::Map::getFloat("Weather_" + type + "_Post-Sunrise_Time"),
-                Fallback::Map::getFloat("Weather_" + type + "_Pre-Sunset_Time"),
-                Fallback::Map::getFloat("Weather_" + type + "_Post-Sunset_Time") };
-
-            mSunriseTransitions[type] = setting;
-        }
-    };
-
-    /// Interpolates between 4 data points (sunrise, day, sunset, night) based on the time of day.
-    /// The template value could be a floating point number, or a color.
-    template <typename T>
-    class TimeOfDayInterpolator
-    {
-    public:
-        TimeOfDayInterpolator(const T& sunrise, const T& day, const T& sunset, const T& night)
-            : mSunriseValue(sunrise)
-            , mDayValue(day)
-            , mSunsetValue(sunset)
-            , mNightValue(night)
-        {
-        }
-
-        T getValue(const float gameHour, const TimeOfDaySettings& timeSettings, const std::string& prefix) const;
-
-        const T& getSunriseValue() const { return mSunriseValue; }
-        const T& getDayValue() const { return mDayValue; }
-        const T& getSunsetValue() const { return mSunsetValue; }
-        const T& getNightValue() const { return mNightValue; }
-
-        void setSunriseValue(const T& sunriseValue) { mSunriseValue = sunriseValue; }
-        void setDayValue(const T& dayValue) { mDayValue = dayValue; }
-        void setSunsetValue(const T& sunsetValue) { mSunsetValue = sunsetValue; }
-        void setNightValue(const T& nightValue) { mNightValue = nightValue; }
-
-    private:
-        T mSunriseValue, mDayValue, mSunsetValue, mNightValue;
-    };
-
     /// Defines a single weather setting (according to INI)
     class Weather
     {
     public:
-        static osg::Vec3f defaultDirection();
-
         Weather(const ESM::RefId id, const int scriptId, const std::string& name, float stormWindSpeed, float rainSpeed,
-            float dlFactor, float dlOffset, const std::string& particleEffect);
+            float dlFactor, float dlOffset);
 
         ESM::RefId mId;
         int mScriptId;
@@ -149,22 +76,19 @@ namespace MWWorld
         std::string mCloudTexture;
 
         // Sky (atmosphere) color
-        TimeOfDayInterpolator<osg::Vec4f> mSkyColor;
+        Sky::TimeOfDayInterpolator<osg::Vec4f> mSkyColor;
         // Fog color
-        TimeOfDayInterpolator<osg::Vec4f> mFogColor;
+        Sky::TimeOfDayInterpolator<osg::Vec4f> mFogColor;
         // Ambient lighting color
-        TimeOfDayInterpolator<osg::Vec4f> mAmbientColor;
+        Sky::TimeOfDayInterpolator<osg::Vec4f> mAmbientColor;
         // Sun (directional) lighting color
-        TimeOfDayInterpolator<osg::Vec4f> mSunColor;
+        Sky::TimeOfDayInterpolator<osg::Vec4f> mSunColor;
 
         // Fog depth/density
-        TimeOfDayInterpolator<float> mLandFogDepth;
+        Sky::TimeOfDayInterpolator<float> mLandFogDepth;
 
         // Color modulation for the sun itself during sunset
         osg::Vec4f mSunDiscSunsetColor;
-
-        // Used by scripts to animate signs, etc based on the wind (GetWindSpeed)
-        float mWindSpeed;
 
         // Cloud animation speed multiplier
         float mCloudSpeed;
@@ -188,36 +112,18 @@ namespace MWWorld
 
         std::array<ESM::RefId, 4> mThunderSoundID;
 
-        // Is this an ash storm / blight storm? If so, the following will happen:
-        // - The particles and clouds will be oriented so they appear to come from the Red Mountain.
-        // - Characters will animate their hand to protect eyes from the storm when looking in its direction (idlestorm
-        // animation)
-        // - Slower movement when walking against the storm (fStromWalkMult)
-        bool mIsStorm;
-
-        // How fast does rain travel down?
-        // In Morrowind.ini this is set globally, but we may want to change it per weather later.
-        float mRainSpeed;
-
-        // How often does a new rain mesh spawn?
-        float mRainEntranceSpeed;
-
-        // Maximum count of rain particles
-        int mRainMaxRaindrops;
-
-        // Radius of rain effect
-        float mRainDiameter;
+        /// What this weather drops, how hard, and how fast the wind drives it.
+        ///
+        /// **Read once, by `Weather::downpourAt`, and never spelled out here.** The dozen keys
+        /// behind it used to be read in this constructor and again in that function, which is how
+        /// the wind came to reach the drops through a rule only one of the two applied.
+        ///
+        /// `mIsStorm` in it is also what makes a character shield their eyes and walk slower into
+        /// it (`fStromWalkMult`), and what turns the clouds to come off Red Mountain.
+        ::Weather::Downpour mDownpour;
 
         // Transition threshold to spawn rain
         float mRainThreshold;
-
-        // Height of rain particles spawn
-        float mRainMinHeight;
-        float mRainMaxHeight;
-
-        std::string mParticleEffect;
-
-        std::string mRainEffect;
 
         osg::Vec3f mStormDirection;
 
@@ -272,37 +178,31 @@ namespace MWWorld
     };
 
     /// A class that acts as a model for the moons.
+    /// One moon's place in the sky, as the renderer wants it stated.
+    ///
+    /// **The arithmetic is `Weather::MoonModel`'s and this is the adapter.** Two renderers need the
+    /// same answers out of the `Moons_*` settings — this one and `openmw-rtxtool`, which has no
+    /// weather system to ask — so the clock itself sits in a component below both, and what is left
+    /// here is turning what it says into the type the sky was already being handed.
     class MoonModel
     {
     public:
-        MoonModel(const std::string& name);
+        explicit MoonModel(const std::string& name)
+            : mModel(name)
+        {
+        }
+
         MoonModel(float fadeInStart, float fadeInFinish, float fadeOutStart, float fadeOutFinish, float axisOffset,
-            float speed, float dailyIncrement, float fadeStartAngle, float fadeEndAngle,
-            float moonShadowEarlyFadeAngle);
+            float speed, float dailyIncrement, float fadeStartAngle, float fadeEndAngle, float moonShadowEarlyFadeAngle)
+            : mModel(fadeInStart, fadeInFinish, fadeOutStart, fadeOutFinish, axisOffset, speed, dailyIncrement,
+                fadeStartAngle, fadeEndAngle, moonShadowEarlyFadeAngle)
+        {
+        }
 
         MWRender::MoonState calculateState(const TimeStamp& gameTime) const;
 
     private:
-        float mFadeInStart;
-        float mFadeInFinish;
-        float mFadeOutStart;
-        float mFadeOutFinish;
-        float mAxisOffset;
-        float mSpeed;
-        float mDailyIncrement;
-        float mFadeStartAngle;
-        float mFadeEndAngle;
-        float mMoonShadowEarlyFadeAngle;
-
-        float angle(int gameDay, float gameHour) const;
-        float moonPhaseHour(int gameDay) const;
-        float moonRiseHour(int gameDay) const;
-        float rotation(float hours) const;
-        MWRender::MoonState::Phase phase(const TimeStamp& gameTime) const;
-        bool isVisible(int gameDay, float gameHour) const;
-        float shadowBlend(float angle) const;
-        float hourlyAlpha(float gameHour) const;
-        float earlyMoonShadowAlpha(float angle) const;
+        Sky::MoonModel mModel;
     };
 
     /// Interface for weather settings
@@ -387,16 +287,16 @@ namespace MWWorld
         float mSunsetDuration;
         float mSunPreSunsetTime;
 
-        TimeOfDaySettings mTimeSettings;
+        Sky::TimeOfDaySettings mTimeSettings;
 
         // fading of night skydome
-        TimeOfDayInterpolator<float> mNightFade;
+        Sky::TimeOfDayInterpolator<float> mNightFade;
 
         float mHoursBetweenWeatherChanges;
         float mRainSpeed;
 
         // underwater fog not really related to weather, but we handle it here because it's convenient
-        TimeOfDayInterpolator<float> mUnderwaterFog;
+        Sky::TimeOfDayInterpolator<float> mUnderwaterFog;
 
         std::vector<Weather> mWeatherSettings;
         MoonModel mMasser;
@@ -426,8 +326,9 @@ namespace MWWorld
         MWBase::Sound* mRainSound{ nullptr };
         ESM::RefId mPlayingRainSoundID;
 
-        void addWeather(
-            const std::string& name, float dlFactor, float dlOffset, const std::string& particleEffect = "");
+        /// The model a storm drives past the eye comes from `Weather::stormEffect`, which is where
+        /// that table lives now that a harness with no weather system reads it too.
+        void addWeather(const std::string& name, float dlFactor, float dlOffset);
 
         void importRegions();
 

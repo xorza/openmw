@@ -333,6 +333,15 @@ namespace NifOsg
             // setting once is enough because all other texture units share the same TexMat (see setDefaults).
             if (!mTextureUnits.empty())
                 SceneUtil::setupTexMatForStateSet(*stateset, *mTextureUnits.begin(), mat);
+
+            // The same two numbers the matrix above was built from, for a renderer that samples a
+            // texture rather than binding one. Written in place after the first frame — see
+            // `Surface::getWritableMaterial`.
+            if (Surface::Material* surface = Surface::getWritableMaterial(*stateset))
+            {
+                surface->mTextureScale = osg::Vec2f(uvScale.x(), uvScale.y());
+                surface->mTextureOffset = osg::Vec2f(uvTrans.x(), uvTrans.y());
+            }
         }
     }
 
@@ -460,6 +469,11 @@ namespace NifOsg
         {
             float value = mData.interpKey(getInputValue(nv));
             stateset->getUniform("alpha")->set(value);
+
+            // The description is what a renderer reads, so what animates the surface animates that
+            // too. Written in place after the first frame — see `Surface::getWritableMaterial`.
+            if (Surface::Material* surface = Surface::getWritableMaterial(*stateset))
+                surface->mDiffuseColour.a() = value;
         }
     }
 
@@ -501,6 +515,7 @@ namespace NifOsg
             osg::Vec3f value = mData.interpKey(getInputValue(nv));
             SceneUtil::Material* mat
                 = static_cast<SceneUtil::Material*>(stateset->getAttribute(osg::StateAttribute::MATERIAL));
+            Surface::Material* surface = Surface::getWritableMaterial(*stateset);
             using TargetColor = Nif::NiMaterialColorController::TargetColor;
             switch (mTargetColor)
             {
@@ -509,6 +524,8 @@ namespace NifOsg
                     osg::Vec4f diffuse = mat->getDiffuse();
                     diffuse.set(value.x(), value.y(), value.z(), diffuse.a());
                     mat->setDiffuse(diffuse);
+                    if (surface != nullptr)
+                        surface->mDiffuseColour = diffuse;
                     break;
                 }
                 case TargetColor::Specular:
@@ -516,6 +533,8 @@ namespace NifOsg
                     osg::Vec4f specular = mat->getSpecular();
                     specular.set(value.x(), value.y(), value.z(), specular.a());
                     mat->setSpecular(specular);
+                    if (surface != nullptr)
+                        surface->mSpecularColour = value;
                     break;
                 }
                 case TargetColor::Emissive:
@@ -523,6 +542,8 @@ namespace NifOsg
                     osg::Vec4f emissive = mat->getEmission();
                     emissive.set(value.x(), value.y(), value.z(), emissive.a());
                     mat->setEmission(emissive);
+                    if (surface != nullptr)
+                        surface->mEmissiveColour = value;
                     break;
                 }
                 case TargetColor::Ambient:
@@ -531,6 +552,8 @@ namespace NifOsg
                     osg::Vec4f ambient = mat->getAmbient();
                     ambient.set(value.x(), value.y(), value.z(), ambient.a());
                     mat->setAmbient(ambient);
+                    if (surface != nullptr)
+                        surface->mAmbientColour = value;
                 }
             }
             mat->updateStateSet(stateset);
@@ -540,6 +563,7 @@ namespace NifOsg
     FlipController::FlipController(
         const Nif::NiFlipController* ctrl, const std::vector<osg::ref_ptr<osg::Texture2D>>& textures)
         : mTexSlot(0) // always affects diffuse
+        , mRole(Surface::TextureRole::Diffuse)
         , mDelta(ctrl->mDelta)
         , mTextures(textures)
     {
@@ -558,6 +582,7 @@ namespace NifOsg
         : StateSetUpdater(copy, copyop)
         , Controller(copy)
         , mTexSlot(copy.mTexSlot)
+        , mRole(copy.mRole)
         , mDelta(copy.mDelta)
         , mTextures(copy.mTextures)
         , mData(copy.mData)
@@ -574,6 +599,10 @@ namespace NifOsg
             else
                 curTexture = int(mData.interpKey(getInputValue(nv))) % mTextures.size();
             stateset->setTextureAttribute(mTexSlot, mTextures[curTexture]);
+
+            if (mRole.has_value())
+                if (Surface::Material* surface = Surface::getWritableMaterial(*stateset))
+                    surface->setTexture(*mRole, mTextures[curTexture]);
         }
     }
 

@@ -96,6 +96,24 @@ namespace Terrain
         {
         }
 
+        /// Every chunk this world holds for `view`, at the detail `viewPoint` asks for, handed to
+        /// `visitor`.
+        ///
+        /// **Not a cull, and this is the whole reason it exists.** Nothing is rejected and no
+        /// frustum is consulted: a ray tracer decides what exists, and the answer is everything
+        /// within the view distance. The detail is still chosen by distance from `viewPoint`,
+        /// because a chunk has to be built at *some* level and the one an eye there would have
+        /// picked is the one its rays should hit.
+        ///
+        /// **Nothing here, and that is the right answer for most worlds.** A world whose chunks are
+        /// children of its own root — `TerrainGrid`'s are — is reached by walking the graph like
+        /// anything else, and would be reached twice if it answered this as well. `QuadTreeWorld`
+        /// resolves its chunks inside a cull and parents them to nothing, so it is the one that has
+        /// to say where they are.
+        ///
+        /// @note Not thread safe. `view` must be one `createView` handed out.
+        virtual void collect(View* view, const osg::Vec3f& viewPoint, osg::NodeVisitor& visitor) {}
+
         virtual void rebuildViews() {}
 
         virtual void reportStats(unsigned int frameNumber, osg::Stats* stats) {}

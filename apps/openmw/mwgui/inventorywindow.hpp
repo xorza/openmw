@@ -9,9 +9,9 @@
 
 #include <components/misc/notnullptr.hpp>
 
-namespace osg
+namespace MWRender
 {
-    class Group;
+    class Renderer;
 }
 
 namespace Resource
@@ -36,7 +36,7 @@ namespace MWGui
     class InventoryWindow : public WindowPinnableBase
     {
     public:
-        explicit InventoryWindow(DragAndDrop& dragAndDrop, ItemTransfer& itemTransfer, osg::Group* parent,
+        explicit InventoryWindow(DragAndDrop& dragAndDrop, ItemTransfer& itemTransfer, MWRender::Renderer& renderer,
             Resource::ResourceSystem* resourceSystem);
 
         void onOpen() override;
@@ -115,7 +115,6 @@ namespace MWGui
         int mLastXSize;
         int mLastYSize;
 
-        std::unique_ptr<MyGUI::ITexture> mPreviewTexture;
         std::unique_ptr<MWRender::InventoryPreview> mPreview;
 
         bool mTrading;

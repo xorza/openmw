@@ -1,0 +1,206 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_query : require
+#extension GL_EXT_ray_tracing_position_fetch : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// The frame, composed. One ray per pixel against the top-level structure; everything that decides
+// what a pixel shows lives under `lib/` and this is the order those answers are put together in —
+// the sky behind the water, the water under the air, the air under the sprites, and each of the
+// G-buffer channels given what its reader was promised.
+//
+// A hit gives an instance, a triangle and two barycentrics; everything else is a table lookup. The
+// positions come back out of the acceleration structure through position fetch, so the only vertex
+// data bound here is what that cannot give: normals and texture coordinates.
+
+#include "camera.h"
+#include "scene.h"
+#include "visibility.h"
+
+#include "lib/bindings.glsl"
+#include "lib/fog.glsl"
+#include "lib/random.glsl"
+#include "lib/reproject.glsl"
+#include "lib/shading.glsl"
+#include "lib/sky.glsl"
+#include "lib/sprites.glsl"
+#include "lib/traversal.glsl"
+#include "lib/underwater.glsl"
+#include "lib/water.glsl"
+
+/// Whether the trace counts the primary rays that hit something.
+///
+/// **A specialization constant, so the game's module does not carry the atomic at all.** The count
+/// is a harness facility — `shot` prints it, `bench` reports it, and a test asserts on it — and
+/// nothing in the game ever reads it, so an unconditional `atomicAdd` was a debug write compiled
+/// into the shipping kernel. Specialized rather than branched on a uniform because the branch is
+/// what has to go, not just the write: with this false the constant folds away and the buffer is
+/// never touched.
+layout(constant_id = 0) const bool COUNT_HITS = false;
+
+layout(local_size_x = VISIBILITY_WORKGROUP, local_size_y = VISIBILITY_WORKGROUP) in;
+
+void main()
+{
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (pixel.x >= frame.mCamera.mWidth || pixel.y >= frame.mCamera.mHeight)
+        return;
+
+    // The same rays the wavelet rebuilds, from the same `rayAt` — a filter reconstructing positions
+    // from a ray that differed by half a pixel would be filtering somewhere the surface is not.
+    const Ray ray = rayAt(frame.mCamera, vec2(pixel));
+    const vec3 origin = frame.mOrigin + ray.mOffset;
+    const vec3 direction = ray.mDirection;
+
+    const Cone cone = coneAt(frame.mCamera);
+    const Surface surface = trace(origin, direction, 0.0, cone.mWidth, cone.mSpread, MASK_SOLID | MASK_WATER);
+
+    // Three channels rather than a colour: what is finished, what a filter may still work on, and
+    // what puts the two back together. Only an ordinary lit surface has a second of them — the sky
+    // has no albedo to divide out, and water is the far end of paths that terminate rather than
+    // bounce, so both arrive here already resolved and pass through the filter untouched.
+    vec3 shaded;
+    vec3 bounced = vec3(0.0);
+
+    // **What the surface is, kept apart from what the path did to it.** These two used to be one
+    // channel: the albedo was multiplied by every transmittance on the way to the eye, which is what
+    // the composite wants back and is not what an upscaler demodulates by. A foggy wall reported an
+    // albedo with the fog in it, so Ray Reconstruction divided the light by the wrong number
+    // wherever there was weather — which outdoors is nearly everywhere.
+    SurfaceResponse response = noResponse();
+    vec3 transmittance = vec3(1.0);
+
+    // Filled only by water, and only where the water reflects a surface rather than the sky.
+    WaterMirror mirror = WaterMirror(vec3(0.0), vec3(0.0), 0u, false);
+
+    if (!surface.mHit)
+        shaded = frame.mTransparentBackground != 0u ? vec3(0.0) : skyRadiance(direction, pixelBlur(frame.mCamera));
+    else if (surface.mWater)
+        shaded = shadeWater(surface, direction, response, mirror, pixelKey(pixel));
+    else if (frame.mShowAlbedo != 0u)
+    {
+        // **The colour is replaced and the surface is not.** What this view changes is what a pixel
+        // is painted with; the thing under it is the same Lambert surface, and saying otherwise
+        // hands every reader of the guide a frame with no normals in it — which the wavelet reads as
+        // "no surface anywhere" and the upscaler reconstructs accordingly.
+        shaded = surface.mAlbedo;
+        response = lambertResponse(surface);
+    }
+    else
+    {
+        shaded = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE);
+        bounced = bounceLight(surface, pixel);
+        response = lambertResponse(surface);
+    }
+
+    // A camera under the surface sees everything through the water in front of it. Only a hit that
+    // is not water itself: the surface shades its own two sides, and a ray that reached it from
+    // below has already been through this.
+    //
+    // Applied to the whole colour rather than to the albedo alone — what the depth took is a
+    // property of the path, so it belongs to the modulation and not to the material.
+    if (origin.z < frame.mWaterLevel && !(surface.mHit && surface.mWater))
+    {
+        transmittance *= waterTransmittance(surface.mDistance);
+        shaded = absorbedByWater(shaded, surface.mDistance);
+    }
+
+    // The air in front of all of it. Last, because everything else in the frame is what the fog
+    // stands between the eye and — the water's own absorption included, which is a different medium
+    // over a different part of the path. A ray that hit nothing carries `mFar`, which the march
+    // clamps to the distance past which air stops mattering.
+    const vec4 fog = fogAlong(origin, direction, surface.mDistance, randomAt(pixel, STREAM_FOG));
+    shaded = shaded * fog.w + fog.xyz;
+    transmittance *= fog.w;
+
+    // The particles in front of all of it, each already dimmed by the air between it and the eye —
+    // which is why this composites over a frame the fog has finished with rather than before it.
+    //
+    // What a covering sprite hides is taken off the whole of `shaded`, the fog's own in-scattering
+    // included. Exactly right for what is behind the sprite and an over-darkening of the haze in
+    // front of it, which is the part of the ray a puff of smoke is nearly always at the end of.
+    const SpriteLayer particles = spritesAlong(pixel, origin, direction, surface.mDistance);
+
+    // Kept because the motion vector below is decided by which of the two terms of the line under
+    // this one is the larger, and that line is where the first of them stops existing.
+    const vec3 beforeParticles = shaded;
+
+    shaded = shaded * particles.mTransmittance + particles.mRadiance;
+    transmittance *= particles.mTransmittance;
+
+    if (COUNT_HITS && surface.mHit)
+        atomicAdd(hits, 1);
+
+    const ivec2 at = ivec2(pixel);
+
+    // **Coverage rides in the direct channel's alpha**, which every pass after this carries
+    // through untouched: it is one everywhere but in a picture that has to say where it stops.
+    const float coverage = (frame.mTransparentBackground != 0u && !surface.mHit) ? 0.0 : 1.0;
+    imageStore(direct, at, vec4(shaded, coverage));
+
+    // **The bounce carries what the path took off it, and the albedo carries only the surface.**
+    // The composite still multiplies the two, so the picture is the same product it always was; what
+    // moved is which of the two the water and the air are folded into. They belong to the light,
+    // which is what they attenuated — and the channel that is left is then the albedo an upscaler
+    // asks for.
+    //
+    // Filtering the bounce with the transmittance already in it averages a quantity that varies as
+    // slowly as fog does, which is to say it changes nothing.
+    imageStore(indirect, at, vec4(bounced * transmittance, 1.0));
+    imageStore(albedo, at, vec4(response.mDiffuse, 1.0));
+    imageStore(specular, at, vec4(response.mSpecular, 1.0));
+    imageStore(guide, at, vec4(response.mNormal, response.mRoughness));
+
+    // **A sprite that hides nothing still moves something.** Additive blending leaves the
+    // transmittance at one by definition, so a flame or a spark shows up only in what it added —
+    // and it is exactly as unreprojectable as a raindrop that occludes. Both count.
+    const bool sprited = particles.mTransmittance < 1.0 || any(greaterThan(particles.mRadiance, vec3(0.0)));
+    imageStore(particleMask, at, vec4(sprited ? 1.0 : 0.0));
+
+    // Which sprite owns this pixel's motion, if any does — the mask below and the vector further
+    // down are the same question asked twice, so it is answered once.
+    const SpriteClaim claim = spriteClaim(beforeParticles, particles);
+
+    // **What no motion vector here describes, which is far less than what moves.** This says stop
+    // accumulating, so everything it names is a pixel reconstructed from one sample — and a mask
+    // that names a third of the frame is a third of the frame held at the noise the trace left.
+    //
+    // Water is not on it. Water is shaded where it is seen and shows what is somewhere else, which
+    // is a real problem and is the one `reflectionMotion` answers: the surface has its vector and
+    // what it reflects has another, and NGX weighs the two by the specular albedo it was given.
+    // Marking it untrustworthy as well would throw away the answer for the sake of the question.
+    //
+    // What is left is the pixel a sprite reached and did not win: the vector written for it is the
+    // surface's, and some share of what the pixel shows is a particle that went somewhere else.
+    // Where the sprite *did* win, the vector is the sprite's own and the pixel is described.
+    const bool untrusted = sprited && !(claim.mWeight > 0.0);
+    imageStore(biasMask, at, vec4(untrusted ? 1.0 : 0.0));
+
+    // **The sky moves too, and only its turn moves it.** `skyMotionOf` says why storing nothing here
+    // was a smear across every camera rotation.
+    vec2 moved = surface.mHit ? motionOf(pixel, origin, direction, surface.mDistance, surface.mInstance)
+                              : skyMotionOf(pixel, direction);
+
+    // **A pixel a sprite mostly is moves the way that sprite did.** One motion vector is written per
+    // pixel and it used to be the surface's whatever stood in front of it, so a raindrop crossing a
+    // wall was reprojected as though it were the wall — which is what `particleMask` was reduced to
+    // apologising for. `spriteClaim` says which sprite owns the pixel, by either of the two ways a
+    // sprite can own one — which covers a flame as well as a raindrop.
+    if (claim.mWeight > 0.0)
+        moved = spriteMotionOf(pixel, claim);
+    imageStore(motion, at, vec4(moved, 0.0, 0.0));
+
+    // **The one surface in this frame that shows something standing somewhere else.** Water is
+    // shaded where it is seen, so the vector above describes the surface and not what is in it; this
+    // is the other one, and the upscaler weighs the two by the specular albedo it was already given.
+    imageStore(reflectionMotion, at,
+        vec4(surface.mWater ? mirrorMotionOf(pixel, origin, mirror) : vec2(0.0), 0.0, 0.0));
+
+    // A miss is as far away as anything can be, and `mDistance` already carries `mFar` for it.
+    imageStore(depth, at,
+        vec4(surface.mHit ? clipDepth(direction, surface.mDistance) : 1.0, surface.mDistance, 0.0, 0.0));
+}

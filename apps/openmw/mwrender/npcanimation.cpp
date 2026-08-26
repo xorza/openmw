@@ -40,7 +40,7 @@
 #include "../mwbase/world.hpp"
 
 #include "actorutil.hpp"
-#include "postprocessor.hpp"
+#include "gl/postprocessor.hpp"
 #include "renderbin.hpp"
 #include "renderingmanager.hpp"
 #include "rotatecontroller.hpp"

@@ -1,0 +1,94 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// The luminance histogram reduced to the one number the display curve scales by.
+//
+// One workgroup of exactly `EXPOSURE_BINS` threads: the whole job is a 256-element weighted sum, and
+// dispatching it apart from the curve is what stops every one of the curve's workgroups redoing it.
+
+#include "exposure.h"
+
+layout(local_size_x = EXPOSURE_BINS) in;
+
+layout(set = 0, binding = 0, scalar) buffer Histogram
+{
+    uint bins[];
+};
+
+layout(set = 0, binding = 1, scalar) buffer Exposure
+{
+    float exposure;
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    ExposureConstants frame;
+};
+
+/// The luminance a correctly exposed mid grey sits at. Eighteen per cent is the photographic
+/// convention, and it is what puts an average scene in the middle of the curve rather than at an end.
+const float KEY = 0.18;
+
+/// How completely the eye adapts to what it is looking at.
+///
+/// **One would be a renderer with no night in it.** Dividing by the mean normalises every frame to
+/// the same brightness, so midnight, an interior and noon all come out within a couple of per cent
+/// of each other — which is not what adaptation does. The response is compressive: a room at dusk
+/// goes on looking dimmer than the same room at noon however long you sit in it.
+///
+/// Rendered luminance is `KEY^a * mean^(1-a)`, so at three quarters a scene fifty times darker comes
+/// out two and a half times darker rather than identical, and a scene already at the key is left
+/// alone — the exponent moves what is *around* the middle grey without moving the middle grey.
+/// Inherited from the reference implementation, which measured it; not measured again here.
+const float ADAPTATION = 0.75;
+
+/// Clamped rather than trusted: a frame that is almost entirely black would otherwise divide by
+/// something near zero and hand back an exposure that turns the next frame's noise into a snowstorm.
+const float MIN_EXPOSURE = 0.05;
+const float MAX_EXPOSURE = 200.0;
+
+shared uint weighted[EXPOSURE_BINS];
+
+void main()
+{
+    const uint index = gl_LocalInvocationIndex;
+
+    // Weighted by the bin's own index: summed and divided by the population, this is the mean bin,
+    // which is the mean *log* luminance because the bins are logarithmic.
+    weighted[index] = bins[index] * index;
+    barrier();
+
+    // Tree reduction over the workgroup: 256 values to one in eight steps.
+    for (uint stride = EXPOSURE_BINS / 2u; stride > 0u; stride >>= 1u)
+    {
+        if (index < stride)
+            weighted[index] += weighted[index + stride];
+        barrier();
+    }
+
+    if (index != 0u)
+        return;
+
+    // Bin zero holds the pixels too dark to bin. They are left out of the divisor as well as
+    // contributing nothing to the sum — an interior is mostly them, and counting them would pull the
+    // average onto the floor and open the exposure until the lit parts blew out.
+    const uint black = bins[0];
+    if (frame.mPixels <= black)
+    {
+        // Nothing was bright enough to bin, so there is nothing to expose for.
+        exposure = 1.0;
+        return;
+    }
+
+    const float lit = float(frame.mPixels - black);
+    const float meanBin = float(weighted[0]) / lit;
+
+    // Undo the binning: bin one is the darkest resolved value, so the scale spans `BINS - 2`.
+    const float span = MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE;
+    const float meanLog = (meanBin - 1.0) / float(EXPOSURE_BINS - 2u) * span + MIN_LOG_LUMINANCE;
+    const float meanLuminance = exp2(meanLog);
+
+    exposure = clamp(pow(KEY / max(meanLuminance, 1e-6), ADAPTATION), MIN_EXPOSURE, MAX_EXPOSURE);
+}

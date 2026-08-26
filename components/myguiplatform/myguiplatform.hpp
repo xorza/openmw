@@ -7,18 +7,6 @@
 
 #include <components/vfs/pathutil.hpp>
 
-namespace osgViewer
-{
-    class Viewer;
-}
-namespace osg
-{
-    class Group;
-}
-namespace Resource
-{
-    class ImageManager;
-}
 namespace MyGUI
 {
     class LogManager;
@@ -31,22 +19,24 @@ namespace VFS
 namespace MyGUIPlatform
 {
 
-    class RenderManager;
+    class GuiRenderManager;
     class DataManager;
     class LogFacility;
 
+    /// MyGUI's log, its data manager, and whichever backend draws it.
+    ///
+    /// **One of these for every renderer.** Two of the three are the same whatever draws — a log
+    /// file and a reader that goes through the VFS — so the only thing a backend brings is the
+    /// render manager, and it brings it already made.
     class Platform
     {
     public:
-        Platform(osgViewer::Viewer* viewer, osg::Group* guiRoot, Resource::ImageManager* imageManager,
-            const VFS::Manager* vfs, float uiScalingFactor, VFS::Path::NormalizedView resourcePath,
-            const std::filesystem::path& logName = "MyGUI.log");
+        Platform(std::unique_ptr<GuiRenderManager> renderManager, const VFS::Manager* vfs,
+            VFS::Path::NormalizedView resourcePath, const std::filesystem::path& logName = "MyGUI.log");
 
         ~Platform();
 
         void shutdown();
-
-        RenderManager* getRenderManagerPtr();
 
         DataManager* getDataManagerPtr();
 
@@ -54,7 +44,7 @@ namespace MyGUIPlatform
         std::unique_ptr<LogFacility> mLogFacility;
         std::unique_ptr<MyGUI::LogManager> mLogManager;
         std::unique_ptr<DataManager> mDataManager;
-        std::unique_ptr<RenderManager> mRenderManager;
+        std::unique_ptr<GuiRenderManager> mRenderManager;
     };
 
 }

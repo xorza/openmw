@@ -33,7 +33,6 @@
 #include "../mwbase/world.hpp"
 
 #include "../mwrender/landmanager.hpp"
-#include "../mwrender/postprocessor.hpp"
 #include "../mwrender/renderingmanager.hpp"
 
 #include "../mwphysics/actor.hpp"
@@ -990,8 +989,6 @@ namespace MWWorld
             MWBase::Environment::get().getWindowManager()->fadeScreenIn(0.5);
 
         MWBase::Environment::get().getWindowManager()->changeCell(mCurrentCell);
-
-        MWBase::Environment::get().getWorld()->getPostProcessor()->setExteriorFlag(cell.getCell()->isQuasiExterior());
     }
 
     void Scene::changeToExteriorCell(
@@ -1011,8 +1008,6 @@ namespace MWWorld
 
         if (changeEvent)
             MWBase::Environment::get().getWindowManager()->fadeScreenIn(0.5);
-
-        MWBase::Environment::get().getWorld()->getPostProcessor()->setExteriorFlag(true);
     }
 
     CellStore* Scene::getCurrentCell()

@@ -16,6 +16,7 @@
 #include <SDL_video.h>
 
 #include <components/debug/debuglog.hpp>
+#include <components/features/features.hpp>
 #include <components/files/configurationmanager.hpp>
 #include <components/l10n/manager.hpp>
 #include <components/lua_ui/scriptsettings.hpp>
@@ -313,6 +314,18 @@ namespace MWGui
         getWidget(mTerrainShadowsButton, "TerrainShadowsButton");
         getWidget(mObjectShadowsButton, "ObjectShadowsButton");
         getWidget(mShadowMapResolution, "ShadowMapResolution");
+        getWidget(mRayTracingButton, "RayTracingButton");
+        getWidget(mRayTracingRestartHint, "RayTracingRestartHint");
+        getWidget(mRayTracingUnavailableHint, "RayTracingUnavailableHint");
+
+        // The renderer is a compile-time option, so a build without it shows the switch as
+        // dead rather than hiding it: a setting that silently does nothing is worse than one
+        // that says why. Asked of the build rather than of the preprocessor — see
+        // `Features::hasRayTracing`.
+        const bool rayTracing = Features::hasRayTracing();
+        mRayTracingUnavailableHint->setVisible(!rayTracing);
+        mRayTracingButton->setEnabled(rayTracing);
+        mRayTracingRestartHint->setVisible(rayTracing);
 
 #ifndef WIN32
         // hide gamma controls since it currently does not work under Linux

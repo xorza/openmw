@@ -4,10 +4,9 @@
 
 #include <MyGUI_RenderManager.h>
 
-#include <osg/Texture2D>
+#include <osg/Image>
 
 #include <components/debug/debuglog.hpp>
-#include <components/myguiplatform/myguitexture.hpp>
 #include <components/vfs/manager.hpp>
 
 #include "../mwsound/movieaudiofactory.hpp"
@@ -17,6 +16,7 @@ namespace MWGui
 
     VideoWidget::VideoWidget()
         : mVFS(nullptr)
+        , mPicture("video frame")
     {
         mPlayer = std::make_unique<Video::VideoPlayer>();
         setNeedKeyFocus(true);
@@ -46,13 +46,13 @@ namespace MWGui
 
         mPlayer->playVideo(std::move(videoStream), video);
 
-        osg::ref_ptr<osg::Texture2D> texture = mPlayer->getVideoTexture();
-        if (!texture)
+        const osg::Image* frame = mPlayer->getVideoImage();
+        if (frame == nullptr)
             return;
 
-        mTexture = std::make_unique<MyGUIPlatform::OSGTexture>(texture);
+        mPicture.set(*frame);
 
-        setRenderItemTexture(mTexture.get());
+        setRenderItemTexture(mPicture.getTexture());
         // Both the widget and the video frame are Y-down, so this UV is not inverted
         getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 0.f, 1.f, 1.f));
     }
@@ -75,6 +75,13 @@ namespace MWGui
     void VideoWidget::commitFrame()
     {
         mPlayer->commitFrame();
+
+        // **A whole frame back up to the device, every frame.** MyGUI's texture interface has no
+        // way to hand over pixels other than all of them, and no way to reuse the buffer it lends
+        // out. A video is a few minutes of a game that is otherwise doing nothing, so this is the
+        // right side of that trade — but it is the reason nothing else should be drawn this way.
+        if (const osg::Image* frame = mPlayer->getVideoImage())
+            mPicture.set(*frame);
     }
 
     void VideoWidget::stop()

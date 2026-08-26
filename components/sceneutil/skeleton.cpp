@@ -38,7 +38,7 @@ namespace SceneUtil
         , mNeedToUpdateBoneMatrices(true)
         , mActive(Active)
         , mLastFrameNumber(0)
-        , mLastCullFrameNumber(0)
+        , mLastReachedFrameNumber(0)
     {
     }
 
@@ -48,7 +48,7 @@ namespace SceneUtil
         , mNeedToUpdateBoneMatrices(true)
         , mActive(copy.mActive)
         , mLastFrameNumber(0)
-        , mLastCullFrameNumber(0)
+        , mLastReachedFrameNumber(0)
     {
     }
 
@@ -134,11 +134,12 @@ namespace SceneUtil
         {
             if (mActive == Inactive && mLastFrameNumber != 0)
                 return;
-            if (mActive == SemiActive && mLastFrameNumber != 0 && mLastCullFrameNumber + 3 <= nv.getTraversalNumber())
+            if (mActive == SemiActive && mLastFrameNumber != 0
+                && mLastReachedFrameNumber + 3 <= nv.getTraversalNumber())
                 return;
         }
         else if (nv.getVisitorType() == osg::NodeVisitor::CULL_VISITOR)
-            mLastCullFrameNumber = nv.getTraversalNumber();
+            markReached(nv.getTraversalNumber());
 
         osg::Group::traverse(nv);
     }

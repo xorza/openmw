@@ -21,17 +21,17 @@
 #include "../mwmechanics/actorutil.hpp"
 #include "../mwmechanics/npcstats.hpp"
 
+#include "../mwrender/renderer.hpp"
+
 #include "actions.hpp"
 #include "bindingsmanager.hpp"
 
 namespace MWInput
 {
 
-    ActionManager::ActionManager(BindingsManager* bindingsManager, osg::ref_ptr<osgViewer::Viewer> viewer,
-        osg::ref_ptr<osgViewer::ScreenCaptureHandler> screenCaptureHandler)
+    ActionManager::ActionManager(BindingsManager* bindingsManager, MWRender::Renderer& renderer)
         : mBindingsManager(bindingsManager)
-        , mViewer(std::move(viewer))
-        , mScreenCaptureHandler(std::move(screenCaptureHandler))
+        , mRenderer(renderer)
         , mTimeIdle(0.f)
     {
     }
@@ -168,8 +168,7 @@ namespace MWInput
 
     void ActionManager::screenshot()
     {
-        mScreenCaptureHandler->setFramesToCapture(1);
-        mScreenCaptureHandler->captureNextFrame(*mViewer);
+        mRenderer.saveScreenshot();
     }
 
     void ActionManager::toggleMainMenu()

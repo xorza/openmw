@@ -33,6 +33,12 @@ namespace Shader
 
         void setShaderPath(const std::filesystem::path& path);
 
+        /// Where the engine's own GLSL was installed.
+        ///
+        /// Read by the ray tracing renderer, which keeps its shaders in a sibling directory and has
+        /// no other way to find out where the resources ended up.
+        const std::filesystem::path& getShaderPath() const { return mPath; }
+
         typedef std::map<std::string, std::string> DefineMap;
 
         /// Create or retrieve a shader instance.

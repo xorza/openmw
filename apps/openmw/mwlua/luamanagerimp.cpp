@@ -26,7 +26,7 @@
 #include "../mwbase/world.hpp"
 
 #include "../mwrender/bonegroup.hpp"
-#include "../mwrender/postprocessor.hpp"
+#include "../mwrender/gl/postprocessor.hpp"
 
 #include "../mwworld/datetimemanager.hpp"
 #include "../mwworld/esmstore.hpp"
@@ -388,7 +388,8 @@ namespace MWLua
     {
         LuaUi::clearGameInterface();
         mUiResourceManager.clear();
-        MWBase::Environment::get().getWorld()->getPostProcessor()->disableDynamicShaders();
+        if (MWRender::PostProcessor* post = MWBase::Environment::get().getWorld()->getPostProcessor())
+            post->disableDynamicShaders();
         mActiveLocalScripts.clear();
         mLuaEvents.clear();
         mEngineEvents.clear();

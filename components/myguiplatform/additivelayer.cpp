@@ -1,33 +1,22 @@
 #include "additivelayer.hpp"
 
-#include <osg/BlendFunc>
-#include <osg/StateSet>
-
-#include "myguirendermanager.hpp"
+#include "guirendermanager.hpp"
 
 namespace MyGUIPlatform
 {
 
-    AdditiveLayer::AdditiveLayer()
-    {
-        mStateSet = new osg::StateSet;
-        mStateSet->setAttributeAndModes(new osg::BlendFunc(osg::BlendFunc::SRC_ALPHA, osg::BlendFunc::ONE));
-    }
-
-    AdditiveLayer::~AdditiveLayer()
-    {
-        // defined in .cpp file since we can't delete incomplete types
-    }
-
     void AdditiveLayer::renderToTarget(MyGUI::IRenderTarget* target, bool update)
     {
-        RenderManager& renderManager = static_cast<RenderManager&>(MyGUI::RenderManager::getInstance());
+        // **The manager, not the target.** A scaled layer is drawn through a proxy target that
+        // only adjusts the pixel scale, and the blend mode is not its to answer. Every backend's
+        // manager derives from `GuiRenderManager`, so this cast is the one that holds.
+        GuiRenderManager& renderManager = static_cast<GuiRenderManager&>(MyGUI::RenderManager::getInstance());
 
-        renderManager.setInjectState(mStateSet.get());
+        renderManager.setAdditiveBlend(true);
 
         MyGUI::OverlappedLayer::renderToTarget(target, update);
 
-        renderManager.setInjectState(nullptr);
+        renderManager.setAdditiveBlend(false);
     }
 
 }

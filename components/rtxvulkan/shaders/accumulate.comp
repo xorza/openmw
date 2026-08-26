@@ -1,0 +1,215 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// The wavelet's temporal half: this pixel's bounce, averaged with what the same surface gave on the
+// frames before it.
+//
+// **The cascade behind this exists to fill in where this was rejected.** That is the shape every
+// denoiser the field settled on has — SVGF, A-SVGF, ReLAX, ReBLUR — and the renderer had the second
+// half without the first: five spatial levels blurring a single sample, with no way to tell a bright
+// pixel from a wrong one. An average over frames is where the estimator's error actually falls, and
+// the variance it produces on the way is what finally lets the cascade stop at an edge in the
+// *light* rather than only at an edge in the geometry.
+//
+// **The history is this pass's own and not the G-buffer's.** What it has to answer is "does the
+// history at that pixel belong to this surface", which is a question about what was accumulated
+// rather than about what the frame drew — so the normal and the distance the history belongs to are
+// carried beside the history itself.
+
+#include "accumulate.h"
+#include "colour.h"
+#include "gbuffer.h"
+
+layout(local_size_x = ACCUMULATE_WORKGROUP, local_size_y = ACCUMULATE_WORKGROUP) in;
+
+/// The bounce this frame traced, and where the blend is left for the cascade to read.
+///
+/// **Read and written at the same texel, which is the one aliasing GLSL allows without a barrier.**
+/// The alternative is a fourth full-frame image for a value the cascade consumes immediately.
+layout(set = 0, binding = 0, GBUFFER_RADIANCE) uniform image2D indirect;
+
+/// Where each surface stood on the previous frame's screen, less where it stands on this one.
+layout(set = 0, binding = 1, GBUFFER_MOTION) uniform readonly image2D motion;
+
+/// The shading normal in `xyz`. A ray that hit nothing left a zero normal, which no surface matches.
+layout(set = 0, binding = 2, GBUFFER_GUIDE) uniform readonly image2D guide;
+
+/// Clip depth in `r` and the distance from the eye in `g`. This reads the second, in world units.
+layout(set = 0, binding = 3, GBUFFER_DEPTH) uniform readonly image2D depth;
+
+/// Where the past is not worth carrying forward, from nought to one. A sprite crossed this pixel and
+/// did not win its motion vector, so what the vector describes is not what the pixel shows.
+layout(set = 0, binding = 4, GBUFFER_MASK) uniform readonly image2D biasMask;
+
+/// Last frame's mean in `rgb`, and how many frames are in it in `a`.
+layout(set = 0, binding = 5, GBUFFER_RADIANCE) uniform readonly image2D historyColour;
+
+/// The surface last frame's mean belongs to: its normal in `xyz` and its distance from the eye in
+/// `w`. Zero normal where nothing was accumulated.
+layout(set = 0, binding = 6, GBUFFER_GUIDE) uniform readonly image2D historySurface;
+
+/// The first and second moments of that mean's luminance in `rg`, and in `b` the variance the
+/// cascade weighs a tap by.
+///
+/// **The variance is written rather than left to be derived, and the single-sample case is why.**
+/// `E[l²] - E[l]²` over one sample is exactly nought, which a filter reads as "this pixel is
+/// certain" — the opposite of the truth, and it would leave the noise precisely where it is. What a
+/// pixel with no history has is no idea how noisy it is, and the honest value for that is the
+/// largest one, not the smallest.
+layout(set = 0, binding = 7, GBUFFER_RADIANCE) uniform readonly image2D historyMoments;
+
+layout(set = 0, binding = 8, GBUFFER_RADIANCE) uniform writeonly image2D colourOut;
+layout(set = 0, binding = 9, GBUFFER_GUIDE) uniform writeonly image2D surfaceOut;
+layout(set = 0, binding = 10, GBUFFER_RADIANCE) uniform writeonly image2D momentsOut;
+
+layout(push_constant, scalar) uniform Push
+{
+    AccumulateConstants frame;
+};
+
+/// How squarely two normals must agree before their pixels are the same surface.
+///
+/// A cosine and not the exponent the cascade uses: this is a yes or a no about whether to carry a
+/// history at all, where the cascade is weighing how much of a neighbour to take.
+const float SURFACE_FACING = 0.9;
+
+/// How far off the centre pixel's distance a history may sit, as a share of that distance.
+///
+/// **Relative, because a tolerance in world units means something different at every range.** Two
+/// per cent is well inside a wall's thickness at arm's length and well outside the step a grazing
+/// floor takes between neighbouring pixels at the far end of a view.
+const float SURFACE_DEPTH = 0.02;
+
+/// The variance written where a pixel has no history to have measured one.
+///
+/// **One, which the cascade reads as "trust the neighbours entirely".** A pixel with a single sample
+/// in it has no idea how noisy it is, and the honest answer to that is not nought — nought is what
+/// says the pixel is certain, and a filter told that leaves the noise exactly where it is.
+const float NO_HISTORY_VARIANCE = 1.0;
+
+/// Whether the history at `at` belongs to the surface now in front of this pixel.
+bool sameSurface(ivec2 at, vec3 normal, float away)
+{
+    if (at.x < 0 || at.y < 0 || at.x >= int(frame.mCamera.mWidth) || at.y >= int(frame.mCamera.mHeight))
+        return false;
+
+    const vec4 was = imageLoad(historySurface, at);
+    if (dot(was.xyz, was.xyz) <= 0.0)
+        return false;
+
+    return dot(was.xyz, normal) >= SURFACE_FACING && abs(was.w - away) <= SURFACE_DEPTH * max(away, 1.0);
+}
+
+void main()
+{
+    const ivec2 at = ivec2(gl_GlobalInvocationID.xy);
+    if (at.x >= int(frame.mCamera.mWidth) || at.y >= int(frame.mCamera.mHeight))
+        return;
+
+    const vec3 sampled = imageLoad(indirect, at).rgb;
+    const vec3 normal = imageLoad(guide, at).xyz;
+    const float away = imageLoad(depth, at).g;
+
+    // A pixel with no surface under it has nothing to accumulate and nothing to hand on. The sky is
+    // resolved into `direct` by the trace and never reaches here as light.
+    if (dot(normal, normal) <= 0.0)
+    {
+        imageStore(colourOut, at, vec4(sampled, 0.0));
+        imageStore(surfaceOut, at, vec4(0.0));
+        imageStore(momentsOut, at, vec4(0.0, 0.0, NO_HISTORY_VARIANCE, 0.0));
+
+        return;
+    }
+
+    // **Where this surface was, in the same coordinates the vector was written against.** The trace
+    // aims through `pixel + 0.5 + jitter` and `reprojected` differences against exactly that, so
+    // undoing it has to add the same offset back or the history is fetched a fraction of a pixel out
+    // — by a different fraction every frame, which is a still image that shakes.
+    const vec2 moved = imageLoad(motion, at).xy;
+    const vec2 before = vec2(at) + 0.5 + frame.mCamera.mJitter + moved;
+
+    // **Bilinear over the four it landed between, each taken only if it is this surface.** A nearest
+    // tap is a history that steps a whole pixel at a time, which under any camera motion is a crawl
+    // along every edge; weighting the four and dropping the ones that are a different surface is
+    // what keeps it smooth without dragging the wall behind into the floor in front.
+    const vec2 corner = before - 0.5;
+    const vec2 across = fract(corner);
+    const ivec2 low = ivec2(floor(corner));
+
+    const float weights[4]
+        = float[4]((1.0 - across.x) * (1.0 - across.y), across.x * (1.0 - across.y),
+            (1.0 - across.x) * across.y, across.x * across.y);
+    const ivec2 offsets[4] = ivec2[4](ivec2(0, 0), ivec2(1, 0), ivec2(0, 1), ivec2(1, 1));
+
+    vec3 mean = vec3(0.0);
+    vec2 moments = vec2(0.0);
+    float frames = 0.0;
+    float weight = 0.0;
+
+    const bool trusted = frame.mReset == 0u && imageLoad(biasMask, at).r <= 0.0;
+    if (trusted)
+    {
+        for (int i = 0; i < 4; ++i)
+        {
+            const ivec2 tap = low + offsets[i];
+            if (weights[i] <= 0.0 || !sameSurface(tap, normal, away))
+                continue;
+
+            const vec4 held = imageLoad(historyColour, tap);
+            mean += held.rgb * weights[i];
+            moments += imageLoad(historyMoments, tap).rg * weights[i];
+            frames += held.a * weights[i];
+            weight += weights[i];
+        }
+    }
+
+    const float lit = dot(sampled, LUMINANCE_WEIGHTS);
+
+    vec3 blended = sampled;
+    vec2 blendedMoments = vec2(lit, lit * lit);
+    // **Not `length`, which is GLSL's own**: a local of that name hides the builtin from everything
+    // below it, and the next edit that reaches for one gets a compile error with no explanation in it.
+    float count = 0.0;
+    float variance = NO_HISTORY_VARIANCE;
+
+    if (weight > 0.0)
+    {
+        mean /= weight;
+        moments /= weight;
+        frames /= weight;
+
+        // **The outlier test, and it needs no number that is about this game.** What a firefly is
+        // cannot be said in radiance — a bounce that lands on a lamp returns that lamp's intensity,
+        // and a lamp's intensity is content — but it can be said in standard deviations from what
+        // this pixel has been seeing. Under `ACCUMULATE_SETTLED` frames there is not enough history
+        // to have measured a spread with, and the clamp holds off rather than inventing one.
+        if (frames >= ACCUMULATE_SETTLED && lit > 0.0)
+        {
+            const float spread = sqrt(max(moments.y - moments.x * moments.x, 0.0));
+            const float ceiling = moments.x + ACCUMULATE_SIGMAS * spread;
+            if (lit > ceiling)
+                blended = sampled * (ceiling / lit);
+        }
+
+        // One over the count, floored at the longest history a pixel may keep: an exact mean while
+        // the history is short, an exponential one once it is long enough that its oldest frames
+        // describe a surface the light has since moved off.
+        count = min(frames + 1.0, ACCUMULATE_FRAMES);
+
+        const float alpha = 1.0 / count;
+        const float kept = dot(blended, LUMINANCE_WEIGHTS);
+
+        blended = mix(mean, blended, alpha);
+        blendedMoments = mix(moments, vec2(kept, kept * kept), alpha);
+
+        if (frames >= ACCUMULATE_SETTLED)
+            variance = max(blendedMoments.y - blendedMoments.x * blendedMoments.x, 0.0);
+    }
+
+    imageStore(indirect, at, vec4(blended, 1.0));
+    imageStore(colourOut, at, vec4(blended, count));
+    imageStore(surfaceOut, at, vec4(normal, away));
+    imageStore(momentsOut, at, vec4(blendedMoments, variance, 0.0));
+}

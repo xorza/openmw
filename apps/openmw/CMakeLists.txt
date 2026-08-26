@@ -18,13 +18,28 @@ set(OPENMW_HEADERS
 source_group(apps/openmw FILES main.cpp androidmain.cpp ${OPENMW_SOURCES} ${OPENMW_HEADERS} ${OPENMW_RESOURCES})
 
 add_openmw_dir (mwrender
-    actors objects renderingmanager animation rotatecontroller sky skyutil npcanimation esm4npcanimation vismask
-    creatureanimation effectmanager util renderinginterface pathgrid rendermode weaponanimation screenshotmanager
-    bulletdebugdraw globalmap characterpreview camera localmap water terrainstorage ripplesimulation
-    renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectpaging groundcover
-    postprocessor pingpongcull luminancecalculator pingpongcanvas transparentpass opaqueblit waterawaretransparentbin precipitationocclusion ripples
-    actorutil distortion animationpriority bonegroup blendmask animblendcontroller
+    actors objects renderingmanager animation rotatecontroller npcanimation esm4npcanimation vismask
+    creatureanimation effectmanager util renderinginterface pathgrid rendermode weaponanimation
+    bulletdebugdraw globalmap characterpreview camera localmap terrainstorage
+    renderbin actoranimation landmanager navmesh actorspaths recastmesh fogmanager objectstorage groundcover
+    actorutil animationpriority bonegroup blendmask animblendcontroller stage renderer windowsetup
+    screenshotwriter
     )
+
+# The OpenGL renderer. A link boundary rather than a naming convention: what is in here is the
+# picture as OpenSceneGraph draws it, and nothing above `mwrender` reaches into it.
+add_openmw_dir (mwrender/gl
+    glrenderer gloffscreenview postprocessor sky skyutil water ripples ripplesimulation precipitationocclusion
+    transparentpass distortion pingpongcanvas pingpongcull luminancecalculator screenshotmanager
+    opaqueblit waterawaretransparentbin
+    )
+
+# Gated, because these are the only files in the game that name a graphics API other than OpenGL.
+if (OPENMW_RTX)
+    add_openmw_dir (mwrender/rtx
+        bench rtxrenderer tracedview
+        )
+endif()
 
 add_openmw_dir (mwinput
     actions actionmanager bindingsmanager controllermanager controlswitch
@@ -154,6 +169,20 @@ if(BUILD_OPENMW)
     endif()
 
     target_link_libraries(openmw openmw-lib)
+
+if (OPENMW_RTX)
+    # One macro gates every game-side reference to the ray tracing renderer.
+    target_compile_definitions(openmw-lib PUBLIC OPENMW_RTX)
+
+    # **Asked for, rather than inferred from the build type.** The build worth measuring is the
+    # optimised one, so gating this on "not Release" would have put the benchmark in every build
+    # except the only one whose numbers mean anything. Off by default keeps it out of a shipping
+    # build, which is the whole requirement; `apps/rtxtool/release.sh` turns it on.
+    if (OPENMW_RTX_BENCH)
+        target_compile_definitions(openmw-lib PUBLIC OPENMW_RTX_BENCH)
+    endif()
+    target_link_libraries(openmw-lib openmw-rtx openmw-rtx-backends openmw-myguirtx)
+endif()
 
     # Workaround necessary to ensure osgAnimation::MatrixLinearSampler dynamic casts work under Clang
     # NOTE: it's unclear whether the broken behavior is spec-compliant

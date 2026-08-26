@@ -17,8 +17,8 @@ namespace MWWorld
         const std::vector<std::string>& groundcoverFiles, ToUTF8::Utf8Encoder* encoder, Loading::Listener* listener)
     {
         ::EsmLoader::Query query;
-        query.mLoadStatics = true;
         query.mLoadCells = true;
+        query.mModels = ::EsmLoader::modelRecords<ESM::Static>();
 
         ESM::ReadersCache readers;
         ::EsmLoader::EsmData content
@@ -33,7 +33,7 @@ namespace MWWorld
             mMeshCache[stat.mId] = Misc::ResourceHelpers::correctMeshPath(model);
         }
 
-        for (const ESM::Static& stat : content.mStatics)
+        for (const ESM::Static& stat : content.get<ESM::Static>())
         {
             const VFS::Path::NormalizedView model = stat.mModel.getNormalized();
             if (!model.value().starts_with(prefix))

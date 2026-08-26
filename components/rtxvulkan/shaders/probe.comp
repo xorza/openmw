@@ -1,0 +1,63 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// One pattern of `vec3`s, read three ways, with all three readings written out so the host can say
+// which of them is wrong rather than only that they disagree:
+//
+//   1. through a storage-buffer descriptor, which is what the renderer does today;
+//   2. through a pointer the host handed over whole;
+//   3. through a pointer read out of a table and indexed by block, which is what a scene made of
+//      blocks would do — `Block(blockAddresses[id / BLOCK]).values[id % BLOCK]`.
+//
+// **This is the question that stopped the geometry blocking.** Swapping the normal fetch from a
+// descriptor to a `buffer_reference` changed the picture and nothing else did, and with no way to
+// ask the device directly it had to be put to a whole traced frame and answered by elimination —
+// which cost a day and reached the wrong answer twice.
+
+#include "probe.h"
+
+layout(local_size_x = PROBE_WORKGROUP) in;
+
+layout(set = 0, binding = 0, scalar) readonly buffer Source
+{
+    vec3 sourceValues[];
+};
+
+layout(set = 0, binding = 1, scalar) writeonly buffer Readings
+{
+    vec3 readings[];
+};
+
+// Where the blocks are. A `HostBuffer` of addresses read through a descriptor, which is exactly the
+// shape the blocked scene needs and the one part of it nothing had asked the device about.
+layout(set = 0, binding = 2, scalar) readonly buffer Blocks
+{
+    uint64_t blockAddresses[];
+};
+
+// The alignment the packed `vec3` tables in `SceneBuffers` would be reached at: four, because a
+// twelve-byte element at an arbitrary index is only ever float-aligned.
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Block
+{
+    vec3 values[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    ProbeConstants probe;
+};
+
+void main()
+{
+    const uint at = gl_GlobalInvocationID.x;
+    if (at >= probe.mCount)
+        return;
+
+    readings[at] = sourceValues[at];
+    readings[probe.mCount + at] = Block(probe.mSource).values[at];
+    readings[2u * probe.mCount + at] = Block(blockAddresses[at / probe.mBlock]).values[at % probe.mBlock];
+}

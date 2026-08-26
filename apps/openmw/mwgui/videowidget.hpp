@@ -5,6 +5,8 @@
 
 #include <MyGUI_Widget.h>
 
+#include <components/myguiplatform/picture.hpp>
+
 namespace Video
 {
     class VideoPlayer;
@@ -61,7 +63,7 @@ namespace MWGui
 
     private:
         const VFS::Manager* mVFS;
-        std::unique_ptr<MyGUI::ITexture> mTexture;
+        MyGUIPlatform::Picture mPicture;
         std::unique_ptr<Video::VideoPlayer> mPlayer;
     };
 

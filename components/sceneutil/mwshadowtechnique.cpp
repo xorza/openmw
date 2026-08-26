@@ -968,7 +968,8 @@ void SceneUtil::MWShadowTechnique::setupCastingShader(Shader::ShaderManager & sh
     // This can't be part of the constructor as OSG mandates that there be a trivial constructor available
 
     osg::ref_ptr<osg::Shader> castingVertexShader = shaderManager.getShader("shadowcasting.vert");
-    std::string useGPUShader4 = SceneUtil::getGLExtensions().isGpuShader4Supported ? "1" : "0";
+    std::string useGPUShader4
+        = SceneUtil::glExtensionsReady() && SceneUtil::getGLExtensions().isGpuShader4Supported ? "1" : "0";
     for (int alphaFunc = GL_NEVER; alphaFunc <= GL_ALWAYS; ++alphaFunc)
     {
         auto& program = _castingPrograms[alphaFunc - GL_NEVER];

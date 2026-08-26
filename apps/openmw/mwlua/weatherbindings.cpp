@@ -1,5 +1,7 @@
 #include "weatherbindings.hpp"
 
+#include <components/weather/downpour.hpp>
+
 #include <type_traits>
 
 #include <osg/Vec4f>
@@ -10,6 +12,7 @@
 #include <components/misc/finitevalues.hpp>
 #include <components/misc/resourcehelpers.hpp>
 #include <components/resource/resourcesystem.hpp>
+#include <components/sky/timeofday.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/world.hpp"
@@ -77,7 +80,7 @@ namespace
     void createFloatInterpolator(sol::state_view lua)
     {
         using Misc::FiniteFloat;
-        using T = MWWorld::TimeOfDayInterpolator<float>;
+        using T = Sky::TimeOfDayInterpolator<float>;
 
         auto interT = lua.new_usertype<T>("TimeOfDayInterpolatorFloat");
 
@@ -94,7 +97,7 @@ namespace
     void createColorInterpolator(sol::state_view lua)
     {
         using Misc::Color;
-        using T = MWWorld::TimeOfDayInterpolator<osg::Vec4f>;
+        using T = Sky::TimeOfDayInterpolator<osg::Vec4f>;
 
         auto interT = lua.new_usertype<T>("TimeOfDayInterpolatorColor");
 
@@ -112,11 +115,11 @@ namespace
 namespace sol
 {
     template <>
-    struct is_automagical<MWWorld::TimeOfDayInterpolator<float>> : std::false_type
+    struct is_automagical<Sky::TimeOfDayInterpolator<float>> : std::false_type
     {
     };
     template <>
-    struct is_automagical<MWWorld::TimeOfDayInterpolator<osg::Vec4f>> : std::false_type
+    struct is_automagical<Sky::TimeOfDayInterpolator<osg::Vec4f>> : std::false_type
     {
     };
     template <>
@@ -154,8 +157,14 @@ namespace MWLua
             return result;
         });
 
-        weatherT["windSpeed"] = sol::property([](const MWWorld::Weather& w) { return w.mWindSpeed; },
-            [](MWWorld::Weather& w, const FiniteFloat windSpeed) { w.mWindSpeed = windSpeed; });
+        // **The recorded wind, and setting it re-derives the gust that leans the drops.** Those are
+        // two numbers with one rule between them (`Weather::gustSpeed`); a script that moved one and
+        // left the other would make rain that fell at a different angle from the wind it named.
+        weatherT["windSpeed"] = sol::property([](const MWWorld::Weather& w) { return w.mDownpour.mBaseWindSpeed; },
+            [](MWWorld::Weather& w, const FiniteFloat windSpeed) {
+                w.mDownpour.mBaseWindSpeed = windSpeed;
+                w.mDownpour.mWindSpeed = ::Weather::gustSpeed(windSpeed);
+            });
         weatherT["cloudSpeed"] = sol::property([](const MWWorld::Weather& w) { return w.mCloudSpeed; },
             [](MWWorld::Weather& w, const FiniteFloat cloudSpeed) { w.mCloudSpeed = cloudSpeed; });
         weatherT["cloudTexture"] = sol::property(
@@ -170,39 +179,41 @@ namespace MWLua
                         throw std::runtime_error("Value must be greater than 0");
                     w.mCloudsMaximumPercent = cloudsMaximumPercent;
                 });
-        weatherT["isStorm"] = sol::property([](const MWWorld::Weather& w) { return w.mIsStorm; },
-            [](MWWorld::Weather& w, bool isStorm) { w.mIsStorm = isStorm; });
+        weatherT["isStorm"] = sol::property([](const MWWorld::Weather& w) { return w.mDownpour.mIsStorm; },
+            [](MWWorld::Weather& w, bool isStorm) { w.mDownpour.mIsStorm = isStorm; });
         weatherT["stormDirection"] = sol::property([](const MWWorld::Weather& w) { return w.mStormDirection; },
             [](MWWorld::Weather& w, const FiniteVec3f& stormDirection) { w.mStormDirection = stormDirection; });
         weatherT["glareView"] = sol::property([](const MWWorld::Weather& w) { return w.mGlareView; },
             [](MWWorld::Weather& w, const FiniteFloat glareView) { w.mGlareView = glareView; });
-        weatherT["rainSpeed"] = sol::property([](const MWWorld::Weather& w) { return w.mRainSpeed; },
-            [](MWWorld::Weather& w, const FiniteFloat rainSpeed) { w.mRainSpeed = rainSpeed; });
-        weatherT["rainEntranceSpeed"] = sol::property([](const MWWorld::Weather& w) { return w.mRainEntranceSpeed; },
-            [](MWWorld::Weather& w, const FiniteFloat rainEntranceSpeed) {
-                if (rainEntranceSpeed <= 0.f)
-                    throw std::runtime_error("Value must be greater than 0");
-                w.mRainEntranceSpeed = rainEntranceSpeed;
-            });
+        weatherT["rainSpeed"] = sol::property([](const MWWorld::Weather& w) { return w.mDownpour.mRainSpeed; },
+            [](MWWorld::Weather& w, const FiniteFloat rainSpeed) { w.mDownpour.mRainSpeed = rainSpeed; });
+        weatherT["rainEntranceSpeed"]
+            = sol::property([](const MWWorld::Weather& w) { return w.mDownpour.mRainEntranceSpeed; },
+                [](MWWorld::Weather& w, const FiniteFloat rainEntranceSpeed) {
+                    if (rainEntranceSpeed <= 0.f)
+                        throw std::runtime_error("Value must be greater than 0");
+                    w.mDownpour.mRainEntranceSpeed = rainEntranceSpeed;
+                });
         weatherT["rainEffect"] = sol::property(
             [](const MWWorld::Weather& w) -> sol::optional<std::string> {
-                if (w.mRainEffect.empty())
+                if (w.mDownpour.mRainEffect.empty())
                     return sol::nullopt;
-                return w.mRainEffect;
+                return w.mDownpour.mRainEffect;
             },
             [](MWWorld::Weather& w, sol::optional<std::string_view> rainEffect) {
-                w.mRainEffect = rainEffect.value_or("");
+                w.mDownpour.mRainEffect = rainEffect.value_or("");
             });
-        weatherT["rainMaxRaindrops"] = sol::property([](const MWWorld::Weather& w) { return w.mRainMaxRaindrops; },
-            [](MWWorld::Weather& w, int rainMaxRaindrops) { w.mRainMaxRaindrops = rainMaxRaindrops; });
-        weatherT["rainDiameter"] = sol::property([](const MWWorld::Weather& w) { return w.mRainDiameter; },
-            [](MWWorld::Weather& w, const FiniteFloat rainDiameter) { w.mRainDiameter = rainDiameter; });
+        weatherT["rainMaxRaindrops"]
+            = sol::property([](const MWWorld::Weather& w) { return w.mDownpour.mRainMaxRaindrops; },
+                [](MWWorld::Weather& w, int rainMaxRaindrops) { w.mDownpour.mRainMaxRaindrops = rainMaxRaindrops; });
+        weatherT["rainDiameter"] = sol::property([](const MWWorld::Weather& w) { return w.mDownpour.mRainDiameter; },
+            [](MWWorld::Weather& w, const FiniteFloat rainDiameter) { w.mDownpour.mRainDiameter = rainDiameter; });
         weatherT["rainThreshold"] = sol::property([](const MWWorld::Weather& w) { return w.mRainThreshold; },
             [](MWWorld::Weather& w, const FiniteFloat rainThreshold) { w.mRainThreshold = rainThreshold; });
-        weatherT["rainMaxHeight"] = sol::property([](const MWWorld::Weather& w) { return w.mRainMaxHeight; },
-            [](MWWorld::Weather& w, const FiniteFloat rainMaxHeight) { w.mRainMaxHeight = rainMaxHeight; });
-        weatherT["rainMinHeight"] = sol::property([](const MWWorld::Weather& w) { return w.mRainMinHeight; },
-            [](MWWorld::Weather& w, const FiniteFloat rainMinHeight) { w.mRainMinHeight = rainMinHeight; });
+        weatherT["rainMaxHeight"] = sol::property([](const MWWorld::Weather& w) { return w.mDownpour.mRainMaxHeight; },
+            [](MWWorld::Weather& w, const FiniteFloat rainMaxHeight) { w.mDownpour.mRainMaxHeight = rainMaxHeight; });
+        weatherT["rainMinHeight"] = sol::property([](const MWWorld::Weather& w) { return w.mDownpour.mRainMinHeight; },
+            [](MWWorld::Weather& w, const FiniteFloat rainMinHeight) { w.mDownpour.mRainMinHeight = rainMinHeight; });
         weatherT["rainLoopSoundID"]
             = sol::property([](const MWWorld::Weather& w) -> ESM::RefId { return w.mRainLoopSoundID; },
                 [](MWWorld::Weather& w, sol::optional<std::string_view> rainLoopSoundID) {
@@ -225,12 +236,12 @@ namespace MWLua
         weatherT["landFogDepth"] = sol::readonly_property([](const MWWorld::Weather& w) { return &w.mLandFogDepth; });
         weatherT["particleEffect"] = sol::property(
             [](const MWWorld::Weather& w) -> sol::optional<std::string> {
-                if (w.mParticleEffect.empty())
+                if (w.mDownpour.mParticleEffect.empty())
                     return sol::nullopt;
-                return w.mParticleEffect;
+                return w.mDownpour.mParticleEffect;
             },
             [](MWWorld::Weather& w, sol::optional<std::string_view> particleEffect) {
-                w.mParticleEffect = particleEffect.value_or("");
+                w.mDownpour.mParticleEffect = particleEffect.value_or("");
             });
         weatherT["distantLandFogFactor"] = sol::property([](const MWWorld::Weather& w) { return w.mDL.FogFactor; },
             [](MWWorld::Weather& w, const FiniteFloat fogFactor) { w.mDL.FogFactor = fogFactor; });

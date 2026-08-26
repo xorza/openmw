@@ -1,16 +1,19 @@
 #ifndef OPENMW_COMPONENTS_SDLUTIL_SDLINPUTWRAPPER_H
 #define OPENMW_COMPONENTS_SDLUTIL_SDLINPUTWRAPPER_H
 
-#include <osg/ref_ptr>
-
 #include <SDL_events.h>
 #include <SDL_version.h>
 
 #include "events.hpp"
 
-namespace osgViewer
+namespace osg
 {
-    class Viewer;
+    class Camera;
+}
+
+namespace osgGA
+{
+    class EventQueue;
 }
 
 namespace SDLUtil
@@ -19,7 +22,11 @@ namespace SDLUtil
     class InputWrapper
     {
     public:
-        InputWrapper(SDL_Window* window, osg::ref_ptr<osgViewer::Viewer> viewer, bool grab);
+        /// @param camera the master camera, for the graphics context to resize with the window.
+        ///        Whether there is one behind it is the renderer's business.
+        /// @param events where the scene graph's own handlers read from, so the function keys and
+        ///        the window size reach them as well as the game.
+        InputWrapper(SDL_Window* window, osg::Camera& camera, osgGA::EventQueue& events, bool grab);
         ~InputWrapper();
 
         void setMouseEventCallback(MouseListener* listen) { mMouseListener = listen; }
@@ -50,7 +57,8 @@ namespace SDLUtil
         void _setWindowScale();
 
         SDL_Window* mSDLWindow;
-        osg::ref_ptr<osgViewer::Viewer> mViewer;
+        osg::Camera& mCamera;
+        osgGA::EventQueue& mEvents;
 
         MouseListener* mMouseListener;
         SensorListener* mSensorListener;

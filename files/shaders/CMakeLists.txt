@@ -45,8 +45,6 @@ set(SHADER_FILES
     compatibility/fog.glsl
     compatibility/groundcover.vert
     compatibility/groundcover.frag
-    compatibility/globalmap.vert
-    compatibility/globalmap.frag
     compatibility/water.vert
     compatibility/water.frag
     compatibility/objects.vert

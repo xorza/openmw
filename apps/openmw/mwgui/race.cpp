@@ -11,7 +11,6 @@
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadbody.hpp>
 #include <components/esm3/loadrace.hpp>
-#include <components/myguiplatform/myguitexture.hpp>
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -33,9 +32,9 @@ namespace
 namespace MWGui
 {
 
-    RaceDialog::RaceDialog(osg::Group* parent, Resource::ResourceSystem* resourceSystem)
+    RaceDialog::RaceDialog(MWRender::Renderer& renderer, Resource::ResourceSystem* resourceSystem)
         : WindowModal("openmw_chargen_race.layout")
-        , mParent(parent)
+        , mRenderer(renderer)
         , mResourceSystem(resourceSystem)
         , mGenderIndex(0)
         , mFaceIndex(0)
@@ -154,15 +153,12 @@ namespace MWGui
         mPreviewImage->setRenderItemTexture(nullptr);
 
         mPreview.reset(nullptr);
-        mPreviewTexture.reset(nullptr);
 
-        mPreview = std::make_unique<MWRender::RaceSelectionPreview>(mParent, mResourceSystem);
+        mPreview = std::make_unique<MWRender::RaceSelectionPreview>(mRenderer, mResourceSystem);
         mPreview->rebuild();
         mPreview->setAngle(mCurrentAngle);
 
-        mPreviewTexture
-            = std::make_unique<MyGUIPlatform::OSGTexture>(mPreview->getTexture(), mPreview->getTextureStateSet());
-        mPreviewImage->setRenderItemTexture(mPreviewTexture.get());
+        mPreviewImage->setRenderItemTexture(&mPreview->getTexture());
         // The widget is Y-down, the RTT image is Y-up, so this UV is inverted
         mPreviewImage->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
 
@@ -216,7 +212,6 @@ namespace MWGui
 
         mPreviewImage->setRenderItemTexture(nullptr);
 
-        mPreviewTexture.reset(nullptr);
         mPreview.reset(nullptr);
     }
 

@@ -1,0 +1,64 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// The trace's channels back into one picture, still in linear radiance.
+//
+// **Separate because a filter needs every pixel before any pixel is finished.** The trace writes
+// indirect light with the albedo divided out; something between here and there blurs it, which it
+// can only do once the whole image exists. Multiplying the albedo back afterwards is what returns
+// texture detail a blur would otherwise have smeared — the mortar between bricks is in the albedo,
+// and the light falling on the wall is not.
+
+#include "composite.h"
+#include "gbuffer.h"
+
+layout(local_size_x = COMPOSITE_WORKGROUP, local_size_y = COMPOSITE_WORKGROUP) in;
+
+/// Everything already resolved: direct light, emission, the sky, water, and the fog over all of it.
+layout(set = 0, binding = 0, GBUFFER_RADIANCE) uniform readonly image2D direct;
+
+/// One bounce with the albedo divided out, times whatever the water and the air took off it on the
+/// way to the eye — the only channel a filter is allowed to touch.
+layout(set = 0, binding = 1, GBUFFER_RADIANCE) uniform readonly image2D indirect;
+
+/// What to put back: the surface's own albedo, and nothing of the path.
+layout(set = 0, binding = 2, GBUFFER_ALBEDO) uniform readonly image2D albedo;
+
+/// The running sum, when `mAccumulate` asks for one.
+layout(set = 0, binding = 3, rgba32f) uniform image2D history;
+
+/// The frame, in the linear radiance everything after this reads: an upscaler across several of
+/// them, and then the curve.
+layout(set = 0, binding = 4, rgba32f) uniform writeonly image2D colour;
+
+layout(push_constant, scalar) uniform Push
+{
+    CompositeConstants frame;
+};
+
+void main()
+{
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (pixel.x >= frame.mWidth || pixel.y >= frame.mHeight)
+        return;
+
+    const ivec2 at = ivec2(pixel);
+    const vec4 lit = imageLoad(direct, at);
+    vec3 resolved = lit.rgb + imageLoad(albedo, at).rgb * imageLoad(indirect, at).rgb;
+
+    // In linear, which is what everything downstream of here now works in. Summing an encoded frame
+    // would add up rounded numbers and clip every sample past the display's range to the same value
+    // — losing exactly the fireflies a reference is wanted to measure.
+    if (frame.mAccumulate > 0u)
+    {
+        const vec3 total = frame.mAccumulate > 1u ? imageLoad(history, at).rgb + resolved : resolved;
+        imageStore(history, at, vec4(total, 1.0));
+        resolved = total / float(frame.mAccumulate);
+    }
+
+    // The trace's own coverage, carried rather than decided here: one for a frame that fills a
+    // window, zero where a picture inside the interface stops.
+    imageStore(colour, at, vec4(resolved, lit.a));
+}

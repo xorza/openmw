@@ -2,9 +2,12 @@
 
 #include <array>
 
-#include <osgViewer/Viewer>
+#include <osg/Camera>
+#include <osg/FrameStamp>
+#include <osg/Group>
+#include <osg/Stats>
 
-#include <osg/Texture2D>
+#include <osgUtil/IncrementalCompileOperation>
 
 #include <MyGUI_Gui.h>
 #include <MyGUI_ScrollBar.h>
@@ -14,7 +17,6 @@
 #include <components/debug/debuglog.hpp>
 #include <components/misc/pathhelpers.hpp>
 #include <components/misc/rng.hpp>
-#include <components/myguiplatform/myguitexture.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
@@ -25,15 +27,20 @@
 #include "../mwbase/statemanager.hpp"
 #include "../mwbase/windowmanager.hpp"
 
+#include "../mwrender/renderer.hpp"
+#include "../mwrender/stage.hpp"
+
 #include "backgroundimage.hpp"
 
 namespace MWGui
 {
 
-    LoadingScreen::LoadingScreen(Resource::ResourceSystem* resourceSystem, osgViewer::Viewer* viewer)
+    LoadingScreen::LoadingScreen(
+        Resource::ResourceSystem* resourceSystem, MWRender::Renderer& renderer, MWRender::Stage& stage)
         : WindowBase("openmw_loading_screen.layout")
         , mResourceSystem(resourceSystem)
-        , mViewer(viewer)
+        , mRenderer(renderer)
+        , mStage(stage)
         , mTargetFrameRate(120.0)
         , mLastWallpaperChangeTime(0.0)
         , mLastRenderTime(0.0)
@@ -109,32 +116,6 @@ namespace MWGui
             return mTargetFrameRate;
     }
 
-    class CopyFramebufferToTextureCallback : public osg::Camera::DrawCallback
-    {
-    public:
-        CopyFramebufferToTextureCallback(osg::Texture2D* texture)
-            : mOneshot(true)
-            , mTexture(texture)
-        {
-        }
-
-        void operator()(osg::RenderInfo& renderInfo) const override
-        {
-            const osg::Viewport* viewPort = renderInfo.getCurrentCamera()->getViewport();
-            int w = static_cast<int>(viewPort->width());
-            int h = static_cast<int>(viewPort->height());
-            mTexture->copyTexImage2D(*renderInfo.getState(), 0, 0, w, h);
-
-            mOneshot = false;
-        }
-
-        void reset() { mOneshot = true; }
-
-    private:
-        mutable bool mOneshot;
-        osg::ref_ptr<osg::Texture2D> mTexture;
-    };
-
     class DontComputeBoundCallback : public osg::Node::ComputeBoundingSphereCallback
     {
     public:
@@ -152,9 +133,9 @@ namespace MWGui
         // Assign dummy bounding sphere callback to avoid the bounding sphere of the entire scene being recomputed after
         // each frame of loading We are already using node masks to avoid the scene from being updated/rendered, but
         // node masks don't work for computeBound()
-        mViewer->getSceneData()->setComputeBoundingSphereCallback(new DontComputeBoundCallback);
+        mStage.getSceneRoot().setComputeBoundingSphereCallback(new DontComputeBoundCallback);
 
-        if (const osgUtil::IncrementalCompileOperation* ico = mViewer->getIncrementalCompileOperation())
+        if (const osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
         {
             mOldIcoMin = ico->getMinimumTimeAvailableForGLCompileAndDeletePerFrame();
             mOldIcoMax = ico->getMaximumNumOfObjectsToCompilePerFrame();
@@ -190,12 +171,12 @@ namespace MWGui
         else
             mImportantLabel = false; // label was already shown on loading screen
 
-        mViewer->getSceneData()->setComputeBoundingSphereCallback(nullptr);
-        mViewer->getSceneData()->dirtyBound();
+        mStage.getSceneRoot().setComputeBoundingSphereCallback(nullptr);
+        mStage.getSceneRoot().dirtyBound();
 
         setVisible(false);
 
-        if (osgUtil::IncrementalCompileOperation* ico = mViewer->getIncrementalCompileOperation())
+        if (osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
         {
             ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(mOldIcoMin);
             ico->setMaximumNumOfObjectsToCompilePerFrame(mOldIcoMax);
@@ -277,40 +258,16 @@ namespace MWGui
         return true;
     }
 
-    void LoadingScreen::setupCopyFramebufferToTextureCallback()
+    void LoadingScreen::showFrozenFrame()
     {
-        // Copy the current framebuffer onto a texture and display that texture as the background image
-        // Note, we could also set the camera to disable clearing and have the background image transparent,
-        // but then we get shaking effects on buffer swaps.
-
-        if (!mTexture)
-        {
-            mTexture = new osg::Texture2D;
-            mTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
-            mTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
-            mTexture->setInternalFormat(GL_RGB);
-            mTexture->setResizeNonPowerOfTwoHint(false);
-        }
-
-        if (!mGuiTexture.get())
-        {
-            mGuiTexture = std::make_unique<MyGUIPlatform::OSGTexture>(mTexture);
-        }
-
-        if (!mCopyFramebufferToTextureCallback)
-        {
-            mCopyFramebufferToTextureCallback = new CopyFramebufferToTextureCallback(mTexture);
-        }
-
-        mViewer->getCamera()->removeInitialDrawCallback(mCopyFramebufferToTextureCallback);
-        mViewer->getCamera()->addInitialDrawCallback(mCopyFramebufferToTextureCallback);
-        mCopyFramebufferToTextureCallback->reset();
+        // The frame the player was looking at, held up behind the loading screen. The alternative —
+        // clearing to nothing and letting the world show through — shakes on every buffer swap.
 
         mSplashImage->setBackgroundImage({});
         mSplashImage->setVisible(false);
 
-        mSceneImage->setRenderItemTexture(mGuiTexture.get());
-        // The widget is Y-down, the RTT image is Y-up, so this UV is inverted
+        mSceneImage->setRenderItemTexture(&mRenderer.freezeFrame());
+        // The widget is Y-down, the frozen frame is Y-up, so this UV is inverted
         mSceneImage->getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
         mSceneImage->setVisible(true);
     }
@@ -328,18 +285,18 @@ namespace MWGui
 
         if (!mShowWallpaper && mLastRenderTime < mLoadingOnTime)
         {
-            setupCopyFramebufferToTextureCallback();
+            showFrozenFrame();
         }
 
         MWBase::Environment::get().getInputManager()->update(0, true, true);
 
-        osg::Stats* const stats = mViewer->getViewerStats();
-        const unsigned frameNumber = mViewer->getFrameStamp()->getFrameNumber();
+        osg::Stats& stats = mStage.getStats();
+        const unsigned frameNumber = mStage.getFrameStamp().getFrameNumber();
 
-        stats->setAttribute(frameNumber, "Loading", 1);
+        stats.setAttribute(frameNumber, "Loading", 1);
 
-        mResourceSystem->reportStats(frameNumber, stats);
-        if (osgUtil::IncrementalCompileOperation* ico = mViewer->getIncrementalCompileOperation())
+        mResourceSystem->reportStats(frameNumber, &stats);
+        if (osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
         {
             ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(1.f / getTargetFrameRate());
             ico->setMaximumNumOfObjectsToCompilePerFrame(1000);
@@ -348,10 +305,10 @@ namespace MWGui
         // at the time this function is called we are in the middle of a frame,
         // so out of order calls are necessary to get a correct frameNumber for the next frame.
         // refer to the advance() and frame() order in Engine::go()
-        mViewer->eventTraversal();
-        mViewer->updateTraversal();
-        mViewer->renderingTraversals();
-        mViewer->advance(mViewer->getFrameStamp()->getSimulationTime());
+        mRenderer.eventTraversal();
+        mRenderer.updateTraversal();
+        mRenderer.renderGui();
+        mRenderer.advance(mStage.getFrameStamp().getSimulationTime());
 
         mLastRenderTime = mTimer.time_m();
     }

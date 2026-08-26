@@ -12,26 +12,27 @@
 
 #include "../mwworld/ptr.hpp"
 
+namespace MyGUI
+{
+    class ITexture;
+}
+
 namespace osg
 {
-    class Texture2D;
-    class Camera;
     class Group;
-    class Viewport;
-    class StateSet;
 }
 
 namespace MWRender
 {
 
     class NpcAnimation;
-    class DrawOnceCallback;
-    class CharacterPreviewRTTNode;
+    class OffscreenView;
+    class Renderer;
 
     class CharacterPreview
     {
     public:
-        CharacterPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character,
+        CharacterPreview(Renderer& renderer, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character,
             int sizeX, int sizeY, const osg::Vec3f& position, const osg::Vec3f& lookAt);
         virtual ~CharacterPreview();
 
@@ -42,9 +43,7 @@ namespace MWRender
 
         void rebuild();
 
-        osg::ref_ptr<osg::Texture2D> getTexture();
-        /// Get the osg::StateSet required to render the texture correctly, if any.
-        osg::StateSet* getTextureStateSet() { return mTextureStateSet; }
+        MyGUI::ITexture& getTexture();
 
     private:
         CharacterPreview(const CharacterPreview&);
@@ -52,14 +51,20 @@ namespace MWRender
 
     protected:
         virtual bool renderHeadOnly() { return false; }
+
+        /// The subtree is not the subtree it was: equipment changed, or the body was rebuilt.
         void setBlendMode();
+
         virtual void onSetup();
 
-        osg::ref_ptr<osg::Group> mParent;
         Resource::ResourceSystem* mResourceSystem;
-        osg::ref_ptr<osg::StateSet> mTextureStateSet;
-        osg::ref_ptr<DrawOnceCallback> mDrawOnceCallback;
-        osg::ref_ptr<CharacterPreviewRTTNode> mRTTNode;
+
+        /// What the view draws, and the only thing about it the game owns. Anything hung off here
+        /// runs during the view's own update, which is what lets the race preview find the head
+        /// before the picture is taken.
+        osg::ref_ptr<osg::Group> mScene;
+
+        std::unique_ptr<OffscreenView> mView;
 
         osg::Vec3f mPosition;
         osg::Vec3f mLookAt;
@@ -77,7 +82,7 @@ namespace MWRender
     class InventoryPreview : public CharacterPreview
     {
     public:
-        InventoryPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character);
+        InventoryPreview(Renderer& renderer, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character);
 
         void updatePtr(const MWWorld::Ptr& ptr);
 
@@ -87,9 +92,13 @@ namespace MWRender
         int getSlotSelected(int posX, int posY);
 
     protected:
-        osg::ref_ptr<osg::Viewport> mViewport;
-
         void onSetup() override;
+
+    private:
+        /// How much of the picture the window is currently showing. Zero until the window has been
+        /// laid out, which is also when there is nothing to have clicked on.
+        int mExtentX = 0;
+        int mExtentY = 0;
     };
 
     class UpdateCameraCallback;
@@ -104,7 +113,7 @@ namespace MWRender
         void onSetup() override;
 
     public:
-        RaceSelectionPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem);
+        RaceSelectionPreview(Renderer& renderer, Resource::ResourceSystem* resourceSystem);
         virtual ~RaceSelectionPreview();
 
         void setAngle(float angleRadians);
