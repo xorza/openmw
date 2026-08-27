@@ -16,6 +16,7 @@
 #include <components/misc/constants.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/clusteredlighting.hpp>
+#include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 
 namespace SceneUtil
@@ -144,12 +145,21 @@ namespace SceneUtil
         // double buffered, since one of them may be in use by the draw thread at any given time
         DoubleBuffer<osg::ref_ptr<Light>> mLight;
 
+        // What the light radiates before anything dims it. The colours inside mLight are one
+        // frame's and nothing more: `update` writes them from these every frame, and LightManager's
+        // distance fade then scales in place what it finds there.
+        osg::Vec4f mBaseDiffuse;
+        osg::Vec4f mBaseSpecular;
+        osg::Vec4f mBaseAmbient;
+
         // LightSource will affect objects within this radius
         float mRadius;
 
         int mId;
 
         float mActorFade;
+
+        LightController mController;
 
         size_t mLastAppliedFrame;
 
@@ -167,27 +177,39 @@ namespace SceneUtil
         /// The LightSource will affect objects within this radius.
         void setRadius(float radius) { mRadius = radius; }
 
-        void setActorFade(float alpha) { mActorFade = alpha; }
+        /// How much of the actor carrying this light the game is showing, from nothing to all of it.
+        void setActorFade(float fade) { mActorFade = fade; }
 
-        float getActorFade() const { return mActorFade; }
+        /// The animation this light's brightness follows. Steady until something gives it a type.
+        LightController& getController() { return mController; }
+
+        /// Writes what this light radiates in the given frame.
+        /// @param simulationTime the frame stamp's, in seconds.
+        void update(size_t frame, double simulationTime);
 
         void setEmpty(bool empty) { mEmpty = empty; }
 
         bool getEmpty() const { return mEmpty; }
 
         /// Get the Light safe for modification in the given frame.
-        /// @par May be used externally to animate the light's color/attenuation properties,
-        /// and is used internally to synchronize the light's position with the position of the LightSource.
+        /// @par Used internally to synchronize the light's position with the position of the LightSource,
+        /// and externally to scale down what the light radiates this frame. A colour written here lasts
+        /// until the next frame, which `update` writes from the base colours instead.
         Light* getLight(size_t frame) { return mLight[frame % 2]; }
 
         /// @warning It is recommended not to replace an existing Light, because there might still be
         /// references to it in the light StateSet cache that are associated with this LightSource's ID.
         /// These references will stay valid due to ref_ptr but will point to the old object.
-        /// @warning Do not modify the \a light after you've called this function.
+        /// @warning Do not modify the \a light after you've called this function. Its colours are
+        /// taken here, and `update` writes over whatever is in the buffers with what it took.
         void setLight(Light* light)
         {
             mLight[0] = light;
             mLight[1] = new Light(*light);
+
+            mBaseDiffuse = light->getDiffuse();
+            mBaseSpecular = light->getSpecular();
+            mBaseAmbient = light->getAmbient();
         }
 
         /// Get the unique ID for this light source.

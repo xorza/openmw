@@ -92,7 +92,7 @@ file(GLOB UNITTEST_SRC_FILES
 
     vfs/testpathutil.cpp
 
-    sceneutil/lightcontroller.cpp
+    sceneutil/lightsource.cpp
     sceneutil/osgacontroller.cpp
 
     surface/material.cpp

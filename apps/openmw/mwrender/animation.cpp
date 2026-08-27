@@ -1899,6 +1899,8 @@ namespace MWRender
         }
         if (mExtraLightSource)
             mExtraLightSource->setActorFade(actorFade);
+        if (mGlowLight)
+            mGlowLight->setActorFade(actorFade);
     }
 
     void Animation::setLightEffect(float effect)
@@ -1938,6 +1940,9 @@ namespace MWRender
                 mGlowLight->setNodeMask(SceneUtil::Mask_Lighting);
                 mInsert->addChild(mGlowLight);
                 mGlowLight->setLight(light);
+
+                // Starts as hidden as its owner, since `setAlpha` returns early when nothing moved.
+                mGlowLight->setActorFade(mActorFade);
             }
 
             mGlowLight->setRadius(radius * cutoffMult);

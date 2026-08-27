@@ -1,16 +1,16 @@
 #ifndef OPENMW_COMPONENTS_SCENEUTIL_LIGHTCONTROLLER_H
 #define OPENMW_COMPONENTS_SCENEUTIL_LIGHTCONTROLLER_H
 
-#include <components/sceneutil/nodecallback.hpp>
-#include <osg/Vec4f>
-
 namespace SceneUtil
 {
 
-    class LightSource;
-
-    /// @brief Controller class to handle a pulsing and/or flickering light
-    class LightController : public SceneUtil::NodeCallback<LightController, SceneUtil::LightSource*>
+    /// @brief How much of what a light radiates is arriving this frame: a flicker, a pulse, or the
+    /// steady one.
+    ///
+    /// **The animation and nothing else.** What a light is made of, and what dims it, belong to the
+    /// LightSource that owns one of these — so a light nobody thought to animate still follows the
+    /// actor carrying it, and a colour the animation has no opinion about still reaches the frame.
+    class LightController
     {
     public:
         enum LightType
@@ -24,17 +24,14 @@ namespace SceneUtil
 
         LightController();
 
-        void setType(LightType type);
+        void setType(LightType type) { mType = type; }
 
-        void setDiffuse(const osg::Vec4f& color);
-        void setSpecular(const osg::Vec4f& color);
-
-        void operator()(SceneUtil::LightSource* node, osg::NodeVisitor* nv);
+        /// The multiplier for one frame, with the animation advanced to it.
+        /// @param simulationTime the frame stamp's, in seconds.
+        float advance(double simulationTime);
 
     private:
         LightType mType;
-        osg::Vec4f mDiffuseColor;
-        osg::Vec4f mSpecularColor;
         float mPhase;
         float mBrightness;
         double mStartTime;

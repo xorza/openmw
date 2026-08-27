@@ -139,19 +139,15 @@ namespace SceneUtil
 
         lightSource->setLight(light);
 
-        osg::ref_ptr<SceneUtil::LightController> ctrl(new SceneUtil::LightController);
-        ctrl->setDiffuse(light->getDiffuse());
-        ctrl->setSpecular(light->getSpecular());
+        SceneUtil::LightController& ctrl = lightSource->getController();
         if (esmLight.mFlicker)
-            ctrl->setType(SceneUtil::LightController::LT_Flicker);
+            ctrl.setType(SceneUtil::LightController::LT_Flicker);
         if (esmLight.mFlickerSlow)
-            ctrl->setType(SceneUtil::LightController::LT_FlickerSlow);
+            ctrl.setType(SceneUtil::LightController::LT_FlickerSlow);
         if (esmLight.mPulse)
-            ctrl->setType(SceneUtil::LightController::LT_Pulse);
+            ctrl.setType(SceneUtil::LightController::LT_Pulse);
         if (esmLight.mPulseSlow)
-            ctrl->setType(SceneUtil::LightController::LT_PulseSlow);
-
-        lightSource->addUpdateCallback(ctrl);
+            ctrl.setType(SceneUtil::LightController::LT_PulseSlow);
 
         return lightSource;
     }

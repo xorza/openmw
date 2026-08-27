@@ -81,27 +81,34 @@ namespace SceneUtil
         return nullptr;
     }
 
-    // Set on a LightSource. Adds the light source to its light manager for the current frame.
-    // This allows us to keep track of the current lights in the scene graph without tying creation & destruction to the
-    // manager.
-    class CollectLightCallback : public NodeCallback<CollectLightCallback>
+    // Set on a LightSource. Writes the colours the light radiates this frame, then adds the light
+    // source to its light manager for the current frame. The second half is what lets us keep track
+    // of the current lights in the scene graph without tying creation & destruction to the manager.
+    class LightSourceUpdateCallback : public NodeCallback<LightSourceUpdateCallback>
     {
     public:
-        CollectLightCallback()
+        LightSourceUpdateCallback()
             : mLightManager(nullptr)
         {
         }
 
-        CollectLightCallback(const CollectLightCallback& copy, const osg::CopyOp& copyop)
-            : NodeCallback<CollectLightCallback>(copy, copyop)
+        LightSourceUpdateCallback(const LightSourceUpdateCallback& copy, const osg::CopyOp& copyop)
+            : NodeCallback<LightSourceUpdateCallback>(copy, copyop)
             , mLightManager(nullptr)
         {
         }
 
-        META_Object(SceneUtil, CollectLightCallback)
+        META_Object(SceneUtil, LightSourceUpdateCallback)
 
         void operator()(osg::Node* node, osg::NodeVisitor* nv)
         {
+            LightSource* lightSource = static_cast<LightSource*>(node);
+
+            // **The light's own write, and it comes first.** The ray tracer reads these colours
+            // off the graph rather than out of the manager, so what a light radiates must not come
+            // to depend on there being a manager to collect it.
+            lightSource->update(nv->getTraversalNumber(), nv->getFrameStamp()->getSimulationTime());
+
             if (!mLightManager)
             {
                 mLightManager = findLightManager(nv->getNodePath());
@@ -110,8 +117,7 @@ namespace SceneUtil
                     throw std::runtime_error("can't find parent LightManager");
             }
 
-            mLightManager->addLight(
-                static_cast<LightSource*>(node), osg::computeLocalToWorld(nv->getNodePath()), nv->getTraversalNumber());
+            mLightManager->addLight(lightSource, osg::computeLocalToWorld(nv->getNodePath()), nv->getTraversalNumber());
 
             traverse(node, nv);
         }
@@ -659,20 +665,45 @@ namespace SceneUtil
         , mActorFade(1.f)
         , mLastAppliedFrame(0)
     {
-        setUpdateCallback(new CollectLightCallback);
+        setUpdateCallback(new LightSourceUpdateCallback);
         mId = sLightId++;
     }
 
     LightSource::LightSource(const LightSource& copy, const osg::CopyOp& copyop)
         : osg::Node(copy, copyop)
+        , mBaseDiffuse(copy.mBaseDiffuse)
+        , mBaseSpecular(copy.mBaseSpecular)
+        , mBaseAmbient(copy.mBaseAmbient)
         , mRadius(copy.mRadius)
         , mActorFade(copy.mActorFade)
+        , mController(copy.mController)
         , mLastAppliedFrame(copy.mLastAppliedFrame)
     {
         mId = sLightId++;
 
         for (size_t i = 0; i < mLight.size(); ++i)
             mLight[i] = new Light(*copy.mLight[i].get(), copyop);
+    }
+
+    void LightSource::update(size_t frame, double simulationTime)
+    {
+        // **No early out on an unchanged clock.** The light is double buffered, so a frame that
+        // wrote nothing leaves the other buffer holding whatever it held two frames ago — and what
+        // it held is not the base colour either, since LightManager's distance fade scales in place
+        // what it finds.
+        const float lit = mController.advance(simulationTime) * mActorFade;
+
+        Light* light = getLight(frame);
+        light->setDiffuse(mBaseDiffuse * lit);
+        light->setSpecular(mBaseSpecular * lit);
+
+        // **The fade reaches the ambient and the animation does not.** The animation is a flame's,
+        // and the two places the game writes an ambient both mean a light with no flame in it: a
+        // Light spell's glow puts its whole output there, and a lamp carried in a pack adds a white
+        // one so that it lights its bearer. The glow is why the fade has to arrive — without it a
+        // Light spell burned at full strength up to the frame the actor's node mask cut, and then
+        // went out.
+        light->setAmbient(mBaseAmbient * mActorFade);
     }
 
     void LightListCallback::operator()(osg::Node* node, osgUtil::CullVisitor* cv)

@@ -2,10 +2,6 @@
 
 #include <cmath>
 
-#include <osg/NodeVisitor>
-
-#include <components/sceneutil/lightmanager.hpp>
-
 #include <components/misc/rng.hpp>
 
 namespace SceneUtil
@@ -21,40 +17,19 @@ namespace SceneUtil
     {
     }
 
-    void LightController::setType(LightController::LightType type)
+    float LightController::advance(double simulationTime)
     {
-        mType = type;
-    }
-
-    void LightController::operator()(SceneUtil::LightSource* node, osg::NodeVisitor* nv)
-    {
-        double time = nv->getFrameStamp()->getSimulationTime();
-        if (mStartTime == 0)
-            mStartTime = time;
-
-        // **No early out on an unchanged clock.** The light is double buffered, so a frame that
-        // wrote nothing leaves the other buffer holding whatever it held two frames ago.
-
-        SceneUtil::Light* light = node->getLight(nv->getTraversalNumber());
-
         if (mType == LT_Normal)
-        {
-            // **Every type follows its owner, and not the animated ones alone.** A light an actor
-            // carries is dimmed by whatever is hiding that actor — the distance fade, Invisibility,
-            // Chameleon — and twenty of the carriable lights the game ships take this branch. Every
-            // one of them is a lantern.
-            const float fade = node->getActorFade();
-            light->setDiffuse(mDiffuseColor * fade);
-            light->setSpecular(mSpecularColor * fade);
-            traverse(node, nv);
-            return;
-        }
+            return 1.f;
+
+        if (mStartTime == 0)
+            mStartTime = simulationTime;
 
         // Updating flickering at 15 FPS like vanilla.
         constexpr float updateRate = 15.f;
-        mTicksToAdvance
-            = static_cast<float>(time - mStartTime - mLastTime) * updateRate * 0.25f + mTicksToAdvance * 0.75f;
-        mLastTime = time - mStartTime;
+        mTicksToAdvance = static_cast<float>(simulationTime - mStartTime - mLastTime) * updateRate * 0.25f
+            + mTicksToAdvance * 0.75f;
+        mLastTime = simulationTime - mStartTime;
 
         float speed = (mType == LT_Flicker || mType == LT_Pulse) ? 0.1f : 0.05f;
         if (mBrightness >= mPhase)
@@ -70,22 +45,7 @@ namespace SceneUtil
                 mPhase = mPhase <= 0.5f ? 1.f : 0.25f;
         }
 
-        const float result = mBrightness * node->getActorFade();
-
-        light->setDiffuse(mDiffuseColor * result);
-        light->setSpecular(mSpecularColor * result);
-
-        traverse(node, nv);
-    }
-
-    void LightController::setDiffuse(const osg::Vec4f& color)
-    {
-        mDiffuseColor = color;
-    }
-
-    void LightController::setSpecular(const osg::Vec4f& color)
-    {
-        mSpecularColor = color;
+        return mBrightness;
     }
 
 }
