@@ -220,6 +220,27 @@ namespace Rtx::Shaders
     /// mirror, and they cannot be allowed to disagree.
     RTX_CONST float SUN_ANGULAR_RADIUS = 0.004654f;
 
+    /// The most radiance the sun's disc is drawn with.
+    ///
+    /// **A ceiling for a temporal history, not for a picture.** The sun's disc is drawn at its
+    /// irradiance spread over its own solid angle, which at noon is `8 / (pi * 0.004654^2)` — a
+    /// hundred and seventeen thousand. Nothing downstream can use it: the dimmest exposure the
+    /// renderer will choose is 0.05, so a radiance of 20 is already the top of the display range at
+    /// every exposure it can pick. What the number does reach is the upscaler, which reconstructs
+    /// from several frames of linear radiance and has to hold that value in a history — and a
+    /// neighbourhood five orders of magnitude out of range is one it clears slowly, which is a
+    /// blown pixel that stays blown for seconds after the sun has left the frame.
+    ///
+    /// **A thousand, because a glint is the dimmest thing this can reach.** Water reflects `WATER_F0`
+    /// of what it faces at normal incidence, so a source has to survive a factor of 0.02 and still
+    /// clear the display's top: `20 / 0.02` is the smallest ceiling that leaves every white pixel
+    /// white. It is a hundred and eighteen times below where the disc sits.
+    ///
+    /// **The disc alone, because it is the only thing in the sky that can reach a ceiling at all.**
+    /// A moon's face is held at 0.18, a star at the same, and the dome's own glow is a decoded
+    /// weather colour — every one of them three orders below this.
+    RTX_CONST float MAX_SUN_RADIANCE = 1000.0f;
+
     /// What an emissive of one is worth, as light.
     ///
     /// **The original's scale is not this renderer's.** There a fully lit surface reached one and an

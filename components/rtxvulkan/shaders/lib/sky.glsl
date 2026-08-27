@@ -313,7 +313,10 @@ vec3 skyRadiance(vec3 direction, float blur)
         // peak leaves a white disc at white and lets a weather's sunset tint both redden and dim
         // it, which is what air does to a sun on the horizon — it takes the blue out rather than
         // putting red in.
-        const float radiance = brightest(frame.mSunIrradiance) / (0.5 * TAU * edge * edge);
+        // Capped for the sake of what holds a history of it rather than for the picture, which
+        // cannot tell this from the five figures the division gives. `MAX_SUN_RADIANCE` says why.
+        const float radiance
+            = min(brightest(frame.mSunIrradiance) / (0.5 * TAU * edge * edge), MAX_SUN_RADIANCE);
 
         // **Dimmed by whatever stands in front of it, which is the whole of an eclipse.** Masser is
         // nineteen degrees across against the sun's half a degree, so on the rare crossing it is
