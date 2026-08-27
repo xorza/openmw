@@ -14,7 +14,6 @@
 #include "scene.h"
 #include "visibility.h"
 #include "bindings.glsl"
-#include "starfield.glsl"
 
 /// The sky's own glow along a direction, with nothing drawn in it.
 ///
@@ -259,21 +258,24 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
 /// shows one hard dot; a mile of ruffled water shows a shimmering road to the horizon. Cox and Munk
 /// measured sea roughness by photographing exactly this in 1954.
 ///
+/// **Everything but the star field, which every caller draws for itself as `starField(...) * shown`.**
+/// A point source is what a temporal upscaler removes, so along a ray the eye is looking down the
+/// field is drawn by the display pass at the resolution the frame is shown at — and a pass that late
+/// cannot see the order the layers here were composited in. So the order reports what it left: an
+/// opaque moon leaves none of the field, a deck leaves what it does not cover, and the dome and the
+/// sun leave all of it because both are added rather than composited.
+///
 /// @param blur how far this ray's cone has spread from its axis, in radians.
-/// @param points whether the star field is drawn here. **A ray being looked along says no**: a point
-///        source is what a temporal upscaler removes, so the field is drawn again by the display
-///        pass at the resolution the frame is shown at — `ToneConstants::mStars` carries the
-///        measurements. A ray a mirror sent says yes, because what a reflection shows is composited
-///        long before that pass and there is nowhere else for its stars to come from.
-vec3 skyRadiance(vec3 direction, float blur, bool points)
+/// @param shown how much of the star field is still in front of what this returns, from none to all.
+vec3 skyRadiance(vec3 direction, float blur, out float shown)
 {
+    shown = 1.0;
+
     // **Everything on or beyond the celestial sphere first, which is what a moon stands in front
     // of.** The painted patches are on that sphere and the sun is nearer, but both are further off
-    // than a moon and neither is ever between two of them, so one term carries the pair — and the
-    // field joins them on the rays that draw it, which `starField` declines for the rest.
+    // than a moon and neither is ever between two of them, so one term carries the pair. The star
+    // field belongs here too and is the one layer drawn outside this, which `shown` is what for.
     vec3 colour = frame.mStars.mFade > 0.0 ? frame.mStars.mFade * skyPatches(direction) : vec3(0.0);
-    if (points)
-        colour += starField(frame.mStars, direction, blur);
 
     // The chord across the disc rather than the cosine of its angle. Both answer "is this direction
     // inside it", and at half a degree the cosine is 0.999988 — five of a float's seven digits spent
@@ -320,6 +322,7 @@ vec3 skyRadiance(vec3 direction, float blur, bool points)
         float covered;
         const vec3 face = moonFace(frame.mMoons[moon], direction, blur, covered);
         colour = colour * (1.0 - covered) + face;
+        shown *= 1.0 - covered;
     }
 
     // **The dome last and added rather than composited under, because it is the air in front of
@@ -334,6 +337,7 @@ vec3 skyRadiance(vec3 direction, float blur, bool points)
     // Last, and over everything: the deck is nearer than any of it.
     float covered;
     const vec3 clouds = cloudDeck(direction, covered);
+    shown *= 1.0 - covered;
 
     return colour * (1.0 - covered) + clouds;
 }

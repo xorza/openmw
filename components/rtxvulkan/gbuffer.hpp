@@ -11,6 +11,32 @@ namespace Rtx
 {
     class Device;
 
+    /// What a `GBuffer`'s set is shaped like, held apart from any one of them.
+    ///
+    /// **A layout is a description and a set is an allocation, and the two have different lifetimes
+    /// here.** The channels are built again whenever the frame changes size; the pipeline that
+    /// writes them names this once, when it is created, and a pipeline layout is fixed for good.
+    ///
+    /// **And the channels have a set at all because push descriptors run out.** The device this is
+    /// written against allows 32 of them in a layout, the trace had reached exactly 32, and the
+    /// thing that keeps growing is this list. So the list moved off the counted path — onto the one
+    /// with no per-frame cost at all, since a set written once is bound rather than pushed.
+    class GBufferLayout
+    {
+    public:
+        explicit GBufferLayout(const Device& device);
+        ~GBufferLayout();
+
+        GBufferLayout(const GBufferLayout&) = delete;
+        GBufferLayout& operator=(const GBufferLayout&) = delete;
+
+        VkDescriptorSetLayout getHandle() const { return mHandle; }
+
+    private:
+        const Device& mDevice;
+        VkDescriptorSetLayout mHandle = VK_NULL_HANDLE;
+    };
+
     /// What the trace leaves behind, before anything has decided what the picture looks like.
     ///
     /// **A picture cannot be filtered and these can.** One bounce per pixel is noisy, and the only
@@ -31,7 +57,16 @@ namespace Rtx
     class GBuffer
     {
     public:
-        GBuffer(const Device& device, std::uint32_t width, std::uint32_t height);
+        /// How many channels there are, which is also how many bindings the set declares: channel
+        /// `i` of `everyChannel` is binding `i`, so neither side keeps a table of the other's
+        /// numbers.
+        static constexpr std::uint32_t sChannels = 11;
+
+        GBuffer(const Device& device, const GBufferLayout& layout, std::uint32_t width, std::uint32_t height);
+        ~GBuffer();
+
+        GBuffer(const GBuffer&) = delete;
+        GBuffer& operator=(const GBuffer&) = delete;
 
         /// Direct light, emission, the sky and water, with the fog already over all of it.
         const Image& getDirect() const { return mDirect; }
@@ -115,6 +150,25 @@ namespace Rtx
         /// accumulated over that is a history of the wrong thing.
         const Image& getBiasMask() const { return mBiasMask; }
 
+        /// What the star field has to be drawn through at each pixel, per channel.
+        ///
+        /// **The one channel written for a pass rather than for a filter.** The field is drawn after
+        /// the upscaler, at the resolution the frame is shown at, because a point source is what a
+        /// temporal upscaler removes — and a pass that late has no moons, no cloud deck, no window
+        /// pane, no water and no fog to draw the field behind. This is all of them multiplied
+        /// together: the sky's own order says what it left of the field, and the path says what it
+        /// took off everything. Nought wherever a ray hit something, which is also how that pass
+        /// knows there is no sky here at all.
+        const Image& getStarsShown() const { return mStarsShown; }
+
+        /// The set that names every channel, for the pass that writes them.
+        ///
+        /// **Written once, when the channels are made, and never again.** The images live as long as
+        /// this does and a resize builds a new one of both, so nothing here is rewritten while a
+        /// submitted frame is still reading it — which is the whole reason a set is affordable where
+        /// a push was not.
+        VkDescriptorSet getSet() const { return mSet; }
+
         std::uint32_t getWidth() const { return mDirect.getWidth(); }
         std::uint32_t getHeight() const { return mDirect.getHeight(); }
 
@@ -128,14 +182,23 @@ namespace Rtx
         void handOver(VkCommandBuffer commands) const;
 
     private:
-        /// Every channel this holds, so the two barrier sweeps below cannot name different sets.
+        /// Every channel this holds, in binding order, so the barrier sweeps and the set cannot
+        /// name different ones.
         ///
         /// **They did.** The list was written out twice and a channel added to one of them was left
         /// out of the other, which is a frame reading an image nothing had transitioned — reported
         /// by the layers as a layout the descriptor did not expect, and by nothing at all in a build
         /// without them.
-        static constexpr std::size_t sChannels = 10;
         std::array<const Image*, sChannels> everyChannel() const;
+
+        /// Frees the pool, from either end: the destructor, and the constructor's own unwind.
+        ///
+        /// **A constructor whose body throws gets no destructor**, so a pool made in one and left
+        /// there is a pool nothing owns. `ComputePipeline` is the same shape for the same reason,
+        /// and this is the second hand-written unwind in the renderer rather than the first.
+        void destroy();
+
+        const Device& mDevice;
 
         Image mDirect;
         Image mIndirect;
@@ -147,5 +210,9 @@ namespace Rtx
         Image mReflectionMotion;
         Image mParticleMask;
         Image mBiasMask;
+        Image mStarsShown;
+
+        VkDescriptorPool mPool = VK_NULL_HANDLE;
+        VkDescriptorSet mSet = VK_NULL_HANDLE;
     };
 }

@@ -23,6 +23,12 @@
 //
 // The two masks between them go from eight megabytes of render-resolution image at 1080p to two.
 //
+// **And what the star field is drawn through is three bytes, because every term of it is a
+// fraction.** What is left of the field at a pixel is a product of coverages and transmittances,
+// each of them from nought to one by construction, so `R8G8B8A8_UNORM` holds the whole range at
+// 1/255 steps. Fog thick enough for that step to show is fog no star is visible through. Four
+// megabytes at 1080p against the sixteen a half-float image would take for the same three numbers.
+//
 // So the format is a macro rather than a constant: a layout qualifier is a token GLSL reads before
 // it parses anything, and `VK_FORMAT_*` is an enumerator. The preprocessor is the one thing both
 // languages share, which is what lets one line define both.
@@ -35,6 +41,7 @@
 #define GBUFFER_MOTION VK_FORMAT_R32G32_SFLOAT
 #define GBUFFER_DEPTH VK_FORMAT_R32G32_SFLOAT
 #define GBUFFER_MASK VK_FORMAT_R8_UNORM
+#define GBUFFER_STARS VK_FORMAT_R8G8B8A8_UNORM
 
 #else
 
@@ -44,6 +51,7 @@
 #define GBUFFER_MOTION rg32f
 #define GBUFFER_DEPTH rg32f
 #define GBUFFER_MASK r8
+#define GBUFFER_STARS rgba8
 
 #endif
 

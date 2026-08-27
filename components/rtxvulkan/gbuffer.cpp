@@ -1,8 +1,12 @@
 #include "gbuffer.hpp"
 #include <algorithm>
+#include <array>
 #include <cassert>
 
 #include <components/rtx/shaders/gbuffer.h>
+
+#include "device.hpp"
+#include "result.hpp"
 
 namespace Rtx
 {
@@ -64,6 +68,9 @@ namespace Rtx
         /// `gbuffer.h` for why it is not a byte.
         constexpr VkFormat sMask = GBUFFER_MASK;
 
+        /// Three bytes for three fractions, which is what `gbuffer.h` argues a modulation is.
+        constexpr VkFormat sStars = GBUFFER_STARS;
+
         /// **`SAMPLED` on all of them, and it is not decoration.** DLSS samples every input it is
         /// handed; one without the bit reads as zero, NGX returns success and the validation layers
         /// say nothing, so the whole frame comes back black with nothing pointing at the cause. It
@@ -75,8 +82,9 @@ namespace Rtx
         constexpr VkImageUsageFlags sReadable = sUsage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
 
-    GBuffer::GBuffer(const Device& device, std::uint32_t width, std::uint32_t height)
-        : mDirect(device, width, height, sRadiance, sUsage, "g-direct")
+    GBuffer::GBuffer(const Device& device, const GBufferLayout& layout, std::uint32_t width, std::uint32_t height)
+        : mDevice(device)
+        , mDirect(device, width, height, sRadiance, sUsage, "g-direct")
         , mIndirect(device, width, height, sRadiance, sReadable, "g-indirect")
         , mAlbedo(device, width, height, sAlbedo, sUsage, "g-albedo")
         , mSpecular(device, width, height, sAlbedo, sUsage, "g-specular")
@@ -86,13 +94,72 @@ namespace Rtx
         , mReflectionMotion(device, width, height, sMotion, sReadable, "g-reflection-motion")
         , mParticleMask(device, width, height, sMask, sReadable, "g-particle-mask")
         , mBiasMask(device, width, height, sMask, sReadable, "g-bias-mask")
+        , mStarsShown(device, width, height, sStars, sUsage, "g-stars-shown")
     {
+        try
+        {
+            const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, sChannels };
+            const VkDescriptorPoolCreateInfo describePool{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                .maxSets = 1,
+                .poolSizeCount = 1,
+                .pPoolSizes = &size,
+            };
+            checkVk(
+                vkCreateDescriptorPool(mDevice.getHandle(), &describePool, nullptr, &mPool), "vkCreateDescriptorPool");
+
+            const VkDescriptorSetLayout named = layout.getHandle();
+            const VkDescriptorSetAllocateInfo allocate{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .descriptorPool = mPool,
+                .descriptorSetCount = 1,
+                .pSetLayouts = &named,
+            };
+            checkVk(vkAllocateDescriptorSets(mDevice.getHandle(), &allocate, &mSet), "vkAllocateDescriptorSets");
+
+            const std::array<const Image*, sChannels> every = everyChannel();
+
+            std::array<VkDescriptorImageInfo, sChannels> views{};
+            std::array<VkWriteDescriptorSet, sChannels> writes{};
+            for (std::uint32_t channel = 0; channel < sChannels; ++channel)
+            {
+                views[channel]
+                    = VkDescriptorImageInfo{ VK_NULL_HANDLE, every[channel]->getView(), VK_IMAGE_LAYOUT_GENERAL };
+                writes[channel] = VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = mSet,
+                    .dstBinding = channel,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                    .pImageInfo = &views[channel],
+                };
+            }
+
+            vkUpdateDescriptorSets(mDevice.getHandle(), sChannels, writes.data(), 0, nullptr);
+        }
+        catch (...)
+        {
+            destroy();
+            throw;
+        }
+    }
+
+    GBuffer::~GBuffer()
+    {
+        destroy();
+    }
+
+    void GBuffer::destroy()
+    {
+        // The set goes with the pool it came out of, which is what one pool per buffer is for.
+        if (mPool != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(mDevice.getHandle(), mPool, nullptr);
     }
 
     std::array<const Image*, GBuffer::sChannels> GBuffer::everyChannel() const
     {
         const std::array<const Image*, sChannels> every{ &mDirect, &mIndirect, &mAlbedo, &mSpecular, &mGuide, &mMotion,
-            &mDepth, &mReflectionMotion, &mParticleMask, &mBiasMask };
+            &mDepth, &mReflectionMotion, &mParticleMask, &mBiasMask, &mStarsShown };
 
         // **Too many is a compiler error and too few is not**, which is the direction that hurts: an
         // aggregate short of its size fills the rest with null and every sweep below then walks off
@@ -127,5 +194,29 @@ namespace Rtx
             image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+    }
+
+    GBufferLayout::GBufferLayout(const Device& device)
+        : mDevice(device)
+    {
+        // Every channel is a storage image the trace writes, and channel `i` is binding `i`.
+        std::array<VkDescriptorSetLayoutBinding, GBuffer::sChannels> bindings{};
+        for (std::uint32_t channel = 0; channel < bindings.size(); ++channel)
+            bindings[channel] = VkDescriptorSetLayoutBinding{ channel, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
+                VK_SHADER_STAGE_COMPUTE_BIT, nullptr };
+
+        const VkDescriptorSetLayoutCreateInfo describe{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = static_cast<std::uint32_t>(bindings.size()),
+            .pBindings = bindings.data(),
+        };
+        checkVk(vkCreateDescriptorSetLayout(device.getHandle(), &describe, nullptr, &mHandle),
+            "vkCreateDescriptorSetLayout");
+    }
+
+    GBufferLayout::~GBufferLayout()
+    {
+        if (mHandle != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(mDevice.getHandle(), mHandle, nullptr);
     }
 }

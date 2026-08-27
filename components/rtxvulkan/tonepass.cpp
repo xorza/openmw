@@ -32,7 +32,7 @@ namespace Rtx
     {
     }
 
-    void TonePass::record(VkCommandBuffer commands, const Image& colour, VkBuffer exposure, const Image& traced,
+    void TonePass::record(VkCommandBuffer commands, const Image& colour, VkBuffer exposure, const Image& starsShown,
         VkDescriptorSet textures, const Image& target, const Shaders::ToneConstants& constants) const
     {
         assert(constants.mWidth <= target.getWidth() && constants.mHeight <= target.getHeight());
@@ -40,7 +40,7 @@ namespace Rtx
         const std::array<VkDescriptorImageInfo, 3> images{
             VkDescriptorImageInfo{ VK_NULL_HANDLE, colour.getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, target.getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, traced.getView(), VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ VK_NULL_HANDLE, starsShown.getView(), VK_IMAGE_LAYOUT_GENERAL },
         };
         const VkDescriptorBufferInfo scale{ exposure, 0, VK_WHOLE_SIZE };
 

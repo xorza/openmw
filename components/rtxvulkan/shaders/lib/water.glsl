@@ -12,6 +12,7 @@
 #include "sea.glsl"
 #include "shading.glsl"
 #include "sky.glsl"
+#include "starfield.glsl"
 #include "traversal.glsl"
 #include "underwater.glsl"
 
@@ -93,9 +94,19 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     path.mInstance = hit.mInstance;
     path.mDistance = hit.mHit ? hit.mDistance : WATER_MAX_PATH;
     path.mGeometric = hit.mHit ? hit.mGeometric : vec3(0.0, 0.0, 1.0);
-    path.mRadiance
-        = hit.mHit ? shadeSurface(hit, pathEnd(hit.mPosition), seed)
-                   : skyRadiance(direction, pixelBlur(frame.mCamera) + lobe, true);
+    if (hit.mHit)
+        path.mRadiance = shadeSurface(hit, pathEnd(hit.mPosition), seed);
+    else
+    {
+        // **A reflection draws its own stars, because there is no later pass to draw them for it.**
+        // What a mirror shows is composited into a surface long before the display pass, so the
+        // field goes in here — behind whatever the sky's own order left in front of it, which is
+        // what `shown` says and is the same rule `tone.comp` draws by.
+        const float spread = pixelBlur(frame.mCamera) + lobe;
+
+        float shown;
+        path.mRadiance = skyRadiance(direction, spread, shown) + starField(frame.mStars, direction, spread) * shown;
+    }
 
     return path;
 }

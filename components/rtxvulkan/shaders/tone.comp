@@ -35,8 +35,9 @@ layout(set = 0, binding = 3, scalar) readonly buffer Exposure
     float exposure;
 };
 
-/// The trace's own depth, at the trace's own extent — one where a ray reached nothing.
-layout(set = 0, binding = 2, GBUFFER_DEPTH) uniform readonly image2D traced;
+/// What the star field has to be drawn through, at the trace's own extent. `bindings.glsl` declares
+/// the other end of it.
+layout(set = 0, binding = 2, GBUFFER_STARS) uniform readonly image2D starsShown;
 
 layout(push_constant, scalar) uniform Push
 {
@@ -53,18 +54,21 @@ void main()
     vec4 lit = imageLoad(colour, at);
 
     // **The sky's own points, drawn where they are shown.** `ToneConstants::mStars` says why they
-    // are not the trace's. What decides where they may go is the trace's depth, read at the texel
-    // this pixel came from: a miss writes one there and nothing else does. Nearest and one tap, so a
-    // star within a traced pixel of a silhouette can land on the wrong side of it — which against a
-    // sheet that is 99% transparent is a star at the edge of a rock once in a while, and the four
-    // taps that would rule it out are four times the traffic for it.
+    // are not the trace's. What is left of them at a pixel is not this pass's to work out — a moon,
+    // a cloud deck, a window pane, the water and the air all stand between the field and the eye,
+    // and every one of them is the trace's — so the trace states it and this multiplies by it.
+    //
+    // Nearest and one tap, so a star within a traced pixel of a silhouette can land on the wrong
+    // side of it — which against a sheet that is 99% transparent is a star at the edge of a rock
+    // once in a while, and the four taps that would rule it out are four times the traffic for it.
     if (frame.mStars.mTexture != NO_TEXTURE)
     {
         const vec2 across = vec2(frame.mTracedWidth, frame.mTracedHeight) / vec2(frame.mWidth, frame.mHeight);
-        const ivec2 traceAt = ivec2(vec2(pixel) * across);
+        const vec3 shown = imageLoad(starsShown, ivec2(vec2(pixel) * across)).rgb;
 
-        if (imageLoad(traced, traceAt).x >= 1.0)
-            lit.rgb += starField(frame.mStars, rayAt(frame.mCamera, vec2(pixel)).mDirection, pixelBlur(frame.mCamera));
+        if (any(greaterThan(shown, vec3(0.0))))
+            lit.rgb += shown
+                * starField(frame.mStars, rayAt(frame.mCamera, vec2(pixel)).mDirection, pixelBlur(frame.mCamera));
     }
 
     // The curve maps radiance to a display; coverage is not radiance and passes through it.

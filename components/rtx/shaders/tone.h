@@ -36,12 +36,12 @@ namespace Rtx::Shaders
         uint mWidth;
         uint mHeight;
 
-        /// The trace's own extent, which is what the depth beside it is written at.
+        /// The trace's own extent, which is what `GBuffer::getStarsShown` is written at.
         ///
         /// **Two extents because an upscaler stands between them.** What this pass writes is one
-        /// pixel of the picture; what it asks about a pixel — did this ray reach the sky — was
-        /// answered at whatever the trace ran at, and at `performance` that is a quarter as many
-        /// pixels.
+        /// pixel of the picture; what it asks about a pixel — how much of the star field is left in
+        /// front of what is drawn there — was answered at whatever the trace ran at, and at
+        /// `performance` that is a quarter as many pixels.
         uint mTracedWidth;
         uint mTracedHeight;
 
@@ -60,7 +60,9 @@ namespace Rtx::Shaders
         /// at the same internal resolution, and 347 at quality — a third to the network and the rest
         /// to the resolution. No guide buffer moves it: an eye-facing normal, the bias mask over
         /// every sky pixel, and the four before-and-after colour pairs all measure neutral or worse.
-        /// So the field is drawn where it is shown, and the trace draws the rest of the sky.
+        /// So the field is drawn where it is shown, and the trace draws the rest of the sky — and
+        /// hands this pass `GBuffer::getStarsShown`, because a moon, a deck, a pane, the water and
+        /// the air all stand between the field and the eye and none of them is here.
         StarField mStars;
     };
 

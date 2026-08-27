@@ -19,6 +19,7 @@
 #include "compositepass.hpp"
 #include "device.hpp"
 #include "exposurepass.hpp"
+#include "gbuffer.hpp"
 #include "gputimer.hpp"
 #include "guipass.hpp"
 #include "guitextures.hpp"
@@ -205,6 +206,13 @@ namespace Rtx
         /// wait on, and every one after reads what the last left — a hazard across submits that the
         /// fence orders and does not make visible.
         std::unique_ptr<Image> mHistory;
+
+        /// What every `GBuffer` here is shaped by — one description, however many of them the
+        /// frame's size brings and takes away. `GBufferLayout` says why the channels have a set.
+        ///
+        /// **Declared before both of them**, because the trace's pipeline names it when it is built
+        /// and every buffer allocates from it.
+        GBufferLayout mChannelLayout;
 
         /// What the trace writes and the composite reads: one frame's light, still in pieces.
         std::unique_ptr<GBuffer> mChannels;

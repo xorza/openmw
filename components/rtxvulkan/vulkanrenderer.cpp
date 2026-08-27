@@ -84,6 +84,7 @@ namespace Rtx
         , mCountHits(options.mCountHits)
         , mUpscale(options.mUpscale)
         , mPreset(options.mPreset)
+        , mChannelLayout(mDevice)
         , mAccumulate(mDevice, options.mShaderDirectory)
         , mFilter(mDevice, options.mShaderDirectory)
         , mViewAccumulate(mDevice, options.mShaderDirectory)
@@ -190,7 +191,7 @@ namespace Rtx
             }
         });
 
-        mChannels = std::make_unique<GBuffer>(mDevice, mRenderWidth, mRenderHeight);
+        mChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mRenderWidth, mRenderHeight);
         mAccumulate.resize(mRenderWidth, mRenderHeight);
         mFilter.resize(mRenderWidth, mRenderHeight);
 
@@ -332,7 +333,7 @@ namespace Rtx
         if (mPass == nullptr)
         {
             mPass = std::make_unique<VisibilityPass>(
-                mDevice, setup, mShaderDirectory, held.mTextures->getLayout(), mCountHits);
+                mDevice, setup, mShaderDirectory, held.mTextures->getLayout(), mChannelLayout, mCountHits);
             mTone = std::make_unique<TonePass>(mDevice, held.mTextures->getLayout(), mShaderDirectory);
         }
 
@@ -803,8 +804,8 @@ namespace Rtx
             mTimer.close(commands);
 
             mTimer.open(commands, "tone");
-            mTone->record(commands, *shown, mExposure.getExposure(), mChannels->getDepth(), inputs.mTextures, *mTarget,
-                toneFor(sampled, mOutputWidth, mOutputHeight, mChannels->getWidth(), mChannels->getHeight()));
+            mTone->record(commands, *shown, mExposure.getExposure(), mChannels->getStarsShown(), inputs.mTextures,
+                *mTarget, toneFor(sampled, mOutputWidth, mOutputHeight, mChannels->getWidth(), mChannels->getHeight()));
             mTimer.close(commands);
         });
 
@@ -869,7 +870,7 @@ namespace Rtx
         mViewTarget = std::make_unique<Image>(mDevice, mViewWidth, mViewHeight, sTargetFormat,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
 
-        mViewChannels = std::make_unique<GBuffer>(mDevice, mViewWidth, mViewHeight);
+        mViewChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mViewWidth, mViewHeight);
         mViewAccumulate.resize(mViewWidth, mViewHeight);
         mViewFilter.resize(mViewWidth, mViewHeight);
     }
@@ -943,8 +944,8 @@ namespace Rtx
             // the widgets around it, and an exposure that drifted with what the doll was wearing
             // would make the same armour a different brightness in two windows.
             mExposure.recordFixed(commands, 1.0f);
-            mTone->record(commands, *mViewColour, mExposure.getExposure(), mViewChannels->getDepth(), array.getSet(),
-                *mViewTarget,
+            mTone->record(commands, *mViewColour, mExposure.getExposure(), mViewChannels->getStarsShown(),
+                array.getSet(), *mViewTarget,
                 toneFor(
                     camera, options.mWidth, options.mHeight, mViewChannels->getWidth(), mViewChannels->getHeight()));
 

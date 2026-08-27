@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 
@@ -15,6 +16,7 @@ namespace Rtx
     class Batch;
     class Device;
     class GBuffer;
+    class GBufferLayout;
     class SceneBuffers;
 
     /// What a trace reads about the world, as against the camera that looks at it.
@@ -55,12 +57,14 @@ namespace Rtx
         ///        the same numbers whatever is being looked at.
         /// @param textureLayout the layout of the bindless array this will be handed at record
         ///        time. Needed here because a pipeline layout names every set it will ever see.
+        /// @param channelLayout the same, for the set a `GBuffer` hands over — and the reason it
+        ///        outlives any one of them, since this is created once and they are not.
         /// @param countHits whether the trace counts the primary rays that hit anything. A harness
         ///        facility: `shot` prints it and a test asserts on it, and nothing in the game reads
         ///        it — so it is specialized away rather than branched on, and the game's module
         ///        carries no atomic at all.
         VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
-            VkDescriptorSetLayout textureLayout, bool countHits);
+            VkDescriptorSetLayout textureLayout, const GBufferLayout& channelLayout, bool countHits);
 
         VisibilityPass(const VisibilityPass&) = delete;
         VisibilityPass& operator=(const VisibilityPass&) = delete;
@@ -87,6 +91,11 @@ namespace Rtx
         /// **Declared before the pipeline it specializes**, because the pipeline reads it during its
         /// own construction and members are built in declaration order.
         std::uint32_t mCountHits = 0;
+
+        /// The sets bound after the pushed one, in the order they are bound: the textures, then the
+        /// channels. Held for the same reason `mCountHits` is — the pipeline reads them as it is
+        /// built, and a pipeline layout names every set it will ever be handed.
+        std::array<VkDescriptorSetLayout, 2> mLaterSets{};
 
         ComputePipeline mPipeline;
     };

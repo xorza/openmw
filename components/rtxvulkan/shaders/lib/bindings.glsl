@@ -8,6 +8,12 @@
 //
 // **One file, because a binding number is a fact shared with `VisibilityPass` and nothing
 // else here has an opinion about it.** What each channel is *for* is written beside it.
+//
+// **Three sets, by who made what they name.** Set zero is the frame and the scene's tables, pushed;
+// set one is the bindless textures a scene owns; set two is the channels a `GBuffer` owns, and
+// channel `i` of `GBuffer::everyChannel` is binding `i` there. The split is not tidiness — the
+// device allows 32 push descriptors and this had reached exactly 32, so the list that keeps growing
+// moved to the owner that already holds it.
 
 #include "gbuffer.h"
 #include "scene.h"
@@ -18,14 +24,14 @@
 layout(set = 0, binding = 0) uniform accelerationStructureEXT sceneTop;
 
 /// Everything already resolved: direct light, emission, the sky, water, and the fog over all of it.
-layout(set = 0, binding = 1, GBUFFER_RADIANCE) uniform writeonly image2D direct;
+layout(set = 2, binding = 0, GBUFFER_RADIANCE) uniform writeonly image2D direct;
 
 // One atomic per hit on a single address, which looks like contention and measures as nothing: at
 // 3840x2160 over Seyda Neen the trace runs 0.57-0.79 ms, and a subgroup reduction in place of this
 // ran 0.65-0.78 for an identical count. Only 5.5% of rays hit, and the reduction would have cost the
 // device a subgroup-arithmetic requirement it does not otherwise need. Measure again if a pass ever
 // hits most of its pixels.
-layout(set = 0, binding = 2) buffer HitCount
+layout(set = 0, binding = 1) buffer HitCount
 {
     uint hits;
 };
@@ -55,17 +61,17 @@ layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer Ind
     uint at[];
 };
 
-layout(set = 0, binding = 3, scalar) readonly buffer NormalBlocks
+layout(set = 0, binding = 2, scalar) readonly buffer NormalBlocks
 {
     uint64_t normalBlocks[];
 };
 
-layout(set = 0, binding = 4, scalar) readonly buffer TexCoordBlocks
+layout(set = 0, binding = 3, scalar) readonly buffer TexCoordBlocks
 {
     uint64_t texCoordBlocks[];
 };
 
-layout(set = 0, binding = 5, scalar) readonly buffer IndexBlocks
+layout(set = 0, binding = 4, scalar) readonly buffer IndexBlocks
 {
     uint64_t indexBlocks[];
 };
@@ -85,75 +91,75 @@ uint indexAt(uint element)
     return IndexBlock(indexBlocks[element / INDEX_BLOCK]).at[element % INDEX_BLOCK];
 }
 
-layout(set = 0, binding = 6, scalar) readonly buffer Meshes
+layout(set = 0, binding = 5, scalar) readonly buffer Meshes
 {
     GpuMesh meshes[];
 };
 
-layout(set = 0, binding = 7, scalar) readonly buffer Instances
+layout(set = 0, binding = 6, scalar) readonly buffer Instances
 {
     GpuInstance instances[];
 };
 
-layout(set = 0, binding = 8, scalar) readonly buffer Materials
+layout(set = 0, binding = 7, scalar) readonly buffer Materials
 {
     GpuMaterial materials[];
 };
 
-layout(set = 0, binding = 9, scalar) readonly buffer Layers
+layout(set = 0, binding = 8, scalar) readonly buffer Layers
 {
     GpuLayer layers[];
 };
 
-layout(set = 0, binding = 10, scalar) readonly buffer Masks
+layout(set = 0, binding = 9, scalar) readonly buffer Masks
 {
     float masks[];
 };
 
-layout(set = 0, binding = 11, scalar) readonly buffer Lights
+layout(set = 0, binding = 10, scalar) readonly buffer Lights
 {
     GpuLight lights[];
 };
 
 /// Where each cell's lamps start, with a sentinel so the last cell's end needs no special case.
-layout(set = 0, binding = 12, scalar) readonly buffer LightOffsets
+layout(set = 0, binding = 11, scalar) readonly buffer LightOffsets
 {
     uint lightOffsets[];
 };
 
 /// Every cell's lamps, run together in cell order.
-layout(set = 0, binding = 13, scalar) readonly buffer LightIndices
+layout(set = 0, binding = 12, scalar) readonly buffer LightIndices
 {
     uint lightIndices[];
 };
 
-layout(set = 0, binding = 14, scalar) readonly buffer Waves
+layout(set = 0, binding = 13, scalar) readonly buffer Waves
 {
     GpuWave waves[];
 };
 
 /// The blue-noise tile, `RANDOM_STREAMS` channels interleaved per pixel. See `Rtx::BlueNoise`.
-layout(set = 0, binding = 16, scalar) readonly buffer BlueNoiseTile
+layout(set = 0, binding = 14, scalar) readonly buffer BlueNoiseTile
 {
     float blueNoise[];
 };
 
 /// Clip depth in `r`, for whatever upscales the frame, and the distance from the eye in `g`, for
 /// whatever filters it. Two questions, and one number cannot answer both.
-layout(set = 0, binding = 22, GBUFFER_DEPTH) uniform writeonly image2D depth;
+layout(set = 2, binding = 6, GBUFFER_DEPTH) uniform writeonly image2D depth;
 
 /// Where the lamps were binned, which is scene geometry rather than camera geometry.
-layout(set = 0, binding = 21, scalar) readonly buffer LightGridBlock
+layout(set = 0, binding = 16, scalar) readonly buffer LightGridBlock
 {
     GpuLightGrid grid;
 };
 
 /// Where each surface stood on the previous frame's screen, less where it stands on this one.
-layout(set = 0, binding = 20, GBUFFER_MOTION) uniform writeonly image2D motion;
+layout(set = 2, binding = 5, GBUFFER_MOTION) uniform writeonly image2D motion;
 
 /// What each texture already has painted into it, `SHADING_EXTENT` squared factors apiece and one
 /// texture after another. A texture with no estimate holds ones.
-layout(set = 0, binding = 19, scalar) readonly buffer ShadingMaps
+layout(set = 0, binding = 15, scalar) readonly buffer ShadingMaps
 {
     float shading[];
 };
@@ -170,21 +176,21 @@ layout(set = 0, binding = 19, scalar) readonly buffer ShadingMaps
 /// goes into `direct` and `a` belongs to whichever term it attenuated, which is this one. Putting
 /// it on the albedo instead made that channel a product of a surface and a path, and an upscaler
 /// asking what the surface is got the weather in the answer.
-layout(set = 0, binding = 15, GBUFFER_RADIANCE) uniform writeonly image2D indirect;
+layout(set = 2, binding = 1, GBUFFER_RADIANCE) uniform writeonly image2D indirect;
 
 /// The surface's own diffuse albedo, and nothing else.
 ///
 /// What the composite multiplies the bounce back in by, and what Ray Reconstruction demodulates the
 /// diffuse half of a pixel by. Zero where there is no diffuse response at all — the sky, and the
 /// water, which answers a ray with a reflection and a refraction and no Lambert term.
-layout(set = 0, binding = 17, GBUFFER_ALBEDO) uniform writeonly image2D albedo;
+layout(set = 2, binding = 2, GBUFFER_ALBEDO) uniform writeonly image2D albedo;
 
 /// The shading normal in `xyz` and the surface's roughness in `w`.
 ///
 /// **The normal the shading actually used**, which for water is the wave's rather than the plane's
 /// — a rippled surface described as a flat one is reconstructed as a flat one. A ray that hit
 /// nothing writes a zero normal, which no surface can be mistaken for.
-layout(set = 0, binding = 18, GBUFFER_GUIDE) uniform writeonly image2D guide;
+layout(set = 2, binding = 4, GBUFFER_GUIDE) uniform writeonly image2D guide;
 
 /// The specular albedo, which is what an upscaler demodulates the mirrored half of a pixel by.
 ///
@@ -193,7 +199,7 @@ layout(set = 0, binding = 18, GBUFFER_GUIDE) uniform writeonly image2D guide;
 /// specular lobe except the water, so nothing else has a specular albedo to report. Half floats,
 /// because an albedo is a fraction that is never accumulated — the argument for full floats on the
 /// radiance channels does not reach here.
-layout(set = 0, binding = 26, GBUFFER_ALBEDO) uniform writeonly image2D specular;
+layout(set = 2, binding = 3, GBUFFER_ALBEDO) uniform writeonly image2D specular;
 
 /// Where a sprite reached, as one or nought.
 ///
@@ -201,19 +207,29 @@ layout(set = 0, binding = 26, GBUFFER_ALBEDO) uniform writeonly image2D specular
 /// per pixel, from the surface a primary ray hit, so every emitter — rain, snow, ash, smoke — is
 /// reprojected with whatever geometry stands behind it. This is what tells the upscaler which pixels
 /// those are, and it is free: the composite below already knows what the sprites left.
-layout(set = 0, binding = 27, GBUFFER_MASK) uniform writeonly image2D particleMask;
+layout(set = 2, binding = 8, GBUFFER_MASK) uniform writeonly image2D particleMask;
 
 /// Where the past is not worth carrying forward, from nought to one.
 ///
 /// The sprites above, and the water with them, for the reason `GBuffer::getBiasMask` gives.
-layout(set = 0, binding = 28, GBUFFER_MASK) uniform writeonly image2D biasMask;
+layout(set = 2, binding = 9, GBUFFER_MASK) uniform writeonly image2D biasMask;
 
 /// Where what the water reflects stood on the previous frame's screen, in pixels. Nought everywhere
 /// that is not water reflecting a surface.
-layout(set = 0, binding = 29, GBUFFER_MOTION) uniform writeonly image2D reflectionMotion;
+layout(set = 2, binding = 7, GBUFFER_MOTION) uniform writeonly image2D reflectionMotion;
+
+/// How much of the star field this pixel still shows, per channel — everything the trace put between
+/// the field and the eye, multiplied together.
+///
+/// **The field is drawn by a pass that can see none of this.** `ToneConstants::mStars` says why it
+/// is drawn there and not here; what it costs is that the pass has no moons, no cloud deck, no
+/// window pane, no water and no fog in front of the sky it is adding stars to. So the trace hands it
+/// the one number that carries all of them: `skyRadiance`'s `shown` times the path's own
+/// transmittance. Nought on every pixel that hit something, which is also how that pass knows.
+layout(set = 2, binding = 10, GBUFFER_STARS) uniform writeonly image2D starsShown;
 
 /// Every live particle in the scene, one emitter's run after another's.
-layout(set = 0, binding = 23, scalar) readonly buffer Sprites
+layout(set = 0, binding = 17, scalar) readonly buffer Sprites
 {
     GpuSprite sprites[];
 };
@@ -223,7 +239,7 @@ layout(set = 0, binding = 23, scalar) readonly buffer Sprites
 /// **No count beside it, because nothing walks these.** The buffer never shrinks, so its length
 /// outlives the cell that filled it — and since the sprite tiles replaced the loop over emitters,
 /// the only way in is from a sprite the tile named, which can only name one that is real.
-layout(set = 0, binding = 24, scalar) readonly buffer Emitters
+layout(set = 0, binding = 18, scalar) readonly buffer Emitters
 {
     GpuEmitter emitters[];
 };
@@ -231,14 +247,14 @@ layout(set = 0, binding = 24, scalar) readonly buffer Emitters
 /// Where each screen tile's sprites begin, with a sentinel so the last tile needs no special case.
 ///
 /// `Rtx::SpriteTiles` says why the layer is binned per tile and the emitters are not.
-layout(set = 0, binding = 30, scalar) readonly buffer SpriteTileOffsets
+layout(set = 0, binding = 19, scalar) readonly buffer SpriteTileOffsets
 {
     uint spriteTileOffsets[];
 };
 
 /// Every tile's sprites, run together in tile order and ascending inside each run — which is the
 /// order the march used to walk them in, and so the order they still composite in.
-layout(set = 0, binding = 31, scalar) readonly buffer SpriteTileIndices
+layout(set = 0, binding = 20, scalar) readonly buffer SpriteTileIndices
 {
     uint spriteTileIndices[];
 };
@@ -252,7 +268,7 @@ layout(set = 0, binding = 31, scalar) readonly buffer SpriteTileIndices
 // **Uniform and not storage**, which is worth 0.14 ms of the trace at Balmora: every pixel reads
 // half of these fields several times over, and a uniform block is promoted to a constant bank the
 // way the push constants it replaces were, where a storage buffer is a memory read like any other.
-layout(set = 0, binding = 25, scalar) uniform Frame
+layout(set = 0, binding = 21, scalar) uniform Frame
 {
     VisibilityConstants frame;
 };

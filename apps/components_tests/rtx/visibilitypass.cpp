@@ -2834,6 +2834,29 @@ namespace Rtx
             EXPECT_EQ(without[0], 0) << "the sky was not empty to begin with";
             EXPECT_GT(with[0], 128) << "the field was not drawn at all";
             EXPECT_EQ(with[1], without[1]) << "a star was drawn over the floor";
+
+            // **And a moon puts the field out, which is the one thing this pass cannot see.** The
+            // sky is composited in `skyRadiance` and the field is drawn after the upscaler, so what
+            // the moons and the deck left of it has to travel with the pixel — `GBuffer::getStarsShown`
+            // is that number. A disc of black, so what is measured is the covering and not the face.
+            const float root = std::sqrt(0.5f);
+            Shaders::MoonDisc covering{};
+            covering.mDirection = osg::Vec3f(0.0f, root, root);
+            covering.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
+            covering.mUp = osg::Vec3f(0.0f, -root, root);
+            covering.mColour = osg::Vec3f();
+            covering.mThroughAir = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            covering.mAngularRadius = 1.2f;
+            covering.mAlpha = 1.0f;
+            covering.mFace = Shaders::NO_TEXTURE;
+
+            camera.mMoons[0] = covering;
+            EXPECT_EQ(brightest(true)[0], without[0]) << "a star was drawn through a moon";
+
+            // The same disc, not there: it covers nothing and the field comes back. Which is what
+            // says the covering was the cause, rather than the black the disc is painted.
+            camera.mMoons[0].mAlpha = 0.0f;
+            EXPECT_GT(brightest(true)[0], 128) << "the moon was not what put the field out";
         }
 
         /// The deck takes its shape from what the sheet paints, read against what that sheet averages.
@@ -4409,7 +4432,9 @@ namespace Rtx
             const SceneBuffers buffers(device, setup, scene, records);
 
             const TextureArray textures(device, setup, 0, {});
-            const VisibilityPass pass(device, setup, Testing::getShaderDirectory(), textures.getLayout(), true);
+            const GBufferLayout channelLayout(device);
+            const VisibilityPass pass(
+                device, setup, Testing::getShaderDirectory(), textures.getLayout(), channelLayout, true);
             setup.flush();
             const VisibilityInputs inputs{
                 .mScene = acceleration.getTopLevel(),
@@ -4419,7 +4444,7 @@ namespace Rtx
                 .mShading = textures.getShading(),
             };
 
-            const GBuffer channels(device, size, size);
+            const GBuffer channels(device, channelLayout, size, size);
             const CompositePass composite(device, pool, Testing::getShaderDirectory());
 
             // The format the shader declares for `colour`. A narrower one makes every load and store

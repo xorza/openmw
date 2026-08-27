@@ -38,15 +38,16 @@ namespace Rtx
         /// @param colour the finished frame in linear radiance, in `VK_IMAGE_LAYOUT_GENERAL`.
         /// @param exposure one float, what to scale it by. `ExposurePass` writes it, measured off
         ///        this same image or fixed, and this pass never learns which.
-        /// @param traced the trace's own depth, in `VK_IMAGE_LAYOUT_GENERAL`, at the extent the
-        ///        trace ran at. A miss wrote one, which is what says a pixel may carry a star.
+        /// @param starsShown what the star field has to be drawn through, in
+        ///        `VK_IMAGE_LAYOUT_GENERAL`, at the extent the trace ran at. `GBuffer::getStarsShown`
+        ///        says why this pass cannot work it out for itself.
         /// @param textures the scene's texture descriptor set, bound as set one.
         /// @param constants how much of the target to encode from its top-left corner — the whole of
         ///        it for a frame, and a corner of it for a picture inside the interface, which fills
         ///        as much of a texture as its widget is currently wide — beside the camera on that
         ///        grid, the trace's own extent, and the star field to draw.
         /// @param target the displayable image, in `VK_IMAGE_LAYOUT_GENERAL`.
-        void record(VkCommandBuffer commands, const Image& colour, VkBuffer exposure, const Image& traced,
+        void record(VkCommandBuffer commands, const Image& colour, VkBuffer exposure, const Image& starsShown,
             VkDescriptorSet textures, const Image& target, const Shaders::ToneConstants& constants) const;
 
     private:
