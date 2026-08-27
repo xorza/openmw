@@ -112,7 +112,11 @@ void main()
         const float meanLog = (meanBin - 1.0) / float(EXPOSURE_BINS - 2u) * span + MIN_LOG_LUMINANCE;
         const float meanLuminance = exp2(meanLog);
 
-        target = clamp(pow(KEY / max(meanLuminance, 1e-6), ADAPTATION), MIN_EXPOSURE, MAX_EXPOSURE);
+        // **The hour is applied before the clamps and before the approach**, so what the eye moves
+        // toward is already the held-back value: a bias taken off afterwards would be a second
+        // adaptation chasing the first.
+        target = clamp(
+            frame.mBias * pow(KEY / max(meanLuminance, 1e-6), ADAPTATION), MIN_EXPOSURE, MAX_EXPOSURE);
     }
 
     // **A frame with no past takes the target outright**, which is the first frame of a run and any

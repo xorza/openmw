@@ -373,7 +373,9 @@ namespace RtxTool
 
                 const Rtx::FrameResult result
                     = renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
-                        Rtx::FrameOptions{ .mFilter = request.mFilter, .mExposure = request.mExposure });
+                        Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                            .mFilter = request.mFilter,
+                            .mExposure = request.mExposure });
 
                 if (window != nullptr && !renderer->presentFrame())
                     renderer->resize(window->getWidth(), window->getHeight());

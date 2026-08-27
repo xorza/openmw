@@ -71,6 +71,12 @@ namespace Rtx
     /// after the decode, where a half means a half.
     osg::Vec3f lightColour(const SceneUtil::LightSource& source);
 
+    /// What to hold a measured exposure back by, for a sky delivering this much light.
+    ///
+    /// One where the hour delivers a full sun's worth or more, falling from there. `Daylight`'s own
+    /// field says why an hour has to be told to the exposure rather than measured out of the frame.
+    float exposureBias(const osg::Vec3f& sunIrradiance, const osg::Vec3f& ambient);
+
     /// What a weather says about the sky at one hour, in the renderer's own units.
     ///
     /// Both renderers reach these six numbers by their own route — one reports what a live weather
@@ -160,6 +166,15 @@ namespace Rtx
         /// How far the stars have come out: the engine's `Stars` ramp at this hour, before the
         /// weather's glare is taken off it.
         float mStarFade = 0.0f;
+
+        /// What to hold the measured exposure back by, from this hour alone. One leaves it alone.
+        ///
+        /// **Night is a thing the world knows and not a thing the picture can measure.** A histogram
+        /// has no absolute anchor: it normalises whatever it is shown toward the key, so a midnight
+        /// and a noon come out within a few per cent of each other and the renderer has no night in
+        /// it at any hour. The weather does know the hour, so it says how dark the hour is here and
+        /// the exposure pass is told rather than left to guess. `settle` derives it.
+        float mExposureBias = 1.0f;
 
         /// The weather's own air.
         ///

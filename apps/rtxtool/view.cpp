@@ -464,7 +464,9 @@ namespace RtxTool
             framing.mFrame = drawn;
 
             renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
-                Rtx::FrameOptions{ .mFilter = request.mFilter, .mExposure = request.mExposure });
+                Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                    .mFilter = request.mFilter,
+                    .mExposure = request.mExposure });
 
             if (!renderer->presentFrame())
                 resized = true;

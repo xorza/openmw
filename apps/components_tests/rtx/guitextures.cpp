@@ -429,9 +429,10 @@ namespace Rtx
 
             // **Lit, and to the byte**, so the whole chain ran rather than only the coverage the
             // alpha above would have had either way. A default albedo of a half, Lambertian, square
-            // to a sun of one: `0.5 * 1.0 / pi = 0.159155` linear, which the display curve encodes
-            // as 111 of 255.
-            EXPECT_EQ(inTexture(texture, extent, 8, 8), (std::array<std::uint8_t, 4>{ 111, 111, 111, 255 }))
+            // to a sun of one: `0.5 * 1.0 / pi = 0.159155` linear. The tone curve takes its whole
+            // shadow offset off that, being past three times it, and leaves the rest alone far under
+            // the compression point — `1.055 * 0.119155^(1/2.4) - 0.055 = 0.378907`, or 97 of 255.
+            EXPECT_EQ(inTexture(texture, extent, 8, 8), (std::array<std::uint8_t, 4>{ 97, 97, 97, 255 }))
                 << "the sheet, lit";
 
             // The same picture with a sky behind it, which is what a frame filling a window has:

@@ -39,7 +39,7 @@ namespace Rtx
 
     ExposurePass::ExposurePass(const Device& device, const std::filesystem::path& shaderDirectory)
         : mHistogramPipeline(device, sHistogramBindings, sizeof(Shaders::HistogramConstants), {},
-            shaderDirectory / "histogram.comp.spv", "histogram")
+              shaderDirectory / "histogram.comp.spv", "histogram")
         , mReducePipeline(device, sReduceBindings, sizeof(Shaders::ExposureConstants), {},
               shaderDirectory / "exposure.comp.spv", "exposure")
         , mHistogram(device, Shaders::EXPOSURE_BINS * sizeof(std::uint32_t),
@@ -125,7 +125,8 @@ namespace Rtx
         handOver(commands);
     }
 
-    void ExposurePass::record(VkCommandBuffer commands, const Image& frame, float elapsedSeconds, bool reset) const
+    void ExposurePass::record(
+        VkCommandBuffer commands, const Image& frame, float elapsedSeconds, bool reset, float bias) const
     {
         beforeWrite(commands);
 
@@ -201,6 +202,7 @@ namespace Rtx
             .mPixels = frame.getWidth() * frame.getHeight(),
             .mElapsed = elapsedSeconds,
             .mReset = reset ? 1u : 0u,
+            .mBias = bias,
         };
 
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mReducePipeline.getHandle());

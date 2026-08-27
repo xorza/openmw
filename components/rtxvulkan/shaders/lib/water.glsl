@@ -294,6 +294,14 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
         return water;
 
     // A raft of bubbles is diffuse, and what it covers of the pixel it takes from the reflection.
+    //
+    // **Both halves of the albedo are settled here, and the diffuse one is what water never has.**
+    // The channel is a demodulator: Ray Reconstruction divides the diffuse light by what is reported
+    // and multiplies it back afterwards, so a surface that returns diffuse light under an albedo of
+    // nothing is divided by nothing. Foam is the one place water is diffuse at all, and leaving the
+    // zero standing there drew every shoreline in the game as a hard white ribbon, at noon as much
+    // as at midnight. What multiplied the foam below is exactly this.
+    response.mDiffuse = vec3(WATER_FOAM_ALBEDO * covered);
     response.mSpecular = vec3(fresnel * shore * (1.0 - covered));
 
     // **Broken water is a raft of bubbles rather than a surface**: white, diffuse, and hiding what is

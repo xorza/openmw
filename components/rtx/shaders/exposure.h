@@ -64,6 +64,10 @@ namespace Rtx::Shaders
         /// One where there is no previous exposure to move away from — the first frame, and any
         /// frame the renderer was told has no past. The measured value is taken outright.
         uint mReset;
+
+        /// What to multiply the measured target by before anything approaches it. See
+        /// `Rtx::Daylight::mExposureBias`.
+        float mBias;
     };
 
 #ifdef RTX_HOST

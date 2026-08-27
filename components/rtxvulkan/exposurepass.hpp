@@ -45,7 +45,7 @@ namespace Rtx
         ///        nothing does: a fixed exposure is pinned for a whole run or not at all.
         /// @param reset true where there is no previous exposure to move from — the first frame, and
         ///        any frame the renderer was told has no past. The measurement is taken outright.
-        void record(VkCommandBuffer commands, const Image& frame, float elapsedSeconds, bool reset) const;
+        void record(VkCommandBuffer commands, const Image& frame, float elapsedSeconds, bool reset, float bias) const;
 
         /// Writes `value` there instead, measuring nothing.
         ///

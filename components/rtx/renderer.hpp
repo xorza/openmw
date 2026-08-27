@@ -276,6 +276,13 @@ namespace Rtx
         /// glint, which are exactly the pixels a filter is most likely to get wrong.
         std::uint32_t mAccumulate = 0;
 
+        /// What to multiply the exposure this frame measures for itself by. One leaves it alone, and
+        /// a fixed `mExposure` is not touched by it at all.
+        ///
+        /// **The hour, which the histogram cannot see.** `Rtx::Daylight::mExposureBias` is where it
+        /// comes from and says why there is one. An interior has no hour and keeps the one here.
+        float mExposureBias = 1.0f;
+
         /// Whether to move the primary ray inside its pixel, by where the frame index falls in a
         /// Halton sequence.
         ///

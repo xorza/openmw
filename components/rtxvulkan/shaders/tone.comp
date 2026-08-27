@@ -9,8 +9,8 @@
 // everything before it works in linear radiance, including the upscaler, which reconstructs from
 // several frames of it.
 //
-// Exposure is a multiply and not a curve. There is no tone-mapping operator here yet, so what the
-// sun does above one is still clipped rather than rolled off.
+// Exposure is a multiply and the curve is `toneMap`'s, which is where a highlight is rolled off
+// rather than clipped.
 
 #include "colour.h"
 #include "tone.h"
@@ -45,5 +45,5 @@ void main()
     const vec4 lit = imageLoad(colour, at);
 
     // The curve maps radiance to a display; coverage is not radiance and passes through it.
-    imageStore(target, at, vec4(encodeSrgb(lit.rgb * exposure), lit.a));
+    imageStore(target, at, vec4(encodeSrgb(toneMap(lit.rgb * exposure)), lit.a));
 }

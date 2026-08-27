@@ -892,8 +892,14 @@ namespace MWRender
         // it is what a reference and a pixel test want, and the default is theirs. Without this an
         // interior lit by nothing but this placeholder's ambient reaches the screen at a few
         // hundredths and reads as black.
+        // **The hour is held back only outdoors, because the bias is the hour's and an interior has
+        // no hour.** A cell's `AMBI` is dark by the same measure a midnight is, and holding a room
+        // back by two stops is not what an eye walking into one does — it adapts to the room.
+        const float bias
+            = world.isOutdoors() ? Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient) : 1.0f;
+
         const Rtx::FrameResult result
-            = mRenderer->renderFrame(constants, Rtx::FrameOptions{ .mExposure = std::nullopt });
+            = mRenderer->renderFrame(constants, Rtx::FrameOptions{ .mExposureBias = bias, .mExposure = std::nullopt });
 
         // **The whole frame, measured between one trace and the next.** Everything the game does
         // in between is in it — update, cull, the rasterizer, this — which is what a player feels

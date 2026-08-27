@@ -299,7 +299,11 @@ namespace Rtx
             return scene;
         }
 
-        /// What the shader writes for a linear value, so a test can name the byte it expects.
+        /// A linear value as the display curve writes it, so a test can name the byte it expects.
+        ///
+        /// **The display curve and not the whole of what `tone.comp` does**: that pass runs
+        /// `toneMap` first, and a test measuring what the trace computed wants the radiance rather
+        /// than the picture made of it. `countHits` encodes with this for the same reason.
         std::uint8_t encodeSrgb(float linear)
         {
             const float encoded
@@ -530,24 +534,57 @@ namespace Rtx
                                .mHits;
                 }
 
-                mRenderer->readPixels(pixels);
+                // **The radiance encoded here rather than the picture read back.** `tone.comp` puts
+                // `toneMap` between the two, and that curve is a display transform: it takes 0.04
+                // off a shadow and rolls a highlight away from one, neither of which a test about
+                // what the trace computed has an opinion on. What every figure in this file was
+                // derived against is the radiance through the display curve, which is this.
+                //
+                // `mExposure` is one for every caller of this, so there is no measured exposure to
+                // fold in — see the `std::optional` default above.
+                mRenderer->readChannel(Channel::Radiance, mRadiance);
+
+                pixels.resize(mRadiance.size());
+                for (std::size_t at = 0; at < mRadiance.size(); at += 4)
+                {
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                        pixels[at + channel] = encodeSrgb(mRadiance[at + channel]);
+
+                    // Coverage rather than radiance, which the curve does not touch either.
+                    pixels[at + 3]
+                        = static_cast<std::uint8_t>(std::lround(std::clamp(mRadiance[at + 3], 0.0f, 1.0f) * 255.0f));
+                }
+
                 return hits;
+            }
+
+            /// The picture a display would show: this pass's own tone curve and display curve over
+            /// the exposure the frame measured for itself.
+            ///
+            /// **The one thing here that wants the picture rather than the radiance**, because what
+            /// it measures is the exposure pass. Everything else in this file is about what the
+            /// trace computed, which `countHits` gives without a display transform over it.
+            void renderPicture(const SceneDesc& scene, const Shaders::VisibilityConstants& camera, std::uint32_t size,
+                std::vector<std::uint8_t>& pixels)
+            {
+                mRenderer->resize(size, size);
+                mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
+                mRenderer->renderFrame(camera, FrameOptions{ .mExposure = std::nullopt });
+                mRenderer->readPixels(pixels);
             }
 
             /// The same render as `countHits`, read back in linear radiance rather than as bytes.
             ///
             /// **What a figure is measured on.** `readPixels` gives the picture a display would
-            /// show — eight bits, after the display curve — and the filter figures below had reached
-            /// the point where that was the quantiser talking: two thirds of a byte at the
-            /// brightness they sit at. `Channel::Radiance` is the same frame before either, and it
-            /// is the *same quantity* while nothing tone-maps and the exposure is pinned at one, so
-            /// the numbers stay comparable to the ones that were recorded through bytes.
+            /// show — eight bits, after the tone curve and the display curve — and the filter
+            /// figures below had reached the point where that was the quantiser talking: two thirds
+            /// of a byte at the brightness they sit at. This is the same frame before either.
             void renderRadiance(const SceneDesc& scene, const Shaders::VisibilityConstants& camera, std::uint32_t size,
                 std::vector<float>& values, std::uint32_t accumulate = 0, bool filter = false)
             {
-                // The bytes are read and thrown away: they are what sharing `countHits`'s render
-                // loop costs, and one image copy against a sixty-four frame render is not a trade
-                // worth a second copy of that loop.
+                // The bytes are made and thrown away: they are what sharing `countHits`'s render
+                // loop costs, and encoding one image against a sixty-four frame render is not a
+                // trade worth a second copy of that loop.
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, {}, camera, size, pixels, SeaState{}, accumulate, filter);
                 mRenderer->readChannel(Channel::Radiance, values);
@@ -640,6 +677,7 @@ namespace Rtx
             }
 
             Renderer* mRenderer = nullptr;
+            std::vector<float> mRadiance;
             std::vector<TextureData> mNumbered;
             std::vector<std::string> mErrors;
         };
@@ -1311,18 +1349,21 @@ namespace Rtx
             // mean bin is 143 and the reduction reads back
             // `(143 - 1) / 254 * 16 - 10 = -1.055118` — a luminance of 0.481258, which is the
             // quantisation and not a mistake. The key over that, to the adaptation power, is
-            // `(0.18 / 0.481258)^0.75 = 0.478268`; the frame comes out at 0.239134 linear and
-            // `1.055 * 0.239134^(1/2.4) - 0.055 = 0.5262`, or 134 of 255.
+            // `(0.18 / 0.481258)^0.75 = 0.478268`, so the frame reaches the display transform at
+            // 0.239134 linear.
+            //
+            // The tone curve takes its shadow offset off that — 0.239134 is past three times it, so
+            // the whole 0.04 comes off — and leaves the rest alone, being far under the compression
+            // point. `1.055 * 0.199134^(1/2.4) - 0.055 = 0.483578`, or 123 of 255.
             std::vector<std::uint8_t> measured;
-            EXPECT_EQ(countHits(makeWall(), {}, camera, size, measured, SeaState{}, 0, false, false, std::nullopt),
-                size * size);
+            renderPicture(makeWall(), camera, size, measured);
 
             ASSERT_EQ(measured.size(), pixels.size());
             for (std::size_t i = 0; i < measured.size(); i += 4)
             {
-                ASSERT_NEAR(measured[i], 134, 1) << "red at pixel " << i / 4;
-                ASSERT_NEAR(measured[i + 1], 134, 1) << "green at pixel " << i / 4;
-                ASSERT_NEAR(measured[i + 2], 134, 1) << "blue at pixel " << i / 4;
+                ASSERT_NEAR(measured[i], 123, 1) << "red at pixel " << i / 4;
+                ASSERT_NEAR(measured[i + 1], 123, 1) << "green at pixel " << i / 4;
+                ASSERT_NEAR(measured[i + 2], 123, 1) << "blue at pixel " << i / 4;
             }
         }
 
@@ -1369,10 +1410,16 @@ namespace Rtx
             mRenderer->setScene(Rtx::sWorld, scene, std::span(&first, 1), SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
 
+            // **A hue rather than a pair of exact bytes.** The tone curve rolls a saturated colour
+            // off short of the display's end and carries it toward white as it goes, so a full-red
+            // texel arrives at 241 with a little blue under it rather than at 255 with none. Which
+            // texture a wall wears is still the question, and the channels still answer it.
             std::vector<std::uint8_t> shown;
+            const auto wearsRed = [&shown](std::size_t at) { return shown[at] > 200 && shown[at + 2] < 100; };
+            const auto wearsBlue = [&shown](std::size_t at) { return shown[at] < 100 && shown[at + 2] > 200; };
+
             mRenderer->readPixels(shown);
-            ASSERT_EQ(shown[centre], 255) << "the wall did not start out red";
-            ASSERT_EQ(shown[centre + 2], 0);
+            ASSERT_TRUE(wearsRed(centre)) << "the wall did not start out red";
             ASSERT_EQ(mRenderer->getTextureCount(Rtx::sWorld), 1u);
 
             // A second texture and a second material, on a wall nearer the eye. The mesh table is
@@ -1395,8 +1442,7 @@ namespace Rtx
             // The nearer wall wears the texture that was appended, which is only true if its
             // descriptor went to element one. Written to element zero it would come out red, and
             // written nowhere it would come out as whatever the array holds there — both plausible.
-            EXPECT_EQ(shown[centre], 0) << "red";
-            EXPECT_EQ(shown[centre + 2], 255) << "blue";
+            EXPECT_TRUE(wearsBlue(centre)) << "the near wall wears the texture that was appended";
 
             // And the first texture is still where it was: move the near wall out of the way and the
             // one behind it has to be red again, sampled from a descriptor nothing rewrote.
@@ -1405,8 +1451,7 @@ namespace Rtx
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 
-            EXPECT_EQ(shown[centre], 255) << "the texture already uploaded was disturbed by the append";
-            EXPECT_EQ(shown[centre + 2], 0);
+            EXPECT_TRUE(wearsRed(centre)) << "the texture already uploaded was disturbed by the append";
 
             // **And a table with a hole at the end of it.** Letting the near wall's material go
             // frees the texture it wore, and the slot stays in the scene's table until something
@@ -1428,8 +1473,7 @@ namespace Rtx
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 
-            EXPECT_EQ(shown[centre], 255) << "the texture that survived lost its slot";
-            EXPECT_EQ(shown[centre + 2], 0);
+            EXPECT_TRUE(wearsRed(centre)) << "the texture that survived lost its slot";
 
             // **And the same table with the hole at the bottom of it.** A wall in front wearing a
             // texture the scene has put back into the slot the last one gave up, and then the far
@@ -1452,8 +1496,7 @@ namespace Rtx
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 
-            EXPECT_EQ(shown[centre + 2], 255) << "the description landed at its position rather than its slot";
-            EXPECT_EQ(shown[centre], 0);
+            EXPECT_TRUE(wearsBlue(centre)) << "the description landed at its position rather than its slot";
         }
 
         /// **The pass is built once and kept, because building one compiles a shader** — so the set

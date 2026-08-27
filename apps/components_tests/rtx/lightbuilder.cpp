@@ -397,6 +397,50 @@ namespace Rtx
         /// `apps/openmw/mwworld/weather.cpp:47` takes the direction from the volcano at (25000,
         /// 70000) to the player, flattened to the ground. Every other weather leaves it due north,
         /// which is `Weather::defaultStormDirection`.
+        /// The hour holds an exposure back, and a noon does not.
+        ///
+        /// **The histogram cannot tell a midnight from a noon**, because it normalises whatever it
+        /// is shown toward the key — so a renderer left to measure its own exposure has no night in
+        /// it at any hour. The weather knows the hour absolutely, and this is what it says about it.
+        TEST(RtxLightBuilderTest, theHourHoldsAnExposureBackAndANoonDoesNot)
+        {
+            // A full sun's worth of light is the hour the bias leaves alone, and anything past it is
+            // held at one: an hour is allowed to darken a frame and never to open it.
+            EXPECT_FLOAT_EQ(exposureBias(osg::Vec3f(8.0f, 8.0f, 8.0f), osg::Vec3f()), 1.0f);
+            EXPECT_FLOAT_EQ(exposureBias(osg::Vec3f(80.0f, 80.0f, 80.0f), osg::Vec3f()), 1.0f);
+
+            // A clear midnight: no sun at all, and the weather's own night ambient, which comes to
+            // 0.0971 by luminance. `(0.0971 / 8)^0.314 = 0.25022`, which is the two stops the
+            // exponent was chosen for.
+            EXPECT_NEAR(exposureBias(osg::Vec3f(), osg::Vec3f(0.0971f, 0.0971f, 0.0971f)), 0.2502f, 1e-4f);
+
+            // And it only ever moves one way, so no hour is darker in the picture than a darker one.
+            float darker = 0.0f;
+            for (const float level : { 0.01f, 0.1f, 1.0f, 4.0f, 8.0f })
+            {
+                const float bias = exposureBias(osg::Vec3f(level, level, level), osg::Vec3f());
+                EXPECT_GT(bias, darker) << "at a level of " << level;
+                darker = bias;
+            }
+        }
+
+        /// And the weather fills it, so a frame gets the hour it is at rather than a default.
+        ///
+        /// **The relation and not a number.** Which weather values this binary sees depends on
+        /// whether a test before it opened the real installation, which
+        /// `everyHourAsksOnlyForSettingsTheGameDefines` says more about. What holds either way is
+        /// that the field is this hour's own light put through the curve rather than a default left
+        /// standing.
+        TEST(RtxLightBuilderTest, aDaylightCarriesTheHoursOwnBias)
+        {
+            for (const float hour : { 0.0f, 6.0f, 12.0f, 18.0f })
+            {
+                const Daylight day = makeDaylight("Clear", hour);
+                EXPECT_FLOAT_EQ(day.mExposureBias, exposureBias(day.mSun.mIrradiance, day.mAmbient))
+                    << "at hour " << hour;
+            }
+        }
+
         TEST(RtxLightBuilderTest, anAshStormBlowsAwayFromRedMountainAndNothingElseTurnsAtAll)
         {
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);

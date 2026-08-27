@@ -142,6 +142,7 @@ namespace RtxTool
 
             const Rtx::FrameResult result = renderer->renderFrame(makeFrameConstants(framing, extents),
                 Rtx::FrameOptions{ .mAccumulate = averaging ? frame + 1 : 0,
+                    .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
                     .mJitter = request.mJitter,
                     .mFilter = request.mFilter,
                     .mExposure = request.mExposure });

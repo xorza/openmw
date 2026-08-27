@@ -162,7 +162,9 @@ namespace RtxTool
             framing.mFrame = 0;
 
             renderer->renderFrame(makeFrameConstants(framing, extents),
-                Rtx::FrameOptions{ .mFilter = request.mFilter, .mExposure = request.mExposure });
+                Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                    .mFilter = request.mFilter,
+                    .mExposure = request.mExposure });
 
             std::vector<std::uint8_t> pixels;
             renderer->readPixels(pixels);

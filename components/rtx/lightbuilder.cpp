@@ -15,6 +15,7 @@
 #include <components/sky/timeofday.hpp>
 #include <components/weather/downpour.hpp>
 
+#include "shaders/colour.h"
 #include "shaders/scene.h"
 #include "shaders/visibility.h"
 
@@ -183,9 +184,36 @@ namespace Rtx
                 // crosses on the `Stars` window rather than the sky's: they outlast the sunset and
                 // are gone before the sun is up. Nothing but night has any of it.
                 .mStarFade = Sky::TimeOfDayInterpolator<float>(0.0f, 0.0f, 0.0f, 1.0f).getValue(hour, times, "Stars"),
+                .mExposureBias = exposureBias(sky.mSun.mIrradiance, sky.mAmbient),
                 .mFog = { .mColour = haze, .mExtinction = fogExtinction(read.mFogDepth, distantLandReach()) },
             };
         }
+    }
+
+    namespace
+    {
+        /// How much of the hour's own darkness the exposure keeps, as a power of the light it gives.
+        ///
+        /// **Two stops between a clear noon and a clear midnight**, which is what this comes to: the
+        /// two are 6.37 stops apart in what they deliver — 8.03 against 0.097, by luminance — and
+        /// `2 / 6.37` is 0.314.
+        ///
+        /// Two rather than the four and a half the literature fits to real scenes, because there is
+        /// no absolute luminance scale here to hang a published curve on: noon to midnight is eighty
+        /// to one in this renderer where the world's is a hundred million to one. What buys the rest
+        /// of a night is a different lever from exposure — a Purkinje shift raises what is dark
+        /// while it desaturates it, where every exposure lever moves the whole frame at once.
+        constexpr float sHourStops = 0.314f;
+    }
+
+    float exposureBias(const osg::Vec3f& sunIrradiance, const osg::Vec3f& ambient)
+    {
+        const float level = (sunIrradiance + ambient) * Shaders::LUMINANCE_WEIGHTS;
+
+        // **Measured against a full sun rather than against a noon worked out here.** A clear noon
+        // delivers 8.03 where `DAYLIGHT` is 8, so the hour that needs no holding back is the one
+        // that comes out at one — and no second number has to be kept in step with the first.
+        return std::pow(std::min(level / Shaders::DAYLIGHT, 1.0f), sHourStops);
     }
 
     Skylight makeSkylight(const SkyReading& sky)
