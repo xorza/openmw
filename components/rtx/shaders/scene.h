@@ -195,22 +195,28 @@ namespace Rtx::Shaders
     /// the three reach past a radian, so what they do is tint half the sky at a time.
     RTX_CONST float NEBULA_RADIANCE = 0.06f;
 
-    /// Irradiance a full Masser delivers to a surface facing it, on the same scale as `DAYLIGHT`.
+    /// How much of the sunlight falling on Masser comes back off it: its geometric albedo, which is
+    /// what a body sends back at opposition against what a perfectly diffusing disc of the same size
+    /// would.
     ///
-    /// **Chosen apart from `MOON_RADIANCE`, and that is deliberate.** For a real body the two are
-    /// one fact — a disc of radiance `L` and half-angle `t` delivers `L * pi * sin(t)^2` — but
-    /// `MOON_RADIANCE` is pinned by where the tone curve stops keeping colour rather than by what a
-    /// moon emits, and a light read out of that pin puts a night at a thousandth of a day. A real
-    /// full moon is a 400,000th of the sun and no scale here could carry both, so the disc is set so
-    /// that Masser reads as red and this is set so that a moonlit night is a night one can see. It
-    /// is a hundredth of `DAYLIGHT`, which puts a full Masser at twelve times the ambient a clear
-    /// midnight leaves. A sixteenth of `DAYLIGHT` puts a town under a red sun rather than a moon and
-    /// leaves the lamps in it with nothing to be brighter than.
+    /// **The Moon's own, because there is one right answer and Morrowind's moons are rock** — the
+    /// argument `SUN_ANGULAR_RADIUS` makes. What it buys is that moonlight stops being a level
+    /// somebody picked. A disc of geometric albedo `p` and half-angle `t` under irradiance `E`
+    /// delivers `E * p * sin(t)^2` to a surface facing it, and every term of that is already here:
+    /// `DAYLIGHT` is the sun, and `Moons_<name>_Size` is the angle.
     ///
-    /// **Masser's, because the two moons do not deliver the same.** What a moon is worth as a light
-    /// goes as the sky it covers and as its own albedo, and `placeMoon` derives both from what the
-    /// game already says rather than keeping a second number in step with this one.
-    RTX_CONST float MOONLIGHT = 0.08f;
+    /// **And it is the size of Morrowind's moons that makes the physics usable.** Earth's is half a
+    /// degree across, so the same formula puts real moonlight at a 407,000th of sunlight — a figure
+    /// no frame here could carry beside a noon. Masser is eleven degrees across at OpenMW's own
+    /// `Moons_Masser_Size` and nineteen at the ini's, which is four hundred to thirteen hundred
+    /// times the sky and puts it between an 858th of the sun and a 299th. A Morrowind night is lit
+    /// by its moons because its moons are enormous, and nothing has to be invented to say so.
+    ///
+    /// **Masser's alone, because the two moons do not reflect the same.** `tintOf` normalises both
+    /// portraits on Masser's luminance, so Secunda carries this times the 2.54 its own paler face
+    /// says it is worth. And this is not `MOON_RADIANCE`: that one is pinned by where the tone curve
+    /// stops keeping colour, so a light read out of it would put a night at a thousandth of a day.
+    RTX_CONST float MOON_ALBEDO = 0.12f;
 
     /// Angular radius of the sun, in radians — a disc about half a degree across.
     ///

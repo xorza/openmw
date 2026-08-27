@@ -161,6 +161,7 @@ namespace Rtx
         {
             const Sky::SunPlacement sun = Sky::sunAt(hour, times);
             const osg::Vec3f haze = decodeColour(read.mHaze);
+            const osg::Vec3f zenith = decodeColour(read.mSky);
 
             // **The sun is not assembled here**, and the game does not assemble one either: both
             // hand what their weather says to the one builder that knows what a sun may be.
@@ -176,8 +177,9 @@ namespace Rtx
             return Daylight{
                 .mSun = sky.mSun,
                 .mSkyHorizon = haze,
-                .mSkyZenith = decodeColour(read.mSky),
+                .mSkyZenith = zenith,
                 .mAmbient = sky.mAmbient,
+                .mSkyFill = skyFill(haze, zenith, sky.mAmbient),
 
                 // **The engine's own ramp for the stars**, which is four points like every other and
                 // crosses on the `Stars` window rather than the sky's: they outlast the sunset and
@@ -216,17 +218,29 @@ namespace Rtx
         return std::pow(std::min(level / Shaders::DAYLIGHT, 1.0f), sHourStops);
     }
 
+    osg::Vec3f skyFill(const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& ambient)
+    {
+        // What a uniform sky would have to be to deliver what this gradient does. `skyGradient` runs
+        // linearly in `sin(elevation)`, so the cosine-weighted integral over the hemisphere comes to
+        // `pi * (horizon / 3 + 2 * zenith / 3)` — two thirds of the sky an up-facing surface sees is
+        // nearer the zenith than the horizon, and this is that in closed form.
+        const osg::Vec3f carried = horizon / 3.0f + zenith * (2.0f / 3.0f);
+
+        return osg::Vec3f(std::max(ambient.x() - carried.x(), 0.0f), std::max(ambient.y() - carried.y(), 0.0f),
+            std::max(ambient.z() - carried.z(), 0.0f));
+    }
+
     Skylight makeSkylight(const SkyReading& sky)
     {
         // A quarter of the irradiance over pi: what a directional source comes to once its direction
         // is taken away. The header carries the derivation and the reason.
-        const float fill = 0.25f * Shaders::INV_PI;
+        const float directionless = 0.25f * Shaders::INV_PI;
 
         const osg::Vec3f irradiance = sky.mSunColour * Shaders::DAYLIGHT;
         const float share = std::clamp(sky.mSunShare, 0.0f, 1.0f);
 
-        // **The fill is a dusk's, because that is the only hour a sun has light to spread and no
-        // direction to spread it from.** It is nothing at noon, where the direct term carries all of
+        // **The share taken this way is a dusk's, because that is the only hour a sun has light to
+        // spread and no direction to spread it from.** It is nothing at noon, where the direct term carries all of
         // it, and nothing at night, where there is no sun to take a direction away from — peaking
         // where the disc straddles the horizon and the sky in front of it is the brightest thing in
         // the frame. `2 * s * (1 - s)` is that, and the two leaves a dusk where it was: the ramp
@@ -249,7 +263,7 @@ namespace Rtx
                 // the file's own space, and dimming radiance is a linear multiply. Applied before
                 // the decode it would come out a different colour, not merely a darker one.
                 .mDiscColour = sky.mDiscColour * sky.mGlare },
-            .mAmbient = sky.mAmbient + irradiance * (dusk * fill),
+            .mAmbient = sky.mAmbient + irradiance * (dusk * directionless),
         };
     }
 

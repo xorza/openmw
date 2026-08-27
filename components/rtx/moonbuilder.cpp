@@ -34,8 +34,8 @@ namespace Rtx
         const osg::Vec3f sMasserFace(0.0332f, 0.0099f, 0.0123f);
         const osg::Vec3f sSecundaFace(0.0440f, 0.0373f, 0.0295f);
 
-        /// Masser's own luminance. The two tints are normalised on it, so that `Shaders::MOONLIGHT`
-        /// means exactly what its name says.
+        /// Masser's own luminance. The two tints are normalised on it, so that `Shaders::MOON_ALBEDO`
+        /// is the albedo of exactly one moon rather than of an average of two.
         const float sMasserLuma = sMasserFace * Shaders::LUMINANCE_WEIGHTS;
 
         /// Half the angle a moon of this size subtends, out of the geometry the game's own renderer
@@ -70,20 +70,21 @@ namespace Rtx
             return (moon == Moon::Masser ? sMasserFace : sSecundaFace) / sMasserLuma;
         }
 
-        /// How much sky this moon covers, against Masser's.
+        /// What a full moon of this size delivers to a surface facing it, before its own tint.
         ///
-        /// **What turns a radiance into the light a surface receives.** A disc of uniform radiance
-        /// and half-angle `t` delivers `L * pi * sin(t)^2`, so a moon's share of Masser's is the
-        /// ratio of those sines squared — which is why the big moon is the one a night is lit by.
+        /// **A disc of geometric albedo `p` and half-angle `t` under irradiance `E` delivers
+        /// `E * p * sin(t)^2`.** Which is `L * pi * sin(t)^2` for a disc of radiance `L`, with
+        /// `L = E * p / pi` for the Lambertian body a full moon is — so the light is the sun, the
+        /// albedo and the sky the moon covers, and nothing else. `Shaders::MOON_ALBEDO` carries why
+        /// none of the three is a number this renderer chose.
         ///
-        /// Derived from the angles rather than from the two `Size` settings, so that a moon hung at
-        /// a distance of its own would still come out right.
-        float coverageOf(Moon moon)
+        /// Taken from the angle rather than from the `Size` setting behind it, so that a moon hung
+        /// at a distance of its own would still come out right.
+        float deliveredBy(Moon moon)
         {
             const float sine = std::sin(angularRadiusOf(moon));
-            const float masser = std::sin(angularRadiusOf(Moon::Masser));
 
-            return (sine * sine) / (masser * masser);
+            return Shaders::DAYLIGHT * Shaders::MOON_ALBEDO * sine * sine;
         }
 
         /// How much light a moon at `phaseAngle` sends, against a full one.
@@ -186,8 +187,7 @@ namespace Rtx
             .mColour = moon == Moon::Masser ? sMasserFace : sSecundaFace,
         };
 
-        placement.mIrradiance
-            = tintOf(moon) * (Shaders::MOONLIGHT * coverageOf(moon) * phaseLaw(placement.mPhaseAngle) * alpha);
+        placement.mIrradiance = tintOf(moon) * (deliveredBy(moon) * phaseLaw(placement.mPhaseAngle) * alpha);
 
         placement.mDirection.normalize();
         placement.mRight.normalize();

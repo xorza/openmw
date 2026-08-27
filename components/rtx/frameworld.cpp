@@ -13,6 +13,7 @@ namespace Rtx
 
         constants.mSkyHorizon = world.mSkyHorizon;
         constants.mSkyZenith = world.mSkyZenith;
+        constants.mSkyFill = world.mSkyFill;
 
         constants.mFogColour = world.mAir.mColour;
         constants.mFogExtinction = world.mAir.mExtinction;

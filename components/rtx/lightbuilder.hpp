@@ -127,15 +127,34 @@ namespace Rtx
     /// So what the file calls the night's sun is put where light with no direction belongs — the
     /// ambient — and the sun keeps only what is over the horizon. **The two halves are complements**,
     /// so the total is continuous through dusk rather than stepping when the sun goes out: the share
-    /// that is still up lights as a direction, and the share that is not lights as a fill. That is
+    /// that is still up lights as a direction, and the share that is not lights with none. That is
     /// also what twilight is.
     ///
-    /// The fill is a quarter of the irradiance over pi. A directional source delivers, averaged over
+    /// What it lights with is a quarter of the irradiance over pi. A directional source delivers, averaged over
     /// every orientation a surface could take, a quarter of its irradiance — the mean of `max(0,
     /// cos)` over the sphere — and a uniform hemisphere of radiance `L` delivers `pi L` to all of
     /// them, so `E / 4pi` is the same light with the direction taken out of it. Nothing is invented
     /// and nothing is lost; a night simply stops having a sun in it.
     Skylight makeSkylight(const SkyReading& sky);
+
+    /// What the sky delivers as light over and above the colour it is drawn with.
+    ///
+    /// **Morrowind lights its night with an ambient and this renderer lights it with a sky, and the
+    /// two are an order apart.** The engine puts `Ambient_<weather>_Night_Color` on every surface
+    /// directly; the ray tracer throws bounce rays at the dome instead and reads
+    /// `Sky_<weather>_Night_Color`, which is a tenth of it — so the ground came out ten times short
+    /// of the night the content describes, against a sky drawn exactly as bright as ever.
+    ///
+    /// So the sky is held to what the weather says a night is worth. A gradient that runs linearly
+    /// in `sin(elevation)` delivers what a uniform sky of `horizon / 3 + 2 * zenith / 3` would, and
+    /// whatever the ambient asks for beyond that is this. **It is light and not a colour**: nothing
+    /// draws it, because Morrowind does not draw it either — its ambient is on the surfaces and
+    /// never in the sky.
+    ///
+    /// **Nought by day, with no hour asked.** A weather's daylight sky outruns its daylight ambient
+    /// in all three channels, so the rule bites only where the content puts the light somewhere the
+    /// sky cannot carry it — which is night, and the deepest part of dusk.
+    osg::Vec3f skyFill(const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& ambient);
 
     /// The sun and the sky at one hour, as the content files describe them.
     ///
@@ -155,6 +174,9 @@ namespace Rtx
         /// What an exterior gets in place of a cell's `AMBI`, which only interiors carry — the
         /// weather's own ambient, and across dusk the sun's light with its direction taken away.
         osg::Vec3f mAmbient;
+
+        /// What the sky lights with beyond what it is drawn with. `skyFill` says why a night has one.
+        osg::Vec3f mSkyFill;
 
         /// How far the stars have come out: the engine's `Stars` ramp at this hour, before the
         /// weather's glare is taken off it.

@@ -422,6 +422,57 @@ namespace Rtx
             }
         }
 
+        /// A night's sky lights with more than it is drawn with, and a day's does not.
+        ///
+        /// **Because Morrowind states the two in different places.** It lights a night by putting
+        /// `Ambient_<weather>_Night_Color` on every surface and it draws that night by
+        /// `Sky_<weather>_Night_Color`, and for a clear night the first is 0.0168 by luminance
+        /// against the second's 0.0030. A renderer that lights the ground by tracing the sky is short
+        /// by the difference, which is the whole of what this makes up.
+        TEST(RtxLightBuilderTest, aNightsSkyLightsWithMoreThanItIsDrawnWith)
+        {
+            const auto grey = [](float value) { return osg::Vec3f(value, value, value); };
+            const auto filled = [&](float horizon, float zenith, float ambient) {
+                return skyFill(grey(horizon), grey(zenith), grey(ambient)).x();
+            };
+
+            // A gradient linear in `sin(elevation)` delivers what a uniform sky of `h / 3 + 2z / 3`
+            // would, so a horizon of 0.3 under a zenith of 0.6 is worth 0.5 — and an ambient of 0.8
+            // asks for the 0.3 that is left.
+            EXPECT_NEAR(filled(0.3f, 0.6f, 0.8f), 0.3f, 1e-6f);
+
+            // The zenith is worth twice the horizon, which is what makes those two different skies:
+            // the same pair the other way up is worth 0.4 and leaves 0.4 to ask for.
+            EXPECT_NEAR(filled(0.6f, 0.3f, 0.8f), 0.4f, 1e-6f);
+
+            // A sky that already carries the ambient asks for nothing, and one that outruns it does
+            // not ask for less than nothing.
+            EXPECT_EQ(filled(0.5f, 0.5f, 0.5f), 0.0f);
+            EXPECT_EQ(filled(0.9f, 0.9f, 0.2f), 0.0f);
+
+            // And it asks per channel: a red ambient over a grey sky fills the red alone rather than
+            // lifting the whole of it.
+            const osg::Vec3f tinted = skyFill(grey(0.5f), grey(0.5f), osg::Vec3f(0.9f, 0.5f, 0.1f));
+            EXPECT_NEAR(tinted.x(), 0.4f, 1e-6f);
+            EXPECT_EQ(tinted.y(), 0.0f);
+            EXPECT_EQ(tinted.z(), 0.0f);
+        }
+
+        /// And a frame carries the hour's own, worked out from the three colours it already holds.
+        ///
+        /// **The relation and not a number**, for the reason `aDaylightCarriesTheHoursOwnBias` gives:
+        /// which weather values this binary sees depends on whether a test before it opened the real
+        /// installation. What holds either way is that nothing downstream has to know which of the
+        /// two numbers a weather put its night in.
+        TEST(RtxLightBuilderTest, aDaylightCarriesTheHoursOwnFill)
+        {
+            for (const float hour : { 0.0f, 6.0f, 12.0f, 18.0f })
+            {
+                const Daylight day = makeDaylight("Clear", hour);
+                EXPECT_EQ(day.mSkyFill, skyFill(day.mSkyHorizon, day.mSkyZenith, day.mAmbient)) << "at hour " << hour;
+            }
+        }
+
         /// And the weather fills it, so a frame gets the hour it is at rather than a default.
         ///
         /// **The relation and not a number.** Which weather values this binary sees depends on

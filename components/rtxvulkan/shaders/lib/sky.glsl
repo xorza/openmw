@@ -17,13 +17,14 @@
 
 /// The sky's own glow along a direction, with nothing drawn in it.
 ///
-/// **This is the sky as a source of light**, which is not the sky as a thing to look at. What a
-/// bounce gathers must leave out the sun's disc: `gather` asks the sun directly, so a hemisphere
-/// that also picked it up out of the sky would count it twice — and a bounce cone a radian wide
-/// would pick it up over a quarter of the sky at that.
+/// **This is the sky as a source of light**, which is not the sky as a thing to look at, and the
+/// two differ both ways. What a bounce gathers must leave out the sun's disc: `gather` asks the sun
+/// directly, so a hemisphere that also picked it up out of the sky would count it twice — and a
+/// bounce cone a radian wide would pick it up over a quarter of the sky at that. And it must carry
+/// `mSkyFill`, which is light the weather has and the sky is not painted with.
 vec3 skyGlow(vec3 direction)
 {
-    return skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction);
+    return skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction) + frame.mSkyFill;
 }
 
 /// Where the deck stops being drawn and starts being the haze it fades into, as a height above the
@@ -272,7 +273,9 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
 /// @param blur how far this ray's cone has spread from its axis, in radians.
 vec3 skyRadiance(vec3 direction, float blur)
 {
-    vec3 colour = skyGlow(direction);
+    // **The gradient and not `skyGlow`**, which is the one place the two part company: the fill is
+    // light the weather says a night has and Morrowind draws nowhere, so an eye must not find it.
+    vec3 colour = skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction);
 
     // **The stars are behind everything and the deck is in front of it**, which is the order the
     // sky is actually stacked in: a star is on the celestial sphere, the clouds are a couple of

@@ -53,7 +53,7 @@ namespace Rtx
 
         /// What this moon delivers to a surface facing it, linear.
         ///
-        /// **Its own colour at the level `Shaders::MOONLIGHT` sets**, dimmed by how far round its
+        /// **Its own colour at the level its own size and albedo give**, dimmed by how far round its
         /// cycle it is and by the fade the game applies. Zero exactly where the fade is — a moon
         /// that is down, or one the daylight has taken — which is the one test a shader makes
         /// before it spends a shadow ray. A new moon is not zero but three parts in ten thousand,

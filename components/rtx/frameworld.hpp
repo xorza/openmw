@@ -53,6 +53,10 @@ namespace Rtx
         osg::Vec3f mSkyHorizon;
         osg::Vec3f mSkyZenith;
 
+        /// What the sky lights with beyond those two. `Rtx::skyFill` says why a night has one and a
+        /// day has none.
+        osg::Vec3f mSkyFill;
+
         /// The air between the eye and everything else, as a medium.
         Fog mAir;
 

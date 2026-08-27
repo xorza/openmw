@@ -63,6 +63,10 @@ namespace RtxTool
             .mAmbient = lighting.mAmbient,
             .mSkyHorizon = lighting.mDaylight.mSkyHorizon,
             .mSkyZenith = lighting.mDaylight.mSkyZenith,
+
+            // Nought in a room, for the reason the deck and the stars are: there is no dome to be
+            // short of, and the cell's own ambient already reaches every surface.
+            .mSkyFill = lighting.mOutdoors ? lighting.mDaylight.mSkyFill : osg::Vec3f(),
             .mAir = lighting.mFog,
             .mWaterLevel = lighting.mWaterLevel,
             .mSeconds = lighting.mSeconds,

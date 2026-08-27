@@ -769,6 +769,12 @@ namespace MWRender
         // records: one colour for the air, and one for the dome it fades into overhead.
         const osg::Vec3f haze = Rtx::decodeColour(world.mAir.mColour);
 
+        // **The sky's own colour, and an interior has none.** The weather system stops writing it
+        // the moment the player steps inside, so what the sky is still holding belongs to wherever
+        // they were last outdoors — and the air's own colour stands in, which is what a room's sky
+        // is anyway. A quasi-exterior is on the outdoor side of that: it has weather.
+        const osg::Vec3f zenith = world.isOutdoors() ? Rtx::decodeColour(world.mSkyColour) : haze;
+
         // **The recorded depth, and not the ramp `MWRender::FogManager` made of it.** That ramp
         // exists to hide a far clip plane and this renderer has no far clip to hide, so per the
         // fork's own rule it does not come across. What is read instead is the number the content
@@ -800,11 +806,14 @@ namespace MWRender
             .mAmbient = sky.mAmbient,
             .mSkyHorizon = haze,
 
-            // **The sky's own colour, and an interior has none.** The weather system stops writing
-            // it the moment the player steps inside, so what the sky is still holding belongs to
-            // wherever they were last outdoors — and the air's own colour stands in, which is what a
-            // room's sky is anyway. A quasi-exterior is on the outdoor side of that: it has weather.
-            .mSkyZenith = world.isOutdoors() ? Rtx::decodeColour(world.mSkyColour) : haze,
+            .mSkyZenith = zenith,
+
+            // **What the weather says a night is worth, less what its sky can carry**, and nothing
+            // at all in a room. The game lights a night by an ambient on every surface and this
+            // renderer lights it by tracing the dome, which is an order short — `Rtx::skyFill`
+            // carries the rest of it. Indoors there is no dome to be short of, and the cell's own
+            // ambient already reaches every surface as `mAmbient`.
+            .mSkyFill = world.isOutdoors() ? Rtx::skyFill(haze, zenith, sky.mAmbient) : osg::Vec3f(),
 
             .mAir = { .mColour = haze,
                 .mExtinction = Rtx::fogExtinction(world.mFogDepth, reach),

@@ -68,7 +68,7 @@ namespace Rtx
         /// 40, OpenMW ships defaults of 55 and 20, and which pair a run sees depends on the order
         /// the suite planted its fallback keys. The conversion is what this owns; the number is
         /// whatever the installation is configured with, and both give a moon far larger than the
-        /// real one — 9.6 degrees of radius against 5.7.
+        /// real one — 9.6 degrees of radius or 5.7, against the quarter of a degree ours has.
         TEST(RtxMoonBuilderTest, aMoonIsAsWideAsTheGameDrawsIt)
         {
             seed();
@@ -208,28 +208,66 @@ namespace Rtx
             return linear * Shaders::LUMINANCE_WEIGHTS;
         }
 
-        /// A full Masser that nothing fades delivers exactly the level the constant names.
+        /// A full Masser delivers what a lit disc of its size and albedo delivers, and no more.
+        ///
+        /// **Reached the long way round here and the short way in the code.** A moon is a Lambertian
+        /// body under the sun, so its radiance at opposition is `E * p / pi`; a disc of that radiance
+        /// and half-angle `t` delivers `L * pi * sin(t)^2` to whatever faces it. The two `pi` cancel
+        /// and `placeMoon` writes what is left, so building it back up from the radiance is a second
+        /// path to the same number.
         ///
         /// **The level is Masser's, and it stays Masser's because the two tints are normalised on
         /// Masser's own luminance.** The portraits differ in brightness as well as in hue, and that
-        /// difference is a fact about the bodies rather than the art — so a single constant can only
+        /// difference is a fact about the bodies rather than the art — so a single albedo can only
         /// speak for one moon, and this is the one it speaks for.
-        TEST(RtxMoonBuilderTest, aFullMasserDeliversTheLevelTheConstantNames)
+        TEST(RtxMoonBuilderTest, aFullMasserDeliversWhatALitDiscOfItsSizeDoes)
         {
             seed();
 
+            const float radiance = Shaders::DAYLIGHT * Shaders::MOON_ALBEDO * Shaders::INV_PI;
+            const float sine = std::sin(moonAngularRadius(Moon::Masser));
+            const float facing = radiance * osg::PIf * sine * sine;
+
             const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
-            EXPECT_NEAR(luminanceOf(full.mIrradiance), Shaders::MOONLIGHT, 1e-5f);
+            EXPECT_NEAR(luminanceOf(full.mIrradiance), facing, 1e-7f);
 
             // And it is red, which is the only reason to draw Masser rather than a bright dot: its
             // portrait averages 0.0332 against 0.0099, and the light it reflects carries that.
             EXPECT_GT(full.mIrradiance.x(), 3.0f * full.mIrradiance.y());
         }
 
+        /// The same formula, asked about the moon everyone can check.
+        ///
+        /// **A real full moon is a 407,000th of the sun**, which is the published figure and the one
+        /// thing here that no content file can move. Half a degree of diameter and a geometric albedo
+        /// of 0.12 give `0.12 * sin(0.2593 deg)^2 = 2.45e-6`, and that is the whole of what makes
+        /// Morrowind's moons able to light anything at all: Masser is twenty-two to thirty-eight
+        /// times wider, so it covers hundreds of times the sky.
+        ///
+        /// **A band and not a number, for the reason the sizes are not pinned above.** OpenMW's 55
+        /// puts Masser at an 858th of the sun and the ini's 94 at a 299th, and which of the two a run
+        /// sees is whichever planted the key first. Both are a night that can be lit and neither is a
+        /// second sunrise, which is what the band asserts.
+        TEST(RtxMoonBuilderTest, theSameLawPutsARealMoonWhereThePhotometryDoes)
+        {
+            const auto share = [](float angularRadius) {
+                const float sine = std::sin(angularRadius);
+                return Shaders::MOON_ALBEDO * sine * sine;
+            };
+
+            EXPECT_NEAR(share(osg::DegreesToRadians(0.2593f)), 1.0f / 407000.0f, 1e-8f);
+
+            seed();
+            const float masser = share(moonAngularRadius(Moon::Masser));
+            EXPECT_LT(masser, 1.0f / 250.0f) << "a moon brighter than a sunrise";
+            EXPECT_GT(masser, 1.0f / 1000.0f) << "a moon that lights nothing";
+            EXPECT_GT(masser / share(osg::DegreesToRadians(0.2593f)), 400.0f) << "the size the game gives it got lost";
+        }
+
         /// Secunda delivers the share of the sky it covers, with its own albedo on top.
         ///
-        /// **What a moon is worth as a light goes as the sky it covers.** A disc of half-angle `t`
-        /// delivers `L * pi * sin(t)^2`, so Secunda's share of Masser's is the ratio of those sines
+        /// **What a moon is worth as a light goes as the sky it covers.** Both moons are the same
+        /// law at the same albedo, so Secunda's share of Masser's is the ratio of their sines
         /// squared: 0.1853 at the ini's sizes. Its portrait is the paler of the two by 2.54, so what
         /// it actually delivers is 0.4705 of Masser rather than 0.1853.
         TEST(RtxMoonBuilderTest, secundaDeliversTheShareOfTheSkyItCovers)
@@ -287,8 +325,9 @@ namespace Rtx
             EXPECT_EQ(placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.0f).mIrradiance, osg::Vec3f());
 
             // The fade is a plain multiplier on it, so half hidden is half lit.
+            const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
             const MoonPlacement half = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.5f);
-            EXPECT_NEAR(luminanceOf(half.mIrradiance), 0.5f * Shaders::MOONLIGHT, 1e-5f);
+            EXPECT_NEAR(luminanceOf(half.mIrradiance), 0.5f * luminanceOf(full.mIrradiance), 1e-7f);
         }
     }
 }

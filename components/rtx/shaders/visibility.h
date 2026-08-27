@@ -168,13 +168,14 @@ namespace Rtx::Shaders
 
         /// What the moon delivers to a surface facing it, linear.
         ///
-        /// **A light and the disc are two numbers here, not one.** `Shaders::MOONLIGHT` says why
+        /// **A light and the disc are two numbers here, not one.** `Shaders::MOON_ALBEDO` says why
         /// the level a moon lights by cannot be read off the radiance it is drawn at. Zero is a
         /// moon that lights nothing, and it is the one test worth making before a shadow ray.
         vec3 mIrradiance;
 
-        /// Half the angle the disc subtends. Masser's is nine and a half degrees, which is
-        /// thirty-five times the sun.
+        /// Half the angle the disc subtends. Masser's is between five and a half degrees and nine
+        /// and a half, on the two `Moons_Masser_Size` the game ships — twenty to thirty-six times
+        /// the sun either way.
         float mAngularRadius;
 
         /// How far round its cycle: zero is full and pi is new.
@@ -290,6 +291,14 @@ namespace Rtx::Shaders
         /// fades to at the horizon, which is most of what a Morrowind sky is.
         vec3 mSkyHorizon;
         vec3 mSkyZenith;
+
+        /// What the sky lights with over and above those two, and is not drawn with.
+        ///
+        /// **The one place where what the sky sends and what the sky shows are different things.**
+        /// `Rtx::skyFill` carries the whole of why: Morrowind states a night's light as an ambient
+        /// on every surface, which is an order above the colour it draws its night sky, and a
+        /// renderer that lights the ground by tracing that sky is short by the difference.
+        vec3 mSkyFill;
 
         /// Where the water's surface is, or negative infinity where the cell holds none.
         ///
@@ -411,7 +420,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 48, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 20, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 756, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 768, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST
