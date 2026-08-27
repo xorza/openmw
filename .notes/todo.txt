@@ -16,3 +16,4 @@
 - underwater `fog`
 - netch refraction
 - split tests
+- bloom
