@@ -14,4 +14,4 @@
 - netch refraction
 - split tests
 - extract shader and lightting consts for look tweaking
-- emissive textures like mushrooms
+- emissive textures like mushrooms - postponed
