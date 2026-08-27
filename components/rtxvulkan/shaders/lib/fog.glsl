@@ -267,15 +267,6 @@ float fogDepth(float fraction)
 /// a thick coastal fog.
 const float FOG_DROPLET = 8.0;
 
-/// Henyey-Greenstein, normalised to integrate to one over the sphere.
-float henyeyGreenstein(float g, float cosine)
-{
-    const float squared = g * g;
-    const float denominator = 1.0 + squared - 2.0 * g * cosine;
-
-    return INV_FOUR_PI * (1.0 - squared) / (denominator * sqrt(denominator));
-}
-
 /// What the fog sends toward the eye per steradian, `cosine` off the sun's line.
 ///
 /// **Mie, not Henyey-Greenstein.** A single lobe is the usual choice and it cannot do this shape:

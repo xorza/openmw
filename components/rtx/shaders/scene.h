@@ -428,7 +428,30 @@ namespace Rtx::Shaders
     /// approaches one settles at a bright colour however deep it gets — a milky sheet. Clear
     /// tropical water really does behave that way, because molecular scattering dominates its blue;
     /// a tannin-stained coastal swamp does not, and this game's water is the second.
-    RTX_CONST vec3 WATER_SCATTER = vec3(0.012f, 0.042f, 0.040f);
+    ///
+    /// **Morrowind's own, which it states as a colour rather than as an albedo.**
+    /// `Water_UnderwaterColor` is `012,030,037` and `Water_UnderwaterColorWeight` is 0.85, and
+    /// `MWRender::FogManager::getFogColor` mixes them into the weather's fog at exactly that
+    /// weight — so `(12, 30, 37) / 255 * 0.85` is the colour the game settles its own murk at.
+    /// Read straight across, because the two quantities are the same one: a share of what arrives
+    /// that comes back rather than being swallowed.
+    ///
+    /// **What the game states and this cannot use is the density.** `Water_UnderwaterDayFog` is
+    /// 2.5, and `FogManager` runs its ramp from `min(view, 7168) * (1 - depth)` — which for any
+    /// depth over two starts *behind* the camera and is 60% complete the moment the eye goes under.
+    /// A medium is nought at nought distance by construction, so `Rtx::fogExtinction`'s half-life
+    /// match has nothing to bite on: that number is a screen tint rather than a density, and
+    /// Jerlov's coastal water above is already the stronger of the two by 7168 units.
+    RTX_CONST vec3 WATER_SCATTER = vec3(0.04f, 0.1f, 0.1233f);
+
+    /// How far forward water throws what it scatters.
+    ///
+    /// **Sea water scatters forward far harder than fog does.** Petzold's measurements of the
+    /// particle phase function of coastal water give a mean cosine of about 0.92: nearly everything
+    /// goes on in the direction it was already travelling, and the sideways part is a thousandth of
+    /// the forward peak. That is why an underwater haze is a beam around the sun rather than an even
+    /// milkiness, and why looking away from the sun under water is looking into the dark.
+    RTX_CONST float WATER_ASYMMETRY = 0.92f;
 
     /// Which instances a ray is interested in.
     ///
@@ -660,6 +683,26 @@ namespace Rtx::Shaders
 
 #ifdef RTX_HOST
 }
+#endif
+
+// What both shading languages read and the host does not, for the reason `RTX_SHADER` gives.
+#ifndef RTX_HOST
+
+/// Henyey-Greenstein, per steradian: the share of what a medium scatters that leaves `cosine` off
+/// the line the light was already travelling.
+///
+/// **Shared, because the air and the water both want one.** They are the same integral over a
+/// different asymmetry — `fogPhase` blends two of these to reach Mie's shape and `WATER_ASYMMETRY`
+/// is the water's outright — and two copies of a formula this short are two places for a sign to
+/// be wrong.
+RTX_SHADER float henyeyGreenstein(float g, float cosine)
+{
+    const float squared = g * g;
+    const float denominator = 1.0 + squared - 2.0 * g * cosine;
+
+    return INV_FOUR_PI * (1.0 - squared) / (denominator * sqrt(denominator));
+}
+
 #endif
 
 #endif

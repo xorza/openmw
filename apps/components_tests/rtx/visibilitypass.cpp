@@ -3361,7 +3361,9 @@ namespace Rtx
             std::vector<std::uint8_t> pixels;
             countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
 
-            EXPECT_EQ(pixels[centre], 18) << "red, settled at what the water scatters";
+            // `WATER_SCATTER.r * 0.5` is 0.02, less the two per cent the surface reflects away, and
+            // the display curve puts 0.0196 at 38.
+            EXPECT_EQ(pixels[centre], 38) << "red, settled at what the water scatters";
         }
 
         /// Broken water is where a wave can break *and* could get to, and no one of the depth, the
@@ -3825,6 +3827,109 @@ namespace Rtx
             for (std::size_t channel = 0; channel < 3; ++channel)
                 EXPECT_NEAR(below[channel], above[channel], 2) << "channel " << channel << ": " << above[channel]
                                                                << " from above, " << below[channel] << " from below";
+        }
+
+        /// The water between an eye and the surface over it is water like any other.
+        ///
+        /// **The half the invariant above cannot see.** Both of its cameras look *down*, so the hit
+        /// is the bed and the column is charged whichever side the eye is on. Aim up from below and
+        /// the hit is the surface itself, which used to be excluded outright — the reasoning being
+        /// that a ray reaching it from below had already paid — and what had paid was each of the
+        /// surface's own rays over its own stretch. The stretch from the eye up to the surface is a
+        /// different one, and nothing was charging it: a surface seen from a hundred units down read
+        /// exactly as bright as one seen from ten.
+        ///
+        /// **No sun and no ambient, so nothing scatters into the ray and the answer is the exponent
+        /// alone.** The bed is then unlit and what reflects off the underside of the surface is
+        /// black, which leaves the sky through Snell's window as the whole of what the surface
+        /// sends down. Looking straight up, that is
+        ///
+        ///   surface = 0.5 sky * (1 - 0.02 Fresnel)  = 0.49
+        ///   at 100  = 0.49 * exp(-0.004572 * 100)   = 0.310,  or 151 of 255
+        ///   at 300  = 0.49 * exp(-0.004572 * 300)   = 0.124,  or  99
+        ///
+        /// Red, because Jerlov's coastal water takes it out six times faster than green. Charge the
+        /// eye's own stretch nothing and both read 151 — half the scale apart, so this cannot be
+        /// passed by widening a tolerance.
+        TEST_F(RtxVisibilityTest, theWaterBetweenAnEyeAndTheSurfaceOverItIsChargedForToo)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            const SceneDesc scene = makeFlooded(4000.0f, 2000.0f);
+
+            const auto lookUp = [&](float from) {
+                // A fifth of a degree off the vertical, which `makeCamera` insists on and which
+                // leaves the ray well inside Snell's window.
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -0.05f, from), osg::Vec3f(0.0f, 0.0f, from + 10.0f), 60.0f, size, size, 10000.0f);
+
+                camera.mWaterLevel = 0.0f;
+                camera.mSkyHorizon = osg::Vec3f(0.5f, 0.0f, 0.0f);
+                camera.mSkyZenith = camera.mSkyHorizon;
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                return static_cast<int>(pixels[centre]);
+            };
+
+            EXPECT_NEAR(lookUp(-100.0f), 151, 2) << "a hundred units of water over the eye";
+            EXPECT_NEAR(lookUp(-300.0f), 99, 2) << "and three hundred take three times as much red";
+        }
+
+        /// The water scatters the sun forward far harder than back, and the ratio is the whole test.
+        ///
+        /// **Water is not fog.** Petzold's coastal particles have a mean cosine of 0.92 against the
+        /// fog's droplets, so an underwater haze is a beam around the sun rather than an even
+        /// milkiness. Before this the water scattered only the sky, so facing the sun under it
+        /// rendered identically to facing away.
+        ///
+        /// **Two horizontal rays out of the same eye, and everything but the phase cancels.** Both
+        /// run until the water runs out and both come back with a black sky, so the frame is the
+        /// medium alone; both are level, so the geometry term `1 - k d.z` is one for each; and both
+        /// leave the same depth, so the sun's own way down is the same. What is left is
+        ///
+        ///   forward   HG(0.92,  0.705) = 0.030040
+        ///   backward  HG(0.92, -0.705) = 0.002194
+        ///
+        /// a ratio of 13.7. The cosines are the refraction of a sun 70 degrees off the vertical,
+        /// which Snell bends to 45 — the widest a sun ever reaches under water, and why the beam is
+        /// there at all rather than only for a sun overhead.
+        TEST_F(RtxVisibilityTest, theWaterScattersTheSunForwardFarHarderThanBack)
+        {
+            constexpr std::uint32_t size = 32;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            const SceneDesc scene = makeFlooded(4000.0f, 2000.0f);
+
+            const auto along = [&](float sign) {
+                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, 0.0f, -1000.0f),
+                    osg::Vec3f(0.0f, sign * 1000.0f, -1000.0f), 60.0f, size, size, 100000.0f);
+
+                camera.mWaterLevel = 0.0f;
+                camera.mSunPosition = sunStandingAt(osg::DegreesToRadians(70.0f));
+
+                // A hundred times the sun the other water tests use. What the water scatters
+                // sideways out of a beam is a fraction of a per cent of it, and at the usual
+                // brightness both frames land in the first ten values of a byte — where the
+                // quantisation is the measurement rather than the phase function.
+                constexpr float blazing = 100.0f * sSunOverWater;
+                camera.mSunIrradiance = osg::Vec3f(blazing, blazing, blazing);
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+
+                return double{ decodeSrgb(pixels[centre + 1]) };
+            };
+
+            // **The centre pixel and not the frame's mean.** A lobe this narrow is most of its own
+            // integral within a few degrees, so a mean over sixty of them measures the field of view
+            // rather than the phase function. Green, which is what the water scatters most of.
+            const double forward = along(-1.0f);
+            const double backward = along(1.0f);
+
+            EXPECT_GT(forward, 0.0) << "the water is lit by the sun at all";
+            EXPECT_NEAR(forward / backward, 13.7, 1.5) << forward << " toward the sun, " << backward << " away";
         }
 
         /// The sky loses the column of water over a bed just as the sun does.

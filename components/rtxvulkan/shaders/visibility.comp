@@ -145,16 +145,21 @@ void main()
     shaded = shaded * paneThrough + paneRadiance;
     transmittance *= paneThrough;
 
-    // A camera under the surface sees everything through the water in front of it. Only a hit that
-    // is not water itself: the surface shades its own two sides, and a ray that reached it from
-    // below has already been through this.
+    // A camera under the surface sees everything through the water in front of it, **the surface
+    // included**. What `shadeWater` attenuated is each of its own rays over its own stretch — the
+    // reflection back down into the water, the refraction through the air above — and the stretch
+    // from the eye up to the surface is a different one that nothing else pays. Leaving it out is
+    // what made the same column read one way from above and another from below: a ray aimed up from
+    // a hundred units down found the surface exactly as bright as one aimed up from ten.
     //
     // Applied to the whole colour rather than to the albedo alone — what the depth took is a
     // property of the path, so it belongs to the modulation and not to the material.
-    if (origin.z < frame.mWaterLevel && !(surface.mHit && surface.mWater))
+    if (origin.z < frame.mWaterLevel)
     {
-        transmittance *= waterTransmittance(surface.mDistance);
-        shaded = absorbedByWater(shaded, surface.mDistance);
+        const WaterColumn column = waterColumn(origin, direction, surface.mDistance);
+
+        transmittance *= column.mTransmittance;
+        shaded = throughWater(shaded, column);
     }
 
     // The air in front of all of it. Last, because everything else in the frame is what the fog

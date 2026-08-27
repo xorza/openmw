@@ -246,7 +246,7 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     const WaterPath bounced = waterRay(leaving, away, surface.mFootprint, lobe, key + SEED_LAMPS_MIRROR);
     vec3 reflected = bounced.mRadiance;
     if (fromBelow)
-        reflected = absorbedByWater(reflected, bounced.mDistance);
+        reflected = throughWater(reflected, waterColumn(leaving, away, bounced.mDistance));
     else
         mirror = WaterMirror(bounced.mPosition, away, bounced.mInstance, bounced.mDistance < WATER_MAX_PATH);
 
@@ -269,7 +269,9 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     // blurred correspondingly less by the same lost slopes.
     const WaterPath behind
         = waterRay(leaving, through, surface.mFootprint, lobe * WATER_REFRACTION_BEND, key + SEED_LAMPS_THROUGH);
-    const vec3 refracted = fromBelow ? behind.mRadiance : absorbedByWater(behind.mRadiance, behind.mDistance);
+    const vec3 refracted = fromBelow
+        ? behind.mRadiance
+        : throughWater(behind.mRadiance, waterColumn(leaving, through, behind.mDistance));
 
     // With no water left between the surface and the ground, this is the ground. Only from above:
     // seen from under it, the path is a distance through air and says nothing about a shore.
