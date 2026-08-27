@@ -34,12 +34,15 @@ namespace
     /// in green, and `(0 + 0 + 0 + 1) / 4` in blue.
     TEST(RtxMeanTexelTest, aTexelIsWorthItsColourInLightTimesHowMuchOfItIsThere)
     {
-        const osg::Vec3f mean
+        const Rtx::MeanTexel mean
             = Rtx::meanTexel(*makeSheet({ 255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 255 }));
 
-        EXPECT_NEAR(mean.x(), 0.5f, 1e-5f);
-        EXPECT_NEAR(mean.y(), 0.37549f, 1e-5f);
-        EXPECT_NEAR(mean.z(), 0.25f, 1e-5f);
+        EXPECT_NEAR(mean.mColour.x(), 0.5f, 1e-5f);
+        EXPECT_NEAR(mean.mColour.y(), 0.37549f, 1e-5f);
+        EXPECT_NEAR(mean.mColour.z(), 0.25f, 1e-5f);
+
+        // And the cover beside it, out of the same four: `(1 + 128/255 + 0 + 1) / 4`.
+        EXPECT_NEAR(mean.mAlpha, 0.62549f, 1e-5f);
     }
 
     /// The curve is undone before the mean and not after it.
@@ -50,15 +53,15 @@ namespace
     /// white is worth 0.216 where it is worth a half.
     TEST(RtxMeanTexelTest, theCurveIsUndoneBeforeTheMeanRatherThanAfterIt)
     {
-        const osg::Vec3f chequer
+        const Rtx::MeanTexel chequer
             = Rtx::meanTexel(*makeSheet({ 255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255 }));
 
-        EXPECT_NEAR(chequer.x(), 0.5f, 1e-5f);
+        EXPECT_NEAR(chequer.mColour.x(), 0.5f, 1e-5f);
 
-        const osg::Vec3f flat = Rtx::meanTexel(
+        const Rtx::MeanTexel flat = Rtx::meanTexel(
             *makeSheet({ 128, 128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255 }));
 
-        EXPECT_NEAR(flat.x(), 0.21586f, 1e-5f);
+        EXPECT_NEAR(flat.mColour.x(), 0.21586f, 1e-5f);
     }
 
     /// An image in a format nothing in the game produces is one this cannot answer for.
@@ -72,6 +75,33 @@ namespace
         luminance->setFileName("odd.dds");
         luminance->allocateImage(2, 2, 1, GL_LUMINANCE, GL_UNSIGNED_BYTE);
 
-        EXPECT_EQ(Rtx::meanTexel(*luminance), osg::Vec3f());
+        EXPECT_EQ(Rtx::meanTexel(*luminance).mColour, osg::Vec3f());
+        EXPECT_EQ(Rtx::meanTexel(*luminance).mAlpha, 0.0f);
+    }
+
+    /// A sheet's paint is what its own alpha calls solid, and not what it adds to the sky behind it.
+    ///
+    /// **Which is the difference between a few wisps and a grey lid.** Two white texels at full cover
+    /// beside two transparent ones average a half — the same mean a solid sheet of mid grey gives —
+    /// and the two are not the same picture. Dividing the cover back out says which: the wisps come
+    /// back white, because that is the colour the artist painted them.
+    ///
+    /// Morrowind's own clear sheet is exactly this shape, a quarter covered by cirrus.
+    TEST(RtxMeanTexelTest, aSheetsPaintIsWhatItsOwnAlphaCallsSolid)
+    {
+        const Rtx::MeanTexel wisps
+            = Rtx::meanTexel(*makeSheet({ 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0 }));
+
+        EXPECT_NEAR(wisps.mColour.x(), 0.5f, 1e-5f);
+        EXPECT_NEAR(wisps.mAlpha, 0.5f, 1e-5f);
+        EXPECT_NEAR(wisps.opaque().x(), 1.0f, 1e-5f);
+
+        // And a sheet with nothing painted on it has no paint to average, rather than a division by
+        // the nothing that covers it.
+        const Rtx::MeanTexel empty
+            = Rtx::meanTexel(*makeSheet({ 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0 }));
+
+        EXPECT_EQ(empty.mAlpha, 0.0f);
+        EXPECT_EQ(empty.opaque(), osg::Vec3f());
     }
 }

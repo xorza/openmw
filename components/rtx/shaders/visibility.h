@@ -77,6 +77,16 @@ namespace Rtx::Shaders
         /// times this and owes nothing to the sun. `SkyContent::mLift` is the ratio's half of it.
         vec3 mColour;
 
+        /// The mean luminance of what the sheets being sampled paint, linear.
+        ///
+        /// **What a texel is read as a ratio to, so the sheet gives shape and `mColour` gives the
+        /// level.** `SkyContent::mCloudMean` carries the argument and the measurements.
+        ///
+        /// Nought where the sheet could not be averaged — a file a mod replaced with something
+        /// nothing here decodes — which the shader reads as no ratio to take, and draws the deck
+        /// flat as it did before it read the paint at all.
+        float mMean;
+
         /// How far from `mTexture` to `mNext`. A settled sky names the same texture twice at zero,
         /// so the shader mixes unconditionally rather than testing for a transition.
         float mBlend;
@@ -438,10 +448,10 @@ namespace Rtx::Shaders
     // reads them are different compilers.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
     static_assert(sizeof(MoonDisc) == 88, "MoonDisc must be scalar-packed on every side");
-    static_assert(sizeof(CloudDeck) == 60, "CloudDeck must be scalar-packed on every side");
+    static_assert(sizeof(CloudDeck) == 64, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 816, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 820, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

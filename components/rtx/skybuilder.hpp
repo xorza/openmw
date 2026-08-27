@@ -40,6 +40,24 @@ namespace Rtx
         /// daylight is where the ratio is read.
         std::array<osg::Vec3f, Shaders::WEATHER_COUNT> mLift{};
 
+        /// The mean luminance of what each weather's sheet paints, linear. Nought where no sheet
+        /// was read, which is a weather that draws no deck.
+        ///
+        /// **What a texel is read as a ratio to, so the painting gives shape and not a level.** Each
+        /// sheet is a photograph of a 2002 sky with that day's light already in it, so compositing
+        /// one lights every cloud twice. Against its own mean it carries where the cloud is thick
+        /// and where it is thin and nothing else, which is the half of it a lit deck can use.
+        ///
+        /// **And for half the decks it is the only shape there is.** Six of the ten weathers reach a
+        /// sheet the archives hold, and `tx_sky_overcast`, `_rainy` and `_thunder` carry an alpha of
+        /// 255 in every one of their texels — so a deck cut out of the alpha alone is a flat lid
+        /// across the whole sky. Their means are 0.268, 0.283 and 0.357, against the three that do
+        /// carry an alpha: clear 0.435, cloudy 0.552, foggy 0.639.
+        ///
+        /// Measured over the alpha rather than over the whole sheet, because clear weather's cirrus
+        /// covers a quarter of its own sheet and its wisps are not a quarter as bright as they look.
+        std::array<float, Shaders::WEATHER_COUNT> mCloudMean{};
+
         /// The night sky, read off the mesh the rasterizer draws it with: the star field, the scale
         /// its sheet is laid at, where it fades, and the six patches painted across it.
         NightSky mNight;
@@ -53,6 +71,9 @@ namespace Rtx
 
         /// What lifts that weather's deck above its air, or no lift at all where none was read.
         osg::Vec3f liftOf(std::uint32_t weather) const;
+
+        /// What that weather's sheet averages, or nothing where none was read or none could be.
+        float meanOf(std::uint32_t weather) const;
     };
 
     /// Reads all of it, loading the textures into `scene` and holding them there.

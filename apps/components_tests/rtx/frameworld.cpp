@@ -284,6 +284,41 @@ namespace Rtx
             EXPECT_EQ(deck.mRings, sShell.mRings);
         }
 
+        /// The level a sheet's texels are read against crosses with the sheet, and falls back with it.
+        ///
+        /// **The fall-back is the half worth a test.** The shader samples the weather ahead only
+        /// where that weather names a sheet, and reads the near one twice where it does not — so a
+        /// mean carried half way toward a weather that draws nothing would read every texel of the
+        /// near sheet against a level no sheet has, and lift or drop the whole deck by it.
+        TEST(RtxSkyBuilderTest, theLevelASheetIsReadAgainstCrossesWithTheSheet)
+        {
+            SkyContent textures;
+            textures.mClouds.fill(Rtx::sNoIndex);
+            textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
+            textures.mClouds[Rtx::Shaders::WEATHER_RAIN] = 5;
+            textures.mShell = sShell;
+            textures.mCloudMean[Rtx::Shaders::WEATHER_CLEAR] = 0.4f;
+            textures.mCloudMean[Rtx::Shaders::WEATHER_RAIN] = 0.2f;
+
+            const osg::Vec3f air(0.1f, 0.1f, 0.2f);
+            const osg::Vec3f north(0.0f, 1.0f, 0.0f);
+            const auto deck = [&](std::uint32_t next, float blend) {
+                return describeClouds(Rtx::Shaders::WEATHER_CLEAR, next, blend, air, north, 0.0f, textures);
+            };
+
+            EXPECT_EQ(deck(Rtx::Shaders::WEATHER_RAIN, 0.0f).mMean, 0.4f);
+            EXPECT_EQ(deck(Rtx::Shaders::WEATHER_RAIN, 1.0f).mMean, 0.2f);
+
+            // A quarter of the way across: `0.75 * 0.4 + 0.25 * 0.2`.
+            EXPECT_NEAR(deck(Rtx::Shaders::WEATHER_RAIN, 0.25f).mMean, 0.35f, 1.0e-6f);
+
+            // Ash names no sheet in the shipped fallbacks, so the shader reads the clear one at both
+            // ends of that crossing and this stays the clear one's whatever the blend says.
+            EXPECT_EQ(deck(Rtx::Shaders::WEATHER_ASHSTORM, 0.5f).mMean, 0.4f);
+            EXPECT_EQ(textures.meanOf(Rtx::Shaders::WEATHER_COUNT + 4u), 0.0f)
+                << "and an index past the ten is not a lookup";
+        }
+
         /// The stars go out when the weather keeps them in, and the sheet is not even named then.
         TEST(RtxSkyBuilderTest, aWeatherThatHidesTheSunHidesTheStarsWithIt)
         {

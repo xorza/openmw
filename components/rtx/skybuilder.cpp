@@ -3,6 +3,8 @@
 #include <cmath>
 #include <string>
 
+#include <osg/Image>
+
 #include <components/misc/strings/lower.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/sky/clouds.hpp>
@@ -10,6 +12,9 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "lightbuilder.hpp"
+#include "meantexel.hpp"
+#include "shaders/colour.h"
+#include "texturebuilder.hpp"
 
 namespace Rtx
 {
@@ -41,6 +46,19 @@ namespace Rtx
             return osg::Vec3f(
                 worth(lit.x(), air.x(), day.x()), worth(lit.y(), air.y(), day.y()), worth(lit.z(), air.z(), day.z()));
         }
+
+        /// The mean luminance of what a sheet paints, which `SkyContent::mCloudMean` is the table of.
+        ///
+        /// Nothing where the file will not read or decode, which is the same answer a missing sheet
+        /// gives and lands in the same place: a weather with no deck to draw.
+        float sheetMean(Resource::ImageManager& images, const VFS::Path::Normalized& path)
+        {
+            const osg::ref_ptr<const osg::Image> image = openImage(images, path);
+            if (image == nullptr)
+                return 0.0f;
+
+            return meanTexel(*image).opaque() * Shaders::LUMINANCE_WEIGHTS;
+        }
     }
 
     std::uint32_t SkyContent::cloudsOf(std::uint32_t weather) const
@@ -61,20 +79,14 @@ namespace Rtx
         return mLift[weather];
     }
 
+    float SkyContent::meanOf(std::uint32_t weather) const
+    {
+        return weather < mCloudMean.size() ? mCloudMean[weather] : 0.0f;
+    }
+
     SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes)
     {
         const VFS::Manager& vfs = *scenes.getVFS();
-        const auto hold = [&](const std::string& name) {
-            // The file records a bare name and the archive holds it under `textures/`, which is the
-            // same join the scene manager makes before it is handed one.
-            const VFS::Path::Normalized path("textures/" + Misc::StringUtils::lowerCase(name));
-            if (!vfs.exists(path))
-                return sNoIndex;
-
-            const Index slot = scene.addTexture(path);
-            scene.holdTexture(slot);
-            return slot;
-        };
 
         SkyContent loaded;
         loaded.mClouds.fill(sNoIndex);
@@ -82,11 +94,25 @@ namespace Rtx
         for (std::uint32_t weather = 0; weather < Shaders::WEATHER_COUNT; ++weather)
         {
             const std::string_view named = weatherName(weather);
-            const std::string_view sheet = Sky::cloudTexture(named);
-            if (!sheet.empty())
-                loaded.mClouds[weather] = hold(std::string(sheet));
-
             loaded.mLift[weather] = cloudLift(named);
+
+            const std::string_view sheet = Sky::cloudTexture(named);
+            if (sheet.empty())
+                continue;
+
+            // The file records a bare name and the archive holds it under `textures/`, which is the
+            // same join the scene manager makes before it is handed one.
+            const VFS::Path::Normalized path("textures/" + Misc::StringUtils::lowerCase(std::string(sheet)));
+            if (!vfs.exists(path))
+                continue;
+
+            loaded.mClouds[weather] = scene.addTexture(path);
+            scene.holdTexture(loaded.mClouds[weather]);
+
+            // **Read here and not on the frame that needs it.** Averaging a 512-square sheet is a
+            // quarter of a million texels, and there are six of them; the image is the one the
+            // upload is about to take out of the same cache.
+            loaded.mCloudMean[weather] = sheetMean(*scenes.getImageManager(), path);
         }
 
         // **The shape the deck hangs on is the mesh's**, both of its numbers: how high the layer is
@@ -126,6 +152,15 @@ namespace Rtx
         // arrives when the cloud does. The fog under it is already the hour's and already blended.
         const osg::Vec3f lift = textures.liftOf(weather) * (1.0f - mixed) + textures.liftOf(next) * mixed;
 
+        // **The level the sheet is read against crosses with the sheet, and falls back the way it
+        // does.** Where the weather ahead names no deck the shader samples the near sheet for both
+        // ends of the blend, so what it read is that sheet alone and so is the mean it is read
+        // against.
+        const std::uint32_t ahead = textures.cloudsOf(next);
+        const float mean = ahead == Shaders::NO_TEXTURE
+            ? textures.meanOf(weather)
+            : textures.meanOf(weather) * (1.0f - mixed) + textures.meanOf(next) * mixed;
+
         return Shaders::CloudDeck{
             // A weather whose deck was never loaded has no deck, and neither has a sky whose mesh
             // gave up no shape to hang one on — which is the same thing an interior has, said the
@@ -133,6 +168,7 @@ namespace Rtx
             .mOpacity = slot == Shaders::NO_TEXTURE || !(textures.mShell.mTiles.x() > 0.0f) ? 0.0f : 1.0f,
 
             .mColour = osg::componentMultiply(air, lift),
+            .mMean = mean,
             .mBlend = mixed,
             .mScroll = scroll,
 
@@ -146,7 +182,7 @@ namespace Rtx
             .mRings = textures.mShell.mRings,
 
             .mTexture = slot,
-            .mNext = textures.cloudsOf(next),
+            .mNext = ahead,
         };
     }
 

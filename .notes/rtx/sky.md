@@ -31,18 +31,29 @@ onto flat ground.
 ## 1. The cloud deck is an emission and is never lit
 
 **Root cause.** `CloudDeck::mColour` is the weather's air times what its own daylight says a cloud is
-worth, and `cloudDeck` returns that times coverage. No sun, no moon, no sky reaches it, it casts
-nothing, and it loses the sun at the same instant the ground does.
+worth, and `cloudDeck` returns that times coverage and the sheet's own shape. No sun, no moon, no sky
+reaches it, it casts nothing, and it loses the sun at the same instant the ground does.
 
 This is the largest of them and the reference implementation has already been through it —
 `/home/xxorza/Projects/rtxmw/docs/design.md` §8.56 and §8.57. Read both before starting.
 
 **The shape of the answer**, from there:
 
-- **The sheet supplies shape and the light supplies colour.** Each of the nine sky textures is a
-  photograph of a 2002 sky, so compositing one over the dome puts the sky in twice. What is usable is
-  the alpha the artist drew the clouds with — and, for every overcast weather, whose alpha is 255
-  everywhere, the texel's own luminance against the sheet's mean.
+- **The sheet supplies shape and the light supplies colour**, and the shape half of that is in.
+  Each sky texture is a photograph of a 2002 sky, so compositing one over the dome puts the sky in
+  twice. What the deck takes instead is the alpha the artist drew the clouds with and the texel's own
+  luminance against the sheet's mean — `SkyContent::mCloudMean`, measured at load, with
+  `CLOUD_THICKNESS_MAX` bounding the ratio.
+
+  Six of the ten weathers reach a sheet the archives hold, and `tx_sky_overcast`, `_rainy` and
+  `_thunder` carry 255 alpha in every texel, so the alpha alone drew those three as one flat colour
+  across the whole sky. Their alpha-weighted mean luminances are 0.268, 0.283 and 0.357, against
+  clear 0.435, cloudy 0.552 and foggy 0.639. On a clean patch of noon sky the display standard
+  deviation goes 0.0016 to 0.0212 for overcast and 0.0121 to 0.0231 for rain, while the patch mean
+  moves under two per cent — shape where there was none, and the level left where it was.
+
+  What is left of this bullet is the colour: the deck is still an emission, and the steps below light
+  it.
 - **A cloud is darker than the sky it covers.** Plane-parallel theory puts a deck's transmission at
   0.2 to 0.3. At 0.9 a night deck was 90% of the sky it hid; at 0.3 it is a dark shape blotting out
   stars, and thin cloud is not dragged down with it because how much sky a wisp replaces at all is
@@ -59,13 +70,11 @@ long the deck keeps the sun has to come from somewhere else.
 
 **Steps.** Land them in this order, checking with `shot` after each:
 
-1. Per-sheet mean luminance at load, with `Rtx::meanTexel`, which the night sheets already use.
-2. Coverage from the alpha, and from the texel's luminance against the mean where the alpha is flat.
-3. The deck lit by the sky and by the moons, at a transmission of 0.25. Night first, because it is
+1. The deck lit by the sky and by the moons, at a transmission of 0.25. Night first, because it is
    the case with the fewest terms and the one already known to read wrong.
-4. The sun on the deck, with its own horizon and its own air mass. Day and dusk.
-5. The deck's shadow on the world.
-6. Delete `SkyContent::mLift` and `Sky::dayFog`, which exist only to light a deck that is no longer
+2. The sun on the deck, with its own horizon and its own air mass. Day and dusk.
+3. The deck's shadow on the world.
+4. Delete `SkyContent::mLift` and `Sky::dayFog`, which exist only to light a deck that is no longer
    painted.
 
 ---
@@ -88,8 +97,8 @@ that shadows the world is the same machinery seen from another side.
 
 ## Order
 
-Step 1 is the last of the sky, and it goes in its own six steps. It is the one that can regress a day
-that has just been tuned, and `Rtx::meanTexel` and the budget rule are both in place for it now.
+Step 1 is the last of the sky, and four of its own steps are left. It is the one that can regress a
+day that has just been tuned, and the sheets' own shape is read out of them now.
 
 Step 2 stays open.
 

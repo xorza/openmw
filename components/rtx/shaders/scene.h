@@ -121,6 +121,19 @@ namespace Rtx::Shaders
     /// that is not a radius read off the mesh. `CloudShell::mRings` carries where it applies.
     RTX_CONST float CLOUD_RING_ALPHA = 0.25098f;
 
+    /// How far above its own mean a texel of a cloud sheet is allowed to read.
+    ///
+    /// **A bound on a ratio, and Morrowind's own sheets never reach it.** `CloudDeck::mMean` divides
+    /// a sheet's paint by what that sheet averages, so a texel comes back as how thick the cloud is
+    /// there. Over the six sheets the shipped fallbacks reach, the 99th percentile of that ratio
+    /// runs from 1.10 to 1.63 and the brightest texel of any of them is 2.03 — so what this bounds
+    /// is a sheet a mod put there, not the shape of a vanilla sky.
+    ///
+    /// **And two rather than one, because one is where the shape goes.** Half a sheet's texels lie
+    /// above its mean by definition, and clamping at one flattened between a quarter and a half of
+    /// every sheet onto a single value.
+    RTX_CONST float CLOUD_THICKNESS_MAX = 2.0f;
+
     /// Irradiance of the sun against the sky it is set in.
     ///
     /// Not a physical figure: exposure absorbs any overall scale, so what matters is the ratio

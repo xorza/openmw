@@ -299,7 +299,7 @@ namespace Rtx
 
                 // The field is laid over the whole dome, so its own mean is what it adds to the
                 // sky's — `STAR_RADIANCE` is the scale the shader draws it at.
-                sky.mGlow += meanTexel(*layer.mImage) * Shaders::STAR_RADIANCE;
+                sky.mGlow += meanTexel(*layer.mImage).mColour * Shaders::STAR_RADIANCE;
                 continue;
             }
 
@@ -321,8 +321,8 @@ namespace Rtx
             // this is the sky's mean to first order and it is spent out of the weather's own ambient
             // either way, so what it can be wrong about is where a night's light comes from rather
             // than how much of it there is.
-            sky.mGlow
-                += meanTexel(*layer.mImage) * (Shaders::NEBULA_RADIANCE * (1.0f - std::cos(layer.mAngularRadius)));
+            sky.mGlow += meanTexel(*layer.mImage).mColour
+                * (Shaders::NEBULA_RADIANCE * (1.0f - std::cos(layer.mAngularRadius)));
         }
 
         return sky;
