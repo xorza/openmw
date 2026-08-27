@@ -245,7 +245,9 @@ namespace Rtx
 
         CompositePass mComposite;
         ExposurePass mExposure;
-        TonePass mTone;
+        /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
+        /// layout that only a scene brings, and the layout every scene brings is the same one.
+        std::unique_ptr<TonePass> mTone;
         GuiPass mGuiPass;
         GuiTextures mGuiTextures;
 

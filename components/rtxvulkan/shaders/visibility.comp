@@ -113,7 +113,9 @@ void main()
     WaterMirror mirror = WaterMirror(vec3(0.0), vec3(0.0), 0u, false);
 
     if (!surface.mHit)
-        shaded = frame.mTransparentBackground != 0u ? vec3(0.0) : skyRadiance(direction, pixelBlur(frame.mCamera));
+        shaded = frame.mTransparentBackground != 0u
+            ? vec3(0.0)
+            : skyRadiance(direction, pixelBlur(frame.mCamera), false);
     else if (surface.mWater)
         shaded = shadeWater(surface, direction, response, mirror, pixel);
     else if (frame.mShowAlbedo != 0u)

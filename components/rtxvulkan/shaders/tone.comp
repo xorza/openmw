@@ -3,17 +3,22 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_scalar_block_layout : require
 
-// Scene-referred radiance to bytes a display understands.
+// Scene-referred radiance to bytes a display understands, and the sky's own points over it.
 //
 // **The one pass that knows what a display is**, and the last thing in the frame for that reason:
 // everything before it works in linear radiance, including the upscaler, which reconstructs from
-// several frames of it.
+// several frames of it. Being last is also what makes it the only pass that can draw a point source
+// — `ToneConstants::mStars` says why one cannot survive the upscaler.
 //
 // Exposure is a multiply and the curve is `toneMap`'s, which is where a highlight is rolled off
 // rather than clipped.
 
+#include "camera.h"
 #include "colour.h"
+#include "gbuffer.h"
 #include "tone.h"
+
+#include "lib/starfield.glsl"
 
 layout(local_size_x = TONE_WORKGROUP, local_size_y = TONE_WORKGROUP) in;
 
@@ -25,10 +30,13 @@ layout(set = 0, binding = 1, rgba8) uniform writeonly image2D target;
 
 /// What to scale the frame by before the curve — measured off this same image by the two passes
 /// before this one, or written straight in where a caller named a fixed value.
-layout(set = 0, binding = 2, scalar) readonly buffer Exposure
+layout(set = 0, binding = 3, scalar) readonly buffer Exposure
 {
     float exposure;
 };
+
+/// The trace's own depth, at the trace's own extent — one where a ray reached nothing.
+layout(set = 0, binding = 2, GBUFFER_DEPTH) uniform readonly image2D traced;
 
 layout(push_constant, scalar) uniform Push
 {
@@ -42,7 +50,22 @@ void main()
         return;
 
     const ivec2 at = ivec2(pixel);
-    const vec4 lit = imageLoad(colour, at);
+    vec4 lit = imageLoad(colour, at);
+
+    // **The sky's own points, drawn where they are shown.** `ToneConstants::mStars` says why they
+    // are not the trace's. What decides where they may go is the trace's depth, read at the texel
+    // this pixel came from: a miss writes one there and nothing else does. Nearest and one tap, so a
+    // star within a traced pixel of a silhouette can land on the wrong side of it — which against a
+    // sheet that is 99% transparent is a star at the edge of a rock once in a while, and the four
+    // taps that would rule it out are four times the traffic for it.
+    if (frame.mStars.mTexture != NO_TEXTURE)
+    {
+        const vec2 across = vec2(frame.mTracedWidth, frame.mTracedHeight) / vec2(frame.mWidth, frame.mHeight);
+        const ivec2 traceAt = ivec2(vec2(pixel) * across);
+
+        if (imageLoad(traced, traceAt).x >= 1.0)
+            lit.rgb += starField(frame.mStars, rayAt(frame.mCamera, vec2(pixel)).mDirection, pixelBlur(frame.mCamera));
+    }
 
     // The curve maps radiance to a display; coverage is not radiance and passes through it.
     imageStore(target, at, vec4(encodeSrgb(toneMap(lit.rgb * exposure)), lit.a));

@@ -13,6 +13,8 @@
 #include "scene.h"
 #include "visibility.h"
 
+#include "texturearray.glsl"
+
 layout(set = 0, binding = 0) uniform accelerationStructureEXT sceneTop;
 
 /// Everything already resolved: direct light, emission, the sky, water, and the fog over all of it.
@@ -241,18 +243,6 @@ layout(set = 0, binding = 31, scalar) readonly buffer SpriteTileIndices
     uint spriteTileIndices[];
 };
 
-/// Every texture the scene loaded, indexed by the slot a material, a layer or an emitter names.
-///
-/// **A slot is qualified where it indexes and never where it is passed.** Neighbouring lanes hit
-/// different materials over most of a frame, so the descriptor read has to be a waterfall — and what
-/// tells the driver to emit one is a `NonUniform` decoration on the access chain itself.
-/// `nonuniformEXT` applied to a function *argument* decorates the argument and stops there: the
-/// chain built inside the callee comes out bare, and the driver may then read one lane's descriptor
-/// for the whole wave. That is a wrong texture on some lanes of some waves, which looks like nothing
-/// at all until it does. Measured before this rule, 28 of the 44 chains into this array were
-/// undecorated and every one of them was on the surface path; `spirv-val` passes either way and the
-/// validation layers say nothing.
-layout(set = 1, binding = 0) uniform sampler2D textures[];
 
 // **A buffer and not a push constant.** The frame's description passed 256 bytes, which is every
 // byte `maxPushConstantsSize` promises on this hardware; `VisibilityPass` writes it into a buffer of

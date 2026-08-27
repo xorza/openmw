@@ -48,6 +48,31 @@ namespace Rtx
 
             return { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
         }
+        /// The display pass's own description of the frame.
+        ///
+        /// **The camera is the trace's basis on the picture's grid.** `rayAt` divides by the camera's
+        /// own extent, so handing it the output's is what turns an output pixel into the ray it
+        /// shows — and the jitter goes, because a jitter is what lets several traced frames average
+        /// into one and this pass draws once. The spread angle comes down with the pixel: a pixel of
+        /// the picture subtends what one of the trace's did, times how much smaller it is.
+        Shaders::ToneConstants toneFor(const Shaders::VisibilityConstants& frame, std::uint32_t width,
+            std::uint32_t height, std::uint32_t tracedWidth, std::uint32_t tracedHeight)
+        {
+            Shaders::Camera shown = frame.mCamera;
+            shown.mJitter = osg::Vec2f();
+            shown.mSpreadAngle = frame.mCamera.mSpreadAngle * float(tracedHeight) / float(height);
+            shown.mWidth = width;
+            shown.mHeight = height;
+
+            return Shaders::ToneConstants{
+                .mWidth = width,
+                .mHeight = height,
+                .mTracedWidth = tracedWidth,
+                .mTracedHeight = tracedHeight,
+                .mCamera = shown,
+                .mStars = frame.mStars,
+            };
+        }
     }
 
     VulkanRenderer::VulkanRenderer(const RendererOptions& options)
@@ -65,7 +90,6 @@ namespace Rtx
         , mViewFilter(mDevice, options.mShaderDirectory)
         , mComposite(mDevice, mPool, options.mShaderDirectory)
         , mExposure(mDevice, options.mShaderDirectory)
-        , mTone(mDevice, options.mShaderDirectory)
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
     {
@@ -306,8 +330,11 @@ namespace Rtx
         // A doll can be the first thing this renderer ever builds — a race preview stands in front
         // of a game that has no world yet — and the pass belongs to neither scene.
         if (mPass == nullptr)
+        {
             mPass = std::make_unique<VisibilityPass>(
                 mDevice, setup, mShaderDirectory, held.mTextures->getLayout(), mCountHits);
+            mTone = std::make_unique<TonePass>(mDevice, held.mTextures->getLayout(), mShaderDirectory);
+        }
 
         // By hand rather than left to the destructor, so a submit that fails throws out of here
         // instead of being logged on the way past.
@@ -776,7 +803,8 @@ namespace Rtx
             mTimer.close(commands);
 
             mTimer.open(commands, "tone");
-            mTone.record(commands, *shown, mExposure.getExposure(), *mTarget, mOutputWidth, mOutputHeight);
+            mTone->record(commands, *shown, mExposure.getExposure(), mChannels->getDepth(), inputs.mTextures, *mTarget,
+                toneFor(sampled, mOutputWidth, mOutputHeight, mChannels->getWidth(), mChannels->getHeight()));
             mTimer.close(commands);
         });
 
@@ -915,8 +943,10 @@ namespace Rtx
             // the widgets around it, and an exposure that drifted with what the doll was wearing
             // would make the same armour a different brightness in two windows.
             mExposure.recordFixed(commands, 1.0f);
-            mTone.record(
-                commands, *mViewColour, mExposure.getExposure(), *mViewTarget, options.mWidth, options.mHeight);
+            mTone->record(commands, *mViewColour, mExposure.getExposure(), mViewChannels->getDepth(), array.getSet(),
+                *mViewTarget,
+                toneFor(
+                    camera, options.mWidth, options.mHeight, mViewChannels->getWidth(), mViewChannels->getHeight()));
 
             mViewTarget->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,

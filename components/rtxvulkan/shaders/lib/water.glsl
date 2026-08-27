@@ -95,7 +95,7 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     path.mGeometric = hit.mHit ? hit.mGeometric : vec3(0.0, 0.0, 1.0);
     path.mRadiance
         = hit.mHit ? shadeSurface(hit, pathEnd(hit.mPosition), seed)
-                   : skyRadiance(direction, pixelBlur(frame.mCamera) + lobe);
+                   : skyRadiance(direction, pixelBlur(frame.mCamera) + lobe, true);
 
     return path;
 }
