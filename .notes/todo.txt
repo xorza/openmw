@@ -16,3 +16,4 @@
 - spell lightsources
 - underwater `fog`
 - netch refraction
+- split tests
