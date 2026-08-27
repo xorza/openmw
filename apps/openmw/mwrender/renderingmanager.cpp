@@ -674,6 +674,7 @@ namespace MWRender
         mSkyColour = weather.mSkyColor;
         mCloudFog = weather.mFogColor;
         mCloudSpeed = weather.mCloudSpeed;
+        mCloudDirection = weather.mStormDirection;
         mSunDiscColour = weather.mSunDiscColor;
         mSunGlare = weather.mGlareView;
         mCloudBlend = std::clamp(weather.mCloudBlendFactor, 0.f, 1.f);
@@ -905,6 +906,7 @@ namespace MWRender
             .mWindSpeed = world.getWindSpeed(),
             .mMoons = { mMoonStates[0], mMoonStates[1] },
             .mStormDirection = mStormParticleDirection,
+            .mCloudDirection = mCloudDirection,
         };
     }
 

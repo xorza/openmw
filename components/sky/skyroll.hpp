@@ -31,5 +31,14 @@ namespace Sky
         ///        clock or on the player's. Off, a cloud crosses the sky at the same rate whether an
         ///        hour of game time takes a minute or an afternoon.
         void advance(float seconds, float cloudSpeed, float timeScale, bool timescaleClouds);
+
+        /// Where both stand `seconds` after a standing start, on the same terms.
+        ///
+        /// **For a caller whose clock is an index rather than an accumulation.** The game turns
+        /// `advance`, because a transition moves `cloudSpeed` under it and only what is left to
+        /// come should move with it; a run that renders frame *n* at *n* sixtieths of a second
+        /// wants one answer whatever order it drew them in. Both rolls are linear in time, so this
+        /// is that answer.
+        static SkyRoll after(float seconds, float cloudSpeed, float timeScale, bool timescaleClouds);
     };
 }

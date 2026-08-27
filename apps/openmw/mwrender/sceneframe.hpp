@@ -217,6 +217,14 @@ namespace MWRender
         /// direction depends on where they stand. Every other weather leaves it due north.
         osg::Vec3f mStormDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
 
+        /// Which way the cloud deck is driven, unit length.
+        ///
+        /// **The same rule and not the same reading.** Both come out of `Weather::stormDirection`,
+        /// but the one above is what the particles falling this instant are blowing along, and a
+        /// transition carries one weather's particles while the other's deck is already overhead.
+        /// The rasterizer turns its cloud mesh by this one, so the ray tracer does too.
+        osg::Vec3f mCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
+
         /// Whether the cell record calls this an interior.
         ///
         /// **A quasi-exterior answers yes to this and to `isOutdoors` both**, which is the whole

@@ -79,8 +79,9 @@ namespace RtxTool
         Rtx::SkyContent mSky;
 
         /// How far the deck has scrolled and the stars have rolled. **Zero for a screenshot**, which
-        /// is what makes one repeatable — the same choice `mSeconds` makes for the sea; a window
-        /// advances it off its own clock.
+        /// is what makes one repeatable — the same choice `mSeconds` makes for the sea. A window
+        /// accumulates it off its own clock and a run of frames takes it off the frame index, which
+        /// is the difference `Sky::SkyRoll::after` is for.
         Sky::SkyRoll mRoll;
 
         /// The air in the cell, whichever of the two places it came from: an interior's `AMBI` or

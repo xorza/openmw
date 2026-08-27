@@ -903,7 +903,7 @@ namespace MWRender
                 ? Rtx::describeClouds(static_cast<std::uint32_t>(world.mWeatherId),
                       world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
                                                        : static_cast<std::uint32_t>(world.mWeatherId),
-                      world.mCloudBlend, Rtx::deckLight(sky.mSunAloft, budget.mMean, moons), world.mStormDirection,
+                      world.mCloudBlend, Rtx::deckLight(sky.mSunAloft, budget.mMean, moons), world.mCloudDirection,
                       world.mSkyRoll.mClouds, mSkyContent)
                 : Rtx::Shaders::CloudDeck{ .mOpacity = 0.0f,
                       .mTexture = Rtx::Shaders::NO_TEXTURE,

@@ -19,6 +19,8 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/shaders/visibility.h>
+#include <components/sky/clouds.hpp>
+#include <components/sky/skyroll.hpp>
 
 #include "framing.hpp"
 #include "stagedworld.hpp"
@@ -203,6 +205,9 @@ namespace RtxTool
         /// How long a weather takes to become the next one, in real seconds.
         constexpr float sTransitionSeconds = 4.0f;
 
+        /// What an hour of `sHoursPerSecond` is worth to `Sky::SkyRoll`, which counts in seconds.
+        constexpr float sSecondsPerHour = 3600.0f;
+
         bool clockRunning = false;
 
         /// The weather being turned into, and how far along. Empty where the sky is settled.
@@ -347,6 +352,15 @@ namespace RtxTool
         Clock::time_point previous = Clock::now();
         const Clock::time_point began = previous;
 
+        /// How far the deck has scrolled and the star sphere has turned.
+        ///
+        /// **Accumulated rather than taken off the clock, because the deck's speed moves under
+        /// it.** A transition mixes one weather's `Cloud_Speed` into the next over four seconds,
+        /// and a scroll worked out as elapsed time times the speed of the moment would drag the
+        /// whole history along with it — a deck that lurches, and runs backwards where the weather
+        /// ahead is the stiller one.
+        Sky::SkyRoll skyRoll;
+
         // Five times a second: fast enough that the coordinates keep up with the mouse, slow enough
         // that the compositor is not asked to redraw a title bar every frame.
         constexpr auto titleInterval = std::chrono::milliseconds(200);
@@ -363,6 +377,13 @@ namespace RtxTool
             const float seconds = std::chrono::duration<float>(now - previous).count();
             previous = now;
             camera.advance(std::min(seconds, 0.1f));
+
+            // **The sky's own two clocks, and neither of them is the hour.** A deck scrolls at the
+            // speed its weather records whether or not the world's clock is running, and the stars
+            // come round once every four *game* days — so the sphere turns only while the clock
+            // key has the hour moving. `RenderingManager` turns the same roll for the game.
+            skyRoll.advance(seconds, request.mLighting.mCloudSpeed,
+                clockRunning ? sHoursPerSecond * sSecondsPerHour : 0.0f, Sky::timescaleClouds());
 
             ++framesSinceTitle;
             if (now - lastTitle >= titleInterval)
@@ -452,10 +473,12 @@ namespace RtxTool
             framing.mDelight = request.mDelight;
             framing.mShowAlbedo = request.mShowAlbedo;
 
-            // The window is the only path with a clock. A screenshot leaves the sea still, so two
-            // runs of one build agree pixel for pixel.
+            // **A screenshot is the path with no clock at all.** The seconds carry the sea and the
+            // roll carries the sky, and a `shot` leaves both standing — which is what makes two runs
+            // of one build agree pixel for pixel.
             framing.mLighting = request.mLighting;
             framing.mLighting.mSeconds = static_cast<float>(std::chrono::duration<double>(now - began).count());
+            framing.mLighting.mRoll = skyRoll;
 
             // What the fog's step jitter varies by, and what the upscaler's sample sequence is
             // walked by. A screenshot leaves it at zero and gets the same frame twice; here it has

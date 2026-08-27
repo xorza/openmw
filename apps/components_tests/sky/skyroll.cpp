@@ -85,5 +85,30 @@ namespace Sky
             fast.advance(3600.0f * 24.0f, 0.0f, 2.0f, false);
             EXPECT_NEAR(fast.mStars, 0.5f * sTau, 1e-3f);
         }
+
+        /// A standing start reaches where accumulation would have.
+        ///
+        /// **What lets a run counted in frames take the roll off its own index.** A measured run
+        /// renders frame *n* at *n* sixtieths of a second and has to render the same picture
+        /// whatever order it drew them in, which an accumulated roll cannot promise.
+        TEST(RtxSkyRollTest, aRollTakenFromTheClockIsWhereAccumulationWouldHaveReachedIt)
+        {
+            SkyRoll stepped;
+            for (int frame = 0; frame < 600; ++frame)
+                stepped.advance(1.0f / 60.0f, 1.25f, 30.0f, true);
+
+            const SkyRoll taken = SkyRoll::after(10.0f, 1.25f, 30.0f, true);
+            EXPECT_NEAR(taken.mClouds, stepped.mClouds, 1e-4f);
+            EXPECT_NEAR(taken.mStars, stepped.mStars, 1e-4f);
+
+            // Ten seconds of Clear's 1.25 over the four hundred the engine divides by, halved
+            // again by thirty game seconds to the minute.
+            EXPECT_FLOAT_EQ(taken.mClouds, 10.0f * 1.25f / 400.0f * 0.5f);
+
+            // And nothing has happened at the start, which is what keeps a screenshot repeatable.
+            const SkyRoll still = SkyRoll::after(0.0f, 1.25f, 30.0f, false);
+            EXPECT_FLOAT_EQ(still.mClouds, 0.0f);
+            EXPECT_FLOAT_EQ(still.mStars, 0.0f);
+        }
     }
 }

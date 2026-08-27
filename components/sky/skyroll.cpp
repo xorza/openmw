@@ -36,4 +36,11 @@ namespace Sky
 
         mStars = std::fmod(mStars + timeScale * seconds * sTau / sStarPeriod, sTau);
     }
+
+    SkyRoll SkyRoll::after(float seconds, float cloudSpeed, float timeScale, bool timescaleClouds)
+    {
+        SkyRoll roll;
+        roll.advance(seconds, cloudSpeed, timeScale, timescaleClouds);
+        return roll;
+    }
 }

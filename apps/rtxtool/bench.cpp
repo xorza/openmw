@@ -18,6 +18,8 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/wavespectrum.hpp>
+#include <components/sky/clouds.hpp>
+#include <components/sky/skyroll.hpp>
 
 #include "framing.hpp"
 #include "perfcontrol.hpp"
@@ -366,6 +368,12 @@ namespace RtxTool
 
                 framing.mLighting = staged.getLighting();
                 framing.mLighting.mSeconds = static_cast<float>(frame) / sStepRate;
+
+                // **Off the frame index, like everything else a measured run animates.** The hour
+                // does not move here, so no game time passes for the star sphere to turn on, and
+                // the deck scrolls on the player's clock — which is the one this index counts.
+                framing.mLighting.mRoll = Sky::SkyRoll::after(
+                    framing.mLighting.mSeconds, framing.mLighting.mCloudSpeed, 0.0f, Sky::timescaleClouds());
 
                 // What the upscaler's sample sequence and every random draw in the shader are walked
                 // by. Held to the frame index so the same run draws the same samples twice over.
