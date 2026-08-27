@@ -14,74 +14,6 @@
 #include "traversal.glsl"
 #include "underwater.glsl"
 
-/// One lamp held out of all the ones that could reach a point, and what it stands for.
-///
-/// **A reservoir is one candidate and the weight of everything it beat.** That second number is what
-/// makes the estimator unbiased rather than merely cheap: the one held is divided by the chance it
-/// was held, which is its own weight over the total, so a dim lamp that happens to win still speaks
-/// for the whole cell.
-///
-/// A record rather than four locals because it is what would get carried, if carrying it were worth
-/// anything: a reservoir from the previous frame or from a neighbour combines with this one by the
-/// same rule that built it. **Measured before it was built and it is not worth building** — spending
-/// a shadow ray on every lamp instead of choosing one is 0.03% better at Seyda Neen's customs office
-/// and 0.32% at Wolverine Hall, and perfect selection cannot beat that.
-struct Reservoir
-{
-    /// What the lamp held would deliver here with nothing in the way.
-    vec3 mRadiance;
-
-    /// Where it stands, for the one shadow ray this buys, and how big it is — which is what that
-    /// ray is aimed *somewhere on* rather than *at*.
-    vec3 mTowards;
-    float mDistance;
-    float mRadius;
-
-    /// The held lamp's own weight, and the weight of every candidate including it.
-    float mWeight;
-    float mTotal;
-};
-
-/// A unit vector square to `axis`, to build a basis on.
-///
-/// Any vector not parallel to it will do, and which one is arbitrary — so the only thing this owes
-/// a caller is that the cross product it takes never collapses.
-vec3 tangentTo(vec3 axis)
-{
-    const vec3 aside = abs(axis.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-    return normalize(cross(aside, axis));
-}
-
-/// A direction inside the cone about `axis` that a source subtends, drawn evenly over its solid
-/// angle.
-///
-/// **This is the whole of what a soft shadow is.** A source with a size is not one direction but a
-/// cone of them, and a shadow ray drawn from somewhere in that cone rather than down its axis puts
-/// a penumbra under every occluder whose width is the source's own size seen from it. Evenly over
-/// the solid angle is evenly in the cosine, which is the right draw for a disc of uniform radiance
-/// and leaves nothing to weigh the sample by.
-///
-/// @param sine the sine of the cone's half-angle: the source's radius over its distance, and for
-///        the sun a constant. Zero is a point source and returns `axis` exactly, which is what
-///        keeps a light with no size casting the edge it used to.
-vec3 coneDirection(vec3 axis, float sine, vec2 u)
-{
-    const float cosine = sqrt(max(1.0 - sine * sine, 0.0));
-
-    // `1 - cos(half-angle)`, written so that it is never a subtraction of two numbers that are
-    // nearly equal. The sun is half a degree across and its cosine is 0.99999, so taking that from
-    // one spends five of a float's seven digits before the draw has begun — and every one of them
-    // is a step of the penumbra it is about to place.
-    const float versine = sine * sine / (1.0 + cosine);
-
-    const float drop = u.x * versine;
-    const float radius = sqrt(drop * (2.0 - drop));
-    const float turn = TAU * u.y;
-
-    const vec3 tangent = tangentTo(axis);
-    return tangent * (radius * cos(turn)) + cross(axis, tangent) * (radius * sin(turn)) + axis * (1.0 - drop);
-}
-
 /// The *direct* light arriving at a point and turning back out of it, per unit albedo.
 ///
 /// **Sources that can be asked where they are, and nothing else.** The sun and the lamps are each a
@@ -176,60 +108,10 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     //
     // **With one lamp in the cell it is exactly the arithmetic that was here before**: the sum is
     // that lamp's weight, the ratio is one, and what is left is the term that was always there.
-    Reservoir kept;
-    kept.mRadiance = vec3(0.0);
-    kept.mTowards = vec3(0.0);
-    kept.mDistance = 0.0;
-    kept.mRadius = 0.0;
-    kept.mWeight = 0.0;
-    kept.mTotal = 0.0;
+    Reservoir kept = noLamps();
+    weighLamps(kept, state, position, normal, INV_PI);
 
-    const uvec2 near = lampsReaching(position);
-    for (uint i = near.x; i < near.y; ++i)
-    {
-        const Lamp lamp = lampAt(lights[lightIndices[i]], position);
-        if (!(lamp.mReaching > 0.0))
-            continue;
-
-        const float cosine = dot(normal, lamp.mTowards);
-        if (cosine <= 0.0)
-            continue;
-
-        const vec3 unshadowed = lamp.mIntensity * (cosine * lamp.mReaching * INV_PI);
-
-        // A scalar to weigh a colour by, which is what a target function has to be. The luminance,
-        // because what it decides is which lamp this pixel would most notice the loss of.
-        const float weight = dot(unshadowed, LUMINANCE_WEIGHTS);
-        if (!(weight > 0.0))
-            continue;
-
-        kept.mTotal += weight;
-
-        // Hold the newcomer with probability `weight / total`, which leaves each candidate held in
-        // proportion to its weight however many follow it — one-deep reservoir sampling.
-        if (randomNext(state) * kept.mTotal <= weight)
-        {
-            kept.mRadiance = unshadowed;
-            kept.mTowards = lamp.mTowards;
-            kept.mDistance = lamp.mDistance;
-            kept.mRadius = lamp.mRadius;
-            kept.mWeight = weight;
-        }
-    }
-
-    // **The one ray**, aimed somewhere on the lamp rather than at it. Nothing is traced where every
-    // lamp was faced away from or out of reach, which is most of the frame.
-    //
-    // It stops at whichever is further back from the centre — the lamp's own surface, or the unit
-    // of clearance every shadow ray already keeps — so a source with a size never reaches inside
-    // itself and one without behaves exactly as it did.
-    if (kept.mWeight > 0.0)
-    {
-        const vec3 towards = coneDirection(kept.mTowards, min(kept.mRadius / kept.mDistance, 1.0), lampDraw);
-        const float through = lightThrough(position, towards, kept.mDistance - max(kept.mRadius, SHADOW_BIAS));
-
-        radiance += kept.mRadiance * (kept.mTotal / kept.mWeight) * through;
-    }
+    radiance += lampsThrough(kept, lampDraw);
 
     return radiance;
 }
@@ -320,26 +202,6 @@ vec3 shadeSurface(Surface surface, vec3 incoming, uint seed)
 /// texture is its *average* rather than any texel of it — so the cone is opened to about a radian,
 /// which reads the coarse mips a bounce should see without collapsing every one to the top level.
 const float BOUNCE_SPREAD = 1.0;
-
-/// A direction about `normal`, drawn with probability proportional to its cosine.
-///
-/// **The one distribution that cancels the cosine term.** A diffuse surface weights what arrives by
-/// `cos / pi` and this draws in exactly that proportion, so the estimator is the incoming radiance
-/// itself with no weight left to carry — which is why a single sample is worth anything at all.
-///
-/// Malley's method: a disc sampled evenly, lifted onto the hemisphere. `sqrt(u.x)` is the disc's
-/// radius, so the height off the surface is `sqrt(1 - u.x)` and averages two thirds — which is the
-/// number a test can hold this to, and the half a uniform draw would give instead.
-vec3 cosineDirection(vec3 normal, vec2 u)
-{
-    const float radius = sqrt(u.x);
-    const float angle = TAU * u.y;
-
-    const vec3 tangent = tangentTo(normal);
-
-    return tangent * (radius * cos(angle)) + cross(normal, tangent) * (radius * sin(angle))
-        + normal * sqrt(max(1.0 - u.x, 0.0));
-}
 
 /// How much of the sky a surface can see, as one cosine-weighted sample of its own hemisphere.
 ///

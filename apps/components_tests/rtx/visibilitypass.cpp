@@ -3465,8 +3465,12 @@ namespace Rtx
         /// sprite that is lit, because a rainstorm puts dozens over a pixel and a ray apiece is what
         /// kept this unshadowed at all.
         ///
-        /// A lid four hundred units over the sprite and nothing else in the scene: the sun's term
-        /// goes when the sun is what lights it, and the ambient's goes when that is.
+        /// **The lamps take the same treatment for the same reason**, and one more: what a lamp
+        /// delivers runs as one over the square of a distance that changes from sprite to sprite,
+        /// so the sum stays each puff's own and only the seeing is asked once for the layer.
+        ///
+        /// A lid four hundred units over the sprite and nothing else in the scene, and each source
+        /// in turn: what lights the sprite in the open stops lighting it under the lid.
         TEST_F(RtxVisibilityTest, aSpriteIsShadowedByWhatStandsOverIt)
         {
             constexpr std::uint32_t size = 33;
@@ -3482,7 +3486,15 @@ namespace Rtx
                 .mLevels = std::span(&one, 1),
             } };
 
-            const auto sprited = [&](bool lidded, bool sunlit) {
+            // One source at a time, so what the lid takes is never ambiguous.
+            enum class Source
+            {
+                Sun,
+                Sky,
+                Lamp,
+            };
+
+            const auto sprited = [&](bool lidded, Source source) {
                 SceneDesc scene;
                 const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
                 const std::array<Sprite, 1> sprites{ Sprite{
@@ -3493,16 +3505,21 @@ namespace Rtx
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                         .mMesh = scene.addMesh(makeSheet(4000.0f, 600.0f), {}, {}, sQuadIndices) });
 
+                // Over the lid, so the same one that takes the sun and the sky takes this too.
+                if (source == Source::Lamp)
+                    scene.addLight(Light{ .mPosition = osg::Vec3f(0.0f, 0.0f, 800.0f),
+                        .mIntensity = osg::Vec3f(4.0e5f, 4.0e5f, 4.0e5f),
+                        .mReach = 4000.0f });
+
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
-                // One light at a time, so what the lid takes is unambiguous.
                 camera.mSkyHorizon = osg::Vec3f();
                 camera.mSkyZenith = osg::Vec3f();
                 camera.mAmbientFromSky = 1.0f;
                 camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
-                camera.mSunIrradiance = sunlit ? osg::Vec3f(4.0f, 4.0f, 4.0f) : osg::Vec3f();
-                camera.mAmbient = sunlit ? osg::Vec3f() : osg::Vec3f(0.5f, 0.5f, 0.5f);
+                camera.mSunIrradiance = source == Source::Sun ? osg::Vec3f(4.0f, 4.0f, 4.0f) : osg::Vec3f();
+                camera.mAmbient = source == Source::Sky ? osg::Vec3f(0.5f, 0.5f, 0.5f) : osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, puff, camera, size, pixels, SeaState{});
@@ -3510,14 +3527,13 @@ namespace Rtx
                 return mRadiance[centre];
             };
 
-            const float sun = sprited(false, true);
-            const float sky = sprited(false, false);
+            for (const Source source : { Source::Sun, Source::Sky, Source::Lamp })
+            {
+                const float open = sprited(false, source);
+                ASSERT_GT(open, 0.01f) << "the source did not reach the sprite at all";
 
-            ASSERT_GT(sun, 0.01f) << "the sun did not reach the sprite at all";
-            ASSERT_GT(sky, 0.01f) << "and neither did the sky";
-
-            EXPECT_LT(sprited(true, true), 0.05f * sun) << "a lid did not stop the sun";
-            EXPECT_LT(sprited(true, false), 0.05f * sky) << "a lid did not stop the sky";
+                EXPECT_LT(sprited(true, source), 0.05f * open) << "a lid did not stop it";
+            }
         }
 
         /// What each mask names, and what neither of them does.
@@ -4353,8 +4369,15 @@ namespace Rtx
             const float window = 1.0f - ratio * ratio * ratio * ratio;
             const float delivered = window * window / (span * span + 1.0f);
 
-            const auto look = [&](bool lit) {
+            const auto look = [&](bool lit, bool shaded = false) {
                 SceneDesc scene = makeWall();
+
+                // A lid between the ray and the lamp, high enough to be nowhere near what the eye
+                // sees and squarely across every ray the march sends up at the light.
+                if (shaded)
+                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(makeSheet(40000.0f, 1000.0f), {}, {}, sQuadIndices) });
+
                 if (lit)
                     scene.addLight(Light{
                         .mPosition = lamp,
@@ -4387,6 +4410,11 @@ namespace Rtx
             // ray's light the fog took: 0.15 + 1 / (4 pi) * 0.5 = 0.18979, which encodes to 121.
             const float scattered = 0.25f * Shaders::INV_PI * 0.5f;
             EXPECT_NEAR(look(true), int{ encodeSrgb(0.5f * wall + scattered) }, 1) << "the lamp in the air";
+
+            // **And nothing at all through a lid**, which is the whole of what the march's one ray
+            // buys: every lamp at every step is weighed into one reservoir and the one held is
+            // traced to, so a lantern behind something stops lighting the air in front of it.
+            EXPECT_EQ(look(true, true), look(false)) << "a lamp behind a lid still lit the air";
         }
 
         /// The banked field holds as much air as an even one, which is what `FOG_COVERAGE` is for.

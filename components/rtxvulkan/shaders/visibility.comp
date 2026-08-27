@@ -161,7 +161,7 @@ void main()
     // stands between the eye and — the water's own absorption included, which is a different medium
     // over a different part of the path. A ray that hit nothing carries `mFar`, which the march
     // clamps to the distance past which air stops mattering.
-    const vec4 fog = fogAlong(origin, direction, surface.mDistance, randomAt(pixel, STREAM_FOG));
+    const vec4 fog = fogAlong(origin, direction, surface.mDistance, randomAt(pixel, STREAM_FOG), pixelKey(pixel));
     shaded = shaded * fog.w + fog.xyz;
     transmittance *= fog.w;
 

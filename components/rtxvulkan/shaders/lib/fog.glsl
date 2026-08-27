@@ -326,30 +326,6 @@ float fogSunDepth(float extinction)
     return extinction * FOG_HEIGHT / max(frame.mSunPosition.z, 1.0e-3);
 }
 
-/// What the air at a point sends toward the eye, per unit of light it takes out of the beam.
-///
-/// **Every lamp that reaches it, so a lantern is a halo in the murk rather than a light with a dark
-/// sphere around it.** Unshadowed: a shaft wants a ray per light per step, which is a different
-/// order of cost and belongs with the sun's.
-///
-/// **Isotropic, and `INV_FOUR_PI` is what isotropic is.** A lamp arrives here as irradiance exactly
-/// as it arrives at a surface, and what comes back toward the eye is that irradiance spread over the
-/// sphere — so a lamp with no phase function still owes the factor. Not the real one, either: a
-/// lamp's angle to the view ray changes at every step and for every lamp, where a directional
-/// source's is fixed for a whole march, and a forward peak thousands of times isotropic would be a
-/// firefly waiting for a step to land on the line from the eye through a lantern.
-///
-/// `lampsAt` is `gather` without its cosine or its shadow ray — the air has no normal to face away
-/// from, and nothing here is occluded. What the two may not disagree on is `falloff`, which is the
-/// whole of what a lamp delivers at a distance, and `lampAt` is where that is said.
-///
-/// @param sun what the sun puts into the air here, with its phase function, its own column of fog
-///        and any water overhead already taken out of it. It arrives whole because its angle to the
-///        ray does not change along one, unlike every lamp's.
-vec3 fogLight(vec3 position, vec3 sun)
-{
-    return frame.mFogColour + sun + INV_FOUR_PI * lampsAt(position);
-}
 
 /// What `distance` units of air take out of what is behind them, and what they put in on the way.
 ///
@@ -366,7 +342,7 @@ vec3 fogLight(vec3 position, vec3 sun)
 ///
 /// so fogging each half is the same as fogging their sum. That identity is what lets fog live here,
 /// where the lights already are, instead of in a pass that would have to bind them all again.
-vec4 fogAlong(vec3 origin, vec3 direction, float distance, float offset)
+vec4 fogAlong(vec3 origin, vec3 direction, float distance, float offset, uint seed)
 {
     // No air is the frame untouched, and it has to be exactly that: a lit surface with fog over it
     // is a differently lit one, and the tests that measure radiance turn this off.
@@ -397,6 +373,22 @@ vec4 fogAlong(vec3 origin, vec3 direction, float distance, float offset)
     float transmittance = 1.0;
     vec3 scattered = vec3(0.0);
     float behind = 0.0;
+
+    // **One reservoir for the whole march, and so one ray for every lamp at every step of it.** A
+    // ray per step per lamp is the cost that kept the air unshadowed, and a ray per stretch — what
+    // the sun gets above — is affordable only because the sun's eight all point the same way. A
+    // lamp's do not. So every step's lamps are weighed into one reservoir by what that step is worth
+    // to the frame, one of them is held, and the single ray it buys stands for all of it.
+    //
+    // **Isotropic, and `INV_FOUR_PI` is what isotropic is.** A lamp arrives in the air as irradiance
+    // exactly as it arrives at a surface, and what comes back toward the eye is that irradiance
+    // spread over the sphere — so a lamp with no phase function still owes the factor. Not the real
+    // one, either: a lamp's angle to the view ray changes at every step and for every lamp, where a
+    // directional source's is fixed for a whole march, and a forward peak thousands of times
+    // isotropic would be a firefly waiting for a step to land on the line from the eye through a
+    // lantern.
+    uint lampState = randomSeed(seed + SEED_LAMPS_FOG);
+    Reservoir lamps = noLamps();
 
     for (uint stretch = 0u; stretch < FOG_SHADOW_RAYS; ++stretch)
     {
@@ -441,10 +433,14 @@ vec4 fogAlong(vec3 origin, vec3 direction, float distance, float offset)
             // Air above the layer and air behind fog already opaque both look like free steps to
             // drop, and dropping them bought 3% on Balmora and nothing at all in an interior: at
             // this layer's scale height there is no thin fraction of the ray to skip.
-            scattered += weight * fogLight(position, sun);
+            scattered += weight * (frame.mFogColour + sun);
+            weighLamps(lamps, lampState, position, vec3(0.0), INV_FOUR_PI * weight);
             transmittance -= weight;
         }
     }
+
+    // The one ray the march bought, and what every lamp it weighed comes to through it.
+    scattered += lampsThrough(lamps, vec2(randomNext(lampState), randomNext(lampState)));
 
     return vec4(scattered, transmittance);
 }

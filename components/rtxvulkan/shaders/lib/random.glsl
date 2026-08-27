@@ -4,7 +4,8 @@
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_RANDOM_GLSL
 
 // Blue noise across the screen, a low-discrepancy sequence along time, and a hash for the
-// one field that asks about a place in the world rather than a pixel on the screen.
+// one field that asks about a place in the world rather than a pixel on the screen — and
+// what a pair of those numbers becomes when a shadow ray or a bounce asks for a direction.
 
 #include "scene.h"
 #include "bindings.glsl"
@@ -63,6 +64,12 @@ const uint SEED_SKY_REACHING = 0x56u;
 /// numbers, so the point on the disc and the direction into the sky would move together across the
 /// whole frame — a pattern rather than noise, and the filter keeps a pattern.
 const uint SEED_SPRITE_SUN = 0x57u;
+
+/// And one for the lamp a fog march holds out of every lamp at every one of its steps.
+const uint SEED_LAMPS_FOG = 0x58u;
+
+/// And one for the lamp a layer of sprites holds, beside the sun's and the sky's own rays there.
+const uint SEED_LAMPS_SPRITE = 0x59u;
 
 /// How far each stream's sequence advances between frames.
 ///
@@ -148,6 +155,66 @@ float randomNext(inout uint state)
 
     // Twenty-four bits, which is every one a float can hold without rounding two of them together.
     return float(word >> 8u) * (1.0 / 16777216.0);
+}
+
+/// A unit vector square to `axis`, to build a basis on.
+///
+/// Any vector not parallel to it will do, and which one is arbitrary — so the only thing this owes
+/// a caller is that the cross product it takes never collapses.
+vec3 tangentTo(vec3 axis)
+{
+    const vec3 aside = abs(axis.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    return normalize(cross(aside, axis));
+}
+
+/// A direction inside the cone about `axis` that a source subtends, drawn evenly over its solid
+/// angle.
+///
+/// **This is the whole of what a soft shadow is.** A source with a size is not one direction but a
+/// cone of them, and a shadow ray drawn from somewhere in that cone rather than down its axis puts
+/// a penumbra under every occluder whose width is the source's own size seen from it. Evenly over
+/// the solid angle is evenly in the cosine, which is the right draw for a disc of uniform radiance
+/// and leaves nothing to weigh the sample by.
+///
+/// @param sine the sine of the cone's half-angle: the source's radius over its distance, and for
+///        the sun a constant. Zero is a point source and returns `axis` exactly, which is what
+///        keeps a light with no size casting the edge it used to.
+vec3 coneDirection(vec3 axis, float sine, vec2 u)
+{
+    const float cosine = sqrt(max(1.0 - sine * sine, 0.0));
+
+    // `1 - cos(half-angle)`, written so that it is never a subtraction of two numbers that are
+    // nearly equal. The sun is half a degree across and its cosine is 0.99999, so taking that from
+    // one spends five of a float's seven digits before the draw has begun — and every one of them
+    // is a step of the penumbra it is about to place.
+    const float versine = sine * sine / (1.0 + cosine);
+
+    const float drop = u.x * versine;
+    const float radius = sqrt(drop * (2.0 - drop));
+    const float turn = TAU * u.y;
+
+    const vec3 tangent = tangentTo(axis);
+    return tangent * (radius * cos(turn)) + cross(axis, tangent) * (radius * sin(turn)) + axis * (1.0 - drop);
+}
+
+/// A direction about `normal`, drawn with probability proportional to its cosine.
+///
+/// **The one distribution that cancels the cosine term.** A diffuse surface weights what arrives by
+/// `cos / pi` and this draws in exactly that proportion, so the estimator is the incoming radiance
+/// itself with no weight left to carry — which is why a single sample is worth anything at all.
+///
+/// Malley's method: a disc sampled evenly, lifted onto the hemisphere. `sqrt(u.x)` is the disc's
+/// radius, so the height off the surface is `sqrt(1 - u.x)` and averages two thirds — which is the
+/// number a test can hold this to, and the half a uniform draw would give instead.
+vec3 cosineDirection(vec3 normal, vec2 u)
+{
+    const float radius = sqrt(u.x);
+    const float angle = TAU * u.y;
+
+    const vec3 tangent = tangentTo(normal);
+
+    return tangent * (radius * cos(angle)) + cross(normal, tangent) * (radius * sin(angle))
+        + normal * sqrt(max(1.0 - u.x, 0.0));
 }
 
 #endif

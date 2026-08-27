@@ -24,8 +24,7 @@
 ///
 /// The lamps arrive the way they arrive at the fog — as irradiance spread over the whole sphere —
 /// because a puff is the same kind of thing the fog is, only denser and in one place. So it is the
-/// same `lampsAt` and the same one multiply on the sum. They are the one term here still unshadowed,
-/// and the fog's own are too.
+/// same `lampsAt` and the same one multiply on the sum.
 ///
 /// **A particle has no normal and it still has an up**, which is the whole of how a sprite is
 /// occluded: what a point sees of the sky is a question about the point, and the sky is above.
@@ -33,11 +32,15 @@
 ///
 /// @param sunThrough what the world leaves of the sun on the way to this point.
 /// @param skyThrough the same for the sky over it.
-vec3 puffLight(vec3 position, float sunThrough, float skyThrough)
+/// @param lampThrough the same for the lamps — **one answer for every lamp and for the whole
+///        layer**, where the sum beside it is this puff's own. What a lamp delivers runs as one over
+///        the square of a distance that changes from sprite to sprite; whether it is *seen* changes
+///        slowly, and a torch behind a wall is behind it for the whole layer.
+vec3 puffLight(vec3 position, float sunThrough, float skyThrough, float lampThrough)
 {
     return pathEnd(position, skyThrough)
         + frame.mSunIrradiance * (INV_PI * daylightReaching(position) * sunThrough)
-        + INV_FOUR_PI * lampsAt(position);
+        + INV_FOUR_PI * lampsAt(position) * lampThrough;
 }
 
 /// One sprite's case for owning a pixel's motion vector.
@@ -160,6 +163,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     bool askedAbove = false;
     float sunThrough = 1.0;
     float skyThrough = 1.0;
+    float lampThrough = 1.0;
 
     for (uint slot = spriteTileOffsets[tile]; slot < last; ++slot)
     {
@@ -324,9 +328,19 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
             // Straight up, because a particle has no normal and the sky is above it either way.
             skyThrough = skyReaching(sprite.mPosition, vec3(0.0, 0.0, 1.0), pixelKey(pixel) + SEED_SKY_REACHING);
+
+            // **The lamp that matters where the layer starts, and its answer for all of them.** The
+            // reservoir picks by what a lamp delivers here, so the one traced to is the one the
+            // layer would most notice the loss of.
+            uint lampState = randomSeed(pixelKey(pixel) + SEED_LAMPS_SPRITE);
+
+            Reservoir lamps = noLamps();
+            weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), INV_FOUR_PI);
+
+            lampThrough = lampVisible(lamps, vec2(randomNext(lampState), randomNext(lampState)));
         }
 
-        covered += colour * puffLight(sprite.mPosition, sunThrough, skyThrough) * (alpha * reaching);
+        covered += colour * puffLight(sprite.mPosition, sunThrough, skyThrough, lampThrough) * (alpha * reaching);
         coverage += alpha;
         layer.mTransmittance *= 1.0 - alpha;
 

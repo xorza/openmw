@@ -9,8 +9,11 @@
 // a surface, the air, and a puff of smoke — and they differ in the cosine, the shadow ray
 // and the phase function. What they may not differ in is the reach and the falloff.
 
+#include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
+#include "random.glsl"
+#include "traversal.glsl"
 
 /// Which lamps could reach `position`, as a range into `lightIndices`.
 ///
@@ -94,9 +97,10 @@ Lamp lampAt(GpuLight lamp, vec3 position)
 
 /// What every lamp reaching a point delivers there, as irradiance and with nothing in the way.
 ///
-/// **What the air and a puff of smoke both want**, which is the same question: neither has a normal
-/// to face away from and neither is shadowed, so what is left is the sum. A surface asks a different
-/// one and walks the lamps itself, because it spends a shadow ray on each and needs to stop early.
+/// **What a puff of smoke wants for its own falloff**, which no estimator over a layer can answer:
+/// a lamp's intensity runs as one over the square of a distance that changes from sprite to sprite,
+/// where whether it is *seen* changes slowly. So the sum is taken here and the seeing is asked once
+/// — `spritesAlong` says why.
 ///
 /// The isotropic factor is the caller's. It is one multiply on the sum rather than one per lamp,
 /// which is one rounding rather than as many as the cell has lamps.
@@ -112,6 +116,123 @@ vec3 lampsAt(vec3 position)
     }
 
     return total;
+}
+
+/// One lamp held out of all the ones that could reach a point, and what it stands for.
+///
+/// **A reservoir is one candidate and the weight of everything it beat.** That second number is what
+/// makes the estimator unbiased rather than merely cheap: the one held is divided by the chance it
+/// was held, which is its own weight over the total, so a dim lamp that happens to win still speaks
+/// for the whole cell.
+///
+/// A record rather than four locals because it is what would get carried, if carrying it were worth
+/// anything: a reservoir from the previous frame or from a neighbour combines with this one by the
+/// same rule that built it. **Measured before it was built and it is not worth building** — spending
+/// a shadow ray on every lamp instead of choosing one is 0.03% better at Seyda Neen's customs office
+/// and 0.32% at Wolverine Hall, and perfect selection cannot beat that.
+struct Reservoir
+{
+    /// Where the ray this buys leaves from — a shading point, a step of a fog march, or a sprite.
+    vec3 mFrom;
+
+    /// What the lamp held would deliver there with nothing in the way.
+    vec3 mRadiance;
+
+    /// Where it stands, for the one shadow ray this buys, and how big it is — which is what that
+    /// ray is aimed *somewhere on* rather than *at*.
+    vec3 mTowards;
+    float mDistance;
+    float mRadius;
+
+    /// The held lamp's own weight, and the weight of every candidate including it.
+    float mWeight;
+    float mTotal;
+};
+
+/// A reservoir that has weighed nothing, which buys no ray and delivers nothing.
+Reservoir noLamps()
+{
+    return Reservoir(vec3(0.0), vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0, 0.0);
+}
+
+/// Weighs every lamp reaching `from` into `kept`.
+///
+/// **One walk and three askers**, which is what stopped the fog and the sprites going unshadowed:
+/// a surface, a step of a fog march and a layer of particles all want the same question — which of
+/// these lamps is worth the one ray — and each used to answer it its own way or not at all.
+///
+/// **Called more than once builds one reservoir over all of it.** The fog weighs every step of a
+/// march into the same one, so a single ray stands for the whole march rather than for one place in
+/// it, and the estimator is unbiased over the sum it was accumulated from.
+///
+/// @param normal the surface's, or nothing at all for a point in a medium — the air and a puff have
+///        no direction to face away from, so every lamp reaching them counts whole.
+/// @param scale what this asker's own share of a lamp is worth: `INV_PI` for a Lambert surface,
+///        `INV_FOUR_PI` times a step's weight for the air.
+void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, float scale)
+{
+    const bool facing = dot(normal, normal) > 0.0;
+
+    const uvec2 near = lampsReaching(from);
+    for (uint i = near.x; i < near.y; ++i)
+    {
+        const Lamp lamp = lampAt(lights[lightIndices[i]], from);
+        if (!(lamp.mReaching > 0.0))
+            continue;
+
+        const float cosine = facing ? dot(normal, lamp.mTowards) : 1.0;
+        if (cosine <= 0.0)
+            continue;
+
+        const vec3 unshadowed = lamp.mIntensity * (cosine * lamp.mReaching * scale);
+
+        // A scalar to weigh a colour by, which is what a target function has to be. The luminance,
+        // because what it decides is which lamp this pixel would most notice the loss of.
+        const float weight = dot(unshadowed, LUMINANCE_WEIGHTS);
+        if (!(weight > 0.0))
+            continue;
+
+        kept.mTotal += weight;
+
+        // Hold the newcomer with probability `weight / total`, which leaves each candidate held in
+        // proportion to its weight however many follow it — one-deep reservoir sampling.
+        if (randomNext(state) * kept.mTotal <= weight)
+        {
+            kept.mFrom = from;
+            kept.mRadiance = unshadowed;
+            kept.mTowards = lamp.mTowards;
+            kept.mDistance = lamp.mDistance;
+            kept.mRadius = lamp.mRadius;
+            kept.mWeight = weight;
+        }
+    }
+}
+
+/// What the world leaves of the lamp a reservoir held, from none of it to all.
+///
+/// **The one ray**, aimed somewhere on the lamp rather than at it. Nothing is traced where every
+/// lamp was faced away from or out of reach, which is most of the frame.
+///
+/// It stops at whichever is further back from the centre — the lamp's own surface, or the unit of
+/// clearance every shadow ray already keeps — so a source with a size never reaches inside itself
+/// and one without behaves exactly as it did.
+float lampVisible(Reservoir kept, vec2 draw)
+{
+    if (!(kept.mWeight > 0.0))
+        return 1.0;
+
+    const vec3 towards = coneDirection(kept.mTowards, min(kept.mRadius / kept.mDistance, 1.0), draw);
+
+    return lightThrough(kept.mFrom, towards, kept.mDistance - max(kept.mRadius, SHADOW_BIAS));
+}
+
+/// What every lamp a reservoir stands for delivers, once the one it held has been traced to.
+vec3 lampsThrough(Reservoir kept, vec2 draw)
+{
+    if (!(kept.mWeight > 0.0))
+        return vec3(0.0);
+
+    return kept.mRadiance * (kept.mTotal / kept.mWeight) * lampVisible(kept, draw);
 }
 
 #endif
