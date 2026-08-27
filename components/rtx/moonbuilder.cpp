@@ -137,6 +137,7 @@ namespace Rtx
             .mAngularRadius = placement.mAngularRadius,
             .mPhaseAngle = placement.mPhaseAngle,
             .mAlpha = placement.mAlpha,
+            .mShadowBlend = placement.mShadowBlend,
             .mFace = placement.mFace == sNoIndex ? Shaders::NO_TEXTURE : static_cast<std::uint32_t>(placement.mFace),
         };
     }
@@ -146,14 +147,16 @@ namespace Rtx
         return angularRadiusOf(moon);
     }
 
-    MoonPlacement makeMoon(Moon moon, int day, float hour)
+    MoonPlacement makeMoon(Moon moon, int day, float hour, float glare)
     {
         const Sky::MoonMoment moment = Sky::MoonModel(nameOf(moon)).at(day, hour);
 
-        return placeMoon(moon, moment.mAlongArc, moment.mAxisOffset, static_cast<int>(moment.mPhase), moment.mAlpha);
+        return placeMoon(moon, moment.mAlongArc, moment.mAxisOffset, static_cast<int>(moment.mPhase),
+            moment.mAlpha * glare, moment.mShadowBlend);
     }
 
-    MoonPlacement placeMoon(Moon moon, float alongArcDegrees, float axisOffsetDegrees, int phase, float alpha)
+    MoonPlacement placeMoon(
+        Moon moon, float alongArcDegrees, float axisOffsetDegrees, int phase, float alpha, float shadowBlend)
     {
         // `Moon::setState`'s own two rotations (`apps/openmw/mwrender/gl/skyutil.cpp:900`): the arc
         // tips the moon up from the horizon about +X, and the axis offset swings that whole arc
@@ -180,6 +183,7 @@ namespace Rtx
             .mPhaseAngle = static_cast<float>(phase) * 0.25f * osg::PIf,
 
             .mAlpha = alpha,
+            .mShadowBlend = std::clamp(shadowBlend, 0.0f, 1.0f),
 
             // **The file's own mean, unscaled.** `Shaders::MOON_RADIANCE` is what takes a
             // moon's texels to radiance, and it multiplies this where no portrait is loaded and the
@@ -187,7 +191,11 @@ namespace Rtx
             .mColour = moon == Moon::Masser ? sMasserFace : sSecundaFace,
         };
 
-        placement.mIrradiance = tintOf(moon) * (deliveredBy(moon) * phaseLaw(placement.mPhaseAngle) * alpha);
+        // **Scaled by the face it is showing, which is where the engine puts a low moon's light.**
+        // A moon under `Fade_End_Angle` is drawn as the sky and nothing else, so a valley it has not
+        // risen far enough to appear in is a valley it does not light either.
+        placement.mIrradiance
+            = tintOf(moon) * (deliveredBy(moon) * phaseLaw(placement.mPhaseAngle) * alpha * placement.mShadowBlend);
 
         placement.mDirection.normalize();
         placement.mRight.normalize();

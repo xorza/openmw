@@ -60,6 +60,18 @@ namespace Rtx
         /// which is what the photometry says it is worth.
         osg::Vec3f mIrradiance;
 
+        /// How much of its painted face a moon is showing, from none of it to all.
+        ///
+        /// **Morrowind's own answer to a moon near the horizon, and it is not a fade.** Between
+        /// `Moons_<name>_Fade_End_Angle` and `Fade_Start_Angle` — thirty to fifty degrees along the
+        /// arc for Secunda, forty to fifty for Masser — the engine crossfades a disc the colour of
+        /// the sky into the moon's own face. So what arrives at the low end is indistinguishable
+        /// from the sky it stands in, and the moon grows out of it over the next twenty degrees.
+        ///
+        /// **The light follows the face**, which is what keeps a moon from lighting a valley it is
+        /// not yet showing in. `Sky::MoonModel` works it out and both renderers read it.
+        float mShadowBlend = 0.0f;
+
         /// The mean opaque texel of this moon's portrait, linear and unscaled.
         ///
         /// **What the disc falls back to where no portrait is loaded.** Masser is red and Secunda is
@@ -79,7 +91,9 @@ namespace Rtx
     /// @param day days since the world began, on Morrowind's own count: the game starts on day 0,
     ///        which the rise-hour formula anchors to 16 Last Seed.
     /// @param hour on a twenty-four hour clock.
-    MoonPlacement makeMoon(Moon moon, int day, float hour);
+    /// @param glare the weather's `Glare_View`, which fades the moons as it fades the stars — the
+    ///        `Moon::adjustTransparency` the rasterizer applies after the weather has spoken.
+    MoonPlacement makeMoon(Moon moon, int day, float hour, float glare);
 
     /// The two painted faces, in a scene's texture table.
     ///
@@ -117,8 +131,10 @@ namespace Rtx
     /// @param alongArc degrees travelled from the horizon it rose at, zero to 180.
     /// @param axisOffset degrees the whole arc is swung about the zenith.
     /// @param phase which of the eight painted phases, counted from full.
-    /// @param alpha what the game fades it by. Zero is a moon that is not drawn.
-    MoonPlacement placeMoon(Moon moon, float alongArc, float axisOffset, int phase, float alpha);
+    /// @param alpha what the game fades it by, the weather's `Glare_View` included. Zero is a moon
+    ///        that is not drawn.
+    /// @param shadowBlend how much of its face it is showing — `MoonMoment::mShadowBlend`.
+    MoonPlacement placeMoon(Moon moon, float alongArc, float axisOffset, int phase, float alpha, float shadowBlend);
 
     /// A placement as the shader takes it.
     ///

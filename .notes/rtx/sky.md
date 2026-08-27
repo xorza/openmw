@@ -1,6 +1,6 @@
 # The sky's light budget
 
-Five open issues in `.notes/ISSUES.md` are one design fault seen from five sides. Every layer of the
+The open issues in `.notes/ISSUES.md` are one design fault seen from several sides. Every layer of the
 sky is drawn by one rule and lights by another, and the two rules were written at different times.
 
 | layer | drawn by | lights by |
@@ -9,7 +9,7 @@ sky is drawn by one rule and lights by another, and the two rules were written a
 | the fill | nothing | `skyGlow`, via `mSkyFill` |
 | star field, nebulae, constellations | `starField`, `skyPatches` | **nothing** |
 | the cloud deck | `cloudDeck`, as an emission | **nothing**, and **nothing lights it** |
-| the moons | `moonFace` | `gather`, and only above 30 or 40 degrees |
+| the moons | `moonFace` | `gather` |
 
 **What the sky delivers should be stated once, and every layer drawn out of it.** `skyFill` is the
 first half of that and knows about none of the others: it makes the dome deliver what
@@ -23,40 +23,7 @@ onto flat ground.
 
 ---
 
-## 1. A moon appears thirty degrees above the horizon
-
-**Root cause, and it is exact.** `MoonModel::earlyShadowAlpha` returns nought below
-`Fade_End_Angle - Moon_Shadow_Early_Fade_Angle` and ramps to one over the half degree above it.
-`placeMoon` maps `mAlongArc` straight to elevation, so a moon is not drawn at all until it stands
-`Fade_End_Angle` above the horizon: **30 degrees for Secunda and 40 for Masser**.
-
-At Secunda's 9 degrees an hour that ramp is 3.3 minutes wide, and on day 0 it rises at 19:12 and
-arrives at **22:28**. Two shots either side, at 22:24 and 22:36, show an empty sky and then a whole
-moon. Masser rises at 16:00 and arrives at 21:03.
-
-**And the softening the engine does have was dropped.** `MoonMoment::mShadowBlend` crossfades a moon
-from a sky-coloured disc to its painted face between `Fade_End_Angle` and `Fade_Start_Angle`.
-`Rtx::makeMoon` reads four of the five fields and not that one, so the ray tracer has the hard gate
-without the crossfade behind it.
-
-**Why the engine does it.** A rasterized moon is a textured quad over a fog-coloured dome, and near
-the horizon the two disagree. It is a workaround for a picture this renderer does not draw.
-
-**The fix.** A moon is drawn whenever it is above the horizon, and the air it is seen through is what
-dims it.
-
-- Drop `earlyShadowAlpha` from what reaches `MoonPlacement::mAlpha`. Keep `hourlyAlpha`, which is the
-  daylight fade and is about the hour rather than about the horizon.
-- Let the fog extinction already on the frame attenuate a low moon's disc and its light, on the
-  slant path through the air. `Fog::mExtinction` and the moon's own elevation are both to hand.
-- `MoonModel` keeps `earlyShadowAlpha` and `shadowBlend` for the rasterizer, which still wants both.
-- Test: a moon at one degree of elevation is drawn and lights, and one below the horizon does
-  neither. And the arc between them holds no step — sample it every tenth of a degree and assert no
-  neighbouring pair differs by more than the extinction can account for.
-
----
-
-## 2. The night sky's sheets light nothing
+## 1. The night sky's sheets light nothing
 
 **Root cause.** `skyGlow` returns the dome's gradient and the fill. `starField` and `skyPatches` are
 called only from `skyRadiance`, so a bounce that escapes never finds them.
@@ -91,7 +58,7 @@ indirect light, and the sheets carry no mip chain to blur it away.
 
 ---
 
-## 3. The deck's horizon fade is a number this renderer chose
+## 2. The deck's horizon fade is a number this renderer chose
 
 **Root cause.** `CLOUD_HORIZON = 0.28` is a smoothstep in `sin(elevation)` picked to hide the
 stretch. The engine's own fade is `ModVertexAlphaVisitor::Clouds`, which writes vertex alpha by
@@ -114,13 +81,13 @@ engine does and reaches full cover higher.
 
 ---
 
-## 4. The cloud deck is an emission and is never lit
+## 3. The cloud deck is an emission and is never lit
 
 **Root cause.** `CloudDeck::mColour` is the weather's air times what its own daylight says a cloud is
 worth, and `cloudDeck` returns that times coverage. No sun, no moon, no sky reaches it, it casts
 nothing, and it loses the sun at the same instant the ground does.
 
-This is the largest of the five and the reference implementation has already been through it —
+This is the largest of them and the reference implementation has already been through it —
 `/home/xxorza/Projects/rtxmw/docs/design.md` §8.56 and §8.57. Read both before starting.
 
 **The shape of the answer**, from there:
@@ -145,7 +112,7 @@ long the deck keeps the sun has to come from somewhere else.
 
 **Steps.** Land them in this order, checking with `shot` after each:
 
-1. Per-sheet mean luminance at load, beside the night sheets' means from step 2 — one reader serves
+1. Per-sheet mean luminance at load, beside the night sheets' means from step 1 — one reader serves
    both.
 2. Coverage from the alpha, and from the texel's luminance against the mean where the alpha is flat.
 3. The deck lit by the sky and by the moons, at a transmission of 0.25. Night first, because it is
@@ -157,7 +124,7 @@ long the deck keeps the sun has to come from somewhere else.
 
 ---
 
-## 5. What terminates a path is what the open sky delivers
+## 4. What terminates a path is what the open sky delivers
 
 `mAmbient` used to be six times the dome it stood for a bounce of, so a surface in a crevice was lit
 more than the open ground beside it. `skyFill` closed that: the sky now delivers the weather's
@@ -167,7 +134,7 @@ ambient exactly, and `pathEnd` is that same figure.
 something saw the whole sky. Nothing accounts for how enclosed it is, so the term that is meant to
 stand for the bounces nobody traces cannot darken a hole.
 
-Lowest priority of the five, and the only one whose fix is a real cost: it wants an occlusion
+Lowest priority of them, and the only one whose fix is a real cost: it wants an occlusion
 estimate the renderer does not keep. Note it, leave it, and revisit once the deck is lit — a deck
 that shadows the world is the same machinery seen from another side.
 
@@ -175,21 +142,22 @@ that shadows the world is the same machinery seen from another side.
 
 ## Order
 
-Step 1 first: it is small, it is exactly reproducible, and it is the one a player sees every night.
+The moon that arrived whole thirty degrees up is done: it was `MoonMoment::mShadowBlend`, which the
+engine has and the ray tracer was not carrying. Nothing was invented for it and nothing else moved.
 
-Step 2 next, because step 4 needs the same image reader and the same budget rule, and it is far
+Step 1 first, because step 3 needs the same image reader and the same budget rule, and it is far
 cheaper to get both right on the sheets than on the deck.
 
-Step 3 next: it is contained, it is content-derived, and it changes the picture where the deck meets
+Step 2 next: it is contained, it is content-derived, and it changes the picture where the deck meets
 the haze rather than everywhere.
 
-Step 4 last, and in its own six steps. It is the one that can regress a day that has just been tuned.
+Step 3 last, and in its own six steps. It is the one that can regress a day that has just been tuned.
 
-Step 5 stays open.
+Step 4 stays open.
 
 ## What must still hold at each step
 
-- `openmw-rtxtool shot --hour 12` is unchanged in every step but 4, and in 4 it changes only where
+- `openmw-rtxtool shot --hour 12` is unchanged in every step but 3, and in 3 it changes only where
   cloud is drawn.
 - The sky's total delivered light equals the weather's ambient at night, whatever the layers say.
 - `components-tests` and `openmw-tests` pass, and the formatting check is clean.

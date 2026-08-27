@@ -104,7 +104,7 @@ namespace RtxTool
         if (lighting.mOutdoors)
             for (const Rtx::Moon moon : { Rtx::Moon::Masser, Rtx::Moon::Secunda })
             {
-                Rtx::MoonPlacement placed = Rtx::makeMoon(moon, lighting.mDay, lighting.mHour);
+                Rtx::MoonPlacement placed = Rtx::makeMoon(moon, lighting.mDay, lighting.mHour, lighting.mGlare);
                 placed.mFace = lighting.mFaces.of(moon);
                 world.mMoons[static_cast<std::size_t>(moon)] = placed;
             }

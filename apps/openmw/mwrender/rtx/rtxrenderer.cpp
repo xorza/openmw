@@ -877,8 +877,12 @@ namespace MWRender
             // has not spoken, and a moon it has not spoken about is one with no alpha anyway.
             const int phase = state.mPhase == MoonState::Phase::Unspecified ? 0 : static_cast<int>(state.mPhase);
 
+            // **The glare is applied here and not by the weather system**, which is where the
+            // rasterizer applies it too: `SkyManager::setWeather` calls `Moon::adjustTransparency`
+            // with it after the state has been handed over. A thunderstorm hides its moons the same
+            // way it hides its stars.
             described.mMoons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
-                state.mRotationFromNorth, phase, state.mMoonAlpha);
+                state.mRotationFromNorth, phase, state.mMoonAlpha * world.mSunGlare, state.mShadowBlend);
             described.mMoons[moon].mFace = mMoonFaces.of(static_cast<Rtx::Moon>(moon));
         }
 
