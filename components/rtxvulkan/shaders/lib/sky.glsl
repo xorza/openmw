@@ -183,7 +183,8 @@ vec3 starField(vec3 direction)
 /// come from `mPhaseAngle`; but a crescent that did not point at the sun would read as a mistake, so
 /// the terminator is turned toward it. The two answers are independent and neither can be dropped.
 ///
-/// @param covered how much of what lies behind the moon it hides, which is what puts the sun out.
+/// @param covered how much of what lies behind the moon it hides — the star sheet, the painted
+///        patches, the sun, and the other moon.
 vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
 {
     covered = 0.0;
@@ -282,27 +283,11 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
 /// @param blur how far this ray's cone has spread from its axis, in radians.
 vec3 skyRadiance(vec3 direction, float blur)
 {
-    // **The gradient and not `skyGlow`**, which is the one place the two part company: the fill is
-    // light the weather says a night has and Morrowind draws nowhere, so an eye must not find it.
-    vec3 colour = skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction);
-
-    // **The stars are behind everything and the deck is in front of it**, which is the order the
-    // sky is actually stacked in: a star is on the celestial sphere, the clouds are a couple of
-    // kilometres up, and the moons and the sun are between them. So the stars go on first, the deck
-    // takes its share of whatever is behind it at the end, and the two discs are added in between.
-    colour += frame.mStars.mFade > 0.0 ? starField(direction) + frame.mStars.mFade * skyPatches(direction)
-                                         : vec3(0.0);
-
-    // **Added to the sky rather than composited over it**, because what stands between the eye and
-    // a moon is air, and the dome's own glow is that air. What the moon *does* hide is anything
-    // further off than it is, which for now is the sun alone.
-    float hidden = 0.0;
-    for (uint moon = 0u; moon < 2u; ++moon)
-    {
-        float covered;
-        colour += moonFace(frame.mMoons[moon], direction, blur, covered);
-        hidden = max(hidden, covered);
-    }
+    // **Everything on or beyond the celestial sphere first, which is what a moon stands in front
+    // of.** The stars and the patches are on that sphere and the sun is nearer, but both are further
+    // off than a moon and neither is ever between two of them, so one term carries the pair.
+    vec3 colour = frame.mStars.mFade > 0.0 ? starField(direction) + frame.mStars.mFade * skyPatches(direction)
+                                           : vec3(0.0);
 
     // The chord across the disc rather than the cosine of its angle. Both answer "is this direction
     // inside it", and at half a degree the cosine is 0.999988 — five of a float's seven digits spent
@@ -333,11 +318,32 @@ vec3 skyRadiance(vec3 direction, float blur)
         const float radiance
             = min(brightest(frame.mSunIrradiance) / (0.5 * TAU * edge * edge), MAX_SUN_RADIANCE);
 
-        // **Dimmed by whatever stands in front of it, which is the whole of an eclipse.** Masser is
-        // nineteen degrees across against the sun's half a degree, so on the rare crossing it is
-        // total, and it costs one multiply on the frames it is not.
-        colour += ((1.0 - hidden) * radiance) * frame.mSunDiscColour;
+        colour += radiance * frame.mSunDiscColour;
     }
+
+    // **Each moon takes its share of all of it, in the order the engine draws them.**
+    // `SkyManager::create` builds the sky as atmosphere, night sky, sun, Masser, Secunda, cloud —
+    // and `paintMoon` writes `color.a = maskAlpha` under a `(ONE, ONE_MINUS_SRC_ALPHA)` blend, so an
+    // opaque moon replaces whatever the star sheet and the sun put behind it. `moonFace` already
+    // hands back its radiance premultiplied by that coverage, which is the same form.
+    //
+    // **This is also the whole of an eclipse**, and of one moon in front of the other: Masser is
+    // nineteen degrees across against the sun's half a degree, so on the rare crossing it is total.
+    for (uint moon = 0u; moon < 2u; ++moon)
+    {
+        float covered;
+        const vec3 face = moonFace(frame.mMoons[moon], direction, blur, covered);
+        colour = colour * (1.0 - covered) + face;
+    }
+
+    // **The dome last and added rather than composited under, because it is the air in front of
+    // every one of them.** A moon is seen through the same sky the eye is looking at — the engine
+    // reaches the same picture from the other end, by having a moon re-add the atmosphere colour it
+    // just replaced.
+    //
+    // **The gradient and not `skyGlow`**, which is the one place the two part company: the fill is
+    // light the weather says a night has and Morrowind draws nowhere, so an eye must not find it.
+    colour += skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction);
 
     // Last, and over everything: the deck is nearer than any of it.
     float covered;

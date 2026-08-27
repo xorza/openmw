@@ -2702,6 +2702,95 @@ namespace Rtx
             EXPECT_FLOAT_EQ(decodeSrgb(dark[(std::size_t{ size / 2 } * size + size / 2) * 4]), 0.0f);
         }
 
+        /// A moon hides the sky behind it, which is the order the engine draws its own in.
+        ///
+        /// **`SkyManager::create` builds the sky as atmosphere, night sky, sun, Masser, Secunda,
+        /// cloud**, and `paintMoon` writes `color.a = maskAlpha` under a `(ONE, ONE_MINUS_SRC_ALPHA)`
+        /// blend — so an opaque moon replaces whatever the star sheet and the sun put behind it.
+        /// This renderer added the moons to the sky instead and took a share of the sun alone, which
+        /// left stars visible on Masser's face.
+        ///
+        /// **A sheet of one white texel stands in for the star field**, so what a ray finds outside
+        /// the disc is exactly `STAR_RADIANCE` and what it finds inside is exactly nothing of it. A
+        /// full moon of white at the middle of its own disc is `MOON_RADIANCE`: the incidence and the
+        /// emission cosines are both one there, so McEwen's term is `2 * 1 / (1 + 1)`, and the sky
+        /// behind it is set to nothing so no gradient is in the way.
+        TEST_F(RtxVisibilityTest, aMoonHidesWhatStandsBehindIt)
+        {
+            constexpr std::uint32_t size = 32;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            // Forty degrees off the axis on the diagonal, which is well clear of a disc eleven and a
+            // half wide.
+            constexpr std::size_t outside = 0;
+
+            SceneDesc scene;
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(makeSheet(4000.0f, -2000.0f), {}, {}, sQuadIndices) });
+            scene.addTexture(VFS::Path::NormalizedView("white.dds"));
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const MipLevel one{ 0, 1, 1 };
+            const std::array<TextureData, 1> sheet{ TextureData{
+                .mFormat = TextureFormat::Rgba8Unorm,
+                .mWidth = 1,
+                .mHeight = 1,
+                .mBytes = std::as_bytes(std::span(white)),
+                .mLevels = std::span(&one, 1),
+            } };
+
+            // Forty-five degrees up along `+y`, which keeps the camera off its own pole.
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 1000.0f), 60.0f, size, size, 100000.0f);
+
+            camera.mSkyHorizon = osg::Vec3f();
+            camera.mSkyZenith = osg::Vec3f();
+            camera.mSunIrradiance = osg::Vec3f();
+
+            camera.mStars = Shaders::StarField{
+                .mFade = 1.0f,
+                .mTurn = 0.0f,
+                .mTile = 1.0f,
+                .mHorizon = 0.0f,
+                .mTexture = 0u,
+            };
+
+            const float root = std::sqrt(0.5f);
+            Shaders::MoonDisc facing{};
+            facing.mDirection = osg::Vec3f(0.0f, root, root);
+            facing.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
+            facing.mUp = osg::Vec3f(0.0f, -root, root);
+            facing.mColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            facing.mAngularRadius = 0.2f;
+            facing.mAlpha = 1.0f;
+            facing.mShadowBlend = 1.0f;
+            facing.mFace = Shaders::NO_TEXTURE;
+
+            const auto sky = [&](std::size_t at) {
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, sheet, camera, size, pixels);
+
+                return mRadiance[at];
+            };
+
+            camera.mMoons[0] = facing;
+            EXPECT_NEAR(sky(centre), Shaders::MOON_RADIANCE, 0.01f) << "a star came through the moon";
+            EXPECT_NEAR(sky(outside), Shaders::STAR_RADIANCE, 1e-4f) << "and the sheet is there to come through";
+
+            // The sun put exactly behind it, which is what an eclipse is and what the moons used to
+            // take their share of alone.
+            camera.mSunPosition = facing.mDirection;
+            camera.mSunIrradiance = osg::Vec3f(8.0f, 8.0f, 8.0f);
+            camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            EXPECT_NEAR(sky(centre), Shaders::MOON_RADIANCE, 0.01f) << "the sun came through the moon";
+
+            // And the second moon takes its share of the first, which no maximum over the two could
+            // say: put in front, it replaces Masser rather than being added to it.
+            camera.mMoons[1] = facing;
+            camera.mMoons[1].mColour = osg::Vec3f(0.25f, 0.25f, 0.25f);
+            EXPECT_NEAR(sky(centre), 0.25f * Shaders::MOON_RADIANCE, 0.01f) << "two moons were added together";
+        }
+
         /// A bounce is drawn by the cosine, and two thirds is the number that says so.
         ///
         /// **The one property of the estimator a uniform sky cannot show.** Every other test here

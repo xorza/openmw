@@ -1,9 +1,5 @@
 # Open issues
 
-- Stars shine through the moons. `skyRadiance` adds the star field and the patches before the moons
-  and then dims the sun alone by what they cover, so a moon takes its share of nothing else. The
-  rasterizer draws the night sky first and lets an opaque moon replace it.
-
 - A moon is not drawn at all until it stands `Moons_<name>_Fade_End_Angle` above the horizon — 30
   degrees for Secunda and 40 for Masser — and shows no face until the same angle. Neither of them
   rises out of the horizon.

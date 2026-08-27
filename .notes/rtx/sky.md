@@ -1,23 +1,21 @@
 # The sky, and what each layer of it owes
 
-Two faults, seen from several sides. **The sky is composited in the wrong order**, so a layer hides
-what it should not and shows through what it should. And **every layer is drawn by one rule and
-lights by another**, the two written at different times.
+**Every layer is drawn by one rule and lights by another**, the two written at different times.
 
-| layer | drawn by | hidden behind a moon | hidden behind the deck | lights by |
-| --- | --- | --- | --- | --- |
-| the dome | `skyGradient` | no, and rightly — it is the air in front | yes | `skyGlow` |
-| the fill | nothing | — | — | `skyGlow`, via `mSkyFill` |
-| star field, nebulae, constellations | `starField`, `skyPatches` | **no, and wrongly** | yes | **nothing** |
-| the sun's disc | `skyRadiance` | yes, by `hidden` | yes | `gather` |
-| the moons | `moonFace` | first over second: **no** | yes | `gather` |
-| the cloud deck | `cloudDeck`, as an emission | — | — | **nothing**, and **nothing lights it** |
+| layer | drawn by | lights by |
+| --- | --- | --- |
+| the dome | `skyGradient` | `skyGlow` |
+| the fill | nothing | `skyGlow`, via `mSkyFill` |
+| star field, nebulae, constellations | `starField`, `skyPatches` | **nothing** |
+| the sun's disc | `skyRadiance` | `gather` |
+| the moons | `moonFace` | `gather` |
+| the cloud deck | `cloudDeck`, as an emission | **nothing**, and **nothing lights it** |
 
-The engine's own order is the one to match, and it is `SkyManager::create`'s: atmosphere, night sky,
-sun, Masser, Secunda, clouds. Everything drawn later takes its share of everything drawn earlier,
-which `paintMoon` does by writing `color.a = maskAlpha` under a `(ONE, ONE_MINUS_SRC_ALPHA)` blend.
+The compositing order is settled: `skyRadiance` builds what lies beyond the moons, composites each
+moon over it in `SkyManager::create`'s own order, and adds the dome in front as the air. What is left
+is the second column.
 
-**And what the sky delivers should be stated once, with every layer drawn out of it.** `skyFill` is
+**What the sky delivers should be stated once, with every layer drawn out of it.** `skyFill` is
 the first half of that and knows about none of the others: it makes the dome deliver what
 `Ambient_<weather>_Night_Color` says a night is worth, and anything else that starts lighting has to
 come out of the same figure or the night gets brighter again.
@@ -28,36 +26,7 @@ onto flat ground.
 
 ---
 
-## 1. Stars shine through the moons
-
-**Root cause, and it is a compositing order.** `skyRadiance` adds the star field and the patches,
-then adds each moon on top, then dims the sun by `hidden` — the largest coverage any moon reached.
-So a moon takes its share of the sun alone. The comment above the loop says as much: *what the moon
-does hide is anything further off than it is, which for now is the sun alone.*
-
-The rasterizer does not have this. It draws the night sky before the moons and `paintMoon` writes
-`color.a = maskAlpha` under `(ONE, ONE_MINUS_SRC_ALPHA)`, so an opaque moon replaces whatever the
-star sheet put behind it. Rendered at twelve degrees of field, ours has stars sitting on Masser's
-face.
-
-**The fix, and it deletes more than it adds.** Split what a ray that reached nothing finds into the
-air in front of the moons and everything behind them:
-
-- **behind**: the star field, the patches, and the sun's disc — all on or beyond the celestial
-  sphere.
-- **in front**: the dome's own gradient, which is the air the moon is seen through and is why the
-  moons are added rather than composited today.
-
-Then each moon in slot order composites over *behind* by its own `covered`, which is Masser first and
-Secunda second — the order the engine creates them in. `hidden` goes away with it, and two moons that
-overlap come out right for the first time rather than taking the deeper one's maximum.
-
-- Test: a ray down the middle of an opaque moon returns the moon and no star, whatever the sheet
-  says; and one a hair outside the limb returns the star.
-
----
-
-## 2. The moons still do not rise
+## 1. The moons still do not rise
 
 **They arrive thirty degrees up, and now they arrive gently.** `MoonMoment::mShadowBlend` fixed how a
 moon appears and not where. Both halves of the engine's horizon treatment are still in force:
@@ -105,7 +74,7 @@ air mass for its own reasons.
 
 ---
 
-## 3. The night sky's sheets light nothing
+## 2. The night sky's sheets light nothing
 
 **Root cause.** `skyGlow` returns the dome's gradient and the fill. `starField` and `skyPatches` are
 called only from `skyRadiance`, so a bounce that escapes never finds them.
@@ -140,7 +109,7 @@ indirect light, and the sheets carry no mip chain to blur it away.
 
 ---
 
-## 4. The cloud deck is an emission and is never lit
+## 3. The cloud deck is an emission and is never lit
 
 **Root cause.** `CloudDeck::mColour` is the weather's air times what its own daylight says a cloud is
 worth, and `cloudDeck` returns that times coverage. No sun, no moon, no sky reaches it, it casts
@@ -171,7 +140,7 @@ long the deck keeps the sun has to come from somewhere else.
 
 **Steps.** Land them in this order, checking with `shot` after each:
 
-1. Per-sheet mean luminance at load, beside the night sheets' means from step 3 — one reader serves
+1. Per-sheet mean luminance at load, beside the night sheets' means from step 2 — one reader serves
    both.
 2. Coverage from the alpha, and from the texel's luminance against the mean where the alpha is flat.
 3. The deck lit by the sky and by the moons, at a transmission of 0.25. Night first, because it is
@@ -183,7 +152,7 @@ long the deck keeps the sun has to come from somewhere else.
 
 ---
 
-## 5. What terminates a path is what the open sky delivers
+## 4. What terminates a path is what the open sky delivers
 
 `mAmbient` used to be six times the dome it stood for a bounce of, so a surface in a crevice was lit
 more than the open ground beside it. `skyFill` closed that: the sky now delivers the weather's
@@ -201,19 +170,19 @@ that shadows the world is the same machinery seen from another side.
 
 ## Order
 
-Steps 1 and 2 first and in that order. Both are regressions against the old renderer rather than
-niceties, both are small, and both are in the frame every night.
+Step 1 first. It is a regression against the old renderer rather than a nicety, it is small, and it
+is in the frame every night.
 
-Step 3 next, because step 4 needs the same image reader and the same budget rule, and it is far
+Step 2 next, because step 3 needs the same image reader and the same budget rule, and it is far
 cheaper to get both right on the sheets than on the deck.
 
-Step 4 last, and in its own six steps. It is the one that can regress a day that has just been tuned.
+Step 3 last, and in its own six steps. It is the one that can regress a day that has just been tuned.
 
-Step 5 stays open.
+Step 4 stays open.
 
 ## What must still hold at each step
 
-- `openmw-rtxtool shot --hour 12` is unchanged in every step but 4, and in 4 it changes only where
+- `openmw-rtxtool shot --hour 12` is unchanged in every step but 3, and in 3 it changes only where
   cloud is drawn.
 - The sky's total delivered light equals the weather's ambient at night, whatever the layers say.
 - `components-tests` and `openmw-tests` pass, and the formatting check is clean.
