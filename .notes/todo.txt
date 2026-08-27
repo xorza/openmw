@@ -5,7 +5,6 @@
 - audit includes
 - audit #pragmas
 - rtx-tool travel
-- shimering lights
 - translucent leaves
 - remove metal
 - precipitation interact with lightsources
