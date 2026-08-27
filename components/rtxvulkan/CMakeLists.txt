@@ -52,6 +52,7 @@ set(RTX_SHADERS
     shaders/histogram.comp
     shaders/tone.comp
     shaders/visibility.comp
+    shaders/waveline.comp
 )
 
 # The device-behaviour probes, compiled only where something is going to run them. Nothing the

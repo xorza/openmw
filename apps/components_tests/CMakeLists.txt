@@ -149,6 +149,8 @@ if (OPENMW_RTX)
         rtx/structurestorage.cpp
         rtx/texturebuilder.cpp
         rtx/visibilitypass.cpp
+        rtx/wavecascade.cpp
+        rtx/waveline.cpp
         rtx/wavespectrum.cpp
         rtxtool/actor.cpp
         rtxtool/benchsuite.cpp

@@ -9,34 +9,35 @@ namespace Rtx
     namespace
     {
         /// How many wavenumber bands the spectrum is sampled at, and how many directions each takes.
-        constexpr std::size_t sBands = 8;
+        ///
+        /// **Sixteen narrow bands rather than eight wide ones, and the caustics are why.** Slope
+        /// weights a component by `A k` and curvature weights it by `A k²`, so the shortest waves
+        /// own the Hessian in a way they never own the normal. Measured over the shipped spectrum at
+        /// eight bands, the last one — thirty-two units long, four directions fanned across 167
+        /// degrees — carried **40% of the curvature by itself** and the last two carried 65%. Four
+        /// plane waves crossing at forty degrees is a lattice, and a lattice is what a seabed showed.
+        ///
+        /// Halving the step puts several bands at comparable short scales instead, each turned off
+        /// the last by the golden angle, so the pattern that reaches the bottom is an interference
+        /// of a dozen directions rather than of four. It costs the pattern a tenth of its contrast
+        /// and no waves at all: the table is the same size, spread differently.
+        ///
+        /// **Two directions is what the quantile sampling is for.** Each carries half its band's
+        /// energy by construction and sits at the quartiles of the spread, so the shape of the
+        /// directional spectrum survives however few are taken — which is the property that makes
+        /// spending the budget on wavenumber rather than on direction the right trade here.
+        constexpr std::size_t sBands = 16;
         constexpr std::size_t sPerBand = Shaders::WAVE_COUNT / sBands;
 
         /// The golden angle, turning each band off the last so no two share a direction.
         constexpr float sGolden = 2.3999632f;
-
-        /// The shortest wave the spectrum carries, in world units.
-        ///
-        /// **A band limit in time as much as in space.** Curvature climbs with wavenumber, so the
-        /// shortest waves decide the caustics — and a wave's period falls with its length, so they
-        /// also decide how fast the pattern on a seabed reshuffles. Carried down to eighteen units
-        /// the light below changed by three quarters of its own contrast every twelfth of a second,
-        /// which reads as stripes tearing across the bottom rather than as water. Thirty-two puts
-        /// that back to half, and costs a quarter of the contrast to do it.
-        ///
-        /// The trade is exactly that and cannot be had both ways: shorter waves focus harder *and*
-        /// move faster, because they are the same waves.
-        ///
-        /// Where the bands are *centred*, not where they end: the lowest sits below the peak and the
-        /// highest half a band above this, so the table spans about 980 down to 27 units.
-        constexpr float sShortest = 32.0f;
 
         /// Donelan-Banner's spread parameter, against how far above the peak a band sits.
         ///
         /// **Large is narrow.** The swell arrives as near-parallel trains and comes out around two
         /// and a half; the chop well above the peak settles near four tenths, a fan wide enough that
         /// a sum of it does not draw a grain.
-        float getSpread(float relative)
+        float donelanSpread(float relative)
         {
             if (relative < 0.95f)
                 return 2.61f * std::pow(relative, 1.3f);
@@ -77,7 +78,7 @@ namespace Rtx
         /// JONSWAP's `alpha` is left at one. It is a fetch-and-wind parameter nothing here knows and
         /// every term in it is a constant multiplier, so it cancels — the table is scaled to a
         /// significant height instead, which is the one number a person can picture.
-        float getEnergy(float frequency, float peak, float depth)
+        float tmaDensity(float frequency, float peak, float depth)
         {
             const float width = frequency <= peak ? 0.07f : 0.09f;
             const float offset = (frequency - peak) / (width * peak);
@@ -114,13 +115,25 @@ namespace Rtx
         return std::max(wavenumber, 1.0e-6f);
     }
 
+    float SeaState::getEnergy(float frequency) const
+    {
+        return tmaDensity(frequency, getPeak(), mDepth);
+    }
+
+    float SeaState::getSpread(float frequency) const
+    {
+        return donelanSpread(frequency / getPeak());
+    }
+
     std::array<Shaders::GpuWave, Shaders::WAVE_COUNT> SeaState::getWaves() const
     {
-        const float peak = getFrequency(Shaders::TAU / mPeakWavelength);
+        const float peak = getPeak();
 
         // From below the peak, where the swell is, up to the shortest wave worth carrying.
         const float lowest = 0.7f * peak;
-        const float highest = getFrequency(Shaders::TAU / sShortest);
+        // **Where the bands are centred, not where they end**, so the table reaches half a band past
+        // `sShortestWave` at each side: about 980 units down to 27.
+        const float highest = getFrequency(Shaders::TAU / sShortestWave);
         const float step = std::pow(highest / lowest, 1.0f / static_cast<float>(sBands - 1));
 
         std::array<Shaders::GpuWave, Shaders::WAVE_COUNT> waves{};
@@ -131,8 +144,8 @@ namespace Rtx
 
             // The band's width, taken symmetrically about it in the geometric spacing.
             const float width = frequency * (std::sqrt(step) - 1.0f / std::sqrt(step));
-            const float energy = getEnergy(frequency, peak, mDepth) * width / static_cast<float>(sPerBand);
-            const float spread = getSpread(frequency / peak);
+            const float energy = tmaDensity(frequency, peak, mDepth) * width / static_cast<float>(sPerBand);
+            const float spread = donelanSpread(frequency / peak);
 
             for (std::size_t within = 0; within < sPerBand; ++within)
             {

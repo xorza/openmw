@@ -6,6 +6,19 @@
 
 namespace Rtx
 {
+    /// The shortest wave the spectrum carries, in world units.
+    ///
+    /// **A band limit in time as much as in space.** Curvature climbs with wavenumber, so the
+    /// shortest waves decide the caustics — and a wave's period falls with its length, so they also
+    /// decide how fast the pattern on a seabed reshuffles. Carried down to eighteen units the light
+    /// below changed by three quarters of its own contrast every twelfth of a second, which reads as
+    /// stripes tearing across the bottom rather than as water. Thirty-two puts that back to about
+    /// half, and costs a quarter of the contrast to do it.
+    ///
+    /// The trade is exactly that and cannot be had both ways: shorter waves focus harder *and* move
+    /// faster, because they are the same waves.
+    inline constexpr float sShortestWave = 32.0f;
+
     /// What the sea is doing, in the four numbers a spectrum needs.
     ///
     /// The surface is a sum of plane waves, and what decides whether it looks like water is which
@@ -49,5 +62,22 @@ namespace Rtx
 
         /// The same relation the other way round, by Newton from the deep-water guess.
         float getWavenumber(float frequency) const;
+
+        /// The wavelength carrying the most energy, as an angular frequency.
+        float getPeak() const { return getFrequency(Shaders::TAU / mPeakWavelength); }
+
+        /// TMA's density at a frequency, in world units squared per radian a second.
+        ///
+        /// **Shared with the cascades**, which need the same spectrum laid out on a grid of
+        /// wavevectors rather than sampled at bands. Two evaluations of one curve is two curves the
+        /// day one of them is edited.
+        float getEnergy(float frequency) const;
+
+        /// Donelan-Banner's width at a frequency: how tightly that band fans about the wind.
+        ///
+        /// The spread is `sech^2(this * angle)` normalised over the circle, so a large number is a
+        /// narrow fan. Narrow at the swell and broad at the chop, which is the shape a sea has to
+        /// have if it is not to draw a lattice.
+        float getSpread(float frequency) const;
     };
 }

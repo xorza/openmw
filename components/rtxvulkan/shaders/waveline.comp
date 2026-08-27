@@ -1,0 +1,94 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// One line of an inverse transform, in shared memory.
+//
+// **A two-dimensional transform is the one-dimensional one run twice**, along the rows and then
+// along the columns of the same buffer. So this is one shader dispatched twice with its two strides
+// swapped, and a workgroup is one line.
+//
+// **Cooley-Tukey with the permutation done on the way in.** Stockham avoids the bit reversal by
+// carrying an extra buffer through every stage; reversing an index is one instruction here, and the
+// load is going to shared memory anyway. Nine stages at the largest grid, each a barrier apart.
+
+#include "scene.h"
+#include "wave.h"
+
+layout(local_size_x = WAVE_WORKGROUP) in;
+
+/// The line, before and after. **In place**, because a pass reads a line, transforms it and writes
+/// the same line back — the two dimensions of the transform are separated by a dispatch, which is
+/// the only barrier wide enough to order them.
+layout(set = 0, binding = 0, scalar) buffer Field
+{
+    vec2 field[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    WaveConstants frame;
+};
+
+/// Two points a thread owns, and the stage's scratch. Ping-pong is what Stockham buys and this does
+/// not: one array, and a barrier between reading it and writing it.
+shared vec2 line[WAVE_GRID];
+
+vec2 turn(vec2 value, float angle)
+{
+    const float sine = sin(angle);
+    const float cosine = cos(angle);
+
+    return vec2(value.x * cosine - value.y * sine, value.x * sine + value.y * cosine);
+}
+
+void main()
+{
+    const uint thread = gl_LocalInvocationID.x;
+    const uint count = frame.mCount;
+    const uint stages = findMSB(count);
+
+    // Where this line starts, which for a row is a row's worth along and for a column is one across.
+    const uint start = frame.mOffset + gl_WorkGroupID.x * frame.mJump;
+
+    // **Reversed on the way in**, which is what puts a decimation-in-time transform in order coming
+    // out. `bitfieldReverse` turns the whole word, so the address is the top `stages` bits of it.
+    for (uint at = thread; at < count; at += WAVE_WORKGROUP)
+        line[bitfieldReverse(at) >> (32u - stages)] = field[start + at * frame.mStride];
+
+    barrier();
+
+    // **The whole workgroup reaches every barrier**, which is why the idle threads of a narrow tile
+    // are turned away inside the loop rather than before it: the largest grid sizes the workgroup and
+    // a smaller one leaves most of it with nothing to do.
+    const bool works = thread < count / 2u;
+
+    for (uint stage = 0u; stage < stages; ++stage)
+    {
+        if (works)
+        {
+            const uint span = 1u << stage;
+
+            // Each thread owns one butterfly: the pair `span` apart inside a block of `2 span`. The
+            // map is a partition, so no thread reads what another writes and one barrier a stage is
+            // the whole of the ordering.
+            const uint within = thread & (span - 1u);
+            const uint lower = ((thread - within) << 1u) + within;
+
+            // **Positive, which is what makes this the inverse.** The forward transform turns the
+            // other way, and the sea's amplitudes are stated as what an inverse turns into a
+            // surface.
+            const vec2 rotated = turn(line[lower + span], TAU * float(within) / float(span << 1u));
+            const vec2 held = line[lower];
+
+            line[lower] = held + rotated;
+            line[lower + span] = held - rotated;
+        }
+
+        barrier();
+    }
+
+    for (uint at = thread; at < count; at += WAVE_WORKGROUP)
+        field[start + at * frame.mStride] = line[at];
+}

@@ -83,6 +83,8 @@ set(RTX_FILES
     texturebuilder.cpp
     texturebuilder.hpp
     texturedata.hpp
+    wavecascade.cpp
+    wavecascade.hpp
     wavespectrum.cpp
     wavespectrum.hpp
 )
@@ -97,6 +99,7 @@ set(RTX_SHADER_HEADERS
     shaders/portable.h
     shaders/scene.h
     shaders/visibility.h
+    shaders/wave.h
 )
 
 source_group(components\\rtx FILES ${RTX_FILES} ${RTX_SHADER_HEADERS})

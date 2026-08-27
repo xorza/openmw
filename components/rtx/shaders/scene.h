@@ -69,7 +69,7 @@ namespace Rtx::Shaders
     RTX_CONST uint SHADING_EXTENT = 32u;
 
     /// How many sinusoids the water surface is summed from.
-    RTX_CONST uint WAVE_COUNT = 32u;
+    RTX_CONST uint WAVE_COUNT = 64u;
 
     /// A whole turn, which is how a wavelength becomes a wavenumber.
     RTX_CONST float TAU = 6.2831853f;

@@ -4086,7 +4086,12 @@ namespace Rtx
             for (const float gathered : capped)
                 spread += (gathered - mean) * (gathered - mean);
 
-            EXPECT_NEAR(std::sqrt(spread / static_cast<float>(count)) / mean, 0.366f, 0.02f)
+            // **A quarter less bold than at eight bands, and bought on purpose.** Curvature weights a
+            // component by `A k²`, so at eight bands the shortest one owned 40% of the Hessian by
+            // itself and four plane waves crossing drew a lattice on the seabed. Sixteen narrower
+            // bands spread the same energy over a dozen directions at comparable scales, which is
+            // what turns the lattice into a mottle — and costs the pattern this.
+            EXPECT_NEAR(std::sqrt(spread / static_cast<float>(count)) / mean, 0.277f, 0.02f)
                 << "the pattern's contrast, as a fraction of its own mean";
 
             // A twelfth of a second, which is how long a frame is worth caring about. For two
@@ -4095,15 +4100,16 @@ namespace Rtx
             //
             // That is the number the shortest wave was chosen on. The reference renderer's sweep:
             // **18 units gives the best caustics it ever drew and they tear at 73%**, 32 units comes
-            // out at 51%, and 50 units is dull at 33%. This fork cuts at 32 and lands on 51 — the
-            // same spectrum reproducing the same behaviour, which is worth an assertion because
-            // moving the cutoff would silently move this.
+            // out at 51%, and 50 units is dull at 33%. This fork cuts at 32 as well and lands just
+            // under it, at 47.6 — sixteen bands put a larger share of the table at wavelengths above
+            // the cutoff, and a longer wave turns over more slowly. Worth an assertion because
+            // moving the cutoff, or the band count, would silently move this.
             const std::vector<float> later = causticField(140.0f, 1.0f / 12.0f);
             float moved = 0.0f;
             for (std::size_t i = 0; i < count; ++i)
                 moved += (later[i] - capped[i]) * (later[i] - capped[i]);
 
-            EXPECT_NEAR(0.5f * moved / spread, 0.511f, 0.03f) << "how much of the pattern is new a twelfth later";
+            EXPECT_NEAR(0.5f * moved / spread, 0.476f, 0.03f) << "how much of the pattern is new a twelfth later";
         }
 
         /// The sun's disc carries exactly its irradiance, however wide the pixel that finds it.

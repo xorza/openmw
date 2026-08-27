@@ -9,7 +9,7 @@ namespace Rtx
 {
     namespace
     {
-        constexpr std::size_t sBands = 8;
+        constexpr std::size_t sBands = 16;
         constexpr std::size_t sPerBand = Shaders::WAVE_COUNT / sBands;
 
         /// How wide the directions of one band fan, in radians.
