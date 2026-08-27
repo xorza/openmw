@@ -27,29 +27,6 @@ namespace Rtx
         constexpr std::uint32_t sWidth = 320;
         constexpr std::uint32_t sHeight = 256;
 
-        /// One half float, as the number it stands for.
-        ///
-        /// **Spelled out rather than shared, and by arithmetic rather than by bits.** The pyramid is
-        /// kept in halves, so a test that read them through the same helper the renderer used would
-        /// pass however wrong that helper was — and one written in shifts and masks is a second
-        /// place for the subnormal case to be wrong.
-        float fromHalf(std::uint16_t bits)
-        {
-            const float sign = (bits & 0x8000u) != 0 ? -1.0f : 1.0f;
-            const int exponent = (bits >> 10) & 0x1f;
-            const int mantissa = bits & 0x3ff;
-
-            if (exponent == 0)
-                return sign * std::ldexp(static_cast<float>(mantissa), -24);
-
-            if (exponent == 31)
-                return sign
-                    * (mantissa == 0 ? std::numeric_limits<float>::infinity()
-                                     : std::numeric_limits<float>::quiet_NaN());
-
-            return sign * std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f, exponent - 15);
-        }
-
         /// What the pass is handed, made the way the renderer makes its own frame: storage because
         /// the composite writes it, sampled because the first halving reads it, and both transfer
         /// bits so a test can fill it.
@@ -86,23 +63,6 @@ namespace Rtx
             });
         }
 
-        /// A level's four channels a pixel, decoded.
-        std::vector<float> readBack(CommandPool& pool, const Image& level)
-        {
-            std::vector<std::uint8_t> bytes;
-            level.read(pool, VK_IMAGE_LAYOUT_GENERAL, bytes);
-
-            std::vector<float> values(bytes.size() / sizeof(std::uint16_t));
-            for (std::size_t at = 0; at < values.size(); ++at)
-            {
-                std::uint16_t bits = 0;
-                std::memcpy(&bits, bytes.data() + at * sizeof(bits), sizeof(bits));
-                values[at] = fromHalf(bits);
-            }
-
-            return values;
-        }
-
         /// The red channel at a texel, which is the one every frame below varies.
         float redAt(std::span<const float> values, std::uint32_t width, std::uint32_t x, std::uint32_t y)
         {
@@ -136,7 +96,7 @@ namespace Rtx
                 mPool.submitAndWait([&](VkCommandBuffer commands) { mBloom.record(commands, *mFrame); });
 
                 const Image* pyramid = mBloom.getPyramid();
-                return pyramid != nullptr ? readBack(mPool, *pyramid) : std::vector<float>();
+                return pyramid != nullptr ? Testing::readHalves(mPool, *pyramid) : std::vector<float>();
             }
         };
 

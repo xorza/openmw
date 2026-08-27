@@ -25,18 +25,19 @@ namespace Rtx
             return wavenumber > 0.0f ? Shaders::TAU / wavenumber : 0.0f;
         }
 
-        /// The variance the tiles carry, which is the convention the transform has to match.
+        /// The variance of the surface these amplitudes describe.
         ///
-        /// **A definition rather than a derivation.** What an inverse transform makes of these
-        /// amplitudes depends on how it is scaled, and there is more than one convention in use. So
-        /// the host states the one it means — the surface's variance is the sum of `|h0|^2` — and
-        /// the pass that transforms them is written against the same statement.
+        /// **Twice their sum, and the factor is the physics rather than a convention.** Each
+        /// wavevector's contribution is `h0(k) e^{iwt} + conj(h0(-k)) e^{-iwt}` and the two draws
+        /// are independent, so the mean square of the sum is the sum of the two — and Parseval
+        /// carries that to the field. Written out here rather than taken off the builder, so a
+        /// factor dropped there fails this rather than passing it.
         float varianceOf(const std::array<WaveCascade, Shaders::WAVE_CASCADES>& cascades)
         {
             float total = 0.0f;
             for (const WaveCascade& cascade : cascades)
                 for (const osg::Vec2f& amplitude : cascade.mAmplitudes)
-                    total += amplitude.length2();
+                    total += 2.0f * amplitude.length2();
 
             return total;
         }

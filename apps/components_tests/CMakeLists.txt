@@ -150,6 +150,7 @@ if (OPENMW_RTX)
         rtx/texturebuilder.cpp
         rtx/visibilitypass.cpp
         rtx/wavecascade.cpp
+        rtx/wavefield.cpp
         rtx/waveline.cpp
         rtx/wavespectrum.cpp
         rtxtool/actor.cpp

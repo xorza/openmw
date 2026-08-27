@@ -1,13 +1,20 @@
 #pragma once
 
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
+#include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
@@ -197,6 +204,49 @@ namespace Rtx::Testing
     {
         return Details::rendererCache(true).get(
             reason, [](std::string& why) { return Details::buildRenderer(true, why); });
+    }
+
+    /// One half float, as the number it stands for.
+    ///
+    /// **Spelled out rather than shared with the renderer, and by arithmetic rather than by bits.**
+    /// Several passes keep their output in halves, so a test that read them through the same helper
+    /// the shader used would pass however wrong that helper was — and one written in shifts and
+    /// masks is a second place for the subnormal case to be wrong.
+    inline float fromHalf(std::uint16_t bits)
+    {
+        const float sign = (bits & 0x8000u) != 0 ? -1.0f : 1.0f;
+        const int exponent = (bits >> 10) & 0x1f;
+        const int mantissa = bits & 0x3ff;
+
+        if (exponent == 0)
+            return sign * std::ldexp(static_cast<float>(mantissa), -24);
+
+        if (exponent == 31)
+            return sign
+                * (mantissa == 0 ? std::numeric_limits<float>::infinity() : std::numeric_limits<float>::quiet_NaN());
+
+        return sign * std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f, exponent - 15);
+    }
+
+    /// Every channel of a half-float image, decoded, row major.
+    ///
+    /// **Left in the layout it was found in**, which `Image::read` promises: reading an image is not
+    /// a change to it. Several passes keep their output in halves, so this is the read-back beside
+    /// the decoder rather than one copy of it per suite.
+    inline std::vector<float> readHalves(CommandPool& pool, const Image& image)
+    {
+        std::vector<std::uint8_t> bytes;
+        image.read(pool, VK_IMAGE_LAYOUT_GENERAL, bytes);
+
+        std::vector<float> values(bytes.size() / sizeof(std::uint16_t));
+        for (std::size_t at = 0; at < values.size(); ++at)
+        {
+            std::uint16_t bits = 0;
+            std::memcpy(&bits, bytes.data() + at * sizeof(bits), sizeof(bits));
+            values[at] = fromHalf(bits);
+        }
+
+        return values;
     }
 
     /// The same, uninstrumented, for the one test that counts allocations.

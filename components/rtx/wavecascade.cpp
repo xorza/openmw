@@ -146,9 +146,12 @@ namespace Rtx
                     cascade.mAmplitudes[at] = gaussians(stream + static_cast<std::uint32_t>(at)) * scale;
                     cascade.mFrequencies[at] = frequency;
 
-                    // A conjugate pair contributes twice what one entry's mean square is, which is
-                    // the same statement `GpuWave`'s `a^2 / 2` makes about a sinusoid.
-                    variance += cascade.mAmplitudes[at].length2();
+                    // **Twice, because a wavevector and its opposite both carry it.** The field is
+                    // `h0(k) e^{iwt} + conj(h0(-k)) e^{-iwt}`, and the two draws are independent, so
+                    // the mean square of the sum is the sum of the two mean squares. Parseval then
+                    // makes the surface's variance twice this sum — which is the convention
+                    // `wavecompose.comp` is written against, and why no scale stands between them.
+                    variance += 2.0f * cascade.mAmplitudes[at].length2();
                 }
         }
 

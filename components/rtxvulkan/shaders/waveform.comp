@@ -1,0 +1,90 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// The sea's spectrum at a moment, and the five derivatives of it a surface needs.
+//
+// **This is the whole of what a frame does to the wave table.** The amplitudes were drawn once for
+// the sea state; turning them to a time is a rotation, and every field the shading wants is that
+// same rotated spectrum times a power of `i k`. So a frame costs one pass over the grid and three
+// transforms, where the spectrum itself costs a Gaussian draw per wavevector and is never redone.
+//
+// **Six real fields in three complex transforms.** The spectrum of a real field is
+// conjugate-symmetric, so `A + iB` inverse-transforms to `a + ib` with `a` and `b` both real — one
+// in the real part of the answer and the other in the imaginary part.
+
+#include "scene.h"
+#include "wave.h"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+/// The amplitudes drawn for this sea state, and how fast each turns. Centred, so the entry at
+/// `(column, row)` carries the wavevector `TAU / mExtent * (column - n/2, row - n/2)`.
+layout(set = 0, binding = 0, scalar) readonly buffer Amplitudes
+{
+    vec2 amplitudes[];
+};
+
+layout(set = 0, binding = 1, scalar) readonly buffer Frequencies
+{
+    float frequencies[];
+};
+
+/// The three packed spectra, laid end to end: a grid apart is the next pair.
+layout(set = 0, binding = 2, scalar) writeonly buffer Field
+{
+    vec2 field[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    WaveFormConstants frame;
+};
+
+/// `a + i b` for two complex numbers, which is how a pair of real fields shares one transform.
+vec2 pack(vec2 first, vec2 second)
+{
+    return vec2(first.x - second.y, first.y + second.x);
+}
+
+void main()
+{
+    const uvec2 cell = gl_GlobalInvocationID.xy;
+    const uint count = frame.mCount;
+    if (cell.x >= count || cell.y >= count)
+        return;
+
+    const uint at = cell.y * count + cell.x;
+    const int middle = int(count) / 2;
+
+    // **The partner at `-k`, and the entry that is its own.** A real field needs `H(-k)` to be the
+    // conjugate of `H(k)`, which the sum below gives for every pair — and along the edge the grid
+    // holds, where `-k` would fall outside it, the index maps to itself and the sum is twice a real
+    // part, which is the same statement.
+    const uint mirror = ((count - cell.y) % count) * count + (count - cell.x) % count;
+
+    const float step = TAU / frame.mExtent;
+    const vec2 wavevector = step * vec2(int(cell.x) - middle, int(cell.y) - middle);
+
+    const float angle = frequencies[at] * frame.mTime;
+    const vec2 ahead = turnedBy(amplitudes[at], angle);
+    const vec2 behind = turnedBy(vec2(amplitudes[mirror].x, -amplitudes[mirror].y), -angle);
+
+    const vec2 height = ahead + behind;
+
+    // A derivative is a multiply here: `d/dx` of `e^{i k x}` is `i k` times it, and a second
+    // derivative is `-k_i k_j`. Which is the whole reason the curvature the caustics need costs
+    // nothing beyond a transform it was already paying for.
+    const vec2 slopeX = vec2(-wavevector.x * height.y, wavevector.x * height.x);
+    const vec2 slopeY = vec2(-wavevector.y * height.y, wavevector.y * height.x);
+
+    const vec2 curveXX = -wavevector.x * wavevector.x * height;
+    const vec2 curveYY = -wavevector.y * wavevector.y * height;
+    const vec2 curveXY = -wavevector.x * wavevector.y * height;
+
+    const uint grid = count * count;
+    field[at] = pack(height, slopeX);
+    field[grid + at] = pack(slopeY, curveXX);
+    field[2u * grid + at] = pack(curveYY, curveXY);
+}

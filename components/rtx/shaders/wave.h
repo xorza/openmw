@@ -85,8 +85,50 @@ namespace Rtx::Shaders
         uint mOffset;
     };
 
+    /// What the pass that forms the spectra is told.
+    ///
+    /// **One thread a wavevector, and it writes all three pairs.** Every pair is the same `H(k, t)`
+    /// times a different power of `ik`, so forming them together reads the amplitude once where
+    /// three dispatches would read it three times.
+    struct WaveFormConstants
+    {
+        /// Points along each axis of this tile's grid.
+        uint mCount;
+
+        /// How wide the tile is in world units, which turns a grid index into a wavevector.
+        float mExtent;
+
+        /// How far the sea has run, in seconds. The whole of what a frame changes.
+        float mTime;
+    };
+
+    /// What the pass that unpacks the fields is told.
+    struct WaveComposeConstants
+    {
+        /// Points along each axis of this tile's grid.
+        uint mCount;
+    };
+
 #ifdef RTX_HOST
 }
+#endif
+
+// What both shading languages read and the host does not, for the reason `RTX_SHADER` gives.
+#ifndef RTX_HOST
+
+/// A complex number turned by an angle, which is a multiply by `exp(i angle)`.
+///
+/// **Shared, because the pass that turns the spectrum and the pass that transforms it both do it.**
+/// One is `h0` carried to a time and the other is a butterfly's twiddle, and they are the same four
+/// lines — two copies of which are two places for a sign to be wrong.
+RTX_SHADER vec2 turnedBy(vec2 value, float angle)
+{
+    const float sine = sin(angle);
+    const float cosine = cos(angle);
+
+    return vec2(value.x * cosine - value.y * sine, value.x * sine + value.y * cosine);
+}
+
 #endif
 
 #endif

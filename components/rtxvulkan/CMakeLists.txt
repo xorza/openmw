@@ -52,6 +52,8 @@ set(RTX_SHADERS
     shaders/histogram.comp
     shaders/tone.comp
     shaders/visibility.comp
+    shaders/wavecompose.comp
+    shaders/waveform.comp
     shaders/waveline.comp
 )
 

@@ -1,0 +1,76 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// The transformed fields, unpacked into the textures a surface is read out of.
+//
+// **Six real fields arrive in three complex ones**, one in each real part and one in each imaginary
+// part, which is what `waveform.comp` packed them as. What leaves here is what `sea.glsl` samples:
+// the elevation and its two slopes, the three curvatures the caustics differentiate, and the second
+// moments a mip chain turns into what a ray cone could not resolve.
+
+#include "gbuffer.h"
+#include "wave.h"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0, scalar) readonly buffer Field
+{
+    vec2 field[];
+};
+
+/// The elevation, its two slopes, and the elevation squared.
+///
+/// **The square is there so a mip chain can be asked how far the surface still wanders.** A level
+/// set of a field too fine to resolve is a coin toss unless the variance of what was averaged away
+/// is carried beside the mean, and `E[h^2] - E[h]^2` off two channels of one fetch is that.
+layout(set = 0, binding = 1, GBUFFER_ALBEDO) uniform writeonly image2D surface;
+
+/// The three curvatures, and the mean square slope.
+///
+/// The slope's second moment is what LEAN mapping calls for and what turns a cone that dropped the
+/// ripples into a widened specular lobe rather than into polished plastic.
+layout(set = 0, binding = 2, GBUFFER_ALBEDO) uniform writeonly image2D curvature;
+
+/// The square of the curvature's trace, which the caustic's own gain correction is an average of.
+layout(set = 0, binding = 3, r16f) uniform writeonly image2D variance;
+
+layout(push_constant, scalar) uniform Push
+{
+    WaveComposeConstants frame;
+};
+
+void main()
+{
+    const uvec2 cell = gl_GlobalInvocationID.xy;
+    const uint count = frame.mCount;
+    if (cell.x >= count || cell.y >= count)
+        return;
+
+    const uint at = cell.y * count + cell.x;
+    const uint grid = count * count;
+
+    // **The centre of the grid is the wave of no length**, which is where a spectrum belongs and is
+    // not where a transform expects it: shifting the input by half a grid multiplies the output by
+    // `exp(i pi (x + y))`, so undoing it is a sign. Written this way rather than as an index swap
+    // because the swap would have to happen in three buffers and this happens once.
+    //
+    // **And nothing else scales.** The transform is unscaled and `makeWaveCascades` states the
+    // surface's variance as twice the sum of its own amplitudes, which is what the transform of a
+    // conjugate pair delivers — so the two conventions meet with no constant between them.
+    const float shift = ((cell.x + cell.y) & 1u) == 0u ? 1.0 : -1.0;
+
+    const vec2 first = field[at];
+    const vec2 second = field[grid + at];
+    const vec2 third = field[2u * grid + at];
+
+    const float height = shift * first.x;
+    const vec2 slope = shift * vec2(first.y, second.x);
+    const vec3 curve = shift * vec3(second.y, third.x, third.y);
+
+    const ivec2 texel = ivec2(cell);
+    imageStore(surface, texel, vec4(height, slope, height * height));
+    imageStore(curvature, texel, vec4(curve, dot(slope, slope)));
+    imageStore(variance, texel, vec4((curve.x + curve.y) * (curve.x + curve.y), 0.0, 0.0, 0.0));
+}

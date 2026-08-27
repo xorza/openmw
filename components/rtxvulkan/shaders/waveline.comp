@@ -35,14 +35,6 @@ layout(push_constant, scalar) uniform Push
 /// not: one array, and a barrier between reading it and writing it.
 shared vec2 line[WAVE_GRID];
 
-vec2 turn(vec2 value, float angle)
-{
-    const float sine = sin(angle);
-    const float cosine = cos(angle);
-
-    return vec2(value.x * cosine - value.y * sine, value.x * sine + value.y * cosine);
-}
-
 void main()
 {
     const uint thread = gl_LocalInvocationID.x;
@@ -79,7 +71,7 @@ void main()
             // **Positive, which is what makes this the inverse.** The forward transform turns the
             // other way, and the sea's amplitudes are stated as what an inverse turns into a
             // surface.
-            const vec2 rotated = turn(line[lower + span], TAU * float(within) / float(span << 1u));
+            const vec2 rotated = turnedBy(line[lower + span], TAU * float(within) / float(span << 1u));
             const vec2 held = line[lower];
 
             line[lower] = held + rotated;
