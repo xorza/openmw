@@ -68,8 +68,22 @@ Upstream's constraints are not ours. Where they conflict, ours win.
   way is what makes "does the RT path do this correctly" answerable by comparison.
 - **No merge-back discipline.** This fork is not upstreaming. Do not shape a change around what a
   GitLab reviewer would accept.
+- **Read the old renderer first, every time.** Before fixing a bug or writing new code in the RT
+  path, find what `apps/openmw/mwrender/gl/` and the components under it already do about the same
+  thing. Morrowind's own feel and content are the target and the ray tracer is what is added on top
+  of them, so a number the game already states beats one derived here, and a behaviour it already
+  has beats one invented here. Most things that look like a gap are a field the RT path stopped
+  carrying.
+
+  **Its behaviour is never changed — a change to it is a bug**, including a change nobody can see.
+  What is allowed is lifting shared arithmetic out of it into `components/` so the two renderers
+  read one answer instead of two copies, which is what `components/sky/` and `components/weather/`
+  are. The rasterizer keeps reading exactly what it read before.
+
 - **Rasterizer workarounds do not come across.** Render-bin ordering, the transparent pass, the
-  distortion pass, shadow-map tuning — the RT path answers those questions with rays.
+  distortion pass, shadow-map tuning — the RT path answers those questions with rays. The line
+  against the rule above is what the workaround is *for*: a fix for how a triangle got onto a
+  screen stays behind, and a decision about what the world looks like comes over.
 - **A missing extension or feature is a hard failure naming it**, never a fallback path.
 
 ### Two renderers
