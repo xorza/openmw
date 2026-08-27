@@ -15,3 +15,4 @@
 - volumetric particles
 - spell lightsources
 - underwater `fog`
+- netch refraction
