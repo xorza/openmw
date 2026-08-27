@@ -307,8 +307,7 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     // **Broken water is a raft of bubbles rather than a surface**: white, diffuse, and hiding what is
     // under it rather than tinting it. Lit the way every other diffuse surface in the frame is lit,
     // which is what keeps a beach and the surf running along it in the same sun.
-    const vec3 foam
-        = WATER_FOAM_ALBEDO
+    const vec3 foam = WATER_FOAM_ALBEDO
         * (gather(surface.mPosition, sea.mNormal, surface.mFootprint, key + SEED_LAMPS_FOAM)
             + pathEnd(surface.mPosition));
 

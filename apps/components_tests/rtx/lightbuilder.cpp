@@ -234,12 +234,6 @@ namespace Rtx
             EXPECT_EQ(makeDaylight("Clear", 22.0f).mSun.mIrradiance, osg::Vec3f()) << "night begins at twenty";
             EXPECT_NE(makeDaylight("Clear", 7.0f).mSun.mIrradiance, osg::Vec3f()) << "and it is back after six";
 
-            // **And what the file left in that slot is not lost, only turned into what it is.** A
-            // Morrowind night is still lit; it is lit by something with no direction, so nothing in
-            // it casts a shadow at a sun that is not there.
-            EXPECT_GT(makeDaylight("Clear", 0.0f).mAmbient.z(), makeDaylight("Clear", 12.0f).mAmbient.z())
-                << "the night's blue sun went into the ambient, and it is bluer than the day's";
-
             // The disc is white for every hour the sun is up and only warms on the way down, which
             // is the one thing the light never does.
             for (const float hour : { 6.5f, 9.0f, 12.0f, 15.0f })
@@ -266,7 +260,7 @@ namespace Rtx
             EXPECT_THROW(makeDaylight("Drizzle", 12.0f), std::logic_error);
         }
 
-        /// A sun below the horizon is not a sun, and its light is not lost either.
+        /// A sun below the horizon is not a sun, in either term.
         ///
         /// **This is the one rule, and it is here so that a renderer cannot be written without it.**
         /// Every sun bug this file has seen was the same shape — the engine keeps five independent
@@ -274,7 +268,7 @@ namespace Rtx
         /// that carried them across got a light coming from one place, a disc drawn in another, and
         /// a shadow cast at an hour when nothing was drawn at all. `makeSkylight` is the only way to
         /// build one, and there is nothing it can be handed that says the incoherent thing.
-        TEST(RtxSkylightTest, aSunBelowTheHorizonLightsNothingAndItsLightBecomesTheAmbient)
+        TEST(RtxSkylightTest, aSunBelowTheHorizonLightsNothingInEitherTerm)
         {
             const osg::Vec3f up(0.0f, 0.0f, 1.0f);
             const osg::Vec3f blue(0.05f, 0.12f, 0.44f); ///< what `Sun_Night_Color` decodes to
@@ -292,23 +286,27 @@ namespace Rtx
             // The whole of it when there is, on the shared sun-to-sky scale.
             EXPECT_EQ(at(1.0f).mSun.mIrradiance, blue * Rtx::Shaders::DAYLIGHT);
 
-            // **And the night is still lit.** What the file left in the sun's slot goes where light
-            // with no direction belongs, so a night loses its shadows rather than its brightness:
-            // a quarter of the irradiance over pi, which is a directional averaged over every
-            // orientation a surface could take.
-            const osg::Vec3f fill = blue * Rtx::Shaders::DAYLIGHT * (0.25f / Rtx::Shaders::PI);
-            EXPECT_EQ(at(0.0f).mAmbient, room + fill);
-            EXPECT_EQ(at(1.0f).mAmbient, room) << "and a day's ambient is untouched";
+            // **And the fill is a dusk's, not a night's.** The sun's light with its direction taken
+            // away is a thing only an hour with a sun in it has — so this is nothing at either end
+            // and largest where the disc straddles the horizon.
+            //
+            // **The shape that suggests itself is `1 - share`, and it is largest where there is no sun.**
+            // Morrowind leaves a blue in the sun's slot all night, and it is the original engine's
+            // stand-in for moonlight; spread as an ambient it came to six times the night ambient the
+            // weather itself records, flat and shadowless, on every surface. This renderer traces the
+            // moons, so keeping it was the moon counted twice and a night that did not read as one.
+            EXPECT_EQ(at(0.0f).mAmbient, room) << "a night's ambient is the weather's own";
+            EXPECT_EQ(at(1.0f).mAmbient, room) << "and a day's is untouched";
 
-            // **The two halves are complements**, so the light in the scene does not step when the
-            // sun goes out at the end of dusk: what leaves the direction arrives in the fill.
+            // Half set: `2 * 0.5 * 0.5` is a half of a quarter of the irradiance over pi.
+            const osg::Vec3f half = blue * Rtx::Shaders::DAYLIGHT * (0.5f * 0.25f / Rtx::Shaders::PI);
+            for (int channel = 0; channel < 3; ++channel)
+                EXPECT_NEAR(at(0.5f).mAmbient[channel], (room + half)[channel], 1e-6f);
+
+            // And it only ever adds, at every share between the two ends.
             for (const float share : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
-            {
-                const Skylight sky = at(share);
-                const osg::Vec3f total = sky.mSun.mIrradiance * (0.25f / Rtx::Shaders::PI) + sky.mAmbient;
                 for (int channel = 0; channel < 3; ++channel)
-                    EXPECT_NEAR(total[channel], (room + fill)[channel], 1e-6f) << "at share " << share;
-            }
+                    EXPECT_GE(at(share).mAmbient[channel], room[channel]) << "at share " << share;
 
             // The position stays whatever it was, because a moon's crescent points at where the sun
             // would be and that is a different question from whether it is there.
@@ -410,9 +408,9 @@ namespace Rtx
             EXPECT_FLOAT_EQ(exposureBias(osg::Vec3f(80.0f, 80.0f, 80.0f), osg::Vec3f()), 1.0f);
 
             // A clear midnight: no sun at all, and the weather's own night ambient, which comes to
-            // 0.0971 by luminance. `(0.0971 / 8)^0.314 = 0.25022`, which is the two stops the
-            // exponent was chosen for.
-            EXPECT_NEAR(exposureBias(osg::Vec3f(), osg::Vec3f(0.0971f, 0.0971f, 0.0971f)), 0.2502f, 1e-4f);
+            // 0.0168 by luminance. `(0.0168 / 8)^0.314 = 0.14428`, which is the two stops and four
+            // fifths the exponent comes to.
+            EXPECT_NEAR(exposureBias(osg::Vec3f(), osg::Vec3f(0.0168f, 0.0168f, 0.0168f)), 0.14428f, 1e-4f);
 
             // And it only ever moves one way, so no hour is darker in the picture than a darker one.
             float darker = 0.0f;

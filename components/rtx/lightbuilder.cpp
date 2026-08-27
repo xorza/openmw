@@ -194,15 +194,16 @@ namespace Rtx
     {
         /// How much of the hour's own darkness the exposure keeps, as a power of the light it gives.
         ///
-        /// **Two stops between a clear noon and a clear midnight**, which is what this comes to: the
-        /// two are 6.37 stops apart in what they deliver — 8.03 against 0.097, by luminance — and
-        /// `2 / 6.37` is 0.314.
+        /// **Two stops and four fifths between a clear noon and a clear midnight**: the two are 8.90
+        /// stops apart in what they deliver — 8.03 against 0.0168, by luminance — and `0.314` of
+        /// that is 2.79.
         ///
-        /// Two rather than the four and a half the literature fits to real scenes, because there is
-        /// no absolute luminance scale here to hang a published curve on: noon to midnight is eighty
-        /// to one in this renderer where the world's is a hundred million to one. What buys the rest
-        /// of a night is a different lever from exposure — a Purkinje shift raises what is dark
-        /// while it desaturates it, where every exposure lever moves the whole frame at once.
+        /// Under three rather than the four and a half the literature fits to real scenes, because
+        /// there is no absolute luminance scale here to hang a published curve on: noon to midnight
+        /// is five hundred to one in this renderer where the world's is a hundred million to one.
+        /// What buys the rest of a night is a different lever from exposure — a Purkinje shift
+        /// raises what is dark while it desaturates it, where every exposure lever moves the whole
+        /// frame at once.
         constexpr float sHourStops = 0.314f;
     }
 
@@ -225,6 +226,21 @@ namespace Rtx
         const osg::Vec3f irradiance = sky.mSunColour * Shaders::DAYLIGHT;
         const float share = std::clamp(sky.mSunShare, 0.0f, 1.0f);
 
+        // **The fill is a dusk's, because that is the only hour a sun has light to spread and no
+        // direction to spread it from.** It is nothing at noon, where the direct term carries all of
+        // it, and nothing at night, where there is no sun to take a direction away from — peaking
+        // where the disc straddles the horizon and the sky in front of it is the brightest thing in
+        // the frame. `2 * s * (1 - s)` is that, and the two leaves a dusk where it was: the ramp
+        // this replaces came to a half at the half-set point, and so does this.
+        //
+        // **The shape that suggests itself is `1 - share`, and it is largest where there is no sun.**
+        // Morrowind leaves a blue in the sun's slot all night — `Sun_Night_Color`, which is the
+        // original engine's stand-in for moonlight — and spreading that as an ambient came to six
+        // times the night ambient the weather itself records, flat, with no direction and no shadow
+        // in it. This renderer traces the moons, so keeping it is the moon counted twice and a night
+        // that does not read as one.
+        const float dusk = 2.0f * share * (1.0f - share);
+
         return Skylight{
             .mSun = { .mPosition = sky.mSunPosition,
                 .mIrradiance = irradiance * share,
@@ -234,7 +250,7 @@ namespace Rtx
                 // the file's own space, and dimming radiance is a linear multiply. Applied before
                 // the decode it would come out a different colour, not merely a darker one.
                 .mDiscColour = sky.mDiscColour * sky.mGlare },
-            .mAmbient = sky.mAmbient + irradiance * ((1.0f - share) * fill),
+            .mAmbient = sky.mAmbient + irradiance * (dusk * fill),
         };
     }
 

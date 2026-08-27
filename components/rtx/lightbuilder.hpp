@@ -151,8 +151,8 @@ namespace Rtx
         osg::Vec3f mSkyHorizon;
         osg::Vec3f mSkyZenith;
 
-        /// What an exterior gets in place of a cell's `AMBI`, which only interiors carry — and, at
-        /// night, whatever the weather put in the sun's slot while the sun was not there.
+        /// What an exterior gets in place of a cell's `AMBI`, which only interiors carry — the
+        /// weather's own ambient, and across dusk the sun's light with its direction taken away.
         osg::Vec3f mAmbient;
 
         /// The weather's fog colour as the file records it, undecoded.

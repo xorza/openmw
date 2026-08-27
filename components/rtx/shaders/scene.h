@@ -177,13 +177,14 @@ namespace Rtx::Shaders
     /// moon emits, and a light read out of that pin puts a night at a thousandth of a day. A real
     /// full moon is a 400,000th of the sun and no scale here could carry both, so the disc is set so
     /// that Masser reads as red and this is set so that a moonlit night is a night one can see. It
-    /// is a fortieth of `DAYLIGHT`. A sixteenth of it puts a town under a red sun rather than a
-    /// moon, and leaves the lamps in that town with nothing to be brighter than.
+    /// is a hundredth of `DAYLIGHT`, which puts a full Masser at twelve times the ambient a clear
+    /// midnight leaves. A sixteenth of `DAYLIGHT` puts a town under a red sun rather than a moon and
+    /// leaves the lamps in it with nothing to be brighter than.
     ///
     /// **Masser's, because the two moons do not deliver the same.** What a moon is worth as a light
     /// goes as the sky it covers and as its own albedo, and `placeMoon` derives both from what the
     /// game already says rather than keeping a second number in step with this one.
-    RTX_CONST float MOONLIGHT = 0.2f;
+    RTX_CONST float MOONLIGHT = 0.08f;
 
     /// Angular radius of the sun, in radians — a disc about half a degree across.
     ///
