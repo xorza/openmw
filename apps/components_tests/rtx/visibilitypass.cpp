@@ -2862,10 +2862,11 @@ namespace Rtx
         /// The deck takes its shape from what the sheet paints, read against what that sheet averages.
         ///
         /// **A sheet of one white texel with the mean moved under it**, which is `CloudDeck::mMean`'s
-        /// ratio measured three times with no filter in the way: at a mean of one the texel is
-        /// exactly average and the deck is `mColour`, at a half it is twice the average and the deck
-        /// doubles, and at a quarter it would be four times over and `CLOUD_THICKNESS_MAX` holds it
-        /// at two. A fourth reading says a sheet nothing could average takes no ratio at all.
+        /// ratio measured four times with no filter in the way. The ratio reaches a cloud in full sun
+        /// at `CLOUD_THICKNESS_MAX` times the mean, so a white texel against a mean of one is half
+        /// way between the two colours the deck was handed, against a half it is fully lit, and
+        /// against a quarter it is over and held there. A sheet nothing could average takes no ratio
+        /// and reads as the average cloud it could not measure.
         ///
         /// The sky behind it is set to nothing and the deck covers everything, so what the middle
         /// pixel carries is the deck alone.
@@ -2901,7 +2902,8 @@ namespace Rtx
             // across the frame and the only thing moving is the sheet against its mean.
             camera.mClouds = Shaders::CloudDeck{
                 .mOpacity = 1.0f,
-                .mColour = osg::Vec3f(0.25f, 0.25f, 0.25f),
+                .mLit = osg::Vec3f(0.6f, 0.6f, 0.6f),
+                .mShadowed = osg::Vec3f(0.2f, 0.2f, 0.2f),
                 .mMean = 1.0f,
                 .mTiles = osg::Vec2f(0.01f, 0.01f),
                 .mRings = osg::Vec3f(100.0f, 200.0f, 300.0f),
@@ -2918,10 +2920,10 @@ namespace Rtx
                 return mRadiance[centre];
             };
 
-            EXPECT_NEAR(deck(1.0f), 0.25f, 1.0e-3f) << "a texel at its sheet's own mean is the deck's colour";
-            EXPECT_NEAR(deck(0.5f), 0.5f, 1.0e-3f) << "twice the mean is twice the deck";
-            EXPECT_NEAR(deck(0.25f), 0.5f, 1.0e-3f) << "and four times over is held at two";
-            EXPECT_NEAR(deck(0.0f), 0.25f, 1.0e-3f) << "a sheet nobody could average took a ratio anyway";
+            EXPECT_NEAR(deck(1.0f), 0.4f, 1.0e-3f) << "a texel at its sheet's own mean is half lit";
+            EXPECT_NEAR(deck(0.5f), 0.6f, 1.0e-3f) << "twice the mean is a cloud in full sun";
+            EXPECT_NEAR(deck(0.25f), 0.6f, 1.0e-3f) << "and four times over is held there";
+            EXPECT_NEAR(deck(0.0f), 0.4f, 1.0e-3f) << "a sheet nobody could average took a ratio anyway";
         }
 
         /// A bounce is drawn by the cosine, and two thirds is the number that says so.

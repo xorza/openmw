@@ -241,7 +241,7 @@ namespace Rtx
             std::exp(-sAirDepth.x() * mass), std::exp(-sAirDepth.y() * mass), std::exp(-sAirDepth.z() * mass));
     }
 
-    osg::Vec3f skyFill(
+    SkyBudget skyBudget(
         const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& sheets, const osg::Vec3f& ambient)
     {
         // What a uniform sky would have to be to deliver what this gradient does. `skyGradient` runs
@@ -251,8 +251,10 @@ namespace Rtx
         // a mean over the hemisphere and need no such weighting.
         const osg::Vec3f carried = horizon / 3.0f + zenith * (2.0f / 3.0f) + sheets;
 
-        return osg::Vec3f(std::max(ambient.x() - carried.x(), 0.0f), std::max(ambient.y() - carried.y(), 0.0f),
+        const osg::Vec3f fill(std::max(ambient.x() - carried.x(), 0.0f), std::max(ambient.y() - carried.y(), 0.0f),
             std::max(ambient.z() - carried.z(), 0.0f));
+
+        return SkyBudget{ .mMean = carried + fill, .mFill = fill };
     }
 
     Skylight makeSkylight(const SkyReading& sky)

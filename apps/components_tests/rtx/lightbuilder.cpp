@@ -477,7 +477,7 @@ namespace Rtx
         {
             const auto grey = [](float value) { return osg::Vec3f(value, value, value); };
             const auto filled = [&](float horizon, float zenith, float sheets, float ambient) {
-                return skyFill(grey(horizon), grey(zenith), grey(sheets), grey(ambient)).x();
+                return skyBudget(grey(horizon), grey(zenith), grey(sheets), grey(ambient)).mFill.x();
             };
 
             // A gradient linear in `sin(elevation)` delivers what a uniform sky of `h / 3 + 2z / 3`
@@ -502,10 +502,17 @@ namespace Rtx
 
             // And it asks per channel: a red ambient over a grey sky fills the red alone rather than
             // lifting the whole of it.
-            const osg::Vec3f tinted = skyFill(grey(0.5f), grey(0.5f), osg::Vec3f(), osg::Vec3f(0.9f, 0.5f, 0.1f));
-            EXPECT_NEAR(tinted.x(), 0.4f, 1e-6f);
-            EXPECT_EQ(tinted.y(), 0.0f);
-            EXPECT_EQ(tinted.z(), 0.0f);
+            const SkyBudget tinted = skyBudget(grey(0.5f), grey(0.5f), osg::Vec3f(), osg::Vec3f(0.9f, 0.5f, 0.1f));
+            EXPECT_NEAR(tinted.mFill.x(), 0.4f, 1e-6f);
+            EXPECT_EQ(tinted.mFill.y(), 0.0f);
+            EXPECT_EQ(tinted.mFill.z(), 0.0f);
+
+            // **And the mean beside it is the whole of what the sky delivers**, fill and all — which
+            // is what a cloud deck hangs under. The sky carries 0.5 by itself, so the red channel
+            // reaches the 0.9 its ambient asks for and the other two stay at what the sky is.
+            EXPECT_NEAR(tinted.mMean.x(), 0.9f, 1e-6f);
+            EXPECT_NEAR(tinted.mMean.y(), 0.5f, 1e-6f);
+            EXPECT_NEAR(tinted.mMean.z(), 0.5f, 1e-6f);
         }
 
         /// And the weather fills it, so a frame gets the hour it is at rather than a default.

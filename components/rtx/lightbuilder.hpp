@@ -137,29 +137,45 @@ namespace Rtx
     /// and nothing is lost; a night simply stops having a sun in it.
     Skylight makeSkylight(const SkyReading& sky);
 
-    /// What the sky delivers as light over and above the colour it is drawn with.
+    /// What the sky delivers to a surface facing it, and how much of that it is never drawn with.
+    struct SkyBudget
+    {
+        /// The whole of it, as a radiance: the gradient, the night's sheets and `mFill` together.
+        ///
+        /// **What lights anything the sky stands over**, which so far is the cloud deck. A deck
+        /// hangs under this and sends a share of it back down, and the ground under the deck is lit
+        /// by whatever got past.
+        osg::Vec3f mMean;
+
+        /// What the sky delivers as light over and above the colour it is drawn with.
+        ///
+        /// **Morrowind lights its night with an ambient and this renderer lights it with a sky, and
+        /// the two are an order apart.** The engine puts `Ambient_<weather>_Night_Color` on every
+        /// surface directly; the ray tracer throws bounce rays at the dome instead and reads
+        /// `Sky_<weather>_Night_Color`, which is a tenth of it — so the ground came out ten times
+        /// short of the night the content describes, against a sky drawn exactly as bright as ever.
+        ///
+        /// So the sky is held to what the weather says a night is worth. A gradient that runs
+        /// linearly in `sin(elevation)` delivers what a uniform sky of `horizon / 3 + 2 * zenith / 3`
+        /// would, the night's sheets add their own mean on top of that, and whatever the ambient
+        /// asks for beyond the two is this. **It is light and not a colour**: nothing draws it,
+        /// because Morrowind does not draw it either — its ambient is on the surfaces and never in
+        /// the sky.
+        ///
+        /// **Every layer that lights comes out of the same figure**, which is what keeps a night
+        /// from brightening each time one more of them starts lighting: the stars did not, and now
+        /// they do, and the night is where it was.
+        ///
+        /// **Nought by day, with no hour asked.** A weather's daylight sky outruns its daylight
+        /// ambient in all three channels, so the rule bites only where the content puts the light
+        /// somewhere the sky cannot carry it — which is night, and the deepest part of dusk.
+        osg::Vec3f mFill;
+    };
+
+    /// Reads both off one weather, so nothing can hold two ideas of what a sky is worth.
     ///
-    /// **Morrowind lights its night with an ambient and this renderer lights it with a sky, and the
-    /// two are an order apart.** The engine puts `Ambient_<weather>_Night_Color` on every surface
-    /// directly; the ray tracer throws bounce rays at the dome instead and reads
-    /// `Sky_<weather>_Night_Color`, which is a tenth of it — so the ground came out ten times short
-    /// of the night the content describes, against a sky drawn exactly as bright as ever.
-    ///
-    /// So the sky is held to what the weather says a night is worth. A gradient that runs linearly
-    /// in `sin(elevation)` delivers what a uniform sky of `horizon / 3 + 2 * zenith / 3` would, the
-    /// night's sheets add their own mean on top of that, and whatever the ambient asks for beyond
-    /// the two is this. **It is light and not a colour**: nothing draws it, because Morrowind does
-    /// not draw it either — its ambient is on the surfaces and never in the sky.
-    ///
-    /// **Every layer that lights comes out of the same figure**, which is what keeps a night from
-    /// brightening each time one more of them starts lighting: the stars did not, and now they do,
-    /// and the night is where it was.
-    ///
-    /// **Nought by day, with no hour asked.** A weather's daylight sky outruns its daylight ambient
-    /// in all three channels, so the rule bites only where the content puts the light somewhere the
-    /// sky cannot carry it — which is night, and the deepest part of dusk.
     /// @param sheets what the night sky's own layers add — `Shaders::StarField::mGlow`.
-    osg::Vec3f skyFill(
+    SkyBudget skyBudget(
         const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& sheets, const osg::Vec3f& ambient);
 
     /// The sun and the sky at one hour, as the content files describe them.

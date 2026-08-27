@@ -1,3 +1,5 @@
+#include <array>
+#include <cmath>
 #include <limits>
 
 #include <gtest/gtest.h>
@@ -17,6 +19,10 @@ namespace Rtx
         const Rtx::CloudShell sShell{
             .mTiles = osg::Vec2f(0.75f, -0.75f), .mCurvature = 0.06f, .mRings = osg::Vec3f(1.0f, 1.5f, 2.0f)
         };
+
+        /// What a deck radiates, for the tests that are about everything else it carries. Two
+        /// distinct colours, so a field written from the wrong one shows.
+        const Rtx::DeckLight sLight{ .mLit = osg::Vec3f(0.5f, 0.6f, 0.7f), .mShadowed = osg::Vec3f(0.1f, 0.2f, 0.3f) };
 
         /// A world where no two numbers are the same, so a field written from the wrong one shows.
         FrameWorld distinct()
@@ -40,7 +46,8 @@ namespace Rtx
 
             world.mClouds = Rtx::Shaders::CloudDeck{
                 .mOpacity = 0.875f,
-                .mColour = osg::Vec3f(0.51f, 0.52f, 0.53f),
+                .mLit = osg::Vec3f(0.51f, 0.52f, 0.53f),
+                .mShadowed = osg::Vec3f(0.11f, 0.12f, 0.13f),
                 .mBlend = 0.25f,
                 .mScroll = 3.5f,
                 .mTurn = 1.25f,
@@ -118,7 +125,8 @@ namespace Rtx
             EXPECT_EQ(constants.mStormDirection, world.mStormDirection);
 
             EXPECT_EQ(constants.mClouds.mOpacity, world.mClouds.mOpacity);
-            EXPECT_EQ(constants.mClouds.mColour, world.mClouds.mColour);
+            EXPECT_EQ(constants.mClouds.mLit, world.mClouds.mLit);
+            EXPECT_EQ(constants.mClouds.mShadowed, world.mClouds.mShadowed);
             EXPECT_EQ(constants.mClouds.mBlend, world.mClouds.mBlend);
             EXPECT_EQ(constants.mClouds.mScroll, world.mClouds.mScroll);
             EXPECT_EQ(constants.mClouds.mTurn, world.mClouds.mTurn);
@@ -174,11 +182,10 @@ namespace Rtx
             textures.mClouds[Rtx::Shaders::WEATHER_RAIN] = 5;
             textures.mShell = sShell;
 
-            const osg::Vec3f air(0.1f, 0.1f, 0.2f);
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const auto deck = [&](float blend) {
                 return describeClouds(
-                    Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, blend, air, north, 0.0f, textures);
+                    Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, blend, sLight, north, 0.0f, textures);
             };
 
             EXPECT_EQ(deck(std::numeric_limits<float>::quiet_NaN()).mBlend, 0.0f) << "a NaN is no crossing";
@@ -210,10 +217,9 @@ namespace Rtx
             EXPECT_EQ(textures.cloudsOf(Rtx::Shaders::WEATHER_COUNT + 4u), Rtx::Shaders::NO_TEXTURE)
                 << "and an index past the ten is not a lookup";
 
-            const osg::Vec3f air(0.1f, 0.1f, 0.2f);
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const Rtx::Shaders::CloudDeck none = describeClouds(
-                Rtx::Shaders::WEATHER_ASHSTORM, Rtx::Shaders::WEATHER_ASHSTORM, 0.0f, air, north, 0.0f, textures);
+                Rtx::Shaders::WEATHER_ASHSTORM, Rtx::Shaders::WEATHER_ASHSTORM, 0.0f, sLight, north, 0.0f, textures);
 
             EXPECT_EQ(none.mOpacity, 0.0f) << "nothing to draw, said the way an interior says it";
             EXPECT_EQ(none.mTexture, Rtx::Shaders::NO_TEXTURE);
@@ -222,49 +228,65 @@ namespace Rtx
             // weather names.
             SkyContent unhung = textures;
             unhung.mShell = Rtx::CloudShell{};
-            EXPECT_EQ(
-                describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, air, north, 0.0f, unhung)
-                    .mOpacity,
+            EXPECT_EQ(describeClouds(
+                          Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, sLight, north, 0.0f, unhung)
+                          .mOpacity,
                 0.0f);
         }
 
-        /// A deck is the air it hangs in, lifted by what its own weather says a cloud is worth.
+        /// A deck is lit by what stands over it, and its own body is what keeps the sun off its base.
         ///
-        /// **The lift is a ratio and the engine's is an offset**, which is the whole of this. An
-        /// eighth added to a display-encoded fog is a multiplication in light of a third again over a
-        /// clear day and of eight over the same weather's night, so a deck built that way arrives at
-        /// midnight eight times the sky it covers — grey, and the brightest thing in a frame that is
-        /// about to be exposed for starlight. Read as a ratio it follows its sky down.
-        TEST(RtxSkyBuilderTest, aDeckIsTheAirItHangsInLiftedByWhatACloudIsWorth)
+        /// **The engine paints its deck and this one lights it.** `Sky::cloudColour` adds an eighth
+        /// to a display-encoded fog, which read as light is a third again over a clear day and eight
+        /// times over the same weather's night — so a painted deck arrived at midnight eight times
+        /// the sky it covers. Lit, it is `CLOUD_TRANSMISSION` of whatever reaches it, whatever hour
+        /// that is.
+        ///
+        /// A sun of 8, 4, 2 straight overhead, a sky mean of 0.4, 0.8, 1.2, and a moon a third of
+        /// the way up delivering 0.4, 0.8, 1.2 to a face square to it:
+        ///
+        ///     sky   0.4 * 0.25                    = 0.1
+        ///     sun   8 * 1 * 0.25 / pi             = 0.636620
+        ///     moon  0.4 * 0.5 * 0.25 / pi         = 0.015915
+        ///
+        /// so red comes to 0.752535 lit and 0.1 shadowed, and the other two follow their own terms.
+        TEST(RtxSkyBuilderTest, aDeckIsLitByWhatStandsOverIt)
         {
-            SkyContent textures;
-            textures.mClouds.fill(Rtx::sNoIndex);
-            textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
-            textures.mClouds[Rtx::Shaders::WEATHER_RAIN] = 5;
-            textures.mShell = sShell;
-            textures.mLift[Rtx::Shaders::WEATHER_CLEAR] = osg::Vec3f(2.0f, 3.0f, 4.0f);
-            textures.mLift[Rtx::Shaders::WEATHER_RAIN] = osg::Vec3f(6.0f, 7.0f, 8.0f);
+            const osg::Vec3f skyMean(0.4f, 0.8f, 1.2f);
 
-            const osg::Vec3f air(0.1f, 0.2f, 0.4f);
-            const osg::Vec3f north(0.0f, 1.0f, 0.0f);
-            const auto deck = [&](float blend) {
-                return describeClouds(
-                    Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, blend, air, north, 0.0f, textures);
-            };
+            Rtx::Sun sun;
+            sun.mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
+            sun.mIrradiance = osg::Vec3f(8.0f, 4.0f, 2.0f);
 
-            EXPECT_EQ(deck(0.0f).mColour, osg::Vec3f(0.2f, 0.6f, 1.6f));
-            EXPECT_EQ(deck(1.0f).mColour, osg::Vec3f(0.6f, 1.4f, 3.2f));
+            std::array<Rtx::MoonPlacement, 2> moons{};
+            moons[0].mDirection = osg::Vec3f(0.0f, std::sqrt(0.75f), 0.5f);
+            moons[0].mIrradiance = osg::Vec3f(0.4f, 0.8f, 1.2f);
 
-            // Half way across, the lift is half way between the two: (4, 5, 6) over that air.
-            EXPECT_EQ(deck(0.5f).mColour, osg::Vec3f(0.4f, 1.0f, 2.4f));
+            const Rtx::DeckLight day = Rtx::deckLight(sun, skyMean, moons);
 
-            // A weather nothing was read for is its air and no more, rather than a black deck.
-            SkyContent unread = textures;
-            unread.mLift = {};
-            EXPECT_EQ(
-                describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, air, north, 0.0f, unread)
-                    .mColour,
-                air);
+            EXPECT_NEAR(day.mShadowed.x(), 0.1f, 1.0e-6f);
+            EXPECT_NEAR(day.mShadowed.y(), 0.2f, 1.0e-6f);
+            EXPECT_NEAR(day.mShadowed.z(), 0.3f, 1.0e-6f);
+
+            EXPECT_NEAR(day.mLit.x(), 0.752535f, 1.0e-5f);
+            EXPECT_NEAR(day.mLit.y(), 0.550141f, 1.0e-5f);
+            EXPECT_NEAR(day.mLit.z(), 0.506901f, 1.0e-5f);
+
+            // **At night the two differ by the moons alone**, which is the case the whole change is
+            // for: no sun over the layer, and a deck that is a quarter of the sky it hides.
+            sun.mIrradiance = osg::Vec3f();
+            const Rtx::DeckLight night = Rtx::deckLight(sun, skyMean, moons);
+
+            EXPECT_EQ(night.mShadowed, day.mShadowed);
+            EXPECT_NEAR(night.mLit.x() - night.mShadowed.x(), 0.015915f, 1.0e-5f);
+
+            // A moon under the horizon delivers nothing to a layer over it, and needs no test of its
+            // own to say so — the cosine does it.
+            moons[0].mDirection = osg::Vec3f(0.0f, std::sqrt(0.75f), -0.5f);
+            const Rtx::DeckLight down = Rtx::deckLight(sun, skyMean, moons);
+
+            EXPECT_EQ(down.mLit, down.mShadowed);
+            EXPECT_EQ(down.mShadowed, day.mShadowed);
         }
 
         /// The shape the deck hangs on is the mesh's, and it is passed through untouched.
@@ -275,9 +297,8 @@ namespace Rtx
             textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
             textures.mShell = sShell;
 
-            const Rtx::Shaders::CloudDeck deck
-                = describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f,
-                    osg::Vec3f(0.1f, 0.1f, 0.2f), osg::Vec3f(0.0f, 1.0f, 0.0f), 0.0f, textures);
+            const Rtx::Shaders::CloudDeck deck = describeClouds(Rtx::Shaders::WEATHER_CLEAR,
+                Rtx::Shaders::WEATHER_CLEAR, 0.0f, sLight, osg::Vec3f(0.0f, 1.0f, 0.0f), 0.0f, textures);
 
             EXPECT_EQ(deck.mTiles, sShell.mTiles);
             EXPECT_EQ(deck.mCurvature, sShell.mCurvature);
@@ -300,10 +321,9 @@ namespace Rtx
             textures.mCloudMean[Rtx::Shaders::WEATHER_CLEAR] = 0.4f;
             textures.mCloudMean[Rtx::Shaders::WEATHER_RAIN] = 0.2f;
 
-            const osg::Vec3f air(0.1f, 0.1f, 0.2f);
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const auto deck = [&](std::uint32_t next, float blend) {
-                return describeClouds(Rtx::Shaders::WEATHER_CLEAR, next, blend, air, north, 0.0f, textures);
+                return describeClouds(Rtx::Shaders::WEATHER_CLEAR, next, blend, sLight, north, 0.0f, textures);
             };
 
             EXPECT_EQ(deck(Rtx::Shaders::WEATHER_RAIN, 0.0f).mMean, 0.4f);

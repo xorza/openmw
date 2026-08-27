@@ -808,6 +808,33 @@ namespace MWRender
             .mGlare = world.mSunGlare,
         });
 
+        // **Before the frame rather than into it, because the deck is lit by them.** A cloud layer
+        // takes the moons' light like anything else under a night sky, and `Rtx::deckLight` is
+        // handed the pair.
+        std::array<Rtx::MoonPlacement, 2> moons{};
+        for (std::size_t moon = 0; moon < moons.size(); ++moon)
+        {
+            const MoonState& state = world.mMoons[moon];
+
+            // `Unspecified` is a ninth value and not a phase; the weather system uses it to mean it
+            // has not spoken, and a moon it has not spoken about is one with no alpha anyway.
+            const int phase = state.mPhase == MoonState::Phase::Unspecified ? 0 : static_cast<int>(state.mPhase);
+
+            // **The glare is applied here and not by the weather system**, which is where the
+            // rasterizer applies it too: `SkyManager::setWeather` calls `Moon::adjustTransparency`
+            // with it after the state has been handed over. A thunderstorm hides its moons the same
+            // way it hides its stars.
+            moons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
+                state.mRotationFromNorth, phase, state.mDaylightFade * world.mSunGlare);
+            moons[moon].mFace = mMoonFaces.of(static_cast<Rtx::Moon>(moon));
+        }
+
+        // **What the sky is worth as light, read once.** The fill is what a ray cannot find in the
+        // dome and the mean is the whole of it, and a frame that read the two apart could hold two
+        // ideas of how bright its own sky is.
+        const Rtx::SkyBudget budget
+            = world.isOutdoors() ? Rtx::skyBudget(haze, zenith, stars.mGlow, sky.mAmbient) : Rtx::SkyBudget{};
+
         Rtx::FrameWorld described{
             .mSun = sky.mSun,
             .mAmbient = sky.mAmbient,
@@ -817,10 +844,10 @@ namespace MWRender
 
             // **What the weather says a night is worth, less what its sky can carry**, and nothing
             // at all in a room. The game lights a night by an ambient on every surface and this
-            // renderer lights it by tracing the dome, which is an order short — `Rtx::skyFill`
+            // renderer lights it by tracing the dome, which is an order short — `SkyBudget::mFill`
             // carries the rest of it. Indoors there is no dome to be short of, and the cell's own
             // ambient already reaches every surface as `mAmbient`.
-            .mSkyFill = world.isOutdoors() ? Rtx::skyFill(haze, zenith, stars.mGlow, sky.mAmbient) : osg::Vec3f(),
+            .mSkyFill = budget.mFill,
 
             .mAir = { .mColour = haze,
                 .mExtinction = Rtx::fogExtinction(world.mFogDepth, reach),
@@ -866,30 +893,15 @@ namespace MWRender
                 ? Rtx::describeClouds(static_cast<std::uint32_t>(world.mWeatherId),
                       world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
                                                        : static_cast<std::uint32_t>(world.mWeatherId),
-                      world.mCloudBlend, haze, world.mStormDirection, world.mSkyRoll.mClouds, mSkyContent)
+                      world.mCloudBlend, Rtx::deckLight(sky.mSun, budget.mMean, moons), world.mStormDirection,
+                      world.mSkyRoll.mClouds, mSkyContent)
                 : Rtx::Shaders::CloudDeck{ .mOpacity = 0.0f,
                       .mTexture = Rtx::Shaders::NO_TEXTURE,
                       .mNext = Rtx::Shaders::NO_TEXTURE },
 
             .mStars = stars,
+            .mMoons = moons,
         };
-
-        for (std::size_t moon = 0; moon < described.mMoons.size(); ++moon)
-        {
-            const MoonState& state = world.mMoons[moon];
-
-            // `Unspecified` is a ninth value and not a phase; the weather system uses it to mean it
-            // has not spoken, and a moon it has not spoken about is one with no alpha anyway.
-            const int phase = state.mPhase == MoonState::Phase::Unspecified ? 0 : static_cast<int>(state.mPhase);
-
-            // **The glare is applied here and not by the weather system**, which is where the
-            // rasterizer applies it too: `SkyManager::setWeather` calls `Moon::adjustTransparency`
-            // with it after the state has been handed over. A thunderstorm hides its moons the same
-            // way it hides its stars.
-            described.mMoons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
-                state.mRotationFromNorth, phase, state.mDaylightFade * world.mSunGlare);
-            described.mMoons[moon].mFace = mMoonFaces.of(static_cast<Rtx::Moon>(moon));
-        }
 
         // The nebulae and the constellations, on the star sphere and turning with it. An interior
         // leaves them at their defaults, which is no texture and so nothing drawn.

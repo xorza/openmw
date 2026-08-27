@@ -18,11 +18,6 @@ namespace Sky
         return fog + osg::Vec4f(sLift, sLift, sLift, 0.0f);
     }
 
-    osg::Vec4f dayFog(std::string_view weather)
-    {
-        return Fallback::Map::getColour("Weather_" + std::string(weather) + "_Fog_Day_Color");
-    }
-
     std::string_view cloudTexture(std::string_view weather)
     {
         return Fallback::Map::getString("Weather_" + std::string(weather) + "_Cloud_Texture");

@@ -10,7 +10,7 @@
 | nebulae, constellations | `skyPatches` | `skyGlow`, via `StarField::mGlow` |
 | the sun's disc | `skyRadiance` | `gather` |
 | the moons | `moonFace` | `gather` |
-| the cloud deck | `cloudDeck`, as an emission | **nothing**, and **nothing lights it** |
+| the cloud deck | `cloudDeck` | **nothing**, and it is lit by `deckLight` |
 
 The compositing order is settled, the moons rise through the air rather than being switched off, and
 the star field is drawn by the display pass at the resolution it is shown at — the three upscale
@@ -28,11 +28,12 @@ onto flat ground.
 
 ---
 
-## 1. The cloud deck is an emission and is never lit
+## 1. The cloud deck casts nothing, and loses the sun with the ground
 
-**Root cause.** `CloudDeck::mColour` is the weather's air times what its own daylight says a cloud is
-worth, and `cloudDeck` returns that times coverage and the sheet's own shape. No sun, no moon, no sky
-reaches it, it casts nothing, and it loses the sun at the same instant the ground does.
+**Where it stands.** The deck is lit rather than painted: `Rtx::deckLight` gives it the sky, the
+moons and the sun, and `CLOUD_TRANSMISSION` is what a layer of droplets keeps of the three. What is
+left is that it casts no shadow on the world, and that it is handed the ground's own sun — so it goes
+out at the instant the ground does, where a real layer keeps the sun past the ground's horizon.
 
 This is the largest of them and the reference implementation has already been through it —
 `/home/xxorza/Projects/rtxmw/docs/design.md` §8.56 and §8.57. Read both before starting.
@@ -52,12 +53,15 @@ This is the largest of them and the reference implementation has already been th
   deviation goes 0.0016 to 0.0212 for overcast and 0.0121 to 0.0231 for rain, while the patch mean
   moves under two per cent — shape where there was none, and the level left where it was.
 
-  What is left of this bullet is the colour: the deck is still an emission, and the steps below light
-  it.
-- **A cloud is darker than the sky it covers.** Plane-parallel theory puts a deck's transmission at
-  0.2 to 0.3. At 0.9 a night deck was 90% of the sky it hid; at 0.3 it is a dark shape blotting out
-  stars, and thin cloud is not dragged down with it because how much sky a wisp replaces at all is
-  its own alpha.
+- **A cloud is darker than the sky it covers**, and it is now. Plane-parallel theory puts a deck's
+  transmission at 0.2 to 0.3; `CLOUD_TRANSMISSION` is 0.25, and thin cloud is not dragged down with
+  it because how much sky a wisp replaces at all is its own alpha.
+
+  Measured, linear, at Seyda Neen. A clear midnight: the sky over the deck delivers 0.0144, so the
+  deck radiates 0.0036 in its own shadow and 0.0053 where the moons reach it — a dark shape against
+  the sky it hides, which is what a night cloud is. A clear noon: 0.0705 shadowed against 0.684 lit,
+  because the sun is nine tenths of what reaches the layer. An overcast noon: 0.0687 against 0.293,
+  the weather's own glare having taken most of the sun before it arrives.
 - **The layer keeps the sun after the ground has lost it**, and crosses less air on the way, which is
   why a sunset cloud is gold rather than black.
 - **And it casts**, at a coarse mip, letting about a quarter through.
@@ -70,12 +74,9 @@ long the deck keeps the sun has to come from somewhere else.
 
 **Steps.** Land them in this order, checking with `shot` after each:
 
-1. The deck lit by the sky and by the moons, at a transmission of 0.25. Night first, because it is
-   the case with the fewest terms and the one already known to read wrong.
-2. The sun on the deck, with its own horizon and its own air mass. Day and dusk.
-3. The deck's shadow on the world.
-4. Delete `SkyContent::mLift` and `Sky::dayFog`, which exist only to light a deck that is no longer
-   painted.
+1. The deck's own horizon and its own air mass, so it keeps the sun after the ground has lost it.
+   Day and dusk. The trap above is this step's.
+2. The deck's shadow on the world.
 
 ---
 
@@ -97,8 +98,8 @@ that shadows the world is the same machinery seen from another side.
 
 ## Order
 
-Step 1 is the last of the sky, and four of its own steps are left. It is the one that can regress a
-day that has just been tuned, and the sheets' own shape is read out of them now.
+Step 1 is the last of the sky, and two of its own steps are left. It is the one that can regress a
+day that has just been tuned, and both the sheets' own shape and the light on them are in place now.
 
 Step 2 stays open.
 

@@ -12,20 +12,11 @@ namespace Sky
     /// **In the space the file records it**, because that is where the engine adds it: the same lift
     /// applied to linear light is a different colour rather than the same one brightened.
     ///
-    /// This is what the rasterizer lights its deck with. The ray tracer reads the *ratio* out of it
-    /// instead, against `dayFog`, for the reason that function gives.
+    /// **The rasterizer's, and only the rasterizer's.** It paints a deck with this and the ray
+    /// tracer lights one instead — `Rtx::deckLight` — so nothing here crosses over. Read the lift as
+    /// a colour and a night deck comes out eight times the sky it hangs in, which is what an offset
+    /// added to a display-encoded value does once a frame is exposed.
     osg::Vec4f cloudColour(const osg::Vec4f& fog);
-
-    /// The weather's daylight fog colour, in the space the file records it.
-    ///
-    /// **Where `cloudColour`'s lift is worth reading, and the only place it is.** That lift is an
-    /// offset applied to a display-encoded colour, so what it comes to in light is a multiplication
-    /// whose size depends on how bright the base is: a third again over a clear day's fog, eight
-    /// times over the same weather's night. A renderer that never exposes its frame does not care,
-    /// and one that does gets a night deck eight times the sky it hangs in. Daylight is the hour the
-    /// offset distorts least, because it is the hour the base is brightest, so it is where a
-    /// renderer working in light reads the ratio the lift stands for.
-    osg::Vec4f dayFog(std::string_view weather);
 
     /// What a weather names its cloud texture, as the content files spell it — a bare file name,
     /// which the archive holds under `textures/`. Empty where the weather names none, which the

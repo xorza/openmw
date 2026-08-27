@@ -72,10 +72,19 @@ namespace Rtx::Shaders
         /// across its whole sky. `StarField::mFade` is the same field for the same reason.
         float mOpacity;
 
-        /// What the deck is lit by, linear: the weather's air, times what a cloud of that weather is
-        /// worth against it. Applied as an emission to an unlit material, so a cloud is its texture
-        /// times this and owes nothing to the sun. `SkyContent::mLift` is the ratio's half of it.
-        vec3 mColour;
+        /// What a cloud in full sunlight radiates from below, linear.
+        ///
+        /// **The sky, the moons and the sun, each spread over the underside of the layer**, and
+        /// `Rtx::deckLight` is where the three are added. `CLOUD_TRANSMISSION` is what a deck keeps
+        /// of them.
+        vec3 mLit;
+
+        /// What a cloud in its own shadow radiates: the sky alone.
+        ///
+        /// **The light with no direction is the light a cloud cannot shadow itself from.** A deck's
+        /// own body is what keeps the sun off its base, so the sheet's paint picks between this and
+        /// `mLit` — and at night, with no sun over the layer, the two differ only by the moons.
+        vec3 mShadowed;
 
         /// The mean luminance of what the sheets being sampled paint, linear.
         ///
@@ -448,10 +457,10 @@ namespace Rtx::Shaders
     // reads them are different compilers.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
     static_assert(sizeof(MoonDisc) == 88, "MoonDisc must be scalar-packed on every side");
-    static_assert(sizeof(CloudDeck) == 64, "CloudDeck must be scalar-packed on every side");
+    static_assert(sizeof(CloudDeck) == 76, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 820, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 832, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

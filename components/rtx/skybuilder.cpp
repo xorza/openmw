@@ -1,5 +1,6 @@
 #include "skybuilder.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -20,33 +21,6 @@ namespace Rtx
 {
     namespace
     {
-        /// What a weather's own daylight says a cloud is worth against the air it hangs in.
-        ///
-        /// **Daylight, because that is the hour the engine's lift means what it says.** An eighth
-        /// added to a display-encoded colour is a multiplication in light, and how large a one
-        /// depends on the base: a clear day's fog is lifted by 1.40, 1.36 and 1.32 across the three
-        /// channels, the same weather's night by eight. The bright end is where the offset is small
-        /// against what it is added to and so behaves like the ratio a cloud actually is — a sheet
-        /// of droplets scattering back some fixed share more of the light than the clear air beside
-        /// it. Read there and applied everywhere, a day's deck comes out exactly where the engine
-        /// puts it and a night's follows its own sky down.
-        osg::Vec3f cloudLift(std::string_view weather)
-        {
-            const osg::Vec4f day = Sky::dayFog(weather);
-            const osg::Vec3f air = decodeColour(day);
-            const osg::Vec3f lit = decodeColour(Sky::cloudColour(day));
-
-            // **A channel a weather records as black holds no ratio**, and dividing by it is a
-            // division by however near nothing the decode came. One code value is the least a
-            // content file can write and still mean a colour, so under that the lift is not read.
-            const auto worth = [](float over, float under, float recorded) {
-                return recorded >= 1.0f / 255.0f ? over / under : 1.0f;
-            };
-
-            return osg::Vec3f(
-                worth(lit.x(), air.x(), day.x()), worth(lit.y(), air.y(), day.y()), worth(lit.z(), air.z(), day.z()));
-        }
-
         /// The mean luminance of what a sheet paints, which `SkyContent::mCloudMean` is the table of.
         ///
         /// Nothing where the file will not read or decode, which is the same answer a missing sheet
@@ -69,16 +43,6 @@ namespace Rtx
         return static_cast<std::uint32_t>(mClouds[weather]);
     }
 
-    osg::Vec3f SkyContent::liftOf(std::uint32_t weather) const
-    {
-        // A lift of nothing is a deck of nothing, which no content says and no reading gives — so it
-        // is what an unread table means, the way `sNoIndex` is for the textures beside it.
-        if (weather >= mLift.size() || mLift[weather].length2() <= 0.0f)
-            return osg::Vec3f(1.0f, 1.0f, 1.0f);
-
-        return mLift[weather];
-    }
-
     float SkyContent::meanOf(std::uint32_t weather) const
     {
         return weather < mCloudMean.size() ? mCloudMean[weather] : 0.0f;
@@ -93,10 +57,7 @@ namespace Rtx
 
         for (std::uint32_t weather = 0; weather < Shaders::WEATHER_COUNT; ++weather)
         {
-            const std::string_view named = weatherName(weather);
-            loaded.mLift[weather] = cloudLift(named);
-
-            const std::string_view sheet = Sky::cloudTexture(named);
+            const std::string_view sheet = Sky::cloudTexture(weatherName(weather));
             if (sheet.empty())
                 continue;
 
@@ -135,7 +96,29 @@ namespace Rtx
         dropNightSky(scene, textures.mNight);
     }
 
-    Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const osg::Vec3f& air,
+    DeckLight deckLight(const Sun& sun, const osg::Vec3f& skyMean, std::span<const MoonPlacement, 2> moons)
+    {
+        // **The sky's own radiance, less what the deck keeps of it.** A layer under a hemisphere of
+        // radiance `L` receives `pi L` and spreads what leaves its base over the hemisphere below,
+        // so what comes back is `T * pi L / pi` — the `pi` divides out and a deck is simply a
+        // fraction of the sky it hides.
+        const osg::Vec3f fromSky = skyMean * Shaders::CLOUD_TRANSMISSION;
+
+        // **A direction has to be turned into a level surface's share of it first.** The layer is
+        // flat and the light is not overhead, so what lands is `E cos`, and what leaves the base is
+        // that spread over the lower hemisphere.
+        const auto sentDown = [](const osg::Vec3f& irradiance, const osg::Vec3f& towards) {
+            return irradiance * (std::max(towards.z(), 0.0f) * Shaders::INV_PI * Shaders::CLOUD_TRANSMISSION);
+        };
+
+        osg::Vec3f direct = sentDown(sun.mIrradiance, sun.mPosition);
+        for (const MoonPlacement& moon : moons)
+            direct += sentDown(moon.mIrradiance, moon.mDirection);
+
+        return DeckLight{ .mLit = fromSky + direct, .mShadowed = fromSky };
+    }
+
+    Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const DeckLight& light,
         const osg::Vec3f& storm, float scroll, const SkyContent& textures)
     {
         const std::uint32_t slot = textures.cloudsOf(weather);
@@ -146,11 +129,6 @@ namespace Rtx
         // and on into a `mix` that blacks out the sky. Asking whether it is inside the range instead
         // of whether it is outside is the whole of the difference.
         const float mixed = blend > 0.0f ? (blend < 1.0f ? blend : 1.0f) : 0.0f;
-
-        // **The lift crosses with the sheet it belongs to**, on the deck's own schedule rather than
-        // the weather's: how much brighter than the air a cloud is belongs to the cloud, so it
-        // arrives when the cloud does. The fog under it is already the hour's and already blended.
-        const osg::Vec3f lift = textures.liftOf(weather) * (1.0f - mixed) + textures.liftOf(next) * mixed;
 
         // **The level the sheet is read against crosses with the sheet, and falls back the way it
         // does.** Where the weather ahead names no deck the shader samples the near sheet for both
@@ -167,7 +145,8 @@ namespace Rtx
             // same way.
             .mOpacity = slot == Shaders::NO_TEXTURE || !(textures.mShell.mTiles.x() > 0.0f) ? 0.0f : 1.0f,
 
-            .mColour = osg::componentMultiply(air, lift),
+            .mLit = light.mLit,
+            .mShadowed = light.mShadowed,
             .mMean = mean,
             .mBlend = mixed,
             .mScroll = scroll,

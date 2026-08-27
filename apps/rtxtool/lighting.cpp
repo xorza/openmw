@@ -67,9 +67,21 @@ namespace RtxTool
 
         // Nought in a room, for the reason the deck and the stars are: there is no dome to be short
         // of, and the cell's own ambient already reaches every surface.
-        const osg::Vec3f fill = lighting.mOutdoors ? Rtx::skyFill(lighting.mDaylight.mSkyHorizon,
-                                                         lighting.mDaylight.mSkyZenith, stars.mGlow, lighting.mAmbient)
-                                                   : osg::Vec3f();
+        const Rtx::SkyBudget budget = lighting.mOutdoors
+            ? Rtx::skyBudget(
+                  lighting.mDaylight.mSkyHorizon, lighting.mDaylight.mSkyZenith, stars.mGlow, lighting.mAmbient)
+            : Rtx::SkyBudget{};
+
+        // **Before the deck as well, because a deck is lit by them.** A room has neither moon over
+        // it, and an alpha of nothing is a disc the sky skips and a light that delivers nothing.
+        std::array<Rtx::MoonPlacement, 2> moons{};
+        if (lighting.mOutdoors)
+            for (const Rtx::Moon moon : { Rtx::Moon::Masser, Rtx::Moon::Secunda })
+            {
+                Rtx::MoonPlacement placed = Rtx::makeMoon(moon, lighting.mDay, lighting.mHour, lighting.mGlare);
+                placed.mFace = lighting.mFaces.of(moon);
+                moons[static_cast<std::size_t>(moon)] = placed;
+            }
 
         Rtx::FrameWorld world{
             .mSun = lighting.mDaylight.mSun,
@@ -77,7 +89,7 @@ namespace RtxTool
             .mSkyHorizon = lighting.mDaylight.mSkyHorizon,
             .mSkyZenith = lighting.mDaylight.mSkyZenith,
 
-            .mSkyFill = fill,
+            .mSkyFill = budget.mFill,
             .mAir = lighting.mFog,
             .mWaterLevel = lighting.mWaterLevel,
             .mSeconds = lighting.mSeconds,
@@ -96,6 +108,7 @@ namespace RtxTool
             .mStormDirection = Rtx::stormDirection(lighting.mWeather, constants.mOrigin),
 
             .mStars = stars,
+            .mMoons = moons,
         };
 
         // **The deck and the painted patches, and an interior has neither.** A room has no cloud
@@ -104,20 +117,11 @@ namespace RtxTool
         if (lighting.mOutdoors)
         {
             world.mClouds = Rtx::describeClouds(lighting.mWeather, lighting.mNextWeather, lighting.mWeatherBlend,
-                lighting.mDaylight.mSkyHorizon, world.mStormDirection, lighting.mRoll.mClouds, lighting.mSky);
+                Rtx::deckLight(lighting.mDaylight.mSun, budget.mMean, moons), world.mStormDirection,
+                lighting.mRoll.mClouds, lighting.mSky);
 
             Rtx::describePatches(lighting.mRoll.mStars, lighting.mSky, world.mSkyPatches);
         }
-
-        // **Left where a default leaves them for a room**, which is an alpha of nothing and so a
-        // disc the sky skips: an interior has no moons over it, and `relight` will not put any there.
-        if (lighting.mOutdoors)
-            for (const Rtx::Moon moon : { Rtx::Moon::Masser, Rtx::Moon::Secunda })
-            {
-                Rtx::MoonPlacement placed = Rtx::makeMoon(moon, lighting.mDay, lighting.mHour, lighting.mGlare);
-                placed.mFace = lighting.mFaces.of(moon);
-                world.mMoons[static_cast<std::size_t>(moon)] = placed;
-            }
 
         Rtx::applyWorld(world, constants);
     }

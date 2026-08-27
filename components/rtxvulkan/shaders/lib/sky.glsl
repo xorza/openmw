@@ -32,18 +32,16 @@ vec3 skyGlow(vec3 direction)
 /// What a ray that reached nothing finds in the cloud deck, and how much of the sky it hides.
 ///
 /// **The deck is where the ray crosses a layer over a curved world**, which is the thing the game's
-/// cloud mesh is a stand-in for and the shape `CloudShell` reads back out of it. Everything here is
-/// Morrowind's: the texture is the weather's own, the scroll and the bearing are what the engine
-/// turns its mesh by, the blend across a transition is the same factor, the layer's height and
-/// curvature and where it fades out are its mesh's, and the colour is the fog lifted by what its own
-/// daylight says a cloud is worth against the air.
+/// cloud mesh is a stand-in for and the shape `CloudShell` reads back out of it. Where it hangs is
+/// all Morrowind's: the texture is the weather's own, the scroll and the bearing are what the engine
+/// turns its mesh by, the blend across a transition is the same factor, and the layer's height and
+/// curvature and where it fades out are its mesh's.
 ///
-/// **Alpha is coverage and the sheet's own paint is shape**, which is most of the material the
-/// engine gives it: an unlit alpha-tracking one, so a cloud owes nothing to where the sun is and a
-/// thin cloud lets the sky through rather than lightening it. Where the two part company is the
-/// paint — the engine multiplies its sheet straight into the deck's colour, and this divides the
-/// sheet by its own mean first, so what carries over is where the cloud is thick rather than the
-/// light of the day it was painted under.
+/// **Alpha is coverage and the sheet's own paint is shape**, which is where this parts company with
+/// the engine. Its deck is an unlit alpha-tracking material that owes nothing to where the sun is,
+/// painted with its own sheet times a lifted fog; this one takes the alpha for how much sky a cloud
+/// replaces and the paint for how thick it is, and `Rtx::deckLight` says what a cloud that thick
+/// radiates. A photograph of a 2002 sky is a shape and not a colour.
 ///
 /// @param covered how much of what lies behind the deck it hides, which is what puts the stars out.
 vec3 cloudDeck(vec3 direction, out float covered)
@@ -98,18 +96,24 @@ vec3 cloudDeck(vec3 direction, out float covered)
 
     covered = cloud.a * reaches * frame.mClouds.mOpacity;
 
-    // **The sheet says where the cloud is thick and `mColour` says what that is worth**, which is
-    // what `CloudDeck::mMean` is the level for. A luminance and not the three channels, because a
-    // sheet's own hue is the 2002 sky behind it and carrying that would paint a day's light into the
-    // deck twice. A sheet nothing could average has no ratio to take, and draws flat.
+    // **The sheet says how thick the cloud is and the light says what that is worth.** A luminance
+    // and not the three channels, because a sheet's own hue is the 2002 sky behind it and carrying
+    // that would paint a day's light into the deck twice. `CLOUD_THICKNESS_MAX` is where the ratio
+    // reaches a cloud in full sun; a sheet nothing could average has no ratio to take, and reads as
+    // the average cloud it could not measure.
     const float thickness = frame.mClouds.mMean > 0.0
-        ? clamp(dot(cloud.rgb, LUMINANCE_WEIGHTS) / frame.mClouds.mMean, 0.0, CLOUD_THICKNESS_MAX)
-        : 1.0;
+        ? clamp(dot(cloud.rgb, LUMINANCE_WEIGHTS) / (frame.mClouds.mMean * CLOUD_THICKNESS_MAX), 0.0, 1.0)
+        : 1.0 / CLOUD_THICKNESS_MAX;
+
+    // **Thick where it is lit and thin where it is not.** A cloud's own body is what keeps the sun
+    // and the moons off its base, so the dense parts of the sheet show them and the wisps show only
+    // the sky — which is the difference between the two colours `Rtx::deckLight` handed over.
+    const vec3 radiance = mix(frame.mClouds.mShadowed, frame.mClouds.mLit, thickness);
 
     // **And the colour crosses to the air over the same stretch**, which is the second thing the
     // engine does with that vertex alpha: `paintClouds` mixes the deck toward the fog by it, so the
     // last rings of cloud are the horizon's own colour rather than a thin wash of a distant one.
-    return mix(frame.mSkyHorizon, frame.mClouds.mColour * thickness, reaches) * covered;
+    return mix(frame.mSkyHorizon, radiance, reaches) * covered;
 }
 
 /// What the nebulae and the constellations send back along a ray.

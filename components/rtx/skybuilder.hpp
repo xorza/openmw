@@ -7,14 +7,16 @@
 #include <osg/Vec3f>
 
 #include "cloudshell.hpp"
+#include "lightbuilder.hpp"
+#include "moonbuilder.hpp"
 #include "nightsky.hpp"
 #include "scenedesc.hpp"
 #include "shaders/visibility.h"
 
 namespace Rtx
 {
-    /// Everything the sky was read from the content files: its sheets, the surfaces they are laid
-    /// on, and what a weather says a cloud is worth.
+    /// Everything the sky was read from the content files: its sheets, what each of them averages,
+    /// and the surfaces they are laid on.
     ///
     /// **The textures are held rather than named by a material**, for the reason the moons' faces
     /// are: the deck and the star sheet are found by rays that reached nothing, so no material can
@@ -29,16 +31,6 @@ namespace Rtx
         /// One per weather, in `WEATHER_*` order. `sNoIndex` where the content files record no
         /// cloud texture for that weather, which the shipped fallbacks do for ash and blight.
         std::array<Index, Shaders::WEATHER_COUNT> mClouds{};
-
-        /// How much brighter than the air a weather's cloud is, per channel and linear.
-        ///
-        /// **The engine's lift, read as the ratio it stands for.** `Sky::cloudColour` adds an eighth
-        /// to a display-encoded fog, which in light is a multiplication that grows as the base
-        /// darkens — a third again over a clear day and eight times over the same weather's night.
-        /// The rasterizer never exposes a frame and so never notices; this one does, and a deck eight
-        /// times its own sky is the grey lid a Morrowind night used to have. `Sky::dayFog` says why
-        /// daylight is where the ratio is read.
-        std::array<osg::Vec3f, Shaders::WEATHER_COUNT> mLift{};
 
         /// The mean luminance of what each weather's sheet paints, linear. Nought where no sheet
         /// was read, which is a weather that draws no deck.
@@ -69,9 +61,6 @@ namespace Rtx
         /// What the shader takes for a weather, or `NO_TEXTURE`.
         std::uint32_t cloudsOf(std::uint32_t weather) const;
 
-        /// What lifts that weather's deck above its air, or no lift at all where none was read.
-        osg::Vec3f liftOf(std::uint32_t weather) const;
-
         /// What that weather's sheet averages, or nothing where none was read or none could be.
         float meanOf(std::uint32_t weather) const;
     };
@@ -91,18 +80,43 @@ namespace Rtx
     /// Gives back the holds `addSkyContent` took.
     void dropSkyContent(SceneDesc& scene, const SkyContent& textures);
 
+    /// What a cloud deck radiates from below, where its own body shadows it and where it does not.
+    ///
+    /// **A vanilla asset lit rather than shown.** Every sky sheet is a photograph of a 2002 sky with
+    /// that day's light already painted into it, so the deck takes only the *shape* out of one and
+    /// the colour comes from here. `SkyContent::mCloudMean` carries the other half of that split.
+    struct DeckLight
+    {
+        /// What a cloud in full sunlight shows: everything reaching the top of the layer.
+        osg::Vec3f mLit;
+
+        /// What a cloud in its own shadow shows: the sky alone, which is the light a deck cannot
+        /// keep off its own base.
+        osg::Vec3f mShadowed;
+    };
+
+    /// Lights a deck by what stands over it.
+    ///
+    /// **One place, because a deck is lit like anything else and this is the only thing that knows
+    /// it.** The game and the harness each reach a sun, a sky and two moons their own way; what a
+    /// layer of water droplets does with the three is the same either way.
+    ///
+    /// @param skyMean what the sky over the deck delivers, as a radiance — `SkyBudget::mMean`.
+    /// @param moons both of them, whether or not either is up: a moon that is down delivers nothing
+    ///        and needs no test of its own.
+    DeckLight deckLight(const Sun& sun, const osg::Vec3f& skyMean, std::span<const MoonPlacement, 2> moons);
+
     /// The cloud deck, in the units the shader takes.
     ///
     /// **One conversion and two callers.** The game reports what its weather system settled on and
     /// the harness derives the same numbers from the content files at an hour it was told; what a
     /// deck *is* once they are known lives here, so a screenshot and the game stand under one sky.
     ///
-    /// @param air the weather's fog colour at this hour, linear — `Daylight::mSkyHorizon`. The
-    ///        deck is this times `SkyContent::mLift`, multiplied here rather than in the shader
-    ///        because the ratio belongs to a weather and the shader is handed one deck.
+    /// @param light what the deck radiates, out of `deckLight` — worked out on the host rather than
+    ///        in the shader because it is one answer for the whole frame.
     /// @param storm where the weather drives what it carries, which is what the deck is turned by.
     /// @param scroll `Sky::SkyRoll::mClouds`.
-    Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const osg::Vec3f& air,
+    Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const DeckLight& light,
         const osg::Vec3f& storm, float scroll, const SkyContent& textures);
 
     /// The star field, in the units the shader takes.
