@@ -152,14 +152,18 @@ struct WaterMirror
 };
 
 /// What the water sends back along the ray that found it.
-/// @param key this pixel's draw key, which the three reservoirs below each offset by their own
-///        `SEED_LAMPS_` constant — what the water reflects, what is seen through it and the foam
-///        are three surfaces shaded from one hit, and three reservoirs seeded alike keep one lamp.
+/// @param pixel which pixel this is, for the draw key the three reservoirs below each offset by
+///        their own `SEED_LAMPS_` constant — what the water reflects, what is seen through it and
+///        the foam are three surfaces shaded from one hit, and three reservoirs seeded alike keep
+///        one lamp. The raft's own bounce is drawn from it too, which is what wants the pixel and
+///        not the key.
 /// @param mirror what this surface reflects, for the motion vector that describes it. Not found
 ///        where the reflection reached only sky, or where the water is being looked at from
 ///        underneath — neither is a thing a mirrored reprojection has an answer for.
-vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, out WaterMirror mirror, uint key)
+vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, out WaterMirror mirror, uvec2 pixel)
 {
+    const uint key = pixelKey(pixel);
+
     mirror = WaterMirror(vec3(0.0), vec3(0.0), 0u, false);
 
     // **Which side of the water a ray is on is a question about the plane, not about a wave.** At a
@@ -307,9 +311,19 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     // **Broken water is a raft of bubbles rather than a surface**: white, diffuse, and hiding what is
     // under it rather than tinting it. Lit the way every other diffuse surface in the frame is lit,
     // which is what keeps a beach and the surf running along it in the same sun.
+    //
+    // **A traced hemisphere and not `pathEnd`, which is what every surface the eye can see gets.**
+    // That term stands in for the rest of a path one level down; at a surface the eye is looking
+    // straight at, it is the cell's whole ambient with no cosine and no hemisphere over it. The raft
+    // is the one part of the water that is diffuse, so it is the one part that has a hemisphere to
+    // gather — and taking the terminator instead lit every shoreline in the game against a beach
+    // that was gathering the real thing.
+    Surface raft = surface;
+    raft.mNormal = sea.mNormal;
+
     const vec3 foam = WATER_FOAM_ALBEDO
         * (gather(surface.mPosition, sea.mNormal, surface.mFootprint, key + SEED_LAMPS_FOAM)
-            + pathEnd(surface.mPosition));
+            + bounceLight(raft, pixel));
 
     return mix(water, foam, covered);
 }

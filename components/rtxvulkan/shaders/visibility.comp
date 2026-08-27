@@ -115,7 +115,7 @@ void main()
     if (!surface.mHit)
         shaded = frame.mTransparentBackground != 0u ? vec3(0.0) : skyRadiance(direction, pixelBlur(frame.mCamera));
     else if (surface.mWater)
-        shaded = shadeWater(surface, direction, response, mirror, pixelKey(pixel));
+        shaded = shadeWater(surface, direction, response, mirror, pixel);
     else if (frame.mShowAlbedo != 0u)
     {
         // **The colour is replaced and the surface is not.** What this view changes is what a pixel

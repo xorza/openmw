@@ -169,6 +169,32 @@ namespace Rtx::Shaders
     /// two paths are the same brightness and only the detail differs.
     RTX_CONST float MOON_RADIANCE = 5.4217f;
 
+    /// What a texel of the star field is worth as radiance.
+    ///
+    /// **A star is never brighter than a full moon**, which is the rule, and it was broken by a
+    /// factor of five and a half. `tx_stars` is a black sheet with white points in it — peak 1.0,
+    /// mean 0.0022, six hundredths of a per cent of it over a half — and taken as radiance those
+    /// points came out at one against the 0.18 `MOON_RADIANCE` holds a full Masser's disc at, so
+    /// that the disc keeps its colour rather than blowing to white. This is that disc.
+    ///
+    /// **Two constants and not one, because the sheets are two kinds of thing.** A star is a point
+    /// and is pinned against the brightest body in the sky; a nebula is a wash and is pinned against
+    /// the sky it washes. One scale over both leaves whichever it was not chosen for wrong, and the
+    /// shipped sheets are a factor of four apart in their peaks.
+    ///
+    /// **It reaches what is drawn and never what lights.** A bounce that escapes takes `skyGlow`,
+    /// which is the dome and not the sheets over it, so nothing in the scene is lit by a star.
+    RTX_CONST float STAR_RADIANCE = 0.18f;
+
+    /// What a texel of the three nebulae is worth as radiance.
+    ///
+    /// **A wash pinned against the sky it washes.** `tx_stars_nebula` averages 0.052 and this puts
+    /// that average at 0.003, which is what `Sky_Night_Color` decodes to — so a nebula reads as the
+    /// night sky's own colour laid over the night sky, which is what the engine's additive blend
+    /// made of it. Most of a Morrowind night's colour is in these rather than in the stars: two of
+    /// the three reach past a radian, so what they do is tint half the sky at a time.
+    RTX_CONST float NEBULA_RADIANCE = 0.06f;
+
     /// Irradiance a full Masser delivers to a surface facing it, on the same scale as `DAYLIGHT`.
     ///
     /// **Chosen apart from `MOON_RADIANCE`, and that is deliberate.** For a real body the two are

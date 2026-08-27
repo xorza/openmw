@@ -3017,10 +3017,11 @@ namespace Rtx
         /// sea state or the bed decides that on its own.
         ///
         /// **No sun, so the answer is arithmetic rather than a pattern.** Foam is Lambertian and
-        /// spectrally flat, so what a covered surface sends back under an ambient of one and nothing
-        /// else is `WATER_FOAM_ALBEDO` in every channel alike — and equal channels are a signature
-        /// the water under it can never forge: Jerlov's coastal extinction takes red out first, so
-        /// any depth of water at all reads green.
+        /// spectrally flat, so what a covered surface sends back under a sky of one — which is what
+        /// its hemisphere mostly finds, the water being flat and the bed under it — is
+        /// `WATER_FOAM_ALBEDO` in every channel alike. Equal channels are a signature the water
+        /// beneath can never forge: Jerlov's coastal extinction takes red out first, so any depth of
+        /// water at all reads green.
         ///
         /// **Four legs, because the criterion has three terms.** A shelving shallow foams; the same
         /// shore under a sea too small to break in it does not; the same sea over deep water does
@@ -3037,6 +3038,13 @@ namespace Rtx
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
                 camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
+
+                // **A sky of the same radiance as the ambient**, because the raft gathers a real
+                // hemisphere and the ambient is what terminates whatever that hemisphere lands on.
+                // Left black the two disagree by everything, and a scene lit by an ambient of one
+                // under a sky of nothing is not one any hour of the game produces.
+                camera.mSkyHorizon = osg::Vec3f(1.0f, 1.0f, 1.0f);
+                camera.mSkyZenith = osg::Vec3f(1.0f, 1.0f, 1.0f);
                 camera.mWaterLevel = 0.0f;
 
                 std::vector<std::uint8_t> pixels;

@@ -17,3 +17,4 @@
 - netch refraction
 - split tests
 - bloom
+- stars are visible though moons

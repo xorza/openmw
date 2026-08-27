@@ -122,7 +122,7 @@ vec3 skyPatches(vec3 direction)
             continue;
 
         const vec4 texel = textureLod(textures[nonuniformEXT(sheet.mTexture)], 0.5 + 0.5 * at, 0.0);
-        painted += texel.rgb * texel.a;
+        painted += texel.rgb * (texel.a * NEBULA_RADIANCE);
     }
 
     return painted;
@@ -158,7 +158,8 @@ vec3 starField(vec3 direction)
     const float azimuth = atan(direction.y, direction.x) - frame.mStars.mTurn;
     const vec2 uv = vec2(azimuth, 0.25 * TAU - elevation) / frame.mStars.mTile;
 
-    return (frame.mStars.mFade * reaches) * textureLod(textures[nonuniformEXT(frame.mStars.mTexture)], uv, 0.0).rgb;
+    return (frame.mStars.mFade * reaches * STAR_RADIANCE)
+        * textureLod(textures[nonuniformEXT(frame.mStars.mTexture)], uv, 0.0).rgb;
 }
 
 /// What a moon's lit face sends back along a ray, and how much of the sky it stands in front of.
