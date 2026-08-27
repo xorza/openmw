@@ -177,28 +177,40 @@ namespace Rtx::Shaders
 
     /// What a texel of the star field is worth as radiance.
     ///
-    /// **A star is never brighter than a full moon**, which is the rule, and it was broken by a
-    /// factor of five and a half. `tx_stars` is a black sheet with white points in it — peak 1.0,
-    /// mean 0.0022, six hundredths of a per cent of it over a half — and taken as radiance those
-    /// points came out at one against the 0.18 `MOON_RADIANCE` holds a full Masser's disc at, so
-    /// that the disc keeps its colour rather than blowing to white. This is that disc.
+    /// **Morrowind puts a star at the top of the display range.** `paintAtmosphereNight` hands the
+    /// sheet's own texel to a `(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)` blend, so a white texel at full
+    /// alpha lands on the frame buffer at one, over a night sky of 9, 10, 11 out of 255. That is
+    /// also how the engine gets crisp stars out of a bilinear sampler: every pixel of the blob it
+    /// spreads a star over saturates, and what shows is a hard dot. Nothing here clips, so the level
+    /// has to put a star where the content puts it rather than rely on the ceiling to do it.
     ///
-    /// **Two constants and not one, because the sheets are two kinds of thing.** A star is a point
-    /// and is pinned against the brightest body in the sky; a nebula is a wash and is pinned against
-    /// the sky it washes. One scale over both leaves whichever it was not chosen for wrong, and the
-    /// shipped sheets are a factor of four apart in their peaks.
+    /// **Measured through the path the game ships**, which is the only place the answer is real: at
+    /// 1920 by 1080 under `--upscale quality`, on a clear midnight, this puts the brightest star at
+    /// 0.914 of the display range where 0.18 put it at 0.627. The fifth still missing is Ray
+    /// Reconstruction's — the same frame drawn without it reaches 0.973.
+    ///
+    /// **A star is still never brighter than a full moon**, which is the rule and was the old level's
+    /// whole derivation — but it was read against Masser's *mean* texel, and a portrait's peak is
+    /// several times its mean. Masser's brightest pixel measures 0.932 in the same configuration, so
+    /// the rule holds with the bound stated where it belongs.
     ///
     /// **It reaches what is drawn and never what lights.** A bounce that escapes takes `skyGlow`,
-    /// which is the dome and not the sheets over it, so nothing in the scene is lit by a star.
-    RTX_CONST float STAR_RADIANCE = 0.18f;
+    /// which carries the sheets as one mean — `NightSky::mGlow` — so raising this raises that too and
+    /// `skyFill` takes it back out of the weather's own ambient. The night's light does not move.
+    RTX_CONST float STAR_RADIANCE = 0.45f;
 
     /// What a texel of the three nebulae is worth as radiance.
     ///
-    /// **A wash pinned against the sky it washes.** `tx_stars_nebula` averages 0.052 and this puts
-    /// that average at 0.003, which is what `Sky_Night_Color` decodes to — so a nebula reads as the
-    /// night sky's own colour laid over the night sky, which is what the engine's additive blend
-    /// made of it. Most of a Morrowind night's colour is in these rather than in the stars: two of
-    /// the three reach past a radian, so what they do is tint half the sky at a time.
+    /// **A wash over the sky it washes.** Most of a Morrowind night's colour is in these rather than
+    /// in the stars: two of the three reach past a radian, so what they do is tint half the sky at a
+    /// time.
+    ///
+    /// **This level was set against the wrong average and the note said so.** It read
+    /// `tx_stars_nebula` at 0.052 and had this put that at 0.003, which is what `Sky_Night_Color`
+    /// decodes to — but 0.052 is the sheet's colour with its alpha ignored, and `skyPatches` draws
+    /// `rgb * a`. That mean measures 0.00199, so a nebula's average comes out at 1.2e-4 against the
+    /// night sky's 0.003: a twentieth of it rather than a match. Whether a nebula should read as the
+    /// sky it lies over is a question about the picture, and the number here answers it as a wash.
     RTX_CONST float NEBULA_RADIANCE = 0.06f;
 
     /// How much of the sunlight falling on Masser comes back off it: its geometric albedo, which is

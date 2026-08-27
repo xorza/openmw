@@ -154,7 +154,10 @@ vec3 skyPatches(vec3 direction)
 ///
 /// What this leaves out is the other six meshes in that file: three nebulae and the warrior, mage
 /// and thief constellations, each over its own band of sky.
-vec3 starField(vec3 direction)
+///
+/// @param blur how far this ray's cone has spread from its axis, in radians, which is what decides
+///        how wide a star's edge is drawn.
+vec3 starField(vec3 direction, float blur)
 {
     if (!(frame.mStars.mFade > 0.0) || frame.mStars.mTexture == NO_TEXTURE || direction.z <= 0.0)
         return vec3(0.0);
@@ -169,12 +172,38 @@ vec3 starField(vec3 direction)
     const float azimuth = atan(direction.y, direction.x) - frame.mStars.mTurn;
     const vec2 uv = vec2(azimuth, 0.25 * TAU - elevation) / frame.mStars.mTile;
 
+    // **A star's edge belongs to the pixel and not to the texel.** The sheet is magnified — a texel
+    // is a tenth of a degree against a pixel's twentieth at the resolution this renders at — so a
+    // bilinear tent spans two texels, which is nearly four pixels, and a star arrives as a soft blob
+    // whose brightest pixel carries about half of it. The engine samples the same sheet the same way
+    // and gets away with it because it clips: `paintAtmosphereNight` puts a white texel on the frame
+    // buffer at one, so every pixel of that blob saturates and reads as a hard dot. Nothing here
+    // clips. So the crossfade from one texel to the next is steepened until it happens over a pixel
+    // instead of over a texel — the hardware still filters, and what changes is where inside the quad
+    // it is asked. Measured at 1920 by 1080, that is 245 pixels over half brightness against 140.
+    //
+    // **And level zero however far the sheet is minified.** A star field is a sparse set of points,
+    // and a mip level of one is those points averaged with the dark around them — one level divides
+    // a star by four and takes the field apart. What a pixel wider than a texel should read is the
+    // field's own mean, which `NightSky::mGlow` already states and a gather already takes; asking for
+    // the level the pixel wanted instead took the pixels over a quarter from 1020 to 108.
+    // Per axis rather than from the width alone, so a sheet that is not square is steepened by what
+    // its own texels are worth in each direction. Floored because a parallel projection has no cone:
+    // `mSpreadAngle` is nought there, and what it wants is the nearest texel, which is what a
+    // steepening this hard gives.
+    const vec2 size = vec2(textureSize(textures[nonuniformEXT(frame.mStars.mTexture)], 0));
+    const vec2 across = max(2.0 * blur * size / frame.mStars.mTile, vec2(1.0e-6));
+
+    const vec2 at = uv * size;
+    const vec2 middle = floor(at - 0.5) + 0.5;
+    const vec2 within = clamp((at - middle - 0.5) * max(1.0 / across, vec2(1.0)) + 0.5, 0.0, 1.0);
+
+    const vec4 sheet = textureLod(textures[nonuniformEXT(frame.mStars.mTexture)], (middle + within) / size, 0.0);
+
     // **Premultiplied by its own alpha, which is how the engine lays this sheet on.**
     // `paintAtmosphereNight` hands the texture's alpha to a `(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)` blend,
     // and the sheet is 99% transparent — so reading the colour and dropping the alpha draws the
     // black between the stars as though it were sky.
-    const vec4 sheet = textureLod(textures[nonuniformEXT(frame.mStars.mTexture)], uv, 0.0);
-
     return (frame.mStars.mFade * reaches * STAR_RADIANCE * sheet.a) * sheet.rgb;
 }
 
@@ -292,8 +321,9 @@ vec3 skyRadiance(vec3 direction, float blur)
     // **Everything on or beyond the celestial sphere first, which is what a moon stands in front
     // of.** The stars and the patches are on that sphere and the sun is nearer, but both are further
     // off than a moon and neither is ever between two of them, so one term carries the pair.
-    vec3 colour = frame.mStars.mFade > 0.0 ? starField(direction) + frame.mStars.mFade * skyPatches(direction)
-                                           : vec3(0.0);
+    vec3 colour = frame.mStars.mFade > 0.0
+        ? starField(direction, blur) + frame.mStars.mFade * skyPatches(direction)
+        : vec3(0.0);
 
     // The chord across the disc rather than the cosine of its angle. Both answer "is this direction
     // inside it", and at half a degree the cosine is 0.999988 — five of a float's seven digits spent

@@ -1,9 +1,10 @@
 # Open issues
 
-- Stars are dim and soft. Morrowind hands a star texel to an alpha blend that saturates at the
-  display ceiling, so its bilinear spread clips into a hard white dot; nothing here clips, so the
-  same spread shows and the level never reaches the top of the curve. Measured at the zenith on a
-  clear midnight, the brightest pixel is 0.584 with the upscaler off and 0.449 with it on.
+- Ray Reconstruction costs a star a fifth of its peak and most of its edge. The same clear midnight
+  at 1920 by 1080 reaches 0.973 of the display range drawn without it and 0.914 through it, and the
+  pixel-wide crossfade that gives 245 pixels over half brightness natively gives no gain at all once
+  it has been through. The sky's point sources are drawn before an upscaler that is built to remove
+  exactly what they are.
 
 - The cloud deck is an emission and never a lit surface. It takes no light from the sun, the moons
   or the sky; it casts no shadow on the world below it; and it loses the sun at the same instant the

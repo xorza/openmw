@@ -28,59 +28,40 @@ onto flat ground.
 
 ---
 
-## 1. Stars are dim and soft, and both are one cause
+## 1. The sky's point sources go through a temporal upscaler
 
-**Morrowind's stars are crisp because they clip.** `paintAtmosphereNight` hands the sheet's own texel
-to a `(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)` blend, so a texel of white at full alpha lands on the frame
-buffer at **1.0** — the display ceiling — over a night sky of 9, 10, 11 out of 255. Its sampler is
-bilinear like ours and spreads that texel over three pixels by three just as ours does, but every one
-of those pixels saturates, so what shows is a hard white dot. Clipping is doing the work.
+**Measured**, at 1920 by 1080 on a clear midnight, counting pixels of the frame:
 
-**Nothing in this renderer clips.** The frame is high dynamic range and tone mapped, so the same
-spread is visible as a spread — and the level never reaches the top of the curve either.
+| | brightest | over 0.5 | over 0.25 |
+| --- | --- | --- | --- |
+| `--upscale off` | 0.973 | 1099 | 4867 |
+| `--upscale quality` | 0.914 | 347 | 3743 |
 
-**Measured**, at the zenith on a clear midnight, 600 by 400 at a 25 degree field so a pixel is 0.0625
-degrees against the sheet's tenth of a degree per texel:
+And the pixel-wide crossfade that took the native frame from 140 pixels over half brightness to 245
+is worth nothing once the frame has been through Ray Reconstruction — 1020 against 1020. A
+sub-pixel, high-contrast, moving point is what a temporal upscaler is built to remove, and a star is
+all three.
 
-| | brightest pixel | pixels over 0.25 |
-| --- | --- | --- |
-| `--upscale off` | 0.584 | 208 |
-| `--upscale quality` | 0.449 | 74 |
+**What was already tried and is in the tree.** The crossfade steepens to a pixel and the level is
+anchored where the content puts a star; between them the shipped path went from 0.627 to 0.914.
+Asking for the mip level a minified pixel wants was tried and reverted — a mip of a sparse point
+field is those points averaged with the dark around them, and it took the pixels over a quarter from
+1020 to 108.
 
-So the sampling loses about half of a star before Ray Reconstruction sees it, and Ray Reconstruction
-takes a further third of the peak and two thirds of the bright pixels. Against a content file that
-puts a star at 1.0.
+**The fix is that they should not go through it.** The options, in the order they are worth trying:
 
-**The fix is that a star is a point source and should be drawn at the pixel's size, not the texel's.**
-The sheet is magnified — a texel is a tenth of a degree and a pixel at 1920 by 1080 over a sixty
-degree field is 0.0556 — so a bilinear tent spans two texels, which is three and a half pixels. Draw
-it instead as: the nearest texel's own flux, spread over a footprint the ray cone sets. Then
+- Give Ray Reconstruction something to hold on to. The sky reports `noResponse()`, so it has no
+  albedo to demodulate by and no roughness to say the pixel is resolved rather than noisy. Cheap to
+  try and it may be most of it.
+- Draw the sky's point sources after the upscaler, at output resolution, as their own pass. It is the
+  complete answer and it is an architectural move: the pass needs the camera, the star field's own
+  parameters, and whatever says a pixel reached the sky rather than the ground.
 
-- a star is one pixel wide however far the sheet is magnified, which is what crisp means;
-- its peak rises as the spread narrows, at constant flux, which is where brighter comes from;
-- **the sky's mean is unchanged**, so `NightSky::mGlow` and `skyFill` are untouched and the night's
-  light budget still holds.
+Neither is a constant to tune, which is why this is a step of its own rather than more of the last
+one.
 
-**Under minification the mean is already the right answer.** A pixel wider than a texel is a pixel
-several stars fall into, which is the glow `mGlow` already states — so the two blend on the ratio of
-the pixel to the texel, and the sheets' own mip chains are not needed for either end.
-
-**Then the level can be anchored rather than pinned.** `STAR_RADIANCE` is 0.18 today because *a star
-is never brighter than a full moon's disc*, which is a true bound and not a derivation. What the
-content states is a star at the top of the display range on a near-black sky, so the anchor is that a
-peak texel lands at the top of the tone curve under the night's own exposure. The old bound stays as
-a bound.
-
-**Ray Reconstruction is a third of it and is its own question.** A sub-pixel, high contrast, moving
-point is the worst case for a temporal upscaler, and the sky reports no albedo to demodulate by. The
-options are to give the sky's point sources something RR can hold on to, or to draw them after the
-upscaler at output resolution — which is an architectural move and wants stating as one before it is
-attempted. Do the sampling first and measure again: a star that is one pixel and three times brighter
-is a different input to RR than the one measured above.
-
-- Test: a peak texel reaches the same radiance whatever the field of view, which is what "the pixel's
-  size and not the texel's" means and what a bilinear fetch cannot do. And the sheet's mean over the
-  sky is unchanged by the whole change, which is what keeps the budget.
+- Test: whatever lands, the same frame drawn with and without the upscaler agrees on the brightest
+  star to within a tenth of the display range. Today it is a fifth apart.
 
 ---
 
