@@ -90,6 +90,7 @@ namespace Rtx
         , mViewAccumulate(mDevice, options.mShaderDirectory)
         , mViewFilter(mDevice, options.mShaderDirectory)
         , mComposite(mDevice, mPool, options.mShaderDirectory)
+        , mBloom(mDevice, options.mShaderDirectory)
         , mExposure(mDevice, options.mShaderDirectory)
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
@@ -214,6 +215,20 @@ namespace Rtx
         }
 #endif
 
+        // **Over whatever the frame is by the time the curve maps it**, which is the upscaler's
+        // output where one runs and the trace's own extent where none does. The same test the frame
+        // path makes, because a pyramid built at the other extent is a bloom at the wrong scale.
+        std::uint32_t shownWidth = mRenderWidth;
+        std::uint32_t shownHeight = mRenderHeight;
+#ifdef OPENMW_RTX_DLSS
+        if (mUpscaler != nullptr)
+        {
+            shownWidth = mOutputWidth;
+            shownHeight = mOutputHeight;
+        }
+#endif
+        mBloom.resize(shownWidth, shownHeight);
+
         // A frame of a different size is not one this one can be reprojected against.
         mPreviousCamera = Shaders::VisibilityConstants{};
 
@@ -334,7 +349,7 @@ namespace Rtx
         {
             mPass = std::make_unique<VisibilityPass>(
                 mDevice, setup, mShaderDirectory, held.mTextures->getLayout(), mChannelLayout, mCountHits);
-            mTone = std::make_unique<TonePass>(mDevice, held.mTextures->getLayout(), mShaderDirectory);
+            mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
         }
 
         // By hand rather than left to the destructor, so a submit that fails throws out of here
@@ -788,6 +803,13 @@ namespace Rtx
             }
 #endif
 
+            // **What the lens will spread, built here and applied by the curve.** Nothing is
+            // written back over the frame — `BloomPass` says why the trace's own answer has to
+            // reach `Channel::Radiance` untouched.
+            mTimer.open(commands, "bloom");
+            mBloom.record(commands, *shown);
+            mTimer.close(commands);
+
             // **Measured off the image the curve is about to map**, which is the upscaled one
             // wherever something upscales — see `histogram.comp` for what measuring the other one
             // costs. One `shown` feeds both, so the two cannot come apart.
@@ -804,8 +826,9 @@ namespace Rtx
             mTimer.close(commands);
 
             mTimer.open(commands, "tone");
-            mTone->record(commands, *shown, mExposure.getExposure(), mChannels->getStarsShown(), inputs.mTextures,
-                *mTarget, toneFor(sampled, mOutputWidth, mOutputHeight, mChannels->getWidth(), mChannels->getHeight()));
+            mTone->record(commands, *shown, mExposure.getExposure(), mChannels->getStarsShown(), mBloom.getPyramid(),
+                inputs.mTextures, *mTarget,
+                toneFor(sampled, mOutputWidth, mOutputHeight, mChannels->getWidth(), mChannels->getHeight()));
             mTimer.close(commands);
         });
 
@@ -944,7 +967,10 @@ namespace Rtx
             // the widgets around it, and an exposure that drifted with what the doll was wearing
             // would make the same armour a different brightness in two windows.
             mExposure.recordFixed(commands, 1.0f);
-            mTone->record(commands, *mViewColour, mExposure.getExposure(), mViewChannels->getStarsShown(),
+            // **No lens on a picture inside the interface.** A map tile is a diagram and a doll is
+            // looked at beside the widgets around it, and neither is a frame the pyramid was built
+            // over — `TonePass::record` reads a null one as no veil.
+            mTone->record(commands, *mViewColour, mExposure.getExposure(), mViewChannels->getStarsShown(), nullptr,
                 array.getSet(), *mViewTarget,
                 toneFor(
                     camera, options.mWidth, options.mHeight, mViewChannels->getWidth(), mViewChannels->getHeight()));

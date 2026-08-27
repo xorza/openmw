@@ -14,6 +14,7 @@
 
 #include "accumulatepass.hpp"
 #include "atrouspass.hpp"
+#include "bloompass.hpp"
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "compositepass.hpp"
@@ -252,6 +253,7 @@ namespace Rtx
         AtrousPass mViewFilter;
 
         CompositePass mComposite;
+        BloomPass mBloom;
         ExposurePass mExposure;
         /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
         /// layout that only a scene brings, and the layout every scene brings is the same one.

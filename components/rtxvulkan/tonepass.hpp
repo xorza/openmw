@@ -8,11 +8,12 @@
 #include <components/rtx/shaders/tone.h>
 
 #include "computepipeline.hpp"
+#include "image.hpp"
 
 namespace Rtx
 {
+    class CommandPool;
     class Device;
-    class Image;
 
     /// Scene-referred radiance to bytes a display understands, and the sky's own points over it.
     ///
@@ -29,8 +30,10 @@ namespace Rtx
     public:
         /// @param textureLayout the scene's bindless textures, which this samples the star sheet
         ///        out of — `ToneConstants::mStars` says why the field is drawn here.
-        TonePass(
-            const Device& device, VkDescriptorSetLayout textureLayout, const std::filesystem::path& shaderDirectory);
+        /// @param pool where the stand-in bound in place of a pyramid is put into its layout, once.
+        TonePass(const Device& device, CommandPool& pool, VkDescriptorSetLayout textureLayout,
+            const std::filesystem::path& shaderDirectory);
+        ~TonePass();
 
         TonePass(const TonePass&) = delete;
         TonePass& operator=(const TonePass&) = delete;
@@ -45,12 +48,26 @@ namespace Rtx
         /// @param constants how much of the target to encode from its top-left corner — the whole of
         ///        it for a frame, and a corner of it for a picture inside the interface, which fills
         ///        as much of a texture as its widget is currently wide — beside the camera on that
-        ///        grid, the trace's own extent, and the star field to draw.
+        ///        grid, the trace's own extent, and the star field to draw. **Taken by value and
+        ///        completed here**: the lens is settled from `bloom` rather than asked of the
+        ///        caller, so no caller can hand over a strength with no pyramid behind it.
+        /// @param bloom the pyramid's finest level, in `VK_IMAGE_LAYOUT_GENERAL`, or null where
+        ///        nothing built one — a doll and a map tile, and a frame too small to halve.
+        ///        `ToneConstants::mBloom` is set from this and is what the shader tests.
         /// @param target the displayable image, in `VK_IMAGE_LAYOUT_GENERAL`.
         void record(VkCommandBuffer commands, const Image& colour, VkBuffer exposure, const Image& starsShown,
-            VkDescriptorSet textures, const Image& target, const Shaders::ToneConstants& constants) const;
+            const Image* bloom, VkDescriptorSet textures, const Image& target, Shaders::ToneConstants constants) const;
 
     private:
+        const Device& mDevice;
         ComputePipeline mPipeline;
+
+        /// Linear and clamped, which is what the tent the pyramid is spread with is counted in.
+        VkSampler mSampler = VK_NULL_HANDLE;
+
+        /// What binding four holds where there is no pyramid. **A descriptor a shader declares has
+        /// to be bound whether or not the branch that reads it runs**, and one texel is the whole
+        /// cost of saying so — `CompositePass::mNoHistory` is the same field for the same reason.
+        Image mNoBloom;
     };
 }

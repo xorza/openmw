@@ -1,0 +1,37 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+
+// One halving of the bloom pyramid: the frame into its first level, or a level into the next.
+//
+// **The frame is read through a sampler and never as a storage image**, which is what lets one
+// entry point take both: a sampler carries no format qualifier, so the whole-float frame and the
+// half-float levels reach the same code.
+
+#include "bloom.h"
+#include "lib/bloom.glsl"
+
+layout(local_size_x = BLOOM_WORKGROUP, local_size_y = BLOOM_WORKGROUP) in;
+
+/// What is being halved, sampled bilinearly and clamped at its edges.
+layout(set = 0, binding = 0) uniform sampler2D source;
+
+/// The level being filled. Written outright, so nothing has to have cleared it.
+layout(set = 0, binding = 1, BLOOM_LEVEL) uniform writeonly image2D level;
+
+layout(push_constant, scalar) uniform Push
+{
+    BloomConstants frame;
+};
+
+void main()
+{
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (pixel.x >= frame.mWidth || pixel.y >= frame.mHeight)
+        return;
+
+    const vec2 uv = (vec2(pixel) + 0.5) / vec2(frame.mWidth, frame.mHeight);
+
+    imageStore(level, ivec2(pixel), vec4(bloomHalved(source, uv, frame.mTexel), 1.0));
+}

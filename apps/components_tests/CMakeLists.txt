@@ -113,6 +113,7 @@ if (OPENMW_RTX)
         rtx/allocations.hpp
         rtx/alphabounds.cpp
         rtx/alphaimage.cpp
+        rtx/bloompass.cpp
         rtx/bluenoise.cpp
         rtx/cloudshell.cpp
         rtx/computepipeline.cpp

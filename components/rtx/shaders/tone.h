@@ -53,6 +53,21 @@ namespace Rtx::Shaders
         /// several, and a pass that draws once at the resolution it is shown at wants the centre.
         Camera mCamera;
 
+        /// How much of the bloom pyramid is left in the picture, and one texel of its finest level.
+        ///
+        /// **The lens is applied here because everything before this pass is the trace's own frame.**
+        /// A veil written back over the radiance image would be a measurement nobody could hand
+        /// compute, and would have made `Channel::Radiance` mean one thing with an upscaler in the
+        /// frame and another without one. `BloomPass` builds the pyramid and this spreads its finest
+        /// level over the picture — which also saves the full-resolution pass a separate blend would
+        /// have cost.
+        ///
+        /// Nought is no lens, which is what a doll and a map tile are drawn with: the pyramid is the
+        /// frame's and neither of those is a frame. The shader samples nothing at all where this is
+        /// nought, so what is bound there need not be a pyramid.
+        float mBloom;
+        vec2 mBloomTexel;
+
         /// The star field, drawn here rather than by the trace.
         ///
         /// **A point source is what a temporal upscaler removes.** Measured on a clear midnight at

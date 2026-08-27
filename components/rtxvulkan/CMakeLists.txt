@@ -43,6 +43,8 @@ find_program(OPENMW_SPIRV_VAL NAMES spirv-val REQUIRED
 set(RTX_SHADERS
     shaders/accumulate.comp
     shaders/atrous.comp
+    shaders/bloomdown.comp
+    shaders/bloomup.comp
     shaders/composite.comp
     shaders/exposure.comp
     shaders/gui.frag
@@ -95,6 +97,7 @@ endforeach()
 # them beside the shader they belong to, which is the only thing the build wants them for.
 set(RTX_SHADER_LIB
     shaders/lib/bindings.glsl
+    shaders/lib/bloom.glsl
     shaders/lib/fog.glsl
     shaders/lib/footprint.glsl
     shaders/lib/geometry.glsl
@@ -121,6 +124,8 @@ set(RTX_VULKAN_FILES
     atrouspass.hpp
     blockedbuffer.cpp
     blockedbuffer.hpp
+    bloompass.cpp
+    bloompass.hpp
     buffer.cpp
     buffer.hpp
     commands.cpp

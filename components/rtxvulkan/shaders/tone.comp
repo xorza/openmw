@@ -18,6 +18,7 @@
 #include "gbuffer.h"
 #include "tone.h"
 
+#include "lib/bloom.glsl"
 #include "lib/starfield.glsl"
 
 layout(local_size_x = TONE_WORKGROUP, local_size_y = TONE_WORKGROUP) in;
@@ -39,6 +40,9 @@ layout(set = 0, binding = 3, scalar) readonly buffer Exposure
 /// the other end of it.
 layout(set = 0, binding = 2, GBUFFER_STARS) uniform readonly image2D starsShown;
 
+/// The bloom pyramid's finest level, which holds the blur of every level under it.
+layout(set = 0, binding = 4) uniform sampler2D bloom;
+
 layout(push_constant, scalar) uniform Push
 {
     ToneConstants frame;
@@ -53,10 +57,23 @@ void main()
     const ivec2 at = ivec2(pixel);
     vec4 lit = imageLoad(colour, at);
 
+    // **What the lens does with the light that reached it**, and the last thing done in linear
+    // radiance. `BloomPass` says why there is no threshold and why the pyramid is mixed rather than
+    // added; `ToneConstants::mBloom` says why it lands here and not on the radiance image itself.
+    if (frame.mBloom > 0.0)
+    {
+        const vec2 uv = (vec2(pixel) + 0.5) / vec2(frame.mWidth, frame.mHeight);
+        lit.rgb = mix(lit.rgb, bloomSpread(bloom, uv, frame.mBloomTexel), frame.mBloom);
+    }
+
     // **The sky's own points, drawn where they are shown.** `ToneConstants::mStars` says why they
     // are not the trace's. What is left of them at a pixel is not this pass's to work out — a moon,
     // a cloud deck, a window pane, the water and the air all stand between the field and the eye,
     // and every one of them is the trace's — so the trace states it and this multiplies by it.
+    //
+    // **After the veil and so outside it**, because the pyramid was built before this pass ran and
+    // a field drawn here was never in it. A star is a point at the resolution it is shown at, which
+    // is the whole reason it is drawn here at all.
     //
     // Nearest and one tap, so a star within a traced pixel of a silhouette can land on the wrong
     // side of it — which against a sheet that is 99% transparent is a star at the edge of a rock
