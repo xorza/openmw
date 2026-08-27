@@ -13,9 +13,9 @@ namespace Rtx
     ///
     /// **What a sheet is worth as a light, in one number.** A sky sheet is drawn as `rgb * a` and
     /// covers a known piece of sky, so what it adds to the sky's mean radiance is this times that
-    /// share — and a mean is the only form of it a gather can afford. Sampling `tx_stars` per ray
-    /// instead would be a firefly at every hit: 0.8% of its texels carry nearly all of its light,
-    /// and the sheets ship no mip chain to blur it away with.
+    /// share. A gather wants exactly that: its lobe is a hemisphere where a ray is a direction, so
+    /// what a sheet contributes to it is the sheet's own average and not whatever one ray happened
+    /// to point at.
     ///
     /// **Every texel and not a sample of them**, for the same reason. A thumbnail may read one texel
     /// in a few hundred and be right; a mean of a sheet that is mostly empty cannot.

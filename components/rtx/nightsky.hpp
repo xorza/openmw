@@ -64,9 +64,11 @@ namespace Rtx
         /// three nebulae that are most of what gives a Morrowind night its colour. This is what they
         /// are worth summed: each sheet's own mean texel times the share of the hemisphere it covers.
         ///
-        /// **A mean rather than the sheets themselves**, because `tx_stars` carries nearly all of
-        /// its light in 0.8% of its texels and ships no mip chain — a gather ray that landed on one
-        /// would be a firefly, and one that missed would be black.
+        /// **A mean rather than the sheets themselves**, because a cosine lobe is a hemisphere and a
+        /// ray is a direction. A coarse mip would average a sheet near where a ray points, which is
+        /// still a different answer for every ray and still a fetch apiece; the mean over the whole
+        /// sky is the term a diffuse gather actually wants, it is exact for a sheet as near uniform
+        /// as these are, and it is read once at load.
         osg::Vec3f mGlow;
     };
 

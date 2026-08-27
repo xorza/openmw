@@ -22,8 +22,8 @@
 /// directly, so a hemisphere that also picked it up out of the sky would count it twice — and a
 /// bounce cone a radian wide would pick it up over a quarter of the sky at that. It must carry
 /// `mSkyFill`, which is light the weather has and the sky is not painted with. And it takes the
-/// night's sheets as one mean rather than where they actually are, because a star field sampled a
-/// ray at a time is a firefly — `NightSky::mGlow` carries that argument.
+/// night's sheets as one mean rather than where they actually are, because a cosine lobe is a
+/// hemisphere and a ray is a direction — `NightSky::mGlow` carries that argument.
 vec3 skyGlow(vec3 direction)
 {
     return skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction) + frame.mStars.mGlow + frame.mSkyFill;
