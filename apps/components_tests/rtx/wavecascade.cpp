@@ -6,6 +6,8 @@
 #include <components/rtx/wavecascade.hpp>
 #include <components/rtx/wavespectrum.hpp>
 
+#include "wavemoments.hpp"
+
 namespace Rtx
 {
     namespace
@@ -14,35 +16,22 @@ namespace Rtx
         /// the middle.
         float wavelengthAt(const WaveCascade& cascade, std::size_t at)
         {
-            const int half = static_cast<int>(cascade.mGrid) / 2;
-            const int row = static_cast<int>(at / cascade.mGrid) - half;
-            const int column = static_cast<int>(at % cascade.mGrid) - half;
-
-            const float step = Shaders::TAU / cascade.mExtent;
-            const float wavenumber
-                = step * std::sqrt(static_cast<float>(row * row) + static_cast<float>(column * column));
+            const float wavenumber = Testing::waveVectorAt(cascade, at).length();
 
             return wavenumber > 0.0f ? Shaders::TAU / wavenumber : 0.0f;
         }
 
-        /// The variance of the surface these amplitudes describe.
-        ///
-        /// **Twice their sum, and the factor is the physics rather than a convention.** Each
-        /// wavevector's contribution is `h0(k) e^{iwt} + conj(h0(-k)) e^{-iwt}` and the two draws
-        /// are independent, so the mean square of the sum is the sum of the two — and Parseval
-        /// carries that to the field. Written out here rather than taken off the builder, so a
-        /// factor dropped there fails this rather than passing it.
+        /// The variance of the surface these amplitudes describe, which is their zeroth moment.
         float varianceOf(const std::array<WaveCascade, Shaders::WAVE_CASCADES>& cascades)
         {
             float total = 0.0f;
             for (const WaveCascade& cascade : cascades)
-                for (const osg::Vec2f& amplitude : cascade.mAmplitudes)
-                    total += 2.0f * amplitude.length2();
+                total += Testing::momentOf(cascade, 0);
 
             return total;
         }
 
-        /// The tiles carry the significant height they were asked for, across all three.
+        /// The tiles carry the significant height they were asked for, across both of them.
         ///
         /// **Scaled together and not one at a time.** Each tile is an independent draw of a share of
         /// one spectrum, so their variances add — normalising each to the height asked for would
@@ -147,6 +136,41 @@ namespace Rtx
                     ASSERT_NEAR(cascade.mFrequencies[at], sea.getFrequency(wavenumber), 1e-4f)
                         << "at " << at << " of a tile " << cascade.mExtent << " across";
                 }
+        }
+
+        /// A shallower shelf takes the energy out of the swell and gives it to the chop.
+        ///
+        /// **Kitaigorodskii's factor, seen where it lands.** A shelf cannot carry a wave whose orbit
+        /// reaches the bottom, so the density is cut at the low frequencies and the significant
+        /// height then puts what was taken back into the short ones. Both seas are scaled to the
+        /// same height, so the two shares are comparable and the depth term is the whole difference
+        /// between them.
+        TEST(RtxWaveCascadeTest, aShallowerShelfMovesTheEnergyOutOfTheSwell)
+        {
+            const auto swellShare = [](const SeaState& sea) {
+                float total = 0.0f;
+                float swell = 0.0f;
+
+                for (const WaveCascade& cascade : makeWaveCascades(sea))
+                    for (std::size_t at = 0; at < cascade.mAmplitudes.size(); ++at)
+                    {
+                        const float energy = 2.0f * cascade.mAmplitudes[at].length2();
+                        total += energy;
+
+                        if (wavelengthAt(cascade, at) > sea.mPeakWavelength)
+                            swell += energy;
+                    }
+
+                return swell / total;
+            };
+
+            SeaState deep;
+            deep.mDepth = 4000.0f;
+            SeaState shallow;
+            shallow.mDepth = 60.0f;
+
+            EXPECT_LT(swellShare(shallow), swellShare(deep) - 0.05f)
+                << "shallow " << swellShare(shallow) << " against deep " << swellShare(deep);
         }
 
         /// The same sea state is the same sea, twice.

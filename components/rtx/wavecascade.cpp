@@ -61,9 +61,9 @@ namespace Rtx
 
         /// Donelan-Banner's density at an angle off the wind, normalised over the circle.
         ///
-        /// `getSpread` states the width of a `sech^2`, and `SeaState::getWaves` samples the same
-        /// shape by inverting its integral. A grid cannot invert anything — it has the angle
-        /// already — so it needs the density itself, over the `2 tanh(s pi) / s` that shape covers.
+        /// `getSpread` states the width of a `sech^2`, and a grid arrives with the angle already
+        /// rather than with a share of the energy to place — so what it needs is the density itself,
+        /// over the `2 tanh(s pi) / s` that shape covers.
         float spreadAt(float spread, float angle)
         {
             const float shape = 1.0f / std::cosh(spread * angle);
@@ -155,9 +155,9 @@ namespace Rtx
                 }
         }
 
-        // Scaled to the height that was asked for, for the reason `getWaves` gives: JONSWAP's
-        // `alpha` is a constant multiplier on everything here and cancels, so the one number a
-        // person can picture takes its place.
+        // Scaled to the height that was asked for: JONSWAP's `alpha` is a fetch-and-wind parameter
+        // nothing here knows, and every term in it is a constant multiplier on everything above — so
+        // it cancels, and the one number a person can picture takes its place.
         const float wanted = sea.mSignificantHeight / Shaders::WATER_SIGNIFICANT_HEIGHT;
         const float scale = variance > 0.0f ? wanted / std::sqrt(variance) : 0.0f;
 

@@ -192,7 +192,7 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
 
     // Keyed off world position rather than anything interpolated, so one cell's surface continues
     // into the next without a seam at the boundary.
-    const WaterSurface sea = waterSurfaceAt(surface.mPosition.xy, frame.mTime, surface.mFootprint);
+    const WaterSurface sea = waterSurfaceAt(surface.mPosition.xy, surface.mFootprint);
 
     // A normal tilting by an angle turns its reflection by twice that, so the lobe the lost slopes
     // leave behind is twice their root mean square.

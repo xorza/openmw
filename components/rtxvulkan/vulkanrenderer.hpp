@@ -26,6 +26,7 @@
 #include "guitextures.hpp"
 #include "instance.hpp"
 #include "tonepass.hpp"
+#include "wavepass.hpp"
 
 namespace Rtx
 {
@@ -254,6 +255,10 @@ namespace Rtx
 
         CompositePass mComposite;
         BloomPass mBloom;
+
+        /// **One sea for everything traced**, the doll and the map included: the water is not a
+        /// property of a scene, so it is synthesised once a frame here rather than held per scene.
+        WavePass mWaves;
         ExposurePass mExposure;
         /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
         /// layout that only a scene brings, and the layout every scene brings is the same one.

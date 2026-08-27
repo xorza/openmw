@@ -13,6 +13,7 @@
 #include "commands.hpp"
 #include "gbuffer.hpp"
 #include "scenebuffers.hpp"
+#include "wavepass.hpp"
 
 namespace Rtx
 {
@@ -26,20 +27,29 @@ namespace Rtx
         constexpr auto sCompute = VK_SHADER_STAGE_COMPUTE_BIT;
         constexpr auto sStorage = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
-        /// The structure, the tables a hit reads and the frame itself, in the order the shader
-        /// declares them. The channels the trace writes are not here: `GBufferLayout` says why they
-        /// have a set of their own.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 22> sBindings = [] {
-            std::array<VkDescriptorSetLayoutBinding, 22> declared{};
+        /// Where the tables end and the frame's own block begins.
+        constexpr std::uint32_t sFrameBinding = 20;
+
+        /// The structure, the tables a hit reads, the frame itself and the sea, in the order the
+        /// shader declares them. The channels the trace writes are not here: `GBufferLayout` says
+        /// why they have a set of their own.
+        constexpr std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> sBindings = [] {
+            std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> declared{};
             declared[0] = VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, sCompute };
 
-            // One through twenty are storage buffers: the hit count, then every table in the order
+            // One up to the frame are storage buffers: the hit count, then every table in the order
             // `record` writes them.
-            for (std::uint32_t binding = 1; binding < declared.size() - 1; ++binding)
+            for (std::uint32_t binding = 1; binding < sFrameBinding; ++binding)
                 declared[binding] = VkDescriptorSetLayoutBinding{ binding, sStorage, 1, sCompute };
 
-            declared.back() = VkDescriptorSetLayoutBinding{ static_cast<std::uint32_t>(declared.size() - 1),
-                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sCompute };
+            declared[sFrameBinding]
+                = VkDescriptorSetLayoutBinding{ sFrameBinding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sCompute };
+
+            // And the three the sea was synthesised into, one descriptor a cascade.
+            for (std::uint32_t binding = sFrameBinding + 1; binding < declared.size(); ++binding)
+                declared[binding] = VkDescriptorSetLayoutBinding{ binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    Shaders::WAVE_CASCADES, sCompute };
+
             return declared;
         }();
     }
@@ -62,10 +72,28 @@ namespace Rtx
     {
         assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
 
+        assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
+
         // **How many emitters there are is the scene's answer and not the camera's.** The table
         // never shrinks, so its length says nothing about this frame; taking the count off the
         // buffers here is what keeps a caller from having to know the table exists at all.
         Shaders::VisibilityConstants described = constants;
+
+        // **The tiles' widths come off the pass that built them**, so what the shader divides by is
+        // what is actually bound rather than a second statement of the same table.
+        std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> surfaces{};
+        std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> curvatures{};
+        std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> variances{};
+
+        for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
+        {
+            const VkSampler sampler = inputs.mWaves->getSampler();
+            surfaces[cascade] = { sampler, inputs.mWaves->getSurface(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
+            curvatures[cascade] = { sampler, inputs.mWaves->getCurvature(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
+            variances[cascade] = { sampler, inputs.mWaves->getVariance(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
+
+            described.mWaveExtent[cascade] = inputs.mWaves->getExtent(cascade);
+        }
 
         // **Both directions, because one buffer serves every trace.** The write has to wait for the
         // last dispatch that read it — a traced view and the world are two traces — and the next
@@ -116,7 +144,7 @@ namespace Rtx
             .pAccelerationStructures = &inputs.mScene,
         };
         // Bindings one upwards are all storage buffers, in the order the shader declares them.
-        const std::array<VkDescriptorBufferInfo, 13> buffers{
+        const std::array<VkDescriptorBufferInfo, 12> buffers{
             VkDescriptorBufferInfo{ hitCount.getHandle(), 0, VK_WHOLE_SIZE },
             VkDescriptorBufferInfo{ inputs.mBuffers->getNormalBlocks(), 0, VK_WHOLE_SIZE },
             VkDescriptorBufferInfo{ inputs.mBuffers->getTexCoordBlocks(), 0, VK_WHOLE_SIZE },
@@ -129,7 +157,6 @@ namespace Rtx
             VkDescriptorBufferInfo{ inputs.mBuffers->getLights(), 0, VK_WHOLE_SIZE },
             VkDescriptorBufferInfo{ inputs.mBuffers->getLightOffsets(), 0, VK_WHOLE_SIZE },
             VkDescriptorBufferInfo{ inputs.mBuffers->getLightIndices(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getWaves(), 0, VK_WHOLE_SIZE },
         };
         const VkDescriptorBufferInfo noiseWrite{ mBlueNoise.getHandle(), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo shadingWrite{ inputs.mShading, 0, VK_WHOLE_SIZE };
@@ -159,25 +186,31 @@ namespace Rtx
         std::array<VkWriteDescriptorSet, sBindings.size()> writes{};
         std::uint32_t filled = 0;
 
-        const auto append = [&](std::uint32_t binding, VkDescriptorType type, const void* next,
-                                const VkDescriptorImageInfo* image, const VkDescriptorBufferInfo* block) {
-            assert(filled < writes.size() && "more descriptor writes than the layout has bindings");
-            writes[filled++] = VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .pNext = next,
-                .dstBinding = binding,
-                .descriptorCount = 1,
-                .descriptorType = type,
-                .pImageInfo = image,
-                .pBufferInfo = block,
-            };
-        };
+        const auto append
+            = [&](std::uint32_t binding, VkDescriptorType type, const void* next, const VkDescriptorImageInfo* image,
+                  const VkDescriptorBufferInfo* block, std::uint32_t count = 1) {
+                  assert(filled < writes.size() && "more descriptor writes than the layout has bindings");
+                  writes[filled++] = VkWriteDescriptorSet{
+                      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                      .pNext = next,
+                      .dstBinding = binding,
+                      .descriptorCount = count,
+                      .descriptorType = type,
+                      .pImageInfo = image,
+                      .pBufferInfo = block,
+                  };
+              };
         const auto appendBuffer = [&](std::uint32_t binding, const VkDescriptorBufferInfo& block) {
             append(binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, nullptr, &block);
         };
         const auto appendUniform = [&](std::uint32_t binding, const VkDescriptorBufferInfo& block) {
             append(binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, nullptr, &block);
         };
+        const auto appendImages
+            = [&](std::uint32_t binding, const std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES>& images) {
+                  append(binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, images.data(), nullptr,
+                      Shaders::WAVE_CASCADES);
+              };
 
         // The one write whose payload hangs off `pNext` rather than off a pointer field.
         append(0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, &sceneWrite, nullptr, nullptr);
@@ -185,14 +218,21 @@ namespace Rtx
         for (std::uint32_t i = 0; i < buffers.size(); ++i)
             appendBuffer(i + 1, buffers[i]);
 
-        appendBuffer(14, noiseWrite);
-        appendBuffer(15, shadingWrite);
-        appendBuffer(16, gridWrite);
-        appendBuffer(17, spriteWrite);
-        appendBuffer(18, emitterWrite);
-        appendBuffer(19, tileOffsetWrite);
-        appendBuffer(20, tileIndexWrite);
-        appendUniform(21, frameWrite);
+        appendBuffer(13, noiseWrite);
+        appendBuffer(14, shadingWrite);
+        appendBuffer(15, gridWrite);
+        appendBuffer(16, spriteWrite);
+        appendBuffer(17, emitterWrite);
+        appendBuffer(18, tileOffsetWrite);
+        appendBuffer(19, tileIndexWrite);
+        appendUniform(sFrameBinding, frameWrite);
+
+        // **Sampled from `GENERAL` rather than moved to a read-only layout**, for the reason
+        // `BloomPass` gives: these are written as storage images and read as sampled ones a few
+        // dispatches apart, and `GENERAL` is the one layout both accesses are legal from.
+        appendImages(sFrameBinding + 1, surfaces);
+        appendImages(sFrameBinding + 2, curvatures);
+        appendImages(sFrameBinding + 3, variances);
 
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getHandle());
         // Every binding the layout declares, written exactly once — a shader that grew one and a

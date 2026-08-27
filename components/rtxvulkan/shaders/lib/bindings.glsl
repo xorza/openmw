@@ -18,6 +18,7 @@
 #include "gbuffer.h"
 #include "scene.h"
 #include "visibility.h"
+#include "wave.h"
 
 #include "texturearray.glsl"
 
@@ -133,13 +134,8 @@ layout(set = 0, binding = 12, scalar) readonly buffer LightIndices
     uint lightIndices[];
 };
 
-layout(set = 0, binding = 13, scalar) readonly buffer Waves
-{
-    GpuWave waves[];
-};
-
 /// The blue-noise tile, `RANDOM_STREAMS` channels interleaved per pixel. See `Rtx::BlueNoise`.
-layout(set = 0, binding = 14, scalar) readonly buffer BlueNoiseTile
+layout(set = 0, binding = 13, scalar) readonly buffer BlueNoiseTile
 {
     float blueNoise[];
 };
@@ -149,7 +145,7 @@ layout(set = 0, binding = 14, scalar) readonly buffer BlueNoiseTile
 layout(set = 2, binding = 6, GBUFFER_DEPTH) uniform writeonly image2D depth;
 
 /// Where the lamps were binned, which is scene geometry rather than camera geometry.
-layout(set = 0, binding = 16, scalar) readonly buffer LightGridBlock
+layout(set = 0, binding = 15, scalar) readonly buffer LightGridBlock
 {
     GpuLightGrid grid;
 };
@@ -159,7 +155,7 @@ layout(set = 2, binding = 5, GBUFFER_MOTION) uniform writeonly image2D motion;
 
 /// What each texture already has painted into it, `SHADING_EXTENT` squared factors apiece and one
 /// texture after another. A texture with no estimate holds ones.
-layout(set = 0, binding = 15, scalar) readonly buffer ShadingMaps
+layout(set = 0, binding = 14, scalar) readonly buffer ShadingMaps
 {
     float shading[];
 };
@@ -229,7 +225,7 @@ layout(set = 2, binding = 7, GBUFFER_MOTION) uniform writeonly image2D reflectio
 layout(set = 2, binding = 10, GBUFFER_STARS) uniform writeonly image2D starsShown;
 
 /// Every live particle in the scene, one emitter's run after another's.
-layout(set = 0, binding = 17, scalar) readonly buffer Sprites
+layout(set = 0, binding = 16, scalar) readonly buffer Sprites
 {
     GpuSprite sprites[];
 };
@@ -239,7 +235,7 @@ layout(set = 0, binding = 17, scalar) readonly buffer Sprites
 /// **No count beside it, because nothing walks these.** The buffer never shrinks, so its length
 /// outlives the cell that filled it — and since the sprite tiles replaced the loop over emitters,
 /// the only way in is from a sprite the tile named, which can only name one that is real.
-layout(set = 0, binding = 18, scalar) readonly buffer Emitters
+layout(set = 0, binding = 17, scalar) readonly buffer Emitters
 {
     GpuEmitter emitters[];
 };
@@ -247,14 +243,14 @@ layout(set = 0, binding = 18, scalar) readonly buffer Emitters
 /// Where each screen tile's sprites begin, with a sentinel so the last tile needs no special case.
 ///
 /// `Rtx::SpriteTiles` says why the layer is binned per tile and the emitters are not.
-layout(set = 0, binding = 19, scalar) readonly buffer SpriteTileOffsets
+layout(set = 0, binding = 18, scalar) readonly buffer SpriteTileOffsets
 {
     uint spriteTileOffsets[];
 };
 
 /// Every tile's sprites, run together in tile order and ascending inside each run — which is the
 /// order the march used to walk them in, and so the order they still composite in.
-layout(set = 0, binding = 20, scalar) readonly buffer SpriteTileIndices
+layout(set = 0, binding = 19, scalar) readonly buffer SpriteTileIndices
 {
     uint spriteTileIndices[];
 };
@@ -268,9 +264,25 @@ layout(set = 0, binding = 20, scalar) readonly buffer SpriteTileIndices
 // **Uniform and not storage**, which is worth 0.14 ms of the trace at Balmora: every pixel reads
 // half of these fields several times over, and a uniform block is promoted to a constant bank the
 // way the push constants it replaces were, where a storage buffer is a memory read like any other.
-layout(set = 0, binding = 21, scalar) uniform Frame
+layout(set = 0, binding = 20, scalar) uniform Frame
 {
     VisibilityConstants frame;
 };
+
+// The sea, as the tiles `WavePass` synthesised it into. One texture apiece per cascade, sampled
+// rather than loaded, because the level a ray cone reaches is what a water pixel asks for.
+//
+// **Three textures and not one, because the third is a square that has to be averaged apart from
+// what it is the square of.** The mean of `tr(H)^2` over a footprint and the square of the mean of
+// `tr(H)` are different numbers, and their difference is the curvature the cone threw away.
+
+/// The elevation, its two slopes, and the elevation squared.
+layout(set = 0, binding = 21) uniform sampler2D waveSurface[WAVE_CASCADES];
+
+/// The three curvatures, and the mean square slope.
+layout(set = 0, binding = 22) uniform sampler2D waveCurvature[WAVE_CASCADES];
+
+/// The squared trace of the curvature.
+layout(set = 0, binding = 23) uniform sampler2D waveVariance[WAVE_CASCADES];
 
 #endif

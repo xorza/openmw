@@ -15,9 +15,9 @@
 // four directions. No allocation of sixty-four fixes that: the fix is thousands of components,
 // which is a transform.
 //
-// **And it is the cheaper of the two.** A tile is one texture fetch where the sum was sixty-four
-// sines, and the surface is read twice per water pixel — once for the normal and once for the
-// curvature. The synthesis is one pass a frame over a few small grids.
+// **And it is the cheaper of the two.** A tile costs three texture fetches where the sum was
+// sixty-four sines, and the surface is read twice per water pixel — once for the normal and once for
+// the curvature. The synthesis is one pass a frame over a few small grids.
 
 #ifdef RTX_HOST
 
@@ -52,6 +52,13 @@ namespace Rtx::Shaders
     /// full energy and the same spectrum, and their periods do not divide into one another, so the
     /// sum repeats only at a common multiple nothing looks across.
     RTX_CONST uint WAVE_CASCADES = 2u;
+
+    /// A level past the end of any tile's chain, which a sampler clamps to the last of it.
+    ///
+    /// **The last level is one texel, so it is the whole tile's mean.** That is where the surface's
+    /// own variance and the variance of its curvature are read from — both are properties of the
+    /// sea rather than of a place in it, and a mip chain has already summed them.
+    RTX_CONST float WAVE_COARSEST = 32.0f;
 
     /// Threads in a transform workgroup, one per butterfly.
     ///

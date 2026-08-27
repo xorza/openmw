@@ -18,6 +18,7 @@ namespace Rtx
     class GBuffer;
     class GBufferLayout;
     class SceneBuffers;
+    class WavePass;
 
     /// What a trace reads about the world, as against the camera that looks at it.
     struct VisibilityInputs
@@ -41,6 +42,13 @@ namespace Rtx
 
         /// Where the scene's lamps were binned.
         VkBuffer mGrid = VK_NULL_HANDLE;
+
+        /// The sea, as the tiles it was synthesised into this frame.
+        ///
+        /// **Not the scene's, because the water is not.** One sea runs under every cell and under
+        /// the doll and the map beside them, so it belongs to the renderer and arrives here rather
+        /// than through a `SceneBuffers` that would hold one copy of it per scene.
+        const WavePass* mWaves = nullptr;
     };
 
     /// One ray per pixel against the top-level structure, shaded by the geometric normal it hit.

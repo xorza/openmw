@@ -97,8 +97,8 @@ namespace Rtx
         }
     }
 
-    SceneBuffers::SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
-        std::span<const InstanceRecord> records, const SeaState& sea)
+    SceneBuffers::SceneBuffers(
+        const Device& device, Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records)
         : mDevice(&device)
     {
         mNormals.open(device, sTableUsage, "normals");
@@ -110,7 +110,7 @@ namespace Rtx
         // bound as nothing at all. Growing on write cannot carry that guarantee, because the write is
         // exactly what does not happen.
         for (HostBuffer* table : { &mMaterials, &mLayers, &mMasks, &mMeshes, &mInstances, &mLights, &mLightOffsets,
-                 &mGrid, &mLightIndices, &mWaves, &mSprites, &mEmitters, &mSpriteTileOffsets, &mSpriteTileIndices })
+                 &mGrid, &mLightIndices, &mSprites, &mEmitters, &mSpriteTileOffsets, &mSpriteTileIndices })
             growTo(*table, device, 0, sTableUsage);
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
@@ -123,7 +123,7 @@ namespace Rtx
         // The shading tables come from `place`, which is also where they are rewritten when a
         // material changes. Forced here because nothing has been written at revision zero.
         mShaded = scene.getShadingRevision() - 1;
-        place(scene, records, sea);
+        place(scene, records);
 
         device.setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mMaterials.getHandle()), "materials");
         device.setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mInstances.getHandle()), "instance rows");
@@ -240,7 +240,7 @@ namespace Rtx
         mMasks.write(masks);
     }
 
-    void SceneBuffers::place(const SceneDesc& scene, std::span<const InstanceRecord> records, const SeaState& sea)
+    void SceneBuffers::place(const SceneDesc& scene, std::span<const InstanceRecord> records)
     {
         shade(scene);
 
@@ -316,14 +316,11 @@ namespace Rtx
             .mInverseCell = mLightGrid.getInverseCell(),
             .mSize = mLightGrid.getSize(),
         };
-        const std::array<Shaders::GpuWave, Shaders::WAVE_COUNT> waves = sea.getWaves();
-
         reserve(mInstances, instances.size_bytes());
         reserve(mLights, lights.size_bytes());
         reserve(mLightOffsets, mLightGrid.getOffsets().size_bytes());
         reserve(mLightIndices, indices.size_bytes());
         reserve(mGrid, sizeof(geometry));
-        reserve(mWaves, sizeof(waves));
         reserve(mSprites, sprites.size_bytes());
         reserve(mEmitters, emitters.size_bytes());
 
@@ -332,7 +329,6 @@ namespace Rtx
         mLightOffsets.write(mLightGrid.getOffsets());
         mLightIndices.write(indices);
         mGrid.write(std::span<const Shaders::GpuLightGrid>(&geometry, 1));
-        mWaves.write(std::span<const Shaders::GpuWave>(waves));
         mSprites.write(sprites);
         mEmitters.write(emitters);
 
@@ -351,6 +347,6 @@ namespace Rtx
         // its own size.
         return mNormals.getBytes() + mTexCoords.getBytes() + mMeshes.getSize() + mInstances.getSize()
             + mMaterials.getSize() + mLayers.getSize() + mMasks.getSize() + mLights.getSize() + mLightOffsets.getSize()
-            + mLightIndices.getSize() + mGrid.getSize() + mWaves.getSize() + mSprites.getSize() + mEmitters.getSize();
+            + mLightIndices.getSize() + mGrid.getSize() + mSprites.getSize() + mEmitters.getSize();
     }
 }

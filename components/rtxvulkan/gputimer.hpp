@@ -31,7 +31,7 @@ namespace Rtx
     class GpuTimer
     {
     public:
-        /// The most zones one frame may open. Ten are used; the rest is room to bisect one.
+        /// The most zones one frame may open. Eleven are used; the rest is room to bisect one.
         static constexpr std::uint32_t sMaxZones = 24;
 
         explicit GpuTimer(const Device& device);

@@ -152,6 +152,8 @@ if (OPENMW_RTX)
         rtx/wavecascade.cpp
         rtx/wavefield.cpp
         rtx/waveline.cpp
+        rtx/wavemoments.hpp
+        rtx/wavepass.cpp
         rtx/wavespectrum.cpp
         rtxtool/actor.cpp
         rtxtool/benchsuite.cpp

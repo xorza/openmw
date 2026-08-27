@@ -68,35 +68,12 @@ namespace Rtx::Shaders
     /// makes them and says why at length.
     RTX_CONST uint SHADING_EXTENT = 32u;
 
-    /// How many sinusoids the water surface is summed from.
-    RTX_CONST uint WAVE_COUNT = 64u;
-
     /// A whole turn, which is how a wavelength becomes a wavenumber.
     RTX_CONST float TAU = 6.2831853f;
 
     /// Morrowind's gravity, in world units per second squared: 8.96 m/s^2 across 69.99 units to
     /// the metre.
     RTX_CONST float WATER_GRAVITY = 627.1f;
-
-    /// One sinusoid of the sea, as the shader reads it.
-    ///
-    /// **One height field, differentiated twice.** The normal is its gradient and the caustics are
-    /// its curvature, so the two cannot disagree about where a crest is — which they would the
-    /// moment either sampled a field of its own.
-    struct GpuWave
-    {
-        /// Unit vector the wave travels along.
-        vec2 mDirection;
-
-        /// Radians of phase per world unit.
-        float mWavenumber;
-
-        /// Half the crest-to-trough height, in world units.
-        float mAmplitude;
-
-        /// Radians of phase per second, from the dispersion relation at this depth.
-        float mSpeed;
-    };
 
     /// The circle constant, and the Lambertian BRDF's reciprocal of it.
     ///
@@ -670,7 +647,6 @@ namespace Rtx::Shaders
     // that produces a plausible wrong image rather than an error. GLSL is pinned separately, by the
     // `--scalar-block-layout` the build hands the validator.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
-    static_assert(sizeof(GpuWave) == 20, "GpuWave must be scalar-packed on every side");
     static_assert(sizeof(GpuMesh) == 8, "GpuMesh must be scalar-packed on every side");
     static_assert(sizeof(GpuInstance) == 60, "GpuInstance must be scalar-packed on every side");
     static_assert(sizeof(GpuLight) == 32, "GpuLight must be scalar-packed on every side");

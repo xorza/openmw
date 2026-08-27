@@ -1,7 +1,5 @@
 #pragma once
 
-#include <array>
-
 #include "shaders/scene.h"
 
 namespace Rtx
@@ -12,18 +10,19 @@ namespace Rtx
     /// shortest waves decide the caustics — and a wave's period falls with its length, so they also
     /// decide how fast the pattern on a seabed reshuffles. Carried down to eighteen units the light
     /// below changed by three quarters of its own contrast every twelfth of a second, which reads as
-    /// stripes tearing across the bottom rather than as water. Thirty-two puts that back to about
-    /// half, and costs a quarter of the contrast to do it.
+    /// stripes tearing across the bottom rather than as water.
     ///
     /// The trade is exactly that and cannot be had both ways: shorter waves focus harder *and* move
-    /// faster, because they are the same waves.
+    /// faster, because they are the same waves. What softened it is the transform: spread over tens
+    /// of thousands of wavevectors rather than sixty-four, the curvature at this cutoff reshuffles a
+    /// quarter of the pattern in a twelfth of a second where the sinusoid table reshuffled half.
     inline constexpr float sShortestWave = 32.0f;
 
     /// What the sea is doing, in the four numbers a spectrum needs.
     ///
-    /// The surface is a sum of plane waves, and what decides whether it looks like water is which
-    /// waves are in the sum. This turns a sea state into that list, once, on the host — nothing here
-    /// runs per pixel.
+    /// What decides whether a surface looks like water is how its energy is laid out over
+    /// wavelengths and directions. This is the curve that says so; `makeWaveCascades` lays it on a
+    /// grid of wavevectors, once, on the host — nothing here runs per pixel.
     ///
     /// The spectrum is **TMA**: JONSWAP under Kitaigorodskii's shallow-water attenuation, spread
     /// over directions by **Donelan-Banner**, which is the pairing Horvath's *Empirical Directional
@@ -46,13 +45,9 @@ namespace Rtx
         /// Which way the wind blows, in radians about +Z.
         float mBearing = 0.6f;
 
-        /// The sinusoids this sea is made of.
-        ///
-        /// Sampled by *quantile* in direction rather than at even angles: the share of a band's
-        /// energy between two quantiles of its spread is the same by construction, so every
-        /// component carries the same amplitude and the spread's shape is exact however few
-        /// directions are taken.
-        std::array<Shaders::GpuWave, Shaders::WAVE_COUNT> getWaves() const;
+        /// **What decides whether the amplitudes have to be drawn again.** Every one of them is a
+        /// function of these four numbers and of nothing else, so two equal states are one sea.
+        bool operator==(const SeaState& other) const = default;
 
         /// The dispersion relation at this depth: `omega^2 = g k tanh(k h)`.
         ///

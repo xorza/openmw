@@ -13,7 +13,6 @@
 #include <components/rtx/lightgrid.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/spritetiles.hpp>
-#include <components/rtx/wavespectrum.hpp>
 
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
@@ -33,14 +32,8 @@ namespace Rtx
     class SceneBuffers
     {
     public:
-        /// @param indices the buffer `SceneAcceleration` already built from, borrowed rather than
-        ///        uploaded again. It must outlive this.
-        /// @param sea what the water is doing, which belongs to no cell: one table for the whole
-        ///        world, animated by the time in the frame's constants rather than rebuilt. A state
-        ///        with no height in it is a flat sea, which is what a test asserting an exact
-        ///        transmittance needs.
-        SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
-            std::span<const InstanceRecord> records, const SeaState& sea = SeaState{});
+        SceneBuffers(
+            const Device& device, Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records);
 
         /// Takes in the attributes of the meshes the scene says arrived.
         ///
@@ -66,7 +59,7 @@ namespace Rtx
         /// transform a shader reads and the one an instance was placed with have to come out of the
         /// same arithmetic, and two places computing an inverse is two places to get it wrong — as
         /// well as thousands of inversions a frame done twice for one answer.
-        void place(const SceneDesc& scene, std::span<const InstanceRecord> records, const SeaState& sea);
+        void place(const SceneDesc& scene, std::span<const InstanceRecord> records);
 
         SceneBuffers(const SceneBuffers&) = delete;
         SceneBuffers& operator=(const SceneBuffers&) = delete;
@@ -104,7 +97,6 @@ namespace Rtx
 
         /// The grid's geometry, as the shader reads it.
         VkBuffer getGrid() const { return mGrid.getHandle(); }
-        VkBuffer getWaves() const { return mWaves.getHandle(); }
 
         VkDeviceSize getBytes() const;
 
@@ -167,7 +159,6 @@ namespace Rtx
         HostBuffer mLightOffsets;
         HostBuffer mGrid;
         HostBuffer mLightIndices;
-        HostBuffer mWaves;
         HostBuffer mSprites;
         HostBuffer mEmitters;
         HostBuffer mSpriteTileOffsets;

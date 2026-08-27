@@ -91,6 +91,7 @@ namespace Rtx
         , mViewFilter(mDevice, options.mShaderDirectory)
         , mComposite(mDevice, mPool, options.mShaderDirectory)
         , mBloom(mDevice, options.mShaderDirectory)
+        , mWaves(mDevice, mPool, options.mShaderDirectory)
         , mExposure(mDevice, options.mShaderDirectory)
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
@@ -329,8 +330,14 @@ namespace Rtx
         // be its own round trip, and Balmora's are 367 of them.
         Batch setup(mPool);
 
+        // **The world's, because there is one sea and every scene traces it.** A doll and a map tile
+        // carry a sea state of their own only because they take the same argument, and letting one
+        // of those redraw the spectrum would put the interface's water under the world.
+        if (slot == sWorld)
+            mWaves.describe(sea);
+
         held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, mRecordScratch, textures);
-        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, mRecordScratch, sea);
+        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, mRecordScratch);
         held.mTextures = std::make_unique<TextureArray>(
             mDevice, setup, static_cast<std::uint32_t>(scene.getTextures().size()), textures);
         held.mBuiltMeshes = scene.getMeshRevision();
@@ -452,6 +459,10 @@ namespace Rtx
         {
             mTimer.beginFrame();
             mTimed = true;
+
+            // Does nothing where the sea is the one already drawn for, which is every frame but the
+            // first and any on which the weather turned the wind.
+            mWaves.describe(sea);
         }
 
         // **What the scene let go of, given back here.** Walking away from a ring frees its meshes
@@ -470,7 +481,7 @@ namespace Rtx
         // **Only what a moving world changed**, which is the instance rows, the lights and the
         // vertices of anything skinned. Rebuilding all of it was measured at twenty to twenty-seven
         // milliseconds on a nine-by-nine region and was the largest single cost in the frame.
-        held.mBuffers->place(scene, mRecordScratch, sea);
+        held.mBuffers->place(scene, mRecordScratch);
 
         if (!ofTheWorld)
             return;
@@ -665,6 +676,7 @@ namespace Rtx
             .mIndexBlocks = mWorld.mAcceleration->getIndexBlocks(),
             .mTextures = mWorld.mTextures->getSet(),
             .mShading = mWorld.mTextures->getShading(),
+            .mWaves = &mWaves,
         };
 
         // Made by the first frame that averages, and that frame is the one that fills it.
@@ -719,6 +731,12 @@ namespace Rtx
                     fresh ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                     fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                     VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+            // Before the trace and outside its zone, because the sea is a function of the clock and
+            // of nothing the camera does — one synthesis serves every ray of the frame.
+            mTimer.open(commands, "waves");
+            mWaves.record(commands, sampled.mTime);
+            mTimer.close(commands);
 
             mChannels->begin(commands);
             mTimer.open(commands, "trace");
@@ -932,6 +950,7 @@ namespace Rtx
             .mIndexBlocks = acceleration.getIndexBlocks(),
             .mTextures = array.getSet(),
             .mShading = array.getShading(),
+            .mWaves = &mWaves,
         };
 
         // **Not counted, and not timed.** The hit count and the frame report are the frame's; a
@@ -942,6 +961,8 @@ namespace Rtx
                 image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                     VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                     VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+            mWaves.record(commands, camera.mTime);
 
             mViewChannels->begin(commands);
             mPass->record(commands, inputs, *mViewChannels, mHitCount, camera);

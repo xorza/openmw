@@ -228,15 +228,15 @@ namespace Rtx::Testing
         return sign * std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f, exponent - 15);
     }
 
-    /// Every channel of a half-float image, decoded, row major.
+    /// Every channel of one level of a half-float image, decoded, row major.
     ///
     /// **Left in the layout it was found in**, which `Image::read` promises: reading an image is not
     /// a change to it. Several passes keep their output in halves, so this is the read-back beside
     /// the decoder rather than one copy of it per suite.
-    inline std::vector<float> readHalves(CommandPool& pool, const Image& image)
+    inline std::vector<float> readHalves(CommandPool& pool, const Image& image, std::uint32_t level = 0)
     {
         std::vector<std::uint8_t> bytes;
-        image.read(pool, VK_IMAGE_LAYOUT_GENERAL, bytes);
+        image.read(pool, VK_IMAGE_LAYOUT_GENERAL, bytes, level);
 
         std::vector<float> values(bytes.size() / sizeof(std::uint16_t));
         for (std::size_t at = 0; at < values.size(); ++at)

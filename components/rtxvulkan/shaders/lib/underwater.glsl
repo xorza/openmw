@@ -79,7 +79,7 @@ vec3 lightThroughWater(vec3 position, vec3 toward, float footprint)
 
     const float path = depth * sunUnderWater(toward).mSlant;
 
-    return exp(-WATER_EXTINCTION * path) * caustic(position.xy, depth, frame.mTime, footprint);
+    return exp(-WATER_EXTINCTION * path) * caustic(position.xy, depth, footprint);
 }
 
 vec3 waterTransmittance(float path)

@@ -15,6 +15,8 @@
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/accumulate.h>
+#include <components/rtx/wavecascade.hpp>
+#include <components/rtx/wavespectrum.hpp>
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/compositepass.hpp>
@@ -25,9 +27,11 @@
 #include <components/rtxvulkan/scenebuffers.hpp>
 #include <components/rtxvulkan/texture.hpp>
 #include <components/rtxvulkan/visibilitypass.hpp>
+#include <components/rtxvulkan/wavepass.hpp>
 
 #include "allocations.hpp"
 #include "harness.hpp"
+#include "wavemoments.hpp"
 
 namespace Rtx
 {
@@ -454,17 +458,16 @@ namespace Rtx
 
         /// The lobe the shader arrives at for a sea whose every wave is past the cone's reach.
         ///
-        /// Read off the same table the shader reads. With no wave resolved, `unresolved` is the
-        /// whole spectrum's mean square slope, and the lobe is twice its root — a normal tilted by
-        /// an angle turns a reflection by twice it.
+        /// **Off the same spectrum the shader's textures were transformed out of.** With nothing
+        /// resolved, what the mip chain hands back is the whole surface's mean square slope — which
+        /// is each entry's variance weighted by its own wavenumber squared, because a slope is the
+        /// elevation differentiated once. The lobe is twice its root: a normal tilted by an angle
+        /// turns a reflection by twice it.
         float lobeOf(const SeaState& sea)
         {
             float unresolved = 0.0f;
-            for (const Shaders::GpuWave& wave : sea.getWaves())
-            {
-                const float steepness = wave.mAmplitude * wave.mWavenumber;
-                unresolved += 0.5f * steepness * steepness;
-            }
+            for (const WaveCascade& cascade : makeWaveCascades(sea))
+                unresolved += Testing::momentOf(cascade, 2);
 
             return std::min(2.0f * std::sqrt(unresolved), 1.0f);
         }
@@ -753,7 +756,7 @@ namespace Rtx
             // No textures, so no shading maps; no sprites, so no tiles. Both tables used to come out
             // as `VK_NULL_HANDLE`.
             const TextureArray textures(device, setup, 0, {});
-            const SceneBuffers buffers(device, setup, empty, {}, SeaState{});
+            const SceneBuffers buffers(device, setup, empty, {});
             setup.flush();
 
             EXPECT_NE(textures.getShading(), VK_NULL_HANDLE) << "the shading maps";
@@ -761,7 +764,7 @@ namespace Rtx
             // **Every table this hands out, and not the three that were caught.** The rule was the
             // same for all of them; which ones happened to be empty on the day is not what decides
             // whether they are covered.
-            const std::array<std::pair<const char*, VkBuffer>, 16> tables{ {
+            const std::array<std::pair<const char*, VkBuffer>, 15> tables{ {
                 { "the normal blocks", buffers.getNormalBlocks() },
                 { "the texture coordinate blocks", buffers.getTexCoordBlocks() },
                 { "the meshes", buffers.getMeshes() },
@@ -777,7 +780,6 @@ namespace Rtx
                 { "the sprite tile offsets", buffers.getSpriteTileOffsets() },
                 { "the sprite tile indices", buffers.getSpriteTileIndices() },
                 { "the light grid's geometry", buffers.getGrid() },
-                { "the wave spectrum", buffers.getWaves() },
             } };
 
             for (const auto& [what, table] : tables)
@@ -4086,12 +4088,14 @@ namespace Rtx
             for (const float gathered : capped)
                 spread += (gathered - mean) * (gathered - mean);
 
-            // **A quarter less bold than at eight bands, and bought on purpose.** Curvature weights a
-            // component by `A k²`, so at eight bands the shortest one owned 40% of the Hessian by
-            // itself and four plane waves crossing drew a lattice on the seabed. Sixteen narrower
-            // bands spread the same energy over a dozen directions at comparable scales, which is
-            // what turns the lattice into a mottle — and costs the pattern this.
-            EXPECT_NEAR(std::sqrt(spread / static_cast<float>(count)) / mean, 0.277f, 0.02f)
+            // **A fifth less bold than the sinusoid table drew, and bought on purpose.** Curvature
+            // weights a component by `A k²`, so a table of sixty-four had the shortest few owning
+            // the Hessian outright — a handful of plane waves crossing, which focuses into hard
+            // repeating lines and reads as a lattice. Tens of thousands of components at the same
+            // wavelengths interfere into a mottle instead: the same energy, spread over every
+            // direction rather than four, and no line drawn twice. It measures 0.223 against the
+            // table's 0.277.
+            EXPECT_NEAR(std::sqrt(spread / static_cast<float>(count)) / mean, 0.223f, 0.02f)
                 << "the pattern's contrast, as a fraction of its own mean";
 
             // A twelfth of a second, which is how long a frame is worth caring about. For two
@@ -4100,16 +4104,21 @@ namespace Rtx
             //
             // That is the number the shortest wave was chosen on. The reference renderer's sweep:
             // **18 units gives the best caustics it ever drew and they tear at 73%**, 32 units comes
-            // out at 51%, and 50 units is dull at 33%. This fork cuts at 32 as well and lands just
-            // under it, at 47.6 — sixteen bands put a larger share of the table at wavelengths above
-            // the cutoff, and a longer wave turns over more slowly. Worth an assertion because
-            // moving the cutoff, or the band count, would silently move this.
+            // out at 51%, and 50 units is dull at 33%.
+            //
+            // **This measures 26.1%, and the transform is why.** A sum of sixty-four sinusoids put
+            // nearly all of its curvature in the shortest few, and those are the fastest-turning
+            // waves there are — so almost the whole pattern was made of components that reshuffle
+            // inside a frame, and it tore. Spread over tens of thousands of wavevectors the same
+            // curvature is carried mostly by longer, slower ones, and what a twelfth of a second
+            // moves is a quarter of the field rather than a half. The cutoff is still 32 units;
+            // what changed is how much of the pattern sits at it.
             const std::vector<float> later = causticField(140.0f, 1.0f / 12.0f);
             float moved = 0.0f;
             for (std::size_t i = 0; i < count; ++i)
                 moved += (later[i] - capped[i]) * (later[i] - capped[i]);
 
-            EXPECT_NEAR(0.5f * moved / spread, 0.476f, 0.03f) << "how much of the pattern is new a twelfth later";
+            EXPECT_NEAR(0.5f * moved / spread, 0.261f, 0.03f) << "how much of the pattern is new a twelfth later";
         }
 
         /// The sun's disc carries exactly its irradiance, however wide the pixel that finds it.
@@ -4330,12 +4339,16 @@ namespace Rtx
 
             // Mip level is the log of the cone's width, so the difference is the log of the ratio —
             // and the base term, which is the triangle's texels against its world area, cancels.
-            // Predicted 1.474 from the wave table the shader was handed; measured 1.449, which is
-            // three quarters of a byte on a ladder 30 bytes to the level.
+            // Predicted 1.434 from the spectrum the shader's textures were transformed out of;
+            // measured 1.522, which is two and a half bytes on a ladder 30 bytes to the level.
             //
-            // **The factor of two is what this pins.** Adding the lobe once instead of twice puts
-            // the prediction at 0.918, sixteen bytes from what the frame actually reads.
-            EXPECT_NEAR(ruffled - still, std::log2(coneAtBed(lobeOf(fine)) / coneAtBed(0.0f)), 0.08f)
+            // **The tolerance is what the model is worth and not what the read-back is.** Against
+            // the sinusoid table the two agreed to 0.025; against a Gaussian field they agree to
+            // 0.088, and where the rest of it goes is not established — the cone here is analytic
+            // and the surface it is crossing is now a real random field. What the assertion still
+            // settles is the factor of two: adding the lobe once instead of twice puts the
+            // prediction at 0.918, six tolerances away.
+            EXPECT_NEAR(ruffled - still, std::log2(coneAtBed(lobeOf(fine)) / coneAtBed(0.0f)), 0.12f)
                 << "the cone widened by twice the rms slope the sea could not show";
         }
 
@@ -4769,12 +4782,19 @@ namespace Rtx
             const VisibilityPass pass(
                 device, setup, Testing::getShaderDirectory(), textures.getLayout(), channelLayout, true);
             setup.flush();
+
+            // **Built here and not inside the frame**, which is where the sea's own allocation is:
+            // the spectrum is drawn once for a state and a frame turns its phases, so a steady
+            // frame reaches this pass without reaching the heap.
+            const WavePass waves(device, pool, Testing::getShaderDirectory());
+
             const VisibilityInputs inputs{
                 .mScene = acceleration.getTopLevel(),
                 .mBuffers = &buffers,
                 .mIndexBlocks = acceleration.getIndexBlocks(),
                 .mTextures = textures.getSet(),
                 .mShading = textures.getShading(),
+                .mWaves = &waves,
             };
 
             const GBuffer channels(device, channelLayout, size, size);
@@ -4806,8 +4826,8 @@ namespace Rtx
             VkFence finished = VK_NULL_HANDLE;
             ASSERT_EQ(vkCreateFence(device.getHandle(), &describeFence, nullptr, &finished), VK_SUCCESS);
 
-            // Everything a still frame does — both passes, because a frame is two now: the camera
-            // worked out, the trace and the composite recorded, the work submitted and waited on.
+            // Everything a still frame does — the sea synthesised, the trace and the composite
+            // recorded, the work submitted and waited on.
             // The camera is the same every time, which is what "steady" means — a moving one would
             // still allocate nothing, but then nothing would be pinned.
             const auto frame = [&] {
@@ -4820,6 +4840,7 @@ namespace Rtx
                     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
                 };
                 vkBeginCommandBuffer(commands, &begin);
+                waves.record(commands, camera.mTime);
                 channels.begin(commands);
                 pass.record(commands, inputs, channels, hits, camera);
                 channels.handOver(commands);

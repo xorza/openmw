@@ -189,6 +189,8 @@ set(RTX_VULKAN_FILES
     visibilitypass.hpp
     vulkanrenderer.cpp
     vulkanrenderer.hpp
+    wavepass.cpp
+    wavepass.hpp
 )
 
 # Only where the SDK is there to compile against: these are nothing but NGX, so a build without

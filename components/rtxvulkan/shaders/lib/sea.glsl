@@ -3,17 +3,17 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_SEA_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_SEA_GLSL
 
-// The wave spectrum and everything differentiated out of it: the surface's normal, its
-// elevation, what a cone could not resolve of either, where it breaks, and the caustics
-// its curvature focuses.
+// The sea's tiles and everything read out of them: the surface's normal, its elevation, what a cone
+// could not resolve of either, where it breaks, and the caustics its curvature focuses.
 //
-// **One height field, differentiated twice.** The normal is its gradient and the caustics
-// are its curvature; the moment either sampled a field of its own the light would land
-// where the surface is not. Nothing in here is lit — that is `water.glsl`.
+// **One height field, differentiated twice.** The normal is its gradient and the caustics are its
+// curvature; the moment either sampled a field of its own the light would land where the surface is
+// not. `WavePass` transforms all three out of one spectrum for that reason, and this reads them.
+// Nothing in here is lit — that is `water.glsl`.
 
 #include "scene.h"
+#include "wave.h"
 #include "bindings.glsl"
-#include "footprint.glsl"
 
 /// How far refraction deflects a ray, per unit of surface slope.
 ///
@@ -40,64 +40,30 @@ const float WATER_CAUSTIC_MAX = 3.0;
 /// says the true thing anyway: caustics are sharp in a shallow pool and washed out in deep water.
 const float WATER_CAUSTIC_MAX_DEPTH = 140.0;
 
-/// How far the swell carries the ripples riding on it, and over what distance that carrying turns.
-///
-/// **A sum of plane waves is a lattice, and curvature is where that shows.** The second derivative
-/// weights a component by `A k^2`, which climbs with wavenumber however the spectrum falls, so the
-/// shortest few dominate it whatever else is in the sum — and a handful of plane waves crossing is a
-/// grid, regular enough to read as a texture rather than as water.
-///
-/// So the short waves are carried. On real water they ride the long swell's orbital motion, which
-/// bends their crests and slides them out of step from one trough to the next. Thirteen units is
-/// most of a wavelength to the shortest waves and a rounding error to the longest, so one field does
-/// the whole job without touching the swell it came from.
-const float WAVE_DRIFT = 13.0;
-const float WAVE_DRIFT_LENGTH = 640.0;
-
-/// Where the ripples have been carried to by the time they are sampled.
-///
-/// Two long crossing swells at angles the band sequence never takes, so the drift cannot fall into
-/// step with the waves it displaces.
-vec2 drifted(vec2 at, float time)
+/// Where on a tile a world position falls. Wrapped by the sampler, because a tile repeats.
+vec2 waveCoordinate(uint cascade, vec2 at)
 {
-    const float wavenumber = TAU / WAVE_DRIFT_LENGTH;
-    const float speed = sqrt(WATER_GRAVITY * wavenumber);
-    const float along = wavenumber * dot(vec2(0.8347, 0.5507), at) - speed * time;
-    const float across = wavenumber * dot(vec2(-0.4132, 0.9106), at) - speed * time * 0.83;
-
-    return at + WAVE_DRIFT * vec2(sin(along) + 0.6 * cos(across), cos(along) - 0.6 * sin(across));
+    return at / frame.mWaveExtent[cascade];
 }
 
-/// One wave component where a ray met the water.
+/// Which level of a tile's chain a cone this wide can still tell apart.
 ///
-/// **Shared by the normal and the curvature**, which is the whole point: those are the first and
-/// second derivatives of one height field, and the moment the two disagreed about where a crest is
-/// the light would land where the surface is not.
-struct WaveSample
+/// **A mip level is the logarithm of a footprint, and that is the whole of the cone's arithmetic.**
+/// A level of the chain is the mean of the four texels above it, so the level whose texels are as
+/// wide as the cone carries the mean of exactly what the cone covers. Never above the finest level:
+/// a cone narrower than a texel has nothing further to be shown.
+float waveLevel(uint cascade, float footprint)
 {
-    /// How much of this wave the cone can still tell apart, from none of it to all.
-    float mDetail;
+    const float texel = frame.mWaveExtent[cascade] / float(textureSize(waveSurface[cascade], 0).x);
 
-    /// How far through its cycle it is here, in radians.
-    float mPhase;
-};
-
-/// Reads one component of the spectrum at `at`, which both callers pass through `drifted` first —
-/// the gradient and the curvature have to be taken of the same displaced field.
-WaveSample sampleWave(GpuWave wave, vec2 at, float time, float footprint)
-{
-    WaveSample result;
-    result.mDetail = resolved(TAU / wave.mWavenumber, footprint);
-    result.mPhase = wave.mWavenumber * dot(wave.mDirection, at) - wave.mSpeed * time;
-    return result;
+    return max(log2(footprint / texel), 0.0);
 }
 
-/// The water's surface where a ray met it: one read of the wave field, and everything taken from it.
+/// The water's surface where a ray met it: one read of each tile, and everything taken from it.
 ///
-/// **The normal, the elevation and what the cone could not resolve of either, out of one loop.** They
-/// are derivatives and moments of a single height field, and the moment two of them are computed
-/// apart the light lands where the surface is not — which is the same argument `WaveSample` makes one
-/// level down.
+/// **The normal, the elevation and what the cone could not resolve of either, out of three fetches a
+/// tile.** They are derivatives and moments of a single height field, and the moment two of them are
+/// computed apart the light lands where the surface is not.
 struct WaterSurface
 {
     /// Unit, from the gradient of the height field.
@@ -125,12 +91,12 @@ struct WaterSurface
 
 /// Reads the surface at a point.
 ///
-/// The height is `sum(A sin(k dot(d, p) - w t))`; the normal is its slope and `caustic`
-/// differentiates the same field once more, so none of the three can disagree about where a crest is.
-WaterSurface waterSurfaceAt(vec2 at, float time, float footprint)
+/// **Everything in the struct comes out of the same tiles**, which is what the moments were
+/// composed into those textures for: `E[f^2] - E[f]^2` off one level of one chain is the variance
+/// that level averaged away, where a filter applied here would be a second opinion about the same
+/// field. Two fetches at the level the cone reaches, and the tile's own mean beside them.
+WaterSurface waterSurfaceAt(vec2 at, float footprint)
 {
-    const vec2 here = drifted(at, time);
-
     WaterSurface surface;
     surface.mHeight = 0.0;
     surface.mLostSlope = 0.0;
@@ -139,30 +105,28 @@ WaterSurface waterSurfaceAt(vec2 at, float time, float footprint)
     vec2 slope = vec2(0.0);
     float variance = 0.0;
 
-    for (uint i = 0u; i < WAVE_COUNT; ++i)
+    // **The tiles add rather than one of them being chosen.** Each carries the whole spectrum at
+    // half its variance, so the sum is one sea of the roughness asked for — and their widths are not
+    // multiples of one another, so the sum repeats only at a distance no frame contains.
+    for (uint cascade = 0u; cascade < WAVE_CASCADES; ++cascade)
     {
-        const GpuWave wave = waves[i];
-        const WaveSample sampled = sampleWave(wave, here, time, footprint);
-        const float steepness = wave.mAmplitude * wave.mWavenumber;
+        const vec2 uv = waveCoordinate(cascade, at);
+        const float level = waveLevel(cascade, footprint);
 
-        // A sinusoid of amplitude `a` has mean square `a^2 / 2`, and the spectrum's components are
-        // independent, so the sum of those is the whole of the surface's variance. **Taken off the
-        // same table the shape comes from** rather than handed down beside it: this is a frame
-        // constant and could have been one, and a sea state that disagreed with its own waves would
-        // be a surf line drawn where the water is not.
-        const float energy = 0.5 * wave.mAmplitude * wave.mAmplitude;
-        variance += energy;
+        const vec4 field = textureLod(waveSurface[cascade], uv, level);
+        const vec4 curve = textureLod(waveCurvature[cascade], uv, level);
 
-        // How much of each the cone threw away. `mDetail` is an amplitude scale, so what survives of
-        // a variance is its square.
-        const float dropped = 1.0 - sampled.mDetail * sampled.mDetail;
-        surface.mLostSlope += dropped * 0.5 * steepness * steepness;
-        surface.mLostHeight += dropped * energy;
-        if (sampled.mDetail <= 0.0)
-            continue;
+        surface.mHeight += field.x;
+        slope += field.yz;
 
-        slope += wave.mDirection * (sampled.mDetail * steepness * cos(sampled.mPhase));
-        surface.mHeight += sampled.mDetail * wave.mAmplitude * sin(sampled.mPhase);
+        // The floor is the chain's own rounding and nothing else: both means are half floats, and
+        // the difference of two nearly equal ones can land a hair under nought.
+        surface.mLostHeight += max(field.w - field.x * field.x, 0.0);
+        surface.mLostSlope += max(curve.w - dot(field.yz, field.yz), 0.0);
+
+        // The last level is one texel, so it is the tile's own mean square elevation — the sea state
+        // itself, taken off the textures the shape comes from rather than handed down beside them.
+        variance += textureLod(waveSurface[cascade], uv, WAVE_COARSEST).w;
     }
 
     surface.mNormal = normalize(vec3(-slope, 1.0));
@@ -260,9 +224,9 @@ float foamReaching(WaterSurface surface, float depth, float fall, float runout)
 /// **Caustics are ray density**, and a change in density is the determinant of the Jacobian of the
 /// map from where light met the surface to where it landed. For small slopes that map is
 /// `q = p - bend * depth * grad(h)`, so its Jacobian is `I - bend * depth * H` with `H` the Hessian
-/// of the same height field the normals come from — and because that field is a sum of sinusoids,
-/// `H` is written out here rather than sampled, filtered or splatted. No photons, no buffer, no
-/// noise: the light is where the arithmetic says it is.
+/// of the same height field the normals come from — which is why the transform composes the
+/// curvature into a texture of its own rather than leaving it to be differenced here. No photons, no
+/// buffer, no noise: the light is where the arithmetic says it is.
 ///
 /// The small-angle approximation is the right one for this game. Vvardenfell's water is thirty
 /// metres deep at its very worst and a few at the shore, with slopes under a seventh, so the exact
@@ -274,37 +238,32 @@ float foamReaching(WaterSurface surface, float depth, float fall, float runout)
 /// Measured on the reference renderer at this sea state, twelve pixels in ninety thousand came out
 /// differing by more than one level. It is what would put prism edges on cusps if the surface ever
 /// got steep enough for the determinant to approach zero, and it goes in when it does.
-float caustic(vec2 at, float depth, float time, float footprint)
+float caustic(vec2 at, float depth, float footprint)
 {
-    // Differentiated at the drifted position rather than the true one, which drops the chain rule's
-    // contribution from the drift itself. That field turns over six hundred units against a
-    // curvature set by ten, so its own Jacobian is within a fifth of the identity, and what the
-    // omission costs is a slow variation in how strong the caustics are — which is indistinguishable
-    // from the variation real water already has.
-    const vec2 here = drifted(at, time);
-
-    // Second derivatives of `sum(A sin(k dot(d, p) - w t))`, which are `-A k^2 d_i d_j sin`. Three
-    // numbers rather than four, because a Hessian is symmetric: xx, yy, and the shared off-diagonal.
+    // Three numbers rather than four, because a Hessian is symmetric: xx, yy, and the shared
+    // off-diagonal.
     vec3 hessian = vec3(0.0);
     float traceVariance = 0.0;
-    for (uint i = 0u; i < WAVE_COUNT; ++i)
+
+    for (uint cascade = 0u; cascade < WAVE_CASCADES; ++cascade)
     {
-        const GpuWave wave = waves[i];
-        const WaveSample sampled = sampleWave(wave, here, time, footprint);
-        if (sampled.mDetail <= 0.0)
-            continue;
+        const vec2 uv = waveCoordinate(cascade, at);
+        const float level = waveLevel(cascade, footprint);
 
-        const float amplitude = sampled.mDetail * wave.mAmplitude * wave.mWavenumber * wave.mWavenumber;
-        const float second = -amplitude * sin(sampled.mPhase);
+        const vec3 curve = textureLod(waveCurvature[cascade], uv, level).xyz;
+        hessian += curve;
 
-        hessian += second
-            * vec3(wave.mDirection.x * wave.mDirection.x, wave.mDirection.y * wave.mDirection.y,
-                wave.mDirection.x * wave.mDirection.y);
+        // **How far `tr(H)` still fluctuates at the level this pixel reads**, for the gain below.
+        // The coarsest level is the whole tile's mean square and the level here is the footprint's,
+        // so what the cone averaged away is the second less the square of the trace it left — and
+        // the fluctuation that survives is the whole less that. At the finest level nothing was
+        // averaged away and this is the tile's own variance; at the coarsest the surface is flat and
+        // there is nothing left to correct.
+        const float whole = textureLod(waveVariance[cascade], uv, WAVE_COARSEST).x;
+        const float local = textureLod(waveVariance[cascade], uv, level).x;
+        const float trace = curve.x + curve.y;
 
-        // What this component contributes to the variance of `tr(H)`, for the gain below. A
-        // sinusoid of amplitude `a` has mean square `a^2 / 2`, the direction drops out because
-        // `d_x^2 + d_y^2` is one, and the components are independent — so the sum is the whole of it.
-        traceVariance += 0.5 * amplitude * amplitude;
+        traceVariance += max(whole - max(local - trace * trace, 0.0), 0.0);
     }
 
     // One determinant and not a ratio of two, because this surface is not displaced: the quad stays
@@ -324,13 +283,11 @@ float caustic(vec2 at, float depth, float time, float footprint)
     //
     //   E[1 / det] = 1 - E[v] + Var[u] + ...
     //
-    // and `E[det H]` is zero for a sum of independent sinusoids — the `Hxx Hyy` and `Hxy^2` terms
-    // are the same sum — which leaves `Var[u] = bend^2 * sum (A k^2)^2 / 2` as the whole of the
-    // second order. That is `traceVariance`, gathered in the loop above for two more instructions,
-    // and it is the same everywhere in the field: the gain it removes is a flat one, so every
-    // bright line and dark cell survives it untouched. Measured over a bed at the depth cap, the
-    // term went from 12.3 per cent more light than fell on the water to 2.4, and the pattern's
-    // contrast did not move at all — 0.3661 against 0.3662.
+    // and `E[det H]` is zero for a Gaussian field — the `Hxx Hyy` and `Hxy^2` terms have the same
+    // expectation — which leaves `Var[u] = bend^2 * Var[tr H]` as the whole of the second order.
+    // That is `traceVariance`, read off a chain that was already being sampled, and it varies only
+    // with how much of the surface the cone can see: the gain it removes is flat across a footprint,
+    // so every bright line and dark cell survives it untouched.
     //
     // The floor on the denominator is what the ceiling means, so there is one number to state.
     return 1.0 / (max(abs(determinant), 1.0 / WATER_CAUSTIC_MAX) * (1.0 + bend * bend * traceVariance));

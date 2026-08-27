@@ -7,6 +7,7 @@
 #include "camera.h"
 #include "portable.h"
 #include "scene.h"
+#include "wave.h"
 
 // Included verbatim by both the shader and the C++ that fills it in, so the two cannot disagree
 // about a field. Scalar block layout is what makes that possible: a `vec3` is twelve bytes on both
@@ -394,6 +395,14 @@ namespace Rtx::Shaders
         /// path passes its own clock.
         float mTime;
 
+        /// How wide each of the sea's tiles is, in world units, in the order they are bound.
+        ///
+        /// **What turns a world position into a texture coordinate and a cone width into a level.**
+        /// The tiles are a compile-time table and could have been a shader constant; they are handed
+        /// over instead so what the shader divides by is what `WavePass` actually built, rather than
+        /// a second copy of it that a change to the first would leave behind.
+        float mWaveExtent[WAVE_CASCADES];
+
         /// The cell's own ambient, linear, and what a path is terminated with.
         ///
         /// **No longer added on top of the light that is traced, which is what it used to be.**
@@ -477,7 +486,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 828, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 836, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST
