@@ -148,7 +148,8 @@ namespace Rtx
             EXPECT_LT(early * late, 0.99f) << "the portrait would be pinned to the horizon";
         }
 
-        /// A moon arrives and leaves twice over: once by the hour, once by where it is on its arc.
+        /// A moon arrives and leaves three times over: by the hour, by where it is on its arc, and
+        /// by whatever the weather lets through.
         ///
         /// Masser passes the early-fade angle of 39.5 degrees at `16 + 39.5 / 7.826087` — five hours
         /// and three minutes after it rises — so at eight in the evening it is above the horizon and

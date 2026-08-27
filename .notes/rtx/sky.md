@@ -58,30 +58,7 @@ indirect light, and the sheets carry no mip chain to blur it away.
 
 ---
 
-## 2. The deck's horizon fade is a number this renderer chose
-
-**Root cause.** `CLOUD_HORIZON = 0.28` is a smoothstep in `sin(elevation)` picked to hide the
-stretch. The engine's own fade is `ModVertexAlphaVisitor::Clouds`, which writes vertex alpha by
-index: 49 to 64 get nought, 33 to 48 get 0.251, the rest get one.
-
-On the vanilla mesh, with its `NiTriShape` fifteen units under its `NiNode`, those are rings at
-**4.86 and 15.06 degrees** of elevation, with full cover from the ring above at **27.39**. Ours
-reaches 1.0 by 16.2 degrees and still draws 0.29 of a deck at 5.7, so it hangs cloud lower than the
-engine does and reaches full cover higher.
-
-**The fix.** `CloudShell` already walks that mesh and fits its shape. It can read the rings too.
-
-- Collect the distinct ring elevations. The lowest is the deck's rim and the next is where the
-  engine's quarter alpha sits; the one above that is full cover.
-- `CloudDeck` carries the three, and the shader interpolates the engine's own 0, 0.251 and 1 between
-  them instead of a smoothstep.
-- A mesh with fewer than three rings keeps a rim and a full-cover elevation and no middle.
-- Test: the synthetic layer in `cloudshell.cpp` gains rings at known elevations, and the fade is
-  asserted at each of them and half way between.
-
----
-
-## 3. The cloud deck is an emission and is never lit
+## 2. The cloud deck is an emission and is never lit
 
 **Root cause.** `CloudDeck::mColour` is the weather's air times what its own daylight says a cloud is
 worth, and `cloudDeck` returns that times coverage. No sun, no moon, no sky reaches it, it casts
@@ -124,7 +101,7 @@ long the deck keeps the sun has to come from somewhere else.
 
 ---
 
-## 4. What terminates a path is what the open sky delivers
+## 3. What terminates a path is what the open sky delivers
 
 `mAmbient` used to be six times the dome it stood for a bounce of, so a surface in a crevice was lit
 more than the open ground beside it. `skyFill` closed that: the sky now delivers the weather's
@@ -145,19 +122,21 @@ that shadows the world is the same machinery seen from another side.
 The moon that arrived whole thirty degrees up is done: it was `MoonMoment::mShadowBlend`, which the
 engine has and the ray tracer was not carrying. Nothing was invented for it and nothing else moved.
 
-Step 1 first, because step 3 needs the same image reader and the same budget rule, and it is far
+The deck's horizon fade is done too. It was `ModVertexAlphaVisitor::Clouds` reduced to the three
+crossing radii its bands stop at, read off the same mesh `CloudShell` already walks — 1.17, 1.72 and
+2.50 tiles — with the engine's own `paintClouds` mixing the deck's colour toward the fog over the
+same stretch. `CLOUD_HORIZON` is gone.
+
+Step 1 first, because step 2 needs the same image reader and the same budget rule, and it is far
 cheaper to get both right on the sheets than on the deck.
 
-Step 2 next: it is contained, it is content-derived, and it changes the picture where the deck meets
-the haze rather than everywhere.
+Step 2 last, and in its own six steps. It is the one that can regress a day that has just been tuned.
 
-Step 3 last, and in its own six steps. It is the one that can regress a day that has just been tuned.
-
-Step 4 stays open.
+Step 3 stays open.
 
 ## What must still hold at each step
 
-- `openmw-rtxtool shot --hour 12` is unchanged in every step but 3, and in 3 it changes only where
+- `openmw-rtxtool shot --hour 12` is unchanged in every step but 2, and in 2 it changes only where
   cloud is drawn.
 - The sky's total delivered light equals the weather's ambient at night, whatever the layers say.
 - `components-tests` and `openmw-tests` pass, and the formatting check is clean.

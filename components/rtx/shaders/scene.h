@@ -115,6 +115,12 @@ namespace Rtx::Shaders
     /// a lantern with a white sphere around it rather than a halo.
     RTX_CONST float INV_FOUR_PI = 0.25f * INV_PI;
 
+    /// What the engine paints the second row of its cloud mesh with.
+    ///
+    /// `ModVertexAlphaVisitor::Clouds`'s own 64 over 255, and the only number in the deck's fade
+    /// that is not a radius read off the mesh. `CloudShell::mRings` carries where it applies.
+    RTX_CONST float CLOUD_RING_ALPHA = 0.25098f;
+
     /// Irradiance of the sun against the sky it is set in.
     ///
     /// Not a physical figure: exposure absorbs any overall scale, so what matters is the ratio

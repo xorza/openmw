@@ -143,6 +143,7 @@ namespace Rtx
 
             .mTiles = textures.mShell.mTiles,
             .mCurvature = textures.mShell.mCurvature,
+            .mRings = textures.mShell.mRings,
 
             .mTexture = slot,
             .mNext = textures.cloudsOf(next),

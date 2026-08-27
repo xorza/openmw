@@ -1,6 +1,7 @@
 #pragma once
 
 #include <osg/Vec2f>
+#include <osg/Vec3f>
 
 namespace osg
 {
@@ -49,6 +50,21 @@ namespace Rtx
         /// height, which is what makes it a pure number. Nought is a flat plane, which is what the
         /// deck was drawn on before this was read.
         float mCurvature = 0.0f;
+
+        /// Where the engine's own fade sits, as three crossing radii in texture tiles: the last one
+        /// carrying a whole deck, the one carrying a quarter of it, and the rim past which there is
+        /// none.
+        ///
+        /// **`ModVertexAlphaVisitor::Clouds` by way of the mesh it is applied to.** That rule paints
+        /// vertex alpha by index — nought on the outermost ring, `CLOUD_RING_ALPHA` on the one
+        /// inside it, one everywhere else — and the rasterizer then interpolates it linearly across
+        /// each triangle. A triangle interpolates linearly in position, and along a ring-to-ring edge
+        /// position is linear in radius, so the whole of that fade is these three radii and a
+        /// straight line between them.
+        ///
+        /// On Morrowind's own cap they come to 1.17, 1.72 and 2.50 tiles, which is a deck whole above
+        /// 27 degrees of elevation, a quarter of one at 15, and nothing under 4.9.
+        osg::Vec3f mRings;
     };
 
     /// Reads it off `Models/skyclouds`.

@@ -88,10 +88,12 @@ namespace Rtx::Shaders
         /// is what the engine rotates its cloud mesh by.
         float mTurn;
 
-        /// The layer's height in texture tiles and its curvature, off the mesh. `CloudShell` holds
-        /// what each of them means and why neither is a constant.
+        /// The layer's height in texture tiles, its curvature, and the three crossing radii the
+        /// engine's own fade turns on. `CloudShell` holds what each of them means and why none of
+        /// them is a constant.
         vec2 mTiles;
         float mCurvature;
+        vec3 mRings;
 
         uint mTexture;
         uint mNext;
@@ -426,10 +428,10 @@ namespace Rtx::Shaders
     // reads them are different compilers.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
     static_assert(sizeof(MoonDisc) == 80, "MoonDisc must be scalar-packed on every side");
-    static_assert(sizeof(CloudDeck) == 48, "CloudDeck must be scalar-packed on every side");
+    static_assert(sizeof(CloudDeck) == 60, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 20, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 776, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 788, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

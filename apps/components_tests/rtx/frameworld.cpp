@@ -14,7 +14,9 @@ namespace Rtx
     {
         /// A layer to hang a deck on, standing in for what the cloud mesh is read for. Morrowind's
         /// own comes to 0.711 tiles up at a curvature of 0.057; the numbers here are only distinct.
-        const Rtx::CloudShell sShell{ .mTiles = osg::Vec2f(0.75f, -0.75f), .mCurvature = 0.06f };
+        const Rtx::CloudShell sShell{
+            .mTiles = osg::Vec2f(0.75f, -0.75f), .mCurvature = 0.06f, .mRings = osg::Vec3f(1.0f, 1.5f, 2.0f)
+        };
 
         /// A world where no two numbers are the same, so a field written from the wrong one shows.
         FrameWorld distinct()
@@ -44,6 +46,7 @@ namespace Rtx
                 .mTurn = 1.25f,
                 .mTiles = osg::Vec2f(0.625f, -0.6875f),
                 .mCurvature = 0.09375f,
+                .mRings = osg::Vec3f(0.8125f, 1.3125f, 1.9375f),
                 .mTexture = 4u,
                 .mNext = 9u,
             };
@@ -121,6 +124,7 @@ namespace Rtx
             EXPECT_EQ(constants.mClouds.mTurn, world.mClouds.mTurn);
             EXPECT_EQ(constants.mClouds.mTiles, world.mClouds.mTiles);
             EXPECT_EQ(constants.mClouds.mCurvature, world.mClouds.mCurvature);
+            EXPECT_EQ(constants.mClouds.mRings, world.mClouds.mRings);
             EXPECT_EQ(constants.mClouds.mTexture, world.mClouds.mTexture);
             EXPECT_EQ(constants.mClouds.mNext, world.mClouds.mNext);
 
@@ -277,6 +281,7 @@ namespace Rtx
 
             EXPECT_EQ(deck.mTiles, sShell.mTiles);
             EXPECT_EQ(deck.mCurvature, sShell.mCurvature);
+            EXPECT_EQ(deck.mRings, sShell.mRings);
         }
 
         /// The stars go out when the weather keeps them in, and the sheet is not even named then.

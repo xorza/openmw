@@ -27,26 +27,14 @@ vec3 skyGlow(vec3 direction)
     return skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction) + frame.mSkyFill;
 }
 
-/// Where the deck stops being drawn and starts being the haze it fades into, as a height above the
-/// horizon.
-///
-/// **The layer has a rim, and the last stretch up to it is all stretch.** Its curvature brings the
-/// sheet to a finite ring rather than letting the tiles run away, but the whole band under a few
-/// degrees still lands inside that ring — the same few texels smeared radially across a sixth of the
-/// sky. The engine fades the same band out by hand, painting its bottom two rings of vertices at a
-/// quarter alpha and none; this is that fade without the vertices. And the colour it fades into is
-/// already right: the horizon *is* the fog, `mSkyHorizon` is that colour, so the deck arrives at it
-/// rather than being cut off in front of it.
-const float CLOUD_HORIZON = 0.28;
-
 /// What a ray that reached nothing finds in the cloud deck, and how much of the sky it hides.
 ///
 /// **The deck is where the ray crosses a layer over a curved world**, which is the thing the game's
 /// cloud mesh is a stand-in for and the shape `CloudShell` reads back out of it. Everything here is
 /// Morrowind's: the texture is the weather's own, the scroll and the bearing are what the engine
 /// turns its mesh by, the blend across a transition is the same factor, the layer's height and
-/// curvature are its mesh's, and the colour is the fog lifted by what its own daylight says a cloud
-/// is worth against the air.
+/// curvature and where it fades out are its mesh's, and the colour is the fog lifted by what its own
+/// daylight says a cloud is worth against the air.
 ///
 /// **Alpha is coverage and the colour is emission**, which is the material the engine gives it: an
 /// unlit alpha-tracking one, so a cloud owes nothing to where the sun is and a thin cloud lets the
@@ -57,11 +45,6 @@ vec3 cloudDeck(vec3 direction, out float covered)
 {
     covered = 0.0;
     if (!(frame.mClouds.mOpacity > 0.0) || frame.mClouds.mTexture == NO_TEXTURE || direction.z <= 0.0)
-        return vec3(0.0);
-
-    // Into the haze rather than off an edge, for the reason `CLOUD_HORIZON` gives.
-    const float reaches = smoothstep(0.0, CLOUD_HORIZON, direction.z);
-    if (reaches <= 0.0)
         return vec3(0.0);
 
     // Turned about the zenith first, so the deck runs the way the weather drives it.
@@ -77,12 +60,30 @@ vec3 cloudDeck(vec3 direction, out float covered)
     // curvature of nothing on the flat layer a replaced mesh may be.
     const float fallen = 2.0 / (1.0 + sqrt(1.0 + 4.0 * frame.mClouds.mCurvature * dot(plane, plane)));
 
-    const vec2 uv = along * frame.mClouds.mTiles * fallen + vec2(0.0, frame.mClouds.mScroll);
+    const vec2 laid = along * frame.mClouds.mTiles * fallen;
+
+    // **How far out the ray met the layer, which is what the engine's fade is written in.** It paints
+    // the outermost ring of its mesh at nothing and the one inside it at a quarter, and a triangle
+    // between two rings interpolates that linearly in position — so the fade is a straight line in
+    // this radius, and the three radii it turns on came off the same mesh.
+    const vec3 rings = frame.mClouds.mRings;
+    const float reach = length(laid);
+    if (reach >= rings.z)
+        return vec3(0.0);
+
+    // Two clamped ramps nested rather than a pair of branches: the inner one carries the deck from
+    // whole to a quarter and the outer takes what is left of it to nothing, and each is already at
+    // its own end wherever the other is running. A band the rule left empty divides by nothing.
+    const float inner = clamp((reach - rings.x) / max(rings.y - rings.x, 1.0e-6), 0.0, 1.0);
+    const float outer = clamp((reach - rings.y) / max(rings.z - rings.y, 1.0e-6), 0.0, 1.0);
+    const float reaches = mix(mix(1.0, CLOUD_RING_ALPHA, inner), 0.0, outer);
+
+    const vec2 uv = laid + vec2(0.0, frame.mClouds.mScroll);
 
     // **The top mip and no cone.** A deck seen edge-on wants a level off the ray's gradient, and the
     // gradient is what the hardware works out for itself from neighbouring lanes, which a ray tracer
-    // does not have. The horizon fade is what stands in: it takes the texture out over exactly the
-    // band where the stretch would alias.
+    // does not have. The engine's own fade is what stands in: the band where the stretch would alias
+    // is the band it takes the deck out over.
     const vec4 near = textureLod(textures[nonuniformEXT(frame.mClouds.mTexture)], uv, 0.0);
     const vec4 far = frame.mClouds.mNext == NO_TEXTURE
         ? near
@@ -91,7 +92,11 @@ vec3 cloudDeck(vec3 direction, out float covered)
     const vec4 cloud = mix(near, far, frame.mClouds.mBlend);
 
     covered = cloud.a * reaches * frame.mClouds.mOpacity;
-    return frame.mClouds.mColour * covered;
+
+    // **And the colour crosses to the air over the same stretch**, which is the second thing the
+    // engine does with that vertex alpha: `paintClouds` mixes the deck toward the fog by it, so the
+    // last rings of cloud are the horizon's own colour rather than a thin wash of a distant one.
+    return mix(frame.mSkyHorizon, frame.mClouds.mColour, reaches) * covered;
 }
 
 /// What the nebulae and the constellations send back along a ray.

@@ -17,6 +17,8 @@
 #include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
 
+#include "shaders/scene.h"
+
 namespace Rtx
 {
     namespace
@@ -47,15 +49,29 @@ namespace Rtx
                 mPlaced.reserve(mPlaced.size() + vertices->size());
                 mCoords.reserve(mCoords.size() + coords->size());
 
+                mAlphas.reserve(mAlphas.size() + vertices->size());
+
                 for (std::size_t i = 0; i < vertices->size(); ++i)
                 {
                     mPlaced.push_back(placed.preMult((*vertices)[i]));
                     mCoords.push_back((*coords)[i]);
+
+                    // **`ModVertexAlphaVisitor::Clouds`, applied here rather than read.** It writes
+                    // by vertex index and nothing in the file records what it wrote, so the only way
+                    // to know what the engine fades a mesh by is to run its rule over the same mesh.
+                    // A file it makes nonsense of is one this makes the same nonsense of, which is
+                    // the whole point of copying the rule instead of guessing at its intent.
+                    mAlphas.push_back(i >= 49 && i <= 64 ? 0.0f
+                            : i >= 33 && i <= 48         ? Shaders::CLOUD_RING_ALPHA
+                                                         : 1.0f);
                 }
             }
 
             std::vector<osg::Vec3f> mPlaced;
             std::vector<osg::Vec2f> mCoords;
+
+            /// What `ModVertexAlphaVisitor::Clouds` would paint each of them with.
+            std::vector<float> mAlphas;
         };
 
         /// The sagitta a mesh's vertices describe, in the units they were modelled in.
@@ -190,6 +206,34 @@ namespace Rtx
         }
     }
 
+    namespace
+    {
+        /// The three radii the engine's fade turns on, in the units the vertices were modelled in.
+        ///
+        /// **Reduced from the alpha it paints rather than from the ring count.** What matters is
+        /// where each alpha level stops, and a level's outer edge is the furthest vertex carrying
+        /// it — so a mesh whose rings are not circles, or whose rows the rule splits differently,
+        /// still comes out as the fade the rasterizer would draw.
+        osg::Vec3f fadeRadii(const std::vector<osg::Vec3f>& placed, const std::vector<float>& alphas)
+        {
+            osg::Vec3f reach;
+            for (std::size_t i = 0; i < placed.size(); ++i)
+            {
+                const float radius = std::hypot(placed[i].x(), placed[i].y());
+                const std::size_t band = alphas[i] >= 1.0f ? 0u : alphas[i] > 0.0f ? 1u : 2u;
+
+                reach[band] = std::max(reach[band], radius);
+            }
+
+            // A band nobody painted reaches no further than the one inside it, which collapses its
+            // stretch of the ramp to nothing rather than running it backwards.
+            reach[1] = std::max(reach[1], reach[0]);
+            reach[2] = std::max(reach[2], reach[1]);
+
+            return reach;
+        }
+    }
+
     CloudShell readCloudShell(osg::Node& mesh)
     {
         ShellReader read;
@@ -211,6 +255,7 @@ namespace Rtx
         return CloudShell{
             .mTiles = osg::Vec2f(float(surface->mHeight * std::abs(*rate)), float(surface->mHeight * *rate)),
             .mCurvature = float(surface->mCurvature * surface->mHeight),
+            .mRings = fadeRadii(read.mPlaced, read.mAlphas) * float(std::abs(*rate)),
         };
     }
 
