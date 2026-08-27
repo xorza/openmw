@@ -159,6 +159,13 @@ namespace SceneUtil
 
         float mActorFade;
 
+        // How much of the base colours above is arriving, as `animate` last worked it out. Kept
+        // because a consumer working in linear light cannot use the frame's colours: those are the
+        // recorded numbers, which are display-encoded, and scaling one is not scaling the light it
+        // stands for.
+        float mDiffuseScale;
+        float mAmbientScale;
+
         LightController mController;
 
         size_t mLastAppliedFrame;
@@ -183,8 +190,28 @@ namespace SceneUtil
         /// The animation this light's brightness follows. Steady until something gives it a type.
         LightController& getController() { return mController; }
 
-        /// Writes what this light radiates in the given frame.
-        /// @param simulationTime the frame stamp's, in seconds.
+        /// What the light radiates before anything dims it, in the recorded numbers.
+        const osg::Vec4f& getBaseDiffuse() const { return mBaseDiffuse; }
+
+        const osg::Vec4f& getBaseAmbient() const { return mBaseAmbient; }
+
+        /// What this frame multiplies the recorded diffuse and specular by: the animation and the
+        /// actor's fade together.
+        float getDiffuseScale() const { return mDiffuseScale; }
+
+        /// And what it multiplies the recorded ambient by, which the animation does not reach.
+        /// `update` says why.
+        float getAmbientScale() const { return mAmbientScale; }
+
+        /// Works out how much of what this light radiates is arriving at `simulationTime` seconds:
+        /// the animation at that instant, and the fade of whatever carries the light.
+        ///
+        /// **Safe for anyone to call, and safe to call twice.** The animation is a function of the
+        /// clock alone, so a renderer that would rather compute a light where it reads one gets the
+        /// same answer as the traversal that already did.
+        void animate(double simulationTime);
+
+        /// The same, and then writes the frame's colours for a rasterizer to draw from.
         void update(size_t frame, double simulationTime);
 
         void setEmpty(bool empty) { mEmpty = empty; }

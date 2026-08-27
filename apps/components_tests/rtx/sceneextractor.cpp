@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -29,6 +31,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
@@ -302,6 +305,12 @@ namespace Rtx
             EXPECT_EQ(origin * scene.getInstances()[1].mTransform, osg::Vec3f(0.0f, 20.0f, 0.0f));
         }
 
+        /// What a white lamp of radius 100 radiates, once `makeLight` has derived it.
+        ///
+        /// Intensity is scaled by the square of the recorded radius, so `100 * 100 * 0.25 * pi` is
+        /// 7853.98, and white decodes to one.
+        constexpr float sWhiteLampAtHundred = 7853.98f;
+
         /// A light in the graph, placed where the walk found it.
         osg::ref_ptr<SceneUtil::LightSource> makeLightSource(
             float radius, const osg::Vec4f& diffuse, const osg::Vec4f& ambient = osg::Vec4f())
@@ -352,13 +361,57 @@ namespace Rtx
             for (const Rtx::Light& light : scene.getLights())
                 EXPECT_EQ(light.mPosition, osg::Vec3f(10.0f, 20.0f, 30.0f)) << "a light stood somewhere else";
 
-            // 100 * 100 * 0.25 * pi = 7853.98, and white decodes to one.
-            EXPECT_NEAR(scene.getLights()[0].mIntensity.x(), 7853.98f, 0.01f);
+            EXPECT_NEAR(scene.getLights()[0].mIntensity.x(), sWhiteLampAtHundred, 0.01f);
             EXPECT_EQ(scene.getLights()[1].mIntensity, scene.getLights()[0].mIntensity)
                 << "an empty model dimmed the light hanging on it";
 
-            // The same lamp scaled by what 1.5 of ambient decodes to: 7853.98 * 2.53716 = 19926.77.
-            EXPECT_NEAR(scene.getLights()[2].mIntensity.x(), 19926.77f, 0.05f);
+            // The same lamp scaled by what 1.5 of ambient decodes to.
+            EXPECT_NEAR(scene.getLights()[2].mIntensity.x(), sWhiteLampAtHundred * 2.53716f, 0.05f);
+        }
+
+        /// A lamp the record says animates is mirrored at the instant the walk was told, not at rest.
+        ///
+        /// **Because nothing else here would do it.** The game animates its lights in the update
+        /// traversal, and the harness runs none over the cell it stages — so every lamp in a `shot`,
+        /// a `view` and a `bench` burned at its resting brightness while the same lamp in the game
+        /// flickered. The walk holds the world's clock already, and a light's animation is a
+        /// function of that clock alone, so the walk is where the two can be made to agree.
+        TEST(RtxSceneExtractorTest, aWalkMirrorsALampAtTheInstantItWasToldRatherThanAtRest)
+        {
+            osg::ref_ptr<SceneUtil::LightSource> lamp = makeLightSource(100.0f, osg::Vec4f(1, 1, 1, 1));
+            lamp->getController().setType(SceneUtil::LightController::LT_PulseSlow);
+
+            const auto litAt = [&lamp](double seconds) {
+                Rtx::SceneDesc scene;
+                SceneExtractor extractor(scene);
+                extractor.setSimulationTime(seconds);
+                extractor.extract(*lamp, osg::Matrixf::identity(), 0);
+
+                const std::span<const Rtx::Light> lights = scene.getLights();
+                EXPECT_EQ(lights.size(), 1u);
+
+                return lights.empty() ? 0.0f : lights[0].mIntensity.x();
+            };
+
+            float deepest = 0.0f;
+
+            // A pulse turns once in three seconds. Eight samples across it put one within an eighth
+            // of a turn of the peak, so the deepest is at least `0.35 * cos(pi / 8)` from rest.
+            for (int i = 0; i < 8; ++i)
+            {
+                const float lit = litAt(static_cast<double>(i) * 0.375);
+
+                // A pulse swings 0.35 either way about what the lamp radiates at rest.
+                EXPECT_GE(lit, sWhiteLampAtHundred * 0.65f);
+                EXPECT_LE(lit, sWhiteLampAtHundred * 1.35f);
+
+                deepest = std::max(deepest, std::abs(lit - sWhiteLampAtHundred));
+            }
+
+            EXPECT_GT(deepest, sWhiteLampAtHundred * 0.32f) << "the walk mirrored the lamp at rest";
+
+            // And the instant is the whole of what decides it, so two walks over one clock agree.
+            EXPECT_EQ(litAt(1.25), litAt(1.25));
         }
 
         TEST(RtxSceneExtractorTest, theRootTransformIsAppliedAfterTheGraphsOwn)

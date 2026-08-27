@@ -1,6 +1,7 @@
 #include "lightmanager.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cstring>
 
 #include <osgUtil/CullVisitor>
@@ -663,6 +664,8 @@ namespace SceneUtil
     LightSource::LightSource()
         : mRadius(0.f)
         , mActorFade(1.f)
+        , mDiffuseScale(1.f)
+        , mAmbientScale(1.f)
         , mLastAppliedFrame(0)
     {
         setUpdateCallback(new LightSourceUpdateCallback);
@@ -676,6 +679,8 @@ namespace SceneUtil
         , mBaseAmbient(copy.mBaseAmbient)
         , mRadius(copy.mRadius)
         , mActorFade(copy.mActorFade)
+        , mDiffuseScale(copy.mDiffuseScale)
+        , mAmbientScale(copy.mAmbientScale)
         , mController(copy.mController)
         , mLastAppliedFrame(copy.mLastAppliedFrame)
     {
@@ -685,25 +690,31 @@ namespace SceneUtil
             mLight[i] = new Light(*copy.mLight[i].get(), copyop);
     }
 
-    void LightSource::update(size_t frame, double simulationTime)
+    void LightSource::animate(double simulationTime)
     {
-        // **No early out on an unchanged clock.** The light is double buffered, so a frame that
-        // wrote nothing leaves the other buffer holding whatever it held two frames ago — and what
-        // it held is not the base colour either, since LightManager's distance fade scales in place
-        // what it finds.
-        const float lit = mController.advance(simulationTime) * mActorFade;
-
-        Light* light = getLight(frame);
-        light->setDiffuse(mBaseDiffuse * lit);
-        light->setSpecular(mBaseSpecular * lit);
-
         // **The fade reaches the ambient and the animation does not.** The animation is a flame's,
         // and the two places the game writes an ambient both mean a light with no flame in it: a
         // Light spell's glow puts its whole output there, and a lamp carried in a pack adds a white
         // one so that it lights its bearer. The glow is why the fade has to arrive — without it a
         // Light spell burned at full strength up to the frame the actor's node mask cut, and then
         // went out.
-        light->setAmbient(mBaseAmbient * mActorFade);
+        mDiffuseScale = mController.brightnessAt(simulationTime) * mActorFade;
+        mAmbientScale = mActorFade;
+    }
+
+    void LightSource::update(size_t frame, double simulationTime)
+    {
+        animate(simulationTime);
+
+        // **No early out on an unchanged clock.** The light is double buffered, so a frame that
+        // wrote nothing leaves the other buffer holding whatever it held two frames ago — and what
+        // it held is not the base colour either, since LightManager's distance fade scales in place
+        // what it finds.
+        Light* light = getLight(frame);
+        assert(light != nullptr && "a light was put in the graph before it was told what it radiates");
+        light->setDiffuse(mBaseDiffuse * mDiffuseScale);
+        light->setSpecular(mBaseSpecular * mDiffuseScale);
+        light->setAmbient(mBaseAmbient * mAmbientScale);
     }
 
     void LightListCallback::operator()(osg::Node* node, osgUtil::CullVisitor* cv)

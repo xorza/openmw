@@ -5,6 +5,9 @@
 
 #include <osg/Vec4f>
 
+#include <algorithm>
+#include <cmath>
+
 namespace
 {
     /// The colour of the flame a lamp burns with.
@@ -47,6 +50,8 @@ namespace
         {
         }
 
+        const SceneUtil::LightSource& source() const { return *mSource; }
+
         /// Runs one frame and gives back what the light now radiates.
         const SceneUtil::Light& lit(double seconds, size_t frame)
         {
@@ -77,6 +82,11 @@ namespace
         EXPECT_EQ(dimmed.getDiffuse(), osg::Vec4f(0.5f, 0.25f, 0.125f, 0.5f)) << "half faded is half lit";
         EXPECT_EQ(dimmed.getSpecular(), osg::Vec4f(0.5f, 0.5f, 0.5f, 0.5f));
         EXPECT_EQ(dimmed.getAmbient(), osg::Vec4f(0.75f, 0.75f, 0.75f, 0.5f));
+
+        // The same two numbers, kept apart from the colours for a renderer that works in linear
+        // light: scaling a display-encoded colour is not scaling the light it stands for.
+        EXPECT_EQ(half.source().getDiffuseScale(), 0.5f);
+        EXPECT_EQ(half.source().getAmbientScale(), 0.5f);
 
         // What the distance fade reaches exactly at `actors processing range`, which is the frame
         // before the node mask takes the whole actor out of the picture.
@@ -112,18 +122,23 @@ namespace
     /// nowhere near.
     TEST(SceneUtilLightSourceTest, anAnimationReachesTheDiffuseAndNotTheAmbient)
     {
-        Lamp lamp(SceneUtil::LightController::LT_Flicker, /*fade=*/1.0f, sWhite);
+        // A pulse, because it is one sine and so what it must reach is a number rather than a hope:
+        // eight samples over its three-second turn put one of them within an eighth of a turn of the
+        // peak, so the deepest of them is at least `0.35 * cos(pi / 8)` from rest.
+        Lamp lamp(SceneUtil::LightController::LT_PulseSlow, /*fade=*/1.0f, sWhite);
 
-        // The first frame is what the flicker starts from: it has no elapsed time to advance over.
-        const SceneUtil::Light& first = lamp.lit(1.0, 1);
-        const osg::Vec4f started = first.getDiffuse();
-        EXPECT_EQ(first.getAmbient(), sWhite);
+        float deepest = 0.0f;
+        for (int i = 0; i < 8; ++i)
+        {
+            const SceneUtil::Light& lit = lamp.lit(static_cast<double>(i) * 0.375, static_cast<size_t>(i));
 
-        // A second apart, which is fifteen of the flicker's own ticks. Whichever way the phase sent
-        // it, the brightness moved by 0.375 and cannot have come back to where it started.
-        const SceneUtil::Light& later = lamp.lit(2.0, 2);
-        EXPECT_NE(later.getDiffuse(), started) << "the flicker never ran";
-        EXPECT_EQ(later.getAmbient(), sWhite);
+            EXPECT_EQ(lit.getAmbient(), sWhite) << "the animation reached the ambient, at sample " << i;
+            EXPECT_EQ(lamp.source().getAmbientScale(), 1.0f);
+
+            deepest = std::max(deepest, std::abs(lit.getDiffuse().x() - sFlame.x()));
+        }
+
+        EXPECT_GT(deepest, 0.32f) << "the animation never ran";
     }
 
     /// A frame writes what the light is, not what the frame before it left.

@@ -27,12 +27,15 @@ namespace Rtx
             return record;
         }
 
-        osg::ref_ptr<SceneUtil::Light> makeGraphLight(const osg::Vec4f& diffuse, const osg::Vec4f& ambient)
+        osg::ref_ptr<SceneUtil::LightSource> makeGraphLight(const osg::Vec4f& diffuse, const osg::Vec4f& ambient)
         {
             osg::ref_ptr<SceneUtil::Light> light = new SceneUtil::Light;
             light->setDiffuse(diffuse);
             light->setAmbient(ambient);
-            return light;
+
+            osg::ref_ptr<SceneUtil::LightSource> source = new SceneUtil::LightSource;
+            source->setLight(light);
+            return source;
         }
 
         /// The packing is `0xAABBGGRR`: red in the low byte.
@@ -109,7 +112,7 @@ namespace Rtx
                 const ESM::Light record = makeRecord(100, packed, 0);
                 const std::optional<Rtx::Light> fromRecord = makeLight(record, osg::Vec3f(1, 2, 3));
 
-                const osg::ref_ptr<SceneUtil::Light> graph
+                const osg::ref_ptr<SceneUtil::LightSource> graph
                     = makeGraphLight(SceneUtil::colourFromRGB(packed), osg::Vec4f());
                 const std::optional<Rtx::Light> fromGraph = makeLight(lightColour(*graph), 100.0f, osg::Vec3f(1, 2, 3));
 
@@ -457,7 +460,7 @@ namespace Rtx
                 SceneUtil::LightCommon(subtracting), SceneUtil::Mask_Lighting, /*isExterior=*/false);
             ASSERT_NE(built, nullptr);
 
-            const osg::Vec3f radiated = lightColour(*built->getLight(0));
+            const osg::Vec3f radiated = lightColour(*built);
             ASSERT_LT(radiated.x(), 0.0f) << "the graph did not build a light that subtracts, so this proves nothing";
 
             EXPECT_FALSE(makeLight(radiated, 100.0f, osg::Vec3f()).has_value()) << "the walk mirrored it anyway";
@@ -469,7 +472,7 @@ namespace Rtx
             const osg::ref_ptr<SceneUtil::LightSource> lit = SceneUtil::createLightSource(
                 SceneUtil::LightCommon(ordinary), SceneUtil::Mask_Lighting, /*isExterior=*/false);
 
-            EXPECT_TRUE(makeLight(lightColour(*lit->getLight(0)), 100.0f, osg::Vec3f()).has_value());
+            EXPECT_TRUE(makeLight(lightColour(*lit), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(ordinary, osg::Vec3f()).has_value());
 
             // **A black record subtracts nothing, so the flag on it decides nothing either.** Both
@@ -479,7 +482,7 @@ namespace Rtx
             const osg::ref_ptr<SceneUtil::LightSource> dark = SceneUtil::createLightSource(
                 SceneUtil::LightCommon(unlit), SceneUtil::Mask_Lighting, /*isExterior=*/false);
 
-            EXPECT_TRUE(makeLight(lightColour(*dark->getLight(0)), 100.0f, osg::Vec3f()).has_value());
+            EXPECT_TRUE(makeLight(lightColour(*dark), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(unlit, osg::Vec3f()).has_value());
         }
     }

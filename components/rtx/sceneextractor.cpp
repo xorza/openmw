@@ -406,7 +406,18 @@ namespace Rtx
                 skeleton->markReached(static_cast<unsigned int>(mFrame));
         }
         else if (auto* source = dynamic_cast<SceneUtil::LightSource*>(&node))
-            mExtractor.addLight(*source, placed(), mFrame, *mStats);
+        {
+            // **Worked out here rather than taken on trust**, because there is not always somebody
+            // to trust: the harness puts its lamps in a graph it never runs an update traversal
+            // over, so every one of them stood at its resting brightness — no flicker, no pulse and
+            // no actor fade — in the one tool a rendering change is meant to be checked with.
+            //
+            // The game's update traversal has already done this, on this same clock, and gets the
+            // same answer as this does: a light's animation is a function of the clock alone.
+            source->animate(mStamp->getSimulationTime());
+
+            mExtractor.addLight(*source, placed(), *mStats);
+        }
         else if (stepParticles(node))
         {
             // Neither of the two is a drawable or has a child, so there is no state set below them
@@ -849,21 +860,18 @@ namespace Rtx
     }
 
     void SceneExtractor::addLight(
-        const SceneUtil::LightSource& source, const osg::Matrixf& place, std::size_t frame, ExtractionStats& stats)
+        const SceneUtil::LightSource& source, const osg::Matrixf& place, ExtractionStats& stats)
     {
-        // **The buffer update has just finished writing.** A `LightSource` is double buffered
-        // because the draw thread may be reading the other one, and the mirror runs between the two
-        // — after `updateTraversal` and before `renderingTraversals` — so the frame the game is
-        // about to draw is the one to read.
-        const SceneUtil::Light* light = const_cast<SceneUtil::LightSource&>(source).getLight(frame);
-        if (light == nullptr)
-            return;
-
+        // **The recorded colours and this frame's scalars, and never the double-buffered pair the
+        // rasterizer draws from.** `lightColour` says why the two are not the same light: a scale
+        // of a display-encoded number is not a scale of the light it stands for. It leaves this
+        // walk with nothing to know about which buffer a frame belongs to.
+        //
         // **`LightSource::getEmpty` is not asked**, and that is deliberate: it means the model this
         // light hangs on has no geometry (`CheckEmptyLightVisitor`, `lightutil.cpp:17-38`), which is
         // a rasterizer's reason to skip a light and not a statement that the light is off. A `LIGH`
         // whose mesh is empty still burns.
-        const std::optional<Light> made = makeLight(lightColour(*light), source.getRadius(), place.getTrans());
+        const std::optional<Light> made = makeLight(lightColour(source), source.getRadius(), place.getTrans());
         if (!made.has_value())
             return;
 

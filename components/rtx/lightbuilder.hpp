@@ -18,7 +18,7 @@ namespace ESM
 
 namespace SceneUtil
 {
-    class Light;
+    class LightSource;
 }
 
 namespace Rtx
@@ -46,7 +46,7 @@ namespace Rtx
     /// @param radius the recorded one. Null where it is not a size a light can have.
     std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
-    /// What a light in the game's scene graph radiates, in the renderer's units.
+    /// What a light in the game's scene graph radiates this frame, in the renderer's units.
     ///
     /// **Both terms, because the content uses both.** A fixed-function pipeline had a diffuse and an
     /// ambient because it had two different things to do with them; a ray tracer has one, and it is
@@ -58,11 +58,18 @@ namespace Rtx
     /// same lamp on a table.
     ///
     /// **Decoded, because what the game hands over is not linear.** `SceneUtil::colourFromRGB`
-    /// divides a record's bytes by 255 and stops, so a `SceneUtil::Light` carries the file's own
-    /// numbers exactly as the record does — and this is the same decode `makeLight(const ESM::Light&)`
-    /// makes, which is what keeps a candle in a played frame as bright as the same candle in a
-    /// screenshot.
-    osg::Vec3f lightColour(const SceneUtil::Light& light);
+    /// divides a record's bytes by 255 and stops, so a `SceneUtil::LightSource` carries the file's
+    /// own numbers exactly as the record does — and this is the same decode
+    /// `makeLight(const ESM::Light&)` makes, which is what keeps a candle in a played frame as
+    /// bright as the same candle in a screenshot.
+    ///
+    /// **The recorded colours and this frame's scalars, rather than the colours the frame was
+    /// written with.** A flicker and an actor's fade are changes in what the light *radiates*, and
+    /// the numbers the graph carries are display-encoded — so the rasterizer's own scaling of them
+    /// arrives here raised to 2.4, which turns an even flicker of three tenths into a lopsided one
+    /// of eight tenths up and five down. The scalars are taken apart from the colours and applied
+    /// after the decode, where a half means a half.
+    osg::Vec3f lightColour(const SceneUtil::LightSource& source);
 
     /// What a weather says about the sky at one hour, in the renderer's own units.
     ///

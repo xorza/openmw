@@ -297,9 +297,8 @@ namespace Rtx
         ///        differing only in the `transform` given here. Anything the caller can keep is a
         ///        good anchor — a reference id, an actor's address, a terrain chunk — and a caller
         ///        that walks one whole graph, where every path is already distinct, can pass zero.
-        /// @param frame which of a `SceneUtil::LightSource`'s two buffers to read. The game passes
-        ///        the viewer's frame number, which is the one update has just finished writing;
-        ///        anything with no `LightManager` in its graph can leave it.
+        /// @param frame the game's own, which is what tells a semi-active `SceneUtil::Skeleton` it
+        ///        was reached. A caller with no actors in its graph can leave it.
         ///
         /// **A subtree, and it never reaches the residency.** What hides its geometry is a property
         /// of the world and not of any node under it, so a walk that starts part way down must not
@@ -356,8 +355,7 @@ namespace Rtx
         /// Places one light. **The graph and not the content files**, because that is where a light
         /// that moves with the thing carrying it exists: a torch in an NPC's hand is no cell
         /// record, and neither is a lamp something picked up and put down.
-        void addLight(
-            const SceneUtil::LightSource& source, const osg::Matrixf& place, std::size_t frame, ExtractionStats& stats);
+        void addLight(const SceneUtil::LightSource& source, const osg::Matrixf& place, ExtractionStats& stats);
 
         /// Resolves one drawable and places it. The visitor's whole contract with this class.
         ///

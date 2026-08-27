@@ -328,9 +328,10 @@ namespace Rtx
         };
     }
 
-    osg::Vec3f lightColour(const SceneUtil::Light& light)
+    osg::Vec3f lightColour(const SceneUtil::LightSource& source)
     {
-        return decodeColour(light.getDiffuse()) + decodeColour(light.getAmbient());
+        return decodeColour(source.getBaseDiffuse()) * source.getDiffuseScale()
+            + decodeColour(source.getBaseAmbient()) * source.getAmbientScale();
     }
 
     std::optional<Light> makeLight(const ESM::Light& record, const osg::Vec3f& position)
