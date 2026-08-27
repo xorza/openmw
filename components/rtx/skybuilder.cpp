@@ -13,7 +13,37 @@
 
 namespace Rtx
 {
-    std::uint32_t SkyTextures::cloudsOf(std::uint32_t weather) const
+    namespace
+    {
+        /// What a weather's own daylight says a cloud is worth against the air it hangs in.
+        ///
+        /// **Daylight, because that is the hour the engine's lift means what it says.** An eighth
+        /// added to a display-encoded colour is a multiplication in light, and how large a one
+        /// depends on the base: a clear day's fog is lifted by 1.40, 1.36 and 1.32 across the three
+        /// channels, the same weather's night by eight. The bright end is where the offset is small
+        /// against what it is added to and so behaves like the ratio a cloud actually is — a sheet
+        /// of droplets scattering back some fixed share more of the light than the clear air beside
+        /// it. Read there and applied everywhere, a day's deck comes out exactly where the engine
+        /// puts it and a night's follows its own sky down.
+        osg::Vec3f cloudLift(std::string_view weather)
+        {
+            const osg::Vec4f day = Sky::dayFog(weather);
+            const osg::Vec3f air = decodeColour(day);
+            const osg::Vec3f lit = decodeColour(Sky::cloudColour(day));
+
+            // **A channel a weather records as black holds no ratio**, and dividing by it is a
+            // division by however near nothing the decode came. One code value is the least a
+            // content file can write and still mean a colour, so under that the lift is not read.
+            const auto worth = [](float over, float under, float recorded) {
+                return recorded >= 1.0f / 255.0f ? over / under : 1.0f;
+            };
+
+            return osg::Vec3f(
+                worth(lit.x(), air.x(), day.x()), worth(lit.y(), air.y(), day.y()), worth(lit.z(), air.z(), day.z()));
+        }
+    }
+
+    std::uint32_t SkyContent::cloudsOf(std::uint32_t weather) const
     {
         if (weather >= mClouds.size() || mClouds[weather] == sNoIndex)
             return Shaders::NO_TEXTURE;
@@ -21,7 +51,17 @@ namespace Rtx
         return static_cast<std::uint32_t>(mClouds[weather]);
     }
 
-    SkyTextures addSkyTextures(SceneDesc& scene, Resource::SceneManager& scenes)
+    osg::Vec3f SkyContent::liftOf(std::uint32_t weather) const
+    {
+        // A lift of nothing is a deck of nothing, which no content says and no reading gives — so it
+        // is what an unread table means, the way `sNoIndex` is for the textures beside it.
+        if (weather >= mLift.size() || mLift[weather].length2() <= 0.0f)
+            return osg::Vec3f(1.0f, 1.0f, 1.0f);
+
+        return mLift[weather];
+    }
+
+    SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes)
     {
         const VFS::Manager& vfs = *scenes.getVFS();
         const auto hold = [&](const std::string& name) {
@@ -36,15 +76,22 @@ namespace Rtx
             return slot;
         };
 
-        SkyTextures loaded;
+        SkyContent loaded;
         loaded.mClouds.fill(sNoIndex);
 
         for (std::uint32_t weather = 0; weather < Shaders::WEATHER_COUNT; ++weather)
         {
-            const std::string_view named = Sky::cloudTexture(weatherName(weather));
-            if (!named.empty())
-                loaded.mClouds[weather] = hold(std::string(named));
+            const std::string_view named = weatherName(weather);
+            const std::string_view sheet = Sky::cloudTexture(named);
+            if (!sheet.empty())
+                loaded.mClouds[weather] = hold(std::string(sheet));
+
+            loaded.mLift[weather] = cloudLift(named);
         }
+
+        // **The shape the deck hangs on is the mesh's**, both of its numbers: how high the layer is
+        // in tiles of its own sheet, and how far it falls away over the ground it covers.
+        loaded.mShell = readCloudShell(scenes);
 
         // **The night sky is the mesh's**, every number of it: which sheet the field wears, how much
         // sky a tile of it covers, where it fades out, and where the six patches sit.
@@ -53,7 +100,7 @@ namespace Rtx
         return loaded;
     }
 
-    void dropSkyTextures(SceneDesc& scene, const SkyTextures& textures)
+    void dropSkyContent(SceneDesc& scene, const SkyContent& textures)
     {
         for (const Index slot : textures.mClouds)
             if (slot != sNoIndex)
@@ -62,8 +109,8 @@ namespace Rtx
         dropNightSky(scene, textures.mNight);
     }
 
-    Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const osg::Vec4f& fog,
-        const osg::Vec3f& storm, float scroll, const SkyTextures& textures)
+    Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const osg::Vec3f& air,
+        const osg::Vec3f& storm, float scroll, const SkyContent& textures)
     {
         const std::uint32_t slot = textures.cloudsOf(weather);
 
@@ -74,12 +121,18 @@ namespace Rtx
         // of whether it is outside is the whole of the difference.
         const float mixed = blend > 0.0f ? (blend < 1.0f ? blend : 1.0f) : 0.0f;
 
-        return Shaders::CloudDeck{
-            // A weather whose deck was never loaded has no deck, which is the same thing an interior
-            // has and is said the same way.
-            .mOpacity = slot == Shaders::NO_TEXTURE ? 0.0f : 1.0f,
+        // **The lift crosses with the sheet it belongs to**, on the deck's own schedule rather than
+        // the weather's: how much brighter than the air a cloud is belongs to the cloud, so it
+        // arrives when the cloud does. The fog under it is already the hour's and already blended.
+        const osg::Vec3f lift = textures.liftOf(weather) * (1.0f - mixed) + textures.liftOf(next) * mixed;
 
-            .mColour = decodeColour(Sky::cloudColour(fog)),
+        return Shaders::CloudDeck{
+            // A weather whose deck was never loaded has no deck, and neither has a sky whose mesh
+            // gave up no shape to hang one on — which is the same thing an interior has, said the
+            // same way.
+            .mOpacity = slot == Shaders::NO_TEXTURE || !(textures.mShell.mTiles.x() > 0.0f) ? 0.0f : 1.0f,
+
+            .mColour = osg::Vec3f(air.x() * lift.x(), air.y() * lift.y(), air.z() * lift.z()),
             .mBlend = mixed,
             .mScroll = scroll,
 
@@ -88,12 +141,15 @@ namespace Rtx
             // nothing to drive leaves the direction due north, and this at nought.
             .mTurn = std::atan2(storm.x(), storm.y()),
 
+            .mTiles = textures.mShell.mTiles,
+            .mCurvature = textures.mShell.mCurvature,
+
             .mTexture = slot,
             .mNext = textures.cloudsOf(next),
         };
     }
 
-    Shaders::StarField describeStars(float fade, float glare, float turn, const SkyTextures& textures)
+    Shaders::StarField describeStars(float fade, float glare, float turn, const SkyContent& textures)
     {
         const float seen = fade * glare;
 
@@ -112,7 +168,7 @@ namespace Rtx
     }
 
     void describePatches(
-        float turn, const SkyTextures& textures, std::span<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> patches)
+        float turn, const SkyContent& textures, std::span<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> patches)
     {
         // Straight up with no texture, which is a patch the sky skips — and what an interior and a
         // mesh with fewer than six of them both leave behind.

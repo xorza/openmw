@@ -147,21 +147,14 @@ namespace Rtx
     {
         Sun mSun;
 
-        /// Sky radiance, linear, at the horizon and overhead.
+        /// Sky radiance, linear, at the horizon and overhead. The horizon is the weather's fog
+        /// colour, which is also the air the cloud deck hangs in and is lifted off.
         osg::Vec3f mSkyHorizon;
         osg::Vec3f mSkyZenith;
 
         /// What an exterior gets in place of a cell's `AMBI`, which only interiors carry — the
         /// weather's own ambient, and across dusk the sun's light with its direction taken away.
         osg::Vec3f mAmbient;
-
-        /// The weather's fog colour as the file records it, undecoded.
-        ///
-        /// **The one thing here that is not in the renderer's units**, and it is deliberate: the
-        /// cloud deck is lit by this plus an eighth, added *before* the decode because that is where
-        /// the engine adds it, so handing over the linear colour would lose the only form the lift
-        /// is right in. `Sky::cloudColour` and `describeClouds` are the two halves of it.
-        osg::Vec4f mHaze;
 
         /// How far the stars have come out: the engine's `Stars` ramp at this hour, before the
         /// weather's glare is taken off it.

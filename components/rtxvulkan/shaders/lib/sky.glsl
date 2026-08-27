@@ -26,30 +26,26 @@ vec3 skyGlow(vec3 direction)
     return skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction);
 }
 
-/// How wide one tile of the cloud texture is across the sky.
-///
-/// The deck is a flat layer, so a direction meets it at `xy / z` — the tangent of its angle from
-/// straight up — and one at the zenith puts a tile's edge at forty-five degrees. Morrowind's own
-/// dome is about that: a handful of tiles from horizon to horizon.
-const float CLOUD_TILE = 1.0;
-
 /// Where the deck stops being drawn and starts being the haze it fades into, as a height above the
 /// horizon.
 ///
-/// **A flat layer's horizon is at infinity**, which is where `xy / z` goes as the ray levels out —
-/// so the tiles compress without bound and the texture turns to noise before they do. That is also
-/// what Morrowind's sky actually looks like, because the same place is where its fog takes over: the
-/// horizon *is* the fog, `mSkyHorizon` is that colour, and the deck arrives at it rather than being
-/// cut off in front of it.
+/// **The layer has a rim, and the last stretch up to it is all stretch.** Its curvature brings the
+/// sheet to a finite ring rather than letting the tiles run away, but the whole band under a few
+/// degrees still lands inside that ring — the same few texels smeared radially across a sixth of the
+/// sky. The engine fades the same band out by hand, painting its bottom two rings of vertices at a
+/// quarter alpha and none; this is that fade without the vertices. And the colour it fades into is
+/// already right: the horizon *is* the fog, `mSkyHorizon` is that colour, so the deck arrives at it
+/// rather than being cut off in front of it.
 const float CLOUD_HORIZON = 0.28;
 
 /// What a ray that reached nothing finds in the cloud deck, and how much of the sky it hides.
 ///
-/// **The deck is where the ray crosses a layer at a height**, which is the thing the game's cloud
-/// mesh was a stand-in for. What is Morrowind's here is everything except that surface: the texture
-/// is the weather's own, the scroll and the bearing are what the engine turns its mesh by, the blend
-/// across a transition is the same factor, and the colour is the fog plus the eighth
-/// `SkyManager::setWeather` adds to it.
+/// **The deck is where the ray crosses a layer over a curved world**, which is the thing the game's
+/// cloud mesh is a stand-in for and the shape `CloudShell` reads back out of it. Everything here is
+/// Morrowind's: the texture is the weather's own, the scroll and the bearing are what the engine
+/// turns its mesh by, the blend across a transition is the same factor, the layer's height and
+/// curvature are its mesh's, and the colour is the fog lifted by what its own daylight says a cloud
+/// is worth against the air.
 ///
 /// **Alpha is coverage and the colour is emission**, which is the material the engine gives it: an
 /// unlit alpha-tracking one, so a cloud owes nothing to where the sun is and a thin cloud lets the
@@ -70,15 +66,22 @@ vec3 cloudDeck(vec3 direction, out float covered)
     // Turned about the zenith first, so the deck runs the way the weather drives it.
     const float turn = frame.mClouds.mTurn;
     const vec2 bearing = vec2(cos(turn), sin(turn));
-    const vec2 along
-        = vec2(direction.x * bearing.x - direction.y * bearing.y, direction.x * bearing.y + direction.y * bearing.x);
+    const vec2 plane = direction.xy / direction.z;
+    const vec2 along = vec2(plane.x * bearing.x - plane.y * bearing.y, plane.x * bearing.y + plane.y * bearing.x);
 
-    const vec2 uv = along / (direction.z * CLOUD_TILE) + vec2(0.0, frame.mClouds.mScroll);
+    // **How far down the layer has fallen where this ray meets it.** A flat one is met at `xy / z`
+    // and a curved one nearer, by the height of its crossing: solving `r = t (h - k r²)` gives
+    // `h · 2 / (1 + sqrt(1 + 4kh t²))`, which is the conjugate of `(sqrt(1 + 4kh t²) - 1) / 2kt` and
+    // is written that way because the other form divides by nothing on a ray straight up — and by a
+    // curvature of nothing on the flat layer a replaced mesh may be.
+    const float fallen = 2.0 / (1.0 + sqrt(1.0 + 4.0 * frame.mClouds.mCurvature * dot(plane, plane)));
 
-    // **The top mip and no cone.** A deck seen edge-on compresses without bound, so the right level
-    // is whatever the gradient says — and the gradient is what the hardware works out for itself
-    // from neighbouring lanes, which a ray tracer does not have. The horizon fade is what stands in:
-    // it takes the texture out over exactly the band where the compression would alias.
+    const vec2 uv = along * frame.mClouds.mTiles * fallen + vec2(0.0, frame.mClouds.mScroll);
+
+    // **The top mip and no cone.** A deck seen edge-on wants a level off the ray's gradient, and the
+    // gradient is what the hardware works out for itself from neighbouring lanes, which a ray tracer
+    // does not have. The horizon fade is what stands in: it takes the texture out over exactly the
+    // band where the stretch would alias.
     const vec4 near = textureLod(textures[nonuniformEXT(frame.mClouds.mTexture)], uv, 0.0);
     const vec4 far = frame.mClouds.mNext == NO_TEXTURE
         ? near

@@ -76,7 +76,7 @@ namespace RtxTool
         Rtx::MoonFaces mFaces;
 
         /// And where the cloud decks and the star sheet sit, on the same terms.
-        Rtx::SkyTextures mSky;
+        Rtx::SkyContent mSky;
 
         /// How far the deck has scrolled and the stars have rolled. **Zero for a screenshot**, which
         /// is what makes one repeatable — the same choice `mSeconds` makes for the sea; a window

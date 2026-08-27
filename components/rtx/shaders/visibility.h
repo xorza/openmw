@@ -16,11 +16,13 @@
 
 #include <cstdint>
 
+#include <osg/Vec2f>
 #include <osg/Vec3f>
 #include <osg/Vec3ui>
 
 namespace Rtx::Shaders
 {
+    using vec2 = osg::Vec2f;
     using vec3 = osg::Vec3f;
     using uvec3 = osg::Vec3ui;
     using uint = std::uint32_t;
@@ -54,11 +56,11 @@ namespace Rtx::Shaders
 
     /// Morrowind's cloud deck, as a ray that reached nothing finds it.
     ///
-    /// **A deck at a height rather than the dome the game shipped.** The engine hangs its clouds on
+    /// **A layer at a height rather than the dome the game shipped.** The engine hangs its clouds on
     /// a mesh whose UVs were painted into the file, which is a thing to rasterize and not a thing to
-    /// intersect; what that mesh is *for* is a flat layer of cloud seen in perspective, and a ray
-    /// tracer can have the layer itself. The texture, its scroll, its blend and its colour are all
-    /// the game's own — only the surface they are painted on is derived rather than loaded.
+    /// intersect; what that mesh is *for* is a layer of cloud seen in perspective, and a ray tracer
+    /// can have the layer itself. Everything here is the game's own, the shape of that layer
+    /// included: `CloudShell` is where its height and its curvature are read off the mesh.
     struct CloudDeck
     {
         /// How much deck there is, from none of it to all.
@@ -70,9 +72,9 @@ namespace Rtx::Shaders
         /// across its whole sky. `StarField::mFade` is the same field for the same reason.
         float mOpacity;
 
-        /// What the deck is lit by, linear. Morrowind's own: the fog colour with an eighth added,
-        /// applied as an emission to an unlit material, so a cloud is its texture times this and
-        /// owes nothing to the sun.
+        /// What the deck is lit by, linear: the weather's air, times what a cloud of that weather is
+        /// worth against it. Applied as an emission to an unlit material, so a cloud is its texture
+        /// times this and owes nothing to the sun. `SkyContent::mLift` is the ratio's half of it.
         vec3 mColour;
 
         /// How far from `mTexture` to `mNext`. A settled sky names the same texture twice at zero,
@@ -85,6 +87,11 @@ namespace Rtx::Shaders
         /// How far the deck is turned about the zenith, in radians — the storm's own bearing, which
         /// is what the engine rotates its cloud mesh by.
         float mTurn;
+
+        /// The layer's height in texture tiles and its curvature, off the mesh. `CloudShell` holds
+        /// what each of them means and why neither is a constant.
+        vec2 mTiles;
+        float mCurvature;
 
         uint mTexture;
         uint mNext;
@@ -401,10 +408,10 @@ namespace Rtx::Shaders
     // reads them are different compilers.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
     static_assert(sizeof(MoonDisc) == 76, "MoonDisc must be scalar-packed on every side");
-    static_assert(sizeof(CloudDeck) == 36, "CloudDeck must be scalar-packed on every side");
+    static_assert(sizeof(CloudDeck) == 48, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 20, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 744, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 756, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

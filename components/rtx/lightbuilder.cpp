@@ -178,7 +178,6 @@ namespace Rtx
                 .mSkyHorizon = haze,
                 .mSkyZenith = decodeColour(read.mSky),
                 .mAmbient = sky.mAmbient,
-                .mHaze = read.mHaze,
 
                 // **The engine's own ramp for the stars**, which is four points like every other and
                 // crosses on the `Stars` window rather than the sky's: they outlast the sunset and

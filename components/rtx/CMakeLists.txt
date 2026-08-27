@@ -20,6 +20,8 @@ set(RTX_FILES
     bluenoise.hpp
     camera.cpp
     camera.hpp
+    cloudshell.cpp
+    cloudshell.hpp
     colourblock.cpp
     colourblock.hpp
     error.hpp

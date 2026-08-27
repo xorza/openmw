@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <components/rtx/cloudshell.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
@@ -11,6 +12,10 @@ namespace Rtx
 {
     namespace
     {
+        /// A layer to hang a deck on, standing in for what the cloud mesh is read for. Morrowind's
+        /// own comes to 0.711 tiles up at a curvature of 0.057; the numbers here are only distinct.
+        const Rtx::CloudShell sShell{ .mTiles = osg::Vec2f(0.75f, -0.75f), .mCurvature = 0.06f };
+
         /// A world where no two numbers are the same, so a field written from the wrong one shows.
         FrameWorld distinct()
         {
@@ -37,6 +42,8 @@ namespace Rtx
                 .mBlend = 0.25f,
                 .mScroll = 3.5f,
                 .mTurn = 1.25f,
+                .mTiles = osg::Vec2f(0.625f, -0.6875f),
+                .mCurvature = 0.09375f,
                 .mTexture = 4u,
                 .mNext = 9u,
             };
@@ -112,6 +119,8 @@ namespace Rtx
             EXPECT_EQ(constants.mClouds.mBlend, world.mClouds.mBlend);
             EXPECT_EQ(constants.mClouds.mScroll, world.mClouds.mScroll);
             EXPECT_EQ(constants.mClouds.mTurn, world.mClouds.mTurn);
+            EXPECT_EQ(constants.mClouds.mTiles, world.mClouds.mTiles);
+            EXPECT_EQ(constants.mClouds.mCurvature, world.mClouds.mCurvature);
             EXPECT_EQ(constants.mClouds.mTexture, world.mClouds.mTexture);
             EXPECT_EQ(constants.mClouds.mNext, world.mClouds.mNext);
 
@@ -155,16 +164,17 @@ namespace Rtx
         /// way round.
         TEST(RtxSkyBuilderTest, aCloudBlendThatIsNotANumberComesOutAsNoBlendAtAll)
         {
-            SkyTextures textures;
+            SkyContent textures;
             textures.mClouds.fill(Rtx::sNoIndex);
             textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
             textures.mClouds[Rtx::Shaders::WEATHER_RAIN] = 5;
+            textures.mShell = sShell;
 
-            const osg::Vec4f fog(0.4f, 0.4f, 0.5f, 1.0f);
+            const osg::Vec3f air(0.1f, 0.1f, 0.2f);
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const auto deck = [&](float blend) {
                 return describeClouds(
-                    Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, blend, fog, north, 0.0f, textures);
+                    Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, blend, air, north, 0.0f, textures);
             };
 
             EXPECT_EQ(deck(std::numeric_limits<float>::quiet_NaN()).mBlend, 0.0f) << "a NaN is no crossing";
@@ -186,28 +196,93 @@ namespace Rtx
         /// opaque mid grey and over a deck is the entire sky.
         TEST(RtxSkyBuilderTest, aWeatherWithNoCloudTextureGetsNoDeck)
         {
-            SkyTextures textures;
+            SkyContent textures;
             textures.mClouds.fill(Rtx::sNoIndex);
             textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
+            textures.mShell = sShell;
 
             EXPECT_EQ(textures.cloudsOf(Rtx::Shaders::WEATHER_CLEAR), 3u);
             EXPECT_EQ(textures.cloudsOf(Rtx::Shaders::WEATHER_ASHSTORM), Rtx::Shaders::NO_TEXTURE);
             EXPECT_EQ(textures.cloudsOf(Rtx::Shaders::WEATHER_COUNT + 4u), Rtx::Shaders::NO_TEXTURE)
                 << "and an index past the ten is not a lookup";
 
-            const osg::Vec4f fog(0.4f, 0.4f, 0.5f, 1.0f);
+            const osg::Vec3f air(0.1f, 0.1f, 0.2f);
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const Rtx::Shaders::CloudDeck none = describeClouds(
-                Rtx::Shaders::WEATHER_ASHSTORM, Rtx::Shaders::WEATHER_ASHSTORM, 0.0f, fog, north, 0.0f, textures);
+                Rtx::Shaders::WEATHER_ASHSTORM, Rtx::Shaders::WEATHER_ASHSTORM, 0.0f, air, north, 0.0f, textures);
 
             EXPECT_EQ(none.mOpacity, 0.0f) << "nothing to draw, said the way an interior says it";
             EXPECT_EQ(none.mTexture, Rtx::Shaders::NO_TEXTURE);
+
+            // And a sky whose mesh gave up no shape has nowhere to hang one, whatever sheet the
+            // weather names.
+            SkyContent unhung = textures;
+            unhung.mShell = Rtx::CloudShell{};
+            EXPECT_EQ(
+                describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, air, north, 0.0f, unhung)
+                    .mOpacity,
+                0.0f);
+        }
+
+        /// A deck is the air it hangs in, lifted by what its own weather says a cloud is worth.
+        ///
+        /// **The lift is a ratio and the engine's is an offset**, which is the whole of this. An
+        /// eighth added to a display-encoded fog is a multiplication in light of a third again over a
+        /// clear day and of eight over the same weather's night, so a deck built that way arrives at
+        /// midnight eight times the sky it covers — grey, and the brightest thing in a frame that is
+        /// about to be exposed for starlight. Read as a ratio it follows its sky down.
+        TEST(RtxSkyBuilderTest, aDeckIsTheAirItHangsInLiftedByWhatACloudIsWorth)
+        {
+            SkyContent textures;
+            textures.mClouds.fill(Rtx::sNoIndex);
+            textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
+            textures.mClouds[Rtx::Shaders::WEATHER_RAIN] = 5;
+            textures.mShell = sShell;
+            textures.mLift[Rtx::Shaders::WEATHER_CLEAR] = osg::Vec3f(2.0f, 3.0f, 4.0f);
+            textures.mLift[Rtx::Shaders::WEATHER_RAIN] = osg::Vec3f(6.0f, 7.0f, 8.0f);
+
+            const osg::Vec3f air(0.1f, 0.2f, 0.4f);
+            const osg::Vec3f north(0.0f, 1.0f, 0.0f);
+            const auto deck = [&](float blend) {
+                return describeClouds(
+                    Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, blend, air, north, 0.0f, textures);
+            };
+
+            EXPECT_EQ(deck(0.0f).mColour, osg::Vec3f(0.2f, 0.6f, 1.6f));
+            EXPECT_EQ(deck(1.0f).mColour, osg::Vec3f(0.6f, 1.4f, 3.2f));
+
+            // Half way across, the lift is half way between the two: (4, 5, 6) over that air.
+            EXPECT_EQ(deck(0.5f).mColour, osg::Vec3f(0.4f, 1.0f, 2.4f));
+
+            // A weather nothing was read for is its air and no more, rather than a black deck.
+            SkyContent unread = textures;
+            unread.mLift = {};
+            EXPECT_EQ(
+                describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, air, north, 0.0f, unread)
+                    .mColour,
+                air);
+        }
+
+        /// The shape the deck hangs on is the mesh's, and it is passed through untouched.
+        TEST(RtxSkyBuilderTest, theLayersOwnShapeReachesTheShader)
+        {
+            SkyContent textures;
+            textures.mClouds.fill(Rtx::sNoIndex);
+            textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
+            textures.mShell = sShell;
+
+            const Rtx::Shaders::CloudDeck deck
+                = describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f,
+                    osg::Vec3f(0.1f, 0.1f, 0.2f), osg::Vec3f(0.0f, 1.0f, 0.0f), 0.0f, textures);
+
+            EXPECT_EQ(deck.mTiles, sShell.mTiles);
+            EXPECT_EQ(deck.mCurvature, sShell.mCurvature);
         }
 
         /// The stars go out when the weather keeps them in, and the sheet is not even named then.
         TEST(RtxSkyBuilderTest, aWeatherThatHidesTheSunHidesTheStarsWithIt)
         {
-            SkyTextures textures;
+            SkyContent textures;
             textures.mClouds.fill(Rtx::sNoIndex);
             textures.mNight.mField = 8;
             textures.mNight.mTile = 0.9f;
@@ -235,7 +310,7 @@ namespace Rtx
             EXPECT_EQ(describeStars(1.0f, 1.0f, 0.0f, textures).mHorizon, 0.4f);
 
             // And a mesh that gave up no scale draws nothing, rather than dividing by it.
-            SkyTextures unread;
+            SkyContent unread;
             unread.mClouds.fill(Rtx::sNoIndex);
             unread.mNight.mField = 8;
             EXPECT_EQ(describeStars(1.0f, 1.0f, 0.0f, unread).mTexture, Rtx::Shaders::NO_TEXTURE);

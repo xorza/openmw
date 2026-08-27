@@ -620,7 +620,7 @@ namespace MWRender
         if (mMoonFaces.mMasser == Rtx::sNoIndex)
         {
             mMoonFaces = Rtx::addMoonFaces(mScene);
-            mSkyTextures = Rtx::addSkyTextures(mScene, *mResources->getSceneManager());
+            mSkyContent = Rtx::addSkyContent(mScene, *mResources->getSceneManager());
         }
 
         // **What the weather drops, walked as a second root.** Those nodes hang under the sky's
@@ -850,14 +850,13 @@ namespace MWRender
                 ? Rtx::describeClouds(static_cast<std::uint32_t>(world.mWeatherId),
                       world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
                                                        : static_cast<std::uint32_t>(world.mWeatherId),
-                      world.mCloudBlend, world.mAir.mColour, world.mStormDirection, world.mSkyRoll.mClouds,
-                      mSkyTextures)
+                      world.mCloudBlend, haze, world.mStormDirection, world.mSkyRoll.mClouds, mSkyContent)
                 : Rtx::Shaders::CloudDeck{ .mOpacity = 0.0f,
                       .mTexture = Rtx::Shaders::NO_TEXTURE,
                       .mNext = Rtx::Shaders::NO_TEXTURE },
 
             .mStars = world.isOutdoors()
-                ? Rtx::describeStars(world.mNightFade, world.mSunGlare, world.mSkyRoll.mStars, mSkyTextures)
+                ? Rtx::describeStars(world.mNightFade, world.mSunGlare, world.mSkyRoll.mStars, mSkyContent)
                 : Rtx::Shaders::StarField{ .mTexture = Rtx::Shaders::NO_TEXTURE },
         };
 
@@ -877,7 +876,7 @@ namespace MWRender
         // The nebulae and the constellations, on the star sphere and turning with it. An interior
         // leaves them at their defaults, which is no texture and so nothing drawn.
         if (world.isOutdoors())
-            Rtx::describePatches(world.mSkyRoll.mStars, mSkyTextures, described.mSkyPatches);
+            Rtx::describePatches(world.mSkyRoll.mStars, mSkyContent, described.mSkyPatches);
 
         Rtx::applyWorld(described, constants);
 

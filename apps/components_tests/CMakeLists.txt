@@ -114,6 +114,7 @@ if (OPENMW_RTX)
         rtx/alphabounds.cpp
         rtx/alphaimage.cpp
         rtx/bluenoise.cpp
+        rtx/cloudshell.cpp
         rtx/computepipeline.cpp
         rtx/device.cpp
         rtx/dlss.cpp

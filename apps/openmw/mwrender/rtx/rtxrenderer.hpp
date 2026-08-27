@@ -309,8 +309,9 @@ namespace MWRender
         /// that has a scene at all.
         Rtx::MoonFaces mMoonFaces;
 
-        /// The cloud decks and the star sheet, on the same terms as the moons' faces.
-        Rtx::SkyTextures mSkyTextures;
+        /// The cloud decks and the star sheet on the same terms as the moons' faces, and beside them
+        /// what was measured off the two sky meshes.
+        Rtx::SkyContent mSkyContent;
         std::unique_ptr<Rtx::SceneExtractor> mExtractor;
 
         /// Which of place, extend and rebuild a frame is, and what a rebuild has to describe.

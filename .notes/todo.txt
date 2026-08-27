@@ -9,7 +9,6 @@
 - remove metal
 - precipitation interact with lightsources
 - moonlight
-- clouds size
 - night sky overexposed
 - volumetric particles
 - spell lightsources
