@@ -14,6 +14,8 @@
 - underwater `fog`
 - split tests
 - extract shader and lightting consts for look tweaking
+- rain water interaction
+- sun from underthe water
 
 
 - emissive textures like mushrooms - postponed
