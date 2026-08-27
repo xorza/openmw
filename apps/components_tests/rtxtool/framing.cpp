@@ -12,7 +12,7 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shaders/visibility.h>
-#include <components/weather/downpour.hpp>
+#include <components/sky/clouds.hpp>
 
 #include <apps/rtxtool/framing.hpp>
 #include <apps/rtxtool/placement.hpp>
@@ -143,12 +143,10 @@ namespace RtxTool
                 { "Weather_Sunset_Duration", "2" },
                 { "Weather_Clear_Land_Fog_Day_Depth", "0.4" },
                 { "Weather_Clear_Land_Fog_Night_Depth", "0.8" },
-                { "Weather_Clear_Wind_Speed", "0.3" },
                 { "Weather_Clear_Sky_Day_Color", "100,150,200" },
                 { "Weather_Clear_Sun_Day_Color", "255,255,255" },
                 { "Weather_Overcast_Land_Fog_Day_Depth", "0.9" },
                 { "Weather_Overcast_Land_Fog_Night_Depth", "0.9" },
-                { "Weather_Overcast_Wind_Speed", "0.7" },
                 { "Weather_Overcast_Sky_Day_Color", "80,80,80" },
                 { "Weather_Overcast_Sun_Day_Color", "120,120,120" },
             });
@@ -157,7 +155,7 @@ namespace RtxTool
 
             relight(outdoors, "Clear", 0, 12.0f);
             EXPECT_EQ(outdoors.mWeather, Rtx::Shaders::WEATHER_CLEAR);
-            EXPECT_FLOAT_EQ(outdoors.mWindSpeed, Weather::windSpeed("Clear"));
+            EXPECT_EQ(outdoors.mCloudBlend, 0.0f) << "a settled sky has crossed nothing";
             EXPECT_EQ(outdoors.mDaylight.mSkyZenith, Rtx::makeDaylight("Clear", 12.0f).mSkyZenith);
             EXPECT_GT(outdoors.mDaylight.mSun.mIrradiance.x(), 0.0f) << "noon has a sun";
 
@@ -176,7 +174,7 @@ namespace RtxTool
             relight(outdoors, "Overcast", 5, 12.0f);
             EXPECT_EQ(outdoors.mWeather, Rtx::Shaders::WEATHER_OVERCAST);
             EXPECT_EQ(outdoors.mDay, 5);
-            EXPECT_FLOAT_EQ(outdoors.mWindSpeed, Weather::windSpeed("Overcast"));
+            EXPECT_FLOAT_EQ(outdoors.mCloudSpeed, Sky::cloudSpeed("Overcast"));
             EXPECT_EQ(outdoors.mDaylight.mSkyZenith, Rtx::makeDaylight("Overcast", 12.0f).mSkyZenith);
             EXPECT_GT(outdoors.mFog.mExtinction, 0.0f);
 
@@ -231,8 +229,12 @@ namespace RtxTool
             relight(ends, "Clear", "Overcast", 1.0f, 0, 12.0f);
             EXPECT_EQ(ends.mDaylight.mSkyZenith, overcast);
 
-            // And the wind crosses with them, which is one of the numbers the engine blends too.
-            EXPECT_FLOAT_EQ(turning.mWindSpeed, 0.5f * (Weather::windSpeed("Clear") + Weather::windSpeed("Overcast")));
+            // **And the deck crosses on a curve of its own, which is what the harness used to skip.**
+            // Each weather spreads its arrival over a share of the transition, so a storm's sky
+            // rolls in ahead of its light — this used to hand `describeClouds` the weather's own
+            // blend, which crossed the sky linearly and drew a transition the game never runs.
+            // `Sky::cloudBlend` carries the curve and is tested against hand-worked shares.
+            EXPECT_FLOAT_EQ(turning.mCloudBlend, Sky::cloudBlend(0.5f, Sky::cloudsMaximumPercent("Overcast")));
 
             // **An interior has no sky for a clock to move.** Every field comes back as it went in,
             // including the weather it was never under.
@@ -243,7 +245,7 @@ namespace RtxTool
             EXPECT_EQ(moved.mWaterLevel, room.mWaterLevel);
             EXPECT_EQ(moved.mWeather, room.mWeather);
             EXPECT_EQ(moved.mDay, room.mDay);
-            EXPECT_EQ(moved.mWindSpeed, room.mWindSpeed);
+            EXPECT_EQ(moved.mCloudBlend, room.mCloudBlend);
         }
 
         /// A camera with no basis says so rather than filling the image with NaN.

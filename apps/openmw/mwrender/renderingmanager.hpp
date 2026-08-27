@@ -444,9 +444,10 @@ namespace MWRender
         osg::Vec4f mCloudFog;
         float mCloudSpeed = 0.f;
 
-        /// Which way the deck is driven: the weather's own bearing, and not the falling particles'.
-        /// `WorldState::mCloudDirection` says why the two are read apart.
+        /// Which way each of the two decks is driven: each weather's own bearing, and not the
+        /// falling particles'. `WorldState::mCloudDirection` says why the two are read apart.
         osg::Vec3f mCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
+        osg::Vec3f mNextCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
 
         /// How far the deck has scrolled and the stars have rolled. **One owner and two consumers**:
         /// the sky manager is handed it and `WorldState` reports it, so both renderers turn one sky.

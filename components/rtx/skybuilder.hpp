@@ -128,10 +128,14 @@ namespace Rtx
     ///
     /// @param light what the deck radiates, out of `deckLight` — worked out on the host rather than
     ///        in the shader because it is one answer for the whole frame.
-    /// @param storm where the weather drives what it carries, which is what the deck is turned by.
-    /// @param scroll `Sky::SkyRoll::mClouds`.
+    /// @param storm where this weather drives what it carries, which is what its sheet is turned by.
+    /// @param nextStorm the same for the weather ahead, because the engine turns each of its two
+    ///        cloud meshes by its own weather's storm. A settled sky has no sheet ahead to turn, and
+    ///        a direction nobody stated reads as due north rather than as a sheet with no size.
+    /// @param scroll `Sky::SkyRoll::mClouds`, which both sheets share — the engine sets one texture
+    ///        matrix on both of its cloud updaters.
     Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const DeckLight& light,
-        const osg::Vec3f& storm, float scroll, const SkyContent& textures);
+        const osg::Vec3f& storm, const osg::Vec3f& nextStorm, float scroll, const SkyContent& textures);
 
     /// The star field, in the units the shader takes.
     ///

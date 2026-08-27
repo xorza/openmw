@@ -200,6 +200,9 @@ namespace MWRender
         /// ends**: `WeatherManager` counts it down, and its own mix is `1 - this`
         /// (`apps/openmw/mwworld/weather.cpp:1261`). Meaningless without `mNextWeatherId`.
         float mWeatherTransition = 0.0f;
+
+        /// How hard the wind blows, as the game's own dial rather than a physical one. What the
+        /// rasterizer's `windSpeed` uniform leans its vegetation by.
         float mWindSpeed = 0.0f;
 
         /// Masser and Secunda, as the weather system last settled them.
@@ -210,20 +213,19 @@ namespace MWRender
         /// what a value-initialised pair says before the weather system has spoken.
         MoonState mMoons[2] = {};
 
-        /// Where a storm drives what it carries, unit length.
+        /// Which way each of the two cloud decks is driven.
         ///
-        /// **Not derivable from the weather alone**, which is why it is reported rather than worked
-        /// out downstream: an ash or blight storm blows off Red Mountain *at the player*, so the
-        /// direction depends on where they stand. Every other weather leaves it due north.
-        osg::Vec3f mStormDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
-
-        /// Which way the cloud deck is driven, unit length.
+        /// **Not derivable from the weather alone**, which is why they are reported rather than
+        /// worked out downstream: an ash or blight storm blows off Red Mountain *at the player*, so
+        /// the direction depends on where they stand. Every other weather leaves it due north.
         ///
-        /// **The same rule and not the same reading.** Both come out of `Weather::stormDirection`,
-        /// but the one above is what the particles falling this instant are blowing along, and a
-        /// transition carries one weather's particles while the other's deck is already overhead.
-        /// The rasterizer turns its cloud mesh by this one, so the ray tracer does too.
+        /// **One each, because the rasterizer turns each of its two cloud meshes by its own
+        /// weather's storm.** The second is unit length only while a weather is arriving:
+        /// `WeatherResult` states it during a transition, and otherwise holds zero until the first
+        /// one and the last one's answer after that. `Rtx::describeClouds` reads a zero as due
+        /// north, and a deck at a blend of nothing is not drawn either way.
         osg::Vec3f mCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
+        osg::Vec3f mNextCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
 
         /// Whether the cell record calls this an interior.
         ///

@@ -123,9 +123,19 @@ namespace Rtx::Shaders
         /// The scroll along `v`, in texture widths. `Sky::SkyRoll` advances it.
         float mScroll;
 
-        /// How far the deck is turned about the zenith, in radians — the storm's own bearing, which
-        /// is what the engine rotates its cloud mesh by.
-        float mTurn;
+        /// Which way each of the two sheets is driven, as a unit bearing in the ground plane.
+        ///
+        /// **The storm's own direction with its two components swapped, and no angle in between.**
+        /// The engine turns each cloud mesh from due north onto that direction, and turning a
+        /// crossing by the same angle wants the cosine and the sine of it — which for a unit `(x,
+        /// y)` measured from north is `(y, x)`. Reaching that pair through `atan2` and back through
+        /// `sin` and `cos` costs three transcendentals a sample and arrives at the same place.
+        ///
+        /// **One each, because the engine turns each mesh by its own weather's storm.** A
+        /// transition into an ashstorm drives the sheet ahead off Red Mountain while the one
+        /// overhead still runs due north.
+        vec2 mBearing;
+        vec2 mNextBearing;
 
         /// How far the layer falls away over the ground it covers, and the three crossing radii the
         /// engine's own fade turns on. `CloudShell` holds what each of them means and why neither is
@@ -423,30 +433,6 @@ namespace Rtx::Shaders
         /// mix changes the air's character and never how much of it there is.
         float mFogUniform;
 
-        /// Which weather the sky is under, which one it is turning into, and how far along.
-        ///
-        /// **Never a "nothing is changing" sentinel.** `MWWorld::World::getNextWeatherScriptId`
-        /// answers -1 while no transition is running, and a shader carrying that would test for it
-        /// on every pixel of every settled frame; a settled sky names the same weather twice at a
-        /// blend of zero instead, so the mix is unconditional and right at either end of it.
-        uint mWeather;
-        uint mNextWeather;
-        float mWeatherBlend;
-
-        /// How hard the wind blows, and the direction what it carries travels.
-        ///
-        /// The speed is the game's own dial rather than a physical one — it is what `MWWorld::Weather`
-        /// interpolates between two weathers, and `fStromWindSpeed` is the figure a storm reaches.
-        /// The direction is where the particles *go*, and a weather with nothing to carry still
-        /// names one, because the wind blows in fair weather too.
-        ///
-        /// Unit length wherever a weather set it, and zero where nothing did — an inventory doll
-        /// and a map tile are traced under no sky at all. This header is included verbatim by GLSL,
-        /// which has no member initialisers, so that default is the aggregate's zero and not a
-        /// promise made here.
-        float mWindSpeed;
-        vec3 mStormDirection;
-
         /// Masser and Secunda, in that order. An interface trace and an interior leave both at an
         /// alpha of nothing, which costs the sky one compare each.
         MoonDisc mMoons[2];
@@ -488,10 +474,10 @@ namespace Rtx::Shaders
     // reads them are different compilers.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
     static_assert(sizeof(MoonDisc) == 88, "MoonDisc must be scalar-packed on every side");
-    static_assert(sizeof(CloudDeck) == 84, "CloudDeck must be scalar-packed on every side");
+    static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 844, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 828, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

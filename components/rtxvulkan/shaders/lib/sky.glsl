@@ -39,17 +39,16 @@ vec3 skyGlow(vec3 direction)
 /// point reach one answer. Nothing this renderer draws can see where that centre is: the four
 /// weathers that drive a storm are ash, blight, snow and blizzard, and not one of them reaches a
 /// cloud sheet the archives hold.
-vec2 cloudUvAt(vec2 crossing)
+vec2 cloudUvAt(vec2 crossing, vec2 bearing)
 {
-    const float turn = frame.mClouds.mTurn;
-    const vec2 bearing = vec2(cos(turn), sin(turn));
     const vec2 along
         = vec2(crossing.x * bearing.x - crossing.y * bearing.y, crossing.x * bearing.y + crossing.y * bearing.x);
 
     return along * frame.mClouds.mPerTile + vec2(0.0, frame.mClouds.mScroll);
 }
 
-/// The sheet where `at` lands on it, across whatever crossing the weather is part way through.
+/// The sheet where a crossing lands on it, across whatever transition the weather is part way
+/// through.
 ///
 /// **One reading, because two things ask for it**: what the eye finds in the deck, and what the deck
 /// leaves of a light standing over a shading point. The two used to sample the same sheet with the
@@ -59,12 +58,14 @@ vec2 cloudUvAt(vec2 crossing)
 /// gradient is what the hardware works out for itself from neighbouring lanes, which a ray tracer
 /// does not have. The engine's own fade is what stands in: the band where the stretch would alias is
 /// the band it takes the deck out over.
-vec4 cloudSheetAt(vec2 uv)
+vec4 cloudSheetAt(vec2 crossing)
 {
-    const vec4 near = textureLod(textures[nonuniformEXT(frame.mClouds.mTexture)], uv, 0.0);
+    const vec4 near
+        = textureLod(textures[nonuniformEXT(frame.mClouds.mTexture)], cloudUvAt(crossing, frame.mClouds.mBearing), 0.0);
     const vec4 far = frame.mClouds.mNext == NO_TEXTURE
         ? near
-        : textureLod(textures[nonuniformEXT(frame.mClouds.mNext)], uv, 0.0);
+        : textureLod(
+              textures[nonuniformEXT(frame.mClouds.mNext)], cloudUvAt(crossing, frame.mClouds.mNextBearing), 0.0);
 
     return mix(near, far, frame.mClouds.mBlend);
 }
@@ -134,9 +135,7 @@ vec3 cloudDeck(vec3 origin, vec3 direction, out float covered)
     const float outer = clamp((reach - rings.y) / max(rings.z - rings.y, 1.0e-6), 0.0, 1.0);
     const float reaches = mix(mix(1.0, CLOUD_RING_ALPHA, inner), 0.0, outer);
 
-    const vec2 uv = cloudUvAt(origin.xy + offset);
-
-    const vec4 cloud = cloudSheetAt(uv);
+    const vec4 cloud = cloudSheetAt(origin.xy + offset);
 
     covered = cloud.a * reaches * frame.mClouds.mOpacity;
 
@@ -185,7 +184,7 @@ float cloudShadow(vec3 position, vec3 towards)
     if (height <= 0.0)
         return 1.0;
 
-    const float alpha = cloudSheetAt(cloudUvAt(position.xy + towards.xy * (height / towards.z))).a;
+    const float alpha = cloudSheetAt(position.xy + towards.xy * (height / towards.z)).a;
 
     return exp(-CLOUD_SHADOW_DEPTH * max(alpha - frame.mClouds.mCover, 0.0) * frame.mClouds.mOpacity);
 }

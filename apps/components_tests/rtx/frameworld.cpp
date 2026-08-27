@@ -37,11 +37,6 @@ namespace Rtx
                 .mAir = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f), .mExtinction = 1.5e-4f, .mUniform = 0.75f },
                 .mWaterLevel = -37.5f,
                 .mSeconds = 12.25f,
-                .mWeather = Rtx::Shaders::WEATHER_ASHSTORM,
-                .mNextWeather = Rtx::Shaders::WEATHER_BLIGHT,
-                .mWeatherBlend = 0.375f,
-                .mWindSpeed = 0.8f,
-                .mStormDirection = osg::Vec3f(0.6f, 0.8f, 0.0f),
             };
 
             world.mClouds = Rtx::Shaders::CloudDeck{
@@ -53,7 +48,8 @@ namespace Rtx
                 .mPerTile = osg::Vec2f(0.625f, -0.6875f),
                 .mBlend = 0.25f,
                 .mScroll = 3.5f,
-                .mTurn = 1.25f,
+                .mBearing = osg::Vec2f(0.8f, 0.6f),
+                .mNextBearing = osg::Vec2f(0.28f, 0.96f),
                 .mCurvature = 0.09375f,
                 .mRings = osg::Vec3f(0.8125f, 1.3125f, 1.9375f),
                 .mTexture = 4u,
@@ -120,18 +116,13 @@ namespace Rtx
             EXPECT_EQ(constants.mWaterLevel, world.mWaterLevel - Shaders::WATER_TIE_BREAK);
             EXPECT_EQ(constants.mTime, world.mSeconds) << "the game wrote this nowhere either";
 
-            EXPECT_EQ(constants.mWeather, world.mWeather);
-            EXPECT_EQ(constants.mNextWeather, world.mNextWeather);
-            EXPECT_EQ(constants.mWeatherBlend, world.mWeatherBlend);
-            EXPECT_EQ(constants.mWindSpeed, world.mWindSpeed);
-            EXPECT_EQ(constants.mStormDirection, world.mStormDirection);
-
             EXPECT_EQ(constants.mClouds.mOpacity, world.mClouds.mOpacity);
             EXPECT_EQ(constants.mClouds.mLit, world.mClouds.mLit);
             EXPECT_EQ(constants.mClouds.mShadowed, world.mClouds.mShadowed);
             EXPECT_EQ(constants.mClouds.mBlend, world.mClouds.mBlend);
             EXPECT_EQ(constants.mClouds.mScroll, world.mClouds.mScroll);
-            EXPECT_EQ(constants.mClouds.mTurn, world.mClouds.mTurn);
+            EXPECT_EQ(constants.mClouds.mBearing, world.mClouds.mBearing);
+            EXPECT_EQ(constants.mClouds.mNextBearing, world.mClouds.mNextBearing);
             EXPECT_EQ(constants.mClouds.mCover, world.mClouds.mCover);
             EXPECT_EQ(constants.mClouds.mAltitude, world.mClouds.mAltitude);
             EXPECT_EQ(constants.mClouds.mPerTile, world.mClouds.mPerTile);
@@ -188,8 +179,8 @@ namespace Rtx
 
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const auto deck = [&](float blend) {
-                return describeClouds(
-                    Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, blend, sLight, north, 0.0f, textures);
+                return describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, blend, sLight, north,
+                    north, 0.0f, textures);
             };
 
             EXPECT_EQ(deck(std::numeric_limits<float>::quiet_NaN()).mBlend, 0.0f) << "a NaN is no crossing";
@@ -222,8 +213,8 @@ namespace Rtx
                 << "and an index past the ten is not a lookup";
 
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
-            const Rtx::Shaders::CloudDeck none = describeClouds(
-                Rtx::Shaders::WEATHER_ASHSTORM, Rtx::Shaders::WEATHER_ASHSTORM, 0.0f, sLight, north, 0.0f, textures);
+            const Rtx::Shaders::CloudDeck none = describeClouds(Rtx::Shaders::WEATHER_ASHSTORM,
+                Rtx::Shaders::WEATHER_ASHSTORM, 0.0f, sLight, north, north, 0.0f, textures);
 
             EXPECT_EQ(none.mOpacity, 0.0f) << "nothing to draw, said the way an interior says it";
             EXPECT_EQ(none.mTexture, Rtx::Shaders::NO_TEXTURE);
@@ -232,8 +223,8 @@ namespace Rtx
             // weather names.
             SkyContent unhung = textures;
             unhung.mShell = Rtx::CloudShell{};
-            EXPECT_EQ(describeClouds(
-                          Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, sLight, north, 0.0f, unhung)
+            EXPECT_EQ(describeClouds(Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, sLight, north,
+                          north, 0.0f, unhung)
                           .mOpacity,
                 0.0f);
         }
@@ -301,8 +292,9 @@ namespace Rtx
             textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
             textures.mShell = sShell;
 
-            const Rtx::Shaders::CloudDeck deck = describeClouds(Rtx::Shaders::WEATHER_CLEAR,
-                Rtx::Shaders::WEATHER_CLEAR, 0.0f, sLight, osg::Vec3f(0.0f, 1.0f, 0.0f), 0.0f, textures);
+            const osg::Vec3f north(0.0f, 1.0f, 0.0f);
+            const Rtx::Shaders::CloudDeck deck = describeClouds(
+                Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_CLEAR, 0.0f, sLight, north, north, 0.0f, textures);
 
             EXPECT_EQ(deck.mCurvature, sShell.mCurvature);
             EXPECT_EQ(deck.mRings, sShell.mRings);
@@ -313,6 +305,39 @@ namespace Rtx
             EXPECT_EQ(deck.mPerTile, sShell.mTiles / Rtx::sCloudAltitude);
             EXPECT_EQ(deck.mAltitude, Rtx::sCloudAltitude);
             EXPECT_LT(deck.mPerTile.y(), 0.0f);
+        }
+
+        /// Each sheet is turned by its own weather's storm, and the turn is the storm itself.
+        ///
+        /// **The engine turns each of its two cloud meshes separately**, so a transition into an
+        /// ashstorm drives the sheet ahead off Red Mountain while the one overhead still runs due
+        /// north. Turning a crossing back by that angle wants its cosine and its sine, and for a
+        /// unit direction measured from north those are the direction's own two components,
+        /// swapped — so no angle is taken and none is undone.
+        TEST(RtxSkyBuilderTest, eachSheetIsTurnedByItsOwnWeathersStorm)
+        {
+            SkyContent textures;
+            textures.mClouds.fill(Rtx::sNoIndex);
+            textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
+            textures.mClouds[Rtx::Shaders::WEATHER_RAIN] = 5;
+            textures.mShell = sShell;
+
+            const osg::Vec3f north(0.0f, 1.0f, 0.0f);
+            const osg::Vec3f east(1.0f, 0.0f, 0.0f);
+
+            const Rtx::Shaders::CloudDeck deck = describeClouds(
+                Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN, 0.5f, sLight, north, east, 0.0f, textures);
+
+            EXPECT_EQ(deck.mBearing, osg::Vec2f(1.0f, 0.0f)) << "due north is no turn at all";
+            EXPECT_EQ(deck.mNextBearing, osg::Vec2f(0.0f, 1.0f)) << "and due east is a quarter of one";
+
+            // **A direction nobody stated is zero, and a bearing of zero collapses the whole sheet
+            // onto one texel.** `WeatherResult` names the weather ahead's storm only while one is
+            // arriving, and leaves the field where the last transition left it otherwise.
+            const Rtx::Shaders::CloudDeck settled = describeClouds(Rtx::Shaders::WEATHER_CLEAR,
+                Rtx::Shaders::WEATHER_RAIN, 0.5f, sLight, north, osg::Vec3f(), 0.0f, textures);
+
+            EXPECT_EQ(settled.mNextBearing, osg::Vec2f(1.0f, 0.0f)) << "which reads as due north";
         }
 
         /// The level a sheet's texels are read against crosses with the sheet, and falls back with it.
@@ -333,7 +358,7 @@ namespace Rtx
 
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
             const auto deck = [&](std::uint32_t next, float blend) {
-                return describeClouds(Rtx::Shaders::WEATHER_CLEAR, next, blend, sLight, north, 0.0f, textures);
+                return describeClouds(Rtx::Shaders::WEATHER_CLEAR, next, blend, sLight, north, north, 0.0f, textures);
             };
 
             EXPECT_EQ(deck(Rtx::Shaders::WEATHER_RAIN, 0.0f).mMean, 0.4f);
@@ -446,11 +471,6 @@ namespace Rtx
             // Minus infinity and not zero: zero is sea level, and a frame with no water has to
             // answer "how deep is this point" with never.
             EXPECT_LT(constants.mWaterLevel, -1.0e30f);
-
-            // The blend is still readable at either end, which is what lets the shader mix without
-            // testing for a transition.
-            EXPECT_EQ(constants.mWeather, constants.mNextWeather);
-            EXPECT_EQ(constants.mWeatherBlend, 0.0f);
         }
     }
 }

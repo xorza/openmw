@@ -5,6 +5,7 @@
 #include <string>
 
 #include <osg/Image>
+#include <osg/Vec2f>
 
 #include <components/misc/strings/lower.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -21,6 +22,20 @@ namespace Rtx
 {
     namespace
     {
+        /// Where a storm drives, as the pair a rotation about the zenith is written with.
+        ///
+        /// **A swap and not an angle.** The engine turns its cloud mesh from due north onto the
+        /// storm's direction, and turning a crossing back by that angle wants its cosine and its
+        /// sine — which for a unit `(x, y)` measured from north are `y` and `x`. A direction nobody
+        /// set is zero rather than north, and comes out as a sheet with no size, so the shader is
+        /// given north instead.
+        osg::Vec2f bearingOf(const osg::Vec3f& storm)
+        {
+            const osg::Vec2f flat(storm.y(), storm.x());
+
+            return flat.length2() > 0.0f ? flat : osg::Vec2f(1.0f, 0.0f);
+        }
+
         /// What a sheet averages: the luminance of what it paints, and how much of the sky it hides.
         ///
         /// Nothing where the file will not read or decode, which is the same answer a missing sheet
@@ -126,7 +141,7 @@ namespace Rtx
     }
 
     Shaders::CloudDeck describeClouds(std::uint32_t weather, std::uint32_t next, float blend, const DeckLight& light,
-        const osg::Vec3f& storm, float scroll, const SkyContent& textures)
+        const osg::Vec3f& storm, const osg::Vec3f& nextStorm, float scroll, const SkyContent& textures)
     {
         const std::uint32_t slot = textures.cloudsOf(weather);
 
@@ -169,10 +184,11 @@ namespace Rtx
             .mBlend = mixed,
             .mScroll = scroll,
 
-            // **Turned to face where the weather is driving**, which is what the engine does to the
-            // whole cloud mesh: the deck of an ashstorm runs the way the ash does. A weather with
-            // nothing to drive leaves the direction due north, and this at nought.
-            .mTurn = std::atan2(storm.x(), storm.y()),
+            // **Turned to face where each weather is driving**, which is what the engine does to
+            // each of its two cloud meshes: the deck of an ashstorm runs the way the ash does. A
+            // weather with nothing to drive leaves the direction due north, and this due north too.
+            .mBearing = bearingOf(storm),
+            .mNextBearing = bearingOf(nextStorm),
 
             .mCurvature = textures.mShell.mCurvature,
             .mRings = textures.mShell.mRings,

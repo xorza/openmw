@@ -5,7 +5,6 @@
 #include <components/rtx/shaders/visibility.h>
 #include <components/rtx/skybuilder.hpp>
 #include <components/sky/clouds.hpp>
-#include <components/weather/downpour.hpp>
 
 namespace RtxTool
 {
@@ -32,7 +31,7 @@ namespace RtxTool
         lighting.mWeather = Rtx::weatherIndex(weather).value();
         lighting.mNextWeather = lighting.mWeather;
         lighting.mWeatherBlend = 0.0f;
-        lighting.mWindSpeed = Weather::windSpeed(weather);
+        lighting.mCloudBlend = 0.0f;
         lighting.mGlare = Rtx::glareView(weather);
         lighting.mCloudSpeed = Sky::cloudSpeed(weather);
     }
@@ -48,12 +47,17 @@ namespace RtxTool
         lighting.mNextWeather = Rtx::weatherIndex(to).value();
         lighting.mWeatherBlend = blend;
 
-        // The wind is one of the quantities the engine mixes across a transition too, and so are
-        // the glare and the deck's speed.
+        // The glare and the deck's speed are two of the quantities the engine mixes across a
+        // transition.
         const auto mix = [blend](float x, float y) { return x * (1.0f - blend) + y * blend; };
-        lighting.mWindSpeed = mix(Weather::windSpeed(from), Weather::windSpeed(to));
         lighting.mGlare = mix(Rtx::glareView(from), Rtx::glareView(to));
         lighting.mCloudSpeed = mix(Sky::cloudSpeed(from), Sky::cloudSpeed(to));
+
+        // **The deck's own crossing, which is not the weather's.** Each weather spreads its arrival
+        // over a share of the transition, so a storm's sky rolls in ahead of its light —
+        // `Sky::cloudBlend` is the curve the game runs and `WeatherResult::mCloudBlendFactor` is
+        // where it reaches the deck there.
+        lighting.mCloudBlend = Sky::cloudBlend(blend, Sky::cloudsMaximumPercent(to));
     }
 
     void applyLighting(const CellLighting& lighting, Rtx::Shaders::VisibilityConstants& constants)
@@ -95,19 +99,6 @@ namespace RtxTool
             .mWaterLevel = lighting.mWaterLevel,
             .mSeconds = lighting.mSeconds,
 
-            // A settled sky names the same weather twice at a blend of nothing, which is what a
-            // `shot` always is; a window running a transition says where it has got to.
-            .mWeather = lighting.mWeather,
-            .mNextWeather = lighting.mNextWeather,
-            .mWeatherBlend = lighting.mWeatherBlend,
-
-            .mWindSpeed = lighting.mWindSpeed,
-
-            // **Asked of the eye, which is the only body standing in this weather.** The game aims
-            // an ashstorm at the player; every caller here has already put its camera in `mOrigin`,
-            // so the same rule reaches the same answer for whoever is looking.
-            .mStormDirection = Rtx::stormDirection(lighting.mWeather, constants.mOrigin),
-
             .mStars = stars,
             .mMoons = moons,
         };
@@ -117,8 +108,14 @@ namespace RtxTool
         // `NO_TEXTURE`, which the shader skips before it samples anything.
         if (lighting.mOutdoors)
         {
-            world.mClouds = Rtx::describeClouds(lighting.mWeather, lighting.mNextWeather, lighting.mWeatherBlend,
-                Rtx::deckLight(lighting.mDaylight.mSunAloft, budget.mMean, moons), world.mStormDirection,
+            // **Asked of the eye, which is the only body standing in this weather.** The game aims
+            // an ashstorm at the player. Every caller here has already put its camera in `mOrigin`,
+            // so the same rule reaches the same answer for whoever is looking.
+            const osg::Vec3f origin = constants.mOrigin;
+
+            world.mClouds = Rtx::describeClouds(lighting.mWeather, lighting.mNextWeather, lighting.mCloudBlend,
+                Rtx::deckLight(lighting.mDaylight.mSunAloft, budget.mMean, moons),
+                Rtx::stormDirection(lighting.mWeather, origin), Rtx::stormDirection(lighting.mNextWeather, origin),
                 lighting.mRoll.mClouds, lighting.mSky);
 
             Rtx::describePatches(lighting.mRoll.mStars, lighting.mSky, world.mSkyPatches);

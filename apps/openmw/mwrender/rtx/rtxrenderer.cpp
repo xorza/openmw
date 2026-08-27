@@ -876,35 +876,18 @@ namespace MWRender
             // slow down whenever the frame did.
             .mSeconds = static_cast<float>(when.getSimulationTime()),
 
-            // **The blend runs the opposite way to what its name suggests.** `getWeatherTransition`
-            // hands back `WeatherManager::mTransitionFactor`, which is set to one when a change
-            // begins and counted *down* as it completes — the engine's own mix is `1 - factor`
-            // (`apps/openmw/mwworld/weather.cpp:1261`). Passed through unturned it is a sky that
-            // starts as the weather it is becoming and ends as the one it left.
-            //
-            // **And the current weather twice where nothing is changing**, since the shader mixes
-            // unconditionally: naming this one on both sides at a blend of zero is what lets it.
-            .mWeather = static_cast<std::uint32_t>(world.mWeatherId),
-            .mNextWeather = world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
-                                                             : static_cast<std::uint32_t>(world.mWeatherId),
-            .mWeatherBlend = world.mNextWeatherId.has_value() ? 1.0f - world.mWeatherTransition : 0.0f,
-
-            .mWindSpeed = world.mWindSpeed,
-
-            // Already aimed at the player by the weather system, which is the only thing that knows
-            // where they stand. `Rtx::stormDirection` is the same rule for the harness, which has
-            // no player to ask.
-            .mStormDirection = world.mStormDirection,
-
             // **The two layers of sky over everything else, and an interior has neither.** Left at
             // their defaults indoors, which is a texture slot of `NO_TEXTURE` and a fade of
             // nothing — the shader skips both before it samples anything.
+            //
+            // **The current weather twice where nothing is arriving**, since the deck crosses
+            // unconditionally: naming it on both sides at a blend of nothing is what lets it.
             .mClouds = world.isOutdoors()
                 ? Rtx::describeClouds(static_cast<std::uint32_t>(world.mWeatherId),
                       world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
                                                        : static_cast<std::uint32_t>(world.mWeatherId),
                       world.mCloudBlend, Rtx::deckLight(sky.mSunAloft, budget.mMean, moons), world.mCloudDirection,
-                      world.mSkyRoll.mClouds, mSkyContent)
+                      world.mNextCloudDirection, world.mSkyRoll.mClouds, mSkyContent)
                 : Rtx::Shaders::CloudDeck{ .mOpacity = 0.0f,
                       .mTexture = Rtx::Shaders::NO_TEXTURE,
                       .mNext = Rtx::Shaders::NO_TEXTURE },

@@ -56,9 +56,6 @@ namespace RtxTool
         std::uint32_t mNextWeather = Rtx::Shaders::WEATHER_CLEAR;
         float mWeatherBlend = 0.0f;
 
-        /// How hard that weather blows, as the content files record it. An interior has no wind.
-        float mWindSpeed = 0.0f;
-
         /// How much of the sun this weather lets through, and how fast its deck runs. The engine
         /// mixes both across a transition, so both are settled when the weather is.
         float mGlare = 1.0f;

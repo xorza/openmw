@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <cstdint>
 #include <limits>
 
 #include <osg/Vec3f>
@@ -23,8 +22,8 @@ namespace Rtx
     /// added to one and forgotten in the other is a `shot` that quietly stops predicting the game.
     ///
     /// Three of those have already happened. The sea's clock was filled by the harness and left at
-    /// zero by the game, so every wave stood still in the game alone. The weather, the wind and both
-    /// moons had to be added twice in one sitting. And `mAir.mUniform` — whether the air is an even
+    /// zero by the game, so every wave stood still in the game alone. Both moons had to be added
+    /// twice in one sitting. And `mAir.mUniform` — whether the air is an even
     /// haze or banked — was written only by the harness, so every interior in the *game* ran the
     /// outdoor coverage field a room is far too small for.
     ///
@@ -73,23 +72,6 @@ namespace Rtx
         /// frame, which is what a screenshot wants.
         float mSeconds = 0.0f;
 
-        /// Which weather the sky is under, which one it is turning into, and how far along.
-        ///
-        /// **The blend is already the right way round**, which is not how the engine states it:
-        /// `WeatherManager::mTransitionFactor` starts at one and counts *down*, and its own mix is
-        /// `1 - factor`. Whoever fills this has turned it; nothing downstream turns it again.
-        ///
-        /// **And a settled sky names the same weather twice at a blend of nothing**, so the shader
-        /// mixes unconditionally rather than testing for a transition on every pixel.
-        std::uint32_t mWeather = Shaders::WEATHER_CLEAR;
-        std::uint32_t mNextWeather = Shaders::WEATHER_CLEAR;
-        float mWeatherBlend = 0.0f;
-
-        /// How hard the wind blows, and where it drives what it carries. The direction is unit
-        /// length wherever a weather set it and due north otherwise.
-        float mWindSpeed = 0.0f;
-        osg::Vec3f mStormDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
-
         /// The cloud deck and the star field, already in the units the shader takes: `describeClouds`
         /// and `describeStars` are what both renderers reach them through.
         Shaders::CloudDeck mClouds{ .mOpacity = 0.0f, .mTexture = Shaders::NO_TEXTURE, .mNext = Shaders::NO_TEXTURE };
@@ -106,7 +88,6 @@ namespace Rtx
 
     /// Writes the world's half of a frame into the constants it is traced with.
     ///
-    /// The camera's half is `makeCamera*`'s and is expected to be there already: the storm's
-    /// direction is asked of the eye by whoever fills `mStormDirection`, and nothing here moves it.
+    /// The camera's half is `makeCamera*`'s and is expected to be there already.
     void applyWorld(const FrameWorld& world, Shaders::VisibilityConstants& constants);
 }

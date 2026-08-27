@@ -25,13 +25,6 @@ namespace Rtx
         constants.mWaterLevel = world.mWaterLevel - Shaders::WATER_TIE_BREAK;
         constants.mTime = world.mSeconds;
 
-        constants.mWeather = world.mWeather;
-        constants.mNextWeather = world.mNextWeather;
-        constants.mWeatherBlend = world.mWeatherBlend;
-
-        constants.mWindSpeed = world.mWindSpeed;
-        constants.mStormDirection = world.mStormDirection;
-
         constants.mClouds = world.mClouds;
         constants.mStars = world.mStars;
 

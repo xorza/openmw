@@ -15,4 +15,3 @@
 - split tests
 - bloom
 - extract shader and lightting consts for look tweaking
-- cloud move

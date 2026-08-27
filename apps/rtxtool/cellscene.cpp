@@ -22,7 +22,6 @@
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/vismask.hpp>
-#include <components/weather/downpour.hpp>
 
 namespace RtxTool
 {
@@ -311,7 +310,6 @@ namespace RtxTool
                                .mDay = day,
                                .mHour = hour,
                                .mWeather = identity,
-                               .mWindSpeed = Weather::windSpeed(weather),
                                .mFog = daylight.mFog },
             .mReport = std::move(report) };
     }
