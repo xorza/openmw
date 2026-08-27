@@ -22,18 +22,21 @@
 /// hemisphere. The quarter, tried first in the reference implementation, put a plume back at the
 /// sky's own ambient, where it was invisible.
 ///
-/// Unshadowed, and the data is what makes that safe: `mSunIrradiance` is zero for a cell with no
-/// sky, so a vent in a cave gets none of it without being asked.
-///
 /// The lamps arrive the way they arrive at the fog — as irradiance spread over the whole sphere —
 /// because a puff is the same kind of thing the fog is, only denser and in one place. So it is the
-/// same `lampsAt` and the same one multiply on the sum.
-vec3 puffLight(vec3 position)
+/// same `lampsAt` and the same one multiply on the sum. They are the one term here still unshadowed,
+/// and the fog's own are too.
+///
+/// **A particle has no normal and it still has an up**, which is the whole of how a sprite is
+/// occluded: what a point sees of the sky is a question about the point, and the sky is above.
+/// `spritesAlong` says why the two below are asked once for a layer rather than once for a puff.
+///
+/// @param sunThrough what the world leaves of the sun on the way to this point.
+/// @param skyThrough the same for the sky over it.
+vec3 puffLight(vec3 position, float sunThrough, float skyThrough)
 {
-    // **The whole of the ambient, because a sprite has no hemisphere to ask about.** A particle is a
-    // point with no surface under it, so there is no normal to draw a visibility ray about — and a
-    // sprite at an exterior cave mouth carries the open sky at full strength for that reason.
-    return pathEnd(position, 1.0) + frame.mSunIrradiance * (INV_PI * daylightReaching(position))
+    return pathEnd(position, skyThrough)
+        + frame.mSunIrradiance * (INV_PI * daylightReaching(position) * sunThrough)
         + INV_FOUR_PI * lampsAt(position);
 }
 
@@ -145,6 +148,18 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     float extinction = 0.0;
     bool oriented = false;
     float width = 0.0;
+
+    // **What stands over the layer, asked once for it and not once for a puff.** A shadow ray inside
+    // the loop below would multiply with however many sprites a rainstorm puts over a pixel, which
+    // is the reason this was unshadowed at all. Two rays serve the whole layer instead, taken at the
+    // first sprite that is lit — the nearest one, and so the one whose light most of what the pixel
+    // shows is composited from.
+    //
+    // The sun's is skipped where there is no sun, and the sky's where the ambient is a room's own
+    // fill rather than the sky — which `skyReaching` decides for itself.
+    bool askedAbove = false;
+    float sunThrough = 1.0;
+    float skyThrough = 1.0;
 
     for (uint slot = spriteTileOffsets[tile]; slot < last; ++slot)
     {
@@ -294,7 +309,24 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             continue;
         }
 
-        covered += colour * puffLight(sprite.mPosition) * (alpha * reaching);
+        if (!askedAbove)
+        {
+            askedAbove = true;
+
+            if (frame.mSunIrradiance != vec3(0.0))
+            {
+                uint state = randomSeed(pixelKey(pixel) + SEED_SPRITE_SUN);
+                const vec2 draw = vec2(randomNext(state), randomNext(state));
+
+                sunThrough = lightThrough(sprite.mPosition,
+                    coneDirection(frame.mSunPosition, sin(SUN_ANGULAR_RADIUS), draw), frame.mFar);
+            }
+
+            // Straight up, because a particle has no normal and the sky is above it either way.
+            skyThrough = skyReaching(sprite.mPosition, vec3(0.0, 0.0, 1.0), pixelKey(pixel) + SEED_SKY_REACHING);
+        }
+
+        covered += colour * puffLight(sprite.mPosition, sunThrough, skyThrough) * (alpha * reaching);
         coverage += alpha;
         layer.mTransmittance *= 1.0 - alpha;
 

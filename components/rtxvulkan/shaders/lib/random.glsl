@@ -57,6 +57,13 @@ const uint SEED_LAMPS_FOAM = 0x55u;
 /// the two have nothing to do with each other.
 const uint SEED_SKY_REACHING = 0x56u;
 
+/// And one for where on the sun's disc a sprite layer's shadow ray leaves from.
+///
+/// **Not the one above, which is drawn in the same breath.** Two draws seeded alike take the same
+/// numbers, so the point on the disc and the direction into the sky would move together across the
+/// whole frame — a pattern rather than noise, and the filter keeps a pattern.
+const uint SEED_SPRITE_SUN = 0x57u;
+
 /// How far each stream's sequence advances between frames.
 ///
 /// **An additive recurrence with an irrational step**, which is the cheapest sequence whose every

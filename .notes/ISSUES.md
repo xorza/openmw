@@ -1,4 +1,4 @@
 # Open issues
 
-- A sprite is lit by `pathEnd` with no hemisphere to occlude it and no shadow ray to the sun, so
-  rain and smoke at an exterior cave mouth carry the open sky and the full sun.
+- A lamp reaches a sprite and reaches the fog through whatever stands between them. `lampsAt` traces
+  nothing, so a torch behind a wall lights the rain in front of it.

@@ -3455,6 +3455,71 @@ namespace Rtx
             EXPECT_NEAR(surf[0], encodeSrgb(mixed), 1) << "the run-out term's own value, not just its sign";
         }
 
+        /// A sprite is shadowed like anything else, by the sun and by the sky over it.
+        ///
+        /// **A particle has no normal and it still has an up**, which is what the layer was missing:
+        /// what a point sees of the sky is a question about the point. So rain under a bridge stops
+        /// carrying the open sky, and smoke in a canyon stops carrying the full sun.
+        ///
+        /// **Two rays for the layer and not two for a puff.** `spritesAlong` asks at the first
+        /// sprite that is lit, because a rainstorm puts dozens over a pixel and a ray apiece is what
+        /// kept this unshadowed at all.
+        ///
+        /// A lid four hundred units over the sprite and nothing else in the scene: the sun's term
+        /// goes when the sun is what lights it, and the ambient's goes when that is.
+        TEST_F(RtxVisibilityTest, aSpriteIsShadowedByWhatStandsOverIt)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const MipLevel one{ 0, 1, 1 };
+            const std::array<TextureData, 1> puff{ TextureData{
+                .mFormat = TextureFormat::Rgba8Unorm,
+                .mWidth = 1,
+                .mHeight = 1,
+                .mBytes = std::as_bytes(std::span(white)),
+                .mLevels = std::span(&one, 1),
+            } };
+
+            const auto sprited = [&](bool lidded, bool sunlit) {
+                SceneDesc scene;
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const std::array<Sprite, 1> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
+                scene.addEmitter(sprites, cut, false);
+
+                if (lidded)
+                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(makeSheet(4000.0f, 600.0f), {}, {}, sQuadIndices) });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+                // One light at a time, so what the lid takes is unambiguous.
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbientFromSky = 1.0f;
+                camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
+                camera.mSunIrradiance = sunlit ? osg::Vec3f(4.0f, 4.0f, 4.0f) : osg::Vec3f();
+                camera.mAmbient = sunlit ? osg::Vec3f() : osg::Vec3f(0.5f, 0.5f, 0.5f);
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, puff, camera, size, pixels, SeaState{});
+
+                return mRadiance[centre];
+            };
+
+            const float sun = sprited(false, true);
+            const float sky = sprited(false, false);
+
+            ASSERT_GT(sun, 0.01f) << "the sun did not reach the sprite at all";
+            ASSERT_GT(sky, 0.01f) << "and neither did the sky";
+
+            EXPECT_LT(sprited(true, true), 0.05f * sun) << "a lid did not stop the sun";
+            EXPECT_LT(sprited(true, false), 0.05f * sky) << "a lid did not stop the sky";
+        }
+
         /// What each mask names, and what neither of them does.
         ///
         /// **A mask that says stop accumulating is a mask that says keep the noise**, so what it
