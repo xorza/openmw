@@ -1915,12 +1915,14 @@ namespace MWRender
         }
         else
         {
-            // 1 pt of Light magnitude corresponds to 1 foot of radius
-            float radius = effect * std::ceil(Constants::UnitsPerFoot);
-            // Arbitrary multiplier used to make the obvious cut-off less obvious
-            float cutoffMult = 3;
+            // 1 pt of Light magnitude corresponds to 1 foot of radius, and nothing is added on top
+            // of it. The ray tracer reads a light's radius as the size the light really is and
+            // derives its intensity from the square of that, so a padded one arrives nine times too
+            // bright; and the rasterizer softens its own cut-off with `light radius multiplier`,
+            // which reaches every point light at once.
+            const float radius = effect * std::ceil(Constants::UnitsPerFoot);
 
-            if (!mGlowLight || (radius * cutoffMult) != mGlowLight->getRadius())
+            if (!mGlowLight || radius != mGlowLight->getRadius())
             {
                 if (mGlowLight)
                 {
@@ -1945,7 +1947,7 @@ namespace MWRender
                 mGlowLight->setActorFade(mActorFade);
             }
 
-            mGlowLight->setRadius(radius * cutoffMult);
+            mGlowLight->setRadius(radius);
         }
     }
 
