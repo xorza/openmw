@@ -7,6 +7,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/misc/constants.hpp>
 #include <components/sky/timeofday.hpp>
 
 #include "fogbuilder.hpp"
@@ -149,6 +150,21 @@ namespace Rtx
     /// them, so `E / 4pi` is the same light with the direction taken out of it. Nothing is invented
     /// and nothing is lost; a night simply stops having a sun in it.
     Skylight makeSkylight(const SkyReading& sky);
+
+    /// How high the cloud layer stands, in world units.
+    ///
+    /// **The one number in the sky that is chosen rather than read.** Nothing in Morrowind states
+    /// it: the cloud mesh gives its height in tiles of its own sheet and no metre anywhere. Five
+    /// hundred metres is a stratocumulus base and is the reference implementation's own choice, made
+    /// where it decides how large a cloud's shadow reads.
+    ///
+    /// It settles what `sunShareAloft` reads the sun at, how wide a tile of the sheet is across the
+    /// world, and so how large a shadow the deck casts.
+    ///
+    /// **A world height and not a height over the eye**, which is what a shadow needs: a layer that
+    /// rose with the camera would cast a shadow that moved with it. What still follows the eye is
+    /// the deck's *extent*, because the fade rings are the mesh's own and are measured from there.
+    inline constexpr float sCloudAltitude = 500.0f * Constants::UnitsPerMeter;
 
     /// A sun out of a weather's reading and however much of the disc the asker can see.
     ///

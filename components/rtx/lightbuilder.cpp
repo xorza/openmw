@@ -217,14 +217,6 @@ namespace Rtx
         /// measured.
         const osg::Vec3f sAirDepth(0.0683f, 0.0973f, 0.2213f);
 
-        /// How high the cloud layer stands, in world units.
-        ///
-        /// **The one number in the sky that is chosen rather than read.** Nothing in Morrowind
-        /// states it: the cloud mesh gives its height in tiles of its own sheet and no metre
-        /// anywhere. Five hundred metres is a stratocumulus base and is the reference
-        /// implementation's own choice, made where it decides how large a cloud's shadow reads.
-        const float sCloudAltitude = 500.0f * Constants::UnitsPerMeter;
-
         /// How far the world curves under that layer — the Earth's own radius, in world units.
         ///
         /// **Not `CloudShell::mCurvature`, which is a shape fit and not a planet.** That is `k · h`

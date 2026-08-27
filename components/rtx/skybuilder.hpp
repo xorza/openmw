@@ -50,6 +50,17 @@ namespace Rtx
         /// covers a quarter of its own sheet and its wisps are not a quarter as bright as they look.
         std::array<float, Shaders::WEATHER_COUNT> mCloudMean{};
 
+        /// The mean alpha of each weather's sheet: how much sky its deck hides on average.
+        ///
+        /// **What a cloud's shadow is measured against.** `Shaders::CLOUD_SHADOW_DEPTH` says why the
+        /// average cloud must darken nothing — the content's own `Sun_*_Color` has already dimmed
+        /// the sun for that weather, and a shadow that darkened by the whole of the alpha would
+        /// state it twice.
+        ///
+        /// A quarter for clear weather's cirrus, three quarters for cloudy, and all of it for the
+        /// three sheets that are 255 alpha in every texel.
+        std::array<float, Shaders::WEATHER_COUNT> mCloudCover{};
+
         /// The night sky, read off the mesh the rasterizer draws it with: the star field, the scale
         /// its sheet is laid at, where it fades, and the six patches painted across it.
         NightSky mNight;
@@ -63,6 +74,9 @@ namespace Rtx
 
         /// What that weather's sheet averages, or nothing where none was read or none could be.
         float meanOf(std::uint32_t weather) const;
+
+        /// How much sky that weather's deck hides on average, or nothing where none was read.
+        float coverOf(std::uint32_t weather) const;
     };
 
     /// Reads all of it, loading the textures into `scene` and holding them there.

@@ -21,17 +21,17 @@ namespace Rtx
 {
     namespace
     {
-        /// The mean luminance of what a sheet paints, which `SkyContent::mCloudMean` is the table of.
+        /// What a sheet averages: the luminance of what it paints, and how much of the sky it hides.
         ///
         /// Nothing where the file will not read or decode, which is the same answer a missing sheet
         /// gives and lands in the same place: a weather with no deck to draw.
-        float sheetMean(Resource::ImageManager& images, const VFS::Path::Normalized& path)
+        MeanTexel sheetMean(Resource::ImageManager& images, const VFS::Path::Normalized& path)
         {
             const osg::ref_ptr<const osg::Image> image = openImage(images, path);
             if (image == nullptr)
-                return 0.0f;
+                return MeanTexel();
 
-            return meanTexel(*image).opaque() * Shaders::LUMINANCE_WEIGHTS;
+            return meanTexel(*image);
         }
     }
 
@@ -46,6 +46,11 @@ namespace Rtx
     float SkyContent::meanOf(std::uint32_t weather) const
     {
         return weather < mCloudMean.size() ? mCloudMean[weather] : 0.0f;
+    }
+
+    float SkyContent::coverOf(std::uint32_t weather) const
+    {
+        return weather < mCloudCover.size() ? mCloudCover[weather] : 0.0f;
     }
 
     SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes)
@@ -73,7 +78,9 @@ namespace Rtx
             // **Read here and not on the frame that needs it.** Averaging a 512-square sheet is a
             // quarter of a million texels, and there are six of them; the image is the one the
             // upload is about to take out of the same cache.
-            loaded.mCloudMean[weather] = sheetMean(*scenes.getImageManager(), path);
+            const MeanTexel painted = sheetMean(*scenes.getImageManager(), path);
+            loaded.mCloudMean[weather] = painted.opaque() * Shaders::LUMINANCE_WEIGHTS;
+            loaded.mCloudCover[weather] = painted.mAlpha;
         }
 
         // **The shape the deck hangs on is the mesh's**, both of its numbers: how high the layer is
@@ -135,9 +142,12 @@ namespace Rtx
         // ends of the blend, so what it read is that sheet alone and so is the mean it is read
         // against.
         const std::uint32_t ahead = textures.cloudsOf(next);
-        const float mean = ahead == Shaders::NO_TEXTURE
-            ? textures.meanOf(weather)
-            : textures.meanOf(weather) * (1.0f - mixed) + textures.meanOf(next) * mixed;
+        const auto crossing = [&](float from, float to) {
+            return ahead == Shaders::NO_TEXTURE ? from : from * (1.0f - mixed) + to * mixed;
+        };
+
+        const float mean = crossing(textures.meanOf(weather), textures.meanOf(next));
+        const float cover = crossing(textures.coverOf(weather), textures.coverOf(next));
 
         return Shaders::CloudDeck{
             // A weather whose deck was never loaded has no deck, and neither has a sky whose mesh
@@ -148,6 +158,14 @@ namespace Rtx
             .mLit = light.mLit,
             .mShadowed = light.mShadowed,
             .mMean = mean,
+            .mCover = cover,
+
+            // **A world height and a tile's own width**, which is what anchors the sheet to the
+            // ground under it rather than to the eye. `Rtx::sCloudAltitude` is the chosen number and
+            // the mesh's own height in tiles is what turns it into a width.
+            .mAltitude = sCloudAltitude,
+            .mPerTile = textures.mShell.mTiles / sCloudAltitude,
+
             .mBlend = mixed,
             .mScroll = scroll,
 
@@ -156,7 +174,6 @@ namespace Rtx
             // nothing to drive leaves the direction due north, and this at nought.
             .mTurn = std::atan2(storm.x(), storm.y()),
 
-            .mTiles = textures.mShell.mTiles,
             .mCurvature = textures.mShell.mCurvature,
             .mRings = textures.mShell.mRings,
 

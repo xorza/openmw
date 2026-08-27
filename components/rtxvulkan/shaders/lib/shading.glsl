@@ -111,6 +111,11 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     const vec2 moonDraw[2]
         = vec2[2](vec2(randomNext(state), randomNext(state)), vec2(randomNext(state), randomNext(state)));
 
+    // **The cloud deck stands over the sun and the moons alike**, and it is the one occluder no ray
+    // finds: the clouds are not in the acceleration structure and never will be, so what a light
+    // above a point has to cross is asked of the sheet directly. `cloudShadow` says why it reads a
+    // flat layer where the eye is given the mesh's bowl.
+    //
     // The sun, which is one direction everywhere and needs none of the machinery below: no falloff,
     // no reach, and a shadow ray that runs until it leaves the world rather than until it arrives.
     //
@@ -131,7 +136,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
             = lightThrough(position, coneDirection(frame.mSunPosition, sin(SUN_ANGULAR_RADIUS), sunDraw), frame.mFar);
 
         radiance += frame.mSunIrradiance * lightThroughWater(position, frame.mSunPosition, footprint)
-            * (sunCosine * INV_PI * through);
+            * (sunCosine * INV_PI * through * cloudShadow(position, frame.mSunPosition));
     }
 
     // **The moons, which is the whole of what lights a night out of doors.** The same estimator as
@@ -152,7 +157,8 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
 
         radiance += frame.mMoons[moon].mIrradiance
             * lightThroughWater(position, frame.mMoons[moon].mDirection, footprint)
-            * (moonCosine * INV_PI * lightThrough(position, toward, frame.mFar));
+            * (moonCosine * INV_PI * lightThrough(position, toward, frame.mFar)
+                * cloudShadow(position, frame.mMoons[moon].mDirection));
     }
 
     // A lamp loses nothing to the water, where the sun and the sky both lose the column above the

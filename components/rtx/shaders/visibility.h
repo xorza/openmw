@@ -96,6 +96,26 @@ namespace Rtx::Shaders
         /// flat as it did before it read the paint at all.
         float mMean;
 
+        /// The mean alpha of the sheets being sampled: how much sky the deck hides on average.
+        ///
+        /// **What a shadow is measured against**, so that darkening the ground states the pattern
+        /// and not the weather — `CLOUD_SHADOW_DEPTH` carries the argument.
+        float mCover;
+
+        /// Where the layer stands, as a world height, and how many tiles of its sheet one world unit
+        /// is along each axis.
+        ///
+        /// **Signed, because the mesh's own unwrap is.** `CloudShell::mTiles` comes off the cloud
+        /// mesh with its `v` axis running the other way, and dropping that sign mirrors every
+        /// sheet.
+        ///
+        /// **The one number in the sky that is chosen rather than read**, and `Rtx::sCloudAltitude`
+        /// says so: the mesh gives its height in tiles of its own sheet and no metre anywhere. It is
+        /// what lets the sheet be addressed from where the eye stands rather than from where it
+        /// looks, and so what lets the deck cast.
+        float mAltitude;
+        vec2 mPerTile;
+
         /// How far from `mTexture` to `mNext`. A settled sky names the same texture twice at zero,
         /// so the shader mixes unconditionally rather than testing for a transition.
         float mBlend;
@@ -107,10 +127,9 @@ namespace Rtx::Shaders
         /// is what the engine rotates its cloud mesh by.
         float mTurn;
 
-        /// The layer's height in texture tiles, its curvature, and the three crossing radii the
-        /// engine's own fade turns on. `CloudShell` holds what each of them means and why none of
-        /// them is a constant.
-        vec2 mTiles;
+        /// How far the layer falls away over the ground it covers, and the three crossing radii the
+        /// engine's own fade turns on. `CloudShell` holds what each of them means and why neither is
+        /// a constant.
         float mCurvature;
         vec3 mRings;
 
@@ -457,10 +476,10 @@ namespace Rtx::Shaders
     // reads them are different compilers.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
     static_assert(sizeof(MoonDisc) == 88, "MoonDisc must be scalar-packed on every side");
-    static_assert(sizeof(CloudDeck) == 76, "CloudDeck must be scalar-packed on every side");
+    static_assert(sizeof(CloudDeck) == 84, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 832, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 840, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

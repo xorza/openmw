@@ -2702,6 +2702,73 @@ namespace Rtx
             EXPECT_FLOAT_EQ(decodeSrgb(dark[(std::size_t{ size / 2 } * size + size / 2) * 4]), 0.0f);
         }
 
+        /// The deck shadows the ground under it, and what darkens is the alpha over the sheet's mean.
+        ///
+        /// **The one occluder no ray finds.** The clouds are not in the acceleration structure, so
+        /// `cloudShadow` asks the sheet directly where the ray from a shading point to a light
+        /// crosses the layer. `CLOUD_SHADOW_DEPTH` says why it is the alpha *over the sheet's own
+        /// mean* that darkens: the content has already dimmed the sun for the weather, and taking
+        /// the whole of the alpha would state that twice.
+        ///
+        /// A floor of albedo 0.5 under a sun of 2 delivers `0.5 * 2 / pi` where nothing stands over
+        /// it. A sheet whose alpha is one everywhere then darkens it by `exp(-4)` where the sheet's
+        /// own mean is nought, and by nothing at all where that mean is one — which is the overcast
+        /// case, and the whole point of measuring against the mean.
+        TEST_F(RtxVisibilityTest, theDeckShadowsWhatStandsUnderIt)
+        {
+            constexpr std::uint32_t size = 32;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            SceneDesc scene;
+            scene.addTexture(VFS::Path::NormalizedView("cloud.dds"));
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+
+            constexpr std::array<std::uint8_t, 4> solid{ 255, 255, 255, 255 };
+            const MipLevel one{ 0, 1, 1 };
+            const std::array<TextureData, 1> sheet{ TextureData{
+                .mFormat = TextureFormat::Rgba8Unorm,
+                .mWidth = 1,
+                .mHeight = 1,
+                .mBytes = std::as_bytes(std::span(solid)),
+                .mLevels = std::span(&one, 1),
+            } };
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+            // Nothing else lights the floor, so what arrives is the sun's alone.
+            camera.mSkyHorizon = osg::Vec3f();
+            camera.mSkyZenith = osg::Vec3f();
+            camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
+            camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+
+            camera.mClouds = Shaders::CloudDeck{
+                .mOpacity = 1.0f,
+                .mAltitude = 30000.0f,
+                .mPerTile = osg::Vec2f(0.001f, 0.001f),
+                .mTexture = 0u,
+                .mNext = Shaders::NO_TEXTURE,
+            };
+
+            const auto floorUnder = [&](float cover) {
+                camera.mClouds.mCover = cover;
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, sheet, camera, size, pixels);
+
+                return mRadiance[centre];
+            };
+
+            EXPECT_NEAR(floorUnder(1.0f), 0.31831f, 1.0e-4f) << "a sheet at its own mean darkens nothing";
+            EXPECT_NEAR(floorUnder(0.0f), 0.31831f * std::exp(-4.0f), 1.0e-4f) << "and one over it darkens by four";
+
+            // And nothing at all where there is no deck, whatever the sheet says — which is the test
+            // every other frame in this file passes without knowing it.
+            camera.mClouds.mOpacity = 0.0f;
+            EXPECT_NEAR(floorUnder(0.0f), 0.31831f, 1.0e-4f);
+        }
+
         /// A moon hides the sky behind it, which is the order the engine draws its own in.
         ///
         /// **`SkyManager::create` builds the sky as atmosphere, night sky, sun, Masser, Secunda,
@@ -2905,7 +2972,8 @@ namespace Rtx
                 .mLit = osg::Vec3f(0.6f, 0.6f, 0.6f),
                 .mShadowed = osg::Vec3f(0.2f, 0.2f, 0.2f),
                 .mMean = 1.0f,
-                .mTiles = osg::Vec2f(0.01f, 0.01f),
+                .mAltitude = 1000.0f,
+                .mPerTile = osg::Vec2f(0.01f, 0.01f),
                 .mRings = osg::Vec3f(100.0f, 200.0f, 300.0f),
                 .mTexture = 0u,
                 .mNext = Shaders::NO_TEXTURE,

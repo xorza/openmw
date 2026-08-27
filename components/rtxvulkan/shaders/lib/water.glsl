@@ -105,7 +105,8 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
         const float spread = pixelBlur(frame.mCamera) + lobe;
 
         float shown;
-        path.mRadiance = skyRadiance(direction, spread, shown) + starField(frame.mStars, direction, spread) * shown;
+        path.mRadiance
+            = skyRadiance(origin, direction, spread, shown) + starField(frame.mStars, direction, spread) * shown;
     }
 
     return path;

@@ -29,6 +29,56 @@ vec3 skyGlow(vec3 direction)
     return skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction) + frame.mStars.mGlow + frame.mSkyFill;
 }
 
+/// Where a point on the layer sits on the sheet, in texture coordinates.
+///
+/// **Addressed from the world and not from the eye**, which is the whole of what lets the deck cast:
+/// a sheet laid out from where a ray happened to be looking travels with the camera, and a shadow
+/// off one would travel with it too rather than lie under the cloud that made it.
+///
+/// The turn is about the world's own origin, so that a ray from an eye and a ray from a shading
+/// point reach one answer. Nothing this renderer draws can see where that centre is: the four
+/// weathers that drive a storm are ash, blight, snow and blizzard, and not one of them reaches a
+/// cloud sheet the archives hold.
+vec2 cloudUvAt(vec2 crossing)
+{
+    const float turn = frame.mClouds.mTurn;
+    const vec2 bearing = vec2(cos(turn), sin(turn));
+    const vec2 along
+        = vec2(crossing.x * bearing.x - crossing.y * bearing.y, crossing.x * bearing.y + crossing.y * bearing.x);
+
+    return along * frame.mClouds.mPerTile + vec2(0.0, frame.mClouds.mScroll);
+}
+
+/// The sheet where `at` lands on it, across whatever crossing the weather is part way through.
+///
+/// **One reading, because two things ask for it**: what the eye finds in the deck, and what the deck
+/// leaves of a light standing over a shading point. The two used to sample the same sheet with the
+/// same blend written out twice, which is what the reference had already seen drift.
+///
+/// **The top mip and no cone.** A deck seen edge-on wants a level off the ray's gradient, and the
+/// gradient is what the hardware works out for itself from neighbouring lanes, which a ray tracer
+/// does not have. The engine's own fade is what stands in: the band where the stretch would alias is
+/// the band it takes the deck out over.
+vec4 cloudSheetAt(vec2 uv)
+{
+    const vec4 near = textureLod(textures[nonuniformEXT(frame.mClouds.mTexture)], uv, 0.0);
+    const vec4 far = frame.mClouds.mNext == NO_TEXTURE
+        ? near
+        : textureLod(textures[nonuniformEXT(frame.mClouds.mNext)], uv, 0.0);
+
+    return mix(near, far, frame.mClouds.mBlend);
+}
+
+/// How high the layer stands over a point, or nothing at all where it stands under one.
+///
+/// **A world height rather than one over the eye**, which is what a shadow needs: a layer that rose
+/// with the camera would cast a shadow that moved with it. What still follows the eye is the deck's
+/// *extent*, because the fade rings are the mesh's own and are measured from there.
+float cloudLayerOver(vec3 at)
+{
+    return max(frame.mClouds.mAltitude - at.z, 0.0);
+}
+
 /// What a ray that reached nothing finds in the cloud deck, and how much of the sky it hides.
 ///
 /// **The deck is where the ray crosses a layer over a curved world**, which is the thing the game's
@@ -43,18 +93,20 @@ vec3 skyGlow(vec3 direction)
 /// replaces and the paint for how thick it is, and `Rtx::deckLight` says what a cloud that thick
 /// radiates. A photograph of a 2002 sky is a shape and not a colour.
 ///
+/// @param origin where the ray started, which is what the sheet is laid out from.
 /// @param covered how much of what lies behind the deck it hides, which is what puts the stars out.
-vec3 cloudDeck(vec3 direction, out float covered)
+vec3 cloudDeck(vec3 origin, vec3 direction, out float covered)
 {
     covered = 0.0;
     if (!(frame.mClouds.mOpacity > 0.0) || frame.mClouds.mTexture == NO_TEXTURE || direction.z <= 0.0)
         return vec3(0.0);
 
-    // Turned about the zenith first, so the deck runs the way the weather drives it.
-    const float turn = frame.mClouds.mTurn;
-    const vec2 bearing = vec2(cos(turn), sin(turn));
+    // A ray that starts over the layer finds no deck, which is what an eye above the clouds sees.
+    const float height = cloudLayerOver(origin);
+    if (height <= 0.0)
+        return vec3(0.0);
+
     const vec2 plane = direction.xy / direction.z;
-    const vec2 along = vec2(plane.x * bearing.x - plane.y * bearing.y, plane.x * bearing.y + plane.y * bearing.x);
 
     // **How far down the layer has fallen where this ray meets it.** A flat one is met at `xy / z`
     // and a curved one nearer, by the height of its crossing: solving `r = t (h - k r²)` gives
@@ -63,14 +115,15 @@ vec3 cloudDeck(vec3 direction, out float covered)
     // curvature of nothing on the flat layer a replaced mesh may be.
     const float fallen = 2.0 / (1.0 + sqrt(1.0 + 4.0 * frame.mClouds.mCurvature * dot(plane, plane)));
 
-    const vec2 laid = along * frame.mClouds.mTiles * fallen;
+    const vec2 offset = plane * (height * fallen);
 
     // **How far out the ray met the layer, which is what the engine's fade is written in.** It paints
     // the outermost ring of its mesh at nothing and the one inside it at a quarter, and a triangle
     // between two rings interpolates that linearly in position — so the fade is a straight line in
-    // this radius, and the three radii it turns on came off the same mesh.
+    // this radius, and the three radii it turns on came off the same mesh. Measured from the eye,
+    // because the rings are the mesh's own and the mesh is centred there.
     const vec3 rings = frame.mClouds.mRings;
-    const float reach = length(laid);
+    const float reach = length(offset * frame.mClouds.mPerTile);
     if (reach >= rings.z)
         return vec3(0.0);
 
@@ -81,18 +134,9 @@ vec3 cloudDeck(vec3 direction, out float covered)
     const float outer = clamp((reach - rings.y) / max(rings.z - rings.y, 1.0e-6), 0.0, 1.0);
     const float reaches = mix(mix(1.0, CLOUD_RING_ALPHA, inner), 0.0, outer);
 
-    const vec2 uv = laid + vec2(0.0, frame.mClouds.mScroll);
+    const vec2 uv = cloudUvAt(origin.xy + offset);
 
-    // **The top mip and no cone.** A deck seen edge-on wants a level off the ray's gradient, and the
-    // gradient is what the hardware works out for itself from neighbouring lanes, which a ray tracer
-    // does not have. The engine's own fade is what stands in: the band where the stretch would alias
-    // is the band it takes the deck out over.
-    const vec4 near = textureLod(textures[nonuniformEXT(frame.mClouds.mTexture)], uv, 0.0);
-    const vec4 far = frame.mClouds.mNext == NO_TEXTURE
-        ? near
-        : textureLod(textures[nonuniformEXT(frame.mClouds.mNext)], uv, 0.0);
-
-    const vec4 cloud = mix(near, far, frame.mClouds.mBlend);
+    const vec4 cloud = cloudSheetAt(uv);
 
     covered = cloud.a * reaches * frame.mClouds.mOpacity;
 
@@ -114,6 +158,36 @@ vec3 cloudDeck(vec3 direction, out float covered)
     // engine does with that vertex alpha: `paintClouds` mixes the deck toward the fog by it, so the
     // last rings of cloud are the horizon's own colour rather than a thin wash of a distant one.
     return mix(frame.mSkyHorizon, radiance, reaches) * covered;
+}
+
+/// What the cloud layer leaves of a light standing over `position`.
+///
+/// **A flat layer, where the eye is given the mesh's bowl, and the two agree where anyone could
+/// check.** Morrowind's cap is a strong compression — it lets the deck reach 4.7 degrees above the
+/// horizon where a flat layer stops at 15.9 — and it is centred on the viewer by construction, so a
+/// world-anchored copy of it does not exist. A shadow has no viewer to be centred on, so it takes
+/// the honest crossing. Straight overhead the bowl and the plane meet exactly and it is the same
+/// texel; at 45 degrees they are 5% apart and at 14 degrees half again, which is a cloud low in the
+/// sky whose shadow is kilometres away and out of the frame it would have to be compared in.
+///
+/// **Beer-Lambert and not a crossfade**, which the reference measured: mixing toward a floor by
+/// coverage saturates, and deepening that mix enough for a cirrus sky to cast anything pinned 48.5%
+/// of the sheet at one flat value. An exponential never flattens, so the pattern on the ground stays
+/// the pattern in the sky.
+///
+/// `CLOUD_SHADOW_DEPTH` says why it is the alpha *over the sheet's own mean* that darkens.
+float cloudShadow(vec3 position, vec3 towards)
+{
+    if (!(frame.mClouds.mOpacity > 0.0) || frame.mClouds.mTexture == NO_TEXTURE || towards.z <= 0.0)
+        return 1.0;
+
+    const float height = cloudLayerOver(position);
+    if (height <= 0.0)
+        return 1.0;
+
+    const float alpha = cloudSheetAt(cloudUvAt(position.xy + towards.xy * (height / towards.z))).a;
+
+    return exp(-CLOUD_SHADOW_DEPTH * max(alpha - frame.mClouds.mCover, 0.0) * frame.mClouds.mOpacity);
 }
 
 /// What the nebulae and the constellations send back along a ray.
@@ -269,9 +343,10 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
 /// opaque moon leaves none of the field, a deck leaves what it does not cover, and the dome and the
 /// sun leave all of it because both are added rather than composited.
 ///
+/// @param origin where the ray started, which the deck is laid out from.
 /// @param blur how far this ray's cone has spread from its axis, in radians.
 /// @param shown how much of the star field is still in front of what this returns, from none to all.
-vec3 skyRadiance(vec3 direction, float blur, out float shown)
+vec3 skyRadiance(vec3 origin, vec3 direction, float blur, out float shown)
 {
     shown = 1.0;
 
@@ -340,7 +415,7 @@ vec3 skyRadiance(vec3 direction, float blur, out float shown)
 
     // Last, and over everything: the deck is nearer than any of it.
     float covered;
-    const vec3 clouds = cloudDeck(direction, covered);
+    const vec3 clouds = cloudDeck(origin, direction, covered);
     shown *= 1.0 - covered;
 
     return colour * (1.0 - covered) + clouds;

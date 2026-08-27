@@ -48,10 +48,12 @@ namespace Rtx
                 .mOpacity = 0.875f,
                 .mLit = osg::Vec3f(0.51f, 0.52f, 0.53f),
                 .mShadowed = osg::Vec3f(0.11f, 0.12f, 0.13f),
+                .mCover = 0.4375f,
+                .mAltitude = 34995.6f,
+                .mPerTile = osg::Vec2f(0.625f, -0.6875f),
                 .mBlend = 0.25f,
                 .mScroll = 3.5f,
                 .mTurn = 1.25f,
-                .mTiles = osg::Vec2f(0.625f, -0.6875f),
                 .mCurvature = 0.09375f,
                 .mRings = osg::Vec3f(0.8125f, 1.3125f, 1.9375f),
                 .mTexture = 4u,
@@ -130,7 +132,9 @@ namespace Rtx
             EXPECT_EQ(constants.mClouds.mBlend, world.mClouds.mBlend);
             EXPECT_EQ(constants.mClouds.mScroll, world.mClouds.mScroll);
             EXPECT_EQ(constants.mClouds.mTurn, world.mClouds.mTurn);
-            EXPECT_EQ(constants.mClouds.mTiles, world.mClouds.mTiles);
+            EXPECT_EQ(constants.mClouds.mCover, world.mClouds.mCover);
+            EXPECT_EQ(constants.mClouds.mAltitude, world.mClouds.mAltitude);
+            EXPECT_EQ(constants.mClouds.mPerTile, world.mClouds.mPerTile);
             EXPECT_EQ(constants.mClouds.mCurvature, world.mClouds.mCurvature);
             EXPECT_EQ(constants.mClouds.mRings, world.mClouds.mRings);
             EXPECT_EQ(constants.mClouds.mTexture, world.mClouds.mTexture);
@@ -300,9 +304,15 @@ namespace Rtx
             const Rtx::Shaders::CloudDeck deck = describeClouds(Rtx::Shaders::WEATHER_CLEAR,
                 Rtx::Shaders::WEATHER_CLEAR, 0.0f, sLight, osg::Vec3f(0.0f, 1.0f, 0.0f), 0.0f, textures);
 
-            EXPECT_EQ(deck.mTiles, sShell.mTiles);
             EXPECT_EQ(deck.mCurvature, sShell.mCurvature);
             EXPECT_EQ(deck.mRings, sShell.mRings);
+
+            // The mesh's height in tiles reaches the shader as a tile's own width, which is what a
+            // chosen altitude turns it into — and it keeps the mesh's sign, because the sheet's `v`
+            // runs the other way and dropping that mirrors every cloud.
+            EXPECT_EQ(deck.mPerTile, sShell.mTiles / Rtx::sCloudAltitude);
+            EXPECT_EQ(deck.mAltitude, Rtx::sCloudAltitude);
+            EXPECT_LT(deck.mPerTile.y(), 0.0f);
         }
 
         /// The level a sheet's texels are read against crosses with the sheet, and falls back with it.

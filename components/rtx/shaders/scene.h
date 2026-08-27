@@ -147,6 +147,24 @@ namespace Rtx::Shaders
     /// which is `cloudDeck`'s coverage and not this.
     RTX_CONST float CLOUD_TRANSMISSION = 0.25f;
 
+    /// How dark a cloud's shadow is, in nepers per unit of alpha over the sheet's own mean.
+    ///
+    /// **Over the mean and not over nothing, because the content has already dimmed the sun.**
+    /// Morrowind gives every weather its own `Sun_*_Color`: clear's is 255, 252, 238 and overcast's
+    /// is 163, 169, 183, so the average cloud is in the number before this renderer touches it. A
+    /// shadow that darkened by the whole of the alpha would state the weather twice — and worst
+    /// where it is most wrong, since `tx_sky_overcast` is 255 alpha in every texel and would come
+    /// out as one flat second dimming with no shape in it at all. Subtracting the sheet's own mean
+    /// leaves the level where the content put it and adds only the pattern.
+    ///
+    /// **And a cloud never brightens the sun**, which the `max` at nought is: a gap in the sheet is
+    /// an open sky and not a lens.
+    ///
+    /// Four is the reference implementation's own figure and the one number in the layer chosen
+    /// rather than derived. Clear weather's sheet is cirrus, which in life casts almost nothing, and
+    /// a shadow that cannot be seen is not worth tracing.
+    RTX_CONST float CLOUD_SHADOW_DEPTH = 4.0f;
+
     /// Irradiance of the sun against the sky it is set in.
     ///
     /// Not a physical figure: exposure absorbs any overall scale, so what matters is the ratio
