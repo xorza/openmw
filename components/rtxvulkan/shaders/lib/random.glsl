@@ -50,6 +50,13 @@ const uint SEED_LAMPS_MIRROR = 0x53u;
 const uint SEED_LAMPS_THROUGH = 0x54u;
 const uint SEED_LAMPS_FOAM = 0x55u;
 
+/// And one more for the direction a path's end asks the sky about, which is not a lamp at all.
+///
+/// **A sequence of its own, because it is drawn beside a reservoir and not out of one.** Stepping
+/// the lamps' would move which lamp a hit chose every time the hemisphere was asked a question, and
+/// the two have nothing to do with each other.
+const uint SEED_SKY_REACHING = 0x56u;
+
 /// How far each stream's sequence advances between frames.
 ///
 /// **An additive recurrence with an irrational step**, which is the cheapest sequence whose every

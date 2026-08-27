@@ -351,6 +351,18 @@ namespace Rtx::Shaders
         vec3 mSkyHorizon;
         vec3 mSkyZenith;
 
+        /// How much of `mAmbient` arrives from the sky, from none of it to all.
+        ///
+        /// **The two things an ambient can be, told apart.** Out of doors it is the sky: a point that
+        /// cannot see the sky does not get it, which is what `pathEnd` occludes. Inside, it is the
+        /// cell's own `AMBI` — a fill standing for every bounce the room makes, which reaches a
+        /// corner as much as the middle of the floor — and occluding that by what a ray can escape
+        /// to would take the light out of every interior, since none of them escapes anything.
+        ///
+        /// One and nought are the only values either host writes today, and a fraction is what a
+        /// cell part open to the sky would want.
+        float mAmbientFromSky;
+
         /// What the sky lights with over and above those two, and is not drawn with.
         ///
         /// **The one place where what the sky sends and what the sky shows are different things.**
@@ -479,7 +491,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 84, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 840, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 844, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

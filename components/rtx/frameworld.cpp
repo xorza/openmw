@@ -10,6 +10,7 @@ namespace Rtx
         constants.mSunIrradiance = world.mSun.mIrradiance;
         constants.mSunDiscColour = world.mSun.mDiscColour;
         constants.mAmbient = world.mAmbient;
+        constants.mAmbientFromSky = world.mAmbientFromSky;
 
         constants.mSkyHorizon = world.mSkyHorizon;
         constants.mSkyZenith = world.mSkyZenith;

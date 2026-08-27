@@ -47,6 +47,10 @@ namespace Rtx
         /// puts what the file left in that slot here, where light with no direction belongs.
         osg::Vec3f mAmbient;
 
+        /// How much of that arrives from the sky — one out of doors and nothing in a room.
+        /// `Shaders::VisibilityConstants::mAmbientFromSky` says what turns on it.
+        float mAmbientFromSky = 0.0f;
+
         /// What a ray that hit nothing comes back with, at the horizon and overhead. The game
         /// records one colour for the fog and the sky's lower half because they are the same thing
         /// at two distances, so the horizon is the air's own colour and not a third number.

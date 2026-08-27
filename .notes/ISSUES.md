@@ -1,4 +1,4 @@
 # Open issues
 
-- `pathEnd` hands a bounce that hit something the light the open sky delivers, with nothing to say
-  how enclosed the point is. The term that stands for the bounces nobody traces cannot darken a hole.
+- A sprite is lit by `pathEnd` with no hemisphere to occlude it and no shadow ray to the sun, so
+  rain and smoke at an exterior cave mouth carry the open sky and the full sun.

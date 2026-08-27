@@ -2994,6 +2994,65 @@ namespace Rtx
             EXPECT_NEAR(deck(0.0f), 0.4f, 1.0e-3f) << "a sheet nobody could average took a ratio anyway";
         }
 
+        /// What terminates a path is occluded out of doors, and is a room's own fill indoors.
+        ///
+        /// **The first level was always occluded and the second never was.** A bounce ray that hits
+        /// something is shaded there and the path stops, and what it was handed was the open sky
+        /// whatever stood over it — so a hollow was lit as though the sky reached into it.
+        /// `skyReaching` is the missing half, and `mAmbientFromSky` is what says whether it applies:
+        /// a cell's `AMBI` stands for the bounces that room makes and reaches a corner as much as
+        /// anywhere, where an exterior's ambient is the sky and a point that cannot see it does not
+        /// get it.
+        ///
+        /// A floor under a lid, lit by nothing but the ambient. Every bounce off the floor lands on
+        /// the lid's underside, which sees the floor and no sky at all — so out of doors the floor
+        /// goes dark and in a room it does not move.
+        ///
+        /// **The claim is the ratio and not either level.** What a converged one-bounce estimate
+        /// comes to depends on the filter it is read through; what cannot depend on anything is that
+        /// the same scene under the same ambient is an order darker once the sky is the thing being
+        /// occluded. The floor below the room's reading is there to catch a black frame.
+        TEST_F(RtxVisibilityTest, whatTerminatesAPathIsOccludedOutOfDoorsAndNotInARoom)
+        {
+            constexpr std::uint32_t size = 32;
+
+            SceneDesc scene;
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(makeSheet(4000.0f, 600.0f), {}, {}, sQuadIndices) });
+
+            // Between the two, looking down, so the eye finds the floor and the floor's own bounce
+            // finds the lid.
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+            // Nothing but the ambient, so what the floor shows is the path's own end and no more.
+            camera.mSkyHorizon = osg::Vec3f();
+            camera.mSkyZenith = osg::Vec3f();
+            camera.mSunIrradiance = osg::Vec3f();
+            camera.mAmbient = osg::Vec3f(0.5f, 0.5f, 0.5f);
+
+            const auto floorUnderTheLid = [&](float fromSky) {
+                camera.mAmbientFromSky = fromSky;
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels, SeaState{}, 32);
+
+                float sum = 0.0f;
+                for (std::size_t at = 0; at < mRadiance.size(); at += 4)
+                    sum += mRadiance[at];
+
+                return sum / float(mRadiance.size() / 4);
+            };
+
+            const float room = floorUnderTheLid(0.0f);
+            const float outside = floorUnderTheLid(1.0f);
+
+            EXPECT_GT(room, 0.01f) << "a room's own fill reaches the second level";
+            EXPECT_LT(outside, 0.1f * room) << "and the sky does not reach under a lid";
+        }
+
         /// A bounce is drawn by the cosine, and two thirds is the number that says so.
         ///
         /// **The one property of the estimator a uniform sky cannot show.** Every other test here

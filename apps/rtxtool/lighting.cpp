@@ -86,6 +86,7 @@ namespace RtxTool
         Rtx::FrameWorld world{
             .mSun = lighting.mDaylight.mSun,
             .mAmbient = lighting.mAmbient,
+            .mAmbientFromSky = lighting.mOutdoors ? 1.0f : 0.0f,
             .mSkyHorizon = lighting.mDaylight.mSkyHorizon,
             .mSkyZenith = lighting.mDaylight.mSkyZenith,
 

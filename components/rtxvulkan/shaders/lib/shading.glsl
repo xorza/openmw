@@ -234,7 +234,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     return radiance;
 }
 
-/// What terminates a path: the cell's own ambient, dimmed by whatever water stands over the point.
+/// What terminates a path: the cell's own ambient, dimmed by whatever stands over the point.
 ///
 /// **A stand-in for every bounce that is not being traced**, which is what it always was — the
 /// difference is that it is now one level down rather than added on top of the one that is. A
@@ -244,9 +244,14 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
 /// It stands in for light that arrived from above, so what it loses to water is the column straight
 /// over the point — `daylightReaching`'s approximation, and the same one the bounce's own escape to
 /// the sky uses.
-vec3 pathEnd(vec3 position)
+///
+/// @param reaching how much of the sky the point can see, out of `skyReaching`. It bites only on
+///        the share of the ambient that *is* the sky — `mAmbientFromSky` — because a room's `AMBI`
+///        is a fill standing for the bounces that room makes and reaches a corner as much as
+///        anywhere else. One is what an asker with no hemisphere to trace hands over.
+vec3 pathEnd(vec3 position, float reaching)
 {
-    return frame.mAmbient * daylightReaching(position);
+    return frame.mAmbient * (daylightReaching(position) * (1.0 - frame.mAmbientFromSky * (1.0 - reaching)));
 }
 
 /// What a shading model made of a surface, in the terms a temporal upscaler demodulates by.
@@ -336,6 +341,30 @@ vec3 cosineDirection(vec3 normal, vec2 u)
         + normal * sqrt(max(1.0 - u.x, 0.0));
 }
 
+/// How much of the sky a surface can see, as one cosine-weighted sample of its own hemisphere.
+///
+/// **The same integral the bounce already samples, one level further down.** A ray the eye found
+/// gathers a real hemisphere and is occluded by whatever it hits; what *that* ray landed on was
+/// handed the open sky whatever stood over it, so a point in an exterior hollow was lit as though
+/// the sky reached it. This is the missing half, and it is a visibility ray rather than a bounce:
+/// nothing is shaded at the far end, only asked whether there is one.
+///
+/// **One sample, and it is binary.** That is as noisy as a single sample can be, and it multiplies a
+/// term already carried by one — so it rides the same filter, and the estimator is unbiased where a
+/// cheaper guess would not be.
+float skyReaching(vec3 position, vec3 normal, uint seed)
+{
+    // **A room traces nothing**, which is most of what this costs: its ambient is a fill rather than
+    // the sky, so `pathEnd` would throw the answer away and the ray is not spent to get it.
+    if (!(frame.mAmbientFromSky > 0.0))
+        return 1.0;
+
+    uint state = randomSeed(seed);
+    const vec2 draw = vec2(randomNext(state), randomNext(state));
+
+    return lightThrough(position, cosineDirection(normal, draw), frame.mFar);
+}
+
 /// What reaches a surface from everything that is not a light: one diffuse bounce.
 ///
 /// **Traced only from the hit the eye found.** A shader with no recursion cannot bounce a bounce, and
@@ -361,7 +390,9 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     if (!hit.mHit)
         return skyGlow(towards) * daylightReaching(surface.mPosition);
 
-    return shadeSurface(hit, pathEnd(hit.mPosition), pixelKey(pixel) + SEED_LAMPS_BOUNCE);
+    const float reaching = skyReaching(hit.mPosition, hit.mNormal, pixelKey(pixel) + SEED_SKY_REACHING);
+
+    return shadeSurface(hit, pathEnd(hit.mPosition, reaching), pixelKey(pixel) + SEED_LAMPS_BOUNCE);
 }
 
 #endif

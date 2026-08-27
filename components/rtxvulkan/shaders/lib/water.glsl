@@ -95,7 +95,11 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     path.mDistance = hit.mHit ? hit.mDistance : WATER_MAX_PATH;
     path.mGeometric = hit.mHit ? hit.mGeometric : vec3(0.0, 0.0, 1.0);
     if (hit.mHit)
-        path.mRadiance = shadeSurface(hit, pathEnd(hit.mPosition), seed);
+    {
+        const float reaching = skyReaching(hit.mPosition, hit.mNormal, seed + SEED_SKY_REACHING);
+
+        path.mRadiance = shadeSurface(hit, pathEnd(hit.mPosition, reaching), seed);
+    }
     else
     {
         // **A reflection draws its own stars, because there is no later pass to draw them for it.**

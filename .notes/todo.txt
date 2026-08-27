@@ -8,13 +8,11 @@
 - translucent leaves
 - remove metal
 - precipitation interact with lightsources
-- moonlight
-- night sky overexposed
 - volumetric particles
 - spell lightsources
 - underwater `fog`
 - netch refraction
 - split tests
 - bloom
-- stars are visible though moons
 - extract shader and lightting consts for look tweaking
+- cloud move

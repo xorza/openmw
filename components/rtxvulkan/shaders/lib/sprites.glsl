@@ -30,7 +30,10 @@
 /// same `lampsAt` and the same one multiply on the sum.
 vec3 puffLight(vec3 position)
 {
-    return pathEnd(position) + frame.mSunIrradiance * (INV_PI * daylightReaching(position))
+    // **The whole of the ambient, because a sprite has no hemisphere to ask about.** A particle is a
+    // point with no surface under it, so there is no normal to draw a visibility ray about — and a
+    // sprite at an exterior cave mouth carries the open sky at full strength for that reason.
+    return pathEnd(position, 1.0) + frame.mSunIrradiance * (INV_PI * daylightReaching(position))
         + INV_FOUR_PI * lampsAt(position);
 }
 

@@ -843,6 +843,11 @@ namespace MWRender
         Rtx::FrameWorld described{
             .mSun = sky.mSun,
             .mAmbient = sky.mAmbient,
+
+            // **A room's ambient is a fill and an exterior's is the sky**, which is what says whether
+            // a point that can see neither still gets it. `VisibilityConstants::mAmbientFromSky`
+            // carries the whole of the difference.
+            .mAmbientFromSky = world.isOutdoors() ? 1.0f : 0.0f,
             .mSkyHorizon = haze,
 
             .mSkyZenith = zenith,
