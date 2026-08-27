@@ -25,7 +25,7 @@ const vec3 NO_TEXTURE_ALBEDO = vec3(0.5);
 /// point can land on the wrong side of its own triangle.
 const float SHADOW_BIAS = 1.0;
 
-/// Whether what is behind a surface is meant to show through it.
+/// Whether a material is meant to be seen through everywhere, rather than in the holes of a mask.
 ///
 /// One number and no mode, for the reason `GpuMaterial::mOpacity` gives: a leaf card and a pane of
 /// glass carry the same alpha mode, and the host is what tells them apart.
@@ -34,33 +34,51 @@ bool isTranslucent(GpuMaterial material)
     return material.mOpacity < 1.0;
 }
 
-/// How much of a translucent surface is there, where a ray met it.
+/// How much of a surface is there, before its texture is read.
 ///
-/// **The texture's alpha and the material's, multiplied**, which is what a blend does: a stained
-/// pane's texture says where the lead is and its material says how much glass there is.
+/// **The material's own alpha and the placement's fade**, which are two different facts: every
+/// placement of a model shares its material, and a fade belongs to one actor. See
+/// `Rtx::MeshInstance::mOpacity`.
+float surfaceOpacity(GpuInstance instance, GpuMaterial material)
+{
+    return instance.mOpacity * material.mOpacity;
+}
+
+/// Whether what is behind this surface is meant to show through it, by either of those two.
+bool isSeenThrough(GpuInstance instance, GpuMaterial material)
+{
+    return surfaceOpacity(instance, material) < 1.0;
+}
+
+/// How much of a see-through surface is there, where a ray met it.
 ///
-/// **One function, so that one pane cannot be hazed two ways.** A shadow ray asks what it let past
-/// and the eye asks what it covered, which are the same number seen from either side — and they stay
-/// the same number only while there is one place it is worked out.
+/// **The texture's alpha over the two `surfaceOpacity` carries**, which is what a blend does: the
+/// texture says where a stained pane's lead is, the material says how much glass there is, and the
+/// placement says how much of the whole thing the game is showing.
 ///
-/// **Guarded where `alphaPasses` needs no guard.** A cutout is one only where it has a mask to read,
-/// so that path never meets `NO_TEXTURE`; a material is translucent on its own alpha alone, and an
-/// untextured pane is all glass and no lead.
-float translucentOpacity(
-    GpuMaterial material, vec2 uv[3], vec3 weight, vec3 crossed, vec3 direction, float coneWidth)
+/// **One function, so that one surface cannot be hazed two ways.** A shadow ray asks what it let
+/// past and the eye asks what it covered, which are the same number seen from either side — and they
+/// stay the same number only while there is one place it is worked out.
+///
+/// **Guarded against a material with no mask**, which `alphaPasses` says more about: a surface is
+/// see-through on its alpha alone, and an untextured pane is all glass and no lead.
+float sampledOpacity(GpuInstance instance, GpuMaterial material, vec2 uv[3], vec3 weight, vec3 crossed,
+    vec3 direction, float coneWidth)
 {
     const float covered = material.mDiffuse == NO_TEXTURE
         ? 1.0
         : sampleDiffuse(material.mDiffuse, uv, weight, material.mTextureTransform, crossed, direction, coneWidth).a;
 
-    return clamp(covered * material.mOpacity, 0.0, 1.0);
+    return clamp(covered * surfaceOpacity(instance, material), 0.0, 1.0);
 }
 
 /// Whether a candidate hit landed on the material or in one of its holes.
 ///
-/// Only instances the build marked non-opaque reach this, and it marked exactly the materials with
-/// a mask to read, so there is no mode to branch on here: the comparison is the whole test, and a
-/// surface that wants none stores a threshold nothing can fail.
+/// Only instances the build marked non-opaque reach this, and it marks them for three different
+/// reasons: a mask to test, a material's own alpha, and a placement the game is fading. Just the
+/// first has anything here to read, which is what the early answer below is for. Past it there is no
+/// mode to branch on — the comparison is the whole test, and a surface that wants none stores a
+/// threshold nothing can fail.
 ///
 /// The level it reads at matters as much as the test does. A mask point-sampled at its finest mip
 /// answers for one texel out of the hundreds a distant pixel covers, and a binary test on that is a
@@ -72,11 +90,18 @@ bool alphaPasses(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, ve
     const GpuInstance instance = instances[instanceIndex];
     const GpuMaterial material = materials[instance.mMaterial];
 
-    // **A pane is met and not tested.** A cutoff asks where the holes in a mask are, and a
-    // translucent surface has none — it is there everywhere, thinly. Answered before the sample
-    // because a material is translucent on its own alpha alone: it may carry no texture at all, and
-    // `sampleDiffuse` on `NO_TEXTURE` is a descriptor nothing bound.
-    if (isTranslucent(material))
+    // **Met and not tested, in the two cases where there is nothing to test.** A cutoff asks where
+    // the holes in a mask are. A translucent material has none — it is there everywhere, thinly —
+    // and a material with no diffuse texture has no mask at all, which the sample below would answer
+    // for by reading a descriptor nothing bound.
+    //
+    // Both arrive here because forcing an instance non-opaque says nothing about its material: a
+    // pane of glass is forced for its own alpha, and an actor is forced for the fade its placement
+    // carries. Neither promises a mask.
+    //
+    // **The material and not the placement.** An actor the game is fading keeps every hole in its
+    // mask, because a fade is not a hole — what the fade does to what is left is measured elsewhere.
+    if (isTranslucent(material) || material.mDiffuse == NO_TEXTURE)
         return true;
 
     vec2 uv[3];
@@ -89,12 +114,13 @@ bool alphaPasses(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, ve
 }
 
 /// The same question asked of a candidate the traversal has not committed to.
-bool candidateIsTranslucent(uint instanceIndex)
+bool candidateIsSeenThrough(uint instanceIndex)
 {
-    return isTranslucent(materials[instances[instanceIndex].mMaterial]);
+    const GpuInstance instance = instances[instanceIndex];
+    return isSeenThrough(instance, materials[instance.mMaterial]);
 }
 
-/// How much of a ray a translucent candidate lets past it.
+/// How much of a ray a see-through candidate lets past it.
 float candidateTransmittance(
     uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth)
 {
@@ -104,7 +130,8 @@ float candidateTransmittance(
     triangleUvs(triangleCorners(meshes[instance.mMesh], primitive), uv);
 
     return 1.0
-        - translucentOpacity(materials[instance.mMaterial], uv, cornerWeights(bary), crossed, direction, coneWidth);
+        - sampledOpacity(
+            instance, materials[instance.mMaterial], uv, cornerWeights(bary), crossed, direction, coneWidth);
 }
 
 /// The candidate loop, run to completion. It confirms every hit that lands on the material rather
@@ -123,7 +150,7 @@ float candidateTransmittance(
 ///        finest level — every shadow ray. Substituted textually, so it may name the traversal.
 /// @param through an lvalue every translucent candidate multiplies what it let past into. Untouched
 ///        where `seeThrough` is false, which the compiler folds away with the branch.
-/// @param seeThrough whether a translucent candidate is walked past or resolved against its cutoff
+/// @param seeThrough whether a see-through candidate is walked past or resolved against its cutoff
 ///        like any other. **A literal, so that it folds**: a ray that sees through cannot commit the
 ///        surface it saw through, so a caller with no use for `through` must say false and get the
 ///        surface. Only the shadow ray says true today — its answer is a product, and a product does
@@ -143,7 +170,7 @@ float candidateTransmittance(
         const vec3 candidateCross                                                                           \
             = triangleCross(candidateCorners, rayQueryGetIntersectionObjectToWorldEXT(query, false));       \
                                                                                                             \
-        if ((seeThrough) && candidateIsTranslucent(candidateInstance))                                      \
+        if ((seeThrough) && candidateIsSeenThrough(candidateInstance))                                      \
         {                                                                                                   \
             (through) *= candidateTransmittance(                                                            \
                 candidateInstance, candidatePrimitive, candidateBary, candidateCross, (along), (cone));     \
@@ -230,8 +257,8 @@ struct Surface
     /// How much of this surface is there, where the ray met it. One for everything that is all
     /// there, which is nearly everything.
     ///
-    /// `translucentOpacity`, which is what a shadow ray asks of the same pane through
-    /// `candidateTransmittance` — so the two cannot haze one pane two ways.
+    /// `sampledOpacity`, which is what a shadow ray asks of the same surface through
+    /// `candidateTransmittance` — so the two cannot haze one surface two ways.
     float mOpacity;
 };
 
@@ -355,8 +382,8 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     // for the reason written over it: it is the hottest sampler in the shader and an out-parameter
     // there costs every opaque surface in the frame. This is a fetch a pane of glass pays and
     // nothing else does.
-    if (isTranslucent(material))
-        surface.mOpacity = translucentOpacity(material, uv, weight, crossed, direction, surface.mFootprint);
+    if (isSeenThrough(instance, material))
+        surface.mOpacity = sampledOpacity(instance, material, uv, weight, crossed, direction, surface.mFootprint);
 
     if (material.mEmissive != NO_TEXTURE)
         surface.mEmitted = EMISSIVE_INTENSITY

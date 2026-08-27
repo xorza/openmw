@@ -581,17 +581,20 @@ namespace Rtx
             /// A wall square to the sun with one pane held in front of it, as the byte its centre
             /// pixel comes back as.
             ///
-            /// **Shared by the two tests that hold a pane up to different rays.** One asks what the
-            /// pane let past to a shadow ray and one asks what the eye saw through it, and the
-            /// evidence in both is that the answer lands where a sun of half the irradiance lands.
-            /// That is evidence only while neither test can drift from the other's scene.
+            /// **Shared by the three tests that hold a pane up to different rays.** One asks what
+            /// the pane let past to a shadow ray, one asks what the eye saw through it, and one
+            /// fades the placement rather than the material. The evidence in all three is that the
+            /// answer lands where a sun of half the irradiance lands. That is evidence only while
+            /// none of them can drift from the others' scene.
             ///
             /// @param pane where to put the quad — on the sun's path to the wall for a shadow, on
             ///        the eye's path for a peel.
             /// @param colour what the pane is made of, its own alpha included, or nothing at all for
             ///        the wall on its own.
-            std::uint8_t litThroughPane(
-                std::span<const osg::Vec3f> pane, std::optional<osg::Vec4f> colour, const osg::Vec3f& irradiance)
+            /// @param fade how much of the pane the game is showing, which is the other of the two
+            ///        numbers a surface's opacity is made of.
+            std::uint8_t litThroughPane(std::span<const osg::Vec3f> pane, std::optional<osg::Vec4f> colour,
+                const osg::Vec3f& irradiance, float fade = 1.0f)
             {
                 constexpr std::uint32_t size = 33;
 
@@ -605,7 +608,8 @@ namespace Rtx
 
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                         .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
-                        .mMaterial = glass });
+                        .mMaterial = glass,
+                        .mOpacity = fade });
                 }
 
                 Shaders::VisibilityConstants camera = makeCamera(
@@ -1990,6 +1994,38 @@ namespace Rtx
 
             EXPECT_EQ(litThroughPane(pane, black(0.0f), bright), 153)
                 << "a pane that stops nothing is a pane that is not there";
+        }
+
+        /// A placement the game is fading is seen through, whatever its material says.
+        ///
+        /// **The same pane, made see-through by the other of the two numbers.** The tests around
+        /// this one give the material an alpha. This one leaves the material fully opaque and fades
+        /// the placement instead, which is where `MWRender::TransparencyUpdater` puts an actor's
+        /// distance fade, Invisibility and Chameleon. The picture has to be the same: the shader
+        /// multiplies the two, and nothing downstream of that knows which one it came from.
+        ///
+        /// **The pane carries no texture**, which is the case this most needs to be right about. A
+        /// faded placement is forced non-opaque whatever its material, so it reaches the cutout test
+        /// — and a material with no mask has nothing there for that test to read.
+        TEST_F(RtxVisibilityTest, aFadedPlacementIsSeenThroughWhateverItsMaterialSays)
+        {
+            const std::array pane{
+                osg::Vec3f(30.0f, -50.0f, -20.0f),
+                osg::Vec3f(70.0f, -50.0f, -20.0f),
+                osg::Vec3f(70.0f, -50.0f, 20.0f),
+                osg::Vec3f(30.0f, -50.0f, 20.0f),
+            };
+
+            const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
+            const osg::Vec4f black(0.0f, 0.0f, 0.0f, 1.0f);
+
+            EXPECT_EQ(litThroughPane(pane, black, bright), 0) << "a black pane nothing is fading";
+
+            // The same 111 the two tests around this one reach, by the third of the three routes to
+            // it: half the wall through a pane the game is showing half of.
+            EXPECT_EQ(litThroughPane(pane, black, bright, 0.5f), 111);
+
+            EXPECT_EQ(litThroughPane(pane, black, bright, 0.0f), 153) << "an actor faded away entirely";
         }
 
         /// A translucent occluder dims the sun rather than stopping it.

@@ -426,6 +426,14 @@ namespace Rtx
         return slot;
     }
 
+    void SceneDesc::fadeInstance(Index slot, float opacity)
+    {
+        assert(slot < mInstances.size());
+        assert(mInstances[slot].isPlaced() && "a slot nothing stands in");
+
+        mInstances[slot].mOpacity = opacity;
+    }
+
     bool SceneDesc::moveInstance(Index slot, const osg::Matrixf& transform)
     {
         assert(slot < mInstances.size());

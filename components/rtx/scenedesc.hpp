@@ -274,6 +274,18 @@ namespace Rtx
         Index mMesh = sNoIndex;
         Index mMaterial = sNoIndex;
 
+        /// How much of this placement is there — the fade the game is applying to one actor.
+        ///
+        /// **On the placement and never on the material, because a material is shared.**
+        /// `SceneUtil::CopyOp` does not deep-copy state sets, so every actor built from one body
+        /// part reads one material, and only the one walking out of `actors processing range` is
+        /// fading. `MWRender::TransparencyUpdater` writes the number on a state set above the whole
+        /// actor for that same reason, and this is where it lands — with Invisibility and Chameleon,
+        /// which ride the same pair of uniforms.
+        ///
+        /// One for everything the game is not hiding, which is nearly everything.
+        float mOpacity = 1.0f;
+
         /// Whether this slot holds anything. A dropped placement leaves its slot behind rather than
         /// closing the gap, because the slot index is what a hit reads back.
         bool isPlaced() const { return mMesh != sNoIndex; }
@@ -494,6 +506,12 @@ namespace Rtx
         /// world stands still — and making it the cheap one is the point of addressing placements
         /// by slot at all.
         bool moveInstance(Index slot, const osg::Matrixf& transform);
+
+        /// Fades the placement in `slot`.
+        ///
+        /// Separate from `moveInstance` because the two are separate facts: an actor fading on the
+        /// spot has not moved, and an actor walking is not fading. Neither records the other.
+        void fadeInstance(Index slot, float opacity);
 
         /// Empties `slot`. Its index is not reused until the next `addInstance` asks for one.
         void dropInstance(Index slot);

@@ -68,6 +68,10 @@ namespace Rtx
         /// resolves a microtriangle as opaque from the same mask a cutout is tested against, and a
         /// committed hit is the end of the ray — which is right for a leaf and loses a pane of glass
         /// entirely. So a translucent instance is forced non-opaque and is given no micromap.
+        ///
+        /// **Two ways to earn it.** The material says a pane of glass is one wherever it is placed.
+        /// The placement says an actor the game is fading is one for as long as it fades, whatever
+        /// its material claims — and that actor keeps its cutout, since a fade is not a hole.
         bool mTranslucent = false;
 
         /// Whether the slot this record sits in holds a placement.

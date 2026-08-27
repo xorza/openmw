@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <initializer_list>
+#include <optional>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -1929,6 +1930,98 @@ namespace Rtx
             const Rtx::Material plain = extractOne(false);
             EXPECT_EQ(plain.mAlphaMode, Rtx::AlphaMode::Opaque);
             EXPECT_FALSE(plain.isCutout());
+        }
+
+        /// An actor's fade rides its placement, and a model's own alpha does not ride it twice.
+        ///
+        /// **`alpha` has two writers and they mean different things.** `MWRender::TransparencyUpdater`
+        /// writes it beside `actorFade` on a state set above the whole actor, which is where the
+        /// distance fade, Invisibility and Chameleon all arrive. `NifOsg::AlphaController` writes it
+        /// alone, and writes the same number into the surface description as well — so a walk that
+        /// took every `alpha` it met would fade an animated surface twice. The pair is what tells
+        /// the two apart.
+        ///
+        /// **On the placement and never on the material**, which is the half that cannot be got
+        /// wrong: OpenMW's clone keeps state sets by reference, so every actor built from one body
+        /// part reads one material, and a fade written there would fade all of them.
+        TEST(RtxSceneExtractorTest, anActorsFadeRidesItsPlacementAndAModelsOwnAlphaDoesNot)
+        {
+            const auto extractOne = [](float alpha, std::optional<float> actorFade) {
+                osg::ref_ptr<osg::Group> parent = new osg::Group;
+                osg::StateSet& above = *parent->getOrCreateStateSet();
+                above.addUniform(new osg::Uniform("alpha", alpha));
+                if (actorFade.has_value())
+                    above.addUniform(new osg::Uniform("actorFade", *actorFade));
+
+                osg::ref_ptr<osg::Geometry> quad = makeQuad();
+                osg::StateSet& own = *quad->getOrCreateStateSet();
+                paint(own, "textures/tx_a_imperial_helmet.dds");
+                own.setAttributeAndModes(new osg::BlendFunc, osg::StateAttribute::ON);
+                describe(own).mAlphaMode = Surface::AlphaMode::Blend;
+                parent->addChild(quad);
+
+                Rtx::SceneDesc scene;
+                SceneExtractor extractor(scene);
+                extractor.extract(*parent, osg::Matrixf::identity(), 0);
+
+                EXPECT_EQ(scene.getInstances().size(), 1u);
+                EXPECT_EQ(scene.getMaterials().size(), 1u);
+
+                // The material is asked as well, because the fade landing there instead would pass
+                // every other assertion in this test.
+                EXPECT_EQ(scene.getMaterials().front().mDiffuseColour.a(), 1.0f)
+                    << "a shared material took one actor's fade";
+
+                std::vector<Rtx::InstanceRecord> records;
+                Rtx::makeInstanceRecords(scene, records);
+                EXPECT_EQ(records.size(), 1u);
+                EXPECT_TRUE(records.front().mCutout) << "a fade is not a hole, and the mask still has some";
+
+                return scene.getInstances().front().mOpacity;
+            };
+
+            // Halves and quarters, so the product is exact in binary and the assertion is the
+            // arithmetic rather than a tolerance: this is `objects.frag`'s own `alpha * actorFade`.
+            EXPECT_EQ(extractOne(0.5f, 0.25f), 0.125f);
+            EXPECT_EQ(extractOne(1.0f, 1.0f), 1.0f) << "an actor nothing is hiding";
+            EXPECT_EQ(extractOne(0.5f, std::nullopt), 1.0f) << "a model animating its own alpha, counted once";
+        }
+
+        /// A placement keeps its slot while its fade changes, which is the only way a fade arrives.
+        ///
+        /// An actor fades over the last tenth of `actors processing range`, which is tens of frames
+        /// of one placement standing in one slot — and a slot is what a hit reads back, so it cannot
+        /// be replaced to carry a new number. A record built from the faded slot is translucent, and
+        /// that is what forces the candidate loop traversal would otherwise skip.
+        TEST(RtxSceneExtractorTest, aPlacementKeepsItsSlotWhileItsFadeChanges)
+        {
+            osg::ref_ptr<osg::Group> parent = new osg::Group;
+            osg::StateSet& above = *parent->getOrCreateStateSet();
+            osg::ref_ptr<osg::Uniform> fade = new osg::Uniform("actorFade", 1.0f);
+            above.addUniform(fade);
+            above.addUniform(new osg::Uniform("alpha", 1.0f));
+            parent->addChild(makeQuad());
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+            extractor.extract(*parent, osg::Matrixf::identity(), 0);
+
+            std::vector<Rtx::InstanceRecord> records;
+            ASSERT_EQ(scene.getInstances().size(), 1u);
+            EXPECT_EQ(scene.getInstances().front().mOpacity, 1.0f);
+            Rtx::makeInstanceRecords(scene, records);
+            EXPECT_FALSE(records.front().mTranslucent) << "an actor at full brightness stops every ray";
+
+            scene.advancePlacement();
+            fade->set(0.25f);
+            extractor.extract(*parent, osg::Matrixf::identity(), 0);
+
+            EXPECT_EQ(scene.getInstances().size(), 1u) << "a second placement rather than the one that faded";
+            EXPECT_EQ(scene.getInstances().front().mOpacity, 0.25f);
+            EXPECT_TRUE(scene.getMoved().empty()) << "a placement that faded on the spot reported moving";
+
+            Rtx::makeInstanceRecords(scene, records);
+            EXPECT_TRUE(records.front().mTranslucent);
         }
 
         /// The emissive multiplier is folded into the colour, because their product is all the

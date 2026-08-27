@@ -80,7 +80,7 @@ namespace Rtx
                 .mMesh = instance.mMesh,
                 .mMask = water ? Shaders::MASK_WATER : Shaders::MASK_SOLID,
                 .mCutout = material != nullptr && material->isCutout(),
-                .mTranslucent = material != nullptr && material->isTranslucent(),
+                .mTranslucent = instance.mOpacity < 1.0f || (material != nullptr && material->isTranslucent()),
                 .mPlaced = true,
             };
         }

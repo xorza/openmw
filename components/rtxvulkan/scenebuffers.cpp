@@ -266,6 +266,7 @@ namespace Rtx
             Shaders::GpuInstance& row = mInstanceScratch[slot];
             row.mMesh = record.mMesh;
             row.mMaterial = placements[slot].mMaterial == sNoIndex ? sentinel : placements[slot].mMaterial;
+            row.mOpacity = placements[slot].mOpacity;
 
             for (int r = 0; r < 3; ++r)
                 row.mMotion[r] = osg::Vec4f(record.mMotion.mRows[r][0], record.mMotion.mRows[r][1],

@@ -95,6 +95,40 @@ namespace Rtx
             return nullptr;
         }
 
+        /// How much of an actor there is, from the two uniforms the game fades one with.
+        ///
+        /// **Both off the same state set, which is what tells them from a model's own animation.**
+        /// `MWRender::TransparencyUpdater` writes `alpha` and `actorFade` as a pair on a state set
+        /// above the whole actor, and the three things that ride them are the distance fade over the
+        /// last tenth of `actors processing range`, Invisibility and Chameleon.
+        /// `NifOsg::AlphaController` writes `alpha` on its own and writes the same number into the
+        /// surface description as well — so a walk that took any `alpha` it met would fade an
+        /// animated surface twice.
+        ///
+        /// The product is what `objects.frag` reaches for the same surface: `diffuseColor.a * alpha
+        /// * actorFade`, of which the first factor is already in the material.
+        float readActorFade(std::span<const Shading> shading)
+        {
+            // Nearest wins, exactly as a rasterizing cull would resolve the uniform. The scene root
+            // carries a pair of ones, so a walk that reaches the bottom answers the same as no walk.
+            for (auto it = shading.rbegin(); it != shading.rend(); ++it)
+            {
+                const osg::Uniform* fade = it->mStateSet->getUniform(std::string("actorFade"));
+                if (fade == nullptr)
+                    continue;
+
+                float actorFade = 1.0f;
+                float alpha = 1.0f;
+                fade->get(actorFade);
+                if (const osg::Uniform* hidden = it->mStateSet->getUniform(std::string("alpha")))
+                    hidden->get(alpha);
+
+                return actorFade * alpha;
+            }
+
+            return 1.0f;
+        }
+
         /// The texture bound at `unit`, or null.
         const osg::Texture2D* getTexture(const osg::StateSet& stateSet, unsigned int unit)
         {
@@ -970,12 +1004,18 @@ namespace Rtx
         const std::size_t who = identify(mAnchor, path);
         const auto held = mPlacements.find(who);
 
+        // Read for every surface and not for actors alone, because nothing here knows which is
+        // which: what a mirror can see is a state set above this drawable that says how much of it
+        // the game is showing, and the world's own answer to that is one.
+        const float fade = readActorFade(shading);
+
         if (held == mPlacements.end())
         {
             const Index slot = mScene.addInstance(MeshInstance{
                 .mTransform = place,
                 .mMesh = mesh,
                 .mMaterial = material,
+                .mOpacity = fade,
             });
             mPlacements.emplace(who, Known{ .mIndex = slot, .mEpoch = mEpoch });
         }
@@ -983,6 +1023,7 @@ namespace Rtx
         {
             held->second.mEpoch = mEpoch;
             mScene.moveInstance(held->second.mIndex, place);
+            mScene.fadeInstance(held->second.mIndex, fade);
         }
 
         ++stats.mInstances;

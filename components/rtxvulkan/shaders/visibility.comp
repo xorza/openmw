@@ -59,15 +59,20 @@ void main()
     const Cone cone = coneAt(frame.mCamera);
     Surface surface = trace(origin, direction, 0.0, cone.mWidth, cone.mSpread, MASK_SOLID | MASK_WATER);
 
-    // **The nearest pane of glass the eye is looking through, peeled off and kept.** A translucent
-    // surface is met like any other and lit like any other, and then the ray carries on from where
-    // it stood — so what is behind it is a real hit rather than whatever the pane's mask happened to
-    // survive a cutoff.
+    // **The nearest surface the eye is looking through, peeled off and kept.** A pane of glass is
+    // one, and so is an actor the game is fading — Invisibility, Chameleon, or the distance fade at
+    // the edge of `actors processing range`. It is met like any other surface and lit like any
+    // other, and then the ray carries on from where it stood, so what is behind it is a real hit
+    // rather than whatever its mask happened to survive a cutoff.
     //
-    // **The nearest one only.** A second pane behind the first is drawn as the cutout it was, which
-    // is what one layer buys: no sorting, no budget, and no second traversal on a pixel that has no
-    // glass in it. The census says a cell holds two to four translucent materials, so one along a
-    // ray is nearly always all there is — and where it is, this is exact.
+    // **The nearest one only.** A second one behind the first is drawn as the cutout it was, which
+    // is what one layer buys: no sorting, no budget, and no second traversal on a pixel that has
+    // nothing see-through in it. For glass that is nearly always the whole answer — the census says
+    // a cell holds two to four translucent materials — and where it is, this is exact.
+    //
+    // **An actor is not that.** A cuirass over a skirt over a leg is three layers, so a person under
+    // Chameleon shows the nearest one faded and the one behind it at full strength. That is what an
+    // ordered walk would buy, and it is the reason this says *to begin with*.
     //
     // **Direct light only, and that is a limit rather than a saving.** `bounceLight` draws its
     // sequence from the pixel and nothing else, so a pane and the wall behind it would bounce off
