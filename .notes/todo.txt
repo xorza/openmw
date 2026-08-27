@@ -17,3 +17,4 @@
 - split tests
 - bloom
 - stars are visible though moons
+- extract shader and lightting consts for look tweaking
