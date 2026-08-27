@@ -169,6 +169,22 @@ namespace Rtx::Shaders
     /// two paths are the same brightness and only the detail differs.
     RTX_CONST float MOON_RADIANCE = 5.4217f;
 
+    /// Irradiance a full Masser delivers to a surface facing it, on the same scale as `DAYLIGHT`.
+    ///
+    /// **Chosen apart from `MOON_RADIANCE`, and that is deliberate.** For a real body the two are
+    /// one fact — a disc of radiance `L` and half-angle `t` delivers `L * pi * sin(t)^2` — but
+    /// `MOON_RADIANCE` is pinned by where the tone curve stops keeping colour rather than by what a
+    /// moon emits, and a light read out of that pin puts a night at a thousandth of a day. A real
+    /// full moon is a 400,000th of the sun and no scale here could carry both, so the disc is set so
+    /// that Masser reads as red and this is set so that a moonlit night is a night one can see. It
+    /// is a fortieth of `DAYLIGHT`. A sixteenth of it puts a town under a red sun rather than a
+    /// moon, and leaves the lamps in that town with nothing to be brighter than.
+    ///
+    /// **Masser's, because the two moons do not deliver the same.** What a moon is worth as a light
+    /// goes as the sky it covers and as its own albedo, and `placeMoon` derives both from what the
+    /// game already says rather than keeping a second number in step with this one.
+    RTX_CONST float MOONLIGHT = 0.2f;
+
     /// Angular radius of the sun, in radians — a disc about half a degree across.
     ///
     /// The real figure, because there is only one right answer and nothing about this renderer wants

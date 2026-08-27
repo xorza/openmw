@@ -31,24 +31,30 @@ vec3 daylightReaching(vec3 position)
     return exp(-WATER_EXTINCTION * depth);
 }
 
-/// What the sun has left, and how it has been gathered, by the time it reaches a point.
+/// What a light in the sky has left, and how it has been gathered, by the time it reaches a point.
 ///
 /// Two things happen to it on the way down. The water absorbs along the path — the *slant* path,
-/// which is longer than the depth for any sun that is not overhead, and is why a bed is legitimately
-/// darker seen from under the water than from above it. And the surface is a lens, which is
-/// `caustic`. The shadow ray already passes the surface — water carries a mask bit that keeps it out
-/// of occlusion — so this is the whole of what the water does to sunlight.
+/// which is longer than the depth for any source that is not overhead, and is why a bed is
+/// legitimately darker seen from under the water than from above it. And the surface is a lens,
+/// which is `caustic`. The shadow ray already passes the surface — water carries a mask bit that
+/// keeps it out of occlusion — so this is the whole of what the water does to a light above it.
+///
+/// **The direction is asked for rather than read off the sun**, because a moon is above the water
+/// too and stands somewhere else: a night lit through the sun's slant path is a night lit through a
+/// source below the horizon.
 ///
 /// White above the surface, and for a cell with no water at all.
-vec3 sunThroughWater(vec3 position, float footprint)
+///
+/// @param toward unit, from the point to the light.
+vec3 lightThroughWater(vec3 position, vec3 toward, float footprint)
 {
     const float depth = frame.mWaterLevel - position.z;
     if (!(depth > 0.0))
         return vec3(1.0);
 
-    // Refracted at a *flat* surface: what the waves do to the sun's direction averages out over the
-    // path, and what they do to its distribution is the caustic.
-    const vec3 downward = refract(-frame.mSunPosition, vec3(0.0, 0.0, 1.0), 1.0 / WATER_IOR);
+    // Refracted at a *flat* surface: what the waves do to the direction averages out over the path,
+    // and what they do to its distribution is the caustic.
+    const vec3 downward = refract(-toward, vec3(0.0, 0.0, 1.0), 1.0 / WATER_IOR);
     const float path = depth / max(-downward.z, 0.05);
 
     return exp(-WATER_EXTINCTION * path) * caustic(position.xy, depth, frame.mTime, footprint);

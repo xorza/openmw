@@ -10,6 +10,7 @@
 #include <components/sky/moonmodel.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "shaders/colour.h"
 #include "shaders/scene.h"
 
 namespace Rtx
@@ -33,13 +34,77 @@ namespace Rtx
         const osg::Vec3f sMasserFace(0.0332f, 0.0099f, 0.0123f);
         const osg::Vec3f sSecundaFace(0.0440f, 0.0373f, 0.0295f);
 
+        /// Masser's own luminance. The two tints are normalised on it, so that `Shaders::MOONLIGHT`
+        /// means exactly what its name says.
+        const float sMasserLuma = sMasserFace * Shaders::LUMINANCE_WEIGHTS;
+
         /// Half the angle a moon of this size subtends, out of the geometry the game's own renderer
         /// builds: `Moons_<name>_Size / 125 * 450` scales a quad of half-extent 0.5, a thousand
         /// units away.
-        float angularRadiusOf(Moon moon)
+        float subtendedBy(Moon moon)
         {
             const float halfWidth = 0.5f * 450.0f * setting(moon, "Size") / 125.0f;
             return std::atan(halfWidth / 1000.0f);
+        }
+
+        /// The same, worked out once.
+        ///
+        /// **Both moons are placed every frame**, and `setting` builds two strings to look a key up
+        /// with — an allocation on the frame path, for a pair of numbers that are fixed for the run.
+        float angularRadiusOf(Moon moon)
+        {
+            static const float sMasser = subtendedBy(Moon::Masser);
+            static const float sSecunda = subtendedBy(Moon::Secunda);
+
+            return moon == Moon::Masser ? sMasser : sSecunda;
+        }
+
+        /// This moon's colour, on a scale where Masser's luminance is one.
+        ///
+        /// **The difference in brightness is kept and only the level is taken out.** Secunda's
+        /// portrait averages two and a half times Masser's, and that is a fact about the two bodies
+        /// rather than an accident of the art — a pale moon reflects more of the same sunlight than
+        /// a dark red one.
+        osg::Vec3f tintOf(Moon moon)
+        {
+            return (moon == Moon::Masser ? sMasserFace : sSecundaFace) / sMasserLuma;
+        }
+
+        /// How much sky this moon covers, against Masser's.
+        ///
+        /// **What turns a radiance into the light a surface receives.** A disc of uniform radiance
+        /// and half-angle `t` delivers `L * pi * sin(t)^2`, so a moon's share of Masser's is the
+        /// ratio of those sines squared — which is why the big moon is the one a night is lit by.
+        ///
+        /// Derived from the angles rather than from the two `Size` settings, so that a moon hung at
+        /// a distance of its own would still come out right.
+        float coverageOf(Moon moon)
+        {
+            const float sine = std::sin(angularRadiusOf(moon));
+            const float masser = std::sin(angularRadiusOf(Moon::Masser));
+
+            return (sine * sine) / (masser * masser);
+        }
+
+        /// How much light a moon at `phaseAngle` sends, against a full one.
+        ///
+        /// **The measured law rather than the geometry, and the two differ by a factor of five.**
+        /// The lit share of a disc is `(1 + cos a) / 2`, which makes a half moon half of a full one.
+        /// The moon is not: its surface is rough enough to shadow itself everywhere but at
+        /// opposition. Allen's fit to the observations — `dm = 0.026|a| + 4e-9 a^4`, with `a` in
+        /// degrees — puts a half moon at 0.09 of full, which is what photometry finds, and its
+        /// quartic term is the opposition surge that makes the last nights before full so much
+        /// brighter than the rest.
+        ///
+        /// Folded through the cosine, because a moon three quarters round its cycle is as lit as one
+        /// a quarter round it. Which limb keeps the light is the disc's business and not the light's.
+        float phaseLaw(float phaseAngle)
+        {
+            const float from = std::acos(std::clamp(std::cos(phaseAngle), -1.0f, 1.0f));
+            const float degrees = osg::RadiansToDegrees(from);
+            const float dim = 0.026f * degrees + 4.0e-9f * degrees * degrees * degrees * degrees;
+
+            return std::pow(10.0f, -0.4f * dim);
         }
     }
 
@@ -67,6 +132,7 @@ namespace Rtx
             .mRight = placement.mRight,
             .mUp = placement.mUp,
             .mColour = placement.mColour,
+            .mIrradiance = placement.mIrradiance,
             .mAngularRadius = placement.mAngularRadius,
             .mPhaseAngle = placement.mPhaseAngle,
             .mAlpha = placement.mAlpha,
@@ -119,6 +185,9 @@ namespace Rtx
             // portrait itself where one is — so the level lives in one place either way.
             .mColour = moon == Moon::Masser ? sMasserFace : sSecundaFace,
         };
+
+        placement.mIrradiance
+            = tintOf(moon) * (Shaders::MOONLIGHT * coverageOf(moon) * phaseLaw(placement.mPhaseAngle) * alpha);
 
         placement.mDirection.normalize();
         placement.mRight.normalize();

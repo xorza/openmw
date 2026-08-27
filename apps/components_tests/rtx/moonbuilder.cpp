@@ -4,6 +4,8 @@
 
 #include <components/fallback/fallback.hpp>
 #include <components/rtx/moonbuilder.hpp>
+#include <components/rtx/shaders/colour.h>
+#include <components/rtx/shaders/scene.h>
 
 namespace Rtx
 {
@@ -198,6 +200,95 @@ namespace Rtx
             EXPECT_FLOAT_EQ(lit(makeMoon(Moon::Masser, 0, 22.0f).mPhaseAngle), 1.0f);
             EXPECT_NEAR(lit(makeMoon(Moon::Masser, 5, 22.0f).mPhaseAngle), 0.5f, 1e-6f);
             EXPECT_NEAR(lit(makeMoon(Moon::Masser, 11, 22.0f).mPhaseAngle), 0.0f, 1e-6f);
+        }
+
+        /// How this renderer weighs a colour into a brightness, which is what a level is measured in.
+        float luminanceOf(const osg::Vec3f& linear)
+        {
+            return linear * Shaders::LUMINANCE_WEIGHTS;
+        }
+
+        /// A full Masser that nothing fades delivers exactly the level the constant names.
+        ///
+        /// **The level is Masser's, and it stays Masser's because the two tints are normalised on
+        /// Masser's own luminance.** The portraits differ in brightness as well as in hue, and that
+        /// difference is a fact about the bodies rather than the art — so a single constant can only
+        /// speak for one moon, and this is the one it speaks for.
+        TEST(RtxMoonBuilderTest, aFullMasserDeliversTheLevelTheConstantNames)
+        {
+            seed();
+
+            const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+            EXPECT_NEAR(luminanceOf(full.mIrradiance), Shaders::MOONLIGHT, 1e-5f);
+
+            // And it is red, which is the only reason to draw Masser rather than a bright dot: its
+            // portrait averages 0.0332 against 0.0099, and the light it reflects carries that.
+            EXPECT_GT(full.mIrradiance.x(), 3.0f * full.mIrradiance.y());
+        }
+
+        /// Secunda delivers the share of the sky it covers, with its own albedo on top.
+        ///
+        /// **What a moon is worth as a light goes as the sky it covers.** A disc of half-angle `t`
+        /// delivers `L * pi * sin(t)^2`, so Secunda's share of Masser's is the ratio of those sines
+        /// squared: 0.1853 at the ini's sizes. Its portrait is the paler of the two by 2.54, so what
+        /// it actually delivers is 0.4705 of Masser rather than 0.1853.
+        TEST(RtxMoonBuilderTest, secundaDeliversTheShareOfTheSkyItCovers)
+        {
+            seed();
+
+            const MoonPlacement masser = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+            const MoonPlacement secunda = placeMoon(Moon::Secunda, 90.0f, -50.0f, /*phase=*/0, /*alpha=*/1.0f);
+
+            const float wide = std::sin(moonAngularRadius(Moon::Masser));
+            const float narrow = std::sin(moonAngularRadius(Moon::Secunda));
+            EXPECT_NEAR((narrow * narrow) / (wide * wide), 0.1853f, 1e-4f);
+
+            EXPECT_NEAR(luminanceOf(secunda.mIrradiance) / luminanceOf(masser.mIrradiance), 0.4705f, 1e-3f);
+
+            // The pale light of the two, where Masser's is red.
+            EXPECT_LT(secunda.mIrradiance.x(), 1.4f * secunda.mIrradiance.y());
+        }
+
+        /// A quarter moon lights a tenth of what a full one does, and a new one lights nothing.
+        ///
+        /// **The measured law and not the lit fraction of the disc, which differ by a factor of
+        /// five.** Half a disc lit would say half the light; photometry says 0.09, because the
+        /// surface is rough enough to shadow itself everywhere but at opposition. Allen's fit
+        /// `dm = 0.026|a| + 4e-9 a^4` is what gives that, and at 90 degrees it comes to 2.6024
+        /// magnitudes, which is `10^-1.041` of full.
+        TEST(RtxMoonBuilderTest, aQuarterMoonLightsATenthOfWhatAFullOneDoes)
+        {
+            seed();
+
+            const auto lightAt = [](int phase) {
+                return luminanceOf(placeMoon(Moon::Masser, 90.0f, 35.0f, phase, /*alpha=*/1.0f).mIrradiance);
+            };
+
+            EXPECT_NEAR(lightAt(2) / lightAt(0), 0.090997f, 1e-5f);
+            EXPECT_LT(lightAt(2) / lightAt(0), 0.2f) << "the lit fraction of the disc, rather than the photometry";
+
+            // 180 degrees comes to 8.879 magnitudes, which is three parts in ten thousand.
+            EXPECT_LT(lightAt(4) / lightAt(0), 0.001f);
+
+            // Waxing and waning quarters deliver the same. Which limb keeps the light is the disc's
+            // business, and how far from full the moon is is the light's.
+            EXPECT_FLOAT_EQ(lightAt(6), lightAt(2));
+        }
+
+        /// A moon the game has faded out lights nothing at all.
+        ///
+        /// **Which is what keeps a daylit frame from spending a shadow ray on each of them.** The
+        /// game fades both moons over the hours around dawn, and what a shader reads to decide
+        /// whether a moon is worth a ray is this being nothing.
+        TEST(RtxMoonBuilderTest, aFadedMoonLightsNothing)
+        {
+            seed();
+
+            EXPECT_EQ(placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.0f).mIrradiance, osg::Vec3f());
+
+            // The fade is a plain multiplier on it, so half hidden is half lit.
+            const MoonPlacement half = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.5f);
+            EXPECT_NEAR(luminanceOf(half.mIrradiance), 0.5f * Shaders::MOONLIGHT, 1e-5f);
         }
     }
 }

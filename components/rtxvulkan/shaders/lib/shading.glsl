@@ -108,6 +108,8 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     // the next cell along would move the penumbra of the one already there.
     const vec2 sunDraw = vec2(randomNext(state), randomNext(state));
     const vec2 lampDraw = vec2(randomNext(state), randomNext(state));
+    const vec2 moonDraw[2]
+        = vec2[2](vec2(randomNext(state), randomNext(state)), vec2(randomNext(state), randomNext(state)));
 
     // The sun, which is one direction everywhere and needs none of the machinery below: no falloff,
     // no reach, and a shadow ray that runs until it leaves the world rather than until it arrives.
@@ -128,7 +130,29 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
         const float through
             = lightThrough(position, coneDirection(frame.mSunPosition, sin(SUN_ANGULAR_RADIUS), sunDraw), frame.mFar);
 
-        radiance += frame.mSunIrradiance * sunThroughWater(position, footprint) * (sunCosine * INV_PI * through);
+        radiance += frame.mSunIrradiance * lightThroughWater(position, frame.mSunPosition, footprint)
+            * (sunCosine * INV_PI * through);
+    }
+
+    // **The moons, which is the whole of what lights a night out of doors.** The same estimator as
+    // the sun and for the same reasons, with two differences that are both the disc's size: Masser
+    // subtends thirty-five times the sun's angle, so the cone it is drawn from is that much wider
+    // and the penumbra under everything it lights is that much softer.
+    //
+    // **A ray apiece and the alpha decides whether it is spent.** The game fades both moons out over
+    // the hours around dawn, so a daylit frame reaches `mIrradiance` of nothing and traces neither.
+    for (uint moon = 0u; moon < 2u; ++moon)
+    {
+        const float moonCosine = dot(normal, frame.mMoons[moon].mDirection);
+        if (moonCosine <= 0.0 || frame.mMoons[moon].mIrradiance == vec3(0.0))
+            continue;
+
+        const vec3 toward
+            = coneDirection(frame.mMoons[moon].mDirection, sin(frame.mMoons[moon].mAngularRadius), moonDraw[moon]);
+
+        radiance += frame.mMoons[moon].mIrradiance
+            * lightThroughWater(position, frame.mMoons[moon].mDirection, footprint)
+            * (moonCosine * INV_PI * lightThrough(position, toward, frame.mFar));
     }
 
     // A lamp loses nothing to the water, where the sun and the sky both lose the column above the

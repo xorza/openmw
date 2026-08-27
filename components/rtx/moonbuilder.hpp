@@ -51,6 +51,15 @@ namespace Rtx
         /// The painted face in the scene's texture table, or `sNoIndex` for none.
         Index mFace = sNoIndex;
 
+        /// What this moon delivers to a surface facing it, linear.
+        ///
+        /// **Its own colour at the level `Shaders::MOONLIGHT` sets**, dimmed by how far round its
+        /// cycle it is and by the fade the game applies. Zero exactly where the fade is — a moon
+        /// that is down, or one the daylight has taken — which is the one test a shader makes
+        /// before it spends a shadow ray. A new moon is not zero but three parts in ten thousand,
+        /// which is what the photometry says it is worth.
+        osg::Vec3f mIrradiance;
+
         /// The mean opaque texel of this moon's portrait, linear and unscaled.
         ///
         /// **What the disc falls back to where no portrait is loaded.** Masser is red and Secunda is

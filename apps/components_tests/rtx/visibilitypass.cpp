@@ -12,6 +12,7 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/instancerecord.hpp>
+#include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/accumulate.h>
 #include <components/rtxvulkan/buffer.hpp>
@@ -2595,6 +2596,67 @@ namespace Rtx
                 << "and none of it clears one across the far side";
             EXPECT_NEAR(visible(sceneWith(std::nullopt, sunDepth, 0.0f), sunOpen, sunCamera, 64), 0.5f, 0.05f)
                 << "and half a disc stands on the shadow's own edge, two thousand units back";
+        }
+
+        /// Both moons light a floor, and the two slots are one code path.
+        ///
+        /// **What the pair of them costs is one loop, so what proves the loop is the second slot.**
+        /// Masser and Secunda are carried in an array of two and gathered by one pass over it; a
+        /// shader that reached only the first entry would leave every Secunda-lit night dark, and
+        /// nothing in a picture would say so while the brighter moon was up. So the same moon is put
+        /// in each slot in turn and has to light the same floor by the same amount.
+        ///
+        /// A floor of albedo 0.5 under an irradiance of 2 straight down returns `0.5 * 2 / pi`,
+        /// which is 0.31831. Nothing stands on the floor, so the shadow ray always clears and the
+        /// estimate carries no variance to average away.
+        TEST_F(RtxVisibilityTest, bothMoonsLightAndTheTwoSlotsAreOneCodePath)
+        {
+            constexpr std::uint32_t size = 32;
+
+            SceneDesc scene;
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+            // Nothing else lights the floor, so what arrives is the moon's alone.
+            camera.mSkyHorizon = osg::Vec3f();
+            camera.mSkyZenith = osg::Vec3f();
+            camera.mSunIrradiance = osg::Vec3f();
+
+            Shaders::MoonDisc overhead{};
+            overhead.mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f);
+            overhead.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
+            overhead.mUp = osg::Vec3f(0.0f, 1.0f, 0.0f);
+            overhead.mColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            overhead.mIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+            overhead.mAngularRadius = moonAngularRadius(Moon::Masser);
+            overhead.mAlpha = 1.0f;
+            overhead.mFace = Shaders::NO_TEXTURE;
+
+            const auto litFromSlot = [&](std::size_t slot) {
+                camera.mMoons[0] = Shaders::MoonDisc{};
+                camera.mMoons[1] = Shaders::MoonDisc{};
+                camera.mMoons[slot] = overhead;
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_EQ(countHits(scene, {}, camera, size, pixels), size * size);
+
+                return decodeSrgb(pixels[(std::size_t{ size / 2 } * size + size / 2) * 4]);
+            };
+
+            EXPECT_NEAR(litFromSlot(0), 0.31831f, 0.005f);
+            EXPECT_NEAR(litFromSlot(1), 0.31831f, 0.005f) << "the second moon lights nothing";
+
+            // And a moon that delivers nothing lights nothing, which is what a daylit frame reaches
+            // for both of them and what keeps it from tracing two shadow rays for no light.
+            camera.mMoons[0] = Shaders::MoonDisc{};
+            camera.mMoons[1] = Shaders::MoonDisc{};
+
+            std::vector<std::uint8_t> dark;
+            EXPECT_EQ(countHits(scene, {}, camera, size, dark), size * size);
+            EXPECT_FLOAT_EQ(decodeSrgb(dark[(std::size_t{ size / 2 } * size + size / 2) * 4]), 0.0f);
         }
 
         /// A bounce is drawn by the cosine, and two thirds is the number that says so.
