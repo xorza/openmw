@@ -32,36 +32,47 @@ onto flat ground.
 
 **Measured**, at 1920 by 1080 on a clear midnight, counting pixels of the frame:
 
-| | brightest | over 0.5 | over 0.25 |
-| --- | --- | --- | --- |
-| `--upscale off` | 0.973 | 1099 | 4867 |
-| `--upscale quality` | 0.914 | 347 | 3743 |
+| | internal | brightest | over 0.5 | over 0.25 |
+| --- | --- | --- | --- | --- |
+| `--upscale off` | 1920 | 0.973 | 1093 | 4844 |
+| `--upscale dlaa` | 1920 | 0.945 | 698 | 4689 |
+| `--upscale quality` | 1280 | 0.914 | 347 | 3741 |
+| `--upscale performance` | 960 | 0.864 | 258 | 3575 |
 
-And the pixel-wide crossfade that took the native frame from 140 pixels over half brightness to 245
-is worth nothing once the frame has been through Ray Reconstruction — 1020 against 1020. A
-sub-pixel, high-contrast, moving point is what a temporal upscaler is built to remove, and a star is
-all three.
+**The loss is in two halves and they are not one problem.** DLAA runs the same network at the same
+internal resolution as `off`, and it alone costs **36%** of the pixels over half brightness. The rest
+is the missing internal resolution: at quality a star is about one internal pixel, and no
+reconstruction invents what the render never resolved.
 
-**What was already tried and is in the tree.** The crossfade steepens to a pixel and the level is
-anchored where the content puts a star; between them the shipped path went from 0.627 to 0.914.
-Asking for the mip level a minified pixel wants was tried and reverted — a mip of a sparse point
-field is those points averaged with the dark around them, and it took the pixels over a quarter from
-1020 to 108.
+**Every guide buffer has now been tried and none of them moves it.**
 
-**The fix is that they should not go through it.** The options, in the order they are worth trying:
+- An eye-facing normal for the sky in place of the zero one it reports today: identical at dlaa and
+  at quality, to the pixel. Ray Reconstruction ignores the guide at the far depth.
+- `pInBiasCurrentColorMask` raised over every sky pixel — the mask the pass already binds and already
+  raises for sprites: identical again.
+- The four before-and-after colour pairs were tried before this and are measured *worse*;
+  `dlsspass.cpp` carries the figures and the finding that they select a different path through the
+  network rather than answer a question about the frame.
 
-- Give Ray Reconstruction something to hold on to. The sky reports `noResponse()`, so it has no
-  albedo to demodulate by and no roughness to say the pixel is resolved rather than noisy. Cheap to
-  try and it may be most of it.
-- Draw the sky's point sources after the upscaler, at output resolution, as their own pass. It is the
-  complete answer and it is an architectural move: the pass needs the camera, the star field's own
-  parameters, and whatever says a pixel reached the sky rather than the ground.
+So there is nothing left to tell the upscaler. What is left is not to hand it the stars.
 
-Neither is a constant to tune, which is why this is a step of its own rather than more of the last
-one.
+**The fix: draw the sky's point sources after the upscaler, at output resolution.** What that needs:
 
-- Test: whatever lands, the same frame drawn with and without the upscaler agrees on the brightest
-  star to within a tenth of the display range. Today it is a fifth apart.
+- **A sky mask at output resolution.** The trace already writes coverage into the radiance image's
+  alpha, and the SDK carries `pInAlpha` and `pInOutputAlpha`, which `dlsspass.cpp` does not bind. Ask
+  the network to reconstruct the alpha and the pass has its mask.
+- **The output-resolution camera.** The constants carry one camera and the pass runs at the render
+  extent; a pass at the output extent needs the same camera and the other extent.
+- **`skyRadiance` stops drawing the field.** `NightSky::mGlow` is what lights, it is a mean, and it
+  does not move — so the night's light budget is untouched by any of this.
+
+**And one cost to state rather than discover.** A pass keyed to "a primary ray reached the sky" draws
+no stars in a water reflection, because a mirrored ray's direction is not the pixel's. Reflected
+stars would stay as the trace draws them, which is where they are today.
+
+- Test: the same frame drawn with and without the upscaler agrees on the brightest star to within a
+  tenth of the display range. Today it is a fifth apart, and after this the two paths draw the same
+  stars by construction.
 
 ---
 
