@@ -51,6 +51,16 @@ namespace Sky
         /// than in either of them — a harness that assembled its own would ramp its dawn on
         /// different hours from the game's and nobody would notice until two screenshots disagreed.
         static TimeOfDaySettings fromFallback();
+
+        /// The one reading of them, made on first use.
+        ///
+        /// **Every caller wants the same answer and the reading is not free**: it walks the fallback
+        /// map a dozen times over built-up strings and fills a small table. That is nothing at load
+        /// and an allocation per frame in a window that asks the hour for its sky. The content
+        /// cannot change while the process runs, so one reading serves all of it.
+        ///
+        /// First called after the configuration is read, which every renderer is.
+        static const TimeOfDaySettings& shared();
     };
 
     /// One quantity at the four times of day, read at any hour between them.

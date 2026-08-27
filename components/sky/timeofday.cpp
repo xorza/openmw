@@ -56,6 +56,12 @@ namespace Sky
         return settings;
     }
 
+    const TimeOfDaySettings& TimeOfDaySettings::shared()
+    {
+        static const TimeOfDaySettings settings = fromFallback();
+        return settings;
+    }
+
     template <typename T>
     T TimeOfDayInterpolator<T>::getValue(
         const float gameHour, const TimeOfDaySettings& timeSettings, const std::string& prefix) const

@@ -12,6 +12,7 @@
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/sceneutil/vismask.hpp>
+#include <components/sky/sun.hpp>
 #include <components/weather/downpour.hpp>
 
 namespace Rtx
@@ -322,6 +323,61 @@ namespace Rtx
                 .mGlare = 0.25f });
             EXPECT_EQ(overcast.mSun.mDiscColour, osg::Vec3f(0.25f, 0.25f, 0.25f));
             EXPECT_EQ(overcast.mSun.mIrradiance, blue * Rtx::Shaders::DAYLIGHT) << "and lights the same";
+
+            // **The same weather read twice, at two shares.** A cloud deck stands above the ground's
+            // horizon and keeps the sun after it has set down here, so it takes the same sun at its
+            // own share — the same place, the same colour, and only the quantity apart.
+            const Skylight dusk = makeSkylight(SkyReading{
+                .mSunPosition = up, .mSunShare = 0.0f, .mSunShareAloft = 0.25f, .mSunColour = blue, .mAmbient = room });
+
+            EXPECT_EQ(dusk.mSun.mIrradiance, osg::Vec3f()) << "the ground has lost it";
+            EXPECT_EQ(dusk.mSunAloft.mIrradiance, blue * (0.25f * Rtx::Shaders::DAYLIGHT));
+            EXPECT_EQ(dusk.mSunAloft.mPosition, dusk.mSun.mPosition);
+            EXPECT_EQ(dusk.mSunAloft.mDiscColour, dusk.mSun.mDiscColour);
+
+            // **And the ambient is the ground's alone.** What a layer above it keeps is that layer's
+            // to spend; spreading it over the world as well would be the same light twice.
+            EXPECT_EQ(dusk.mAmbient, room);
+        }
+
+        /// A layer over the ground keeps the sun, and what it keeps is an hour and not an angle.
+        ///
+        /// **Morrowind's sunset is a clock.** `Sky::sunShareAt` ramps between `mDayEnd` and
+        /// `mNightStart` and nothing anywhere takes an elevation, so a layer that sees the sun 0.718
+        /// degrees longer is handed the ramp read 5.35 minutes earlier — the time the disc takes to
+        /// fall that far at 8.04 degrees an hour.
+        ///
+        /// **And the day is widened at both ends rather than moved**: a layer that sees the sun lower
+        /// catches the sunrise early too, so the same offset runs the other way before noon.
+        ///
+        /// With Morrowind's own hours: at 19:00 the ground has 0.750 of the sun and the layer 0.793;
+        /// at 20:00 the ground has none and the layer still holds 0.0872; and five minutes later the
+        /// layer has none either.
+        TEST(RtxSunAloftTest, aLayerOverTheGroundKeepsTheSunAfterItHasLostIt)
+        {
+            Sky::TimeOfDaySettings times{};
+            times.mNightEnd = 6.0f;
+            times.mDayStart = 8.0f;
+            times.mDayEnd = 18.0f;
+            times.mNightStart = 20.0f;
+
+            EXPECT_NEAR(sunShareAloft(19.0f, times), 0.792623f, 1.0e-5f);
+            EXPECT_NEAR(sunShareAloft(20.0f, times), 0.087237f, 1.0e-5f);
+            EXPECT_EQ(sunShareAloft(20.1f, times), 0.0f) << "and it goes out too, five minutes later";
+
+            // And the same offset the other way at dawn: at 06:05 the ground has a twentieth of the
+            // sun and the layer has 0.139, because it caught the sunrise five minutes ago.
+            EXPECT_NEAR(sunShareAloft(6.05f, times), 0.139227f, 1.0e-5f);
+
+            // Nothing at all is different while the whole disc is up, which is every hour of the day
+            // between the two ramps.
+            for (const float hour : { 9.0f, 12.0f, 17.9f })
+                EXPECT_EQ(sunShareAloft(hour, times), Sky::sunShareAt(hour, times)) << "at hour " << hour;
+
+            // **And never less than the ground's**, at any hour of the clock — which is the whole
+            // claim, and the one a sign error in the offset would break.
+            for (float hour = 0.0f; hour < 24.0f; hour += 0.05f)
+                EXPECT_GE(sunShareAloft(hour, times), Sky::sunShareAt(hour, times)) << "at hour " << hour;
         }
 
         /// The ten names, in the order a script id counts along.

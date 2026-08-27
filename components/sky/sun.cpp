@@ -12,6 +12,19 @@ namespace Sky
         constexpr float sSwing = 400.0f;
         constexpr float sNorthing = 75.0f;
         constexpr float sClimb = 100.0f;
+
+        /// How long the day is, in hours.
+        ///
+        /// **A night that begins before the sunrise it followed belongs to the next day**, which is
+        /// the wrap every hour of this file is read through: an hour before dawn is late in the
+        /// previous night rather than early in a day it has not reached.
+        float dayLength(const TimeOfDaySettings& times)
+        {
+            const float nightStart
+                = times.mNightStart < times.mNightEnd ? times.mNightStart + 24.0f : times.mNightStart;
+
+            return nightStart - times.mNightEnd;
+        }
     }
 
     float sunShareAt(float hour, const TimeOfDaySettings& times)
@@ -40,6 +53,18 @@ namespace Sky
         return 1.0f;
     }
 
+    float sunDescentPerHour(const TimeOfDaySettings& times)
+    {
+        const float day = dayLength(times);
+        if (!(day > 0.0f))
+            return 0.0f;
+
+        // The disc stands at `sSwing - |east|` over a horizontal `hypot(sSwing, sNorthing)`, so near
+        // either end its elevation is that ratio times what the orbit has left to run — and the
+        // orbit crosses two units over the whole day.
+        return 2.0f * sSwing / std::hypot(sSwing, sNorthing) / day;
+    }
+
     SunPlacement sunAt(float hour, const TimeOfDaySettings& times)
     {
         const float sunrise = times.mNightEnd;
@@ -56,7 +81,7 @@ namespace Sky
             adjustedNightStart += 24.0f;
 
         const bool night = adjustedHour >= adjustedNightStart;
-        const float dayDuration = adjustedNightStart - sunrise;
+        const float dayDuration = dayLength(times);
         const float nightDuration = 24.0f - dayDuration;
 
         // One at the eastern end, minus one at the western, and back again over the night — so the

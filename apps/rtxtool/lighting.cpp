@@ -117,7 +117,7 @@ namespace RtxTool
         if (lighting.mOutdoors)
         {
             world.mClouds = Rtx::describeClouds(lighting.mWeather, lighting.mNextWeather, lighting.mWeatherBlend,
-                Rtx::deckLight(lighting.mDaylight.mSun, budget.mMean, moons), world.mStormDirection,
+                Rtx::deckLight(lighting.mDaylight.mSunAloft, budget.mMean, moons), world.mStormDirection,
                 lighting.mRoll.mClouds, lighting.mSky);
 
             Rtx::describePatches(lighting.mRoll.mStars, lighting.mSky, world.mSkyPatches);

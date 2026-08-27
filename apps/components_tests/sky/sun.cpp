@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 
 #include <gtest/gtest.h>
@@ -206,6 +207,40 @@ namespace Sky
             EXPECT_NEAR(lifted.y(), 1.2f * 189.0f / 255.0f, 1e-4f);
             EXPECT_NEAR(lifted.z(), 1.2f * 157.0f / 255.0f, 1e-4f);
             EXPECT_GT(lifted.y(), down.y()) << "and so it is not the recorded colour";
+        }
+
+        /// How fast the disc falls, checked against the arc it is read off rather than restated.
+        ///
+        /// **A layer above the ground needs this because the engine's sunset is a clock.**
+        /// `sunShareAt` ramps on the hour and nothing anywhere takes an elevation, so anything that
+        /// keeps the sun a fraction of a degree longer has to convert that into hours — and the only
+        /// honest source for the rate is the arc `sunAt` actually walks.
+        ///
+        /// A difference over a hundredth of an hour, taken just inside sunset and just after
+        /// sunrise, because the rate is constant and the two ends have to agree.
+        TEST(RtxSunDescentTest, theDiscFallsAtTheRateItsOwnArcWalksAt)
+        {
+            const TimeOfDaySettings times = vanillaHours();
+            const float rate = sunDescentPerHour(times);
+
+            const auto elevationAt
+                = [&times](float hour) { return std::asin(std::clamp(sunAt(hour, times).mPosition.z(), -1.0f, 1.0f)); };
+
+            constexpr float step = 0.01f;
+            const float setting = (elevationAt(times.mNightStart - step) - elevationAt(times.mNightStart)) / step;
+            const float rising = (elevationAt(times.mNightEnd + step) - elevationAt(times.mNightEnd)) / step;
+
+            EXPECT_NEAR(setting, rate, 1.0e-3f) << "the disc sets at a rate this does not describe";
+            EXPECT_NEAR(rising, rate, 1.0e-3f) << "and rises at the same one";
+
+            // Eight degrees an hour over the shipped fourteen-hour day, which is what makes the
+            // 0.72-degree dip a cloud deck sees worth about five game minutes.
+            EXPECT_NEAR(osg::RadiansToDegrees(rate), 8.04f, 0.01f);
+
+            // A day with no length has no rate, rather than a division by one.
+            TimeOfDaySettings still = times;
+            still.mNightStart = still.mNightEnd;
+            EXPECT_EQ(sunDescentPerHour(still), 0.0f);
         }
 
         /// How much of the sun there is, which is one number and the only one.

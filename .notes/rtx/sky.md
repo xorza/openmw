@@ -105,31 +105,44 @@ dusk differs from the ground's in *when it ends*, not in what colour it is. The 
 offset for the same reason and are worth less: `MoonPlacement::mAlpha` is the engine's own fade near
 the horizon, and a deck holding a moon five minutes longer is not a picture anybody will see.
 
-**Steps.** Land them in this order, checking with `shot` after each:
+**And the mesh's own crossing stays**, which is worth stating because the obvious move is to replace
+it. A ray against a real sphere at 500 m and the Earth's radius differs from a flat layer by 0.05% at
+16 degrees of elevation and less above it — the layer's own horizon is 80 km away and the deck's
+outermost ring is 1.76 km, so the deck never reaches the band where a planet's curve is worth
+anything. `CloudShell::mCurvature` meanwhile pulls the crossing in by 32% at that same ring. It is
+Morrowind's own convergence and replacing it with a planet would stretch the sheet by half at the rim
+in exchange for four hundredths of a per cent of geometry.
 
-1. **An altitude, and the deck anchored to the world.** The shell's crossing stops being read off
-   `mCurvature` and starts being a ray against a sphere of the Earth's radius at that altitude —
-   `c / (b + sqrt(b*b + c))` and not `-b + sqrt(b*b + c)`, because `b` is the world's radius times
-   the ray's climb and the subtraction throws the answer away at `f32`. The sheet is then addressed
-   from where the eye stands rather than from where it looks.
+**The deck's own sunset is in.** `Rtx::sunShareAloft` reads `Sky::sunShareAt` at the clock the deck
+is on, `SkyReading::mSunShareAloft` carries it to `makeSkylight`, and `Skylight::mSunAloft` is the sun
+a layer above the ground gets. One thing the writing turned up that the investigation had not: **the
+deck's day is the ground's widened at both ends rather than moved.** A layer that sees the sun lower
+catches the sunrise early as well, and a single shift of the clock hands the morning *less* sun than
+the ground itself gets — so it is the larger of the ramp read either side.
 
-   **This one changes the sky's own behaviour**: the deck stops travelling with the camera. That is
+**Steps.** What is left:
+
+1. **The deck anchored to the world, and its shadow on it.** These are one step: an anchor with no
+   shadow only changes how the sky moves, and a shadow without one would follow the player rather
+   than lie under the cloud that casts it.
+
+   The sheet is addressed from where the eye stands rather than from where it looks, which the
+   altitude makes possible — a tile is `altitude / CloudShell::mTiles` across the world. The fade
+   rings stay where they are, because they are the mesh's own and are measured from the eye.
+
+   The shadow is that sheet sampled where the ray from a shading point to each light above it crosses
+   the layer, at a coarse mip, through Beer-Lambert rather than a mix — the reference measured a mix
+   saturating 48.5% of the clear sheet at one flat value, where an exponential never flattens. A deck
+   lets about a quarter through, which is `CLOUD_TRANSMISSION` read from the other side.
+
+   **The sheets ship no mip chain**, which the shadow needs and `cloudDeck`'s own sampling would
+   like: `tx_sky_*.dds` is a single 512-square level, and a shadow read at level zero is a shadow
+   with a cloud's own alpha edge on it rather than a shadow's. Building one at load is part of this.
+
+   **And it changes the sky's own behaviour**: the deck stops travelling with the camera. That is
    right — a rasterizer's sky is a dome around the eye because it is drawn as one, which is a
-   workaround and not a decision about the world — and it is the change to look at hardest, because
-   a cloud that crosses a 703-metre tile as a player walks is a thing Morrowind never did.
-
-2. **The deck's own sunset**: its share read off `Sky::sunShareAt` at the hour less the offset above.
-   Nothing else changes, and the air is left alone.
-
-3. **The deck's shadow on the world.** The same sheet sampled where the ray from a shading point to
-   each light above it crosses the layer, at a coarse mip, through Beer-Lambert rather than a mix —
-   the reference measured a mix saturating 48.5% of the clear sheet at one flat value, where an
-   exponential never flattens. A deck lets about a quarter through, which is `CLOUD_TRANSMISSION`
-   read from the other side.
-
-   **The sheets ship no mip chain**, which this step needs and `cloudDeck`'s own sampling would like:
-   `tx_sky_*.dds` is a single 512-square level, and a shadow read at level zero is a shadow with a
-   cloud's own alpha edge on it rather than a shadow's. Building one at load is part of this step.
+   workaround and not a decision about the world — and it is the thing to look at hardest here,
+   because a cloud that crosses a 703-metre tile as a player walks is a thing Morrowind never did.
 
 ---
 
@@ -185,9 +198,9 @@ the other side.
 
 ## Order
 
-Step 1 is the last of the sky, and three of its own steps are left. Its first is the one to look at
-hardest, because it changes how the sky moves rather than how it is lit; the two after it are small
-and settled. Both the sheets' own shape and the light on them are in place now.
+Step 1 is the last of the sky, and one of its own steps is left. It is the one to look at hardest,
+because it changes how the sky moves rather than how it is lit. The sheets' own shape, the light on
+them and the deck's own sunset are all in place now.
 
 Step 2 stays open, and its second shape wants a feature this renderer does not have.
 
@@ -198,8 +211,7 @@ to come down, that is where it is.
 
 ## What must still hold at each step
 
-- `openmw-rtxtool shot --hour 12` changes in step 1 only where cloud is drawn, and in its first
-  sub-step only where the camera has moved.
+- `openmw-rtxtool shot --hour 12` changes in step 1 only where cloud is drawn.
 - The sky's total delivered light equals the weather's ambient at night, whatever the layers say.
 - `components-tests` and `openmw-tests` pass, and the formatting check is clean.
 - No new allocation on the frame path. Everything read off a mesh or an image is read at load.

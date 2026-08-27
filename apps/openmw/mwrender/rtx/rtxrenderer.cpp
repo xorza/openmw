@@ -802,6 +802,11 @@ namespace MWRender
         const Rtx::Skylight sky = Rtx::makeSkylight(Rtx::SkyReading{
             .mSunPosition = discAt,
             .mSunShare = world.mSunDiscColour.a(),
+
+            // **The deck keeps the sun after the ground has lost it**, and the hour is what says how
+            // much of it is left — `Rtx::sunShareAloft`. The ground's own share arrives from the
+            // weather system, which reads the same `Sky::sunShareAt` at the same hour.
+            .mSunShareAloft = Rtx::sunShareAloft(world.mGameHour, Sky::TimeOfDaySettings::shared()),
             .mSunColour = Rtx::decodeColour(world.mSunColour),
             .mAmbient = Rtx::decodeColour(world.mAmbientColour),
             .mDiscColour = Rtx::decodeColour(world.mSunDiscColour),
@@ -893,7 +898,7 @@ namespace MWRender
                 ? Rtx::describeClouds(static_cast<std::uint32_t>(world.mWeatherId),
                       world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
                                                        : static_cast<std::uint32_t>(world.mWeatherId),
-                      world.mCloudBlend, Rtx::deckLight(sky.mSun, budget.mMean, moons), world.mStormDirection,
+                      world.mCloudBlend, Rtx::deckLight(sky.mSunAloft, budget.mMean, moons), world.mStormDirection,
                       world.mSkyRoll.mClouds, mSkyContent)
                 : Rtx::Shaders::CloudDeck{ .mOpacity = 0.0f,
                       .mTexture = Rtx::Shaders::NO_TEXTURE,

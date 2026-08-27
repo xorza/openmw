@@ -10,6 +10,7 @@
 #include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/fallback/fallback.hpp>
+#include <components/misc/constants.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sky/sun.hpp>
 #include <components/sky/timeofday.hpp>
@@ -168,6 +169,7 @@ namespace Rtx
             const Skylight sky = makeSkylight(SkyReading{
                 .mSunPosition = sun.mPosition,
                 .mSunShare = sun.mShare,
+                .mSunShareAloft = sunShareAloft(hour, times),
                 .mSunColour = decodeColour(read.mSun),
                 .mAmbient = decodeColour(read.mAmbient),
                 .mDiscColour = decodeColour(read.mSunDisc),
@@ -176,6 +178,7 @@ namespace Rtx
 
             return Daylight{
                 .mSun = sky.mSun,
+                .mSunAloft = sky.mSunAloft,
                 .mSkyHorizon = haze,
                 .mSkyZenith = zenith,
                 .mAmbient = sky.mAmbient,
@@ -213,6 +216,21 @@ namespace Rtx
         /// to a weather rather than to the air, and a number for it here would be one nobody
         /// measured.
         const osg::Vec3f sAirDepth(0.0683f, 0.0973f, 0.2213f);
+
+        /// How high the cloud layer stands, in world units.
+        ///
+        /// **The one number in the sky that is chosen rather than read.** Nothing in Morrowind
+        /// states it: the cloud mesh gives its height in tiles of its own sheet and no metre
+        /// anywhere. Five hundred metres is a stratocumulus base and is the reference
+        /// implementation's own choice, made where it decides how large a cloud's shadow reads.
+        const float sCloudAltitude = 500.0f * Constants::UnitsPerMeter;
+
+        /// How far the world curves under that layer — the Earth's own radius, in world units.
+        ///
+        /// **Not `CloudShell::mCurvature`, which is a shape fit and not a planet.** That is `k · h`
+        /// off Morrowind's cap and comes to 0.0575; read as `h / R` it is a world 128 times too
+        /// small, and the dip below would come out at 27 degrees rather than a fraction of one.
+        const float sWorldRadius = 6371000.0f * Constants::UnitsPerMeter;
     }
 
     float exposureBias(const osg::Vec3f& sunIrradiance, const osg::Vec3f& ambient)
@@ -282,27 +300,53 @@ namespace Rtx
         const float dusk = 2.0f * share * (1.0f - share);
 
         return Skylight{
-            .mSun = { .mPosition = sky.mSunPosition,
-                .mIrradiance = irradiance * share,
-
-                // **The glare arrives here rather than being folded into the colour earlier**, and
-                // that is not tidiness: it is a blend factor the rasterizer applies to a sprite in
-                // the file's own space, and dimming radiance is a linear multiply. Applied before
-                // the decode it would come out a different colour, not merely a darker one.
-                .mDiscColour = sky.mDiscColour * sky.mGlare },
+            .mSun = sunAbove(sky, share),
+            .mSunAloft = sunAbove(sky, sky.mSunShareAloft),
             .mAmbient = sky.mAmbient + irradiance * (dusk * directionless),
         };
     }
 
+    Sun sunAbove(const SkyReading& sky, float share)
+    {
+        return Sun{
+            .mPosition = sky.mSunPosition,
+            .mIrradiance = sky.mSunColour * (Shaders::DAYLIGHT * std::clamp(share, 0.0f, 1.0f)),
+
+            // **The glare arrives here rather than being folded into the colour earlier**, and that
+            // is not tidiness: it is a blend factor the rasterizer applies to a sprite in the file's
+            // own space, and dimming radiance is a linear multiply. Applied before the decode it
+            // would come out a different colour, not merely a darker one.
+            .mDiscColour = sky.mDiscColour * sky.mGlare,
+        };
+    }
+
+    float sunShareAloft(float hour, const Sky::TimeOfDaySettings& times)
+    {
+        // How far under the ground's horizon a layer that high still sees the sun, and how long the
+        // disc takes to fall that far.
+        const float dip = std::sqrt(2.0f * sCloudAltitude / sWorldRadius);
+        const float descent = Sky::sunDescentPerHour(times);
+        if (!(descent > 0.0f))
+            return Sky::sunShareAt(hour, times);
+
+        // **The larger of the ramp read either side, because the layer's day is the ground's widened
+        // at both ends.** A layer that sees the sun lower sees it earlier in the morning and later
+        // in the evening, and those are opposite shifts of one clock — reading an earlier hour is
+        // right at dusk and hands the morning less sun than the ground itself gets.
+        const float offset = dip / descent;
+
+        return std::max(Sky::sunShareAt(hour - offset, times), Sky::sunShareAt(hour + offset, times));
+    }
+
     Daylight makeDaylight(std::string_view weather, float hour)
     {
-        const Sky::TimeOfDaySettings times = Sky::TimeOfDaySettings::fromFallback();
+        const Sky::TimeOfDaySettings& times = Sky::TimeOfDaySettings::shared();
         return settle(readWeather(weather, times, hour), times, hour);
     }
 
     Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour)
     {
-        const Sky::TimeOfDaySettings times = Sky::TimeOfDaySettings::fromFallback();
+        const Sky::TimeOfDaySettings& times = Sky::TimeOfDaySettings::shared();
         const Reading a = readWeather(from, times, hour);
         const Reading b = readWeather(to, times, hour);
 

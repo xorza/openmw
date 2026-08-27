@@ -58,6 +58,19 @@ namespace Sky
     /// one number is true at every hour rather than at the ones the caller remembered to check.
     float sunShareAt(float hour, const TimeOfDaySettings& times);
 
+    /// How fast the disc's elevation changes near either end of the day, in radians per hour.
+    ///
+    /// **What a layer standing above the ground has to convert its own horizon into.** Morrowind's
+    /// sunset is a clock and not a horizon — `sunShareAt` ramps on the hour and `sunAt` puts the disc
+    /// level at exactly `mNightStart` — so nothing anywhere takes an elevation, and something that
+    /// keeps the sun a fraction of a degree longer has to say how long that is in hours instead.
+    ///
+    /// Constant, because the disc's height is `sSwing - |east|` and the east-west swing is linear in
+    /// the hour: the elevation runs straight into the horizon rather than curving into it, which is
+    /// the one place Morrowind's arc is kinder than a real one. Eight degrees an hour over the
+    /// shipped fourteen-hour day.
+    float sunDescentPerHour(const TimeOfDaySettings& times);
+
     /// The sun at `hour`.
     ///
     /// **One arithmetic and every caller**: `MWWorld::WeatherManager` runs the game's sky from it and

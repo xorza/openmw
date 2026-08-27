@@ -7,6 +7,8 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/sky/timeofday.hpp>
+
 #include "fogbuilder.hpp"
 #include "scenedesc.hpp"
 
@@ -90,6 +92,14 @@ namespace Rtx
         /// How much of the sun is over the horizon. `Sky::sunShareAt`.
         float mSunShare = 0.0f;
 
+        /// How much of it a layer standing above the ground still has — `sunShareAloft`.
+        ///
+        /// **Two askers and one weather.** A cloud deck keeps the sun after the ground has lost it,
+        /// and everything else it reads is the same: the same place, and the same colour, because
+        /// the content's sunset is keyed on the hour. Nought where nothing stands above the ground
+        /// to ask, which is a frame with no deck in it.
+        float mSunShareAloft = 0.0f;
+
         /// The weather's `Sun_*_Color` at this hour, linear — Morrowind's own, night blue and all.
         osg::Vec3f mSunColour;
 
@@ -108,6 +118,9 @@ namespace Rtx
     struct Skylight
     {
         Sun mSun;
+
+        /// The same sun as a layer above the ground sees it, out of `SkyReading::mSunShareAloft`.
+        Sun mSunAloft;
 
         /// What a path is terminated with, which is the weather's own ambient plus whatever of the
         /// sun is not over the horizon. `makeSkylight` says why.
@@ -136,6 +149,38 @@ namespace Rtx
     /// them, so `E / 4pi` is the same light with the direction taken out of it. Nothing is invented
     /// and nothing is lost; a night simply stops having a sun in it.
     Skylight makeSkylight(const SkyReading& sky);
+
+    /// A sun out of a weather's reading and however much of the disc the asker can see.
+    ///
+    /// **`makeSkylight` is the ground's asker and no longer the only one.** A cloud deck stands above
+    /// the ground's horizon and keeps the sun after it has set down here, so it reads the same
+    /// weather at its own share — `sunShareAloft`. Everything else about the sun is the same for
+    /// both of them: it is in the same place, and the content's own sunset colour is keyed on the
+    /// hour rather than on how much air the beam crossed.
+    Sun sunAbove(const SkyReading& sky, float share);
+
+    /// How much of the sun a layer standing over the ground still has at `hour`.
+    ///
+    /// **The engine's sunset is a clock and not a horizon**, which is the whole of the shape here.
+    /// `Sky::sunShareAt` ramps on the hour and `Sky::sunAt` puts the disc level with the horizon at
+    /// exactly `mNightStart`, so nothing anywhere takes an elevation — a layer that keeps the sun
+    /// past the ground's horizon cannot be handed a lower one and is handed a different hour instead.
+    ///
+    /// How far the clock moves is the dip a layer that high sees, over the time the disc takes to
+    /// fall it: 0.718 degrees at 5.35 game minutes on the shipped fourteen-hour day. Against the
+    /// two-hour dusk that is a shift of 4.5%, and at the instant the ground's sun goes out the layer
+    /// still holds 8.7% of it.
+    ///
+    /// **Its day is the ground's widened at both ends rather than moved**, because a layer that sees
+    /// the sun lower sees it earlier in the morning as well as later in the evening.
+    ///
+    /// **And nothing is done to the colour**, because `Sun_Sunset_Color` is the content's own
+    /// reddening and is keyed on the same hour. A layer's dusk differs from the ground's in when it
+    /// ends, not in what colour it is, and `airTransmittance` over the top would be the same sunset
+    /// stated twice.
+    ///
+    /// The layer is the cloud deck, which is the only thing this renderer puts above the ground.
+    float sunShareAloft(float hour, const Sky::TimeOfDaySettings& times);
 
     /// What the sky delivers to a surface facing it, and how much of that it is never drawn with.
     struct SkyBudget
@@ -187,6 +232,10 @@ namespace Rtx
     struct Daylight
     {
         Sun mSun;
+
+        /// The same sun as a layer above the ground sees it — `Skylight::mSunAloft`, carried through
+        /// so a caller that took its whole sky from an hour has the deck's half of it too.
+        Sun mSunAloft;
 
         /// Sky radiance, linear, at the horizon and overhead. The horizon is the weather's fog
         /// colour, which is also the air the cloud deck hangs in and is lifted off.
