@@ -39,6 +39,10 @@ float hashToUnit(ivec3 at)
 const uint SEED_LAMPS_EYE = 0x51u;
 const uint SEED_LAMPS_BOUNCE = 0x52u;
 
+/// And a third for the pane the eye is looking through, which shades beside the surface behind it
+/// and would choose the same lamp at both if it stepped the same sequence.
+const uint SEED_LAMPS_PANE = 0x53u;
+
 /// Water shades three surfaces from one hit — what it reflects, what is seen through it, and the
 /// raft of foam on top — and each of them opens a reservoir of its own. **Three constants and not
 /// one**, because three reservoirs seeded alike step the same sequence and keep the same lamps.

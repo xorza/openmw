@@ -54,33 +54,14 @@ feature is built for. What is built for is the opacity nothing static carries an
 an actor's distance fade, Invisibility and Chameleon, which exist only while the game runs. The steps
 below are worth doing for those, and the handful of panes come free.
 
-### G1 — the camera walks the blended layers in order
-
-`traceSurface` keeps the nearest few translucent candidates by distance and composites them over the
-opaque hit it commits. Noise-free, and this is where Morrowind's glass, ghosts and faded actors
-actually are.
-
-**Both shipped analogues do exactly this for the eye.** Q2RTX collects transparent surfaces between
-the camera and the primary hit into a transparency channel of its own, ordered by distance, and
-composites afterwards — outside the denoised path. Remix resolves them in order for primary rays and
-keeps its approximations for bounces.
-
-**Not an any-hit blend.** Hits arrive in an undefined order, which is the whole reason the ordered
-walk has to hold the layers and sort them rather than blend as it goes. NVIDIA's own guidance is that
-an any-hit shader "interrupts the hardware intersection search" and wants to stay unified and simple,
-which is an argument for keeping the blend out of it.
-
-A fixed, small layer budget. Past it the furthest layer is dropped, which is what a budget is for.
-
-**Changes the picture**, and it is the step that makes glass glass.
-
-### G2 — an actor's fade, Invisibility and Chameleon reach the surface
+### G1 — an actor's fade, Invisibility and Chameleon reach the surface
 
 Two named uniforms — `alpha` and `actorFade` — read where the texture-unit uniforms already are and
 multiplied into the material's opacity, which `Material::isTranslucent` and `GpuMaterial::mOpacity`
 already carry to the device. The carrier is new and the destination is not, so this lands after the
-transport that gives it somewhere to go — and it is the step the rest are really for. A faded actor
-already casts a faded shadow; what is left is the actor.
+transport that gives it somewhere to go — and it is the step the rest were really for. A faded actor
+already casts a faded shadow and is already seen through; what is left is telling the surface it is
+faded at all.
 
 **Its own negative control**: with the fade working, an actor at nine tenths of `actors processing
 range` is already invisible when the mask cuts, which is what upstream built the fade for. The light
@@ -88,7 +69,7 @@ that actor carries already fades — `SceneUtil::LightController` multiplies the
 `LightSource::getActorFade` and the mirror reads that diffuse — so once the geometry follows it, the
 cut at `actors processing range` has nothing left to take away.
 
-### G3 — bounces resolve probabilistically, and only when the cost says so
+### G2 — bounces resolve probabilistically, and only when the cost says so
 
 The coin toss, kept where nobody can see it. A translucent candidate on an indirect ray is accepted
 or passed through by one draw against its opacity rather than by an ordered walk, which is what makes
@@ -100,8 +81,8 @@ the camera moves" — and that is a primary-ray argument. Remix reaches the same
 other side: `rtx.enableProbabilisticUnorderedResolveInIndirectRays` is on by default, confined to the
 first indirect bounce, "as particles matter less in higher bounces".
 
-**Not until a measurement asks for it.** G1 may be affordable at every depth in a world this small,
-and the census says how little of it there is to walk.
+**Not until a measurement asks for it.** The eye peels one pane and pays a second trace only on a
+pixel that has glass in it, and the census says how few of those there are.
 
 ---
 
@@ -112,15 +93,12 @@ route. No step depends on a later one except where the table says so.
 
 | # | Step | Retires | Risk | Picture |
 |---|------|---------|------|---------|
-| 1 | G1 — the camera walks the blended layers in order | — | medium | **yes, large** |
-| 2 | G2 — the fade, Invisibility and Chameleon reach it | actor transparency | low, after 1 | **yes** |
-| 3 | G3 — bounces resolve probabilistically | — | — | — |
+| 1 | G1 — the fade, Invisibility and Chameleon reach the surface | actor transparency | low | **yes** |
+| 2 | G2 — bounces resolve probabilistically | — | — | — |
 
-Step 1 is what is left of the light transport, and it is the half that needs sorting: a shadow's
-answer is a product and does not care about order, where the eye's is a composite and does. Step 2 is
-the one the rest are for, and the acceptance test is an actor at a fade rather than a pane of glass —
-the census says the static world holds two to four panes a cell. Step 3 is not a fix until a
-measurement asks for it.
+Step 1 is the one the transport was for, and its acceptance test is an actor at a fade rather than a
+pane of glass — the census says the static world holds two to four panes a cell. Step 2 is not a fix
+until a measurement asks for it.
 
 **Where the shape came from.** Neither shipped path tracer of an old game picks one of the three
 answers — both use all of them, split by ray depth: ordered for the eye, approximate for the bounce.

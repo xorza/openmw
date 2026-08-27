@@ -578,6 +578,47 @@ namespace Rtx
                 mRenderer->readChannel(Channel::Radiance, values);
             }
 
+            /// A wall square to the sun with one pane held in front of it, as the byte its centre
+            /// pixel comes back as.
+            ///
+            /// **Shared by the two tests that hold a pane up to different rays.** One asks what the
+            /// pane let past to a shadow ray and one asks what the eye saw through it, and the
+            /// evidence in both is that the answer lands where a sun of half the irradiance lands.
+            /// That is evidence only while neither test can drift from the other's scene.
+            ///
+            /// @param pane where to put the quad — on the sun's path to the wall for a shadow, on
+            ///        the eye's path for a peel.
+            /// @param colour what the pane is made of, its own alpha included, or nothing at all for
+            ///        the wall on its own.
+            std::uint8_t litThroughPane(
+                std::span<const osg::Vec3f> pane, std::optional<osg::Vec4f> colour, const osg::Vec3f& irradiance)
+            {
+                constexpr std::uint32_t size = 33;
+
+                SceneDesc scene = makeWall();
+                if (colour.has_value())
+                {
+                    const Index glass = scene.addMaterial(Material{
+                        .mDiffuseColour = *colour,
+                        .mAlphaMode = AlphaMode::Blend,
+                    });
+
+                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
+                        .mMaterial = glass });
+                }
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+                camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
+                camera.mSunIrradiance = irradiance;
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
+
+                return pixels[(std::size_t{ size / 2 } * size + size / 2) * 4];
+            }
+
             /// The fixture's textures, numbered the way its scene added them.
             ///
             /// **A convention of these tests and not of the renderer.** Every test here builds its
@@ -1913,6 +1954,44 @@ namespace Rtx
             EXPECT_EQ(render(slanted, bright, false), 111) << "or the same again from a slant";
         }
 
+        /// The eye sees through the nearest pane to what stands behind it.
+        ///
+        /// **A translucent surface used to be the hit**, resolved against the stand-in cutoff
+        /// `AlphaMode::Blend` is given, so a pane with an opaque texture was drawn solid and whatever
+        /// was behind it was never traced at all. It is now shaded, kept, and the ray carries on from
+        /// where it stood.
+        ///
+        /// A black pane is what makes the arithmetic checkable: it is lit to nothing, so what comes
+        /// back is the wall behind it times what the pane let past. At a half that is half the wall's
+        /// radiance, which the test above pins at 111 by halving the sun instead — the same number
+        /// by the other route, and 0 under the behaviour this replaces.
+        TEST_F(RtxVisibilityTest, theEyeSeesThroughTheNearestPaneToWhatStandsBehindIt)
+        {
+            // **On the ray and off the sun's.** The eye stands at x=100 and looks at the origin, so
+            // halfway to the wall its ray is at x=50 — and the sun travels along +Y, so what this
+            // pane shadows is the strip of wall at x between 30 and 70 rather than the origin the
+            // centre pixel is looking at. The wall it is held against is fully lit.
+            const std::array pane{
+                osg::Vec3f(30.0f, -50.0f, -20.0f),
+                osg::Vec3f(70.0f, -50.0f, -20.0f),
+                osg::Vec3f(70.0f, -50.0f, 20.0f),
+                osg::Vec3f(30.0f, -50.0f, 20.0f),
+            };
+
+            const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
+            const auto black = [](float opacity) { return osg::Vec4f(0.0f, 0.0f, 0.0f, opacity); };
+
+            EXPECT_EQ(litThroughPane(pane, std::nullopt, bright), 153) << "the wall alone";
+            EXPECT_EQ(litThroughPane(pane, black(1.0f), bright), 0)
+                << "a pane that is all there is not translucent, and it is black";
+
+            // Half the wall's radiance, which is where a sun of half the irradiance lands.
+            EXPECT_EQ(litThroughPane(pane, black(0.5f), bright), 111) << "and half of the wall through half a pane";
+
+            EXPECT_EQ(litThroughPane(pane, black(0.0f), bright), 153)
+                << "a pane that stops nothing is a pane that is not there";
+        }
+
         /// A translucent occluder dims the sun rather than stopping it.
         ///
         /// **The cheap half of transparency, and the reason it is cheap is order.** A shadow ray's
@@ -1926,12 +2005,8 @@ namespace Rtx
         /// multiplication, so they have to land on the same pixel.
         TEST_F(RtxVisibilityTest, aTranslucentOccluderDimsTheSunRatherThanStoppingIt)
         {
-            constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
-
-            const Shaders::VisibilityConstants base = makeCamera(
-                osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-
+            // Square in the sun's path to the middle of the wall, which is where the centre pixel
+            // looks — so what this pane changes is the light arriving rather than the view of it.
             const std::array occluder{
                 osg::Vec3f(-10.0f, -25.0f, -10.0f),
                 osg::Vec3f(10.0f, -25.0f, -10.0f),
@@ -1939,42 +2014,22 @@ namespace Rtx
                 osg::Vec3f(-10.0f, -25.0f, 10.0f),
             };
 
-            /// @param opacity how much of the pane is there, or nothing at all for no pane.
-            const auto render = [&](const osg::Vec3f& irradiance, std::optional<float> opacity) {
-                SceneDesc scene = makeWall();
-                if (opacity.has_value())
-                {
-                    const Index pane = scene.addMaterial(Material{
-                        .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, *opacity),
-                        .mAlphaMode = AlphaMode::Blend,
-                    });
-
-                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(occluder, {}, {}, sQuadIndices),
-                        .mMaterial = pane });
-                }
-
-                Shaders::VisibilityConstants camera = base;
-                camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
-                camera.mSunIrradiance = irradiance;
-
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
-                return pixels[centre];
-            };
-
             const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
+            const auto white = [](float opacity) { return osg::Vec4f(1.0f, 1.0f, 1.0f, opacity); };
 
-            EXPECT_EQ(render(bright, std::nullopt), 153) << "square to the sun, as the test above says";
-            EXPECT_EQ(render(bright, 1.0f), 0) << "a pane that is all there is not translucent at all";
+            EXPECT_EQ(litThroughPane(occluder, std::nullopt, bright), 153)
+                << "square to the sun, as the tests above say";
+            EXPECT_EQ(litThroughPane(occluder, white(1.0f), bright), 0)
+                << "a pane that is all there is not translucent at all";
 
             // Half the sun through the pane is the same multiplication as half a sun with none, and
-            // the test above pins that at 111.
-            EXPECT_EQ(render(bright, 0.5f), 111) << "and half of it through half a pane";
-            EXPECT_EQ(render(osg::Vec3f(1.0f, 1.0f, 1.0f), std::nullopt), 111) << "which is where it came from";
+            // the tests above pin that at 111.
+            EXPECT_EQ(litThroughPane(occluder, white(0.5f), bright), 111) << "and half of it through half a pane";
+            EXPECT_EQ(litThroughPane(occluder, std::nullopt, osg::Vec3f(1.0f, 1.0f, 1.0f)), 111)
+                << "which is where it came from";
 
             // A pane that stops nothing is a pane that is not there.
-            EXPECT_EQ(render(bright, 0.0f), 153);
+            EXPECT_EQ(litThroughPane(occluder, white(0.0f), bright), 153);
         }
 
         /// A ray that hits nothing comes back with the sky the weather named, not a constant.

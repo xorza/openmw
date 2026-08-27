@@ -57,7 +57,37 @@ void main()
     const vec3 direction = ray.mDirection;
 
     const Cone cone = coneAt(frame.mCamera);
-    const Surface surface = trace(origin, direction, 0.0, cone.mWidth, cone.mSpread, MASK_SOLID | MASK_WATER);
+    Surface surface = trace(origin, direction, 0.0, cone.mWidth, cone.mSpread, MASK_SOLID | MASK_WATER);
+
+    // **The nearest pane of glass the eye is looking through, peeled off and kept.** A translucent
+    // surface is met like any other and lit like any other, and then the ray carries on from where
+    // it stood — so what is behind it is a real hit rather than whatever the pane's mask happened to
+    // survive a cutoff.
+    //
+    // **The nearest one only.** A second pane behind the first is drawn as the cutout it was, which
+    // is what one layer buys: no sorting, no budget, and no second traversal on a pixel that has no
+    // glass in it. The census says a cell holds two to four translucent materials, so one along a
+    // ray is nearly always all there is — and where it is, this is exact.
+    //
+    // **Direct light only, and that is a limit rather than a saving.** `bounceLight` draws its
+    // sequence from the pixel and nothing else, so a pane and the wall behind it would bounce off
+    // the same numbers — the correlation `SEED_LAMPS_PANE` exists to keep out of the direct term,
+    // and there is no such seed to hand the bounce. Glass in a room no lamp reaches is dark here.
+    //
+    // **Its motion vector, its depth and the guide the upscaler demodulates by all stay the surface
+    // behind it**, which is right while a pane is mostly see-through and wrong as it approaches
+    // opaque. `SpriteClaim` is what answering that properly looks like, and no pane in the game is
+    // near enough to opaque to have earned one.
+    vec3 paneRadiance = vec3(0.0);
+    float paneThrough = 1.0;
+    if (surface.mHit && !surface.mWater && surface.mOpacity < 1.0)
+    {
+        paneThrough = 1.0 - surface.mOpacity;
+        paneRadiance = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_PANE) * surface.mOpacity;
+
+        surface = trace(origin, direction, surface.mDistance + SHADOW_BIAS, cone.mWidth, cone.mSpread,
+            MASK_SOLID | MASK_WATER);
+    }
 
     // Three channels rather than a colour: what is finished, what a filter may still work on, and
     // what puts the two back together. Only an ordinary lit surface has a second of them — the sky
@@ -96,6 +126,13 @@ void main()
         bounced = bounceLight(surface, pixel);
         response = lambertResponse(surface);
     }
+
+    // **The pane over what it stands in front of, before the water and the air.** Both of those are
+    // measured over the distance to the surface *behind* the glass, so the pane takes the haze of a
+    // path it is only part of the way along — an over-darkening, and the same one `spritesAlong`
+    // accepts above for the same reason.
+    shaded = shaded * paneThrough + paneRadiance;
+    transmittance *= paneThrough;
 
     // A camera under the surface sees everything through the water in front of it. Only a hit that
     // is not water itself: the surface shades its own two sides, and a ray that reached it from
