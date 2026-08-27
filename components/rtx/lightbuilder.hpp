@@ -146,15 +146,21 @@ namespace Rtx
     /// of the night the content describes, against a sky drawn exactly as bright as ever.
     ///
     /// So the sky is held to what the weather says a night is worth. A gradient that runs linearly
-    /// in `sin(elevation)` delivers what a uniform sky of `horizon / 3 + 2 * zenith / 3` would, and
-    /// whatever the ambient asks for beyond that is this. **It is light and not a colour**: nothing
-    /// draws it, because Morrowind does not draw it either — its ambient is on the surfaces and
-    /// never in the sky.
+    /// in `sin(elevation)` delivers what a uniform sky of `horizon / 3 + 2 * zenith / 3` would, the
+    /// night's sheets add their own mean on top of that, and whatever the ambient asks for beyond
+    /// the two is this. **It is light and not a colour**: nothing draws it, because Morrowind does
+    /// not draw it either — its ambient is on the surfaces and never in the sky.
+    ///
+    /// **Every layer that lights comes out of the same figure**, which is what keeps a night from
+    /// brightening each time one more of them starts lighting: the stars did not, and now they do,
+    /// and the night is where it was.
     ///
     /// **Nought by day, with no hour asked.** A weather's daylight sky outruns its daylight ambient
     /// in all three channels, so the rule bites only where the content puts the light somewhere the
     /// sky cannot carry it — which is night, and the deepest part of dusk.
-    osg::Vec3f skyFill(const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& ambient);
+    /// @param sheets what the night sky's own layers add — `Shaders::StarField::mGlow`.
+    osg::Vec3f skyFill(
+        const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& sheets, const osg::Vec3f& ambient);
 
     /// The sun and the sky at one hour, as the content files describe them.
     ///
@@ -174,9 +180,6 @@ namespace Rtx
         /// What an exterior gets in place of a cell's `AMBI`, which only interiors carry — the
         /// weather's own ambient, and across dusk the sun's light with its direction taken away.
         osg::Vec3f mAmbient;
-
-        /// What the sky lights with beyond what it is drawn with. `skyFill` says why a night has one.
-        osg::Vec3f mSkyFill;
 
         /// How far the stars have come out: the engine's `Stars` ramp at this hour, before the
         /// weather's glare is taken off it.

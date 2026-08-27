@@ -133,6 +133,13 @@ namespace Rtx::Shaders
         /// stars come out at dusk and an overcast keeps them in.
         float mFade;
 
+        /// What every sheet of the night sky adds to what the sky *lights* with, already faded.
+        ///
+        /// **The sheets as a source rather than as a picture**, and the two are reached differently:
+        /// a ray that is looked along samples them where it points, and one gathering a hemisphere
+        /// takes this instead. `NightSky::mGlow` says why a mean and not the sheets themselves.
+        vec3 mGlow;
+
         /// How far the sphere has rolled about the zenith, in radians. Once every four days.
         float mTurn;
 
@@ -432,9 +439,9 @@ namespace Rtx::Shaders
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
     static_assert(sizeof(MoonDisc) == 88, "MoonDisc must be scalar-packed on every side");
     static_assert(sizeof(CloudDeck) == 60, "CloudDeck must be scalar-packed on every side");
-    static_assert(sizeof(StarField) == 20, "StarField must be scalar-packed on every side");
+    static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 804, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 816, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

@@ -179,7 +179,6 @@ namespace Rtx
                 .mSkyHorizon = haze,
                 .mSkyZenith = zenith,
                 .mAmbient = sky.mAmbient,
-                .mSkyFill = skyFill(haze, zenith, sky.mAmbient),
 
                 // **The engine's own ramp for the stars**, which is four points like every other and
                 // crosses on the `Stars` window rather than the sky's: they outlast the sunset and
@@ -242,13 +241,15 @@ namespace Rtx
             std::exp(-sAirDepth.x() * mass), std::exp(-sAirDepth.y() * mass), std::exp(-sAirDepth.z() * mass));
     }
 
-    osg::Vec3f skyFill(const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& ambient)
+    osg::Vec3f skyFill(
+        const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& sheets, const osg::Vec3f& ambient)
     {
         // What a uniform sky would have to be to deliver what this gradient does. `skyGradient` runs
         // linearly in `sin(elevation)`, so the cosine-weighted integral over the hemisphere comes to
         // `pi * (horizon / 3 + 2 * zenith / 3)` — two thirds of the sky an up-facing surface sees is
-        // nearer the zenith than the horizon, and this is that in closed form.
-        const osg::Vec3f carried = horizon / 3.0f + zenith * (2.0f / 3.0f);
+        // nearer the zenith than the horizon, and this is that in closed form. The sheets are already
+        // a mean over the hemisphere and need no such weighting.
+        const osg::Vec3f carried = horizon / 3.0f + zenith * (2.0f / 3.0f) + sheets;
 
         return osg::Vec3f(std::max(ambient.x() - carried.x(), 0.0f), std::max(ambient.y() - carried.y(), 0.0f),
             std::max(ambient.z() - carried.z(), 0.0f));

@@ -14,6 +14,9 @@
 #include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
 
+#include "meantexel.hpp"
+#include "shaders/scene.h"
+
 namespace Rtx
 {
     namespace
@@ -293,6 +296,10 @@ namespace Rtx
                 sky.mField = slot;
                 sky.mTile = layer.mUvRate > 0.0f ? 1.0f / layer.mUvRate : 0.0f;
                 sky.mHorizon = layer.mKeptFrom;
+
+                // The field is laid over the whole dome, so its own mean is what it adds to the
+                // sky's — `STAR_RADIANCE` is the scale the shader draws it at.
+                sky.mGlow += meanTexel(*layer.mImage) * Shaders::STAR_RADIANCE;
                 continue;
             }
 
@@ -307,6 +314,15 @@ namespace Rtx
                 .mDirection = layer.mDirection,
                 .mAngularRadius = layer.mAngularRadius,
             };
+
+            // **A cap of half-angle `t` is `1 - cos(t)` of a hemisphere**, which is the share of the
+            // sky's mean this patch's own mean speaks for. Overlaps are counted twice and patches
+            // below the horizon counted at all, both of which the three nebulae do a little of —
+            // this is the sky's mean to first order and it is spent out of the weather's own ambient
+            // either way, so what it can be wrong about is where a night's light comes from rather
+            // than how much of it there is.
+            sky.mGlow
+                += meanTexel(*layer.mImage) * (Shaders::NEBULA_RADIANCE * (1.0f - std::cos(layer.mAngularRadius)));
         }
 
         return sky;

@@ -775,6 +775,13 @@ namespace MWRender
         // is anyway. A quasi-exterior is on the outdoor side of that: it has weather.
         const osg::Vec3f zenith = world.isOutdoors() ? Rtx::decodeColour(world.mSkyColour) : haze;
 
+        // **Before the frame is assembled, because the fill is measured against it.** Every layer
+        // that lights comes out of the weather's own ambient, so what the sheets add has to be known
+        // before what is left over can be.
+        const Rtx::Shaders::StarField stars = world.isOutdoors()
+            ? Rtx::describeStars(world.mNightFade, world.mSunGlare, world.mSkyRoll.mStars, mSkyContent)
+            : Rtx::Shaders::StarField{ .mTexture = Rtx::Shaders::NO_TEXTURE };
+
         // **The recorded depth, and not the ramp `MWRender::FogManager` made of it.** That ramp
         // exists to hide a far clip plane and this renderer has no far clip to hide, so per the
         // fork's own rule it does not come across. What is read instead is the number the content
@@ -813,7 +820,7 @@ namespace MWRender
             // renderer lights it by tracing the dome, which is an order short — `Rtx::skyFill`
             // carries the rest of it. Indoors there is no dome to be short of, and the cell's own
             // ambient already reaches every surface as `mAmbient`.
-            .mSkyFill = world.isOutdoors() ? Rtx::skyFill(haze, zenith, sky.mAmbient) : osg::Vec3f(),
+            .mSkyFill = world.isOutdoors() ? Rtx::skyFill(haze, zenith, stars.mGlow, sky.mAmbient) : osg::Vec3f(),
 
             .mAir = { .mColour = haze,
                 .mExtinction = Rtx::fogExtinction(world.mFogDepth, reach),
@@ -864,9 +871,7 @@ namespace MWRender
                       .mTexture = Rtx::Shaders::NO_TEXTURE,
                       .mNext = Rtx::Shaders::NO_TEXTURE },
 
-            .mStars = world.isOutdoors()
-                ? Rtx::describeStars(world.mNightFade, world.mSunGlare, world.mSkyRoll.mStars, mSkyContent)
-                : Rtx::Shaders::StarField{ .mTexture = Rtx::Shaders::NO_TEXTURE },
+            .mStars = stars,
         };
 
         for (std::size_t moon = 0; moon < described.mMoons.size(); ++moon)

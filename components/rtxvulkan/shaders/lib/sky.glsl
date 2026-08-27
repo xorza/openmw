@@ -20,11 +20,13 @@
 /// **This is the sky as a source of light**, which is not the sky as a thing to look at, and the
 /// two differ both ways. What a bounce gathers must leave out the sun's disc: `gather` asks the sun
 /// directly, so a hemisphere that also picked it up out of the sky would count it twice — and a
-/// bounce cone a radian wide would pick it up over a quarter of the sky at that. And it must carry
-/// `mSkyFill`, which is light the weather has and the sky is not painted with.
+/// bounce cone a radian wide would pick it up over a quarter of the sky at that. It must carry
+/// `mSkyFill`, which is light the weather has and the sky is not painted with. And it takes the
+/// night's sheets as one mean rather than where they actually are, because a star field sampled a
+/// ray at a time is a firefly — `NightSky::mGlow` carries that argument.
 vec3 skyGlow(vec3 direction)
 {
-    return skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction) + frame.mSkyFill;
+    return skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction) + frame.mStars.mGlow + frame.mSkyFill;
 }
 
 /// What a ray that reached nothing finds in the cloud deck, and how much of the sky it hides.
@@ -167,8 +169,13 @@ vec3 starField(vec3 direction)
     const float azimuth = atan(direction.y, direction.x) - frame.mStars.mTurn;
     const vec2 uv = vec2(azimuth, 0.25 * TAU - elevation) / frame.mStars.mTile;
 
-    return (frame.mStars.mFade * reaches * STAR_RADIANCE)
-        * textureLod(textures[nonuniformEXT(frame.mStars.mTexture)], uv, 0.0).rgb;
+    // **Premultiplied by its own alpha, which is how the engine lays this sheet on.**
+    // `paintAtmosphereNight` hands the texture's alpha to a `(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)` blend,
+    // and the sheet is 99% transparent — so reading the colour and dropping the alpha draws the
+    // black between the stars as though it were sky.
+    const vec4 sheet = textureLod(textures[nonuniformEXT(frame.mStars.mTexture)], uv, 0.0);
+
+    return (frame.mStars.mFade * reaches * STAR_RADIANCE * sheet.a) * sheet.rgb;
 }
 
 /// What a moon's lit face sends back along a ray, and how much of the sky it stands in front of.

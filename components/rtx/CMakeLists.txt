@@ -41,6 +41,8 @@ set(RTX_FILES
     lightbuilder.hpp
     lightgrid.cpp
     lightgrid.hpp
+    meantexel.cpp
+    meantexel.hpp
     micromap.cpp
     micromap.hpp
     microtriangles.cpp

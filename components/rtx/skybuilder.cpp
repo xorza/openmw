@@ -158,6 +158,7 @@ namespace Rtx
 
         return Shaders::StarField{
             .mFade = seen,
+            .mGlow = textures.mNight.mGlow * seen,
             .mTurn = turn,
             .mTile = textures.mNight.mTile,
             .mHorizon = textures.mNight.mHorizon,

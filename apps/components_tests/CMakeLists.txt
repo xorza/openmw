@@ -129,6 +129,7 @@ if (OPENMW_RTX)
         rtx/harness.hpp
         rtx/lightbuilder.cpp
         rtx/lightgrid.cpp
+        rtx/meantexel.cpp
         rtx/micromap.cpp
         rtx/microtriangles.cpp
         rtx/moonbuilder.cpp

@@ -58,15 +58,26 @@ namespace RtxTool
 
     void applyLighting(const CellLighting& lighting, Rtx::Shaders::VisibilityConstants& constants)
     {
+        // **Before the frame is assembled, because the fill is measured against it**, and a room has
+        // neither: every layer that lights comes out of the weather's ambient, so what the sheets add
+        // has to be known before what is left over can be.
+        const Rtx::Shaders::StarField stars = lighting.mOutdoors
+            ? Rtx::describeStars(lighting.mDaylight.mStarFade, lighting.mGlare, lighting.mRoll.mStars, lighting.mSky)
+            : Rtx::Shaders::StarField{ .mTexture = Rtx::Shaders::NO_TEXTURE };
+
+        // Nought in a room, for the reason the deck and the stars are: there is no dome to be short
+        // of, and the cell's own ambient already reaches every surface.
+        const osg::Vec3f fill = lighting.mOutdoors ? Rtx::skyFill(lighting.mDaylight.mSkyHorizon,
+                                                         lighting.mDaylight.mSkyZenith, stars.mGlow, lighting.mAmbient)
+                                                   : osg::Vec3f();
+
         Rtx::FrameWorld world{
             .mSun = lighting.mDaylight.mSun,
             .mAmbient = lighting.mAmbient,
             .mSkyHorizon = lighting.mDaylight.mSkyHorizon,
             .mSkyZenith = lighting.mDaylight.mSkyZenith,
 
-            // Nought in a room, for the reason the deck and the stars are: there is no dome to be
-            // short of, and the cell's own ambient already reaches every surface.
-            .mSkyFill = lighting.mOutdoors ? lighting.mDaylight.mSkyFill : osg::Vec3f(),
+            .mSkyFill = fill,
             .mAir = lighting.mFog,
             .mWaterLevel = lighting.mWaterLevel,
             .mSeconds = lighting.mSeconds,
@@ -83,18 +94,17 @@ namespace RtxTool
             // an ashstorm at the player; every caller here has already put its camera in `mOrigin`,
             // so the same rule reaches the same answer for whoever is looking.
             .mStormDirection = Rtx::stormDirection(lighting.mWeather, constants.mOrigin),
+
+            .mStars = stars,
         };
 
-        // **The sky's own two layers, and an interior has neither.** A room has no deck over it and
-        // no stars in it, and the defaults are what say so — a texture slot of `NO_TEXTURE` and
-        // a fade of nothing, which the shader skips before it samples anything.
+        // **The deck and the painted patches, and an interior has neither.** A room has no cloud
+        // over it and no constellations in it, and the defaults are what say so — a texture slot of
+        // `NO_TEXTURE`, which the shader skips before it samples anything.
         if (lighting.mOutdoors)
         {
             world.mClouds = Rtx::describeClouds(lighting.mWeather, lighting.mNextWeather, lighting.mWeatherBlend,
                 lighting.mDaylight.mSkyHorizon, world.mStormDirection, lighting.mRoll.mClouds, lighting.mSky);
-
-            world.mStars = Rtx::describeStars(
-                lighting.mDaylight.mStarFade, lighting.mGlare, lighting.mRoll.mStars, lighting.mSky);
 
             Rtx::describePatches(lighting.mRoll.mStars, lighting.mSky, world.mSkyPatches);
         }

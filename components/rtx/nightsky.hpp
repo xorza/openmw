@@ -56,6 +56,18 @@ namespace Rtx
         float mHorizon = 0.0f;
 
         std::array<Patch, Shaders::SKY_PATCH_COUNT> mPatches;
+
+        /// What every sheet on this mesh adds to the sky's mean radiance, linear, at full fade.
+        ///
+        /// **The night sky as a light and not as a picture.** A bounce that escapes takes `skyGlow`,
+        /// which had the dome and nothing laid over it — so a star lit nothing, and neither did the
+        /// three nebulae that are most of what gives a Morrowind night its colour. This is what they
+        /// are worth summed: each sheet's own mean texel times the share of the hemisphere it covers.
+        ///
+        /// **A mean rather than the sheets themselves**, because `tx_stars` carries nearly all of
+        /// its light in 0.8% of its texels and ships no mip chain — a gather ray that landed on one
+        /// would be a firefly, and one that missed would be black.
+        osg::Vec3f mGlow;
     };
 
     /// Reads it, adding every texture it names to `scene` and holding them there.

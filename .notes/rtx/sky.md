@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | the dome | `skyGradient` | `skyGlow` |
 | the fill | nothing | `skyGlow`, via `mSkyFill` |
-| star field, nebulae, constellations | `starField`, `skyPatches` | **nothing** |
+| star field, nebulae, constellations | `starField`, `skyPatches` | `skyGlow`, via `StarField::mGlow` |
 | the sun's disc | `skyRadiance` | `gather` |
 | the moons | `moonFace` | `gather` |
 | the cloud deck | `cloudDeck`, as an emission | **nothing**, and **nothing lights it** |
@@ -16,10 +16,10 @@ composites each over it in `SkyManager::create`'s own order, and adds the dome i
 which is also what now takes a low moon out, in place of the engine's own angle gate. What is left is
 the second column.
 
-**What the sky delivers should be stated once, with every layer drawn out of it.** `skyFill` is
-the first half of that and knows about none of the others: it makes the dome deliver what
-`Ambient_<weather>_Night_Color` says a night is worth, and anything else that starts lighting has to
-come out of the same figure or the night gets brighter again.
+**What the sky delivers is stated once, and every layer that lights comes out of it.** `skyFill`
+holds the sky to what `Ambient_<weather>_Night_Color` says a night is worth, and it now subtracts the
+dome and the night's sheets alike — so the stars started lighting and the night stayed where it was.
+The deck is the last layer outside that rule.
 
 Measured at a clear midnight, linear luminance: the weather's ambient is **0.0168**, the dome is
 **0.0030**, so the fill is **0.0138**. On day 0 the moons add **0.0125** perpendicular, **0.0113**
@@ -27,42 +27,7 @@ onto flat ground.
 
 ---
 
-## 1. The night sky's sheets light nothing
-
-**Root cause.** `skyGlow` returns the dome's gradient and the fill. `starField` and `skyPatches` are
-called only from `skyRadiance`, so a bounce that escapes never finds them.
-
-**What they are worth**, measured off the shipped files as the mean of `rgb * a` in linear light:
-
-| sheet | mean | scale | over |
-| --- | --- | --- | --- |
-| `tx_stars` | 0.00137 | `STAR_RADIANCE` 0.18 | the whole dome |
-| `tx_stars_nebula` | 0.00199 | `NEBULA_RADIANCE` 0.06 | its own patch |
-| `tx_stars_nebula2` | 0.00098 | " | " |
-| `tx_stars_nebula3` | 0.00127 | " | " |
-| `tx_stars_warrior` | 0.00188 | " | " |
-| `tx_stars_mage` | 0.00161 | " | " |
-| `tx_stars_thief` | 0.00157 | " | " |
-
-The field comes to 2.5e-4 and the six patches to about 1.3e-4, against the dome's 0.0030 — **13%**.
-
-**Not by sampling them per ray.** A star field is 0.22% bright texels carrying nearly all of its
-light, so a gather ray that lands on one returns 450 times the mean. That is a firefly in the
-indirect light, and the sheets carry no mip chain to blur it away.
-
-**The fix.** The mean, worked out at load and spent out of the same budget.
-
-- `NightSky` gains the mean radiance each sheet is worth. Decode with `texelAt` and `AlphaImage`
-  over a `TextureData`, which already read every format the game ships.
-- A patch covers `1 - cos(t)` of the hemisphere, so its share of the sky's mean is that times its own
-  mean. The field covers the whole dome.
-- `skyFill` subtracts the sheets as well as the gradient, so the total the sky delivers is still the
-  weather's ambient. The sheets change **where** the night's light comes from, not how much there is.
-- Test: the sum of what the layers deliver equals the weather's ambient, whatever the sheets say.
-
----
-
-## 2. The cloud deck is an emission and is never lit
+## 1. The cloud deck is an emission and is never lit
 
 **Root cause.** `CloudDeck::mColour` is the weather's air times what its own daylight says a cloud is
 worth, and `cloudDeck` returns that times coverage. No sun, no moon, no sky reaches it, it casts
@@ -93,8 +58,7 @@ long the deck keeps the sun has to come from somewhere else.
 
 **Steps.** Land them in this order, checking with `shot` after each:
 
-1. Per-sheet mean luminance at load, beside the night sheets' means from step 1 — one reader serves
-   both.
+1. Per-sheet mean luminance at load, with `Rtx::meanTexel`, which the night sheets already use.
 2. Coverage from the alpha, and from the texel's luminance against the mean where the alpha is flat.
 3. The deck lit by the sky and by the moons, at a transmission of 0.25. Night first, because it is
    the case with the fewest terms and the one already known to read wrong.
@@ -105,7 +69,7 @@ long the deck keeps the sun has to come from somewhere else.
 
 ---
 
-## 3. What terminates a path is what the open sky delivers
+## 2. What terminates a path is what the open sky delivers
 
 `mAmbient` used to be six times the dome it stood for a bounce of, so a surface in a crevice was lit
 more than the open ground beside it. `skyFill` closed that: the sky now delivers the weather's
@@ -123,12 +87,10 @@ that shadows the world is the same machinery seen from another side.
 
 ## Order
 
-Step 1 first, because step 2 needs the same image reader and the same budget rule, and it is far
-cheaper to get both right on the sheets than on the deck.
+Step 1 is the last of the sky, and it goes in its own six steps. It is the one that can regress a day
+that has just been tuned, and `Rtx::meanTexel` and the budget rule are both in place for it now.
 
-Step 2 last, and in its own six steps. It is the one that can regress a day that has just been tuned.
-
-Step 3 stays open.
+Step 2 stays open.
 
 **And one question this leaves for step 2.** `Rtx::airTransmittance` is the moons' now and not the
 sun's, because `Sun_Disc_Sunset_Color` and `sunShareAt` already redden and ramp that disc between
@@ -137,8 +99,7 @@ settle whether the content's sunset and the air's are the same sunset stated twi
 
 ## What must still hold at each step
 
-- `openmw-rtxtool shot --hour 12` is unchanged in every step but 2, and in 2 it changes only where
-  cloud is drawn.
+- `openmw-rtxtool shot --hour 12` is unchanged in step 1 except where cloud is drawn.
 - The sky's total delivered light equals the weather's ambient at night, whatever the layers say.
 - `components-tests` and `openmw-tests` pass, and the formatting check is clean.
 - No new allocation on the frame path. Everything read off a mesh or an image is read at load.
