@@ -1,7 +1,7 @@
 - cnn or transformer dlss
+- dlss versions
 - specular
 - rr 4.5
-- dlss versions
 - audit alloc tests
 - audit includes
 - audit #pragmas
@@ -11,7 +11,6 @@
 - precipitation interact with lightsources
 - volumetric particles
 - spell lightsources
-- underwater `fog`
 - split tests
 - extract shader and lightting consts for look tweaking
 - rain water interaction
