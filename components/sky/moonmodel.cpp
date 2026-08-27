@@ -22,9 +22,9 @@ namespace Sky
 
     MoonModel::MoonModel(std::string_view name)
         : MoonModel(setting(name, "Fade_In_Start"), setting(name, "Fade_In_Finish"), setting(name, "Fade_Out_Start"),
-            setting(name, "Fade_Out_Finish"), setting(name, "Axis_Offset"), setting(name, "Speed"),
-            setting(name, "Daily_Increment"), setting(name, "Fade_Start_Angle"), setting(name, "Fade_End_Angle"),
-            setting(name, "Moon_Shadow_Early_Fade_Angle"))
+              setting(name, "Fade_Out_Finish"), setting(name, "Axis_Offset"), setting(name, "Speed"),
+              setting(name, "Daily_Increment"), setting(name, "Fade_Start_Angle"), setting(name, "Fade_End_Angle"),
+              setting(name, "Moon_Shadow_Early_Fade_Angle"))
     {
     }
 
@@ -181,13 +181,15 @@ namespace Sky
     MoonMoment MoonModel::at(int day, float hour) const
     {
         const float along = angle(day, hour);
+        const float daylight = hourlyAlpha(hour);
 
         return MoonMoment{
             .mAlongArc = along,
             .mAxisOffset = mAxisOffset,
             .mPhase = phase(day, hour),
             .mShadowBlend = shadowBlend(along),
-            .mAlpha = earlyShadowAlpha(along) * hourlyAlpha(hour),
+            .mAlpha = earlyShadowAlpha(along) * daylight,
+            .mDaylightFade = daylight,
         };
     }
 }

@@ -44,6 +44,15 @@ namespace Sky
         /// What the hour and the arc between them fade the moon by. Zero is a moon that is not
         /// drawn at all, whether or not it is above the horizon.
         float mAlpha = 0.0f;
+
+        /// What the hour alone fades it by, with no account of where it stands.
+        ///
+        /// **The half of `mAlpha` that is about daylight.** `Moons_<name>_Fade_Out_*` takes the moons
+        /// out between seven and ten in the morning and `Fade_In_*` brings them back between two and
+        /// three in the afternoon; the other half of `mAlpha` hides a moon under
+        /// `Moons_<name>_Fade_End_Angle`, which is the engine keeping a lit quad off its own fogged
+        /// horizon. A renderer with air in it wants the first without the second.
+        float mDaylightFade = 0.0f;
     };
 
     /// One moon's clock, out of the `Moons_<name>_*` settings.

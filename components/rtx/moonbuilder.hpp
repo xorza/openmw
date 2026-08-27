@@ -60,17 +60,17 @@ namespace Rtx
         /// which is what the photometry says it is worth.
         osg::Vec3f mIrradiance;
 
-        /// How much of its painted face a moon is showing, from none of it to all.
+        /// What the air leaves of it, per channel — `Rtx::airTransmittance` at its own elevation.
         ///
-        /// **Morrowind's own answer to a moon near the horizon, and it is not a fade.** Between
-        /// `Moons_<name>_Fade_End_Angle` and `Fade_Start_Angle` — thirty to fifty degrees along the
-        /// arc for Secunda, forty to fifty for Masser — the engine crossfades a disc the colour of
-        /// the sky into the moon's own face. So what arrives at the low end is indistinguishable
-        /// from the sky it stands in, and the moon grows out of it over the next twenty degrees.
+        /// **This is what lets a moon rise.** The engine draws none under
+        /// `Moons_<name>_Fade_End_Angle` and crossfades its face in over the twenty degrees above,
+        /// which is a rasterizer keeping a lit quad off its own fogged dome. Here the air does that
+        /// work and does it from the horizon up: a moon comes over the edge as a deep red ember and
+        /// is itself by thirty degrees.
         ///
-        /// **The light follows the face**, which is what keeps a moon from lighting a valley it is
-        /// not yet showing in. `Sky::MoonModel` works it out and both renderers read it.
-        float mShadowBlend = 0.0f;
+        /// **The light is dimmed by it too**, on the host and before it ever reaches a shader, so a
+        /// moon on the horizon lights about as much as it shows.
+        osg::Vec3f mThroughAir{ 1.0f, 1.0f, 1.0f };
 
         /// The mean opaque texel of this moon's portrait, linear and unscaled.
         ///
@@ -131,10 +131,10 @@ namespace Rtx
     /// @param alongArc degrees travelled from the horizon it rose at, zero to 180.
     /// @param axisOffset degrees the whole arc is swung about the zenith.
     /// @param phase which of the eight painted phases, counted from full.
-    /// @param alpha what the game fades it by, the weather's `Glare_View` included. Zero is a moon
-    ///        that is not drawn.
-    /// @param shadowBlend how much of its face it is showing — `MoonMoment::mShadowBlend`.
-    MoonPlacement placeMoon(Moon moon, float alongArc, float axisOffset, int phase, float alpha, float shadowBlend);
+    /// @param alpha the daylight fade, with the weather's `Glare_View` on it —
+    ///        `MoonMoment::mDaylightFade`. What decides whether the moon is up at all is `alongArc`,
+    ///        which the engine leaves at nought until it rises and returns to nought once it sets.
+    MoonPlacement placeMoon(Moon moon, float alongArc, float axisOffset, int phase, float alpha);
 
     /// A placement as the shader takes it.
     ///

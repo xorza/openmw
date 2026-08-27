@@ -2763,7 +2763,7 @@ namespace Rtx
             facing.mColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
             facing.mAngularRadius = 0.2f;
             facing.mAlpha = 1.0f;
-            facing.mShadowBlend = 1.0f;
+            facing.mThroughAir = osg::Vec3f(1.0f, 1.0f, 1.0f);
             facing.mFace = Shaders::NO_TEXTURE;
 
             const auto sky = [&](std::size_t at) {

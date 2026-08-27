@@ -206,6 +206,14 @@ namespace Rtx
         /// raises what is dark while it desaturates it, where every exposure lever moves the whole
         /// frame at once.
         constexpr float sHourStops = 0.314f;
+
+        /// Rayleigh optical depth at the zenith, at the three sRGB primaries.
+        ///
+        /// `0.008569 λ^-4` with its usual correction, at 600, 550 and 450 nanometres — which is near
+        /// enough to where the primaries sit. **Aerosol is left out**: how thick the haze is belongs
+        /// to a weather rather than to the air, and a number for it here would be one nobody
+        /// measured.
+        const osg::Vec3f sAirDepth(0.0683f, 0.0973f, 0.2213f);
     }
 
     float exposureBias(const osg::Vec3f& sunIrradiance, const osg::Vec3f& ambient)
@@ -216,6 +224,22 @@ namespace Rtx
         // delivers 8.03 where `DAYLIGHT` is 8, so the hour that needs no holding back is the one
         // that comes out at one — and no second number has to be kept in step with the first.
         return std::pow(std::min(level / Shaders::DAYLIGHT, 1.0f), sHourStops);
+    }
+
+    osg::Vec3f airTransmittance(float upward)
+    {
+        // Already the sine of the elevation, which is what makes the whole of a unit direction's `z`
+        // worth carrying: the fit below wants that and the angle, and only the angle costs a trig
+        // call.
+        const float sine = std::clamp(upward, 0.0f, 1.0f);
+        const float elevation = osg::RadiansToDegrees(std::asin(sine));
+
+        // Kasten and Young's fit, which holds to the horizon where `1 / sin` runs away: 37.92 air
+        // masses there against one overhead.
+        const float mass = 1.0f / (sine + 0.50572f * std::pow(elevation + 6.07995f, -1.6364f));
+
+        return osg::Vec3f(
+            std::exp(-sAirDepth.x() * mass), std::exp(-sAirDepth.y() * mass), std::exp(-sAirDepth.z() * mass));
     }
 
     osg::Vec3f skyFill(const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& ambient)

@@ -132,7 +132,7 @@ namespace Rtx
             // same way.
             .mOpacity = slot == Shaders::NO_TEXTURE || !(textures.mShell.mTiles.x() > 0.0f) ? 0.0f : 1.0f,
 
-            .mColour = osg::Vec3f(air.x() * lift.x(), air.y() * lift.y(), air.z() * lift.z()),
+            .mColour = osg::componentMultiply(air, lift),
             .mBlend = mixed,
             .mScroll = scroll,
 

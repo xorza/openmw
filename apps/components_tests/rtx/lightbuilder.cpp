@@ -422,6 +422,50 @@ namespace Rtx
             }
         }
 
+        /// The air takes a body in the sky out as it goes down, and takes the blue out first.
+        ///
+        /// **Two published figures and nothing else.** Rayleigh optical depth at the three sRGB
+        /// primaries is 0.0683, 0.0973 and 0.2213 — `0.008569 λ^-4` with its usual correction, at
+        /// 600, 550 and 450 nanometres — and Kasten and Young's air mass runs from 0.9997 overhead
+        /// to 37.92 at the horizon. The transmittance is `exp(-depth * mass)`, worked out below by
+        /// hand.
+        TEST(RtxLightBuilderTest, theAirTakesABodyOutAsItGoesDown)
+        {
+            // Overhead: one air mass, so the depths come through as they are. A ninth of the green
+            // goes even there, which is the price a full moon at the zenith pays.
+            const osg::Vec3f zenith = airTransmittance(1.0f);
+            EXPECT_NEAR(zenith.x(), 0.9340f, 1e-4f);
+            EXPECT_NEAR(zenith.y(), 0.9073f, 1e-4f);
+            EXPECT_NEAR(zenith.z(), 0.8015f, 1e-4f);
+
+            // Thirty degrees is 1.9943 air masses, which is where a moon is most of the way to
+            // itself.
+            const osg::Vec3f third = airTransmittance(0.5f);
+            EXPECT_NEAR(third.x(), 0.8727f, 1e-4f);
+            EXPECT_NEAR(third.y(), 0.8236f, 1e-4f);
+            EXPECT_NEAR(third.z(), 0.6432f, 1e-4f);
+
+            // The horizon is 37.92 of them, and blue does not survive it: three parts in ten
+            // thousand against a thirteenth of the red.
+            const osg::Vec3f edge = airTransmittance(0.0f);
+            EXPECT_NEAR(edge.x(), 0.0750f, 1e-4f);
+            EXPECT_NEAR(edge.y(), 0.0250f, 1e-4f);
+            EXPECT_NEAR(edge.z(), 0.000226f, 1e-6f);
+
+            // Below the horizon there is no slant path to measure, so it holds at the horizon's own
+            // rather than taking a root of a negative angle.
+            EXPECT_EQ(airTransmittance(-0.5f), edge);
+
+            // And it only ever rises, which is what keeps a body from brightening as it sets.
+            float below = 0.0f;
+            for (int step = 0; step <= 64; ++step)
+            {
+                const float carried = airTransmittance(float(step) / 64.0f).y();
+                EXPECT_GT(carried, below) << "at a height of " << float(step) / 64.0f;
+                below = carried;
+            }
+        }
+
         /// A night's sky lights with more than it is drawn with, and a day's does not.
         ///
         /// **Because Morrowind states the two in different places.** It lights a night by putting

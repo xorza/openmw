@@ -11,9 +11,10 @@
 | the moons | `moonFace` | `gather` |
 | the cloud deck | `cloudDeck`, as an emission | **nothing**, and **nothing lights it** |
 
-The compositing order is settled: `skyRadiance` builds what lies beyond the moons, composites each
-moon over it in `SkyManager::create`'s own order, and adds the dome in front as the air. What is left
-is the second column.
+The compositing order is settled, and so are the moons: `skyRadiance` builds what lies beyond them,
+composites each over it in `SkyManager::create`'s own order, and adds the dome in front as the air —
+which is also what now takes a low moon out, in place of the engine's own angle gate. What is left is
+the second column.
 
 **What the sky delivers should be stated once, with every layer drawn out of it.** `skyFill` is
 the first half of that and knows about none of the others: it makes the dome deliver what
@@ -26,55 +27,7 @@ onto flat ground.
 
 ---
 
-## 1. The moons still do not rise
-
-**They arrive thirty degrees up, and now they arrive gently.** `MoonMoment::mShadowBlend` fixed how a
-moon appears and not where. Both halves of the engine's horizon treatment are still in force:
-`earlyShadowAlpha` draws nothing at all under `Fade_End_Angle` — 30 degrees for Secunda, 40 for
-Masser — and `mShadowBlend` shows no face until the same angle. The engine does exactly this, so it
-is faithful, and it is also the one piece of its sky that is plainly a workaround for a bright quad
-over a fogged dome. A moon should come up out of the horizon.
-
-**What replaces it has to be the air**, because there is nothing else between an eye and a moon. The
-content still decides everything about the moon: where it rises, how fast it climbs, its phase, and
-the hour it fades out in daylight. What is added is that the air is modelled instead of the moon
-being switched off.
-
-- `MoonMoment` gains the hour's own fade as a field of its own. `mAlpha` stays exactly as it is,
-  because the rasterizer reads it and its behaviour is never changed.
-- The ray tracer takes that field and gates on `mAlongArc > 0`, which is already the engine's way of
-  saying a moon is on its arc rather than waiting to rise or already set.
-- `mShadowBlend` stops reaching the ray tracer, for the same reason `earlyShadowAlpha` does: the two
-  are one mechanism and keeping half of it would hold the face out until thirty degrees anyway.
-- Rayleigh optical depth at the three sRGB primaries — **0.068, 0.097 and 0.221** at the zenith,
-  which is `0.008569 λ^-4` with its usual correction — times the Kasten-Young air mass
-  `1 / (sin h + 0.50572 (h + 6.07995)^-1.6364)`, scales the disc and the light alike.
-
-What that gives, as transmittance per channel:
-
-| elevation | air mass | R | G | B |
-| --- | --- | --- | --- | --- |
-| 90° | 1.00 | 0.934 | 0.908 | 0.802 |
-| 30° | 1.99 | 0.873 | 0.824 | 0.644 |
-| 10° | 5.59 | 0.684 | 0.582 | 0.291 |
-| 5° | 10.31 | 0.496 | 0.368 | 0.102 |
-| 1° | 26.30 | 0.167 | 0.078 | 0.003 |
-| 0° | 37.92 | 0.076 | 0.025 | 0.000 |
-
-So a moon comes up as a deep red ember, is orange at five degrees, and is itself by thirty. A full
-Masser overhead loses 9% of its light, which is right and is the price.
-
-**Not the sun, and say why.** The same air is over it, but `Sun_Disc_Sunset_Color` already reddens
-the disc and `sunShareAt` already ramps it out, so extinction there would be the content's own
-sunset counted twice. That is a question for whoever lights the cloud deck, which needs the sun's
-air mass for its own reasons.
-
-- Test: the disc and the light fall together, monotonically, from the zenith to the horizon; a moon
-  off its arc gives nothing; and the published 407,000th still holds for a real moon overhead.
-
----
-
-## 2. The night sky's sheets light nothing
+## 1. The night sky's sheets light nothing
 
 **Root cause.** `skyGlow` returns the dome's gradient and the fill. `starField` and `skyPatches` are
 called only from `skyRadiance`, so a bounce that escapes never finds them.
@@ -109,7 +62,7 @@ indirect light, and the sheets carry no mip chain to blur it away.
 
 ---
 
-## 3. The cloud deck is an emission and is never lit
+## 2. The cloud deck is an emission and is never lit
 
 **Root cause.** `CloudDeck::mColour` is the weather's air times what its own daylight says a cloud is
 worth, and `cloudDeck` returns that times coverage. No sun, no moon, no sky reaches it, it casts
@@ -140,7 +93,7 @@ long the deck keeps the sun has to come from somewhere else.
 
 **Steps.** Land them in this order, checking with `shot` after each:
 
-1. Per-sheet mean luminance at load, beside the night sheets' means from step 2 — one reader serves
+1. Per-sheet mean luminance at load, beside the night sheets' means from step 1 — one reader serves
    both.
 2. Coverage from the alpha, and from the texel's luminance against the mean where the alpha is flat.
 3. The deck lit by the sky and by the moons, at a transmission of 0.25. Night first, because it is
@@ -152,7 +105,7 @@ long the deck keeps the sun has to come from somewhere else.
 
 ---
 
-## 4. What terminates a path is what the open sky delivers
+## 3. What terminates a path is what the open sky delivers
 
 `mAmbient` used to be six times the dome it stood for a bounce of, so a surface in a crevice was lit
 more than the open ground beside it. `skyFill` closed that: the sky now delivers the weather's
@@ -170,19 +123,21 @@ that shadows the world is the same machinery seen from another side.
 
 ## Order
 
-Step 1 first. It is a regression against the old renderer rather than a nicety, it is small, and it
-is in the frame every night.
-
-Step 2 next, because step 3 needs the same image reader and the same budget rule, and it is far
+Step 1 first, because step 2 needs the same image reader and the same budget rule, and it is far
 cheaper to get both right on the sheets than on the deck.
 
-Step 3 last, and in its own six steps. It is the one that can regress a day that has just been tuned.
+Step 2 last, and in its own six steps. It is the one that can regress a day that has just been tuned.
 
-Step 4 stays open.
+Step 3 stays open.
+
+**And one question this leaves for step 2.** `Rtx::airTransmittance` is the moons' now and not the
+sun's, because `Sun_Disc_Sunset_Color` and `sunShareAt` already redden and ramp that disc between
+them. A lit cloud deck needs the sun's air mass for its own reasons, and whoever writes it has to
+settle whether the content's sunset and the air's are the same sunset stated twice.
 
 ## What must still hold at each step
 
-- `openmw-rtxtool shot --hour 12` is unchanged in every step but 3, and in 3 it changes only where
+- `openmw-rtxtool shot --hour 12` is unchanged in every step but 2, and in 2 it changes only where
   cloud is drawn.
 - The sky's total delivered light equals the weather's ambient at night, whatever the layers say.
 - `components-tests` and `openmw-tests` pass, and the formatting check is clean.

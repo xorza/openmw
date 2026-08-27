@@ -193,14 +193,17 @@ namespace Rtx::Shaders
         /// moon that is not there, and the whole disc is skipped for it.
         float mAlpha;
 
-        /// How much of its painted face it is showing, from none of it to all.
+        /// What the air leaves of it, per channel.
         ///
-        /// **The engine's own treatment of a low moon**, and the reason one no longer arrives whole:
-        /// under `Moons_<name>_Fade_End_Angle` it draws a disc the colour of the sky and nothing
-        /// else, and the face crossfades in over the twenty degrees above that. Here the sky behind
-        /// the moon is already drawn and the face is added to it, so the same picture is this number
-        /// on the face alone. `MoonPlacement::mShadowBlend` carries the rest.
-        float mShadowBlend;
+        /// **What a moon is dimmed by on the way up, in place of being switched off.** The engine
+        /// draws none under `Moons_<name>_Fade_End_Angle`; here the slant path through the air does
+        /// that and does it from the horizon, so a moon comes over the edge as a deep red ember.
+        /// `Rtx::airTransmittance` carries the two published figures it is made of.
+        ///
+        /// **It dims and never uncovers.** What stands behind a moon is hidden by `mAlpha` alone,
+        /// because a moon low in the air still blocks a star — what replaces it there is the airlight
+        /// in front, which is the dome, and the dome is added over the whole sky anyway.
+        vec3 mThroughAir;
 
         /// The painted face, in the bindless array, or `NO_TEXTURE` where none was loaded — the disc
         /// is then its mean colour with the shading law over it, which is what a moon looked like
@@ -427,11 +430,11 @@ namespace Rtx::Shaders
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
-    static_assert(sizeof(MoonDisc) == 80, "MoonDisc must be scalar-packed on every side");
+    static_assert(sizeof(MoonDisc) == 88, "MoonDisc must be scalar-packed on every side");
     static_assert(sizeof(CloudDeck) == 60, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 20, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 788, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 804, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

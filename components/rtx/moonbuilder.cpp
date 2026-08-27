@@ -10,6 +10,7 @@
 #include <components/sky/moonmodel.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "lightbuilder.hpp"
 #include "shaders/colour.h"
 #include "shaders/scene.h"
 
@@ -137,7 +138,7 @@ namespace Rtx
             .mAngularRadius = placement.mAngularRadius,
             .mPhaseAngle = placement.mPhaseAngle,
             .mAlpha = placement.mAlpha,
-            .mShadowBlend = placement.mShadowBlend,
+            .mThroughAir = placement.mThroughAir,
             .mFace = placement.mFace == sNoIndex ? Shaders::NO_TEXTURE : static_cast<std::uint32_t>(placement.mFace),
         };
     }
@@ -151,12 +152,11 @@ namespace Rtx
     {
         const Sky::MoonMoment moment = Sky::MoonModel(nameOf(moon)).at(day, hour);
 
-        return placeMoon(moon, moment.mAlongArc, moment.mAxisOffset, static_cast<int>(moment.mPhase),
-            moment.mAlpha * glare, moment.mShadowBlend);
+        return placeMoon(
+            moon, moment.mAlongArc, moment.mAxisOffset, static_cast<int>(moment.mPhase), moment.mDaylightFade * glare);
     }
 
-    MoonPlacement placeMoon(
-        Moon moon, float alongArcDegrees, float axisOffsetDegrees, int phase, float alpha, float shadowBlend)
+    MoonPlacement placeMoon(Moon moon, float alongArcDegrees, float axisOffsetDegrees, int phase, float alpha)
     {
         // `Moon::setState`'s own two rotations (`apps/openmw/mwrender/gl/skyutil.cpp:900`): the arc
         // tips the moon up from the horizon about +X, and the axis offset swings that whole arc
@@ -182,8 +182,10 @@ namespace Rtx
             // the index is the angle, and the sign of its sine is the limb the light is on.
             .mPhaseAngle = static_cast<float>(phase) * 0.25f * osg::PIf,
 
-            .mAlpha = alpha,
-            .mShadowBlend = std::clamp(shadowBlend, 0.0f, 1.0f),
+            // **Nought until it is on its arc**, which the engine states by leaving the angle there
+            // until a moon rises and returning it there once it sets. Without this a moon that is
+            // down sits on the horizon all night, because nothing else in the placement says so.
+            .mAlpha = alongArcDegrees > 0.0f ? alpha : 0.0f,
 
             // **The file's own mean, unscaled.** `Shaders::MOON_RADIANCE` is what takes a
             // moon's texels to radiance, and it multiplies this where no portrait is loaded and the
@@ -191,15 +193,18 @@ namespace Rtx
             .mColour = moon == Moon::Masser ? sMasserFace : sSecundaFace,
         };
 
-        // **Scaled by the face it is showing, which is where the engine puts a low moon's light.**
-        // A moon under `Fade_End_Angle` is drawn as the sky and nothing else, so a valley it has not
-        // risen far enough to appear in is a valley it does not light either.
-        placement.mIrradiance
-            = tintOf(moon) * (deliveredBy(moon) * phaseLaw(placement.mPhaseAngle) * alpha * placement.mShadowBlend);
-
         placement.mDirection.normalize();
         placement.mRight.normalize();
         placement.mUp.normalize();
+
+        // **The air, over what it shows and what it sends alike**, and read off the direction rather
+        // than off the arc: the slant path is measured on an elevation, and the two agree only
+        // because this arc runs through the zenith.
+        placement.mThroughAir = airTransmittance(placement.mDirection.z());
+
+        const osg::Vec3f lit = tintOf(moon) * (deliveredBy(moon) * phaseLaw(placement.mPhaseAngle) * placement.mAlpha);
+        placement.mIrradiance = osg::componentMultiply(lit, placement.mThroughAir);
+
         return placement;
     }
 }

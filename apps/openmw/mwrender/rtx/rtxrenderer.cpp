@@ -882,7 +882,7 @@ namespace MWRender
             // with it after the state has been handed over. A thunderstorm hides its moons the same
             // way it hides its stars.
             described.mMoons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
-                state.mRotationFromNorth, phase, state.mMoonAlpha * world.mSunGlare, state.mShadowBlend);
+                state.mRotationFromNorth, phase, state.mDaylightFade * world.mSunGlare);
             described.mMoons[moon].mFace = mMoonFaces.of(static_cast<Rtx::Moon>(moon));
         }
 

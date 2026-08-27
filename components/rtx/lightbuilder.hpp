@@ -254,6 +254,26 @@ namespace Rtx
     /// converts after blending.
     Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour);
 
+    /// What the air leaves of a body in the sky, per channel.
+    ///
+    /// **The one thing between an eye and a moon, and the reason a moon can rise at all here.** The
+    /// engine draws no moon under `Moons_<name>_Fade_End_Angle` — thirty degrees for Secunda, forty
+    /// for Masser — because a lit quad over its own fogged dome reads as a sticker. A renderer that
+    /// traces the air does not need that: the air takes a low moon out on its own, and gradually.
+    ///
+    /// Rayleigh optical depth at the three sRGB primaries, times the air mass along the slant path.
+    /// Both are published: the depth is `0.008569 λ^-4` with its usual correction, which comes to
+    /// 0.068, 0.097 and 0.221 at the zenith, and the air mass is Kasten and Young's fit, which is
+    /// 37.92 at the horizon against one overhead. So a moon comes up a deep red ember, is orange at
+    /// five degrees and is itself by thirty.
+    ///
+    /// **Not the sun's, though the same air is over it.** `Sun_Disc_Sunset_Color` already reddens
+    /// that disc and `sunShareAt` already ramps it out, so this over the top of them would be the
+    /// content's own sunset counted twice.
+    ///
+    /// @param upward the `z` of a unit direction. At or below nothing gives the horizon's own figure.
+    osg::Vec3f airTransmittance(float upward);
+
     /// A colour as the content files store one, decoded.
     ///
     /// Morrowind's colours are display-encoded, and the light transport downstream is linear. The

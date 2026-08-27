@@ -56,6 +56,16 @@ namespace Rtx
             return linear * Shaders::LUMINANCE_WEIGHTS;
         }
 
+        /// What a moon sent, with the air it was seen through taken back off.
+        ///
+        /// **Two facts and two tests.** How much light a moon of that size and albedo delivers is one
+        /// question, and what the air between it and the eye leaves of that is another — so the
+        /// tests about the first divide the second out rather than carrying it in their numbers.
+        osg::Vec3f sentBy(const MoonPlacement& moon)
+        {
+            return osg::componentDivide(moon.mIrradiance, moon.mThroughAir);
+        }
+
         /// Degrees along its arc that Masser covers in an hour.
         ///
         /// **Not the 0.5 the ini asks for.** Fifteen degrees an hour is one rotation a day and the
@@ -148,26 +158,20 @@ namespace Rtx
             EXPECT_LT(early * late, 0.99f) << "the portrait would be pinned to the horizon";
         }
 
-        /// A moon arrives and leaves three times over: by the hour, by where it is on its arc, and
-        /// by whatever the weather lets through.
+        /// A moon arrives and leaves twice over: by the hour, and by whatever the weather lets
+        /// through.
         ///
-        /// Masser passes the early-fade angle of 39.5 degrees at `16 + 39.5 / 7.826087` — five hours
-        /// and three minutes after it rises — so at eight in the evening it is above the horizon and
-        /// still not drawn.
-        TEST(RtxMoonBuilderTest, aMoonIsUpBeforeItIsVisible)
+        /// **The third way the engine has is deliberately not here.** `MoonMoment::mAlpha` also hides
+        /// a moon under `Fade_End_Angle`, and the ray tracer takes `mDaylightFade` instead — see
+        /// `aMoonRisesOutOfTheHorizonRatherThanArrivingAboveIt`.
+        TEST(RtxMoonBuilderTest, aMoonIsFadedByTheHourAndByTheWeather)
         {
             seed();
 
-            EXPECT_EQ(makeMoon(Moon::Masser, 0, 20.0f, 1.0f).mAlpha, 0.0f) << "risen, inside the early shadow";
-            EXPECT_GT(makeMoon(Moon::Masser, 0, 20.0f, 1.0f).mDirection.z(), 0.0f) << "and above the horizon";
-
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 0, 22.0f, 1.0f).mAlpha, 1.0f) << "clear of it";
-
-            // **And the hour fades it independently of the arc.** Day nine is where Masser rises at
-            // one in the morning — `1 + (9 - 1 + 16) mod 24` — so half past two in the afternoon
-            // finds it a hundred and six degrees along, clear of both shadow angles, and inside the
-            // hour-long fade in that runs from fourteen to fifteen. Half an hour of one hour is
-            // half the moon.
+            // Day nine is where Masser rises at one in the morning — `1 + (9 - 1 + 16) mod 24` — so
+            // half past two in the afternoon finds it a hundred and six degrees along and inside the
+            // hour-long fade in that runs from fourteen to fifteen. Half an hour of one hour is half
+            // the moon.
             EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 9, 14.5f, 1.0f).mAlpha, 0.5f);
 
             // And between the fade out finishing and the fade in starting there is no moon at all,
@@ -180,41 +184,46 @@ namespace Rtx
             EXPECT_EQ(makeMoon(Moon::Masser, 0, 22.0f, 0.0f).mIrradiance, osg::Vec3f()) << "a thunderstorm";
         }
 
-        /// And when it does arrive it is the sky, and grows into a moon over the twenty degrees above.
+        /// It rises out of the horizon, dimmed and reddened by the air rather than switched off.
         ///
-        /// **Which is the engine's own treatment and the reason a moon does not appear whole.** It
-        /// draws a disc the colour of the sky under `Fade_End_Angle` and crossfades the painted face
-        /// on over the arc up to `Fade_Start_Angle`. Masser's two are 40 and 50, and at 7.826 degrees
-        /// an hour from a rise at sixteen hundred that window is 21:03 to 22:23 — so what happens at
-        /// 21:03 is a moon-shaped piece of sky, not a moon.
+        /// **What the engine does instead is draw no moon at all under `Fade_End_Angle`** — thirty
+        /// degrees for Secunda, forty for Masser — because a lit quad over its own fogged dome reads
+        /// as a sticker. Nothing here needs that: `Rtx::airTransmittance` takes a low moon out on the
+        /// slant path, and takes the blue out first, so one comes over the edge as a deep red ember.
         ///
-        /// **And the light follows the face.** A moon whose face is not showing is one the engine
-        /// says is not there, so it lights nothing either — which is what keeps a valley from being
-        /// lit by a moon nobody in it can see.
-        TEST(RtxMoonBuilderTest, aMoonArrivesAsTheSkyAndGrowsIntoAMoon)
+        /// **Masser rises at sixteen hundred on day zero** and climbs 7.826 degrees an hour, so
+        /// seventeen hundred is eight degrees up — inside the arc the engine draws nothing over.
+        TEST(RtxMoonBuilderTest, aMoonRisesOutOfTheHorizonRatherThanArrivingAboveIt)
         {
             seed();
 
-            // 5.2 hours past the rise is 40.696 degrees along, which is 0.0696 of the way across a
-            // ten-degree window.
-            const MoonPlacement arriving = makeMoon(Moon::Masser, 0, 21.2f, 1.0f);
-            EXPECT_FLOAT_EQ(arriving.mAlpha, 1.0f) << "the disc is there";
-            EXPECT_NEAR(arriving.mShadowBlend, 0.069565f, 1e-5f) << "and almost none of the face is";
+            const MoonPlacement low = makeMoon(Moon::Masser, 0, 17.0f, 1.0f);
+            EXPECT_NEAR(osg::RadiansToDegrees(std::asin(low.mDirection.z())), 7.826f, 0.01f);
 
-            // Seven hours past it is 54.78 degrees along, which is clear of the window.
-            const MoonPlacement risen = makeMoon(Moon::Masser, 0, 23.0f, 1.0f);
-            EXPECT_FLOAT_EQ(risen.mShadowBlend, 1.0f);
+            EXPECT_FLOAT_EQ(low.mAlpha, 1.0f) << "the engine's own arc gate is still in the way";
+            EXPECT_GT(luminanceOf(low.mIrradiance), 0.0f) << "and it lights nothing down there";
 
-            // The two are the same moon at the same phase, so what separates their light is the face
-            // alone.
-            EXPECT_FLOAT_EQ(arriving.mPhaseAngle, risen.mPhaseAngle);
-            EXPECT_NEAR(
-                luminanceOf(arriving.mIrradiance) / luminanceOf(risen.mIrradiance), arriving.mShadowBlend, 1e-5f);
+            // Reddened, not merely dimmed: eight degrees is 6.6 air masses, which leaves a fifth of
+            // the blue against two thirds of the red.
+            EXPECT_LT(low.mThroughAir.z(), 0.5f * low.mThroughAir.y());
+            EXPECT_LT(low.mThroughAir.y(), low.mThroughAir.x());
 
-            // Under the window there is neither face nor light, and the disc is not drawn either.
-            const MoonPlacement below = makeMoon(Moon::Masser, 0, 21.0f, 1.0f);
-            EXPECT_EQ(below.mShadowBlend, 0.0f);
-            EXPECT_EQ(below.mIrradiance, osg::Vec3f());
+            // And it keeps climbing into itself, with no step anywhere along the way.
+            float below = 0.0f;
+            for (int step = 1; step <= 90; ++step)
+            {
+                const MoonPlacement at = placeMoon(Moon::Masser, float(step), 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+                const float carried = luminanceOf(at.mThroughAir);
+
+                EXPECT_GT(carried, below) << "at " << step << " degrees along";
+                below = carried;
+            }
+
+            // A moon that is not on its arc is not in the sky, which the engine says by leaving the
+            // angle at nought both before it rises and after it sets.
+            const MoonPlacement down = placeMoon(Moon::Masser, 0.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+            EXPECT_EQ(down.mAlpha, 0.0f);
+            EXPECT_EQ(down.mIrradiance, osg::Vec3f());
         }
 
         /// The game begins under a full moon, and it wanes from there on a three-day cycle.
@@ -271,9 +280,8 @@ namespace Rtx
             const float sine = std::sin(moonAngularRadius(Moon::Masser));
             const float facing = radiance * osg::PIf * sine * sine;
 
-            const MoonPlacement full
-                = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f, /*shadowBlend=*/1.0f);
-            EXPECT_NEAR(luminanceOf(full.mIrradiance), facing, 1e-7f);
+            const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+            EXPECT_NEAR(luminanceOf(sentBy(full)), facing, 1e-6f);
 
             // And it is red, which is the only reason to draw Masser rather than a bright dot: its
             // portrait averages 0.0332 against 0.0099, and the light it reflects carries that.
@@ -318,16 +326,14 @@ namespace Rtx
         {
             seed();
 
-            const MoonPlacement masser
-                = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f, /*shadowBlend=*/1.0f);
-            const MoonPlacement secunda
-                = placeMoon(Moon::Secunda, 90.0f, -50.0f, /*phase=*/0, /*alpha=*/1.0f, /*shadowBlend=*/1.0f);
+            const MoonPlacement masser = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+            const MoonPlacement secunda = placeMoon(Moon::Secunda, 90.0f, -50.0f, /*phase=*/0, /*alpha=*/1.0f);
 
             const float wide = std::sin(moonAngularRadius(Moon::Masser));
             const float narrow = std::sin(moonAngularRadius(Moon::Secunda));
             EXPECT_NEAR((narrow * narrow) / (wide * wide), 0.1853f, 1e-4f);
 
-            EXPECT_NEAR(luminanceOf(secunda.mIrradiance) / luminanceOf(masser.mIrradiance), 0.4705f, 1e-3f);
+            EXPECT_NEAR(luminanceOf(sentBy(secunda)) / luminanceOf(sentBy(masser)), 0.4705f, 1e-3f);
 
             // The pale light of the two, where Masser's is red.
             EXPECT_LT(secunda.mIrradiance.x(), 1.4f * secunda.mIrradiance.y());
@@ -345,8 +351,7 @@ namespace Rtx
             seed();
 
             const auto lightAt = [](int phase) {
-                return luminanceOf(
-                    placeMoon(Moon::Masser, 90.0f, 35.0f, phase, /*alpha=*/1.0f, /*shadowBlend=*/1.0f).mIrradiance);
+                return luminanceOf(placeMoon(Moon::Masser, 90.0f, 35.0f, phase, /*alpha=*/1.0f).mIrradiance);
             };
 
             EXPECT_NEAR(lightAt(2) / lightAt(0), 0.090997f, 1e-5f);
@@ -369,15 +374,11 @@ namespace Rtx
         {
             seed();
 
-            EXPECT_EQ(
-                placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.0f, /*shadowBlend=*/1.0f).mIrradiance,
-                osg::Vec3f());
+            EXPECT_EQ(placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.0f).mIrradiance, osg::Vec3f());
 
             // The fade is a plain multiplier on it, so half hidden is half lit.
-            const MoonPlacement full
-                = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f, /*shadowBlend=*/1.0f);
-            const MoonPlacement half
-                = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.5f, /*shadowBlend=*/1.0f);
+            const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+            const MoonPlacement half = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.5f);
             EXPECT_NEAR(luminanceOf(half.mIrradiance), 0.5f * luminanceOf(full.mIrradiance), 1e-7f);
         }
     }

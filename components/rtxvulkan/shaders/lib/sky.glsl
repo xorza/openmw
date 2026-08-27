@@ -254,11 +254,10 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
         base = painted.rgb * painted.a;
     }
 
-    // **Faded in by how much of its face the game says it is showing.** The sky behind it is
-    // already drawn and this is added to it, which is the picture the engine builds the other way
-    // round — a disc of the sky's own colour with the face crossfaded onto it. Either way a moon
-    // under `Fade_End_Angle` is the sky, and it grows out of it over the twenty degrees above.
-    return base * (MOON_RADIANCE * shade * moon.mShadowBlend * covered);
+    // **Dimmed by the air it is seen through**, which is what takes a moon out near the horizon
+    // here — the engine switches one off under `Fade_End_Angle` instead. `mThroughAir` is per
+    // channel, so a low moon reddens as it goes rather than merely fading.
+    return base * moon.mThroughAir * (MOON_RADIANCE * shade * covered);
 }
 
 /// The radiance a ray that hit nothing comes back with, for a ray being looked along.

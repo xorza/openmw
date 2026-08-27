@@ -113,6 +113,10 @@ namespace MWRender
         Phase mPhase;
         float mShadowBlend;
         float mMoonAlpha;
+
+        /// What the hour alone fades it by. `Sky::MoonMoment::mDaylightFade` says why it is stated
+        /// apart from `mMoonAlpha`, and only the ray tracer reads it.
+        float mDaylightFade;
     };
 
 }

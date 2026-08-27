@@ -292,6 +292,7 @@ namespace MWWorld
             .mPhase = static_cast<MWRender::MoonState::Phase>(moment.mPhase),
             .mShadowBlend = moment.mShadowBlend,
             .mMoonAlpha = moment.mAlpha,
+            .mDaylightFade = moment.mDaylightFade,
         };
     }
 
