@@ -413,7 +413,8 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                 const vec2 draw = vec2(randomNext(state), randomNext(state));
 
                 sunThrough = lightThrough(sprite.mPosition,
-                    coneDirection(frame.mSunPosition, sin(SUN_ANGULAR_RADIUS), draw), frame.mFar);
+                    coneDirection(frame.mSunPosition, sin(SUN_SHADOW_RADIUS), draw), frame.mFar);
+
             }
 
             // Straight up, because a particle has no normal and the sky is above it either way.

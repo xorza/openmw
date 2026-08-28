@@ -2637,9 +2637,11 @@ namespace Rtx
         ///     half-width = 200 * tan(asin(20 / 400)) = 10.013
         ///
         /// **The sun** is one direction everywhere, so its penumbra grows with nothing but the
-        /// occluder's distance — two thousand units of it, at the disc's own half degree.
+        /// occluder's distance — two thousand units of it, at the two degrees the shadow cone is
+        /// drawn from, which `SUN_SHADOW_RADIUS` says is wider than the disc and why.
         ///
-        ///     half-width = 2000 * tan(0.004654) = 9.308
+        ///     half-width = 2000 * tan(0.034907) = 69.84
+
         ///
         /// **And the same lamp with no size at all is the edge this replaced.** At `X = -1` it is
         /// still fully lit and at `X = +1` fully dark, where the sized one is part-lit at both — the
@@ -2753,10 +2755,14 @@ namespace Rtx
             renderRadiance(sceneWith(std::nullopt, sunDepth, std::nullopt), sunCamera, size, sunOpen, 1, false);
             ASSERT_GT(sunOpen[(std::size_t{ column } * size + column) * 4], 0.0f) << "the sun lights the wall";
 
-            EXPECT_FLOAT_EQ(visible(sceneWith(std::nullopt, sunDepth, -10.0f), sunOpen, sunCamera, 1), 1.0f)
-                << "the whole disc clears an edge outside its penumbra";
-            EXPECT_FLOAT_EQ(visible(sceneWith(std::nullopt, sunDepth, 10.0f), sunOpen, sunCamera, 1), 0.0f)
+            EXPECT_FLOAT_EQ(visible(sceneWith(std::nullopt, sunDepth, -72.0f), sunOpen, sunCamera, 1), 1.0f)
+                << "the whole cone clears an edge outside its penumbra";
+            EXPECT_FLOAT_EQ(visible(sceneWith(std::nullopt, sunDepth, 72.0f), sunOpen, sunCamera, 1), 0.0f)
                 << "and none of it clears one across the far side";
+            EXPECT_NEAR(visible(sceneWith(std::nullopt, sunDepth, -10.0f), sunOpen, sunCamera, 64), 0.59109f, 0.05f)
+                << "and the disc's own half degree is well inside the band: the segment cut ten off "
+                   "a cone of 69.84, u = -0.1432, (acos(u) - u * sqrt(1 - u^2)) / pi";
+
             EXPECT_NEAR(visible(sceneWith(std::nullopt, sunDepth, 0.0f), sunOpen, sunCamera, 64), 0.5f, 0.05f)
                 << "and half a disc stands on the shadow's own edge, two thousand units back";
         }

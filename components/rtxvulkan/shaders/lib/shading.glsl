@@ -57,15 +57,17 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     // underwater surface would want the refracted direction and gets this one.
     //
     // **The disc is sampled for visibility and not for radiometry**, and that is the sharper of the
-    // two estimators rather than a saving. Across half a degree the cosine varies by parts in a
-    // million, so drawing it as well would put variance into a term that has none and leave the
-    // penumbra — the only part of the integral the disc is wide enough to matter to — no better
-    // resolved for it.
+    // two estimators rather than a saving. Across the two degrees of the shadow cone the cosine
+    // varies by parts in a thousand, so drawing it as well would put variance into a term that has
+    // none and leave the penumbra — the only part of the integral the cone is wide enough to
+    // matter to — no better resolved for it.
+
     const float sunCosine = dot(normal, frame.mSunPosition);
     if (sunCosine > 0.0 && frame.mSunIrradiance != vec3(0.0))
     {
         const float through
-            = lightThrough(position, coneDirection(frame.mSunPosition, sin(SUN_ANGULAR_RADIUS), sunDraw), frame.mFar);
+            = lightThrough(position, coneDirection(frame.mSunPosition, sin(SUN_SHADOW_RADIUS), sunDraw), frame.mFar);
+
 
         radiance += frame.mSunIrradiance * lightThroughWater(position, frame.mSunPosition, footprint)
             * (sunCosine * INV_PI * through * cloudShadow(position, frame.mSunPosition));

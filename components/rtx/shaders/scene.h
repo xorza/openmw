@@ -282,6 +282,23 @@ namespace Rtx::Shaders
     /// mirror, and they cannot be allowed to disagree.
     RTX_CONST float SUN_ANGULAR_RADIUS = 0.004654f;
 
+    /// Angular radius of the cone a sun shadow ray is drawn from, in radians: two degrees.
+    ///
+    /// **Wider than the disc, on purpose, and the disc is not moved with it.** A shadow cast by the
+    /// real half degree has a penumbra a centimetre wide on a wall two metres behind what casts it,
+    /// which on a screen is a hard edge — and Morrowind never had one. The game's shadows are maps
+    /// at a thousand texels over eight thousand units, filtered, and so soft at every distance; the
+    /// one the tracer draws was judged too sharp beside them. Two degrees puts a penumbra twenty
+    /// units wide on a wall three hundred units behind its caster, which is about what the maps
+    /// drew.
+    ///
+    /// This is a choice about the look and not a measurement, which is why it is a constant of
+    /// its own: the disc in the sky and the glitter path on the water stay at the real size, since
+    /// those are the sun seen and a sun seen wider is a different sun. A sun seen through haze does
+    /// widen its own shadows — the aureole a hazy sky throws round it is a few degrees across — and
+    /// if this ever wants to follow the weather, that is the model to follow it with.
+    RTX_CONST float SUN_SHADOW_RADIUS = 0.034907f;
+
     /// The most radiance the sun's disc is drawn with.
     ///
     /// **A ceiling for a temporal history, not for a picture.** The sun's disc is drawn at its
