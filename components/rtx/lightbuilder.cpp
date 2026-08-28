@@ -113,6 +113,9 @@ namespace Rtx
             float mGlare = 1.0f;
 
             float mFogDepth = 0.0f;
+
+            /// What the content files record this weather blowing at, which stands its fog layer up.
+            float mWindSpeed = 0.0f;
         };
 
         Reading readWeather(std::string_view weather, const Sky::TimeOfDaySettings& times, float hour)
@@ -153,6 +156,11 @@ namespace Rtx
                     hour, times, Fallback::Map::getColour("Weather_" + name + "_Sun_Disc_Sunset_Color"), ambient),
                 .mGlare = Fallback::Map::getFloat("Weather_" + name + "_Glare_View"),
                 .mFogDepth = Sky::TimeOfDayInterpolator<float>(day, day, day, night).getValue(hour, times, "Fog"),
+
+                // **The recorded speed and not the gust.** What this decides is how deep the layer
+                // stands and how fast the field is carried, both of which are the weather's settled
+                // character rather than the number the engine wanders about it.
+                .mWindSpeed = Weather::windSpeed(weather),
             };
         }
 
@@ -186,7 +194,7 @@ namespace Rtx
                 // are gone before the sun is up. Nothing but night has any of it.
                 .mStarFade = Sky::TimeOfDayInterpolator<float>(0.0f, 0.0f, 0.0f, 1.0f).getValue(hour, times, "Stars"),
                 .mExposureBias = exposureBias(sky.mSun.mIrradiance, sky.mAmbient),
-                .mFog = exteriorFog(haze, read.mFogDepth),
+                .mFog = exteriorFog(haze, read.mFogDepth, read.mWindSpeed),
             };
         }
     }
@@ -353,6 +361,7 @@ namespace Rtx
                 .mSunDisc = mix(a.mSunDisc, b.mSunDisc),
                 .mGlare = mix(a.mGlare, b.mGlare),
                 .mFogDepth = mix(a.mFogDepth, b.mFogDepth),
+                .mWindSpeed = mix(a.mWindSpeed, b.mWindSpeed),
             },
             times, hour);
     }

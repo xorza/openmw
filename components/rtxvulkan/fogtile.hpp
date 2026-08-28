@@ -30,8 +30,8 @@ namespace Rtx
         /// The shape a coverage band is cut out of, and a second field decorrelated from it.
         const Image& getField() const { return mField; }
 
-        /// Linear, mipmapped and wrapping — the field is laid down every tile, and a tap that
-        /// clamped would smear the last texel of one across the whole landscape.
+        /// Linear, mipmapped and wrapping on all three axes — the field is laid down every tile, and
+        /// a tap that clamped would smear the last texel of one across the whole landscape.
         VkSampler getSampler() const { return mSampler; }
 
     private:

@@ -472,6 +472,29 @@ namespace Rtx::Shaders
         /// mix changes the air's character and never how much of it there is.
         float mFogUniform;
 
+        /// How deep the fog's layer stands, as a multiple of `FOG_HEIGHT`.
+        ///
+        /// **A weather with more fog has fog that reaches higher, and the game says so.** `Land Fog
+        /// Depth` is called depth for a reason: Morrowind writes 0.69 for clear and 1.9 for a foggy
+        /// night, so foggy's air fills a bay where clear's lies in the hollows. Without this every
+        /// weather pooled in the same 37-metre bank, and a medium that filled the sky while doing
+        /// that was two answers to one question.
+        ///
+        /// `Rtx::fogLift` is what derives it, and says why the wind alone could not.
+        float mFogLift;
+
+        /// Which way the air is moving and how fast, in the ground plane, as a heading times the
+        /// weather's recorded wind.
+        ///
+        /// **Advection, which is not what `FOG_CHURN` is.** The churn drags the scales past each
+        /// other on headings that disagree, which is what makes the shapes form and pull apart —
+        /// air doing that in a dead calm is the whole reason a still fog is not a frozen texture.
+        /// This is the separate thing a wind adds: the entire field carried downwind together, on
+        /// the heading the cloud layer drifts along, because there is one wind over a landscape and
+        /// cloud shadows crossing the ground one way while the air moves another would read as two
+        /// weathers at once. `FOG_GALE` says what a unit of it is worth.
+        vec2 mFogWind;
+
         /// How far from the eye the world is built, in units. Zero where nothing is cut off.
         ///
         /// **The second element of the air, and the one the weather knows nothing about.** Morrowind
@@ -525,7 +548,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 928, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 940, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

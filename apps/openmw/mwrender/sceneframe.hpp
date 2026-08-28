@@ -205,6 +205,14 @@ namespace MWRender
         /// rasterizer's `windSpeed` uniform leans its vegetation by.
         float mWindSpeed = 0.0f;
 
+        /// What the weather itself records blowing at, before the gust the engine wanders about it.
+        ///
+        /// **Not `mWindSpeed`, and the two are eight times apart.** That one is what the drops are
+        /// leant by, so it is the gust — `Weather::gustSpeed` multiplies the record by eight and
+        /// caps it at seventy. This is the record, which is the number `openmw-rtxtool` reads
+        /// straight out of the content files, and the two paths have to stand in one air.
+        float mBaseWindSpeed = 0.0f;
+
         /// Masser and Secunda, as the weather system last settled them.
         ///
         /// **The world's own numbers and not a placement**, which is what keeps this header off the

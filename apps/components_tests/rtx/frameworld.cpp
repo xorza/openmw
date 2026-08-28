@@ -37,6 +37,8 @@ namespace Rtx
                 .mAir = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f),
                     .mExtinction = 1.5e-4f,
                     .mUniform = 0.75f,
+                    .mLift = 2.75f,
+                    .mWind = 0.45f,
                     .mEdge = 24576.0f },
                 .mWaterLevel = -37.5f,
                 .mSeconds = 12.25f,
@@ -110,7 +112,14 @@ namespace Rtx
             EXPECT_EQ(constants.mFogColour, world.mAir.mColour);
             EXPECT_EQ(constants.mFogExtinction, world.mAir.mExtinction);
             EXPECT_EQ(constants.mFogUniform, world.mAir.mUniform) << "the game wrote this nowhere";
+            EXPECT_EQ(constants.mFogLift, world.mAir.mLift);
             EXPECT_EQ(constants.mFogEdge, world.mAir.mEdge);
+
+            // **The wind points along the deck's bearing**, because there is one wind over a
+            // landscape: 0.45 of a wind on a 3-4-5 heading is (0.36, 0.27).
+            EXPECT_EQ(constants.mFogWind, world.mClouds.mBearing * world.mAir.mWind);
+            EXPECT_FLOAT_EQ(constants.mFogWind.x(), 0.36f);
+            EXPECT_FLOAT_EQ(constants.mFogWind.y(), 0.27f);
 
             // **The one field that does not pass through, and it is meant not to.** What the shader
             // is told is where the surface actually is, and the surface is placed a hair under its

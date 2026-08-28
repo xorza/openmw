@@ -782,15 +782,6 @@ namespace MWRender
             ? Rtx::describeStars(world.mNightFade, world.mSunGlare, world.mSkyRoll.mStars, mSkyContent)
             : Rtx::Shaders::StarField{ .mTexture = Rtx::Shaders::NO_TEXTURE };
 
-        // **The recorded depth, and not the ramp `MWRender::FogManager` made of it.** That ramp
-        // exists to hide a far clip plane and this renderer has no far clip to hide, so per the
-        // fork's own rule it does not come across. What is read instead is the number the content
-        // wrote, handed to the one builder that knows what a cell's air may be — which is what
-        // `openmw-rtxtool` calls out of the same records, so a screenshot and a played frame stand
-        // in one air.
-        const Rtx::Fog air
-            = world.isInteriorCell() ? Rtx::roomFog(haze, world.mFogDepth) : Rtx::exteriorFog(haze, world.mFogDepth);
-
         // **The sun is not assembled here.** Everything the world says about it goes to the one
         // builder that decides what a sun may be — which is what keeps the game and the harness
         // under the same sky, and what makes a sun that lights an empty night impossible to write.
@@ -834,6 +825,20 @@ namespace MWRender
         // ideas of how bright its own sky is.
         const Rtx::SkyBudget budget
             = world.isOutdoors() ? Rtx::skyBudget(haze, zenith, stars.mGlow, sky.mAmbient) : Rtx::SkyBudget{};
+
+        // **The recorded depth, and not the ramp `MWRender::FogManager` made of it.** That ramp
+        // exists to hide a far clip plane and this renderer has no far clip to hide, so per the
+        // fork's own rule it does not come across. What is read instead is the number the content
+        // wrote, handed to the one builder that knows what a cell's air may be — which is what
+        // `openmw-rtxtool` calls out of the same records, so a screenshot and a played frame stand
+        // in one air.
+        //
+        // **After the budget, because the air is lit by the dome it stands in.** The record says
+        // what hue the fog comes back in and the dome's mean says how bright; a room has no dome
+        // and keeps its record as it is.
+        const Rtx::Fog air = world.isInteriorCell()
+            ? Rtx::roomFog(haze, world.mFogDepth)
+            : Rtx::exteriorFog(Rtx::fogColour(budget.mMean, haze), world.mFogDepth, world.mBaseWindSpeed);
 
         Rtx::FrameWorld described{
             .mSun = sky.mSun,

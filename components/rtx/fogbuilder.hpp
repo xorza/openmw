@@ -13,6 +13,11 @@ namespace Rtx
     struct Fog
     {
         /// What the air scatters toward the eye, linear.
+        ///
+        /// **Out of doors this is `fogColour` of the dome's mean, and only the frame knows that
+        /// mean.** A weather reader hands over the recorded colour and the frame lights it — the
+        /// harness and the game both do so where their `SkyBudget` is made. A room keeps its record
+        /// as it is, since there is no dome over it to light anything by.
         osg::Vec3f mColour;
 
         /// How fast it swallows what is behind it, per world unit. Zero is a cell with no fog, and
@@ -21,6 +26,19 @@ namespace Rtx
 
         /// One where the air is an even haze rather than banked, which is what a room holds.
         float mUniform = 0.0f;
+
+        /// How deep the layer stands, against the bank clear weather makes in dead still air.
+        ///
+        /// `Shaders::VisibilityConstants::mFogLift` says what it is for and why the record is read
+        /// twice to reach it.
+        float mLift = 1.0f;
+
+        /// What the weather records blowing at, which carries the field downwind.
+        ///
+        /// The heading is not here: there is one wind over a landscape and the cloud deck already
+        /// carries its bearing, so `applyWorld` is where the two meet.
+        /// `Shaders::VisibilityConstants::mFogWind` says the rest.
+        float mWind = 0.0f;
 
         /// How far the world is built, in units, and so where the air becomes opaque. Zero is a
         /// cell with nothing cut off, which is what a room is.
@@ -54,6 +72,46 @@ namespace Rtx
     ///        identically to one none. `distantLandReach` out of doors, `sInteriorFogReach` in a
     ///        room, and neither of them moves when a player changes what they asked to see.
     float fogExtinction(float depth, float over);
+
+    /// What clear weather records its own land fog depth as.
+    ///
+    /// **The figure every other weather is a ratio of.** `FOG_HEIGHT` is the layer clear weather
+    /// makes in dead still air, so the depth that produced it is what turns another weather's record
+    /// into a multiple of it. Morrowind ships 0.69 for clear, day and night alike.
+    constexpr float sClearFogDepth = 0.69f;
+
+    /// What a wind of one adds to the layer's depth.
+    ///
+    /// **Turbulence stands a storm up out of a bank**, which is the same mixing that carries the fog
+    /// downwind and stirs the banks out of it. Morrowind's recorded speeds run from nought to 0.9,
+    /// so this reaches 4.6 times the still layer at the top of the range.
+    ///
+    /// **The wind cannot be the whole of the lift, and the picture is what says so.** Bethesda puts
+    /// the weather actually named foggy at a wind of nought, so a depth driven by wind alone gave
+    /// foggy the shallowest layer of the ten — and a foggy morning let a player see further across
+    /// Seyda Neen's bay than a clear one did. A still fog is deep and a still clear day is not, and
+    /// only the recorded depth tells the two apart.
+    constexpr float sFogWindLift = 4.0f;
+
+    /// How deep a weather's layer stands, as a multiple of the one `FOG_HEIGHT` names.
+    float fogLift(float depth, float wind);
+
+    /// What the air scatters toward the eye: the sky's own light, in the weather's colour.
+    ///
+    /// **Fog is lit by the sky, so its level belongs to the dome and only its colour to the record.**
+    /// Handing the shader the recorded colour as a radiance drew a foggy day as a flat wash the same
+    /// brightness at noon and at dusk, and a night's air brighter than the night. The dome's mean is
+    /// what the air is standing in, and the record says only what hue that light comes back in.
+    ///
+    /// **Normalised by its brightest channel and not by its luminance**, because what the record is
+    /// is a scattering albedo, and an albedo cannot exceed one. Blight's `Fog Day Color` is
+    /// (128, 19, 19), whose luminance is a twentieth of its red — divided by that the red came out
+    /// four times the light that lit it, and the fog drowned the landscape. Against the maximum it
+    /// is a deep red darker than a clear day's, which is what a blight storm looks like.
+    ///
+    /// @param skyMean what the dome delivers on average, as a radiance — `SkyBudget::mMean`.
+    /// @param hue the weather's recorded fog colour, linear.
+    osg::Vec3f fogColour(const osg::Vec3f& skyMean, const osg::Vec3f& hue);
 
     /// The distance a room's air is measured over.
     ///
@@ -94,7 +152,7 @@ namespace Rtx
     /// there is: the extinction is a half-life measured over it, the edge closes at it, and only a
     /// landscape is large enough to bank. The game and the harness reach a weather by different
     /// routes, and `FrameWorld` says what assembling a shared list on each of them costs.
-    Fog exteriorFog(const osg::Vec3f& colour, float depth);
+    Fog exteriorFog(const osg::Vec3f& colour, float depth, float wind);
 
     /// A room's air, from the colour and the fog depth it is at.
     ///

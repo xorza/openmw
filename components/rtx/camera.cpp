@@ -88,6 +88,12 @@ namespace Rtx
             .mNear = near,
             .mFar = far,
             .mWaterLevel = -std::numeric_limits<float>::infinity(),
+
+            // **The layer `FOG_HEIGHT` names, until a weather says otherwise.** A camera is built
+            // before anything has described the air over it, and a lift of nothing is a layer of no
+            // height at all rather than an absence of one. `FrameWorld` overwrites this with what
+            // the cell's own weather stands its fog up to.
+            .mFogLift = 1.0f,
         };
     }
 
@@ -118,6 +124,9 @@ namespace Rtx
             // distance; what it has instead is a footprint one pixel of the box wide for its whole
             // length, which the shader works out from `mRight` rather than carry twice.
             .mWaterLevel = -std::numeric_limits<float>::infinity(),
+
+            // The layer `FOG_HEIGHT` names, for the reason `makeCameraFromView` gives.
+            .mFogLift = 1.0f,
         };
     }
 
@@ -185,6 +194,9 @@ namespace Rtx
             // Not zero, which would be sea level: a world with no water has to answer "how deep is
             // this point" with never, and only an infinity does that without a second question.
             .mWaterLevel = -std::numeric_limits<float>::infinity(),
+
+            // The layer `FOG_HEIGHT` names, for the reason `makeCameraFromView` gives.
+            .mFogLift = 1.0f,
         };
     }
 }

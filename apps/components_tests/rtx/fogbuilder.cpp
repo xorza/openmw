@@ -119,6 +119,55 @@ namespace Rtx
             Settings::camera().mViewingDistance.set(7168.0f);
         }
 
+        /// The air is the sky's own light in the weather's colour, and never brighter than the sky.
+        ///
+        /// **Normalised by the brightest channel and not by the luminance.** Blight's `Fog Day Color`
+        /// is (128, 19, 19): its luminance is a twentieth of its red, so dividing by that made the
+        /// red four times the light that lit it. Against the maximum the red is exactly the sky's
+        /// red and the other two are a seventh of it, which is a deep red darker than a clear day.
+        TEST(RtxFogTest, theAirIsTheSkysLightInTheWeathersColour)
+        {
+            const osg::Vec3f sky(2.0f, 3.0f, 4.0f);
+
+            // A grey record hands the sky back untouched: every channel is the brightest.
+            EXPECT_EQ(fogColour(sky, osg::Vec3f(0.5f, 0.5f, 0.5f)), sky);
+
+            // Blight, as the file records it: 128, 19, 19 over 255.
+            const osg::Vec3f blight = fogColour(sky, osg::Vec3f(128.0f, 19.0f, 19.0f) / 255.0f);
+            EXPECT_FLOAT_EQ(blight.x(), 2.0f) << "the brightest channel is the sky's own";
+            EXPECT_FLOAT_EQ(blight.y(), 3.0f * 19.0f / 128.0f);
+            EXPECT_FLOAT_EQ(blight.z(), 4.0f * 19.0f / 128.0f);
+
+            // A record of nothing at all lights nothing rather than dividing by it.
+            EXPECT_EQ(fogColour(sky, osg::Vec3f()), osg::Vec3f());
+        }
+
+        /// A weather with more fog has fog that reaches higher, and the wind stands it higher still.
+        ///
+        /// **The record is read twice and the two readings must agree about direction.**
+        /// `fogExtinction` takes it as the view-range ramp the original engine wrote, and `fogLift`
+        /// takes it as what the field is called — a depth. Foggy records 1.0 by day and 1.9 by
+        /// night against clear's 0.69, so its air fills a bay where clear's lies in the hollows.
+        ///
+        /// **And the wind cannot stand in for the depth.** Bethesda puts foggy's wind at nought, so
+        /// a layer driven by wind alone made the weather named foggy the shallowest of the ten.
+        TEST(RtxFogTest, aWeatherWithMoreFogStandsItsLayerHigher)
+        {
+            // Clear by day, dead still: the layer the shader's own constant names.
+            EXPECT_FLOAT_EQ(fogLift(0.69f, 0.0f), 1.0f);
+
+            // Foggy by night is 1.9 against clear's 0.69, and it blows at nothing at all.
+            EXPECT_FLOAT_EQ(fogLift(1.9f, 0.0f), 1.9f / 0.69f);
+            EXPECT_GT(fogLift(1.9f, 0.0f), fogLift(0.69f, 0.0f)) << "a still fog is deeper than a still clear day";
+
+            // A blizzard records 3.0 and blows at 0.9, so both halves push the same way.
+            EXPECT_FLOAT_EQ(fogLift(3.0f, 0.9f), 3.0f / 0.69f * (1.0f + 0.9f * sFogWindLift));
+
+            // The wind alone would put foggy under a rainstorm, which is the mistake the depth
+            // exists to stop: rain records 0.8 and blows at 0.3.
+            EXPECT_GT(fogLift(1.9f, 0.0f), fogLift(0.8f, 0.3f)) << "depth beats wind, which is why both are read";
+        }
+
         /// The open air is measured over the same reach it closes at, and a room closes at nothing.
         ///
         /// **Two elements out of one number, which is why one function builds both.** How thick the
@@ -136,7 +185,7 @@ namespace Rtx
             constexpr float cell = 8192.0f;
 
             Settings::rtx().mDistantLandCells.set(4.0f);
-            const Fog near = exteriorFog(haze, 0.69f);
+            const Fog near = exteriorFog(haze, 0.69f, 0.0f);
             EXPECT_EQ(near.mColour, haze);
             EXPECT_EQ(near.mEdge, 4.0f * cell);
             EXPECT_FLOAT_EQ(near.mExtinction, fogExtinction(0.69f, 4.0f * cell));
@@ -146,9 +195,17 @@ namespace Rtx
             EXPECT_EQ(near.mUniform, 0.0f);
 
             Settings::rtx().mDistantLandCells.set(8.0f);
-            const Fog far = exteriorFog(haze, 0.69f);
+            const Fog far = exteriorFog(haze, 0.69f, 0.0f);
             EXPECT_EQ(far.mEdge, 8.0f * cell);
             EXPECT_NEAR(far.mExtinction, 0.5f * near.mExtinction, 1e-10f) << "twice the world, half the air";
+
+            // **Clear weather in dead still air is the layer `FOG_HEIGHT` names**, which is what
+            // makes every other weather a multiple of it rather than a number of its own.
+            EXPECT_FLOAT_EQ(near.mLift, 1.0f);
+            EXPECT_EQ(near.mWind, 0.0f);
+
+            // The wind it was read with rides along, for the frame to point along the deck's bearing.
+            EXPECT_EQ(exteriorFog(haze, 0.69f, 0.3f).mWind, 0.3f);
 
             // A room is none of that: a fixed reach, still air, and no ring of cut ground to close
             // over however much world stands outside its walls.

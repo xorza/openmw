@@ -1,5 +1,6 @@
 #include "lighting.hpp"
 
+#include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/shaders/visibility.h>
@@ -87,6 +88,13 @@ namespace RtxTool
                 moons[static_cast<std::size_t>(moon)] = placed;
             }
 
+        // **The air is lit by the dome it stands in, and this is where the dome's mean is.** The
+        // weather reader handed over the recorded colour as a hue; a room keeps it, since there is
+        // no dome over one.
+        Rtx::Fog air = lighting.mFog;
+        if (lighting.mOutdoors)
+            air.mColour = Rtx::fogColour(budget.mMean, lighting.mFog.mColour);
+
         Rtx::FrameWorld world{
             .mSun = lighting.mDaylight.mSun,
             .mAmbient = lighting.mAmbient,
@@ -95,7 +103,7 @@ namespace RtxTool
             .mSkyZenith = lighting.mDaylight.mSkyZenith,
 
             .mSkyFill = budget.mFill,
-            .mAir = lighting.mFog,
+            .mAir = air,
             .mWaterLevel = lighting.mWaterLevel,
             .mSeconds = lighting.mSeconds,
 

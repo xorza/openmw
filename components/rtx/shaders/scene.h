@@ -324,21 +324,41 @@ namespace Rtx::Shaders
     /// valley and still thin out over the hill beside it.
     RTX_CONST float FOG_HEIGHT = 2600.0f;
 
-    /// How many texels along each side of the fog's baked field, and how many levels sit under it.
+    /// How many texels along each side of the fog's baked volume, how many cells of noise it holds
+    /// across, and how many levels sit under it.
     ///
-    /// **Flat, and that is the fog's own design rather than a saving.** The vertical shape of this
-    /// air is the height falloff — `FOG_HEIGHT` — and what the field decides is where a bank stands,
-    /// which is a question about the ground plan. A field with a third axis would have to answer it
-    /// over a layer two and a half thousand units deep, and any tile wide enough not to repeat across
-    /// a ray is far taller than that: the layer then samples one fixed slice of it, whose own mean is
-    /// not the field's. Measured, that slice ran 0.12 of a spread off centre and slid with the water
-    /// level, so how thick the air was depended on which cell the player stood in.
+    /// **A volume and not a ground plan, because a flat field makes columns.** A field with no third
+    /// axis has the same value at every height, so a bank runs from the ground straight up and the
+    /// air reads as a stand of pillars rather than as weather.
     ///
-    /// **Two hundred and fifty-six, because a flat field is nearly free.** Two channels and a chain
-    /// come to 170 kilobytes, which every level-one cache holds — so the size buys detail rather than
-    /// misses, and the octaves reach 187 units inside the tile before the scales are laid over it.
-    RTX_CONST uint FOG_FIELD_SIZE = 256u;
-    RTX_CONST uint FOG_FIELD_LEVELS = 9u;
+    /// **One octave of eight cells, and not a stack of them.** The volume held three octaves over
+    /// two cells once, and two cells is eight gradients defining the whole coarse structure — from a
+    /// ridge that repeated as a lattice, with its planes drawn as three families of straight lines
+    /// across the valley. What makes the fog fractal is the three scales `fogShape` reads it at,
+    /// which is what the renderer this is ported from does with a hash and nothing else; the volume
+    /// only has to be one octave of noise that does not repeat within a view. Eight cells at four
+    /// texels each is the smallest volume that is, and the beat of three scales at `FOG_LACUNARITY`
+    /// is what hides the tile past that.
+    ///
+    /// Two channels and a chain come to 73 kilobytes, which a march reads out of cache.
+    RTX_CONST uint FOG_FIELD_SIZE = 32u;
+    RTX_CONST uint FOG_FIELD_CELLS = 8u;
+    RTX_CONST uint FOG_FIELD_LEVELS = 6u;
+
+    /// The coarsest level of that chain a march is allowed to read.
+    ///
+    /// **Not the last one, because a level with too few texels left stops being the field.** Every
+    /// level is stretched until a sampler reads one spread out of it, and at two texels a side that
+    /// stretch runs the texels into the clamp: the mean drifts and the band clears more than it was
+    /// measured against. Measured off the baked volume, the band leaves `FOG_COVERAGE` to within a
+    /// twentieth down to four texels a side, then 0.396 at two, and 0.173 at the single texel that
+    /// is the whole field's own mean.
+    ///
+    /// **Four texels is the last level that holds, and that is level three of six.** Past it a step
+    /// reads a field it cannot resolve and what comes back is noise, which the jittered step and the
+    /// temporal filter take out — and which is what the renderer this is ported from lives with at
+    /// every step, having no chain to climb at all.
+    RTX_CONST float FOG_FIELD_COARSEST = 3.0f;
 
     /// The standard deviation every level of that field is normalised to.
     ///
@@ -351,16 +371,29 @@ namespace Rtx::Shaders
     /// the meanings they were set against.
     RTX_CONST float FOG_FIELD_SPREAD = 0.1204f;
 
-    /// How wide the tile is laid out, in world units, at the scale a bank is read from.
+    /// How large one cell of the coarsest scale is, in world units, and so how wide the whole tile is
+    /// laid out at that scale.
     ///
-    /// **Coarse, which is the opposite of the instinct.** Twenty-four steps over a ray that can run
-    /// thirty thousand units puts more than a thousand between samples at the far end, so structure
-    /// finer than that never gets sampled twice and arrives as noise rather than as shape. What reads
-    /// as a bank of fog is the coarsest scale; the finer ones only keep its edge from being a circle.
+    /// **Nine hundred, which is the renderer this is ported from settling the same question twice.**
+    /// Its §8.40 made the grain *coarser* — 1,400 to 3,000 units — because structure finer than the
+    /// march's step aliased, and got fog whose shape was visible only from a ridge. Its §8.41 found
+    /// the diagnosis wrong: sampling finely where the fog is thin buys nothing, because what the eye
+    /// reads over a distant hillside is thousands of units of integration and structure at any scale
+    /// averages out of it. Fog has visible shape where it is optically thick over a *short* distance,
+    /// so the grain came back down to 900 and stayed there.
     ///
-    /// The tile holds six octaves, so at this figure its own features run from six thousand units
-    /// down to a hundred and eighty-seven — a bank, and the shapes inside one.
-    RTX_CONST float FOG_TILE = 12000.0f;
+    /// **The other half of that finding is free here.** Its fix was *sparse and dense rather than
+    /// uniform and thin* — a band clearing more of the volume, with the extinction doubled by hand to
+    /// pay for it. `FOG_COVERAGE` divides that back out, so a band that clears more of the ground
+    /// thickens what is left by exactly as much, and neither number has to be re-tuned against the
+    /// other.
+    ///
+    /// **What used to stop this from shrinking was aliasing, and the mip chain answers that now.**
+    /// The field was hashed at every step, so anything finer than the step between two samples
+    /// arrived as noise and the only defence was a grain too coarse to have any. `fogFieldAt` picks a
+    /// level from the march's own stride instead, so the field is filtered rather than aliased.
+    RTX_CONST float FOG_GRAIN = 900.0f;
+    RTX_CONST float FOG_TILE = FOG_GRAIN * float(FOG_FIELD_CELLS);
 
     /// How many scales that one tile is read at.
     ///
@@ -382,7 +415,13 @@ namespace Rtx::Shaders
     /// the coarse scale is fetched anyway and its second channel is a field decorrelated from the first,
     /// so the pair is a vector already in hand. Horizontal only: the vertical shape of this fog is the
     /// height falloff, and warping across it would blur the layer it is meant to have.
-    RTX_CONST float FOG_WARP = 450.0f;
+    ///
+    /// **Half a cell of the coarsest scale, because what a warp does is relative to what it bends.**
+    /// A displacement much larger than the feature it moves is not a curl, it is a second draw of the
+    /// same field at an unrelated place — so a figure fixed in world units would stop warping and
+    /// start scrambling the moment the grain moved. Half is the ratio the renderer this is ported
+    /// from settled at: 450 units over a grain of 900.
+    RTX_CONST float FOG_WARP = FOG_GRAIN * 0.5f;
 
     /// Below `FOG_CLEARING` of the field the air is clear, and at `FOG_SOLID` the fog is at full
     /// thickness. Between them it is a bank's edge.
@@ -415,7 +454,7 @@ namespace Rtx::Shaders
     /// **Measured, and it must be re-measured if the band or the field moves.**
     /// `theCoverageBandLeavesTheShareTheDensityIsDividedBy` computes it off the baked field to four
     /// figures, and `theBankedFieldHoldsAsMuchAirAsAnEvenOne` checks the frame agrees.
-    RTX_CONST float FOG_COVERAGE = 0.3530f;
+    RTX_CONST float FOG_COVERAGE = 0.3563f;
 
     /// What is left of a ray at the world's edge, once the second element of the air has had it.
     ///

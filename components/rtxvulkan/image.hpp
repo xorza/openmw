@@ -14,7 +14,7 @@ namespace Rtx
     class CommandPool;
     class Device;
 
-    /// A 2D image, its allocation and its view.
+    /// An image, its allocation and its view.
     class Image
     {
     public:
@@ -24,8 +24,11 @@ namespace Rtx
         /// @param mipLevels how many halvings the image holds, including the full one. Levels
         ///        past the first hold nothing until `buildMips` fills them, and one is an image
         ///        with no chain at all.
+        /// @param depth how many slices it holds. One is a 2D image, which is what everything a
+        ///        camera writes or a screen reads is; more makes it a volume, and a chain over one
+        ///        halves the third axis with the other two.
         Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format, VkImageUsageFlags usage,
-            std::string_view name, std::uint32_t mipLevels = 1);
+            std::string_view name, std::uint32_t mipLevels = 1, std::uint32_t depth = 1);
 
         ~Image();
 
@@ -83,10 +86,11 @@ namespace Rtx
         void read(
             CommandPool& pool, VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level = 0) const;
 
-        /// How wide and how tall `level` is, which is the full size halved that many times and
-        /// never below one texel.
+        /// How wide, how tall and how deep `level` is, which is the full size halved that many
+        /// times and never below one texel.
         std::uint32_t getWidthAt(std::uint32_t level) const { return std::max(mWidth >> level, 1u); }
         std::uint32_t getHeightAt(std::uint32_t level) const { return std::max(mHeight >> level, 1u); }
+        std::uint32_t getDepthAt(std::uint32_t level) const { return std::max(mDepth >> level, 1u); }
 
     private:
         /// The same barrier `transition` records, over `count` levels from `base`.
@@ -101,6 +105,7 @@ namespace Rtx
         DeviceMemory mMemory;
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;
+        std::uint32_t mDepth = 1;
         VkFormat mFormat = VK_FORMAT_UNDEFINED;
         VkImageUsageFlags mUsage = 0;
         std::uint32_t mMipLevels = 1;

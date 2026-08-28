@@ -680,6 +680,12 @@ namespace MWRender
         mSunGlare = weather.mGlareView;
         mCloudBlend = std::clamp(weather.mCloudBlendFactor, 0.f, 1.f);
         mNightFade = weather.mNight ? weather.mNightFade : 0.f;
+
+        // **The record and not the gust.** What this decides is how deep the fog's layer stands and
+        // how fast its field is carried, and both are the weather's settled character rather than
+        // the number the engine wanders about it. `mDownpour.mWindSpeed` is the gust, and the
+        // rasterizer's own uniform is what wants that one.
+        mBaseWindSpeed = weather.mDownpour.mBaseWindSpeed;
     }
 
     void RenderingManager::setStormParticleDirection(const osg::Vec3f& direction)
@@ -905,6 +911,7 @@ namespace MWRender
             .mNextWeatherId = nextWeather,
             .mWeatherTransition = world.getWeatherTransition(),
             .mWindSpeed = world.getWindSpeed(),
+            .mBaseWindSpeed = mBaseWindSpeed,
             .mMoons = { mMoonStates[0], mMoonStates[1] },
             .mCloudDirection = mCloudDirection,
             .mNextCloudDirection = mNextCloudDirection,

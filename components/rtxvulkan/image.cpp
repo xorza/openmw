@@ -47,22 +47,26 @@ namespace Rtx
     }
 
     Image::Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format,
-        VkImageUsageFlags usage, std::string_view name, std::uint32_t mipLevels)
+        VkImageUsageFlags usage, std::string_view name, std::uint32_t mipLevels, std::uint32_t depth)
         : mDevice(device)
         , mWidth(width)
         , mHeight(height)
+        , mDepth(depth)
         , mFormat(format)
         , mUsage(usage)
         , mMipLevels(mipLevels)
         , mTexelBytes(texelBytesOf(format))
     {
         assert(mipLevels >= 1 && "an image holds its own full level at least");
+        assert(depth >= 1 && "an image holds one slice at least");
+
+        const bool volume = depth > 1;
 
         const VkImageCreateInfo create{
             .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .imageType = VK_IMAGE_TYPE_2D,
+            .imageType = volume ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D,
             .format = format,
-            .extent = { width, height, 1 },
+            .extent = { width, height, depth },
             .mipLevels = mipLevels,
             .arrayLayers = 1,
             .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -82,7 +86,7 @@ namespace Rtx
         const VkImageViewCreateInfo view{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = mHandle,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .viewType = volume ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D,
             .format = format,
             .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 1 },
         };
@@ -147,6 +151,7 @@ namespace Rtx
     {
         assert((mUsage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0 && "a chain reads the level above it");
         assert((mUsage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0 && "a chain writes the level below it");
+        assert(mDepth == 1 && "a volume's chain is uploaded rather than blitted");
 
         if (mMipLevels <= 1)
             return;
@@ -198,6 +203,7 @@ namespace Rtx
         CommandPool& pool, VkImageLayout layout, std::vector<std::uint8_t>& pixels, std::uint32_t level) const
     {
         assert(level < mMipLevels && "a level this image does not hold");
+        assert(mDepth == 1 && "a read hands back one slice, and a volume has more than one");
 
         const std::uint32_t width = getWidthAt(level);
         const std::uint32_t height = getHeightAt(level);

@@ -403,6 +403,9 @@ namespace MWRender
         /// What was last handed to `configureFog`, before it became a ramp. `SceneFrame::mFogDepth`.
         float mFogDepth = 0.0f;
 
+        /// What the weather records blowing at, before the gust. `SceneFrame::mBaseWindSpeed`.
+        float mBaseWindSpeed = 0.0f;
+
         std::unique_ptr<EffectManager> mEffectManager;
         std::unique_ptr<SceneUtil::ShadowManager> mShadowManager;
 

@@ -25,9 +25,35 @@
 ///
 /// **The differing speeds are what stops it reading as a texture.** One field scrolling rigidly past
 /// is a pattern in motion; three shearing against each other at their own rates make the shapes
-/// themselves form and pull apart, which is what fog actually does.
-const vec2 FOG_CHURN[FOG_SCALES]
-    = vec2[FOG_SCALES](vec2(11.0, 7.0), vec2(-6.0, 14.0), vec2(19.0, -4.0));
+/// themselves form and pull apart, which is what fog actually does. The second and the third carry a
+/// little vertical drift, so banks rise and settle rather than only sliding.
+const vec3 FOG_CHURN[FOG_SCALES]
+    = vec3[FOG_SCALES](vec3(11.0, 7.0, 0.0), vec3(-6.0, 14.0, 2.5), vec3(19.0, -4.0, -1.5));
+
+/// What a recorded `Wind Speed` of one comes to in world units a second.
+///
+/// **Read as a wind rather than picked, which is what it took to make an ash storm look like one.**
+/// The renderer this is ported from first set 120, chosen so the strongest weather crossed one cell
+/// of the coarsest noise in about nine seconds — and nine seconds to cross thirteen metres is 1.4
+/// metres a second, which is a still afternoon rather than a storm. Twenty metres a second is a
+/// Beaufort 8 gale, and seventy units to the metre makes that 1,400. The ten then land where their
+/// names say: clear's 0.1 is a two-metre breeze, rain's 0.3 is six, thunderstorm's 0.5 is ten,
+/// ashstorm's 0.8 is sixteen, and blight and blizzard blow eighteen.
+///
+/// `frame.mTime` runs at the clock's own rate rather than the game's thirty-times one, so this is a
+/// wind rather than a time-lapse.
+const float FOG_GALE = 1400.0;
+
+/// How far each scale's read is turned about the vertical, as a rotation of the ground plane.
+///
+/// **So that no two scales share a lattice.** A lattice noise has directions in it — its own axes,
+/// which is where its features line up — and three scales of one volume read on one frame stack
+/// those directions rather than averaging them out. Turned against each other, what one scale
+/// draws along an axis the next draws across it. The angles are the two smallest Pythagorean
+/// triangles, so the matrices are exact and neither is near a quarter turn of the other: 3-4-5 is
+/// thirty-seven degrees and 5-12-13 is sixty-seven.
+const mat2 FOG_TURN[FOG_SCALES] = mat2[FOG_SCALES](mat2(1.0, 0.0, 0.0, 1.0), mat2(0.8, 0.6, -0.6, 0.8),
+    mat2(0.3846154, 0.9230769, -0.9230769, 0.3846154));
 
 /// How many shadow rays the sun gets in the fog, and so how many stretches the march is cut into.
 ///
@@ -66,8 +92,7 @@ const uint FOG_STEPS_PER_RAY = FOG_STEPS / FOG_SHADOW_RAYS;
 /// enough to a floor to serve indoors.
 const float FOG_BASE = 0.0;
 
-/// The field over a place on the ground, at one scale, read at whatever level the march can tell
-/// apart.
+/// The field at a place, at one scale, read at whatever level the march can tell apart.
 ///
 /// **A level of the chain is the field averaged over twice the texels of the one under it**, so the
 /// level a step reaches is the one whose texel is the step's own width. That is the argument
@@ -75,10 +100,10 @@ const float FOG_BASE = 0.0;
 /// for nothing.
 ///
 /// @param spacing how far apart the march is sampling here.
-vec2 fogFieldAt(vec2 position, float tile, float spacing, vec2 churn)
+vec2 fogFieldAt(vec3 position, float tile, float spacing, vec3 churn)
 {
     const float texel = tile / float(FOG_FIELD_SIZE);
-    const float level = clamp(log2(max(spacing / texel, 1.0)), 0.0, float(FOG_FIELD_LEVELS - 1u));
+    const float level = clamp(log2(max(spacing / texel, 1.0)), 0.0, FOG_FIELD_COARSEST);
 
     return textureLod(fogField, (position + churn * frame.mTime) / tile, level).xy;
 }
@@ -88,23 +113,35 @@ vec2 fogFieldAt(vec2 position, float tile, float spacing, vec2 churn)
 /// **Fetched rather than computed, which is most of what this stopped costing.** The field this
 /// replaced hashed eight lattice corners per octave and took five of those — forty hashes at every
 /// step of a twenty-four step march, measured at 2.0 ms of a 2.1 ms trace. Three fetches stand for
-/// all of it, and what they read is a richer field than a march could ever have afforded: gradient
-/// noise rather than value noise, so no lattice shows as a grid of creases, and four octaves inside
-/// the volume before these three scales are laid over each other.
+/// all of it, and what they read is the same trilinear value noise the reference hashes, drawn once.
+///
+/// **The three scales are the fractal**, and they are the same three the renderer this is ported
+/// from sums over a hash: amplitudes halving, frequencies stepping by `FOG_LACUNARITY`, each on
+/// its own drift. The volume under them is one octave and nothing more.
 ///
 /// Its mean is a half and its spread is `FOG_FIELD_SPREAD`, at every level and every distance,
 /// which is what the coverage band is cut against.
 float fogShape(vec3 position, float spacing)
 {
+    // **The whole field carried downwind, before the scales are dragged past each other** — one
+    // displacement rather than three, because a wind moves the air it is in rather than shearing
+    // it. Minus, for the reason a cloud sheet subtracts its own drift: a bank sits at a fixed
+    // coordinate in the field, so sampling from further upwind as the clock runs is what carries it
+    // past, and adding would walk the whole field into the wind.
+    position.xy -= frame.mFogWind * (frame.mTime * FOG_GALE);
+
     // **The coarsest scale is read undisplaced.** What a warp is for is breaking the regularity of
     // the structure inside a bank, and at this scale a bank is the whole shape rather than a lattice
     // with something laid on it.
-    const vec2 coarse = fogFieldAt(position.xy, FOG_TILE, spacing, FOG_CHURN[0]);
+    const vec2 coarse = fogFieldAt(position, FOG_TILE, spacing, FOG_CHURN[0]);
 
     // Two channels of a fetch already taken, which is what makes a vector out of a scalar field cost
     // nothing at all. Divided by the spread, so what `FOG_WARP` names is a distance rather than a
     // number of standard deviations.
-    const vec2 warped = position.xy + (coarse - 0.5) * (FOG_WARP / FOG_FIELD_SPREAD);
+    //
+    // **Horizontal, and the volume does not change that.** The vertical shape of this air is the
+    // height falloff, and dragging the domain across it would blur the layer it is meant to have.
+    const vec3 warped = position + vec3((coarse - 0.5) * (FOG_WARP / FOG_FIELD_SPREAD), 0.0);
 
     float total = coarse.x - 0.5;
     float squares = 1.0;
@@ -116,7 +153,8 @@ float fogShape(vec3 position, float spacing)
         amplitude *= 0.5;
         tile /= FOG_LACUNARITY;
 
-        total += amplitude * (fogFieldAt(warped, tile, spacing, FOG_CHURN[scale]).x - 0.5);
+        const vec3 turned = vec3(FOG_TURN[scale] * warped.xy, warped.z);
+        total += amplitude * (fogFieldAt(turned, tile, spacing, FOG_CHURN[scale]).x - 0.5);
         squares += amplitude * amplitude;
     }
 
@@ -153,7 +191,9 @@ float fogExtinctionAt(vec3 position, float spacing)
     if (frame.mWaterLevel - position.z > 0.0)
         return 0.0;
 
-    const float height = exp(-max(position.z - fogBase(), 0.0) / FOG_HEIGHT);
+    // **How deep the layer stands is the weather's and not a constant.** `FOG_HEIGHT` is the bank
+    // clear weather makes in dead still air, and `mFogLift` is what every other weather does to it.
+    const float height = exp(-max(position.z - fogBase(), 0.0) / (FOG_HEIGHT * frame.mFogLift));
 
     // **Even indoors, and banked out of doors.** Banks are something weather does to a landscape; a
     // room is smaller than one bank and its air is still, so what belongs there is a faint uniform
@@ -163,6 +203,11 @@ float fogExtinctionAt(vec3 position, float spacing)
     // **Branched rather than mixed, because `mix` evaluates both sides.** An interior is uniform
     // outright, and a field it then multiplies by nothing was costing it forty hashes a step for an
     // answer it discards — measured at 2.0 ms of a 2.1 ms trace.
+    //
+    // **A far step keeps its banks rather than giving them up for even air.** The two hold the same
+    // amount of air on average, so trading one for the other looks free, and it is not: even air is
+    // a screen that glows wherever a lamp lights it, where banked air has gaps to see a lit tree
+    // through. `FOG_FIELD_COARSEST` is what keeps the far end banked.
     float coverage = 1.0;
     if (frame.mFogUniform < 1.0)
         coverage = mix(smoothstep(FOG_CLEARING, FOG_SOLID, fogShape(position, spacing)) / FOG_COVERAGE, 1.0,
@@ -234,10 +279,12 @@ float fogPhase(float cosine)
 /// column along a straight line out of it integrates to `sigma * H / cos(zenith)`. Its assumption is
 /// that the coverage a point sits in continues along that line, which is what a bank looks like from
 /// inside one and is wrong only near an edge, where the fog is thin and the term is near one anyway.
-float fogSunDepth(float extinction)
+/// @param towards unit, from the point toward the light. Each source owes its own slant: at night
+///        the sun points down, and a moon standing high crosses far less air than one on the rim.
+float fogBeamDepth(float extinction, vec3 towards)
 {
-    // A sun on the horizon lights an infinite column of fog; the floor is what keeps that finite.
-    return extinction * FOG_HEIGHT / max(frame.mSunPosition.z, 1.0e-3);
+    // A source on the horizon lights an infinite column of fog; the floor is what keeps that finite.
+    return extinction * FOG_HEIGHT * frame.mFogLift / max(towards.z, 1.0e-3);
 }
 
 
@@ -275,6 +322,29 @@ vec4 fogWeatherAlong(vec3 origin, vec3 direction, float distance, float offset, 
     // off everything but the sunward part of an exterior, which is most of a frame.
     const bool shafts = brightest(sunward) > FOG_SHAFT_FLOOR * brightest(frame.mFogColour);
 
+    // **The moons light the air too, and nothing was saying so.** At night the only thing lighting
+    // this haze was `mFogColour`, the dome's own colour — so the air around a moon came back
+    // blue-grey however red the moon, and since the disc itself is dimmed by the air in front of it,
+    // a rainy night drew the fog's colour and none of Masser's.
+    //
+    // Hoisted out of the march, because only the air in the way varies along it: what a moon's share
+    // is depends on an angle between two fixed directions, and it costs the same phase function the
+    // sun pays for once a ray.
+    const vec3 masser = frame.mMoons[0].mIrradiance * fogPhase(dot(direction, frame.mMoons[0].mDirection));
+    const vec3 secunda = frame.mMoons[1].mIrradiance * fogPhase(dot(direction, frame.mMoons[1].mDirection));
+
+    // **A moon casts a shaft too, and at night it is the only thing that can.** A headland is not a
+    // penumbra: air standing behind one gets no moonlight at all, and without the test the march lit
+    // the mist in front of a cliff from a moon the cliff was covering.
+    //
+    // **One ray for the pair, aimed at whichever delivers more.** Masser is the larger and the
+    // brighter almost always, and a second ray to place Secunda's shadow separately would cost as
+    // much again for a light a quarter its size. The sun's own ray is not traced at night, so this
+    // spends what the day already spends.
+    const bool moonlit = brightest(masser + secunda) > FOG_SHAFT_FLOOR * brightest(frame.mFogColour);
+    const vec3 moonward
+        = brightest(masser) >= brightest(secunda) ? frame.mMoons[0].mDirection : frame.mMoons[1].mDirection;
+
     float transmittance = 1.0;
     vec3 scattered = vec3(0.0);
     float behind = 0.0;
@@ -301,12 +371,16 @@ vec4 fogWeatherAlong(vec3 origin, vec3 direction, float distance, float offset, 
         // across several steps is what a froxel does too; drawing where it is taken from the same
         // jitter the steps use is what stops the choice being made in one fixed place every frame.
         float visible = 1.0;
-        if (shafts)
+        float lunar = 1.0;
+        if (shafts || moonlit)
         {
             const float reach = fogDepth(float((stretch + 1u) * FOG_STEPS_PER_RAY) / float(FOG_STEPS)) * span;
             const vec3 probe = origin + direction * mix(behind, reach, offset);
 
-            visible = lightThrough(probe, frame.mSunPosition, frame.mFar);
+            if (shafts)
+                visible = lightThrough(probe, frame.mSunPosition, frame.mFar);
+            if (moonlit)
+                lunar = lightThrough(probe, moonward, frame.mFar);
         }
 
         for (uint k = 0u; k < FOG_STEPS_PER_RAY; ++k)
@@ -323,10 +397,21 @@ vec4 fogWeatherAlong(vec3 origin, vec3 direction, float distance, float offset, 
             const float extinction = fogExtinctionAt(position, stride);
             behind = ahead;
 
-            // Everything between the sun and this point: what the geometry stopped, what the fog
+            // Everything between a source and this point: what the geometry stopped, what the fog
             // took on the way down, and what any water overhead took out of it.
+            //
+            // **Each on its own slant and not the sun's.** At night `mSunPosition` points below the
+            // horizon, the floor in `fogBeamDepth` pins it, and the sun's beam comes back as nothing
+            // at all — which is what lets one expression carry both without asking the hour.
             const vec3 sun = sunlit
-                ? sunward * visible * exp(-fogSunDepth(extinction)) * daylightReaching(position)
+                ? sunward * visible * exp(-fogBeamDepth(extinction, frame.mSunPosition)) * daylightReaching(position)
+                : vec3(0.0);
+
+            const vec3 moons = moonlit
+                ? lunar
+                    * (masser * exp(-fogBeamDepth(extinction, frame.mMoons[0].mDirection))
+                        + secunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection)))
+                    * daylightReaching(position)
                 : vec3(0.0);
 
             // What this step is worth to the frame, computed once and used twice: what it scatters
@@ -338,7 +423,7 @@ vec4 fogWeatherAlong(vec3 origin, vec3 direction, float distance, float offset, 
             // Air above the layer and air behind fog already opaque both look like free steps to
             // drop, and dropping them bought 3% on Balmora and nothing at all in an interior: at
             // this layer's scale height there is no thin fraction of the ray to skip.
-            scattered += weight * (frame.mFogColour + sun);
+            scattered += weight * (frame.mFogColour + sun + moons);
             weighLamps(lamps, lampState, position, vec3(0.0), INV_FOUR_PI * weight);
             transmittance -= weight;
         }

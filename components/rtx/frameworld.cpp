@@ -19,6 +19,12 @@ namespace Rtx
         constants.mFogColour = world.mAir.mColour;
         constants.mFogExtinction = world.mAir.mExtinction;
         constants.mFogUniform = world.mAir.mUniform;
+        constants.mFogLift = world.mAir.mLift;
+
+        // **On the deck's own bearing, because there is one wind over a landscape.** The deck of the
+        // weather that is here rather than the one arriving: the reference this follows holds one
+        // heading for the whole sky, and an air that turned with a transition would read as two.
+        constants.mFogWind = world.mClouds.mBearing * world.mAir.mWind;
         constants.mFogEdge = world.mAir.mEdge;
 
         // The same hair the water's own placement is dropped by, so that what the shader calls the
