@@ -14,6 +14,8 @@
 #include "scene.h"
 #include "wave.h"
 #include "bindings.glsl"
+#include "random.glsl"
+
 
 /// How far refraction deflects a ray, per unit of surface slope.
 ///
@@ -113,8 +115,108 @@ const float WATER_CAUSTIC_FADE = 1.0;
 /// 14 points shoreward rather than replacing them.
 const float WATER_CAUSTIC_FOLD = 3.0;
 
+/// How far apart the rain's impacts are, in world units: a lattice with one splash a cell.
+///
+/// **How many rings is not how many drops.** A real rain lands thousands of drops a second on a
+/// square metre and a surface cannot show them as separate rings; what an eye picks out is a few
+/// tens. Twenty units is a dozen impacts on a square metre, with a handful of them ringing at any
+/// moment.
+const float RAIN_RING_CELL = 20.0;
+
+/// How long one ring lasts before it has spread into nothing, in seconds.
+const float RAIN_RING_LIFE = 0.6;
+
+/// How fast a ring spreads, in world units a second.
+///
+/// Capillary-gravity waves on water cannot travel slower than 0.23 m/s — where the surface-tension
+/// and the gravity branches of the dispersion relation meet — and a splash ring runs out at about
+/// twice that. Thirty-five units is half a metre a second, so a ring reaches thirty centimetres
+/// before its life is up.
+const float RAIN_RING_SPEED = 35.0;
+
+/// The ring's own wavelength, in world units: eleven centimetres, the scale capillary ripples take.
+const float RAIN_RING_LENGTH = 8.0;
+
+/// How steep a fresh ring is, as slope at its crest.
+///
+/// Per ring, and rings overlap — nine cells are summed — so what it comes to as a field is what is
+/// compared against the sea: an rms slope of about a fifth, a third of a running sea's. Enough to
+/// break a reflection where a drop lands, and gone again within the ring's life.
+const float RAIN_RING_STEEPNESS = 0.30;
+
+/// What the rain adds to the water it lands on, as a slope beside the wave field's.
+///
+/// **Rings from a lattice of impacts, the same trick the drops themselves use.** Each cell of the
+/// water plane holds one impact at a hashed place, repeating on its own phase, and what it leaves
+/// is a ring expanding at `RAIN_RING_SPEED` and dying at `RAIN_RING_LIFE`. The slope points away
+/// from the impact, because that is what a ring is. The eight neighbours are read as well as the
+/// cell itself, because a ring outlives its own cell.
+///
+/// **Beside the spectrum and not in it.** The caustic differentiates the swell a second time, and a
+/// ring eleven centimetres across carries none of that. What the cone could not resolve of a ring
+/// is lost slope like any other, though, and joins `WaterSurface::mLostSlope`: rain on far water is
+/// a duller sheet, not a mirror.
+///
+/// @param lost receives the mean square slope the cone averaged away.
+vec2 rainSlope(vec2 at, float footprint, out float lost)
+{
+    lost = 0.0;
+    if (!(frame.mRainOnWater > 0.0))
+        return vec2(0.0);
+
+    // How much of a ring this cone can still tell apart, from all of it to none of it: a cone a
+    // wavelength wide covers a crest and a trough whose slopes cancel, and picking one of them
+    // instead is what makes far water a field of crawling sparks.
+    const float detail = 1.0 - smoothstep(0.25 * RAIN_RING_LENGTH, 0.75 * RAIN_RING_LENGTH, footprint);
+    const float dropped = 1.0 - detail * detail;
+    const float wavenumber = TAU / RAIN_RING_LENGTH;
+
+    vec2 slope = vec2(0.0);
+    const ivec2 base = ivec2(floor(at / RAIN_RING_CELL));
+    for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x)
+        {
+            const ivec2 cell = base + ivec2(x, y);
+
+            // Keyed on the cell alone, so an impact stays where it fell from one frame to the next.
+            // `randomSeed` mixes the frame in and is exactly what this must not use.
+            uint state = pixelKey(uvec2(cell)) * 0x9E3779B9u;
+
+            const vec2 jitter = vec2(randomNext(state), randomNext(state));
+            const float offset = randomNext(state);
+
+            const vec2 fell = (vec2(cell) + jitter) * RAIN_RING_CELL;
+
+            // Where this impact is in its own life, which each cell keeps its own phase of so the
+            // whole surface does not ring at once.
+            const float age = fract(frame.mTime / RAIN_RING_LIFE + offset) * RAIN_RING_LIFE;
+
+            const vec2 away = at - fell;
+            const float distance = length(away);
+            const float front = RAIN_RING_SPEED * age;
+            if (distance > front || !(front > 0.0))
+                continue;
+
+            // Fading as it spreads — its energy over a circumference that grows — and as its life
+            // runs out.
+            const float faded = (1.0 - age / RAIN_RING_LIFE) * front / max(distance, 0.15 * front);
+            const float steepness = RAIN_RING_STEEPNESS * frame.mRainOnWater * min(faded, 1.0);
+
+            // A sinusoid of steepness `s` has mean square slope `s^2 / 2`, which is the argument the
+            // sea's own chain makes for the swell and holds here unchanged.
+            lost += dropped * 0.5 * steepness * steepness;
+            if (!(detail > 0.0))
+                continue;
+
+            slope += away / max(distance, 1.0e-4) * (detail * steepness * cos(wavenumber * (distance - front)));
+        }
+
+    return slope;
+}
+
 /// Where on a tile a world position falls. Wrapped by the sampler, because a tile repeats.
 vec2 waveCoordinate(uint cascade, vec2 at)
+
 {
     return at / frame.mWaveExtent[cascade];
 }
@@ -199,8 +301,15 @@ WaterSurface waterSurfaceAt(vec2 at, float footprint)
         surface.mLostSlope += max(field.z - dot(field.xy, field.xy), 0.0);
     }
 
+    // What the rain adds on top, which is not part of the spectrum and must not be. Its lost share
+    // joins the spectrum's, because a cone that cannot resolve a ring lost real slope either way.
+    float rainLost;
+    slope += rainSlope(at, footprint, rainLost);
+    surface.mLostSlope += rainLost;
+
     surface.mNormal = normalize(vec3(-slope, 1.0));
     return surface;
+
 }
 
 /// How much the sunlight reaching `depth` below the surface has been gathered, as a multiplier.

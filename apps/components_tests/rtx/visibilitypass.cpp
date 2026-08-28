@@ -5065,6 +5065,101 @@ namespace Rtx
             EXPECT_LT(running.mPeak, 40) << "measured 10: and no pixel of it near the mirror's";
         }
 
+        /// Rain rings the still water under the eye, moves the rings on, and far off roughens it.
+        ///
+        /// **Close, the rings are read against a graded sky.** A resolved ring is a mirror facet,
+        /// and a facet catches a quarter-degree sun only where its slope matches exactly — so a sun
+        /// shows a handful of glints and says nothing about the rest. A sky that darkens toward the
+        /// horizon shows every tilt: a facet leaning toward the horizon reflects a darker sky than
+        /// the plane beside it. Forty units over a flat sea with a pixel about half a unit wide, a
+        /// ring eleven centimetres across is sixteen pixels, and rain differs from a dry frame over
+        /// a good share of it; a fifth of a second on — a third of a ring's life — it differs from
+        /// itself. The dry frame does not care what time it is.
+        ///
+        /// **Far, the rings are read against the sun**, as the road test reads a running sea: from
+        /// its height a pixel is hundreds of units and no ring is resolved, so what a ring lost is
+        /// roughness, and the one dot a flat sea shows spreads into a road.
+        ///
+        /// A snowy frame is the plumbing's business and not the shader's: `mRainOnWater` is nought
+        /// for snow before the frame is built, and `Weather::Precipitation` is where that is tested.
+        TEST_F(RtxVisibilityTest, rainRingsTheWaterUnderTheEyeAndRoughensItFarOff)
+        {
+            constexpr std::uint32_t size = 64;
+            constexpr std::size_t pixelCount = std::size_t{ size } * size;
+            constexpr float irradiance = 1.0e-3f;
+
+            // A flat sea, the eye at `eye` looking at `at`, and either a graded sky with no sun or
+            // the road test's sun at the centre pixel's mirror under a black sky.
+            const auto render = [&](const osg::Vec3f& eye, const osg::Vec3f& at, bool sunlit, float rain, float time,
+                                    std::vector<std::uint8_t>& pixels) {
+                Shaders::VisibilityConstants camera = makeCamera(eye, at, 20.0f, size, size, 1000000.0f);
+
+                if (sunlit)
+                {
+                    osg::Vec3f view = at - eye;
+                    view.normalize();
+                    camera.mSunPosition = osg::Vec3f(view.x(), view.y(), -view.z());
+                    camera.mSunIrradiance = osg::Vec3f(irradiance, irradiance, irradiance);
+                    camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+                    camera.mSkyHorizon = osg::Vec3f();
+                    camera.mSkyZenith = osg::Vec3f();
+                }
+                else
+                {
+                    camera.mSunIrradiance = osg::Vec3f();
+                    camera.mSkyHorizon = osg::Vec3f(0.1f, 0.1f, 0.1f);
+                    camera.mSkyZenith = osg::Vec3f(0.9f, 0.9f, 0.9f);
+                }
+
+                camera.mWaterLevel = 0.0f;
+                camera.mRainOnWater = rain;
+                camera.mTime = time;
+
+                const SceneDesc scene = makeOpenWater(20000.0f);
+                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+            };
+
+            const auto differing = [](const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b) {
+                std::size_t count = 0;
+                for (std::size_t i = 0; i < a.size(); i += 4)
+                    count += std::abs(int{ a[i] } - int{ b[i] }) > 2 ? 1 : 0;
+                return count;
+            };
+
+            const osg::Vec3f near(0.0f, 0.0f, 40.0f);
+            const osg::Vec3f nearAt(0.0f, 100.0f, 0.0f);
+
+            std::vector<std::uint8_t> dry;
+            std::vector<std::uint8_t> dryLater;
+            std::vector<std::uint8_t> raining;
+            std::vector<std::uint8_t> rainingLater;
+            render(near, nearAt, false, 0.0f, 0.5f, dry);
+            render(near, nearAt, false, 0.0f, 0.7f, dryLater);
+            render(near, nearAt, false, 1.0f, 0.5f, raining);
+            render(near, nearAt, false, 1.0f, 0.7f, rainingLater);
+
+            EXPECT_EQ(dry, dryLater) << "a still sea does not care what time it is";
+            EXPECT_GT(differing(raining, dry), pixelCount / 20) << "the rings tilt the sky's reflection";
+            EXPECT_GT(differing(rainingLater, raining), pixelCount / 20) << "a fifth of a second on, elsewhere";
+
+            const osg::Vec3f far(0.0f, 0.0f, 6000.0f);
+            const osg::Vec3f farAt(0.0f, 14000.0f, 0.0f);
+
+            const auto lit = [](const std::vector<std::uint8_t>& pixels) {
+                std::size_t count = 0;
+                for (std::size_t i = 0; i < pixels.size(); i += 4)
+                    count += pixels[i] > 0 ? 1 : 0;
+                return count;
+            };
+
+            std::vector<std::uint8_t> farDry;
+            std::vector<std::uint8_t> farRain;
+            render(far, farAt, true, 0.0f, 0.5f, farDry);
+            render(far, farAt, true, 1.0f, 0.5f, farRain);
+            EXPECT_LT(lit(farDry), 20u) << "a still sea shows the sun once";
+            EXPECT_GT(lit(farRain), 200u) << "what the cone could not resolve widened the sun's lobe";
+        }
+
         /// Water too fine for the cone to resolve widens the cone that refracts through it.
         ///
         /// **What the cone could not resolve is not gone, it is rough** — and that roughness has to

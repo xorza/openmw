@@ -1,9 +1,15 @@
 #include "frameworld.hpp"
 
 #include "shaders/scene.h"
+#include <components/weather/precipitation.hpp>
 
 namespace Rtx
 {
+    float rainOnWater(const Weather::Precipitation* fall)
+    {
+        return fall != nullptr && fall->ripplesEnabled() ? fall->getPrecipitationAlpha() : 0.0f;
+    }
+
     void applyWorld(const FrameWorld& world, Shaders::VisibilityConstants& constants)
     {
         constants.mSunPosition = world.mSun.mPosition;
@@ -36,6 +42,7 @@ namespace Rtx
         // water level and where the surface actually is stay one number.
         constants.mWaterLevel = world.mWaterLevel - Shaders::WATER_TIE_BREAK;
         constants.mTime = world.mSeconds;
+        constants.mRainOnWater = world.mRainOnWater;
 
         constants.mClouds = world.mClouds;
         constants.mStars = world.mStars;

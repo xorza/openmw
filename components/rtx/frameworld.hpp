@@ -10,6 +10,11 @@
 #include "scenedesc.hpp"
 #include "shaders/visibility.h"
 
+namespace Weather
+{
+    class Precipitation;
+}
+
 namespace Rtx
 {
     /// What the world is doing this frame, in the units the renderer takes.
@@ -30,8 +35,18 @@ namespace Rtx
     /// **Everything here is already in the renderer's units**: colours linear, fog an extinction
     /// rather than two distances, the weather blend the right way round, the moons placed. What each
     /// side does to get here is its own business; what happens after is not.
+    /// How hard a fall of weather rains on the water, from nought to one.
+    ///
+    /// **The precipitation's own alpha where its kind rings the surface, and nought where it does
+    /// not** — which is the number the rasterizer hands its water as `rainIntensity`, and
+    /// `Weather::Precipitation::ripplesEnabled` is what says whether a kind rings: rain does and snow
+    /// settles, off the ini's own `Rain Ripples` and `Snow Ripples`.
+    /// @param fall what is falling, or null for a world with no weather over it.
+    float rainOnWater(const Weather::Precipitation* fall);
+
     struct FrameWorld
     {
+
         /// The sun, and it is a sun or it is nothing.
         ///
         /// **Built by `makeSkylight` and never assembled field by field.** Its irradiance is zero
@@ -71,6 +86,9 @@ namespace Rtx
         /// How long the water has been moving, in seconds. Zero is a still sea and a repeatable
         /// frame, which is what a screenshot wants.
         float mSeconds = 0.0f;
+
+        /// How hard it rains on the water, from nought to one, out of `rainOnWater`.
+        float mRainOnWater = 0.0f;
 
         /// The cloud deck and the star field, already in the units the shader takes: `describeClouds`
         /// and `describeStars` are what both renderers reach them through.

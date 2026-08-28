@@ -106,6 +106,7 @@ namespace RtxTool
             .mAir = air,
             .mWaterLevel = lighting.mWaterLevel,
             .mSeconds = lighting.mSeconds,
+            .mRainOnWater = lighting.mRainOnWater,
 
             .mStars = stars,
             .mMoons = moons,

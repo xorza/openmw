@@ -29,6 +29,10 @@ namespace RtxTool
         /// is this point" is never positive and nothing downstream needs a second question.
         float mWaterLevel = -std::numeric_limits<float>::infinity();
 
+        /// How hard the weather rains on that water, from nought to one — nought for a weather
+        /// whose fall settles rather than splashes. `VisibilityConstants::mRainOnWater`.
+        float mRainOnWater = 0.0f;
+
         /// The sun and the sky over an exterior. An interior leaves this dark.
         Rtx::Daylight mDaylight;
 

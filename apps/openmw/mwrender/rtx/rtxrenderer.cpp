@@ -869,6 +869,7 @@ namespace MWRender
             // elapsed seconds rather than the frame count: a sea that ran at the frame rate would
             // slow down whenever the frame did.
             .mSeconds = static_cast<float>(when.getSimulationTime()),
+            .mRainOnWater = Rtx::rainOnWater(frame.mWorld.mPrecipitation),
 
             // **The two layers of sky over everything else, and an interior has neither.** Left at
             // their defaults indoors, which is a texture slot of `NO_TEXTURE` and a fade of
@@ -876,15 +877,14 @@ namespace MWRender
             //
             // **The current weather twice where nothing is arriving**, since the deck crosses
             // unconditionally: naming it on both sides at a blend of nothing is what lets it.
-            .mClouds = world.isOutdoors()
-                ? Rtx::describeClouds(static_cast<std::uint32_t>(world.mWeatherId),
-                      world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
-                                                       : static_cast<std::uint32_t>(world.mWeatherId),
-                      world.mCloudBlend, Rtx::deckLight(sky.mSunAloft, budget.mMean, moons), world.mCloudDirection,
-                      world.mNextCloudDirection, world.mSkyRoll.mClouds, mSkyContent)
-                : Rtx::Shaders::CloudDeck{ .mOpacity = 0.0f,
-                      .mTexture = Rtx::Shaders::NO_TEXTURE,
-                      .mNext = Rtx::Shaders::NO_TEXTURE },
+            .mClouds = world.isOutdoors() ? Rtx::describeClouds(static_cast<std::uint32_t>(world.mWeatherId),
+                           world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
+                                                            : static_cast<std::uint32_t>(world.mWeatherId),
+                           world.mCloudBlend, Rtx::deckLight(sky.mSunAloft, budget.mMean, moons), world.mCloudDirection,
+                           world.mNextCloudDirection, world.mSkyRoll.mClouds, mSkyContent)
+                                          : Rtx::Shaders::CloudDeck{ .mOpacity = 0.0f,
+                                              .mTexture = Rtx::Shaders::NO_TEXTURE,
+                                              .mNext = Rtx::Shaders::NO_TEXTURE },
 
             .mStars = stars,
             .mMoons = moons,

@@ -395,6 +395,15 @@ namespace Rtx::Shaders
         /// path passes its own clock.
         float mTime;
 
+        /// How hard it rains on the water, from nought to one.
+        ///
+        /// **The precipitation's own alpha where its kind rings the surface, and nought where it
+        /// does not** — which is the number the rasterizer hands its water as `rainIntensity`, and
+        /// `Weather::Precipitation::ripplesEnabled` is what says whether a kind rings: rain does and
+        /// snow settles, off the ini's own `Rain Ripples` and `Snow Ripples`. `rainSlope` is what
+        /// reads it.
+        float mRainOnWater;
+
         /// How wide each of the sea's tiles is, in world units, in the order they are bound.
         ///
         /// **What turns a world position into a texture coordinate and a cone width into a level.**
@@ -548,7 +557,8 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 940, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 944, "VisibilityConstants must be scalar-packed on every side");
+
 #endif
 
 #ifdef RTX_HOST

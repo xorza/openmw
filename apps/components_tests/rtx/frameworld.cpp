@@ -42,6 +42,8 @@ namespace Rtx
                     .mEdge = 24576.0f },
                 .mWaterLevel = -37.5f,
                 .mSeconds = 12.25f,
+                .mRainOnWater = 0.35f,
+
             };
 
             world.mClouds = Rtx::Shaders::CloudDeck{
@@ -129,6 +131,7 @@ namespace Rtx
             // water and the water disagree.
             EXPECT_EQ(constants.mWaterLevel, world.mWaterLevel - Shaders::WATER_TIE_BREAK);
             EXPECT_EQ(constants.mTime, world.mSeconds) << "the game wrote this nowhere either";
+            EXPECT_EQ(constants.mRainOnWater, world.mRainOnWater);
 
             EXPECT_EQ(constants.mClouds.mOpacity, world.mClouds.mOpacity);
             EXPECT_EQ(constants.mClouds.mLit, world.mClouds.mLit);

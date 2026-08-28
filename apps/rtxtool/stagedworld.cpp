@@ -8,6 +8,7 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/resource/resourcesystem.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/weather/downpour.hpp>
 
@@ -222,6 +223,7 @@ namespace RtxTool
         const Weather::Downpour falling = Weather::downpourAt(weather, mStormWindSpeed, mRainGravity);
         mStormEffect = falling.mParticleEffect;
         mPrecipitation->setWeather(falling);
+        mLighting.mRainOnWater = Rtx::rainOnWater(mPrecipitation.get());
     }
 
     Crossing StagedWorld::moveTo(const osg::Vec3f& where)
