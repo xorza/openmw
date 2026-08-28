@@ -326,6 +326,12 @@ namespace Rtx
         /// Whether this walk is running emitters and looking through everything else.
         bool mStepOnly = false;
 
+        /// How many first-person roots stand over the node being walked: everything under one is
+        /// the player's own arms. Counted down the subtree rather than read off each drawable,
+        /// because the game marks the *root* and the drawables under it wear the masks they were
+        /// authored with.
+        unsigned int mFirstPerson = 0;
+
         osg::Matrixf mRoot;
         std::size_t mFrame = 0;
 
@@ -440,8 +446,12 @@ namespace Rtx
         if (const osg::StateSet* animated = mExtractor.animate(node))
             mShading.push_back(Shading{ .mStateSet = animated, .mAnimated = true });
 
+        const unsigned int arms = mExtractor.isFirstPerson(node.getNodeMask()) ? 1u : 0u;
+        mFirstPerson += arms;
+
         descend(node);
 
+        mFirstPerson -= arms;
         mShading.resize(held);
     }
 
@@ -617,7 +627,7 @@ namespace Rtx
         if (const osg::StateSet* own = drawable.getStateSet())
             mShading.push_back(Shading{ .mStateSet = own });
 
-        mExtractor.addDrawable(drawable, getNodePath(), mShading, placed(), *mStats);
+        mExtractor.addDrawable(drawable, getNodePath(), mShading, placed(), mFirstPerson > 0, *mStats);
 
         mShading.resize(held);
     }
@@ -1100,8 +1110,9 @@ namespace Rtx
     }
 
     void SceneExtractor::addDrawable(const osg::Drawable& drawable, const osg::NodePath& path,
-        std::span<const Shading> shading, const osg::Matrixf& place, ExtractionStats& stats)
+        std::span<const Shading> shading, const osg::Matrixf& place, bool firstPerson, ExtractionStats& stats)
     {
+
         // Asked before the geometry, because a particle system is an `osg::Drawable` with no
         // triangles in it at all: its sprites *are* the drawing, and they leave here as a run of
         // discs rather than as a mesh anything could build a structure over.
@@ -1156,7 +1167,9 @@ namespace Rtx
                 .mMesh = mesh,
                 .mMaterial = material,
                 .mOpacity = fade,
+                .mFirstPerson = firstPerson,
             });
+
             mPlacements.emplace(who, Known{ .mIndex = slot, .mEpoch = mEpoch });
         }
         else
@@ -1525,11 +1538,21 @@ namespace Rtx
 
     bool SceneExtractor::isWater(osg::Node::NodeMask mask) const
     {
-        // **Every bit outside the water's, and not merely one inside it.** A node mask is a filter
-        // over passes and its default is all ones, so `mask & water` is true for every drawable that
-        // never set one — which in this engine is nearly all of them, and it shaded the whole world
-        // as sea. What names the water is that no *other* pass may see it.
-        return mWaterMask != 0 && (mask & ~mWaterMask) == 0;
+        return carriesOnly(mask, mWaterMask);
+    }
+
+    bool SceneExtractor::isFirstPerson(osg::Node::NodeMask mask) const
+    {
+        return carriesOnly(mask, mFirstPersonMask);
+    }
+
+    bool SceneExtractor::carriesOnly(osg::Node::NodeMask mask, osg::Node::NodeMask named)
+    {
+        // **Every bit outside the named one, and not merely one inside it.** A node mask is a
+        // filter over passes and its default is all ones, so `mask & named` is true for every node
+        // that never set one — which in this engine is nearly all of them, and it shaded the whole
+        // world as sea. What names the water, or the arms, is that no *other* pass may see it.
+        return named != 0 && (mask & ~named) == 0;
     }
 
     Index SceneExtractor::resolveWaterMaterial(ExtractionStats& stats)

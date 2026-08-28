@@ -208,6 +208,7 @@ namespace MWRender
 
         // What is left of the two is the world's own water, and it is the sea.
         mExtractor->setWaterMask(SceneUtil::Mask_Water);
+        mExtractor->setFirstPersonMask(SceneUtil::Mask_FirstPerson);
 
         // **The negative test, and it is the whole claim of this path in one line.** Nothing above
         // here may have made a GL context: not the window, not a realize operation, not an

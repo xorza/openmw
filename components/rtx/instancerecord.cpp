@@ -78,7 +78,10 @@ namespace Rtx
                 // Overwritten below for the few that moved.
                 .mMotion = sStillTransform,
                 .mMesh = instance.mMesh,
-                .mMask = water ? Shaders::MASK_WATER : Shaders::MASK_SOLID,
+                .mMask = water              ? Shaders::MASK_WATER
+                    : instance.mFirstPerson ? Shaders::MASK_FIRST_PERSON
+                                            : Shaders::MASK_SOLID,
+
                 .mCutout = material != nullptr && material->isCutout(),
                 .mTranslucent = instance.mOpacity < 1.0f || (material != nullptr && material->isTranslucent()),
                 .mPlaced = true,

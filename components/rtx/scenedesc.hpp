@@ -296,7 +296,12 @@ namespace Rtx
         /// One for everything the game is not hiding, which is nearly everything.
         float mOpacity = 1.0f;
 
+        /// Whether this is the player's own arms in first person, which only the eye's ray may
+        /// meet. `Shaders::MASK_FIRST_PERSON` says why.
+        bool mFirstPerson = false;
+
         /// Whether this slot holds anything. A dropped placement leaves its slot behind rather than
+
         /// closing the gap, because the slot index is what a hit reads back.
         bool isPlaced() const { return mMesh != sNoIndex; }
     };

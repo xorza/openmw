@@ -1403,6 +1403,44 @@ namespace Rtx
         /// with a texture on it and nothing else — no geometry, state set or name tells it apart
         /// from a painted floor — so `MWRender::Water`'s own node mask is the answer, and a mirror
         /// that is not told keeps every surface a surface.
+        /// Everything under the node the caller calls first person is placed for the eye alone.
+        ///
+        /// The game marks the root of the player's arms and not their drawables, so the mark is
+        /// carried down the subtree: a quad under the marked group takes `MASK_FIRST_PERSON`, and
+        /// one beside it — with the mask every drawable is born with — stays solid. Read by the
+        /// water's rule, no bit outside the named one, so the all-ones default never matches.
+        TEST(RtxSceneExtractorTest, whatStandsUnderTheFirstPersonRootIsPlacedForTheEyeAlone)
+        {
+            constexpr osg::Node::NodeMask sFirstPerson = 1u << 9;
+
+            osg::ref_ptr<osg::Group> arms = new osg::Group;
+            arms->setNodeMask(sFirstPerson);
+            arms->addChild(makeQuad());
+
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            root->addChild(arms);
+            root->addChild(makeQuad());
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+            extractor.setFirstPersonMask(sFirstPerson);
+            extractor.extract(*root, osg::Matrixf::identity(), 0);
+
+            std::vector<Rtx::InstanceRecord> records;
+            Rtx::makeInstanceRecords(scene, records);
+
+            ASSERT_EQ(records.size(), 2u);
+            EXPECT_EQ(records[0].mMask, Rtx::Shaders::MASK_FIRST_PERSON) << "under the arms' root";
+            EXPECT_EQ(records[1].mMask, Rtx::Shaders::MASK_SOLID) << "beside it";
+
+            // And a caller that names no mask — the harness — places the same graph as solid twice.
+            Rtx::SceneDesc unnamed;
+            SceneExtractor silent(unnamed);
+            silent.extract(*root, osg::Matrixf::identity(), 0);
+            Rtx::makeInstanceRecords(unnamed, records);
+            EXPECT_EQ(records[0].mMask, Rtx::Shaders::MASK_SOLID);
+        }
+
         TEST(RtxSceneExtractorTest, aDrawableTheCallerCallsWaterIsShadedAsWaterAndTheRestAreNot)
         {
             constexpr osg::Node::NodeMask sWater = 1u << 6;

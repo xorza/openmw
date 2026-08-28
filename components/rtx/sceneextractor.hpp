@@ -262,6 +262,16 @@ namespace Rtx
         /// analytic sea of its own (`addWater`).
         void setWaterMask(osg::Node::NodeMask mask) { mWaterMask = mask; }
 
+        /// Names the node mask the game puts on the player's own arms in first person, by the same
+        /// rule as the water's: a node whose mask carries no bit outside this one. Everything under
+        /// such a node is placed for the eye alone — `Shaders::MASK_FIRST_PERSON` says why. The
+        /// harness names nothing here, since it never stands in first person.
+        void setFirstPersonMask(osg::Node::NodeMask mask) { mFirstPersonMask = mask; }
+
+        /// Whether a node carrying `mask` is the root of the player's first-person arms. Asked by
+        /// the walk at every node, which is why it is not the drawable's own question like water.
+        bool isFirstPerson(osg::Node::NodeMask mask) const;
+
         /// The world's clock, in seconds, which everything the graph animates is driven by.
         ///
         /// **The world's and not the walk's.** `SceneUtil::FrameTimeSource` — what `NifOsg` gives
@@ -377,7 +387,7 @@ namespace Rtx
         /// belongs here rather than to a caller — the visitor would only be asking the same
         /// question with less to answer it from.
         void addDrawable(const osg::Drawable& drawable, const osg::NodePath& path, std::span<const Shading> shading,
-            const osg::Matrixf& place, ExtractionStats& stats);
+            const osg::Matrixf& place, bool firstPerson, ExtractionStats& stats);
 
         /// The state set a node's controllers write, or null where it has none.
         ///
@@ -443,6 +453,9 @@ namespace Rtx
             const osg::Drawable& drawable, const osg::Geometry& geometry, bool deforming, ExtractionStats& stats);
         /// Whether a drawable carrying `mask` is the world's water.
         bool isWater(osg::Node::NodeMask mask) const;
+
+        /// Whether `mask` carries no bit outside `named`, which is what both questions above ask.
+        static bool carriesOnly(osg::Node::NodeMask mask, osg::Node::NodeMask named);
 
         /// The one material every water drawable wears, made on demand.
         Index resolveWaterMaterial(ExtractionStats& stats);
@@ -548,6 +561,7 @@ namespace Rtx
         /// Which drawables are the sea. Zero means none of them, which is every caller that has not
         /// said otherwise.
         osg::Node::NodeMask mWaterMask = 0;
+        osg::Node::NodeMask mFirstPersonMask = 0;
 
         /// Geometry no node parents, asked of every world walk. See `follow`.
         Residency* mResident = nullptr;

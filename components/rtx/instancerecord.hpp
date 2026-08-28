@@ -49,8 +49,10 @@ namespace Rtx
         /// The mesh whose bottom-level structure this places.
         Index mMesh = sNoIndex;
 
-        /// Which rays are interested: `Shaders::MASK_SOLID`, or `MASK_WATER` for a surface a shadow
-        /// ray must pass straight through. Sunlight reaching a seabed has come through the surface,
+        /// Which rays are interested: `Shaders::MASK_SOLID`; `MASK_WATER` for a surface a shadow
+        /// ray must pass straight through; or `MASK_FIRST_PERSON` for the player's own arms, which
+        /// only the eye may meet. Sunlight reaching a seabed has come through the surface,
+
         /// so a sea that occluded would black out every shallow in the game — and saying it in the
         /// mask costs traversal nothing, where building the water non-opaque so a candidate loop
         /// could wave shadow rays past was measured at half the frame rate.

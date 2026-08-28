@@ -70,7 +70,10 @@ void main()
     const vec3 direction = ray.mDirection;
 
     const Cone cone = coneAt(frame.mCamera);
-    Surface surface = trace(origin, direction, 0.0, cone.mWidth, cone.mSpread, MASK_SOLID | MASK_WATER);
+    // The eye alone asks for the first-person arms; `MASK_FIRST_PERSON` says why nothing else does.
+    Surface surface
+        = trace(origin, direction, 0.0, cone.mWidth, cone.mSpread, MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON);
+
 
     // **The nearest surface the eye is looking through, peeled off and kept.** A pane of glass is
     // one, and so is an actor the game is fading — Invisibility, Chameleon, or the distance fade at
@@ -104,7 +107,8 @@ void main()
         paneRadiance = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_PANE) * surface.mOpacity;
 
         surface = trace(origin, direction, surface.mDistance + SHADOW_BIAS, cone.mWidth, cone.mSpread,
-            MASK_SOLID | MASK_WATER);
+            MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON);
+
     }
 
     // Three channels rather than a colour: what is finished, what a filter may still work on, and

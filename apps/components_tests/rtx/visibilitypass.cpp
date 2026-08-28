@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
@@ -711,6 +712,43 @@ namespace Rtx
                 EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
 
                 return pixels[(std::size_t{ size / 2 } * size + size / 2) * 4];
+            }
+
+            /// A wall square to the sun with a pane held twenty units across at y = -50, as the three
+            /// bytes its centre pixel comes back as.
+            ///
+            /// **What the water test and the first-person test share**, each placing the pane its
+            /// own way through `place`. The camera stands off the sun's axis, so the centre pixel
+            /// lands on the patch of wall the pane shadows without the camera's own ray having to
+            /// cross the pane — it passes y = -50 at x = 50, and the pane reaches 20 — or straight
+            /// at the pane, to see it at all.
+            std::array<std::uint8_t, 3> paneOverWall(
+                const std::function<void(SceneDesc&, std::span<const osg::Vec3f>)>& place, bool lookAtIt)
+            {
+                constexpr std::uint32_t size = 33;
+                constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+                const std::array pane{
+                    osg::Vec3f(-20.0f, -50.0f, -20.0f),
+                    osg::Vec3f(20.0f, -50.0f, -20.0f),
+                    osg::Vec3f(20.0f, -50.0f, 20.0f),
+                    osg::Vec3f(-20.0f, -50.0f, 20.0f),
+                };
+
+                SceneDesc scene = makeWall();
+                place(scene, pane);
+
+                Shaders::VisibilityConstants camera = lookAtIt
+                    ? makeCamera(
+                        osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, -50.0f, 0.0f), 60.0f, size, size, 10000.0f)
+                    : makeCamera(
+                        osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+                camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
+                camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
+                return { pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             }
 
             /// The fixture's textures, numbered the way its scene added them.
@@ -3332,60 +3370,59 @@ namespace Rtx
         /// shader where traversal alone had been enough.
         TEST_F(RtxVisibilityTest, waterIsVisibleToACameraAndInvisibleToAShadowRay)
         {
-            constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
-
-            // A pane twenty units across at y = -50, between the wall and everything in front of it.
-            const std::array pane{
-                osg::Vec3f(-20.0f, -50.0f, -20.0f),
-                osg::Vec3f(20.0f, -50.0f, -20.0f),
-                osg::Vec3f(20.0f, -50.0f, 20.0f),
-                osg::Vec3f(-20.0f, -50.0f, 20.0f),
+            const auto made = [](MaterialKind kind) {
+                return [kind](SceneDesc& scene, std::span<const osg::Vec3f> pane) {
+                    Material material;
+                    material.mKind = kind;
+                    scene.addInstance(MeshInstance{
+                        .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
+                        .mMaterial = scene.addMaterial(material),
+                    });
+                };
             };
-
-            const auto renderPixel = [&](MaterialKind kind, bool lookAtIt) {
-                SceneDesc scene = makeWall();
-
-                Material material;
-                material.mKind = kind;
-                scene.addInstance(MeshInstance{
-                    .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
-                    .mMaterial = scene.addMaterial(material),
-                });
-
-                // Off the sun's axis, so the centre pixel lands on the patch of wall the pane
-                // shadows without the camera's own ray having to cross the pane: it passes y = -50
-                // at x = 50, and the pane reaches 20. Or straight at the pane, to see it at all.
-                Shaders::VisibilityConstants camera = lookAtIt
-                    ? makeCamera(
-                          osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, -50.0f, 0.0f), 60.0f, size, size, 10000.0f)
-                    : makeCamera(
-                          osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-                camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
-                camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
-
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
-                return std::array<std::uint8_t, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
-            };
-            const auto render = [&](MaterialKind kind, bool lookAtIt) { return renderPixel(kind, lookAtIt)[0]; };
 
             // A solid pane stops the camera's ray and the sun's alike, so the wall behind is dark.
-            EXPECT_EQ(render(MaterialKind::Surface, false), 0) << "a solid pane shadows the wall";
+            EXPECT_EQ(paneOverWall(made(MaterialKind::Surface), false)[0], 0) << "a solid pane shadows the wall";
 
             // The same pane as water: the camera still meets it, and the sun goes straight through.
             // 0.5 albedo times 2.0 over pi is 0.318310, which encodes to 153 of 255.
-            EXPECT_EQ(render(MaterialKind::Water, false), 153) << "and water does not";
+            EXPECT_EQ(paneOverWall(made(MaterialKind::Water), false)[0], 153) << "and water does not";
 
             // And the camera does still meet it. Asserted as "bluer than it is red", which the wall
             // cannot be at any brightness — it is grey through every channel — and which survives
             // water's shading changing, as it will.
-            const std::array<std::uint8_t, 3> seen = renderPixel(MaterialKind::Water, true);
+            const std::array<std::uint8_t, 3> seen = paneOverWall(made(MaterialKind::Water), true);
             EXPECT_GT(seen[2], seen[0]) << "though a camera still sees it";
         }
 
+        /// The player's own arms are seen by the eye and shadow nothing.
+        ///
+        /// The same pane as the water's test, placed as first person: the patch of wall behind it
+        /// reads exactly what it reads with nothing in the way, and the pane is still there to look
+        /// at. A pair of hands with no body behind them would otherwise cast the shadow of a pair of
+        /// hands, which the game's own casting masks never let it do.
+        TEST_F(RtxVisibilityTest, theFirstPersonArmsAreSeenAndShadowNothing)
+        {
+            const auto placed = [](bool firstPerson) {
+                return [firstPerson](SceneDesc& scene, std::span<const osg::Vec3f> pane) {
+                    scene.addInstance(MeshInstance{
+                        .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
+                        .mFirstPerson = firstPerson,
+                    });
+                };
+            };
+
+            const std::uint8_t open = paneOverWall([](SceneDesc&, std::span<const osg::Vec3f>) {}, false)[0];
+            ASSERT_GT(open, 0) << "the sun lights the wall";
+            EXPECT_EQ(paneOverWall(placed(false), false)[0], 0) << "a solid pane shadows the wall";
+            EXPECT_EQ(paneOverWall(placed(true), false)[0], open) << "and the arms do not";
+            EXPECT_GT(paneOverWall(placed(true), true)[0], 0) << "though the eye still sees them";
+        }
+
         /// Water over a bed, absorbing exactly what Beer-Lambert says it should over the path taken.
+
         ///
         /// A flat sea, so the surface is its own plane and the ray crosses the depth once rather than
         /// through whatever facet a wave put in the way. Nearly straight down — `makeCamera` will not

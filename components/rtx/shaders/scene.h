@@ -709,6 +709,16 @@ namespace Rtx::Shaders
     RTX_CONST uint MASK_SOLID = 0x01u;
     RTX_CONST uint MASK_WATER = 0x02u;
 
+    /// The player's own arms in first person: seen by the eye and by no other ray.
+    ///
+    /// **A pair of hands with no body behind them casts a shadow of a pair of hands**, which the
+    /// game never showed — its first-person model wears `Mask_FirstPerson`, and neither of the
+    /// shadow-casting masks the rasterizer builds nor the reflection camera's include it. So the
+    /// eye's own trace asks for this bit and the shadow rays, the bounces and the water's rays do
+    /// not, and the arms are lit and drawn like anything else while shadowing and reflecting as
+    /// nothing at all.
+    RTX_CONST uint MASK_FIRST_PERSON = 0x04u;
+
     /// Where a mesh's vertices and indices begin in the shared buffers.
     ///
     /// Indices are mesh-local, so a triangle's vertex is `mVertexOffset` plus what the index says.
