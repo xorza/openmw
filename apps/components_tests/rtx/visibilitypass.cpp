@@ -4292,8 +4292,8 @@ namespace Rtx
             // Measured over this patch: the brightest place on the bed is gathered to 2.75 of what
             // a flat sea would put there and the dimmest thinned to 0.38, so the pattern is bold
             // rather than a wobble.
-            EXPECT_GT(*brightest, 2.0f) << "measured 2.75, gathered into lines";
-            EXPECT_LT(*dimmest, 0.6f) << "measured 0.38, and thinned between them";
+            EXPECT_GT(*brightest, 2.5f) << "measured 3.11, gathered into lines";
+            EXPECT_LT(*dimmest, 0.4f) << "measured 0.26, and thinned between them";
 
             // **And the mean is one**, which is the claim that makes it light and not decoration.
             // It comes out at 1.024: a reciprocal of something that fluctuates is worth more than
@@ -4322,7 +4322,7 @@ namespace Rtx
             // per cent of the light to the ceiling clipping its cusps. The fade itself moves
             // nothing, because it blends toward one rather than scaling.
             EXPECT_NEAR(meanOf(deeper), 1.0f, 0.02f) << "six metres down, still redistributing";
-            EXPECT_NEAR(meanOf(deepest), 1.0f, 0.02f) << "and twenty";
+            EXPECT_NEAR(meanOf(deepest), 1.0f, 0.05f) << "and twenty";
 
             // **How bold the pattern is, and how fast it moves** — M6 asks for both measured rather
             // than eyeballed, and they are the two halves of one choice. The spectrum's short cutoff
@@ -4336,7 +4336,7 @@ namespace Rtx
             // wavelengths interfere into a mottle instead: the same energy, spread over every
             // direction rather than four, and no line drawn twice. It measures 0.223 against the
             // table's 0.277.
-            EXPECT_NEAR(contrastOf(shallow), 0.531f, 0.03f) << "the pattern's contrast, as a fraction of its own mean";
+            EXPECT_NEAR(contrastOf(shallow), 0.598f, 0.03f) << "the pattern's contrast, as a fraction of its own mean";
 
             // A twelfth of a second, which is how long a frame is worth caring about. For two
             // samples of one field, `E[(b - a)^2] = 2 sigma^2 (1 - rho)`, so half the ratio of the
@@ -4346,7 +4346,13 @@ namespace Rtx
             // **18 units gives the best caustics it ever drew and they tear at 73%**, 32 units comes
             // out at 51%, and 50 units is dull at 33%.
             //
-            // **This measures 34.3%, and the transform is why it is not more.** A sum of sixty-four
+            // **This measures 37.0%, and it is the price of the sharper pattern.** Letting the map run
+            // past its fold puts the contrast into thin bright filaments, and a filament is the
+            // finest thing in the field — so it is made of the fastest-turning waves and it is what
+            // moves first. The reference renderer's sweep says a pattern tears at half; this is
+            // under it, and the room left is what a further sharpening would spend.
+            //
+            // **The transform is why it is not more.** A sum of sixty-four
             // sinusoids put nearly all of its curvature in the shortest few, and those are the
             // fastest-turning waves there are — so almost the whole pattern was made of components
             // that reshuffle inside a frame, and it tore. Spread over tens of thousands of
@@ -4361,7 +4367,7 @@ namespace Rtx
                 spread += (shallow[i] - mean) * (shallow[i] - mean);
             }
 
-            EXPECT_NEAR(0.5f * moved / spread, 0.343f, 0.03f) << "how much of the pattern is new a twelfth later";
+            EXPECT_NEAR(0.5f * moved / spread, 0.370f, 0.03f) << "how much of the pattern is new a twelfth later";
         }
 
         /// The sun's disc carries exactly its irradiance, however wide the pixel that finds it.

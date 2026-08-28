@@ -92,4 +92,5 @@ namespace Rtx
     /// **Off the amplitudes that were drawn and not off the spectrum they came from**, so a tile
     /// that dropped a band for want of grid says so here too.
     float waveSlope(const std::array<WaveCascade, Shaders::WAVE_CASCADES>& cascades);
+
 }

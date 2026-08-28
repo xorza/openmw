@@ -189,4 +189,5 @@ namespace Rtx
 
         return std::sqrt(squared);
     }
+
 }

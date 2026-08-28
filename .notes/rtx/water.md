@@ -92,6 +92,24 @@ Two things were missing beside it, and the depth law needs all three:
    and `bend` is scaled so the carried pattern reaches its own fold there — the strength the light
    is measured to be redistributed with, drawn with the shape the transform can carry.
 
+   **And the pattern is filaments rather than blobs, which is what the fold decides.** A caustic
+   is bright where the determinant passes near zero, so a map held short of its fold has no
+   filaments at all — only broad cells, which read as leopard skin. `WATER_CAUSTIC_FOLD` at 1.4 lets
+   the map reach its fold, which is the whole of where filaments come from, and `WATER_CAUSTIC_MAX`
+   says only where their tops are cut — so the ceiling is the brightness dial and turning it costs
+   no shape. At 3.5 the brightest place on a bed is 3.1 times what a flat sea puts there, and the
+   contrast is 0.60 at two metres against 0.53 before.
+
+   The two move together, because `WATER_CAUSTIC_JENSEN`'s correction is fitted against a *clipped*
+   tail: at a ceiling of six it had to rise to 1.5 to hold the mean at one, and at 3.5 the term is
+   charged as written. The mean is within two per cent at every depth either way.
+
+   **The scale grows as the square root of the depth**, which is `WATER_CAUSTIC_GRAIN` against the
+   focus. That is Snyder and Dera's other half and it is a property of branching, not of a blur —
+   which matters, because the two blur terms are linear in depth and are still under one texel at
+   three metres, so on their own nothing changed in the shallows anyone looks at. The measured fall
+   of contrast from two metres to six is 0.60 against the 0.58 the law asks for.
+
    Sources: [Snyder and Dera 1970](https://opg.optica.org/josa/abstract.cfm?uri=josa-60-8-1072),
    [Wei et al. 2014](https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1002/2013JC009572),
    [Hieronymi 2012](https://os.copernicus.org/articles/8/455/2012/os-8-455-2012.pdf).

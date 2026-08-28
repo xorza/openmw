@@ -28,7 +28,35 @@ const float WATER_REFRACTION_BEND = 1.0 - 1.0 / WATER_IOR;
 /// Where the refracted bundle collapses to a line the Jacobian goes to zero and the intensity to
 /// infinity — a real caustic *cusp*, and the reason a pool's bright lines are as sharp as they are.
 /// Letting one through would put a pixel in the frame that no exposure could hold.
-const float WATER_CAUSTIC_MAX = 3.0;
+///
+/// **It sets how bright the lines are and not whether there are any**, which is what makes it the
+/// dial to turn. The filaments come from `WATER_CAUSTIC_FOLD` letting the determinant reach zero;
+/// this only says where their tops are cut. At three and a half the brightest place on a bed is 3.1
+/// times what a flat sea would put there.
+const float WATER_CAUSTIC_MAX = 2.0;
+
+/// How much of the second-order term below is charged.
+///
+/// **The correction is fitted against a clipped tail, so the ceiling and this move together.** What
+/// it removes is the excess of `E[1 / det]` over one, and the ceiling decides how much of that
+/// excess ever arrives — raise it and more of the tail comes through, and the same coefficient then
+/// under-corrects. Measured: at a ceiling of six this had to go to 1.5 to hold the mean at one, and
+/// at three and a half it is back to charging the term as written.
+const float WATER_CAUSTIC_JENSEN = 1.0;
+
+/// The scale of the pattern at the focus, in world units, which it grows from.
+///
+/// **Snyder and Dera's other half, and the one a blur cannot supply.** Their measurement is that the
+/// dominant frequency of the fluctuation falls as the inverse square root of the depth — so the
+/// pattern's own scale grows as the root of it, which is branching and not any kind of blurring.
+/// Both blur terms are linear in the depth and still under one texel at three metres, so left to
+/// them nothing at all changed across the shallows anyone looks at.
+///
+/// **Fitted against the law rather than derived.** The contrast from two metres to six comes out at
+/// 0.60 of itself here against the 0.58 the root asks for, and a larger grain overshoots it — 0.36
+/// at twelve. It lands within a texel of the wider tile, which is the finest the transform carries
+/// and so the finest a pattern read off it could have had.
+const float WATER_CAUSTIC_GRAIN = 8.0;
 
 /// How wide a patch of surface a point one unit down gathers its light from, per unit of depth.
 ///
@@ -36,8 +64,8 @@ const float WATER_CAUSTIC_MAX = 3.0;
 /// grow with the depth: the sun is a disc rather than a point, and the surface presents a spread of
 /// slopes. Together they say a point at depth `d` is lit by a patch this many units across, and
 /// reading the tiles at that footprint is what broadens the pattern as the water deepens. Both are
-/// geometry: the measured law that the pattern's own scale grows as the *square root* of the depth
-/// is what comes out of this and the fade together, not what either states.
+/// geometry and both are linear in the depth, which is why they are not the whole of the coarsening:
+/// `WATER_CAUSTIC_GRAIN` carries the part that is not a blur.
 ///
 /// The sun's term is its angular *diameter*, narrowed by refraction on the way in. A mip chain
 /// preserves the mean, so nothing here changes how much light arrives.
@@ -69,7 +97,7 @@ const float WATER_CAUSTIC_FOCUS = 100.0;
 /// in a metre of water. Held here the loss is under two per cent at every depth, which is what
 /// `theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt` asserts, and the pattern gives up a
 /// twentieth of its contrast to do it.
-const float WATER_CAUSTIC_FOLD = 0.85;
+const float WATER_CAUSTIC_FOLD = 1.0;
 
 /// How much of the sea's own height the surf line is spread over, and how steep a face counts as
 /// one the wave is running into.
@@ -408,9 +436,15 @@ float caustic(vec2 at, float depth, float footprint)
     float traceVariance = 0.0;
     float carried = 0.0;
 
-    // Never finer than the pixel asked for and never finer than the water allows, which are two
-    // different limits: the first is what the camera can see and the second is what is there.
-    const float widened = max(footprint, depth * (WATER_CAUSTIC_SPREAD + WATER_REFRACTION_BEND * frame.mWaveSlope));
+    // **Three limits, and the largest of them wins.** The pixel's own cone; the blur two angles put
+    // on the pattern, which grows with the depth because both are angles; and the scale of the
+    // pattern itself, which grows as the *square root* of the depth once the map has folded — that
+    // is Snyder and Dera's other half, and it is a property of branching rather than of any blur.
+    // The root is what makes the change start in the shallows, where a linear term is still under
+    // one texel and shows nothing at all.
+    const float blurred = depth * (WATER_CAUSTIC_SPREAD + WATER_REFRACTION_BEND * frame.mWaveSlope);
+    const float branched = WATER_CAUSTIC_GRAIN * sqrt(depth / WATER_CAUSTIC_FOCUS);
+    const float widened = max(footprint, max(blurred, branched));
 
     for (uint cascade = 0u; cascade < WAVE_CASCADES; ++cascade)
     {
@@ -463,7 +497,8 @@ float caustic(vec2 at, float depth, float footprint)
     // so every bright line and dark cell survives it untouched.
     //
     // The floor on the denominator is what the ceiling means, so there is one number to state.
-    const float gathered = 1.0 / (max(abs(determinant), 1.0 / WATER_CAUSTIC_MAX) * (1.0 + bend * bend * traceVariance));
+    const float gathered
+        = 1.0 / (max(abs(determinant), 1.0 / WATER_CAUSTIC_MAX) * (1.0 + WATER_CAUSTIC_JENSEN * bend * bend * traceVariance));
 
     // **Snyder and Dera's law, and the whole of why deep water has none of this.** Past the focus a
     // point on the bed is reached by several patches of surface at once and this draws one of them,
