@@ -455,6 +455,23 @@ namespace Rtx
         };
     }
 
+    std::optional<Light> emissiveLight(const osg::Vec3f& radiance, float area, float radius, const osg::Vec3f& position)
+    {
+        const osg::Vec3f intensity = radiance * (0.25f * area);
+        const float brightest = std::max({ intensity.x(), intensity.y(), intensity.z() });
+        if (!(brightest > 0.0f))
+            return std::nullopt;
+
+        const float equivalent = std::sqrt(brightest / sIntensity);
+
+        return Light{
+            .mPosition = position,
+            .mIntensity = intensity,
+            .mReach = equivalent * sReachScale + sReachBonus,
+            .mRadius = radius,
+        };
+    }
+
     osg::Vec3f lightColour(const SceneUtil::LightSource& source)
     {
         return decodeColour(source.getBaseDiffuse()) * source.getDiffuseScale()

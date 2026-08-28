@@ -240,5 +240,17 @@ namespace Rtx
             for (const float value : neutral.getValues())
                 EXPECT_EQ(value, 1.0f);
         }
+
+        /// The mean colour is every texel's mean, which is what a glowing surface's lamp radiates by.
+        TEST(RtxShadingMapTest, theMeanColourIsEveryTexelsMean)
+        {
+            // Four rows of grey rising by forty — 0, 40, 80, 120 — whose mean is 60 of 255.
+            const Painted ramp(4, 4, [](std::uint32_t, std::uint32_t y) { return static_cast<std::uint8_t>(y * 40); });
+
+            const osg::Vec3f mean = meanColour(ramp.describe());
+            EXPECT_NEAR(mean.x(), 60.0f / 255.0f, 1e-6f);
+            EXPECT_NEAR(mean.y(), 60.0f / 255.0f, 1e-6f);
+            EXPECT_NEAR(mean.z(), 60.0f / 255.0f, 1e-6f);
+        }
     }
 }

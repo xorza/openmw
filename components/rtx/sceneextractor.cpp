@@ -3,9 +3,13 @@
 #include <algorithm>
 #include <unordered_map>
 
+#include "error.hpp"
 #include "lightbuilder.hpp"
 #include "posecull.hpp"
+#include "shaders/scene.h"
+#include "shadingmap.hpp"
 #include "terraincomposite.hpp"
+#include "texturebuilder.hpp"
 
 #include <osg/BlendFunc>
 #include <osg/FrameStamp>
@@ -416,7 +420,7 @@ namespace Rtx
             // same answer as this does: a light's animation is a function of the clock alone.
             source->animate(mStamp->getSimulationTime());
 
-            mExtractor.addLight(*source, placed(), *mStats);
+            mExtractor.addLight(*source, getNodePath(), placed(), *mStats);
         }
         else if (stepParticles(node))
         {
@@ -686,7 +690,120 @@ namespace Rtx
         // one that depends on where an updater happened to sit among its siblings.
         flushEmitters(stats);
 
+        // And the lamps, for the same reason: whether a glowing mesh hangs under a `LightSource` is
+        // known only once its siblings have all been reached.
+        flushLamps(stats);
+
         return stats;
+    }
+
+    SceneExtractor::EmitterShape SceneExtractor::measureEmitter(Index mesh) const
+    {
+        const MeshRange& range = mScene.getMeshes()[mesh];
+        const std::span<const osg::Vec3f> positions = mScene.getMeshPositions(mesh);
+        const std::span<const std::uint32_t> indices
+            = mScene.getIndices().subspan(range.mIndexOffset, range.mIndexCount);
+
+        // Area-weighted, so a cap of a hundred small triangles over a stalk of two large ones
+        // balances where the glow is and not where the vertices are.
+        EmitterShape shape;
+        osg::Vec3f weighted;
+        for (std::size_t corner = 0; corner + 2 < indices.size(); corner += 3)
+        {
+            const osg::Vec3f& a = positions[indices[corner]];
+            const osg::Vec3f& b = positions[indices[corner + 1]];
+            const osg::Vec3f& c = positions[indices[corner + 2]];
+
+            const float area = 0.5f * ((b - a) ^ (c - a)).length();
+            weighted += (a + b + c) * (area / 3.0f);
+            shape.mArea += area;
+        }
+
+        if (!(shape.mArea > 0.0f))
+            return shape;
+
+        shape.mCentre = weighted / shape.mArea;
+        for (const std::uint32_t index : indices)
+            shape.mRadius = std::max(shape.mRadius, (positions[index] - shape.mCentre).length());
+
+        return shape;
+    }
+
+    osg::Vec3f SceneExtractor::textureMean(Index slot, const osg::Image* image, const osg::Vec3f& unread)
+    {
+        if (slot == sNoIndex || image == nullptr)
+            return unread;
+
+        const auto known = mTextureMeans.find(slot);
+        if (known != mTextureMeans.end())
+            return known->second;
+
+        // **What `SceneTextures` also cannot read is read as what the caller says.** A live graph
+        // holds textures that were never files — a render target, a composite — and those have no
+        // bytes to average; the renderer logs them where it describes them, and a lamp is not the
+        // place to bring the frame down over one.
+        osg::Vec3f mean = unread;
+        try
+        {
+            mean = meanColour(describeImage(*image, mLevelScratch));
+        }
+        catch (const Error&)
+        {
+        }
+
+        mTextureMeans.emplace(slot, mean);
+        return mean;
+    }
+
+    void SceneExtractor::addEmissiveLamp(
+        Index mesh, bool deforming, const Material& material, const osg::NodePath& path, const osg::Matrixf& place)
+    {
+        EmitterShape shape;
+        if (deforming)
+            shape = measureEmitter(mesh);
+        else
+        {
+            const auto [known, fresh] = mEmitterShapes.try_emplace(mesh);
+            if (fresh)
+                known->second = measureEmitter(mesh);
+            shape = known->second;
+        }
+
+        // **One scale, because that is what the content carries.** A reference's scale and a
+        // model's own node scales are uniform, and one number is what turns an area into an area:
+        // the cube root of the volume's ratio is that number whether or not the three agree.
+        const osg::Vec3f scale = place.getScale();
+        const float uniform = std::cbrt(std::abs(scale.x() * scale.y() * scale.z()));
+
+        const std::optional<Light> lamp = emissiveLight(material.mEmissiveRadiance, shape.mArea * uniform * uniform,
+            shape.mRadius * uniform, place.preMult(shape.mCentre));
+        if (!lamp.has_value())
+            return;
+
+        mPendingLamps.push_back(
+            PendingLamp{ .mLight = *lamp, .mPathStart = mCandidatePaths.size(), .mPathCount = path.size() });
+        mCandidatePaths.insert(mCandidatePaths.end(), path.begin(), path.end());
+    }
+
+    void SceneExtractor::flushLamps(ExtractionStats& stats)
+    {
+        for (const PendingLamp& pending : mPendingLamps)
+        {
+            const std::span<const osg::Node* const> ancestors(
+                mCandidatePaths.data() + pending.mPathStart, pending.mPathCount);
+            const bool underLight = std::any_of(ancestors.begin(), ancestors.end(), [this](const osg::Node* node) {
+                return std::find(mLitParents.begin(), mLitParents.end(), node) != mLitParents.end();
+            });
+            if (underLight)
+                continue;
+
+            mScene.addLight(pending.mLight);
+            ++stats.mEmissiveLamps;
+        }
+
+        mPendingLamps.clear();
+        mCandidatePaths.clear();
+        mLitParents.clear();
     }
 
     std::size_t SceneExtractor::identify(std::size_t anchor, const osg::NodePath& path)
@@ -789,6 +906,11 @@ namespace Rtx
         // can drop, and because a state set held past its node holds the textures in it alive too.
         std::erase_if(mAnimated, [this](const auto& entry) { return entry.second.mEpoch != mEpoch; });
 
+        // Keyed by slots the release below hands back, so the next glowing thing to take one is
+        // measured afresh rather than given the last tenant's shape.
+        mEmitterShapes.clear();
+        mTextureMeans.clear();
+
         // **Freed, not compacted, and that is what makes a cell boundary cheap.** Closing the gaps
         // renumbered every mesh and every material, so everything built from an index — which is
         // every bottom-level acceleration structure in the world — had to be built again: nineteen
@@ -859,9 +981,16 @@ namespace Rtx
         return entry->second.mStateSet;
     }
 
-    void SceneExtractor::addLight(
-        const SceneUtil::LightSource& source, const osg::Matrixf& place, ExtractionStats& stats)
+    void SceneExtractor::addLight(const SceneUtil::LightSource& source, const osg::NodePath& path,
+        const osg::Matrixf& place, ExtractionStats& stats)
     {
+        // **A torch is a `LIGH` record and a glowing mesh, and the record is the light.** What
+        // hangs beside this source under the same node is that mesh, and it earns no lamp of its
+        // own — `flushLamps` is where that is settled, once the whole walk has been. Noted before
+        // the light is judged, because a record that places no light is still a fixture.
+        if (path.size() >= 2)
+            mLitParents.push_back(path[path.size() - 2]);
+
         // **The recorded colours and this frame's scalars, and never the double-buffered pair the
         // rasterizer draws from.** `lightColour` says why the two are not the same light: a scale
         // of a display-encoded number is not a scale of the light it stands for. It leaves this
@@ -1032,6 +1161,16 @@ namespace Rtx
             held->second.mEpoch = mEpoch;
             mScene.moveInstance(held->second.mIndex, place);
             mScene.fadeInstance(held->second.mIndex, fade);
+        }
+
+        // **A glowing surface lights what stands near it**, and one bounce a pixel cannot find a
+        // mushroom cap: `emissiveLight` says why it is a lamp. Every pass, because the lamps are
+        // cleared with the placement and a creature that glows moves.
+        if (material != sNoIndex)
+        {
+            const Material& worn = mScene.getMaterials()[material];
+            if (worn.mEmissiveRadiance != osg::Vec3f())
+                addEmissiveLamp(mesh, read.mDeforming, worn, path, place);
         }
 
         ++stats.mInstances;
@@ -1484,6 +1623,26 @@ namespace Rtx
 
         // Folded together because the game's own shader only ever uses their product.
         material.mEmissiveColour = described->mEmissiveColour * described->mEmissiveMult;
+
+        // **What the surface throws at everything else, worked out here because here its images
+        // are.** The shader multiplies the emissive colour by the albedo and adds the glow map past
+        // it — `shadeSurface` says why that is the original engine's order — so a lamp standing for
+        // the whole surface takes the same two terms with each texture's mean in place of its
+        // texels. A texture nothing can read counts as white under the colour and as nothing on the
+        // map, which errs toward a glow rather than a dark.
+        if (material.mEmissiveColour != osg::Vec3f() || material.mEmissive != sNoIndex)
+        {
+            const osg::Vec3f tint(
+                material.mDiffuseColour.x(), material.mDiffuseColour.y(), material.mDiffuseColour.z());
+            const osg::Vec3f albedo = osg::componentMultiply(tint,
+                textureMean(
+                    material.mDiffuse, described->getTexture(Surface::TextureRole::Diffuse), osg::Vec3f(1, 1, 1)));
+            const osg::Vec3f glow
+                = textureMean(material.mEmissive, described->getTexture(Surface::TextureRole::Emissive), osg::Vec3f());
+
+            material.mEmissiveRadiance
+                = (osg::componentMultiply(albedo, material.mEmissiveColour) + glow) * Shaders::EMISSIVE_INTENSITY;
+        }
 
         // **Scaled about the middle of the texture, then offset**, which is what `NifOsg` builds its
         // texture matrix from — so `(uv - 0.5) * scale + 0.5 + offset`, resolved here into the

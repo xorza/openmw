@@ -16,6 +16,7 @@
 #include <osg/Vec3f>
 
 #include "scenedesc.hpp"
+#include "texturedata.hpp"
 
 namespace osg
 {
@@ -69,6 +70,10 @@ namespace Rtx
         /// bottom-level structure a backend has to build again, which is what makes this the cost
         /// of an actor rather than a count of them.
         std::uint32_t mDeformed = 0;
+
+        /// Lamps the walk gave to surfaces that glow, one per placed mesh with a glowing material
+        /// and no `LightSource` over it. `emissiveLight` says what one is.
+        std::uint32_t mEmissiveLamps = 0;
 
         /// Particle systems met, and the live particles they were holding.
         ///
@@ -355,7 +360,8 @@ namespace Rtx
         /// Places one light. **The graph and not the content files**, because that is where a light
         /// that moves with the thing carrying it exists: a torch in an NPC's hand is no cell
         /// record, and neither is a lamp something picked up and put down.
-        void addLight(const SceneUtil::LightSource& source, const osg::Matrixf& place, ExtractionStats& stats);
+        void addLight(const SceneUtil::LightSource& source, const osg::NodePath& path, const osg::Matrixf& place,
+            ExtractionStats& stats);
 
         /// Resolves one drawable and places it. The visitor's whole contract with this class.
         ///
@@ -573,5 +579,46 @@ namespace Rtx
         /// The emitters this walk has met so far. Kept across walks and refilled, because this is
         /// the frame path and a cell holds tens of them.
         std::vector<PendingEmitter> mPending;
+
+        /// The shape of a mesh's glow in the mesh's own space: where its surface balances, how much
+        /// of it there is, and how far it reaches from there.
+        struct EmitterShape
+        {
+            osg::Vec3f mCentre;
+            float mArea = 0.0f;
+            float mRadius = 0.0f;
+        };
+
+        EmitterShape measureEmitter(Index mesh) const;
+
+        /// Measured once per glowing mesh, because its triangles do not move; a mesh the walk
+        /// deforms is measured again each pass and never kept. Cleared by the sweep, which is what
+        /// renumbers meshes.
+        std::unordered_map<Index, EmitterShape> mEmitterShapes;
+
+        /// The mean colour of each texture a glowing material names, keyed by the scene's slot.
+        /// Read once per texture, because reading it is every texel of it; cleared by the sweep
+        /// with the slots.
+        std::unordered_map<Index, osg::Vec3f> mTextureMeans;
+        std::vector<MipLevel> mLevelScratch;
+        osg::Vec3f textureMean(Index slot, const osg::Image* image, const osg::Vec3f& unread);
+
+        /// A lamp a glowing surface earned this walk, held until the walk is over and it is known
+        /// whether a `LightSource` stands over the same thing. A candidate's own ancestors are the
+        /// run of `mCandidatePaths` it names, and `mLitParents` is what every light met stood under.
+        struct PendingLamp
+        {
+            Light mLight;
+            std::size_t mPathStart;
+            std::size_t mPathCount;
+        };
+
+        std::vector<PendingLamp> mPendingLamps;
+        std::vector<const osg::Node*> mCandidatePaths;
+        std::vector<const osg::Node*> mLitParents;
+
+        void addEmissiveLamp(
+            Index mesh, bool deforming, const Material& material, const osg::NodePath& path, const osg::Matrixf& place);
+        void flushLamps(ExtractionStats& stats);
     };
 }

@@ -13,6 +13,7 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/instancerecord.hpp>
+#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/accumulate.h>
@@ -2539,6 +2540,62 @@ namespace Rtx
             // same pixel, to the byte.
             const std::array flipped{ -through, -through, -through, -through };
             EXPECT_EQ(render(flipped), render(tilted)) << "which way the normals were authored is not information";
+        }
+
+        /// A surface that glows lights its neighbours through the lamp it is given, and not through
+        /// the bounce as well.
+        ///
+        /// **Two paths to one light, and one of them is switched off.** A cosine bounce that lands
+        /// on a glowing surface used to count its glow, and the lamp the extractor now derives
+        /// delivers the same light by a shadow ray — so the bounce hands the glow back, or a wall by
+        /// a mushroom is lit twice over. With no sun, a black sky and no ambient, a wall facing a
+        /// glowing quad and nothing else is exactly as dark as if the quad's lamp were absent.
+        ///
+        /// The lamp's own arithmetic, on the wall's default albedo of a half: a radiance of a half
+        /// over ten thousand square units is 1,250 per steradian, which reaches
+        /// `2 * sqrt(1250 / (0.25 pi)) + 128 = 207.79`; a hundred units off, the wall's centre gets
+        ///
+        ///   1250 * 0.5 * (1 - (100 / 207.79)^4)^2 / (100^2 + 1) / pi = 0.017816
+        TEST_F(RtxVisibilityTest, aGlowingSurfaceLightsItsNeighboursByItsLampAndNotByTheBounceAsWell)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            // The eye between the glowing quad and the wall, looking at the wall's middle.
+            Shaders::VisibilityConstants camera
+                = makeCamera(osg::Vec3f(0.0f, -50.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            camera.mSkyHorizon = osg::Vec3f();
+            camera.mSkyZenith = osg::Vec3f();
+            camera.mAmbient = osg::Vec3f();
+
+            // A hundred-unit quad a hundred units off the wall, wound to face it, glowing white.
+            const std::array<osg::Vec3f, 4> glowing{
+                osg::Vec3f(-50.0f, -100.0f, -50.0f),
+                osg::Vec3f(-50.0f, -100.0f, 50.0f),
+                osg::Vec3f(50.0f, -100.0f, 50.0f),
+                osg::Vec3f(50.0f, -100.0f, -50.0f),
+            };
+            Material glow;
+            glow.mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+
+            const auto render = [&](bool withLamp) {
+                SceneDesc scene;
+                scene.addInstance(MeshInstance{
+                    .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(sWallQuad, {}, {}, sQuadIndices) });
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(glowing, {}, {}, sQuadIndices),
+                    .mMaterial = scene.addMaterial(glow) });
+                if (withLamp)
+                    scene.addLight(*emissiveLight(osg::Vec3f(0.5f, 0.5f, 0.5f), 10000.0f, 50.0f * std::sqrt(2.0f),
+                        osg::Vec3f(0.0f, -100.0f, 0.0f)));
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
+                return decodeSrgb(pixels[centre]);
+            };
+
+            EXPECT_EQ(render(false), 0.0f) << "no lamp, and the bounce hands the glow back";
+            EXPECT_NEAR(render(true), 0.017816f, 0.0005f) << "the lamp, and nothing else";
         }
 
         /// A source with a size casts a penumbra, where a point casts an edge.

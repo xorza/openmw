@@ -169,6 +169,38 @@ namespace Rtx
                 (larger->mRadius / light->mRadius) * (larger->mRadius / light->mRadius), 1e-4f);
         }
 
+        /// A surface that glows is given the lamp its glow comes to, and the lamp reaches as far as
+        /// a recorded lamp of that brightness reaches.
+        ///
+        /// **A quarter of the area is Cauchy's theorem and not a guess**: a convex body's projected
+        /// area averaged over every direction is a quarter of its surface, so radiance `L` over
+        /// area `A` is `L * A / 4` per steradian on average. A quad of 400 square units at a
+        /// radiance of (2, 1, 0) is then (200, 100, 0) — as bright as a white `LIGH` of radius
+        /// `sqrt(200 / (0.25 pi))`, 15.958, which reaches `2 * 15.958 + 128 = 159.915`.
+        TEST(RtxLightBuilderTest, aGlowingSurfaceIsGivenTheLampItsGlowComesTo)
+        {
+            const float equivalent = std::sqrt(200.0f / (0.25f * Shaders::PI));
+
+            const std::optional<Light> lamp
+                = emissiveLight(osg::Vec3f(2.0f, 1.0f, 0.0f), 400.0f, 7.5f, osg::Vec3f(1.0f, 2.0f, 3.0f));
+            ASSERT_TRUE(lamp.has_value());
+            EXPECT_EQ(lamp->mPosition, osg::Vec3f(1.0f, 2.0f, 3.0f));
+            EXPECT_EQ(lamp->mIntensity, osg::Vec3f(200.0f, 100.0f, 0.0f));
+            EXPECT_NEAR(lamp->mReach, 2.0f * equivalent + 128.0f, 1e-3f);
+            EXPECT_NEAR(lamp->mReach, 159.915f, 1e-2f);
+            EXPECT_EQ(lamp->mRadius, 7.5f) << "the glow's own extent, which its shadow rays stop short of";
+
+            // The same brightness by a recorded lamp reaches the same distance, which is the rule.
+            const std::optional<Light> recorded = makeLight(osg::Vec3f(1.0f, 0.5f, 0.0f), equivalent, osg::Vec3f());
+            ASSERT_TRUE(recorded.has_value());
+            EXPECT_NEAR(recorded->mIntensity.x(), 200.0f, 1e-3f);
+            EXPECT_NEAR(recorded->mReach, lamp->mReach, 1e-3f);
+
+            // Nothing glows, nothing is placed: a black surface, or one with no area.
+            EXPECT_FALSE(emissiveLight(osg::Vec3f(), 400.0f, 7.5f, osg::Vec3f()).has_value());
+            EXPECT_FALSE(emissiveLight(osg::Vec3f(2.0f, 1.0f, 0.0f), 0.0f, 7.5f, osg::Vec3f()).has_value());
+        }
+
         /// The sun's arc, which is the engine's own and not an approximation of it.
         ///
         /// `(-400 * orbit, 75, -100)` with `orbit` running from one at sunrise to minus one at

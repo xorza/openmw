@@ -310,7 +310,7 @@ namespace Rtx::Shaders
     /// carried across or a glow that read as bright becomes a rounding error. Matched to the sky
     /// rather than to the sun, which is about a fifth of it: what these materials are for is being
     /// visible in shade, and a glowing mushroom is not as bright as the sun on it.
-    RTX_CONST float EMISSIVE_INTENSITY = DAYLIGHT * 0.2f;
+    RTX_CONST float EMISSIVE_INTENSITY = 16.0;
 
     /// How far a ray carries fog before whatever is behind it stops mattering.
     ///

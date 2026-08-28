@@ -30,29 +30,29 @@ namespace Rtx
             return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
         }
 
-        /// What one block contributes: the sum of its texels' luminance, and how many counted.
-        struct BlockLuminance
+        /// What one block or one texel contributes: the sum of its colours in linear light, and
+        /// how many counted. A transparent texel is not a colour and does not belong in an average
+        /// of them.
+        struct TexelSum
         {
-            float mSum = 0.0f;
+            osg::Vec3f mSum;
             std::uint32_t mCount = 0;
         };
 
-        /// The mean luminance of a block, from its palette and the indices that chose it.
-        ///
-        /// A transparent texel is not a colour and does not belong in an average of them.
-        BlockLuminance blockLuminance(std::span<const std::byte, 8> bytes, bool punchThrough, bool srgb)
+        osg::Vec3f linearOf(const osg::Vec3f& colour, bool srgb)
+        {
+            return srgb ? osg::Vec3f(toLinear(colour.x()), toLinear(colour.y()), toLinear(colour.z())) : colour;
+        }
+
+        /// The colours of a block, from its palette and the indices that chose it.
+        TexelSum blockSum(std::span<const std::byte, 8> bytes, bool punchThrough, bool srgb)
         {
             const ColourBlock block = ColourBlock::read(bytes, punchThrough);
-
-            std::array<float, 4> palette{};
+            std::array<osg::Vec3f, 4> palette{};
             for (std::size_t entry = 0; entry < palette.size(); ++entry)
-            {
-                const osg::Vec3f& colour = block.mPalette[entry];
-                palette[entry] = srgb ? luminanceOf(toLinear(colour.x()), toLinear(colour.y()), toLinear(colour.z()))
-                                      : luminanceOf(colour.x(), colour.y(), colour.z());
-            }
+                palette[entry] = linearOf(block.mPalette[entry], srgb);
 
-            BlockLuminance total;
+            TexelSum total;
             for (std::size_t texel = 0; texel < 16; ++texel)
             {
                 if (block.isTransparent(texel))
@@ -65,6 +65,53 @@ namespace Rtx
             return total;
         }
 
+        /// Reads the largest level of `texture` once, handing `sink` each block or texel along with
+        /// where its centre lands.
+        ///
+        /// Block-compressed formats are read through their palettes rather than decompressed: a
+        /// block's sum is its palette weighted by how many texels chose each entry, which is
+        /// arithmetic on eight bytes and needs no decoder.
+        template <class Sink>
+        void readTexels(const TextureData& texture, const Sink& sink)
+        {
+            assert(!texture.mLevels.empty());
+            const MipLevel& level = texture.mLevels.front();
+            const std::uint32_t width = std::max(level.mWidth, 1u);
+            const std::uint32_t height = std::max(level.mHeight, 1u);
+            const bool srgb = isSrgb(texture.mFormat);
+
+            if (const std::uint32_t bytes = blockBytes(texture.mFormat); bytes > 0)
+            {
+                const std::uint32_t columns = (width + 3) / 4;
+                const std::uint32_t rows = (height + 3) / 4;
+
+                // BC2 and BC3 put eight bytes of alpha before the colour block; BC1 is colour alone.
+                const std::uint32_t colourAt = bytes - 8;
+                for (std::uint32_t row = 0; row < rows; ++row)
+                    for (std::uint32_t column = 0; column < columns; ++column)
+                    {
+                        const std::size_t at
+                            = level.mOffset + (std::size_t{ row } * columns + column) * bytes + colourAt;
+
+                        // The block's own centre decides where it lands, so a block straddling a
+                        // boundary is not split between two.
+                        sink(column * 4 + 2, row * 4 + 2,
+                            blockSum(texture.mBytes.subspan(at).first<8>(),
+                                texture.mFormat == TextureFormat::Bc1RgbaSrgb, srgb));
+                    }
+                return;
+            }
+
+            for (std::uint32_t y = 0; y < height; ++y)
+                for (std::uint32_t x = 0; x < width; ++x)
+                {
+                    const std::size_t at = level.mOffset + (std::size_t{ y } * width + x) * 4;
+                    const auto channel = [&](std::size_t offset) {
+                        return std::to_integer<std::uint32_t>(texture.mBytes[at + offset]) / 255.0f;
+                    };
+                    sink(x, y, TexelSum{ linearOf(osg::Vec3f(channel(0), channel(1), channel(2)), srgb), 1 });
+                }
+        }
     }
 
     ShadingMap::ShadingMap()
@@ -79,8 +126,6 @@ namespace Rtx
         const MipLevel& level = texture.mLevels.front();
         const std::uint32_t width = std::max(level.mWidth, 1u);
         const std::uint32_t height = std::max(level.mHeight, 1u);
-        const bool srgb = isSrgb(texture.mFormat);
-
         std::array<float, std::size_t{ sExtent } * sExtent> sums{};
         std::array<std::uint32_t, std::size_t{ sExtent } * sExtent> counts{};
 
@@ -92,44 +137,13 @@ namespace Rtx
             return std::size_t{ row } * sExtent + column;
         };
 
-        if (const std::uint32_t bytes = blockBytes(texture.mFormat); bytes > 0)
-        {
-            const std::uint32_t columns = (width + 3) / 4;
-            const std::uint32_t rows = (height + 3) / 4;
-
-            // BC2 and BC3 put eight bytes of alpha before the colour block; BC1 is colour alone.
-            const std::uint32_t colourAt = bytes - 8;
-
-            for (std::uint32_t row = 0; row < rows; ++row)
-                for (std::uint32_t column = 0; column < columns; ++column)
-                {
-                    const std::size_t at = level.mOffset + (std::size_t{ row } * columns + column) * bytes + colourAt;
-                    const BlockLuminance block = blockLuminance(
-                        texture.mBytes.subspan(at).first<8>(), texture.mFormat == TextureFormat::Bc1RgbaSrgb, srgb);
-
-                    // The block's own centre decides which cell it falls in, so a block straddling
-                    // a boundary is not split between two.
-                    const std::size_t cell = cellOf(column * 4 + 2, row * 4 + 2);
-                    sums[cell] += block.mSum;
-                    counts[cell] += block.mCount;
-                }
-        }
-        else
-        {
-            for (std::uint32_t y = 0; y < height; ++y)
-                for (std::uint32_t x = 0; x < width; ++x)
-                {
-                    const std::size_t at = level.mOffset + (std::size_t{ y } * width + x) * 4;
-                    const auto channel = [&](std::size_t offset) {
-                        const float value = std::to_integer<std::uint32_t>(texture.mBytes[at + offset]) / 255.0f;
-                        return srgb ? toLinear(value) : value;
-                    };
-
-                    const std::size_t cell = cellOf(x, y);
-                    sums[cell] += luminanceOf(channel(0), channel(1), channel(2));
-                    ++counts[cell];
-                }
-        }
+        // Luminance is linear in the colour, so the luminance of a sum is the sum of luminances and
+        // a block can be read once for both this and `meanColour`.
+        readTexels(texture, [&](std::uint32_t x, std::uint32_t y, const TexelSum& texels) {
+            const std::size_t cell = cellOf(x, y);
+            sums[cell] += luminanceOf(texels.mSum.x(), texels.mSum.y(), texels.mSum.z());
+            counts[cell] += texels.mCount;
+        });
 
         // A texture smaller than the grid resolves into a handful of cells and leaves the rest
         // empty. Reading those as black would make the estimate a spike and drive the correction
@@ -194,6 +208,19 @@ namespace Rtx
 
         for (float& value : mValues)
             value = std::clamp(value / mean, sFloor, sCeiling);
+    }
+
+    osg::Vec3f meanColour(const TextureData& texture)
+    {
+        TexelSum total;
+        readTexels(texture, [&](std::uint32_t, std::uint32_t, const TexelSum& texels) {
+            total.mSum += texels.mSum;
+            total.mCount += texels.mCount;
+        });
+
+        // Every texel transparent is a cutout with no colour to speak of, and no colour is what a
+        // surface with none radiates.
+        return total.mCount > 0 ? total.mSum / static_cast<float>(total.mCount) : osg::Vec3f();
     }
 
     float paintedLight(std::span<const float> map, float u, float v)

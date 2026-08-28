@@ -94,6 +94,16 @@ namespace Rtx
         /// the sake of it.
         osg::Vec3f mEmissiveColour{ 0.0f, 0.0f, 0.0f };
 
+        /// What a unit of this surface sends out on its own, linear: its albedo's mean times its
+        /// emissive colour at `EMISSIVE_INTENSITY`, with its glow map's mean on top. Nothing for a
+        /// surface that does not glow.
+        ///
+        /// **Host-side, for the lamp a glowing thing is given.** The shader adds the emission where
+        /// it sees the surface; this is what lets the extractor say how much light the whole
+        /// surface throws at everything else, which one bounce a pixel cannot find out —
+        /// `emissiveLight`.
+        osg::Vec3f mEmissiveRadiance{ 0.0f, 0.0f, 0.0f };
+
         float mAlphaRef = 0.0f;
         AlphaMode mAlphaMode = AlphaMode::Opaque;
 

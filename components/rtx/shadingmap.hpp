@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <span>
 
+#include <osg/Vec3f>
+
 #include "shaders/scene.h"
 
 namespace Rtx
@@ -49,10 +51,6 @@ namespace Rtx
         ShadingMap();
 
         /// Estimates the map from the texture's largest level.
-        ///
-        /// Block-compressed formats are read through their palettes rather than decompressed: a
-        /// block's mean is its palette weighted by how many texels chose each entry, which is
-        /// arithmetic on eight bytes and needs no decoder.
         explicit ShadingMap(const TextureData& texture);
 
         /// `sExtent * sExtent` factors, row by row, averaging one.
@@ -69,4 +67,11 @@ namespace Rtx
     ///
     /// @param map `ShadingMap::sExtent` squared factors, which is what `TextureData::mShading` holds.
     float paintedLight(std::span<const float> map, float u, float v);
+
+    /// The mean colour of a texture's largest level, linear, with its transparent texels left out.
+    ///
+    /// **What a glowing surface's albedo is on average**, which is what a lamp standing in for the
+    /// whole surface radiates by. Read the way the shading map reads — through the block palettes,
+    /// with no decoder — and only for the handful of textures a glowing material names.
+    osg::Vec3f meanColour(const TextureData& texture);
 }

@@ -2104,6 +2104,55 @@ namespace Rtx
             EXPECT_EQ(extractOne(1.0f), osg::Vec3f(0.5f, 0.25f, 0.0f));
         }
 
+        /// A glowing surface is given a lamp where its surface balances, as bright as its glow over
+        /// its area comes to — and none where a `LightSource` already stands over the same thing.
+        ///
+        /// The unit quad glows at (0.5, 0.25, 0) with no texture, so its radiance is that colour at
+        /// `EMISSIVE_INTENSITY`. Placed at twice its size and five units up it has an area of four
+        /// and balances at (1, 1, 5), so the lamp's intensity is the radiance times a quarter of
+        /// four, and its radius is the far corner's distance from the middle: `sqrt(2)`.
+        ///
+        /// **A torch is a record and a mesh, and the record is the light.** The same quad with a
+        /// `LightSource` beside it under one node earns no lamp of its own; the one lamp in the
+        /// scene is the record's, told apart by the source size a record derives.
+        TEST(RtxSceneExtractorTest, aGlowingSurfaceIsGivenALampAndATorchsMeshIsNot)
+        {
+            const auto lampsOf = [](bool torch) {
+                osg::ref_ptr<osg::MatrixTransform> root = new osg::MatrixTransform(
+                    osg::Matrixf::scale(2.0f, 2.0f, 2.0f) * osg::Matrixf::translate(0.0f, 0.0f, 5.0f));
+
+                osg::ref_ptr<osg::Geometry> quad = makeQuad();
+                describe(*quad->getOrCreateStateSet()).mEmissiveColour = osg::Vec3f(0.5f, 0.25f, 0.0f);
+                root->addChild(quad);
+                if (torch)
+                    root->addChild(makeLightSource(100.0f, osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f)));
+
+                Rtx::SceneDesc scene;
+                SceneExtractor extractor(scene);
+                const ExtractionStats stats = extractor.extract(*root, osg::Matrixf::identity(), 0);
+                EXPECT_EQ(stats.mEmissiveLamps, torch ? 0u : 1u);
+
+                return std::vector<Light>(scene.getLights().begin(), scene.getLights().end());
+            };
+
+            const std::vector<Light> lamps = lampsOf(false);
+            ASSERT_EQ(lamps.size(), 1u);
+            const Light& lamp = lamps.front();
+            EXPECT_NEAR(lamp.mPosition.x(), 1.0f, 1e-5f);
+            EXPECT_NEAR(lamp.mPosition.y(), 1.0f, 1e-5f);
+            EXPECT_NEAR(lamp.mPosition.z(), 5.0f, 1e-5f);
+
+            const osg::Vec3f radiance = osg::Vec3f(0.5f, 0.25f, 0.0f) * Shaders::EMISSIVE_INTENSITY;
+            EXPECT_NEAR(lamp.mIntensity.x(), radiance.x(), 1e-4f);
+            EXPECT_NEAR(lamp.mIntensity.y(), radiance.y(), 1e-4f);
+            EXPECT_EQ(lamp.mIntensity.z(), 0.0f);
+            EXPECT_NEAR(lamp.mRadius, std::sqrt(2.0f), 1e-5f);
+
+            const std::vector<Light> lit = lampsOf(true);
+            ASSERT_EQ(lit.size(), 1u) << "the record's own lamp and nothing beside it";
+            EXPECT_EQ(lit.front().mRadius, 100.0f / 16.0f) << "a record's source is a sixteenth of its radius";
+        }
+
         /// Two-sidedness is what the content said, not what the pipeline state happens to be.
         ///
         /// **This is the fact that used to be guessed.** OpenGL culls nothing unless told to and
