@@ -219,6 +219,10 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     const bool fromBelow = incident.z > 0.0;
     const vec3 plane = fromBelow ? vec3(0.0, 0.0, -1.0) : vec3(0.0, 0.0, 1.0);
 
+    // One draw for the pixel and not one per ray: the reflection and the refraction leave the same
+    // point, so a shaft marched down either is marched over the same stretch of water.
+    const float marchOffset = randomAt(pixel, STREAM_WATER);
+
     // Keyed off world position rather than anything interpolated, so one cell's surface continues
     // into the next without a seam at the boundary.
     const WaterSurface sea = waterSurfaceAt(surface.mPosition.xy, surface.mFootprint);
@@ -275,7 +279,8 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     const WaterPath bounced = waterRay(leaving, away, surface.mFootprint, lobe, key + SEED_LAMPS_MIRROR);
     vec3 reflected = bounced.mRadiance;
     if (fromBelow)
-        reflected = throughWater(reflected, waterColumn(leaving, away, bounced.mDistance));
+        reflected = throughWater(reflected,
+            waterColumn(leaving, away, bounced.mDistance, surface.mFootprint, marchOffset));
     else
         mirror = WaterMirror(bounced.mPosition, away, bounced.mInstance, bounced.mDistance < WATER_MAX_PATH);
 
@@ -300,7 +305,8 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
         = waterRay(leaving, through, surface.mFootprint, lobe * WATER_REFRACTION_BEND, key + SEED_LAMPS_THROUGH);
     const vec3 refracted = fromBelow
         ? behind.mRadiance
-        : throughWater(behind.mRadiance, waterColumn(leaving, through, behind.mDistance));
+        : throughWater(behind.mRadiance,
+              waterColumn(leaving, through, behind.mDistance, surface.mFootprint, marchOffset));
 
     // With no water left between the surface and the ground, this is the ground. Only from above:
     // seen from under it, the path is a distance through air and says nothing about a shore.

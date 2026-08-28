@@ -48,38 +48,74 @@ one ray. Without the backtrack the pattern would extrude straight down as column
 down-sun, so marching the current `caustic` would not draw a shaft at all. **The backtrack is what
 turns a march into a shaft.**
 
-### Why the cap can go
+### What the cap should have been
 
 The cap's comment gives the honest reason for it: past the first focus the refracted bundle has
-folded, one Jacobian no longer describes what is there, and evaluated at the bed the model starts
-*making* light rather than moving it. Both halves of that are consequences of evaluating at the bed.
-Evaluated where the light left, the Jacobian is the right object, and what remains is a question
-about band limit rather than about validity.
+folded and one Jacobian no longer describes what is there. What it got wrong is the *number*. A cap
+at a stated depth is right, but 140 units was picked by eye where the measurements put the maximum
+of the fluctuation, and it stated nothing about what happens past it.
 
-The band limit is derivable. At depth `h` the pattern is blurred by the sun's own angular width and
-by the spread of surface slopes, so the tiles must be read at
+Two things were missing beside it, and the depth law needs all three:
 
-```
-footprint = max(cone, h * (2 * SUN_ANGULAR_RADIUS + 2 * bend * rmsSlope))
-```
+- **A band limit**, so the pattern broadens as the water deepens. The sun is a disc and the surface
+  presents a spread of slopes, and both subtend an angle, so a point at depth `h` is lit by a patch
+  `h * (sun's angular diameter + bend * rms slope)` across. The mip chain preserves the mean, so
+  reading there costs no light.
+- **A fade past the focus**, which is the measured `h^-1/2`.
+- **A normalisation**, because the tiles carry about a fifth of a real sea's curvature and so cannot
+  reach their own fold at the depth the sea does.
 
-The mip chain preserves the mean, so the pattern softens and coarsens with depth and still conserves
-light. Both terms grow linearly with depth, which is what makes deep caustics wash out on their own.
+### Steps — done
 
-### Steps
+1. The signature did not change. `caustic(vec2 at, ...)` now takes **where the light met the
+   surface**, and the caller walks back along `mTravelling` by the slant path it already computed.
+   So `sea.glsl` keeps its place below `underwater.glsl` and the geometry lives at one call.
+2. `WATER_CAUSTIC_MAX_DEPTH` is gone. Two things replaced it, and neither is a depth.
+   - **The band limit.** A point at depth `d` gathers from a patch `d * (sun's angular diameter +
+     bend * rms slope)` across, so the tiles are read at that footprint. The rms slope is a property
+     of the sea rather than of a place in it, so it rides in `VisibilityConstants::mWaveSlope` off
+     `WavePass::getSlope` rather than costing two fetches at every step of a march.
+   - **The fold.** `WATER_CAUSTIC_FOLD` holds `bend * sqrt(Var[tr H])` under 0.6, read off the chain
+     the Hessian comes from. It recedes as the band limit coarsens the read, so a bed at thirty
+     metres is still gathering where the old cap froze everything past two.
+3. The contrast **peaks in shallow water and fades as the inverse square root of the depth**, which
+   is what Snyder and Dera measured in the sea in 1970 and what every field campaign since has
+   found. `WATER_CAUSTIC_SPREAD` broadens the pattern by the same power, which is the law's other
+   half. Measured 0.57, 0.53, 0.31, 0.062 and 0.027 at one, two, six, twenty and forty metres, and
+   the mean holds within two per cent of one at all of them.
 
-1. `caustic(vec3 position, vec3 travelling, float footprint)`. The caller has `travelling` from
-   `sunUnderWater`, so `sea.glsl` keeps its place below `underwater.glsl` and nothing circles.
-2. Compute `depth` and `entry` inside. Sample the tiles at `entry`.
-3. Delete `WATER_CAUSTIC_MAX_DEPTH`. Put the depth-driven band limit above in its place.
-4. Test: the contrast falls as depth grows, and the pattern translates down-sun by
-   `depth * tan(refracted angle)`.
-5. Add a sun-term march to `waterColumn` (`underwater.glsl:132`). Keep the sky term closed form —
-   it is exact and has no pattern in it.
-6. Gate it as `fogAlong` gates shafts: no sun, no march. Reuse `fogDepth` for the step bunching and
-   the per-pixel jitter, and `lightThrough` once per stretch for the shadow.
-7. Hoist `traceVariance` out of the step loop. Each step then costs one curvature fetch per tile,
-   which is two.
+   **The focal depth is a measured constant and not a derived one, and that is the band limit's
+   doing.** A real sea's curvature is dominated by ripples far shorter than `sShortestWave`, so its
+   first focus lies under a metre. The tiles stop at half a metre of wavelength and hold about a
+   fifth of that curvature, so left to themselves they focus at eight metres and draw a pattern a
+   fifth as bold as the water has. `WATER_CAUSTIC_FOCUS` puts the focus where it is measured to be,
+   and `bend` is scaled so the carried pattern reaches its own fold there — the strength the light
+   is measured to be redistributed with, drawn with the shape the transform can carry.
+
+   Sources: [Snyder and Dera 1970](https://opg.optica.org/josa/abstract.cfm?uri=josa-60-8-1072),
+   [Wei et al. 2014](https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1002/2013JC009572),
+   [Hieronymi 2012](https://os.copernicus.org/articles/8/455/2012/os-8-455-2012.pdf).
+4. The march is in `waterColumn`, sun term only, eight even steps. Even rather than bunched: unlike
+   the air there is no density falling with height for them to follow.
+5. The gate is a **share and not an angle** — `WATER_SHAFT_FLOOR`, the beam against what the whole
+   stretch sends. An angle sounds right, because a shaft is the phase function's forward peak, but
+   what decides whether the pattern can be seen is the beam against the sky beside it, and that
+   turns with the hour, the weather and the depth. Gated at twenty-six degrees the shafts appeared
+   only when the sun was looked straight at; against the share they reach past forty-five.
+
+   **And the march returns a ratio rather than a radiance.** The same integrand is summed twice, once
+   with the lens at every step and once without, and the closed form is multiplied by the quotient.
+   The step count, the jitter and the exponentials all cancel, so a ray with no pattern to show comes
+   back as exactly `beam` — which is what lets the pattern fade in across the gate instead of
+   switching on. Before that it switched, and drew a hard circle around the sun.
+6. `STREAM_WATER` is a fourth blue-noise channel for the march offset. The fog's would have
+   correlated: the two marches lie end to end along one ray.
+7. `traceVariance` was **not** hoisted. Each step is a whole `caustic`, which is six fetches, and
+   the gate is what keeps that off most of the frame. It is the first thing to cut if the shafts
+   cost too much.
+
+**Left open.** The shaft is not shadowed by geometry above the water, and it appears at the gate's
+hard edge rather than fading in. Both are in `ISSUES.md`.
 
 ---
 
@@ -248,8 +284,8 @@ the colour it sets.
 | --- | --- | --- |
 | ~~1~~ | ~~**Item 5** — one derivation for extinction and scattering~~ | landed |
 | ~~2~~ | ~~**Item 3, step 1** — a missed refraction is deep water, not sky~~ | landed |
-| 3 | **Item 6** — the backtrack, and the band limit for the cap | one function |
-| 4 | **Item 1** — the march, and the shafts | a march, gated |
+| ~~3~~ | ~~**Item 6** — the backtrack, and the band limit for the cap~~ | landed |
+| ~~4~~ | ~~**Item 1** — the march, and the shafts~~ | landed |
 | 5 | **Item 2** — the surf line's own width, and its interior | one expression, one weight |
 | 6 | **Item 4** — split one loose assertion into two tight ones | two tests |
 | 7 | **Item 3, step 3** — a bed to the horizon | largest |

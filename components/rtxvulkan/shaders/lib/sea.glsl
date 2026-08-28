@@ -30,15 +30,46 @@ const float WATER_REFRACTION_BEND = 1.0 - 1.0 / WATER_IOR;
 /// Letting one through would put a pixel in the frame that no exposure could hold.
 const float WATER_CAUSTIC_MAX = 3.0;
 
-/// The depth past which the pattern stops sharpening, in world units — about two metres.
+/// How wide a patch of surface a point one unit down gathers its light from, per unit of depth.
 ///
-/// **The honest edge of the approximation.** `q = p - bend * depth * grad(h)` holds while the
-/// refracted bundle has not crossed itself; past the first focus the rays have folded over one
-/// another and one Jacobian no longer describes what is there. Evaluated at the bed rather than at
-/// the surface the light left, the model then starts *making* it — three quarters more at four
-/// hundred units. Holding the depth here keeps the term inside the regime where it conserves, and
-/// says the true thing anyway: caustics are sharp in a shallow pool and washed out in deep water.
-const float WATER_CAUSTIC_MAX_DEPTH = 140.0;
+/// **Why a caustic coarsens as the water deepens.** Two things blur it and both are angles, so both
+/// grow with the depth: the sun is a disc rather than a point, and the surface presents a spread of
+/// slopes. Together they say a point at depth `d` is lit by a patch this many units across, and
+/// reading the tiles at that footprint is what broadens the pattern as the water deepens. Both are
+/// geometry: the measured law that the pattern's own scale grows as the *square root* of the depth
+/// is what comes out of this and the fade together, not what either states.
+///
+/// The sun's term is its angular *diameter*, narrowed by refraction on the way in. A mip chain
+/// preserves the mean, so nothing here changes how much light arrives.
+const float WATER_CAUSTIC_SPREAD = 2.0 * SUN_ANGULAR_RADIUS / WATER_IOR;
+
+/// The depth a sea's caustics are boldest at, in world units.
+///
+/// **Measured rather than derived, because the sea this renderer synthesises cannot find its own.**
+/// A real ocean's curvature is dominated by waves far shorter than `sShortestWave` — ripples and
+/// capillaries — so its first focus lies within a metre of the surface, which is where Snyder and
+/// Dera found the maximum of the light fluctuation in 1970 and where every field measurement since
+/// has put it. The transform stops at half a metre of wavelength, so left to itself it focuses at
+/// eight, and a bed at six metres came out bolder than one at two. A metre and a half here, which
+/// is the shallow end of what the measurements report.
+///
+/// **And the carried pattern is normalised to reach its own fold here**, which is the other half of
+/// saying the sea is band-limited. The tiles hold about a fifth of a real sea's curvature, so run at
+/// the literal deflection they would draw a pattern a fifth as bold as the water has — faint at
+/// every depth rather than only at the wrong ones. Scaling instead so the fold lands at the focus
+/// gives the light the strength it is measured to be redistributed with, drawn with the shape the
+/// transform can carry.
+const float WATER_CAUSTIC_FOCUS = 100.0;
+
+/// How far toward its own fold the pattern is run at the focus, as a share of the way there.
+///
+/// **Short of one, because the fold is where the light starts going missing.** At the fold the
+/// determinant passes through zero, the ceiling clips the cusp it makes, and what the ceiling took
+/// off is light the water received and this did not put anywhere — measured at eight per cent of it
+/// in a metre of water. Held here the loss is under two per cent at every depth, which is what
+/// `theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt` asserts, and the pattern gives up a
+/// twentieth of its contrast to do it.
+const float WATER_CAUSTIC_FOLD = 0.85;
 
 /// Where on a tile a world position falls. Wrapped by the sampler, because a tile repeats.
 vec2 waveCoordinate(uint cascade, vec2 at)
@@ -223,8 +254,9 @@ float foamReaching(WaterSurface surface, float depth, float fall, float runout)
 ///
 /// **Caustics are ray density**, and a change in density is the determinant of the Jacobian of the
 /// map from where light met the surface to where it landed. For small slopes that map is
-/// `q = p - bend * depth * grad(h)`, so its Jacobian is `I - bend * depth * H` with `H` the Hessian
-/// of the same height field the normals come from — which is why the transform composes the
+/// `q = p - bend * grad(h)`, so its Jacobian is `I - bend * H` with `H` the Hessian of the same
+/// height field the normals come from — `bend` rising with the depth, and `WATER_CAUSTIC_FOCUS`
+/// setting what it rises to. That is why the transform composes the
 /// curvature into a texture of its own rather than leaving it to be differenced here. No photons, no
 /// buffer, no noise: the light is where the arithmetic says it is.
 ///
@@ -238,17 +270,30 @@ float foamReaching(WaterSurface surface, float depth, float fall, float runout)
 /// Measured on the reference renderer at this sea state, twelve pixels in ninety thousand came out
 /// differing by more than one level. It is what would put prism edges on cusps if the surface ever
 /// got steep enough for the determinant to approach zero, and it goes in when it does.
+///
+/// @param at **where the light met the surface, and not where it landed.** The map above runs from
+///        one to the other, so the Jacobian belongs at `p` — and the caller has `p` for nothing,
+///        having already worked out the refracted path to charge it for absorption. Read at the
+///        landing point instead, the pattern cannot slide as the depth grows and the sun's own
+///        direction never enters it at all: a moon drew the sun's caustics, and a bed at two metres
+///        and one at thirty drew the same ones.
+/// @param depth how far below the surface the light then travelled, in world units.
 float caustic(vec2 at, float depth, float footprint)
 {
     // Three numbers rather than four, because a Hessian is symmetric: xx, yy, and the shared
     // off-diagonal.
     vec3 hessian = vec3(0.0);
     float traceVariance = 0.0;
+    float carried = 0.0;
+
+    // Never finer than the pixel asked for and never finer than the water allows, which are two
+    // different limits: the first is what the camera can see and the second is what is there.
+    const float widened = max(footprint, depth * (WATER_CAUSTIC_SPREAD + WATER_REFRACTION_BEND * frame.mWaveSlope));
 
     for (uint cascade = 0u; cascade < WAVE_CASCADES; ++cascade)
     {
         const vec2 uv = waveCoordinate(cascade, at);
-        const float level = waveLevel(cascade, footprint);
+        const float level = waveLevel(cascade, widened);
 
         const vec3 curve = textureLod(waveCurvature[cascade], uv, level).xyz;
         hessian += curve;
@@ -264,6 +309,7 @@ float caustic(vec2 at, float depth, float footprint)
         const float trace = curve.x + curve.y;
 
         traceVariance += max(whole - max(local - trace * trace, 0.0), 0.0);
+        carried += whole;
     }
 
     // One determinant and not a ratio of two, because this surface is not displaced: the quad stays
@@ -271,14 +317,19 @@ float caustic(vec2 at, float depth, float footprint)
     // parameter space it came from. A Gerstner sea gathers toward its own crests before the light
     // ever reaches it, and would need `det(I + dD)` over the numerator to keep a depthless puddle
     // from brightening its own bottom.
-    const float bend = WATER_REFRACTION_BEND * min(depth, WATER_CAUSTIC_MAX_DEPTH);
+
+    // Rising with the depth to the fold and held there: `bend * rms curvature` reaches one at the
+    // focus, which is where a lens is at its strongest and where one Jacobian stops describing what
+    // is behind it. The fade below carries the depth from there on.
+    const float toward = WATER_CAUSTIC_FOLD * min(depth / WATER_CAUSTIC_FOCUS, 1.0);
+    const float bend = toward * inversesqrt(max(carried, 1.0e-12));
     const float determinant
         = (1.0 - bend * hessian.x) * (1.0 - bend * hessian.y) - bend * bend * hessian.z * hessian.z;
 
     // **A reciprocal of something that fluctuates is worth more than the reciprocal of its mean**,
-    // and left alone that is a bed lit brighter than the water over it lets through. The map is
-    // evaluated at the bed rather than at the surface the light left, so the samples are not
-    // weighted by the area each one stands for, and the excess is Jensen's: writing
+    // and left alone that is a bed lit brighter than the water over it lets through. One patch of
+    // surface is read for each patch of *bed*, so the samples are not weighted by the area each one
+    // stands for on the surface, and the excess is Jensen's: writing
     // `det = 1 - u + v` with `u = bend * tr(H)` and `v = bend^2 * det(H)`,
     //
     //   E[1 / det] = 1 - E[v] + Var[u] + ...
@@ -290,7 +341,16 @@ float caustic(vec2 at, float depth, float footprint)
     // so every bright line and dark cell survives it untouched.
     //
     // The floor on the denominator is what the ceiling means, so there is one number to state.
-    return 1.0 / (max(abs(determinant), 1.0 / WATER_CAUSTIC_MAX) * (1.0 + bend * bend * traceVariance));
+    const float gathered = 1.0 / (max(abs(determinant), 1.0 / WATER_CAUSTIC_MAX) * (1.0 + bend * bend * traceVariance));
+
+    // **Snyder and Dera's law, and the whole of why deep water has none of this.** Past the focus a
+    // point on the bed is reached by several patches of surface at once and this draws one of them,
+    // the rest averaging to the mean — so the pattern fades as the inverse square root of the depth
+    // while `WATER_CAUSTIC_SPREAD` broadens it by the same power. Measured in the sea since 1970 and
+    // found again by every field campaign after it, over depths of one metre to twenty-five.
+    //
+    // Blending toward one rather than scaling is what keeps the light where it was.
+    return 1.0 + (gathered - 1.0) * inversesqrt(max(depth / WATER_CAUSTIC_FOCUS, 1.0));
 }
 
 #endif

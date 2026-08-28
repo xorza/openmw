@@ -95,6 +95,8 @@ namespace Rtx
             described.mWaveExtent[cascade] = inputs.mWaves->getExtent(cascade);
         }
 
+        described.mWaveSlope = inputs.mWaves->getSlope();
+
         // **Both directions, because one buffer serves every trace.** The write has to wait for the
         // last dispatch that read it — a traced view and the world are two traces — and the next
         // dispatch has to wait for the write.

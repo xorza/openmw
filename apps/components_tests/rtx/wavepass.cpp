@@ -89,6 +89,12 @@ namespace Rtx
                 wantedTrace += Testing::momentOf(cascade, 4);
             }
 
+            // **And the number the shader is handed rather than made to fetch.** `mWaveSlope` carries
+            // this same sum to the caustic's band limit, so a `WavePass` whose slope disagreed with
+            // its own chains would blur the pattern by the wrong amount at every depth.
+            EXPECT_NEAR(waves.getSlope(), std::sqrt(wantedSlope), 1e-4f * std::sqrt(wantedSlope))
+                << "the slope the pass hands over";
+
             // A per cent, which is what nine halvings of a half-float image cost: each level is the
             // mean of four texels rounded to eleven bits of mantissa.
             EXPECT_NEAR(elevation, wantedElevation, 0.01f * wantedElevation) << "the surface's variance";

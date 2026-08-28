@@ -165,11 +165,11 @@ namespace Rtx::Shaders
     /// with each other as well as with its neighbours'. Shared with C++ because the tile is
     /// generated there and has to carry exactly this many masks.
     ///
-    /// Exactly the number drawn and not a round one: the fog takes a number and the bounce takes a
-    /// pair. A spare channel would have to be given a step to advance by, and the honest step for a
-    /// stream nobody reads is nothing — which is a value frozen for the life of the process, waiting
-    /// for whoever reaches for it next.
-    RTX_CONST uint RANDOM_STREAMS = 3;
+    /// Exactly the number drawn and not a round one: the fog takes a number, the bounce takes a
+    /// pair, and the water's own march takes a number. A spare channel would have to be given a step
+    /// to advance by, and the honest step for a stream nobody reads is nothing — which is a value
+    /// frozen for the life of the process, waiting for whoever reaches for it next.
+    RTX_CONST uint RANDOM_STREAMS = 4;
 
     /// Which channel of the tile each draw takes. A pair costs two, which is why the bounce leaves
     /// a gap.
@@ -184,6 +184,13 @@ namespace Rtx::Shaders
     /// this list to know which channels were already spoken for, and nothing pointed at it.
     RTX_CONST uint STREAM_FOG = 0u;
     RTX_CONST uint STREAM_BOUNCE = 1u;
+
+    /// Where the water's shaft march starts inside its first step.
+    ///
+    /// **Its own channel and not the fog's**, though both are march offsets down one ray: a pixel
+    /// whose air started late would have its water start late too, and the two marches lie end to
+    /// end along the same line.
+    RTX_CONST uint STREAM_WATER = 3u;
 
     /// Edge of the blue-noise tile, in pixels.
     ///

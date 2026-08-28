@@ -156,7 +156,8 @@ void main()
     // property of the path, so it belongs to the modulation and not to the material.
     if (origin.z < frame.mWaterLevel)
     {
-        const WaterColumn column = waterColumn(origin, direction, surface.mDistance);
+        const WaterColumn column = waterColumn(
+            origin, direction, surface.mDistance, surface.mFootprint, randomAt(pixel, STREAM_WATER));
 
         transmittance *= column.mTransmittance;
         shaded = throughWater(shaded, column);

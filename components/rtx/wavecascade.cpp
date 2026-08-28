@@ -167,4 +167,26 @@ namespace Rtx
 
         return cascades;
     }
+
+    float waveSlope(const std::array<WaveCascade, Shaders::WAVE_CASCADES>& cascades)
+    {
+        float squared = 0.0f;
+
+        for (const WaveCascade& cascade : cascades)
+        {
+            const float step = Shaders::TAU / cascade.mExtent;
+            const int half = static_cast<int>(cascade.mGrid) / 2;
+
+            for (std::size_t at = 0; at < cascade.mAmplitudes.size(); ++at)
+            {
+                const int row = static_cast<int>(at / cascade.mGrid) - half;
+                const int column = static_cast<int>(at % cascade.mGrid) - half;
+
+                squared += 2.0f * cascade.mAmplitudes[at].length2() * step * step
+                    * static_cast<float>(row * row + column * column);
+            }
+        }
+
+        return std::sqrt(squared);
+    }
 }

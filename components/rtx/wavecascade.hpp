@@ -80,4 +80,16 @@ namespace Rtx
     /// of the whole surface: the tiles are independent draws whose variances add, and normalising
     /// one at a time would give two seas of the roughness asked for rather than one.
     std::array<WaveCascade, Shaders::WAVE_CASCADES> makeWaveCascades(const SeaState& sea);
+
+    /// Root mean square slope of the surface these tiles describe, over every wavelength in them.
+    ///
+    /// **Parseval, over the amplitudes rather than over the field.** A slope is the elevation
+    /// differentiated once, so each wavevector contributes its own variance weighted by the square
+    /// of its wavenumber — and the draws at `k` and `-k` are independent, which is the factor of two.
+    /// It is the same sum the coarsest level of the curvature chain carries, computed here because a
+    /// mip chain is a backend's answer and this is a property of the sea.
+    ///
+    /// **Off the amplitudes that were drawn and not off the spectrum they came from**, so a tile
+    /// that dropped a band for want of grid says so here too.
+    float waveSlope(const std::array<WaveCascade, Shaders::WAVE_CASCADES>& cascades);
 }

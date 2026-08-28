@@ -77,6 +77,13 @@ namespace Rtx
         /// texture coordinate and a cone width into a level.
         float getExtent(std::size_t cascade) const { return sWaveTiles[cascade].mExtent; }
 
+        /// What `Rtx::waveSlope` made of the sea last described.
+        ///
+        /// Held rather than fetched: it is the same number the coarsest level of every curvature
+        /// chain carries, and a shader that read it there would spend two fetches at every step of a
+        /// march for a value that is the same at all of them.
+        float getSlope() const { return mSlope; }
+
     private:
         /// What one tile of the sea occupies.
         struct Tile
@@ -117,5 +124,7 @@ namespace Rtx
         /// redraws nothing.
         SeaState mSea;
         bool mDrawn = false;
+
+        float mSlope = 0.0f;
     };
 }

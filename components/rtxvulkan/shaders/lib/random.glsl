@@ -84,9 +84,13 @@ const uint SEED_LAMPS_SPRITE = 0x59u;
 /// **The one part of the stream table that stays here**, because a constant array is spelled
 /// `float[](...)` in GLSL and `{...}` in C++ and there is no third spelling both compile. It is
 /// `RANDOM_STREAMS` long by declaration, so the count still binds it; what a second shader needs to
-/// know — which channels are taken — is `STREAM_FOG` and `STREAM_BOUNCE`, and those sit with the
-/// count in `scene.h`.
-const float STREAM_TURN[RANDOM_STREAMS] = float[](0.6180340, 0.7548777, 0.5698403);
+/// know — which channels are taken — is `STREAM_FOG`, `STREAM_BOUNCE` and `STREAM_WATER`, and those
+/// sit with the count in `scene.h`.
+///
+/// The golden ratio for one number, the two-dimensional `R2` pair for the bounce, and `sqrt(2) - 1`
+/// for the water — a fourth irrational rather than a second copy of the first, because two streams
+/// turning by the same step differ only by where they started and converge on the same sweep.
+const float STREAM_TURN[RANDOM_STREAMS] = float[](0.6180340, 0.7548777, 0.5698403, 0.4142136);
 
 /// One number in `[0, 1)` for `pixel`, from this frame's `stream`th draw.
 ///

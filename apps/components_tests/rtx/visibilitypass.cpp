@@ -456,6 +456,31 @@ namespace Rtx
             return (sampled * 255.0f - 40.0f) / 30.0f;
         }
 
+        float meanOf(const std::vector<float>& field)
+        {
+            float total = 0.0f;
+            for (const float value : field)
+                total += value;
+
+            return total / static_cast<float>(field.size());
+        }
+
+        /// How far a field varies, as a fraction of its own mean.
+        ///
+        /// **The measure every water pattern here is judged by**, because what a caustic or a shaft
+        /// is asked to have is structure rather than brightness — and the brightness is what a
+        /// ratio against a flat sea has already divided out.
+        float contrastOf(const std::vector<float>& field)
+        {
+            const float mean = meanOf(field);
+
+            float spread = 0.0f;
+            for (const float value : field)
+                spread += (value - mean) * (value - mean);
+
+            return std::sqrt(spread / static_cast<float>(field.size())) / mean;
+        }
+
         /// The lobe the shader arrives at for a sea whose every wave is past the cone's reach.
         ///
         /// **Off the same spectrum the shader's textures were transformed out of.** With nothing
@@ -4077,6 +4102,66 @@ namespace Rtx
             }
         }
 
+        /// A shaft is the surface's own lens carried along the ray, and nothing else.
+        ///
+        /// **What the closed form cannot have.** `waterColumn` integrates the sun's beam exactly, and
+        /// an exact integral of a smooth thing is smooth: the water brightens toward the sun and goes
+        /// dark away from it, with no structure anywhere in between. A beam of sunlight in water has
+        /// structure because the surface over it is a lens, and carrying that down the ray is what
+        /// this measures.
+        ///
+        /// **A black sky and no ambient, so the beam is the whole pixel.** Looking up from deep
+        /// water, the surface reflects an unlit bed and refracts a black sky, so it sends down
+        /// nothing; the column's own sky term meets an ambient of nothing. What is left is the sun
+        /// scattered toward the eye over fifteen hundred units — the shaft, alone.
+        ///
+        /// **Two seas, and the mean is what says it is light rather than decoration.** A flat sea is
+        /// a lens of no power and its caustic is exactly one everywhere, so it renders the closed
+        /// form; a real one redistributes that same light. The pattern is the difference between
+        /// them and the total is not.
+        TEST_F(RtxVisibilityTest, theSunsBeamUnderWaterCarriesTheSurfacesPattern)
+        {
+            constexpr std::uint32_t size = 48;
+            constexpr std::size_t count = std::size_t{ size } * size;
+
+            const SceneDesc scene = makeFlooded(4000.0f, 2000.0f);
+
+            // Seven metres under a sun all but overhead, looking all but straight up at it — well
+            // inside the share `WATER_SHAFT_FLOOR` asks for, and at a depth a shaft happens at. Twenty
+            // metres down there is little pattern left in the water to carry.
+            const auto lookUp = [&](const SeaState& sea) {
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -0.05f, -500.0f), osg::Vec3f(0.0f, 0.0f, -490.0f), 60.0f, size, size, 10000.0f);
+                litThroughWater(camera);
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels, sea);
+
+                std::vector<float> field;
+                field.reserve(count);
+                for (std::size_t i = 0; i < count; ++i)
+                    field.push_back(decodeSrgb(pixels[i * 4 + 1]));
+
+                return field;
+            };
+
+            const std::vector<float> flat = lookUp(SeaState{ .mSignificantHeight = 0.0f });
+            const std::vector<float> running = lookUp(SeaState{});
+
+            std::vector<float> ratio;
+            ratio.reserve(count);
+            for (std::size_t i = 0; i < count; ++i)
+                ratio.push_back(running[i] / flat[i]);
+
+            // **The ratio, because the phase function is eighty times brighter down the sun's line
+            // than at the edge of a sixty-degree frame.** That is real and it is not what is being
+            // measured: dividing the two frames cancels it, along with the extinction and the
+            // geometry, and leaves the lens alone. A flat sea has a lens of no power, so its own
+            // caustic is exactly one everywhere and the ratio would be a field of ones.
+            EXPECT_GT(contrastOf(ratio), 0.06f) << "measured 0.107, where a flat sea gives nought";
+            EXPECT_NEAR(meanOf(ratio), 1.0f, 0.06f) << "measured 0.963: the shaft moves light and makes none";
+        }
+
         /// The waves gather the sun into moving lines on the bed, and move light rather than make it.
         ///
         /// Caustics are ray density — the determinant of the Jacobian of the map from where light
@@ -4108,8 +4193,8 @@ namespace Rtx
                 return image;
             };
 
-            // Green, which survives the water best of the three and so has the most of a byte left
-            // to vary over.
+            // Green, which at these depths has the most of a byte left to vary over: blue outlasts
+            // it but the still sea is already bright in blue, and red is gone.
             const auto causticField = [&](float depth, float seconds = 0.0f) {
                 // The still sea does not move, so one baseline serves whatever the clock says.
                 const std::vector<std::uint8_t> still = render(depth, SeaState{ .mSignificantHeight = 0.0f }, 0.0f);
@@ -4123,14 +4208,10 @@ namespace Rtx
                 return field;
             };
 
-            // A hundred and forty units down, which is where the lens stops sharpening.
-            const std::vector<float> capped = causticField(140.0f);
-            const auto [dimmest, brightest] = std::minmax_element(capped.begin(), capped.end());
-
-            float total = 0.0f;
-            for (const float gathered : capped)
-                total += gathered;
-            const float mean = total / static_cast<float>(count);
+            // Two metres down, where a caustic is at its sharpest.
+            const std::vector<float> shallow = causticField(140.0f);
+            const auto [dimmest, brightest] = std::minmax_element(shallow.begin(), shallow.end());
+            const float mean = meanOf(shallow);
 
             // Measured over this patch: the brightest place on the bed is gathered to 2.75 of what
             // a flat sea would put there and the dimmest thinned to 0.38, so the pattern is bold
@@ -4145,31 +4226,33 @@ namespace Rtx
             // slack allowed here, which is what makes this tolerance a test rather than a comment.
             EXPECT_NEAR(mean, 1.0f, 0.04f) << "the waves redistribute the sun, they do not make any";
 
-            // Past the cap the lens is still the one at a hundred and forty, so a bed four hundred
-            // units down gets the *same* pattern rather than a sharper one. Both are looked at from
-            // the same height above the bed, so the two frames cover the same water at the same cone
-            // width and the fields subtract.
+            // **The pattern peaks in shallow water and fades as the inverse square root of the depth
+            // past it**, which is Snyder and Dera's 1970 measurement of the sea and what every field
+            // campaign since has found. Measured here 0.57, 0.53, 0.31, 0.062 and 0.027 at one, two,
+            // six, twenty and forty metres.
             //
-            // What is left is the eight-bit round trip. The deeper bed is darker — green comes back
-            // at 119 of 255 against 141 — so half a byte on each of the two reads is about 1.4 per
-            // cent of a ratio, and on a pixel gathered to 2.7 that is 0.04. The worst over the frame
-            // measures 0.050, and the tolerance is twice it.
-            //
-            // Without the cap the reference renderer measured three quarters more light than fell
-            // at this depth — the fold the small-angle map cannot describe.
+            // Two metres to six is the law almost exactly — 0.588 against the 0.589 it asks for.
+            // Past that it falls faster, because `WATER_CAUSTIC_SPREAD` is broadening lines that
+            // were coarse to begin with: the transform stops at half a metre of wavelength where a
+            // real sea does not, so there is less fine structure to survive the blur.
             const std::vector<float> deeper = causticField(400.0f);
-            for (std::size_t i = 0; i < count; ++i)
-                ASSERT_NEAR(deeper[i], capped[i], 0.1f) << "pixel " << i << ", past the depth cap";
+            const std::vector<float> deepest = causticField(1400.0f);
+
+            EXPECT_LT(contrastOf(deeper), 0.7f * contrastOf(shallow)) << "six metres down, against two";
+            EXPECT_LT(contrastOf(deepest), 0.3f * contrastOf(deeper)) << "and twenty, against six";
+
+            // **And the mean holds at every one of them**, which is what `WATER_CAUSTIC_FOLD` was
+            // chosen on: run the pattern all the way to its fold and a metre of water loses eight
+            // per cent of the light to the ceiling clipping its cusps. The fade itself moves
+            // nothing, because it blends toward one rather than scaling.
+            EXPECT_NEAR(meanOf(deeper), 1.0f, 0.02f) << "six metres down, still redistributing";
+            EXPECT_NEAR(meanOf(deepest), 1.0f, 0.02f) << "and twenty";
 
             // **How bold the pattern is, and how fast it moves** — M6 asks for both measured rather
             // than eyeballed, and they are the two halves of one choice. The spectrum's short cutoff
             // is a limit in *time*, not in space: the waves that focus hardest are the shortest, and
             // a wave's period falls with its length, so the same waves that make the boldest
             // caustics are the ones that make them tear.
-            float spread = 0.0f;
-            for (const float gathered : capped)
-                spread += (gathered - mean) * (gathered - mean);
-
             // **A fifth less bold than the sinusoid table drew, and bought on purpose.** Curvature
             // weights a component by `A k²`, so a table of sixty-four had the shortest few owning
             // the Hessian outright — a handful of plane waves crossing, which focuses into hard
@@ -4177,8 +4260,7 @@ namespace Rtx
             // wavelengths interfere into a mottle instead: the same energy, spread over every
             // direction rather than four, and no line drawn twice. It measures 0.223 against the
             // table's 0.277.
-            EXPECT_NEAR(std::sqrt(spread / static_cast<float>(count)) / mean, 0.223f, 0.02f)
-                << "the pattern's contrast, as a fraction of its own mean";
+            EXPECT_NEAR(contrastOf(shallow), 0.531f, 0.03f) << "the pattern's contrast, as a fraction of its own mean";
 
             // A twelfth of a second, which is how long a frame is worth caring about. For two
             // samples of one field, `E[(b - a)^2] = 2 sigma^2 (1 - rho)`, so half the ratio of the
@@ -4188,19 +4270,22 @@ namespace Rtx
             // **18 units gives the best caustics it ever drew and they tear at 73%**, 32 units comes
             // out at 51%, and 50 units is dull at 33%.
             //
-            // **This measures 26.1%, and the transform is why.** A sum of sixty-four sinusoids put
-            // nearly all of its curvature in the shortest few, and those are the fastest-turning
-            // waves there are — so almost the whole pattern was made of components that reshuffle
-            // inside a frame, and it tore. Spread over tens of thousands of wavevectors the same
-            // curvature is carried mostly by longer, slower ones, and what a twelfth of a second
-            // moves is a quarter of the field rather than a half. The cutoff is still 32 units;
-            // what changed is how much of the pattern sits at it.
+            // **This measures 34.3%, and the transform is why it is not more.** A sum of sixty-four
+            // sinusoids put nearly all of its curvature in the shortest few, and those are the
+            // fastest-turning waves there are — so almost the whole pattern was made of components
+            // that reshuffle inside a frame, and it tore. Spread over tens of thousands of
+            // wavevectors the same curvature is carried mostly by longer, slower ones. The cutoff is
+            // still 32 units; what changed is how much of the pattern sits at it.
             const std::vector<float> later = causticField(140.0f, 1.0f / 12.0f);
             float moved = 0.0f;
+            float spread = 0.0f;
             for (std::size_t i = 0; i < count; ++i)
-                moved += (later[i] - capped[i]) * (later[i] - capped[i]);
+            {
+                moved += (later[i] - shallow[i]) * (later[i] - shallow[i]);
+                spread += (shallow[i] - mean) * (shallow[i] - mean);
+            }
 
-            EXPECT_NEAR(0.5f * moved / spread, 0.261f, 0.03f) << "how much of the pattern is new a twelfth later";
+            EXPECT_NEAR(0.5f * moved / spread, 0.343f, 0.03f) << "how much of the pattern is new a twelfth later";
         }
 
         /// The sun's disc carries exactly its irradiance, however wide the pixel that finds it.

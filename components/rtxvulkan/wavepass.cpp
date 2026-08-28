@@ -141,6 +141,8 @@ namespace Rtx
 
         const std::array<WaveCascade, Shaders::WAVE_CASCADES> cascades = makeWaveCascades(sea);
 
+        mSlope = waveSlope(cascades);
+
         Batch batch(mPool);
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
         {

@@ -10,6 +10,7 @@
 // `gather`. The half that answers "what is left of this light" has no opinion about
 // shading and comes first; the half that shades a water surface comes after.
 
+#include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "sea.glsl"
@@ -77,9 +78,14 @@ vec3 lightThroughWater(vec3 position, vec3 toward, float footprint)
     if (!(depth > 0.0))
         return vec3(1.0);
 
-    const float path = depth * sunUnderWater(toward).mSlant;
+    const SunUnderWater sun = sunUnderWater(toward);
+    const float path = depth * sun.mSlant;
 
-    return exp(-WATER_EXTINCTION * path) * caustic(position.xy, depth, footprint);
+    // **Where the light met the surface, which is up-sun of where it landed.** `path` is how far it
+    // came along `mTravelling` to get here, so walking that back along the same line is the point
+    // whose curvature focused it — and the whole of what makes a caustic move with the depth and
+    // with the light rather than sitting still under the bed.
+    return exp(-WATER_EXTINCTION * path) * caustic(position.xy - sun.mTravelling.xy * path, depth, footprint);
 }
 
 vec3 waterTransmittance(float path)
@@ -89,11 +95,12 @@ vec3 waterTransmittance(float path)
 
 /// What a stretch of water sends toward whoever is looking down it.
 ///
-/// **The sky's half and the sun's half, and both are integrated rather than marched.** Water is one
-/// density everywhere, so a stretch of it has a closed form where the air — which thins with height
-/// and drifts — has only a march. That is the whole reason this costs a handful of instructions
-/// against the air's twenty-four steps, and it is why the same arithmetic can be afforded on the
-/// eye's own ray, on a reflection and on a refraction alike.
+/// **The sky's half is integrated, and the sun's is too everywhere a shaft would not show.** Water is
+/// one density everywhere, so a stretch of it has a closed form where the air — which thins with
+/// height and drifts — has only a march. That is what lets the same arithmetic be afforded on the
+/// eye's own ray, on a reflection and on a refraction alike. Only inside a narrow cone about the
+/// sun's own line is anything marched, and there it is because a shaft has structure a closed form
+/// cannot hold.
 ///
 /// **The sky, arriving from every direction at once.** A phase function integrates to one over the
 /// sphere, so an even sky needs none of it and the whole of what reaches a point scatters. Light
@@ -114,9 +121,15 @@ vec3 waterTransmittance(float path)
 /// surface and better lit — and the product stays bounded anyway, because a ray under the water
 /// stops at the surface and `h(L)` never goes below nought.
 ///
-/// **No caustic in it, so there are no shafts yet.** A beam of sunlight in water is the surface's
-/// own lens pattern carried down the ray, which is a march. What this gives is the beam's *body*:
-/// the water brightening toward the sun and going dark away from it.
+/// **And the sun's half is marched where a shaft would be seen, because a shaft is a caustic.** A
+/// beam of sunlight in water is the surface's own lens pattern carried along the ray: the closed
+/// form gives the beam's *body* and says nothing about its structure, and the structure is the whole
+/// of what makes it read as light through water rather than as haze. Every step takes the same
+/// `caustic` a submerged surface takes, at its own depth and its own point of entry — which is why
+/// the pattern leans down-sun as it descends instead of standing as a column.
+///
+/// **Only where the beam is a real share of what the stretch sends**, which is `WATER_SHAFT_FLOOR`.
+/// Everywhere else the closed form is the whole answer and nothing is marched.
 ///
 /// **And the water over the stretch, which is no part of the stretch.** `(1 - T^2) / 2` counts what
 /// the stretch itself crosses and says nothing about what stands above where it begins. From above
@@ -135,9 +148,38 @@ struct WaterColumn
     vec3 mScattered;
 };
 
+/// What share of what a stretch of water sends the sun's own beam has to be before its shaft is
+/// drawn, and where the shaft reaches full strength.
+///
+/// **A share and not an angle, which is the same test `fogAlong` makes.** An angle sounds like the
+/// right gate — a shaft is the phase function's forward peak — but what decides whether the pattern
+/// can be *seen* is the beam against the sky scattered beside it, and that turns with the hour, the
+/// weather and the depth. Gated at twenty-six degrees the shafts were there only when the sun was
+/// looked straight at; against this they reach as far as they are worth reaching, which at noon in
+/// clear water is past forty-five degrees and at dusk further still.
+///
+/// **Two of them, because one drew a circle.** A march that begins at a threshold begins with a
+/// pattern already in it, and the ring where that pattern started was the sharpest edge in the
+/// frame. The pattern fades in across the two instead — and the ratio below is what makes *nothing
+/// to show* come out as exactly the closed form rather than nearly it.
+const float WATER_SHAFT_FLOOR = 0.04;
+const float WATER_SHAFT_SHOWN = 0.15;
+
+/// How many samples a shaft is drawn from.
+///
+/// The pattern varies along the ray at the scale the surface's own lens does, which is why the steps
+/// are even rather than bunched: unlike the air, there is no density falling off with height for
+/// them to follow, and what wants resolving is spread along the whole stretch.
+const uint WATER_SHAFT_STEPS = 8u;
+
 /// @param from where the stretch starts, `direction` the unit direction along it, and `path` how
 ///        long it is. All three are below the surface.
-WaterColumn waterColumn(vec3 from, vec3 direction, float path)
+/// @param footprint how wide the ray's cone is, which is the band limit the caustics are read at.
+///        The cone at the far end rather than one per step: the depth's own blur is the larger of
+///        the two everywhere a shaft is visible.
+/// @param offset where in its first step the march starts, in `[0, 1)`. Without it the samples land
+///        on the same shells every frame and the pattern reads as a set of rings.
+WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, float offset)
 {
     const vec3 transmittance = waterTransmittance(path);
     const vec3 sky = WATER_SCATTER * ((1.0 - transmittance * transmittance) * 0.5) * frame.mAmbient
@@ -166,7 +208,43 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path)
 
     const vec3 beam = WATER_SCATTER * sunward * exp(-WATER_EXTINCTION * (sun.mSlant * depth)) * gathered;
 
-    return WaterColumn(transmittance, sky + beam);
+    const float share = brightest(beam) / max(brightest(sky + beam), 1.0e-9);
+    if (share < WATER_SHAFT_FLOOR)
+        return WaterColumn(transmittance, sky + beam);
+
+    const float show = smoothstep(WATER_SHAFT_FLOOR, WATER_SHAFT_SHOWN, share);
+
+    // **A ratio and not a radiance, which is what makes the march free of its own arithmetic.** The
+    // same integrand twice — the sun's own way down, the way back to the eye, and the extinction
+    // that is what scattered — once with the surface's lens at every step and once without it. Eight
+    // jittered steps are a poor quadrature of either, and an excellent one of what separates them:
+    // the step count, the jitter and the exponentials all cancel, and what is left multiplies the
+    // closed form above.
+    //
+    // So a ray that shows no pattern comes back with exactly `beam`, to the last bit, and the ring
+    // the gate used to draw has nothing to draw it with.
+    vec3 lit = vec3(0.0);
+    vec3 plain = vec3(0.0);
+    float behind = 0.0;
+
+    for (uint step = 1u; step <= WATER_SHAFT_STEPS; ++step)
+    {
+        const float ahead = path * float(step) / float(WATER_SHAFT_STEPS);
+        const float along = behind + offset * (ahead - behind);
+
+        const vec3 at = from + direction * along;
+        const float under = max(frame.mWaterLevel - at.z, 0.0);
+        const float reach = under * sun.mSlant;
+
+        const vec3 weight = exp(-WATER_EXTINCTION * (reach + along)) * (ahead - behind);
+        const float gathered = caustic(at.xy - sun.mTravelling.xy * reach, under, footprint);
+
+        lit += weight * mix(1.0, gathered, show);
+        plain += weight;
+        behind = ahead;
+    }
+
+    return WaterColumn(transmittance, sky + beam * (lit / max(plain, vec3(1.0e-20))));
 }
 
 /// What is left of `radiance` after a column of water, plus what that column sent back.

@@ -7,4 +7,6 @@
   measures disagree by 0.088 of a mip level, against 0.025 before the surface became an FFT field.
   Where the rest of it goes is not established.
 
-- The caustics do not change with the distance from the surface. They look the same at every depth.
+- An underwater sun shaft is not blocked by geometry above the water. A rock over the surface
+  casts no gap in it.
+

@@ -403,6 +403,16 @@ namespace Rtx::Shaders
         /// a second copy of it that a change to the first would leave behind.
         float mWaveExtent[WAVE_CASCADES];
 
+        /// Root mean square slope of the whole sea, over every tile and every wavelength in them.
+        ///
+        /// **A property of the sea and not of a place in it**, which is why it is one number and not
+        /// a fetch. What wants it is the caustic's band limit: a point at depth `d` gathers its light
+        /// from a patch of surface `bend * d * this` across, so past a few metres the pattern is
+        /// blurred by the surface's own spread of slopes rather than by the pixel looking at it.
+        /// Reading it off the coarsest level of a chain would be two texture fetches at every step of
+        /// a march, for a number that is the same at all of them.
+        float mWaveSlope;
+
         /// The cell's own ambient, linear, and what a path is terminated with.
         ///
         /// **No longer added on top of the light that is traced, which is what it used to be.**
@@ -486,7 +496,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 836, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 840, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST
