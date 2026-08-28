@@ -41,11 +41,17 @@ const float WATER_CAUSTIC_MAX = 2.0;
 /// it removes is the excess of `E[1 / det]` over one, and the ceiling decides how much of that
 /// excess ever arrives — raise it and more of the tail comes through and the same coefficient
 /// under-corrects, lower it and the same coefficient takes light the ceiling had already taken.
-/// Measured against `WATER_CAUSTIC_MAX`: 1.5 at a ceiling of six, 1.0 at three and a half, a half at
-/// two, and 0.15 at one and a half, which is where it stands — a low ceiling does most of the
-/// clipping itself and leaves this little to do. Turn one of them and
-/// `theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt` says by how much the other has to follow.
-const float WATER_CAUSTIC_JENSEN = 1.5;
+/// **And `WATER_CAUSTIC_FOLD` moves it further than the ceiling does.** Past its first fold the map
+/// folds again and again, and each fold puts more of the field into cusps the ceiling then cuts —
+/// so the raw mean climbs and this has to climb with it. At a fold of one it is a tenth; at three it
+/// is 0.03, because by then the ceiling has already taken most of what this would have.
+///
+/// **At a fold of three no value of it conserves.** The shape it can correct is `u^2` and the loss
+/// is not that shape: 0.03 leaves two metres 12 per cent dark and twenty 2 per cent bright, and
+/// nothing between 0 and 1.5 does better at both. Raising `WATER_CAUSTIC_MAX` is what would carry
+/// the cusps instead of cutting them. `theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt`
+/// measures the mean at three depths and is what says so.
+const float WATER_CAUSTIC_JENSEN = 0.03;
 
 /// The scale of the pattern at the focus, in world units, which it grows from.
 ///
@@ -91,6 +97,19 @@ const float WATER_CAUSTIC_SPREAD = 2.0 * SUN_ANGULAR_RADIUS / WATER_IOR;
 /// gives the light the strength it is measured to be redistributed with, drawn with the shape the
 /// transform can carry.
 const float WATER_CAUSTIC_FOCUS = 100.0;
+
+/// How fast the pattern fades past the focus, as a power of the depth.
+///
+/// **A half is what the sea was measured at.** Snyder and Dera's law is that the amplitude of the
+/// fluctuation and its dominant frequency both fall as the inverse square root of the depth, and
+/// that is what a measurement of the ocean says. One is twice that exponent, so the pattern is gone
+/// by twenty metres where the water still has light in it — chosen for the look and not found in
+/// the sea, which is worth saying out loud beside a file full of numbers that were.
+///
+/// **Blending toward one rather than scaling is what keeps the light wherever this is set**, so the
+/// exponent is free to be turned and the mean does not follow it. Measured at two, six and twenty
+/// metres: 0.49, 0.16 and 0.042 of contrast against the half's 0.59, 0.31 and 0.14.
+const float WATER_CAUSTIC_FADE = 1.0;
 
 /// How far toward its own fold the pattern is run at the focus, as a share of the way there.
 ///
@@ -510,7 +529,7 @@ float caustic(vec2 at, float depth, float footprint)
     // found again by every field campaign after it, over depths of one metre to twenty-five.
     //
     // Blending toward one rather than scaling is what keeps the light where it was.
-    return 1.0 + (gathered - 1.0) * inversesqrt(max(depth / WATER_CAUSTIC_FOCUS, 1.0));
+    return 1.0 + (gathered - 1.0) * pow(max(depth / WATER_CAUSTIC_FOCUS, 1.0), -WATER_CAUSTIC_FADE);
 }
 
 #endif
