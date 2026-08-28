@@ -237,9 +237,9 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
         const float reach = under * sun.mSlant;
 
         const vec3 weight = exp(-WATER_EXTINCTION * (reach + along)) * (ahead - behind);
-        const float gathered = caustic(at.xy - sun.mTravelling.xy * reach, under, footprint);
+        const float lens = caustic(at.xy - sun.mTravelling.xy * reach, under, footprint);
 
-        lit += weight * mix(1.0, gathered, show);
+        lit += weight * mix(1.0, lens, show);
         plain += weight;
         behind = ahead;
     }
