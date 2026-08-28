@@ -42,9 +42,6 @@ namespace Rtx
         /// Depth of the shelf the spectrum is attenuated against.
         float mDepth = 300.0f;
 
-        /// Which way the wind blows, in radians about +Z.
-        float mBearing = 0.6f;
-
         /// **What decides whether the amplitudes have to be drawn again.** Every one of them is a
         /// function of these four numbers and of nothing else, so two equal states are one sea.
         bool operator==(const SeaState& other) const = default;

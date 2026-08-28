@@ -404,6 +404,16 @@ namespace Rtx::Shaders
         /// reads it.
         float mRainOnWater;
 
+        /// Which way the wind drives the sea, unit, in the world's XY.
+        ///
+        /// **The tiles are spread about their own +X, and this is what turns them.** The wind's
+        /// heading changes with the weather and turns through a transition, and a spectrum built
+        /// for one heading would have to be built again for the next; a rotation of where the tiles
+        /// are sampled costs nothing and is exact. It is the deck's heading, because there is one
+        /// wind over a landscape — the same one the fog is carried by — and +X where nothing blows,
+        /// which is a sea that runs as its tiles were drawn.
+        vec2 mSeaHeading;
+
         /// How wide each of the sea's tiles is, in world units, in the order they are bound.
         ///
         /// **What turns a world position into a texture coordinate and a cone width into a level.**
@@ -557,7 +567,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 944, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 952, "VisibilityConstants must be scalar-packed on every side");
 
 #endif
 

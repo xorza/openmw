@@ -89,6 +89,9 @@ namespace Rtx
             .mFar = far,
             .mWaterLevel = -std::numeric_limits<float>::infinity(),
 
+            // A sea that runs as its tiles were drawn, until a world says which way the wind blows.
+            .mSeaHeading = osg::Vec2f(1.0f, 0.0f),
+
             // **The layer `FOG_HEIGHT` names, until a weather says otherwise.** A camera is built
             // before anything has described the air over it, and a lift of nothing is a layer of no
             // height at all rather than an absence of one. `FrameWorld` overwrites this with what
@@ -124,6 +127,9 @@ namespace Rtx
             // distance; what it has instead is a footprint one pixel of the box wide for its whole
             // length, which the shader works out from `mRight` rather than carry twice.
             .mWaterLevel = -std::numeric_limits<float>::infinity(),
+
+            // A sea that runs as its tiles were drawn, until a world says which way the wind blows.
+            .mSeaHeading = osg::Vec2f(1.0f, 0.0f),
 
             // The layer `FOG_HEIGHT` names, for the reason `makeCameraFromView` gives.
             .mFogLift = 1.0f,
@@ -194,6 +200,9 @@ namespace Rtx
             // Not zero, which would be sea level: a world with no water has to answer "how deep is
             // this point" with never, and only an infinity does that without a second question.
             .mWaterLevel = -std::numeric_limits<float>::infinity(),
+
+            // A sea that runs as its tiles were drawn, until a world says which way the wind blows.
+            .mSeaHeading = osg::Vec2f(1.0f, 0.0f),
 
             // The layer `FOG_HEIGHT` names, for the reason `makeCameraFromView` gives.
             .mFogLift = 1.0f,

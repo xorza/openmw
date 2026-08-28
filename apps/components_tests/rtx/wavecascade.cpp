@@ -189,18 +189,19 @@ namespace Rtx
                     ASSERT_EQ(first[index].mAmplitudes[at], second[index].mAmplitudes[at])
                         << "tile " << index << ", entry " << at;
 
-            // And another sea is another sea: the swell turns with the wind rather than the tiles
-            // being redrawn around it, so the two differ everywhere off the new bearing.
-            SeaState turned = sea;
-            turned.mBearing = sea.mBearing + 1.0f;
+            // And another sea is another sea: a heavier one differs everywhere it has energy. The
+            // wind's *heading* is not a state of the sea at all — the tiles are spread about their
+            // own axis and the frame turns them, so no bearing is here to change.
+            SeaState heavier = sea;
+            heavier.mSignificantHeight = sea.mSignificantHeight * 2.0f;
 
-            const auto third = makeWaveCascades(turned);
+            const auto third = makeWaveCascades(heavier);
 
             std::size_t moved = 0;
             for (std::size_t at = 0; at < first[0].mAmplitudes.size(); ++at)
                 moved += third[0].mAmplitudes[at] != first[0].mAmplitudes[at] ? 1 : 0;
 
-            EXPECT_GT(moved, first[0].mAmplitudes.size() / 20) << "a different wind is a different sea";
+            EXPECT_GT(moved, first[0].mAmplitudes.size() / 20) << "a different sea state is a different sea";
         }
     }
 }

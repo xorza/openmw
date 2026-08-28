@@ -124,6 +124,19 @@ namespace Rtx
             EXPECT_FLOAT_EQ(constants.mFogWind.x(), 0.27f);
             EXPECT_FLOAT_EQ(constants.mFogWind.y(), 0.36f);
 
+            // And the sea runs the same way, as a unit heading: the deck's `(0.8, 0.6)` is a turn,
+            // whose heading is `(0.6, 0.8)`.
+            EXPECT_FLOAT_EQ(constants.mSeaHeading.x(), 0.6f);
+            EXPECT_FLOAT_EQ(constants.mSeaHeading.y(), 0.8f);
+
+            // A world with no deck over it — a room — has no wind, and its water runs as the tiles
+            // were drawn rather than nowhere.
+            FrameWorld still = world;
+            still.mClouds.mBearing = osg::Vec2f();
+            Shaders::VisibilityConstants becalmed = constants;
+            applyWorld(still, becalmed);
+            EXPECT_EQ(becalmed.mSeaHeading, osg::Vec2f(1.0f, 0.0f));
+
             // **The one field that does not pass through, and it is meant not to.** What the shader
             // is told is where the surface actually is, and the surface is placed a hair under its
             // nominal level so that ground authored at sea level is not fighting it —

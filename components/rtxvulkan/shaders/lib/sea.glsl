@@ -214,11 +214,29 @@ vec2 rainSlope(vec2 at, float footprint, out float lost)
     return slope;
 }
 
+/// A world position in the sea's own frame, which the wind's heading turns.
+///
+/// The tiles are spread about their own +X; `frame.mSeaHeading` is where that axis points in the
+/// world, so a world position is turned back by it before a tile is read.
+vec2 seaLocal(vec2 at)
+{
+    const vec2 heading = frame.mSeaHeading;
+
+    return vec2(heading.x * at.x + heading.y * at.y, heading.x * at.y - heading.y * at.x);
+}
+
+/// A slope read in the sea's own frame, turned into the world's.
+vec2 seaWorld(vec2 slope)
+{
+    const vec2 heading = frame.mSeaHeading;
+
+    return vec2(heading.x * slope.x - heading.y * slope.y, heading.y * slope.x + heading.x * slope.y);
+}
+
 /// Where on a tile a world position falls. Wrapped by the sampler, because a tile repeats.
 vec2 waveCoordinate(uint cascade, vec2 at)
-
 {
-    return at / frame.mWaveExtent[cascade];
+    return seaLocal(at) / frame.mWaveExtent[cascade];
 }
 
 /// What share of the sea's whole curvature a tile still carries at this level of its chain.
@@ -301,10 +319,15 @@ WaterSurface waterSurfaceAt(vec2 at, float footprint)
         surface.mLostSlope += max(field.z - dot(field.xy, field.xy), 0.0);
     }
 
+    // The tiles were read in the sea's frame and the rings are laid in the world's, so the one is
+    // turned before the other joins it. The lost slope is a variance and turns with nothing.
+    slope = seaWorld(slope);
+
     // What the rain adds on top, which is not part of the spectrum and must not be. Its lost share
     // joins the spectrum's, because a cone that cannot resolve a ring lost real slope either way.
     float rainLost;
     slope += rainSlope(at, footprint, rainLost);
+
     surface.mLostSlope += rainLost;
 
     surface.mNormal = normalize(vec3(-slope, 1.0));

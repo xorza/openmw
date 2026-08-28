@@ -117,7 +117,13 @@ namespace Rtx
                         continue;
 
                     const float frequency = sea.getFrequency(wavenumber);
-                    const float angle = std::atan2(wavevector.y(), wavevector.x()) - sea.mBearing;
+
+                    // **Spread about +X, which is the sea's own frame and never the wind's.** Which
+                    // way the wind blows changes with the weather and turns through a transition,
+                    // and a spectrum built for one heading would be rebuilt for the next. The
+                    // shader turns the tiles by the frame's `mSeaHeading` where it samples them
+                    // instead, and a turn there costs a rotation rather than a transform.
+                    const float angle = std::atan2(wavevector.y(), wavevector.x());
 
                     // The spectrum over wavevectors: the density over frequency, carried across by
                     // the dispersion relation's own slope, spread over directions, and divided by

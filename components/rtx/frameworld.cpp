@@ -36,6 +36,10 @@ namespace Rtx
         // north was reaching the air as east.
         const osg::Vec2f heading(world.mClouds.mBearing.y(), world.mClouds.mBearing.x());
         constants.mFogWind = heading * world.mAir.mWind;
+
+        // The sea runs the way the deck does, and as its tiles were drawn where nothing blows.
+        constants.mSeaHeading = heading.length2() > 0.0f ? heading / heading.length() : osg::Vec2f(1.0f, 0.0f);
+
         constants.mFogEdge = world.mAir.mEdge;
 
         // The same hair the water's own placement is dropped by, so that what the shader calls the

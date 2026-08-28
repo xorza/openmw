@@ -5065,7 +5065,72 @@ namespace Rtx
             EXPECT_LT(running.mPeak, 40) << "measured 10: and no pixel of it near the mirror's";
         }
 
+        /// The sea runs the way the wind blows, and turning the wind turns the whole sea with it.
+        ///
+        /// **A rotation, checked as one.** The tiles are spread about their own +X and the frame
+        /// turns them by `mSeaHeading` where they are read, so a sea under a north wind at world
+        /// `p` is the sea under an east wind at `p` turned back — `(p.y, -p.x)`. Looked at straight
+        /// down through a square orthographic frame centred on the origin, with right along +X and
+        /// up along +Y, that is the picture turned a quarter turn: pixel `(i, j)` of the north frame
+        /// is pixel `(N - 1 - j, i)` of the east one. A quarter turn maps the tiles' texels onto
+        /// themselves, so the two frames sample the same texels and agree to the float.
+        ///
+        /// Lit so that a turn of the surface is a turn of the picture and nothing else: a sun at
+        /// the zenith, an even sky, and open water with no bed for a turned refraction to land
+        /// somewhere different on. The water's own march is jittered, so eight frames are averaged
+        /// and the two are compared within a few bytes.
+        TEST_F(RtxVisibilityTest, theSeaRunsTheWayTheWindBlows)
+        {
+            constexpr std::uint32_t size = 64;
+            constexpr float across = 2000.0f;
+
+            const auto looking = [&](const osg::Vec2f& heading, std::vector<std::uint8_t>& pixels) {
+                const osg::Matrixf view = osg::Matrixf::lookAt(
+                    osg::Vec3f(0.0f, 0.0f, 500.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f));
+                Shaders::VisibilityConstants camera
+                    = makeOrthographicCameraFromView(view, across, across, size, size, 1.0f, 100000.0f);
+
+                camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
+                camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
+                camera.mSunDiscColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+                camera.mSkyHorizon = osg::Vec3f(0.5f, 0.5f, 0.5f);
+                camera.mSkyZenith = camera.mSkyHorizon;
+                camera.mWaterLevel = 0.0f;
+                camera.mTime = 3.0f;
+                camera.mSeaHeading = heading;
+
+                const SceneDesc scene = makeOpenWater(20000.0f);
+                countHits(scene, {}, camera, size, pixels, SeaState{}, 8);
+            };
+
+            std::vector<std::uint8_t> east;
+            std::vector<std::uint8_t> north;
+            looking(osg::Vec2f(1.0f, 0.0f), east);
+            looking(osg::Vec2f(0.0f, 1.0f), north);
+
+            // The two are pictures of a running sea and not of a mirror, or a turn would show nothing.
+            std::size_t varied = 0;
+            for (std::size_t i = 4; i < east.size(); i += 4)
+                varied += east[i] != east[i - 4] ? 1 : 0;
+            ASSERT_GT(varied, std::size_t{ size } * size / 10) << "the sea is flat";
+
+            std::size_t agreeing = 0;
+            std::size_t turnedAway = 0;
+            for (std::uint32_t j = 0; j < size; ++j)
+                for (std::uint32_t i = 0; i < size; ++i)
+                {
+                    const std::size_t here = (std::size_t{ j } * size + i) * 4;
+                    const std::size_t there = (std::size_t{ i } * size + (size - 1 - j)) * 4;
+                    agreeing += std::abs(int{ north[here] } - int{ east[there] }) <= 3 ? 1 : 0;
+                    turnedAway += std::abs(int{ north[here] } - int{ east[here] }) <= 3 ? 1 : 0;
+                }
+
+            EXPECT_GT(agreeing, std::size_t{ size } * size * 99 / 100) << "the north sea is the east sea turned";
+            EXPECT_LT(turnedAway, std::size_t{ size } * size * 9 / 10) << "and not the east sea as it was";
+        }
+
         /// Rain rings the still water under the eye, moves the rings on, and far off roughens it.
+
         ///
         /// **Close, the rings are read against a graded sky.** A resolved ring is a mirror facet,
         /// and a facet catches a quarter-degree sun only where its slope matches exactly — so a sun
