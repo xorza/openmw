@@ -123,7 +123,8 @@ namespace Rtx
             synthesise(waves, pool, 0.0f);
 
             // The narrow tile, because the assertion is about the filter and not about the size.
-            const Image& surface = waves.getSurface(Shaders::WAVE_CASCADES - 1);
+            constexpr std::size_t cascade = Shaders::WAVE_CASCADES - 1;
+            const Image& surface = waves.getSurface(cascade);
             const std::uint32_t width = surface.getWidth();
 
             const std::vector<float> fine = Testing::readHalves(pool, surface, 0);
@@ -152,6 +153,32 @@ namespace Rtx
                     ASSERT_NEAR(coarse[(std::size_t{ y } * (width / 2) + x) * 4], box, 0.005f * scale)
                         << "at " << x << ", " << y;
                 }
+
+            // **And what that box took out of the slope is what the spectrum says it would.** A
+            // level is a box filter, so it passes a wavevector at `sinc(kx w / 2) sinc(ky w / 2)`
+            // and loses the rest — and the shader reads exactly that loss as `curve.w` less the
+            // square of the slope it kept. `Testing::lostSlopeOf` is the same statement over the
+            // amplitudes, so this is the chain against the spectrum with the filter written out.
+            //
+            // An integer level, because a fraction of one is a blend of two boxes and this is about
+            // the box.
+            const std::vector<float> slopes = Testing::readHalves(pool, surface, 1);
+            const std::vector<float> squared = Testing::readHalves(pool, waves.getCurvature(cascade), 1);
+
+            float lost = 0.0f;
+            for (std::size_t at = 0; at < squared.size(); at += 4)
+                lost += squared[at + 3] - slopes[at + 1] * slopes[at + 1] - slopes[at + 2] * slopes[at + 2];
+
+            lost /= static_cast<float>(squared.size() / 4);
+
+            // The default state, because that is the one `WavePass` describes itself with when it is
+            // built and nothing here has described another.
+            const std::array<WaveCascade, Shaders::WAVE_CASCADES> drawn = makeWaveCascades(SeaState{});
+            const float texel = sWaveTiles[cascade].mExtent / static_cast<float>(sWaveTiles[cascade].mGrid);
+
+            const float wanted = Testing::lostSlopeOf(drawn[cascade], 2.0f * texel);
+
+            EXPECT_NEAR(lost, wanted, 0.025f * wanted) << "the slope one halving averaged away";
         }
 
         /// The sea moves, and it moves at the speed its own dispersion relation gives.

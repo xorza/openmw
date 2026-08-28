@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 
@@ -40,5 +41,53 @@ namespace Rtx::Testing
         }
 
         return total;
+    }
+
+    /// How much of the slope a mip chain read at `footprint` has averaged away.
+    ///
+    /// **What `WaterSurface::mLostSlope` is, written out on this side.** A level of the chain is the
+    /// mean of a square of texels, and a mean of `n` *samples* a texel apart is Dirichlet's kernel
+    /// rather than a `sinc`: the field was point-sampled onto the grid before any of it was
+    /// averaged, so what a level passes is `sin(n p) / (n sin p)` with `p` half a wavevector's phase
+    /// across one texel. Reading it as the box of a continuous field over-states the loss by a fifth.
+    /// What survives is the field through that, what is lost is the rest, and the shader takes the
+    /// difference of a mean square and a squared mean to get it.
+    ///
+    /// **The blend of two levels, because `textureLod` reads at a fraction.** `waveLevel` asks for
+    /// `log2(footprint / texel)`, and the sampler mixes the levels either side of it — so the field
+    /// the shader sees is the mix of two boxes and its transfer is the mix of their two, not the box
+    /// of any single width.
+    ///
+    /// **Never below the finest level**, which is where `waveLevel` clamps: a cone narrower than a
+    /// texel has nothing further to be shown, and the chain has nothing finer to show it.
+    inline float lostSlopeOf(const WaveCascade& cascade, float footprint)
+    {
+        const float texel = cascade.mExtent / static_cast<float>(cascade.mGrid);
+        const float level = std::max(std::log2(footprint / texel), 0.0f);
+        const float share = level - std::floor(level);
+
+        const auto passed = [texel](float count, const osg::Vec2f& wavevector) {
+            const auto along = [texel, count](float wavenumber) {
+                const float phase = 0.5f * wavenumber * texel;
+
+                return std::abs(std::sin(phase)) < 1e-6f ? 1.0f : std::sin(count * phase) / (count * std::sin(phase));
+            };
+
+            return along(wavevector.x()) * along(wavevector.y());
+        };
+
+        const float coarse = std::exp2(std::floor(level));
+        const float finer = std::exp2(std::floor(level) + 1.0f);
+
+        float lost = 0.0f;
+        for (std::size_t at = 0; at < cascade.mAmplitudes.size(); ++at)
+        {
+            const osg::Vec2f wavevector = waveVectorAt(cascade, at);
+            const float carried = (1.0f - share) * passed(coarse, wavevector) + share * passed(finer, wavevector);
+
+            lost += 2.0f * cascade.mAmplitudes[at].length2() * wavevector.length2() * (1.0f - carried * carried);
+        }
+
+        return lost;
     }
 }
