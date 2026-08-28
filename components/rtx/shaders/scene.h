@@ -480,6 +480,67 @@ namespace Rtx::Shaders
     /// milkiness, and why looking away from the sun under water is looking into the dark.
     RTX_CONST float WATER_ASYMMETRY = 0.92f;
 
+    /// A ceiling on how bright a focus is allowed to get.
+    ///
+    /// Where the refracted bundle collapses to a line the Jacobian goes to zero and the intensity to
+    /// infinity — a real caustic *cusp*, and the reason a pool's bright lines are as sharp as they
+    /// are. Letting one through would put a pixel in the frame that no exposure could hold.
+    ///
+    /// **It sets how bright the lines are and not whether there are any**, which is what makes it
+    /// the dial to turn. The filaments come from `WATER_CAUSTIC_FOLD` letting the determinant reach
+    /// zero; this only says where their tops are cut.
+    ///
+    /// **Here rather than beside the rest of the caustic's dials, because `causticGain` is fitted
+    /// against it.** The clip decides how much of the tail ever arrives, so the two are one
+    /// statement and a test that checks the fit has to be able to read both.
+    RTX_CONST float WATER_CAUSTIC_MAX = 2.0f;
+
+    /// What the fit below is made of, and the one relation among them that is not fitted: the
+    /// numerator's coefficient is the denominator's plus one, which is what makes the curve's second
+    /// order exactly `1 + f^2`. Three loose numbers written into the expression would hide it.
+    RTX_CONST float WATER_CAUSTIC_GAIN_SQUARE = 1.1017f;
+    RTX_CONST float WATER_CAUSTIC_GAIN_CUBE = 0.1872f;
+    RTX_CONST float WATER_CAUSTIC_GAIN_QUARTIC = 0.10896f;
+
+    /// The mean of `1 / max(|det(I - b H)|, 1 / WATER_CAUSTIC_MAX)` over a sea of this fold, which
+    /// is what the caustic has to be divided by to move light rather than make it.
+    ///
+    /// **One patch of surface is read for each patch of bed, and that is not how the light is laid
+    /// out.** The map from where light met the surface to where it landed is `q = p - b grad(h)`,
+    /// and the density at `q` is the reciprocal of its Jacobian. Reading that reciprocal at points
+    /// spread evenly over the *surface* rather than weighted by the area each one covers on the
+    /// *bed* is a mean of a reciprocal where the reciprocal of a mean was wanted, and it comes out
+    /// high. Dividing by that mean is what makes the pattern redistribute the sun exactly.
+    ///
+    /// **A curve and not a series, which is the whole of why this exists.** The second order of it
+    /// is `1 + f^2`, and that is what the shader charged until now — but `WATER_CAUSTIC_FOLD` of
+    /// three means `f` has an rms of three, and a second-order expansion in a quantity of order
+    /// three describes nothing. It left the bed two metres down 12 per cent dark and twenty metres
+    /// down 2 per cent bright, and no coefficient fixed both.
+    ///
+    /// **It is a hump, and the shape is the ceiling meeting the fold.** Up to about one the Jensen
+    /// excess wins and the mean climbs to 1.286; past that the ceiling is cutting cusps faster than
+    /// the excess accumulates, so the mean falls back through one at `f = 2.28` and keeps going. A
+    /// series can follow the rise and never the fall.
+    ///
+    /// The fit is to a Monte Carlo over the Hessian of an isotropic Gaussian field — whose entries
+    /// have one free parameter, `Var[Hxx] = Var[Hyy] = 3c`, `Var[Hxy] = c`, `Cov[Hxx, Hyy] = c`, so
+    /// that `E[(tr H)^2] = 8c` and `f` is the whole of what decides the answer. It agrees with four
+    /// million draws to 0.015 at its worst and 0.006 in the mean over folds up to four and a half,
+    /// and `RtxCausticGainTest` is what says so. Written so the second order is exact rather than
+    /// fitted: the numerator's coefficient is the denominator's plus one.
+    ///
+    /// @param fold `b` times the root of the curvature variance the cone can still resolve, which is
+    ///        how far toward its own first fold the map has been run.
+    RTX_SHADER float causticGain(float fold)
+    {
+        const float squared = fold * fold;
+
+        return (1.0f + (WATER_CAUSTIC_GAIN_SQUARE + 1.0f) * squared)
+            / (1.0f + WATER_CAUSTIC_GAIN_SQUARE * squared + WATER_CAUSTIC_GAIN_CUBE * squared * fold
+                + WATER_CAUSTIC_GAIN_QUARTIC * squared * squared);
+    }
+
     /// Which instances a ray is interested in.
     ///
     /// **Water must not cast a shadow, and the mask is how traversal is told so at no cost.** The
@@ -711,7 +772,9 @@ namespace Rtx::Shaders
 }
 #endif
 
-// What both shading languages read and the host does not, for the reason `RTX_SHADER` gives.
+// What both shading languages read and nothing on this side calls. The split is about who calls a
+// function, not about what a shading language can express: a scalar curve a test has to reach goes
+// inside the namespace above, where `RTX_SHADER` makes it `inline` here as well.
 #ifndef RTX_HOST
 
 /// Henyey-Greenstein, per steradian: the share of what a medium scatters that leaves `cosine` off

@@ -23,36 +23,6 @@
 /// water is.
 const float WATER_REFRACTION_BEND = 1.0 - 1.0 / WATER_IOR;
 
-/// A ceiling on how bright a focus is allowed to get.
-///
-/// Where the refracted bundle collapses to a line the Jacobian goes to zero and the intensity to
-/// infinity — a real caustic *cusp*, and the reason a pool's bright lines are as sharp as they are.
-/// Letting one through would put a pixel in the frame that no exposure could hold.
-///
-/// **It sets how bright the lines are and not whether there are any**, which is what makes it the
-/// dial to turn. The filaments come from `WATER_CAUSTIC_FOLD` letting the determinant reach zero;
-/// this only says where their tops are cut. At one and a half the brightest place on a bed is 1.41
-/// times what a flat sea would put there.
-const float WATER_CAUSTIC_MAX = 2.0;
-
-/// How much of the second-order term below is charged.
-///
-/// **The correction is fitted against a clipped tail, so the ceiling and this move together.** What
-/// it removes is the excess of `E[1 / det]` over one, and the ceiling decides how much of that
-/// excess ever arrives — raise it and more of the tail comes through and the same coefficient
-/// under-corrects, lower it and the same coefficient takes light the ceiling had already taken.
-/// **And `WATER_CAUSTIC_FOLD` moves it further than the ceiling does.** Past its first fold the map
-/// folds again and again, and each fold puts more of the field into cusps the ceiling then cuts —
-/// so the raw mean climbs and this has to climb with it. At a fold of one it is a tenth; at three it
-/// is 0.03, because by then the ceiling has already taken most of what this would have.
-///
-/// **At a fold of three no value of it conserves.** The shape it can correct is `u^2` and the loss
-/// is not that shape: 0.03 leaves two metres 12 per cent dark and twenty 2 per cent bright, and
-/// nothing between 0 and 1.5 does better at both. Raising `WATER_CAUSTIC_MAX` is what would carry
-/// the cusps instead of cutting them. `theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt`
-/// measures the mean at three depths and is what says so.
-const float WATER_CAUSTIC_JENSEN = 0.03;
-
 /// The scale of the pattern at the focus, in world units, which it grows from.
 ///
 /// **Snyder and Dera's other half, and the one a blur cannot supply.** Their measurement is that the
@@ -108,17 +78,22 @@ const float WATER_CAUSTIC_FOCUS = 100.0;
 ///
 /// **Blending toward one rather than scaling is what keeps the light wherever this is set**, so the
 /// exponent is free to be turned and the mean does not follow it. Measured at two, six and twenty
-/// metres: 0.49, 0.16 and 0.042 of contrast against the half's 0.59, 0.31 and 0.14.
+/// metres: 0.54, 0.17 and 0.040 of contrast against the half's 0.63, 0.33 and 0.14.
 const float WATER_CAUSTIC_FADE = 1.0;
 
 /// How far toward its own fold the pattern is run at the focus, as a share of the way there.
 ///
-/// **Short of one, because the fold is where the light starts going missing.** At the fold the
-/// determinant passes through zero, the ceiling clips the cusp it makes, and what the ceiling took
-/// off is light the water received and this did not put anywhere — measured at eight per cent of it
-/// in a metre of water. Held here the loss is under two per cent at every depth, which is what
-/// `theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt` asserts, and the pattern gives up a
-/// twentieth of its contrast to do it.
+/// **Past one, which is past where a lens has one answer.** At one the determinant first reaches
+/// zero; beyond it the map folds over and a point on the bed is reached by three patches of surface
+/// where this draws one of them. That is what puts the contrast into thin bright filaments, and this
+/// is the dial for how thin they are.
+///
+/// **Conservation is not what limits it any more.** Run to three, the estimator makes between 13 and
+/// 32 per cent of light depending on how coarsely the cone reads the curvature, and `causticGain` is
+/// the mean of exactly that divided back out. What the fold still costs is coherence: a filament is
+/// the finest thing in the field, so it is made of the fastest-turning waves and it is what moves
+/// first — 62 per cent of the pattern is new a twelfth of a second later, where the sweep the
+/// spectrum's short cutoff was chosen on put tearing at half.
 const float WATER_CAUSTIC_FOLD = 3.0;
 
 /// How much of the sea's own height the surf line is spread over, and how steep a face counts as
@@ -505,22 +480,22 @@ float caustic(vec2 at, float depth, float footprint)
         = (1.0 - bend * hessian.x) * (1.0 - bend * hessian.y) - bend * bend * hessian.z * hessian.z;
 
     // **A reciprocal of something that fluctuates is worth more than the reciprocal of its mean**,
-    // and left alone that is a bed lit brighter than the water over it lets through. One patch of
-    // surface is read for each patch of *bed*, so the samples are not weighted by the area each one
-    // stands for on the surface, and the excess is Jensen's: writing
-    // `det = 1 - u + v` with `u = bend * tr(H)` and `v = bend^2 * det(H)`,
+    // and left alone that is a bed lit brighter than the water over it lets through. `causticGain`
+    // is that mean and dividing by it is what leaves the pattern redistributing the sun exactly.
     //
-    //   E[1 / det] = 1 - E[v] + Var[u] + ...
+    // **How far the map has folded at the level this pixel reads, which is not `toward`.** `bend` is
+    // sized against the whole tile's curvature and the Hessian above is only what the cone could
+    // resolve, so the fold the estimator actually stands at is `bend` against the resolved variance.
+    // It goes to nought as the cone reaches the coarse levels, which is where a flat surface has no
+    // gain to remove — and `traceVariance` is that variance, read off a chain already being sampled.
+    // It is a sum of clamped terms, so the root below is real.
     //
-    // and `E[det H]` is zero for a Gaussian field — the `Hxx Hyy` and `Hxy^2` terms have the same
-    // expectation — which leaves `Var[u] = bend^2 * Var[tr H]` as the whole of the second order.
-    // That is `traceVariance`, read off a chain that was already being sampled, and it varies only
-    // with how much of the surface the cone can see: the gain it removes is flat across a footprint,
-    // so every bright line and dark cell survives it untouched.
+    // The gain varies only with how much of the surface the cone can see, so it is flat across a
+    // footprint and every bright line and dark cell survives it untouched.
     //
-    // The floor on the denominator is what the ceiling means, so there is one number to state.
-    const float gathered
-        = 1.0 / (max(abs(determinant), 1.0 / WATER_CAUSTIC_MAX) * (1.0 + WATER_CAUSTIC_JENSEN * bend * bend * traceVariance));
+    // The floor on the determinant is what the ceiling means, so there is one number to state.
+    const float fold = bend * sqrt(traceVariance);
+    const float gathered = 1.0 / (max(abs(determinant), 1.0 / WATER_CAUSTIC_MAX) * causticGain(fold));
 
     // **Snyder and Dera's law, and the whole of why deep water has none of this.** Past the focus a
     // point on the bed is reached by several patches of surface at once and this draws one of them,

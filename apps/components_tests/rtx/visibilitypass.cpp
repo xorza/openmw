@@ -3,6 +3,7 @@
 #include <cmath>
 #include <memory>
 #include <optional>
+#include <random>
 #include <span>
 #include <string>
 #include <vector>
@@ -4304,6 +4305,63 @@ namespace Rtx
             EXPECT_NEAR(meanOf(ratio), 1.0f, 0.06f) << "measured 0.963: the shaft moves light and makes none";
         }
 
+        /// `causticGain` is the mean it says it is, against the field it was fitted to.
+        ///
+        /// **The fit is the one number in the caustic nobody can read off the shader.** Everything
+        /// else there is arithmetic or a dial; this is three coefficients standing for four million
+        /// draws, and a fit nobody can check is a magic number. So the draws are made again here.
+        ///
+        /// The Hessian of an isotropic Gaussian field has one free parameter. Its fourth spectral
+        /// moments give `Var[Hxx] = Var[Hyy] = 3c`, `Var[Hxy] = Cov[Hxx, Hyy] = c`, so
+        /// `E[(tr H)^2] = 8c` — and the fold is `b` times the root of that, which is the whole of
+        /// what the curve is a function of. Drawn as two independent parts plus one shared: the
+        /// shared draw is what makes `Hxx` and `Hyy` agree by `c`.
+        ///
+        /// Two hundred thousand draws a fold, which puts the standard error of each mean under
+        /// 0.002 — a tenth of what is allowed, so a failure here is the fit and not the draw.
+        TEST(RtxCausticGainTest, theFittedGainIsTheMeanOfWhatTheCausticComputes)
+        {
+            constexpr std::size_t draws = 200000;
+            constexpr float shared = 1.0f / 8.0f;
+            constexpr float own = 3.0f / 8.0f - shared;
+
+            std::mt19937 gen(11);
+            std::normal_distribution<float> normal(0.0f, 1.0f);
+
+            // One field, every fold measured on it, so the folds share their draws and the curve
+            // comes out smooth rather than eight independent estimates of eight points.
+            std::vector<std::array<float, 3>> hessians;
+            hessians.reserve(draws);
+            for (std::size_t draw = 0; draw < draws; ++draw)
+            {
+                const float together = std::sqrt(shared) * normal(gen);
+                hessians.push_back({ std::sqrt(own) * normal(gen) + together, std::sqrt(own) * normal(gen) + together,
+                    std::sqrt(shared) * normal(gen) });
+            }
+
+            for (const float fold : { 0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.5f, 4.0f })
+            {
+                // `E[(tr H)^2]` is one for the draws above, so the fold is the bend outright.
+                double total = 0.0;
+                for (const std::array<float, 3>& h : hessians)
+                {
+                    const float determinant = (1.0f - fold * h[0]) * (1.0f - fold * h[1]) - fold * fold * h[2] * h[2];
+
+                    total += 1.0 / double{ std::max(std::abs(determinant), 1.0f / Shaders::WATER_CAUSTIC_MAX) };
+                }
+
+                EXPECT_NEAR(Shaders::causticGain(fold), static_cast<float>(total / draws), 0.02f)
+                    << "at a fold of " << fold;
+            }
+
+            // **The second order is exact rather than fitted**, which is what the numerator's
+            // coefficient being the denominator's plus one buys: a reciprocal of `1 - u` with `u`
+            // of variance `f^2` is worth `1 + f^2` to second order, and the curve has to start
+            // there whatever the draws say further out.
+            EXPECT_FLOAT_EQ(Shaders::causticGain(0.0f), 1.0f) << "a flat sea gathers nothing";
+            EXPECT_NEAR(Shaders::causticGain(0.1f), 1.01f, 0.001f) << "and a nearly flat one is 1 + f^2";
+        }
+
         /// The waves gather the sun into moving lines on the bed, and move light rather than make it.
         ///
         /// Caustics are ray density — the determinant of the Jacobian of the map from where light
@@ -4358,15 +4416,23 @@ namespace Rtx
             // Measured over this patch: the brightest place on the bed is gathered to 2.75 of what
             // a flat sea would put there and the dimmest thinned to 0.38, so the pattern is bold
             // rather than a wobble.
-            EXPECT_GT(*brightest, 1.25f) << "measured 1.41, gathered into lines";
-            EXPECT_LT(*dimmest, 0.4f) << "measured 0.31, and thinned between them";
+            EXPECT_GT(*brightest, 1.25f) << "measured 2.06, gathered into lines";
+            EXPECT_LT(*dimmest, 0.4f) << "measured 0.32, and thinned between them";
 
             // **And the mean is one**, which is the claim that makes it light and not decoration.
-            // It comes out at 1.024: a reciprocal of something that fluctuates is worth more than
-            // the reciprocal of its mean, and what the shader takes out analytically is the second
-            // order of that. **With the correction removed this reads 1.123** — four times the
-            // slack allowed here, which is what makes this tolerance a test rather than a comment.
-            EXPECT_NEAR(mean, 1.0f, 0.13f) << "the waves redistribute the sun, they do not make any";
+            // A reciprocal of something that fluctuates is worth more than the reciprocal of its
+            // mean, and `causticGain` is that excess divided back out. It comes out at 1.039 here.
+            //
+            // **The estimator it corrects reads 0.986 at two metres and 1.32 at twenty**, before the
+            // fade blends either toward one — so what the gain takes out runs to a third of the
+            // light where the slack allowed below is a twentieth of it.
+            //
+            // **The 4 per cent that is left is the Gaussian the gain is fitted to.** The curve peaks
+            // at 1.294 and the estimator's own conditional mean reaches 1.32 at six and twenty
+            // metres, so no argument to it divides that away — the sea's resolved curvature is not
+            // quite the isotropic Gaussian field the fit assumes, and what it would take to say so
+            // is a second directional moment the wave tiles do not carry. It was 12 per cent.
+            EXPECT_NEAR(mean, 1.0f, 0.05f) << "the waves redistribute the sun, they do not make any";
 
             // **The pattern peaks in shallow water and fades as the inverse square root of the depth
             // past it**, which is Snyder and Dera's 1970 measurement of the sea and what every field
@@ -4383,12 +4449,13 @@ namespace Rtx
             EXPECT_LT(contrastOf(deeper), 0.7f * contrastOf(shallow)) << "six metres down, against two";
             EXPECT_LT(contrastOf(deepest), 0.35f * contrastOf(deeper)) << "and twenty, against six";
 
-            // **And the mean holds at every one of them**, which is what `WATER_CAUSTIC_FOLD` was
-            // chosen on: run the pattern all the way to its fold and a metre of water loses eight
-            // per cent of the light to the ceiling clipping its cusps. The fade itself moves
-            // nothing, because it blends toward one rather than scaling.
-            EXPECT_NEAR(meanOf(deeper), 1.0f, 0.03f) << "six metres down, still redistributing";
-            EXPECT_NEAR(meanOf(deepest), 1.0f, 0.03f) << "and twenty";
+            // **And the mean holds at every one of them**, which is the half a single coefficient
+            // could never do: the fold saturates at a metre of depth and the *read level* keeps
+            // coarsening past it, so the estimator's own excess runs from 13 per cent at one metre
+            // to 32 at twenty. One curve in the resolved fold follows all of it. The fade moves
+            // nothing either way, because it blends toward one rather than scaling.
+            EXPECT_NEAR(meanOf(deeper), 1.0f, 0.05f) << "measured 1.037, six metres down";
+            EXPECT_NEAR(meanOf(deepest), 1.0f, 0.02f) << "and 1.008 at twenty";
 
             // **How bold the pattern is, and how fast it moves** — M6 asks for both measured rather
             // than eyeballed, and they are the two halves of one choice. The spectrum's short cutoff
@@ -4402,7 +4469,7 @@ namespace Rtx
             // wavelengths interfere into a mottle instead: the same energy, spread over every
             // direction rather than four, and no line drawn twice. It measures 0.223 against the
             // table's 0.277.
-            EXPECT_NEAR(contrastOf(shallow), 0.487f, 0.03f) << "the pattern's contrast, as a fraction of its own mean";
+            EXPECT_NEAR(contrastOf(shallow), 0.538f, 0.03f) << "the pattern's contrast, as a fraction of its own mean";
 
             // A twelfth of a second, which is how long a frame is worth caring about. For two
             // samples of one field, `E[(b - a)^2] = 2 sigma^2 (1 - rho)`, so half the ratio of the
@@ -4412,7 +4479,7 @@ namespace Rtx
             // **18 units gives the best caustics it ever drew and they tear at 73%**, 32 units comes
             // out at 51%, and 50 units is dull at 33%.
             //
-            // **This measures 66.4%, and it is past where the reference renderer says a pattern
+            // **This measures 62.1%, and it is past where the reference renderer says a pattern
             // tears.** Letting the map run to a fold of three puts the contrast into thin bright
             // filaments, and a filament is the finest thing in the field — so it is made of the
             // fastest-turning waves and it is what moves first. The sweep the cutoff was chosen on
@@ -4437,7 +4504,7 @@ namespace Rtx
                 spread += (shallow[i] - mean) * (shallow[i] - mean);
             }
 
-            EXPECT_NEAR(0.5f * moved / spread, 0.664f, 0.03f) << "how much of the pattern is new a twelfth later";
+            EXPECT_NEAR(0.5f * moved / spread, 0.621f, 0.03f) << "how much of the pattern is new a twelfth later";
         }
 
         /// The sun's disc carries exactly its irradiance, however wide the pixel that finds it.
