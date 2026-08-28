@@ -191,7 +191,37 @@ namespace Rtx
             }
         }
 
+        /// A vertex is drawn whatever depth it carries, because depth decides nothing here.
+        ///
+        /// **The pass has no depth attachment**, and widgets are drawn in the order MyGUI hands them
+        /// over. What a vertex's z would decide is whether Vulkan keeps it at all — it clips z
+        /// outside `[0, w]` — and OpenMW's book page writes minus one for every glyph, built against
+        /// a GL projection that keeps it. Every dialogue's text was clipped away whole. So the
+        /// shader drops the z, and a quad at minus one, at plus two and at nought are one quad.
+        TEST_F(RtxGuiPassTest, aQuadIsDrawnAtAnyDepth)
+        {
+            const FlatTexture white(1, sWhiteTexel);
+            const Texture texture = makeTexture(white.mData, "white");
+
+            for (const float depth : { -1.0f, 2.0f, 0.0f })
+            {
+                std::array<GuiVertex, 6> quad = makeQuad(-1.0f, 1.0f, 0.0f, -1.0f, packColour(255, 0, 0, 255));
+                for (GuiVertex& vertex : quad)
+                    vertex.mZ = depth;
+
+                const std::array<GuiDraw, 1> draws{ GuiDraw{ texture.getView(), 0, quad.size() } };
+
+                std::vector<std::uint8_t> pixels;
+                ASSERT_NO_FATAL_FAILURE(drawAndRead(quad, draws, pixels));
+
+                EXPECT_EQ(at(pixels, 1, sExtent / 2), (std::array<std::uint8_t, 4>{ 255, 0, 0, 255 }))
+                    << "covered, at depth " << depth;
+                EXPECT_EQ(at(pixels, sExtent - 2, sExtent / 2), sBackground) << "uncovered, at depth " << depth;
+            }
+        }
+
         /// The texture is what the quad shows, and its first row is the one at the top of the frame.
+
         ///
         /// **This is the assertion that catches a flipped V.** MyGUI puts texture coordinate zero at
         /// the top of a widget and clip coordinate +1 there too; Vulkan's clip space points the other
