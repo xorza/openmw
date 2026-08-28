@@ -94,7 +94,6 @@ namespace Rtx
         }
 
         described.mWaveSlope = inputs.mWaves->getSlope();
-        described.mWaveTravel = inputs.mWaves->getTravel();
 
         const WaveCurvature& curvature = inputs.mWaves->getMoments();
         described.mWaveCurvature = curvature.mWhole;

@@ -57,22 +57,20 @@ namespace Rtx
             for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
             {
                 const Image& surface = waves.getSurface(cascade);
-                const Image& curvature = waves.getCurvature(cascade);
 
                 const std::uint32_t last = surface.getMipLevels() - 1;
                 ASSERT_EQ(surface.getWidthAt(last), 1u) << "cascade " << cascade << " does not reduce to one texel";
 
                 const std::vector<float> mean = Testing::readHalves(pool, surface, last);
-                const std::vector<float> curved = Testing::readHalves(pool, curvature, last);
 
                 // A field of zero mean, which is what a spectrum with no entry at the origin means
-                // and what every variance below is taken about. Against the surface's own root mean
+                // and what every variance below is taken about. Against the field's own root mean
                 // square, so the tolerance is a share of the sea rather than a number of units.
-                const float roughness = std::sqrt(Testing::momentOf(cascades[cascade], 0));
-                EXPECT_NEAR(mean[0], 0.0f, 0.02f * roughness) << "the mean elevation of cascade " << cascade;
+                const float tilt = std::sqrt(Testing::momentOf(cascades[cascade], 2));
+                EXPECT_NEAR(mean[0], 0.0f, 0.02f * tilt) << "the mean slope of cascade " << cascade;
 
+                slope += mean[2];
                 elevation += mean[3];
-                slope += curved[3];
             }
 
             float wantedElevation = 0.0f;
@@ -165,13 +163,12 @@ namespace Rtx
             // An integer level, because a fraction of one is a blend of two boxes and this is about
             // the box.
             const std::vector<float> slopes = Testing::readHalves(pool, surface, 1);
-            const std::vector<float> squared = Testing::readHalves(pool, waves.getCurvature(cascade), 1);
 
             float lost = 0.0f;
-            for (std::size_t at = 0; at < squared.size(); at += 4)
-                lost += squared[at + 3] - slopes[at + 1] * slopes[at + 1] - slopes[at + 2] * slopes[at + 2];
+            for (std::size_t at = 0; at < slopes.size(); at += 4)
+                lost += slopes[at + 2] - slopes[at] * slopes[at] - slopes[at + 1] * slopes[at + 1];
 
-            lost /= static_cast<float>(squared.size() / 4);
+            lost /= static_cast<float>(slopes.size() / 4);
 
             // The default state, because that is the one `WavePass` describes itself with when it is
             // built and nothing here has described another.

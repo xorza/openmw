@@ -367,41 +367,6 @@ namespace Rtx::Shaders
     /// describing the shader.
     RTX_CONST vec3 WATER_EXTINCTION = vec3(0.262f, 0.059f, 0.024f) / UNITS_PER_METRE;
 
-    /// What a raft of bubbles sends back, as a share of what falls on it.
-    ///
-    /// Koepke measured a whitecap at an effective 0.22 averaged over the whole patch and the decaying
-    /// tail behind it; fresh foam itself runs 0.5 to 0.6. What this covers is the fresh part, because
-    /// the tail is what the coverage below is already fading out. **Spectrally flat**, which almost
-    /// nothing else in this game is: a bubble raft scatters by geometry rather than by pigment, so
-    /// foam is the one white surface in a frame where every other white came off a texture.
-    RTX_CONST float WATER_FOAM_ALBEDO = 0.55f;
-
-    /// The share of its own depth a wave's height reaches before it breaks.
-    ///
-    /// McCowan's solitary-wave limit, 1894, and still the number a surf zone is placed with. It is
-    /// what makes the foam band's width a consequence of the sea state rather than a distance
-    /// somebody picked: a calmer sea breaks closer in, in a narrower strip, with nothing tuned.
-    RTX_CONST float WATER_BREAKER_RATIO = 0.78f;
-
-    /// How long a raft of broken water lasts before it has dispersed, in seconds.
-    ///
-    /// **This is what stops a puddle being surf.** The ratio above is a statement about a wave that
-    /// arrives: it says where one breaks, and not whether one ever got here. A hollow inland of the
-    /// shore that dips below sea level satisfies it across the whole of itself — every part of it is
-    /// shallower than anything breaks in — so it comes out white from edge to edge, which is what a
-    /// level pan of water four centimetres deep is not.
-    ///
-    /// What separates the two is how far the wave had to travel through breaking-depth water to
-    /// reach the point, and the bed's own gradient is what says: a few metres where the ground drops
-    /// away to open sea, tens of metres across a pan that does not drop at all. Broken water is
-    /// carried shoreward at the shallow-water celerity and thins while it goes, so that distance
-    /// becomes a share by way of one time — Monahan and Woolf's decay constant for a whitecap.
-    ///
-    /// **A time and not a distance, for the reason the ratio above is a ratio.** The length it
-    /// stands for is `sqrt(g h)` times this, so a heavier sea carries its foam further by itself,
-    /// and the surf zone stays a consequence of the sea state rather than a band somebody sized.
-    RTX_CONST float WATER_FOAM_LIFETIME = 3.5f;
-
     /// How far under its nominal level the sea's own surface is placed, in world units.
     ///
     /// **Coplanar surfaces have no intersection order, so one has to be imposed.** Morrowind's
@@ -433,8 +398,8 @@ namespace Rtx::Shaders
     /// Significant wave height over the surface's rms elevation.
     ///
     /// The oceanographers' definition — the mean of the highest third, which for a Gaussian sea is
-    /// four standard deviations. `SeaState` normalises its spectrum to it and the surf line is
-    /// placed by it, so it is one number rather than a four written twice.
+    /// four standard deviations. It is what `SeaState` normalises its spectrum to, so that the one
+    /// figure a person can picture is the one the sea is built from.
     RTX_CONST float WATER_SIGNIFICANT_HEIGHT = 4.0f;
 
     /// The single-scattering albedo: the share of extinction that was scattering and not absorption,

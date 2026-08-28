@@ -20,17 +20,19 @@ layout(set = 0, binding = 0, scalar) readonly buffer Field
     vec2 field[];
 };
 
-/// The elevation, its two slopes, and the elevation squared.
+/// The two slopes, their own second moment, and the elevation squared.
 ///
-/// **The square is there so a mip chain can be asked how far the surface still wanders.** A level
-/// set of a field too fine to resolve is a coin toss unless the variance of what was averaged away
-/// is carried beside the mean, and `E[h^2] - E[h]^2` off two channels of one fetch is that.
+/// **Both of the slope's moments in one image, so that reading them is one fetch.** What LEAN
+/// mapping wants is `E[|s|^2] - |E[s]|^2` off a level of a chain, and a mean beside a mean square is
+/// a subtraction rather than a second opinion about the same field — so the two belong together.
+/// They were split across this image and the curvature's while the elevation held a channel here.
+///
+/// **The elevation squared rides in the last channel**, where the coarsest level makes it the sea's
+/// own variance — the amplitude the whole spectrum is normalised to, and the one thing a test can
+/// hold the transform's scale to. Nothing shades from it.
 layout(set = 0, binding = 1, GBUFFER_ALBEDO) uniform writeonly image2D surface;
 
-/// The three curvatures, and the mean square slope.
-///
-/// The slope's second moment is what LEAN mapping calls for and what turns a cone that dropped the
-/// ripples into a widened specular lobe rather than into polished plastic.
+/// The three curvatures, which is what the caustic differentiates the height field twice for.
 layout(set = 0, binding = 2, GBUFFER_ALBEDO) uniform writeonly image2D curvature;
 
 layout(push_constant, scalar) uniform Push
@@ -67,6 +69,6 @@ void main()
     const vec3 curve = shift * vec3(second.y, third.x, third.y);
 
     const ivec2 texel = ivec2(cell);
-    imageStore(surface, texel, vec4(height, slope, height * height));
-    imageStore(curvature, texel, vec4(curve, dot(slope, slope)));
+    imageStore(surface, texel, vec4(slope, dot(slope, slope), height * height));
+    imageStore(curvature, texel, vec4(curve, 0.0));
 }

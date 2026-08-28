@@ -65,10 +65,10 @@ namespace Rtx
         /// and a tap that clamped would smear the last texel of one across the whole sea.
         VkSampler getSampler() const { return mSampler; }
 
-        /// The elevation, its two slopes, and the elevation squared.
+        /// The two slopes, their own second moment, and the elevation squared.
         const Image& getSurface(std::size_t cascade) const { return *mTiles[cascade].mSurface; }
 
-        /// The three curvatures, and the mean square slope.
+        /// The three curvatures.
         const Image& getCurvature(std::size_t cascade) const { return *mTiles[cascade].mCurvature; }
 
         /// How wide this tile is in world units, which is what turns a world position into a
@@ -84,12 +84,6 @@ namespace Rtx
 
         /// What `Rtx::waveCurvature` made of the sea last described, held for the same reason.
         const WaveCurvature& getMoments() const { return mCurvature; }
-
-        /// The way the waves of the sea last described travel, unit.
-        ///
-        /// Turned from the bearing on the way out rather than kept beside it, because a state and a
-        /// second spelling of one of its fields are two things to keep in step.
-        osg::Vec2f getTravel() const;
 
     private:
         /// What one tile of the sea occupies.

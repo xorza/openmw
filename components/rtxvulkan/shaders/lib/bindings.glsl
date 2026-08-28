@@ -276,10 +276,10 @@ layout(set = 0, binding = 20, scalar) uniform Frame
 // what it is the square of.** The mean of `tr(H)^2` over a footprint and the square of the mean of
 // `tr(H)` are different numbers, and their difference is the curvature the cone threw away.
 
-/// The elevation, its two slopes, and the elevation squared.
+/// The two slopes, their own second moment, and the elevation squared.
 layout(set = 0, binding = 21) uniform sampler2D waveSurface[WAVE_CASCADES];
 
-/// The three curvatures, and the mean square slope.
+/// The three curvatures.
 layout(set = 0, binding = 22) uniform sampler2D waveCurvature[WAVE_CASCADES];
 
 #endif

@@ -3,8 +3,8 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_WATER_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_WATER_GLSL
 
-// Shading a water surface: Fresnel across a reflection and a refraction, what the column
-// under it takes, and the raft of foam where it breaks.
+// Shading a water surface: Fresnel across a reflection and a refraction, and what the column
+// under it takes.
 
 #include "scene.h"
 #include "bindings.glsl"
@@ -137,47 +137,6 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     return path;
 }
 
-/// The deepest still water within one `span`, sampled around the point.
-///
-/// **A tangent plane is not a beach.** The bed's own tilt says how the ground leans where the
-/// refraction ray landed and nothing about whether that lean carries on: at the rim of a puddle it
-/// tilts exactly as a shore does, and reading it as "water deep enough to break in lies just down
-/// this slope" is what drew a bright line around every hollow behind Seyda Neen. So the answer is
-/// sampled at the distance it is wanted for rather than extrapolated from here.
-///
-/// **Around the point and not down a slope, which is what a surface normal cannot be trusted for.**
-/// A direction taken from a normal is constant across a triangle and jumps at every edge — and worse
-/// across the seam between two terrain chunks, whose vertex normals were never built to agree. The
-/// probe then landed a run-out away in a different place on each side of the seam, and the surf line
-/// came out cut along a straight line hundreds of units long with the sea on one side of it.
-///
-/// Four rays, and the deepest of them. The largest of four continuous things is continuous, so
-/// nothing here can draw an edge the ground does not have — and *any* direction will do, because a
-/// wave shoaling toward a shore refracts until it runs at the depth contours whatever the wind was
-/// doing. They are turned off the axes by the sea's own bearing so that a coast running north does
-/// not get a different answer from one running east.
-///
-/// **A miss is nought and needs no case of its own.** The ray leaves the water plane going down, so
-/// finding nothing means the ground out there stands above the sea — which is a depth of none, and
-/// the depth it approaches as the probe walks up a beach anyway.
-float bedDepthAround(vec3 at, float span)
-{
-    const vec2 along = frame.mWaveTravel * span;
-    const vec2 across = vec2(-along.y, along.x);
-
-    float deepest = 0.0;
-    for (uint quarter = 0u; quarter < 4u; ++quarter)
-    {
-        const vec2 turned = quarter == 0u ? along : (quarter == 1u ? across : (quarter == 2u ? -along : -across));
-        const vec3 from = vec3(at.xy + turned, at.z + WATER_BIAS);
-        const Surface bed = trace(from, vec3(0.0, 0.0, -1.0), WATER_BIAS, 0.0, 0.0, MASK_SOLID);
-
-        deepest = max(deepest, bed.mHit ? bed.mDistance : 0.0);
-    }
-
-    return deepest;
-}
-
 /// What a water surface reflects, which is not where the water is.
 struct WaterMirror
 {
@@ -196,11 +155,9 @@ struct WaterMirror
 };
 
 /// What the water sends back along the ray that found it.
-/// @param pixel which pixel this is, for the draw key the three reservoirs below each offset by
-///        their own `SEED_LAMPS_` constant — what the water reflects, what is seen through it and
-///        the foam are three surfaces shaded from one hit, and three reservoirs seeded alike keep
-///        one lamp. The raft's own bounce is drawn from it too, which is what wants the pixel and
-///        not the key.
+/// @param pixel which pixel this is, for the draw key the two reservoirs below each offset by their
+///        own `SEED_LAMPS_` constant — what the water reflects and what is seen through it are two
+///        surfaces shaded from one hit, and two reservoirs seeded alike keep one lamp.
 /// @param mirror what this surface reflects, for the motion vector that describes it. Not found
 ///        where the reflection reached only sky, or where the water is being looked at from
 ///        underneath — neither is a thing a mirrored reprojection has an answer for.
@@ -256,8 +213,8 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     // BRDF would divide by a number nothing ever multiplied.
     //
     // Set here so the struct is whole, and settled at each exit below: total internal reflection
-    // makes it all of the pixel, and the shore fade and the foam scale it down with the rest of the
-    // surface. What is written here reaches no return of its own.
+    // makes it all of the pixel, and the shore fade scales it down with the rest of the surface.
+    // What is written here reaches no return of its own.
     //
     // Water is the only surface in this renderer with a specular half at all. Every solid reports
     // nought and that is the content's answer rather than a gap: `nifloader.cpp` forces specular to
@@ -316,68 +273,7 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     // a reflection falls with it. From below it is one and this changes nothing.
     response.mSpecular = vec3(fresnel * shore);
 
-    if (fromBelow)
-        return water;
-
-    // **How deep the water is, and not how far the ray went through it.** Refraction bends toward
-    // the vertical, so a grazing view's path to the bed is up to half again the depth under the
-    // point — enough to put the surf line in a different place depending on where it is watched
-    // from, which is the one thing a shoreline may not do. The drop is the path times its own
-    // vertical share, which is exact.
-    const float under = behind.mDistance * max(-through.z, 0.0);
-
-    // **Not faded out with the water, which is the one composition that looked obvious and is
-    // wrong.** `shore` exists to hide the plane cutting the terrain, and at this sea state it covers
-    // fifty centimetres of depth where the whole surf zone is seventeen — so multiplying by it left
-    // four per cent foam at its strongest and none at all at the waterline, which is where a
-    // shoreline is whitest. Foam is not a tint of the water column, it is a raft floating on top of
-    // one; where the column is too thin to tint anything the raft is still there, and the last
-    // stretch of it lying over wet sand is what the edge of the sea looks like. It ends where the
-    // water does on its own, because past that no ray finds water to stand on.
-    const float breaks = foamBreaking(sea, surface.mPosition.xy, under);
-    if (!(breaks > 0.0))
-        return water;
-
-    // **The one place a ray is spent on foam, and it is spent only where there could be foam.**
-    // Every pixel of open sea reaches the line above and stops there; what gets this far is the
-    // shallows, which is a thin band of any frame.
-    // How far the probe looks and how far foam lasts are one number, so the model never asks about
-    // ground whose answer it would have discounted anyway.
-    const float runout = foamRunout(sea);
-    const float outThere = bedDepthAround(surface.mPosition, runout);
-    const float covered = breaks * foamReaching(sea, outThere);
-    if (!(covered > 0.0))
-        return water;
-
-    // A raft of bubbles is diffuse, and what it covers of the pixel it takes from the reflection.
-    //
-    // **Both halves of the albedo are settled here, and the diffuse one is what water never has.**
-    // The channel is a demodulator: Ray Reconstruction divides the diffuse light by what is reported
-    // and multiplies it back afterwards, so a surface that returns diffuse light under an albedo of
-    // nothing is divided by nothing. Foam is the one place water is diffuse at all, and leaving the
-    // zero standing there drew every shoreline in the game as a hard white ribbon, at noon as much
-    // as at midnight. What multiplied the foam below is exactly this.
-    response.mDiffuse = vec3(WATER_FOAM_ALBEDO * covered);
-    response.mSpecular = vec3(fresnel * shore * (1.0 - covered));
-
-    // **Broken water is a raft of bubbles rather than a surface**: white, diffuse, and hiding what is
-    // under it rather than tinting it. Lit the way every other diffuse surface in the frame is lit,
-    // which is what keeps a beach and the surf running along it in the same sun.
-    //
-    // **A traced hemisphere and not `pathEnd`, which is what every surface the eye can see gets.**
-    // That term stands in for the rest of a path one level down; at a surface the eye is looking
-    // straight at, it is the cell's whole ambient with no cosine and no hemisphere over it. The raft
-    // is the one part of the water that is diffuse, so it is the one part that has a hemisphere to
-    // gather — and taking the terminator instead lit every shoreline in the game against a beach
-    // that was gathering the real thing.
-    Surface raft = surface;
-    raft.mNormal = sea.mNormal;
-
-    const vec3 foam = WATER_FOAM_ALBEDO
-        * (gather(surface.mPosition, sea.mNormal, surface.mFootprint, key + SEED_LAMPS_FOAM)
-            + bounceLight(raft, pixel));
-
-    return mix(water, foam, covered);
+    return water;
 }
 
 #endif

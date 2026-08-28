@@ -56,12 +56,11 @@ namespace Rtx
         /// What one texel of the surface and the curvature came out as.
         struct Sampled
         {
-            float mHeight;
             osg::Vec2f mSlope;
+            float mSlopeSquared;
             float mHeightSquared;
 
             osg::Vec3f mCurve;
-            float mSlopeSquared;
         };
 
         /// The three the chain runs through, built once for a whole test.
@@ -105,7 +104,6 @@ namespace Rtx
             constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
             const Image surface(device, sCount, sCount, GBUFFER_ALBEDO, usage, "test-wave-surface");
             const Image curvature(device, sCount, sCount, GBUFFER_ALBEDO, usage, "test-wave-curvature");
-            const Image variance(device, sCount, sCount, VK_FORMAT_R16_SFLOAT, usage, "test-wave-variance");
 
             const auto buffer = [](std::uint32_t binding, const VkDescriptorBufferInfo& info) {
                 return VkWriteDescriptorSet{
@@ -130,8 +128,7 @@ namespace Rtx
                 { turning.getHandle(), 0, VK_WHOLE_SIZE }, { field.getHandle(), 0, VK_WHOLE_SIZE } };
 
             const VkDescriptorImageInfo images[]{ { VK_NULL_HANDLE, surface.getView(), VK_IMAGE_LAYOUT_GENERAL },
-                { VK_NULL_HANDLE, curvature.getView(), VK_IMAGE_LAYOUT_GENERAL },
-                { VK_NULL_HANDLE, variance.getView(), VK_IMAGE_LAYOUT_GENERAL } };
+                { VK_NULL_HANDLE, curvature.getView(), VK_IMAGE_LAYOUT_GENERAL } };
 
             const VkMemoryBarrier2 between{
                 .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -147,7 +144,7 @@ namespace Rtx
             };
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
-                for (const Image* image : { &surface, &curvature, &variance })
+                for (const Image* image : { &surface, &curvature })
                     image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                         VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
@@ -184,13 +181,13 @@ namespace Rtx
                         vkCmdPipelineBarrier2(commands, &dependency);
                     }
 
-                const std::array<VkWriteDescriptorSet, 4> composes{ buffer(0, whole[2]), stored(1, images[0]),
-                    stored(2, images[1]), stored(3, images[2]) };
+                const std::array<VkWriteDescriptorSet, 3> composes{ buffer(0, whole[2]), stored(1, images[0]),
+                    stored(2, images[1]) };
                 const Shaders::WaveComposeConstants unpacked{ .mCount = sCount };
 
                 vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, composing.getHandle());
-                vkCmdPushDescriptorSet(
-                    commands, VK_PIPELINE_BIND_POINT_COMPUTE, composing.getLayout(), 0, 4, composes.data());
+                vkCmdPushDescriptorSet(commands, VK_PIPELINE_BIND_POINT_COMPUTE, composing.getLayout(), 0,
+                    static_cast<std::uint32_t>(composes.size()), composes.data());
                 vkCmdPushConstants(
                     commands, composing.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(unpacked), &unpacked);
                 vkCmdDispatch(commands, (sCount + 7) / 8, (sCount + 7) / 8, 1);
@@ -202,11 +199,10 @@ namespace Rtx
             std::vector<Sampled> read(sCells);
             for (std::size_t at = 0; at < sCells; ++at)
                 read[at] = Sampled{
-                    .mHeight = heights[at * 4],
-                    .mSlope = osg::Vec2f(heights[at * 4 + 1], heights[at * 4 + 2]),
+                    .mSlope = osg::Vec2f(heights[at * 4], heights[at * 4 + 1]),
+                    .mSlopeSquared = heights[at * 4 + 2],
                     .mHeightSquared = heights[at * 4 + 3],
                     .mCurve = osg::Vec3f(curves[at * 4], curves[at * 4 + 1], curves[at * 4 + 2]),
-                    .mSlopeSquared = curves[at * 4 + 3],
                 };
 
             return read;
@@ -270,7 +266,6 @@ namespace Rtx
                         const std::string where = " at " + std::to_string(x) + ", " + std::to_string(y) + " of "
                             + std::to_string(alongX) + ", " + std::to_string(alongY);
 
-                        ASSERT_NEAR(got.mHeight, wave, 5e-3f) << "height" << where;
                         ASSERT_NEAR(got.mSlope.x(), wavevector.x() * derivative, 5e-3f) << "slope x" << where;
                         ASSERT_NEAR(got.mSlope.y(), wavevector.y() * derivative, 5e-3f) << "slope y" << where;
 
@@ -282,7 +277,10 @@ namespace Rtx
                             << "curvature xy" << where;
 
                         // The two moments a mip chain is asked for, which have to be the squares of
-                        // what sits beside them rather than anything of their own.
+                        // what sits beside them rather than anything of their own. **And the second
+                        // is the whole of what pins the elevation**, which the pass no longer stores
+                        // on its own: nothing shades from it, and the slope and the curvature carry
+                        // its sign between them.
                         ASSERT_NEAR(got.mHeightSquared, wave * wave, 5e-3f) << "height squared" << where;
                         ASSERT_NEAR(got.mSlopeSquared, got.mSlope * got.mSlope, 5e-3f) << "slope squared" << where;
                     }

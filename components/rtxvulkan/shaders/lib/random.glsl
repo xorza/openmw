@@ -44,12 +44,11 @@ const uint SEED_LAMPS_BOUNCE = 0x52u;
 /// and would choose the same lamp at both if it stepped the same sequence.
 const uint SEED_LAMPS_PANE = 0x53u;
 
-/// Water shades three surfaces from one hit — what it reflects, what is seen through it, and the
-/// raft of foam on top — and each of them opens a reservoir of its own. **Three constants and not
-/// one**, because three reservoirs seeded alike step the same sequence and keep the same lamps.
+/// Water shades two surfaces from one hit — what it reflects and what is seen through it — and each
+/// of them opens a reservoir of its own. **Two constants and not one**, because two reservoirs
+/// seeded alike step the same sequence and keep the same lamps.
 const uint SEED_LAMPS_MIRROR = 0x53u;
 const uint SEED_LAMPS_THROUGH = 0x54u;
-const uint SEED_LAMPS_FOAM = 0x55u;
 
 /// And one more for the direction a path's end asks the sky about, which is not a lamp at all.
 ///

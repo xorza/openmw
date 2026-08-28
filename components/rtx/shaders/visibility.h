@@ -433,14 +433,6 @@ namespace Rtx::Shaders
         /// this replaced has no reader left.
         float mWaveResolved[WAVE_CASCADES * WAVE_LEVELS];
 
-        /// Unit, and the way the waves travel — which is the way the wind blows.
-        ///
-        /// **A direction and not the angle `SeaState` states it as**, because every pixel of surf
-        /// would otherwise pay a sine and a cosine for a number the whole frame shares. What wants
-        /// it is the foam: a wave aerates on the face it is running into, so which face that is has
-        /// to be a question the shader can ask.
-        vec2 mWaveTravel;
-
         /// The cell's own ambient, linear, and what a path is terminated with.
         ///
         /// **No longer added on top of the light that is traced, which is what it used to be.**
@@ -524,7 +516,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 932, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 924, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

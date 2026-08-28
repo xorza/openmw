@@ -151,11 +151,6 @@ namespace Rtx
         mDrawn = true;
     }
 
-    osg::Vec2f WavePass::getTravel() const
-    {
-        return osg::Vec2f(std::cos(mSea.mBearing), std::sin(mSea.mBearing));
-    }
-
     void WavePass::handOver(VkCommandBuffer commands) const
     {
         const VkMemoryBarrier2 between{
