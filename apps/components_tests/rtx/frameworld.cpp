@@ -115,11 +115,12 @@ namespace Rtx
             EXPECT_EQ(constants.mFogLift, world.mAir.mLift);
             EXPECT_EQ(constants.mFogEdge, world.mAir.mEdge);
 
-            // **The wind points along the deck's bearing**, because there is one wind over a
-            // landscape: 0.45 of a wind on a 3-4-5 heading is (0.36, 0.27).
-            EXPECT_EQ(constants.mFogWind, world.mClouds.mBearing * world.mAir.mWind);
-            EXPECT_FLOAT_EQ(constants.mFogWind.x(), 0.36f);
-            EXPECT_FLOAT_EQ(constants.mFogWind.y(), 0.27f);
+            // **The wind blows the way the deck drifts**, because there is one wind over a
+            // landscape. The deck holds the cosine and sine of its turn from north, so a bearing of
+            // (0.8, 0.6) is a storm driving along (0.6, 0.8) — and 0.45 of a wind on it is
+            // (0.27, 0.36), not the pair the deck holds.
+            EXPECT_FLOAT_EQ(constants.mFogWind.x(), 0.27f);
+            EXPECT_FLOAT_EQ(constants.mFogWind.y(), 0.36f);
 
             // **The one field that does not pass through, and it is meant not to.** What the shader
             // is told is where the surface actually is, and the surface is placed a hair under its

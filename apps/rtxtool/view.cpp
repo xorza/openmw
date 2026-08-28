@@ -26,6 +26,7 @@
 #include "stagedworld.hpp"
 #include "viewpoint.hpp"
 #include "window.hpp"
+#include "worldclock.hpp"
 
 namespace RtxTool
 {
@@ -68,7 +69,7 @@ namespace RtxTool
         };
 
         /// Where the camera is standing now, under the conditions the window was opened with.
-        Viewpoint spotOf(const ViewRequest& request, const FlyCamera& camera)
+        Viewpoint spotOf(const ViewRequest& request, const FlyCamera& camera, const WorldClock& clock)
         {
             return Viewpoint{
                 .mView = request.mView,
@@ -77,8 +78,8 @@ namespace RtxTool
                 .mOrigin = camera.getOrigin(),
                 .mTarget = camera.getTarget(),
                 .mWeather = request.mWeather,
-                .mHour = request.mHour,
-                .mDay = request.mDay,
+                .mHour = clock.getHour(),
+                .mDay = clock.getDay(),
             };
         }
 
@@ -105,7 +106,7 @@ namespace RtxTool
                      "  right drag     look\n"
                      "  shift / alt    six times faster / seven times slower\n"
                      "  wheel          change the base speed\n"
-                     "  T              run the clock,  a day and a half a minute\n"
+                     "  T              run the clock,  a day and a half a minute,  and the air with it\n"
                      "  , .            an hour back and forward,  shift for a day\n"
                      "  [ ]            the weather either side of this one, of those the region gets\n"
                      "  P              print this spot as a views.cfg block\n"
@@ -195,20 +196,12 @@ namespace RtxTool
 
         printHelp();
 
-        /// How fast the clock runs when it is running: game hours per real second.
-        ///
-        /// **A whole day in a minute and a half**, which is fast enough to watch a sunrise arrive
-        /// and slow enough to see it happen. The game runs at a thirtieth of this; nothing here is
-        /// pretending to be a play session.
-        constexpr float sHoursPerSecond = 1.0f / 4.0f;
-
         /// How long a weather takes to become the next one, in real seconds.
         constexpr float sTransitionSeconds = 4.0f;
 
-        /// What an hour of `sHoursPerSecond` is worth to `Sky::SkyRoll`, which counts in seconds.
-        constexpr float sSecondsPerHour = 3600.0f;
-
-        bool clockRunning = false;
+        /// The one clock the hour, the sea and the fog run on. `WorldClock` says which reading each
+        /// thing takes and why.
+        WorldClock clock(request.mDay, request.mHour);
 
         /// The weather being turned into, and how far along. Empty where the sky is settled.
         std::optional<std::string> turningInto;
@@ -221,9 +214,9 @@ namespace RtxTool
         /// run the sun round the clock without a frame being dropped.
         const auto moveSky = [&] {
             if (turningInto.has_value())
-                staged.setSky(request.mWeather, *turningInto, turned, request.mDay, request.mHour);
+                staged.setSky(request.mWeather, *turningInto, turned, clock.getDay(), clock.getHour());
             else
-                staged.setSky(request.mWeather, request.mDay, request.mHour);
+                staged.setSky(request.mWeather, clock.getDay(), clock.getHour());
 
             request.mLighting = staged.getLighting();
         };
@@ -275,17 +268,9 @@ namespace RtxTool
                         const bool byDay = (event.key.keysym.mod & KMOD_SHIFT) != 0;
 
                         if (byDay)
-                        {
-                            // A day back from the first is a day before the world began, and the
-                            // rise-hour formula counts from a fixed date rather than a signed one.
-                            request.mDay = std::max(request.mDay + (forward ? 1 : -1), 0);
-                        }
+                            clock.nudgeDay(forward ? 1 : -1);
                         else
-                        {
-                            // Wrapped rather than clamped, so holding one of these walks the sun
-                            // round and round instead of parking it at a horizon.
-                            request.mHour = std::fmod(request.mHour + (forward ? 1.0f : 23.0f), 24.0f);
-                        }
+                            clock.nudgeHour(forward ? 1.0f : -1.0f);
 
                         moveSky();
                     }
@@ -316,20 +301,20 @@ namespace RtxTool
                     }
                     else if (event.key.keysym.sym == SDLK_t)
                     {
-                        clockRunning = !clockRunning;
-                        out() << (clockRunning ? "the clock is running\n" : "the clock is stopped\n");
+                        clock.toggle();
+                        out() << (clock.isRunning() ? "the clock is running\n" : "the clock is stopped\n");
                     }
                     else if (event.key.keysym.sym == SDLK_p)
                     {
                         // The readable line above both formats, so a log of them says where each
                         // one is without anything having to parse it back first.
-                        const Viewpoint spot = spotOf(request, camera);
+                        const Viewpoint spot = spotOf(request, camera, clock);
                         out() << describeSpot(spot) << describeBlock(spot);
                     }
                     else if (event.key.keysym.sym == SDLK_F3)
                     {
                         const Rtx::FrameExtents shown = renderer->getExtents();
-                        out() << describeSpot(spotOf(request, camera))
+                        out() << describeSpot(spotOf(request, camera, clock))
                               << describeProfile(request, validation, camera.getOrigin(), camera.getTarget(),
                                      shown.mOutputWidth, shown.mOutputHeight)
                               << '\n';
@@ -374,16 +359,16 @@ namespace RtxTool
                 handle(event);
 
             const Clock::time_point now = Clock::now();
-            const float seconds = std::chrono::duration<float>(now - previous).count();
+            clock.advance(std::chrono::duration<float>(now - previous).count());
             previous = now;
-            camera.advance(std::min(seconds, 0.1f));
+            camera.advance(clock.getStep());
 
             // **The sky's own two clocks, and neither of them is the hour.** A deck scrolls at the
             // speed its weather records whether or not the world's clock is running, and the stars
             // come round once every four *game* days — so the sphere turns only while the clock
             // key has the hour moving. `RenderingManager` turns the same roll for the game.
-            skyRoll.advance(seconds, request.mLighting.mCloudSpeed,
-                clockRunning ? sHoursPerSecond * sSecondsPerHour : 0.0f, Sky::timescaleClouds());
+            skyRoll.advance(
+                clock.getStep(), request.mLighting.mCloudSpeed, clock.getTimeScale(), Sky::timescaleClouds());
 
             ++framesSinceTitle;
             if (now - lastTitle >= titleInterval)
@@ -399,7 +384,7 @@ namespace RtxTool
                 window.setTitle(
                     std::format("{}  |  {:.0f} fps  |  {}  |  {:.0f}, {:.0f}, {:.0f}  |  {:.0f} u/s  |  day {} {} {}",
                         request.mTitle, framesSinceTitle / elapsed, sizes, at.x(), at.y(), at.z(), camera.getSpeed(),
-                        request.mDay, clockFace(request.mHour),
+                        clock.getDay(), clockFace(clock.getHour()),
                         turningInto.has_value()
                             ? std::format("{} to {} {:.0f}%", request.mWeather, *turningInto, turned * 100.0f)
                             : request.mWeather));
@@ -435,21 +420,19 @@ namespace RtxTool
             // Handed rather than placed, because stepping walks the whole graph and sweeps it: an
             // actor drawing a weapon brings a mesh nothing has built, and a sweep that closed a gap
             // renumbers what the last frame was built from.
-            if (staged.advanceTo(static_cast<float>(std::chrono::duration<double>(now - began).count())))
+            if (staged.advanceTo(clock.getWallSeconds()))
                 hand();
 
-            // **The clock and whatever the weather is doing, both on real seconds.** A window is
-            // the one surface with a wall clock, and these are what it is for: a sunrise that
-            // arrives while you watch it, and the one transition between two weathers that nothing
-            // else in this tool has ever run.
-            if (clockRunning || turningInto.has_value())
+            // **The hour and whatever the weather is doing, and a window is the one surface with a
+            // clock to run them on**: a sunrise that arrives while you watch it, and the one
+            // transition between two weathers that nothing else in this tool has ever run. The
+            // clock moved the hour above; the transition walks on the wall, because four seconds
+            // of weather arriving is four seconds however fast the day goes.
+            if (clock.isRunning() || turningInto.has_value())
             {
-                if (clockRunning)
-                    request.mHour = std::fmod(request.mHour + seconds * sHoursPerSecond, 24.0f);
-
                 if (turningInto.has_value())
                 {
-                    turned += seconds / sTransitionSeconds;
+                    turned += clock.getStep() / sTransitionSeconds;
                     if (turned >= 1.0f)
                     {
                         // Arrived: the sky it was turning into is simply the sky now.
@@ -474,10 +457,13 @@ namespace RtxTool
             framing.mShowAlbedo = request.mShowAlbedo;
 
             // **A screenshot is the path with no clock at all.** The seconds carry the sea and the
-            // roll carries the sky, and a `shot` leaves both standing — which is what makes two runs
-            // of one build agree pixel for pixel.
+            // fog and the roll carries the sky, and a `shot` leaves both standing — which is what
+            // makes two runs of one build agree pixel for pixel.
+            //
+            // **The world's seconds and not the wall's**, so that the air runs with the clock key.
+            // The actors above keep the wall: a walk at thirty times is not a walk.
             framing.mLighting = request.mLighting;
-            framing.mLighting.mSeconds = static_cast<float>(std::chrono::duration<double>(now - began).count());
+            framing.mLighting.mSeconds = clock.getWorldSeconds();
             framing.mLighting.mRoll = skyRoll;
 
             // What the fog's step jitter varies by, and what the upscaler's sample sequence is
@@ -503,6 +489,8 @@ namespace RtxTool
 
         // One line at the end rather than one a second throughout: a number per second is noise to
         // someone watching the title bar, and scrollback to someone who ran this with --frames.
+        // The wall and not the clock's own reading of it, because this measures the tool and not
+        // the world: a stall the clock stopped for is still time this run took.
         const double lasted = std::chrono::duration<double>(Clock::now() - began).count();
         out() << std::format(
             "\n{} frames in {:.2f} s, {:.0f} fps average", drawn, lasted, drawn / std::max(lasted, 1e-6));
@@ -515,7 +503,7 @@ namespace RtxTool
 
         out() << '\n';
         // Where it was left, so a session that ended somewhere worth keeping did not lose it.
-        const Viewpoint spot = spotOf(request, camera);
+        const Viewpoint spot = spotOf(request, camera, clock);
         out() << describeSpot(spot) << describeBlock(spot);
 
         return 0;

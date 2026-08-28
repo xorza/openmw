@@ -172,6 +172,7 @@ if (OPENMW_RTX)
         rtxtool/validationchoice.cpp
         rtxtool/verify.cpp
         rtxtool/view.cpp
+        rtxtool/worldclock.cpp
         sky/clouds.cpp
         sky/skyroll.cpp
         sky/sun.cpp

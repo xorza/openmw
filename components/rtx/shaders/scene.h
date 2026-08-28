@@ -395,6 +395,20 @@ namespace Rtx::Shaders
     RTX_CONST float FOG_GRAIN = 900.0f;
     RTX_CONST float FOG_TILE = FOG_GRAIN * float(FOG_FIELD_CELLS);
 
+    /// What a recorded `Wind Speed` of one comes to in world units a second.
+    ///
+    /// **Read as a wind rather than picked, which is what it took to make an ash storm look like one.**
+    /// The renderer this is ported from first set 120, chosen so the strongest weather crossed one cell
+    /// of the coarsest noise in about nine seconds — and nine seconds to cross thirteen metres is 1.4
+    /// metres a second, which is a still afternoon rather than a storm. Twenty metres a second is a
+    /// Beaufort 8 gale, and seventy units to the metre makes that 1,400. The ten then land where their
+    /// names say: clear's 0.1 is a two-metre breeze, rain's 0.3 is six, thunderstorm's 0.5 is ten,
+    /// ashstorm's 0.8 is sixteen, and blight and blizzard blow eighteen.
+    ///
+    /// `mTime` runs at the clock's own rate rather than the game's thirty-times one, so this is a wind
+    /// rather than a time-lapse.
+    RTX_CONST float FOG_GALE = 1400.0f;
+
     /// How many scales that one tile is read at.
     ///
     /// **Because one tile repeats and three do not.** A field laid down every twelve thousand units

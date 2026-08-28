@@ -58,6 +58,8 @@ set(RTXTOOL_FILES
     window.hpp
     world.cpp
     world.hpp
+    worldclock.cpp
+    worldclock.hpp
 )
 
 source_group(apps\\rtxtool FILES ${RTXTOOL_FILES} main.cpp)

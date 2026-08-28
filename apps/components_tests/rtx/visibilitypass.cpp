@@ -528,6 +528,30 @@ namespace Rtx
             ///        mixes its neighbours into it — a test that let one run would be measuring the
             ///        denoiser rather than the thing it was written to measure. The tests that are
             ///        about the filter ask for it.
+            /// The luminance of every pixel of a frame that holds nothing but air, from a camera
+            /// standing in white fog of one thickness.
+            ///
+            /// **A wall behind the camera, because a scene has to hold something.** Every ray runs
+            /// to `FOG_REACH` and comes back with air and the sky, which is what makes the frame a
+            /// measurement of the air alone — and what lets two tests ask about the field's amount
+            /// and the field's motion off one fixture.
+            ///
+            /// @param camera has its fog colour and thickness set here; whatever else a test set on
+            ///        it — the coverage, the wind, the moment — stays.
+            void airThrough(Shaders::VisibilityConstants camera, std::uint32_t size, std::vector<float>& luminance)
+            {
+                camera.mFogColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
+                camera.mFogExtinction = 3.0e-6f;
+
+                const SceneDesc scene = makeWall();
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels);
+
+                luminance.resize(std::size_t{ size } * size);
+                for (std::size_t i = 0; i < luminance.size(); ++i)
+                    luminance[i] = decodeSrgb(pixels[i * 4]);
+            }
+
             std::uint32_t countHits(const SceneDesc& scene, std::span<const TextureData> textures,
                 const Shaders::VisibilityConstants& camera, std::uint32_t size, std::vector<std::uint8_t>& pixels,
                 const SeaState& sea = SeaState{}, std::uint32_t accumulate = 0, bool filter = false,
@@ -4944,20 +4968,14 @@ namespace Rtx
             const auto air = [&](float uniform, float where) {
                 Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(where, -50000.0f, 0.0f),
                     osg::Vec3f(where, -60000.0f, 0.0f), 90.0f, size, size, 100000.0f);
-                camera.mFogColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
-                camera.mFogExtinction = 3.0e-6f;
                 camera.mFogUniform = uniform;
 
-                // A wall behind the camera, because a scene has to hold something. Every ray runs
-                // to `FOG_REACH` and comes back with air and the sky, which is what makes the
-                // frame's mean a measurement of the air alone.
-                const SceneDesc scene = makeWall();
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
+                std::vector<float> luminance;
+                airThrough(camera, size, luminance);
 
                 double total = 0.0;
-                for (std::size_t i = 0; i < count; ++i)
-                    total += double{ decodeSrgb(pixels[i * 4]) };
+                for (const float value : luminance)
+                    total += double{ value };
 
                 return total / static_cast<double>(count);
             };
@@ -4971,6 +4989,62 @@ namespace Rtx
             ratio /= static_cast<double>(places.size());
 
             EXPECT_NEAR(ratio, 0.969, 0.05) << "banked air against even air, over nine viewpoints";
+        }
+
+        /// The wind carries the banks downwind, and a camera that walks with the wind sees the air
+        /// stand still.
+        ///
+        /// **Exact rather than a threshold, because advection is a translation.** The field is read
+        /// at `position - wind * time * FOG_GALE`, so an eye moved by exactly that much at the same
+        /// moment reads the field the unmoved eye reads with no wind at all — churn and all, since
+        /// the churn is a function of the moment and not of the wind. Nothing else in this frame
+        /// knows where the eye is: the wall is behind it, the rays reach the sky, and the layer is a
+        /// function of height alone.
+        ///
+        /// **And the sign is the half that matters.** Sampling from further *upwind* as the clock
+        /// runs is what carries a bank past; adding would walk the whole field into the wind. A
+        /// camera moved the wrong way sees a different field, which the last assertion checks.
+        TEST_F(RtxVisibilityTest, theWindCarriesTheFieldAndAnEyeThatWalksWithItSeesItStandStill)
+        {
+            constexpr std::uint32_t size = 64;
+            constexpr std::size_t count = std::size_t{ size } * size;
+            constexpr float seconds = 2.0f;
+            const osg::Vec2f wind(0.3f, 0.4f);
+
+            const auto frame = [&](const osg::Vec2f& blowing, const osg::Vec3f& eye) {
+                Shaders::VisibilityConstants camera
+                    = makeCamera(eye, eye + osg::Vec3f(0.0f, -10000.0f, 0.0f), 90.0f, size, size, 100000.0f);
+                camera.mFogUniform = 0.0f;
+                camera.mFogWind = blowing;
+                camera.mTime = seconds;
+
+                std::vector<float> luminance;
+                airThrough(camera, size, luminance);
+                return luminance;
+            };
+
+            const auto apart = [&](const std::vector<float>& a, const std::vector<float>& b) {
+                double total = 0.0;
+                for (std::size_t i = 0; i < count; ++i)
+                    total += std::abs(double{ a[i] } - double{ b[i] });
+                return total / static_cast<double>(count);
+            };
+
+            const osg::Vec3f eye(0.0f, -50000.0f, 0.0f);
+            const osg::Vec3f carried(
+                wind.x() * seconds * Shaders::FOG_GALE, wind.y() * seconds * Shaders::FOG_GALE, 0.0f);
+
+            const std::vector<float> still = frame(osg::Vec2f(), eye);
+            const std::vector<float> downwind = frame(wind, eye + carried);
+            const std::vector<float> upwind = frame(wind, eye - carried);
+
+            // The two read one field at one moment, and differ by the rounding of an eye moved
+            // fourteen hundred units against a ray that runs thirty thousand.
+            EXPECT_LT(apart(still, downwind), 1e-3) << "an eye walking with the wind sees the air stand still";
+
+            // The wrong sign is two different fields, and the gap between them is the banks
+            // themselves — measured at 0.03 of the frame's own mean of about 0.5.
+            EXPECT_GT(apart(still, upwind), 0.01) << "an eye walking against the wind sees another air";
         }
 
         /// The fog scatters the sun forward far harder than back, which is what a Mie phase is for.
