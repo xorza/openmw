@@ -15,6 +15,5 @@
 - extract shader and lightting consts for look tweaking
 - rain water interaction
 - water waves wind direction
-- fractal fog + wind
 
 - emissive textures like mushrooms - postponed
