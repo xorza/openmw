@@ -68,7 +68,7 @@ namespace RtxTool
         // has to be known before what is left over can be.
         const Rtx::Shaders::StarField stars = lighting.mOutdoors
             ? Rtx::describeStars(lighting.mDaylight.mStarFade, lighting.mGlare, lighting.mRoll.mStars, lighting.mSky)
-            : Rtx::Shaders::StarField{ .mTexture = Rtx::Shaders::NO_TEXTURE };
+            : Rtx::noStars();
 
         // Nought in a room, for the reason the deck and the stars are: there is no dome to be short
         // of, and the cell's own ambient already reaches every surface.

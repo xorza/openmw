@@ -10,6 +10,21 @@ namespace Rtx
         return fall != nullptr && fall->ripplesEnabled() ? fall->getPrecipitationAlpha() : 0.0f;
     }
 
+    Shaders::CloudDeck noDeck()
+    {
+        Shaders::CloudDeck deck{};
+        deck.mTexture = Shaders::NO_TEXTURE;
+        deck.mNext = Shaders::NO_TEXTURE;
+        return deck;
+    }
+
+    Shaders::StarField noStars()
+    {
+        Shaders::StarField stars{};
+        stars.mTexture = Shaders::NO_TEXTURE;
+        return stars;
+    }
+
     void applyWorld(const FrameWorld& world, Shaders::VisibilityConstants& constants)
     {
         constants.mSunPosition = world.mSun.mPosition;

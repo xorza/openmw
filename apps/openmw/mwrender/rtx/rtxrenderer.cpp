@@ -780,7 +780,7 @@ namespace MWRender
         // before what is left over can be.
         const Rtx::Shaders::StarField stars = world.isOutdoors()
             ? Rtx::describeStars(world.mNightFade, world.mSunGlare, world.mSkyRoll.mStars, mSkyContent)
-            : Rtx::Shaders::StarField{ .mTexture = Rtx::Shaders::NO_TEXTURE };
+            : Rtx::noStars();
 
         // **The sun is not assembled here.** Everything the world says about it goes to the one
         // builder that decides what a sun may be — which is what keeps the game and the harness
@@ -882,9 +882,7 @@ namespace MWRender
                                                             : static_cast<std::uint32_t>(world.mWeatherId),
                            world.mCloudBlend, Rtx::deckLight(sky.mSunAloft, budget.mMean, moons), world.mCloudDirection,
                            world.mNextCloudDirection, world.mSkyRoll.mClouds, mSkyContent)
-                                          : Rtx::Shaders::CloudDeck{ .mOpacity = 0.0f,
-                                              .mTexture = Rtx::Shaders::NO_TEXTURE,
-                                              .mNext = Rtx::Shaders::NO_TEXTURE },
+                                          : Rtx::noDeck(),
 
             .mStars = stars,
             .mMoons = moons,

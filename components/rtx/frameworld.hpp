@@ -44,6 +44,16 @@ namespace Rtx
     /// @param fall what is falling, or null for a world with no weather over it.
     float rainOnWater(const Weather::Precipitation* fall);
 
+    /// The deck and the star field a world with no sky has: nothing to draw, which the shader reads
+    /// off the texture slot before it samples anything.
+    ///
+    /// **Built whole and then named, rather than by designated initializer**, so that every other
+    /// field is value-initialised where the compiler can see it. A designated initializer does the
+    /// same, but GCC cannot tell it from an aggregate left short, and the game's own translation
+    /// units are built with that warning on.
+    Shaders::CloudDeck noDeck();
+    Shaders::StarField noStars();
+
     struct FrameWorld
     {
 
@@ -92,8 +102,8 @@ namespace Rtx
 
         /// The cloud deck and the star field, already in the units the shader takes: `describeClouds`
         /// and `describeStars` are what both renderers reach them through.
-        Shaders::CloudDeck mClouds{ .mOpacity = 0.0f, .mTexture = Shaders::NO_TEXTURE, .mNext = Shaders::NO_TEXTURE };
-        Shaders::StarField mStars{ .mTexture = Shaders::NO_TEXTURE };
+        Shaders::CloudDeck mClouds = noDeck();
+        Shaders::StarField mStars = noStars();
 
         /// The nebulae and constellations painted across the star sphere. `describePatches` fills
         /// them; a default leaves every one with no texture, which is a room's night sky.

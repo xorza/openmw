@@ -12,7 +12,9 @@
 
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/instancerecord.hpp>
+
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -2995,7 +2997,7 @@ namespace Rtx
                     .mTile = 1.0f,
                     .mHorizon = 0.0f,
                     .mTexture = 0u }
-                                      : Shaders::StarField{ .mTexture = Shaders::NO_TEXTURE };
+                                      : noStars();
 
                 std::vector<std::uint8_t> pixels;
                 renderPicture(scene, camera, size, pixels, sheet);
