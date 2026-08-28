@@ -3305,13 +3305,14 @@ namespace Rtx
                 EXPECT_NEAR(overhead[channel], throughFlatWater(depth, sNearlyOverhead, channel), 1)
                     << "channel " << channel << " under a sun all but overhead";
 
-            // And the ordering that makes this water's colour. Red goes first — every water
-            // absorbs it within a metre or two, which is the one thing about water's colour that is
-            // not a matter of taste. **Green survives most, not blue**, which is what makes a
-            // coastal shelf green where open ocean is blue: Jerlov's coastal extinction is
-            // 0.004572, 0.000714, 0.001143, so blue is taken half again as fast as green.
-            EXPECT_LT(overhead[0], overhead[2]) << "red is taken before blue";
-            EXPECT_LT(overhead[2], overhead[1]) << "and blue before green";
+            // And the ordering that makes this water's colour. Red goes first — every water absorbs
+            // it within a metre or two, which is the one thing about water's colour that is not a
+            // matter of taste. **Blue survives longest**, which is why a body of water reads blue
+            // once it is deep enough to read as anything: water absorbs red twenty-five times as
+            // fast as blue, and the dissolved matter that stains a coast blue-ward does not close
+            // that. It is also what `WATER_SCATTER` says, its own peak being in blue.
+            EXPECT_LT(overhead[0], overhead[1]) << "red is taken before green";
+            EXPECT_LT(overhead[1], overhead[2]) << "and green before blue";
 
             // And now 45 degrees off the vertical, where the slant is the whole point. Snell's law
             // turns the sun to `asin(sin(45) / 1.333)` = 32.03 degrees, so it reaches a bed 200
@@ -3337,21 +3338,28 @@ namespace Rtx
         /// milky sheet rather than a channel. Integrating both legs replaces `1 - T` with
         /// `(1 - T^2) / 2` — the same answer in the shallows, half as bright where it settles.
         ///
-        /// Two thousand units down, red's transmittance is `exp(-9.144)`, a part in ten thousand, so
-        /// what comes back is the scattering term almost alone:
+        /// Two thousand units down, red's transmittance is `exp(-7.487)`, six parts in ten thousand,
+        /// so what comes back is the scattering term almost alone:
         ///
-        ///   0.5 * 1.07e-4 + 0.012 * 0.5 * 1.0 = 0.0060535
-        ///   times the 0.98 that is not Fresnel  = 0.0059324
-        ///   1.055 * 0.0059324^(1/2.4) - 0.055   = 0.06958, or 18 of 255
+        ///   0.5 * 5.61e-4 + 0.04 * 0.5 * 1.0  = 0.0202807
+        ///   times the 0.98 that is not Fresnel = 0.0198751
+        ///   1.055 * 0.0198751^(1/2.4) - 0.055  = 0.15118, or 39 of 255
         ///
-        /// Only the return leg would put the same pixel at 28 — the factor of two, made visible.
+        /// Only the return leg would put the same pixel at 56 — the factor of two, made visible.
+        ///
+        /// **And water with no bottom at all settles there outright**, which is the second half of
+        /// this. A refraction that finds nothing went *down*, and down from the surface there is
+        /// water whether or not this renderer holds the bed for it — so what comes back is the
+        /// scattering term with no bed left in it at all, in every channel rather than in red
+        /// alone. Two thousand units is deep for red and nothing like deep for blue.
+        ///
+        /// Read as sky instead, it came back through 2000 units of water at half of blue, and drew
+        /// the edge of the loaded terrain across the sea as a line with brighter water beyond it.
         TEST_F(RtxVisibilityTest, deepWaterSettlesAtHalfWhatOneAttenuatedLegWouldGive)
         {
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
             constexpr float depth = 2000.0f;
-
-            const SceneDesc scene = makeFlooded(4000.0f, depth);
 
             // No sun and a black sky, so the ambient is the only light and the two per cent that
             // reflects off the surface reflects nothing.
@@ -3359,13 +3367,30 @@ namespace Rtx
                 osg::Vec3f(0.0f, -1.0f, 400.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
 
-            // No height at all, which is a flat sea: a table whose amplitudes are zero.
-            std::vector<std::uint8_t> pixels;
-            countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+            const auto look = [&](const SceneDesc& scene) {
+                // No height at all, which is a flat sea: a table whose amplitudes are zero.
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+            };
 
             // `WATER_SCATTER.r * 0.5` is 0.02, less the two per cent the surface reflects away, and
-            // the display curve puts 0.0196 at 38.
-            EXPECT_EQ(pixels[centre], 38) << "red, settled at what the water scatters";
+            // the display curve puts 0.0199 at 39.
+            const std::array<int, 3> bedded = look(makeFlooded(4000.0f, depth));
+            EXPECT_EQ(bedded[0], 39) << "red, settled at what the water scatters";
+
+            // The same column with the bed taken out from under it, which is the asymptote itself:
+            // `WATER_SCATTER * 0.5`, less Fresnel. Off the constants rather than written out, for
+            // the reason the expectations above are.
+            const std::array<int, 3> bottomless = look(makeOpenWater(4000.0f));
+            for (std::size_t channel = 0; channel < 3; ++channel)
+                EXPECT_NEAR(bottomless[channel],
+                    encodeSrgb(Shaders::WATER_SCATTER[channel] * 0.5f * (1.0f - Shaders::WATER_F0)), 1)
+                    << "channel " << channel << " over water with no bottom";
+
+            // And the bed at 2000 units is still there in the two channels it is not deep for, so
+            // this cannot pass by the two scenes rendering the same picture.
+            EXPECT_GT(bedded[2], bottomless[2] + 40) << "blue reaches a bed 2000 units down";
         }
 
         /// Broken water is where a wave can break *and* could get to, and no one of the depth, the
@@ -3375,8 +3400,8 @@ namespace Rtx
         /// spectrally flat, so what a covered surface sends back under a sky of one — which is what
         /// its hemisphere mostly finds, the water being flat and the bed under it — is
         /// `WATER_FOAM_ALBEDO` in every channel alike. Equal channels are a signature the water
-        /// beneath can never forge: Jerlov's coastal extinction takes red out first, so any depth of
-        /// water at all reads green.
+        /// beneath can never forge: absorption takes red out first, so any depth of water at all
+        /// reads blue.
         ///
         /// **Four legs, because the criterion has three terms.** A shelving shallow foams; the same
         /// shore under a sea too small to break in it does not; the same sea over deep water does
@@ -3422,12 +3447,12 @@ namespace Rtx
             EXPECT_EQ(calm[0], calm[1]) << "two units of water take out nothing worth measuring";
 
             // **And the same sea over water deep enough to hold it.** Nothing about the waves
-            // changed; the column under them did. What comes back is water — dark and green,
-            // because red went first.
+            // changed; the column under them did. What comes back is water — dark and blue, because
+            // red went first and blue outlasts everything.
             const std::array<int, 3> deep = look(makeShelving(4000.0f, 400.0f, 1.0f), 40.0f);
             EXPECT_LT(deep[0], surf[0]) << "no foam over deep water, however rough the sea";
-            EXPECT_LT(deep[0], deep[1]) << "and water is green: red goes first";
-            EXPECT_LT(deep[2], deep[1]) << "with blue between the two";
+            EXPECT_LT(deep[0], deep[1]) << "and water is blue: red goes first";
+            EXPECT_LT(deep[1], deep[2]) << "with green between the two";
 
             // **The same two units, the same sea, and a bed that does not go anywhere.** Every
             // depth-and-sea-state term the first leg met, this one meets too; what it has not got is
@@ -3847,12 +3872,12 @@ namespace Rtx
         /// sends down. Looking straight up, that is
         ///
         ///   surface = 0.5 sky * (1 - 0.02 Fresnel)  = 0.49
-        ///   at 100  = 0.49 * exp(-0.004572 * 100)   = 0.310,  or 151 of 255
-        ///   at 300  = 0.49 * exp(-0.004572 * 300)   = 0.124,  or  99
+        ///   at 100  = 0.49 * exp(-0.003743 * 100)   = 0.337,  or 157 of 255
+        ///   at 300  = 0.49 * exp(-0.003743 * 300)   = 0.159,  or 111
         ///
-        /// Red, because Jerlov's coastal water takes it out six times faster than green. Charge the
-        /// eye's own stretch nothing and both read 151 — half the scale apart, so this cannot be
-        /// passed by widening a tolerance.
+        /// Red, because water takes it out four times faster than green. Charge the eye's own
+        /// stretch nothing and both read 157 — a fifth of the scale apart, so this cannot be passed
+        /// by widening a tolerance.
         TEST_F(RtxVisibilityTest, theWaterBetweenAnEyeAndTheSurfaceOverItIsChargedForToo)
         {
             constexpr std::uint32_t size = 33;
@@ -3875,8 +3900,8 @@ namespace Rtx
                 return static_cast<int>(pixels[centre]);
             };
 
-            EXPECT_NEAR(lookUp(-100.0f), 151, 2) << "a hundred units of water over the eye";
-            EXPECT_NEAR(lookUp(-300.0f), 99, 2) << "and three hundred take three times as much red";
+            EXPECT_NEAR(lookUp(-100.0f), 157, 2) << "a hundred units of water over the eye";
+            EXPECT_NEAR(lookUp(-300.0f), 111, 2) << "and three hundred take three times as much red";
         }
 
         /// The water scatters the sun forward far harder than back, and the ratio is the whole test.

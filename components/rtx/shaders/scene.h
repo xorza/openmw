@@ -71,9 +71,19 @@ namespace Rtx::Shaders
     /// A whole turn, which is how a wavelength becomes a wavenumber.
     RTX_CONST float TAU = 6.2831853f;
 
-    /// Morrowind's gravity, in world units per second squared: 8.96 m/s^2 across 69.99 units to
-    /// the metre.
-    RTX_CONST float WATER_GRAVITY = 627.1f;
+    /// How many world units the game puts in a metre, which is `Constants::UnitsPerMeter`.
+    ///
+    /// **Here so that a coefficient measured in a laboratory can stay in the units it was measured
+    /// in.** Water's absorption is published per metre and every other number in this file is per
+    /// world unit, and a conversion done in a comment is a conversion nothing checks.
+    RTX_CONST float UNITS_PER_METRE = 69.99125f;
+
+    /// Morrowind's gravity, in world units per second squared.
+    ///
+    /// **Multiplied out here rather than written down.** The game states both factors —
+    /// `Constants::GravityConst` and `Constants::UnitsPerMeter` — and this is the only place that
+    /// wants their product, so writing the product is a third number to keep in step with two.
+    RTX_CONST float WATER_GRAVITY = 8.96f * UNITS_PER_METRE;
 
     /// The circle constant, and the Lambertian BRDF's reciprocal of it.
     ///
@@ -321,12 +331,34 @@ namespace Rtx::Shaders
 
     /// Extinction per world unit, per channel — how fast water swallows light along a path.
     ///
-    /// **Red goes first and the rest goes slowly**, which is the one thing about water's colour that
-    /// is not a matter of taste and is why shallow water reads green where deep water reads blue.
-    /// Jerlov's coastal type, quoted per metre as 0.32, 0.05 and 0.08, over the game's 69.99 units
-    /// to the metre. Every expectation a test makes about water derives from this, so a tuning pass
-    /// is one line rather than five pieces of arithmetic that quietly stop describing the shader.
-    RTX_CONST vec3 WATER_EXTINCTION = vec3(0.004572f, 0.000714f, 0.001143f);
+    /// **Absorption, and not a diffuse attenuation coefficient.** `Kd` is what oceanography usually
+    /// quotes and it is the wrong number here twice over: it counts scattering as a loss, and it
+    /// counts the lengthening of a path that has been scattered about. This renderer already puts
+    /// the scattering back with `WATER_SCATTER`, so charging the beam for it as well is charging it
+    /// twice. What is left of a beam is what was absorbed out of it, which is `a`.
+    ///
+    /// **And scattering takes almost nothing out of a beam here.** The reduced coefficient is
+    /// `a + b (1 - g)`, and with `WATER_ASYMMETRY` at 0.92 and the albedo below, `b (1 - g)` comes
+    /// to between 0.3 and 1.2 per cent of `a`. Water this forward-scattering loses a beam to
+    /// absorption alone, so the term is named rather than carried.
+    ///
+    /// **Blue last, which is what the albedo beside this one already says.** Pure water absorbs red
+    /// twenty-five times as fast as blue, so a body of it reads blue at depth — and a scattering
+    /// albedo that peaks in blue is a statement that blue is what survives to be scattered. Written
+    /// the other way round, with green surviving longest, the two constants describe two different
+    /// waters and the extinction wins: it made every path of any length read green.
+    ///
+    /// Two terms, per metre, over the visible band weighted by each channel's own response:
+    ///
+    ///   pure water, Pope and Fry     0.260, 0.054, 0.010
+    ///   dissolved organic matter     0.002, 0.005, 0.014     `a(440) = 0.02, exp(-0.014 (l - 440))`
+    ///
+    /// The second is what makes this a coastal sea rather than an ocean, and it is the one dial:
+    /// stained water absorbs blue and nothing else much, so it is what stands between Vvardenfell's
+    /// swamp coast and the Pacific. Every expectation a test makes about water derives from this
+    /// sum, so a tuning pass is one line rather than five pieces of arithmetic that quietly stop
+    /// describing the shader.
+    RTX_CONST vec3 WATER_EXTINCTION = vec3(0.262f, 0.059f, 0.024f) / UNITS_PER_METRE;
 
     /// What a raft of bubbles sends back, as a share of what falls on it.
     ///
@@ -417,8 +449,19 @@ namespace Rtx::Shaders
     /// 2.5, and `FogManager` runs its ramp from `min(view, 7168) * (1 - depth)` — which for any
     /// depth over two starts *behind* the camera and is 60% complete the moment the eye goes under.
     /// A medium is nought at nought distance by construction, so `Rtx::fogExtinction`'s half-life
-    /// match has nothing to bite on: that number is a screen tint rather than a density, and
-    /// Jerlov's coastal water above is already the stronger of the two by 7168 units.
+    /// match has nothing to bite on: that number is a screen tint rather than a density, and the
+    /// absorption above is already the stronger of the two by 7168 units.
+    ///
+    /// **It peaks in blue, and `WATER_EXTINCTION` is written to agree with it.** A share of what
+    /// arrives that comes back is largest where least was taken, so a blue-peaked albedo and a
+    /// blue-sparing absorption are one statement about one water. Move either and the other has to
+    /// move with it, or the water is two waters again and the extinction is the one that shows.
+    ///
+    /// **What this asks of the scattering coefficient is not a real water's, and that is the price
+    /// of keeping the game's own number.** Read as an albedo it implies `b = a w / (1 - w)`, which
+    /// falls toward blue where every real water's rises — molecular scattering goes as the fourth
+    /// power of the wavenumber. What that costs is confined to the colour a very deep column
+    /// settles at, which is the one thing the game states outright and this defers to.
     RTX_CONST vec3 WATER_SCATTER = vec3(0.04f, 0.1f, 0.1233f);
 
     /// How far forward water throws what it scatters.

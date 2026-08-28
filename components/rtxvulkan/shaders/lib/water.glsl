@@ -19,11 +19,21 @@
 /// How far off the water a reflection or refraction starts. The same bias, for the same reason.
 const float WATER_BIAS = SHADOW_BIAS;
 
-/// How far a ray that found no bottom is taken to have travelled through water.
+/// How far a ray that found nothing at all is taken to have travelled.
 ///
-/// Twenty-eight metres, past which the transmittance of even blue is under a part in a thousand, so
-/// whatever is behind it cannot matter.
+/// **A sentinel and not a length.** What it stands for is *no surface*, which is what
+/// `WaterMirror::mFound` reads it back as. Nothing measures water with it: a ray that went down and
+/// found nothing took `WATER_UNBOUNDED_PATH` instead.
 const float WATER_MAX_PATH = 2000.0;
+
+/// How long a column of water with no bottom to it is taken to be, in world units.
+///
+/// **Not a distance to anything.** It is a distance past which nothing behind the water survives:
+/// blue outlasts every other channel and this is thirteen of its e-foldings, so whatever stands
+/// behind the column arrives at about a part in a million however bright it is. The column's own
+/// scattering has settled long before that, so this is the sea's own asymptote and raising the
+/// number moves no pixel.
+const float WATER_UNBOUNDED_PATH = 40000.0;
 
 /// How squarely a wave facet has to face the ray that found it before it is tilted back toward the
 /// plane. Small: a guard against a facet turning away entirely, not a limit on the waves.
@@ -72,6 +82,10 @@ struct WaterPath
 /// The cone widens by the lobe as well as by the pixel: a reflection off water too fine to resolve
 /// is blurred by the slopes that were averaged away, and what it reflects should blur with it.
 ///
+/// **What a miss means is decided by which way the ray went**, because the water is a plane and its
+/// sides have absolute names: downward is an unbounded column of water, upward is the sky. A caller
+/// tells them apart by `mDistance` against the two sentinels.
+///
 /// **Solid geometry only.** Culling water from its own reflection removes the self-intersection the
 /// ray offset exists to avoid, which is what once put a ribbon of flat colour along every waterline:
 /// a refraction ray offset to the far side of the plane began under the ground wherever the bed sat
@@ -92,26 +106,41 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     WaterPath path;
     path.mPosition = hit.mPosition;
     path.mInstance = hit.mInstance;
-    path.mDistance = hit.mHit ? hit.mDistance : WATER_MAX_PATH;
     path.mGeometric = hit.mHit ? hit.mGeometric : vec3(0.0, 0.0, 1.0);
+
     if (hit.mHit)
     {
+        path.mDistance = hit.mDistance;
+
         const float reaching = skyReaching(hit.mPosition, hit.mNormal, seed + SEED_SKY_REACHING);
 
         path.mRadiance = shadeSurface(hit, pathEnd(hit.mPosition, reaching), seed);
+        return path;
     }
-    else
-    {
-        // **A reflection draws its own stars, because there is no later pass to draw them for it.**
-        // What a mirror shows is composited into a surface long before the display pass, so the
-        // field goes in here — behind whatever the sky's own order left in front of it, which is
-        // what `shown` says and is the same rule `tone.comp` draws by.
-        const float spread = pixelBlur(frame.mCamera) + lobe;
 
-        float shown;
-        path.mRadiance
-            = skyRadiance(origin, direction, spread, shown) + starField(frame.mStars, direction, spread) * shown;
+    // **Which way the ray went is the whole of what a miss means, and the plane is what makes that
+    // answerable.** Water has absolute sides, so below the surface there is water — whether or not
+    // the bed under it is one this renderer was handed. Read as sky instead, a missed refraction
+    // came back through 2000 units at half of blue and drew the edge of the loaded terrain across
+    // the sea, which is a line the water never had.
+    if (direction.z < 0.0)
+    {
+        path.mDistance = WATER_UNBOUNDED_PATH;
+        path.mRadiance = vec3(0.0);
+        return path;
     }
+
+    path.mDistance = WATER_MAX_PATH;
+
+    // **A reflection draws its own stars, because there is no later pass to draw them for it.**
+    // What a mirror shows is composited into a surface long before the display pass, so the field
+    // goes in here — behind whatever the sky's own order left in front of it, which is what `shown`
+    // says and is the same rule `tone.comp` draws by.
+    const float spread = pixelBlur(frame.mCamera) + lobe;
+
+    float shown;
+    path.mRadiance
+        = skyRadiance(origin, direction, spread, shown) + starField(frame.mStars, direction, spread) * shown;
 
     return path;
 }

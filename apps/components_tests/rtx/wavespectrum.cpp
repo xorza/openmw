@@ -1,11 +1,24 @@
 #include <gtest/gtest.h>
 
+#include <components/misc/constants.hpp>
 #include <components/rtx/wavespectrum.hpp>
 
 namespace Rtx
 {
     namespace
     {
+        /// The two figures a shading language cannot include its way to.
+        ///
+        /// **`scene.h` is read by GLSL and by Metal, so it can include no C++ header** — the game's
+        /// own units and gravity are spelled again there, and a copy nothing checks is exactly the
+        /// failure that file's own header comment exists to warn about. A `static_assert` cannot
+        /// reach them: `RTX_CONST` is `const` and a `const float` is not a constant expression.
+        TEST(RtxWaveSpectrumTest, theSharedConstantsAreTheGamesOwn)
+        {
+            EXPECT_EQ(Shaders::UNITS_PER_METRE, Constants::UnitsPerMeter);
+            EXPECT_EQ(Shaders::WATER_GRAVITY, Constants::GravityConst * Constants::UnitsPerMeter);
+        }
+
         /// The shelf is what makes this TMA rather than JONSWAP.
         ///
         /// A shelf cannot carry a wave whose orbit reaches the bottom, so shallow water slows the

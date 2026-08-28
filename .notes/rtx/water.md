@@ -145,14 +145,16 @@ rather than shadow — confirmed by rendering the same camera at hour 12 and hou
 
 ### Steps
 
-1. Split the miss. Give `waterRay` a flag, or read `mFound` at the call site. For a refraction from
-   above, a miss sets the radiance to nought and the distance to infinity, and the column settles at
-   its own limit.
-2. That removes the bright side of the step. What is left is honest: a dark bed at thirty metres
-   really is darker than open water.
-3. To close that too, the water needs a bed everywhere it is drawn. Feed the terrain quadtree's
-   coarsest level to the extractor, out to the view distance. This is the largest piece of work in
-   this document, and it is the only one that also puts the far islands back.
+1. **Done.** No flag was needed: which way the ray went already says what a miss means. Water has
+   absolute sides, so a ray leaving the surface *downward* that finds nothing found an unbounded
+   column, and one going *upward* found the sky. `waterRay` branches on `direction.z` and returns
+   `WATER_UNBOUNDED_PATH` with no radiance for the first. That also fixes the same misreading in the
+   reflection from below, which was showing the sky under the sea.
+2. The visible edge is gone at `--view seyda-neen-shore`. The honest step is still there — a dark bed
+   at thirty metres really is darker than open water — but it is small, and nothing draws a line.
+3. **Open.** To close that too, the water needs a bed everywhere it is drawn. Feed the terrain
+   quadtree's coarsest level to the extractor, out to the view distance. This is the largest piece
+   of work in this document, and it is the only one that also puts the far islands back.
 4. Test: the water's colour is continuous as the bed's distance passes `WATER_MAX_PATH`.
 
 ---
@@ -215,17 +217,25 @@ Measured: a rock two metres away, lit through about three and a half metres of d
 out at roughly `(0.21, 1.0, 0.83)` relative — a saturated green, at a distance where real water is
 nearly clear.
 
-### Steps
+### Steps — done
 
-1. Choose one water. State `a(λ)` and `b(λ)` for it in the comment, per metre, and cite the source.
-2. Derive **both** constants from that one pair: `WATER_SCATTER = b / (a + b)` and
-   `WATER_EXTINCTION = a + b`. One source, two constants, and no way for them to drift apart.
-3. Apply the similarity approximation to the beam: `a + b * (1 - g)` with `g = WATER_ASYMMETRY`.
-   Name the reason — the renderer removes forward-scattered light that it never gives back.
-4. Check the hue holds together. With blue highest in `WATER_SCATTER`, blue must be **lowest** in
-   `WATER_EXTINCTION`. Today green is lowest.
-5. Test: a white surface one metre under water keeps most of its green and blue, and thirty metres
-   reads blue rather than green.
+1. `WATER_EXTINCTION` is now an **absorption** spectrum, `(0.262, 0.059, 0.024)` per metre over
+   `UNITS_PER_METRE`, which is a new shared constant so the conversion is done by the code. Two
+   terms: pure water by Pope and Fry, and the dissolved organic matter that makes it a coastal sea.
+2. `WATER_SCATTER` did not move. It is the game's own number and the one thing the game states
+   outright about its water, so the extinction was written to agree with it rather than the reverse.
+3. The similarity term is named and not carried. With this albedo and `g` at 0.92, `b (1 - g)` is
+   between 0.3 and 1.2 per cent of `a` — water this forward-scattering loses a beam to absorption
+   alone.
+4. Blue is now the channel that outlasts the others, which is what a blue-peaked albedo requires.
+5. `waterTakesWhatBeerLambertSaysOverThePathTheLightTook` asserts `red < green < blue`, and
+   `surfCoversShallowWaterThatAWaveCanBothBreakInAndReach` asserts the same ordering of deep water.
+
+**What could not be derived, and why.** Read as an albedo, the game's colour implies a scattering
+coefficient `b = a w / (1 - w)` that falls toward blue, where every real water's rises with the
+fourth power of the wavenumber. So `WATER_SCATTER` cannot be computed from `a` and `b`, and the two
+constants stay two. The cost is confined to the colour a very deep column settles at, which is the
+number the game states and this defers to. It is written down beside the constant.
 
 ---
 
@@ -236,8 +246,8 @@ the colour it sets.
 
 | # | Change | Size |
 | --- | --- | --- |
-| 1 | **Item 5** — one derivation for extinction and scattering | one constant block |
-| 2 | **Item 3, step 1** — a missed refraction is deep water, not sky | a few lines |
+| ~~1~~ | ~~**Item 5** — one derivation for extinction and scattering~~ | landed |
+| ~~2~~ | ~~**Item 3, step 1** — a missed refraction is deep water, not sky~~ | landed |
 | 3 | **Item 6** — the backtrack, and the band limit for the cap | one function |
 | 4 | **Item 1** — the march, and the shafts | a march, gated |
 | 5 | **Item 2** — the surf line's own width, and its interior | one expression, one weight |
