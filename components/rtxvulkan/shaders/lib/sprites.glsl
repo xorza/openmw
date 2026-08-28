@@ -20,8 +20,10 @@
 /// facing value — but a puff is neither opaque nor diffuse: it is a cloud of droplets that scatters
 /// strongly forward and again inside itself, so the sun reaches all of it rather than one
 /// hemisphere. The quarter, tried first in the reference implementation, put a plume back at the
-/// sky's own ambient, where it was invisible.
+/// sky's own ambient, where it was invisible. That is the *mean*: which side of the puff the sun's
+/// share leaves by is `SMOKE_ANISOTROPY`'s, and it arrives here folded into `sunLit`.
 ///
+
 /// The lamps arrive the way they arrive at the fog — as irradiance spread over the whole sphere —
 /// because a puff is the same kind of thing the fog is, only denser and in one place. So it is the
 /// same `lampsAt` and the same one multiply on the sum.
@@ -377,13 +379,13 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         if (emitter.mAdditive != 0u)
         {
             // **No gain, deliberately.** The blend the file asks for says exactly how much light
-            // the sprite adds; `EMISSIVE_INTENSITY` is only what carries the original's scale,
-            // where a fully lit surface reached one, onto this renderer's, where the sun is
-            // `DAYLIGHT`. A flame then comes out tens of times the mean of the room it stands in,
-            // because that is what a flame is, and the exposure downstream decides where it
-            // lands. A gain on top of it blows every flame to a white square and hides the shape
-            // that was already in the texture.
+            // the sprite adds; `FLAME_INTENSITY` is only what carries the original's scale, where
+            // a fully lit surface reached one, onto this renderer's. A flame then comes out tens of
+            // times the mean of the room it stands in, because that is what a flame is, and the
+            // exposure downstream decides where it lands. A gain on top of it blows every flame to
+            // a white square and hides the shape that was already in the texture.
             //
+
             // **And it absorbs as much as it emits, per channel**, which is what makes the screen
             // in the accumulator exact for a stack of them: what one sprite adds is what it always
             // added, and what twenty add saturates at the white the original's framebuffer clamped
@@ -393,7 +395,8 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                 = (1.0 - pow(1.0 - min(colour * painted, vec3(SPRITE_ALPHA_LIMIT)), vec3(fraction))) * reaching;
             addedThrough *= 1.0 - glow;
 
-            const float lit = dot(glow, LUMINANCE_WEIGHTS) * EMISSIVE_INTENSITY;
+            const float lit = dot(glow, LUMINANCE_WEIGHTS) * FLAME_INTENSITY;
+
             if (lit > layer.mAdding.mWeight)
                 layer.mAdding = SpriteClaim(direction * seen, sprite.mMoved, lit);
 
@@ -442,7 +445,13 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // surface lifted toward the eye by what is left of the radius there.
             const vec3 normal = normalize(across * at.x + upward * at.y - direction * lift);
 
+            // The sun's share thrown forward, as the ratio to the even share — the light travels
+            // `-toSun` and what the eye catches travels `-direction`, so the cosine between them is
+            // this dot. `SMOKE_ANISOTROPY` says why the sky and the lamps below are not thrown.
+            sunLit *= henyeyGreenstein(SMOKE_ANISOTROPY, dot(toSun, direction)) / INV_FOUR_PI;
+
             sunLit *= ballWrap(normal, toSun);
+
             skyLit *= ballWrap(normal, skyward);
             lampLit *= ballWrap(normal, lampToward);
 
@@ -461,7 +470,22 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                 lampLit *= sixWayThrough(lampToward, across, upward, facing, shade, back);
                 fillLit = (shade.x + shade.y + shade.z + shade.w + 1.0 + back) / 6.0;
             }
+
+            // **What the rest of its own emitter leaves of the light**, as the layers of sprites
+            // between this one and the sun and the sky — counted on the host by `Rtx::SpriteShade`
+            // — thinned here by what one layer of this texture hides on average, which is its
+            // coarsest level. The limit keeps an opaque texture from shutting the light outright.
+            if (sprite.mSunLayers > 0.0 || sprite.mSkyLayers > 0.0)
+            {
+                const float coarsest = float(textureQueryLevels(textures[nonuniformEXT(emitter.mTexture)]) - 1);
+                const float mean = textureLod(textures[nonuniformEXT(emitter.mTexture)], vec2(0.5), coarsest).a;
+                const float layer = 1.0 - min(mean, SPRITE_ALPHA_LIMIT);
+
+                sunLit *= pow(layer, sprite.mSunLayers);
+                skyLit *= pow(layer, sprite.mSkyLayers);
+            }
         }
+
 
         const vec3 daylight = daylightReaching(sprite.mPosition);
 
@@ -478,7 +502,8 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     if (coverage > 0.0)
         layer.mRadiance += covered * ((1.0 - layer.mTransmittance) / coverage);
 
-    layer.mRadiance += (1.0 - addedThrough) * EMISSIVE_INTENSITY;
+    layer.mRadiance += (1.0 - addedThrough) * FLAME_INTENSITY;
+
 
     return layer;
 }

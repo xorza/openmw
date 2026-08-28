@@ -74,6 +74,8 @@ set(RTX_FILES
     spanallocator.hpp
     spritelight.cpp
     spritelight.hpp
+    spriteshade.cpp
+    spriteshade.hpp
     spritetiles.cpp
     spritetiles.hpp
     compositequeue.cpp

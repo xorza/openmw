@@ -173,8 +173,17 @@ namespace Rtx
         growTo(held, *mDevice, bytes, sTableUsage);
     }
 
-    void SceneBuffers::binSprites(const osg::Vec3f& origin, const Shaders::Camera& camera)
+    void SceneBuffers::binSprites(const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun)
     {
+        // **The sprites go over from here and not from `place`**, because what each is shaded by is
+        // the frame's sun, which a placement does not know — and a doll or a map bins against a
+        // camera and a sun of its own.
+        mSpriteShade.shade(mSpriteScratch, mEmitterScratch, toSun);
+
+        const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
+        reserve(mSprites, sprites.size_bytes());
+        mSprites.write(sprites);
+
         mSpriteTiles.rebuild(mSpriteScratch, mEmitterScratch, origin, camera);
 
         // A frame with no sprites has an empty list, and the offsets are all nought — so the shader
@@ -309,7 +318,6 @@ namespace Rtx
         const std::span<const Shaders::GpuInstance> instances(mInstanceScratch);
         const std::span<const Shaders::GpuLight> lights(mLightScratch);
         const std::span<const std::uint32_t> indices = mLightGrid.getIndices();
-        const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
         const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);
 
         const Shaders::GpuLightGrid geometry{
@@ -322,7 +330,6 @@ namespace Rtx
         reserve(mLightOffsets, mLightGrid.getOffsets().size_bytes());
         reserve(mLightIndices, indices.size_bytes());
         reserve(mGrid, sizeof(geometry));
-        reserve(mSprites, sprites.size_bytes());
         reserve(mEmitters, emitters.size_bytes());
 
         mInstances.write(instances);
@@ -330,7 +337,6 @@ namespace Rtx
         mLightOffsets.write(mLightGrid.getOffsets());
         mLightIndices.write(indices);
         mGrid.write(std::span<const Shaders::GpuLightGrid>(&geometry, 1));
-        mSprites.write(sprites);
         mEmitters.write(emitters);
 
         // **Only what changed shape.** A cell's normals are the same normals from one frame to the

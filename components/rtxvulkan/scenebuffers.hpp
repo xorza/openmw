@@ -12,6 +12,7 @@
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/lightgrid.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/spriteshade.hpp>
 #include <components/rtx/spritetiles.hpp>
 
 #include "blockedbuffer.hpp"
@@ -87,7 +88,7 @@ namespace Rtx
         /// **From the frame and not from the placement**, because the binning is in screen space and
         /// the camera does not exist until the frame does. `place` wrote the sprites; this reads the
         /// copy of them kept beside the buffer.
-        void binSprites(const osg::Vec3f& origin, const Shaders::Camera& camera);
+        void binSprites(const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun);
 
         VkBuffer getSpriteTileOffsets() const { return mSpriteTileOffsets.getHandle(); }
         VkBuffer getSpriteTileIndices() const { return mSpriteTileIndices.getHandle(); }
@@ -170,6 +171,7 @@ namespace Rtx
         std::vector<Shaders::GpuLight> mLightScratch;
 
         SpriteTiles mSpriteTiles;
+        SpriteShade mSpriteShade;
 
         std::vector<Shaders::GpuSprite> mSpriteScratch;
         std::vector<Shaders::GpuEmitter> mEmitterScratch;

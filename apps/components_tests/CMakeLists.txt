@@ -146,6 +146,7 @@ if (OPENMW_RTX)
         rtx/shadingmap.cpp
         rtx/spanallocator.cpp
         rtx/spritelight.cpp
+        rtx/spriteshade.cpp
         rtx/spritetiles.cpp
         rtx/terraincomposite.cpp
         rtx/structurestorage.cpp

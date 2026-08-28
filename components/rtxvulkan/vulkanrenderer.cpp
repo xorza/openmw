@@ -669,7 +669,7 @@ namespace Rtx
         // **The sprite tiles are screen space, so they belong to the frame and not to the scene.**
         // Written before the recording below, which is what makes them visible to it without a
         // barrier — the same thing that lets the instance rows be written where the builder reads.
-        mWorld.mBuffers->binSprites(camera.mOrigin, camera.mCamera);
+        mWorld.mBuffers->binSprites(camera.mOrigin, camera.mCamera, camera.mSunPosition);
 
         const VisibilityInputs inputs{
             .mScene = mWorld.mAcceleration->getTopLevel(),
@@ -944,7 +944,7 @@ namespace Rtx
 
         // A doll and a map trace the same shader, so they need the same list — against their own
         // camera, which is not the frame's.
-        buffers->binSprites(camera.mOrigin, camera.mCamera);
+        buffers->binSprites(camera.mOrigin, camera.mCamera, camera.mSunPosition);
 
         const VisibilityInputs inputs{
             .mScene = acceleration.getTopLevel(),

@@ -3659,7 +3659,8 @@ namespace Rtx
 
         /// Two flames in one place add less than twice one, because a flame absorbs what it emits.
         ///
-        /// A texel of alpha `128/255 = 0.50196` adds that share of `EMISSIVE_INTENSITY` on its own,
+        /// A texel of alpha `128/255 = 0.50196` adds that share of `FLAME_INTENSITY` on its own,
+
         /// which is what it always added. Two of them screen — `1 - 0.49804^2 = 0.75196` of it —
         /// where a sum would have reached `1.00392`. The original's framebuffer clamped that sum at
         /// one, and this is the smooth form of the same limit.
@@ -3691,9 +3692,9 @@ namespace Rtx
                 return mRadiance[centre];
             };
 
-            EXPECT_NEAR(glowing(1), Shaders::EMISSIVE_INTENSITY * sHalfAlpha, 0.05f) << "one adds what it painted";
+            EXPECT_NEAR(glowing(1), Shaders::FLAME_INTENSITY * sHalfAlpha, 0.01f) << "one adds what it painted";
             EXPECT_NEAR(
-                glowing(2), Shaders::EMISSIVE_INTENSITY * (1.0f - (1.0f - sHalfAlpha) * (1.0f - sHalfAlpha)), 0.05f)
+                glowing(2), Shaders::FLAME_INTENSITY * (1.0f - (1.0f - sHalfAlpha) * (1.0f - sHalfAlpha)), 0.01f)
                 << "two screen rather than sum";
         }
 
@@ -3709,6 +3710,14 @@ namespace Rtx
         /// **And the ball has a side.** A sun behind the eye lights the near side at `1 + SPRITE_WRAP`
         /// through a front nothing shadows; one behind the sprite lights it at `1 - SPRITE_WRAP`
         /// through the whole of the texel's thickness, which is `1 - alpha`.
+        ///
+        /// **And the sun is thrown forward.** Henyey-Greenstein at `g = 0.6` against the even share
+        /// is `(1 - g^2) / (1 + g^2 - 2 g cos)^1.5 = 0.64 / (1.36 - 1.2 cos)^1.5`: from the side
+        /// `0.64 / 1.36^1.5 = 0.40353`, from behind the eye `0.64 / 2.56^1.5 = 0.15625`, and from
+        /// behind the sprite `0.64 / 0.16^1.5 = 10`. The side cases carry the first, and the two
+        /// sides of the ball the other two — which is what makes them differ by sixty-four and not
+        /// by six.
+
         TEST_F(RtxVisibilityTest, aPuffIsLitByItsSideAndByWhatItsTextureLetsThrough)
         {
             constexpr std::uint32_t size = 33;
@@ -3744,21 +3753,71 @@ namespace Rtx
             };
 
             const float card = 4.0f * Shaders::INV_PI * sHalfAlpha;
+            constexpr float sideways = 0.40353f;
+            constexpr float backward = 0.15625f;
+            constexpr float forward = 10.0f;
             constexpr std::array<std::uint8_t, 4> clear{ 255, 255, 255, 255 };
 
-            EXPECT_NEAR(lit(osg::Vec3f(1.0f, 0.0f, 0.0f), clear), card, 0.01f) << "a card's worth from the side";
+            EXPECT_NEAR(lit(osg::Vec3f(1.0f, 0.0f, 0.0f), clear), card * sideways, 0.005f)
+                << "a card's worth from the side, thrown";
             EXPECT_NEAR(lit(osg::Vec3f(1.0f, 0.0f, 0.0f), { 0, 255, 255, 255 }), 0.0f, 0.005f)
                 << "the sun from +u, and +u shut";
-            EXPECT_NEAR(lit(osg::Vec3f(-1.0f, 0.0f, 0.0f), { 0, 255, 255, 255 }), card, 0.01f)
+            EXPECT_NEAR(lit(osg::Vec3f(-1.0f, 0.0f, 0.0f), { 0, 255, 255, 255 }), card * sideways, 0.005f)
                 << "the sun from -u, which +u does not shut";
             EXPECT_NEAR(lit(osg::Vec3f(0.0f, 0.0f, 1.0f), { 255, 255, 0, 255 }), 0.0f, 0.005f)
                 << "the sun from above is +v, and +v shut";
 
-            EXPECT_NEAR(lit(osg::Vec3f(0.0f, -1.0f, 0.0f), clear), card * (1.0f + Shaders::SPRITE_WRAP), 0.01f)
-                << "the near side, through the front";
+            EXPECT_NEAR(
+                lit(osg::Vec3f(0.0f, -1.0f, 0.0f), clear), card * (1.0f + Shaders::SPRITE_WRAP) * backward, 0.005f)
+                << "the near side, through the front, thrown away from the eye";
             EXPECT_NEAR(lit(osg::Vec3f(0.0f, 1.0f, 0.0f), clear),
-                card * (1.0f - Shaders::SPRITE_WRAP) * (1.0f - sHalfAlpha), 0.01f)
-                << "the far side, through the thickness";
+                card * (1.0f - Shaders::SPRITE_WRAP) * (1.0f - sHalfAlpha) * forward, 0.02f)
+                << "the far side, through the thickness, thrown toward the eye";
+        }
+
+        /// A puff in the shade of its own emitter is thinned by what one layer of its texture hides.
+        ///
+        /// Two puffs of one emitter, the second a hundred units toward a sun from the side and sixty
+        /// in radius, so the first's path to the sun runs through it and the eye's ray to the first
+        /// does not. `SpriteShade` counts one whole layer, and the shader thins the sun by the
+        /// texture's mean alpha — its one texel, `128/255` — to `0.49804` of the card's worth from
+        /// the side. Nothing stands over either, so the sky is untouched, and the ambient is nought.
+        TEST_F(RtxVisibilityTest, aPuffInTheShadeOfItsOwnEmitterIsThinnedByOneLayer)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            const OneTexel half({ 255, 255, 255, 128 });
+            const std::array<TextureData, 1> puff{ half.describe() };
+
+            const auto lit = [&](bool shaded) {
+                SceneDesc scene;
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                std::vector<Sprite> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
+                if (shaded)
+                    sprites.push_back(
+                        Sprite{ .mPosition = osg::Vec3f(100.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f });
+                scene.addEmitter(sprites, cut, false);
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mAmbientFromSky = 1.0f;
+                camera.mSunPosition = osg::Vec3f(1.0f, 0.0f, 0.0f);
+                camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, puff, camera, size, pixels, SeaState{});
+
+                return mRadiance[centre];
+            };
+
+            const float alone = lit(false);
+            ASSERT_GT(alone, 0.1f) << "the sun did not reach the puff at all";
+            EXPECT_NEAR(lit(true) / alone, 1.0f - sHalfAlpha, 0.01f) << "one layer of a half-alpha texture";
         }
 
         /// What each mask names, and what neither of them does.

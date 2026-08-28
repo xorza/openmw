@@ -805,6 +805,12 @@ namespace Rtx::Shaders
         /// whole run — and a list of sprites can only keep that amortisation if a sprite can say
         /// when the run it belongs to has changed. It sits in the padding the structure already had.
         uint mEmitter;
+
+        /// How many sprites of its own emitter stand between this one and the sun, and the sky, each
+        /// counted for its fade. `Rtx::SpriteShade` counts them once a frame on the host, and
+        /// `spritesAlong` thins the light by what one layer of the texture hides.
+        float mSunLayers;
+        float mSkyLayers;
     };
 
     /// How many pixels a side one tile of the sprite list covers.
@@ -835,6 +841,28 @@ namespace Rtx::Shaders
     /// not, and that is what makes a ball read as a ball. `1 + SPRITE_WRAP * dot(normal, toward)`
     /// keeps the mean over the sphere where it was and puts three to one between front and back.
     RTX_CONST float SPRITE_WRAP = 0.5;
+
+    /// What a flame texel of one is worth, as light.
+    ///
+    /// **A white card square to the sun, which is what the original's one meant.** There a fully
+    /// lit surface reached one and an additive sprite at one reached the same white, so the two
+    /// stand at one level here: a card under `DAYLIGHT` leaves `DAYLIGHT / pi`. This is not
+    /// `EMISSIVE_INTENSITY`, which is matched to the sky so that a glowing material shows in shade.
+    /// A flame carried at that scale is six times its own meaning, and at night the exposure then
+    /// puts every texel of it past white — the fringe the texture painted goes with the core, and a
+    /// sprite reads as a cut-out that switches on.
+    RTX_CONST float FLAME_INTENSITY = DAYLIGHT * INV_PI;
+
+    /// How strongly smoke throws the sun forward: Henyey-Greenstein's asymmetry.
+    ///
+    /// **A puff lit by an even share from every side is a card, and a puff is not a card.** A cloud
+    /// of droplets sends most of what it scatters on along the light, so smoke between the eye and
+    /// the sun glows and smoke with the sun behind the eye is dim. The even share drew a chimney's
+    /// column as bright as the sky from in front and six times darker from behind, which is the
+    /// wrong way round. Applied to the sun alone and normalised so the mean over every direction
+    /// stays the card's worth; the sky and the lamps arrive from everywhere and keep the even share.
+    /// Six tenths is the cloud recipe's figure.
+    RTX_CONST float SMOKE_ANISOTROPY = 0.6;
 
     /// One particle system: a sphere a ray is rejected by, and the run of sprites behind it.
     struct GpuEmitter
@@ -931,7 +959,8 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
     static_assert(sizeof(GpuMaterial) == 72, "GpuMaterial must be scalar-packed on every side");
-    static_assert(sizeof(GpuSprite) == 48, "GpuSprite must be scalar-packed on every side");
+    static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
+
     static_assert(sizeof(GpuEmitter) == 60, "GpuEmitter must be scalar-packed on every side");
 
 #endif
