@@ -1,12 +1,19 @@
+#include <array>
 #include <cmath>
+#include <map>
+#include <string>
+#include <string_view>
 
 #include <gtest/gtest.h>
+
 
 #include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/rtx/distantland.hpp>
+#include <components/rtx/error.hpp>
 #include <components/rtx/lightbuilder.hpp>
+
 #include <components/rtx/shaders/visibility.h>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightmanager.hpp>
@@ -230,6 +237,25 @@ namespace Rtx
                 { "Weather_Clear_Sun_Disc_Sunset_Color", "255,189,157" },
                 { "Weather_Clear_Glare_View", "1" },
 
+                // The rest of what `requireWeather` asks a weather for, with the shipped numbers,
+                // so a Clear the game defines is a Clear this test defines.
+                { "Weather_Clear_Sky_Sunrise_Color", "117,141,164" },
+                { "Weather_Clear_Sky_Day_Color", "095,135,203" },
+                { "Weather_Clear_Sky_Sunset_Color", "056,089,129" },
+                { "Weather_Clear_Sky_Night_Color", "009,010,011" },
+                { "Weather_Clear_Fog_Sunrise_Color", "255,189,157" },
+                { "Weather_Clear_Fog_Day_Color", "206,227,255" },
+                { "Weather_Clear_Fog_Sunset_Color", "255,189,157" },
+                { "Weather_Clear_Fog_Night_Color", "009,010,011" },
+                { "Weather_Clear_Ambient_Sunrise_Color", "047,066,096" },
+                { "Weather_Clear_Ambient_Day_Color", "137,140,160" },
+                { "Weather_Clear_Ambient_Sunset_Color", "068,075,096" },
+                { "Weather_Clear_Ambient_Night_Color", "032,035,042" },
+                { "Weather_Clear_Cloud_Texture", "Tx_Sky_Clear.dds" },
+                { "Weather_Clear_Cloud_Speed", "1.25" },
+                { "Weather_Clear_Clouds_Maximum_Percent", "1.0" },
+
+
                 // The sun's own ramp, seeded with the shipped numbers so that the two ways this
                 // test can be run — against these or against a real installation — agree. The night
                 // value being the blue one is what the disc is here to not be painted with.
@@ -278,9 +304,14 @@ namespace Rtx
                 EXPECT_EQ(makeDaylight("Clear", hour).mSun.mDiscColour, osg::Vec3f(1.0f, 1.0f, 1.0f))
                     << "at hour " << hour;
 
-            const Daylight down = makeDaylight("Clear", 18.0f);
+            // Half past seven and not eighteen: the disc's colour is summed with the ambient and
+            // clipped, the way the original did it, and at the start of sunset the shipped ambient
+            // is still bright enough to clip all three channels to white. It warms once the
+            // ambient has gone down with it.
+            const Daylight down = makeDaylight("Clear", 19.5f);
             EXPECT_FLOAT_EQ(down.mSun.mDiscColour.x(), 1.0f);
             EXPECT_LT(down.mSun.mDiscColour.z(), down.mSun.mDiscColour.x()) << "warm on the way down, never blue";
+
 
             // The wind comes off the same file and a key per weather, so a storm reading harder
             // than fair weather is what says the name reached the lookup rather than a constant
@@ -297,6 +328,65 @@ namespace Rtx
             // `weatherIndex` is the thing to ask first.
             EXPECT_THROW(makeDaylight("Drizzle", 12.0f), std::logic_error);
         }
+
+        /// A weather the configuration left out is refused by name, before it can read as nought.
+        ///
+        /// **Every key the picture reads of a weather, removed one at a time**: each refusal names
+        /// the weather and the key, and with all of them present nothing is refused. Over tables of
+        /// the test's own rather than `Fallback::Map`'s, because that map keeps the first value it
+        /// is given and another test in this binary may already have given it the real ones — which
+        /// after the harness's configuration gained its two missing weathers is every one of the ten.
+        TEST(RtxLightBuilderTest, aWeatherTheConfigurationLeftOutIsRefusedByName)
+        {
+            constexpr std::array<std::string_view, 18> colours = { "Sky_Sunrise_Color", "Sky_Day_Color",
+                "Sky_Sunset_Color", "Sky_Night_Color", "Fog_Sunrise_Color", "Fog_Day_Color", "Fog_Sunset_Color",
+                "Fog_Night_Color", "Ambient_Sunrise_Color", "Ambient_Day_Color", "Ambient_Sunset_Color",
+                "Ambient_Night_Color", "Sun_Sunrise_Color", "Sun_Day_Color", "Sun_Sunset_Color", "Sun_Night_Color",
+                "Sun_Disc_Sunset_Color", "Cloud_Texture" };
+            constexpr std::array<std::string_view, 6> numbers = { "Land_Fog_Day_Depth", "Land_Fog_Night_Depth",
+                "Glare_View", "Wind_Speed", "Cloud_Speed", "Clouds_Maximum_Percent" };
+
+            std::map<std::string, std::string, std::less<>> strings;
+            for (const std::string_view colour : colours)
+                strings["Weather_Blight_" + std::string(colour)] = "128,019,019";
+
+            std::map<std::string, float, std::less<>> floats;
+            for (const std::string_view number : numbers)
+                floats["Weather_Blight_" + std::string(number)] = 1.0f;
+
+            EXPECT_NO_THROW(requireWeather("Blight", floats, strings));
+
+            const auto refusedFor = [](std::string_view key, const auto& check) {
+                try
+                {
+                    check();
+                    ADD_FAILURE() << "nothing refused " << key;
+                }
+                catch (const Error& error)
+                {
+                    const std::string what = error.what();
+                    EXPECT_NE(what.find("Blight"), std::string::npos) << what;
+                    EXPECT_NE(what.find(key), std::string::npos) << what;
+                }
+            };
+
+            for (const std::string_view colour : colours)
+            {
+                auto without = strings;
+                const std::string key = "Weather_Blight_" + std::string(colour);
+                without.erase(key);
+                refusedFor(key, [&] { requireWeather("Blight", floats, without); });
+            }
+
+            for (const std::string_view number : numbers)
+            {
+                auto without = floats;
+                const std::string key = "Weather_Blight_" + std::string(number);
+                without.erase(key);
+                refusedFor(key, [&] { requireWeather("Blight", without, strings); });
+            }
+        }
+
 
         /// A sun below the horizon is not a sun, in either term.
         ///

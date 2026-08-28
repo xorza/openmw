@@ -66,8 +66,18 @@ Upstream's constraints are not ours. Where they conflict, ours win.
   **With it off, the tree behaves exactly as upstream does.** The rasterizer is not modified, not
   wrapped and not conditionally compiled around — it is simply the path not taken. Keeping it that
   way is what makes "does the RT path do this correctly" answerable by comparison.
-- **No merge-back discipline.** This fork is not upstreaming. Do not shape a change around what a
-  GitLab reviewer would accept.
+- **Upstream's files are read-only.** A change lands in the RTX-owned places and nowhere else:
+  `components/rtx*/`, `components/surface/`, `components/myguirtx/`, `apps/rtxtool/`,
+  `apps/openmw/mwrender/rtx/`, `apps/components_tests/{rtx,rtxtool,surface}/`, `files/rtx/` and
+  `.notes/`. Everything else — upstream's source, its tests, its data and its config templates —
+  stays exactly as it is, so a review of this fork sees RTX changes and nothing beside them. Where
+  the RT path cannot work without a change to an upstream file, a lift of shared arithmetic
+  included, name the file and the change and wait for a go-ahead rather than make it. A gap in
+  upstream's data — a config template missing two weathers, say — is met on the RTX side by a hard
+  failure naming it, not by a patch to the template.
+- **No merge-back discipline inside those places.** The RTX code is not upstreaming. Do not shape
+  it around what a GitLab reviewer would accept.
+
 - **Read the old renderer first, every time.** Before fixing a bug or writing new code in the RT
   path, find what `apps/openmw/mwrender/gl/` and the components under it already do about the same
   thing. Morrowind's own feel and content are the target and the ray tracer is what is added on top

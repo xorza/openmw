@@ -14,9 +14,11 @@
 #include <components/sky/timeofday.hpp>
 #include <components/weather/downpour.hpp>
 
+#include "error.hpp"
 #include "shaders/colour.h"
 #include "shaders/scene.h"
 #include "shaders/visibility.h"
+
 
 namespace Rtx
 {
@@ -121,6 +123,12 @@ namespace Rtx
         Reading readWeather(std::string_view weather, const Sky::TimeOfDaySettings& times, float hour)
         {
             const std::string name(weather);
+
+            // A name that is none of the ten is left to the map, which refuses it as a key it will
+            // not consider; one of the ten with nothing written for it is refused here, by name.
+            if (weatherIndex(weather).has_value())
+                requireWeather(weather, Fallback::Map::getFloatFallbackMap(), Fallback::Map::getNonNumericFallbackMap());
+
 
             // **The game's own four-point ramp rather than a step between four phases.** Each
             // quantity crosses dawn over a window of its own — the sun can be up before the sky has
@@ -366,7 +374,43 @@ namespace Rtx
             times, hour);
     }
 
+    void requireWeather(std::string_view weather, const std::map<std::string, float, std::less<>>& floats,
+        const std::map<std::string, std::string, std::less<>>& strings)
+    {
+        // What `readWeather`, the clouds and the wind read of a weather, and nothing a script or the
+        // sound engine does: the keys whose nought would be a picture rather than a silence.
+        constexpr std::array<std::string_view, 4> rampNames = { "Sky", "Fog", "Ambient", "Sun" };
+        constexpr std::array<std::string_view, 4> phases = { "Sunrise", "Day", "Sunset", "Night" };
+        constexpr std::array<std::string_view, 2> colours = { "Sun_Disc_Sunset_Color", "Cloud_Texture" };
+        constexpr std::array<std::string_view, 6> numbers = { "Land_Fog_Day_Depth", "Land_Fog_Night_Depth",
+            "Glare_View", "Wind_Speed", "Cloud_Speed", "Clouds_Maximum_Percent" };
+
+        const std::string prefix = "Weather_" + std::string(weather) + "_";
+        const auto refuse = [&weather](const std::string& key) {
+            throw Error("weather \"" + std::string(weather) + "\" has no \"" + key
+                + "\" in openmw.cfg: run openmw-iniimporter on Morrowind.ini, which writes every weather's keys");
+
+        };
+
+        for (const std::string_view ramp : rampNames)
+            for (const std::string_view phase : phases)
+            {
+                const std::string key = prefix + std::string(ramp) + "_" + std::string(phase) + "_Color";
+                if (!strings.contains(key))
+                    refuse(key);
+            }
+
+        for (const std::string_view colour : colours)
+            if (const std::string key = prefix + std::string(colour); !strings.contains(key))
+                refuse(key);
+
+        for (const std::string_view number : numbers)
+            if (const std::string key = prefix + std::string(number); !floats.contains(key))
+                refuse(key);
+    }
+
     std::optional<std::uint32_t> weatherIndex(std::string_view weather)
+
     {
         const auto found = std::find(sWeathers.begin(), sWeathers.end(), weather);
         if (found == sWeathers.end())

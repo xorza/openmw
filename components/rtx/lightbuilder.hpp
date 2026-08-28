@@ -1,8 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <optional>
+#include <string>
 #include <string_view>
+
 
 #include <osg/Vec3f>
 #include <osg/Vec4f>
@@ -319,6 +323,19 @@ namespace Rtx
     /// renderer a weather's script id and the harness hands it a name off a command line, and a
     /// frame taken either way has to be under the same sky.
     std::optional<std::uint32_t> weatherIndex(std::string_view weather);
+
+    /// Refuses a weather whose keys the configuration never provided.
+    ///
+    /// **`Fallback::Map` answers an allowed key nobody wrote with nought**, so a weather the ini
+    /// importer was never run for renders with no fog, no wind and black colours, and nothing says
+    /// why — which is how two of the ten went unnoticed on a box that never ran the importer. A
+    /// missing thing is a hard failure naming it: this names the weather and the first key it lacks.
+
+    ///
+    /// @param floats,strings the tables to look in — `Fallback::Map`'s own, or a test's.
+    void requireWeather(std::string_view weather, const std::map<std::string, float, std::less<>>& floats,
+        const std::map<std::string, std::string, std::less<>>& strings);
+
 
     /// The name that index spells, for whoever has to hand one back to `makeDaylight`. Empty for
     /// an index past the ten.

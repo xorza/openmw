@@ -8,7 +8,6 @@
 - rtx-tool travel
 - translucent leaves
 - remove metal
-- volumetric particles
 - spell lightsources
 - split tests
 - extract shader and lightting consts for look tweaking

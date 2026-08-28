@@ -2203,9 +2203,14 @@ namespace Rtx
             constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
             constexpr float halfExtent = 57.735027f;
 
+            // **Six of 255 on the map and a fortieth as the colour, so both land inside the display's
+            // range once `EMISSIVE_INTENSITY` has scaled them.** The bytes are derived from the
+            // scale below rather than pinned, because the scale is the renderer's to move; what is
+            // pinned is that the two paths differ only in whether the albedo stands between.
             const std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
             const std::array<std::uint8_t, 4> green{ 0, 255, 0, 255 };
-            const std::array<std::uint8_t, 4> dimRed{ 64, 0, 0, 255 };
+            const std::array<std::uint8_t, 4> dimRed{ 6, 0, 0, 255 };
+
 
             const MipLevel one{ 0, 1, 1 };
             const auto describe = [&one](std::span<const std::uint8_t> bytes) {
@@ -2252,24 +2257,32 @@ namespace Rtx
                 return std::array<std::uint8_t, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
 
-            // A quarter of a glow on a white surface. The scale carries the original's "one is a
-            // fully lit surface" onto this renderer's, where the sun is eight and the sky a fifth of
-            // that: 0.25 * 1.6 = 0.4 linear, and 1.055 * 0.4^(1/2.4) - 0.055 = 0.66514, or 170.
-            const osg::Vec3f quarter(0.25f, 0.25f, 0.25f);
-            EXPECT_EQ(render(0, sNoIndex, quarter)[0], 170) << "a glow on white";
+            // A fortieth of a glow on a white surface. The scale carries the original's "one is a
+            // fully lit surface" onto this renderer's, and at sixteen that is 0.4 linear, which
+            // encodes to `1.055 * 0.4^(1/2.4) - 0.055 = 0.66514`, or 170.
+            const float glow = 0.4f / Shaders::EMISSIVE_INTENSITY;
+            const std::uint8_t glowing = encodeSrgb(glow * Shaders::EMISSIVE_INTENSITY);
+            EXPECT_EQ(glowing, 170) << "the glow was meant to sit inside the display's range";
+
+            const osg::Vec3f fortieth(glow, glow, glow);
+            EXPECT_EQ(render(0, sNoIndex, fortieth)[0], glowing) << "a glow on white";
 
             // The same glow on a texture with no red in it keeps the texture's colour, because the
             // glow goes through the albedo. Added past it, the surface would come back white.
-            const std::array<std::uint8_t, 3> onGreen = render(1, sNoIndex, quarter);
-            EXPECT_EQ(onGreen[1], 170) << "the same glow, still through green";
+            const std::array<std::uint8_t, 3> onGreen = render(1, sNoIndex, fortieth);
+            EXPECT_EQ(onGreen[1], glowing) << "the same glow, still through green";
             EXPECT_EQ(onGreen[0], 0) << "and with none of the red the white one had";
 
             // The map is the other way round: red light off a green surface. Through the albedo it
-            // would be black, since green times red is nothing. 64 of 255 is 0.25098, times 1.6 is
-            // 0.40157, which encodes to 170 — the same byte, reached without the texture's help.
+            // would be black, since green times red is nothing. Six of 255 is 0.023529, times
+            // sixteen is 0.37647, which encodes to 165 — reached without the texture's help.
+            const std::uint8_t mapGlow = encodeSrgb(6.0f / 255.0f * Shaders::EMISSIVE_INTENSITY);
+            EXPECT_EQ(mapGlow, 165);
+
             const std::array<std::uint8_t, 3> mapped = render(1, 2, osg::Vec3f());
-            EXPECT_EQ(mapped[0], 170) << "the map's own red, undimmed by the green under it";
+            EXPECT_EQ(mapped[0], mapGlow) << "the map's own red, undimmed by the green under it";
             EXPECT_EQ(mapped[1], 0) << "and none of the green, which nothing is lighting";
+
         }
 
         /// A masked surface in front of a wall: the ray stops on what survives the cutout and goes
