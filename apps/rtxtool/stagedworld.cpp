@@ -26,6 +26,7 @@ namespace RtxTool
             request.mDay, request.mHour, actors.mProps);
 
         mLighting = arrived.mLighting;
+        mLighting.mSeconds = request.mSeaSeconds;
 
         // **After the region, because an interior's sheet sits over whatever the room holds.** The
         // level it answers is what "how deep is this point" is asked against, so it goes into the

@@ -110,6 +110,12 @@ namespace RtxTool
             "actors in it measures an animated frame -- the skinning, and the structure rebuild "
             "behind it -- rather than the same frame over again");
 
+        addOption("sea-time", bpo::value<float>()->default_value(0.0f),
+            "with `shot`, how many seconds the water has been moving. Zero is a still sea and a "
+            "repeatable frame, which is what a screenshot wants; two shots a known interval apart "
+            "are what say whether the caustics on a seabed travel or boil, and a window or a bench "
+            "drives this off its own clock instead");
+
         addOption("upscale", bpo::value<std::string>()->default_value(std::string(sUpscaleByDefault)),
             "put DLSS Ray Reconstruction between the trace and the picture: off, performance, "
             "balanced, quality or dlaa. --size is what comes out, and what gets traced is DLSS's "

@@ -8,7 +8,7 @@ the four that are not, and the change each one needs.
 | ~~1~~ | ~~The cone test's 0.10 of a mip level~~ | ~~nothing~~ |
 | ~~2~~ | ~~The caustic does not conserve at a fold of three~~ | ~~nothing~~ |
 | ~~3~~ | ~~The caustic still makes 4 per cent of light~~ | ~~nothing~~ |
-| 4 | The caustic pattern reshuffles 67 per cent in a twelfth of a second | ~~3~~ |
+| ~~4~~ | ~~The caustic pattern reshuffles 67 per cent in a twelfth of a second~~ | ~~3~~ |
 | 5 | A shaft is not shadowed by what stands over the water | nothing |
 | 6 | The surf line is flecks rather than a band | nothing |
 
@@ -115,7 +115,22 @@ three is a root-finding problem per pixel, and it is not this.
 
 ---
 
-## 4. The caustic tears — and the judgement on it was made against a different surface
+## ~~4. The caustic tears — and the judgement on it was made against a different surface~~
+
+**Closed on the evidence, and the metric was counting the sea's own motion as decay.** Two shots a
+twelfth of a second apart over the shallows off Seyda Neen show a net of irregular closed cells that
+*slides* shoreward — not a lattice, and not a field replaced by an unrelated one. Measured, the
+pattern travels a pixel in that twelfth, and taking the least of the sum over a small sweep of
+offsets drops the figure from 67 per cent to 53. A rigid translation by one feature width scores near
+one on the unshifted sum however coherent it looks, so the raw number was never the question.
+
+The test asserts both now. The 51 per cent the sweep called acceptable was measured over a table of
+sixty-four sinusoids where the pattern was a lattice, and a lattice reshuffling is what read as
+stripes — a different failure from this one.
+
+**And `shot` could not answer the question.** The sea's clock reached only `view` and `bench`, so a
+still frame was always the same still frame. `--sea-time` is what let this be settled headlessly, and
+it is what settles the next one.
 
 ### What it is
 

@@ -58,6 +58,14 @@ namespace RtxTool
 
         float mFieldOfView = 60.0f;
 
+        /// How long the water has been moving, in seconds.
+        ///
+        /// **Nought by default, because a shot has to be the same shot twice.** A window and a
+        /// profiling run drive this off their own clock; a still frame is told which second it is
+        /// showing, and two of them a known interval apart are what say whether a pattern on the
+        /// seabed travels or boils.
+        float mSeaSeconds = 0.0f;
+
         /// Where to stand and what to look at. Either left out is derived from the cell's own
         /// bounds, which is a fine establishing shot for a town and a poor one for a room.
         std::optional<osg::Vec3f> mOrigin;

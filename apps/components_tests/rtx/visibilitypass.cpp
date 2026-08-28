@@ -4486,38 +4486,54 @@ namespace Rtx
 
             // A twelfth of a second, which is how long a frame is worth caring about. For two
             // samples of one field, `E[(b - a)^2] = 2 sigma^2 (1 - rho)`, so half the ratio of the
-            // two sums is the share of the pattern that is new — 51.1% here.
+            // two sums is the share of the pattern that is new.
             //
-            // That is the number the shortest wave was chosen on. The reference renderer's sweep:
-            // **18 units gives the best caustics it ever drew and they tear at 73%**, 32 units comes
-            // out at 51%, and 50 units is dull at 33%.
+            // **Taken against the best shift, because a pattern that travels is not one that
+            // tears.** The sea carries its caustics shoreward at the waves' own phase speed, and a
+            // field translated by a feature width scores near one on the unshifted sum while looking
+            // perfectly coherent — so the raw figure counts the sea's own motion as decay. The least
+            // over a small sweep of offsets separates them: the pattern travels a pixel here, and
+            // that pixel is worth fourteen points of the 67 per cent the raw sum reports.
             //
-            // **This measures 67.1%, and it is past where the reference renderer says a pattern
-            // tears.** Letting the map run to a fold of three puts the contrast into thin bright
-            // filaments, and a filament is the finest thing in the field — so it is made of the
-            // fastest-turning waves and it is what moves first. The sweep the cutoff was chosen on
-            // put tearing at half: 18 units of wavelength reshuffled 73% of the pattern in a twelfth
-            // of a second and read as stripes running across the bottom.
-            //
-            // The assertion is here to say the number rather than to bless it. What buys it back is
-            // a lower `WATER_CAUSTIC_FOLD`, which is also what makes the lines thicker.
-            //
-            // **The transform is why it is not more.** A sum of sixty-four
-            // sinusoids put nearly all of its curvature in the shortest few, and those are the
-            // fastest-turning waves there are — so almost the whole pattern was made of components
-            // that reshuffle inside a frame, and it tore. Spread over tens of thousands of
-            // wavevectors the same curvature is carried mostly by longer, slower ones. The cutoff is
-            // still 32 units; what changed is how much of the pattern sits at it.
+            // **The sweep that put tearing at half was taken on a different surface.** 18 units of
+            // wavelength reshuffled 73% and read as stripes running across the bottom, 32 came out
+            // at 51%, 50 was dull at 33% — all of it over a table of sixty-four sinusoids, where the
+            // shortest few owned the Hessian in four directions and the pattern was a lattice. A
+            // lattice reshuffling is what reads as stripes. Tens of thousands of wavevectors
+            // interfere into a mottle instead, and two shots a twelfth of a second apart show a net
+            // that slides rather than one that boils.
             const std::vector<float> later = causticField(140.0f, 1.0f / 12.0f);
-            float moved = 0.0f;
+
             float spread = 0.0f;
             for (std::size_t i = 0; i < count; ++i)
-            {
-                moved += (later[i] - shallow[i]) * (later[i] - shallow[i]);
                 spread += (shallow[i] - mean) * (shallow[i] - mean);
-            }
 
-            EXPECT_NEAR(0.5f * moved / spread, 0.671f, 0.03f) << "how much of the pattern is new a twelfth later";
+            // Three pixels either way, which is three times what the sea carries the pattern in a
+            // twelfth of a second. The margin also keeps every shifted read inside the frame rather
+            // than wrapping, since the two fields are the same patch of bed.
+            constexpr int sweep = 3;
+            constexpr int inside = int(size) - 2 * sweep;
+            const auto newAfter = [&](int across, int down) {
+                float apart = 0.0f;
+                for (int y = sweep; y < int(size) - sweep; ++y)
+                    for (int x = sweep; x < int(size) - sweep; ++x)
+                    {
+                        const float gap
+                            = later[std::size_t(y + down) * size + (x + across)] - shallow[std::size_t(y) * size + x];
+                        apart += gap * gap;
+                    }
+
+                return 0.5f * apart / spread * float(count) / (float(inside) * float(inside));
+            };
+
+            const float unshifted = newAfter(0, 0);
+            float least = unshifted;
+            for (int down = -sweep; down <= sweep; ++down)
+                for (int across = -sweep; across <= sweep; ++across)
+                    least = std::min(least, newAfter(across, down));
+
+            EXPECT_NEAR(unshifted, 0.671f, 0.03f) << "how much of the pattern is new a twelfth later";
+            EXPECT_NEAR(least, 0.529f, 0.03f) << "and how much of that the sea did not simply carry";
         }
 
         /// The sun's disc carries exactly its irradiance, however wide the pixel that finds it.

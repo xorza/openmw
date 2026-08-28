@@ -40,6 +40,9 @@ namespace RtxTool
         std::uint32_t mHeight = 1080;
         float mFieldOfView = 60.0f;
 
+        /// How many seconds the water has been moving. `StagingRequest::mSeaSeconds` says why.
+        float mSeaSeconds = 0.0f;
+
         /// Whether Ray Reconstruction stands between the trace and the picture, and how hard it
         /// works. It denoises for itself, so `mFilter` stops meaning anything once this is on.
         Rtx::Upscale mUpscale = Rtx::Upscale::Off;

@@ -304,6 +304,7 @@ namespace RtxTool
                     .mHour = request.mHour,
                     .mDay = request.mDay,
                     .mFieldOfView = request.mFieldOfView,
+                    .mSeaSeconds = request.mSeaSeconds,
                     .mOrigin = request.mOrigin,
                     .mTarget = request.mTarget,
                 },
@@ -743,6 +744,7 @@ namespace RtxTool
                 request.mWidth = width;
                 request.mHeight = height;
                 request.mFieldOfView = variables["fov"].as<float>();
+                request.mSeaSeconds = variables["sea-time"].as<float>();
                 request.mOrigin = chosen.mOrigin;
                 request.mTarget = chosen.mTarget;
                 request.mShowAlbedo = variables["albedo"].as<bool>();
