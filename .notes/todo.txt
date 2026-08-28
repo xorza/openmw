@@ -11,6 +11,5 @@
 - spell lightsources
 - split tests
 - extract shader and lightting consts for look tweaking
-- water waves wind direction
 
 - emissive textures like mushrooms - postponed
