@@ -9,7 +9,7 @@ the four that are not, and the change each one needs.
 | ~~2~~ | ~~The caustic does not conserve at a fold of three~~ | ~~nothing~~ |
 | ~~3~~ | ~~The caustic still makes 4 per cent of light~~ | ~~nothing~~ |
 | ~~4~~ | ~~The caustic pattern reshuffles 67 per cent in a twelfth of a second~~ | ~~3~~ |
-| 5 | A shaft is not shadowed by what stands over the water | nothing |
+| ~~5~~ | ~~A shaft is not shadowed by what stands over the water~~ | ~~nothing~~ |
 | 6 | The surf line is flecks rather than a band | nothing |
 
 ---
@@ -168,7 +168,17 @@ same wavelengths, and the same percentage need not look the same at all.
 
 ---
 
-## 5. A shaft is not shadowed by what stands over the water
+## ~~5. A shaft is not shadowed by what stands over the water~~
+
+**Done.** The march asks `lightThrough` at the point the light met the surface — which it had already
+worked out to read the lens at — and multiplies the step by the answer, outside the fade so that a
+rock's edge is there whether or not the filaments are. A lid over the whole sea now takes the shaft
+to 1.5e-5 of what it was, and a strip whose shadow falls where the light entered takes 95 per cent of
+it while the same strip standing *over* that water changes it by 0.09 per cent.
+
+**A strip takes nearly all rather than half**, because the beam is a narrow forward lobe: the pixels
+carrying it look up-sun, and a ray climbing toward the sun gains ground as fast as its own entry
+point does, so its whole march enters the water through a stretch tens of units long.
 
 ### What it is
 

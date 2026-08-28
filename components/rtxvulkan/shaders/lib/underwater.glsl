@@ -14,6 +14,7 @@
 #include "scene.h"
 #include "bindings.glsl"
 #include "sea.glsl"
+#include "traversal.glsl"
 
 /// What is left of the daylight by the time it reaches a point, as a fraction per channel.
 ///
@@ -128,6 +129,12 @@ vec3 waterTransmittance(float path)
 /// `caustic` a submerged surface takes, at its own depth and its own point of entry — which is why
 /// the pattern leans down-sun as it descends instead of standing as a column.
 ///
+/// **And it asks whether the sun reaches that point of entry at all**, which the closed form has no
+/// way to. A submerged surface is shadowed because `shadeSurface` traces its own ray and water
+/// carries a mask bit that keeps it out of occlusion — so a rock over the sea darkened the bed under
+/// it and left the water in front of the bed as bright as ever. The ray goes from where the light
+/// met the surface, which the march has already worked out to read the lens at.
+///
 /// **Only where the beam is a real share of what the stretch sends**, which is `WATER_SHAFT_FLOOR`.
 /// Everywhere else the closed form is the whole answer and nothing is marched.
 ///
@@ -237,9 +244,16 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
         const float reach = under * sun.mSlant;
 
         const vec3 weight = exp(-WATER_EXTINCTION * (reach + along)) * (ahead - behind);
-        const float lens = caustic(at.xy - sun.mTravelling.xy * reach, under, footprint);
 
-        lit += weight * mix(1.0, lens, show);
+        // Where the light met the surface, up-sun of where it is scattering — one point, read for
+        // the lens that focused it and asked whether anything stood over it.
+        const vec2 met = at.xy - sun.mTravelling.xy * reach;
+
+        // **Outside the fade, because a shadow is not fine detail.** `show` brings the *pattern* in
+        // across the gate, and a rock's edge has to be there whether or not the filaments are.
+        const float visible = lightThrough(vec3(met, frame.mWaterLevel), frame.mSunPosition, frame.mFar);
+
+        lit += weight * mix(1.0, caustic(met, under, footprint), show) * visible;
         plain += weight;
         behind = ahead;
     }

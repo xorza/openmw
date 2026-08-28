@@ -4305,6 +4305,102 @@ namespace Rtx
             EXPECT_NEAR(meanOf(ratio), 1.0f, 0.06f) << "measured 0.963: the shaft moves light and makes none";
         }
 
+        /// A shaft is blocked by what stands over the water, and the gap is where the sun enters.
+        ///
+        /// **The half the closed form has no way to ask.** A submerged surface is shadowed because
+        /// `shadeSurface` traces its own ray, and water carries a mask bit that keeps it out of
+        /// occlusion — so a rock over the sea darkened the bed under it and left the water in front
+        /// of the bed as bright as ever. The march is where the volume gets the same question.
+        ///
+        /// **Three lids, and the last is the one that says where the shadow belongs.** A lid over
+        /// everything only proves that something is being asked, and a strip whose shadow falls
+        /// where the light entered only proves that the answer can be partial. The last stands over
+        /// that same water and casts its shadow elsewhere, so a shader that looked straight up would
+        /// find it squarely in the way and darken a shaft nothing is shading.
+        ///
+        /// The sun is 45 degrees off the vertical, which Snell bends to 32 under the water, so from
+        /// 500 units down the light met the surface 312 units up-sun of the eye — and a lid 500
+        /// units over the sea shadows the water 500 units down-sun of itself. The two displacements
+        /// are what the second lid is placed against, and getting either backwards puts its shadow
+        /// somewhere the frame cannot see.
+        ///
+        /// Nothing else is in the frame: no bed, a black sky, no ambient and no disc, so the surface
+        /// reflects unlit water and refracts an unlit sky. What is left is the shaft alone.
+        TEST_F(RtxVisibilityTest, aShaftIsBlockedByWhatStandsOverTheWaterWhereTheSunEnters)
+        {
+            constexpr std::uint32_t size = 48;
+            constexpr std::size_t count = std::size_t{ size } * size;
+            constexpr float eye = 500.0f;
+
+            // Straight up from under the surface, which is where the phase function puts the beam.
+            // A hair off the vertical, which `makeCamera` insists on.
+            const auto shaft = [&](const std::optional<std::array<osg::Vec3f, 4>>& lid) {
+                SceneDesc scene = makeOpenWater(4000.0f);
+                if (lid.has_value())
+                    scene.addInstance(MeshInstance{
+                        .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(*lid, {}, {}, sQuadIndices) });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -0.05f, -eye), osg::Vec3f(0.0f, 0.0f, -eye + 10.0f), 60.0f, size, size, 10000.0f);
+                litThroughWater(camera, osg::DegreesToRadians(45.0f));
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels);
+
+                float total = 0.0f;
+                for (std::size_t i = 0; i < count; ++i)
+                    total += mRadiance[i * 4 + 1];
+
+                return total / static_cast<float>(count);
+            };
+
+            // Well clear of the water, and wider than anything the frame reaches.
+            constexpr float over = 500.0f;
+            const std::array<osg::Vec3f, 4> everything = makeSheet(4000.0f, over);
+
+            // A ray leaving the water toward a sun 45 degrees over passes this height 500 units
+            // up-sun of where it started, so a lid here shadows the water 500 units down-sun of
+            // itself. Up-sun is toward -y: that is where the sun stands, and its light travels +y.
+            const auto strip = [](float from, float to) {
+                return std::array<osg::Vec3f, 4>{
+                    osg::Vec3f(-4000.0f, from, over),
+                    osg::Vec3f(4000.0f, from, over),
+                    osg::Vec3f(4000.0f, to, over),
+                    osg::Vec3f(-4000.0f, to, over),
+                };
+            };
+
+            // Its shadow lands on the water between 320 and 150 units up-sun of the eye's column,
+            // which is where the light entered for the deeper half of the march.
+            const std::array<osg::Vec3f, 4> shadowing = strip(-820.0f, -650.0f);
+
+            // The same strip of water, with the lid over it rather than over its light. Nothing here
+            // shadows anything the frame can see, and a shader that looked straight up would find
+            // this in the way.
+            const std::array<osg::Vec3f, 4> overhead = strip(-320.0f, -150.0f);
+
+            const float open = shaft(std::nullopt);
+            const float covered = shaft(everything);
+            const float shaded = shaft(shadowing);
+            const float beside = shaft(overhead);
+
+            // Measured 0.0182 open and 2.7e-7 under the lid. The beam is the whole of the frame, so
+            // taking the sun off the water takes the frame with it.
+            EXPECT_GT(open, 0.0f) << "there is a shaft to block";
+            EXPECT_LT(covered, 1.0e-4f * open) << "and a lid over all of the water puts it out";
+
+            // **A strip takes nearly all of it and not half, because the beam is a narrow lobe.**
+            // Henyey-Greenstein at 0.92 puts the shaft in the pixels looking up-sun, and a ray that
+            // climbs toward the sun gains y as fast as its own entry point does — so its whole march
+            // enters the water through a stretch a couple of tens of units long, and one strip
+            // covers it. The pixels the strip misses are the ones that were dark anyway.
+            EXPECT_NEAR(shaded / open, 0.051f, 0.02f) << "a lid whose shadow falls on the entries";
+
+            // **The one that says where the gap belongs**, and it is 0.9991 of the open shaft.
+            // Standing over the same water and casting its shadow elsewhere, it changes nothing.
+            EXPECT_NEAR(beside / open, 1.0f, 0.01f) << "and one that merely stands over them";
+        }
+
         /// `causticGain` is the mean it says it is, against the field it was fitted to.
         ///
         /// **The fit is the one number in the caustic nobody can read off the shader.** Everything
