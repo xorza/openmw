@@ -15,6 +15,7 @@ namespace Rtx
 {
     class Batch;
     class Device;
+    class FogTile;
     class GBuffer;
     class GBufferLayout;
     class SceneBuffers;
@@ -49,6 +50,10 @@ namespace Rtx
         /// the doll and the map beside them, so it belongs to the renderer and arrives here rather
         /// than through a `SceneBuffers` that would hold one copy of it per scene.
         const WavePass* mWaves = nullptr;
+
+        /// The fog's fractal field, here for the same reason and drawn once for the life of the
+        /// device rather than once a frame.
+        const FogTile* mFog = nullptr;
     };
 
     /// One ray per pixel against the top-level structure, shaded by the geometric normal it hit.

@@ -20,6 +20,7 @@
 #include "compositepass.hpp"
 #include "device.hpp"
 #include "exposurepass.hpp"
+#include "fogtile.hpp"
 #include "gbuffer.hpp"
 #include "gputimer.hpp"
 #include "guipass.hpp"
@@ -259,6 +260,11 @@ namespace Rtx
         /// **One sea for everything traced**, the doll and the map included: the water is not a
         /// property of a scene, so it is synthesised once a frame here rather than held per scene.
         WavePass mWaves;
+
+        /// **One field for everything traced, drawn once for the life of the device.** Nothing about
+        /// it turns on the weather or the cell — those decide the extinction and the layer's height,
+        /// which are numbers the shader already has.
+        FogTile mFog;
         ExposurePass mExposure;
         /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
         /// layout that only a scene brings, and the layout every scene brings is the same one.

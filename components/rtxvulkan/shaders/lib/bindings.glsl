@@ -282,4 +282,16 @@ layout(set = 0, binding = 21) uniform sampler2D waveSurface[WAVE_CASCADES];
 /// The three curvatures.
 layout(set = 0, binding = 22) uniform sampler2D waveCurvature[WAVE_CASCADES];
 
+/// The fog's fractal field, drawn once for the life of the device and read at three world scales.
+///
+/// **Wrapping, mipped, and two channels.** `.x` is the shape a coverage band is cut out of and `.y`
+/// is a second field decorrelated from it — read together they are the displacement the finer scales
+/// are sampled at, which is a vector out of one fetch rather than two fetches at two places.
+///
+/// **A ground plan and not a volume**, for the reason `FOG_FIELD_SIZE` gives: the vertical shape
+/// of this air is the height falloff, and what the field decides is where a bank stands.
+///
+/// `Rtx::bakeFogNoise` says what is in it, and why every level of the chain carries one spread.
+layout(set = 0, binding = 23) uniform sampler2D fogField;
+
 #endif

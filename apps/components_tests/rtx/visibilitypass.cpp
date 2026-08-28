@@ -21,6 +21,7 @@
 #include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/compositepass.hpp>
+#include <components/rtxvulkan/fogtile.hpp>
 #include <components/rtxvulkan/gbuffer.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/result.hpp>
@@ -4922,10 +4923,13 @@ namespace Rtx
         /// this is what makes that constant a measurement rather than a note, since moving the band
         /// without re-measuring moves this ratio by the constant's own error.
         ///
-        /// **It settles just under one, and that is Jensen's inequality rather than a mistake.** A
-        /// banked field's optical depth varies far more than an even one's, and `exp` is convex, so
-        /// more light survives the same *average* density. Measured at 0.971 against a thickness of
-        /// 0.09 — and the deficit scales with it, so a thinner fog would sit closer to one.
+        /// **It settles just under one, and two things put it there rather than a mistake.** A march
+        /// far from the camera reads a level of the field the band clears slightly less of — measured
+        /// at 0.353 near the eye against 0.335 at a step of two and a half thousand units, which is
+        /// 2.1% over a whole ray. And a banked field's optical depth varies far more than an even
+        /// one's while `exp` is convex, so more light survives the same *average* density. Measured
+        /// at 0.9785 with the first alone, at a thickness so thin that the second cannot act, and at
+        /// 0.9750 with both.
         ///
         /// Nine viewpoints, because one is not a sample: the steps bunch near the camera, so a
         /// single frame weighs one small volume of the field heavily and lands anywhere within six
@@ -4964,7 +4968,7 @@ namespace Rtx
 
             ratio /= static_cast<double>(places.size());
 
-            EXPECT_NEAR(ratio, 0.971, 0.05) << "banked air against even air, over nine viewpoints";
+            EXPECT_NEAR(ratio, 0.975, 0.05) << "banked air against even air, over nine viewpoints";
         }
 
         /// The fog scatters the sun forward far harder than back, which is what a Mie phase is for.
@@ -5302,6 +5306,10 @@ namespace Rtx
             // frame reaches this pass without reaching the heap.
             const WavePass waves(device, pool, Testing::getShaderDirectory());
 
+            // The fog's field is drawn once for the life of the device, so a steady frame reaches it
+            // the same way.
+            const FogTile fog(device, pool);
+
             const VisibilityInputs inputs{
                 .mScene = acceleration.getTopLevel(),
                 .mBuffers = &buffers,
@@ -5309,6 +5317,7 @@ namespace Rtx
                 .mTextures = textures.getSet(),
                 .mShading = textures.getShading(),
                 .mWaves = &waves,
+                .mFog = &fog,
             };
 
             const GBuffer channels(device, channelLayout, size, size);

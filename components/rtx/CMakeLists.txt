@@ -29,6 +29,8 @@ set(RTX_FILES
     distantland.hpp
     fogbuilder.cpp
     fogbuilder.hpp
+    fognoise.cpp
+    fognoise.hpp
     frameimage.cpp
     frameimage.hpp
     frametimes.cpp

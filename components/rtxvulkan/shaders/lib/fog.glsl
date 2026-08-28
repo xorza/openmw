@@ -16,83 +16,18 @@
 #include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
-#include "footprint.glsl"
 #include "lights.glsl"
 #include "random.glsl"
 #include "traversal.glsl"
 #include "underwater.glsl"
 
-/// How large one cell of the coarsest drift noise is, in world units.
-///
-/// **Coarse, which is the opposite of the instinct.** Twenty-four steps over a ray that can run
-/// thirty thousand units puts more than a thousand between samples at the far end, so structure
-/// finer than that never gets sampled twice and arrives as noise rather than as shape. What reads
-/// as a bank of fog is the *coarsest* octave; the fine ones only keep its edge from being a circle.
-const float FOG_GRAIN = 900.0;
-
-/// Octaves, and the heading and speed each one drifts on.
+/// The heading and speed each scale drifts on.
 ///
 /// **The differing speeds are what stops it reading as a texture.** One field scrolling rigidly past
 /// is a pattern in motion; three shearing against each other at their own rates make the shapes
-/// themselves form and pull apart, which is what fog actually does. The third carries a little
-/// vertical drift so banks rise and settle rather than only sliding.
-const int FOG_OCTAVES = 3;
-const vec3 FOG_CHURN[FOG_OCTAVES] = vec3[FOG_OCTAVES](vec3(11.0, 7.0, 0.0), vec3(-6.0, 14.0, 2.5),
-    vec3(19.0, -4.0, -1.5));
-
-/// Frequency step between octaves. Not two, so the lattices never line up and repeat.
-const float FOG_LACUNARITY = 2.27;
-
-/// The spread of the full stack, as a share of one octave's: `sum(a^2) / sum(a)^2` for amplitudes
-/// 1, 1/2 and 1/4, which is three sevenths.
-///
-/// **What the field is rescaled to hold when an octave drops out.** Fewer octaves is a *wider*
-/// distribution, not a narrower one — one octave alone has more than twice the variance of three
-/// averaged — so a field that simply lost its fine detail would present a different spread to the
-/// coverage band, cut a different share of the volume, and quietly stop averaging to `FOG_COVERAGE`.
-const float FOG_SPREAD = 3.0 / 7.0;
-
-/// How far the field drags itself sideways before it is sampled, in world units.
-///
-/// **Domain warping**: rather than adding octaves, the *coordinate* is displaced by a noise of its
-/// own, so shapes stretch and curl instead of staying the roughly round blobs a sum of octaves
-/// gives. Quilez's `fbm(p + w * fbm(p))` at one level with a single-octave warp — the full
-/// construction is an fbm per component per level, which at twenty-four samples a pixel is a
-/// different budget from this. Horizontal only: the vertical shape of this fog is the height
-/// falloff, and warping across it would blur the layer it is meant to have.
-const float FOG_WARP = 450.0;
-
-/// Below `FOG_CLEARING` of the field the air is clear, and at `FOG_SOLID` the fog is at full
-/// thickness. Between them it is a bank's edge.
-///
-/// **This is what makes fog patchy rather than merely uneven.** Scaling density by a noise gives fog
-/// that is everywhere and varies; cutting a band out of one gives banks with gaps between them,
-/// which is what a valley at dawn looks like.
-///
-/// **The band has to be measured against the field's own spread, not picked.** Averaging octaves
-/// narrows a distribution sharply, and a threshold chosen for one octave's range clears almost
-/// everything: the renderer this is ported from tried `0.42..1.0` and left average coverage at a
-/// third of a per cent. This field runs mean 0.4996 with a standard deviation of 0.1204, and the
-/// band below leaves 40% of the volume clear and 18% at full thickness.
-///
-/// **Sample it over a plane wider than the grain, not over a sphere.** A million pixels of a sphere
-/// of radius 5,000 is a million samples of about 390 cells, and the mean it gives is wrong by
-/// several per cent while looking precise. A lattice at 700 units against a 900-unit grain is most
-/// of a million independent samples, and the figures here carry a standard error of 0.14%.
-const float FOG_CLEARING = 0.45;
-const float FOG_SOLID = 0.65;
-
-/// What that band comes to on average, which the coverage is divided by.
-///
-/// **So the noise redistributes the air rather than removing it.** The extinction the host derived
-/// is what a ray should cross on average — it is Morrowind's own view distance, turned into a
-/// coefficient — and a band that clears a third of the volume would silently make the world three
-/// times clearer than the game says. Normalised, a bank is 2.9 times the derived extinction against
-/// a gap of nothing, and the average is what it was.
-///
-/// **Measured, and it must be re-measured if the band moves.** `theBankedFieldHoldsAsMuchAirAsAnEven
-/// One` is what enforces that rather than anyone remembering to.
-const float FOG_COVERAGE = 0.3756;
+/// themselves form and pull apart, which is what fog actually does.
+const vec2 FOG_CHURN[FOG_SCALES]
+    = vec2[FOG_SCALES](vec2(11.0, 7.0), vec2(-6.0, 14.0), vec2(19.0, -4.0));
 
 /// How many shadow rays the sun gets in the fog, and so how many stretches the march is cut into.
 ///
@@ -131,81 +66,66 @@ const uint FOG_STEPS_PER_RAY = FOG_STEPS / FOG_SHADOW_RAYS;
 /// enough to a floor to serve indoors.
 const float FOG_BASE = 0.0;
 
-/// Trilinear value noise, which is as much structure as a drifting haze needs.
-float fogNoise(vec3 at)
+/// The field over a place on the ground, at one scale, read at whatever level the march can tell
+/// apart.
+///
+/// **A level of the chain is the field averaged over twice the texels of the one under it**, so the
+/// level a step reaches is the one whose texel is the step's own width. That is the argument
+/// `resolved` makes for a wave against a ray cone, and a mip chain makes it exactly, in the sampler,
+/// for nothing.
+///
+/// @param spacing how far apart the march is sampling here.
+vec2 fogFieldAt(vec2 position, float tile, float spacing, vec2 churn)
 {
-    const ivec3 base = ivec3(floor(at));
+    const float texel = tile / float(FOG_FIELD_SIZE);
+    const float level = clamp(log2(max(spacing / texel, 1.0)), 0.0, float(FOG_FIELD_LEVELS - 1u));
 
-    // Smoothstepped, so the lattice does not show as a grid of creases.
-    vec3 fraction = fract(at);
-    fraction = fraction * fraction * (3.0 - 2.0 * fraction);
-
-    float total = 0.0;
-    for (int corner = 0; corner < 8; ++corner)
-    {
-        const ivec3 offset = ivec3(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1);
-        const vec3 weight = mix(1.0 - fraction, fraction, vec3(offset));
-        total += hashToUnit(base + offset) * weight.x * weight.y * weight.z;
-    }
-
-    return total;
+    return textureLod(fogField, (position + churn * frame.mTime) / tile, level).xy;
 }
 
-/// The fog's shape at a point: three octaves over a domain dragged sideways by a noise of its own.
+/// The fog's shape at a point: one volume read at three scales, over a domain the coarsest drags.
 ///
-/// Its own mean is a half by construction, and **its spread is far narrower than one octave's**,
-/// because averaging octaves narrows a distribution: with amplitudes 1, 1/2 and 1/4 the variance
-/// falls to `sum(a^2) / sum(a)^2` — three sevenths — of a single octave's. That is what the coverage
-/// band has to be measured against rather than guessed at.
+/// **Fetched rather than computed, which is most of what this stopped costing.** The field this
+/// replaced hashed eight lattice corners per octave and took five of those — forty hashes at every
+/// step of a twenty-four step march, measured at 2.0 ms of a 2.1 ms trace. Three fetches stand for
+/// all of it, and what they read is a richer field than a march could ever have afforded: gradient
+/// noise rather than value noise, so no lattice shows as a grid of creases, and four octaves inside
+/// the volume before these three scales are laid over each other.
 ///
-/// **An octave finer than the march's own step is aliasing, not detail.** The steps run from about
-/// fifty units near the camera to two and a half thousand at the far end of a long ray, so the
-/// finest octave — features 175 units across — is sampled properly on one step in twenty-four and
-/// turned into noise on the rest. Fading each one out where the spacing outruns it is the same
-/// argument `resolved` makes for a wave against a ray cone.
-///
-/// **It pays only where the ray is long, which is the half worth knowing.** The span is the distance
-/// to whatever was hit, so a view down a street stays fully sampled and gains nothing — measured at
-/// Balmora, where every ray ends within a couple of thousand units, the fade is worth under 4%. A
-/// view across open ground gains a third, and that is the case that was costing the most.
-///
-/// The coarsest never fades. It is the one that reads as a bank, so there is always a field here and
-/// never a division by nothing.
+/// Its mean is a half and its spread is `FOG_FIELD_SPREAD`, at every level and every distance,
+/// which is what the coverage band is cut against.
 float fogShape(vec3 position, float spacing)
 {
-    // Two samples of the same field far apart, which is a cheap way to get a vector out of a scalar
-    // noise: they are uncorrelated enough to displace with. It fades on its own terms — its features
-    // are twice the grain — and unlike an octave it can go without touching the field's spread,
-    // because an undisplaced domain is the same field seen from a different place.
-    const float warping = resolved(FOG_GRAIN * 2.0, spacing);
-    if (warping > 0.0)
-    {
-        const vec3 coarse = position / (FOG_GRAIN * 2.0);
-        const vec2 warp = vec2(fogNoise(coarse), fogNoise(coarse + vec3(5.2, 1.3, 7.1))) - 0.5;
-        position.xy += warp * (FOG_WARP * warping);
-    }
+    // **The coarsest scale is read undisplaced.** What a warp is for is breaking the regularity of
+    // the structure inside a bank, and at this scale a bank is the whole shape rather than a lattice
+    // with something laid on it.
+    const vec2 coarse = fogFieldAt(position.xy, FOG_TILE, spacing, FOG_CHURN[0]);
 
-    float total = 0.0;
-    float weight = 0.0;
-    float squares = 0.0;
+    // Two channels of a fetch already taken, which is what makes a vector out of a scalar field cost
+    // nothing at all. Divided by the spread, so what `FOG_WARP` names is a distance rather than a
+    // number of standard deviations.
+    const vec2 warped = position.xy + (coarse - 0.5) * (FOG_WARP / FOG_FIELD_SPREAD);
+
+    float total = coarse.x - 0.5;
+    float squares = 1.0;
     float amplitude = 1.0;
-    float frequency = 1.0;
-    for (int octave = 0; octave < FOG_OCTAVES; ++octave)
-    {
-        const float held = octave == 0 ? 1.0 : resolved(FOG_GRAIN / frequency, spacing);
-        const float used = amplitude * held;
-        if (used > 0.0)
-            total += used * fogNoise((position * frequency + FOG_CHURN[octave] * frame.mTime) / FOG_GRAIN);
+    float tile = FOG_TILE;
 
-        weight += used;
-        squares += used * used;
+    for (uint scale = 1u; scale < FOG_SCALES; ++scale)
+    {
         amplitude *= 0.5;
-        frequency *= FOG_LACUNARITY;
+        tile /= FOG_LACUNARITY;
+
+        total += amplitude * (fogFieldAt(warped, tile, spacing, FOG_CHURN[scale]).x - 0.5);
+        squares += amplitude * amplitude;
     }
 
-    // Rescaled about the mean, which every octave shares, so that whatever survives presents the
-    // spread the whole stack would have. The band above is cut against that spread and nothing else.
-    return 0.5 + (total - 0.5 * weight) * sqrt(FOG_SPREAD / squares);
+    // **Rescaled by the quadrature sum and not by the plain one**, because the scales are
+    // independent draws of one field: a weighted sum of those carries the variance of the weights'
+    // squares, so this is what puts the stack back at the spread one scale has. Exact rather than
+    // measured, and nothing has to be faded out to hold it there — the level the sampler reached did
+    // that already.
+    return 0.5 + total / sqrt(squares);
 }
 
 /// The height the fog pools at.

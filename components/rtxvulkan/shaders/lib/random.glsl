@@ -3,35 +3,11 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_RANDOM_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_RANDOM_GLSL
 
-// Blue noise across the screen, a low-discrepancy sequence along time, and a hash for the
-// one field that asks about a place in the world rather than a pixel on the screen — and
-// what a pair of those numbers becomes when a shadow ray or a bounce asks for a direction.
+// Blue noise across the screen, a low-discrepancy sequence along time, and what a pair of those
+// numbers becomes when a shadow ray or a bounce asks for a direction.
 
 #include "scene.h"
 #include "bindings.glsl"
-
-/// Three integers to one number in `[0, 1]`: a repeatable value for a cell of the noise field.
-///
-/// **The field's lattice and nothing else.** It fed the march's own jitter too, once; that draw
-/// comes from the blue-noise tile now, because where a hash puts its error is nobody's decision and
-/// a tile's is the whole point of it. What is left wants a hash and not a tile: `fogNoise` asks
-/// about a place in the world rather than a pixel on the screen, and there is no screen-space
-/// arrangement to arrange.
-///
-/// Sixteen bits is more than a haze needs, and taking the high ones is what keeps the low bits of a
-/// weak avalanche out of the field.
-float hashToUnit(ivec3 at)
-{
-    uvec3 wrapped = uvec3(at);
-    uint h = wrapped.x * 1664525u + wrapped.y * 1013904223u + wrapped.z * 2654435761u;
-    h ^= h >> 15u;
-    h *= 0x2c1b3c6du;
-    h ^= h >> 12u;
-    h *= 0x297a2d39u;
-    h ^= h >> 15u;
-
-    return float(h >> 16u) / 65535.0;
-}
 
 /// Which sequence a lamp reservoir draws on. **One per depth, because a path shades twice** — the
 /// hit the eye found and the hit its bounce found — and two reservoirs stepping the same sequence

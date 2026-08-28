@@ -3,7 +3,7 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_FOOTPRINT_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_FOOTPRINT_GLSL
 
-// Whether a sampler can still see a field, which a wave, a fog octave and a sprite rim all ask.
+// Whether a sampler can still see a field, which a wave and a sprite rim both ask.
 //
 // **A field finer than the sampler looking at it is not detail, it is noise dressed as detail.**
 // What `footprint` means is whatever is doing the looking — a ray cone against a wavelength, a
@@ -15,9 +15,6 @@
 /// wavelength across covers a crest and a trough whose slopes cancel, and picking one of them
 /// instead is what makes distant water a field of crawling white sparks.
 ///
-/// **The fog's octaves ask the same question of the march's step**, which is the same argument with
-/// a different sampler: a field finer than the distance between two samples is not detail, it is
-/// noise dressed as detail. What `footprint` means is whatever is doing the looking.
 float resolved(float wavelength, float footprint)
 {
     return 1.0 - smoothstep(0.25 * wavelength, 0.75 * wavelength, footprint);

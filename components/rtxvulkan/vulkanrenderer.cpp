@@ -92,6 +92,7 @@ namespace Rtx
         , mComposite(mDevice, mPool, options.mShaderDirectory)
         , mBloom(mDevice, options.mShaderDirectory)
         , mWaves(mDevice, mPool, options.mShaderDirectory)
+        , mFog(mDevice, mPool)
         , mExposure(mDevice, options.mShaderDirectory)
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
@@ -677,6 +678,7 @@ namespace Rtx
             .mTextures = mWorld.mTextures->getSet(),
             .mShading = mWorld.mTextures->getShading(),
             .mWaves = &mWaves,
+            .mFog = &mFog,
         };
 
         // Made by the first frame that averages, and that frame is the one that fills it.
@@ -951,6 +953,7 @@ namespace Rtx
             .mTextures = array.getSet(),
             .mShading = array.getShading(),
             .mWaves = &mWaves,
+            .mFog = &mFog,
         };
 
         // **Not counted, and not timed.** The hit count and the frame report are the frame's; a

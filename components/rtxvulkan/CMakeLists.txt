@@ -141,6 +141,8 @@ set(RTX_VULKAN_FILES
     device.hpp
     exposurepass.cpp
     exposurepass.hpp
+    fogtile.cpp
+    fogtile.hpp
     gbuffer.cpp
     gbuffer.hpp
     graphicspipeline.cpp

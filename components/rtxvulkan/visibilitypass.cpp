@@ -11,6 +11,7 @@
 
 #include "buffer.hpp"
 #include "commands.hpp"
+#include "fogtile.hpp"
 #include "gbuffer.hpp"
 #include "scenebuffers.hpp"
 #include "wavepass.hpp"
@@ -33,8 +34,8 @@ namespace Rtx
         /// The structure, the tables a hit reads, the frame itself and the sea, in the order the
         /// shader declares them. The channels the trace writes are not here: `GBufferLayout` says
         /// why they have a set of their own.
-        constexpr std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 3> sBindings = [] {
-            std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 3> declared{};
+        constexpr std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> sBindings = [] {
+            std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> declared{};
             declared[0] = VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, sCompute };
 
             // One up to the frame are storage buffers: the hit count, then every table in the order
@@ -45,10 +46,15 @@ namespace Rtx
             declared[sFrameBinding]
                 = VkDescriptorSetLayoutBinding{ sFrameBinding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sCompute };
 
-            // And the three the sea was synthesised into, one descriptor a cascade.
-            for (std::uint32_t binding = sFrameBinding + 1; binding < declared.size(); ++binding)
+            // Then the two the sea was synthesised into, one descriptor a cascade.
+            for (std::uint32_t binding = sFrameBinding + 1; binding < sFrameBinding + 3; ++binding)
                 declared[binding] = VkDescriptorSetLayoutBinding{ binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     Shaders::WAVE_CASCADES, sCompute };
+
+            // And the one the fog's field was drawn into, which is one volume rather than a cascade
+            // of tiles: the air has no near band and no far one, it has a field read at three scales.
+            declared[sFrameBinding + 3] = VkDescriptorSetLayoutBinding{ sFrameBinding + 3,
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, sCompute };
 
             return declared;
         }();
@@ -73,6 +79,7 @@ namespace Rtx
         assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
 
         assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
+        assert(inputs.mFog != nullptr && "a trace with no fog field drawn for it");
 
         // **How many emitters there are is the scene's answer and not the camera's.** The table
         // never shrinks, so its length says nothing about this frame; taking the count off the
@@ -236,6 +243,10 @@ namespace Rtx
         // dispatches apart, and `GENERAL` is the one layout both accesses are legal from.
         appendImages(sFrameBinding + 1, surfaces);
         appendImages(sFrameBinding + 2, curvatures);
+
+        const VkDescriptorImageInfo fogWrite{ inputs.mFog->getSampler(), inputs.mFog->getField().getView(),
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        append(sFrameBinding + 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, &fogWrite, nullptr);
 
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getHandle());
         // Every binding the layout declares, written exactly once — a shader that grew one and a

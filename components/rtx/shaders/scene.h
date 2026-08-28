@@ -324,6 +324,99 @@ namespace Rtx::Shaders
     /// valley and still thin out over the hill beside it.
     RTX_CONST float FOG_HEIGHT = 2600.0f;
 
+    /// How many texels along each side of the fog's baked field, and how many levels sit under it.
+    ///
+    /// **Flat, and that is the fog's own design rather than a saving.** The vertical shape of this
+    /// air is the height falloff — `FOG_HEIGHT` — and what the field decides is where a bank stands,
+    /// which is a question about the ground plan. A field with a third axis would have to answer it
+    /// over a layer two and a half thousand units deep, and any tile wide enough not to repeat across
+    /// a ray is far taller than that: the layer then samples one fixed slice of it, whose own mean is
+    /// not the field's. Measured, that slice ran 0.12 of a spread off centre and slid with the water
+    /// level, so how thick the air was depended on which cell the player stood in.
+    ///
+    /// **Two hundred and fifty-six, because a flat field is nearly free.** Two channels and a chain
+    /// come to 170 kilobytes, which every level-one cache holds — so the size buys detail rather than
+    /// misses, and the octaves reach 187 units inside the tile before the scales are laid over it.
+    RTX_CONST uint FOG_FIELD_SIZE = 256u;
+    RTX_CONST uint FOG_FIELD_LEVELS = 9u;
+
+    /// The standard deviation every level of that field is normalised to.
+    ///
+    /// **A property of the field and not of the level a step reached**, which is what lets the
+    /// coverage band be one pair of numbers. A level is the mean of the eight texels over it, so its
+    /// own spread narrows as the chain goes up, and a band cut against the full level's spread would
+    /// clear almost nothing at the top of it.
+    ///
+    /// The figure is what the field this replaced measured at, so the band and `FOG_COVERAGE` keep
+    /// the meanings they were set against.
+    RTX_CONST float FOG_FIELD_SPREAD = 0.1204f;
+
+    /// How wide the tile is laid out, in world units, at the scale a bank is read from.
+    ///
+    /// **Coarse, which is the opposite of the instinct.** Twenty-four steps over a ray that can run
+    /// thirty thousand units puts more than a thousand between samples at the far end, so structure
+    /// finer than that never gets sampled twice and arrives as noise rather than as shape. What reads
+    /// as a bank of fog is the coarsest scale; the finer ones only keep its edge from being a circle.
+    ///
+    /// The tile holds six octaves, so at this figure its own features run from six thousand units
+    /// down to a hundred and eighty-seven — a bank, and the shapes inside one.
+    RTX_CONST float FOG_TILE = 12000.0f;
+
+    /// How many scales that one tile is read at.
+    ///
+    /// **Because one tile repeats and three do not.** A field laid down every twelve thousand units
+    /// shows its period across a ray that runs thirty; read again at scales that are not whole fractions
+    /// of the first, the three never come back into step, and what is visible is the beat rather than
+    /// any one lattice. Three reaches thirty-six units at the fine end, which is finer than any step
+    /// a march near the camera takes.
+    RTX_CONST uint FOG_SCALES = 3u;
+
+    /// The step between them. Not two, so the tiles never realign and repeat.
+    RTX_CONST float FOG_LACUNARITY = 2.27f;
+
+    /// The standard deviation of the sideways displacement the finer scales are read at, in world units.
+    ///
+    /// **Domain warping**: rather than adding octaves, the *coordinate* is displaced by a noise of its
+    /// own, so shapes stretch and curl instead of staying the roughly round blobs a sum of octaves
+    /// gives. Quilez's `fbm(p + w * fbm(p))` at one level — and here it costs nothing at all, because
+    /// the coarse scale is fetched anyway and its second channel is a field decorrelated from the first,
+    /// so the pair is a vector already in hand. Horizontal only: the vertical shape of this fog is the
+    /// height falloff, and warping across it would blur the layer it is meant to have.
+    RTX_CONST float FOG_WARP = 450.0f;
+
+    /// Below `FOG_CLEARING` of the field the air is clear, and at `FOG_SOLID` the fog is at full
+    /// thickness. Between them it is a bank's edge.
+    ///
+    /// **This is what makes fog patchy rather than merely uneven.** Scaling density by a noise gives fog
+    /// that is everywhere and varies; cutting a band out of one gives banks with gaps between them,
+    /// which is what a valley at dawn looks like.
+    ///
+    /// **The band has to be cut against the field's own spread, not picked.** Averaging octaves narrows
+    /// a distribution sharply, and a threshold chosen for one octave's range clears almost everything:
+    /// the renderer this is ported from tried `0.42..1.0` and left average coverage at a third of a per
+    /// cent. This field runs mean 0.5 with a standard deviation of `FOG_FIELD_SPREAD` by construction
+    /// rather than by measurement, and it does so at every level of the chain — which is what lets one
+    /// pair of numbers stand for the band at every step of a march.
+    ///
+    /// **Sample it over a plane wider than the tile, not over a sphere.** A million pixels of a sphere of
+    /// radius 5,000 is a million samples of about a tenth of one tile, and the mean it gives is wrong by
+    /// several per cent while looking precise.
+    RTX_CONST float FOG_CLEARING = 0.45f;
+    RTX_CONST float FOG_SOLID = 0.65f;
+
+    /// What that band comes to on average, which the coverage is divided by.
+    ///
+    /// **So the noise redistributes the air rather than removing it.** The extinction the host derived
+    /// is what a ray should cross on average — it is Morrowind's own view distance, turned into a
+    /// coefficient — and a band that clears two thirds of the ground would silently make the world three
+    /// times clearer than the game says. Normalised, a bank is 2.9 times the derived extinction against
+    /// a gap of nothing, and the average is what it was.
+    ///
+    /// **Measured, and it must be re-measured if the band or the field moves.**
+    /// `theCoverageBandLeavesTheShareTheDensityIsDividedBy` computes it off the baked field to four
+    /// figures, and `theBankedFieldHoldsAsMuchAirAsAnEvenOne` checks the frame agrees.
+    RTX_CONST float FOG_COVERAGE = 0.3530f;
+
     /// What is left of a ray at the world's edge, once the second element of the air has had it.
     ///
     /// **The whole point of that element is that this is not a matter of taste.** The last ring of
