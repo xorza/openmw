@@ -486,8 +486,10 @@ namespace Rtx
         /// **What the chain lost at that footprint, and not the whole spectrum.** The shader reads
         /// `mLostSlope` off the level `waveLevel` picks, so what it carries is the slope a mip of
         /// that width averaged away — never all of it unless the cone reaches the coarsest level.
-        /// Measured against the whole spectrum instead, the two answered different questions and
-        /// agreed only to 0.088 of a mip level; `Testing::lostSlopeOf` asks the shader's own.
+        /// The reason is that this is the shader's own question, and not the size of the answer: at
+        /// the footprint `waterTooFineToResolveWidensTheConeItRefractsThrough` reads, the mip has
+        /// lost nearly all of the slope anyway and the whole spectrum would predict 1.434 against
+        /// the chain's 1.425.
         ///
         /// The lobe is twice its root: a normal tilted by an angle turns a reflection by twice it.
         float lobeOf(const SeaState& sea, float footprint)
@@ -4601,9 +4603,13 @@ namespace Rtx
         TEST_F(RtxVisibilityTest, waterTooFineToResolveWidensTheConeItRefractsThrough)
         {
             constexpr std::uint32_t size = 64;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
             constexpr float height = 12000.0f;
             constexpr float depth = 1500.0f;
+
+            // How far either way from the middle the cone is read. The bed is a thousand units
+            // across and a pixel covers 74 of them, so the sheet is thirteen pixels wide and this
+            // leaves a pixel of margin at each edge — no cone in the patch straddles the rim.
+            constexpr std::uint32_t across = 5;
 
             TestTexture ladder;
             makeMipLadder(ladder);
@@ -4614,10 +4620,23 @@ namespace Rtx
                 osg::Vec3f(0.0f, -50.0f, height), osg::Vec3f(0.0f, 0.0f, -depth), 20.0f, size, size, 100000.0f);
             camera.mWaterLevel = 0.0f;
 
-            // Water over a bed that glows its own ladder. Emissive rather than lit, so the byte is
+            // Water over a bed that glows its own ladder. Emissive rather than lit, so the pixel is
             // the texture and nothing else: an unlit albedo would need a light, and a light would
             // put its own falloff between the mip and the measurement.
-            const auto level = [&](const SeaState& sea) {
+            //
+            // **A patch of the bed and not one pixel of it, which is the whole of what this used to
+            // get wrong.** `mLostSlope` is a mean over the cone's own footprint — 66 units against a
+            // spectrum that stops at 32, so about four correlation cells of the waves that carry the
+            // slope. One reading of that is not an ensemble mean: measured over this patch the level
+            // has a standard deviation of 0.12, and the centre pixel stood 0.8 of one away from the
+            // patch's own mean.
+            //
+            // **The radiance and not the byte.** One byte of the display curve is 0.08 of a mip
+            // level here, which is four times the tolerance below.
+            //
+            // The mean of the cones rather than of their levels, because a level is a logarithm and
+            // what the prediction below names is a width.
+            const auto coneOver = [&](const SeaState& sea) {
                 SceneDesc scene = makeOpenWater(4000.0f);
 
                 const Index bed = scene.addMesh(makeSheet(500.0f, -depth), {}, sQuadUv, sQuadIndices);
@@ -4629,11 +4648,18 @@ namespace Rtx
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, textures, camera, size, pixels, sea);
 
-                // Back out everything between the texture and the byte: the emissive scale, the
+                // Back out everything between the texture and the radiance: the emissive scale, the
                 // water the glow crossed on its way up, and the two per cent the surface reflected.
                 const float carried = Shaders::EMISSIVE_INTENSITY * std::exp(-Shaders::WATER_EXTINCTION[1] * depth)
                     * (1.0f - Shaders::WATER_F0);
-                return ladderLevel(decodeSrgb(pixels[centre + 1]) / carried);
+
+                float total = 0.0f;
+                for (std::uint32_t y = size / 2 - across; y <= size / 2 + across; ++y)
+                    for (std::uint32_t x = size / 2 - across; x <= size / 2 + across; ++x)
+                        total += std::exp2(ladderLevel(mRadiance[(std::size_t{ y } * size + x) * 4 + 1] / carried));
+
+                // In ladder texels, which is a width up to the one scale that cancels below.
+                return total / static_cast<float>((2 * across + 1) * (2 * across + 1));
             };
 
             // How wide the refraction's cone is where it lands, in world units: the pixel's own
@@ -4651,34 +4677,35 @@ namespace Rtx
             };
 
             const SeaState fine{ .mSignificantHeight = 3.0f, .mPeakWavelength = 64.0f };
-            const float still = level(SeaState{ .mSignificantHeight = 0.0f });
-            const float ruffled = level(fine);
+            const float still = coneOver(SeaState{ .mSignificantHeight = 0.0f });
+            const float ruffled = coneOver(fine);
 
             // The ladder has seven levels and the readout is only meaningful off both ends of it.
-            EXPECT_GT(still, 1.0f) << "measured 2.26, clear of the sharpest mip";
-            EXPECT_LT(ruffled, 5.0f) << "measured 3.71, clear of the coarsest";
+            EXPECT_GT(std::log2(still), 1.0f) << "measured 2.25, clear of the sharpest mip";
+            EXPECT_LT(std::log2(ruffled), 5.0f) << "measured 3.68, clear of the coarsest";
 
-            // Mip level is the log of the cone's width, so the difference is the log of the ratio —
-            // and the base term, which is the triangle's texels against its world area, cancels.
+            // Mip level is the log of the cone's width, so the ratio of the two widths is the ratio
+            // of the cones — and the base term, which is the triangle's texels against its world
+            // area, cancels.
             //
-            // **The lobe is asked of the chain and not of the spectrum**, which is what the two used
-            // to disagree about. `waveLevel` reads at `log2(footprint / texel)`, so the slope the
-            // shader carries is what a mip that wide averaged away and never the whole of it — and
-            // `RtxWavePassTest` is what says the chain and `lostSlopeOf` agree about that to within
-            // the half floats it is stored in.
+            // **The lobe is asked of the chain and not of the spectrum.** `waveLevel` reads at
+            // `log2(footprint / texel)`, so the slope the shader carries is what a mip that wide
+            // averaged away and never the whole of it — and `RtxWavePassTest` is what says the chain
+            // and `lostSlopeOf` agree about that to within the half floats it is stored in.
             //
-            // **And the band limit is not where the residual comes from**, which is what asking the
-            // chain settles. At a footprint of 66 units against a spectrum that stops at 32, the mip
-            // has already lost nearly all of the slope — so this predicts 1.425 where the whole
-            // spectrum predicted 1.434, and the measurement stands at 1.508 either way. What the
-            // change bought is that the model now says the shader's own thing; what it did not buy
-            // is the last 0.08 of a mip level.
+            // **The tolerance is a fifth of what it was, and what is left is the two Jensen terms.** The
+            // patch's mean cone is a mean over pixels of a term in `sqrt(lost)`, where the
+            // prediction takes the root of the mean — 0.9 per cent low at this spread — and the log
+            // of a mean stands 0.005 of a level over the mean of the logs. Both are computed rather
+            // than allowed for, and together they are under a hundredth. Measured 1.433 against a
+            // prediction of 1.425.
             //
             // What the assertion settles is the optics: the factor of two, because a normal tilted
             // by an angle turns a reflection by twice it, and the `1 - 1/n` that says a refraction
             // is bent by a quarter of what a reflection is. Adding the lobe once instead of twice
-            // puts the prediction at 0.918, seven tolerances away.
-            EXPECT_NEAR(ruffled - still, std::log2(coneAtBed(lobeOf(fine, footprint)) / coneAtBed(0.0f)), 0.1f)
+            // puts the prediction at 0.882, twenty-seven tolerances away.
+            EXPECT_NEAR(
+                std::log2(ruffled / still), std::log2(coneAtBed(lobeOf(fine, footprint)) / coneAtBed(0.0f)), 0.02f)
                 << "the cone widened by twice the rms slope the sea could not show";
         }
 

@@ -9,7 +9,7 @@ one before it.
 
 | # | Issue | Depends on |
 | --- | --- | --- |
-| 1 | The cone test's 0.10 of a mip level | nothing |
+| ~~1~~ | ~~The cone test's 0.10 of a mip level~~ | ~~nothing~~ |
 | 2 | The caustic does not conserve at a fold of three | nothing |
 | 3 | The caustic pattern tears at 66 per cent | 2 |
 | 4 | A shaft is not shadowed by what stands over the water | nothing |
@@ -17,9 +17,11 @@ one before it.
 
 ---
 
-## 1. The cone test measures one sample of a field and compares it against an ensemble
+## ~~1. The cone test measures one sample of a field and compares it against an ensemble~~
 
-**Closed. The model is right and the measurement was not.**
+**Done. The model is right and the measurement was not.** The test now reads the linear radiance over
+an eleven-by-eleven patch of the bed and asserts to 0.02 of a level, where it measures 1.4328 against
+a prediction of 1.4255 — a residual of 0.0073, which is the two Jensen terms the comment computes.
 
 ### What was measured
 
@@ -61,6 +63,10 @@ linear in the level, as `makeMipLadder` says, and the hypothesis in the issue is
    `lobeOf` that says the two "agreed only to 0.088 of a mip level". They describe a measurement
    error as a modelling one.
 5. Take the entry out of `.notes/ISSUES.md`.
+
+**Measured after the change:** the still sea reads level 2.25 and the ruffled 3.68, the residual is
+0.0073 where the tolerance is 0.02, and adding the lobe once instead of twice would now stand
+twenty-five tolerances away rather than seven.
 
 ---
 
