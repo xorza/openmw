@@ -68,6 +68,23 @@ const float WATER_CAUSTIC_SPREAD = 2.0 * SUN_ANGULAR_RADIUS / WATER_IOR;
 /// transform can carry.
 const float WATER_CAUSTIC_FOCUS = 100.0;
 
+/// How much of the pattern is drawn, as a share of its own departure from a flat sea.
+///
+/// **The one number here that answers taste rather than a measurement, and it says so.** Everything
+/// else in this file is the sea differentiated or a figure taken off it; this is how much of the
+/// lens to show. What the arithmetic gives is the whole of it, and the whole of it reads brighter on
+/// a Morrowind shore than the game wants.
+///
+/// **It scales the departure from one and never the light.** `causticGain` makes the pattern average
+/// to exactly one, and a share of a thing that averages to one still averages to one — so this can be
+/// turned anywhere between nothing and the full lens without the bed receiving a photon more or less
+/// than falls on the water. Multiplying the caustic instead would have taken the light with it.
+///
+/// The ceiling is not this dial and cannot be. Cutting the cusps lower makes `causticGain` divide by
+/// less, which puts the peak straight back: at a ceiling of 1.4 the brightest place on the bed comes
+/// out where it was, with a gentler shape under it.
+const float WATER_CAUSTIC_STRENGTH = 0.4;
+
 /// How fast the pattern fades past the focus, as a power of the depth.
 ///
 /// **A half is what the sea was measured at.** Snyder and Dera's law is that the amplitude of the
@@ -78,7 +95,7 @@ const float WATER_CAUSTIC_FOCUS = 100.0;
 ///
 /// **Blending toward one rather than scaling is what keeps the light wherever this is set**, so the
 /// exponent is free to be turned and the mean does not follow it. Measured at two, six and twenty
-/// metres: 0.54, 0.17 and 0.040 of contrast against the half's 0.63, 0.33 and 0.14.
+/// metres: 0.213, 0.064 and 0.014 of contrast, where a half leaves the deep end four times bolder.
 const float WATER_CAUSTIC_FADE = 1.0;
 
 /// How far toward its own fold the pattern is run at the focus, as a share of the way there.
@@ -511,7 +528,9 @@ float caustic(vec2 at, float depth, float footprint)
     // found again by every field campaign after it, over depths of one metre to twenty-five.
     //
     // Blending toward one rather than scaling is what keeps the light where it was.
-    return 1.0 + (gathered - 1.0) * pow(max(depth / WATER_CAUSTIC_FOCUS, 1.0), -WATER_CAUSTIC_FADE);
+    const float shown = WATER_CAUSTIC_STRENGTH * pow(max(depth / WATER_CAUSTIC_FOCUS, 1.0), -WATER_CAUSTIC_FADE);
+
+    return 1.0 + (gathered - 1.0) * shown;
 }
 
 #endif
