@@ -4016,6 +4016,68 @@ namespace Rtx
             }
         }
 
+        /// A ray that goes down from under the surface and finds nothing is water, not sky.
+        ///
+        /// **The plane has absolute sides.** Below it there is water, whether or not this renderer
+        /// was handed a bed far enough out to stop the ray — and `mFar` is a setting a camera
+        /// carries rather than a distance the sea has. Read as sky, everything past the edge of the
+        /// loaded terrain arrived as the sky's own colour through `mFar` of water instead of through
+        /// all of it, which drew the terrain's boundary across the sea as a row of dark panels
+        /// standing along the horizon.
+        ///
+        /// **Open water with no bed under it and a white sky**, which puts the two answers as far
+        /// apart as they go. No sun, so nothing is marched and the column is its closed form: at a
+        /// hundred units down that is
+        ///
+        ///   scatter * (1 - T^2) / 2 * ambient * exp(-o * 100)
+        ///
+        /// with `T` the transmittance over the whole column, which is nought in every channel — so
+        /// the first factor is the asymptote `deepWaterSettlesAtHalfWhatOneAttenuatedLegWouldGive`
+        /// measures from over the surface, dimmed here by the water above the eye and crossing no
+        /// surface to lose its Fresnel share. That is 31, 61 and 69 of 255. Against a far plane at
+        /// two thousand units, blue keeps half of itself and the sky behind it reads 195, three
+        /// quarters of the scale away.
+        ///
+        /// **And the same byte over the whole frame**, which is the half that was visible: what the
+        /// column settles at depends on neither the ray nor the far plane, so nothing here can draw
+        /// an edge across the water.
+        TEST_F(RtxVisibilityTest, aRayThatFindsNothingUnderTheSurfaceIsWaterRatherThanSky)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr float eye = 100.0f;
+
+            // A far plane short enough that blue would carry half the sky through it, so a test
+            // passing this cannot be one the extinction happened to swallow.
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -0.05f, -eye), osg::Vec3f(0.0f, 0.0f, -eye - 10.0f), 60.0f, size, size, 2000.0f);
+            camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            camera.mSkyHorizon = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            camera.mSkyZenith = camera.mSkyHorizon;
+            camera.mWaterLevel = 0.0f;
+
+            std::vector<std::uint8_t> pixels;
+            EXPECT_EQ(countHits(makeOpenWater(4000.0f), {}, camera, size, pixels), 0u)
+                << "the sheet is overhead, so every ray leaves the scene";
+
+            std::array<int, 3> lowest{ 255, 255, 255 };
+            std::array<int, 3> highest{ 0, 0, 0 };
+            for (std::size_t at = 0; at < pixels.size(); at += 4)
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    lowest[channel] = std::min(lowest[channel], int{ pixels[at + channel] });
+                    highest[channel] = std::max(highest[channel], int{ pixels[at + channel] });
+                }
+
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                const float settled
+                    = Shaders::WATER_SCATTER[channel] * 0.5f * std::exp(-Shaders::WATER_EXTINCTION[channel] * eye);
+
+                EXPECT_NEAR(lowest[channel], encodeSrgb(settled), 1) << "channel " << channel;
+                EXPECT_EQ(lowest[channel], highest[channel]) << "channel " << channel << " draws an edge";
+            }
+        }
+
         /// The water between an eye and the surface over it is water like any other.
         ///
         /// **The half the invariant above cannot see.** Both of its cameras look *down*, so the hit

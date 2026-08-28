@@ -116,7 +116,20 @@ void main()
     // sky behind it draws none of the field either, and says so the same way.
     float skyShown = 0.0;
 
-    if (!surface.mHit)
+    const bool submerged = origin.z < frame.mWaterLevel;
+
+    // **A ray that goes down from under the surface and finds nothing found water, and water is not
+    // the sky.** The plane has absolute sides, so below it there is water whether or not this
+    // renderer was handed a bed far enough out to stop the ray. Read as sky instead, everything past
+    // the edge of the loaded terrain came back at the sky's own horizon colour — which is what
+    // `skyGradient` clamps to under the horizontal — through `mFar` of water rather than through the
+    // whole of it, and that drew the terrain's boundary across the sea as a row of dark panels.
+    // `waterRay` answers the same question the same way for a reflection and for a refraction.
+    const bool unbounded = submerged && !surface.mHit && direction.z < 0.0;
+
+    if (unbounded)
+        shaded = vec3(0.0);
+    else if (!surface.mHit)
         shaded = frame.mTransparentBackground != 0u
             ? vec3(0.0)
             : skyRadiance(origin, direction, pixelBlur(frame.mCamera), skyShown);
@@ -154,10 +167,17 @@ void main()
     //
     // Applied to the whole colour rather than to the albedo alone — what the depth took is a
     // property of the path, so it belongs to the modulation and not to the material.
-    if (origin.z < frame.mWaterLevel)
+    if (submerged)
     {
-        const WaterColumn column = waterColumn(
-            origin, direction, surface.mDistance, surface.mFootprint, randomAt(pixel, STREAM_WATER));
+        // An escaped ray carries neither of the two numbers a column is measured with: `trace`
+        // leaves its distance at `mFar` and its cone at nought. What it crossed is the whole column,
+        // read at the width a cone that far out has — which is wider than any wave, so the shaft
+        // march finds no pattern there to resolve.
+        const float path = unbounded ? WATER_UNBOUNDED_PATH : surface.mDistance;
+        const float width = unbounded ? cone.mWidth + cone.mSpread * path : surface.mFootprint;
+
+        const WaterColumn column
+            = waterColumn(origin, direction, path, width, randomAt(pixel, STREAM_WATER));
 
         transmittance *= column.mTransmittance;
         shaded = throughWater(shaded, column);
