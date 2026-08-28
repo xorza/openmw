@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <osg/Vec3f>
+
 #include <components/esm3/loadcell.hpp>
 #include <components/rtx/fogbuilder.hpp>
 #include <components/settings/values.hpp>
@@ -115,6 +117,49 @@ namespace Rtx
             EXPECT_FLOAT_EQ(interiorFog(room).mExtinction, thick) << "and thickened because it got smaller";
 
             Settings::camera().mViewingDistance.set(7168.0f);
+        }
+
+        /// The open air is measured over the same reach it closes at, and a room closes at nothing.
+        ///
+        /// **Two elements out of one number, which is why one function builds both.** How thick the
+        /// air is and where it becomes opaque are the same question about how much world there is,
+        /// and the game and the harness reach a weather by different routes. Each assembling these
+        /// fields itself is how the game's air came to carry no edge: the ring where its ground
+        /// stops stayed visible while a screenshot of the same hour hid it.
+        ///
+        /// **Moved rather than read once**, because two numbers that happen to agree at four cells
+        /// look exactly like one number until the setting moves. Doubling the reach halves the
+        /// extinction and doubles the edge, which only one number can do.
+        TEST(RtxFogTest, theOpenAirIsMeasuredOverTheSameReachItClosesAt)
+        {
+            const osg::Vec3f haze(0.4f, 0.5f, 0.6f);
+            constexpr float cell = 8192.0f;
+
+            Settings::rtx().mDistantLandCells.set(4.0f);
+            const Fog near = exteriorFog(haze, 0.69f);
+            EXPECT_EQ(near.mColour, haze);
+            EXPECT_EQ(near.mEdge, 4.0f * cell);
+            EXPECT_FLOAT_EQ(near.mExtinction, fogExtinction(0.69f, 4.0f * cell));
+
+            // **Banked out of doors**, which is the third field the reach decides: only a landscape
+            // is larger than one bank of fog.
+            EXPECT_EQ(near.mUniform, 0.0f);
+
+            Settings::rtx().mDistantLandCells.set(8.0f);
+            const Fog far = exteriorFog(haze, 0.69f);
+            EXPECT_EQ(far.mEdge, 8.0f * cell);
+            EXPECT_NEAR(far.mExtinction, 0.5f * near.mExtinction, 1e-10f) << "twice the world, half the air";
+
+            // A room is none of that: a fixed reach, still air, and no ring of cut ground to close
+            // over however much world stands outside its walls.
+            const Fog room = roomFog(haze, 0.75f);
+            EXPECT_EQ(room.mColour, haze);
+            EXPECT_EQ(room.mEdge, 0.0f);
+            EXPECT_EQ(room.mUniform, 1.0f);
+            EXPECT_NEAR(room.mExtinction, fogExtinction(0.75f, sInteriorFogReach), 1e-10f);
+
+            Settings::rtx().mDistantLandCells.set(4.0f);
+            EXPECT_EQ(roomFog(haze, 0.75f).mExtinction, room.mExtinction) << "a cellar reading the sky's size";
         }
     }
 }

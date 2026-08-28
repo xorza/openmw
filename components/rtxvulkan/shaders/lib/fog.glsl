@@ -6,9 +6,12 @@
 // The air between the eye and everything else: how much of it there is at a point, what it
 // scatters toward the eye, and what a ray loses crossing it.
 //
-// Marched rather than integrated, because fog that cannot move is the one thing this is not
-// to be. Returns transmittance and in-scatter apart, so a caller forms `colour * w + xyz` —
-// which is what lets fog live here, where the lights already are.
+// **Two elements, and they answer different questions.** The weather's air is Morrowind's own
+// record of what the sky is like. The world's edge is this renderer's own, and covers the ring where
+// its ground stops.
+//
+// Both return transmittance and in-scatter apart, so a caller forms `colour * w + xyz` — which is
+// what lets fog live here, where the lights already are.
 
 #include "colour.h"
 #include "scene.h"
@@ -318,22 +321,13 @@ float fogSunDepth(float extinction)
 }
 
 
-/// What `distance` units of air take out of what is behind them, and what they put in on the way.
+/// What the weather's own air takes out of what is behind it, and what it puts in on the way.
 ///
 /// **Marched rather than integrated.** An exponential falloff with height has a closed form — the
 /// whole ray in a handful of instructions — but only while the density is uniform across the
 /// horizontal plane, and fog that cannot move is the one thing this is not to be. The march is what
 /// the drifting noise costs, paid before there is any.
-///
-/// Returns the transmittance in `w` and what scattered in along the way in `xyz`, so a caller forms
-/// `colour * w + xyz`. Kept apart rather than applied because the two halves separate later — a
-/// denoiser demodulates by albedo — and
-///
-///   `(emitted + albedo * lighting) * T + inscatter == (emitted * T + inscatter) + albedo * (lighting * T)`
-///
-/// so fogging each half is the same as fogging their sum. That identity is what lets fog live here,
-/// where the lights already are, instead of in a pass that would have to bind them all again.
-vec4 fogAlong(vec3 origin, vec3 direction, float distance, float offset, uint seed)
+vec4 fogWeatherAlong(vec3 origin, vec3 direction, float distance, float offset, uint seed)
 {
     // No air is the frame untouched, and it has to be exactly that: a lit surface with fog over it
     // is a differently lit one, and the tests that measure radiance turn this off.
@@ -434,6 +428,90 @@ vec4 fogAlong(vec3 origin, vec3 direction, float distance, float offset, uint se
     scattered += lampsThrough(lamps, vec2(randomNext(lampState), randomNext(lampState)));
 
     return vec4(scattered, transmittance);
+}
+
+/// What the far end of the world takes out of what is behind it, and what it puts in on the way.
+///
+/// **The second element of the air, and it is about this renderer rather than about the weather.**
+/// The ground stops at `mFogEdge` and the ring where it stops is a cut edge in mid-air. The
+/// weather's own extinction cannot close it — it is Morrowind's record of what the air is like, it
+/// is measured over that same reach, and clear weather leaves a third of the last cell showing.
+/// What closes it is air that is nothing where the player stands and total at the last cell, which
+/// is an exponential in the range from the eye.
+///
+/// **Closed form, because there is nothing along this ray to sample.** The density is a function of
+/// the range from the eye alone — no noise, no height, no lamps — so the optical depth is its
+/// integral and not a march. Uniform, which is what makes it one.
+///
+/// **The range is the ray's own and not its shadow on the ground**, because that is how the terrain
+/// itself is culled — `distantLandReach` says the rest. Measured flat instead, an eye on a mountain
+/// looking down at the ring covers the ground more slowly than it covers distance, so the air never
+/// closes and the cut is visible from exactly the places that can see furthest.
+///
+/// **And it scatters the sky's own gradient rather than the fog's colour.** They are the same thing
+/// at the horizon — Morrowind records one colour for both — so nothing is lost near the ring, and
+/// above it the gradient is what a ray that reaches nothing already comes back with. So this term
+/// converges the world's edge onto exactly the sky beside it, and leaves that sky where it was
+/// instead of flattening its lower half toward the horizon.
+vec4 fogEdgeAlong(vec3 origin, vec3 direction, float distance)
+{
+    // A room has no edge to hide, and neither has a test that did not ask for one.
+    if (!(frame.mFogEdge > 0.0))
+        return vec4(0.0, 0.0, 0.0, 1.0);
+
+    // **Air only, the same test `fogExtinctionAt` makes.** Under a bay the water's own absorption
+    // has already closed everything this would, and a second medium over it puts the sky's colour
+    // between the eye and the seabed.
+    //
+    // **The eye alone, where the march tests every step**, because a closed form cannot stop at the
+    // surface. So a ray aimed from the air into water is charged for the wet part of its path too —
+    // which is worth nothing, since anything deep enough for that to matter is already behind more
+    // water than this would ever take.
+    if (frame.mWaterLevel - origin.z > 0.0)
+        return vec4(0.0, 0.0, 0.0, 1.0);
+
+    // **A climb and not a descent.** Everything above the eye is sky however far off it is, and sky
+    // needs no hiding; everything below it is ground, and the ring where that ground stops is the
+    // whole reason this is here. An eye on a mountain looks *down* at that ring, so a mask that read
+    // the elevation either way would switch the air off in the one place that can see the cut best.
+    const float rise = 1.0 - smoothstep(0.0, FOG_EDGE_RISE, max(direction.z, 0.0));
+    if (!(rise > 0.0))
+        return vec4(0.0, 0.0, 0.0, 1.0);
+
+    // Clamped at the reach, since past it there is no more world to hide and a sky ray carries
+    // `mFar` rather than a distance to anything.
+    const float range = min(distance, frame.mFogEdge) / frame.mFogEdge;
+
+    // The integral of `exp(range / FOG_EDGE_RAMP)`, normalised to one where the ground stops, so a
+    // ray that ends short of the edge is charged for exactly the part of the ramp it crossed.
+    const float crossed = (exp(range / FOG_EDGE_RAMP) - 1.0) / (exp(1.0 / FOG_EDGE_RAMP) - 1.0);
+
+    const float transmittance = pow(FOG_EDGE_TRANSMITTANCE, rise * crossed);
+    const vec3 haze = skyGradient(frame.mSkyHorizon, frame.mSkyZenith, direction);
+
+    return vec4(haze * (1.0 - transmittance), transmittance);
+}
+
+/// The air between the eye and everything else: the weather's, and the world's own edge beyond it.
+///
+/// Returns the transmittance in `w` and what scattered in along the way in `xyz`, so a caller forms
+/// `colour * w + xyz`. Kept apart rather than applied because the two halves separate later — a
+/// denoiser demodulates by albedo — and
+///
+///   `(emitted + albedo * lighting) * T + inscatter == (emitted * T + inscatter) + albedo * (lighting * T)`
+///
+/// so fogging each half is the same as fogging their sum. That identity is what lets fog live here,
+/// where the lights already are, instead of in a pass that would have to bind them all again.
+///
+/// **The edge stands beyond the weather and not in front of it**, which is where its air actually
+/// is: its density is nothing until the last quarter of the reach, so what it scatters has the
+/// whole of the weather's air in front of it and arrives dimmed by exactly that.
+vec4 fogAlong(vec3 origin, vec3 direction, float distance, float offset, uint seed)
+{
+    const vec4 weather = fogWeatherAlong(origin, direction, distance, offset, seed);
+    const vec4 edge = fogEdgeAlong(origin, direction, distance);
+
+    return vec4(weather.xyz + weather.w * edge.xyz, weather.w * edge.w);
 }
 
 #endif

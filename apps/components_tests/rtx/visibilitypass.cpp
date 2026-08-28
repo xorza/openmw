@@ -257,8 +257,8 @@ namespace Rtx
             camera.mWaterLevel = 0.0f;
         }
 
-        /// A square in the xz plane at y = 0, facing along -Y, four hundred units across.
-        /// Four hundred units square in the XZ plane, which is larger than any frame here sees.
+        /// A square in the xz plane at y = 0, facing along -Y, four hundred units across, which is
+        /// larger than any frame at the distances most of these tests use.
         const std::array<osg::Vec3f, 4> sWallQuad{
             osg::Vec3f(-200.0f, 0.0f, -200.0f),
             osg::Vec3f(200.0f, 0.0f, -200.0f),
@@ -266,11 +266,15 @@ namespace Rtx
             osg::Vec3f(-200.0f, 0.0f, 200.0f),
         };
 
-        SceneDesc makeWall()
+        /// That wall, on its own, as a scene.
+        ///
+        /// @param scale what to stretch it by, for a frame taken far enough away that four hundred
+        ///        units is a fraction of one pixel.
+        SceneDesc makeWall(float scale = 1.0f)
         {
             SceneDesc scene;
             const Index mesh = scene.addMesh(sWallQuad, {}, {}, sQuadIndices);
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::scale(scale, 1.0f, scale), .mMesh = mesh });
             return scene;
         }
 
@@ -354,6 +358,22 @@ namespace Rtx
             // along the ray, and then the march stops telescoping and its answer stops being one
             // anyone can write down. The banks have their own test.
             camera.mFogUniform = 1.0f;
+        }
+
+        /// A camera with nothing in the air but the world's edge, under an even sky.
+        ///
+        /// The weather's own extinction stays at nothing, so the second element of the air is the
+        /// only thing between the eye and what it looks at. An even sky, because a wall's radiance
+        /// is then exactly its albedo times that one number whatever direction the bounce takes.
+        Shaders::VisibilityConstants underTheEdge(const osg::Vec3f& eye, std::uint32_t size, float edge)
+        {
+            Shaders::VisibilityConstants camera
+                = makeCamera(eye, osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 200000.0f);
+
+            camera.mSkyHorizon = osg::Vec3f(sFoggySky, sFoggySky, sFoggySky);
+            camera.mSkyZenith = camera.mSkyHorizon;
+            camera.mFogEdge = edge;
+            return camera;
         }
 
         /// A texture a test builds by hand, and the storage its description spans.
@@ -5082,6 +5102,148 @@ namespace Rtx
 
             EXPECT_EQ(shaded, sunless) << "the lid takes all of the sun, not most of it";
             EXPECT_GT(open, shaded + 20) << "and there was a sun to take";
+        }
+
+        /// The world's edge is nothing over the ground the player stands on and total at the last
+        /// cell.
+        ///
+        /// **The whole reason for a second element of the air.** Morrowind's own fog depth is
+        /// measured over the same reach the ground is built to, and clear weather leaves a third of
+        /// the last cell showing — so the ring where the terrain stops is visible as a cut. Thicken
+        /// the weather until it is not, and every weather becomes a fog bank.
+        ///
+        /// **An exponential in the range from the eye is what separates the two.** The wall here is
+        /// lit by the sky alone, so it reads `0.5 * 0.6 = 0.3` with nothing over it and
+        /// `0.6 - 0.3 * T` with the edge in front of it — the sky's own colour in place of what the
+        /// edge took. `T` is `(1/256)^crossed` for
+        ///
+        ///     crossed = (exp(range / 0.125) - 1) / (exp(8) - 1),  range = distance / reach,
+        ///
+        /// where `distance` is the ray's own and not its shadow on the ground — the camera here runs
+        /// level, so the two agree and the figures are about the ramp alone.
+        ///
+        /// so a half, three quarters and all of the reach come to 0.017986, 0.135045 and 1 of the
+        /// ramp — transmittances of 0.90507, 0.47290 and 0.003906, and radiances of 0.32848,
+        /// 0.45813 and 0.59883.
+        ///
+        /// **Those three are the shape and not just the endpoint.** Half the world costs six bytes,
+        /// the next quarter costs twenty-five, and the last quarter costs the rest: a uniform medium
+        /// reaching the same place at the edge would have taken half of the near wall with it.
+        TEST_F(RtxVisibilityTest, theWorldsEdgeClosesOverTheLastCellAndLeavesTheGroundNearby)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr float reach = 32768.0f;
+
+            const auto look = [&](float distance, bool edged) {
+                const Shaders::VisibilityConstants camera
+                    = underTheEdge(osg::Vec3f(0.0f, -distance, 0.0f), size, edged ? reach : 0.0f);
+
+                std::vector<std::uint8_t> pixels;
+                countHits(makeWall(400.0f), {}, camera, size, pixels);
+                return int{ pixels[centre] };
+            };
+
+            EXPECT_NEAR(look(0.5f * reach, true), int{ encodeSrgb(0.32848f) }, 1) << "half of the world";
+            EXPECT_NEAR(look(0.75f * reach, true), int{ encodeSrgb(0.45813f) }, 1) << "three quarters of it";
+            EXPECT_NEAR(look(reach, true), int{ encodeSrgb(0.59883f) }, 1) << "and the last cell of it";
+
+            // **Which is the sky's own colour to the byte**, and that is what hides a cut edge: the
+            // wall is not merely dim at the reach, it is the thing behind it.
+            EXPECT_EQ(look(reach, true), int{ encodeSrgb(sFoggySky) }) << "the last cell, still showing";
+
+            // And with no edge declared the same wall is untouched at every one of those ranges. A
+            // room has no ring of cut ground and pays nothing for one.
+            for (const float distance : { 0.5f * reach, 0.75f * reach, reach })
+                EXPECT_EQ(look(distance, false), int{ encodeSrgb(0.3f) }) << "with no edge at " << distance;
+        }
+
+        /// A ray that climbs leaves the world's edge behind, and one that descends never does.
+        ///
+        /// **What is missing is a ring on the ground and not a dome over it.** Air that closed over
+        /// everything at the reach would put the horizon's colour across the whole upper sky, so
+        /// `FOG_EDGE_RISE` cuts it off at twenty-five degrees of climb.
+        ///
+        /// **And at no descent whatever, which is the half that is easy to get wrong.** An eye high
+        /// enough to see the ring looks *down* at it — the steeper the view, the more of the cut it
+        /// can see — so a mask that read the elevation either way would take the air off exactly
+        /// where the world stops hiding itself.
+        ///
+        /// Three frames of the same wall at the same range, differing in the elevation the eye
+        /// reaches it at and in nothing else. Thirty degrees, which is `direction.z` of exactly a
+        /// half against the sine of the twenty-five the mask ends at, so the smoothstep is saturated
+        /// either way and the answers are the two ends rather than points along it.
+        TEST_F(RtxVisibilityTest, aClimbLeavesTheWorldsEdgeBehindAndADescentNeverDoes)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr float reach = 32768.0f;
+
+            // Past the reach along the ray in all three frames, so the ramp is fully crossed and the
+            // mask is the only thing left to differ.
+            constexpr float slant = reach / 0.8660254f;
+            constexpr float climb = reach * 0.5773503f;
+
+            const auto look = [&](const osg::Vec3f& eye) {
+                const Shaders::VisibilityConstants camera = underTheEdge(eye, size, reach);
+
+                std::vector<std::uint8_t> pixels;
+                countHits(makeWall(400.0f), {}, camera, size, pixels);
+                return int{ pixels[centre] };
+            };
+
+            EXPECT_EQ(look(osg::Vec3f(0.0f, -reach, -climb)), int{ encodeSrgb(0.3f) })
+                << "a wall the eye had to look up at, hidden anyway";
+            EXPECT_EQ(look(osg::Vec3f(0.0f, -reach, climb)), int{ encodeSrgb(sFoggySky) })
+                << "and the same wall from above it, showing through the cut";
+            EXPECT_EQ(look(osg::Vec3f(0.0f, -slant, 0.0f)), int{ encodeSrgb(sFoggySky) })
+                << "and the same wall along the ground, still showing";
+        }
+
+        /// The world's edge leaves the sky exactly where it was.
+        ///
+        /// **Because it scatters the sky's own gradient rather than the fog's colour.** The two are
+        /// one colour at the horizon — Morrowind records `mFogColour` and `mSkyHorizon` from the
+        /// same byte triple — but above it they are not, and air that put the horizon across the
+        /// lower sky would flatten the gradient the game draws. Handed the gradient instead, a ray
+        /// that reaches nothing gets `g * T + g * (1 - T)`, which is `g`.
+        ///
+        /// **The fog's colour is set here and is not the sky's**, which is what makes this an
+        /// assertion rather than a tautology: an edge that in-scattered `mFogColour` would paint the
+        /// lower half of this frame red. Its extinction stays at nothing, so the weather's own march
+        /// contributes none of it.
+        TEST_F(RtxVisibilityTest, theWorldsEdgeLeavesTheSkyExactlyWhereItWas)
+        {
+            constexpr std::uint32_t size = 48;
+
+            const auto sky = [&](float edge, std::vector<float>& values) {
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -50000.0f, 0.0f), osg::Vec3f(0.0f, -60000.0f, 0.0f), 90.0f, size, size, 200000.0f);
+
+                camera.mSkyHorizon = osg::Vec3f(0.10f, 0.20f, 0.40f);
+                camera.mSkyZenith = osg::Vec3f(0.40f, 0.50f, 0.90f);
+                camera.mFogColour = osg::Vec3f(1.0f, 0.0f, 0.0f);
+                camera.mFogEdge = edge;
+
+                // A wall behind the camera, because a scene has to hold something. Every ray in the
+                // frame misses it and comes back with the sky alone.
+                renderRadiance(makeWall(), camera, size, values);
+            };
+
+            std::vector<float> open;
+            std::vector<float> edged;
+            sky(0.0f, open);
+            sky(32768.0f, edged);
+
+            ASSERT_EQ(open.size(), edged.size());
+            for (std::size_t at = 0; at < open.size(); ++at)
+                ASSERT_NEAR(edged[at], open[at], 1.0e-5f) << "at " << at;
+
+            // **And there was a gradient to leave alone.** Ninety degrees of frame reaches forty-five
+            // either side of the horizon, so the top row is most of the way to the zenith and the
+            // bottom row is under it — a flat sky would pass the loop above without saying anything.
+            const std::size_t bottom = (std::size_t{ size - 1 } * size + size / 2) * 4;
+            EXPECT_GT(edged[size / 2 * 4] - edged[bottom], 0.15f) << "the sky's own gradient, still in it";
         }
 
         /// Its own device, because the validation layers allocate and this test counts allocations.

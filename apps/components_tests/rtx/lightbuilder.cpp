@@ -5,6 +5,7 @@
 #include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/fallback/fallback.hpp>
+#include <components/rtx/distantland.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/shaders/visibility.h>
 #include <components/sceneutil/lightcommon.hpp>
@@ -217,6 +218,10 @@ namespace Rtx
             EXPECT_GT(night, day);
             EXPECT_EQ(makeDaylight("Clear", 6.0f).mFog.mExtinction, day) << "sunrise reads the day depth";
             EXPECT_EQ(makeDaylight("Clear", 20.0f).mFog.mExtinction, night) << "and night begins at twenty";
+
+            // And the weather reaches its air through `exteriorFog` rather than assembling one,
+            // which is what keeps the extinction and the edge measured over one reach.
+            EXPECT_EQ(makeDaylight("Clear", 12.0f).mFog.mEdge, distantLandReach());
 
             // **Dusk is between the two rather than one of them**, which is the whole of what the
             // engine's own ramp buys over reading whichever phase an hour falls in: the seeded

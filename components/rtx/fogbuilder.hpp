@@ -21,6 +21,11 @@ namespace Rtx
 
         /// One where the air is an even haze rather than banked, which is what a room holds.
         float mUniform = 0.0f;
+
+        /// How far the world is built, in units, and so where the air becomes opaque. Zero is a
+        /// cell with nothing cut off, which is what a room is.
+        /// `Shaders::VisibilityConstants::mFogEdge` says the rest.
+        float mEdge = 0.0f;
     };
 
     /// What a recorded fog depth comes to as an extinction coefficient.
@@ -83,7 +88,21 @@ namespace Rtx
     /// two renderers.
     constexpr float sInteriorFogReach = 25.0f * 7168.0f;
 
-    /// An interior's own fog, out of its `AMBI` record. Only interiors carry one; an exterior's air
-    /// belongs to the weather.
+    /// The open air, from the colour and the fog depth a weather is at.
+    ///
+    /// **One place decides what the reach means.** Three of these four fields turn on how much world
+    /// there is: the extinction is a half-life measured over it, the edge closes at it, and only a
+    /// landscape is large enough to bank. The game and the harness reach a weather by different
+    /// routes, and `FrameWorld` says what assembling a shared list on each of them costs.
+    Fog exteriorFog(const osg::Vec3f& colour, float depth);
+
+    /// A room's air, from the colour and the fog depth it is at.
+    ///
+    /// **Measured over a constant and closing over nothing.** A cellar's walls are all built, so
+    /// there is no ring of cut ground for a second element to hide, and `sInteriorFogReach` says why
+    /// the first one is not measured over the world's size either.
+    Fog roomFog(const osg::Vec3f& colour, float depth);
+
+    /// A room's air out of its `AMBI` record, for a cell the simulation is not holding open.
     Fog interiorFog(const ESM::Cell& cell);
 }

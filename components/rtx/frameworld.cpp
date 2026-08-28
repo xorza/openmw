@@ -19,6 +19,7 @@ namespace Rtx
         constants.mFogColour = world.mAir.mColour;
         constants.mFogExtinction = world.mAir.mExtinction;
         constants.mFogUniform = world.mAir.mUniform;
+        constants.mFogEdge = world.mAir.mEdge;
 
         // The same hair the water's own placement is dropped by, so that what the shader calls the
         // water level and where the surface actually is stay one number.

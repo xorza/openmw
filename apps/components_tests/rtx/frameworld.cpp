@@ -34,7 +34,10 @@ namespace Rtx
                 .mAmbient = osg::Vec3f(0.11f, 0.12f, 0.13f),
                 .mSkyHorizon = osg::Vec3f(0.21f, 0.22f, 0.23f),
                 .mSkyZenith = osg::Vec3f(0.31f, 0.32f, 0.33f),
-                .mAir = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f), .mExtinction = 1.5e-4f, .mUniform = 0.75f },
+                .mAir = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f),
+                    .mExtinction = 1.5e-4f,
+                    .mUniform = 0.75f,
+                    .mEdge = 24576.0f },
                 .mWaterLevel = -37.5f,
                 .mSeconds = 12.25f,
             };
@@ -107,6 +110,7 @@ namespace Rtx
             EXPECT_EQ(constants.mFogColour, world.mAir.mColour);
             EXPECT_EQ(constants.mFogExtinction, world.mAir.mExtinction);
             EXPECT_EQ(constants.mFogUniform, world.mAir.mUniform) << "the game wrote this nowhere";
+            EXPECT_EQ(constants.mFogEdge, world.mAir.mEdge);
 
             // **The one field that does not pass through, and it is meant not to.** What the shader
             // is told is where the surface actually is, and the surface is placed a hair under its
@@ -467,6 +471,7 @@ namespace Rtx
             EXPECT_EQ(constants.mStars.mTexture, Rtx::Shaders::NO_TEXTURE) << "and no stars in it";
             EXPECT_EQ(constants.mMoons[1].mAlpha, 0.0f);
             EXPECT_EQ(constants.mFogExtinction, 0.0f) << "and air that costs nothing";
+            EXPECT_EQ(constants.mFogEdge, 0.0f) << "and no edge for it to close over";
 
             // Minus infinity and not zero: zero is sea level, and a frame with no water has to
             // answer "how deep is this point" with never.

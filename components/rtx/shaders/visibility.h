@@ -472,6 +472,15 @@ namespace Rtx::Shaders
         /// mix changes the air's character and never how much of it there is.
         float mFogUniform;
 
+        /// How far from the eye the world is built, in units. Zero where nothing is cut off.
+        ///
+        /// **The second element of the air, and the one the weather knows nothing about.** Morrowind
+        /// records how thick its own fog is and this path honours that record; what it cannot record
+        /// is where this renderer stopped building ground, so the last cell ends in mid-air and the
+        /// player sees the cut. The air here closes over that ring and over nothing nearer —
+        /// `FOG_EDGE_RAMP` and `FOG_EDGE_RISE` are the shape of it.
+        float mFogEdge;
+
         /// Masser and Secunda, in that order. An interface trace and an interior leave both at an
         /// alpha of nothing, which costs the sky one compare each.
         MoonDisc mMoons[2];
@@ -516,7 +525,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 924, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 928, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

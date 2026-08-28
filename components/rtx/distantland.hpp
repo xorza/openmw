@@ -12,5 +12,10 @@ namespace Rtx
     /// **The air has to follow it or none of this can be seen.** Fog extinction is a half-life
     /// measured in some distance; tuned to seven thousand units it swallows everything past the
     /// active grid, and a world built four cells out then looks exactly like one built none.
+    ///
+    /// **And it has to follow it at the far end too, or the world is built for nothing.** The second
+    /// element of the air — `Shaders::VisibilityConstants::mFogEdge` — closes at exactly this, and
+    /// `QuadTreeWorld` culls a node on its distance to the eye, so the ball that is built and the
+    /// ball that can be seen are the same one. Nothing is loaded past where the air has closed.
     float distantLandReach();
 }

@@ -785,16 +785,11 @@ namespace MWRender
         // **The recorded depth, and not the ramp `MWRender::FogManager` made of it.** That ramp
         // exists to hide a far clip plane and this renderer has no far clip to hide, so per the
         // fork's own rule it does not come across. What is read instead is the number the content
-        // wrote, over the distance this picture actually reaches — which is what `openmw-rtxtool`
-        // reads out of the same records, so a screenshot and a played frame stand in one air.
-        //
-        // **A room is measured against a fixed distance and the open air against the world's
-        // reach.** The original engine measured both against `viewing distance`, which is shorter
-        // than one cell: air tuned to it swallows everything past the active grid, and a world built
-        // four cells out then renders identically to one built none. A room takes a constant
-        // instead, because how thick the air in a windowless cellar is belongs to the content and
-        // not to how much world the player asked for — `Rtx::sInteriorFogReach` says the rest.
-        const float reach = world.isInteriorCell() ? Rtx::sInteriorFogReach : Rtx::distantLandReach();
+        // wrote, handed to the one builder that knows what a cell's air may be — which is what
+        // `openmw-rtxtool` calls out of the same records, so a screenshot and a played frame stand
+        // in one air.
+        const Rtx::Fog air
+            = world.isInteriorCell() ? Rtx::roomFog(haze, world.mFogDepth) : Rtx::exteriorFog(haze, world.mFogDepth);
 
         // **The sun is not assembled here.** Everything the world says about it goes to the one
         // builder that decides what a sun may be — which is what keeps the game and the harness
@@ -859,13 +854,7 @@ namespace MWRender
             // ambient already reaches every surface as `mAmbient`.
             .mSkyFill = budget.mFill,
 
-            .mAir = { .mColour = haze,
-                .mExtinction = Rtx::fogExtinction(world.mFogDepth, reach),
-
-                // **One indoors and nothing out of doors.** Banks are what weather does to a
-                // landscape, and a room running the outdoor coverage field reads as a rendering
-                // fault rather than as weather.
-                .mUniform = world.isInteriorCell() ? 1.0f : 0.0f },
+            .mAir = air,
 
             // Negative infinity and not zero: zero is sea level, and a cell with no water has to
             // answer "how deep is this point" with never.

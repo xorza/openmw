@@ -324,6 +324,37 @@ namespace Rtx::Shaders
     /// valley and still thin out over the hill beside it.
     RTX_CONST float FOG_HEIGHT = 2600.0f;
 
+    /// What is left of a ray at the world's edge, once the second element of the air has had it.
+    ///
+    /// **The whole point of that element is that this is not a matter of taste.** The last ring of
+    /// terrain ends in mid-air, and the only number that hides it is one small enough that the
+    /// difference between the ground and the sky behind it is below what the frame can carry. One
+    /// step of an eight-bit channel is that number.
+    RTX_CONST float FOG_EDGE_TRANSMITTANCE = 1.0f / 256.0f;
+
+    /// Over what share of `VisibilityConstants::mFogEdge` that air closes, as the `1/e` length of
+    /// its density.
+    ///
+    /// **Exponential in the range from the eye, which is what keeps it off the ground the player is
+    /// standing on.** A uniform medium thick enough to hide the last cell hazes the first one too. A
+    /// density that grows by `e` every eighth of the reach leaves 0.905 of a ray at half of it and
+    /// 0.473 at three quarters, so the world closes over its last quarter and the quarter before it
+    /// is only softened.
+    RTX_CONST float FOG_EDGE_RAMP = 0.125f;
+
+    /// The sine of the climb above which that air is not there at all.
+    ///
+    /// **A ring on the ground and not a dome, because that is what is missing.** A ray that climbs
+    /// leaves the terrain behind and finds sky, which needs no hiding — and air that closed over it
+    /// too would put the horizon's colour across the whole upper sky. Twenty-five degrees covers
+    /// everything within `tan(25)` of the reach above the eye, which at four cells is fifteen
+    /// thousand units of mountain, and leaves the sky over it exactly as it was.
+    ///
+    /// **A climb alone, and a descent is never masked.** An eye that is high enough looks down on
+    /// the ring where the loaded cells stop, so the steeper the view the more of the cut it can see
+    /// — and reading this either way would take the air off precisely there.
+    RTX_CONST float FOG_EDGE_RISE = 0.4226183f;
+
     /// What shading a hit takes. `Rtx::MaterialKind`, which these must agree with.
     RTX_CONST uint KIND_SURFACE = 0u;
     RTX_CONST uint KIND_TERRAIN = 1u;
