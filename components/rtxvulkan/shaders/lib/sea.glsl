@@ -31,7 +31,7 @@ const float WATER_REFRACTION_BEND = 1.0 - 1.0 / WATER_IOR;
 ///
 /// **It sets how bright the lines are and not whether there are any**, which is what makes it the
 /// dial to turn. The filaments come from `WATER_CAUSTIC_FOLD` letting the determinant reach zero;
-/// this only says where their tops are cut. At three and a half the brightest place on a bed is 3.1
+/// this only says where their tops are cut. At one and a half the brightest place on a bed is 1.41
 /// times what a flat sea would put there.
 const float WATER_CAUSTIC_MAX = 2.0;
 
@@ -39,10 +39,13 @@ const float WATER_CAUSTIC_MAX = 2.0;
 ///
 /// **The correction is fitted against a clipped tail, so the ceiling and this move together.** What
 /// it removes is the excess of `E[1 / det]` over one, and the ceiling decides how much of that
-/// excess ever arrives — raise it and more of the tail comes through, and the same coefficient then
-/// under-corrects. Measured: at a ceiling of six this had to go to 1.5 to hold the mean at one, and
-/// at three and a half it is back to charging the term as written.
-const float WATER_CAUSTIC_JENSEN = 1.0;
+/// excess ever arrives — raise it and more of the tail comes through and the same coefficient
+/// under-corrects, lower it and the same coefficient takes light the ceiling had already taken.
+/// Measured against `WATER_CAUSTIC_MAX`: 1.5 at a ceiling of six, 1.0 at three and a half, a half at
+/// two, and 0.15 at one and a half, which is where it stands — a low ceiling does most of the
+/// clipping itself and leaves this little to do. Turn one of them and
+/// `theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt` says by how much the other has to follow.
+const float WATER_CAUSTIC_JENSEN = 1.5;
 
 /// The scale of the pattern at the focus, in world units, which it grows from.
 ///
@@ -97,7 +100,7 @@ const float WATER_CAUSTIC_FOCUS = 100.0;
 /// in a metre of water. Held here the loss is under two per cent at every depth, which is what
 /// `theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt` asserts, and the pattern gives up a
 /// twentieth of its contrast to do it.
-const float WATER_CAUSTIC_FOLD = 1.0;
+const float WATER_CAUSTIC_FOLD = 3.0;
 
 /// How much of the sea's own height the surf line is spread over, and how steep a face counts as
 /// one the wave is running into.
