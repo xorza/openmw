@@ -4375,35 +4375,54 @@ namespace Rtx
         /// *light*, and the ratio would measure both.
         TEST_F(RtxVisibilityTest, theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt)
         {
-            constexpr std::uint32_t size = 64;
+            constexpr std::uint32_t size = 256;
             constexpr std::size_t count = std::size_t{ size } * size;
+            constexpr float above = 540.0f;
 
-            // A wide look from 135 units above the bed *whatever the depth is*, so that two depths
-            // see the same patch of water and their caustics can be compared pixel for pixel.
+            // A wide look from a fixed height over the bed *whatever the depth is*, so that two
+            // depths see the same patch of water and their caustics can be compared pixel for pixel.
+            //
+            // **Wide enough to be an ensemble, and the pixel held where it was.** At ninety degrees
+            // this covers 1080 units of bed — thirty correlation lengths across of the waves that
+            // carry the curvature, and a thousand patches in the frame. A quarter of the width saw
+            // sixty of them, and every mean it reported carried about ten per cent of sampling
+            // error, which is five times what the tolerances below allow. The height and the pixel
+            // count move together so that the footprint stays 4.2 units and the level the caustic
+            // reads does not move with the fix.
             const auto render = [&](float depth, const SeaState& sea, float seconds) {
                 const SceneDesc scene = makeFlooded(4000.0f, depth);
 
-                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -1.0f, 135.0f - depth),
+                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -1.0f, above - depth),
                     osg::Vec3f(0.0f, 0.0f, -depth), 90.0f, size, size, 100000.0f);
                 litThroughWater(camera);
                 camera.mTime = seconds;
 
                 std::vector<std::uint8_t> image;
                 countHits(scene, {}, camera, size, image, sea);
-                return image;
+
+                // **The radiance and not the byte, which is what a ratio of two dark pixels needs.**
+                // Twenty metres of water leaves green at a fiftieth of the scale, where one step of
+                // the display curve is a per cent of the ratio being measured — and every figure
+                // here is a mean over that ratio.
+                std::vector<float> linear;
+                linear.reserve(count);
+                for (std::size_t i = 0; i < count; ++i)
+                    linear.push_back(mRadiance[i * 4 + 1]);
+
+                return linear;
             };
 
-            // Green, which at these depths has the most of a byte left to vary over: blue outlasts
-            // it but the still sea is already bright in blue, and red is gone.
+            // Green, which at these depths has the most left to vary over: blue outlasts it but the
+            // still sea is already bright in blue, and red is gone.
             const auto causticField = [&](float depth, float seconds = 0.0f) {
                 // The still sea does not move, so one baseline serves whatever the clock says.
-                const std::vector<std::uint8_t> still = render(depth, SeaState{ .mSignificantHeight = 0.0f }, 0.0f);
-                const std::vector<std::uint8_t> running = render(depth, SeaState{}, seconds);
+                const std::vector<float> still = render(depth, SeaState{ .mSignificantHeight = 0.0f }, 0.0f);
+                const std::vector<float> running = render(depth, SeaState{}, seconds);
 
                 std::vector<float> field;
                 field.reserve(count);
                 for (std::size_t i = 0; i < count; ++i)
-                    field.push_back(decodeSrgb(running[i * 4 + 1]) / decodeSrgb(still[i * 4 + 1]));
+                    field.push_back(running[i] / still[i]);
 
                 return field;
             };
@@ -4416,23 +4435,17 @@ namespace Rtx
             // Measured over this patch: the brightest place on the bed is gathered to 2.75 of what
             // a flat sea would put there and the dimmest thinned to 0.38, so the pattern is bold
             // rather than a wobble.
-            EXPECT_GT(*brightest, 1.25f) << "measured 2.06, gathered into lines";
-            EXPECT_LT(*dimmest, 0.4f) << "measured 0.32, and thinned between them";
+            EXPECT_GT(*brightest, 1.25f) << "measured 1.80, gathered into lines";
+            EXPECT_LT(*dimmest, 0.4f) << "measured 0.31, and thinned between them";
 
             // **And the mean is one**, which is the claim that makes it light and not decoration.
             // A reciprocal of something that fluctuates is worth more than the reciprocal of its
-            // mean, and `causticGain` is that excess divided back out. It comes out at 1.039 here.
+            // mean, and `causticGain` is that excess divided back out. It comes out at 1.002 here.
             //
-            // **The estimator it corrects reads 0.986 at two metres and 1.32 at twenty**, before the
-            // fade blends either toward one — so what the gain takes out runs to a third of the
-            // light where the slack allowed below is a twentieth of it.
-            //
-            // **The 4 per cent that is left is the Gaussian the gain is fitted to.** The curve peaks
-            // at 1.294 and the estimator's own conditional mean reaches 1.32 at six and twenty
-            // metres, so no argument to it divides that away — the sea's resolved curvature is not
-            // quite the isotropic Gaussian field the fit assumes, and what it would take to say so
-            // is a second directional moment the wave tiles do not carry. It was 12 per cent.
-            EXPECT_NEAR(mean, 1.0f, 0.05f) << "the waves redistribute the sun, they do not make any";
+            // **The estimator it corrects reads 0.95 at two metres and 1.26 at twenty**, before the
+            // fade blends either toward one — so what the gain takes out runs to a quarter of the
+            // light where the slack allowed below is a fiftieth of it.
+            EXPECT_NEAR(mean, 1.0f, 0.02f) << "the waves redistribute the sun, they do not make any";
 
             // **The pattern peaks in shallow water and fades as the inverse square root of the depth
             // past it**, which is Snyder and Dera's 1970 measurement of the sea and what every field
@@ -4454,8 +4467,8 @@ namespace Rtx
             // coarsening past it, so the estimator's own excess runs from 13 per cent at one metre
             // to 32 at twenty. One curve in the resolved fold follows all of it. The fade moves
             // nothing either way, because it blends toward one rather than scaling.
-            EXPECT_NEAR(meanOf(deeper), 1.0f, 0.05f) << "measured 1.037, six metres down";
-            EXPECT_NEAR(meanOf(deepest), 1.0f, 0.02f) << "and 1.008 at twenty";
+            EXPECT_NEAR(meanOf(deeper), 1.0f, 0.02f) << "measured 1.004, six metres down";
+            EXPECT_NEAR(meanOf(deepest), 1.0f, 0.02f) << "and 0.998 at twenty";
 
             // **How bold the pattern is, and how fast it moves** — M6 asks for both measured rather
             // than eyeballed, and they are the two halves of one choice. The spectrum's short cutoff
@@ -4469,7 +4482,7 @@ namespace Rtx
             // wavelengths interfere into a mottle instead: the same energy, spread over every
             // direction rather than four, and no line drawn twice. It measures 0.223 against the
             // table's 0.277.
-            EXPECT_NEAR(contrastOf(shallow), 0.538f, 0.03f) << "the pattern's contrast, as a fraction of its own mean";
+            EXPECT_NEAR(contrastOf(shallow), 0.533f, 0.03f) << "the pattern's contrast, as a fraction of its own mean";
 
             // A twelfth of a second, which is how long a frame is worth caring about. For two
             // samples of one field, `E[(b - a)^2] = 2 sigma^2 (1 - rho)`, so half the ratio of the
@@ -4479,7 +4492,7 @@ namespace Rtx
             // **18 units gives the best caustics it ever drew and they tear at 73%**, 32 units comes
             // out at 51%, and 50 units is dull at 33%.
             //
-            // **This measures 62.1%, and it is past where the reference renderer says a pattern
+            // **This measures 67.1%, and it is past where the reference renderer says a pattern
             // tears.** Letting the map run to a fold of three puts the contrast into thin bright
             // filaments, and a filament is the finest thing in the field — so it is made of the
             // fastest-turning waves and it is what moves first. The sweep the cutoff was chosen on
@@ -4504,7 +4517,7 @@ namespace Rtx
                 spread += (shallow[i] - mean) * (shallow[i] - mean);
             }
 
-            EXPECT_NEAR(0.5f * moved / spread, 0.621f, 0.03f) << "how much of the pattern is new a twelfth later";
+            EXPECT_NEAR(0.5f * moved / spread, 0.671f, 0.03f) << "how much of the pattern is new a twelfth later";
         }
 
         /// The sun's disc carries exactly its irradiance, however wide the pixel that finds it.

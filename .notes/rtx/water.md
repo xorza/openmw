@@ -7,8 +7,8 @@ the four that are not, and the change each one needs.
 | --- | --- | --- |
 | ~~1~~ | ~~The cone test's 0.10 of a mip level~~ | ~~nothing~~ |
 | ~~2~~ | ~~The caustic does not conserve at a fold of three~~ | ~~nothing~~ |
-| 3 | The caustic still makes 4 per cent of light | nothing |
-| 4 | The caustic pattern reshuffles 62 per cent in a twelfth of a second | 3 |
+| ~~3~~ | ~~The caustic still makes 4 per cent of light~~ | ~~nothing~~ |
+| 4 | The caustic pattern reshuffles 67 per cent in a twelfth of a second | ~~3~~ |
 | 5 | A shaft is not shadowed by what stands over the water | nothing |
 | 6 | The surf line is flecks rather than a band | nothing |
 
@@ -31,9 +31,31 @@ was over-dividing the shallows.
 
 ---
 
-## 3. The gain is evaluated at a fold measured from the very sample it corrects
+## ~~3. The gain is evaluated at a fold measured from the very sample it corrects~~
 
-### What it is
+**Done, from 4 per cent to under 1.** Measured at one, two, six, twenty and forty metres the bed now
+receives 1.009, 1.002, 1.004, 0.998 and 1.000 of what falls on the water. The tolerance in
+`theWavesGatherSunlightOntoTheBedWithoutMakingAnyOfIt` is 0.02, where the plan asked for 0.02 and the
+issue opened at 0.12.
+
+**And the root cause was neither of the two the plan named.** The correlation was real and is gone,
+but what actually mis-stated the fold was a filter nobody had written down: `textureLod` reconstructs
+*between* a level's texels bilinearly, and that second filter passes `(2 + cos(k w)) / 3` of a
+frequency's power over tap positions spread through a texel. Left out, the fold stood at four thirds
+of the truth in the shallows and nearly three times it in deep water. Measured against the shader's
+own Hessian, the table now agrees to 3 per cent where the pattern has contrast.
+
+**The measurement had to be fixed before any of it was visible.** The test looked at 270 units of
+bed — sixty correlation lengths — so every mean it reported carried about ten per cent of sampling
+error, twice what it was asserting. It looks at 1080 units at 256 pixels now, which holds the
+footprint where it was, and one frame agrees with sixteen decorrelated ones to 2 per cent. It also
+read the ratio out of an 8-bit byte, which it no longer does.
+
+**What went with it.** `waveVariance` had one reader in the tree and now has none, so the tile, its
+mip chain, its slot in `wavecompose.comp` and binding 23 are all gone — two texture fetches a cascade
+off the caustic's inner loop, and the wave pass composes two images rather than three.
+
+### What it was
 
 The bed two and six metres down receives 4 per cent more light than falls on the water.
 

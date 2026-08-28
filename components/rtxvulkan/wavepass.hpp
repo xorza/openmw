@@ -71,9 +71,6 @@ namespace Rtx
         /// The three curvatures, and the mean square slope.
         const Image& getCurvature(std::size_t cascade) const { return *mTiles[cascade].mCurvature; }
 
-        /// The squared trace of the curvature, which the caustic's own gain correction averages.
-        const Image& getVariance(std::size_t cascade) const { return *mTiles[cascade].mVariance; }
-
         /// How wide this tile is in world units, which is what turns a world position into a
         /// texture coordinate and a cone width into a level.
         float getExtent(std::size_t cascade) const { return sWaveTiles[cascade].mExtent; }
@@ -84,6 +81,9 @@ namespace Rtx
         /// chain carries, and a shader that read it there would spend two fetches at every step of a
         /// march for a value that is the same at all of them.
         float getSlope() const { return mSlope; }
+
+        /// What `Rtx::waveCurvature` made of the sea last described, held for the same reason.
+        const WaveCurvature& getMoments() const { return mCurvature; }
 
         /// The way the waves of the sea last described travel, unit.
         ///
@@ -106,7 +106,6 @@ namespace Rtx
 
             std::unique_ptr<Image> mSurface;
             std::unique_ptr<Image> mCurvature;
-            std::unique_ptr<Image> mVariance;
         };
 
         /// Orders the dispatch just recorded against the one about to read what it wrote.
@@ -133,5 +132,6 @@ namespace Rtx
         bool mDrawn = false;
 
         float mSlope = 0.0f;
+        WaveCurvature mCurvature;
     };
 }

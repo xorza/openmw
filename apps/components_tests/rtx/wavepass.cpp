@@ -53,20 +53,17 @@ namespace Rtx
 
             float elevation = 0.0f;
             float slope = 0.0f;
-            float trace = 0.0f;
 
             for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
             {
                 const Image& surface = waves.getSurface(cascade);
                 const Image& curvature = waves.getCurvature(cascade);
-                const Image& variance = waves.getVariance(cascade);
 
                 const std::uint32_t last = surface.getMipLevels() - 1;
                 ASSERT_EQ(surface.getWidthAt(last), 1u) << "cascade " << cascade << " does not reduce to one texel";
 
                 const std::vector<float> mean = Testing::readHalves(pool, surface, last);
                 const std::vector<float> curved = Testing::readHalves(pool, curvature, last);
-                const std::vector<float> traced = Testing::readHalves(pool, variance, variance.getMipLevels() - 1);
 
                 // A field of zero mean, which is what a spectrum with no entry at the origin means
                 // and what every variance below is taken about. Against the surface's own root mean
@@ -76,7 +73,6 @@ namespace Rtx
 
                 elevation += mean[3];
                 slope += curved[3];
-                trace += traced[0];
             }
 
             float wantedElevation = 0.0f;
@@ -95,11 +91,17 @@ namespace Rtx
             EXPECT_NEAR(waves.getSlope(), std::sqrt(wantedSlope), 1e-4f * std::sqrt(wantedSlope))
                 << "the slope the pass hands over";
 
+            // **And the curvature the same way, which is what sizes the caustic's own fold.** There
+            // is no chain of it left to read: the tile that carried `(tr H)^2` went when the fold
+            // stopped being differenced per pixel, so this is the whole of what says the number the
+            // shader divides by describes the water the shader is looking at.
+            EXPECT_NEAR(waves.getMoments().mWhole, wantedTrace, 1e-4f * wantedTrace)
+                << "the curvature the pass hands over";
+
             // A per cent, which is what nine halvings of a half-float image cost: each level is the
             // mean of four texels rounded to eleven bits of mantissa.
             EXPECT_NEAR(elevation, wantedElevation, 0.01f * wantedElevation) << "the surface's variance";
             EXPECT_NEAR(slope, wantedSlope, 0.01f * wantedSlope) << "the mean square slope";
-            EXPECT_NEAR(trace, wantedTrace, 0.02f * wantedTrace) << "the variance of the curvature's trace";
         }
 
         /// A level of a chain is the mean of the four texels above it.
@@ -179,6 +181,80 @@ namespace Rtx
             const float wanted = Testing::lostSlopeOf(drawn[cascade], 2.0f * texel);
 
             EXPECT_NEAR(lost, wanted, 0.025f * wanted) << "the slope one halving averaged away";
+        }
+
+        /// The table of resolved curvature is what a sampler reading the chain would find.
+        ///
+        /// **The caustic's fold is read from a table now and not differenced out of a mip**, so the
+        /// table has to describe what `textureLod` returns — which is not what the texels hold.
+        /// A level's own transfer is Dirichlet's kernel, and then the tap reconstructs between its
+        /// samples bilinearly, which is a second filter: it passes `(2 + cos(k w)) / 3` of a
+        /// frequency's power over tap positions spread through a texel. Left out, the table stood at
+        /// four thirds of the truth in the shallows and nearly three times it in deep water, and the
+        /// bed came out 12 per cent bright.
+        ///
+        /// So this interpolates the way the sampler does — sixteen positions inside every texel,
+        /// wrapping at the edge as the tile's own sampler does — rather than reading texel centres.
+        ///
+        /// Integer levels, because a fraction of one is a blend of two of them and the shader's own
+        /// blend of two shares stands in for that.
+        TEST(RtxWavePassTest, theResolvedCurvatureTableIsWhatASamplerFinds)
+        {
+            std::string reason;
+            Testing::Harness* harness = Testing::getHarness(reason);
+            if (harness == nullptr)
+                GTEST_SKIP() << reason;
+
+            const Device& device = *harness->mDevice;
+            CommandPool pool(device);
+            const WavePass waves(device, pool, Testing::getShaderDirectory());
+
+            synthesise(waves, pool, 0.0f);
+
+            const WaveCurvature& carried = waves.getMoments();
+
+            for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
+            {
+                const Image& curvature = waves.getCurvature(cascade);
+
+                for (std::uint32_t level = 0; level < curvature.getMipLevels(); ++level)
+                {
+                    const std::vector<float> held = Testing::readHalves(pool, curvature, level);
+                    const std::uint32_t width = curvature.getWidthAt(level);
+
+                    constexpr std::uint32_t inside = 4;
+                    const auto traceAt = [&](std::uint32_t x, std::uint32_t y) {
+                        const std::size_t at = (std::size_t{ y % width } * width + x % width) * 4;
+                        return double{ held[at] } + double{ held[at + 1] };
+                    };
+
+                    double squares = 0.0;
+                    for (std::uint32_t y = 0; y < width; ++y)
+                        for (std::uint32_t x = 0; x < width; ++x)
+                            for (std::uint32_t down = 0; down < inside; ++down)
+                                for (std::uint32_t across = 0; across < inside; ++across)
+                                {
+                                    const double u = (across + 0.5) / inside;
+                                    const double v = (down + 0.5) / inside;
+                                    const double tapped = (1.0 - u) * (1.0 - v) * traceAt(x, y)
+                                        + u * (1.0 - v) * traceAt(x + 1, y) + (1.0 - u) * v * traceAt(x, y + 1)
+                                        + u * v * traceAt(x + 1, y + 1);
+
+                                    squares += tapped * tapped;
+                                }
+
+                    const double taps = static_cast<double>(width) * width * inside * inside;
+                    const float measured = static_cast<float>(squares / taps);
+                    const float wanted = carried.mWhole * carried.mResolved[cascade * Shaders::WAVE_LEVELS + level];
+
+                    // A twentieth of the finest level, which is what a half-float chain leaves of a
+                    // quantity that has been squared: the trace is rounded to eleven bits at every
+                    // level, and the square doubles what that costs.
+                    EXPECT_NEAR(
+                        measured, wanted, 0.05f * carried.mWhole * carried.mResolved[cascade * Shaders::WAVE_LEVELS])
+                        << "cascade " << cascade << " at level " << level;
+                }
+            }
         }
 
         /// The sea moves, and it moves at the speed its own dispersion relation gives.

@@ -47,12 +47,6 @@ namespace Rtx
             return 3 * grid * grid;
         }
 
-        /// A chain down to one texel, which is what makes the last level the tile's own mean.
-        std::uint32_t levelsFor(std::size_t grid)
-        {
-            return static_cast<std::uint32_t>(std::bit_width(grid));
-        }
-
         std::uint32_t groupsFor(std::uint32_t extent)
         {
             return (extent + 7) / 8;
@@ -122,8 +116,6 @@ namespace Rtx
                 mDevice, grid, grid, GBUFFER_ALBEDO, usage, std::format("wave surface {}", index), levels);
             tile.mCurvature = std::make_unique<Image>(
                 mDevice, grid, grid, GBUFFER_ALBEDO, usage, std::format("wave curvature {}", index), levels);
-            tile.mVariance = std::make_unique<Image>(
-                mDevice, grid, grid, VK_FORMAT_R16_SFLOAT, usage, std::format("wave variance {}", index), levels);
         }
 
         describe(SeaState{});
@@ -143,6 +135,7 @@ namespace Rtx
         const std::array<WaveCascade, Shaders::WAVE_CASCADES> cascades = makeWaveCascades(sea);
 
         mSlope = waveSlope(cascades);
+        mCurvature = waveCurvature(cascades);
 
         Batch batch(mPool);
         for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
@@ -218,7 +211,7 @@ namespace Rtx
             const std::uint32_t grid = static_cast<std::uint32_t>(sWaveTiles[index].mGrid);
 
             // Every level is written whole below, so none needs what the last frame left in it.
-            for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get(), tile.mVariance.get() })
+            for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get() })
                 image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                     VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                     VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
@@ -249,16 +242,14 @@ namespace Rtx
 
             transform(commands, tile, grid);
 
-            const std::array<VkDescriptorImageInfo, 3> images{
+            const std::array<VkDescriptorImageInfo, 2> images{
                 VkDescriptorImageInfo{ VK_NULL_HANDLE, tile.mSurface->getStorageView(), VK_IMAGE_LAYOUT_GENERAL },
                 VkDescriptorImageInfo{ VK_NULL_HANDLE, tile.mCurvature->getStorageView(), VK_IMAGE_LAYOUT_GENERAL },
-                VkDescriptorImageInfo{ VK_NULL_HANDLE, tile.mVariance->getStorageView(), VK_IMAGE_LAYOUT_GENERAL },
             };
-            const std::array<VkWriteDescriptorSet, 4> composes{
+            const std::array<VkWriteDescriptorSet, 3> composes{
                 blockAt(0, blocks[2]),
                 storedAt(1, images[0]),
                 storedAt(2, images[1]),
-                storedAt(3, images[2]),
             };
             const Shaders::WaveComposeConstants unpacked{ .mCount = grid };
 
@@ -269,7 +260,7 @@ namespace Rtx
                 commands, mComposePipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(unpacked), &unpacked);
             vkCmdDispatch(commands, groupsFor(grid), groupsFor(grid), 1);
 
-            for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get(), tile.mVariance.get() })
+            for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get() })
                 image->buildMips(commands);
         }
     }

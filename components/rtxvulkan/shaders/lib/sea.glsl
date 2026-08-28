@@ -162,6 +162,28 @@ vec2 waveCoordinate(uint cascade, vec2 at)
     return at / frame.mWaveExtent[cascade];
 }
 
+/// What share of the sea's whole curvature a tile still carries at this level of its chain.
+///
+/// **Read from a table rather than differenced out of the chain.** The fold `causticGain` is a mean
+/// against has to be an ensemble quantity: a footprint's own mean square is largest exactly where the
+/// curvature under it is largest, so an estimate made that way is smallest on the pixels that need
+/// the largest divisor. `Rtx::waveCurvature` states it over the amplitudes instead.
+///
+/// **The two levels' shares are blended where the sampler blends their values.** That stands in for
+/// the variance of the blend, which is not the blend of the variances — but adjacent levels are two
+/// boxes a factor of two apart and their transfers stay strongly correlated, so the two agree to a
+/// few per cent at the worst blend and exactly at either end of it.
+float resolvedShare(uint cascade, float level)
+{
+    const float last = float(WAVE_LEVELS - 1u);
+    const float held = clamp(level, 0.0, last);
+    const uint below = uint(held);
+    const uint above = min(below + 1u, WAVE_LEVELS - 1u);
+
+    return mix(frame.mWaveResolved[cascade * WAVE_LEVELS + below],
+        frame.mWaveResolved[cascade * WAVE_LEVELS + above], held - float(below));
+}
+
 /// Which level of a tile's chain a cone this wide can still tell apart.
 ///
 /// **A mip level is the logarithm of a footprint, and that is the whole of the cone's arithmetic.**
@@ -430,8 +452,7 @@ float caustic(vec2 at, float depth, float footprint)
     // Three numbers rather than four, because a Hessian is symmetric: xx, yy, and the shared
     // off-diagonal.
     vec3 hessian = vec3(0.0);
-    float traceVariance = 0.0;
-    float carried = 0.0;
+    float resolved = 0.0;
 
     // **Three limits, and the largest of them wins.** The pixel's own cone; the blur two angles put
     // on the pattern, which grows with the depth because both are angles; and the scale of the
@@ -448,21 +469,8 @@ float caustic(vec2 at, float depth, float footprint)
         const vec2 uv = waveCoordinate(cascade, at);
         const float level = waveLevel(cascade, widened);
 
-        const vec3 curve = textureLod(waveCurvature[cascade], uv, level).xyz;
-        hessian += curve;
-
-        // **How far `tr(H)` still fluctuates at the level this pixel reads**, for the gain below.
-        // The coarsest level is the whole tile's mean square and the level here is the footprint's,
-        // so what the cone averaged away is the second less the square of the trace it left — and
-        // the fluctuation that survives is the whole less that. At the finest level nothing was
-        // averaged away and this is the tile's own variance; at the coarsest the surface is flat and
-        // there is nothing left to correct.
-        const float whole = textureLod(waveVariance[cascade], uv, WAVE_COARSEST).x;
-        const float local = textureLod(waveVariance[cascade], uv, level).x;
-        const float trace = curve.x + curve.y;
-
-        traceVariance += max(whole - max(local - trace * trace, 0.0), 0.0);
-        carried += whole;
+        hessian += textureLod(waveCurvature[cascade], uv, level).xyz;
+        resolved += resolvedShare(cascade, level);
     }
 
     // One determinant and not a ratio of two, because this surface is not displaced: the quad stays
@@ -475,7 +483,7 @@ float caustic(vec2 at, float depth, float footprint)
     // focus, which is where a lens is at its strongest and where one Jacobian stops describing what
     // is behind it. The fade below carries the depth from there on.
     const float toward = WATER_CAUSTIC_FOLD * min(depth / WATER_CAUSTIC_FOCUS, 1.0);
-    const float bend = toward * inversesqrt(max(carried, 1.0e-12));
+    const float bend = toward * inversesqrt(max(frame.mWaveCurvature, 1.0e-12));
     const float determinant
         = (1.0 - bend * hessian.x) * (1.0 - bend * hessian.y) - bend * bend * hessian.z * hessian.z;
 
@@ -484,17 +492,16 @@ float caustic(vec2 at, float depth, float footprint)
     // is that mean and dividing by it is what leaves the pattern redistributing the sun exactly.
     //
     // **How far the map has folded at the level this pixel reads, which is not `toward`.** `bend` is
-    // sized against the whole tile's curvature and the Hessian above is only what the cone could
-    // resolve, so the fold the estimator actually stands at is `bend` against the resolved variance.
-    // It goes to nought as the cone reaches the coarse levels, which is where a flat surface has no
-    // gain to remove — and `traceVariance` is that variance, read off a chain already being sampled.
-    // It is a sum of clamped terms, so the root below is real.
+    // sized against the sea's whole curvature and the Hessian above is only what the cone could
+    // resolve, so the fold the estimator stands at is `toward` scaled by the share still resolved.
+    // It goes to nought as the cone reaches the coarse levels, which is where a surface averaged
+    // flat has no gain to remove.
     //
     // The gain varies only with how much of the surface the cone can see, so it is flat across a
     // footprint and every bright line and dark cell survives it untouched.
     //
     // The floor on the determinant is what the ceiling means, so there is one number to state.
-    const float fold = bend * sqrt(traceVariance);
+    const float fold = toward * sqrt(resolved);
     const float gathered = 1.0 / (max(abs(determinant), 1.0 / WATER_CAUSTIC_MAX) * causticGain(fold));
 
     // **Snyder and Dera's law, and the whole of why deep water has none of this.** Past the focus a

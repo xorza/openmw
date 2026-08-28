@@ -33,8 +33,8 @@ namespace Rtx
         /// The structure, the tables a hit reads, the frame itself and the sea, in the order the
         /// shader declares them. The channels the trace writes are not here: `GBufferLayout` says
         /// why they have a set of their own.
-        constexpr std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> sBindings = [] {
-            std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> declared{};
+        constexpr std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 3> sBindings = [] {
+            std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 3> declared{};
             declared[0] = VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, sCompute };
 
             // One up to the frame are storage buffers: the hit count, then every table in the order
@@ -83,20 +83,22 @@ namespace Rtx
         // what is actually bound rather than a second statement of the same table.
         std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> surfaces{};
         std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> curvatures{};
-        std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> variances{};
 
         for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
         {
             const VkSampler sampler = inputs.mWaves->getSampler();
             surfaces[cascade] = { sampler, inputs.mWaves->getSurface(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
             curvatures[cascade] = { sampler, inputs.mWaves->getCurvature(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
-            variances[cascade] = { sampler, inputs.mWaves->getVariance(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
 
             described.mWaveExtent[cascade] = inputs.mWaves->getExtent(cascade);
         }
 
         described.mWaveSlope = inputs.mWaves->getSlope();
         described.mWaveTravel = inputs.mWaves->getTravel();
+
+        const WaveCurvature& curvature = inputs.mWaves->getMoments();
+        described.mWaveCurvature = curvature.mWhole;
+        std::copy(curvature.mResolved.begin(), curvature.mResolved.end(), std::begin(described.mWaveResolved));
 
         // **Both directions, because one buffer serves every trace.** The write has to wait for the
         // last dispatch that read it — a traced view and the world are two traces — and the next
@@ -235,7 +237,6 @@ namespace Rtx
         // dispatches apart, and `GENERAL` is the one layout both accesses are legal from.
         appendImages(sFrameBinding + 1, surfaces);
         appendImages(sFrameBinding + 2, curvatures);
-        appendImages(sFrameBinding + 3, variances);
 
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getHandle());
         // Every binding the layout declares, written exactly once — a shader that grew one and a

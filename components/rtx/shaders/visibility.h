@@ -413,6 +413,26 @@ namespace Rtx::Shaders
         /// a march, for a number that is the same at all of them.
         float mWaveSlope;
 
+        /// Mean square of the sea's curvature trace, over every tile and every wavelength in them.
+        ///
+        /// What the caustic's `bend` is sized against, so that `WATER_CAUSTIC_FOLD` says how far the
+        /// map runs whatever sea state the weather asked for. **A property of the sea and not of a
+        /// place**, for the reason `mWaveSlope` gives.
+        float mWaveCurvature;
+
+        /// What share of `mWaveCurvature` a tile still resolves at a level of its chain, indexed
+        /// `cascade * WAVE_LEVELS + level`.
+        ///
+        /// **The fold the caustic's gain is read at, and two things were wrong with taking it off
+        /// the chain.** It was differenced per pixel — the tile's whole mean square less what the
+        /// footprint's own averaged away — so it was noisy, and its noise ran with the very
+        /// determinant it was normalising. And a chain read that way answers for the *texels*, where
+        /// what the shader sees is `textureLod` reconstructing between them: a second filter, and a
+        /// large one, that costs a quarter of the curvature in the shallows and two thirds of it in
+        /// deep water. `Rtx::waveCurvature` states both filters over the amplitudes, and the chain
+        /// this replaced has no reader left.
+        float mWaveResolved[WAVE_CASCADES * WAVE_LEVELS];
+
         /// Unit, and the way the waves travel — which is the way the wind blows.
         ///
         /// **A direction and not the angle `SeaState` states it as**, because every pixel of surf
@@ -504,7 +524,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 848, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 932, "VisibilityConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST

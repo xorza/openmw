@@ -282,7 +282,4 @@ layout(set = 0, binding = 21) uniform sampler2D waveSurface[WAVE_CASCADES];
 /// The three curvatures, and the mean square slope.
 layout(set = 0, binding = 22) uniform sampler2D waveCurvature[WAVE_CASCADES];
 
-/// The squared trace of the curvature.
-layout(set = 0, binding = 23) uniform sampler2D waveVariance[WAVE_CASCADES];
-
 #endif

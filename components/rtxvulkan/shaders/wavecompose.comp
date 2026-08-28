@@ -33,9 +33,6 @@ layout(set = 0, binding = 1, GBUFFER_ALBEDO) uniform writeonly image2D surface;
 /// ripples into a widened specular lobe rather than into polished plastic.
 layout(set = 0, binding = 2, GBUFFER_ALBEDO) uniform writeonly image2D curvature;
 
-/// The square of the curvature's trace, which the caustic's own gain correction is an average of.
-layout(set = 0, binding = 3, r16f) uniform writeonly image2D variance;
-
 layout(push_constant, scalar) uniform Push
 {
     WaveComposeConstants frame;
@@ -72,5 +69,4 @@ void main()
     const ivec2 texel = ivec2(cell);
     imageStore(surface, texel, vec4(height, slope, height * height));
     imageStore(curvature, texel, vec4(curve, dot(slope, slope)));
-    imageStore(variance, texel, vec4((curve.x + curve.y) * (curve.x + curve.y), 0.0, 0.0, 0.0));
 }

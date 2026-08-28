@@ -53,6 +53,19 @@ namespace Rtx::Shaders
     /// sum repeats only at a common multiple nothing looks across.
     RTX_CONST uint WAVE_CASCADES = 2u;
 
+    /// How many levels the deepest tile's chain has, which is what any table indexed by one is as
+    /// long as.
+    ///
+    /// **The widest grid decides it and the narrow tile is short of it.** A chain runs from the grid
+    /// down to one texel, so it holds `log2(WAVE_GRID) + 1` levels; a tile transformed on a smaller
+    /// grid has fewer and a sampler clamps to its last. A table over this is then flat past that
+    /// tile's own end, which is the answer a clamp gives anyway.
+    RTX_CONST uint WAVE_LEVELS = 10u;
+
+#ifdef RTX_HOST
+    static_assert((1u << (WAVE_LEVELS - 1u)) == WAVE_GRID, "WAVE_LEVELS must be the widest grid's own chain");
+#endif
+
     /// A level past the end of any tile's chain, which a sampler clamps to the last of it.
     ///
     /// **The last level is one texel, so it is the whole tile's mean.** That is where the surface's
@@ -120,7 +133,7 @@ namespace Rtx::Shaders
 }
 #endif
 
-// What both shading languages read and the host does not, for the reason `RTX_SHADER` gives.
+// What both shading languages read and nothing on this side calls.
 #ifndef RTX_HOST
 
 /// A complex number turned by an angle, which is a multiply by `exp(i angle)`.

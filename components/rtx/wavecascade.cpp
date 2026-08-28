@@ -1,6 +1,7 @@
 #include "wavecascade.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 
@@ -166,6 +167,78 @@ namespace Rtx
                 amplitude *= scale;
 
         return cascades;
+    }
+
+    WaveCurvature waveCurvature(const std::array<WaveCascade, Shaders::WAVE_CASCADES>& cascades)
+    {
+        WaveCurvature carried;
+
+        for (std::size_t index = 0; index < Shaders::WAVE_CASCADES; ++index)
+        {
+            const WaveCascade& cascade = cascades[index];
+            const float texel = cascade.mExtent / static_cast<float>(cascade.mGrid);
+            const float step = Shaders::TAU / cascade.mExtent;
+            const int half = static_cast<int>(cascade.mGrid) / 2;
+
+            // One power response per axis index per level, because the chain is separable and a
+            // wavevector reads two of its entries. Written out rather than evaluated inside the sum,
+            // which would be five million sines a tile.
+            //
+            // **Two filters and not one: the level, and the tap that reads it.** A level is the mean
+            // of `n` point samples, so its transfer is Dirichlet's kernel — and then `textureLod`
+            // reconstructs between those samples bilinearly, which is a second filter and a large
+            // one. Over tap positions spread evenly through a texel the interpolation passes
+            // `(2 + cos(k w)) / 3` of a frequency's power, where `w` is the level's own texel width:
+            // one at the long end and a third at its Nyquist. Left out, this table stood at four
+            // thirds of what the shader reads in the shallows and nearly three times it in deep
+            // water, and the caustic's fold with it.
+            std::vector<float> power(Shaders::WAVE_LEVELS * cascade.mGrid);
+            for (std::size_t level = 0; level < Shaders::WAVE_LEVELS; ++level)
+            {
+                const float count = static_cast<float>(std::size_t{ 1 } << level);
+                for (std::size_t along = 0; along < cascade.mGrid; ++along)
+                {
+                    const float phase = 0.5f * step * static_cast<float>(static_cast<int>(along) - half) * texel;
+                    const float turn = std::sin(phase);
+                    const float kernel = std::abs(turn) < 1e-6f ? 1.0f : std::sin(count * phase) / (count * turn);
+
+                    power[level * cascade.mGrid + along]
+                        = kernel * kernel * (2.0f + std::cos(2.0f * count * phase)) / 3.0f;
+                }
+            }
+
+            for (std::size_t at = 0; at < cascade.mAmplitudes.size(); ++at)
+            {
+                const std::size_t row = at / cascade.mGrid;
+                const std::size_t column = at % cascade.mGrid;
+
+                const float wavenumber = step * step
+                    * static_cast<float>((static_cast<int>(row) - half) * (static_cast<int>(row) - half)
+                        + (static_cast<int>(column) - half) * (static_cast<int>(column) - half));
+                const float weight = 2.0f * cascade.mAmplitudes[at].length2() * wavenumber * wavenumber;
+
+                // The sea's own curvature, before any of the sampling above takes its share — so
+                // that `WATER_CAUSTIC_FOLD` means the same thing whatever level a pixel reads.
+                carried.mWhole += weight;
+
+                for (std::size_t level = 0; level < Shaders::WAVE_LEVELS; ++level)
+                {
+                    // Past this tile's own last level the chain has nothing further to average, and a
+                    // sampler clamps — so the kernel does too, by reading the widest count the grid
+                    // holds.
+                    const std::size_t held = std::min(level, std::size_t{ levelsFor(cascade.mGrid) } - 1);
+
+                    carried.mResolved[index * Shaders::WAVE_LEVELS + level]
+                        += weight * power[held * cascade.mGrid + column] * power[held * cascade.mGrid + row];
+                }
+            }
+        }
+
+        if (carried.mWhole > 0.0f)
+            for (float& share : carried.mResolved)
+                share /= carried.mWhole;
+
+        return carried;
     }
 
     float waveSlope(const std::array<WaveCascade, Shaders::WAVE_CASCADES>& cascades)
