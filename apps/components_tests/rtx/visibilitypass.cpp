@@ -3843,10 +3843,10 @@ namespace Rtx
             // ray crosses the whole 200 units after the surface and loses two per cent to Fresnel on
             // the way in; from below it crosses 190 and meets no surface at all. In radiance that is
             //
-            //   exp(0.004572 * 10) / 0.98 = 1.068
+            //   exp(0.003743 * 10) / 0.98 = 1.059
             //
-            // for red, which the sRGB curve compresses to about three per cent of a byte — so 63 and
-            // 65, and a tolerance of two rather than a round fraction chosen to pass.
+            // for red, which the sRGB curve compresses to under three per cent of a byte — so 75 and
+            // 77, and a tolerance of two rather than a round fraction chosen to pass.
             const std::array<int, 3> above = look(10.0f);
             const std::array<int, 3> below = look(-10.0f);
 
@@ -3854,6 +3854,63 @@ namespace Rtx
             for (std::size_t channel = 0; channel < 3; ++channel)
                 EXPECT_NEAR(below[channel], above[channel], 2) << "channel " << channel << ": " << above[channel]
                                                                << " from above, " << below[channel] << " from below";
+        }
+
+        /// The water *over* an eye dims what the water in front of it scatters.
+        ///
+        /// **The half that only a submerged camera can see.** `waterColumn` charges the sun for the
+        /// water between the surface and where the stretch begins, and the ambient for nothing at
+        /// all — so the sea's own scattering arrived at full sky brightness however deep the eye
+        /// was. From above that is right, because the stretch begins at the surface and there is no
+        /// water over it. From below it is the whole column over the camera, missing.
+        ///
+        /// **The stretch is held at 200 units and the bed moves with the eye**, so the only thing
+        /// that changes between the two legs is how much water stands over them. **And the bed sends
+        /// back nothing**, which is what leaves the scattering alone to be measured: an eye ray's
+        /// terminator is nought and the bounce it traces instead finds a black sky, so what reaches
+        /// the pixel is what the column put there. That is
+        ///
+        ///   w (1 - exp(-2 o 200)) / 2 * exp(-o eye)
+        ///
+        /// Charge the ambient nothing and the last factor is gone, which is what this measures: 33
+        /// and 22 at both depths alike, where a thousand units of water over the eye should have
+        /// taken red to nothing and blue to three quarters.
+        TEST_F(RtxVisibilityTest, theWaterOverAnEyeDimsWhatTheWaterInFrontOfItScatters)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr float stretch = 200.0f;
+
+            // No sun and a black sky, so the ambient is the only light and the answer is the two
+            // exponentials. The bed is untextured, which is an albedo of a half.
+            const auto look = [&](float eye) {
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -0.05f, -eye), osg::Vec3f(0.0f, 0.0f, -eye - 10.0f), 60.0f, size, size, 10000.0f);
+                camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
+                camera.mWaterLevel = 0.0f;
+
+                std::vector<std::uint8_t> pixels;
+                const SceneDesc scene = makeFlooded(4000.0f, eye + stretch);
+                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+            };
+
+            const auto scattered = [&](float eye, std::size_t channel) {
+                const float o = Shaders::WATER_EXTINCTION[channel];
+
+                return encodeSrgb(Shaders::WATER_SCATTER[channel] * 0.5f * (1.0f - std::exp(-2.0f * o * stretch))
+                    * std::exp(-o * eye));
+            };
+
+            // Red and blue, which is the whole spread of what water does: red is gone by a thousand
+            // units and blue keeps three quarters of itself, so neither a saturated channel nor an
+            // untouched one can carry this alone.
+            for (const float eye : { 10.0f, 1000.0f })
+            {
+                const std::array<int, 3> seen = look(eye);
+                EXPECT_NEAR(seen[0], scattered(eye, 0), 1) << "red, " << eye << " units under";
+                EXPECT_NEAR(seen[2], scattered(eye, 2), 1) << "blue, " << eye << " units under";
+            }
         }
 
         /// The water between an eye and the surface over it is water like any other.

@@ -118,6 +118,14 @@ vec3 waterTransmittance(float path)
 /// own lens pattern carried down the ray, which is a march. What this gives is the beam's *body*:
 /// the water brightening toward the sun and going dark away from it.
 ///
+/// **And the water over the stretch, which is no part of the stretch.** `(1 - T^2) / 2` counts what
+/// the stretch itself crosses and says nothing about what stands above where it begins. From above
+/// there is nothing there — the stretch begins at the surface. From below it is the whole column
+/// over the camera, and leaving it out let a sea a thousand units down scatter as brightly as one
+/// just under the surface. `daylightReaching` is what a submerged *surface* is already dimmed by,
+/// so this is the volume agreeing with the surfaces standing in it, and it is the same factor the
+/// sun's half below has carried all along.
+///
 /// **Kept apart rather than applied**, for the reason `fogAlong` gives: the two halves separate
 /// later, because an upscaler demodulates the frame by its albedo and what a path took is not part
 /// of one. A caller that wants the single number has `throughWater`.
@@ -132,7 +140,8 @@ struct WaterColumn
 WaterColumn waterColumn(vec3 from, vec3 direction, float path)
 {
     const vec3 transmittance = waterTransmittance(path);
-    const vec3 sky = WATER_SCATTER * ((1.0 - transmittance * transmittance) * 0.5) * frame.mAmbient;
+    const vec3 sky = WATER_SCATTER * ((1.0 - transmittance * transmittance) * 0.5) * frame.mAmbient
+        * daylightReaching(from);
 
     // The same test `fogAlong` makes before it spends anything on shafts: an interior and a night
     // both answer no, and `mSunIrradiance` fades to nought across dusk rather than stepping.
