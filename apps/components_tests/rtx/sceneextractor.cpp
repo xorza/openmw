@@ -31,6 +31,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/spritelight.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
@@ -1605,8 +1606,14 @@ namespace Rtx
             ASSERT_EQ(scene.getEmitters().size(), 1u);
             EXPECT_EQ(scene.getEmitters().front().mCentre, osg::Vec3f(100.0f, 0.0f, 12.0f));
             EXPECT_FLOAT_EQ(scene.getEmitters().front().mReach, 8.0f);
-            EXPECT_EQ(scene.getTextures().size(), 1u);
+
+            // The texture, and beside it the bake of its alpha the sprites are lit by.
+            ASSERT_EQ(scene.getTextures().size(), 2u);
             EXPECT_EQ(scene.getTextures()[0], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            EXPECT_EQ(scene.getBakedTextures()[1],
+                SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_fire_00.dds")));
+            EXPECT_EQ(scene.getEmitters().front().mTexture, 0u);
+            EXPECT_EQ(scene.getEmitters().front().mLighting, 1u);
         }
 
         /// `SRC_ALPHA, ONE` is a flame and anything else covers, and the difference is what decides
@@ -1655,7 +1662,8 @@ namespace Rtx
 
             // The texture is registered the moment the emitter is met, alive or not: it is what the
             // array is built from, and one that turns up two hundred frames later has nowhere to go.
-            EXPECT_EQ(scene.getTextures().size(), 1u);
+            // The bake of its alpha arrives with it, for the same reason.
+            EXPECT_EQ(scene.getTextures().size(), 2u);
 
             // A particle's whole silhouette is that texture's alpha, so an emitter with none draws
             // nothing rather than a white disc.
@@ -1689,7 +1697,7 @@ namespace Rtx
             Rtx::SceneDesc scene;
             SceneExtractor extractor(scene);
             extractor.extract(*both, osg::Matrixf::identity(), 0);
-            ASSERT_EQ(scene.getTextures().size(), 2u);
+            ASSERT_EQ(scene.getTextures().size(), 3u) << "the stone's, the sprite's and the sprite's bake";
             ASSERT_TRUE(extractor.retire().empty());
 
             scene.clearPlacement();
@@ -1704,9 +1712,10 @@ namespace Rtx
             // that the sprite's texture is still *named*, which is the thing the emitter map exists
             // for: a sprite hangs off no material, so nothing else holds it. The stone's went with
             // the stone's material, which is the other half of the same statement.
-            ASSERT_EQ(scene.getTextures().size(), 2u);
+            ASSERT_EQ(scene.getTextures().size(), 3u);
             EXPECT_TRUE(scene.getTextures()[0].value().empty()) << "the stone's texture outlived the stone";
             EXPECT_EQ(scene.getTextures()[1], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            EXPECT_FALSE(scene.getBakedTextures()[2].empty()) << "the sprite's bake went with the stone";
 
             // And the emitter still draws with it.
             scene.clearPlacement();
@@ -1714,7 +1723,8 @@ namespace Rtx
 
             ASSERT_EQ(scene.getEmitters().size(), 1u);
             EXPECT_EQ(scene.getEmitters().front().mTexture, 1u) << "the sprite lost the slot it was given";
-            EXPECT_EQ(scene.getTextures().size(), 2u) << "the sprite's path was added a second time";
+            EXPECT_EQ(scene.getEmitters().front().mLighting, 2u) << "the bake lost the slot it was given";
+            EXPECT_EQ(scene.getTextures().size(), 3u) << "the sprite's path was added a second time";
 
             // **And the other way round, on the frame the sweep does not look at.** The stone comes
             // back and then the emitter goes, taking no mesh and no material with it — which is
@@ -1730,6 +1740,7 @@ namespace Rtx
 
             EXPECT_TRUE(extractor.retire().empty()) << "an emitter is neither a mesh nor a material";
             EXPECT_TRUE(scene.getTextures()[1].value().empty()) << "the sprite outlived the emitter";
+            EXPECT_TRUE(scene.getBakedTextures()[2].empty()) << "the bake outlived the emitter";
         }
 
         /// Gives a plume what makes it run: something emitting at a fixed rate, and the updater

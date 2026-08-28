@@ -26,21 +26,65 @@
 /// because a puff is the same kind of thing the fog is, only denser and in one place. So it is the
 /// same `lampsAt` and the same one multiply on the sum.
 ///
-/// **A particle has no normal and it still has an up**, which is the whole of how a sprite is
-/// occluded: what a point sees of the sky is a question about the point, and the sky is above.
-/// `spritesAlong` says why the two below are asked once for a layer rather than once for a puff.
+/// **A particle has no normal and it still has an up**, which is how a sprite is occluded by the
+/// world: what a point sees of the sky is a question about the point, and the sky is above. What
+/// it has instead of a normal is a side — `ballWrap` — and a thickness its own texture records —
+/// `sixWayThrough` — and those arrive folded into the factors below. `spritesAlong` says why the
+/// world's part of them is asked once for a layer rather than once for a puff.
 ///
-/// @param sunThrough what the world leaves of the sun on the way to this point.
-/// @param skyThrough the same for the sky over it.
-/// @param lampThrough the same for the lamps — **one answer for every lamp and for the whole
+/// @param daylight what `daylightReaching` says of the position, asked once by the caller.
+/// @param sunLit what the world and the puff itself leave of the sun at this point.
+/// @param skyLit the same for the sky over it.
+/// @param fillLit what the puff lets through of a room's own fill, which comes from everywhere.
+/// @param lampLit the same for the lamps — **one shadow answer for every lamp and for the whole
 ///        layer**, where the sum beside it is this puff's own. What a lamp delivers runs as one over
 ///        the square of a distance that changes from sprite to sprite; whether it is *seen* changes
 ///        slowly, and a torch behind a wall is behind it for the whole layer.
-vec3 puffLight(vec3 position, float sunThrough, float skyThrough, float lampThrough)
+vec3 puffLight(vec3 position, vec3 daylight, float sunLit, float skyLit, float fillLit, float lampLit)
+
 {
-    return pathEnd(position, skyThrough)
-        + frame.mSunIrradiance * (INV_PI * daylightReaching(position) * sunThrough)
-        + INV_FOUR_PI * lampsAt(position) * lampThrough;
+    // `pathEnd`, with the sky's share and the room's share of the ambient each shadowed by its own
+    // answer rather than the room's by none: a fill comes from everywhere, so what a puff lets
+    // through of it is the mean of every way in.
+    return frame.mAmbient * (daylight * mix(fillLit, skyLit, frame.mAmbientFromSky))
+        + frame.mSunIrradiance * (INV_PI * daylight * sunLit) + INV_FOUR_PI * lampsAt(position) * lampLit;
+}
+
+/// How a ball is lit from `toward` against its mean, on the side of it the eye sees.
+///
+/// A zero `toward` — a lamp that is not there — is lit at the mean, because nothing is being asked.
+float ballWrap(vec3 normal, vec3 toward)
+{
+    return 1.0 + SPRITE_WRAP * dot(normal, toward);
+}
+
+/// What a sprite's own texture lets through to a point on it from `toward`, out of its six-way bake.
+///
+/// **Six directions, weighted by how much of `toward` lies along each and divided by the same
+/// weights**, so that a texel nothing shadows is lit in full from anywhere. The four in the sprite's
+/// plane are `Rtx::SpriteLightMap`'s channels, read in the order it wrote them; the two out of the
+/// plane are derived here, the way that class says: light from the front reaches the visible
+/// surface whole, and light from behind crosses the texel's own thickness, which is `back`.
+///
+/// @param toward unit, from the sprite toward the light — or zero, for a light that is not there,
+///        which is lit in full because nothing is being asked.
+/// @param planeAcross,planeUp the sprite's own `u` and `v` in the world, which for a disc are the
+///        screen's.
+/// @param facing where the eye is, unit, from the sprite.
+/// @param shade the bake at this texel, already thinned by the sprite's own fade.
+float sixWayThrough(vec3 toward, vec3 planeAcross, vec3 planeUp, vec3 facing, vec4 shade, float back)
+{
+    const vec3 along = vec3(dot(toward, planeAcross), dot(toward, planeUp), dot(toward, facing));
+    const vec3 positive = max(along, vec3(0.0));
+    const vec3 negative = max(-along, vec3(0.0));
+
+    const float weight = dot(positive + negative, vec3(1.0));
+    if (!(weight > 0.0))
+        return 1.0;
+
+    return (positive.x * shade.x + negative.x * shade.y + positive.y * shade.z + negative.y * shade.w + positive.z
+               + negative.z * back)
+        / weight;
 }
 
 /// One sprite's case for owning a pixel's motion vector.
@@ -110,11 +154,14 @@ float spriteTaper(float radial, float lod)
 ///
 /// **Order-independent, because there is no order to be had.** `osgParticle` keeps its array in
 /// birth order and sorting tens of sprites per pixel is not affordable. So the two kinds are
-/// composited by what each actually means rather than by depth: an additive sprite adds light and
-/// hides nothing, which is order-free outright; the covering ones accumulate an exact total
-/// coverage `1 - prod(1 - a)` and fill it with their own coverage-weighted mean colour. That is
+/// composited by what each actually means rather than by depth. The covering ones accumulate an
+/// exact total coverage `1 - prod(1 - a)` and fill it with their own coverage-weighted mean colour:
 /// exact for one sprite and for any number of sprites of one colour, which is what a single
-/// emitter's smoke is, and it degrades to a blend rather than to a fault when they differ.
+/// emitter's smoke is, and it degrades to a blend rather than to a fault when they differ. The
+/// adding ones accumulate a screen, `1 - prod(1 - e)` per channel — what a stack of things that
+/// emit and absorb alike comes to, order-free, and the smooth form of the clamp the original's
+/// framebuffer put on the same sum: a fire's core saturates at a lit surface's white rather than
+/// piling twenty quads into a hundred times one.
 ///
 /// What it does not model is a covering sprite in front of an adding one — a plume across a flame
 /// would dim it, and here it does not. The two are separate emitters in Morrowind's content and
@@ -129,6 +176,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
     vec3 covered = vec3(0.0);
     float coverage = 0.0;
+    vec3 addedThrough = vec3(1.0);
 
     // The screen's own axes, for reading a sprite's texture the way the quad would have been cut.
     // Hoisted because they are the camera's and not the sprite's.
@@ -160,10 +208,17 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     //
     // The sun's is skipped where there is no sun, and the sky's where the ambient is a room's own
     // fill rather than the sky — which `skyReaching` decides for itself.
+    //
+    // The lamp the layer traced to is also the one it is given a side toward: the reservoir picks
+    // by what a lamp delivers here, so it is the one the layer would most notice the loss of.
     bool askedAbove = false;
     float sunThrough = 1.0;
     float skyThrough = 1.0;
     float lampThrough = 1.0;
+    vec3 lampToward = vec3(0.0);
+
+    const vec3 toSun = frame.mSunPosition;
+    const vec3 skyward = vec3(0.0, 0.0, 1.0);
 
     for (uint slot = spriteTileOffsets[tile]; slot < last; ++slot)
     {
@@ -206,16 +261,20 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
         const vec3 toSprite = sprite.mPosition - origin;
 
-        // How far along the ray the quad is, where across it the ray crossed in units of its own
-        // half-extents, and how far out that is as a fraction — the three things the rest needs,
-        // and the only place the two kinds of sprite differ.
-        float depth;
+        // How far along the ray the eye sees the sprite, what share of the sprite's own depth that
+        // is, where across it the ray crossed in units of its own half-extents, how far out that is
+        // as a fraction, and how far the sprite's surface stands toward the eye there — the things
+        // the rest needs, and the only place the two kinds of sprite differ.
+        float seen;
+        float fraction;
         vec2 at;
         float radial;
+        float lift = 0.0;
 
         if (oriented)
         {
-            // **A quad that hangs in the world**, so the ray meets a plane rather than a disc.
+            // **A quad that hangs in the world**, so the ray meets a plane rather than a ball. A
+            // rain streak is a thin thing, and where it meets a wall is where the drop does.
             //
             // **The axis it hangs on is the content's; which way its width faces is not.**
             // `osgParticle` uses both authored axes untransformed for a `FIXED` system because
@@ -236,46 +295,64 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // There is nothing to see from there either, so the authored width stands in.
             const vec3 side = swing > 1.0e-4 ? swung * (width / swing) : emitter.mAcross;
 
-            const vec3 across = side * sprite.mRadius;
-            const vec3 upward = axis * sprite.mRadius;
-            const vec3 normal = cross(across, upward);
+            const vec3 quadAcross = side * sprite.mRadius;
+            const vec3 quadUpward = axis * sprite.mRadius;
+            const vec3 normal = cross(quadAcross, quadUpward);
 
             const float facing = dot(normal, direction);
             if (abs(facing) <= 1.0e-6)
                 continue;
 
-            depth = dot(toSprite, normal) / facing;
+            const float depth = dot(toSprite, normal) / facing;
             if (depth <= 0.0 || depth >= limit)
                 continue;
 
             const vec3 offset = direction * depth - toSprite;
-            at = vec2(dot(offset, across) / dot(across, across), dot(offset, upward) / dot(upward, upward));
+            at = vec2(dot(offset, quadAcross) / dot(quadAcross, quadAcross),
+                dot(offset, quadUpward) / dot(quadUpward, quadUpward));
             if (max(abs(at.x), abs(at.y)) >= 1.0)
                 continue;
 
             radial = length(at);
+            seen = depth;
+            fraction = 1.0;
         }
         else
         {
-            depth = dot(toSprite, direction);
-            if (depth <= 0.0 || depth >= limit)
-                continue;
-
-            // Perpendicular to the ray rather than to the camera's axis, so a sprite at the
-            // corner of the frame faces the eye and not the screen.
+            // **A ball and not a disc, and what the eye sees of it is a chord.** The disc the
+            // rasterizer drew is the ball's silhouette, and everything it painted is kept: in the
+            // open the chord is whole and the sprite composites exactly as the quad did. What the
+            // ball adds is an inside, so where it runs into a wall — or the wall into it, or the eye
+            // into either — the chord is cut at the surface and the sprite fades along the ray
+            // instead of being clipped at its centre. That is the spherical billboard, and it is the
+            // exact form of what a rasterizer's soft particle approximates with a depth fade.
+            //
+            // Perpendicular to the ray rather than to the camera's axis, so a sprite at the corner
+            // of the frame faces the eye and not the screen.
+            const float depth = dot(toSprite, direction);
             const vec3 offset = toSprite - direction * depth;
-            radial = length(offset) / sprite.mRadius;
-            if (radial >= 1.0)
+            const float radial2 = dot(offset, offset) / (sprite.mRadius * sprite.mRadius);
+            if (radial2 >= 1.0)
                 continue;
 
+            lift = sqrt(1.0 - radial2);
+            const float halfChord = sprite.mRadius * lift;
+            const float from = max(depth - halfChord, 0.0);
+            const float until = min(depth + halfChord, limit);
+            if (until <= from)
+                continue;
+
+            fraction = (until - from) / (2.0 * halfChord);
+            seen = 0.5 * (from + until);
+            radial = sqrt(radial2);
             at = -vec2(dot(offset, across), dot(offset, upward)) / sprite.mRadius;
         }
 
-        // The sprite is `2 * mRadius` wide where the pixel's cone is `mSpreadAngle * depth`
-        // across, and the ratio of the two in texels is the level that resolves it.
+        // The sprite is `2 * mRadius` wide where the pixel's cone is `mSpreadAngle * seen` across,
+        // and the ratio of the two in texels is the level that resolves it. Clamped inside the
+        // logarithm rather than outside, because an eye inside the ball sees it at no distance.
         const vec2 size = vec2(textureSize(textures[nonuniformEXT(emitter.mTexture)], 0));
-        const float lod
-            = max(0.0, log2(max(size.x, size.y) * frame.mCamera.mSpreadAngle * depth / (2.0 * sprite.mRadius)));
+        const float lod = log2(max(max(size.x, size.y) * frame.mCamera.mSpreadAngle * seen / (2.0 * sprite.mRadius), 1.0));
 
         // The quad `osgParticle` would have drawn: texture coordinate zero at `-right -up` and
         // one at `+right +up`, about a centre at half.
@@ -286,13 +363,16 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         // **The rim is put back on a disc and left alone on a quad.** What the taper restores is
         // a round blob the mip chain averaged into the square it was cut to; a rain streak was
         // authored as that rectangle, and tapering it would round off the drop.
-        const float alpha
-            = texel.a * sprite.mAlpha * (oriented ? 1.0 : spriteTaper(radial, lod));
-        if (!(alpha > 0.0))
+        const float painted = texel.a * sprite.mAlpha * (oriented ? 1.0 : spriteTaper(radial, lod));
+        if (!(painted > 0.0))
             continue;
 
+        // What the eye's share of the chord hides: exactly what was painted for a whole chord, and
+        // `(1 - painted) ^ fraction` of the background let through for part of one.
+        // `SPRITE_ALPHA_LIMIT` says why the power is not taken at one.
+        const float alpha = 1.0 - pow(1.0 - min(painted, SPRITE_ALPHA_LIMIT), fraction);
         const vec3 colour = texel.rgb * sprite.mColour;
-        const float reaching = exp(-extinction * depth);
+        const float reaching = exp(-extinction * seen);
 
         if (emitter.mAdditive != 0u)
         {
@@ -303,12 +383,19 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // because that is what a flame is, and the exposure downstream decides where it
             // lands. A gain on top of it blows every flame to a white square and hides the shape
             // that was already in the texture.
-            const vec3 added = colour * (alpha * reaching * EMISSIVE_INTENSITY);
-            layer.mRadiance += added;
+            //
+            // **And it absorbs as much as it emits, per channel**, which is what makes the screen
+            // in the accumulator exact for a stack of them: what one sprite adds is what it always
+            // added, and what twenty add saturates at the white the original's framebuffer clamped
+            // to, rather than at twenty times it. The chord cuts a flame at a log the way it cuts
+            // smoke at a wall.
+            const vec3 glow
+                = (1.0 - pow(1.0 - min(colour * painted, vec3(SPRITE_ALPHA_LIMIT)), vec3(fraction))) * reaching;
+            addedThrough *= 1.0 - glow;
 
-            const float lit = dot(added, LUMINANCE_WEIGHTS);
+            const float lit = dot(glow, LUMINANCE_WEIGHTS) * EMISSIVE_INTENSITY;
             if (lit > layer.mAdding.mWeight)
-                layer.mAdding = SpriteClaim(direction * depth, sprite.mMoved, lit);
+                layer.mAdding = SpriteClaim(direction * seen, sprite.mMoved, lit);
 
             continue;
         }
@@ -327,7 +414,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             }
 
             // Straight up, because a particle has no normal and the sky is above it either way.
-            skyThrough = skyReaching(sprite.mPosition, vec3(0.0, 0.0, 1.0), pixelKey(pixel) + SEED_SKY_REACHING);
+            skyThrough = skyReaching(sprite.mPosition, skyward, pixelKey(pixel) + SEED_SKY_REACHING);
 
             // **The lamp that matters where the layer starts, and its answer for all of them.** The
             // reservoir picks by what a lamp delivers here, so the one traced to is the one the
@@ -338,20 +425,60 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), INV_FOUR_PI);
 
             lampThrough = lampVisible(lamps, vec2(randomNext(lampState), randomNext(lampState)));
+            lampToward = lamps.mTowards;
         }
 
-        covered += colour * puffLight(sprite.mPosition, sunThrough, skyThrough, lampThrough) * (alpha * reaching);
+        // What this puff is lit by, over what the layer is: the ball's own side, and what its
+        // texture lets through to this texel. A quad hanging in the world keeps the layer's answers
+        // — a rain streak is a thin thing seen by what passes through it, and has no side.
+        float sunLit = sunThrough;
+        float skyLit = skyThrough;
+        float lampLit = lampThrough;
+        float fillLit = 1.0;
+
+        if (!oriented)
+        {
+            // Where the ray entered the ball, as a normal: `at` across the disc, and the ball's
+            // surface lifted toward the eye by what is left of the radius there.
+            const vec3 normal = normalize(across * at.x + upward * at.y - direction * lift);
+
+            sunLit *= ballWrap(normal, toSun);
+            skyLit *= ballWrap(normal, skyward);
+            lampLit *= ballWrap(normal, lampToward);
+
+            if (emitter.mLighting != NO_TEXTURE)
+            {
+                // **What the puff's own texture leaves of each light**, thinned as the puff's own
+                // fade thins it: a wisp near the end of its life shadows itself less than the puff
+                // it was. The power is the same one the bake takes per texel, applied to the whole.
+                const vec4 shade
+                    = pow(textureLod(textures[nonuniformEXT(emitter.mLighting)], uv, lod), vec4(sprite.mAlpha));
+                const float back = 1.0 - texel.a * sprite.mAlpha;
+                const vec3 facing = -direction;
+
+                sunLit *= sixWayThrough(toSun, across, upward, facing, shade, back);
+                skyLit *= sixWayThrough(skyward, across, upward, facing, shade, back);
+                lampLit *= sixWayThrough(lampToward, across, upward, facing, shade, back);
+                fillLit = (shade.x + shade.y + shade.z + shade.w + 1.0 + back) / 6.0;
+            }
+        }
+
+        const vec3 daylight = daylightReaching(sprite.mPosition);
+
+        covered += colour * puffLight(sprite.mPosition, daylight, sunLit, skyLit, fillLit, lampLit) * (alpha * reaching);
         coverage += alpha;
         layer.mTransmittance *= 1.0 - alpha;
 
         // **By what it hid and not by what it was lit by.** An unlit puff of smoke sends back no
         // light at all and still decides the whole of what the pixel shows.
         if (alpha > layer.mCovering.mWeight)
-            layer.mCovering = SpriteClaim(direction * depth, sprite.mMoved, alpha);
+            layer.mCovering = SpriteClaim(direction * seen, sprite.mMoved, alpha);
     }
 
     if (coverage > 0.0)
         layer.mRadiance += covered * ((1.0 - layer.mTransmittance) / coverage);
+
+    layer.mRadiance += (1.0 - addedThrough) * EMISSIVE_INTENSITY;
 
     return layer;
 }

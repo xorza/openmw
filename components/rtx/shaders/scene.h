@@ -816,6 +816,26 @@ namespace Rtx::Shaders
     /// number here and no second one to disagree with it.
     RTX_CONST uint SPRITE_TILE = 16u;
 
+    /// The most a texel of a sprite may hide of what is behind it.
+    ///
+    /// **An alpha of one is an infinite optical depth, and no chord can thin one.** A sprite is
+    /// composited as a ball the ray crosses, and what it hides is `1 - (1 - alpha) ^ fraction` for
+    /// the fraction of the chord the eye sees — the whole of it in the open, a sliver where the
+    /// ball runs into a wall. At an alpha of one that hides everything for any sliver at all, which
+    /// is a puff clipped hard at the wall it was meant to fade into. So a texel that says opaque is
+    /// taken to mean this, and the price is one part in a hundred of the background through the
+    /// densest texel a sprite has.
+    RTX_CONST float SPRITE_ALPHA_LIMIT = 0.99;
+
+    /// How much brighter the lit side of a puff is than its mean, and the far side darker.
+    ///
+    /// **A puff has no dark side and still has a lit one.** A cloud of droplets scatters the sun
+    /// through the whole of itself, which is why `puffLight` gives a puff a card's worth of the sun
+    /// rather than a sphere's quarter; but the side the sun is on is brighter than the side it is
+    /// not, and that is what makes a ball read as a ball. `1 + SPRITE_WRAP * dot(normal, toward)`
+    /// keeps the mean over the sphere where it was and puts three to one between front and back.
+    RTX_CONST float SPRITE_WRAP = 0.5;
+
     /// One particle system: a sphere a ray is rejected by, and the run of sprites behind it.
     struct GpuEmitter
     {
@@ -842,9 +862,14 @@ namespace Rtx::Shaders
         /// shape, so neither is normalised.
         vec3 mAcross;
         vec3 mUpward;
+
+        /// The bake of the sprite texture's alpha, or `NO_TEXTURE`. `Rtx::SpriteLightMap` says what
+        /// it holds and `spritesAlong` how it is read.
+        uint mLighting;
     };
 
     struct GpuMaterial
+
     {
         /// One of the `KIND_` values.
         uint mKind;
@@ -907,7 +932,8 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
     static_assert(sizeof(GpuMaterial) == 72, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 48, "GpuSprite must be scalar-packed on every side");
-    static_assert(sizeof(GpuEmitter) == 56, "GpuEmitter must be scalar-packed on every side");
+    static_assert(sizeof(GpuEmitter) == 60, "GpuEmitter must be scalar-packed on every side");
+
 #endif
 
 #ifdef RTX_HOST

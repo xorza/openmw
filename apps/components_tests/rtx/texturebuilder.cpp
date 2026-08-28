@@ -11,9 +11,11 @@
 #include <components/resource/imagemanager.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
+
 
 namespace Rtx
 {
@@ -194,6 +196,25 @@ namespace Rtx
             const std::array<Rtx::Index, 2> both{ going.mTexture, staying.mTexture };
             check(SceneTextures(scene, images, both), "described by arrival");
             check(SceneTextures(scene, images), "described from the whole table");
+        }
+
+        /// A sprite's lighting bake is a slot of the same table, made from the file its key names —
+        /// and where that file cannot be read there is no alpha to bake, so it gets the stand-in the
+        /// sprite itself gets, counted once.
+        TEST(RtxTextureBuilderTest, aSpriteLightBakeWithNoSourceToReadGetsTheStandIn)
+        {
+            VFS::Manager vfs;
+            Resource::ImageManager images(&vfs, 0);
+
+            Rtx::SceneDesc scene;
+            const Rtx::Index bake
+                = scene.addBakedTexture(SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_smoke.dds")));
+
+            const SceneTextures described(scene, images);
+            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
+            EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
+            EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");
+            EXPECT_EQ(described.getUnreadable(), 1u);
         }
     }
 }

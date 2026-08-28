@@ -81,6 +81,7 @@ namespace Rtx
                 .mAdditive = emitter.mAdditive ? 1u : 0u,
                 .mAcross = emitter.mAcross,
                 .mUpward = emitter.mUpward,
+                .mLighting = emitter.mLighting,
             };
         }
 

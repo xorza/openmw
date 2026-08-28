@@ -7,6 +7,7 @@
 
 #include <components/rtx/error.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/spritelight.hpp>
 
 namespace Rtx
 {
@@ -241,12 +242,17 @@ namespace Rtx
             SceneDesc scene;
             const Index texture = scene.addTexture(VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
 
+            // The bake of the texture's alpha sits in the same table, which is why the count of
+            // textures at the end is two.
+            const Index lighting
+                = scene.addBakedTexture(SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_fire_00.dds")));
+
             const std::array sPlume{
                 Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 1.0f },
                 Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 1.0f },
                 Sprite{ .mPosition = osg::Vec3f(4.0f, 0.0f, 0.0f), .mRadius = 1.0f },
             };
-            scene.addEmitter(sPlume, texture, true);
+            scene.addEmitter(sPlume, texture, true, osg::Vec3f(), osg::Vec3f(), lighting);
 
             ASSERT_EQ(scene.getEmitters().size(), 1u);
             const SpriteEmitter& plume = scene.getEmitters().front();
@@ -255,6 +261,7 @@ namespace Rtx
             EXPECT_EQ(plume.mFirst, 0u);
             EXPECT_EQ(plume.mCount, 3u);
             EXPECT_EQ(plume.mTexture, texture);
+            EXPECT_EQ(plume.mLighting, lighting);
             EXPECT_TRUE(plume.mAdditive);
 
             // An emitter with nothing alive in it is not an emitter, and the next one that has
@@ -270,6 +277,7 @@ namespace Rtx
             EXPECT_EQ(scene.getEmitters()[1].mCount, 1u);
             EXPECT_FALSE(scene.getEmitters()[1].mAdditive)
                 << "the blend the file asked for is what tells the two apart";
+            EXPECT_EQ(scene.getEmitters()[1].mLighting, sNoIndex) << "an emitter with no bake is lit as a card";
             EXPECT_EQ(scene.getSprites().size(), 4u);
             EXPECT_EQ(scene.getSprites()[3].mPosition, osg::Vec3f(0.0f, 0.0f, 10.0f));
 
@@ -278,7 +286,7 @@ namespace Rtx
             scene.clearPlacement();
             EXPECT_TRUE(scene.getEmitters().empty());
             EXPECT_TRUE(scene.getSprites().empty());
-            EXPECT_EQ(scene.getTextures().size(), 1u);
+            EXPECT_EQ(scene.getTextures().size(), 2u);
         }
 
         /// A quad that hangs in the world reaches further than its own width, and its sphere knows.

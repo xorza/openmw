@@ -8,7 +8,7 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/resource/imagemanager.hpp>
-
+#include "alphaimage.hpp"
 #include "compositequeue.hpp"
 #include "error.hpp"
 #include "scenedesc.hpp"
@@ -154,6 +154,11 @@ namespace Rtx
         kept.reserve(slots.size());
         mImages.reserve(slots.size());
 
+        // Which of `mSpriteLights` each kept slot is, or `sNoIndex` for a slot that is not a bake of
+        // that kind — parallel to `kept` for the same reason `mImages` is.
+        std::vector<Index> lightOf;
+        lightOf.reserve(slots.size());
+
         for (const Index slot : slots)
         {
             // **A free slot is not a texture.** `SceneDesc` empties one the last thing naming it
@@ -166,15 +171,45 @@ namespace Rtx
             // Already decoded and still resident: the scene manager keeps image data on the CPU
             // after apply, so this is a cache hit and a memcpy rather than a second decode.
             //
-            // A slot this renderer made rather than opened has no file to be asked for. The entry
-            // still has to exist, because the description below is built from it, and
-            // A composite the queue has not finished is passed over the same way: nothing points
-            // at a baked slot until it has bytes, so there is nothing here to describe yet.
+            // A slot this renderer made rather than opened has no file to be asked for, and the
+            // entry still has to exist because the description below is built from it. A composite
+            // the queue has not finished is passed over the same way: nothing points at a baked slot
+            // until it has bytes, so there is nothing here to describe yet.
+
             osg::ref_ptr<const osg::Image> image;
-            if (scene.getBakedTextures()[slot].empty())
+            Index light = sNoIndex;
+
+            const std::string& baked = scene.getBakedTextures()[slot];
+            if (baked.empty())
                 image = openImage(images, scene.getTextures()[slot]);
+            else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(baked))
+            {
+                // **Baked from the sprite texture's alpha, here, because here is where a file is
+                // opened for upload.** The source's own description is transient — its levels go
+                // in a table thrown away with it — since nothing reaches the source through this
+                // slot; the emitter names the source by a slot of its own.
+                if (const osg::ref_ptr<const osg::Image> sprite = openImage(images, *source))
+                {
+                    std::vector<MipLevel> levels;
+                    try
+                    {
+                        const AlphaImage alpha(describeImage(*sprite, levels));
+                        if (!alpha.isEmpty())
+                        {
+                            mSpriteLights.emplace_back(alpha);
+                            light = static_cast<Index>(mSpriteLights.size() - 1);
+                        }
+                    }
+                    catch (const Error&)
+                    {
+                        // A source in a format this renderer does not upload is a bake with no
+                        // alpha to read, and it gets the stand-in below like the source itself.
+                    }
+                }
+            }
 
             kept.push_back(slot);
+            lightOf.push_back(light);
             mImages.push_back(std::move(image));
         }
 
@@ -202,6 +237,11 @@ namespace Rtx
                 {
                     described.reset();
                 }
+            }
+            else if (lightOf[at] != sNoIndex)
+
+            {
+                described = mSpriteLights[lightOf[at]].describe();
             }
             else if (const TerrainComposite* baked = composites != nullptr ? composites->find(kept[at]) : nullptr)
             {

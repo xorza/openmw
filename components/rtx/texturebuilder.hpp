@@ -6,6 +6,7 @@
 #include <osg/Image>
 
 #include "scenedesc.hpp"
+#include "spritelight.hpp"
 #include "texturedata.hpp"
 
 namespace Resource
@@ -108,6 +109,10 @@ namespace Rtx
         std::vector<MipLevel> mLevels;
 
         std::vector<TextureData> mDescriptions;
+
+        /// The bakes of the sprite textures the scene's emitters draw with, each made here from the
+        /// alpha of the file its key names. `SpriteLightMap` says what one is.
+        std::vector<SpriteLightMap> mSpriteLights;
 
         std::uint32_t mUnreadable = 0;
     };

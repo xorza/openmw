@@ -8,6 +8,7 @@
 #include "posecull.hpp"
 #include "shaders/scene.h"
 #include "shadingmap.hpp"
+#include "spritelight.hpp"
 #include "terraincomposite.hpp"
 #include "texturebuilder.hpp"
 
@@ -891,14 +892,16 @@ namespace Rtx
             }
         }
 
-        // The sprite's own reference goes back with the emitter that took it, which is what makes
-        // an emitter leaving enough to free its texture — a frame where no mesh and no material
+        // The sprite's own references go back with the emitter that took them, which is what makes
+        // an emitter leaving enough to free its textures — a frame where no mesh and no material
         // died is exactly the frame the sweep below returns from without looking.
         std::erase_if(mEmitterTextures, [this](const auto& entry) {
             if (entry.second.mEpoch == mEpoch)
                 return false;
 
             mScene.dropTexture(entry.second.mIndex);
+            mScene.dropTexture(entry.second.mLighting);
+
             return true;
         });
 
@@ -1241,12 +1244,18 @@ namespace Rtx
         auto [known, arrived] = mEmitterTextures.try_emplace(&particles);
         if (arrived)
         {
-            known->second.mIndex = mScene.addTexture(VFS::Path::Normalized(sprite->getFileName()));
+            const VFS::Path::Normalized path(sprite->getFileName());
+            known->second.mIndex = mScene.addTexture(path);
 
-            // **Held, because nothing else can name it.** An emitter is a placement and is thrown
+            // The bake is keyed on the file, so two emitters drawing with one texture share one
+            // bake, and it is made when the texture is opened for upload — `SceneTextures`.
+            known->second.mLighting = mScene.addBakedTexture(SpriteLightMap::keyFor(path));
+
+            // **Held, because nothing else can name them.** An emitter is a placement and is thrown
             // away every frame, so this entry is the only lasting thing that says the sprite is in
-            // use; the scene frees the slot when the sweep below lets go of it.
+            // use; the scene frees the slots when the sweep below lets go of them.
             mScene.holdTexture(known->second.mIndex);
+            mScene.holdTexture(known->second.mLighting);
         }
 
         known->second.mEpoch = mEpoch;
@@ -1259,8 +1268,11 @@ namespace Rtx
             .mParticles = &particles,
             .mPlace = place,
             .mTexture = known->second.mIndex,
+            .mLighting = known->second.mLighting,
+
             .mLight = addsLight(shading),
             .mSprite = sprite,
+
         });
     }
 
@@ -1344,7 +1356,7 @@ namespace Rtx
             upward = osg::Matrixf::transform3x3(particles.getAlignVectorY(), place);
         }
 
-        mScene.addEmitter(mSpriteScratch, pending.mTexture, pending.mLight, across, upward);
+        mScene.addEmitter(mSpriteScratch, pending.mTexture, pending.mLight, across, upward, pending.mLighting);
 
         ++stats.mEmitters;
         stats.mSprites += static_cast<std::uint32_t>(mSpriteScratch.size());

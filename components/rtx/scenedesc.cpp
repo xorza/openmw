@@ -305,8 +305,9 @@ namespace Rtx
     }
 
     void SceneDesc::addEmitter(std::span<const Sprite> sprites, Index texture, bool additive, const osg::Vec3f& across,
-        const osg::Vec3f& upward)
+        const osg::Vec3f& upward, Index lighting)
     {
+
         if (sprites.empty())
             return;
 
@@ -337,8 +338,10 @@ namespace Rtx
             .mFirst = static_cast<Index>(mSprites.size()),
             .mCount = static_cast<Index>(sprites.size()),
             .mTexture = texture,
+            .mLighting = lighting,
             .mAdditive = additive,
             .mAcross = across,
+
             .mUpward = upward,
         });
 

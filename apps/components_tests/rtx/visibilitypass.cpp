@@ -17,6 +17,7 @@
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/accumulate.h>
+#include <components/rtx/spritelight.hpp>
 #include <components/rtx/wavecascade.hpp>
 #include <components/rtx/wavespectrum.hpp>
 #include <components/rtxvulkan/buffer.hpp>
@@ -3495,6 +3496,29 @@ namespace Rtx
             EXPECT_GT(bedded[2], bottomless[2] + 40) << "blue reaches a bed 2000 units down";
         }
 
+        /// A one-texel sprite texture: white, and as opaque as its fourth byte says.
+        struct OneTexel
+        {
+            std::array<std::uint8_t, 4> mBytes;
+            MipLevel mLevel{ 0, 1, 1 };
+
+            explicit OneTexel(std::array<std::uint8_t, 4> bytes)
+                : mBytes(bytes)
+            {
+            }
+
+            TextureData describe() const
+            {
+                return TextureData{
+                    .mFormat = TextureFormat::Rgba8Unorm,
+                    .mWidth = 1,
+                    .mHeight = 1,
+                    .mBytes = std::as_bytes(std::span(mBytes)),
+                    .mLevels = std::span(&mLevel, 1),
+                };
+            }
+        };
+
         /// A sprite is shadowed like anything else, by the sun and by the sky over it.
         ///
         /// **A particle has no normal and it still has an up**, which is what the layer was missing:
@@ -3516,15 +3540,8 @@ namespace Rtx
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
 
-            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
-            const MipLevel one{ 0, 1, 1 };
-            const std::array<TextureData, 1> puff{ TextureData{
-                .mFormat = TextureFormat::Rgba8Unorm,
-                .mWidth = 1,
-                .mHeight = 1,
-                .mBytes = std::as_bytes(std::span(white)),
-                .mLevels = std::span(&one, 1),
-            } };
+            const OneTexel white({ 255, 255, 255, 255 });
+            const std::array<TextureData, 1> puff{ white.describe() };
 
             // One source at a time, so what the lid takes is never ambiguous.
             enum class Source
@@ -3574,6 +3591,174 @@ namespace Rtx
 
                 EXPECT_LT(sprited(true, source), 0.05f * open) << "a lid did not stop it";
             }
+        }
+
+        /// The alpha every sprite test below cuts its sprite from: half, so that what it hides and
+        /// what it lets through are the same size and neither can pass by being nought or one.
+        constexpr float sHalfAlpha = 128.0f / 255.0f;
+
+        /// A sprite is a ball the ray crosses, so a floor cuts its chord rather than clipping its disc.
+        ///
+        /// The eye looks along a line through the sprite's centre. Hanging in the open, the whole
+        /// chord is seen and the sprite hides exactly what was painted — `128/255`, leaving
+        /// `0.49804` of the floor behind it. Centred on the floor, the ray meets the floor at the
+        /// centre and sees half the chord, which leaves `0.49804^0.5 = 0.70572`. The puff is unlit —
+        /// no ambient, no sun, no lamp — so what the pixel shows is the floor through it and nothing
+        /// else, and the floor alone is measured in the same pose to divide by.
+        TEST_F(RtxVisibilityTest, aSpriteIsAChordAndAFloorCutsItInHalf)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            const OneTexel half({ 255, 255, 255, 128 });
+            const std::array<TextureData, 1> puff{ half.describe() };
+
+            const auto through = [&](float height, bool sprited) {
+                SceneDesc scene;
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+
+                if (sprited)
+                {
+                    const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                    const std::array<Sprite, 1> sprites{ Sprite{
+                        .mPosition = osg::Vec3f(0.0f, 0.0f, height), .mRadius = 60.0f, .mAlpha = 1.0f } };
+                    scene.addEmitter(sprites, cut, false);
+                }
+
+                // Forty up over four hundred along, so the centre ray runs down through the
+                // sprite's centre and on to the floor, near or far.
+                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -400.0f, height + 40.0f),
+                    osg::Vec3f(0.0f, 0.0f, height), 60.0f, size, size, 100000.0f);
+
+                // An even sky lights the floor exactly and the puff not at all: a puff is lit by the
+                // ambient, the sun and the lamps, and none of those is here.
+                camera.mSkyHorizon = osg::Vec3f(0.6f, 0.6f, 0.6f);
+                camera.mSkyZenith = camera.mSkyHorizon;
+                camera.mAmbient = osg::Vec3f();
+                camera.mAmbientFromSky = 0.0f;
+                camera.mSunIrradiance = osg::Vec3f();
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, sprited ? std::span<const TextureData>(puff) : std::span<const TextureData>(), camera,
+                    size, pixels, SeaState{});
+
+                return mRadiance[centre];
+            };
+
+            const float openFloor = through(200.0f, false);
+            const float buriedFloor = through(0.0f, false);
+            ASSERT_GT(openFloor, 0.01f) << "the floor is not lit";
+            ASSERT_GT(buriedFloor, 0.01f) << "the floor is not lit";
+
+            EXPECT_NEAR(through(200.0f, true) / openFloor, 1.0f - sHalfAlpha, 0.005f)
+                << "a whole chord hides exactly what was painted";
+            EXPECT_NEAR(through(0.0f, true) / buriedFloor, std::sqrt(1.0f - sHalfAlpha), 0.005f)
+                << "half a chord lets through the square root";
+        }
+
+        /// Two flames in one place add less than twice one, because a flame absorbs what it emits.
+        ///
+        /// A texel of alpha `128/255 = 0.50196` adds that share of `EMISSIVE_INTENSITY` on its own,
+        /// which is what it always added. Two of them screen — `1 - 0.49804^2 = 0.75196` of it —
+        /// where a sum would have reached `1.00392`. The original's framebuffer clamped that sum at
+        /// one, and this is the smooth form of the same limit.
+        TEST_F(RtxVisibilityTest, flamesSaturateWhereTheOriginalClamped)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            const OneTexel half({ 255, 255, 255, 128 });
+            const std::array<TextureData, 1> flame{ half.describe() };
+
+            const auto glowing = [&](std::size_t count) {
+                SceneDesc scene;
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const std::vector<Sprite> flames(
+                    count, Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f });
+                scene.addEmitter(flames, cut, true);
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mSunIrradiance = osg::Vec3f();
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, flame, camera, size, pixels, SeaState{});
+
+                return mRadiance[centre];
+            };
+
+            EXPECT_NEAR(glowing(1), Shaders::EMISSIVE_INTENSITY * sHalfAlpha, 0.05f) << "one adds what it painted";
+            EXPECT_NEAR(
+                glowing(2), Shaders::EMISSIVE_INTENSITY * (1.0f - (1.0f - sHalfAlpha) * (1.0f - sHalfAlpha)), 0.05f)
+                << "two screen rather than sum";
+        }
+
+        /// A puff is lit from the side the light is on, and by what its own texture lets through.
+        ///
+        /// A sprite facing an eye that looks along +Y, lit by a sun of four and nothing else, so its
+        /// centre pixel is `4 / pi` per unit of albedo, times what the puff lets through, times its
+        /// half alpha: `0.6391` for a puff nothing shadows. At the centre the ball's normal is
+        /// toward the eye, so a sun to the side is at the mean — and the bake alone decides: a sun
+        /// from the screen's right is `+u`, from above is `+v`, and a channel of nought there puts
+        /// the sun out, while the mirror channel is left alone.
+        ///
+        /// **And the ball has a side.** A sun behind the eye lights the near side at `1 + SPRITE_WRAP`
+        /// through a front nothing shadows; one behind the sprite lights it at `1 - SPRITE_WRAP`
+        /// through the whole of the texel's thickness, which is `1 - alpha`.
+        TEST_F(RtxVisibilityTest, aPuffIsLitByItsSideAndByWhatItsTextureLetsThrough)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            const OneTexel half({ 255, 255, 255, 128 });
+
+            const auto lit = [&](const osg::Vec3f& sun, std::array<std::uint8_t, 4> through) {
+                const OneTexel shade(through);
+                const std::array<TextureData, 2> textures{ half.describe(), shade.describe() };
+
+                SceneDesc scene;
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const Index bake
+                    = scene.addBakedTexture(SpriteLightMap::keyFor(VFS::Path::NormalizedView("sprite.dds")));
+                const std::array<Sprite, 1> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
+                scene.addEmitter(sprites, cut, false, osg::Vec3f(), osg::Vec3f(), bake);
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mAmbientFromSky = 1.0f;
+                camera.mSunPosition = sun;
+                camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, textures, camera, size, pixels, SeaState{});
+
+                return mRadiance[centre];
+            };
+
+            const float card = 4.0f * Shaders::INV_PI * sHalfAlpha;
+            constexpr std::array<std::uint8_t, 4> clear{ 255, 255, 255, 255 };
+
+            EXPECT_NEAR(lit(osg::Vec3f(1.0f, 0.0f, 0.0f), clear), card, 0.01f) << "a card's worth from the side";
+            EXPECT_NEAR(lit(osg::Vec3f(1.0f, 0.0f, 0.0f), { 0, 255, 255, 255 }), 0.0f, 0.005f)
+                << "the sun from +u, and +u shut";
+            EXPECT_NEAR(lit(osg::Vec3f(-1.0f, 0.0f, 0.0f), { 0, 255, 255, 255 }), card, 0.01f)
+                << "the sun from -u, which +u does not shut";
+            EXPECT_NEAR(lit(osg::Vec3f(0.0f, 0.0f, 1.0f), { 255, 255, 0, 255 }), 0.0f, 0.005f)
+                << "the sun from above is +v, and +v shut";
+
+            EXPECT_NEAR(lit(osg::Vec3f(0.0f, -1.0f, 0.0f), clear), card * (1.0f + Shaders::SPRITE_WRAP), 0.01f)
+                << "the near side, through the front";
+            EXPECT_NEAR(lit(osg::Vec3f(0.0f, 1.0f, 0.0f), clear),
+                card * (1.0f - Shaders::SPRITE_WRAP) * (1.0f - sHalfAlpha), 0.01f)
+                << "the far side, through the thickness";
         }
 
         /// What each mask names, and what neither of them does.

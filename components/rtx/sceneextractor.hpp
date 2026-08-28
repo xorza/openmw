@@ -406,6 +406,7 @@ namespace Rtx
             const osgParticle::ParticleSystem* mParticles;
             osg::Matrixf mPlace;
             Index mTexture;
+            Index mLighting;
             bool mLight;
 
             /// Kept only to name the texture's format in the stats, which is read once per emitter.
@@ -489,8 +490,8 @@ namespace Rtx
 
         /// What the scene knows one `osg` object as, keyed so the object cannot go while the entry
         /// stands. See `ByAddress`.
-        template <class T>
-        using Identity = std::unordered_map<osg::ref_ptr<T>, Known, ByAddress<T>, ByAddress<T>>;
+        template <class T, class Held = Known>
+        using Identity = std::unordered_map<osg::ref_ptr<T>, Held, ByAddress<T>, ByAddress<T>>;
 
         // Keyed on pointer identity, which OpenMW's resource cache and its optimizer's
         // SHARE_DUPLICATE_STATE pass together make meaningful: the same model loaded twice is the
@@ -501,12 +502,19 @@ namespace Rtx
         Identity<const osg::Drawable> mMeshes;
         Identity<const osg::StateSet> mMaterials;
 
-        /// Which texture each particle system draws with.
+        /// What one particle system draws with: its sprite texture in `mIndex`, and the bake of that
+        /// texture's alpha its sprites are lit by.
+        struct HeldSprite : Known
+        {
+            Index mLighting = sNoIndex;
+        };
+
+        /// Which textures each particle system draws with.
         ///
         /// **This entry is the reference**, and not a note about one: a sprite's texture hangs off
         /// no material, so the scene is told to hold it when the emitter is first met and to let go
         /// when the sweep loses it. It saves a path hash per emitter per frame as well.
-        Identity<const osg::Drawable> mEmitterTextures;
+        Identity<const osg::Drawable, HeldSprite> mEmitterTextures;
 
         /// A node's controllers and the state set they write into, kept so the address is the same
         /// one next frame. See `animate`.

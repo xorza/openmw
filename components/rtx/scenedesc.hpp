@@ -351,6 +351,10 @@ namespace Rtx
         /// a particle's whole silhouette is in that texture's alpha.
         Index mTexture = sNoIndex;
 
+        /// What that texture's alpha leaves of the light crossing a sprite — a `SpriteLightMap` —
+        /// or `sNoIndex` for one lit as a flat card.
+        Index mLighting = sNoIndex;
+
         /// `SRC_ALPHA, ONE`: a flame, which adds light and hides nothing behind it. The rest blend
         /// over, which is smoke and needs its colour ramp to fade it.
         bool mAdditive = false;
@@ -541,8 +545,10 @@ namespace Rtx
         /// an emitter with no live particles, which is most of them for most of a frame.
         /// @param across the quad's own axes in world space, per unit of `Sprite::mRadius`, or two
         ///        zero vectors for a sprite that faces the eye. `SpriteEmitter::mAcross` says why.
+        /// @param lighting the bake of `texture`'s alpha, or `sNoIndex`. `SpriteEmitter::mLighting`.
         void addEmitter(std::span<const Sprite> sprites, Index texture, bool additive,
-            const osg::Vec3f& across = osg::Vec3f(), const osg::Vec3f& upward = osg::Vec3f());
+            const osg::Vec3f& across = osg::Vec3f(), const osg::Vec3f& upward = osg::Vec3f(),
+            Index lighting = sNoIndex);
 
         /// Drops every mesh and material the caller did not name.
         ///

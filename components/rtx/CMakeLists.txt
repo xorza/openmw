@@ -72,6 +72,8 @@ set(RTX_FILES
     skybuilder.hpp
     spanallocator.cpp
     spanallocator.hpp
+    spritelight.cpp
+    spritelight.hpp
     spritetiles.cpp
     spritetiles.hpp
     compositequeue.cpp
