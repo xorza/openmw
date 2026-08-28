@@ -3929,6 +3929,130 @@ namespace Rtx
             }
         }
 
+        /// A pixel of water with no water under it is the ground beside it, and how much water is
+        /// under it is measured straight down.
+        ///
+        /// **Along the refraction was the wrong measure, and a grazing view of a shore is where it
+        /// showed.** The refracted ray leaves the surface at forty degrees off the vertical and
+        /// lands somewhere else entirely — at a shore, somewhere the bed is much further down — so
+        /// the fade read deep water at a pixel with none, never engaged, and left the plane cutting
+        /// the terrain along a hard line. Straight down is a view-independent answer.
+        ///
+        /// Two parallel projections of one shore, one straight down and one sixty degrees off it,
+        /// with their rows laid over the same run of x. The bed is black under a white sky and
+        /// there is no sun, so the only thing water changes about a pixel is the sky it reflects —
+        /// a constant across a parallel view — and what a row measures is the fade itself. The bed
+        /// falls one in ten, so the band's middle is 17.5 units of depth and x = 175 in both views.
+        /// Along the refraction the grazing view read 1.44 times the depth and put the middle 53
+        /// units nearer the line, which is four rows of this frame.
+        TEST_F(RtxVisibilityTest, theWaterlineIsAsDeepAsTheWaterOverItAndNotAsFarAsARayThroughItGoes)
+        {
+            constexpr std::uint32_t size = 64;
+            constexpr float extent = 4000.0f;
+            constexpr float slope = 0.1f;
+            constexpr float centre = 200.0f;
+            constexpr float span = 800.0f;
+            constexpr float rowUnits = span / static_cast<float>(size);
+
+            // A bed that rises through the water along +x, with the waterline at x = 0: the same
+            // corner order as `makeSheet`, so it faces up.
+            const std::array<osg::Vec3f, 4> bed{
+                osg::Vec3f(-extent, -extent, extent * slope),
+                osg::Vec3f(extent, -extent, -extent * slope),
+                osg::Vec3f(extent, extent, -extent * slope),
+                osg::Vec3f(-extent, extent, extent * slope),
+            };
+
+            Material black;
+            black.mDiffuseColour = osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f);
+
+            SceneDesc dry;
+            dry.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = dry.addMesh(bed, {}, {}, sQuadIndices),
+                .mMaterial = dry.addMaterial(black) });
+
+            SceneDesc wet = makeOpenWater(extent);
+            wet.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = wet.addMesh(bed, {}, {}, sQuadIndices),
+                .mMaterial = wet.addMaterial(black) });
+
+            // Straight down, with the image's up along +x so that a row is a run of x.
+            const osg::Matrixf above = osg::Matrixf::lookAt(
+                osg::Vec3f(centre, 0.0f, 500.0f), osg::Vec3f(centre, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, 0.0f));
+
+            // Sixty degrees off the vertical, along +x. A parallel ray `v` up the image lands on the
+            // plane at `eye.x + eye.z tan(60) + 2v`, so half the span in image units covers the same
+            // run of x as the view from above.
+            const float tilt = osg::DegreesToRadians(60.0f);
+            const osg::Vec3f forward(std::sin(tilt), 0.0f, -std::cos(tilt));
+            const osg::Vec3f eye(centre - 500.0f * std::tan(tilt), 0.0f, 500.0f);
+            const osg::Matrixf grazing = osg::Matrixf::lookAt(eye, eye + forward, osg::Vec3f(0.0f, 0.0f, 1.0f));
+
+            const auto middleOf = [&](const osg::Matrixf& view, float worldHeight, const char* which) {
+                Shaders::VisibilityConstants camera
+                    = makeOrthographicCameraFromView(view, span, worldHeight, size, size, 5.0f, 20000.0f);
+                camera.mWaterLevel = 0.0f;
+                camera.mSkyHorizon = osg::Vec3f(1.0f, 1.0f, 1.0f);
+                camera.mSkyZenith = osg::Vec3f(1.0f, 1.0f, 1.0f);
+
+                std::vector<std::uint8_t> withWater;
+                countHits(wet, {}, camera, size, withWater, SeaState{ .mSignificantHeight = 0.0f });
+                std::vector<std::uint8_t> without;
+                countHits(dry, {}, camera, size, without, SeaState{ .mSignificantHeight = 0.0f });
+
+                // How far each row is from the ground beside it, as the mean over its columns.
+                std::vector<double> apart(size, 0.0);
+                for (std::uint32_t row = 0; row < size; ++row)
+                {
+                    for (std::uint32_t column = 0; column < size; ++column)
+                    {
+                        const std::size_t i = (std::size_t{ row } * size + column) * 4;
+                        apart[row] += std::abs(double{ decodeSrgb(withWater[i]) } - double{ decodeSrgb(without[i]) });
+                    }
+                    apart[row] /= static_cast<double>(size);
+                }
+
+                // Row zero is the top of the image, which is the far end of +x.
+                const auto xAt = [&](std::uint32_t row) {
+                    return centre
+                        + (1.0f - 2.0f * (static_cast<float>(row) + 0.5f) / static_cast<float>(size)) * span * 0.5f;
+                };
+
+                // Deep water is the reference: fifty units and more of it, where the fade is one.
+                double deep = 0.0;
+                std::uint32_t deepRows = 0;
+                for (std::uint32_t row = 0; row < size; ++row)
+                    if (xAt(row) * slope >= 50.0f)
+                    {
+                        deep += apart[row];
+                        ++deepRows;
+                    }
+                deep /= static_cast<double>(deepRows);
+                EXPECT_GT(deep, 0.01) << which << ": deep water reflects a sky the black bed does not";
+
+                // The dry side is the ground either way.
+                for (std::uint32_t row = 0; row < size; ++row)
+                {
+                    if (xAt(row) < -rowUnits)
+                    {
+                        EXPECT_LT(apart[row], 0.01) << which << ": row " << row << " is dry";
+                    }
+                }
+
+                // From the waterline toward deep water, where the difference first reaches half.
+                for (std::uint32_t row = size; row-- > 0;)
+                    if (xAt(row) > 0.0f && apart[row] >= 0.5 * deep)
+                        return xAt(row);
+
+                ADD_FAILURE() << which << ": the water never reached half of its depth";
+                return 0.0f;
+            };
+
+            // Two rows either side, which is twenty-five units of x and two and a half of depth.
+            EXPECT_NEAR(middleOf(above, span, "from above"), 175.0f, 2.0f * rowUnits);
+            EXPECT_NEAR(middleOf(grazing, span * 0.5f, "at sixty degrees"), 175.0f, 2.0f * rowUnits);
+        }
+
         /// The water between an eye and the surface over it is water like any other.
         ///
         /// **The half the invariant above cannot see.** Both of its cameras look *down*, so the hit

@@ -44,6 +44,19 @@ layout(constant_id = 0) const bool COUNT_HITS = false;
 
 layout(local_size_x = VISIBILITY_WORKGROUP, local_size_y = VISIBILITY_WORKGROUP) in;
 
+/// What a solid the eye found is: its direct light, the one bounce it gathers, and what it is in
+/// the upscaler's terms.
+///
+/// **One statement of what a ground pixel is, used twice** — for the hit itself, and for the bed
+/// under a waterline pixel, which is that ground and has to be shaded exactly as it. Written twice
+/// is how the two would come to disagree.
+void shadeSolid(Surface hit, uvec2 pixel, out vec3 direct, out vec3 bounce, out SurfaceResponse response)
+{
+    direct = shadeSurface(hit, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE);
+    bounce = bounceLight(hit, pixel);
+    response = lambertResponse(hit);
+}
+
 void main()
 {
     const uvec2 pixel = gl_GlobalInvocationID.xy;
@@ -134,7 +147,43 @@ void main()
             ? vec3(0.0)
             : skyRadiance(origin, direction, pixelBlur(frame.mCamera), skyShown);
     else if (surface.mWater)
-        shaded = shadeWater(surface, direction, response, mirror, pixel);
+    {
+        float shore;
+        shaded = shadeWater(surface, direction, response, mirror, pixel, shore);
+
+        // **A pixel of water with no water under it is the ground it stands on, shaded as the
+        // ground is.** The surface fades out over the last half metre of depth, and what it used to
+        // fade toward was the bed shaded at the far end of a path — `pathEnd`, the flat ambient —
+        // where the dry pixel beside it gathers a real bounce. In fog the two are far apart: the
+        // ambient is the recorded colour and a bounce finds the sky's, so the waterline came back
+        // as a line between blue and brown however well the surface over it had been faded. So the
+        // bed the dry pixel would have found is traced and shaded the way that pixel is, and the
+        // fade mixes the two as one pixel: the direct light and the response as a blend, and the
+        // bounce whole, since the albedo it is put back against carries the share. Only in the
+        // band, which is the shore and nothing else.
+        //
+        // **From a hair short of the surface and not a hair past it.** The waterline is where the
+        // ground crosses the plane, so along the last pixel of water the bed lies within the bias
+        // of the surface — and a trace that started past it found nothing, kept the whole water,
+        // and drew the line it was there to remove as a bright hair. Solids only: nothing solid is
+        // nearer than a surface the eye's own trace found first, so what this finds is the bed.
+        if (shore < 1.0)
+        {
+            const Surface bed = trace(origin, direction, max(surface.mDistance - SHADOW_BIAS, 0.0), cone.mWidth,
+                cone.mSpread, MASK_SOLID);
+            if (bed.mHit)
+            {
+                vec3 ground;
+                SurfaceResponse lambert;
+                shadeSolid(bed, pixel, ground, bounced, lambert);
+
+                shaded = mix(ground, shaded, shore);
+                response = SurfaceResponse(normalize(mix(lambert.mNormal, response.mNormal, shore)),
+                    lambert.mDiffuse * (1.0 - shore), response.mSpecular * shore,
+                    mix(lambert.mRoughness, response.mRoughness, shore));
+            }
+        }
+    }
     else if (frame.mShowAlbedo != 0u)
     {
         // **The colour is replaced and the surface is not.** What this view changes is what a pixel
@@ -145,11 +194,7 @@ void main()
         response = lambertResponse(surface);
     }
     else
-    {
-        shaded = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE);
-        bounced = bounceLight(surface, pixel);
-        response = lambertResponse(surface);
-    }
+        shadeSolid(surface, pixel, shaded, bounced, response);
 
     // **The pane over what it stands in front of, before the water and the air.** Both of those are
     // measured over the distance to the surface *behind* the glass, so the pane takes the haze of a

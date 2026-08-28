@@ -46,6 +46,15 @@ const float WATER_MIN_FACING = 0.03;
 /// along a hard line, which is the classic tell of a water plane and is on screen in 533 of the
 /// game's 1,292 land cells. Half a metre is enough to hide the intersection without making the
 /// shallows look thin.
+///
+/// **Measured straight down, and it was measured along the refraction before.** Those are the same
+/// number only where the bed is flat under the eye. At Seyda Neen's shore the terrain runs within a
+/// few units of sea level for hundreds of units, so the two planes are very nearly parallel — while
+/// the refracted ray, leaving at forty degrees off the vertical, lands far enough out to find a bed
+/// well down. It reported deep water at a pixel with none, the fade never engaged, and what was left
+/// was exactly the hard line this constant exists to prevent. The renderer this is ported from
+/// found the same and says so in its §8.101, and what holds it here is
+/// `theWaterlineIsAsDeepAsTheWaterOverItAndNotAsFarAsARayThroughItGoes`.
 const float WATER_SHORE_FADE = 35.0;
 
 /// What a ray sent out from the water surface found.
@@ -154,14 +163,21 @@ struct WaterMirror
     bool mFound;
 };
 
-/// What the water sends back along the ray that found it.
+/// What the water sends back along the ray that found it, as if there were water all the way down.
 /// @param pixel which pixel this is, for the draw key the two reservoirs below each offset by their
 ///        own `SEED_LAMPS_` constant — what the water reflects and what is seen through it are two
 ///        surfaces shaded from one hit, and two reservoirs seeded alike keep one lamp.
 /// @param mirror what this surface reflects, for the motion vector that describes it. Not found
 ///        where the reflection reached only sky, or where the water is being looked at from
 ///        underneath — neither is a thing a mirrored reprojection has an answer for.
-vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, out WaterMirror mirror, uvec2 pixel)
+/// @param shore how much of the pixel is water at all, from nothing at the waterline to one over
+///        half a metre of depth. **The caller mixes the ground in, and not this**, because what a
+///        pixel with no water under it is is the ground the dry pixel beside it is — shaded the
+///        way that pixel is shaded, with a bounce this function cannot gather. What is returned is
+///        the water's whole answer, and the reflection already faded toward the incident ray by
+///        this term so that the two halves of a mixed pixel look at one piece of ground.
+vec3 shadeWater(
+    Surface surface, vec3 incident, out SurfaceResponse response, out WaterMirror mirror, uvec2 pixel, out float shore)
 {
     const uint key = pixelKey(pixel);
 
@@ -212,9 +228,9 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     // GGX lobe; ours is a traced reflection weighted by Schlick, and dividing it by an environment
     // BRDF would divide by a number nothing ever multiplied.
     //
-    // Set here so the struct is whole, and settled at each exit below: total internal reflection
-    // makes it all of the pixel, and the shore fade scales it down with the rest of the surface.
-    // What is written here reaches no return of its own.
+    // Set here so the struct is whole, and settled at the one exit below that changes it: total
+    // internal reflection makes it all of the pixel. What is written here reaches no return of its
+    // own.
     //
     // Water is the only surface in this renderer with a specular half at all. Every solid reports
     // nought and that is the content's answer rather than a gap: `nifloader.cpp` forces specular to
@@ -231,6 +247,22 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     // travelled no water at all. Attenuating the wrong one turns that window green.
     const vec3 leaving = surface.mPosition + plane * WATER_BIAS;
 
+    // **How much water is under *this pixel*, which is the whole of what a shore is.** Straight
+    // down rather than along anything, and worth a ray of its own: the two rays cast below both
+    // leave at an angle, so what they measure is how far *they* travelled — which at a shore is a
+    // question about the slope beyond rather than about the depth here. `WATER_SHORE_FADE` says
+    // what that drew.
+    //
+    // From underneath there is no shore: the distance to a bed says nothing about a surface seen
+    // from below it, and the ray is spared.
+    shore = 1.0;
+    if (!fromBelow)
+    {
+        const Surface bed = trace(
+            leaving, vec3(0.0, 0.0, -1.0), WATER_BIAS, surface.mFootprint, frame.mCamera.mSpreadAngle, MASK_SOLID);
+        shore = smoothstep(0.0, WATER_SHORE_FADE, bed.mHit ? bed.mDistance : WATER_MAX_PATH);
+    }
+
     const vec3 away = reflect(incident, normal);
     const WaterPath bounced = waterRay(leaving, away, surface.mFootprint, lobe, key + SEED_LAMPS_MIRROR);
     vec3 reflected = bounced.mRadiance;
@@ -240,8 +272,8 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     else
         mirror = WaterMirror(bounced.mPosition, away, bounced.mInstance, bounced.mDistance < WATER_MAX_PATH);
 
-    const vec3 through = refract(incident, normal, fromBelow ? WATER_IOR : 1.0 / WATER_IOR);
-    if (dot(through, through) < 1e-6)
+    const vec3 bent = refract(incident, normal, fromBelow ? WATER_IOR : 1.0 / WATER_IOR);
+    if (dot(bent, bent) < 1e-6)
     {
         // Past the critical angle looking up from underwater, where the surface is a mirror and
         // there is nothing behind it to see.
@@ -255,6 +287,12 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
         return reflected;
     }
 
+    // **Water that is not there cannot bend light.** The refraction is blended back toward the
+    // incident by the same term that fades the surface, or the last pixel of water still shows a
+    // piece of ground displaced by a fifth of a radian from the dry pixel beside it — a hard line
+    // however faint the surface over it has been made.
+    const vec3 through = normalize(mix(incident, bent, shore));
+
     // Refraction bends by a third of what reflection does, so what is seen *through* the surface is
     // blurred correspondingly less by the same lost slopes.
     const WaterPath behind
@@ -264,16 +302,7 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
         : throughWater(behind.mRadiance,
               waterColumn(leaving, through, behind.mDistance, surface.mFootprint, marchOffset));
 
-    // With no water left between the surface and the ground, this is the ground. Only from above:
-    // seen from under it, the path is a distance through air and says nothing about a shore.
-    const float shore = fromBelow ? 1.0 : smoothstep(0.0, WATER_SHORE_FADE, behind.mDistance);
-    const vec3 water = mix(behind.mRadiance, mix(refracted, reflected, fresnel), shore);
-
-    // The fade scales the reflection with the rest of the surface, so the share of the pixel that is
-    // a reflection falls with it. From below it is one and this changes nothing.
-    response.mSpecular = vec3(fresnel * shore);
-
-    return water;
+    return mix(refracted, reflected, fresnel);
 }
 
 #endif
