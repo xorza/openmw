@@ -3,6 +3,7 @@
 #include <array>
 #include <bit>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -155,6 +156,11 @@ namespace Rtx
 
         mSea = sea;
         mDrawn = true;
+    }
+
+    osg::Vec2f WavePass::getTravel() const
+    {
+        return osg::Vec2f(std::cos(mSea.mBearing), std::sin(mSea.mBearing));
     }
 
     void WavePass::handOver(VkCommandBuffer commands) const

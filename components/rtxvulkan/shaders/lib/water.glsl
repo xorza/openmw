@@ -62,13 +62,6 @@ struct WaterPath
     vec3 mPosition;
     uint mInstance;
 
-    /// The plane of what it landed on, unturned.
-    ///
-    /// **Carried because the bed's gradient is what places a surf zone**, and the ray that measures
-    /// the depth has already resolved it — asking separately would traverse the same ray twice.
-    /// Level where nothing was found, which is the one answer that cannot invent a shore: a level
-    /// bed has no downhill, and `bedFall` reads that as ground a wave never came across.
-    vec3 mGeometric;
 };
 
 /// What a ray sees along `direction` after leaving the water, and what it found to see it on.
@@ -106,7 +99,6 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     WaterPath path;
     path.mPosition = hit.mPosition;
     path.mInstance = hit.mInstance;
-    path.mGeometric = hit.mHit ? hit.mGeometric : vec3(0.0, 0.0, 1.0);
 
     if (hit.mHit)
     {
@@ -145,38 +137,45 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
     return path;
 }
 
-/// How fast the bed falls away toward deep water, as a tangent, measured over `span`.
+/// The deepest still water within one `span`, sampled around the point.
 ///
-/// **A tangent plane is not a beach.** The bed's own normal says how the ground tilts at the point
-/// the refraction ray landed on and nothing whatever about whether that tilt carries on: at the rim
-/// of a puddle it tilts exactly as a shore does, and reading it as "water deep enough to break in
-/// lies just down this slope" is what drew a bright line around every hollow behind Seyda Neen.
-/// First-order extrapolation of a slope that stops.
+/// **A tangent plane is not a beach.** The bed's own tilt says how the ground leans where the
+/// refraction ray landed and nothing about whether that lean carries on: at the rim of a puddle it
+/// tilts exactly as a shore does, and reading it as "water deep enough to break in lies just down
+/// this slope" is what drew a bright line around every hollow behind Seyda Neen. So the answer is
+/// sampled at the distance it is wanted for rather than extrapolated from here.
 ///
-/// So the fall is a secant over the distance the answer is wanted for rather than a tangent at one
-/// end of it — one ray straight down at the far end — and a bed that stops falling stops counting.
+/// **Around the point and not down a slope, which is what a surface normal cannot be trusted for.**
+/// A direction taken from a normal is constant across a triangle and jumps at every edge — and worse
+/// across the seam between two terrain chunks, whose vertex normals were never built to agree. The
+/// probe then landed a run-out away in a different place on each side of the seam, and the surf line
+/// came out cut along a straight line hundreds of units long with the sea on one side of it.
 ///
-/// @param at a point on the water surface.
-/// @param geometric the plane of the bed under it.
-/// @param here how deep the water is at `at`.
-float bedFall(vec3 at, vec3 geometric, float here, float span)
+/// Four rays, and the deepest of them. The largest of four continuous things is continuous, so
+/// nothing here can draw an edge the ground does not have — and *any* direction will do, because a
+/// wave shoaling toward a shore refracts until it runs at the depth contours whatever the wind was
+/// doing. They are turned off the axes by the sea's own bearing so that a coast running north does
+/// not get a different answer from one running east.
+///
+/// **A miss is nought and needs no case of its own.** The ray leaves the water plane going down, so
+/// finding nothing means the ground out there stands above the sea — which is a depth of none, and
+/// the depth it approaches as the probe walks up a beach anyway.
+float bedDepthAround(vec3 at, float span)
 {
-    // Downhill, for a plane, is the horizontal part of whichever way its normal points up. A level
-    // bed has no downhill and goes nowhere, which is the answer for a pan.
-    const vec2 downhill = geometric.z < 0.0 ? -geometric.xy : geometric.xy;
-    if (dot(downhill, downhill) < 1.0e-12)
-        return 0.0;
+    const vec2 along = frame.mWaveTravel * span;
+    const vec2 across = vec2(-along.y, along.x);
 
-    const vec3 from = vec3(at.xy + normalize(downhill) * span, at.z + WATER_BIAS);
-    const Surface bed = trace(from, vec3(0.0, 0.0, -1.0), WATER_BIAS, 0.0, 0.0, MASK_SOLID);
+    float deepest = 0.0;
+    for (uint quarter = 0u; quarter < 4u; ++quarter)
+    {
+        const vec2 turned = quarter == 0u ? along : (quarter == 1u ? across : (quarter == 2u ? -along : -across));
+        const vec3 from = vec3(at.xy + turned, at.z + WATER_BIAS);
+        const Surface bed = trace(from, vec3(0.0, 0.0, -1.0), WATER_BIAS, 0.0, 0.0, MASK_SOLID);
 
-    // Nothing under the water plane out there. The ray started in the surface and went down, so a
-    // miss means the ground at that end stands above the sea: that way is dry land and not the open
-    // water a wave would have come from.
-    if (!bed.mHit)
-        return 0.0;
+        deepest = max(deepest, bed.mHit ? bed.mDistance : 0.0);
+    }
 
-    return max(bed.mDistance - here, 0.0) / span;
+    return deepest;
 }
 
 /// What a water surface reflects, which is not where the water is.
@@ -335,7 +334,7 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     // one; where the column is too thin to tint anything the raft is still there, and the last
     // stretch of it lying over wet sand is what the edge of the sea looks like. It ends where the
     // water does on its own, because past that no ray finds water to stand on.
-    const float breaks = foamBreaking(sea, under);
+    const float breaks = foamBreaking(sea, surface.mPosition.xy, under);
     if (!(breaks > 0.0))
         return water;
 
@@ -345,8 +344,8 @@ vec3 shadeWater(Surface surface, vec3 incident, out SurfaceResponse response, ou
     // How far the probe looks and how far foam lasts are one number, so the model never asks about
     // ground whose answer it would have discounted anyway.
     const float runout = foamRunout(sea);
-    const float fall = bedFall(surface.mPosition, behind.mGeometric, under, runout);
-    const float covered = breaks * foamReaching(sea, under, fall, runout);
+    const float outThere = bedDepthAround(surface.mPosition, runout);
+    const float covered = breaks * foamReaching(sea, outThere);
     if (!(covered > 0.0))
         return water;
 

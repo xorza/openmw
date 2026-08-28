@@ -71,6 +71,66 @@ const float WATER_CAUSTIC_FOCUS = 100.0;
 /// twentieth of its contrast to do it.
 const float WATER_CAUSTIC_FOLD = 0.85;
 
+/// How much of the sea's own height the surf line is spread over, and how steep a face counts as
+/// one the wave is running into.
+///
+/// **The first is what stops the surf line being a drawn edge**, and it is Rayleigh's rather than
+/// anybody's taste. McCowan's criterion is met or it is not, so on its own it draws a region with a
+/// hard rim; the only thing that ever softened that rim was the elevation a *ray cone* had averaged
+/// away, which goes to nought the moment the camera is near.
+///
+/// What is missing is which *wave* is passing. The criterion asks the sea state for a height and the
+/// field for an elevation, and never for the height of the wave the point is under — and individual
+/// wave heights in a sea are Rayleigh-distributed about `H_s`, with a standard deviation of 0.37 of
+/// it. Over `WATER_BREAKER_RATIO` that is 0.47 of `H_s`, or this many times the rms elevation, and
+/// it is the width the breaker line genuinely wanders by.
+///
+/// **The second is what stops the inside of the band being solid.** White water is thrown on the
+/// steep face a wave runs into and not over the whole of a surf zone, so how hard a face leans that
+/// way is how much of it is aerated. **Against the sea's own rms slope rather than a number of its
+/// own**, so a calmer sea foams in a thinner scatter of patches and a rough one in a broader one,
+/// which is what a sea state is for.
+///
+/// **And it has to reach one sparingly.** Foam at noon is brighter than anything else in a frame, so
+/// every pixel above about a third of full cover clips to white — a band that reached one across its
+/// middle drew a white ribbon with an edge, whatever the coverage under it was doing. At one rms
+/// slope, a sixth of the surface is at full cover and the rest is a gradient, which is what breaks a
+/// ribbon into the streaks a shore shows.
+const float WATER_FOAM_EDGE = 1.88;
+const float WATER_FOAM_FACE = 0.4;
+
+/// How thin the water under a raft of bubbles gets before the raft has grounded, in world units.
+///
+/// **The last edge the surf line had, and it was the water's own.** Foam is shaded on the water
+/// surface, and at the waterline there is no surface left to shade — so however softly the criterion
+/// faded, the band still ended at the line where the ray stopped finding water. Against a bed that
+/// is nearly a plane that line is nearly straight, and a straight white edge is what a shoreline
+/// must never be.
+///
+/// A raft is bubbles deep, so it grounds where the column is about as thin as the raft is: seventeen
+/// centimetres here. That is a sliver of a surf zone tens of units wide, and it is the sliver the
+/// eye was reading as a drawn line.
+const float WATER_FOAM_GROUND = 12.0;
+
+/// How wide one cell of a raft of bubbles is, in world units, and how softly a cell's rim fades.
+///
+/// **The one field in here that is not the sea differentiated, and it is a raft rather than water.**
+/// Everything else about this surface is the wave field asked a question — the normal is its
+/// gradient, the surf line its level set, the caustics its curvature. A bubble raft is none of
+/// those: what shapes it is the turbulence of the wave that broke, at centimetres, a hundred times
+/// finer than anything the transform carries and not a wave at all. So it is a noise, said out loud.
+///
+/// **Worley's cells and not a smooth noise**, because that is the shape a raft has: closed patches
+/// with thin water between them, and edges that close on themselves. Thresholding one against the
+/// coverage is what turns a share of a pixel into patches of a share — the same amount of white,
+/// laid out the way foam lays out rather than as a gradient across a band.
+///
+/// Half a metre a cell, and the raft is carried shoreward at the shallow-water celerity
+/// of the water it broke in, so it travels with what made it rather than standing still while the
+/// sea runs through it.
+const float WATER_FOAM_CELL = 40.0;
+const float WATER_FOAM_DISSOLVE = 0.22;
+
 /// Where on a tile a world position falls. Wrapped by the sampler, because a tile repeats.
 vec2 waveCoordinate(uint cascade, vec2 at)
 {
@@ -118,6 +178,10 @@ struct WaterSurface
     /// Root mean square elevation of the whole spectrum, resolved or not — the sea state itself,
     /// and `WATER_SIGNIFICANT_HEIGHT` times it is the height oceanography quotes.
     float mRoughness;
+
+    /// The gradient `mNormal` was made of, kept because the foam asks which way the surface tilts
+    /// and dividing it back out of a normalised vector is a worse answer than not throwing it away.
+    vec2 mSlope;
 };
 
 /// Reads the surface at a point.
@@ -161,6 +225,7 @@ WaterSurface waterSurfaceAt(vec2 at, float footprint)
     }
 
     surface.mNormal = normalize(vec3(-slope, 1.0));
+    surface.mSlope = slope;
     surface.mRoughness = sqrt(variance);
     return surface;
 }
@@ -185,6 +250,31 @@ float foamRunout(WaterSurface surface)
     return max(WATER_FOAM_LIFETIME * sqrt(WATER_GRAVITY * breakingDepth(surface)), 1.0e-3);
 }
 
+/// How far a point is from the nearest bubble in a raft, from nought at one to about one between.
+///
+/// Worley's F1 over a jittered lattice, nine cells of it, drifting shoreward with the water.
+float foamCells(vec2 at, float celerity)
+{
+    const vec2 drifted = (at - frame.mWaveTravel * (celerity * frame.mTime)) / WATER_FOAM_CELL;
+    const vec2 base = floor(drifted);
+
+    float nearest = 2.0;
+    for (int row = -1; row <= 1; ++row)
+        for (int column = -1; column <= 1; ++column)
+        {
+            const vec2 cell = base + vec2(float(column), float(row));
+            const ivec2 index = ivec2(cell);
+            const vec2 seed = vec2(hashToUnit(ivec3(index, 0)), hashToUnit(ivec3(index, 7)));
+
+            nearest = min(nearest, distance(drifted, cell + seed));
+        }
+
+    // **Inverted, so that one is the middle of a bubble and nought is the water between.** F1 over a
+    // lattice of one point a cell runs to about seven tenths, which is what puts this on the nought
+    // to one the coverage is thresholded against.
+    return 1.0 - min(nearest / 0.7, 1.0);
+}
+
 /// What share of the surface at a point is breaking, from none of it to all.
 ///
 /// **Against the depth at this instant rather than the still one**, which is the whole of the
@@ -203,7 +293,7 @@ float foamRunout(WaterSurface surface)
 /// argument `mLostSlope` makes for the reflection and why the two are carried together.
 ///
 /// @param depth how deep the still water is under this point, straight down and in world units.
-float foamBreaking(WaterSurface surface, float depth)
+float foamBreaking(WaterSurface surface, vec2 at, float depth)
 {
     // What the sea state breaks in, and what stands between this point and breaking once the wave
     // over it is counted.
@@ -211,12 +301,42 @@ float foamBreaking(WaterSurface surface, float depth)
 
     // `P(the unresolved elevation does not make up the margin)`. The smoothstep stands in for the
     // Gaussian's own integral, which it follows to within a hundredth across the three standard
-    // deviations that are not already nought or one. The floor is a divide guard and nothing else:
-    // a surface every one of whose waves is resolved has a genuinely sharp edge, and drawing it
-    // sharp is right.
-    const float noise = max(sqrt(surface.mLostHeight), 1.0e-3);
+    // deviations that are not already nought or one.
+    //
+    // **Two widths under one root, and only one of them is the camera's.** What the cone averaged
+    // away is a filtering quantity and goes to nought at close range; what the sea is doing does
+    // not, and it is the one that decides how wide a surf line is. Adding their variances is what a
+    // sum of two independent things is.
+    const float spread = WATER_FOAM_EDGE * surface.mRoughness;
+    const float noise = sqrt(surface.mLostHeight + spread * spread);
 
-    return smoothstep(-1.6, 1.6, margin / noise);
+    // **The face the wave is running into, which is where the white water goes.** The surface is
+    // travelling along `mWaveTravel`, so its leading face is the one whose elevation falls that way.
+    // Nothing here is a texture: it is the same slope the normal came from, asked a third question,
+    // and it is what turns a filled band into the lines of white water a shore actually shows.
+    const float leading = -dot(surface.mSlope, frame.mWaveTravel);
+    const float front = smoothstep(0.0, WATER_FOAM_FACE * frame.mWaveSlope, leading);
+
+    // The raft thins with the water it floats on, which is what keeps the band from ending at the
+    // waterline rather than fading into it.
+    const float afloat = smoothstep(0.0, WATER_FOAM_GROUND, depth);
+
+    // **What the three terms agree on is how much of the surface is aerated, and the cells are where
+    // it goes.** Thresholding the raft against that share keeps the amount and gives it a shape:
+    // patches with closed rims, thinning into scattered flecks where the share falls away, rather
+    // than one band shading off at its edges.
+    const float share = afloat * front * smoothstep(-1.6, 1.6, margin / noise);
+    const float cells = foamCells(at, sqrt(WATER_GRAVITY * breakingDepth(surface)));
+
+    // **The share sets where the water line across the raft sits, which is what keeps the amount.**
+    // A cell's middle stands highest, so a small share leaves only the crowns of a few bubbles and a
+    // large one floods everything but the channels between them.
+    //
+    // **The line rises from one and never above it**, which is the whole of what stops this drawing
+    // on open sea. A ramp centred on the line instead let the crown of every cell through at half
+    // cover wherever the share was nought — a white speck on each cell of the whole water, to the
+    // horizon, which is what a two-sided threshold against a bounded field always does at its end.
+    return smoothstep(1.0 - share, 1.0 - share + WATER_FOAM_DISSOLVE, cells);
 }
 
 /// How much of what broke is still foam by the time it has been carried to a point.
@@ -224,30 +344,32 @@ float foamBreaking(WaterSurface surface, float depth)
 /// **A wave has to have reached the point at all, which breaking never asks.** That criterion is a
 /// statement about water a wave is crossing; every hollow that dips below sea level satisfies it
 /// too, and there are a great many of those behind a shoreline. What tells the two apart is the
-/// bed: a shore keeps going down, so the wave broke a few metres away and what it made is still
-/// here, while a pan is level, so the nearest water deep enough to break in is tens of metres off
-/// and nothing that broke there survives the trip. Measured at Seyda Neen the two populations sit a
-/// hundred-fold apart with nothing in between, which is why the shape of the fall-off decides
-/// nothing that was ever close.
+/// bed: a shore keeps going down, so the wave broke a run-out away and what it made is still here,
+/// while a pan is level, so there is nowhere within a run-out deep enough for one to have broken.
 ///
-/// @param depth how deep the still water is under this point, in world units.
-/// @param fall how fast the bed falls away toward deep water, as a tangent — measured over the
-///        run-out rather than read off the surface here, for the reason `bedFall` gives.
-/// @param runout what `foamRunout` said, handed in because the caller measured `fall` across it and
-///        the two have to be the same number.
-float foamReaching(WaterSurface surface, float depth, float fall, float runout)
+/// **A depth against a depth, which is what leaves no pole to guard.** Foam lasts a run-out, so the
+/// question is whether water a wave could break in lies within one — and the answer is the still
+/// depth out there against the depth this sea breaks in. It used to be a distance over a rate of
+/// fall, and a rate that reaches nought has to be guarded: the guard switched the surf line off in
+/// one step wherever the bed levelled, which drew the foam as white patches with cliffs cut around
+/// them along the shape of the ground.
+///
+/// **The still depth and not the instantaneous one**, which `foamBreaking` is the other way round
+/// about. Where the surf line falls is a question about this wave and wanders with it; how wide the
+/// surf zone is, is a question about the beach and does not.
+///
+/// The width is the one `WATER_FOAM_EDGE` gives, for its reason: which wave is out there is a draw
+/// from the same Rayleigh distribution, so the answer is as uncertain here as it is at the breaker
+/// line itself.
+///
+/// @param outThere how deep the still water is one run-out down the slope, from
+///        `bedDepthDownhill`.
+float foamReaching(WaterSurface surface, float outThere)
 {
     const float breaking = breakingDepth(surface);
+    const float spread = max(WATER_FOAM_EDGE * surface.mRoughness, 1.0e-3);
 
-    // How far the wave came through water shallow enough to break in: the depth still to be lost,
-    // over the rate it is lost at.
-    //
-    // **The still depth and not the instantaneous one**, which `foamBreaking` is the other way
-    // round about. Where the surf line falls is a question about this wave and wanders with it; how
-    // wide the surf zone is, is a question about the beach and does not.
-    const float crossed = max(breaking - depth, 0.0) / max(fall, 1.0e-4);
-
-    return exp(-crossed / runout);
+    return smoothstep(-1.6, 1.6, (outThere - breaking) / spread);
 }
 
 /// How much the sunlight reaching `depth` below the surface has been gathered, as a multiplier.

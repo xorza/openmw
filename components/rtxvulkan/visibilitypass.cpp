@@ -96,6 +96,7 @@ namespace Rtx
         }
 
         described.mWaveSlope = inputs.mWaves->getSlope();
+        described.mWaveTravel = inputs.mWaves->getTravel();
 
         // **Both directions, because one buffer serves every trace.** The write has to wait for the
         // last dispatch that read it — a traced view and the world are two traces — and the next

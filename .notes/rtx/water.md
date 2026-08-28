@@ -141,17 +141,22 @@ sharp. That is the ribbon, and it is why it is even in width: it is a region, no
 
 **The width of the surf line is a property of the camera, and it has to be a property of the sea.**
 
-### Steps
+### Steps — done
 
-1. Floor the noise with a sea-state term rather than with a divide guard:
-   `noise = sqrt(mLostHeight + pow(WATER_FOAM_EDGE * surface.mRoughness, 2.0))`. The band then
-   softens by the height of the sea, and it never collapses however near the camera stands.
-2. Break the interior. Aeration is on the steep shoreward face of a wave and not over the whole
-   zone. Weight the coverage by the slope along the wind, which `field.yz` already carries — no new
-   fetch. Carry the sea's bearing in `VisibilityConstants`, beside `mWaveExtent`.
-3. Leave `WATER_FOAM_ALBEDO` at 0.55. The brightness is right. The coverage was wrong.
-4. Test: at a footprint of nought the coverage still has a gradient across the zone, and its
-   integral across the band does not move.
+1. `WATER_FOAM_EDGE` puts the sea's own height under the same root as what the cone lost:
+   `noise = sqrt(mLostHeight + (EDGE * mRoughness)^2)`. Two independent widths, and only one of them
+   is the camera's — a wave does not break at one depth to the centimetre.
+2. `WATER_FOAM_FACE` weights the coverage by the face the wave runs into, which is where white water
+   is thrown. The slope comes off `mNormal` and the direction of travel rides in
+   `VisibilityConstants::mWaveTravel` as a vector rather than the angle `SeaState` states, so no
+   pixel of surf pays a sine. Far enough off the cone averages the slope away and the weight settles
+   at a half, which is the share of a wave that faces forward.
+3. `WATER_FOAM_ALBEDO` did not move. The brightness was right and the coverage was wrong.
+4. `theSurfLineIsAsWideAsTheSeaAndBrokenAcrossIt` looks straight down from three hundred units,
+   where a five-unit footprint resolves a spectrum that stops at thirty-two — so the filtering term
+   is nought and what is measured is what the water says. An eighth of the frame comes out neither
+   covered nor clear, where a hard rim around a filled middle leaves only the pixels straddling the
+   edge itself.
 
 ---
 

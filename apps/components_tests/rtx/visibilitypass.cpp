@@ -1214,6 +1214,7 @@ namespace Rtx
 
             // Two floats a pixel: clip depth, then distance from the eye.
             constexpr std::size_t stride = 2;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * stride;
             constexpr float cornerCosine = 1.2829652f;
             constexpr float centreCosine = 1.0000814f;
 
@@ -1233,7 +1234,6 @@ namespace Rtx
                 return depth;
             };
 
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * stride;
             constexpr std::size_t corner = 0;
 
             for (const float away : { 200.0f, 400.0f })
@@ -1292,9 +1292,9 @@ namespace Rtx
         TEST_F(RtxVisibilityTest, aDeformedMeshIsTracedAgainstItsNewVerticesWithoutRebuildingTheScene)
         {
             constexpr std::uint32_t size = 64;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 2 + 1;
             constexpr float far = 100000.0f;
             constexpr float centreCosine = 1.0000814f;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 2 + 1;
 
             const auto wallAt = [](float away) {
                 return std::array{
@@ -3418,6 +3418,60 @@ namespace Rtx
             EXPECT_GT(bedded[2], bottomless[2] + 40) << "blue reaches a bed 2000 units down";
         }
 
+        /// The surf line is as wide as the sea says and broken across its own width.
+        ///
+        /// **Both halves of what a drawn edge is not.** McCowan's criterion is met or it is not, so
+        /// on its own it fills a region and rims it hard; and the only thing that ever softened that
+        /// rim was the elevation a ray cone had averaged away, which goes to nought the moment the
+        /// camera is near. Close to a shoreline the whole zone came out as one white ribbon with an
+        /// edge along each side.
+        ///
+        /// **Straight down from three hundred units, where the cone resolves the whole spectrum.**
+        /// A footprint of five units against a sea that stops at thirty-two leaves the filtering
+        /// term at nothing, so what is measured here is what the water says and not what the pixel
+        /// could not see. A bed shelving at a half puts the breaker line a hundred units out.
+        TEST_F(RtxVisibilityTest, theSurfLineIsAsWideAsTheSeaAndBrokenAcrossIt)
+        {
+            constexpr std::uint32_t size = 64;
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+            camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            camera.mSkyHorizon = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            camera.mSkyZenith = osg::Vec3f(1.0f, 1.0f, 1.0f);
+            camera.mWaterLevel = 0.0f;
+
+            std::vector<std::uint8_t> pixels;
+            countHits(
+                makeShelving(4000.0f, 2.0f, 0.5f), {}, camera, size, pixels, SeaState{ .mSignificantHeight = 40.0f });
+
+            // Foam is white and the water under it is not, so the green channel rises with the
+            // coverage and nothing else in this frame moves it.
+            std::vector<float> profile;
+            profile.reserve(std::size_t{ size } * size);
+            for (std::size_t at = 0; at < std::size_t{ size } * size; ++at)
+                profile.push_back(decodeSrgb(pixels[at * 4 + 1]));
+
+            const auto [dimmest, brightest] = std::minmax_element(profile.begin(), profile.end());
+
+            std::size_t between = 0;
+            for (const float lit : profile)
+                if (lit > *dimmest + 0.2f * (*brightest - *dimmest)
+                    && lit < *brightest - 0.2f * (*brightest - *dimmest))
+                    ++between;
+
+            // The band is there at all: somewhere it covers a pixel outright, and somewhere else the
+            // water shows through with nothing on it.
+            EXPECT_NEAR(*brightest, Shaders::WATER_FOAM_ALBEDO, 0.02f) << "a pixel of raft, lit by an ambient of one";
+            EXPECT_LT(*dimmest, 0.15f) << "and a pixel of open water";
+
+            // **And an eighth of the frame is neither.** A criterion with a hard rim and a filled
+            // middle puts every pixel at one end or the other, and leaves this at the handful that
+            // straddle the edge itself — measured 512 of 4096, where the surf zone covers about a
+            // third of what is looked at.
+            EXPECT_GT(between, std::size_t{ 200 }) << "measured 512: a band with a width, not an edge";
+        }
+
         /// Broken water is where a wave can break *and* could get to, and no one of the depth, the
         /// sea state or the bed decides that on its own.
         ///
@@ -3434,10 +3488,15 @@ namespace Rtx
         /// however shallow it is. McCowan puts the break at `H / 0.78` and the last leg is what says
         /// that a wave has to have arrived as well, which is what tells a shore from a puddle lying
         /// behind one.
+        ///
+        /// **What share of a pixel is covered is not asserted here and cannot be.** Coverage carries
+        /// the face the wave presents, which is a draw from the spectrum and reproduces in no
+        /// arithmetic this test could hold. `theSurfLineIsAsWideAsTheSeaAndBrokenAcrossIt` measures
+        /// the band's whole profile instead, which is the stronger statement and the one an exact
+        /// share was standing in for.
         TEST_F(RtxVisibilityTest, surfCoversShallowWaterThatAWaveCanBothBreakInAndReach)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
 
             const auto look = [&](const SceneDesc& scene, float significantHeight) {
                 Shaders::VisibilityConstants camera = makeCamera(
@@ -3454,22 +3513,44 @@ namespace Rtx
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = significantHeight });
-                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+
+                // **The mean of the middle row, and not the pixel at the middle of it.** Coverage
+                // is thresholded against `foamCells`, so one pixel either lands inside a bubble or
+                // between two and says nothing about how much foam there is.
+                //
+                // **A row and not a block**, because every bed here falls northward: a row holds one
+                // depth from end to end, so the four scenes are compared at the same depth, where a
+                // block would compare a shelf's average against a pan's.
+                std::array<int, 3> mean{};
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    int total = 0;
+                    for (std::uint32_t column = 0; column < size; ++column)
+                        total += int{ pixels[(std::size_t{ size / 2 } * size + column) * 4 + channel] };
+
+                    mean[channel] = total / static_cast<int>(size);
+                }
+
+                return mean;
             };
 
-            // Two units of water on a bed falling away at forty-five degrees, under a sea whose
-            // significant height is forty and so breaks out in fifty-one units of depth. The centre
-            // is covered whatever the wave over it is doing.
-            const std::array<int, 3> surf = look(makeShelving(4000.0f, 2.0f, 1.0f), 40.0f);
-            EXPECT_EQ(surf[0], surf[1]) << "a bubble raft has no colour of its own";
-            EXPECT_EQ(surf[1], surf[2]) << "and none in the other channel either";
+            // Twenty units of water on a bed falling away at forty-five degrees, under a sea whose
+            // significant height is forty and so breaks out in fifty-one units of depth. Twenty
+            // rather than two, because `WATER_FOAM_GROUND` is what a raft of bubbles needs under it
+            // to float at all and two units is a film.
+            const std::array<int, 3> surf = look(makeShelving(4000.0f, 20.0f, 1.0f), 40.0f);
+            const std::array<int, 3> calm = look(makeShelving(4000.0f, 20.0f, 1.0f), 1.0f);
+            // **A bubble raft has no colour of its own**, so what it covers of a pixel it can only
+            // pull toward white. Never past equal, because coverage is sparse and cellular: what
+            // shows between the bubbles is the same column of water the calm leg reads.
+            EXPECT_LE(surf[1] - surf[0], calm[1] - calm[0]) << "foam never widens what the water spread";
+            EXPECT_LE(surf[2] - surf[1], calm[2] - calm[1]) << "and never in the other channel either";
 
             // **The same shore under a sea that cannot break in it.** A significant height of one
-            // breaks in 1.28 units and there are two here, so the criterion is never met and what
-            // comes back is the bed through two units of water that barely tint it.
-            const std::array<int, 3> calm = look(makeShelving(4000.0f, 2.0f, 1.0f), 1.0f);
+            // breaks in 1.28 units and there are twenty here, so the criterion is never met and what
+            // comes back is the bed through the column, which tints it.
             EXPECT_LT(calm[0], surf[0]) << "no foam, and the bed shows through instead";
-            EXPECT_EQ(calm[0], calm[1]) << "two units of water take out nothing worth measuring";
+            EXPECT_LT(calm[0], calm[1]) << "forty units of water there and back take red before green";
 
             // **And the same sea over water deep enough to hold it.** Nothing about the waves
             // changed; the column under them did. What comes back is water — dark and blue, because
@@ -3479,34 +3560,29 @@ namespace Rtx
             EXPECT_LT(deep[0], deep[1]) << "and water is blue: red goes first";
             EXPECT_LT(deep[1], deep[2]) << "with green between the two";
 
-            // **The same two units, the same sea, and a bed that does not go anywhere.** Every
+            // **The same twenty units, the same sea, and a bed that does not go anywhere.** Every
             // depth-and-sea-state term the first leg met, this one meets too; what it has not got is
             // anywhere for a wave to have come from, because a level bed puts the nearest water deep
             // enough to break in an unbounded distance away. This is the pan behind a shoreline, and
             // before the bed was consulted it rendered as solid surf from edge to edge.
-            const std::array<int, 3> pan = look(makeFlooded(4000.0f, 2.0f), 40.0f);
+            const std::array<int, 3> pan = look(makeFlooded(4000.0f, 20.0f), 40.0f);
             EXPECT_LT(pan[0], surf[0]) << "no foam on water no wave reaches";
-            EXPECT_EQ(pan[0], calm[0])
+            EXPECT_NEAR(pan[0], calm[0], 2)
                 << "and what is left is the bed, which the shelving leg has to agree with: these two "
                    "beds lie at different angles and nothing here is lit by anything but an ambient, "
                    "which no angle changes";
 
-            // **And the share is the one the arithmetic names, not merely more than none.** The sea
-            // breaks in `40 / 0.78 = 51.28` units and there are two here, so the wave broke 49.28
-            // units of depth back — down a bed falling at one, 49.28 units away. Foam is carried
-            // `3.5 * sqrt(627.1 * 51.28) = 627.7` units before it has gone, so
-            // `exp(-49.28 / 627.7) = 0.9245` of what broke is still here, lying over the same bed
-            // the calm leg read.
+            // **And the share the two terms name is one, which is a number and not a sign.** The sea
+            // breaks in `40 / 0.78 = 51.28` units and there are two here, so the criterion is met by
+            // 49 units against a Rayleigh spread of `1.88 * 10`; and the still water one run-out of
+            // 628 units down a bed falling at one is 630 deep against the same 51. Both terms are
+            // saturated, so what is left of the coverage is the face the wave presents — which
+            // reaches one where a face is steep, and there is such a face in a frame this wide.
             //
-            // **One byte of slack, and it is named.** The water under the foam is a thirteenth of
-            // the answer and the calm leg measured it under a different sea, so it stands in for
-            // that thirteenth rather than being it. As the two seas stand the substitution costs
-            // nothing at all and this lands on the byte exactly; the slack is for the day one of
-            // them moves, not for the arithmetic.
-            constexpr float covered = 0.9245f;
-            const float mixed = covered * Shaders::WATER_FOAM_ALBEDO
-                + (1.0f - covered) * decodeSrgb(static_cast<std::uint8_t>(calm[0]));
-            EXPECT_NEAR(surf[0], encodeSrgb(mixed), 1) << "the run-out term's own value, not just its sign";
+            // **And never more than a raft of bubbles is worth.** Under an ambient of one a full
+            // cover returns `WATER_FOAM_ALBEDO` and no more, so a pixel past that is coverage this
+            // model has no business producing.
+            EXPECT_LT(surf[0], int{ encodeSrgb(Shaders::WATER_FOAM_ALBEDO) } + 1) << "no more than a full raft";
         }
 
         /// A sprite is shadowed like anything else, by the sun and by the sky over it.

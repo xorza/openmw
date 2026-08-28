@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <memory>
 
+#include <osg/Vec2f>
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/shaders/wave.h>
@@ -83,6 +84,12 @@ namespace Rtx
         /// chain carries, and a shader that read it there would spend two fetches at every step of a
         /// march for a value that is the same at all of them.
         float getSlope() const { return mSlope; }
+
+        /// The way the waves of the sea last described travel, unit.
+        ///
+        /// Turned from the bearing on the way out rather than kept beside it, because a state and a
+        /// second spelling of one of its fields are two things to keep in step.
+        osg::Vec2f getTravel() const;
 
     private:
         /// What one tile of the sea occupies.
