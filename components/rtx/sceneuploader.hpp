@@ -97,6 +97,10 @@ namespace Rtx
         /// really has and only the thread's timing is gone. What it costs is a stall at the
         /// crossing that queued the bakes, which is a trade a measured run can make and a game
         /// cannot.
+        ///
+        /// **This is the only thread a streaming run waits on, and the terrain is not one.** The
+        /// quad tree is the obvious suspect and the wrong one: `Terrain::QuadTreeWorld::collect`
+        /// resolves its view and loads every entry it names, in the calling thread.
         void setSettled(bool settled) { mSettled = settled; }
 
     private:

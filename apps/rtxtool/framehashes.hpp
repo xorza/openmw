@@ -12,13 +12,15 @@ namespace RtxTool
 {
     /// One hash a frame of a run, and what a previous run's hashes say about this one.
     ///
-    /// **The oracle a moving camera did not have.** `verify` renders sixteen standing views and
+    /// **`verify` for a run rather than a view.** `verify` renders sixteen standing views and
     /// compares every pixel against a stored reference, which settles anything a single frame can
     /// show. It shows nothing that needs a second frame — a table copy a placement missed, a history
     /// reprojected onto the wrong surface, a row two frames stale — and those are where the defects
-    /// were. For want of this the moving path was judged by the mean brightness of a frame, which
-    /// has no expected value, cannot tell a stale table from a camera that moved, and was read wrong
-    /// three times in one session. `.notes/rtx/motion-oracle.md` is the account.
+    /// are. Judging a moving run by a summary of a frame instead is judging it by a number with no
+    /// expected value, which cannot tell a stale table from a camera that moved.
+    ///
+    /// **A run stays comparable with itself only while nothing in it reads the wall clock.**
+    /// `Rtx::FrameOptions::mSinceLast` and `Rtx::SceneUploader::setSettled` are the two that did.
     ///
     /// **A hash and not a picture**, because six hundred frames at 1920x1080 is a few hundred
     /// megabytes and the sixteen stills are kilobytes. What this answers is "did the run draw the

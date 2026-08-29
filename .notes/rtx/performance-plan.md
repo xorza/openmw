@@ -91,126 +91,6 @@ place` today, which also hides the harness's own step). Print it as its own colu
 
 ---
 
-## 1. Placement that costs what moved
-
-**Today.** `SceneAcceleration::prepareTopLevel` (`sceneacceleration.cpp:853`) rebuilds every row of
-the instance buffer, asks the driver for the build size, **destroys and recreates the top-level
-structure**, and records a build — every frame, whether or not anything moved. `makeInstanceRecords`
-inverts every instance's transform every frame (`instancerecord.cpp`), and `SceneBuffers::place`
-rewrites every instance row (`scenebuffers.cpp:314`). The scene already knows what moved:
-`getMoved()` is the slots whose transform changed since `advancePlacement`.
-
-**Change.**
-- Keep the top-level structure and its storage across frames; recreate only when the instance
-  count grows past what was sized. The build info is the same every frame — build it once.
-- Keep the instance records and the rows persistent, indexed by slot, and rewrite only the slots in
-  `getMoved()` (plus the slots `getFreedMeshes` emptied). The row table skips gaps today, so a row
-  index is not a slot: either keep a slot→row map, or give a gap a row with `mask = 0` and let the
-  builder skip it — the second is simpler and costs the build one masked primitive per gap.
-- Skip the top-level build, and the placement submit with it, when `getMoved()` is empty and
-  nothing refitted. A standing camera in a place with no actors is that frame every frame.
-
-**Number.** `place` median 2.1 → under 0.5 ms; the harness ship gains ~1.5 ms per frame. `tlas`
-GPU zone unchanged. No picture change: `verify` clean.
-
-**Watch.** `advancePlacement` clears `mMoved`; the renderer has to consume it before the walk's
-`advance`. `makeInstanceRecords` is shared by the acceleration and the buffers — keep it shared.
-
-## 2. Refit, do not rebuild
-
-**Today.** Every deforming drawable (106 in the game's Seyda Neen) has its positions copied to the
-device and its bottom-level structure **built from scratch** each frame — `MODE_BUILD`,
-`PREFER_FAST_TRACE`, no `ALLOW_UPDATE` (`sceneacceleration.cpp:632,814`). `getDeformed` names every
-rig the walk met, posed or not.
-
-**Change.**
-- Build a deforming mesh's structure with `ALLOW_UPDATE` and refit with `MODE_UPDATE`, which is
-  what the flag exists for. Keep `MODE_BUILD` for the frame the mesh arrives.
-- Only name a mesh deformed when its pose changed: compare the skeleton's traversal number, or hash
-  the first few vertices, in `SceneExtractor::resolveMesh` before calling `updateMesh`. An actor
-  standing in a house two cells away deforms nothing.
-
-**Number.** `refit` GPU zone 0.40 → ~0.15 ms; the position copy and the normal write go with the
-skipped meshes. `verify` on an actor view.
-
-## 3. The walk's cheap wins
-
-**Today.** `readActorFade` (`sceneextractor.cpp:115`) constructs `std::string("actorFade")` and
-`std::string("alpha")` and does two map lookups by string **per drawable per frame** — 1 % of the
-game's CPU on its own. Every node meets a chain of `dynamic_cast`s (`:416,419,501,539,544,955,
-1050,1056,1119,1139`) to find out what it is, every frame. `identify()` hashes the node path per
-drawable.
-
-**Change.**
-- Resolve the fade uniforms once per state set per epoch: keep the `osg::Uniform*` pair in the
-  identity map beside the material, and read the float from it.
-- Replace the cast chain with one classification per node kept in the identity map — set on the
-  first visit, since a node's class does not change.
-- Do not re-identify a drawable whose parent group's identity is already known this frame.
-
-**Number.** The walk column from step 0: ~2.5 ms → ~1.5 ms on the ship. No picture change.
-
-## 4. Two frames in flight
-
-**Today.** `CommandPool::submitAndWait` is the only way work reaches the queue; a frame is three of
-them (placement, frame, GUI), each fenced before the next line of C++ runs. Nothing the CPU does
-for frame N+1 overlaps anything the GPU does for frame N. `HostBuffer` is written on the
-assumption that the last submit finished (`hostbuffer.hpp`). The presenter already keeps two
-images and `GBuffer::begin` already orders against the previous composite.
-
-**Change.** The largest single lever, and the one the others are sized against: the frame becomes
-`max(CPU, GPU)` instead of their sum.
-- One command buffer and one fence per frame slot, two slots; a frame waits for the fence of the
-  frame before last.
-- Double every table a frame rewrites: instance rows, lights, light grid, sprites, tiles, emitters,
-  the top-level instance buffer, the refit positions, the GUI vertices, `mHitCount`, the timer's
-  query pool. `HostBuffer` grows a slot index; `SceneBuffers` and `SceneAcceleration` write into
-  `slot = frame & 1`.
-- Two top-level storages and scratches; the trace binds the one its frame built.
-- Deferred destruction: an image `dropTextures` or `TextureArray::write` replaces, and a structure
-  `release` frees, go on a list tied to the frame's fence and are destroyed when it signals. The
-  pool's deferred staging (from `Batch::defer`) moves to the same list.
-- `readPixels`, `readChannel` and the GUI readback wait for the frame they read.
-- View traces (dolls, maps) and setup batches stay synchronous: they are not frames.
-
-**Number.** Harness ship 14 → ~8 ms, game Seyda Neen 14.3 → ~8, 4K-performance ship 20.9 → ~15.
-Frame p99 must not move up: the double buffers are what keep it flat.
-
-**Order.** After 1–3, so that what has to be doubled is smaller and the CPU half of the frame is
-already short. Before 5 onward, so that a GPU saving shows up in the frame time one to one.
-
-## 5. Specialise the kernel
-
-**Today.** One `visibility.comp` serves an interior with no sun, no moons, no sea and no noise
-field. Removing the moons' code alone saves 0.4–0.5 ms in a room where no moon ray is ever traced:
-the shader is occupancy-bound and dead paths cost live pixels. `COUNT_HITS` is already a
-specialization constant (`visibility.comp`, `visibilitypass.cpp:69`), so the mechanism exists.
-
-**Change.** Constants for `HAS_SUN`, `HAS_MOONS`, `FOG_UNIFORM`, `HAS_SEA`, gated from
-`VisibilityConstants` at record time. `VisibilityPass` keeps a small table of pipelines keyed by
-the tuple and compiles one on first use — half a second each, so compile the three common tuples
-(exterior day, exterior night, interior) at the first scene, on the composite queue's pattern of a
-thread of its own, and the odd ones on demand.
-
-**Number.** `shot --repeat=200` guild trace 4.8 → ~4.3; ship at dawn −0.5. Byte-identical picture:
-`verify` clean.
-
-## 6. Interiors take the closed form
-
-**Today.** `fogWeatherAlong` (`fog.glsl:283`) marches 24 steps with 8 shadow rays per pixel. In the
-guild `mFogUniform == 1`, there is no sun and no moon, and the 3.2 ms it costs — two thirds of the
-interior trace — is 24 × (`exp` + `weighLamps` over the grid cell + a random draw), sampling a
-field that is constant and a sun that is absent.
-
-**Change.** Under `FOG_UNIFORM && !HAS_SUN && !HAS_MOONS` (step 5's constants): transmittance is
-`exp(−σd)`, the ambient in-scatter is `colour × (1 − T)`, and the lamps are the only integral left
-— one analytic point-light in-scatter per lamp along the ray (the `atan` form for inverse-square,
-windowed to `mReach`), with the one shadow ray the reservoir already buys. No steps.
-
-**Number.** Guild trace 4.8 → ~1.8 ms; at the 4K target the guild's GPU falls from 18.3 to ~11,
-which is the interior inside budget. The picture is exact where it was sampled: compare against a
-`--accumulate` reference, not against the current frame.
-
 ## 7. Outdoor fog, the cheaper halves
 
 Only while the froxel volume (step 11) is not yet built.
@@ -327,12 +207,6 @@ reaches.
 | step | what | gain (ms, 1080p) | picture | after |
 |---|---|---:|---|---|
 | 0 | a walk column in `bench` | — | — | — |
-| 1 | placement costs what moved; keep the TLAS | −1.5 CPU | none | 0 |
-| 2 | refit with `MODE_UPDATE`; only posed rigs | −0.25 GPU, copies | none | 1 |
-| 3 | the walk's string and cast costs | −1 CPU | none | 0 |
-| 4 | two frames in flight | frame = max(CPU, GPU) | none | 1–3 |
-| 5 | specialise the kernel | −0.5 GPU | none | done |
-| 6 | interior closed-form fog | −1.7 GPU (guild) | exact | done |
 | 7 | outdoor fog, cheaper halves | −0.7 GPU | noisier | 6 |
 | 8 | half-resolution bounce | −1.0 to −1.4 GPU | RR-judged | 4 |
 | 9 | micromaps cover the canopy | −0.3 to −1.5 GPU | none | 4 |
@@ -343,5 +217,5 @@ reaches.
 | 14 | arrivals on a second queue | worst crossing ÷ 10 | none | 4 |
 | 15 | the incremental walk | −1 to −2.5 CPU | none | 4, if ever |
 
-After 1–4 the harness ship should sit near 8 ms and the game near 8; after 5, 6, 8 and 11 the
+Steps 1 to 6 are done and their numbers are at the top of this file. After 8 and 11 the
 4K-performance frame fits in 16.7 ms with room for the moons at dawn.

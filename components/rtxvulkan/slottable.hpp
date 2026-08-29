@@ -30,8 +30,7 @@ namespace Rtx
     /// checked: that every site subscribed to the same lists, that the lists were still current when
     /// each site ran, that every writer settled exactly once, and that a table's growth path agreed
     /// with its debt about when a copy had been filled whole. Each of those failed at least once,
-    /// silently, and the symptom was a frame of wrong geometry. `.notes/rtx/slot-tables.md` is the
-    /// account.
+    /// silently, and the symptom was a frame of wrong geometry.
     ///
     /// Here there is nothing to subscribe to and no list whose lifetime matters. `write` marks the
     /// row owed by every copy; `sync` pays one copy's debt and clears it, in one loop, in one place.
