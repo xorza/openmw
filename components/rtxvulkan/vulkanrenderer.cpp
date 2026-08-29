@@ -121,14 +121,16 @@ namespace Rtx
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
     {
-        // Three command buffers a frame — the placement's, the trace's, the interface's — allocated
-        // once and recorded into again, and a fence for each of the two that are waited on.
+        // Three command buffers a frame to begin with — the first placement's, the trace's, the
+        // interface's — allocated once and recorded into again, and a fence for each of the two that
+        // are waited on. A frame placed more than once takes another from the same pool and keeps
+        // it, which `Frame::mPlaceCommands` explains.
         const std::vector<VkCommandBuffer> commands = mPool.allocate(3 * sFrameSlots);
         const VkFenceCreateInfo fence{ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
         for (std::uint32_t slot = 0; slot < sFrameSlots; ++slot)
         {
             Frame& frame = mFrames[slot];
-            frame.mPlaceCommands = commands[3 * slot];
+            frame.mPlaceCommands.push_back(commands[3 * slot]);
             frame.mCommands = commands[3 * slot + 1];
             frame.mGuiCommands = commands[3 * slot + 2];
             checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, &frame.mFence), "vkCreateFence");
@@ -537,16 +539,10 @@ namespace Rtx
             return;
         }
 
-        // **A placement opens the frame, and a second placement before a trace closes it.** The
-        // frame's report starts here and not at the trace: placing the world is the refit and the
-        // top level, and a report that began at `renderFrame` would leave them out. A frame that
-        // was placed and never traced still has to reach the queue with a fence, or its slot never
-        // comes round again.
-        if (frameSlot(mFrame).mPlaced)
-            closeFrame();
-
+        // **A placement opens the frame, and every placement before a trace joins it.** The frame's
+        // report starts here and not at the trace: placing the world is the refit and the top level,
+        // and a report that began at `renderFrame` would leave them out.
         Frame& frame = beginFrame();
-        frame.mPlaced = true;
 
         // Does nothing where the sea is the one already drawn for, which is every frame but the
         // first and any on which the weather turned the wind.
@@ -578,14 +574,15 @@ namespace Rtx
         // interface traced before this frame's trace needs the top level to have reached the queue;
         // the frame's fence, later on the queue, covers this submit too. Nothing recorded is
         // nothing submitted, which is every frame of a standing camera in an empty place.
-        mPool.begin(frame.mPlaceCommands);
+        const VkCommandBuffer placement = takePlaceCommands(frame);
+        mPool.begin(placement);
 
         const bool built = held.mAcceleration->place(
-            frame.mPlaceCommands, scene, held.mRecords, held.mChangedRecords, into, &frame.mTimer, frame.mGraveyard);
+            placement, scene, held.mRecords, held.mChangedRecords, into, &frame.mTimer, frame.mGraveyard);
         if (built)
-            mPool.submit(frame.mPlaceCommands, VK_NULL_HANDLE, frame.mGraveyard);
+            mPool.submit(placement, VK_NULL_HANDLE, frame.mGraveyard);
         else
-            checkVk(vkEndCommandBuffer(frame.mPlaceCommands), "vkEndCommandBuffer");
+            checkVk(vkEndCommandBuffer(placement), "vkEndCommandBuffer");
 
         // **Only what a moving world changed**, which is the instance rows, the lights and the
         // vertices of anything skinned. Rebuilding all of it was measured at twenty to twenty-seven
@@ -615,28 +612,17 @@ namespace Rtx
 
         frame.mTimer.beginFrame();
         frame.mBegun = true;
-        frame.mPlaced = false;
+        frame.mPlacements = 0;
         frame.mReconstruction = Reconstruction{};
         return frame;
     }
 
-    void VulkanRenderer::closeFrame()
+    VkCommandBuffer VulkanRenderer::takePlaceCommands(Frame& frame)
     {
-        Frame& frame = frameSlot(mFrame);
-        assert(frame.mBegun && "a frame closed that was never begun");
+        if (frame.mPlacements == frame.mPlaceCommands.size())
+            frame.mPlaceCommands.push_back(mPool.allocate(1).front());
 
-        // A frame that traced nothing hit nothing; without this the count read back would be
-        // whatever the slot's last frame left.
-        if (mCountHits)
-        {
-            *static_cast<std::uint32_t*>(frame.mHitCount.map()) = 0;
-            frame.mHitCount.unmap();
-        }
-
-        // Nothing to record: the fence is the point, so that the placement submitted before it is
-        // covered and its slot comes round again.
-        mPool.begin(frame.mCommands);
-        submitFrame(frame);
+        return frame.mPlaceCommands[frame.mPlacements++];
     }
 
     void VulkanRenderer::submitFrame(Frame& frame)
@@ -644,7 +630,6 @@ namespace Rtx
         mPool.submit(frame.mCommands, frame.mFence, frame.mGraveyard);
 
         frame.mBegun = false;
-        frame.mPlaced = false;
         frame.mPending = true;
         ++mFrame;
     }

@@ -106,20 +106,27 @@ namespace Rtx
         {
             Frame(const Device& device, CommandPool& pool);
 
-            /// The placement's commands and the trace's, submitted apart because a picture inside
+            /// The placements' commands and the trace's, submitted apart because a picture inside
             /// the interface is traced between the two and needs the first to have reached the
-            /// queue. Only the second carries the fence: it is later on the queue, so its signal
-            /// covers both.
-            VkCommandBuffer mPlaceCommands = VK_NULL_HANDLE;
+            /// queue. Only the trace carries the fence: it is later on the queue, so its signal
+            /// covers every placement before it.
+            ///
+            /// **One buffer per placement, because a frame may be placed more than once.** A cell
+            /// crossing hands the scene over twice — once for what arrived and once for the walk
+            /// that follows — and the game walks its precipitation beside its world. Two placements
+            /// sharing a buffer is a recording over a submit already in flight, so each takes its
+            /// own and the frame stays one frame: what the ring counts is what the caller drew.
+            ///
+            /// Grown to the busiest frame so far and never freed. The pool is never reset, so what
+            /// it handed out stays good for the life of the renderer.
+            std::vector<VkCommandBuffer> mPlaceCommands;
+            std::size_t mPlacements = 0;
+
             VkCommandBuffer mCommands = VK_NULL_HANDLE;
             VkFence mFence = VK_NULL_HANDLE;
 
             /// Begun by a placement or a trace and not yet submitted with its fence.
             bool mBegun = false;
-
-            /// Whether this frame's placement has been recorded, so a second placement before a
-            /// trace closes the frame rather than recording over a submit in flight.
-            bool mPlaced = false;
 
             /// Submitted with its fence and not yet waited for.
             bool mPending = false;
@@ -205,9 +212,8 @@ namespace Rtx
         /// waited for, its fence reset, its timer and hit count cleared.
         Frame& beginFrame();
 
-        /// Submits a begun frame that will not be traced — a placement followed by another — so
-        /// its fence exists and its slot comes round again.
-        void closeFrame();
+        /// A command buffer for one placement of `frame`, made on the frame that first needs it.
+        VkCommandBuffer takePlaceCommands(Frame& frame);
 
         /// Submits what a frame recorded, under its own fence, and counts it as in flight.
         void submitFrame(Frame& frame);

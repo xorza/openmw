@@ -10,6 +10,7 @@
   --exposure=1 --upscale=off` swings more than 40% on 26 frames of 600, where placing both frames
   into one table copy gives 5.
 
-- Every cell crossing submits an empty frame: `bench --suite=streaming` reports nineteen crossings
-  and nineteen frames whose primary hit count is exactly nought.
+- `bench` reports a frame result for fewer than half its frames: `beginFrame`'s own drain consumes
+  the oldest frame when the ring is full, so the `finishFrame` that follows finds nothing and the
+  run's wait, GPU and hit rows are sampled from whichever frames it happened to reach.
 

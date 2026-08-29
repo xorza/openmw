@@ -384,7 +384,7 @@ namespace RtxTool
                 // the one about to be made — `Renderer::finishFrame` says why. So the rows below
                 // report a frame one older than the wall time beside them, and both are medians
                 // over the run.
-                const std::optional<Rtx::FrameResult> result = std::nullopt;
+                const std::optional<Rtx::FrameResult> result = renderer->finishFrame();
 
                 renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
                     Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,

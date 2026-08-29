@@ -90,7 +90,7 @@ fence already signalled, which is a game."* No caller does the second thing.
 discards already carry are enough for a genuinely overlapped frame, which is what the step was
 holding back for.
 
-## 4. Every cell crossing throws a frame away
+## 4. Every cell crossing threw a frame away — **fixed**
 
 `bench --suite=streaming`: 19 crossings, 19 calls to `closeFrame`, and 19 frames whose primary hit
 count is exactly nought.
@@ -106,10 +106,17 @@ the ring is concerned: it takes a slot, it advances `mFrame` by one more than th
 `finishFrame` hands its result — nought hits, an empty GPU breakdown — back to the caller as though
 it were the frame just traced. Every crossing's row in a bench report is that.
 
-**The fix.** A placement that has to reach the queue before another placement does not need a frame
-to do it. Give `placeScene` its own submit for that case, the way the doll and the map already have
-one, and leave `mFrame` alone. The frame ring should count frames the caller asked for and nothing
-else.
+**The fix.** One command buffer per placement rather than one per frame. The frame had a single
+`mPlaceCommands`, so a second placement could only record over a submit in flight — hence the close.
+A frame now keeps a small vector of them, grown to the busiest frame so far and never freed, and the
+trace's fence covers every placement before it on the queue. `closeFrame` and `Frame::mPlaced` are
+gone with it.
+
+**After:** nineteen crossings, and not one zero-hit frame. It costs nothing — 15.06 ms a frame
+before against 15.35 after, back to back.
+
+**The contract it changes** is stated in `frames.cpp`: several placements before a trace are one
+frame, and the trace reads the last of them. The ring counts frames the caller asked for.
 
 ## 5. Terrain that blinks, and body parts in the air — **two causes fixed, one left**
 
@@ -166,9 +173,10 @@ before hunting it.
 2. §2, done.
 3. §3, done — brought forward, because the detector §5 needs is a pipelined `bench`, and the
    sync-validation run said it was safe to turn on.
-4. §5 — check whether §1 already answered it, then the presenter.
-5. §4 — take the empty frame out of the ring.
-6. §6 — re-measure after §4, then hunt.
+4. §5 — two causes found and fixed, and the mechanism behind them replaced. Seven swings of the
+   original ninety-seven are left once §4's nineteen come out.
+5. §4, done.
+6. §6 — re-measure now that §4 is out, then hunt.
 
 **Do not give `view` the `finishFrame` its siblings have.** It is the only path that runs the ring
 at its cap, which is where §1 was found and where §5 still lives.

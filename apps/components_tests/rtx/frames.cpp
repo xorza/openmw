@@ -121,19 +121,21 @@ namespace Rtx
             EXPECT_FALSE(mRenderer->finishFrame().has_value());
         }
 
-        /// A placement nothing traced is a frame of its own, and it comes back as one.
+        /// Several placements before a trace are one frame, and the trace reads the last of them.
         ///
-        /// A frame the game placed and then decided not to draw — no eye, nothing on screen — still
-        /// submitted its structure builds, and those have to be fenced before the slot is reused.
-        TEST_F(RtxFramesTest, aPlacementWithoutATraceIsAFrameThatHitNothing)
+        /// **A frame the ring counts is a frame the caller asked for.** A cell crossing hands the
+        /// scene over twice — once for what arrived and once for the walk behind it — and the game
+        /// walks its precipitation beside its world. Each placement past the first used to close the
+        /// frame and submit an empty one in its place, so a crossing spent a slot on a frame that
+        /// drew nothing and handed its nought hits back as though they were the picture's.
+        TEST_F(RtxFramesTest, severalPlacementsBeforeATraceAreOneFrame)
         {
             moveTo(-1000.0f);
             moveTo(200.0f);
             mRenderer->renderFrame(ahead(), FrameOptions{});
 
-            EXPECT_EQ(finishedHits(), 0u) << "a frame that traced nothing counted something";
-            EXPECT_EQ(finishedHits(), sEveryPixel);
-            EXPECT_FALSE(mRenderer->finishFrame().has_value());
+            EXPECT_EQ(finishedHits(), sEveryPixel) << "the trace read a placement other than the last";
+            EXPECT_FALSE(mRenderer->finishFrame().has_value()) << "a placement came back as a frame of its own";
         }
 
         /// A row appended while one copy of the rows was in flight reaches the other copy whole.
