@@ -6,8 +6,9 @@
 
 - Parts of a moving NPC stay behind in the air where the rest of the body has gone.
 
-- Terrain blinks hard in `view` at a standing camera — `-2,-9` at `-6087, -70048, 2978`,
-  bearing 34°, climb 4°, day 0, 12:00, Clear. `bench` at the same spot, pipelined, is flat.
+- Terrain still blinks on some frames of a moving camera: `bench --suite=streaming --albedo
+  --exposure=1 --upscale=off` swings more than 40% on 26 frames of 600, where placing both frames
+  into one table copy gives 5.
 
 - Every cell crossing submits an empty frame: `bench --suite=streaming` reports nineteen crossings
   and nineteen frames whose primary hit count is exactly nought.

@@ -169,6 +169,12 @@ namespace RtxTool
         // it showed the moment they became `LightSource` nodes the walk meets.
         mScene.clearPlacement();
 
+        // **The epoch of the walk before, bumped here and not when that walk ended.** What moved
+        // becomes what settled, and a placement reads both — so an advance taken between a walk and
+        // the hand-over that follows it empties `getMoved` before anything has written those rows.
+        // `RtxRenderer::renderFrame` advances after its trace, which is the same instant as this.
+        mExtractor.advance();
+
         // **The world walk, so the chunks a paged world keeps out of the graph are dated, counted
         // and swept with everything the graph does hold.** What it follows was set when the terrain
         // was built; it is not passed here, because the actors' own stepper walks this same root and
@@ -278,7 +284,6 @@ namespace RtxTool
         // Built, then walked, which is the split the game has too. The walk is also what tells the
         // sweep below that the departed cells are no longer met.
         mirror(0);
-        mExtractor.advance();
 
         if (crossed.mDeparted > 0)
             mExtractor.retire();
@@ -311,7 +316,6 @@ namespace RtxTool
         // owes them the gap itself.
         mExtractor.advanceEmitters(static_cast<double>(elapsed));
         mirror(0);
-        mExtractor.advance();
         return true;
     }
 
@@ -326,7 +330,6 @@ namespace RtxTool
     bool StagedWorld::EveryFrame::step(std::uint32_t frame)
     {
         mStaged.mirror(frame);
-        mStaged.mExtractor.advance();
 
         // **Always true, because the frame after a walk has to be handed over.** A walk that found
         // everything where it was still emptied and refilled the per-frame lists, and the backend's

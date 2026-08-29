@@ -928,17 +928,28 @@ namespace Rtx
 
         prepareRefit(scene, slot);
 
-        // Every copy of the rows owes what moved this frame, whether or not this one builds now.
+        // **Every copy owes both lists, whether or not this one builds now.** A copy owes what has
+        // moved since it was last written, and that is more than the current `getMoved`: a frame
+        // walked twice — a crossing, or the game's precipitation subtree beside its world — settles
+        // the first walk's moves before the placement that follows the second one runs, so a copy
+        // reading only `getMoved` never learns of them. `SceneBuffers::place` owes both for the same
+        // reason, and a row missed here is geometry standing where it stood two frames ago.
         for (std::uint32_t each = 0; each < mSlots; ++each)
+        {
+            mRowsOwed[each].owe(scene.getSettled());
             mRowsOwed[each].owe(scene.getMoved());
+        }
 
-        // **Nothing moved and nothing deformed is nothing to build.** The top level is the same top
-        // level; building it again over the same rows was a submit and a fence on every frame of a
-        // standing camera. A refit alone still rebuilds the top level, because a top level caches
-        // the bounds of what it names — and rebuilds it from this frame's copy of the rows, which
-        // is why the copy pays its debt first.
-        const bool moved = !scene.getMoved().empty() || records.size() != mRows.size();
-        if (!moved && mRefitBuilds.empty())
+        // **What this copy owes, and not what the scene moved.** The top level is built from this
+        // copy of the rows, so what decides whether it has to be built again is whether those rows
+        // are about to change — which is a debt this copy may have carried for frames, not a list
+        // the current frame filled. Asking the scene instead leaves a copy holding rows it never
+        // paid for and a top level built from them. A world that stands still owes nothing and
+        // still returns here, which is what the early return was for: building the same top level
+        // over the same rows was a submit and a fence on every frame of a standing camera. A refit
+        // alone still rebuilds it, because a top level caches the bounds of what it names.
+        const RowDebt& owing = mRowsOwed[slot];
+        if (!owing.mEverything && owing.mRows.empty() && records.size() == mRows.size() && mRefitBuilds.empty())
             return false;
 
         prepareTopLevel(scene, records, slot, graveyard);

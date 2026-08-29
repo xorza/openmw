@@ -149,9 +149,8 @@ namespace RtxTool
             return false;
 
         place(seconds);
-        mExtractor.advance();
 
-        // **After the walk and after the history, which is where the game has it.** The sweep is
+        // **After the walk, which is where the game has it.** The sweep is
         // sound here for the first time: the walk above was the whole graph, so anything it did not
         // meet has genuinely gone. What it costs — the mark, the sweep and the compaction that
         // follows one — is cost the game pays every frame and this could not see until now.
@@ -169,6 +168,12 @@ namespace RtxTool
         forgetDeparted();
 
         mScene.clearPlacement();
+
+        // **The epoch of the walk before, bumped here and not when that walk ended.** What moved
+        // becomes what settled, and a placement reads both — so an advance taken between a walk and
+        // the hand-over that follows it empties `getMoved` before anything has written those rows.
+        // `StagedWorld::mirror` carries it at the same point for the same reason.
+        mExtractor.advance();
 
         // **The world walk and not a subtree's**, because this is the same root `StagedWorld` walks
         // and the sweep after it is global: a walk that missed what the graph does not parent

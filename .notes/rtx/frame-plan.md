@@ -111,42 +111,44 @@ to do it. Give `placeScene` its own submit for that case, the way the doll and t
 one, and leave `mFrame` alone. The frame ring should count frames the caller asked for and nothing
 else.
 
-## 5. Body parts in the air, and terrain that blinks — one suspect, not yet proven
+## 5. Terrain that blinks, and body parts in the air — **two causes fixed, one left**
 
-Two reports, and they are almost certainly the same defect: parts of a moving NPC stay behind, and
-terrain blinks hard at a **static** camera — `-2,-9` at `-6087, -70048, 2978`, bearing 34°, climb 4°,
-day 0, 12:00, Clear.
+**Reproduced headlessly.** `bench --suite=streaming --albedo --exposure=1 --upscale=off`: 97 of 600
+frames swing more than 40% in mean brightness. Frame 289 puts an enormous terrain chunk directly on
+the camera; 288 and 290, 103 units either side, are open water. Rendered on their own with `shot`,
+those two cameras give linear means of 0.01576 and 0.01502 — the content is the same, so the
+streaming path is what differs.
 
-**Both were seen in `view`, and `view` is the only caller that genuinely runs two frames in flight**
-(§3). So what these look like is a table copy read while it is a frame behind — the exact hazard the
-second copy and `RowDebt` exist to prevent, on the only path that ever reaches it.
+**Ruled out, each by measurement:** the lighting and the fog (`--albedo` alone still swings), the
+exposure (`--exposure=1`), the upscaler (`--upscale=off`), the composite bake queue (collecting none
+changes nothing), the specialized kernel (one variant across all 600 frames), `outgrow`'s doubling,
+and §3 — the old serial order swings 142 times.
 
-**What has been ruled out.** The detector is the primary hit count, which comes back through the
-fence and so costs no wait. With `bench` genuinely pipelined (§3) it is flat at that spot across 600
-frames, and the streaming run's only zero-hit frames are §4's. `--sync-validation` over 1200
-pipelined frames reports nothing. The row debt, the slot the trace reads, and the barrier before
-every structure build were all read and all hold: `placeScene` opens its frame, gates on
-`mReadBy[into]`, and `barrierBeforeBuild` names the trace's own stage as its source scope.
+**It is the second table copy.** Forcing both frames onto one copy takes 97 swings to 5.
 
-**So what is left is what `bench` does not do.** It never presents, and it never runs two frames
-deep — `view` calls no `finishFrame` at all, so its ring sits at the cap rather than one behind.
-Both reports came from `view`, and so did §1, which was a genuine defect in exactly that path. Ask
-whether the blink survives §1 before hunting further.
+**Cause A — the harness advanced the epoch on the wrong side of the hand-over.**
+`SceneExtractor::advance` calls `SceneDesc::advancePlacement`, which swaps `mMoved` into `mSettled`.
+`StagedWorld` called it at the *end* of a walk, so by the time `placeScene` ran `getMoved()` was
+already empty and the acceleration owed its copies nothing. The game advances after its trace, which
+is the same instant as the head of the next walk — and that is where it now sits.
 
-**Where to look next, in order.**
+**Cause A applies twice.** `StagedWorld::mirror` was one of the two walks the harness has;
+`PosedActors::advanceTo` — the path every scene with actors in it takes — advanced on the same wrong
+side, and that is the one an NPC's limbs go through.
 
-- The presenter, now that §1 is fixed. `mColour` is one image where `mTarget` has a spare, and only
-  a presenting caller can tell.
-- `SceneBuffers::outgrow` doubles, so `outgrow` answers false for a table that grew into room it
-  already had, and the whole-table write is skipped. `SceneAcceleration` sizes exactly and so always
-  takes the whole-table branch on growth. Two tables indexed alike, growing by different rules.
-- One bottom-level structure per mesh, one positions buffer per frame slot. `prepareRefit` refits
-  from the current slot's copy, which is right; what has not been checked is a mesh that deforms on
-  one frame and not the next while the slots alternate.
+**Cause B — the two tables disagreed about what a copy owes.** `SceneBuffers::place` owed
+`getSettled()` and `getMoved()`; `SceneAcceleration::place` owed only `getMoved()`. A frame walked
+twice — a crossing, or the game's precipitation subtree beside its world — settles the first walk's
+moves before the placement after the second, so a copy reading only `getMoved` never learns of them.
 
-**Reproduce it first.** A test that places two instances, moves one, and asserts both table copies
-carry the same rows after two placements would fail on the spot if the debt is the cause. That test
-belongs in the tree whatever the answer is.
+**And the early return asked the scene rather than the copy.** `SceneAcceleration::place` skipped
+the top level when `getMoved()` was empty, which is no longer the same question as whether this
+copy's rows are about to change — a copy carrying a debt from an earlier frame would keep it and be
+traced stale. It now asks the debt. A standing camera still returns early: `tlas` stays at 0.2 ms.
+
+**Where it stands:** 97 swings to 26, and frames 287–291 read 34.8, 33.1, 29.7, 27.9, 25.9 — a
+smooth descent where they read 127, 127, 42, 125, 125. One copy still gives 5, so something is
+outstanding; 19 of the 26 are §4's crossings, which is the next step anyway.
 
 ## 6. `island-crossing` differs from itself between runs — not yet root-caused
 
