@@ -919,9 +919,11 @@ namespace Rtx
             .mSlot = mWorldSlot,
             .mIndexBlocks = mWorld.mAcceleration->getIndexBlocks(),
             .mTextures = mWorld.mTextures->getSet(),
+            .mTextureLayout = mWorld.mTextures->getLayout(),
             .mShading = mWorld.mTextures->getShading(),
             .mWaves = &mWaves,
             .mFog = &mFog,
+            .mWater = mWorld.mAcceleration->getWaterInstanceCount() > 0,
         };
 
         // Made by the first frame that averages, and that frame is the one that fills it.
@@ -1202,9 +1204,11 @@ namespace Rtx
             .mSlot = slot,
             .mIndexBlocks = acceleration.getIndexBlocks(),
             .mTextures = array.getSet(),
+            .mTextureLayout = array.getLayout(),
             .mShading = array.getShading(),
             .mWaves = &mWaves,
             .mFog = &mFog,
+            .mWater = acceleration.getWaterInstanceCount() > 0,
         };
 
         // **Not counted, and not timed.** The hit count and the frame report are the frame's; a

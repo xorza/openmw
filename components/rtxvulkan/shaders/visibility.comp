@@ -22,6 +22,7 @@
 #include "visibility.h"
 
 #include "lib/bindings.glsl"
+#include "lib/variants.glsl"
 #include "lib/fog.glsl"
 #include "lib/random.glsl"
 #include "lib/reproject.glsl"
@@ -31,16 +32,6 @@
 #include "lib/traversal.glsl"
 #include "lib/underwater.glsl"
 #include "lib/water.glsl"
-
-/// Whether the trace counts the primary rays that hit something.
-///
-/// **A specialization constant, so the game's module does not carry the atomic at all.** The count
-/// is a harness facility — `shot` prints it, `bench` reports it, and a test asserts on it — and
-/// nothing in the game ever reads it, so an unconditional `atomicAdd` was a debug write compiled
-/// into the shipping kernel. Specialized rather than branched on a uniform because the branch is
-/// what has to go, not just the write: with this false the constant folds away and the buffer is
-/// never touched.
-layout(constant_id = 0) const bool COUNT_HITS = false;
 
 layout(local_size_x = VISIBILITY_WORKGROUP, local_size_y = VISIBILITY_WORKGROUP) in;
 
@@ -133,7 +124,7 @@ void main()
     // sky behind it draws none of the field either, and says so the same way.
     float skyShown = 0.0;
 
-    const bool submerged = origin.z < frame.mWaterLevel;
+    const bool submerged = HAS_SEA && origin.z < frame.mWaterLevel;
 
     // **A ray that goes down from under the surface and finds nothing found water, and water is not
     // the sky.** The plane has absolute sides, so below it there is water whether or not this
@@ -150,7 +141,7 @@ void main()
         shaded = frame.mTransparentBackground != 0u
             ? vec3(0.0)
             : skyRadiance(origin, direction, pixelBlur(frame.mCamera), skyShown);
-    else if (surface.mWater)
+    else if (HAS_SEA && surface.mWater)
     {
         float shore;
         shaded = shadeWater(surface, direction, response, mirror, pixel, shore);
@@ -321,7 +312,7 @@ void main()
     // shaded where it is seen, so the vector above describes the surface and not what is in it; this
     // is the other one, and the upscaler weighs the two by the specular albedo it was already given.
     imageStore(reflectionMotion, at,
-        vec4(surface.mWater ? mirrorMotionOf(pixel, origin, mirror) : vec2(0.0), 0.0, 0.0));
+        vec4((HAS_SEA && surface.mWater) ? mirrorMotionOf(pixel, origin, mirror) : vec2(0.0), 0.0, 0.0));
 
     // **What the display pass has to draw the star field through**, which is everything this frame
     // put between the field and the eye: the sky's own layers in `skyShown`, and the pane, the

@@ -9,6 +9,7 @@
 #include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
+#include "variants.glsl"
 #include "fog.glsl"
 #include "lights.glsl"
 #include "shading.glsl"
@@ -49,7 +50,8 @@ vec3 puffLight(vec3 position, vec3 daylight, float sunLit, float skyLit, float f
     // answer rather than the room's by none: a fill comes from everywhere, so what a puff lets
     // through of it is the mean of every way in.
     return frame.mAmbient * (daylight * mix(fillLit, skyLit, frame.mAmbientFromSky))
-        + frame.mSunIrradiance * (INV_PI * daylight * sunLit) + INV_FOUR_PI * lampsAt(position) * lampLit;
+        + (HAS_SUN ? frame.mSunIrradiance * (INV_PI * daylight * sunLit) : vec3(0.0))
+        + INV_FOUR_PI * lampsAt(position) * lampLit;
 }
 
 /// How a ball is lit from `toward` against its mean, on the side of it the eye sees.
@@ -407,7 +409,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         {
             askedAbove = true;
 
-            if (frame.mSunIrradiance != vec3(0.0))
+            if (HAS_SUN && frame.mSunIrradiance != vec3(0.0))
             {
                 uint state = randomSeed(pixelKey(pixel) + SEED_SPRITE_SUN);
                 const vec2 draw = vec2(randomNext(state), randomNext(state));

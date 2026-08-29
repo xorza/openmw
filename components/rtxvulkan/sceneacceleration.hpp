@@ -159,6 +159,13 @@ namespace Rtx
         /// because that is what traversal meets.
         std::uint32_t getMicromappedInstanceCount() const { return mMicromappedInstanceCount; }
 
+        /// How many of them the eye meets as water.
+        ///
+        /// **What says whether a trace needs the sea at all.** A frame's water level says where a
+        /// surface would be and not whether there is one, and a room with neither is a kernel with
+        /// no waves, no caustics and no underwater column in it — `HAS_SEA` is what removes them.
+        std::uint32_t getWaterInstanceCount() const { return mWaterInstanceCount; }
+
         /// How much of the micromapped geometry each verdict covers, in triangles.
         ///
         /// **This is what says a micromap is worth its memory, and no other number can.** A build
@@ -367,7 +374,7 @@ namespace Rtx
         /// One row a slot, mirroring `mInstances`, so a slot that changed can be rewritten alone.
         std::vector<VkAccelerationStructureInstanceKHR> mRows;
 
-        /// What each row counts as — `sRowCutout`, `sRowMicromapped` — so the counts below can be
+        /// What each row counts as — `sRowCutout`, `sRowMicromapped`, `sRowWater` — so the counts below can be
         /// kept by the row that changed rather than recounted over every row a frame.
         std::vector<std::uint8_t> mRowFlags;
 
@@ -377,6 +384,7 @@ namespace Rtx
         std::uint32_t mInstanceCount = 0;
         std::uint32_t mCutoutInstanceCount = 0;
         std::uint32_t mMicromappedInstanceCount = 0;
+        std::uint32_t mWaterInstanceCount = 0;
 
         /// **Two totals, each assigned, because one accumulated.** The bottom levels are made once
         /// and the top level again every frame that moves, so adding both to one figure reported a

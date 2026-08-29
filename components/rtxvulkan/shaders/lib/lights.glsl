@@ -12,10 +12,11 @@
 #include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
+#include "variants.glsl"
 #include "random.glsl"
 #include "traversal.glsl"
 
-/// Which lamps could reach `position`, as a range into `lightIndices`.
+/// Which lamps one cell of the grid holds, as a range into `lightIndices`.
 ///
 /// **A shading point should not have to ask every lamp in the cell whether it is near.** Walking
 /// them all costs the same whether one contributes or none do — and the fog made that unaffordable
@@ -23,12 +24,14 @@
 /// once per hit.
 ///
 /// A lamp is binned into every cell its reach touches, so this range is complete: the distance test
-/// each caller still makes is a refinement of the answer and never a correction to it. A position
+/// each caller still makes is a refinement of the answer and never a correction to it. A cell
 /// outside the grid is one no lamp can reach, which is why falling off the edge returns nothing
-/// rather than clamping to the nearest cell's list.
-uvec2 lampsReaching(vec3 position)
+/// rather than clamping to the nearest.
+///
+/// **By cell rather than by point, because a walk along a ray has the cell already.** The stretch a
+/// ray spends inside one cell is one list asked once, which is what `weighLampsAlong` is built on.
+uvec2 lampsInCell(vec3 cell)
 {
-    const vec3 cell = floor((position - grid.mOrigin) * grid.mInverseCell);
     if (any(lessThan(cell, vec3(0.0))) || any(greaterThanEqual(cell, vec3(grid.mSize))))
         return uvec2(0u, 0u);
 
@@ -37,6 +40,12 @@ uvec2 lampsReaching(vec3 position)
     const uint index = (at.z * grid.mSize.y + at.y) * grid.mSize.x + at.x;
 
     return uvec2(lightOffsets[index], lightOffsets[index + 1u]);
+}
+
+/// The same, for a caller holding a place instead of a cell.
+uvec2 lampsReaching(vec3 position)
+{
+    return lampsInCell(floor((position - grid.mOrigin) * grid.mInverseCell));
 }
 
 /// How much of a light `distance` away arrives, per unit intensity.
@@ -49,6 +58,66 @@ float falloff(float distance, float reach)
     const float ratio = distance / reach;
     const float window = clamp(1.0 - ratio * ratio * ratio * ratio, 0.0, 1.0);
     return window * window / (distance * distance + 1.0);
+}
+
+/// The integral of `falloff` along a ray, over the stretch of it between `from` and `to`.
+///
+/// **The same window and the same inverse square, integrated instead of sampled.** Where there is
+/// nothing else along the ray to sample — an even haze with no sun in it — a lamp's whole share of
+/// the air is this, and it is the sum a march of that ray converges to rather than an estimate of
+/// one. `fogUniformAlong` is the caller.
+///
+/// Exact, and it is exact because the integrand is a rational function of one quantity. With `s`
+/// measured from the ray's closest approach to the lamp and `r^2 = h^2 + s^2`, `falloff` is
+/// `(1 - (r/R)^4)^2 / (r^2 + 1)`; in units of the reach that is `(1 - q^2)^2 / (q + e)` with
+/// `q = r^2/R^2` and `e = 1/R^2`, which divides out to a cubic in `q` and a remainder over the
+/// divisor. The cubic is an even polynomial in `s` and the remainder is the `atan`.
+///
+/// @param perpendicular how far the lamp stands off the ray's line.
+/// @param from where the stretch starts, measured from the closest approach and signed.
+/// @param to where it ends, likewise.
+float falloffAlong(float perpendicular, float from, float to, float reach)
+{
+    // **Clipped to the chord and not merely evaluated over the stretch.** Past the reach the window
+    // is exactly zero, and the polynomial that stands for it there is not.
+    const float chord = reach * reach - perpendicular * perpendicular;
+    if (!(chord > 0.0))
+        return 0.0;
+
+    const float halfChord = sqrt(chord);
+    const float low = clamp(from, -halfChord, halfChord) / reach;
+    const float high = clamp(to, -halfChord, halfChord) / reach;
+    if (!(high > low))
+        return 0.0;
+
+    // In units of the reach, where the chord runs from `bump` to one and the guard `falloff` keeps
+    // against the singularity is this much of it.
+    const float bump = perpendicular * perpendicular / (reach * reach);
+    const float guard = 1.0 / (reach * reach);
+
+    const float c2 = -guard;
+    const float c1 = guard * guard - 2.0;
+    const float c0 = guard * (2.0 - guard * guard);
+    const float rest = (1.0 - guard * guard) * (1.0 - guard * guard);
+
+    // The cubic, with `q = bump + s^2` expanded into powers of `s`. Its leading coefficient is one,
+    // which is why there is no `c3` above.
+    const float k0 = ((bump + c2) * bump + c1) * bump + c0;
+    const float k2 = (3.0 * bump + 2.0 * c2) * bump + c1;
+    const float k4 = 3.0 * bump + c2;
+
+    const float root = sqrt(bump + guard);
+
+    const float lowSquared = low * low;
+    const float highSquared = high * high;
+
+    const float below = low * (k0 + lowSquared * (k2 / 3.0 + lowSquared * (k4 / 5.0 + lowSquared / 7.0)))
+        + rest * atan(low / root) / root;
+    const float above = high * (k0 + highSquared * (k2 / 3.0 + highSquared * (k4 / 5.0 + highSquared / 7.0)))
+        + rest * atan(high / root) / root;
+
+    // The substitution measured `s` in reaches, and `dt` carries the reach back out.
+    return (above - below) / reach;
 }
 
 /// One lamp as it arrives at a point.
@@ -183,6 +252,34 @@ float litCosine(vec3 normal, vec3 towards, float transmission)
 ///        `INV_FOUR_PI` times a step's weight for the air.
 /// @param transmission what the far side of a sheet is worth, out of `Surface::mTransmission`.
 ///        Nought for a solid and for a point in a medium, which has no far side.
+/// Offers one candidate to `kept`, already resolved to what it delivers at `from`.
+///
+/// **The reservoir's own rule, written once**, because two walks feed it: the point one below, and
+/// the walk along a ray that `fogUniformAlong` takes. A second copy of this is a second chance for
+/// the two to disagree about what unbiased means.
+void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshadowed, Lamp lamp)
+{
+    // A scalar to weigh a colour by, which is what a target function has to be. The luminance,
+    // because what it decides is which lamp this pixel would most notice the loss of.
+    const float weight = dot(unshadowed, LUMINANCE_WEIGHTS);
+    if (!(weight > 0.0))
+        return;
+
+    kept.mTotal += weight;
+
+    // Hold the newcomer with probability `weight / total`, which leaves each candidate held in
+    // proportion to its weight however many follow it — one-deep reservoir sampling.
+    if (randomNext(state) * kept.mTotal <= weight)
+    {
+        kept.mFrom = from;
+        kept.mRadiance = unshadowed;
+        kept.mTowards = lamp.mTowards;
+        kept.mDistance = lamp.mDistance;
+        kept.mRadius = lamp.mRadius;
+        kept.mWeight = weight;
+    }
+}
+
 void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, float scale, float transmission)
 {
     const bool facing = dot(normal, normal) > 0.0;
@@ -198,27 +295,7 @@ void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, 
         if (cosine <= 0.0)
             continue;
 
-        const vec3 unshadowed = lamp.mIntensity * (cosine * lamp.mReaching * scale);
-
-        // A scalar to weigh a colour by, which is what a target function has to be. The luminance,
-        // because what it decides is which lamp this pixel would most notice the loss of.
-        const float weight = dot(unshadowed, LUMINANCE_WEIGHTS);
-        if (!(weight > 0.0))
-            continue;
-
-        kept.mTotal += weight;
-
-        // Hold the newcomer with probability `weight / total`, which leaves each candidate held in
-        // proportion to its weight however many follow it — one-deep reservoir sampling.
-        if (randomNext(state) * kept.mTotal <= weight)
-        {
-            kept.mFrom = from;
-            kept.mRadiance = unshadowed;
-            kept.mTowards = lamp.mTowards;
-            kept.mDistance = lamp.mDistance;
-            kept.mRadius = lamp.mRadius;
-            kept.mWeight = weight;
-        }
+        considerLamp(kept, state, from, lamp.mIntensity * (cosine * lamp.mReaching * scale), lamp);
     }
 }
 

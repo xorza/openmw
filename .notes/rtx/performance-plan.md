@@ -31,6 +31,38 @@ under it. From here the number moves with the trace, which is steps 5–11. `ver
 build of the commit before: fifteen of sixteen views byte-identical, and `island-crossing` differs
 from itself run to run in either build.
 
+**Steps 5 and 6 done.** `visibility.comp` takes four specialization constants beside `COUNT_HITS` —
+`HAS_SUN`, `HAS_MOONS`, `HAS_SEA`, `FOG_UNIFORM` (`lib/variants.glsl`) — each standing in front of
+the runtime test it replaces rather than in place of it, so a variant removes dead code and never an
+answer. `VisibilityVariant` resolves them from the frame's own constants and from whether the scene
+holds a water surface at all, and `VisibilityPass` keeps a pipeline per tuple: the exterior day, the
+exterior night and the interior are compiled at construction, the rest on the frame that first asks.
+The interior module is 188 KiB of binary against 1377 KiB unspecialized, and the night's register
+count is the only one that moves (96 → 128). `verify` against an unspecialized build: sixteen of
+sixteen byte-identical, `island-crossing` excepted as always.
+
+Step 6 needed its premise corrected. **Morrowind lights every interior with a directional light**
+(`Sky::roomSun`), so `!HAS_SUN` is not what a room is, and the guard the plan named would have fired
+in no cell in the game — every one of the six interior `verify` views resolves to a sun. So the
+closed form is guarded on `FOG_UNIFORM` alone and carries the sun and the moons: the transmittance is
+`exp` of a closed-form column, the ambient is `colour * (1 - T)` exactly, every lamp is integrated
+along the ray in one walk of the light grid — `falloffAlong` is the windowed inverse square
+integrated in closed form, checked against quadrature to eight digits — and what is left is the
+eight stretches the shadow rays were always the whole cost of, each weighed by `T(from) - T(to)`.
+The twenty-four steps and their twenty-four walks of the lamp grid are gone.
+
+Same-state A/B, release, `shot --repeat=200`, against a build with the tuple forced to the general
+kernel: guild trace 5.16 → 4.47 (step 5) → 2.76 ms, each the median of three warm runs that agree to
+a hundredth. **The ship is not quotable on this box today** — four back-to-back runs of the same
+binary span 3.36 to 4.48 ms with the card idling at 870 MHz between them, and what either step is
+worth outdoors is inside that. Step 5 is the only one that touches an exterior at all: step 6 runs
+where the coverage field is even, and outdoors it is not.
+
+`verify`: every exterior byte-identical, and the seven interiors that carry fog differ because the
+march's lamp noise is gone. Against a converged reference (`--accumulate`, filter and upscaler off)
+the two agree — at 64 samples the march is still 8 of 255 away on 12% of the guild, at 256 samples
+on 0.35%, and the signed mean difference is 0.09 of 255 at both.
+
 **The rule this plan lives under.** *Feature-complete first, then fast.* Steps 1–3 and 5 are
 structural and change no picture, so they can land whenever the frame they fix is in front of you.
 Everything else waits for the renderer to draw everything the game has, and is measured again then.
@@ -299,8 +331,8 @@ reaches.
 | 2 | refit with `MODE_UPDATE`; only posed rigs | −0.25 GPU, copies | none | 1 |
 | 3 | the walk's string and cast costs | −1 CPU | none | 0 |
 | 4 | two frames in flight | frame = max(CPU, GPU) | none | 1–3 |
-| 5 | specialise the kernel | −0.5 GPU | none | 4 |
-| 6 | interior closed-form fog | −3 GPU (guild) | exact | 5 |
+| 5 | specialise the kernel | −0.5 GPU | none | done |
+| 6 | interior closed-form fog | −1.7 GPU (guild) | exact | done |
 | 7 | outdoor fog, cheaper halves | −0.7 GPU | noisier | 6 |
 | 8 | half-resolution bounce | −1.0 to −1.4 GPU | RR-judged | 4 |
 | 9 | micromaps cover the canopy | −0.3 to −1.5 GPU | none | 4 |

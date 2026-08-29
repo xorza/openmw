@@ -14,6 +14,7 @@
 #include "scene.h"
 #include "visibility.h"
 #include "bindings.glsl"
+#include "variants.glsl"
 
 /// The sky's own glow along a direction, with nothing drawn in it.
 ///
@@ -365,7 +366,7 @@ vec3 skyRadiance(vec3 origin, vec3 direction, float blur, out float shown)
     // second field saying whether to draw the disc is what once let a sun shadow out of an empty
     // sky, and there is no longer one to disagree with.
     const float edge = 2.0 * sin(0.5 * (SUN_ANGULAR_RADIUS + blur));
-    if (frame.mSunIrradiance != vec3(0.0) && length(direction - frame.mSunPosition) < edge)
+    if (HAS_SUN && frame.mSunIrradiance != vec3(0.0) && length(direction - frame.mSunPosition) < edge)
     {
         // **The sun's radiance is five orders of magnitude above the sky's** and this does not
         // pretend otherwise, so it saturates until there is an exposure stage to bring it down.
@@ -395,13 +396,14 @@ vec3 skyRadiance(vec3 origin, vec3 direction, float blur, out float shown)
     //
     // **This is also the whole of an eclipse**, and of one moon in front of the other: Masser is
     // nineteen degrees across against the sun's half a degree, so on the rare crossing it is total.
-    for (uint moon = 0u; moon < 2u; ++moon)
-    {
-        float covered;
-        const vec3 face = moonFace(frame.mMoons[moon], direction, blur, covered);
-        colour = colour * (1.0 - covered) + face;
-        shown *= 1.0 - covered;
-    }
+    if (HAS_MOONS)
+        for (uint moon = 0u; moon < 2u; ++moon)
+        {
+            float covered;
+            const vec3 face = moonFace(frame.mMoons[moon], direction, blur, covered);
+            colour = colour * (1.0 - covered) + face;
+            shown *= 1.0 - covered;
+        }
 
     // **The dome last and added rather than composited under, because it is the air in front of
     // every one of them.** A moon is seen through the same sky the eye is looking at — the engine

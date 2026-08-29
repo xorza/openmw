@@ -3,6 +3,8 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
+#include <string>
 
 #include <vulkan/vulkan_core.h>
 
@@ -42,11 +44,17 @@ namespace Rtx
         /// The bindless texture array's set, bound once and not pushed.
         VkDescriptorSet mTextures = VK_NULL_HANDLE;
 
+        /// The layout that set was allocated with.
+        ///
+        /// **Taken fresh every frame for the reason `mIndexBlocks` is.** A scene makes its own
+        /// `TextureArray` and the array makes its own layout, so a rebuild leaves the one this pass
+        /// was constructed with destroyed — and a variant compiled later needs a live handle, since
+        /// a pipeline layout names every set it will ever be handed. A pipeline already made carries
+        /// its own copy of the definition and is not affected.
+        VkDescriptorSetLayout mTextureLayout = VK_NULL_HANDLE;
+
         /// Every texture's shading map, which the array owns beside the textures themselves.
         VkBuffer mShading = VK_NULL_HANDLE;
-
-        /// Where the scene's lamps were binned.
-        VkBuffer mGrid = VK_NULL_HANDLE;
 
         /// The sea, as the tiles it was synthesised into this frame.
         ///
@@ -58,6 +66,39 @@ namespace Rtx
         /// The fog's fractal field, here for the same reason and drawn once for the life of the
         /// device rather than once a frame.
         const FogTile* mFog = nullptr;
+
+        /// Whether the eye can meet water in this scene.
+        ///
+        /// **The scene's answer and not the camera's**, which is why it is here: the frame's own
+        /// block says where a surface would be and never whether there is one, and a room with
+        /// neither is what `HAS_SEA` takes the waves out of.
+        bool mWater = false;
+    };
+
+    /// What a trace can be told at compile time, and so what keys a pipeline.
+    ///
+    /// **Each of these is only ever false where the shader's own test already answers no**, so a
+    /// variant takes out dead code and never an answer — which is what makes a specialized frame the
+    /// same picture, byte for byte, as the one kernel drew. `lib/variants.glsl` is the other half of
+    /// it, and says what each removes.
+    struct VisibilityVariant
+    {
+        bool mSun = true;
+        bool mMoons = true;
+        bool mSea = true;
+        bool mUniformFog = false;
+
+        /// What this frame is. `water` is `VisibilityInputs::mWater`, for the reason given there.
+        static VisibilityVariant resolve(const Shaders::VisibilityConstants& frame, bool water);
+
+        /// Which of the table's pipelines this tuple is.
+        std::uint32_t index() const;
+
+        /// What a capture calls it.
+        std::string describe() const;
+
+        /// How many tuples there are, and so how long the table is.
+        static constexpr std::uint32_t sCount = 16;
     };
 
     /// One ray per pixel against the top-level structure, shaded by the geometric normal it hit.
@@ -86,14 +127,23 @@ namespace Rtx
         VisibilityPass(const VisibilityPass&) = delete;
         VisibilityPass& operator=(const VisibilityPass&) = delete;
 
+        /// Records the trace, in whichever kernel this frame calls for.
+        ///
+        /// Not `const`, because the tuple it resolves to may be one nothing has compiled yet.
+        ///
         /// @param buffer where the trace leaves its channels, all four in `VK_IMAGE_LAYOUT_GENERAL`
         ///        and at least as large as the frame. It writes a picture no longer: the indirect
         ///        term has to survive to the filter with the albedo still divided out.
         /// @param hitCount a storage buffer of one `uint32` the shader increments per hit.
         void record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, const Shaders::VisibilityConstants& constants) const;
+            const Buffer& hitCount, const Shaders::VisibilityConstants& constants);
 
     private:
+        /// The pipeline for `variant`, compiled on the first frame that asks for one.
+        ComputePipeline& pipelineFor(VisibilityVariant variant, VkDescriptorSetLayout textureLayout);
+
+        const Device& mDevice;
+
         Buffer mBlueNoise;
 
         /// This frame's `VisibilityConstants`, on the device.
@@ -105,15 +155,25 @@ namespace Rtx
         /// keep the host and the device apart.
         Buffer mConstants;
 
-        /// **Declared before the pipeline it specializes**, because the pipeline reads it during its
-        /// own construction and members are built in declaration order.
+        /// Fixed for the life of the pass, where the four in `VisibilityVariant` are the frame's:
+        /// what counts hits is which binary was built and not what is being looked at.
         std::uint32_t mCountHits = 0;
 
-        /// The sets bound after the pushed one, in the order they are bound: the textures, then the
-        /// channels. Held for the same reason `mCountHits` is — the pipeline reads them as it is
-        /// built, and a pipeline layout names every set it will ever be handed.
-        std::array<VkDescriptorSetLayout, 2> mLaterSets{};
+        /// The second of the two sets bound after the pushed one, which the renderer owns for its
+        /// whole life. The first is the scene's and arrives with the frame — `mTextureLayout`.
+        VkDescriptorSetLayout mChannelLayout = VK_NULL_HANDLE;
 
-        ComputePipeline mPipeline;
+        /// Where the compiled module is, kept because a variant is compiled long after construction.
+        std::filesystem::path mModule;
+
+        /// One pipeline per tuple, and most of them never made.
+        ///
+        /// **Compiled on the frame that first asks, and three of them ahead of any frame at all.**
+        /// This kernel takes about half a second to compile on a cold pipeline cache, and a frame
+        /// that stops for one is a stop the player sees — so the exterior day, the exterior night
+        /// and the interior are made at construction, which is a load. The rest are the odd hours
+        /// and the odd cells, and they cost their hitch once per build: `PipelineCache` outlives the
+        /// process and every run after the first finds them.
+        std::array<std::unique_ptr<ComputePipeline>, VisibilityVariant::sCount> mPipelines;
     };
 }

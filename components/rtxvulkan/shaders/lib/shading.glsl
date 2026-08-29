@@ -8,6 +8,7 @@
 
 #include "scene.h"
 #include "bindings.glsl"
+#include "variants.glsl"
 #include "lights.glsl"
 #include "random.glsl"
 #include "sky.glsl"
@@ -65,7 +66,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     // matter to — no better resolved for it.
 
     const float sunCosine = litCosine(normal, frame.mSunPosition, transmission);
-    if (sunCosine > 0.0 && frame.mSunIrradiance != vec3(0.0))
+    if (HAS_SUN && sunCosine > 0.0 && frame.mSunIrradiance != vec3(0.0))
     {
         const float through
             = lightThrough(position, coneDirection(frame.mSunPosition, sin(SUN_SHADOW_RADIUS), sunDraw), frame.mFar);
@@ -85,7 +86,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     for (uint moon = 0u; moon < 2u; ++moon)
     {
         const float moonCosine = litCosine(normal, frame.mMoons[moon].mDirection, transmission);
-        if (moonCosine <= 0.0 || frame.mMoons[moon].mIrradiance == vec3(0.0))
+        if (!HAS_MOONS || moonCosine <= 0.0 || frame.mMoons[moon].mIrradiance == vec3(0.0))
             continue;
 
         const vec3 toward

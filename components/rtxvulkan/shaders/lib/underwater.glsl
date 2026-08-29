@@ -13,6 +13,7 @@
 #include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
+#include "variants.glsl"
 #include "sea.glsl"
 #include "traversal.glsl"
 
@@ -26,6 +27,9 @@
 /// White above the surface, and for a cell with no water at all.
 vec3 daylightReaching(vec3 position)
 {
+    if (!HAS_SEA)
+        return vec3(1.0);
+
     const float depth = frame.mWaterLevel - position.z;
     if (!(depth > 0.0))
         return vec3(1.0);
@@ -75,6 +79,9 @@ SunUnderWater sunUnderWater(vec3 toward)
 /// @param toward unit, from the point to the light.
 vec3 lightThroughWater(vec3 position, vec3 toward, float footprint)
 {
+    if (!HAS_SEA)
+        return vec3(1.0);
+
     const float depth = frame.mWaterLevel - position.z;
     if (!(depth > 0.0))
         return vec3(1.0);
@@ -194,7 +201,7 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
 
     // The same test `fogAlong` makes before it spends anything on shafts: an interior and a night
     // both answer no, and `mSunIrradiance` fades to nought across dusk rather than stepping.
-    if (frame.mSunIrradiance == vec3(0.0))
+    if (!HAS_SUN || frame.mSunIrradiance == vec3(0.0))
         return WaterColumn(transmittance, sky);
 
     const SunUnderWater sun = sunUnderWater(frame.mSunPosition);

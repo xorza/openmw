@@ -28,6 +28,7 @@ namespace Rtx
         /// What a row counts as, kept beside it so the counts move with the row.
         constexpr std::uint8_t sRowCutout = 1;
         constexpr std::uint8_t sRowMicromapped = 2;
+        constexpr std::uint8_t sRowWater = 4;
 
         /// Brackets a build where there is a timer to bracket it with.
         ///
@@ -1023,6 +1024,8 @@ namespace Rtx
             --mCutoutInstanceCount;
         if ((counted & sRowMicromapped) != 0)
             --mMicromappedInstanceCount;
+        if ((counted & sRowWater) != 0)
+            --mWaterInstanceCount;
         counted = 0;
 
         // **A gap is an inactive row and not a row left out.** Its slot is the custom index a hit
@@ -1032,6 +1035,12 @@ namespace Rtx
         {
             mRows[slot] = VkAccelerationStructureInstanceKHR{};
             return;
+        }
+
+        if (record.mMask == Shaders::MASK_WATER)
+        {
+            counted |= sRowWater;
+            ++mWaterInstanceCount;
         }
 
         // Morrowind's sheet geometry is lit and hit from both faces, so nothing is culled.

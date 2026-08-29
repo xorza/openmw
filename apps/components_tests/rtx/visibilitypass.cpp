@@ -5576,6 +5576,47 @@ namespace Rtx
             const std::array<int, 3> withoutFog = look(100.0f, 0.0f);
             for (std::size_t channel = 0; channel < 3; ++channel)
                 EXPECT_EQ(submerged[channel], withoutFog[channel]) << "channel " << channel << ", under the surface";
+
+            // **The falloff itself, which no level ray crosses.** Every expectation above holds the
+            // ray at one height, so the layer is one number along it; a ray that climbs out of the
+            // layer crosses the whole curve, and what it is charged for is its own length times the
+            // mean of `exp(-z / FOG_HEIGHT)` over the heights it passed.
+            constexpr float climb = 2000.0f;
+            const auto lookSloping = [&](const osg::Vec3f& eye, const osg::Vec3f& target) {
+                Shaders::VisibilityConstants camera = makeCamera(eye, target, 60.0f, size, size, 100000.0f);
+                litThroughFog(camera, extinction);
+
+                // Stretched, because a ray leaving at forty-five degrees meets the wall two thousand
+                // units off its middle and the wall is four hundred across.
+                const SceneDesc scene = makeWall(20.0f);
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels);
+                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+            };
+
+            // Two thousand up over two thousand along is a path of 2828.43, and the layer's mean
+            // over the first 2000/2600 of its falloff is (1 - exp(-0.76923)) / 0.76923 = 0.69762 —
+            // so 1973.1 units' worth of air at the base's own density, and `exp(-3.5e-4 * 1973.1)`
+            // is 0.50125 of transmittance.
+            const float slope = std::sqrt(distance * distance + climb * climb);
+            const float crossed = climb / Shaders::FOG_HEIGHT;
+            const float climbing = std::exp(-extinction * slope * (1.0f - std::exp(-crossed)) / crossed);
+
+            const std::array<int, 3> up = lookSloping(osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, climb));
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                const auto expected
+                    = static_cast<int>(encodeSrgb(0.5f * sFoggySky * climbing + sHaze[channel] * (1.0f - climbing)));
+
+                EXPECT_NEAR(up[channel], expected, 1) << "channel " << channel << ", climbing out of the layer";
+            }
+
+            // And a ray descending the same two heights crosses the same air, which is the other
+            // half of the integral and the one a sign error would have shown up in.
+            const std::array<int, 3> down
+                = lookSloping(osg::Vec3f(0.0f, -distance, climb), osg::Vec3f(0.0f, 0.0f, 0.0f));
+            for (std::size_t channel = 0; channel < 3; ++channel)
+                EXPECT_EQ(down[channel], up[channel]) << "channel " << channel << ", the same heights descending";
         }
 
         /// A lamp lights the air it stands in, and by the isotropic share of what it delivers.
@@ -6096,7 +6137,7 @@ namespace Rtx
 
             const TextureArray textures(device, setup, 0, {}, graveyard);
             const GBufferLayout channelLayout(device);
-            const VisibilityPass pass(
+            VisibilityPass pass(
                 device, setup, Testing::getShaderDirectory(), textures.getLayout(), channelLayout, true);
             setup.flush();
 
@@ -6114,6 +6155,7 @@ namespace Rtx
                 .mBuffers = &buffers,
                 .mIndexBlocks = acceleration.getIndexBlocks(),
                 .mTextures = textures.getSet(),
+                .mTextureLayout = textures.getLayout(),
                 .mShading = textures.getShading(),
                 .mWaves = &waves,
                 .mFog = &fog,

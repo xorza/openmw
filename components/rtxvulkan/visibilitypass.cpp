@@ -1,10 +1,9 @@
 #include "visibilitypass.hpp"
 
 #include <algorithm>
-#include <cassert>
-
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <span>
 
 #include <components/rtx/bluenoise.hpp>
@@ -60,26 +59,95 @@ namespace Rtx
         }();
     }
 
+    VisibilityVariant VisibilityVariant::resolve(const Shaders::VisibilityConstants& frame, const bool water)
+    {
+        // **A moon that is drawn and a moon that lights are two facts**, and the sky needs the first
+        // where no surface asks for the second: the game fades both out over the hours around dawn,
+        // and a disc still on its way down lights nothing.
+        bool moons = false;
+        for (const Shaders::MoonDisc& moon : frame.mMoons)
+            moons = moons || moon.mAlpha > 0.0f || moon.mIrradiance != Shaders::vec3();
+
+        return VisibilityVariant{
+            // Nought exactly where the sun is not up, and it fades to that across dusk rather than
+            // stepping — `VisibilityConstants::mSunIrradiance` says why there is no second field.
+            .mSun = frame.mSunIrradiance != Shaders::vec3(),
+            .mMoons = moons,
+
+            // Either half is water in the frame: a surface the eye can meet, or a level it can be
+            // under. A cell with a level and no surface is one the eye can still be submerged in.
+            .mSea = water || !std::isinf(frame.mWaterLevel),
+            .mUniformFog = frame.mFogUniform >= 1.0f,
+        };
+    }
+
+    std::uint32_t VisibilityVariant::index() const
+    {
+        return (mSun ? 1u : 0u) | (mMoons ? 2u : 0u) | (mSea ? 4u : 0u) | (mUniformFog ? 8u : 0u);
+    }
+
+    std::string VisibilityVariant::describe() const
+    {
+        std::string name = "visibility";
+        if (mSun)
+            name += " sun";
+        if (mMoons)
+            name += " moons";
+        if (mSea)
+            name += " sea";
+        if (mUniformFog)
+            name += " even-air";
+        return name;
+    }
+
     VisibilityPass::VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
         VkDescriptorSetLayout textureLayout, const GBufferLayout& channelLayout, bool countHits)
-        : mBlueNoise(uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+        : mDevice(device)
+        , mBlueNoise(uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
         , mConstants(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
         , mCountHits(countHits ? 1u : 0u)
-        , mLaterSets{ textureLayout, channelLayout.getHandle() }
-        , mPipeline(device, sBindings, 0, mLaterSets, shaderDirectory / "visibility.comp.spv", "visibility",
-              std::span(&mCountHits, 1))
+        , mChannelLayout(channelLayout.getHandle())
+        , mModule(shaderDirectory / "visibility.comp.spv")
     {
+        // **The three a game actually spends its time in**, compiled here where a load already
+        // stands still rather than on the frame that first asks for one. The day and the night are
+        // the pair a dusk crosses with nothing loading, which is the one transition a hitch would
+        // be seen at.
+        for (const VisibilityVariant common : {
+                 VisibilityVariant{ .mSun = true, .mMoons = false, .mSea = true, .mUniformFog = false },
+                 VisibilityVariant{ .mSun = false, .mMoons = true, .mSea = true, .mUniformFog = false },
+                 VisibilityVariant{ .mSun = false, .mMoons = false, .mSea = false, .mUniformFog = true },
+             })
+            pipelineFor(common, textureLayout);
+    }
+
+    ComputePipeline& VisibilityPass::pipelineFor(const VisibilityVariant variant, VkDescriptorSetLayout textureLayout)
+    {
+        std::unique_ptr<ComputePipeline>& held = mPipelines[variant.index()];
+        if (held == nullptr)
+        {
+            // One word per `constant_id`, in the order `lib/variants.glsl` declares them.
+            const std::array<std::uint32_t, 5> specialization{ mCountHits, variant.mSun ? 1u : 0u,
+                variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, variant.mUniformFog ? 1u : 0u };
+
+            const std::array<VkDescriptorSetLayout, 2> laterSets{ textureLayout, mChannelLayout };
+            held = std::make_unique<ComputePipeline>(
+                mDevice, sBindings, 0, laterSets, mModule, variant.describe(), specialization);
+        }
+
+        return *held;
     }
 
     void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-        const Buffer& hitCount, const Shaders::VisibilityConstants& constants) const
+        const Buffer& hitCount, const Shaders::VisibilityConstants& constants)
     {
         assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
 
         assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
         assert(inputs.mFog != nullptr && "a trace with no fog field drawn for it");
+        assert(inputs.mTextureLayout != VK_NULL_HANDLE && "a trace whose texture array named no layout");
 
         // **How many emitters there are is the scene's answer and not the camera's.** The table
         // never shrinks, so its length says nothing about this frame; taking the count off the
@@ -255,18 +323,23 @@ namespace Rtx
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         append(sFrameBinding + 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, &fogWrite, nullptr);
 
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getHandle());
+        // **Resolved from the constants this frame is about to be traced with**, and from nothing
+        // kept between frames: a dusk moves the tuple and a doorway moves it again.
+        const ComputePipeline& pipeline
+            = pipelineFor(VisibilityVariant::resolve(constants, inputs.mWater), inputs.mTextureLayout);
+
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
         // Every binding the layout declares, written exactly once — a shader that grew one and a
         // record that did not is the failure this counts.
         assert(filled == writes.size() && "a binding the layout declares was left unwritten");
 
         vkCmdPushDescriptorSet(
-            commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getLayout(), 0, filled, writes.data());
+            commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 0, filled, writes.data());
 
         // The two sets nothing pushes: the bindless textures a scene brought, and the channels this
         // writes. Both are written when what they name is made, and bound as they are.
         const std::array<VkDescriptorSet, 2> sets{ inputs.mTextures, buffer.getSet() };
-        vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getLayout(), 1,
+        vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 1,
             static_cast<std::uint32_t>(sets.size()), sets.data(), 0, nullptr);
         vkCmdDispatch(commands, groupsFor(constants.mCamera.mWidth), groupsFor(constants.mCamera.mHeight), 1);
     }

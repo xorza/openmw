@@ -114,6 +114,7 @@ set(RTX_SHADER_LIB
     shaders/lib/texturing.glsl
     shaders/lib/traversal.glsl
     shaders/lib/underwater.glsl
+    shaders/lib/variants.glsl
     shaders/lib/water.glsl
 )
 
