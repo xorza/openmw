@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -21,8 +22,10 @@
 #include "device.hpp"
 #include "exposurepass.hpp"
 #include "fogtile.hpp"
+#include "frameslots.hpp"
 #include "gbuffer.hpp"
 #include "gputimer.hpp"
+#include "graveyard.hpp"
 #include "guipass.hpp"
 #include "guitextures.hpp"
 #include "instance.hpp"
@@ -84,6 +87,57 @@ namespace Rtx
             std::uint64_t mBuiltMeshes = 0;
         };
 
+        /// Everything one frame in flight owns: what it records into, what says it is done, what it
+        /// measured, and what it may still be reading.
+        ///
+        /// **Two of these, and the CPU works one ahead of the GPU.** Frame N+1 is walked and placed
+        /// while frame N is traced; what N+1 writes is this frame's copy of every table, and what N
+        /// may still read is the other's. The frame after next takes this one's place, and waits
+        /// its fence first.
+        struct Frame
+        {
+            Frame(const Device& device, CommandPool& pool);
+
+            /// The placement's commands and the trace's, submitted apart because a picture inside
+            /// the interface is traced between the two and needs the first to have reached the
+            /// queue. Only the second carries the fence: it is later on the queue, so its signal
+            /// covers both.
+            VkCommandBuffer mPlaceCommands = VK_NULL_HANDLE;
+            VkCommandBuffer mCommands = VK_NULL_HANDLE;
+            VkFence mFence = VK_NULL_HANDLE;
+
+            /// Begun by a placement or a trace and not yet submitted with its fence.
+            bool mBegun = false;
+
+            /// Whether this frame's placement has been recorded, so a second placement before a
+            /// trace closes the frame rather than recording over a submit in flight.
+            bool mPlaced = false;
+
+            /// Submitted with its fence and not yet waited for.
+            bool mPending = false;
+
+            /// Its own timer and its own count, because both are read after the fence, when the
+            /// next frame is already writing its own.
+            GpuTimer mTimer;
+            Buffer mHitCount;
+
+            /// What this frame may still be reading, destroyed when its fence says it is not.
+            Graveyard mGraveyard;
+            Reconstruction mReconstruction;
+
+            /// The interface's own ring beside the frame's: it is drawn after the frame is submitted
+            /// and fenced on its own, so its vertices are guarded by its own fence.
+            VkCommandBuffer mGuiCommands = VK_NULL_HANDLE;
+            VkFence mGuiFence = VK_NULL_HANDLE;
+            bool mGuiPending = false;
+
+            /// What the GUI is drawn out of, rewritten every frame it has anything in it and grown
+            /// to the busiest frame so far. Host-visible device memory, so writing it is a memcpy
+            /// and there is no staging copy and no transfer to record.
+            HostBuffer mGuiVertices;
+            Graveyard mGuiGraveyard;
+        };
+
     public:
         /// Throws `Error` where this machine cannot run it. `createVulkanRenderer` is what turns
         /// that into a reason a caller can act on.
@@ -104,7 +158,8 @@ namespace Rtx
         const SceneStats& getSceneStats() const override { return mStats; }
         void resize(std::uint32_t width, std::uint32_t height) override;
         FrameExtents getExtents() const override;
-        FrameResult renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;
+        Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;
+        std::optional<FrameResult> finishFrame() override;
         bool presentFrame() override;
 
         std::uint32_t addViewScene() override;
@@ -136,6 +191,37 @@ namespace Rtx
         /// it already reached on either axis.
         void growViewTargets(std::uint32_t width, std::uint32_t height);
 
+        Frame& frameSlot(std::uint64_t frame) { return mFrames[frame % sFrameSlots]; }
+
+        /// The frame being recorded, begun if it was not: the frame that last used its slot is
+        /// waited for, its fence reset, its timer and hit count cleared.
+        Frame& beginFrame();
+
+        /// Submits a begun frame that will not be traced — a placement followed by another — so
+        /// its fence exists and its slot comes round again.
+        void closeFrame();
+
+        /// Submits what a frame recorded, under its own fence, and counts it as in flight.
+        void submitFrame(Frame& frame);
+
+        /// Waits for the oldest frame in flight and reads back what it measured.
+        FrameResult finishOldest();
+
+        /// Waits until `frame` is finished, where it was ever submitted.
+        void finishThrough(std::uint64_t frame);
+
+        /// Waits for every frame in flight. What an arrival, a rebuild, a resize and a picture
+        /// inside the interface do first.
+        void finishFrames();
+
+        /// Destroys what every frame is holding, whether or not its slot ever comes round again.
+        ///
+        /// **After `waitIdle`, and only where something buried is about to lose its owner.** A room
+        /// is a pointer into a scene's structure storage and a structure stands in that storage, so
+        /// a frame that placed a scene and was never traced would give both back to a scene that no
+        /// longer exists. `finishFrames` cannot reach that frame: it was never submitted.
+        void emptyGraveyards();
+
         // Declaration order is destruction order reversed, and everything below the device is built
         // on it.
         Instance mInstance;
@@ -147,17 +233,27 @@ namespace Rtx
         Device mDevice;
         CommandPool mPool;
 
-        /// Where the device spent the frame, written by the command stream itself.
-        ///
-        /// **One timer across all three submits.** A frame that moved places its structures in two
-        /// submits of its own before the one that draws it, and all three are the same frame's cost;
-        /// the timer is opened once at the top of `placeScene` — or of `renderFrame`, where nothing
-        /// moved — and read at the end of the frame.
-        GpuTimer mTimer;
+        std::array<Frame, sFrameSlots> mFrames;
 
-        /// Whether `placeScene` has already opened this frame's timer, so `renderFrame` adds to that
-        /// report rather than starting a second one and throwing the builds away.
-        bool mTimed = false;
+        /// The next frame to record and the next to finish. Everything from `mFinished` to `mFrame`
+        /// is in flight, and there are never more of those than there are slots.
+        std::uint64_t mFrame = 0;
+        std::uint64_t mFinished = 0;
+
+        /// The interface's ring runs on its own count: a menu is drawn on frames with no world.
+        std::uint64_t mGuiFrame = 0;
+
+        /// Which copy of the world's tables the last placement wrote — what a frame traces, what
+        /// a picture inside the interface traces, and the copy the next placement leaves alone.
+        ///
+        /// **A placement's parity and not a frame's**, because a frame need not place: a test that
+        /// traces the same placement twice reads the same copy twice, and the copy a placement is
+        /// about to write is guarded by the frame that last traced it, not by the frame count.
+        std::uint32_t mWorldSlot = 0;
+
+        /// The last frame that traced each copy of the world's tables, or `sNeverRead`.
+        static constexpr std::uint64_t sNeverRead = ~std::uint64_t{ 0 };
+        std::array<std::uint64_t, sFrameSlots> mReadBy{ sNeverRead, sNeverRead };
 
         std::filesystem::path mShaderDirectory;
 
@@ -236,8 +332,6 @@ namespace Rtx
         /// which the shader reads as "there is no previous frame" and answers with no motion at all.
         Shaders::VisibilityConstants mPreviousCamera{};
 
-        Buffer mHitCount;
-
         /// The world's, which is one of these like any other: what `sWorld` names.
         ViewScene mWorld;
 
@@ -272,11 +366,6 @@ namespace Rtx
         std::unique_ptr<TonePass> mTone;
         GuiPass mGuiPass;
         GuiTextures mGuiTextures;
-
-        /// What the GUI is drawn out of, rewritten every frame it has anything in it and grown to
-        /// the busiest frame so far. Host-visible device memory, so writing it is a memcpy and
-        /// there is no staging copy and no transfer to record.
-        HostBuffer mGuiVertices;
 
         /// The batches, resolved from slots to what the pass wants. Kept so that a frame of GUI
         /// allocates nothing.

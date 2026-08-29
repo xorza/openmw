@@ -16,6 +16,7 @@
 
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
+#include "frameslots.hpp"
 #include "hostbuffer.hpp"
 #include "structurestorage.hpp"
 
@@ -25,6 +26,7 @@ namespace Rtx
     class CommandPool;
     class GpuTimer;
     class Device;
+    class Graveyard;
     class SceneDesc;
 
     /// The neutral transform in Vulkan's storage.
@@ -64,8 +66,12 @@ namespace Rtx
         /// @param textures every image the scene names, which the opacity micromaps are classified
         ///        against. A mesh whose cutout mask is not among them gets no micromap and goes on
         ///        asking, which is what the whole cell did before there were any.
+        /// @param slots how many frames may be tracing this scene at once — `sFrameSlots` for the
+        ///        world, one for a picture inside the interface — which is how many copies there are
+        ///        of the rows and of the positions a refit reads.
         SceneAcceleration(const Device& device, Batch& batch, const SceneDesc& scene,
-            std::span<const InstanceRecord> records, std::span<const TextureData> textures);
+            std::span<const InstanceRecord> records, std::span<const TextureData> textures, std::uint32_t slots,
+            Graveyard& graveyard);
         ~SceneAcceleration();
 
         SceneAcceleration(const SceneAcceleration&) = delete;
@@ -95,7 +101,13 @@ namespace Rtx
         /// rows and building them twice was thousands of matrix inversions a frame done again for
         /// the same answer. `scene` must name the same meshes in the same order — the instances
         /// index into the structures this already holds.
-        void place(CommandPool& pool, const SceneDesc& scene, std::span<const InstanceRecord> records, GpuTimer* timer);
+        ///
+        /// **Recorded into `commands` and not submitted**, so the caller decides whether the queue
+        /// is asked now or with the frame. Into `slot`'s copy of the rows and the positions, which
+        /// the caller has made sure no frame is still reading. True where anything was recorded;
+        /// a frame in which nothing moved and nothing deformed records nothing and needs no submit.
+        bool place(VkCommandBuffer commands, const SceneDesc& scene, std::span<const InstanceRecord> records,
+            std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard);
 
         /// Takes in the meshes the scene says arrived and lets go of the ones it says went.
         ///
@@ -104,14 +116,20 @@ namespace Rtx
         /// they were built from are still theirs, and the storage a departing mesh gives back is
         /// handed to the next one that fits. The top level is rebuilt every frame regardless and
         /// picks the change up for nothing.
-        void extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures);
+        ///
+        /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
+        /// the positions, and what it replaces goes to `graveyard` all the same.
+        void extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures, Graveyard& graveyard);
 
         /// Destroys the structures of `meshes` and gives their storage back.
         ///
         /// **Idempotent**, because both the frame that places and the one that appends run it: a
         /// slot whose structure has already gone holds no handle and no room, and asking again is a
         /// pair of comparisons.
-        void release(std::span<const Index> meshes);
+        ///
+        /// The structures go to `graveyard` rather than being destroyed: the last frame's top level
+        /// still names them, and that frame may still be tracing.
+        void release(std::span<const Index> meshes, Graveyard& graveyard);
 
         VkAccelerationStructureKHR getTopLevel() const { return mTopLevel; }
 
@@ -161,11 +179,11 @@ namespace Rtx
         /// material. A micromap belongs to the structure and so to the mesh, while a cutout belongs
         /// to the material — so a mesh two materials disagree about has no one answer to give, and
         /// the honest reply is none at all.
-        void buildMicromaps(
-            Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures, std::span<const Index> meshes);
+        void buildMicromaps(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures,
+            std::span<const Index> meshes, Graveyard& graveyard);
 
         /// Destroys `mesh`'s micromap and gives its room back. Idempotent, like `release`.
-        void releaseMicromap(Index mesh);
+        void releaseMicromap(Index mesh, Graveyard& graveyard);
 
         /// Chains `mesh`'s micromap onto the geometry describing it, where it has one.
         ///
@@ -189,25 +207,26 @@ namespace Rtx
         ///
         /// A slot that already holds one has it destroyed and its room given back first: a slot the
         /// scene took back and handed out again arrives carrying different geometry.
-        void buildMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
+        void buildMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard);
 
         /// Fills the refit build infos and sizes the scratch.
         ///
         /// Leaves `mRefitBuilds` holding exactly this frame's rebuilds and nothing else, which is
         /// what both the caller and `recordRefit` read: a count returned beside a vector that still
         /// held the last frame's entries would be two answers to one question.
-        void prepareRefit(const SceneDesc& scene);
+        void prepareRefit(const SceneDesc& scene, std::uint32_t slot);
 
         /// Everything the top-level build needs before a command buffer exists. The rows the scene
         /// says changed are rewritten where the builder reads them; where the slot table grew, every
         /// row is, and the structure and its scratch are made again for the new count.
-        void prepareTopLevel(const SceneDesc& scene, std::span<const InstanceRecord> records);
+        void prepareTopLevel(
+            const SceneDesc& scene, std::span<const InstanceRecord> records, std::uint32_t slot, Graveyard& graveyard);
 
         /// Writes one row from its record, keeping the counts in step.
         void placeRow(Index slot, const InstanceRecord& record);
 
         /// Makes the top level for `slots` rows, over storage grown to hold it.
-        void sizeTopLevel(std::uint32_t slots);
+        void sizeTopLevel(std::uint32_t slots, Graveyard& graveyard);
 
         void recordRefit(VkCommandBuffer commands, GpuTimer* timer);
         void recordTopLevel(VkCommandBuffer commands, GpuTimer* timer);
@@ -221,7 +240,19 @@ namespace Rtx
         /// reads these in a shader: a hit gets its vertices back out of the structure through
         /// position fetch, so they are a build input and a write target and nothing else — which is
         /// why there is no table of their addresses beside them.
-        BlockedBuffer mPositions{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+        /// One copy per frame in flight, because a refit reads a deforming mesh's positions and
+        /// the frame after next writes the next pose over them. A mesh that never deforms is written
+        /// into the first copy alone: its structure is built from there once and never refitted.
+        std::array<BlockedBuffer, sFrameSlots> mPositions{
+            BlockedBuffer{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) },
+            BlockedBuffer{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) },
+        };
+
+        /// Which poses each copy of the positions has yet to be told, and which rows each copy of
+        /// the instances has. `RowDebt` says how the two frames in flight share one answer.
+        std::array<RowDebt, sFrameSlots> mPositionsOwed;
+        std::array<RowDebt, sFrameSlots> mRowsOwed;
+        std::uint32_t mSlots = 1;
 
         BlockedBuffer mIndices{ Shaders::INDEX_BLOCK, sizeof(std::uint32_t) };
 
@@ -242,7 +273,7 @@ namespace Rtx
         /// scene says changed are rewritten in place, where the builder reads them. A gap is an
         /// inactive row — a reference of nought — and not a row left out, because a row's index is
         /// the slot a hit reads back.
-        HostBuffer mInstances;
+        std::array<HostBuffer, sFrameSlots> mInstances;
 
         std::vector<VkAccelerationStructureKHR> mBottomLevel;
 

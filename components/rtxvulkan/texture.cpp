@@ -11,6 +11,7 @@
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "device.hpp"
+#include "graveyard.hpp"
 #include "result.hpp"
 
 namespace Rtx
@@ -267,8 +268,8 @@ namespace Rtx
         }
     }
 
-    TextureArray::TextureArray(
-        const Device& device, Batch& batch, std::uint32_t slots, std::span<const TextureData> textures)
+    TextureArray::TextureArray(const Device& device, Batch& batch, std::uint32_t slots,
+        std::span<const TextureData> textures, Graveyard& graveyard)
         : mDevice(device)
     {
         if (slots > sMaxTextures)
@@ -278,7 +279,7 @@ namespace Rtx
         // **The shading table exists from here.** An array with no textures in it is asked for none
         // and would grow to nothing, and the descriptor the shader declares would be bound to a null
         // handle — which is undefined at the dispatch and cost this renderer a device.
-        growTo(mShading, device, 0, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        graveyard.bury(growTo(mShading, device, 0, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));
 
         const VkSamplerCreateInfo sampler{
             .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -335,12 +336,12 @@ namespace Rtx
         mTextures.resize(slots);
         mShadingValues.assign(std::size_t{ slots } * sShadingCells, 1.0f);
 
-        write(batch, textures);
+        write(batch, textures, graveyard);
 
         // **A scene with no textures still binds the shading buffer**, and `write` has nothing to do
         // for one — so the neutral map that stands in for an empty array is made here rather than
         // inside a path that returns before it.
-        growShading();
+        growShading(graveyard);
     }
 
     void TextureArray::reserveSlot(std::uint32_t slot)
@@ -355,7 +356,7 @@ namespace Rtx
             mTextures.resize(slot + 1);
     }
 
-    void TextureArray::write(Batch& batch, std::span<const TextureData> arrived)
+    void TextureArray::write(Batch& batch, std::span<const TextureData> arrived, Graveyard& graveyard)
     {
         if (arrived.empty())
             return;
@@ -364,17 +365,18 @@ namespace Rtx
         {
             reserveSlot(texture.mSlot);
 
-            // Assigned rather than emplaced, so whatever the slot held is destroyed here — after its
-            // descriptor has stopped being the one bound and before the new one replaces it.
-            mTextures[texture.mSlot] = Texture(mDevice, batch, texture, "texture " + std::to_string(texture.mSlot));
+            // What the slot held is buried and not destroyed: its descriptor is the one a frame in
+            // flight bound, and it stays valid until that frame's fence says nothing reads it.
+            graveyard.bury(std::exchange(mTextures[texture.mSlot],
+                Texture(mDevice, batch, texture, "texture " + std::to_string(texture.mSlot))));
         }
 
         gatherShadingAt(arrived, mShadingValues);
-        reshade(arrived);
+        reshade(arrived, graveyard);
         describe(arrived);
     }
 
-    void TextureArray::drop(std::span<const std::uint32_t> slots)
+    void TextureArray::drop(std::span<const std::uint32_t> slots, Graveyard& graveyard)
     {
         for (const std::uint32_t slot : slots)
         {
@@ -383,8 +385,9 @@ namespace Rtx
             if (slot >= mTextures.size())
                 continue;
 
-            // Assigned rather than erased, so the image is destroyed and the slot stays where it is.
-            mTextures[slot] = Texture();
+            // Exchanged rather than erased, so the slot stays where it is and the image goes under
+            // the frame that may still name it.
+            graveyard.bury(std::exchange(mTextures[slot], Texture()));
         }
     }
 
@@ -422,9 +425,9 @@ namespace Rtx
             mDevice.getHandle(), static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }
 
-    void TextureArray::reshade(std::span<const TextureData> arrived)
+    void TextureArray::reshade(std::span<const TextureData> arrived, Graveyard& graveyard)
     {
-        if (growShading())
+        if (growShading(graveyard))
             return;
 
         for (const TextureData& texture : arrived)
@@ -433,7 +436,7 @@ namespace Rtx
                     .subspan(std::size_t{ texture.mSlot } * sShadingCells, sShadingCells));
     }
 
-    bool TextureArray::growShading()
+    bool TextureArray::growShading(Graveyard& graveyard)
     {
         // One texture's worth even for a scene with none: a buffer of nothing is not a legal thing
         // to make, and the descriptor is bound either way.
@@ -454,7 +457,7 @@ namespace Rtx
         // **`growTo` and not a constructor, because an array with no textures in it still has this
         // descriptor.** Sized to nought it was never made at all, and the null handle reached
         // `vkCmdDispatch` — undefined, and the device this renderer lost.
-        growTo(mShading, mDevice, room * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        graveyard.bury(growTo(mShading, mDevice, room * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));
         mShading.write(values);
         return true;
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -75,10 +76,11 @@ namespace Rtx::Testing
         const Rtx::SceneStats& getSceneStats() const override { return mStats; }
         void resize(std::uint32_t, std::uint32_t) override {}
         Rtx::FrameExtents getExtents() const override { return {}; }
-        Rtx::FrameResult renderFrame(const Rtx::Shaders::VisibilityConstants&, const Rtx::FrameOptions&) override
+        Rtx::Reconstruction renderFrame(const Rtx::Shaders::VisibilityConstants&, const Rtx::FrameOptions&) override
         {
             return {};
         }
+        std::optional<Rtx::FrameResult> finishFrame() override { return std::nullopt; }
         bool presentFrame() override { return true; }
 
         /// The GUI is not what this counts. Slots go up and nothing is drawn.

@@ -212,11 +212,13 @@ namespace Rtx
             const Tile& tile = mTiles[index];
             const std::uint32_t grid = static_cast<std::uint32_t>(sWaveTiles[index].mGrid);
 
-            // Every level is written whole below, so none needs what the last frame left in it.
+            // Every level is written whole below, so none needs what the last frame left in it —
+            // but the last frame's trace may still be sampling it, and the last frame's chain may
+            // still be blitting it, so the discard waits for everything ahead of it on the queue.
             for (const Image* image : { tile.mSurface.get(), tile.mCurvature.get() })
                 image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                    VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
             const std::array<VkDescriptorBufferInfo, 3> blocks{
                 VkDescriptorBufferInfo{ tile.mAmplitudes.getHandle(), 0, VK_WHOLE_SIZE },

@@ -25,11 +25,13 @@ namespace Rtx
     /// slower than the host memory the caller built the data in. So this exposes no readable pointer
     /// and no way to accumulate in place — a caller assembles into an ordinary vector and copies once.
     ///
-    /// **Nothing here synchronises, because the renderer has one frame in flight.** `renderFrame`
-    /// ends in a submit and a wait on its fence, so the trace that read this buffer has finished
-    /// before anything writes it again. A ring of staging blocks would be guarding a hazard this
-    /// renderer does not have. A host write made before a submit is visible to that submit without a
-    /// barrier, which is what makes the build commands that read these safe in the same recording.
+    /// **Nothing here synchronises, because the owner keeps one of these per frame in flight.**
+    /// `SceneBuffers` holds a copy of each table per frame slot and writes the copy the frame before
+    /// last has finished with — `RowDebt` is what each copy still owes — so the trace that read this
+    /// buffer has finished before anything writes it again. A ring of staging blocks inside the
+    /// buffer would be guarding the same hazard twice. A host write made before a submit is visible
+    /// to that submit without a barrier, which is what makes the build commands that read these
+    /// safe in the same recording.
     class HostBuffer
     {
     public:
@@ -102,5 +104,10 @@ namespace Rtx
     ///
     /// Keeps whatever it already has where that is big enough, so a table settles at its high-water
     /// mark rather than being made again every frame.
-    void growTo(HostBuffer& held, const Device& device, VkDeviceSize bytes, VkBufferUsageFlags usage);
+    ///
+    /// **Hands back what it displaced**, or an empty buffer where nothing was: a table too small
+    /// may still be read by a frame in flight, so the caller buries it under that frame rather than
+    /// letting it go here.
+    [[nodiscard]] HostBuffer growTo(
+        HostBuffer& held, const Device& device, VkDeviceSize bytes, VkBufferUsageFlags usage);
 }

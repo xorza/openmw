@@ -95,15 +95,17 @@ namespace Rtx
         mMemory = DeviceMemory();
     }
 
-    void growTo(HostBuffer& held, const Device& device, VkDeviceSize bytes, VkBufferUsageFlags usage)
+    HostBuffer growTo(HostBuffer& held, const Device& device, VkDeviceSize bytes, VkBufferUsageFlags usage)
     {
         // **One byte and not none.** Vulkan has no zero-sized buffer, so a table with nothing in it
         // still gets the smallest one that can be bound — which is what the shader's descriptor
         // needs and what nothing in it has to read.
         const VkDeviceSize wanted = std::max(bytes, VkDeviceSize{ 1 });
         if (held.getSize() >= wanted)
-            return;
+            return HostBuffer{};
 
+        HostBuffer displaced = std::move(held);
         held = HostBuffer(device, wanted, usage);
+        return displaced;
     }
 }

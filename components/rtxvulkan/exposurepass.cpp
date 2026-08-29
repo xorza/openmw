@@ -56,12 +56,14 @@ namespace Rtx
         // there is one set of these buffers, so the measurement about to overwrite them may start
         // while the curve reading them for the frame before is still running. A barrier orders
         // against everything already submitted to the queue, which is the whole of what a
-        // write-after-read needs; nothing has to be made visible.
+        // write-after-read needs; nothing has to be made visible. The frame before's own clear and
+        // update are in the source scope too, because a write after a write is a hazard of its own.
         const std::array<VkBufferMemoryBarrier2, 2> barriers{
             VkBufferMemoryBarrier2{
                 .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+                    | VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 .dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
                 .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -71,8 +73,10 @@ namespace Rtx
             },
             VkBufferMemoryBarrier2{
                 .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                .srcStageMask
+                = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
+                .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+                    | VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 // **Read as well as written**, because the reduction now moves the previous frame's
                 // exposure toward this frame's measurement: the write before it has to be visible
                 // and not merely ordered.

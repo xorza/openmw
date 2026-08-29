@@ -340,16 +340,17 @@ namespace Rtx
         /// nothing else should: the trace is then specialized without the atomic entirely.
         std::uint32_t mHits = 0;
 
-        /// The submit and the wait for it. Timed by the backend because only it knows where that
-        /// boundary is.
-        double mTraceMs = 0.0;
+        /// How long `finishFrame` waited for this frame's fence: what the CPU stood still for the
+        /// GPU. Nought where the frame was already finished when it was asked for, which is what a
+        /// caller with a frame's worth of work to do meanwhile sees.
+        double mWaitMs = 0.0;
 
         /// Where the device spent this frame, in the order the work was recorded — the structure
         /// builds this frame asked for, then the passes that drew it. Empty where the device cannot
         /// write timestamps.
         ///
-        /// **Borrowed from the renderer and valid until the next frame**, because a frame path that
-        /// allocated a vector to report its own cost would be measuring itself.
+        /// **Borrowed from the renderer and valid until the frame after next is finished**, because
+        /// a frame path that allocated a vector to report its own cost would be measuring itself.
         std::span<const GpuSpan> mGpu;
 
         /// What put this frame back together, as the renderer resolved it.
@@ -475,7 +476,23 @@ namespace Rtx
         virtual FrameExtents getExtents() const = 0;
 
         /// Traces one frame. `setScene` first, which is a contract and so an assert.
-        virtual FrameResult renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) = 0;
+        ///
+        /// **Returns before the device has drawn it.** The frame is submitted and the call comes
+        /// back, so the caller can walk and place the next one while this one is traced; what the
+        /// frame came to is read back by `finishFrame`. At most two frames are in flight: the third
+        /// waits for the first. What the call decided about reconstruction is returned here because
+        /// it is known here.
+        virtual Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) = 0;
+
+        /// Waits for the oldest frame still in flight and says what it came to, or nothing where
+        /// none is.
+        ///
+        /// **Where the pipeline is paid for and where it pays.** Called straight after `renderFrame`
+        /// it waits the frame out, which is a screenshot and a test; called after the next frame's
+        /// walk it usually finds the fence already signalled, which is a game. A caller that never
+        /// calls it loses nothing but the numbers: a frame's resources are reclaimed when a later
+        /// frame needs its slot.
+        virtual std::optional<FrameResult> finishFrame() = 0;
 
         /// Shows the frame `renderFrame` just produced, where this renderer was given a window.
         ///

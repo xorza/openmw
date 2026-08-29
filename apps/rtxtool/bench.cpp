@@ -6,6 +6,7 @@
 #include <format>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -64,7 +65,7 @@ namespace RtxTool
                          megabytes(place.mScene.mTextureBytes))
                   << std::format("  build {:.0f} ms   {:.1f}% of primary rays hit\n", place.mBuildMs, place.mHitPercent)
                   << Rtx::describeHeadings() << Rtx::describeTimes("frame ms", place.mFrame)
-                  << Rtx::describeTimes("trace ms", place.mTrace) << Rtx::describeTimes("place ms", place.mPlace);
+                  << Rtx::describeTimes("wait ms", place.mWait) << Rtx::describeTimes("place ms", place.mPlace);
 
             // **The device's own account of the same frame, medians only.** Six distributions would
             // be a wall; what this row answers is "which of them is the expensive one", and the row
@@ -127,7 +128,7 @@ namespace RtxTool
                             R"("crossBuildMs": {:.2f}, "travelled": {:.4f}, )",
                             place.mCrossings, place.mCrossRebuilds, place.mCrossWorstMs, place.mCrossReadMs,
                             place.mCrossBuildMs, place.mTravelled)
-                     << R"("frameMs": )" << asJson(place.mFrame) << R"(, "traceMs": )" << asJson(place.mTrace)
+                     << R"("frameMs": )" << asJson(place.mFrame) << R"(, "waitMs": )" << asJson(place.mWait)
                      << R"(, "placeMs": )" << asJson(place.mPlace) << R"(, "gpuMs": {)";
 
                 for (std::size_t zone = 0; zone < place.mGpu.size(); ++zone)
@@ -227,10 +228,10 @@ namespace RtxTool
         places.reserve(request.mViews.size());
 
         std::vector<double> frameTimes;
-        std::vector<double> traceTimes;
+        std::vector<double> waitTimes;
         std::vector<double> placeTimes;
         frameTimes.reserve(measured);
-        traceTimes.reserve(measured);
+        waitTimes.reserve(measured);
         placeTimes.reserve(measured);
 
         bool stopped = false;
@@ -274,7 +275,7 @@ namespace RtxTool
             const float far = std::max(staged.getScene().getBounds().radius() * 8.0f, 10000.0f);
 
             frameTimes.clear();
-            traceTimes.clear();
+            waitTimes.clear();
             placeTimes.clear();
 
             std::uint32_t crossings = 0;
@@ -379,11 +380,15 @@ namespace RtxTool
                 // by. Held to the frame index so the same run draws the same samples twice over.
                 framing.mFrame = frame;
 
-                const Rtx::FrameResult result
-                    = renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
-                        Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                            .mFilter = request.mFilter,
-                            .mExposure = request.mExposure });
+                renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
+                    Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                        .mFilter = request.mFilter,
+                        .mExposure = request.mExposure });
+
+                // **The frame before, which is the one the device has finished** — waited for here,
+                // where the game waits for it, so the frame time below is the pipelined one: this
+                // frame's record beside the device drawing the last.
+                const std::optional<Rtx::FrameResult> result = renderer->finishFrame();
 
                 if (window != nullptr && !renderer->presentFrame())
                     renderer->resize(window->getWidth(), window->getHeight());
@@ -393,11 +398,26 @@ namespace RtxTool
                 if (frame >= warmup)
                 {
                     frameTimes.push_back(frameMs);
-                    traceTimes.push_back(result.mTraceMs);
                     placeTimes.push_back(placeMs);
-                    gpu.add(result.mGpu);
-                    hits = result.mHits;
+                    if (result.has_value())
+                    {
+                        waitTimes.push_back(result->mWaitMs);
+                        gpu.add(result->mGpu);
+                        hits = result->mHits;
+                    }
                 }
+            }
+
+            // The last frame is still on the device when the loop ends, and its row is owed.
+            for (std::optional<Rtx::FrameResult> last = renderer->finishFrame(); last.has_value();
+                 last = renderer->finishFrame())
+            {
+                if (frameTimes.empty())
+                    continue;
+
+                waitTimes.push_back(last->mWaitMs);
+                gpu.add(last->mGpu);
+                hits = last->mHits;
             }
 
             const Clock::time_point runEnd = Clock::now();
@@ -421,7 +441,7 @@ namespace RtxTool
                 .mFrames = static_cast<std::uint32_t>(frameTimes.size()),
                 .mWallSeconds = std::chrono::duration<double>(runEnd - runStart).count(),
                 .mFrame = Rtx::summarise(frameTimes),
-                .mTrace = Rtx::summarise(traceTimes),
+                .mWait = Rtx::summarise(waitTimes),
                 .mPlace = Rtx::summarise(placeTimes),
                 .mGpu = std::vector<Rtx::GpuZone>(zones.begin(), zones.end()),
                 .mHitPercent = static_cast<double>(hits) / pixels * 100.0,

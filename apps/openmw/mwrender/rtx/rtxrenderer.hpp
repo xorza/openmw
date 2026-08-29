@@ -229,10 +229,6 @@ namespace MWRender
         /// Hands MyGUI's triangles to the renderer, where there is a GUI up at all.
         void drawGui();
 
-        /// The interface, then the surface — the two things a frame owes whether or not there was a
-        /// world in it.
-        void finishFrame();
-
         /// Draws whatever asked before there was a world to draw it against.
         void drawDeferredViews();
 

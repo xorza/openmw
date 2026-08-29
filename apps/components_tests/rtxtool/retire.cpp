@@ -337,21 +337,22 @@ namespace RtxTool
             // the same geometry, so the same view of it is what makes the pictures comparable at all.
             const Placement placement = placeCamera(alone.getBounds(), 60.0f, std::nullopt, std::nullopt);
 
-            const auto draw = [&](const Rtx::SceneDesc& drawn, const CellLighting& lit,
-                                  std::vector<std::uint8_t>& out) {
-                const Rtx::SceneTextures described(drawn, world->getImageManager());
-                renderer->setScene(Rtx::sWorld, drawn, described.getDescriptions(), Rtx::SeaState{});
+            const auto draw
+                = [&](const Rtx::SceneDesc& drawn, const CellLighting& lit, std::vector<std::uint8_t>& out) {
+                      const Rtx::SceneTextures described(drawn, world->getImageManager());
+                      renderer->setScene(Rtx::sWorld, drawn, described.getDescriptions(), Rtx::SeaState{});
 
-                Rtx::Shaders::VisibilityConstants camera = Rtx::makeCamera(placement.mOrigin, placement.mTarget, 60.0f,
-                    extents.mRenderWidth, extents.mRenderHeight, 100000.0f);
-                applyLighting(lit, camera);
+                      Rtx::Shaders::VisibilityConstants camera = Rtx::makeCamera(placement.mOrigin, placement.mTarget,
+                          60.0f, extents.mRenderWidth, extents.mRenderHeight, 100000.0f);
+                      applyLighting(lit, camera);
 
-                // Held rather than measured: an exposure taken off the frame turns any difference at
-                // all into a difference everywhere, which is a worse instrument than the pixels.
-                const Rtx::FrameResult result = renderer->renderFrame(camera, Rtx::FrameOptions{ .mExposure = 1.0f });
-                renderer->readPixels(out);
-                return result.mHits;
-            };
+                      // Held rather than measured: an exposure taken off the frame turns any difference at
+                      // all into a difference everywhere, which is a worse instrument than the pixels.
+                      renderer->renderFrame(camera, Rtx::FrameOptions{ .mExposure = 1.0f });
+                      const Rtx::FrameResult result = renderer->finishFrame().value();
+                      renderer->readPixels(out);
+                      return result.mHits;
+                  };
 
             std::vector<std::uint8_t> compacted;
             std::vector<std::uint8_t> whole;

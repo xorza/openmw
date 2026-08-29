@@ -143,6 +143,7 @@ set(RTX_VULKAN_FILES
     exposurepass.hpp
     fogtile.cpp
     fogtile.hpp
+    frameslots.hpp
     gbuffer.cpp
     gbuffer.hpp
     graphicspipeline.cpp
@@ -153,6 +154,8 @@ set(RTX_VULKAN_FILES
     guitextures.hpp
     gputimer.cpp
     gputimer.hpp
+    graveyard.cpp
+    graveyard.hpp
     hostbuffer.cpp
     hostbuffer.hpp
     image.cpp

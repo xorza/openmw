@@ -381,22 +381,6 @@ namespace MWRender
             gui->collectDrawCalls();
     }
 
-    /// **The frame the trace made, on the screen, before the call that made it returns.** No
-    /// composite, no interop and no rasterized frame underneath, which is what takes an interop
-    /// path's frame of latency out.
-    ///
-    /// **Traced or not, the frame is presented.** A walk that placed nothing, an eye with no roll
-    /// and a world nobody is being shown are all reasons to leave the target as it is; none is a
-    /// reason to stop feeding the surface, and a window that stops answering is one the compositor
-    /// eventually says so about.
-    void RtxRenderer::finishFrame()
-    {
-        drawGui();
-
-        if (!mRenderer->presentFrame())
-            fitToWindow();
-    }
-
     void RtxRenderer::deferRedraw(TracedView& view)
     {
         if (std::find(mDeferred.begin(), mDeferred.end(), &view) == mDeferred.end())
@@ -427,12 +411,18 @@ namespace MWRender
         mDrawing.clear();
     }
 
+    /// **The frame the trace made, on the screen, before the call that made it returns.** No
+    /// composite, no interop and no rasterized frame underneath, which is what takes an interop
+    /// path's frame of latency out.
+    ///
+    /// **Traced or not, the frame is presented**, which is why the world's path ends here as well as
+    /// the interface's. A walk that placed nothing, an eye with no roll and a world nobody is being
+    /// shown are all reasons to leave the target as it is; none is a reason to stop feeding the
+    /// surface, and a window that stops answering is one the compositor eventually says so about.
+    /// What the GUI goes over is then the last frame traced, or black where nothing has been — a
+    /// main menu, or the moment before the first cell finishes loading.
     void RtxRenderer::renderGui()
     {
-        // **The GUI over whatever the target holds**, which is the last frame traced, or black
-        // where nothing has been — a main menu, or the moment before the first cell finishes
-        // loading. The surface has to be fed either way or the compositor decides the window has
-        // stopped answering.
         drawGui();
 
         if (!mRenderer->presentFrame())
@@ -591,7 +581,7 @@ namespace MWRender
         // being handed the loading screen in one step.
         if (!drawsWorld())
         {
-            finishFrame();
+            renderGui();
             return;
         }
 
@@ -661,7 +651,7 @@ namespace MWRender
 
         const bool traced = traceWorld(frame, found);
 
-        finishFrame();
+        renderGui();
 
         // **After the frame and not before the walk.** Where everything stood this frame is what
         // the next one measures its motion against, and saying so any earlier would have this frame
@@ -933,31 +923,39 @@ namespace MWRender
         const float bias = room.has_value() ? room->mExposureBias
                                             : Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient);
 
-        const Rtx::FrameResult result
+        const Rtx::Reconstruction reconstruction
             = mRenderer->renderFrame(constants, Rtx::FrameOptions{ .mExposureBias = bias, .mExposure = std::nullopt });
 
+        // **The frame before this one, which is the one the device has finished.** Waited for here
+        // rather than where the next placement would have to — it is the same wait — so that a
+        // frame's report reaches the bench the frame after it was drawn, and the CPU stays one
+        // frame ahead of the device and no more.
+        const std::optional<Rtx::FrameResult> result = mRenderer->finishFrame();
+
         // **The whole frame, measured between one trace and the next.** Everything the game does
-        // in between is in it — update, cull, the rasterizer, this — which is what a player feels
-        // and what `result.mTraceMs` on its own cannot say.
+        // in between is in it — update, cull, this — which is what a player feels and what the
+        // wait on the device on its own cannot say.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-        if (mEnteredOnce)
-            mBench.frame(result, std::chrono::duration<double, std::milli>(now - mEntered).count());
+        if (mEnteredOnce && result.has_value())
+            mBench.frame(*result, std::chrono::duration<double, std::milli>(now - mEntered).count());
 
         mEntered = now;
         mEnteredOnce = true;
 
-        mSpentMs += result.mTraceMs;
+        if (result.has_value())
+            mSpentMs += result->mWaitMs;
         if (++mTimed == sReportEvery)
         {
             // **The emitters among it, because they are the half a placement count does not carry.**
             // Sprites are not instances and never enter that number, so a cell whose every flame,
             // brazier and raindrop had stopped read exactly like one whose emitters were running.
-            Log(Debug::Info) << "Ray tracing: " << mSpentMs / mTimed << " ms a frame over the last " << mTimed
-                             << ", tracing " << mScene.getPlacedCount() << " instances and "
-                             << mScene.getEmitters().size() << " emitters holding " << mScene.getSprites().size()
-                             << " sprites at " << extents.mRenderWidth << "x" << extents.mRenderHeight
-                             << ", reconstructed by " << Rtx::denoiserName(result.mReconstruction.mDenoiser) << " to "
-                             << extents.mOutputWidth << "x" << extents.mOutputHeight;
+            Log(Debug::Info) << "Ray tracing: waited " << mSpentMs / mTimed
+                             << " ms a frame for the device over the last " << mTimed << ", tracing "
+                             << mScene.getPlacedCount() << " instances and " << mScene.getEmitters().size()
+                             << " emitters holding " << mScene.getSprites().size() << " sprites at "
+                             << extents.mRenderWidth << "x" << extents.mRenderHeight << ", reconstructed by "
+                             << Rtx::denoiserName(reconstruction.mDenoiser) << " to " << extents.mOutputWidth << "x"
+                             << extents.mOutputHeight;
             mSpentMs = 0.0;
             mTimed = 0;
         }

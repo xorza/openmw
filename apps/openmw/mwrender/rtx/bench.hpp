@@ -44,9 +44,9 @@ namespace MWRender
 
         /// Takes one traced frame. Reports and asks the game to quit once the run is done.
         ///
-        /// `frameMs` is the whole frame and not the trace: measured from one call to the next, so it
+        /// `frameMs` is the whole frame and not the wait: measured from one call to the next, so it
         /// carries everything the game does between them — which is the number a player feels and
-        /// the one `result.mTraceMs` cannot see.
+        /// the one `result.mWaitMs` cannot see.
         void frame(const Rtx::FrameResult& result, double frameMs);
 
     private:

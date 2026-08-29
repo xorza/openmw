@@ -115,12 +115,14 @@ namespace RtxTool
 
         /// The whole per-frame cost, and the two shares of it worth telling apart.
         ///
-        /// **`mTrace` is the renderer drawing and `mPlace` is the renderer being told what moved** —
-        /// the top level rebuilt and every skinned mesh's structure refitted. What is left over is
-        /// the harness standing in for the game: posing the actors, running the emitters and walking
-        /// the graph again. Lumping the three would hide which of them a place is slow because of.
+        /// **`mWait` is the CPU standing still for the device and `mPlace` is the renderer being
+        /// told what moved** — the top level rebuilt and every skinned mesh's structure refitted.
+        /// What is left over is the harness standing in for the game — posing the actors, running
+        /// the emitters and walking the graph again — and the frame's own record. Lumping the three
+        /// would hide which of them a place is slow because of; a wait near the frame is a device
+        /// that cannot keep up, and a wait near nought is a CPU that cannot.
         Rtx::FrameTimes mFrame;
-        Rtx::FrameTimes mTrace;
+        Rtx::FrameTimes mWait;
         Rtx::FrameTimes mPlace;
 
         /// What the device itself says each stretch of the frame cost, most expensive first. Empty

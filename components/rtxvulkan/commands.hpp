@@ -12,6 +12,7 @@
 namespace Rtx
 {
     class Device;
+    class Graveyard;
 
     /// A command pool and the one-shot submit that setup work is made of.
     ///
@@ -45,6 +46,9 @@ namespace Rtx
         /// nothing else. They live as long as the pool does and are not freed individually.
         std::vector<VkCommandBuffer> allocate(std::uint32_t count);
 
+        /// Begins one of them, one-shot like everything this pool hands out.
+        void begin(VkCommandBuffer commands);
+
         /// Frees every buffer this pool has handed out, and forgets what they referenced.
         ///
         /// **A recorded buffer keeps its resources alive as far as the layers are concerned**, so an
@@ -63,6 +67,18 @@ namespace Rtx
         /// ahead of it by the barriers each upload and build ends in, and the round trip they cost
         /// is the one the placement was already paying. Ends `commands`.
         void defer(VkCommandBuffer commands, std::vector<Buffer>&& staging, std::vector<HostBuffer>&& hostStaging);
+
+        /// Submits `commands` behind whatever was deferred, signalling `fence` where one is given,
+        /// and does not wait. Ends `commands`. What the deferred batches read from goes to `kept`,
+        /// to be let go when the caller knows the queue has passed it.
+        ///
+        /// **The frame's own submit.** `submitAndWait` is for the one-off; a frame that waited on
+        /// its own trace could not hand the CPU the next frame's walk to do meanwhile, which is the
+        /// whole of what two frames in flight buys.
+        void submit(VkCommandBuffer commands, VkFence fence, Graveyard& kept);
+
+        /// Frees one-shot command buffers this pool handed out and the queue has finished with.
+        void free(std::span<const VkCommandBuffer> commands);
 
     private:
         friend class Batch;

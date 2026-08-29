@@ -6,6 +6,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <components/rtx/alphabounds.hpp>
 #include <components/rtx/alphaimage.hpp>
@@ -17,6 +18,7 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "gputimer.hpp"
+#include "graveyard.hpp"
 #include "result.hpp"
 
 namespace Rtx
@@ -152,6 +154,33 @@ namespace Rtx
         };
 
         /// Everything between a build and whatever reads the structure it wrote.
+        /// Orders a build after the trace before it on the queue, which may still be reading what
+        /// the build is about to write.
+        ///
+        /// **What the fence used to be.** With one frame in flight the trace had finished before the
+        /// next placement was recorded; with two it has not, and a top level or a refit built over
+        /// a structure a ray is walking is a torn structure. An execution dependency is all a
+        /// write-after-read needs.
+        void barrierBeforeBuild(VkCommandBuffer commands)
+        {
+            const VkMemoryBarrier2 barrier{
+                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                .srcStageMask
+                = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                .srcAccessMask
+                = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+                .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                .dstAccessMask
+                = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+            };
+            const VkDependencyInfo dependency{
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .memoryBarrierCount = 1,
+                .pMemoryBarriers = &barrier,
+            };
+            vkCmdPipelineBarrier2(commands, &dependency);
+        }
+
         void barrierAfterBuild(VkCommandBuffer commands)
         {
             const VkMemoryBarrier2 barrier{
@@ -182,12 +211,15 @@ namespace Rtx
     }
 
     SceneAcceleration::SceneAcceleration(const Device& device, Batch& batch, const SceneDesc& scene,
-        std::span<const InstanceRecord> records, std::span<const TextureData> textures)
+        std::span<const InstanceRecord> records, std::span<const TextureData> textures, const std::uint32_t slots,
+        Graveyard& graveyard)
         : mDevice(device)
+        , mSlots(slots)
     {
-        assert(scene.getPlacedCount() > 0);
+        assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies of the rows");
 
-        mPositions.open(device, sBuildInputUsage, "positions");
+        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+            mPositions[slot].open(device, sBuildInputUsage, "positions");
         mIndices.open(device, sBuildInputUsage, "indices");
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
@@ -197,12 +229,17 @@ namespace Rtx
 
         writeGeometry(scene, mEveryMesh);
 
+        // Every copy of the positions holds what it will ever read from here, so what a copy owes
+        // from now on is the poses it missed.
+        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+            mPositionsOwed[slot].settle();
+
         // **The geometry, every micromap, every bottom level and the top level in one submit.** Each
         // was its own round trip; the host writes above are visible to the submit without a barrier,
         // and each stage ends in the barrier the next one needs.
-        buildMicromaps(batch, scene, textures, mEveryMesh);
-        buildMeshes(batch, scene, mEveryMesh);
-        prepareTopLevel(scene, records);
+        buildMicromaps(batch, scene, textures, mEveryMesh, graveyard);
+        buildMeshes(batch, scene, mEveryMesh, graveyard);
+        prepareTopLevel(scene, records, 0, graveyard);
         recordTopLevel(batch.getCommands(), nullptr);
     }
 
@@ -226,7 +263,8 @@ namespace Rtx
     {
         // The scene's own reach, so a block exists for every run it has handed out. Blocks already
         // made are left exactly where they are.
-        mPositions.reserve(static_cast<std::uint32_t>(scene.getPositions().size()));
+        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+            mPositions[slot].reserve(static_cast<std::uint32_t>(scene.getPositions().size()));
         mIndices.reserve(static_cast<std::uint32_t>(scene.getIndices().size()));
 
         for (const Index mesh : meshes)
@@ -235,13 +273,20 @@ namespace Rtx
             if (range.mVertexCount == 0)
                 continue;
 
-            mPositions.writeAt(
-                range.mVertexOffset, scene.getPositions().subspan(range.mVertexOffset, range.mVertexCount));
+            // The first copy is what a structure is built from; a mesh that deforms is refitted from
+            // whichever copy its frame owns, so it goes into every one.
+            const std::span<const osg::Vec3f> positions
+                = scene.getPositions().subspan(range.mVertexOffset, range.mVertexCount);
+            mPositions[0].writeAt(range.mVertexOffset, positions);
+            if (range.mDeforming)
+                for (std::uint32_t slot = 1; slot < mSlots; ++slot)
+                    mPositions[slot].writeAt(range.mVertexOffset, positions);
+
             mIndices.writeAt(range.mIndexOffset, scene.getIndices().subspan(range.mIndexOffset, range.mIndexCount));
         }
     }
 
-    void SceneAcceleration::release(std::span<const Index> meshes)
+    void SceneAcceleration::release(std::span<const Index> meshes, Graveyard& graveyard)
     {
         for (const Index mesh : meshes)
         {
@@ -250,26 +295,25 @@ namespace Rtx
             if (mesh >= mBottomLevel.size())
                 continue;
 
-            if (mBottomLevel[mesh] != VK_NULL_HANDLE)
-                mDevice.getFunctions().mDestroyAccelerationStructure(mDevice.getHandle(), mBottomLevel[mesh], nullptr);
+            graveyard.bury(mBottomLevel[mesh]);
+            graveyard.bury(mBottomLevelStorage, mBottomLevelRooms[mesh]);
 
             mBottomLevel[mesh] = VK_NULL_HANDLE;
             mBottomLevelAddresses[mesh] = 0;
-            mBottomLevelStorage.give(mBottomLevelRooms[mesh]);
             mBottomLevelRooms[mesh] = StructureRoom{};
 
-            releaseMicromap(mesh);
+            releaseMicromap(mesh, graveyard);
         }
     }
 
-    void SceneAcceleration::releaseMicromap(Index mesh)
+    void SceneAcceleration::releaseMicromap(Index mesh, Graveyard& graveyard)
     {
         if (mesh >= mMicromaps.size() || mMicromaps[mesh] == VK_NULL_HANDLE)
             return;
 
-        mDevice.getFunctions().mDestroyMicromap(mDevice.getHandle(), mMicromaps[mesh], nullptr);
+        graveyard.bury(mMicromaps[mesh]);
+        graveyard.bury(mMicromapStorage, mMicromapRooms[mesh]);
         mMicromaps[mesh] = VK_NULL_HANDLE;
-        mMicromapStorage.give(mMicromapRooms[mesh]);
         mMicromapRooms[mesh] = StructureRoom{};
         mMicromapUsage[mesh].mCount = 0;
         mMicromapTallies[mesh] = MicromapTally{};
@@ -313,20 +357,22 @@ namespace Rtx
         return total;
     }
 
-    void SceneAcceleration::extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures)
+    void SceneAcceleration::extend(
+        Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures, Graveyard& graveyard)
     {
-        // **Departures first, so the room they give back is there for the arrivals.** The two lists
-        // are disjoint, so a slot handed out again appears only among the arrivals and is dealt with
-        // by `buildMeshes`, which destroys whatever the slot was holding.
-        release(scene.getFreedMeshes());
+        // **Departures first, and their rooms go to the graveyard rather than straight back**, so an
+        // arrival this frame cannot be built into room a frame in flight is still tracing. The two
+        // lists are disjoint, so a slot handed out again appears only among the arrivals and is
+        // dealt with by `buildMeshes`, which buries whatever the slot was holding.
+        release(scene.getFreedMeshes(), graveyard);
 
         writeGeometry(scene, scene.getArrivedMeshes());
-        buildMicromaps(batch, scene, textures, scene.getArrivedMeshes());
-        buildMeshes(batch, scene, scene.getArrivedMeshes());
+        buildMicromaps(batch, scene, textures, scene.getArrivedMeshes(), graveyard);
+        buildMeshes(batch, scene, scene.getArrivedMeshes(), graveyard);
     }
 
-    void SceneAcceleration::buildMicromaps(
-        Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures, std::span<const Index> meshes)
+    void SceneAcceleration::buildMicromaps(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures,
+        std::span<const Index> meshes, Graveyard& graveyard)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
         const std::size_t slots = scene.getMeshes().size();
@@ -338,7 +384,7 @@ namespace Rtx
 
         // A slot handed out again is holding whatever the mesh before it was classified as.
         for (const Index mesh : meshes)
-            releaseMicromap(mesh);
+            releaseMicromap(mesh, graveyard);
 
         // **No mask, no micromap, and that is a whole answer.** An extend describes the textures
         // that arrived with it, so a mesh appearing beside an image already resident has nothing
@@ -547,7 +593,8 @@ namespace Rtx
         batch.keep(std::move(states));
     }
 
-    void SceneAcceleration::buildMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes)
+    void SceneAcceleration::buildMeshes(
+        Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
         const std::size_t slots = scene.getMeshes().size();
@@ -593,10 +640,10 @@ namespace Rtx
             // two can be the same run.
             if (mBottomLevel[slot] != VK_NULL_HANDLE)
             {
-                functions.mDestroyAccelerationStructure(mDevice.getHandle(), mBottomLevel[slot], nullptr);
+                graveyard.bury(mBottomLevel[slot]);
+                graveyard.bury(mBottomLevelStorage, mBottomLevelRooms[slot]);
                 mBottomLevel[slot] = VK_NULL_HANDLE;
                 mBottomLevelAddresses[slot] = 0;
-                mBottomLevelStorage.give(mBottomLevelRooms[slot]);
                 mBottomLevelRooms[slot] = StructureRoom{};
             }
 
@@ -609,7 +656,7 @@ namespace Rtx
                                   .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
                                   .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
                                   .vertexData = { .deviceAddress = mesh.mVertexCount > 0
-                                          ? mPositions.addressOf(mesh.mVertexOffset)
+                                          ? mPositions[0].addressOf(mesh.mVertexOffset)
                                           : 0 },
                                   .vertexStride = sizeof(osg::Vec3f),
                                   // **Guarded, because a freed slot has no vertices.** A slot the
@@ -740,9 +787,27 @@ namespace Rtx
         batch.keep(std::move(scratch));
     }
 
-    void SceneAcceleration::prepareRefit(const SceneDesc& scene)
+    void SceneAcceleration::prepareRefit(const SceneDesc& scene, const std::uint32_t slot)
     {
         const std::span<const Index> deformed = scene.getDeformed();
+
+        // **Straight into the memory the builder reads**, with no staging buffer between and no
+        // copy to record; the submit that follows carries an implicit dependency on host writes
+        // made before it, which is what a barrier would otherwise have been for. Into this frame's
+        // copy, which owes every pose since it was last written: the frame before last's as well as
+        // this one's, or a mesh that stood still this frame would be refitted from a pose two
+        // frames old the next time it moved.
+        for (std::uint32_t each = 0; each < mSlots; ++each)
+            mPositionsOwed[each].owe(deformed);
+
+        BlockedBuffer& positions = mPositions[slot];
+        for (const Index mesh : mPositionsOwed[slot].mRows)
+        {
+            const MeshRange& range = scene.getMeshes()[mesh];
+            positions.writeAt(range.mVertexOffset, scene.getMeshPositions(mesh));
+        }
+        mPositionsOwed[slot].settle();
+
         if (deformed.empty())
         {
             // **Emptied and not left alone.** These still hold the last frame's rebuilds, and a
@@ -783,11 +848,6 @@ namespace Rtx
             const Index index = deformed[i];
             const MeshRange& mesh = scene.getMeshes()[index];
 
-            // **Straight into the memory the builder reads**, with no staging buffer between and no
-            // copy to record. The submit below carries an implicit dependency on host writes made
-            // before it, which is what a barrier would otherwise have been for.
-            mPositions.writeAt(mesh.mVertexOffset, scene.getMeshPositions(index));
-
             // The same description the first build was given, which is what makes the structure it
             // produces the same size as the one already sitting at this mesh's offset.
             mRefitGeometries[i] = VkAccelerationStructureGeometryKHR{
@@ -796,7 +856,7 @@ namespace Rtx
                 .geometry = { .triangles = {
                                   .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
                                   .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
-                                  .vertexData = { .deviceAddress = mPositions.addressOf(mesh.mVertexOffset) },
+                                  .vertexData = { .deviceAddress = positions.addressOf(mesh.mVertexOffset) },
                                   .vertexStride = sizeof(osg::Vec3f),
                                   // **Guarded, because a freed slot has no vertices.** A slot the
                                   // scene has taken back keeps its index and its room and holds a
@@ -860,34 +920,41 @@ namespace Rtx
         closeZone(timer, commands);
     }
 
-    void SceneAcceleration::place(
-        CommandPool& pool, const SceneDesc& scene, std::span<const InstanceRecord> records, GpuTimer* timer)
+    bool SceneAcceleration::place(VkCommandBuffer commands, const SceneDesc& scene,
+        std::span<const InstanceRecord> records, const std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard)
     {
-        prepareRefit(scene);
+        assert(slot < mSlots && "a frame slot this scene has no copy of the rows for");
+
+        prepareRefit(scene, slot);
+
+        // Every copy of the rows owes what moved this frame, whether or not this one builds now.
+        for (std::uint32_t each = 0; each < mSlots; ++each)
+            mRowsOwed[each].owe(scene.getMoved());
 
         // **Nothing moved and nothing deformed is nothing to build.** The top level is the same top
         // level; building it again over the same rows was a submit and a fence on every frame of a
         // standing camera. A refit alone still rebuilds the top level, because a top level caches
-        // the bounds of what it names.
+        // the bounds of what it names — and rebuilds it from this frame's copy of the rows, which
+        // is why the copy pays its debt first.
         const bool moved = !scene.getMoved().empty() || records.size() != mRows.size();
-        if (moved)
-            prepareTopLevel(scene, records);
-
         if (!moved && mRefitBuilds.empty())
-            return;
+            return false;
 
-        // **One submit, and the barrier between them is what the fence used to be.** The top level
-        // is built over structures the refit has just rewritten, which is a dependency inside a
-        // command buffer rather than a reason to go round the driver twice.
-        pool.submitAndWait([&](VkCommandBuffer commands) {
-            if (!mRefitBuilds.empty())
-                recordRefit(commands, timer);
+        prepareTopLevel(scene, records, slot, graveyard);
 
-            recordTopLevel(commands, timer);
-        });
+        // The barrier between the refit and the top level is what the fence used to be: the top
+        // level is built over structures the refit has just rewritten, which is a dependency inside
+        // a command buffer rather than a reason to go round the driver twice.
+        barrierBeforeBuild(commands);
+        if (!mRefitBuilds.empty())
+            recordRefit(commands, timer);
+
+        recordTopLevel(commands, timer);
+        return true;
     }
 
-    void SceneAcceleration::prepareTopLevel(const SceneDesc& scene, std::span<const InstanceRecord> records)
+    void SceneAcceleration::prepareTopLevel(
+        const SceneDesc& scene, std::span<const InstanceRecord> records, const std::uint32_t slot, Graveyard& graveyard)
     {
         // **Checked here rather than left to the driver.** A scene that grew a mesh since `setScene`
         // built the structures is a caller breaking `placeScene`'s contract, and the only symptom is
@@ -899,38 +966,52 @@ namespace Rtx
                 + std::to_string(scene.getMeshes().size())
                 + " without being built again; placeScene can only move what setScene made");
 
-        // **Every row where the table grew, and the rows the scene named otherwise.** The slot
-        // table only ever grows — a freed slot is taken over, never closed — so growing is a cell
-        // arriving and not a frame, and it is the one time the structure has to be made for a new
-        // count. A scene with nothing placed still gets a structure over no rows: the trace binds
-        // one whatever the scene holds.
-        const auto slots = static_cast<std::uint32_t>(records.size());
-        if (mTopLevel == VK_NULL_HANDLE || slots > mRows.size())
+        // **Every row where the table grew or this copy was never written, and the rows this copy
+        // owes otherwise.** The slot table only ever grows — a freed slot is taken over, never
+        // closed — so growing is a cell arriving and not a frame, and it is the one time the
+        // structure has to be made for a new count. A scene with nothing placed still gets a
+        // structure over no rows: the trace binds one whatever the scene holds.
+        const auto count = static_cast<std::uint32_t>(records.size());
+        const bool grown = count > mRows.size();
+        if (grown)
         {
-            mRows.resize(slots, VkAccelerationStructureInstanceKHR{});
-            mRowFlags.resize(slots, 0);
+            mRows.resize(count, VkAccelerationStructureInstanceKHR{});
+            mRowFlags.resize(count, 0);
+        }
 
-            for (std::uint32_t slot = 0; slot < slots; ++slot)
-                placeRow(slot, records[slot]);
+        // **This copy's own size and not the mirror's.** The mirror grew when the other copy was
+        // placed, and the rows appended since are owed to this one — but a row written past the
+        // end of a copy that never grew is what the top level would then be built from.
+        HostBuffer& rows = mInstances[slot];
+        RowDebt& owed = mRowsOwed[slot];
+        const VkDeviceSize needed = mRows.size() * sizeof(VkAccelerationStructureInstanceKHR);
+        if (rows.getSize() < needed || owed.mEverything)
+        {
+            for (std::uint32_t at = 0; at < count; ++at)
+                placeRow(at, records[at]);
 
             // **Written where the builder reads it.** Staging these was a buffer made, a copy
             // recorded, a submit and a wait on the queue for a memcpy.
-            growTo(mInstances, mDevice, mRows.size() * sizeof(VkAccelerationStructureInstanceKHR), sBuildInputUsage);
-            mInstances.write(std::span<const VkAccelerationStructureInstanceKHR>(mRows));
-            mDevice.setName(
-                VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mInstances.getHandle()), "instances");
-
-            sizeTopLevel(slots);
+            graveyard.bury(growTo(rows, mDevice, needed, sBuildInputUsage));
+            rows.write(std::span<const VkAccelerationStructureInstanceKHR>(mRows));
+            mDevice.setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(rows.getHandle()), "instances");
         }
         else
         {
-            for (const Index slot : scene.getMoved())
+            for (const Index at : owed.mRows)
             {
-                placeRow(slot, records[slot]);
-                mInstances.writeAt(slot * sizeof(VkAccelerationStructureInstanceKHR),
-                    std::span<const VkAccelerationStructureInstanceKHR>(&mRows[slot], 1));
+                placeRow(at, records[at]);
+                rows.writeAt(at * sizeof(VkAccelerationStructureInstanceKHR),
+                    std::span<const VkAccelerationStructureInstanceKHR>(&mRows[at], 1));
             }
         }
+        owed.settle();
+
+        if (mTopLevel == VK_NULL_HANDLE || grown)
+            sizeTopLevel(count, graveyard);
+
+        // The top level is built from this frame's copy, so the address moves with the slot.
+        mTopLevelGeometry.geometry.instances.data.deviceAddress = rows.getDeviceAddress();
 
         mInstanceCount = scene.getPlacedCount();
     }
@@ -989,16 +1070,16 @@ namespace Rtx
         };
     }
 
-    void SceneAcceleration::sizeTopLevel(const std::uint32_t slots)
+    void SceneAcceleration::sizeTopLevel(const std::uint32_t slots, Graveyard& graveyard)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
 
+        // The address is the caller's to fill in, because it is a frame's and not the structure's.
         mTopLevelGeometry = VkAccelerationStructureGeometryKHR{
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
             .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
             .geometry = { .instances = {
                               .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
-                              .data = { .deviceAddress = mInstances.getDeviceAddress() },
                           } },
             .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
         };
@@ -1018,14 +1099,11 @@ namespace Rtx
         functions.mGetAccelerationStructureBuildSizes(
             mDevice.getHandle(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &mTopLevelBuild, &slots, &sizes);
 
-        // **The old structure goes before the new one is made over the same buffer.** Nothing is
-        // reading it: every submit on this path waits, and so does the trace, so by the time a cell
-        // is arriving the last frame has finished with it.
-        if (mTopLevel != VK_NULL_HANDLE)
-        {
-            functions.mDestroyAccelerationStructure(mDevice.getHandle(), mTopLevel, nullptr);
-            mTopLevel = VK_NULL_HANDLE;
-        }
+        // **The old structure is buried, and its storage with it where that has to grow.** A cell
+        // arriving is what brings this here, and an arrival waits every frame out first — but the
+        // rule is one rule, and burying costs nothing where nothing is in flight.
+        graveyard.bury(mTopLevel);
+        mTopLevel = VK_NULL_HANDLE;
 
         mTopLevelBytes = sizes.accelerationStructureSize;
         mTopLevelSlots = slots;
@@ -1033,12 +1111,12 @@ namespace Rtx
         // Grown to the high-water mark and kept, both of them. A structure is created at offset zero
         // of whatever this holds and asks only that it be large enough.
         if (mTopLevelStorage.getSize() < sizes.accelerationStructureSize)
-            mTopLevelStorage
-                = Buffer(mDevice, sizes.accelerationStructureSize, sStorageUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            graveyard.bury(std::exchange(mTopLevelStorage,
+                Buffer(mDevice, sizes.accelerationStructureSize, sStorageUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)));
 
         if (mTopLevelScratch.getSize() < sizes.buildScratchSize)
-            mTopLevelScratch
-                = Buffer(mDevice, sizes.buildScratchSize, sScratchUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            graveyard.bury(std::exchange(mTopLevelScratch,
+                Buffer(mDevice, sizes.buildScratchSize, sScratchUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)));
 
         const VkAccelerationStructureCreateInfoKHR create{
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,

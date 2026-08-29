@@ -28,6 +28,7 @@
 #include <components/rtxvulkan/compositepass.hpp>
 #include <components/rtxvulkan/fogtile.hpp>
 #include <components/rtxvulkan/gbuffer.hpp>
+#include <components/rtxvulkan/graveyard.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/result.hpp>
 #include <components/rtxvulkan/sceneacceleration.hpp>
@@ -566,8 +567,8 @@ namespace Rtx
                 mRenderer->setScene(Rtx::sWorld, scene, inSceneOrder(textures), sea);
 
                 // One frame per sample, where this used to record several dispatches into a single
-                // submit. The renderer fences between frames, which orders them, and its own history
-                // barrier is what makes each sum visible to the next.
+                // submit. Each is waited out before the next, which orders them, and the renderer's
+                // own history barrier is what makes each sum visible to the next.
                 const std::uint32_t frames = std::max(accumulate, 1u);
                 std::uint32_t hits = 0;
                 for (std::uint32_t frame = 0; frame < frames; ++frame)
@@ -576,15 +577,15 @@ namespace Rtx
                     if (accumulate > 0)
                         sampled.mFrame = frame;
 
+                    mRenderer->renderFrame(sampled,
+                        FrameOptions{ .mAccumulate = accumulate > 0 ? frame + 1 : 0,
+                            .mJitter = jitter,
+                            .mFilter = filter,
+                            .mExposure = exposure });
+
                     // Every frame hits the same primary geometry, so the last one's count is the
                     // answer rather than a sum to be divided back down.
-                    hits = mRenderer
-                               ->renderFrame(sampled,
-                                   FrameOptions{ .mAccumulate = accumulate > 0 ? frame + 1 : 0,
-                                       .mJitter = jitter,
-                                       .mFilter = filter,
-                                       .mExposure = exposure })
-                               .mHits;
+                    hits = mRenderer->finishFrame().value().mHits;
                 }
 
                 // **The radiance encoded here rather than the picture read back.** `tone.comp` puts
@@ -842,8 +843,9 @@ namespace Rtx
 
             // No textures, so no shading maps; no sprites, so no tiles. Both tables used to come out
             // as `VK_NULL_HANDLE`.
-            const TextureArray textures(device, setup, 0, {});
-            const SceneBuffers buffers(device, setup, empty, {});
+            Graveyard graveyard(device, pool);
+            const TextureArray textures(device, setup, 0, {}, graveyard);
+            const SceneBuffers buffers(device, empty, {}, 1, graveyard);
             setup.flush();
 
             EXPECT_NE(textures.getShading(), VK_NULL_HANDLE) << "the shading maps";
@@ -852,21 +854,21 @@ namespace Rtx
             // same for all of them; which ones happened to be empty on the day is not what decides
             // whether they are covered.
             const std::array<std::pair<const char*, VkBuffer>, 15> tables{ {
-                { "the normal blocks", buffers.getNormalBlocks() },
+                { "the normal blocks", buffers.getNormalBlocks(0) },
                 { "the texture coordinate blocks", buffers.getTexCoordBlocks() },
                 { "the meshes", buffers.getMeshes() },
-                { "the instance rows", buffers.getInstances() },
-                { "the materials", buffers.getMaterials() },
-                { "the terrain layers", buffers.getLayers() },
-                { "the blend masks", buffers.getMasks() },
-                { "the lights", buffers.getLights() },
-                { "the light grid's offsets", buffers.getLightOffsets() },
-                { "the light grid's indices", buffers.getLightIndices() },
-                { "the sprites", buffers.getSprites() },
-                { "the emitters", buffers.getEmitters() },
-                { "the sprite tile offsets", buffers.getSpriteTileOffsets() },
-                { "the sprite tile indices", buffers.getSpriteTileIndices() },
-                { "the light grid's geometry", buffers.getGrid() },
+                { "the instance rows", buffers.getInstances(0) },
+                { "the materials", buffers.getMaterials(0) },
+                { "the terrain layers", buffers.getLayers(0) },
+                { "the blend masks", buffers.getMasks(0) },
+                { "the lights", buffers.getLights(0) },
+                { "the light grid's offsets", buffers.getLightOffsets(0) },
+                { "the light grid's indices", buffers.getLightIndices(0) },
+                { "the sprites", buffers.getSprites(0) },
+                { "the emitters", buffers.getEmitters(0) },
+                { "the sprite tile offsets", buffers.getSpriteTileOffsets(0) },
+                { "the sprite tile indices", buffers.getSpriteTileIndices(0) },
+                { "the light grid's geometry", buffers.getGrid(0) },
             } };
 
             for (const auto& [what, table] : tables)
@@ -1391,14 +1393,16 @@ namespace Rtx
             };
 
             deformTo(400.0f);
-            EXPECT_EQ(mRenderer->renderFrame(camera, FrameOptions{}).mHits, size * size);
+            mRenderer->renderFrame(camera, FrameOptions{});
+            EXPECT_EQ(mRenderer->finishFrame().value().mHits, size * size);
 
             mRenderer->readChannel(Channel::Depth, depth);
             EXPECT_NEAR(depth[centre], 400.0f * centreCosine, 0.4f) << "and the structure followed its vertices";
 
             // Behind the eye, where a wall that was never rebuilt would still be filling the frame.
             deformTo(-1000.0f);
-            EXPECT_EQ(mRenderer->renderFrame(camera, FrameOptions{}).mHits, 0u);
+            mRenderer->renderFrame(camera, FrameOptions{});
+            EXPECT_EQ(mRenderer->finishFrame().value().mHits, 0u);
         }
 
         /// A wall bigger than the field of view leaves no room for sky.
@@ -6086,10 +6090,11 @@ namespace Rtx
             std::vector<InstanceRecord> records;
             makeInstanceRecords(scene, records);
             Batch setup(pool);
-            const SceneAcceleration acceleration(device, setup, scene, records, {});
-            const SceneBuffers buffers(device, setup, scene, records);
+            Graveyard graveyard(device, pool);
+            const SceneAcceleration acceleration(device, setup, scene, records, {}, 1, graveyard);
+            const SceneBuffers buffers(device, scene, records, 1, graveyard);
 
-            const TextureArray textures(device, setup, 0, {});
+            const TextureArray textures(device, setup, 0, {}, graveyard);
             const GBufferLayout channelLayout(device);
             const VisibilityPass pass(
                 device, setup, Testing::getShaderDirectory(), textures.getLayout(), channelLayout, true);

@@ -111,8 +111,8 @@ namespace RtxTool
         // to carry was never in them.
         const bool sequenced = averaging || request.mUpscale != Rtx::Upscale::Off;
 
-        std::vector<double> traces;
-        traces.reserve(frames);
+        std::vector<double> frameTimes;
+        frameTimes.reserve(frames);
 
         // **Across the repeats and not from the last frame.** The whole reason a shot traces more
         // than once is that one submit times the GPU's clock rather than the shader, and a
@@ -140,20 +140,25 @@ namespace RtxTool
             // not two frames that happened to sample different geometry.
             framing.mFrame = sequenced ? frame : 0;
 
-            const Rtx::FrameResult result = renderer->renderFrame(makeFrameConstants(framing, extents),
+            // **Drawn and waited out, one frame at a time.** A shot is a still, and a still is
+            // measured serially: what the line reports is one frame's whole latency, the record and
+            // the device together, and not the throughput of two overlapped — `bench` measures that.
+            const auto frameStart = std::chrono::steady_clock::now();
+            reconstruction = renderer->renderFrame(makeFrameConstants(framing, extents),
                 Rtx::FrameOptions{ .mAccumulate = averaging ? frame + 1 : 0,
                     .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
                     .mJitter = request.mJitter,
                     .mFilter = request.mFilter,
                     .mExposure = request.mExposure });
-            traces.push_back(result.mTraceMs);
+            const Rtx::FrameResult result = renderer->finishFrame().value();
+            frameTimes.push_back(
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count());
             gpu.add(result.mGpu);
             hits = result.mHits;
-            reconstruction = result.mReconstruction;
             ++frame;
         } while (frame < frames);
 
-        const Rtx::FrameTimes trace = Rtx::summarise(traces);
+        const Rtx::FrameTimes frameTime = Rtx::summarise(frameTimes);
 
         std::vector<std::uint8_t> pixels;
         renderer->readPixels(pixels);
@@ -265,15 +270,15 @@ namespace RtxTool
             << "textures:   " << stats.mTextureCount << " in " << stats.mTextureBytes / 1024 << " KiB\n"
             << "device up:  " << deviceMs << " ms\n"
             << "build:      " << buildMs << " ms\n"
-            << "trace:      " << trace.mBest << " ms";
+            << "frame:      " << frameTime.mBest << " ms";
 
         if (averaging)
-            out << " (best of " << frames << " accumulated; median " << trace.mMedian << ", worst " << trace.mWorst
-                << ")";
+            out << " (best of " << frames << " accumulated; median " << frameTime.mMedian << ", worst "
+                << frameTime.mWorst << ")";
         else if (frames > 1)
-            out << " (best of " << frames << "; median " << trace.mMedian << ", worst " << trace.mWorst << ")";
+            out << " (best of " << frames << "; median " << frameTime.mMedian << ", worst " << frameTime.mWorst << ")";
         else
-            out << " (one submit, including the wait)";
+            out << " (one frame, including the wait)";
 
         // **Said out loud, because it more than doubles the number above it.** The layers are on by
         // default outside a Release build, and a figure measured under them is not one to compare
@@ -288,8 +293,8 @@ namespace RtxTool
 
         out << '\n';
 
-        // **What the device says about the same submit**, which is the only way to tell a slow trace
-        // from a slow everything-else: the figure above is one wait around eight pieces of work.
+        // **What the device says about the same frame**, which is the only way to tell a slow trace
+        // from a slow everything-else: the figure above is one frame around eight pieces of work.
         if (const std::span<const Rtx::GpuZone> zones = gpu.summariseZones(); !zones.empty())
         {
             out << "gpu:       ";

@@ -8,6 +8,7 @@
 #include <components/debug/debuglog.hpp>
 
 #include "device.hpp"
+#include "graveyard.hpp"
 #include "result.hpp"
 
 namespace Rtx
@@ -52,6 +53,53 @@ namespace Rtx
         std::move(hostStaging.begin(), hostStaging.end(), std::back_inserter(mDeferredHostStaging));
     }
 
+    void CommandPool::submit(VkCommandBuffer commands, VkFence fence, Graveyard& kept)
+    {
+        checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
+
+        mSubmitScratch.clear();
+        mSubmitScratch.reserve(mDeferred.size() + 1);
+        for (const VkCommandBuffer deferred : mDeferred)
+            mSubmitScratch.push_back(VkCommandBufferSubmitInfo{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .commandBuffer = deferred,
+            });
+        mSubmitScratch.push_back(VkCommandBufferSubmitInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+            .commandBuffer = commands,
+        });
+
+        const VkSubmitInfo2 submit{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .commandBufferInfoCount = static_cast<std::uint32_t>(mSubmitScratch.size()),
+            .pCommandBufferInfos = mSubmitScratch.data(),
+        };
+
+        if (fence != VK_NULL_HANDLE)
+            checkVk(vkResetFences(mDevice.getHandle(), 1, &fence), "vkResetFences");
+        checkVk(vkQueueSubmit2(mDevice.getQueue(), 1, &submit, fence), "vkQueueSubmit2");
+
+        // The deferred batches run ahead of `commands` and are finished when it is, so what they
+        // hold goes under the same fence.
+        for (const VkCommandBuffer deferred : mDeferred)
+            kept.bury(deferred);
+        for (Buffer& staging : mDeferredStaging)
+            kept.bury(std::move(staging));
+        for (HostBuffer& staging : mDeferredHostStaging)
+            kept.bury(std::move(staging));
+
+        mDeferred.clear();
+        mDeferredStaging.clear();
+        mDeferredHostStaging.clear();
+    }
+
+    void CommandPool::free(std::span<const VkCommandBuffer> commands)
+    {
+        if (!commands.empty())
+            vkFreeCommandBuffers(
+                mDevice.getHandle(), mHandle, static_cast<std::uint32_t>(commands.size()), commands.data());
+    }
+
     std::vector<VkCommandBuffer> CommandPool::allocate(std::uint32_t count)
     {
         const VkCommandBufferAllocateInfo allocate{
@@ -66,6 +114,15 @@ namespace Rtx
         return buffers;
     }
 
+    void CommandPool::begin(VkCommandBuffer commands)
+    {
+        const VkCommandBufferBeginInfo begin{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+        checkVk(vkBeginCommandBuffer(commands, &begin), "vkBeginCommandBuffer");
+    }
+
     VkCommandBuffer CommandPool::begin()
     {
         const VkCommandBufferAllocateInfo allocate{
@@ -77,13 +134,7 @@ namespace Rtx
 
         VkCommandBuffer commands = VK_NULL_HANDLE;
         checkVk(vkAllocateCommandBuffers(mDevice.getHandle(), &allocate, &commands), "vkAllocateCommandBuffers");
-
-        const VkCommandBufferBeginInfo begin{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        };
-        checkVk(vkBeginCommandBuffer(commands, &begin), "vkBeginCommandBuffer");
-
+        begin(commands);
         return commands;
     }
 

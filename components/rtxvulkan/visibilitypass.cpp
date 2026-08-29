@@ -108,12 +108,14 @@ namespace Rtx
 
         // **Both directions, because one buffer serves every trace.** The write has to wait for the
         // last dispatch that read it — a traced view and the world are two traces — and the next
-        // dispatch has to wait for the write.
+        // dispatch has to wait for the write. **And for the last write**, which two frames in
+        // flight make the frame before's own update of this buffer: a write after a write is a
+        // hazard of its own, and the dispatch between them is not what orders it.
         const VkBufferMemoryBarrier2 beforeWrite{
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            .srcAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+            .srcAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
             .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -128,12 +130,15 @@ namespace Rtx
         vkCmdPipelineBarrier2(commands, &settle);
 
         // A few hundred bytes, so this is an inline write into the command buffer rather than a
-        // staging copy — and being recorded, it runs in queue order with the traces around it.
+        // staging copy — and being recorded, it runs in queue order with the traces around it. A
+        // clear command and not a copy, which is what the stage on either side of it says: the
+        // specification files `vkCmdUpdateBuffer` under the clear commands, and a barrier at the
+        // copy stage leaves the write outside its scope.
         vkCmdUpdateBuffer(commands, mConstants.getHandle(), 0, sizeof(described), &described);
 
         const VkBufferMemoryBarrier2 written{
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+            .srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
             .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
             .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             .dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT,
@@ -157,25 +162,27 @@ namespace Rtx
         // Bindings one upwards are all storage buffers, in the order the shader declares them.
         const std::array<VkDescriptorBufferInfo, 12> buffers{
             VkDescriptorBufferInfo{ hitCount.getHandle(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getNormalBlocks(), 0, VK_WHOLE_SIZE },
+            VkDescriptorBufferInfo{ inputs.mBuffers->getNormalBlocks(inputs.mSlot), 0, VK_WHOLE_SIZE },
             VkDescriptorBufferInfo{ inputs.mBuffers->getTexCoordBlocks(), 0, VK_WHOLE_SIZE },
             VkDescriptorBufferInfo{ inputs.mIndexBlocks, 0, VK_WHOLE_SIZE },
             VkDescriptorBufferInfo{ inputs.mBuffers->getMeshes(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getInstances(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getMaterials(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getLayers(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getMasks(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getLights(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getLightOffsets(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getLightIndices(), 0, VK_WHOLE_SIZE },
+            VkDescriptorBufferInfo{ inputs.mBuffers->getInstances(inputs.mSlot), 0, VK_WHOLE_SIZE },
+            VkDescriptorBufferInfo{ inputs.mBuffers->getMaterials(inputs.mSlot), 0, VK_WHOLE_SIZE },
+            VkDescriptorBufferInfo{ inputs.mBuffers->getLayers(inputs.mSlot), 0, VK_WHOLE_SIZE },
+            VkDescriptorBufferInfo{ inputs.mBuffers->getMasks(inputs.mSlot), 0, VK_WHOLE_SIZE },
+            VkDescriptorBufferInfo{ inputs.mBuffers->getLights(inputs.mSlot), 0, VK_WHOLE_SIZE },
+            VkDescriptorBufferInfo{ inputs.mBuffers->getLightOffsets(inputs.mSlot), 0, VK_WHOLE_SIZE },
+            VkDescriptorBufferInfo{ inputs.mBuffers->getLightIndices(inputs.mSlot), 0, VK_WHOLE_SIZE },
         };
         const VkDescriptorBufferInfo noiseWrite{ mBlueNoise.getHandle(), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo shadingWrite{ inputs.mShading, 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo gridWrite{ inputs.mBuffers->getGrid(), 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo spriteWrite{ inputs.mBuffers->getSprites(), 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo emitterWrite{ inputs.mBuffers->getEmitters(), 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo tileOffsetWrite{ inputs.mBuffers->getSpriteTileOffsets(), 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo tileIndexWrite{ inputs.mBuffers->getSpriteTileIndices(), 0, VK_WHOLE_SIZE };
+        const VkDescriptorBufferInfo gridWrite{ inputs.mBuffers->getGrid(inputs.mSlot), 0, VK_WHOLE_SIZE };
+        const VkDescriptorBufferInfo spriteWrite{ inputs.mBuffers->getSprites(inputs.mSlot), 0, VK_WHOLE_SIZE };
+        const VkDescriptorBufferInfo emitterWrite{ inputs.mBuffers->getEmitters(inputs.mSlot), 0, VK_WHOLE_SIZE };
+        const VkDescriptorBufferInfo tileOffsetWrite{ inputs.mBuffers->getSpriteTileOffsets(inputs.mSlot), 0,
+            VK_WHOLE_SIZE };
+        const VkDescriptorBufferInfo tileIndexWrite{ inputs.mBuffers->getSpriteTileIndices(inputs.mSlot), 0,
+            VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo frameWrite{ mConstants.getHandle(), 0, VK_WHOLE_SIZE };
 
         // **Nothing bound here may be nothing.** A descriptor the shader declares and a null handle

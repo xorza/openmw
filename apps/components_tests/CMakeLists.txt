@@ -122,6 +122,7 @@ if (OPENMW_RTX)
         rtx/fogbuilder.cpp
         rtx/fognoise.cpp
         rtx/frameimage.cpp
+        rtx/frames.cpp
         rtx/frametimes.cpp
         rtx/frameworld.cpp
         rtx/gputimer.cpp

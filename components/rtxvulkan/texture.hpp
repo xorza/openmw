@@ -17,6 +17,7 @@ namespace Rtx
 {
     class Batch;
     class Device;
+    class Graveyard;
 
     /// A sampled image on the GPU.
     class Texture
@@ -64,7 +65,11 @@ namespace Rtx
         /// a scene this array has never seen.
         ///
         /// `textures` may be empty; the shader is told the count and does not index past it.
-        TextureArray(const Device& device, Batch& batch, std::uint32_t slots, std::span<const TextureData> textures);
+        ///
+        /// `graveyard` is where what this displaces goes: nothing at construction, but the path is
+        /// one.
+        TextureArray(const Device& device, Batch& batch, std::uint32_t slots, std::span<const TextureData> textures,
+            Graveyard& graveyard);
         ~TextureArray();
 
         /// Writes each of `arrived` into the slot it names, leaving every other texture alone.
@@ -78,7 +83,10 @@ namespace Rtx
         /// wherever it sits. A slot at the end grows the array; one inside it replaces what was
         /// there, and the image that was there goes when it is replaced and not when it was freed —
         /// so no descriptor ever names an image that has been destroyed.
-        void write(Batch& batch, std::span<const TextureData> arrived);
+        ///
+        /// What a slot held before goes to `graveyard`, and so does the shading table where it had
+        /// to be made again larger: a frame in flight may be reading either.
+        void write(Batch& batch, std::span<const TextureData> arrived, Graveyard& graveyard);
 
         /// Destroys the images of `slots`, leaving the slots themselves where they are.
         ///
@@ -90,7 +98,7 @@ namespace Rtx
         ///
         /// The array does not shrink even where the slots are its last: `getCount` is where an
         /// append begins and the scene's table has not shrunk either.
-        void drop(std::span<const std::uint32_t> slots);
+        void drop(std::span<const std::uint32_t> slots, Graveyard& graveyard);
 
         TextureArray(const TextureArray&) = delete;
         TextureArray& operator=(const TextureArray&) = delete;
@@ -113,11 +121,11 @@ namespace Rtx
         void describe(std::span<const TextureData> arrived);
 
         /// Writes the shading of the slots `arrived` names, growing the buffer first if it must.
-        void reshade(std::span<const TextureData> arrived);
+        void reshade(std::span<const TextureData> arrived, Graveyard& graveyard);
 
         /// Grows the shading buffer to hold `mShadingValues`, rewriting it whole. True where it did,
         /// which is what tells a caller its own write has already happened.
-        bool growShading();
+        bool growShading(Graveyard& graveyard);
 
         /// Grows the array to reach `slot`, and refuses one past what the binding holds.
         void reserveSlot(std::uint32_t slot);

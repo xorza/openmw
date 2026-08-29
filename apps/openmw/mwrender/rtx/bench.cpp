@@ -51,7 +51,7 @@ namespace MWRender
     struct Bench::Held
     {
         std::vector<double> mFrames;
-        std::vector<double> mTraces;
+        std::vector<double> mWaits;
         Rtx::GpuBreakdown mGpu;
     };
 
@@ -90,7 +90,7 @@ namespace MWRender
         // that stops to reallocate is measuring its own allocator.
         const std::size_t room = mWanted > 0 ? mWanted : static_cast<std::size_t>(mWantedSeconds * 1000.0);
         mHeld->mFrames.reserve(room);
-        mHeld->mTraces.reserve(room);
+        mHeld->mWaits.reserve(room);
 
         Log(Debug::Info) << "Ray tracing bench: " << describeRun() << " after " << describeWarmup() << " warming up";
     }
@@ -111,7 +111,7 @@ namespace MWRender
         }
 
         mHeld->mFrames.push_back(frameMs);
-        mHeld->mTraces.push_back(result.mTraceMs);
+        mHeld->mWaits.push_back(result.mWaitMs);
         mHeld->mGpu.add(result.mGpu);
         mMeasuredMs += frameMs;
 
@@ -141,7 +141,7 @@ namespace MWRender
     void Bench::report() const
     {
         const Rtx::FrameTimes frames = Rtx::summarise(mHeld->mFrames);
-        const Rtx::FrameTimes traces = Rtx::summarise(mHeld->mTraces);
+        const Rtx::FrameTimes waits = Rtx::summarise(mHeld->mWaits);
         const std::span<const Rtx::GpuZone> zones = mHeld->mGpu.summariseZones();
 
         // Built whole and logged once: the report is a table, and a table split across log lines by
@@ -149,7 +149,7 @@ namespace MWRender
         std::string out = "\nRay tracing bench\n";
         out += Rtx::describeHeadings();
         out += Rtx::describeTimes("frame ms", frames);
-        out += Rtx::describeTimes("trace ms", traces);
+        out += Rtx::describeTimes("wait ms", waits);
         out += Rtx::describeZones(zones);
         out += std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", mHeld->mFrames.size(),
             mMeasuredMs / 1000.0, frames.getRate(), frames.getLowRate());

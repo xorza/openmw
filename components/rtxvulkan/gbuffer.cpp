@@ -176,15 +176,17 @@ namespace Rtx
         // nothing in them worth carrying across a frame. Keeping the old contents would cost a
         // decompress on some hardware and buy a guarantee nothing here wants.
         //
-        // **But waiting on the last frame's composite, which is not the same thing as discarding.**
-        // One set of channels serves every frame, and a window keeps two in flight — so the trace
-        // that is about to overwrite these may start while the composite reading them for the
-        // previous frame is still running. Sourcing the barrier at the compute stage is the whole of
-        // what a write-after-read needs; nothing has to be made visible, only ordered. Discarding
-        // from `TOP_OF_PIPE` waits for nothing at all, and buys a torn frame for a barrier saved.
+        // **But waiting on the last frame's readers, which is not the same thing as discarding.**
+        // One set of channels serves every frame, and two are in flight — so the trace that is
+        // about to overwrite these may start while the composite, the curve or the upscaler reading
+        // them for the previous frame is still running. An execution dependency is the whole of
+        // what a write-after-read needs; nothing has to be made visible, only ordered. Sourced at
+        // everything before it on the queue rather than at the compute stage, because what NGX
+        // reads them at is its own; discarding from `TOP_OF_PIPE` waits for nothing at all, and
+        // buys a torn frame for a barrier saved.
         for (const Image* image : everyChannel())
             image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
     }
 

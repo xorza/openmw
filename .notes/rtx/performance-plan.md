@@ -15,6 +15,22 @@ built and the walk's casts are gated on the library. Same-state A/B, release, 10
 ship `place` 2.05 → 1.05 ms, frame 13.3–14.4 → 11.8 median, p99 18–20 → 16, 1 % low 50–55 → 61–64
 fps, `refit` GPU zone 0.40 → 0.13 ms; guild frame 10.5 → 10.0, `place` 1.16 → 0.74, 95 → 100 fps.
 
+**Step 4 done.** Two frames in flight on a ring of two slots: a frame is a placement submit without
+a fence and a trace submit with one, the fence is waited where the frame after next wants the slot,
+and `finishFrame` hands the result back a frame late. Every table a frame writes has a copy per slot
+with a `RowDebt` saying what each copy still owes; what a frame in flight may read goes to its
+`Graveyard` and is destroyed at its fence. An arrival waits (`extendScene`), and a picture inside
+the interface waits for everything. The bench rows say `wait` where they said `trace`: what the CPU
+stood still for the device. Same-state A/B against steps 1–3, release, 1080p quality: ship frame
+11.8 → 11.0 median, p99 16 → 15.8, 1 % low 61–64 → 63 fps; guild 10.0 → 9.6, 100 → 104 fps;
+streaming route 81.5 fps, 1 % low 3.9, worst crossing 338 ms; `place` 1.05 → 0.49 (ship) and
+0.74 → 0.26 (guild), which is the fenced build coming off it. **The frame is the device's now:**
+the CPU waits 6.5 of the ship's 11 ms and 8.1 of the guild's 9.6, so the ~8 ms this step was
+sized at was the sum's other half — the device alone is 11 ms at this setting and no pipeline goes
+under it. From here the number moves with the trace, which is steps 5–11. `verify` against a
+build of the commit before: fifteen of sixteen views byte-identical, and `island-crossing` differs
+from itself run to run in either build.
+
 **The rule this plan lives under.** *Feature-complete first, then fast.* Steps 1–3 and 5 are
 structural and change no picture, so they can land whenever the frame they fix is in front of you.
 Everything else waits for the renderer to draw everything the game has, and is measured again then.

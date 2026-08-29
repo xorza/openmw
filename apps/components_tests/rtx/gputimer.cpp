@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -49,6 +51,35 @@ namespace Rtx
             return sum;
         }
 
+        /// One frame's result with its zones copied out, because the span the renderer hands back
+        /// is overwritten by the frame after next.
+        struct Drawn
+        {
+            std::uint32_t mHits = 0;
+            /// From before the submit to after the wait: the whole of what the device did, and the
+            /// CPU sat through, for this frame.
+            double mWallMs = 0.0;
+            std::vector<GpuSpan> mGpu;
+        };
+
+        /// Draws one frame and waits for it, so what comes back is that frame's own report.
+        Drawn draw(Renderer& renderer, const Shaders::VisibilityConstants& camera)
+        {
+            const auto start = std::chrono::steady_clock::now();
+            renderer.renderFrame(camera, FrameOptions{});
+            const std::optional<FrameResult> result = renderer.finishFrame();
+            const double wallMs
+                = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+
+            EXPECT_TRUE(result.has_value()) << "a frame was submitted and nothing came back";
+            if (!result.has_value())
+                return Drawn{};
+
+            return Drawn{ .mHits = result->mHits,
+                .mWallMs = wallMs,
+                .mGpu = std::vector<GpuSpan>(result->mGpu.begin(), result->mGpu.end()) };
+        }
+
         /// A frame accounts for its own device time, pass by pass.
         ///
         /// **The thing a wall clock around the submit cannot do.** One `renderFrame` is a trace, a
@@ -71,7 +102,7 @@ namespace Rtx
             const Shaders::VisibilityConstants camera
                 = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sSize, sSize, 10000.0f);
 
-            const FrameResult drawn = renderer->renderFrame(camera, FrameOptions{});
+            const Drawn drawn = draw(*renderer, camera);
             if (drawn.mGpu.empty())
                 GTEST_SKIP() << "this device cannot write timestamps";
 
@@ -88,7 +119,7 @@ namespace Rtx
 
             Shaders::VisibilityConstants flooded = camera;
             flooded.mWaterLevel = 0.0f;
-            const FrameResult wet = renderer->renderFrame(flooded, FrameOptions{});
+            const Drawn wet = draw(*renderer, flooded);
             EXPECT_TRUE(reports(wet.mGpu, "waves")) << "a frame with water in it synthesised no sea";
             EXPECT_EQ(wet.mGpu.front().mName, "waves")
                 << "the sea was synthesised somewhere other than before the trace";
@@ -100,11 +131,11 @@ namespace Rtx
             }
 
             // **The containment check, which is what makes these numbers rather than noise.** Every
-            // zone was recorded inside the one submit `mTraceMs` waited on, and the zones do not
-            // overlap — so their sum is device work the CPU also sat through, and the CPU also paid
-            // for the submit itself.
-            EXPECT_LT(totalOf(drawn.mGpu), drawn.mTraceMs)
-                << "the passes add up to more device time than the submit that held them took";
+            // zone was recorded inside the submit `draw` waited out, and the zones do not overlap —
+            // so their sum is device work the CPU also sat through, and the CPU also paid for the
+            // submit itself.
+            EXPECT_LT(totalOf(drawn.mGpu), drawn.mWallMs)
+                << "the passes add up to more device time than the frame that held them took";
 
             // **A frame that placed the world says so, and one that did not, does not.** The
             // structure builds happen in submits of their own before the frame's, and the whole
@@ -112,7 +143,7 @@ namespace Rtx
             EXPECT_FALSE(reports(drawn.mGpu, "tlas")) << "nothing was placed, so nothing was built";
 
             renderer->placeScene(Rtx::sWorld, scene, SeaState{});
-            const FrameResult placed = renderer->renderFrame(camera, FrameOptions{});
+            const Drawn placed = draw(*renderer, camera);
 
             EXPECT_TRUE(reports(placed.mGpu, "tlas")) << "the top level was rebuilt and went unmeasured";
             EXPECT_GT(placed.mGpu.size(), drawn.mGpu.size()) << "placing the world added no zone";
@@ -122,7 +153,7 @@ namespace Rtx
             EXPECT_EQ(placed.mGpu.front().mName, "tlas");
 
             // And the report does not accumulate: the frame after is its own again.
-            const FrameResult after = renderer->renderFrame(camera, FrameOptions{});
+            const Drawn after = draw(*renderer, camera);
             EXPECT_EQ(after.mGpu.size(), drawn.mGpu.size()) << "last frame's zones were carried into this one";
             EXPECT_FALSE(reports(after.mGpu, "tlas"));
         }

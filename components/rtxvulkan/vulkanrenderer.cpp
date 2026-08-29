@@ -22,6 +22,7 @@
 #include "physicaldevice.hpp"
 #include "presenter.hpp"
 #include "requirements.hpp"
+#include "result.hpp"
 #include "sceneacceleration.hpp"
 #include "scenebuffers.hpp"
 #include "texture.hpp"
@@ -88,11 +89,21 @@ namespace Rtx
         }
     }
 
+    VulkanRenderer::Frame::Frame(const Device& device, CommandPool& pool)
+        : mTimer(device)
+        , mHitCount(device, sizeof(std::uint32_t),
+              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+        , mGraveyard(device, pool)
+        , mGuiGraveyard(device, pool)
+    {
+    }
+
     VulkanRenderer::VulkanRenderer(const RendererOptions& options)
         : mInstance(instanceOptionsFor(options))
         , mDevice(mInstance, PhysicalDevice::select(mInstance.getHandle()), deviceExtensionsFor(options))
         , mPool(mDevice)
-        , mTimer(mDevice)
+        , mFrames{ { Frame{ mDevice, mPool }, Frame{ mDevice, mPool } } }
         , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)
         , mUpscale(options.mUpscale)
@@ -110,9 +121,19 @@ namespace Rtx
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
     {
-        mHitCount = Buffer(mDevice, sizeof(std::uint32_t),
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        // Three command buffers a frame — the placement's, the trace's, the interface's — allocated
+        // once and recorded into again, and a fence for each of the two that are waited on.
+        const std::vector<VkCommandBuffer> commands = mPool.allocate(3 * sFrameSlots);
+        const VkFenceCreateInfo fence{ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+        for (std::uint32_t slot = 0; slot < sFrameSlots; ++slot)
+        {
+            Frame& frame = mFrames[slot];
+            frame.mPlaceCommands = commands[3 * slot];
+            frame.mCommands = commands[3 * slot + 1];
+            frame.mGuiCommands = commands[3 * slot + 2];
+            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, &frame.mFence), "vkCreateFence");
+            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, &frame.mGuiFence), "vkCreateFence");
+        }
 
         // Before the first targets, because what to trace at is its answer and not ours.
         if (mUpscale != Upscale::Off)
@@ -140,8 +161,20 @@ namespace Rtx
         createTargets(output.width, output.height);
     }
 
-    // Out of line because the members it destroys are only forward declared in the header.
-    VulkanRenderer::~VulkanRenderer() = default;
+    VulkanRenderer::~VulkanRenderer()
+    {
+        // Every frame in flight, and the presenter's last blit, before anything they name goes.
+        mDevice.waitIdle();
+
+        // Before the scenes below it, which own the storage the buried rooms are rooms in.
+        emptyGraveyards();
+
+        for (Frame& frame : mFrames)
+        {
+            vkDestroyFence(mDevice.getHandle(), frame.mFence, nullptr);
+            vkDestroyFence(mDevice.getHandle(), frame.mGuiFence, nullptr);
+        }
+    }
 
     void VulkanRenderer::createTargets(std::uint32_t width, std::uint32_t height)
     {
@@ -315,6 +348,13 @@ namespace Rtx
     {
         ViewScene& held = sceneAt(slot);
 
+        // **Nothing may be in flight over what is about to go.** A rebuild is a load, and a load
+        // waits: for the frames tracing the old scene, and for a placement the frame being recorded
+        // may have submitted without a fence of its own.
+        mDevice.waitIdle();
+        finishFrames();
+        emptyGraveyards();
+
         // Torn down before anything is built, so a second scene does not hold two of everything at
         // once — a cell's structures and textures are most of what this renderer occupies. The pass
         // is not among them; see below.
@@ -330,9 +370,9 @@ namespace Rtx
             mHistory.reset();
             mPreviousCamera = Shaders::VisibilityConstants{};
 
-            // Whatever a previous frame's placement recorded belongs to a scene that no longer
-            // exists.
-            mTimed = false;
+            // The copies are new and alike, so nothing has read either.
+            mWorldSlot = 0;
+            mReadBy.fill(sNeverRead);
         }
 
         // Made here for the same reason a frame's are: both of the two below want them, and this is
@@ -350,10 +390,16 @@ namespace Rtx
         if (slot == sWorld)
             mWaves.describe(sea);
 
-        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, held.mRecords, textures);
-        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, held.mRecords);
+        // The world is traced by two frames at once and so keeps two copies of what a frame writes;
+        // a picture inside the interface is traced and waited for, and keeps one.
+        Graveyard& graveyard = frameSlot(mFrame).mGraveyard;
+        const std::uint32_t slots = slot == sWorld ? sFrameSlots : 1;
+
+        held.mAcceleration
+            = std::make_unique<SceneAcceleration>(mDevice, setup, scene, held.mRecords, textures, slots, graveyard);
+        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, scene, held.mRecords, slots, graveyard);
         held.mTextures = std::make_unique<TextureArray>(
-            mDevice, setup, static_cast<std::uint32_t>(scene.getTextures().size()), textures);
+            mDevice, setup, static_cast<std::uint32_t>(scene.getTextures().size()), textures, graveyard);
         held.mBuiltMeshes = scene.getMeshRevision();
 
         // **Built once and kept, because building one compiles the shader — half a second a time,
@@ -396,8 +442,18 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
 
+        // **An arrival waits.** What arrives is written into every copy of the geometry and the
+        // tables — the normals, the positions, the mesh table, the layers — and a frame still
+        // reading any of them would see it torn. A cell crossing is tens of milliseconds of work
+        // in any case, and the frame it lands in is not one this renderer keeps smooth. A picture
+        // inside the interface is traced and waited for, so it has nothing to wait.
+        if (slot == sWorld)
+            finishFrames();
+
+        Graveyard& graveyard = frameSlot(mFrame).mGraveyard;
+
         Batch setup(mPool);
-        held.mTextures->write(setup, arrived);
+        held.mTextures->write(setup, arrived, graveyard);
 
         // **The meshes that arrived, and no others.** Everything already built stays where it is:
         // the geometry blocks are appended to rather than replaced, so every address a structure was
@@ -409,17 +465,17 @@ namespace Rtx
         // guard on the size would send that here without noticing.
         if (scene.getMeshRevision() != held.mBuiltMeshes)
         {
-            held.mBuffers->extend(scene);
-            held.mAcceleration->extend(setup, scene, arrived);
+            held.mBuffers->extend(scene, graveyard);
+            held.mAcceleration->extend(setup, scene, arrived, graveyard);
             held.mBuiltMeshes = scene.getMeshRevision();
         }
 
-        // **Deferred to the placement's submit, not flushed ahead of it.** `placeScene` submits and
-        // waits on its own; what was recorded here goes to the queue in that same call, ahead of the
-        // refit and the top level, and the barrier every upload and build ends in is what orders
-        // them — a build reads structures the deferred half wrote as it would inside one command
-        // buffer. A composite landing used to be a submit, a fence and a wait of its own on the
-        // frame it landed in, and this is that round trip removed.
+        // **Deferred to the placement's submit, not flushed ahead of it.** `placeScene` submits
+        // what was recorded here in the same call as the refit and the top level, ahead of them,
+        // and the barrier every upload and build ends in is what orders them — a build reads
+        // structures the deferred half wrote as it would inside one command buffer. A composite
+        // landing used to be a submit, a fence and a wait of its own on the frame it landed in, and
+        // this is that round trip removed.
         setup.defer();
 
         // Always, because the top level names every instance and an arrival changed the list. It is
@@ -457,7 +513,7 @@ namespace Rtx
         if (held.mTextures == nullptr)
             return;
 
-        held.mTextures->drop(textures);
+        held.mTextures->drop(textures, frameSlot(mFrame).mGraveyard);
     }
 
     void VulkanRenderer::placeScene(std::uint32_t slot, const SceneDesc& scene, const SeaState& sea)
@@ -465,28 +521,52 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "placeScene before setScene");
 
-        // **The frame's report starts here and not at the trace.** Placing the world is two submits
-        // and, on a nine-by-nine exterior, most of the frame; a report that began at `renderFrame`
-        // would leave the largest part of it out.
-        //
-        // A picture inside the interface is drawn between frames and is no part of one, so it is
-        // neither timed nor allowed to open the frame's report.
-        const bool ofTheWorld = slot == sWorld;
-        if (ofTheWorld)
+        // **A picture inside the interface is placed between frames and waited for.** It has one
+        // copy of everything and no ring: it is neither timed nor allowed to open the frame's
+        // report, and its placement is a submit of its own.
+        if (slot != sWorld)
         {
-            mTimer.beginFrame();
-            mTimed = true;
+            Graveyard& graveyard = frameSlot(mFrame).mGraveyard;
+            held.mAcceleration->release(scene.getFreedMeshes(), graveyard);
+            updateInstanceRecords(scene, held.mRecords);
 
-            // Does nothing where the sea is the one already drawn for, which is every frame but the
-            // first and any on which the weather turned the wind.
-            mWaves.describe(sea);
+            mPool.submitAndWait([&](VkCommandBuffer commands) {
+                held.mAcceleration->place(commands, scene, held.mRecords, 0, nullptr, graveyard);
+            });
+            held.mBuffers->place(scene, held.mRecords, 0, graveyard);
+            return;
         }
+
+        // **A placement opens the frame, and a second placement before a trace closes it.** The
+        // frame's report starts here and not at the trace: placing the world is the refit and the
+        // top level, and a report that began at `renderFrame` would leave them out. A frame that
+        // was placed and never traced still has to reach the queue with a fence, or its slot never
+        // comes round again.
+        if (frameSlot(mFrame).mPlaced)
+            closeFrame();
+
+        Frame& frame = beginFrame();
+        frame.mPlaced = true;
+
+        // Does nothing where the sea is the one already drawn for, which is every frame but the
+        // first and any on which the weather turned the wind.
+        mWaves.describe(sea);
+
+        // **The copy this placement writes is the one the last frame did not trace**, and whatever
+        // frame last traced it is waited for here. Usually that frame has long since signalled —
+        // the CPU is a frame ahead and no more — and the wait is a comparison; when the GPU is
+        // behind, this is where the CPU stands still, which is the right place. The other copy and
+        // not a parity of its own, because a frame need not place: two traces of one placement read
+        // the same copy twice, and the next placement has to go where neither of them is.
+        const std::uint32_t into = (mWorldSlot + 1) % sFrameSlots;
+        if (mReadBy[into] != sNeverRead)
+            finishThrough(mReadBy[into]);
 
         // **What the scene let go of, given back here.** Walking away from a ring frees its meshes
         // and nothing arrives to take them over until the walk reaches the far side of the next one,
         // so a frame that only places is the one that must not hold their structures. Already done
         // where `extendScene` came through, and asking twice costs two comparisons a slot.
-        held.mAcceleration->release(scene.getFreedMeshes());
+        held.mAcceleration->release(scene.getFreedMeshes(), frame.mGraveyard);
 
         // **Once, for the slots that changed, and both halves read it.** The rows carry a matrix
         // inverse apiece and a nine-by-nine exterior is fifty thousand of them; the acceleration
@@ -494,15 +574,25 @@ namespace Rtx
         // frame, to change a hundred of them.
         updateInstanceRecords(scene, held.mRecords);
 
-        held.mAcceleration->place(mPool, scene, held.mRecords, ofTheWorld ? &mTimer : nullptr);
+        // **The placement's own submit, without a fence and without a wait.** A picture inside the
+        // interface traced before this frame's trace needs the top level to have reached the queue;
+        // the frame's fence, later on the queue, covers this submit too. Nothing recorded is
+        // nothing submitted, which is every frame of a standing camera in an empty place.
+        mPool.begin(frame.mPlaceCommands);
+
+        const bool built = held.mAcceleration->place(
+            frame.mPlaceCommands, scene, held.mRecords, into, &frame.mTimer, frame.mGraveyard);
+        if (built)
+            mPool.submit(frame.mPlaceCommands, VK_NULL_HANDLE, frame.mGraveyard);
+        else
+            checkVk(vkEndCommandBuffer(frame.mPlaceCommands), "vkEndCommandBuffer");
 
         // **Only what a moving world changed**, which is the instance rows, the lights and the
         // vertices of anything skinned. Rebuilding all of it was measured at twenty to twenty-seven
         // milliseconds on a nine-by-nine region and was the largest single cost in the frame.
-        held.mBuffers->place(scene, held.mRecords);
+        held.mBuffers->place(scene, held.mRecords, into, frame.mGraveyard);
 
-        if (!ofTheWorld)
-            return;
+        mWorldSlot = into;
 
         mStats.mInstances = held.mAcceleration->getInstanceCount();
         mStats.mCutoutInstances = held.mAcceleration->getCutoutInstanceCount();
@@ -512,6 +602,118 @@ namespace Rtx
 
         // A frame whose instances moved is not one the last frame reprojects onto.
         mHistory.reset();
+    }
+
+    VulkanRenderer::Frame& VulkanRenderer::beginFrame()
+    {
+        Frame& frame = frameSlot(mFrame);
+        if (frame.mBegun)
+            return frame;
+
+        // **The frame that last used this slot has to be out of the way** — its fence waited, its
+        // graveyard emptied, its results read or dropped — which is what caps the frames in flight
+        // at the number of slots.
+        while (mFrame - mFinished >= sFrameSlots)
+            finishOldest();
+
+        frame.mTimer.beginFrame();
+        frame.mBegun = true;
+        frame.mPlaced = false;
+        frame.mReconstruction = Reconstruction{};
+        return frame;
+    }
+
+    void VulkanRenderer::closeFrame()
+    {
+        Frame& frame = frameSlot(mFrame);
+        assert(frame.mBegun && "a frame closed that was never begun");
+
+        // A frame that traced nothing hit nothing; without this the count read back would be
+        // whatever the slot's last frame left.
+        if (mCountHits)
+        {
+            *static_cast<std::uint32_t*>(frame.mHitCount.map()) = 0;
+            frame.mHitCount.unmap();
+        }
+
+        // Nothing to record: the fence is the point, so that the placement submitted before it is
+        // covered and its slot comes round again.
+        mPool.begin(frame.mCommands);
+        submitFrame(frame);
+    }
+
+    void VulkanRenderer::submitFrame(Frame& frame)
+    {
+        mPool.submit(frame.mCommands, frame.mFence, frame.mGraveyard);
+
+        frame.mBegun = false;
+        frame.mPlaced = false;
+        frame.mPending = true;
+        ++mFrame;
+    }
+
+    FrameResult VulkanRenderer::finishOldest()
+    {
+        assert(mFinished < mFrame && "nothing in flight to finish");
+
+        Frame& frame = frameSlot(mFinished);
+        assert(frame.mPending && "a frame in flight that was never submitted");
+
+        const auto start = std::chrono::steady_clock::now();
+        awaitVk(mDevice.getHandle(), frame.mFence, "a frame");
+        const double waited
+            = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+
+        frame.mPending = false;
+
+        // Read after the fence and never before: the count is the device's sum, and the queries
+        // are the device's clock.
+        std::uint32_t hits = 0;
+        if (mCountHits)
+        {
+            hits = *static_cast<const std::uint32_t*>(frame.mHitCount.map());
+            frame.mHitCount.unmap();
+        }
+
+        // What this frame may still have been reading is nothing's now.
+        frame.mGraveyard.clear();
+
+        ++mFinished;
+        return FrameResult{
+            .mHits = hits,
+            .mWaitMs = waited,
+            .mGpu = frame.mTimer.resolve(),
+            .mReconstruction = frame.mReconstruction,
+        };
+    }
+
+    std::optional<FrameResult> VulkanRenderer::finishFrame()
+    {
+        if (mFinished == mFrame)
+            return std::nullopt;
+
+        return finishOldest();
+    }
+
+    void VulkanRenderer::finishThrough(const std::uint64_t frame)
+    {
+        while (mFinished < mFrame && mFinished <= frame)
+            finishOldest();
+    }
+
+    void VulkanRenderer::finishFrames()
+    {
+        while (mFinished < mFrame)
+            finishOldest();
+    }
+
+    void VulkanRenderer::emptyGraveyards()
+    {
+        for (Frame& frame : mFrames)
+        {
+            frame.mGraveyard.clear();
+            frame.mGuiGraveyard.clear();
+        }
     }
 
     void VulkanRenderer::resize(std::uint32_t width, std::uint32_t height)
@@ -532,6 +734,7 @@ namespace Rtx
             return;
 
         // The images about to be replaced may still be in flight.
+        finishFrames();
         mDevice.waitIdle();
         createTargets(width, height);
     }
@@ -559,9 +762,19 @@ namespace Rtx
         if (vertices.empty() || batches.empty())
             return;
 
-        growTo(mGuiVertices, mDevice, vertices.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        // The interface drawn two frames ago drew out of this slot; its fence is what says the
+        // vertices may be written over.
+        Frame& gui = frameSlot(mGuiFrame);
+        if (gui.mGuiPending)
+        {
+            awaitVk(mDevice.getHandle(), gui.mGuiFence, "the interface drawn two frames ago");
+            gui.mGuiPending = false;
+            gui.mGuiGraveyard.clear();
+        }
 
-        mGuiVertices.write(vertices);
+        gui.mGuiGraveyard.bury(
+            growTo(gui.mGuiVertices, mDevice, vertices.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
+        gui.mGuiVertices.write(vertices);
 
         mGuiDraws.clear();
         mGuiDraws.reserve(batches.size());
@@ -577,24 +790,29 @@ namespace Rtx
                     batch.mBlend == GuiBlend::Additive ? Blend::Additive : Blend::Over });
         }
 
-        // **Its own submit, after the frame's.** The GUI is collected once the world has been drawn
-        // and there is nothing to gain by holding the frame open for it; what it costs is one more
-        // queue submit on the frames the interface is up, and that number gets recorded once there is
-        // a frame to measure it in.
-        mPool.submitAndWait([&](VkCommandBuffer commands) {
-            mTarget->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+        // **Its own submit, after the frame's, and not waited for.** The GUI is collected once the
+        // world has been drawn and there is nothing to gain by holding the frame open for it; the
+        // queue draws it after the frame, the present blits after both, and the fence is for the
+        // vertices alone.
+        mPool.begin(gui.mGuiCommands);
 
-            mGuiPass.record(commands, *mTarget, mGuiVertices.getHandle(), mGuiDraws);
+        const VkCommandBuffer commands = gui.mGuiCommands;
+        mTarget->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
 
-            // Back where everything else expects it: the presenter blits out of `GENERAL` and so
-            // does a read back.
-            mTarget->transition(commands, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
-        });
+        mGuiPass.record(commands, *mTarget, gui.mGuiVertices.getHandle(), mGuiDraws);
+
+        // Back where everything else expects it: the presenter blits out of `GENERAL` and so
+        // does a read back.
+        mTarget->transition(commands, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
+
+        mPool.submit(commands, gui.mGuiFence, gui.mGuiGraveyard);
+        gui.mGuiPending = true;
+        ++mGuiFrame;
     }
 
     bool VulkanRenderer::presentFrame()
@@ -628,7 +846,7 @@ namespace Rtx
         };
     }
 
-    FrameResult VulkanRenderer::renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options)
+    Reconstruction VulkanRenderer::renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options)
     {
         assert(mPass != nullptr && "renderFrame before setScene");
         assert(camera.mCamera.mWidth == mRenderWidth && camera.mCamera.mHeight == mRenderHeight
@@ -644,6 +862,9 @@ namespace Rtx
         assert((camera.mTransparentBackground == 0 || mUpscale == Upscale::Off)
             && "a frame that stops where nothing was hit belongs to traceGuiTexture, which does not upscale");
 
+        // The frame `placeScene` opened, or a new one where nothing was placed.
+        Frame& frame = beginFrame();
+
         // **How long since the last one, which a motion vector cannot say.** A vector carries a
         // distance; how fast that was depends on the time it took, and the upscaler tunes how hard
         // it denoises against exactly that.
@@ -655,11 +876,13 @@ namespace Rtx
         // The count is an atomic sum over the frame, so it starts each one at nothing — and it is
         // not started at all where the trace was specialized to write nothing into it, which is the
         // other half of taking the counter out of the game: the atomic went with `COUNT_HITS`, and
-        // this is the two mappings a frame it never reads was still paying for.
+        // this is the two mappings a frame it never reads was still paying for. Here and not where
+        // the frame opened, because a picture inside the interface traced between the two adds to
+        // whichever buffer it is handed.
         if (mCountHits)
         {
-            *static_cast<std::uint32_t*>(mHitCount.map()) = 0;
-            mHitCount.unmap();
+            *static_cast<std::uint32_t*>(frame.mHitCount.map()) = 0;
+            frame.mHitCount.unmap();
         }
 
         // **What reconstructs this frame, decided once and by one rule.** Every switch below reads
@@ -667,6 +890,7 @@ namespace Rtx
         // result, so what a run reports and what it did are one answer.
         const Reconstruction reconstruction = Reconstruction::resolve(mUpscale,
             ReconstructionRequest{ .mFilter = options.mFilter, .mJitter = options.mJitter, .mPreset = mPreset });
+        frame.mReconstruction = reconstruction;
 
         // The camera as the caller wrote it, plus where in the pixel this frame samples. Filled
         // here rather than by the caller because the sequence belongs to the frame index, which is
@@ -686,11 +910,13 @@ namespace Rtx
         // **The sprite tiles are screen space, so they belong to the frame and not to the scene.**
         // Written before the recording below, which is what makes them visible to it without a
         // barrier — the same thing that lets the instance rows be written where the builder reads.
-        mWorld.mBuffers->binSprites(camera.mOrigin, camera.mCamera, camera.mSunPosition);
+        // Into the copy this frame traces, which the frame before last is done with.
+        mWorld.mBuffers->binSprites(camera.mOrigin, camera.mCamera, camera.mSunPosition, mWorldSlot, frame.mGraveyard);
 
         const VisibilityInputs inputs{
             .mScene = mWorld.mAcceleration->getTopLevel(),
             .mBuffers = mWorld.mBuffers.get(),
+            .mSlot = mWorldSlot,
             .mIndexBlocks = mWorld.mAcceleration->getIndexBlocks(),
             .mTextures = mWorld.mTextures->getSet(),
             .mShading = mWorld.mTextures->getShading(),
@@ -703,12 +929,6 @@ namespace Rtx
         if (fresh)
             mHistory = std::make_unique<Image>(mDevice, mRenderWidth, mRenderHeight, VK_FORMAT_R32G32B32A32_SFLOAT,
                 VK_IMAGE_USAGE_STORAGE_BIT, "history");
-
-        // A frame nothing moved for opens its own report; one that placed the world is adding to
-        // the report `placeScene` started.
-        if (!mTimed)
-            mTimer.beginFrame();
-        mTimed = false;
 
         // **A history is worthless after a jump no motion vector can describe.** A zero basis catches
         // the frames that have no past at all — a resize, a rebuild, the first one — and nothing
@@ -725,175 +945,171 @@ namespace Rtx
         // below, which is what would go quietly wrong when one of them moved.
         bool historyAnswered = false;
 
-        const auto start = std::chrono::steady_clock::now();
+        GpuTimer& timer = frame.mTimer;
+        const VkCommandBuffer commands = frame.mCommands;
+        mPool.begin(commands);
 
-        mPool.submitAndWait([&](VkCommandBuffer commands) {
-            // All written whole before anything reads them, so none needs its contents carried over
-            // from the last frame.
-            for (const Image* image : { mColour.get(), mTarget.get() })
-                image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+        // All written whole before anything reads them, so none needs its contents carried over
+        // from the last frame. **But the last frame may still be reading them** — the tone's
+        // output is what the interface draws over and the presenter blits, the colour is what the
+        // upscaler and the curve read — so the discard is sourced at everything before it on the
+        // queue rather than at the top of the pipe, which would wait for nothing.
+        for (const Image* image : { mColour.get(), mTarget.get() })
+            image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
 #ifdef OPENMW_RTX_DLSS
-            if (mUpscaled != nullptr)
-                mUpscaled->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_MEMORY_WRITE_BIT);
+        if (mUpscaled != nullptr)
+            mUpscaled->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT);
 #endif
 
-            // The first write needs no contents and nothing to wait on; every one after reads what
-            // the last left, which the fence orders and does not make visible.
-            if (mHistory != nullptr)
-                mHistory->transition(commands, fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL,
-                    VK_IMAGE_LAYOUT_GENERAL,
-                    fresh ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+        // The first write needs no contents and nothing to wait on; every one after reads what
+        // the last left, which the queue orders and does not make visible.
+        if (mHistory != nullptr)
+            mHistory->transition(commands, fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL,
+                VK_IMAGE_LAYOUT_GENERAL,
+                fresh ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
-            // Before the trace and outside its zone, because the sea is a function of the clock and
-            // of nothing the camera does — one synthesis serves every ray of the frame. None where
-            // the frame has no water: `WavePass::record` says where the tiles are left.
-            if (hasSea(sampled))
-            {
-                mTimer.open(commands, "waves");
-                mWaves.record(commands, sampled.mTime);
-                mTimer.close(commands);
-            }
+        // Before the trace and outside its zone, because the sea is a function of the clock and
+        // of nothing the camera does — one synthesis serves every ray of the frame. None where
+        // the frame has no water: `WavePass::record` says where the tiles are left.
+        if (hasSea(sampled))
+        {
+            timer.open(commands, "waves");
+            mWaves.record(commands, sampled.mTime);
+            timer.close(commands);
+        }
 
-            mChannels->begin(commands);
-            mTimer.open(commands, "trace");
-            mPass->record(commands, inputs, *mChannels, mHitCount, sampled);
-            mTimer.close(commands);
-            mChannels->handOver(commands);
+        mChannels->begin(commands);
+        timer.open(commands, "trace");
+        mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled);
+        timer.close(commands);
+        mChannels->handOver(commands);
 
-            // Where the bounce ended up: the filter's last level, or the channel the trace wrote
-            // when nothing filtered it. **Ray Reconstruction is itself the denoiser**, and handing
-            // it a frame the wavelet already blurred is asking it to recover what was thrown away —
-            // which is why `resolve` never answers with both.
-            const bool filtering = reconstruction.mDenoiser == Denoiser::Wavelet;
-            const Image* indirect = &mChannels->getIndirect();
-            if (filtering)
-            {
-                // **The temporal half first, and the cascade is what fills in where it was
-                // rejected.** The accumulator replaces the trace's single sample with the mean of
-                // the frames this surface has been seen over, and hands on the variance of that
-                // mean — which is what lets the levels below stop at an edge in the light rather
-                // than only at an edge in the geometry.
-                mTimer.open(commands, "accumulate");
-                const Image& moments = mAccumulate.record(commands, *mChannels, sampled.mCamera, historyLost);
-                historyAnswered = true;
-                mTimer.close(commands);
+        // Where the bounce ended up: the filter's last level, or the channel the trace wrote
+        // when nothing filtered it. **Ray Reconstruction is itself the denoiser**, and handing
+        // it a frame the wavelet already blurred is asking it to recover what was thrown away —
+        // which is why `resolve` never answers with both.
+        const bool filtering = reconstruction.mDenoiser == Denoiser::Wavelet;
+        const Image* indirect = &mChannels->getIndirect();
+        if (filtering)
+        {
+            // **The temporal half first, and the cascade is what fills in where it was
+            // rejected.** The accumulator replaces the trace's single sample with the mean of
+            // the frames this surface has been seen over, and hands on the variance of that
+            // mean — which is what lets the levels below stop at an edge in the light rather
+            // than only at an edge in the geometry.
+            timer.open(commands, "accumulate");
+            const Image& moments = mAccumulate.record(commands, *mChannels, sampled.mCamera, historyLost);
+            historyAnswered = true;
+            timer.close(commands);
 
-                // The cascade reads what the accumulator just wrote, in both channels.
-                for (const Image* written : { &mChannels->getIndirect(), &moments })
-                    written->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-
-                mTimer.open(commands, "filter");
-                indirect = &mFilter.record(commands, *mChannels, moments, sampled.mCamera);
-                mTimer.close(commands);
-            }
-
-            mTimer.open(commands, "composite");
-            mComposite.record(commands, *mChannels, *indirect, mHistory.get(), *mColour,
-                Shaders::CompositeConstants{
-                    .mWidth = mRenderWidth,
-                    .mHeight = mRenderHeight,
-                    .mAccumulate = options.mAccumulate,
-                });
-            mTimer.close(commands);
-
-            // Whatever comes next reads what the composite just wrote.
-            mColour->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
-
-            const Image* shown = mColour.get();
-
-#ifdef OPENMW_RTX_DLSS
-            if (mUpscaler != nullptr)
-            {
-                mTimer.open(commands, "upscale");
-                mUpscaler->record(commands,
-                    DlssInputs{
-                        .mColour = *mColour,
-                        .mDiffuseAlbedo = mChannels->getAlbedo(),
-                        .mSpecularAlbedo = mChannels->getSpecular(),
-                        .mNormalRoughness = mChannels->getGuide(),
-                        .mDepth = mChannels->getDepth(),
-                        .mMotion = mChannels->getMotion(),
-                        .mReflectionMotion = mChannels->getReflectionMotion(),
-                        .mParticleMask = mChannels->getParticleMask(),
-                        .mBiasMask = mChannels->getBiasMask(),
-                        .mOutput = *mUpscaled,
-                        .mJitter = sampled.mCamera.mJitter,
-                        .mFrameDeltaMs = sinceLastMs,
-                        .mReset = historyLost,
-                    });
-                historyAnswered = true;
-
-                // What NGX recorded is its own; nothing here knows which stages it used.
-                mUpscaled->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT,
+            // The cascade reads what the accumulator just wrote, in both channels.
+            for (const Image* written : { &mChannels->getIndirect(), &moments })
+                written->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
-                mTimer.close(commands);
-                shown = mUpscaled.get();
-            }
+            timer.open(commands, "filter");
+            indirect = &mFilter.record(commands, *mChannels, moments, sampled.mCamera);
+            timer.close(commands);
+        }
+
+        timer.open(commands, "composite");
+        mComposite.record(commands, *mChannels, *indirect, mHistory.get(), *mColour,
+            Shaders::CompositeConstants{
+                .mWidth = mRenderWidth,
+                .mHeight = mRenderHeight,
+                .mAccumulate = options.mAccumulate,
+            });
+        timer.close(commands);
+
+        // Whatever comes next reads what the composite just wrote.
+        mColour->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
+
+        const Image* shown = mColour.get();
+
+#ifdef OPENMW_RTX_DLSS
+        if (mUpscaler != nullptr)
+        {
+            timer.open(commands, "upscale");
+            mUpscaler->record(commands,
+                DlssInputs{
+                    .mColour = *mColour,
+                    .mDiffuseAlbedo = mChannels->getAlbedo(),
+                    .mSpecularAlbedo = mChannels->getSpecular(),
+                    .mNormalRoughness = mChannels->getGuide(),
+                    .mDepth = mChannels->getDepth(),
+                    .mMotion = mChannels->getMotion(),
+                    .mReflectionMotion = mChannels->getReflectionMotion(),
+                    .mParticleMask = mChannels->getParticleMask(),
+                    .mBiasMask = mChannels->getBiasMask(),
+                    .mOutput = *mUpscaled,
+                    .mJitter = sampled.mCamera.mJitter,
+                    .mFrameDeltaMs = sinceLastMs,
+                    .mReset = historyLost,
+                });
+            historyAnswered = true;
+
+            // What NGX recorded is its own; nothing here knows which stages it used.
+            mUpscaled->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+            timer.close(commands);
+            shown = mUpscaled.get();
+        }
 #endif
 
-            // **What the lens will spread, built here and applied by the curve.** Nothing is
-            // written back over the frame — `BloomPass` says why the trace's own answer has to
-            // reach `Channel::Radiance` untouched.
-            mTimer.open(commands, "bloom");
-            mBloom.record(commands, *shown);
-            mTimer.close(commands);
+        // **What the lens will spread, built here and applied by the curve.** Nothing is
+        // written back over the frame — `BloomPass` says why the trace's own answer has to
+        // reach `Channel::Radiance` untouched.
+        timer.open(commands, "bloom");
+        mBloom.record(commands, *shown);
+        timer.close(commands);
 
-            // **Measured off the image the curve is about to map**, which is the upscaled one
-            // wherever something upscales — see `histogram.comp` for what measuring the other one
-            // costs. One `shown` feeds both, so the two cannot come apart.
-            mTimer.open(commands, "exposure");
-            if (options.mExposure.has_value())
-                mExposure.recordFixed(commands, *options.mExposure);
-            else
-            {
-                // **The third thing that reads a lost history**, and the only one that reads it on
-                // every frame: the eye has no past to adapt from either.
-                mExposure.record(commands, *shown, 0.001f * sinceLastMs, historyLost, options.mExposureBias);
-                historyAnswered = true;
-            }
-            mTimer.close(commands);
+        // **Measured off the image the curve is about to map**, which is the upscaled one
+        // wherever something upscales — see `histogram.comp` for what measuring the other one
+        // costs. One `shown` feeds both, so the two cannot come apart.
+        timer.open(commands, "exposure");
+        if (options.mExposure.has_value())
+            mExposure.recordFixed(commands, *options.mExposure);
+        else
+        {
+            // **The third thing that reads a lost history**, and the only one that reads it on
+            // every frame: the eye has no past to adapt from either.
+            mExposure.record(commands, *shown, 0.001f * sinceLastMs, historyLost, options.mExposureBias);
+            historyAnswered = true;
+        }
+        timer.close(commands);
 
-            mTimer.open(commands, "tone");
-            mTone->record(commands, *shown, mExposure.getExposure(), mChannels->getStarsShown(), mBloom.getPyramid(),
-                inputs.mTextures, *mTarget,
-                toneFor(sampled, mOutputWidth, mOutputHeight, mChannels->getWidth(), mChannels->getHeight()));
-            mTimer.close(commands);
-        });
+        timer.open(commands, "tone");
+        mTone->record(commands, *shown, mExposure.getExposure(), mChannels->getStarsShown(), mBloom.getPyramid(),
+            inputs.mTextures, *mTarget,
+            toneFor(sampled, mOutputWidth, mOutputHeight, mChannels->getWidth(), mChannels->getHeight()));
+        timer.close(commands);
 
-        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        // **Submitted and not waited for.** The fence is what the frame after next waits on
+        // before it writes over this frame's copy of the tables, and `finishFrame` is where the
+        // count and the report come back — a frame late, which is the point.
+        mReadBy[mWorldSlot] = mFrame;
+        submitFrame(frame);
 
         // What the next frame reprojects against, and the camera as the caller gave it: a jitter is
         // where inside a pixel this frame sampled, not where the eye was.
         mPreviousCamera = camera;
 
-        // Read after the last of the frame's submits has been waited on, which every one of them
-        // has: the pool fences each before it returns.
-        std::uint32_t hits = 0;
-        if (mCountHits)
-        {
-            hits = *static_cast<const std::uint32_t*>(mHitCount.map());
-            mHitCount.unmap();
-        }
-
         if (historyAnswered)
             mHistoryStale = false;
 
-        return FrameResult{
-            .mHits = hits, .mTraceMs = ms, .mGpu = mTimer.resolve(), .mReconstruction = reconstruction
-        };
+        return reconstruction;
     }
 
     std::uint32_t VulkanRenderer::addViewScene()
@@ -913,6 +1129,12 @@ namespace Rtx
     void VulkanRenderer::dropViewScene(std::uint32_t scene)
     {
         assert(scene < mViewScenes.size() && mViewScenes[scene] != nullptr && "a scene given back twice");
+
+        // **What a picture's placement buried is this scene's**, and the frame it was buried under
+        // need never be traced — so it is given back here rather than to a scene that has gone.
+        mDevice.waitIdle();
+        finishFrames();
+        emptyGraveyards();
 
         mViewScenes[scene].reset();
         mFreeViewScenes.push_back(scene);
@@ -958,6 +1180,12 @@ namespace Rtx
 
         growViewTargets(options.mWidth, options.mHeight);
 
+        // **Every frame in flight first.** A picture of the world binds the world's tables and
+        // bins its sprites into them, and the frame that last traced them may still be reading;
+        // a picture of a subject has tables of its own, but the pass, the sea and the fog below
+        // are the frame's neighbours. A stall here is a picture's cost and not a frame's.
+        finishFrames();
+
         const SceneAcceleration& acceleration
             = ofTheWorld ? *mWorld.mAcceleration : *mViewScenes[options.mScene]->mAcceleration;
         SceneBuffers* buffers = ofTheWorld ? mWorld.mBuffers.get() : mViewScenes[options.mScene]->mBuffers.get();
@@ -965,11 +1193,13 @@ namespace Rtx
 
         // A doll and a map trace the same shader, so they need the same list — against their own
         // camera, which is not the frame's.
-        buffers->binSprites(camera.mOrigin, camera.mCamera, camera.mSunPosition);
+        const std::uint32_t slot = ofTheWorld ? mWorldSlot : 0;
+        buffers->binSprites(camera.mOrigin, camera.mCamera, camera.mSunPosition, slot, frameSlot(mFrame).mGraveyard);
 
         const VisibilityInputs inputs{
             .mScene = acceleration.getTopLevel(),
             .mBuffers = buffers,
+            .mSlot = slot,
             .mIndexBlocks = acceleration.getIndexBlocks(),
             .mTextures = array.getSet(),
             .mShading = array.getShading(),
@@ -979,7 +1209,8 @@ namespace Rtx
 
         // **Not counted, and not timed.** The hit count and the frame report are the frame's; a
         // picture drawn between two of them would overwrite both. The buffer is still bound because
-        // the shader writes it whatever anyone does with the number.
+        // the shader writes it whatever anyone does with the number, and it is the frame's, which
+        // `renderFrame` zeroes before it counts.
         mPool.submitAndWait([&](VkCommandBuffer commands) {
             for (const Image* image : { mViewColour.get(), mViewTarget.get() })
                 image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
@@ -990,7 +1221,7 @@ namespace Rtx
                 mWaves.record(commands, camera.mTime);
 
             mViewChannels->begin(commands);
-            mPass->record(commands, inputs, *mViewChannels, mHitCount, camera);
+            mPass->record(commands, inputs, *mViewChannels, frameSlot(mFrame).mHitCount, camera);
             mViewChannels->handOver(commands);
 
             // A doll and a map tile are one frame with no frame before them, so the accumulator is
