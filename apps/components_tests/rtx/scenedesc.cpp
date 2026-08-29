@@ -22,6 +22,12 @@ namespace Rtx
 
         constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
 
+        /// The runs a list names, as a vector a matcher can compare.
+        std::vector<Span> runs(std::span<const Span> spans)
+        {
+            return std::vector<Span>(spans.begin(), spans.end());
+        }
+
         /// What a news list names, sorted, so a set can be compared without depending on the order
         /// the sweep happened to walk its table in.
         std::vector<Index> sorted(std::span<const Index> slots)
@@ -649,19 +655,19 @@ namespace Rtx
 
         /// **The split that keeps an animated state set from rebuilding the world.**
         ///
-        /// A material appearing, and a sweep that takes one away again, is a few kilobytes of table.
-        /// A mesh or a texture *appearing* is every acceleration structure in the scene. The mirror
-        /// reports them apart so a reader can answer them apart — OpenMW's water cycles thirty-two
-        /// materials a second, and reading that as a world arriving cost the game every frame it
-        /// had.
+        /// A material appearing is one row of a table, and a sweep that takes one away again is not
+        /// even that. A mesh or a texture *appearing* is every acceleration structure in the scene.
+        /// The mirror reports them apart so a reader can answer them apart — OpenMW's water cycles
+        /// thirty-two materials a second, and reading that as a world arriving cost the game every
+        /// frame it had.
         TEST(RtxSceneDescTest, aMaterialChangingIsNotAStructureChanging)
         {
             SceneDesc scene;
             const Index mesh = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices);
-            scene.addMaterial(Material{});
+            const Index first = scene.addMaterial(Material{});
 
             const std::uint64_t structure = scene.getStructureRevision();
-            const std::uint64_t shading = scene.getShadingRevision();
+            scene.clearArrivals();
 
             // A second material, which is what a state set with a new address comes to.
             Material other;
@@ -669,16 +675,18 @@ namespace Rtx
             const Index kept = scene.addMaterial(other);
 
             EXPECT_EQ(scene.getStructureRevision(), structure) << "a material asked for a rebuild";
-            EXPECT_GT(scene.getShadingRevision(), shading);
+            EXPECT_EQ(sorted(scene.getWrittenMaterials()), (std::vector<Index>{ kept }))
+                << "the row that arrived, and only it";
 
-            // And taking one away again is the same kind of change, not a different one.
-            const std::uint64_t settled = scene.getShadingRevision();
+            // And taking one away again is no shading change at all: nothing stands on the row, so
+            // nothing reads it and nothing has to write it.
+            scene.clearArrivals();
             const std::array meshes{ mesh };
             const std::array materials{ kept };
 
             ASSERT_TRUE(scene.release(meshes, materials));
             EXPECT_EQ(scene.getStructureRevision(), structure) << "a sweep of one material asked for a rebuild";
-            EXPECT_GT(scene.getShadingRevision(), settled);
+            EXPECT_TRUE(scene.getWrittenMaterials().empty()) << "a sweep reported a row to write";
 
             // **And a mesh going is no longer the other answer either.** It was, while a sweep
             // compacted: the table moved and everything built from it had to be built again. A slot
@@ -687,6 +695,71 @@ namespace Rtx
             const std::uint64_t before = scene.getStructureRevision();
             ASSERT_TRUE(scene.release({}, materials));
             EXPECT_EQ(scene.getStructureRevision(), before) << "a cell leaving asked for a rebuild";
+
+            // **The slot the sweep freed is taken over, and that is a row again.** A flipbook added
+            // and then rewritten on one frame is one row too: the list holds each slot once.
+            EXPECT_EQ(scene.addMaterial(Material{}), first) << "a freed slot was not the one handed out";
+            scene.setMaterial(first, other);
+            EXPECT_EQ(sorted(scene.getWrittenMaterials()), (std::vector<Index>{ first }));
+
+            // A rewrite that changes nothing is not a write, which is what a paused game is.
+            scene.clearArrivals();
+            scene.setMaterial(first, other);
+            EXPECT_TRUE(scene.getWrittenMaterials().empty()) << "writing back what was there reported a row";
+        }
+
+        /// A chunk's layers and weights arrive as the runs they were placed in, and a chunk that
+        /// leaves gives its runs back without naming them.
+        ///
+        /// **What lets the mask table stay where it is.** The runs are what a backend copies; a
+        /// flag over the table would have it copy the whole of it, which is megabytes for a chunk
+        /// that brought a few hundred floats.
+        TEST(RtxSceneDescTest, layersAndMasksArriveAsTheRunsTheyWerePlacedIn)
+        {
+            SceneDesc scene;
+
+            const std::array<float, 4> weights{ 1.0f, 0.0f, 0.0f, 1.0f };
+            const Index mask = scene.addMask(weights);
+            EXPECT_EQ(mask, 0u);
+            EXPECT_EQ(runs(scene.getArrivedMasks()), (std::vector<Span>{ Span{ .mOffset = 0, .mCount = 4 } }));
+
+            const std::array layers{
+                MaterialLayer{ .mMaskOffset = mask, .mMaskWidth = 2, .mMaskHeight = 2 },
+                MaterialLayer{},
+            };
+            const Span run = scene.addLayers(layers);
+            EXPECT_EQ(run, (Span{ .mOffset = 0, .mCount = 2 }));
+            EXPECT_EQ(runs(scene.getArrivedLayers()), (std::vector<Span>{ run }));
+
+            scene.addMaterial(
+                Material{ .mKind = MaterialKind::Terrain, .mLayerOffset = run.mOffset, .mLayerCount = run.mCount });
+            scene.clearArrivals();
+            EXPECT_TRUE(scene.getArrivedMasks().empty());
+            EXPECT_TRUE(scene.getArrivedLayers().empty());
+
+            // A second chunk lands past the first: its runs are its own and say where they are.
+            const std::array<float, 2> more{ 0.5f, 0.5f };
+            EXPECT_EQ(scene.addMask(more), 4u);
+            EXPECT_EQ(runs(scene.getArrivedMasks()), (std::vector<Span>{ Span{ .mOffset = 4, .mCount = 2 } }));
+
+            const std::array one{ MaterialLayer{ .mMaskOffset = 4, .mMaskWidth = 2, .mMaskHeight = 1 } };
+            EXPECT_EQ(scene.addLayers(one), (Span{ .mOffset = 2, .mCount = 1 }));
+            EXPECT_EQ(runs(scene.getArrivedLayers()), (std::vector<Span>{ Span{ .mOffset = 2, .mCount = 1 } }));
+            scene.clearArrivals();
+
+            // The first chunk goes and its runs go with it — reported to nobody, because nothing
+            // reads a run nothing names. The next chunk that fits lands in the hole, and that
+            // arrival is what names the run again.
+            const std::array<Index, 0> noMeshes{};
+            const std::array keep{ scene.addMaterial(Material{}) };
+            scene.clearArrivals();
+            ASSERT_TRUE(scene.release(noMeshes, keep));
+            EXPECT_TRUE(scene.getArrivedMasks().empty()) << "a sweep reported a run to write";
+            EXPECT_TRUE(scene.getArrivedLayers().empty());
+            EXPECT_TRUE(scene.getWrittenMaterials().empty());
+
+            EXPECT_EQ(scene.addMask(weights), 0u) << "the freed run was not the one handed out";
+            EXPECT_EQ(runs(scene.getArrivedMasks()), (std::vector<Span>{ Span{ .mOffset = 0, .mCount = 4 } }));
         }
 
         /// A scene that lost nothing is left entirely alone, and a sprite's texture is the caller's
@@ -701,11 +774,11 @@ namespace Rtx
             const std::array meshes{ mesh };
             const std::array materials{ material };
             const std::uint64_t was = scene.getStructureRevision();
-            const std::uint64_t shading = scene.getShadingRevision();
+            scene.clearArrivals();
 
             EXPECT_FALSE(scene.release(meshes, materials));
             EXPECT_EQ(scene.getStructureRevision(), was);
-            EXPECT_EQ(scene.getShadingRevision(), shading);
+            EXPECT_TRUE(scene.getWrittenMaterials().empty());
             EXPECT_TRUE(scene.getFreedMeshes().empty()) << "a sweep that freed nothing named something";
             EXPECT_TRUE(scene.getFreedTextures().empty());
 

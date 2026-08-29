@@ -1042,12 +1042,12 @@ namespace Rtx
             ASSERT_EQ(scene.getMaterials().size(), 1u);
             EXPECT_EQ(scene.getMaterials()[0].mDiffuseColour, osg::Vec4f(0.75f, 0.0f, 0.0f, 1.0f));
 
-            // And a frame the controller said nothing new on writes nothing to the device: the
-            // whole material, layer and mask table goes over when the revision moves.
-            const std::uint64_t settled = scene.getShadingRevision();
+            // And a frame the controller said nothing new on writes nothing to the device: the row
+            // goes over when the scene names it, and only then.
+            scene.clearArrivals();
             scene.clearPlacement();
             extractor.extract(*node, osg::Matrixf::identity(), 0, 2);
-            EXPECT_EQ(scene.getShadingRevision(), settled) << "re-reading an unchanged state set is not a change";
+            EXPECT_TRUE(scene.getWrittenMaterials().empty()) << "re-reading an unchanged state set is not a change";
         }
 
         /// The same controller as an update callback, which is how `NifOsg` hangs everything the

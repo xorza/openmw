@@ -81,6 +81,18 @@ namespace Rtx
             for (const char* const pass : { "trace", "composite", "exposure", "tone" })
                 EXPECT_TRUE(reports(drawn.mGpu, pass)) << "no zone called " << pass;
 
+            // **And the sea is not among them where the frame has none.** `makeCamera` names no
+            // water, so nothing can sample the wave tiles and nothing should synthesise them; a
+            // frame that does name a level pays for them once, before the trace.
+            EXPECT_FALSE(reports(drawn.mGpu, "waves")) << "a dry frame synthesised the sea";
+
+            Shaders::VisibilityConstants flooded = camera;
+            flooded.mWaterLevel = 0.0f;
+            const FrameResult wet = renderer->renderFrame(flooded, FrameOptions{});
+            EXPECT_TRUE(reports(wet.mGpu, "waves")) << "a frame with water in it synthesised no sea";
+            EXPECT_EQ(wet.mGpu.front().mName, "waves")
+                << "the sea was synthesised somewhere other than before the trace";
+
             for (const GpuSpan& span : drawn.mGpu)
             {
                 EXPECT_GT(span.mMs, 0.0) << span.mName << " took no time at all";

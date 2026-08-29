@@ -58,7 +58,9 @@ namespace Rtx
 
         /// Turns the phases to `seconds` and rebuilds every texture and every level from them.
         ///
-        /// Leaves each texture in `VK_IMAGE_LAYOUT_GENERAL`, ordered against a sampled read.
+        /// Leaves each texture in `VK_IMAGE_LAYOUT_GENERAL`, ordered against a sampled read — which
+        /// is also where a frame that records nothing finds them, holding whatever sea was last
+        /// synthesised. A cell with no water never samples them, so it need not synthesise them.
         void record(VkCommandBuffer commands, float seconds) const;
 
         /// Linear, mipmapped and wrapping — a tile lays the same water down every `getExtent` units,

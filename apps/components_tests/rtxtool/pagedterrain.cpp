@@ -2,6 +2,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
@@ -22,6 +23,7 @@
 #include <components/rtx/compositequeue.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
+#include <components/rtx/shadingmap.hpp>
 #include <components/rtx/terraincomposite.hpp>
 #include <components/rtx/texturebuilder.hpp>
 
@@ -497,11 +499,12 @@ namespace RtxTool
         /// can open, so what says it worked is that `SceneTextures` describes it rather than
         /// counting it unreadable and drawing the stand-in.
         ///
-        /// **And the queue is what bakes it, drained here to the end.** A chunk asks by setting
-        /// `Material::mFlatten` and shades from its layer stack until one arrives, which is what
-        /// keeps a cell boundary from spending a quarter of a second flattening eight of them: this
-        /// asserts both halves, that nothing is flattened before the queue runs and that everything
-        /// is after.
+        /// **And the queue is what bakes it, on a thread of its own and collected here.** A chunk
+        /// asks by setting `Material::mFlatten` and shades from its layer stack until one comes
+        /// back, which is what keeps a cell boundary from spending a quarter of a second flattening
+        /// eight of them: this asserts both halves, that nothing is flattened before the queue is
+        /// collected and that everything is after — and that a collect keeps to the bound it is
+        /// given, because that bound is what an arrival frame pays.
         ///
         /// A radius barely past the grid, because every composite in the scene is baked here and each
         /// one costs tens of milliseconds — the figure `plan.md` §6 records.
@@ -538,7 +541,7 @@ namespace RtxTool
             ASSERT_GT(asked, 0u) << "no chunk was wide enough to be flattened";
             EXPECT_TRUE(flattenedSlots().empty()) << "a chunk was flattened by the walk that met it";
 
-            // **A second queue that never drains**, so there is still something waiting when the
+            // **A second queue that is never collected**, so there is still something waiting when the
             // scene is cleared at the end of this test.
             Rtx::CompositeQueue holding;
             holding.gather(scene, world->getImageManager());
@@ -547,12 +550,21 @@ namespace RtxTool
             Rtx::CompositeQueue queue;
             queue.gather(scene, world->getImageManager());
             EXPECT_EQ(queue.getWaitingCount(), asked);
+            EXPECT_TRUE(flattenedSlots().empty()) << "a chunk was flattened by the hand-over rather than by the baker";
 
-            while (queue.getWaitingCount() > 0)
-                queue.drain(scene, Rtx::sBakeRowsPerDrain);
+            // The two halves the uploader calls, in its order: wait for the baker, then take back
+            // what it made. One first, which is what a frame's bound looks like, and the rest at
+            // once, which is what a caller with no next frame asks for.
+            queue.finish();
+            EXPECT_EQ(queue.collect(scene, 1), std::size_t{ 1 }) << "a collect took more than its bound";
+            EXPECT_EQ(queue.getWaitingCount(), asked - 1);
+            EXPECT_EQ(flattenedSlots().size(), std::size_t{ 1 });
+
+            EXPECT_EQ(queue.collect(scene, std::numeric_limits<std::size_t>::max()), asked - 1);
+            EXPECT_EQ(queue.getWaitingCount(), 0u) << "a composite was collected and still waiting";
 
             const std::vector<Rtx::Index> flattened = flattenedSlots();
-            ASSERT_EQ(flattened.size(), asked) << "the queue drained without finishing what it took on";
+            ASSERT_EQ(flattened.size(), asked) << "the queue finished without flattening what it took on";
 
             const Rtx::SceneTextures described(scene, world->getImageManager(), &queue);
             EXPECT_EQ(described.getUnreadable(), 0u) << "a composite the uploader would draw grey";
@@ -574,6 +586,14 @@ namespace RtxTool
                 EXPECT_EQ(data.mHeight, Rtx::sCompositeExtent);
                 ASSERT_EQ(data.mLevels.size(), 10u) << "512 square down to a single texel";
 
+                // **Neutral all the way to the upload.** The light painted into each ground texture
+                // came off per tile in the bake, and an estimate made from the composite's own bytes
+                // would take it off a second time.
+                ASSERT_EQ(data.mShading.size(), std::size_t{ Rtx::ShadingMap::sExtent } * Rtx::ShadingMap::sExtent);
+                EXPECT_TRUE(std::all_of(data.mShading.begin(), data.mShading.end(), [](const float factor) {
+                    return factor == 1.0f;
+                })) << "a composite that would be corrected a second time at the hit";
+
                 const Rtx::MipLevel& last = data.mLevels.back();
                 ASSERT_EQ(last.mWidth, 1u);
                 averages.push_back(std::to_integer<std::uint32_t>(data.mBytes[last.mOffset]) << 16
@@ -589,9 +609,9 @@ namespace RtxTool
                 << "every chunk in the region averages to one colour, so nothing was read from the masks";
 
             // **Last, because it empties the scene.** `SceneDesc::clear` renumbers the material
-            // table and a bake takes tens of frames, so a worldspace change with one in flight
-            // leaves an entry holding an index into a table that no longer has it — and reading
-            // that index is past the end of an emptied span, which is the quietest kind of wrong.
+            // table and a bake outlives the frame, so a worldspace change with one in flight leaves
+            // an entry holding an index into a table that no longer has it — and reading that index
+            // is past the end of an emptied span, which is the quietest kind of wrong.
             scene.clear();
             holding.gather(scene, world->getImageManager());
             EXPECT_EQ(holding.getWaitingCount(), 0u) << "a cleared scene left a bake waiting on a material it forgot";

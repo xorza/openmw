@@ -48,8 +48,9 @@ namespace Rtx
         /// **The split is the whole point of this class having two entry points.** Rebuilding all of
         /// it per frame was the largest single cost in the renderer — measured at twenty to
         /// twenty-seven milliseconds on a nine-by-nine region — and almost none of it had changed:
-        /// the texture coordinates, the mesh table, the materials and the masks are what the scene is
-        /// made of and only `setScene` can alter them.
+        /// the texture coordinates and the mesh table are what the scene is made of and only an
+        /// arrival can alter them, and the materials, the layers and the masks change by the row
+        /// and the run, which is what the scene reports and what `shade` writes.
         ///
         /// What does change is where things are, what is lit, and the vertices of anything skinned.
         /// Those live in memory the host writes straight into, so this is a `memcpy` and not a
@@ -115,8 +116,14 @@ namespace Rtx
         /// hold everything else, and rewriting them would be rewriting what nothing changed.
         void writeMeshes(const SceneDesc& scene, std::span<const Index> meshes);
 
-        /// Rewrites the shading tables if the scene says they have changed, and nothing otherwise.
+        /// Writes the material rows and the layer and mask runs the scene says it wrote, and nothing
+        /// otherwise — or a table whole where it had to be made again to hold them.
         void shade(const SceneDesc& scene);
+
+        /// Makes `held` able to hold `bytes`, doubling so that a table that keeps growing is made
+        /// again a logarithmic number of times rather than once per arrival. True where it was made
+        /// again, which is a table holding nothing that the caller has to fill whole.
+        bool outgrow(HostBuffer& held, VkDeviceSize bytes);
 
         const Device* mDevice = nullptr;
 
@@ -127,15 +134,15 @@ namespace Rtx
         // **Host-visible and rewritten from `place`, not uploaded once.** Anything that animates a
         // state set gives the mirror a new material every frame — OpenMW's water cycles thirty-two
         // of them — and a table that could only be filled at construction made that a reason to
-        // rebuild the whole scene. A few kilobytes written when the scene says they changed is what
-        // it is actually worth.
+        // rebuild the whole scene. The rows the scene says it wrote are what go over, and only
+        // those: the masks are megabytes and a flipbook turning changes none of them.
         HostBuffer mMaterials;
         HostBuffer mLayers;
         HostBuffer mMasks;
 
-        /// The shading revision these three were last written at, so a frame that changed nothing
-        /// writes nothing.
-        std::uint64_t mShaded = 0;
+        /// How many materials the table held when the sentinel row past them was last written, so
+        /// a table that grew has its sentinel moved and one that did not leaves it alone.
+        std::size_t mMaterialCount = 0;
 
         std::vector<Shaders::GpuMesh> mMeshScratch;
         std::vector<Shaders::GpuMaterial> mMaterialScratch;

@@ -8,3 +8,5 @@
 - remove metal
 - split tests
 - extract shader and lightting consts for look tweaking
+- tracy
+- dlss sdk path

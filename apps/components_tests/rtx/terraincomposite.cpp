@@ -71,14 +71,6 @@ namespace
     /// `1.055 * 0.5^(1/2.4) - 0.055 = 0.7354`, and `0.7354 * 255 = 187.5`, so 188. Summing the
     /// stored bytes instead gives 128 — the whole difference between ground that blends where two
     /// types meet and ground that goes muddy there.
-    /// A composite baked to the end, which is what every test below wants of one.
-    TerrainComposite flatten(std::span<const CompositeLayer> layers, std::uint32_t extent, float delight)
-    {
-        TerrainComposite made(layers, extent, delight);
-        made.bake(extent);
-        return made;
-    }
-
     TEST(RtxTerrainCompositeTest, aStackIsSummedInLightAndNotInStoredBytes)
     {
         const Flat red(1, filled(1, 0xFF0000));
@@ -90,7 +82,7 @@ namespace
             CompositeLayer{ .mDiffuse = green.describe(), .mMask = half, .mMaskWidth = 1, .mMaskHeight = 1 },
         };
 
-        const TerrainComposite baked = flatten(layers, 4, 0.0f);
+        const TerrainComposite baked(layers, 4, 0.0f);
         const TextureData described = baked.describe();
 
         ASSERT_EQ(described.mWidth, 4u);
@@ -131,7 +123,7 @@ namespace
             CompositeLayer{ .mDiffuse = green.describe(), .mMask = east, .mMaskWidth = 2, .mMaskHeight = 1 },
         };
 
-        const TerrainComposite baked = flatten(layers, 4, 0.0f);
+        const TerrainComposite baked(layers, 4, 0.0f);
         const TextureData described = baked.describe();
 
         // 0.75 encodes as 224.6 → 225 = 0xE1, and 0.25 as 137.0 → 137 = 0x89.
@@ -151,60 +143,6 @@ namespace
 
         // And the last level is the whole chunk in one texel: 0.5 of each, which is 188 again.
         EXPECT_EQ(texelOf(described, 2, 0, 0), 0xBCBC00u);
-    }
-
-    /// Baked a row at a time, a composite is the composite baked in one go — to the byte.
-    ///
-    /// **The whole of why the bake can be spread over frames.** One costs 28.5 ms, which is a
-    /// dropped frame, and a cell boundary wants several; draining it is only allowed if where a
-    /// caller chose to stop makes no difference to what comes out. Two masks and two ground types,
-    /// so a row that read the wrong `v` lands on the wrong side of the blend rather than nowhere.
-    ///
-    /// **A slice that does not divide the extent, and one bigger than it**, because those are the
-    /// two a loop gets wrong: 3 into 8 leaves a short last slice, and 64 asks for more rows than
-    /// exist.
-    TEST(RtxTerrainCompositeTest, bakingInSlicesReachesTheSameTexelsAsBakingItAtOnce)
-    {
-        const Flat red(1, filled(1, 0xFF0000));
-        const Flat green(1, filled(1, 0x00FF00));
-        const std::array<float, 2> west{ 1.0f, 0.0f };
-        const std::array<float, 2> east{ 0.0f, 1.0f };
-
-        const std::array layers{
-            CompositeLayer{ .mDiffuse = red.describe(), .mMask = west, .mMaskWidth = 2, .mMaskHeight = 1 },
-            CompositeLayer{ .mDiffuse = green.describe(), .mMask = east, .mMaskWidth = 2, .mMaskHeight = 1 },
-        };
-
-        const TerrainComposite whole = flatten(layers, 8, 0.5f);
-
-        TerrainComposite sliced(layers, 8, 0.5f);
-        EXPECT_FALSE(sliced.isDone()) << "taking a stack on is not baking it";
-        EXPECT_EQ(sliced.getBakedRows(), 0u);
-
-        std::uint32_t drains = 0;
-        while (!sliced.bake(3))
-        {
-            ++drains;
-            ASSERT_LT(drains, 8u) << "a drain that never finishes";
-        }
-
-        // Eight rows three at a time is three drains — 3, 6, then the last two.
-        EXPECT_EQ(drains, 2u);
-        EXPECT_EQ(sliced.getBakedRows(), 8u);
-        EXPECT_TRUE(sliced.bake(64)) << "a finished composite is still finished";
-
-        const TextureData atOnce = whole.describe();
-        const TextureData inSlices = sliced.describe();
-
-        ASSERT_EQ(inSlices.mLevels.size(), atOnce.mLevels.size());
-        for (std::uint32_t level = 0; level < atOnce.mLevels.size(); ++level)
-        {
-            const MipLevel& side = atOnce.mLevels[level];
-            for (std::uint32_t y = 0; y < side.mHeight; ++y)
-                for (std::uint32_t x = 0; x < side.mWidth; ++x)
-                    ASSERT_EQ(texelOf(inSlices, level, x, y), texelOf(atOnce, level, x, y))
-                        << "level " << level << " at " << x << ", " << y;
-        }
     }
 
     /// The diffuse transform is where the ground's tiling lives, and the sampler under it repeats.
@@ -228,8 +166,8 @@ namespace
         const std::array rolled{ CompositeLayer{
             .mDiffuse = ground.describe(), .mDiffuseTransform = osg::Vec4f(1.0f, 1.0f, 0.25f, 0.0f) } };
 
-        const TerrainComposite asIs = flatten(straight, 4, 0.0f);
-        const TerrainComposite shifted = flatten(rolled, 4, 0.0f);
+        const TerrainComposite asIs(straight, 4, 0.0f);
+        const TerrainComposite shifted(rolled, 4, 0.0f);
         const TextureData copied = asIs.describe();
         const TextureData moved = shifted.describe();
 
@@ -253,9 +191,9 @@ namespace
         const std::vector<float> twice(std::size_t{ ShadingMap::sExtent } * ShadingMap::sExtent, 2.0f);
         const std::array layers{ CompositeLayer{ .mDiffuse = white.describe(), .mShading = twice } };
 
-        const TerrainComposite untouched = flatten(layers, 2, 0.0f);
-        const TerrainComposite halved = flatten(layers, 2, 1.0f);
-        const TerrainComposite partly = flatten(layers, 2, 0.5f);
+        const TerrainComposite untouched(layers, 2, 0.0f);
+        const TerrainComposite halved(layers, 2, 1.0f);
+        const TerrainComposite partly(layers, 2, 0.5f);
 
         EXPECT_EQ(texelOf(untouched.describe(), 0, 0, 0), 0xFFFFFFu);
         EXPECT_EQ(texelOf(halved.describe(), 0, 0, 0), 0xBCBCBCu);

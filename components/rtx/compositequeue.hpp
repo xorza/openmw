@@ -1,7 +1,14 @@
 #pragma once
 
+#include <condition_variable>
+#include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <mutex>
+#include <optional>
+#include <stop_token>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -10,6 +17,7 @@
 
 #include "scenedesc.hpp"
 #include "shadingmap.hpp"
+#include "spanallocator.hpp"
 #include "terraincomposite.hpp"
 
 namespace Resource
@@ -19,20 +27,21 @@ namespace Resource
 
 namespace Rtx
 {
-    /// How many rows of a composite one drain may bake.
+    /// How many finished composites one `collect` may move into the scene.
     ///
-    /// **A budget in the only unit that is honest about it.** A 512-square composite costs 28.5 ms,
-    /// so a row is about 55 microseconds and sixteen of them is under a millisecond — which puts a
-    /// whole composite about thirty frames out. That is a distant hillside shading from its layer
-    /// stack for half a second after it arrives, which is a cost per hit and not a hitch, against a
-    /// quarter of a second of frozen picture for the eight of them a cell boundary brings.
-    inline constexpr std::uint32_t sBakeRowsPerDrain = 16;
+    /// **A bound on what an arrival frame pays, in the unit that costs.** Every composite taken is
+    /// a texture arriving — an image created, a megabyte and a half staged, a descriptor written —
+    /// and a long frame can find a dozen finished behind it. Two a frame is under a millisecond;
+    /// the rest wait a frame each, shading from their stacks as they did while they baked.
+    inline constexpr std::size_t sCompositesPerFrame = 2;
 
-    /// Every distant chunk waiting for its ground to be flattened, and the work drained into them.
+    /// Every distant chunk waiting for its ground to be flattened, and the thread that flattens them.
     ///
-    /// **The bake cannot happen on the frame that asks for it.** One costs 28.5 ms and a cell
-    /// boundary wants several, so a walk that met a wide chunk and flattened it there and then would
-    /// drop a quarter of a second of frames — which is what a spike is, however good the average.
+    /// **The bake happens on no frame at all.** One costs 28.5 ms and a cell boundary wants
+    /// several; sliced sixteen rows a frame it was a millisecond or two on every frame for twenty
+    /// seconds after a load, and the row that finished one was a spike on top of that. A thread of
+    /// this queue's own takes each stack whole, and what the frame does is hand a stack over and
+    /// take the bytes back — a copy of a few hundred floats each way.
     ///
     /// **Nothing is wrong while it waits.** A chunk asks by setting `Material::mFlatten` and its
     /// `mDiffuse` stays unset, which is the branch the shader already takes for every near chunk: it
@@ -45,72 +54,149 @@ namespace Rtx
     class CompositeQueue
     {
     public:
-        /// Takes on every chunk that wants flattening and is not already waiting for it.
+        CompositeQueue() = default;
+
+        /// Stops the baker. A bake in flight finishes first; what is queued behind it does not.
+        ~CompositeQueue() = default;
+
+        CompositeQueue(const CompositeQueue&) = delete;
+        CompositeQueue& operator=(const CompositeQueue&) = delete;
+
+        /// Hands the baker every chunk the walk wrote that wants flattening and is not already
+        /// handed over.
         ///
-        /// **Off the shading revision, because that is what moves when a material is written.** A
-        /// frame in which no material changed cannot have grown a chunk that wants a composite, and
-        /// scanning the table for one would be a pass over every material in the world per frame.
+        /// **Off the rows the scene says it wrote**, which is the only place a chunk wanting a
+        /// composite can appear; the table itself is never scanned. Everything the bake reads — the
+        /// images, the weights, the transforms — is taken here, so the thread reads nothing the next
+        /// walk can change.
         void gather(const SceneDesc& scene, Resource::ImageManager& images);
 
-        /// Bakes at most `rows` more rows, oldest chunk first, and hands over what that finished.
+        /// Waits until nothing handed over is still baking.
         ///
-        /// A finished composite takes a texture slot — which puts it among the scene's arrivals, so
-        /// the upload that follows carries it — and goes onto the material that asked. One whose
-        /// chunk left the world while it baked is dropped instead.
+        /// **For a caller with no next frame.** A harness that stages a region, renders one frame
+        /// and stops has nowhere to put a bake that finishes later, and would photograph ground no
+        /// player sees.
+        void finish();
+
+        /// Moves at most `limit` finished composites into the scene, oldest first.
         ///
-        /// @return how many composites finished.
-        std::size_t drain(SceneDesc& scene, std::uint32_t rows);
+        /// A composite taken takes a texture slot — which puts it among the scene's arrivals, so the
+        /// upload that follows carries it — and goes onto the material that asked. One whose chunk
+        /// left the world while it baked, or whose scene was replaced outright, is dropped instead.
+        ///
+        /// @return how many were taken.
+        std::size_t collect(SceneDesc& scene, std::size_t limit);
 
         /// The finished composite in `slot`, or null where nothing here baked one.
         const TerrainComposite* find(Index slot) const;
 
-        /// Lets go of everything `drain` finished. **After the upload and not before**: what is held
+        /// Lets go of everything `collect` took. **After the upload and not before**: what is held
         /// between those two calls is the only copy of the bytes a backend has to read.
         void releaseFinished() { mFinished.clear(); }
 
-        /// How many chunks are still waiting, which is what says whether a drain has anything to do.
-        std::size_t getWaitingCount() const { return mWaiting.size(); }
+        /// How many chunks are handed over and not yet collected, which is what says whether a
+        /// collect has anything to wait for.
+        std::size_t getWaitingCount() const { return mAsked.size(); }
 
     private:
-        /// One chunk mid-bake, and enough of what it asked with to tell it apart from a chunk that
-        /// has since taken over its slot.
-        struct Waiting
+        /// Which chunk asked: the material's slot and where its layers sat when it did.
+        ///
+        /// What the frame side remembers of everything handed over and not yet collected, without
+        /// taking the lock — and what a bake is matched back to, so a slot another chunk took over
+        /// in the meantime is not handed the first one's ground.
+        struct Asked
         {
             Index mMaterial = sNoIndex;
             Index mLayerOffset = 0;
             Index mLayerCount = 0;
-            TerrainComposite mComposite;
+
+            bool operator==(const Asked& other) const = default;
         };
 
-        /// Oldest first, so a drain finishes one chunk rather than advancing every one of them.
-        std::vector<Waiting> mWaiting;
-
-        /// Finished this drain, by the slot they were given. Emptied by `releaseFinished`.
-        std::unordered_map<Index, TerrainComposite> mFinished;
-
-        /// The revision `gather` last read, so an unchanged table is not scanned again.
+        /// One chunk's stack as the baker reads it.
         ///
-        /// **Nought is safe to start from** because `addMaterial` moves the revision: a table with
-        /// anything in it to find is already past it.
-        std::uint64_t mScanned = 0;
+        /// **Copied, every part of it.** A bake outlives the walk that asked for it, so the weights
+        /// and the layers are taken by value and the images by reference count; the scene may free
+        /// the chunk's runs and hand them to another while this is being read, and nothing here
+        /// notices. The layers as the scene had them are what `collect` compares against to know the
+        /// same chunk still stands.
+        struct Request
+        {
+            Asked mAsked;
+
+            /// The reset this was gathered under, so a scene replaced outright takes it with it.
+            std::uint64_t mReset = 0;
+
+            std::vector<MaterialLayer> mLayers;
+
+            /// Parallel to `mLayers`, null where the layer's file could not be opened.
+            std::vector<osg::ref_ptr<const osg::Image>> mImages;
+
+            /// Every layer's weights end to end, and where each layer's run sits in them — a count
+            /// of nought for a layer that covers the chunk.
+            std::vector<float> mMasks;
+            std::vector<Span> mMaskRuns;
+        };
+
+        /// What came back: the request, and the composite — or none, where every layer was
+        /// unreadable and the chunk keeps its stack.
+        struct Baked
+        {
+            Request mRequest;
+            std::optional<TerrainComposite> mComposite;
+        };
+
+        /// The baker's loop: one request at a time, until asked to stop.
+        void work(std::stop_token stop);
+
+        /// Describes, estimates and flattens one stack. On the baker's thread.
+        Baked bake(Request&& request);
+
+        /// The painted light of a ground texture, estimated once per file for the life of the queue.
+        ///
+        /// **Node-based and keyed by the file, because the stack spans these and the same handful of
+        /// ground textures make every chunk of a region.** Estimating one reads every texel of a
+        /// texture's largest level, which is the 5% of a crossing's CPU `texturebuilder.hpp` names.
+        /// On the baker's thread only.
+        const ShadingMap& estimate(const TextureData& texture, const std::string& file);
+
+        /// Guards `mPending`, `mDone` and `mBaking` — everything the two threads share.
+        std::mutex mMutex;
+
+        /// Woken by a request arriving, or by the stop.
+        std::condition_variable_any mWake;
+
+        /// Woken by a bake finishing, which is what `finish` waits for.
+        std::condition_variable mSettled;
+
+        /// Oldest first, so the baker finishes chunks in the order they arrived.
+        std::deque<Request> mPending;
+        std::deque<Baked> mDone;
+        std::size_t mBaking = 0;
+
+        /// Everything handed over and not yet collected, which is what `gather` checks against.
+        std::vector<Asked> mAsked;
+
+        /// Collected this frame, by the slot they were given. Emptied by `releaseFinished`.
+        std::unordered_map<Index, TerrainComposite> mFinished;
 
         /// The reset `gather` last saw, so a cleared scene takes what was waiting with it.
         std::uint64_t mReset = 0;
 
-        /// Refilled per chunk rather than built afresh: a cell arriving is the frame that can least
-        /// afford a string, a stack and a level table apiece.
+        /// Refilled per collect rather than built afresh: the frame a composite lands on is not
+        /// one to spend an allocation on.
+        std::vector<Baked> mTaken;
         std::string mKey;
-        std::vector<CompositeLayer> mStack;
-        std::vector<MipLevel> mLevels;
-        std::vector<osg::ref_ptr<const osg::Image>> mSources;
 
-        /// Each ground texture's painted light, estimated once for as long as a gather runs.
-        ///
-        /// **Node-based and not a vector, because the stack spans these.** Estimating one reads
-        /// every texel of a texture's largest level — the 5% of the game's CPU `texturebuilder.hpp`
-        /// names — and neighbouring chunks are made of the same handful of ground textures, so this
-        /// is a cache as much as it is storage. It has to outlive the layers pointing into it, which
-        /// is until the composite that copies them is built.
-        std::unordered_map<Index, ShadingMap> mPainted;
+        std::unordered_map<std::string, ShadingMap> mPainted;
+
+        /// The estimate of a texture with no file to key it by, held only until the next one.
+        ShadingMap mUnnamed;
+
+        /// **Last, so it is joined first.** A member declared above it would be destroyed while
+        /// the baker was still reading it; the stop the join begins with is what wakes the wait.
+        /// Started by the first chunk that asks rather than with the queue: every picture inside
+        /// the interface has an uploader and a queue of its own, and a doll never asks.
+        std::jthread mWorker;
     };
 }

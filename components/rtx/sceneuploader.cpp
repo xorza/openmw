@@ -1,5 +1,6 @@
 #include "sceneuploader.hpp"
 
+#include <limits>
 #include <span>
 
 #include "renderer.hpp"
@@ -33,16 +34,18 @@ namespace Rtx
     {
         const bool mine = recognises(renderer, slot, scene, renderer.getTextureCount(slot));
 
-        // **Before anything reads what arrived, because finishing a bake is an arrival.** The queue
-        // takes on whatever the walk marked for flattening and gets a bounded slice of it done; a
-        // composite that finished here took a texture slot on the way, so the upload below carries
-        // it without knowing it was ever waiting.
+        // **Before anything reads what arrived, because a composite coming back is an arrival.**
+        // The queue hands its baker whatever the walk marked for flattening and takes back a
+        // bounded number of what the baker finished; a composite taken here took a texture slot on
+        // the way, so the upload below carries it without knowing it was ever waiting. A caller with
+        // no next frame waits for the baker first and takes everything.
         mComposites.gather(scene, images);
 
-        std::size_t baked = 0;
-        do
-            baked += mComposites.drain(scene, mStaged ? sCompositeExtent : sBakeRowsPerDrain);
-        while (mStaged && mComposites.getWaitingCount() > 0);
+        if (mStaged)
+            mComposites.finish();
+
+        const std::size_t baked
+            = mComposites.collect(scene, mStaged ? std::numeric_limits<std::size_t>::max() : sCompositesPerFrame);
 
         // Geometry the walk has not met before has no bottom-level structure and no uploaded
         // texture. **Which is a cell change and a load, not a frame** — a door opening moves
@@ -73,9 +76,9 @@ namespace Rtx
             renderer.placeScene(slot, scene, sea);
             scene.clearArrivals();
 
-            // **After the upload and not before.** Between the drain and here, what the queue holds is
-            // the only copy of a composite's bytes; a region's worth is fifty megabytes, and keeping
-            // them past the frame that read them would be paying for one picture twice.
+            // **After the upload and not before.** Between the collect and here, what the queue holds
+            // is the only copy of a composite's bytes; a region's worth is fifty megabytes, and
+            // keeping them past the frame that read them would be paying for one picture twice.
             mComposites.releaseFinished();
             return left;
         }

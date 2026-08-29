@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <optional>
 
 #include <osg/Image>
@@ -276,9 +277,23 @@ namespace Rtx
 
         for (std::size_t i = 0; i < mDescriptions.size(); ++i)
         {
-            const ShadingMap map(mDescriptions[i]);
-            const std::span<const float> values = map.getValues();
-            std::copy(values.begin(), values.end(), mShading.begin() + static_cast<std::ptrdiff_t>(i * cells));
+            const auto into = mShading.begin() + static_cast<std::ptrdiff_t>(i * cells);
+            const std::span<const float> own = mDescriptions[i].mShading;
+
+            // **A description that carries its own map keeps it.** A composite says neutral,
+            // because the light painted into each ground texture came off per tile in the bake;
+            // an estimate made from its bytes instead would take the same light off twice, and
+            // read a quarter of a million texels on the frame the composite landed in to do it.
+            if (own.empty())
+            {
+                const ShadingMap map(mDescriptions[i]);
+                const std::span<const float> values = map.getValues();
+                std::copy(values.begin(), values.end(), into);
+                continue;
+            }
+
+            assert(own.size() == cells);
+            std::copy(own.begin(), own.end(), into);
         }
 
         for (std::size_t i = 0; i < mDescriptions.size(); ++i)

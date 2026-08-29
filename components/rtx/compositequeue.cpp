@@ -4,12 +4,13 @@
 #include <array>
 #include <cassert>
 #include <charconv>
-#include <optional>
+#include <exception>
+#include <utility>
 
+#include <components/debug/debuglog.hpp>
 #include <components/resource/imagemanager.hpp>
 
 #include "error.hpp"
-#include "shadingmap.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx
@@ -37,150 +38,150 @@ namespace Rtx
     {
         // **A cleared scene renumbers everything, so nothing here still refers to anything.**
         // `SceneDesc::clear` empties the material table and starts the indices again; a chunk that
-        // was waiting is waiting on a material that no longer exists, and the index it kept would
-        // read past the end of a table that has just been emptied.
+        // was waiting is waiting on a material that no longer exists. What is queued is dropped
+        // here; what is in flight comes back carrying the reset it was asked under, and `collect`
+        // drops it then.
         if (mReset != scene.getResetRevision())
         {
             mReset = scene.getResetRevision();
-            mWaiting.clear();
+            mAsked.clear();
             mFinished.clear();
+
+            const std::lock_guard<std::mutex> lock(mMutex);
+            mPending.clear();
+            mDone.clear();
         }
 
-        if (mScanned == scene.getShadingRevision())
-            return;
-
-        mScanned = scene.getShadingRevision();
-
-        // Held only for as long as this runs: the layers below span it, and the composites they
-        // build copy what they are handed.
-        mPainted.clear();
-
         const std::span<const Material> materials = scene.getMaterials();
-        for (Index at = 0; at < materials.size(); ++at)
+        for (const Index at : scene.getWrittenMaterials())
         {
             const Material& material = materials[at];
             if (material.mKind != MaterialKind::Terrain || !material.mFlatten || material.mDiffuse != sNoIndex)
                 continue;
 
-            const auto waiting = std::find_if(
-                mWaiting.begin(), mWaiting.end(), [&](const Waiting& one) { return one.mMaterial == at; });
-            if (waiting != mWaiting.end() && waiting->mLayerOffset == material.mLayerOffset
-                && waiting->mLayerCount == material.mLayerCount)
+            const Asked wanted{
+                .mMaterial = at,
+                .mLayerOffset = material.mLayerOffset,
+                .mLayerCount = material.mLayerCount,
+            };
+
+            const auto asked
+                = std::find_if(mAsked.begin(), mAsked.end(), [&](const Asked& one) { return one.mMaterial == at; });
+            if (asked != mAsked.end() && *asked == wanted)
                 continue;
 
             // A slot taken over by another chunk while its predecessor was baking: what is half done
-            // is a picture of ground that has gone, so it starts again rather than finishing.
-            if (waiting != mWaiting.end())
-                mWaiting.erase(waiting);
+            // is a picture of ground that has gone. What is still queued is dropped here; what is
+            // in flight or finished is dropped by `collect`, which checks the layers it baked against
+            // the layers that stand.
+            if (asked != mAsked.end())
+            {
+                mAsked.erase(asked);
+
+                const std::lock_guard<std::mutex> lock(mMutex);
+                std::erase_if(mPending, [&](const Request& one) { return one.mAsked.mMaterial == at; });
+            }
 
             const std::span<const MaterialLayer> layers
                 = scene.getLayers().subspan(material.mLayerOffset, material.mLayerCount);
 
-            mLevels.clear();
-            mStack.clear();
-            mStack.reserve(layers.size());
+            Request request{ .mAsked = wanted, .mReset = mReset };
+            request.mLayers.assign(layers.begin(), layers.end());
+            request.mImages.reserve(layers.size());
+            request.mMaskRuns.reserve(layers.size());
 
-            // **Reserved before anything points into it.** Every description below spans `mLevels`,
-            // so a reallocation part way through would leave the bake reading where the earlier
-            // layers used to be.
-            mSources.clear();
-            mSources.reserve(layers.size());
-
-            std::size_t count = 0;
             for (const MaterialLayer& layer : layers)
             {
-                mSources.push_back(openImage(images, scene.getTextures()[layer.mDiffuse]));
-                count += mSources.back() != nullptr ? mSources.back()->getNumMipmapLevels() : 0;
-            }
-            mLevels.reserve(count);
+                // Opened here and not on the baker, so the image manager is only ever asked from
+                // the thread that owns it; the baker reads what the reference keeps alive.
+                request.mImages.push_back(openImage(images, scene.getTextures()[layer.mDiffuse]));
 
-            for (std::size_t index = 0; index < layers.size(); ++index)
+                const std::uint32_t weights = std::uint32_t{ layer.mMaskWidth } * layer.mMaskHeight;
+                request.mMaskRuns.push_back(
+                    Span{ .mOffset = static_cast<std::uint32_t>(request.mMasks.size()), .mCount = weights });
+
+                const std::span<const float> mask = scene.getMasks().subspan(layer.mMaskOffset, weights);
+                request.mMasks.insert(request.mMasks.end(), mask.begin(), mask.end());
+            }
+
+            mAsked.push_back(wanted);
+
             {
-                if (mSources[index] == nullptr)
-                    continue;
-
-                std::optional<TextureData> described;
-                try
-                {
-                    described = describeImage(*mSources[index], mLevels);
-                }
-                catch (const Error&)
-                {
-                    continue;
-                }
-
-                const auto estimate = mPainted.try_emplace(layers[index].mDiffuse, *described).first;
-
-                mStack.push_back(CompositeLayer{
-                    .mDiffuse = *described,
-                    .mShading = estimate->second.getValues(),
-                    .mDiffuseTransform = layers[index].mDiffuseTransform,
-                    .mMask = scene.getMasks().subspan(
-                        layers[index].mMaskOffset, std::size_t{ layers[index].mMaskWidth } * layers[index].mMaskHeight),
-                    .mMaskWidth = layers[index].mMaskWidth,
-                    .mMaskHeight = layers[index].mMaskHeight,
-                    .mMaskTransform = layers[index].mMaskTransform,
-                });
+                const std::lock_guard<std::mutex> lock(mMutex);
+                mPending.push_back(std::move(request));
             }
 
-            // Every layer unreadable is a chunk with nothing to flatten. It keeps its stack, which
-            // is what it was already shading from, and asks again no more than the walk does.
-            if (mStack.empty())
-                continue;
+            if (!mWorker.joinable())
+                mWorker = std::jthread([this](std::stop_token stop) { work(stop); });
 
-            mWaiting.push_back(Waiting{
-                .mMaterial = at,
-                .mLayerOffset = material.mLayerOffset,
-                .mLayerCount = material.mLayerCount,
-                .mComposite = TerrainComposite(mStack, sCompositeExtent, sCompositeDelight),
-            });
+            mWake.notify_one();
         }
     }
 
-    std::size_t CompositeQueue::drain(SceneDesc& scene, const std::uint32_t rows)
+    void CompositeQueue::finish()
     {
-        std::size_t finished = 0;
-        std::uint32_t left = rows;
+        std::unique_lock<std::mutex> lock(mMutex);
+        mSettled.wait(lock, [&] { return mPending.empty() && mBaking == 0; });
+    }
 
-        while (left > 0 && !mWaiting.empty())
+    std::size_t CompositeQueue::collect(SceneDesc& scene, const std::size_t limit)
+    {
+        mTaken.clear();
         {
-            Waiting& one = mWaiting.front();
+            const std::lock_guard<std::mutex> lock(mMutex);
+            while (mTaken.size() < limit && !mDone.empty())
+            {
+                mTaken.push_back(std::move(mDone.front()));
+                mDone.pop_front();
+            }
+        }
 
-            const std::uint32_t before = one.mComposite.getBakedRows();
-            const bool done = one.mComposite.bake(left);
-            left -= one.mComposite.getBakedRows() - before;
+        std::size_t finished = 0;
+        for (Baked& baked : mTaken)
+        {
+            const Request& request = baked.mRequest;
+            const Asked& asked = request.mAsked;
 
-            if (!done)
-                break;
+            // Exactly the entry this was asked as, and not whatever stands under the material now:
+            // a slot taken over while this baked has an entry of its own, and that one is waiting
+            // on a bake that has not come back yet.
+            if (const auto entry = std::find(mAsked.begin(), mAsked.end(), asked); entry != mAsked.end())
+                mAsked.erase(entry);
+
+            if (request.mReset != mReset || !baked.mComposite.has_value())
+                continue;
 
             const std::span<const Material> materials = scene.getMaterials();
-            assert(one.mMaterial < materials.size() && "a composite waiting on a material the scene has forgotten");
+            assert(asked.mMaterial < materials.size() && "a composite waiting on a material the scene has forgotten");
 
-            const Material& material = materials[one.mMaterial];
+            const Material& material = materials[asked.mMaterial];
 
             // **What it baked has to still be what stands there.** A chunk can leave the world in
             // the frames a composite takes, and the slot it stood in can be taken over by another;
             // handing this to whatever holds the slot now would put one hillside's ground on
-            // another's.
+            // another's. The layers themselves are compared and not only where they sit, because a
+            // run given back is handed out again to the next chunk that fits it.
             const bool wanted = material.mKind == MaterialKind::Terrain && material.mFlatten
-                && material.mDiffuse == sNoIndex && material.mLayerOffset == one.mLayerOffset
-                && material.mLayerCount == one.mLayerCount;
+                && material.mDiffuse == sNoIndex && material.mLayerOffset == asked.mLayerOffset
+                && material.mLayerCount == asked.mLayerCount
+                && std::ranges::equal(
+                    request.mLayers, scene.getLayers().subspan(material.mLayerOffset, material.mLayerCount));
 
-            if (wanted)
-            {
-                nameComposite(mKey, one.mMaterial);
+            if (!wanted)
+                continue;
 
-                Material given = material;
-                given.mDiffuse = scene.addBakedTexture(mKey);
-                scene.setMaterial(one.mMaterial, given);
+            nameComposite(mKey, asked.mMaterial);
 
-                mFinished.insert_or_assign(given.mDiffuse, std::move(one.mComposite));
-                ++finished;
-            }
+            Material given = material;
+            given.mDiffuse = scene.addBakedTexture(mKey);
+            scene.setMaterial(asked.mMaterial, given);
 
-            mWaiting.erase(mWaiting.begin());
+            mFinished.insert_or_assign(given.mDiffuse, std::move(*baked.mComposite));
+            ++finished;
         }
 
+        // The requests go with the pass, and the images they held with them.
+        mTaken.clear();
         return finished;
     }
 
@@ -188,5 +189,107 @@ namespace Rtx
     {
         const auto found = mFinished.find(slot);
         return found == mFinished.end() ? nullptr : &found->second;
+    }
+
+    void CompositeQueue::work(std::stop_token stop)
+    {
+        std::unique_lock<std::mutex> lock(mMutex);
+        while (mWake.wait(lock, stop, [&] { return !mPending.empty(); }))
+        {
+            if (stop.stop_requested())
+                return;
+
+            Request request = std::move(mPending.front());
+            mPending.pop_front();
+            ++mBaking;
+            lock.unlock();
+
+            Baked baked = bake(std::move(request));
+
+            lock.lock();
+            --mBaking;
+            mDone.push_back(std::move(baked));
+            mSettled.notify_all();
+        }
+    }
+
+    CompositeQueue::Baked CompositeQueue::bake(Request&& request)
+    {
+        Baked baked{ .mRequest = std::move(request) };
+        const Request& asked = baked.mRequest;
+
+        // **Reserved before anything points into it.** Every description below spans `levels`, so
+        // a reallocation part way through would leave the bake reading where the earlier layers
+        // used to be.
+        std::size_t count = 0;
+        for (const osg::ref_ptr<const osg::Image>& image : asked.mImages)
+            count += image != nullptr ? image->getNumMipmapLevels() : 0;
+
+        std::vector<MipLevel> levels;
+        levels.reserve(count);
+
+        std::vector<CompositeLayer> stack;
+        stack.reserve(asked.mLayers.size());
+
+        for (std::size_t index = 0; index < asked.mLayers.size(); ++index)
+        {
+            const osg::Image* image = asked.mImages[index].get();
+            if (image == nullptr)
+                continue;
+
+            std::optional<TextureData> described;
+            try
+            {
+                described = describeImage(*image, levels);
+            }
+            catch (const Error&)
+            {
+                // A file in a format this renderer does not upload is a layer with nothing to
+                // flatten, and the shader shades the chunk without it either way.
+                continue;
+            }
+
+            const MaterialLayer& layer = asked.mLayers[index];
+            const Span mask = asked.mMaskRuns[index];
+
+            stack.push_back(CompositeLayer{
+                .mDiffuse = *described,
+                .mShading = estimate(*described, image->getFileName()).getValues(),
+                .mDiffuseTransform = layer.mDiffuseTransform,
+                .mMask = std::span<const float>(asked.mMasks).subspan(mask.mOffset, mask.mCount),
+                .mMaskWidth = layer.mMaskWidth,
+                .mMaskHeight = layer.mMaskHeight,
+                .mMaskTransform = layer.mMaskTransform,
+            });
+        }
+
+        // Every layer unreadable is a chunk with nothing to flatten. It keeps its stack, which is
+        // what it was already shading from, and asks again no more than the walk does.
+        if (stack.empty())
+            return baked;
+
+        try
+        {
+            baked.mComposite.emplace(stack, sCompositeExtent, sCompositeDelight);
+        }
+        catch (const std::exception& error)
+        {
+            // Nothing may leave a thread, and a chunk that could not be flattened is a chunk that
+            // shades from its stack — a cost per hit, not a picture lost.
+            Log(Debug::Error) << "a terrain composite could not be baked: " << error.what();
+        }
+
+        return baked;
+    }
+
+    const ShadingMap& CompositeQueue::estimate(const TextureData& texture, const std::string& file)
+    {
+        if (file.empty())
+        {
+            mUnnamed = ShadingMap(texture);
+            return mUnnamed;
+        }
+
+        return mPainted.try_emplace(file, texture).first->second;
     }
 }

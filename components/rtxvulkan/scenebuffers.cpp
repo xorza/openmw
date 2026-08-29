@@ -121,9 +121,9 @@ namespace Rtx
 
         writeMeshes(scene, every);
 
-        // The shading tables come from `place`, which is also where they are rewritten when a
-        // material changes. Forced here because nothing has been written at revision zero.
-        mShaded = scene.getShadingRevision() - 1;
+        // The shading tables come from `place`, which is also where they are written when a
+        // material changes. Every one of them is a byte long here, so the first `shade` makes each
+        // again and fills it whole.
         place(scene, records);
 
         device.setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mMaterials.getHandle()), "materials");
@@ -176,6 +176,15 @@ namespace Rtx
         growTo(held, *mDevice, bytes, sTableUsage);
     }
 
+    bool SceneBuffers::outgrow(HostBuffer& held, const VkDeviceSize bytes)
+    {
+        if (held.getSize() >= bytes)
+            return false;
+
+        growTo(held, *mDevice, std::max(bytes, held.getSize() * 2), sTableUsage);
+        return true;
+    }
+
     void SceneBuffers::binSprites(const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun)
     {
         // **The sprites go over from here and not from `place`**, because what each is shaded by is
@@ -200,20 +209,15 @@ namespace Rtx
 
     void SceneBuffers::shade(const SceneDesc& scene)
     {
-        if (mShaded == scene.getShadingRevision())
-            return;
-
-        mShaded = scene.getShadingRevision();
-
-        mMaterialScratch.clear();
-        mMaterialScratch.reserve(scene.getMaterials().size() + 1);
-        for (const Material& material : scene.getMaterials())
-            mMaterialScratch.push_back(toGpu(material));
+        const std::span<const Material> materials = scene.getMaterials();
+        const std::span<const MaterialLayer> layers = scene.getLayers();
+        const std::span<const float> masks = scene.getMasks();
 
         // A drawable with no state set has no material, and `sNoIndex` is not somewhere the shader
-        // can be allowed to look. One untextured entry at the end costs less than a branch per hit,
-        // and every instance that had nothing points at it.
-        mMaterialScratch.push_back(Shaders::GpuMaterial{
+        // can be allowed to look. One untextured entry past the table costs less than a branch per
+        // hit, and every instance that had nothing points at it. It moves when the table grows,
+        // which is why the count it was last written at is kept.
+        const Shaders::GpuMaterial sentinel{
             .mKind = Shaders::KIND_SURFACE,
             .mDiffuse = Shaders::NO_TEXTURE,
             .mAlphaCutoff = 0.0f,
@@ -224,12 +228,35 @@ namespace Rtx
             .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f),
             .mEmissiveColour = osg::Vec3f(0.0f, 0.0f, 0.0f),
             .mTextureTransform = osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f),
-        });
+        };
 
-        mLayerScratch.clear();
-        mLayerScratch.reserve(scene.getLayers().size());
-        for (const MaterialLayer& layer : scene.getLayers())
-            mLayerScratch.push_back(toGpu(layer));
+        if (outgrow(mMaterials, (materials.size() + 1) * sizeof(Shaders::GpuMaterial)))
+        {
+            mMaterialScratch.clear();
+            mMaterialScratch.reserve(materials.size() + 1);
+            for (const Material& material : materials)
+                mMaterialScratch.push_back(toGpu(material));
+            mMaterialScratch.push_back(sentinel);
+
+            mMaterials.write(std::span<const Shaders::GpuMaterial>(mMaterialScratch));
+        }
+        else
+        {
+            // **The rows the scene wrote, and the sentinel where the table it sits past grew.** A
+            // material a flipbook rewrote is one row of eighty bytes; the table around it is what
+            // it was.
+            for (const Index at : scene.getWrittenMaterials())
+            {
+                const Shaders::GpuMaterial row = toGpu(materials[at]);
+                mMaterials.writeAt(at * sizeof(row), std::span<const Shaders::GpuMaterial>(&row, 1));
+            }
+
+            if (mMaterialCount != materials.size())
+                mMaterials.writeAt(
+                    materials.size() * sizeof(sentinel), std::span<const Shaders::GpuMaterial>(&sentinel, 1));
+        }
+
+        mMaterialCount = materials.size();
 
         // A scene with no terrain in it still has to bind something: a descriptor may not be null,
         // and a zero-length buffer is not a thing Vulkan will make. One unread element each — and
@@ -237,20 +264,37 @@ namespace Rtx
         const Shaders::GpuLayer noLayer{};
         constexpr float noMask = 1.0f;
 
-        const std::span<const Shaders::GpuMaterial> materials(mMaterialScratch);
-        const std::span<const Shaders::GpuLayer> layers = mLayerScratch.empty()
-            ? std::span<const Shaders::GpuLayer>(&noLayer, 1)
-            : std::span<const Shaders::GpuLayer>(mLayerScratch);
-        const std::span<const float> masks
-            = scene.getMasks().empty() ? std::span<const float>(&noMask, 1) : scene.getMasks();
+        if (outgrow(mLayers, std::max<std::size_t>(layers.size(), 1) * sizeof(Shaders::GpuLayer)))
+        {
+            mLayerScratch.clear();
+            mLayerScratch.reserve(layers.size());
+            for (const MaterialLayer& layer : layers)
+                mLayerScratch.push_back(toGpu(layer));
 
-        reserve(mMaterials, materials.size_bytes());
-        reserve(mLayers, layers.size_bytes());
-        reserve(mMasks, masks.size_bytes());
+            mLayers.write(mLayerScratch.empty() ? std::span<const Shaders::GpuLayer>(&noLayer, 1)
+                                                : std::span<const Shaders::GpuLayer>(mLayerScratch));
+        }
+        else
+        {
+            // Each run as the chunk placed it: converted into the scratch and written at the run's
+            // own offset, so a table of a thousand layers pays for the five that arrived.
+            for (const Span run : scene.getArrivedLayers())
+            {
+                mLayerScratch.clear();
+                mLayerScratch.reserve(run.mCount);
+                for (const MaterialLayer& layer : layers.subspan(run.mOffset, run.mCount))
+                    mLayerScratch.push_back(toGpu(layer));
 
-        mMaterials.write(materials);
-        mLayers.write(layers);
-        mMasks.write(masks);
+                mLayers.writeAt(
+                    run.mOffset * sizeof(Shaders::GpuLayer), std::span<const Shaders::GpuLayer>(mLayerScratch));
+            }
+        }
+
+        if (outgrow(mMasks, std::max<std::size_t>(masks.size(), 1) * sizeof(float)))
+            mMasks.write(masks.empty() ? std::span<const float>(&noMask, 1) : masks);
+        else
+            for (const Span run : scene.getArrivedMasks())
+                mMasks.writeAt(run.mOffset * sizeof(float), masks.subspan(run.mOffset, run.mCount));
     }
 
     void SceneBuffers::place(const SceneDesc& scene, std::span<const InstanceRecord> records)

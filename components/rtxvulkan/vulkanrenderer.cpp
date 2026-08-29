@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 
 #include <components/rtx/camera.hpp>
@@ -48,6 +49,18 @@ namespace Rtx
 
             return { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
         }
+        /// Whether the frame has a sea to synthesise.
+        ///
+        /// **The shader's own test**, so the two cannot disagree: a cell with no water carries a
+        /// level of minus infinity, every "how deep" comes out never positive, and nothing samples
+        /// the wave tiles — which is what makes not building them for that frame free. Every
+        /// interior is such a frame, and the synthesis was a fifth of a millisecond of device time
+        /// in each of them.
+        bool hasSea(const Shaders::VisibilityConstants& frame)
+        {
+            return !std::isinf(frame.mWaterLevel);
+        }
+
         /// The display pass's own description of the frame.
         ///
         /// **The camera is the trace's basis on the picture's grid.** `rayAt` divides by the camera's
@@ -401,10 +414,13 @@ namespace Rtx
             held.mBuiltMeshes = scene.getMeshRevision();
         }
 
-        // **Flushed before the placement, not after it.** `placeScene` submits on its own and refits
-        // structures the arrivals above may have just built, so the two cannot be left to finish in
-        // whatever order their destructors run in.
-        setup.flush();
+        // **Deferred to the placement's submit, not flushed ahead of it.** `placeScene` submits and
+        // waits on its own; what was recorded here goes to the queue in that same call, ahead of the
+        // refit and the top level, and the barrier every upload and build ends in is what orders
+        // them — a build reads structures the deferred half wrote as it would inside one command
+        // buffer. A composite landing used to be a submit, a fence and a wait of its own on the
+        // frame it landed in, and this is that round trip removed.
+        setup.defer();
 
         // Always, because the top level names every instance and an arrival changed the list. It is
         // rebuilt every frame regardless, so an arrival costs it nothing.
@@ -735,10 +751,14 @@ namespace Rtx
                     VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
             // Before the trace and outside its zone, because the sea is a function of the clock and
-            // of nothing the camera does — one synthesis serves every ray of the frame.
-            mTimer.open(commands, "waves");
-            mWaves.record(commands, sampled.mTime);
-            mTimer.close(commands);
+            // of nothing the camera does — one synthesis serves every ray of the frame. None where
+            // the frame has no water: `WavePass::record` says where the tiles are left.
+            if (hasSea(sampled))
+            {
+                mTimer.open(commands, "waves");
+                mWaves.record(commands, sampled.mTime);
+                mTimer.close(commands);
+            }
 
             mChannels->begin(commands);
             mTimer.open(commands, "trace");
@@ -965,7 +985,8 @@ namespace Rtx
                     VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                     VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
-            mWaves.record(commands, camera.mTime);
+            if (hasSea(camera))
+                mWaves.record(commands, camera.mTime);
 
             mViewChannels->begin(commands);
             mPass->record(commands, inputs, *mViewChannels, mHitCount, camera);

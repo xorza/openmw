@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <exception>
+#include <iterator>
 #include <utility>
 
 #include <components/debug/debuglog.hpp>
@@ -35,8 +36,20 @@ namespace Rtx
 
     void CommandPool::reset()
     {
+        assert(mDeferred.empty() && "a batch deferred to a submit that never came");
+
         checkVk(vkResetCommandPool(mDevice.getHandle(), mHandle, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT),
             "vkResetCommandPool");
+    }
+
+    void CommandPool::defer(
+        VkCommandBuffer commands, std::vector<Buffer>&& staging, std::vector<HostBuffer>&& hostStaging)
+    {
+        checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
+        mDeferred.push_back(commands);
+
+        std::move(staging.begin(), staging.end(), std::back_inserter(mDeferredStaging));
+        std::move(hostStaging.begin(), hostStaging.end(), std::back_inserter(mDeferredHostStaging));
     }
 
     std::vector<VkCommandBuffer> CommandPool::allocate(std::uint32_t count)
@@ -78,21 +91,36 @@ namespace Rtx
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
-        const VkCommandBufferSubmitInfo buffer{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-            .commandBuffer = commands,
-        };
+        // **Whatever was deferred goes first, in this same submit.** Command buffers in one submit
+        // run in order as far as the barriers between them say, and a deferred batch ends every
+        // upload and every build in one — so what `commands` reads of them is what it would have
+        // read had they been recorded into it.
+        mDeferred.push_back(commands);
+
+        mSubmitScratch.clear();
+        mSubmitScratch.reserve(mDeferred.size());
+        for (const VkCommandBuffer buffer : mDeferred)
+            mSubmitScratch.push_back(VkCommandBufferSubmitInfo{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .commandBuffer = buffer,
+            });
+
         const VkSubmitInfo2 submit{
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-            .commandBufferInfoCount = 1,
-            .pCommandBufferInfos = &buffer,
+            .commandBufferInfoCount = static_cast<std::uint32_t>(mSubmitScratch.size()),
+            .pCommandBufferInfos = mSubmitScratch.data(),
         };
 
         checkVk(vkResetFences(mDevice.getHandle(), 1, &mFence), "vkResetFences");
         checkVk(vkQueueSubmit2(mDevice.getQueue(), 1, &submit, mFence), "vkQueueSubmit2");
         awaitVk(mDevice.getHandle(), mFence, "a one-off submit");
 
-        vkFreeCommandBuffers(mDevice.getHandle(), mHandle, 1, &commands);
+        // The copies have run, so this is where a deferred batch's staging stops being read.
+        vkFreeCommandBuffers(
+            mDevice.getHandle(), mHandle, static_cast<std::uint32_t>(mDeferred.size()), mDeferred.data());
+        mDeferred.clear();
+        mDeferredStaging.clear();
+        mDeferredHostStaging.clear();
     }
 
     Batch::~Batch()
@@ -141,6 +169,20 @@ namespace Rtx
         // Cleared before the wait can be skipped and after it cannot: the copies have run by the
         // time `endAndWait` returns, so this is where a staging buffer stops being read.
         mPool.endAndWait(std::exchange(mCommands, VK_NULL_HANDLE));
+        mStaging.clear();
+        mHostStaging.clear();
+    }
+
+    void Batch::defer()
+    {
+        if (mCommands == VK_NULL_HANDLE)
+        {
+            mStaging.clear();
+            mHostStaging.clear();
+            return;
+        }
+
+        mPool.defer(std::exchange(mCommands, VK_NULL_HANDLE), std::move(mStaging), std::move(mHostStaging));
         mStaging.clear();
         mHostStaging.clear();
     }

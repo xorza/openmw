@@ -119,6 +119,13 @@ namespace Rtx
         }
 
         describe(SeaState{});
+
+        // **Every tile in the layout the trace binds it in, from the first frame.** A frame with no
+        // water in it synthesises nothing and binds the tiles anyway, because the shader declares
+        // them; an image that was never transitioned is in no layout at all, and a descriptor
+        // naming it as `GENERAL` is an error whether or not a ray ever samples it. Synthesising
+        // once here is what moves them, and leaves a sea rather than nothing in them.
+        mPool.submitAndWait([&](VkCommandBuffer commands) { record(commands, 0.0f); });
     }
 
     WavePass::~WavePass()

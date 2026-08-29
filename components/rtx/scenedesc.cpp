@@ -112,6 +112,18 @@ namespace Rtx
         note(slot, what, mTextureNews, mArrivedTextures, mFreedTextures);
     }
 
+    void SceneDesc::noteMaterial(Index slot)
+    {
+        mMaterialWritten.resize(mMaterials.size(), 0);
+        assert(slot < mMaterialWritten.size());
+
+        if (mMaterialWritten[slot] != 0)
+            return;
+
+        mMaterialWritten[slot] = 1;
+        mWrittenMaterials.push_back(slot);
+    }
+
     void SceneDesc::note(
         Index slot, SlotNews what, std::vector<SlotNews>& news, std::vector<Index>& arrived, std::vector<Index>& freed)
     {
@@ -173,7 +185,6 @@ namespace Rtx
 
     Index SceneDesc::addMaterial(const Material& material)
     {
-        ++mShadingRevision;
         holdMaterialTextures(material);
 
         // One size, so any freed slot will do and the back of the list is as good as any of them.
@@ -182,11 +193,15 @@ namespace Rtx
             const Index index = mFreeMaterials.back();
             mFreeMaterials.pop_back();
             mMaterials[index] = material;
+            noteMaterial(index);
             return index;
         }
 
         mMaterials.push_back(material);
-        return static_cast<Index>(mMaterials.size() - 1);
+
+        const Index index = static_cast<Index>(mMaterials.size() - 1);
+        noteMaterial(index);
+        return index;
     }
 
     void SceneDesc::setMaterial(Index material, const Material& what)
@@ -204,7 +219,7 @@ namespace Rtx
         dropMaterialTextures(mMaterials[material]);
 
         mMaterials[material] = what;
-        ++mShadingRevision;
+        noteMaterial(material);
     }
 
     void SceneDesc::holdTexture(Index texture)
@@ -272,8 +287,6 @@ namespace Rtx
     {
         assert(!weights.empty());
 
-        ++mShadingRevision;
-
         const Span run = mMaskRuns.allocate(static_cast<std::uint32_t>(weights.size()));
 
         // Grown and never shrunk: a hole at the end gives its room back to the allocator, and the
@@ -282,6 +295,7 @@ namespace Rtx
             mMasks.resize(mMaskRuns.getEnd());
 
         std::copy(weights.begin(), weights.end(), mMasks.begin() + run.mOffset);
+        mArrivedMasks.push_back(run);
         return run.mOffset;
     }
 
@@ -289,14 +303,13 @@ namespace Rtx
     {
         assert(!layers.empty());
 
-        ++mShadingRevision;
-
         const Span run = mLayerRuns.allocate(static_cast<std::uint32_t>(layers.size()));
 
         if (mLayers.size() < mLayerRuns.getEnd())
             mLayers.resize(mLayerRuns.getEnd());
 
         std::copy(layers.begin(), layers.end(), mLayers.begin() + run.mOffset);
+        mArrivedLayers.push_back(run);
         return run;
     }
 
@@ -585,30 +598,19 @@ namespace Rtx
         // Nothing in them can be stale either: a sweep is only sound straight after a walk of the
         // whole world (`SceneExtractor::retire`), so what is in them came from nodes that walk met —
         // the survivors, by the same marking this frees against.
-        if (freedMeshes > 0)
-        {
-            // **Not a structure change.** Nothing arrived and nothing moved: the structures built
-            // from these indices are still correct, they simply describe geometry nothing stands on
-            // any more, and the top level a frame rebuilds anyway is what stops them being traced.
-            // Saying otherwise here is what made a cell boundary cost a full rebuild.
-            ++mShadingRevision;
-        }
-
-        if (freedMaterials > 0)
-            ++mShadingRevision;
-
-        // **A texture going is not a shading change**, wherever it went. What the shading revision
-        // drives is the upload of the materials, the layers and the masks, and none of them moved:
-        // the slot keeps its index, nothing that names it survived, and the array holds its image
-        // until something takes the slot over. Saying otherwise re-uploads those tables on every
-        // crossing.
+        //
+        // **Neither is a structure change, and neither is a shading change.** Nothing arrived and
+        // nothing moved: the structures built from these indices are still correct, they simply
+        // describe geometry nothing stands on any more, and the top level a frame rebuilds anyway is
+        // what stops them being traced. A freed material's row, layers and masks are read by nothing
+        // either, so no table has to be written for them — the next thing to land in the slot or the
+        // run is what names it.
         return freedMeshes > 0 || freedMaterials > 0;
     }
 
     void SceneDesc::clear()
     {
         ++mStructureRevision;
-        ++mShadingRevision;
         ++mMeshRevision;
         ++mResetRevision;
         mPositions.clear();
@@ -646,6 +648,10 @@ namespace Rtx
         mFreedMeshes.clear();
         mTextureNews.clear();
         mMeshNews.clear();
+        mWrittenMaterials.clear();
+        mMaterialWritten.clear();
+        mArrivedLayers.clear();
+        mArrivedMasks.clear();
     }
 
     void SceneDesc::clearArrivals()
@@ -660,11 +666,16 @@ namespace Rtx
             mTextureNews[slot] = SlotNews::None;
         for (const Index slot : mFreedTextures)
             mTextureNews[slot] = SlotNews::None;
+        for (const Index slot : mWrittenMaterials)
+            mMaterialWritten[slot] = 0;
 
         mArrivedMeshes.clear();
         mFreedMeshes.clear();
         mArrivedTextures.clear();
         mFreedTextures.clear();
+        mWrittenMaterials.clear();
+        mArrivedLayers.clear();
+        mArrivedMasks.clear();
     }
 
     std::span<const osg::Vec3f> SceneDesc::getMeshPositions(Index mesh) const

@@ -50,8 +50,19 @@ namespace Rtx
         /// **A recorded buffer keeps its resources alive as far as the layers are concerned**, so an
         /// image one of them blitted from cannot be destroyed while the recording still names it —
         /// which is exactly what a resize does to the frame the last present read. Every handle from
-        /// `allocate` becomes invalid, and nothing may be in flight: the caller has waited.
+        /// `allocate` becomes invalid, and nothing may be in flight: the caller has waited, and
+        /// nothing is deferred.
         void reset();
+
+        /// Takes a recorded batch to submit ahead of the next submit this pool makes, and holds its
+        /// staging until that submit has been waited on.
+        ///
+        /// **What lets an arrival ride the placement that follows it.** A cell's textures and
+        /// structures used to be a submit and a fence wait of their own, before the placement
+        /// submitted and waited again; taken here they go to the queue in that same call, ordered
+        /// ahead of it by the barriers each upload and build ends in, and the round trip they cost
+        /// is the one the placement was already paying. Ends `commands`.
+        void defer(VkCommandBuffer commands, std::vector<Buffer>&& staging, std::vector<HostBuffer>&& hostStaging);
 
     private:
         friend class Batch;
@@ -62,6 +73,15 @@ namespace Rtx
         const Device& mDevice;
         VkCommandPool mHandle = VK_NULL_HANDLE;
         VkFence mFence = VK_NULL_HANDLE;
+
+        /// Recorded and ended, waiting for the next submit to carry them first, with the staging
+        /// their copies read.
+        std::vector<VkCommandBuffer> mDeferred;
+        std::vector<Buffer> mDeferredStaging;
+        std::vector<HostBuffer> mDeferredHostStaging;
+
+        /// Refilled per submit: a frame is three of them, and none allocates.
+        std::vector<VkCommandBufferSubmitInfo> mSubmitScratch;
     };
 
     /// One command buffer that a run of setup records into, submitted and waited on once.
@@ -80,7 +100,8 @@ namespace Rtx
     /// `SHADER_READ_ONLY_OPTIMAL`. Nothing else here orders anything.
     ///
     /// **This is not asynchrony and does not stand in its way.** The flush still waits; what it
-    /// stops is asking three hundred times. The same object submits once and, later, does not wait.
+    /// stops is asking three hundred times. Deferred, the batch does not wait at all: the next
+    /// submit carries it and waits for both.
     class Batch
     {
     public:
@@ -110,6 +131,13 @@ namespace Rtx
         /// Submits what has been recorded and waits for it, then releases the staging. Does nothing
         /// where nothing was recorded, so a batch nobody used costs nothing.
         void flush();
+
+        /// Hands what has been recorded to the pool, staging and all, to go ahead of the pool's next
+        /// submit; records nothing more. Does nothing where nothing was recorded.
+        ///
+        /// **The other way out of a batch**, for a load that is followed by a submit anyway: `flush`
+        /// asks the queue now and waits, and this lets the placement that follows ask once for both.
+        void defer();
 
     private:
         CommandPool& mPool;

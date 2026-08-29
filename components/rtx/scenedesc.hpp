@@ -148,7 +148,7 @@ namespace Rtx
         ///
         /// **For telling a rewrite from a no-op.** A state set with a controller on it is re-read
         /// every frame and usually says exactly what it said last time; treating that as a change
-        /// would copy the whole material, layer and mask table to the device for nothing.
+        /// would write the row to the device for nothing.
         bool operator==(const Material& other) const = default;
 
         /// The alpha below which a texel is a hole, or zero where the surface has none.
@@ -211,6 +211,10 @@ namespace Rtx
         /// deriving them again from the tile size is how the two quietly stop agreeing.
         osg::Vec4f mDiffuseTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
         osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
+
+        /// Two layers are the same when every field is, which is what says a chunk still stands
+        /// where a bake of it began.
+        bool operator==(const MaterialLayer& other) const = default;
     };
 
     /// One point light, placed in the world.
@@ -450,8 +454,9 @@ namespace Rtx
         /// it is the same surface: adding a material and dropping the old one would churn a slot a
         /// frame and leave every placement pointing at it to be found and repointed.
         ///
-        /// Writing back what is already there costs nothing — the shading revision only moves when
-        /// something actually changed, so a paused game re-reads its fires and uploads none of them.
+        /// Writing back what is already there costs nothing — the row is only reported as written
+        /// when something actually changed, so a paused game re-reads its fires and uploads none
+        /// of them.
         void setMaterial(Index material, const Material& what);
 
         /// Copies `weights` into the shared mask table and returns where they landed.
@@ -696,12 +701,24 @@ namespace Rtx
         /// correct and what the player is already waiting for. Everything short of that appends.
         std::uint64_t getResetRevision() const { return mResetRevision; }
 
-        /// How many times the scene's **shading tables** have changed: materials, layers and masks.
+        /// Which material slots `addMaterial` or `setMaterial` wrote since the last `clearArrivals`,
+        /// each once.
         ///
-        /// Separate from the structure because the answer is different — a few kilobytes written
-        /// where a structure change costs every acceleration structure in the scene. Anything that
-        /// animates a state set churns these, and the mirror must not read that as a world arriving.
-        std::uint64_t getShadingRevision() const { return mShadingRevision; }
+        /// **Rows and not a revision, because a row is what a backend writes.** A counter that moved
+        /// on any material said "the shading changed" and the answer to that was every material,
+        /// every layer and every mask copied to the device — megabytes, every frame a flipbook
+        /// turned, to change eighty bytes. A material the sweep freed is not here: nothing stands on
+        /// it, so its row is never read and need not be written.
+        std::span<const Index> getWrittenMaterials() const { return mWrittenMaterials; }
+
+        /// The runs `addLayers` placed since the last `clearArrivals`, and the same for `addMask`.
+        ///
+        /// **Runs and not a flag over the table**, for the reason the materials are rows: a chunk
+        /// arriving writes its own layers and its own weights, and the rest of both tables is what
+        /// it was. A run the sweep gave back is not named here either — nothing reads it until the
+        /// next chunk lands in it, and that chunk's arrival is what names it.
+        std::span<const Span> getArrivedLayers() const { return mArrivedLayers; }
+        std::span<const Span> getArrivedMasks() const { return mArrivedMasks; }
 
         std::span<const Sprite> getSprites() const { return mSprites; }
         std::span<const SpriteEmitter> getEmitters() const { return mEmitters; }
@@ -784,7 +801,6 @@ namespace Rtx
         std::uint64_t mStructureRevision = 0;
         std::uint64_t mMeshRevision = 0;
         std::uint64_t mResetRevision = 0;
-        std::uint64_t mShadingRevision = 0;
 
         /// Copies one mesh's arrays into the room `range` names. Zero-fills an attribute the mesh
         /// did not bring, because a reused slot still holds its last tenant's.
@@ -835,6 +851,9 @@ namespace Rtx
         void noteMesh(Index slot, SlotNews what);
         void noteTexture(Index slot, SlotNews what);
 
+        /// Records that `slot`'s row was written, once however many times it is.
+        void noteMaterial(Index slot);
+
         /// Takes a slot for a texture of either kind — a free one where there is one, a new row
         /// otherwise. The caller names it; this only finds it somewhere to stand.
         Index takeTextureSlot();
@@ -878,6 +897,16 @@ namespace Rtx
         /// duplicate-free without either being searched.
         std::vector<SlotNews> mTextureNews;
         std::vector<SlotNews> mMeshNews;
+
+        /// Material rows written since the last `clearArrivals`, and a flag per slot that keeps the
+        /// list free of duplicates — a flipbook that is added and then rewritten on one frame is one
+        /// row, not two.
+        std::vector<Index> mWrittenMaterials;
+        std::vector<std::uint8_t> mMaterialWritten;
+
+        /// Runs placed in the layer and mask tables since the last `clearArrivals`.
+        std::vector<Span> mArrivedLayers;
+        std::vector<Span> mArrivedMasks;
 
         // The scan this replaces was O(materials x textures). A cell is a hundred of each and would
         // never have noticed; a worldspace is thousands of both, and load time is not the place to
