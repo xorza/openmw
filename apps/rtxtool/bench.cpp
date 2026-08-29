@@ -380,15 +380,16 @@ namespace RtxTool
                 // by. Held to the frame index so the same run draws the same samples twice over.
                 framing.mFrame = frame;
 
+                // **Before the submit below, which is what makes this the frame behind** rather than
+                // the one about to be made — `Renderer::finishFrame` says why. So the rows below
+                // report a frame one older than the wall time beside them, and both are medians
+                // over the run.
+                const std::optional<Rtx::FrameResult> result = std::nullopt;
+
                 renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
                     Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
                         .mFilter = request.mFilter,
                         .mExposure = request.mExposure });
-
-                // **The frame before, which is the one the device has finished** — waited for here,
-                // where the game waits for it, so the frame time below is the pipelined one: this
-                // frame's record beside the device drawing the last.
-                const std::optional<Rtx::FrameResult> result = renderer->finishFrame();
 
                 if (window != nullptr && !renderer->presentFrame())
                     renderer->resize(window->getWidth(), window->getHeight());

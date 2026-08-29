@@ -1,4 +1,4 @@
-# The frame path: six defects, four of them measured
+# The frame path: six defects, three fixed
 
 Everything here is about what happens between `placeScene` and the picture on the screen. Five of
 the six were found while looking for something else, and four are already reproduced headlessly.
@@ -49,7 +49,7 @@ which is every shot, because the actors animate — resets the sum every frame.
 **What it invalidates.** Every convergence claim measured against an `--accumulate` reference. The
 step 6 comparison in `performance-plan.md` is one of them and has to be taken again.
 
-## 3. Two frames in flight never engage
+## 3. Two frames in flight never engaged — **fixed**
 
 `bench --suite=streaming`, warm:
 
@@ -73,13 +73,22 @@ paid for and none of it is used.
 frame out, which is a screenshot and a test; called after the next frame's walk it usually finds the
 fence already signalled, which is a game."* No caller does the second thing.
 
-**The fix.** Move the call, do not change `finishFrame`. In the game and in `bench` the wait belongs
-at the top of the next iteration, before the walk. `shot` and `verify` keep it where it is, which is
-what the contract already says they want.
+**The fix.** Move the call, do not change `finishFrame`. The wait now sits **before** the submit in
+`bench` and in `RtxRenderer::traceWorld`, so the frame it waits is the one behind. `shot` and
+`verify` keep it after, which is what the contract already says a still wants.
 
-**The catch, and it is the reason this is not a one-line change.** With the CPU genuinely a frame
-ahead, the second table copy starts being read while the first is written, and every defect below
-this line stops being latent. §1 is the first one that surfaced. This step goes last.
+**Measured after, same suite, warm:**
+
+```
+              median      wait     fps
+  before      12.07 ms   4.46 ms   82.9
+  after        6.70 ms   0.43 ms  149.4
+```
+
+**And it opened nothing.** 1200 pipelined frames — one interior, one exterior — under
+`--sync-validation` report **zero hazards**. The barriers `SceneAcceleration` and the frame's
+discards already carry are enough for a genuinely overlapped frame, which is what the step was
+holding back for.
 
 ## 4. Every cell crossing throws a frame away
 
@@ -112,17 +121,22 @@ day 0, 12:00, Clear.
 (§3). So what these look like is a table copy read while it is a frame behind — the exact hazard the
 second copy and `RowDebt` exist to prevent, on the only path that ever reaches it.
 
-**What was tried and what it proved.** `bench` at that same spot is stable to 0.5 of 255 over 600
-frames. Removing its `finishFrame` to make it pipeline did not change that — but the probe reads the
-frame back, and `readPixels` submits and waits, so it serialises the very frame it measures. The
-experiment is inconclusive rather than negative. A detector has to compare frames without waiting on
-one: keep the sums on the device, or read back every fourth frame and leave the rest alone.
+**What has been ruled out.** The detector is the primary hit count, which comes back through the
+fence and so costs no wait. With `bench` genuinely pipelined (§3) it is flat at that spot across 600
+frames, and the streaming run's only zero-hit frames are §4's. `--sync-validation` over 1200
+pipelined frames reports nothing. The row debt, the slot the trace reads, and the barrier before
+every structure build were all read and all hold: `placeScene` opens its frame, gates on
+`mReadBy[into]`, and `barrierBeforeBuild` names the trace's own stage as its source scope.
 
-**Where to look, in order.**
+**So what is left is what `bench` does not do.** It never presents, and it never runs two frames
+deep — `view` calls no `finishFrame` at all, so its ring sits at the cap rather than one behind.
+Both reports came from `view`, and so did §1, which was a genuine defect in exactly that path. Ask
+whether the blink survives §1 before hunting further.
 
-- `SceneAcceleration` owes its rows `scene.getMoved()`; `SceneBuffers` owes `getSettled()` **and**
-  `getMoved()`. The asymmetry is defensible — an acceleration row carries no motion vector — and it
-  is still the first thing to prove rather than assume.
+**Where to look next, in order.**
+
+- The presenter, now that §1 is fixed. `mColour` is one image where `mTarget` has a spare, and only
+  a presenting caller can tell.
 - `SceneBuffers::outgrow` doubles, so `outgrow` answers false for a table that grew into room it
   already had, and the whole-table write is skipped. `SceneAcceleration` sizes exactly and so always
   takes the whole-table branch on growth. Two tables indexed alike, growing by different rules.
@@ -147,11 +161,12 @@ before hunting it.
 ## Order
 
 1. §1, done.
-2. §2, done — a deletion and a rename, and it makes every later comparison worth taking.
-3. §5 — a detector that does not wait, then the table-copy test, then whatever it names.
-4. §4 — take the empty frame out of the ring.
-5. §6 — re-measure after §4, then hunt.
-6. §3 — last, and only once §5 is closed.
+2. §2, done.
+3. §3, done — brought forward, because the detector §5 needs is a pipelined `bench`, and the
+   sync-validation run said it was safe to turn on.
+4. §5 — check whether §1 already answered it, then the presenter.
+5. §4 — take the empty frame out of the ring.
+6. §6 — re-measure after §4, then hunt.
 
-**Do not give `view` the `finishFrame` its siblings have.** It would hide §5 rather than fix it, and
-lose the only path in the tree that exercises what step 4 was for.
+**Do not give `view` the `finishFrame` its siblings have.** It is the only path that runs the ring
+at its cap, which is where §1 was found and where §5 still lives.

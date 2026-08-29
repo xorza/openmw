@@ -34,10 +34,6 @@ namespace RtxTool
     {
         using Clock = std::chrono::steady_clock;
 
-        /// Two, so the CPU can prepare one frame while the GPU works on the other. More would add
-        /// latency to a tool whose whole job is answering a mouse.
-        constexpr std::uint32_t sFramesInFlight = 2;
-
         std::ostream& out()
         {
             return Debug::getRawStdout();
@@ -472,6 +468,11 @@ namespace RtxTool
             // nothing.
             framing.mFrame = drawn;
 
+            // **No `finishFrame`, and that is the point of this window.** A wait anywhere in this
+            // loop caps the ring at one frame behind, the way `bench` and the game are; leaving it
+            // out lets the ring fill, which is the only place in the tree where two frames are
+            // really in flight. What that path gets wrong shows here and nowhere else. The numbers
+            // it drops are numbers a window does not report.
             renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
                 Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
                     .mFilter = request.mFilter,

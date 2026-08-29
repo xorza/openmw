@@ -487,11 +487,16 @@ namespace Rtx
         /// Waits for the oldest frame still in flight and says what it came to, or nothing where
         /// none is.
         ///
-        /// **Where the pipeline is paid for and where it pays.** Called straight after `renderFrame`
-        /// it waits the frame out, which is a screenshot and a test; called after the next frame's
-        /// walk it usually finds the fence already signalled, which is a game. A caller that never
-        /// calls it loses nothing but the numbers: a frame's resources are reclaimed when a later
-        /// frame needs its slot.
+        /// **Where the pipeline is paid for and where it pays, and the submit is what divides the
+        /// two.** Called after `renderFrame` the oldest frame in flight is the one just submitted,
+        /// so the wait is that frame waited out — which is what a screenshot and a pixel test want.
+        /// Called before it, the oldest is the frame behind, the walk and the placement have
+        /// already run beside the device drawing it, and the fence has usually signalled by the
+        /// time the wait is reached. Only the second of those puts two frames in the ring, and a
+        /// caller that wants one frame of overlap has to ask for it that way round.
+        ///
+        /// A caller that never calls it loses nothing but the numbers: a frame's resources are
+        /// reclaimed when a later frame needs its slot.
         virtual std::optional<FrameResult> finishFrame() = 0;
 
         /// Shows the frame `renderFrame` just produced, where this renderer was given a window.

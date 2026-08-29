@@ -6,8 +6,9 @@
 
 - Parts of a moving NPC stay behind in the air where the rest of the body has gone.
 
+- Terrain blinks hard in `view` at a standing camera — `-2,-9` at `-6087, -70048, 2978`,
+  bearing 34°, climb 4°, day 0, 12:00, Clear. `bench` at the same spot, pipelined, is flat.
+
 - Every cell crossing submits an empty frame: `bench --suite=streaming` reports nineteen crossings
   and nineteen frames whose primary hit count is exactly nought.
 
-- No caller ever has two frames in flight. `bench --suite=streaming` waits a median of 4.46 ms on a
-  GPU frame of about 4.3 ms, so the CPU stands still for the whole of it.

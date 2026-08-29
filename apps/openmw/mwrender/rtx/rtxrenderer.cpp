@@ -923,14 +923,14 @@ namespace MWRender
         const float bias = room.has_value() ? room->mExposureBias
                                             : Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient);
 
+        // **Before the submit below, which is what keeps the CPU a frame ahead of the device**, and
+        // `Rtx::Renderer::finishFrame` says why that is the side of it the order decides. What
+        // comes back is the frame behind, so the bench row below carries it beside this frame's
+        // wall time.
+        const std::optional<Rtx::FrameResult> result = mRenderer->finishFrame();
+
         const Rtx::Reconstruction reconstruction
             = mRenderer->renderFrame(constants, Rtx::FrameOptions{ .mExposureBias = bias, .mExposure = std::nullopt });
-
-        // **The frame before this one, which is the one the device has finished.** Waited for here
-        // rather than where the next placement would have to — it is the same wait — so that a
-        // frame's report reaches the bench the frame after it was drawn, and the CPU stays one
-        // frame ahead of the device and no more.
-        const std::optional<Rtx::FrameResult> result = mRenderer->finishFrame();
 
         // **The whole frame, measured between one trace and the next.** Everything the game does
         // in between is in it — update, cull, this — which is what a player feels and what the
