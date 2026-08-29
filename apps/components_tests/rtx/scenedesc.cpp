@@ -60,7 +60,10 @@ namespace Rtx
             // And whether the caller found it doubled for its back, which the scene keeps and
             // never works out for itself.
             EXPECT_FALSE(scene.getMeshes()[first].mSheet);
-            EXPECT_TRUE(scene.getMeshes()[scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, true)].mSheet);
+
+            // Added first and read after: the table grows under a span taken in the same expression.
+            const Index sheet = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, true);
+            EXPECT_TRUE(scene.getMeshes()[sheet].mSheet);
         }
 
         /// A mesh without normals or texture coordinates must still leave the attribute buffers as

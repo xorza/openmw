@@ -611,6 +611,12 @@ namespace Rtx
         /// than reconciling it.
         void clearPlacement();
 
+        /// **Every span below is into a table that grows, and lives until the table does.** A span
+        /// is valid until the next `add` into its table — `addMesh` grows the geometry and the mesh
+        /// table, `addEmitter` the sprites and the emitters, and each of the others the table it
+        /// names — and until `clear` or `clearPlacement`, which empty them. Take it after the add
+        /// and never in the same expression as one: `getMeshes()[addMesh(...)]` sequences the span
+        /// before the add, and indexes a table that has moved.
         std::span<const osg::Vec3f> getPositions() const { return mPositions; }
         std::span<const osg::Vec3f> getNormals() const { return mNormals; }
         std::span<const osg::Vec2f> getTexCoords() const { return mTexCoords; }
