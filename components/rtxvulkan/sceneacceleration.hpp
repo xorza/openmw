@@ -17,7 +17,7 @@
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
 #include "frameslots.hpp"
-#include "hostbuffer.hpp"
+#include "slottable.hpp"
 #include "structurestorage.hpp"
 
 namespace Rtx
@@ -106,8 +106,11 @@ namespace Rtx
         /// is asked now or with the frame. Into `slot`'s copy of the rows and the positions, which
         /// the caller has made sure no frame is still reading. True where anything was recorded;
         /// a frame in which nothing moved and nothing deformed records nothing and needs no submit.
+        ///
+        /// @param changed the slots `updateInstanceRecords` wrote, which is the one list any of
+        ///        this is driven by. Whether a copy is then behind is `mRowTable`'s to know.
         bool place(VkCommandBuffer commands, const SceneDesc& scene, std::span<const InstanceRecord> records,
-            std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard);
+            std::span<const Index> changed, std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard);
 
         /// Takes in the meshes the scene says arrived and lets go of the ones it says went.
         ///
@@ -223,11 +226,13 @@ namespace Rtx
         /// held the last frame's entries would be two answers to one question.
         void prepareRefit(const SceneDesc& scene, std::uint32_t slot);
 
-        /// Everything the top-level build needs before a command buffer exists. The rows the scene
-        /// says changed are rewritten where the builder reads them; where the slot table grew, every
-        /// row is, and the structure and its scratch are made again for the new count.
-        void prepareTopLevel(
-            const SceneDesc& scene, std::span<const InstanceRecord> records, std::uint32_t slot, Graveyard& graveyard);
+        /// Brings the host rows up to what `changed` names, and to whatever the table grew by.
+        void writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed);
+
+        /// Everything the top-level build needs before a command buffer exists: `slot`'s copy of the
+        /// rows paid, the structure and its scratch made again where the count grew, and the build
+        /// pointed at that copy. `writeRows` first, which is what leaves the copy owing anything.
+        void prepareTopLevel(const SceneDesc& scene, std::uint32_t slot, Graveyard& graveyard);
 
         /// Writes one row from its record, keeping the counts in step.
         void placeRow(Index slot, const InstanceRecord& record);
@@ -255,10 +260,8 @@ namespace Rtx
             BlockedBuffer{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) },
         };
 
-        /// Which poses each copy of the positions has yet to be told, and which rows each copy of
-        /// the instances has. `RowDebt` says how the two frames in flight share one answer.
+        /// Which poses each copy of the positions has yet to be told.
         std::array<RowDebt, sFrameSlots> mPositionsOwed;
-        std::array<RowDebt, sFrameSlots> mRowsOwed;
         std::uint32_t mSlots = 1;
 
         BlockedBuffer mIndices{ Shaders::INDEX_BLOCK, sizeof(std::uint32_t) };
@@ -276,11 +279,11 @@ namespace Rtx
 
         Buffer mTopLevelStorage;
 
-        /// The rows the top level is built from, one a slot and kept across frames: the rows the
-        /// scene says changed are rewritten in place, where the builder reads them. A gap is an
-        /// inactive row — a reference of nought — and not a row left out, because a row's index is
-        /// the slot a hit reads back.
-        std::array<HostBuffer, sFrameSlots> mInstances;
+        /// The rows the top level is built from, and one copy of them per frame in flight.
+        ///
+        /// A gap is an inactive row — a reference of nought — and not a row left out, because a
+        /// row's index is the slot a hit reads back. `SlotTable` is what keeps the copies level.
+        SlotTable<VkAccelerationStructureInstanceKHR> mRowTable;
 
         std::vector<VkAccelerationStructureKHR> mBottomLevel;
 
@@ -370,9 +373,6 @@ namespace Rtx
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mRefitBuilds;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> mRefitRanges;
         std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> mRefitRangePointers;
-
-        /// One row a slot, mirroring `mInstances`, so a slot that changed can be rewritten alone.
-        std::vector<VkAccelerationStructureInstanceKHR> mRows;
 
         /// What each row counts as — `sRowCutout`, `sRowMicromapped`, `sRowWater` — so the counts below can be
         /// kept by the row that changed rather than recounted over every row a frame.

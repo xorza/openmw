@@ -79,6 +79,14 @@ namespace Rtx
             /// the interface places against rows of its own.
             std::vector<InstanceRecord> mRecords;
 
+            /// Which of those `updateInstanceRecords` wrote this placement, cleared and refilled.
+            ///
+            /// **One list, read by both halves of a placement.** The acceleration structure's rows
+            /// and the shading table's rows are derived from the same records, and each used to work
+            /// out for itself which had changed. Two answers to one question is one of them being
+            /// wrong, which is what put terrain a frame behind.
+            std::vector<Index> mChangedRecords;
+
             /// Which revision of the mesh table the structures were built from, so `extendScene` can
             /// tell a scene that only gained textures from one that gained geometry too.
             ///

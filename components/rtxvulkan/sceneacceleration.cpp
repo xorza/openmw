@@ -221,6 +221,7 @@ namespace Rtx
 
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
             mPositions[slot].open(device, sBuildInputUsage, "positions");
+        mRowTable.open(device, slots, sBuildInputUsage, "instances");
         mIndices.open(device, sBuildInputUsage, "indices");
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
@@ -240,7 +241,8 @@ namespace Rtx
         // and each stage ends in the barrier the next one needs.
         buildMicromaps(batch, scene, textures, mEveryMesh, graveyard);
         buildMeshes(batch, scene, mEveryMesh, graveyard);
-        prepareTopLevel(scene, records, 0, graveyard);
+        writeRows(records, {});
+        prepareTopLevel(scene, 0, graveyard);
         recordTopLevel(batch.getCommands(), nullptr);
     }
 
@@ -922,37 +924,25 @@ namespace Rtx
     }
 
     bool SceneAcceleration::place(VkCommandBuffer commands, const SceneDesc& scene,
-        std::span<const InstanceRecord> records, const std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard)
+        std::span<const InstanceRecord> records, std::span<const Index> changed, const std::uint32_t slot,
+        GpuTimer* timer, Graveyard& graveyard)
     {
         assert(slot < mSlots && "a frame slot this scene has no copy of the rows for");
 
         prepareRefit(scene, slot);
 
-        // **Every copy owes both lists, whether or not this one builds now.** A copy owes what has
-        // moved since it was last written, and that is more than the current `getMoved`: a frame
-        // walked twice — a crossing, or the game's precipitation subtree beside its world — settles
-        // the first walk's moves before the placement that follows the second one runs, so a copy
-        // reading only `getMoved` never learns of them. `SceneBuffers::place` owes both for the same
-        // reason, and a row missed here is geometry standing where it stood two frames ago.
-        for (std::uint32_t each = 0; each < mSlots; ++each)
-        {
-            mRowsOwed[each].owe(scene.getSettled());
-            mRowsOwed[each].owe(scene.getMoved());
-        }
-
         // **What this copy owes, and not what the scene moved.** The top level is built from this
         // copy of the rows, so what decides whether it has to be built again is whether those rows
-        // are about to change — which is a debt this copy may have carried for frames, not a list
-        // the current frame filled. Asking the scene instead leaves a copy holding rows it never
-        // paid for and a top level built from them. A world that stands still owes nothing and
-        // still returns here, which is what the early return was for: building the same top level
-        // over the same rows was a submit and a fence on every frame of a standing camera. A refit
-        // alone still rebuilds it, because a top level caches the bounds of what it names.
-        const RowDebt& owing = mRowsOwed[slot];
-        if (!owing.mEverything && owing.mRows.empty() && records.size() == mRows.size() && mRefitBuilds.empty())
+        // are about to change — a debt this copy may have carried for frames, not a list the current
+        // frame filled. A world that stands still owes nothing and still returns here, which is what
+        // the early return is for: building the same top level over the same rows was a submit and a
+        // fence on every frame of a standing camera. A refit alone still rebuilds it, because a top
+        // level caches the bounds of what it names.
+        writeRows(records, changed);
+        if (!mRowTable.owes(slot) && mRefitBuilds.empty())
             return false;
 
-        prepareTopLevel(scene, records, slot, graveyard);
+        prepareTopLevel(scene, slot, graveyard);
 
         // The barrier between the refit and the top level is what the fence used to be: the top
         // level is built over structures the refit has just rewritten, which is a dependency inside
@@ -965,8 +955,24 @@ namespace Rtx
         return true;
     }
 
-    void SceneAcceleration::prepareTopLevel(
-        const SceneDesc& scene, std::span<const InstanceRecord> records, const std::uint32_t slot, Graveyard& graveyard)
+    void SceneAcceleration::writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed)
+    {
+        const std::size_t had = mRowTable.size();
+        mRowTable.resize(records.size());
+        mRowFlags.resize(records.size(), 0);
+
+        // **What the table grew by, written from its record rather than left inactive.** `resize`
+        // owes every appended row to every copy, so a row nothing writes reaches the device as a
+        // gap rather than as whatever was last in that memory. This is what makes them the
+        // instances they actually are, and on the first placement it is the whole table.
+        for (std::size_t at = had; at < records.size(); ++at)
+            placeRow(static_cast<Index>(at), records[at]);
+
+        for (const Index at : changed)
+            placeRow(at, records[at]);
+    }
+
+    void SceneAcceleration::prepareTopLevel(const SceneDesc& scene, const std::uint32_t slot, Graveyard& graveyard)
     {
         // **Checked here rather than left to the driver.** A scene that grew a mesh since `setScene`
         // built the structures is a caller breaking `placeScene`'s contract, and the only symptom is
@@ -978,52 +984,14 @@ namespace Rtx
                 + std::to_string(scene.getMeshes().size())
                 + " without being built again; placeScene can only move what setScene made");
 
-        // **Every row where the table grew or this copy was never written, and the rows this copy
-        // owes otherwise.** The slot table only ever grows — a freed slot is taken over, never
-        // closed — so growing is a cell arriving and not a frame, and it is the one time the
-        // structure has to be made for a new count. A scene with nothing placed still gets a
-        // structure over no rows: the trace binds one whatever the scene holds.
-        const auto count = static_cast<std::uint32_t>(records.size());
-        const bool grown = count > mRows.size();
-        if (grown)
-        {
-            mRows.resize(count, VkAccelerationStructureInstanceKHR{});
-            mRowFlags.resize(count, 0);
-        }
+        mRowTable.sync(slot, graveyard);
 
-        // **This copy's own size and not the mirror's.** The mirror grew when the other copy was
-        // placed, and the rows appended since are owed to this one — but a row written past the
-        // end of a copy that never grew is what the top level would then be built from.
-        HostBuffer& rows = mInstances[slot];
-        RowDebt& owed = mRowsOwed[slot];
-        const VkDeviceSize needed = mRows.size() * sizeof(VkAccelerationStructureInstanceKHR);
-        if (rows.getSize() < needed || owed.mEverything)
-        {
-            for (std::uint32_t at = 0; at < count; ++at)
-                placeRow(at, records[at]);
-
-            // **Written where the builder reads it.** Staging these was a buffer made, a copy
-            // recorded, a submit and a wait on the queue for a memcpy.
-            graveyard.bury(growTo(rows, mDevice, needed, sBuildInputUsage));
-            rows.write(std::span<const VkAccelerationStructureInstanceKHR>(mRows));
-            mDevice.setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(rows.getHandle()), "instances");
-        }
-        else
-        {
-            for (const Index at : owed.mRows)
-            {
-                placeRow(at, records[at]);
-                rows.writeAt(at * sizeof(VkAccelerationStructureInstanceKHR),
-                    std::span<const VkAccelerationStructureInstanceKHR>(&mRows[at], 1));
-            }
-        }
-        owed.settle();
-
-        if (mTopLevel == VK_NULL_HANDLE || grown)
+        const auto count = static_cast<std::uint32_t>(mRowTable.size());
+        if (mTopLevel == VK_NULL_HANDLE || count > mTopLevelSlots)
             sizeTopLevel(count, graveyard);
 
         // The top level is built from this frame's copy, so the address moves with the slot.
-        mTopLevelGeometry.geometry.instances.data.deviceAddress = rows.getDeviceAddress();
+        mTopLevelGeometry.geometry.instances.data.deviceAddress = mRowTable.getDeviceAddress(slot);
 
         mInstanceCount = scene.getPlacedCount();
     }
@@ -1044,7 +1012,7 @@ namespace Rtx
         // build reads as an instance to skip, and it costs the build nothing it would ever trace.
         if (!record.mPlaced)
         {
-            mRows[slot] = VkAccelerationStructureInstanceKHR{};
+            mRowTable.write(slot) = VkAccelerationStructureInstanceKHR{};
             return;
         }
 
@@ -1080,7 +1048,7 @@ namespace Rtx
                 flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
         }
 
-        mRows[slot] = VkAccelerationStructureInstanceKHR{
+        mRowTable.write(slot) = VkAccelerationStructureInstanceKHR{
             .transform = toVulkanTransform(record.mTransform),
             // A row's position is the custom index the shader reads back at a hit.
             .instanceCustomIndex = slot & 0xFFFFFFu,

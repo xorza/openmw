@@ -123,6 +123,7 @@ if (OPENMW_RTX)
         rtx/fognoise.cpp
         rtx/frameimage.cpp
         rtx/frames.cpp
+        rtx/slottable.cpp
         rtx/frametimes.cpp
         rtx/frameworld.cpp
         rtx/gputimer.cpp

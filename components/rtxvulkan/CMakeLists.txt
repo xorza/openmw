@@ -145,6 +145,7 @@ set(RTX_VULKAN_FILES
     fogtile.cpp
     fogtile.hpp
     frameslots.hpp
+    slottable.hpp
     gbuffer.cpp
     gbuffer.hpp
     graphicspipeline.cpp

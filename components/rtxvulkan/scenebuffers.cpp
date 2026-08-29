@@ -134,9 +134,9 @@ namespace Rtx
             Tables& tables = mTables[slot];
             tables.mNormals.open(device, sTableUsage, "normals");
 
-            for (HostBuffer* table : { &tables.mInstances, &tables.mMaterials, &tables.mLayers, &tables.mMasks,
-                     &tables.mLights, &tables.mLightOffsets, &tables.mGrid, &tables.mLightIndices, &tables.mSprites,
-                     &tables.mEmitters, &tables.mSpriteTileOffsets, &tables.mSpriteTileIndices })
+            for (HostBuffer* table : { &tables.mMaterials, &tables.mLayers, &tables.mMasks, &tables.mLights,
+                     &tables.mLightOffsets, &tables.mGrid, &tables.mLightIndices, &tables.mSprites, &tables.mEmitters,
+                     &tables.mSpriteTileOffsets, &tables.mSpriteTileIndices })
                 graveyard.bury(growTo(*table, device, 0, sTableUsage));
         }
 
@@ -155,10 +155,8 @@ namespace Rtx
         // The frame tables come from `place`, which is also where they are written when a material
         // changes. Every one of them is a byte long here, so the first write of each copy makes it
         // again and fills it whole.
-        place(scene, records, 0, graveyard);
-
-        device.setName(
-            VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mTables[0].mInstances.getHandle()), "instance rows");
+        mInstanceTable.open(device, slots, sTableUsage, "instance rows");
+        place(scene, records, {}, 0, graveyard);
     }
 
     void SceneBuffers::extend(const SceneDesc& scene, Graveyard& graveyard)
@@ -339,8 +337,8 @@ namespace Rtx
         }
     }
 
-    void SceneBuffers::place(
-        const SceneDesc& scene, std::span<const InstanceRecord> records, const std::uint32_t slot, Graveyard& graveyard)
+    void SceneBuffers::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
+        std::span<const Index> changed, const std::uint32_t slot, Graveyard& graveyard)
     {
         assert(slot < mSlots && "a frame slot this scene has no copy of the tables for");
 
@@ -355,14 +353,16 @@ namespace Rtx
         // looks the row up here directly, so a table that closed its gaps would answer for the
         // wrong placement. A gap's row is never read, so it is never written either.
         const std::span<const MeshInstance> placements = scene.getInstances();
-        mInstanceRows.resize(records.size());
+
+        const std::size_t had = mInstanceTable.size();
+        mInstanceTable.resize(records.size());
 
         const auto placeRow = [&](const std::size_t at) {
             const InstanceRecord& record = records[at];
             if (!record.mPlaced)
                 return;
 
-            Shaders::GpuInstance& row = mInstanceRows[at];
+            Shaders::GpuInstance& row = mInstanceTable.write(static_cast<Index>(at));
             row.mMesh = record.mMesh;
             row.mMaterial = placements[at].mMaterial == sNoIndex ? sentinel : placements[at].mMaterial;
             row.mOpacity = placements[at].mOpacity;
@@ -372,35 +372,17 @@ namespace Rtx
                     record.mMotion.mRows[r][2], record.mMotion.mRows[r][3]);
         };
 
-        // **The rows the scene says changed, owed to every copy and paid by this one; the table
-        // whole only where this copy was made again.** A world is tens of thousands of placements
-        // and a frame moves hundreds; writing every row to change those was a memcpy of megabytes a
-        // frame. What settled is a row too, because its motion went back to nothing and the row
-        // still said otherwise.
-        for (std::uint32_t each = 0; each < mSlots; ++each)
-        {
-            mTables[each].mRowsOwed.owe(scene.getSettled());
-            mTables[each].mRowsOwed.owe(scene.getMoved());
-        }
+        // **The rows this placement wrote, and whatever the table grew by.** A world is tens of
+        // thousands of placements and a frame moves hundreds; writing every row to change those was
+        // a memcpy of megabytes a frame. Which copies are then behind is the table's own answer,
+        // and it is the same answer the acceleration structure's rows get from the same list.
+        for (std::size_t at = had; at < records.size(); ++at)
+            placeRow(at);
 
-        RowDebt& owed = tables.mRowsOwed;
-        if (outgrow(tables.mInstances, records.size() * sizeof(Shaders::GpuInstance), graveyard) || owed.mEverything)
-        {
-            for (std::size_t at = 0; at < records.size(); ++at)
-                placeRow(at);
+        for (const Index at : changed)
+            placeRow(at);
 
-            tables.mInstances.write(std::span<const Shaders::GpuInstance>(mInstanceRows));
-        }
-        else
-        {
-            for (const Index at : owed.mRows)
-            {
-                placeRow(at);
-                tables.mInstances.writeAt(
-                    at * sizeof(Shaders::GpuInstance), std::span<const Shaders::GpuInstance>(&mInstanceRows[at], 1));
-            }
-        }
-        owed.settle();
+        mInstanceTable.sync(slot, graveyard);
 
         mLightScratch.clear();
         mLightScratch.reserve(scene.getLights().size());
@@ -475,14 +457,14 @@ namespace Rtx
     {
         // The indices are not counted here: they belong to the acceleration structure, which reports
         // its own size.
-        VkDeviceSize total = mTexCoords.getBytes() + mMeshes.getSize();
+        VkDeviceSize total = mTexCoords.getBytes() + mMeshes.getSize() + mInstanceTable.getBytes();
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
         {
             const Tables& tables = mTables[slot];
-            total += tables.mNormals.getBytes() + tables.mInstances.getSize() + tables.mMaterials.getSize()
-                + tables.mLayers.getSize() + tables.mMasks.getSize() + tables.mLights.getSize()
-                + tables.mLightOffsets.getSize() + tables.mLightIndices.getSize() + tables.mGrid.getSize()
-                + tables.mSprites.getSize() + tables.mEmitters.getSize();
+            total += tables.mNormals.getBytes() + tables.mMaterials.getSize() + tables.mLayers.getSize()
+                + tables.mMasks.getSize() + tables.mLights.getSize() + tables.mLightOffsets.getSize()
+                + tables.mLightIndices.getSize() + tables.mGrid.getSize() + tables.mSprites.getSize()
+                + tables.mEmitters.getSize();
         }
 
         return total;

@@ -528,12 +528,12 @@ namespace Rtx
         {
             Graveyard& graveyard = frameSlot(mFrame).mGraveyard;
             held.mAcceleration->release(scene.getFreedMeshes(), graveyard);
-            updateInstanceRecords(scene, held.mRecords);
+            updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
 
             mPool.submitAndWait([&](VkCommandBuffer commands) {
-                held.mAcceleration->place(commands, scene, held.mRecords, 0, nullptr, graveyard);
+                held.mAcceleration->place(commands, scene, held.mRecords, held.mChangedRecords, 0, nullptr, graveyard);
             });
-            held.mBuffers->place(scene, held.mRecords, 0, graveyard);
+            held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, 0, graveyard);
             return;
         }
 
@@ -572,7 +572,7 @@ namespace Rtx
         // inverse apiece and a nine-by-nine exterior is fifty thousand of them; the acceleration
         // structure and the instance table were each building the whole set for themselves, every
         // frame, to change a hundred of them.
-        updateInstanceRecords(scene, held.mRecords);
+        updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
 
         // **The placement's own submit, without a fence and without a wait.** A picture inside the
         // interface traced before this frame's trace needs the top level to have reached the queue;
@@ -581,7 +581,7 @@ namespace Rtx
         mPool.begin(frame.mPlaceCommands);
 
         const bool built = held.mAcceleration->place(
-            frame.mPlaceCommands, scene, held.mRecords, into, &frame.mTimer, frame.mGraveyard);
+            frame.mPlaceCommands, scene, held.mRecords, held.mChangedRecords, into, &frame.mTimer, frame.mGraveyard);
         if (built)
             mPool.submit(frame.mPlaceCommands, VK_NULL_HANDLE, frame.mGraveyard);
         else
@@ -590,7 +590,7 @@ namespace Rtx
         // **Only what a moving world changed**, which is the instance rows, the lights and the
         // vertices of anything skinned. Rebuilding all of it was measured at twenty to twenty-seven
         // milliseconds on a nine-by-nine region and was the largest single cost in the frame.
-        held.mBuffers->place(scene, held.mRecords, into, frame.mGraveyard);
+        held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, into, frame.mGraveyard);
 
         mWorldSlot = into;
 

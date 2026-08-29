@@ -109,5 +109,17 @@ namespace Rtx
     /// hundred was most of what placing the world cost the CPU. `records` must be what
     /// `makeInstanceRecords` filled for this scene, and is grown here where the scene grew — a slot
     /// that arrived is in `getMoved`.
-    void updateInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records);
+    /// Brings `records` up to what the scene now says, and names in `changed` every slot it wrote.
+    ///
+    /// **The one place the scene's change lists are read, and so the one place their order can be
+    /// got wrong.** Every table a frame writes is derived from these records, and each used to
+    /// subscribe to `getMoved` and `getSettled` for itself — which is two subscriptions to keep in
+    /// step, in two files, with nothing saying they had to agree. They did not, and terrain stood a
+    /// frame behind for it. What comes back in `changed` is what a backend writes; whether its own
+    /// copies are then behind is `SlotTable`'s to know.
+    ///
+    /// `changed` is cleared and refilled, so a caller keeps one across frames and allocates none.
+    /// A slot named twice is a row written twice, which costs a memcpy of one row.
+    void updateInstanceRecords(
+        const SceneDesc& scene, std::vector<InstanceRecord>& records, std::vector<Index>& changed);
 }

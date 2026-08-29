@@ -129,19 +129,26 @@ namespace Rtx
             moveRecord(scene, slot, records[slot]);
     }
 
-    void updateInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records)
+    void updateInstanceRecords(
+        const SceneDesc& scene, std::vector<InstanceRecord>& records, std::vector<Index>& changed)
     {
         records.resize(scene.getInstances().size());
+        changed.clear();
+        changed.reserve(scene.getSettled().size() + scene.getMoved().size());
 
         // The settled first: a slot that moved again since it settled is in both lists, and the
         // pass that gives it its motion has to be the one that wins.
         for (const Index slot : scene.getSettled())
+        {
             records[slot] = recordOf(scene, slot);
+            changed.push_back(slot);
+        }
 
         for (const Index slot : scene.getMoved())
         {
             records[slot] = recordOf(scene, slot);
             moveRecord(scene, slot, records[slot]);
+            changed.push_back(slot);
         }
     }
 }

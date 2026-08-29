@@ -20,6 +20,7 @@
 #include "buffer.hpp"
 #include "frameslots.hpp"
 #include "hostbuffer.hpp"
+#include "slottable.hpp"
 
 namespace Rtx
 {
@@ -65,16 +66,20 @@ namespace Rtx
         /// staging buffer, a copy command, a submit and a wait on the queue.
         ///
         /// **Into `slot`'s copy of every table a frame writes**, which the frame after next reads
-        /// again and no frame in between: the caller has waited that frame's fence. A copy owes the
-        /// rows the frames since its last write changed, and `RowDebt` is what remembers them.
+        /// again and no frame in between: the caller has waited that frame's fence. The instance
+        /// rows keep their own copies and their own account of what each is owed — `SlotTable` —
+        /// while the materials and the normals still carry a `RowDebt` apiece here.
         ///
         /// `scene` must be the one the constructor was given. `records` are the rows the
         /// acceleration structure was placed with, handed in rather than made again: the motion
         /// transform a shader reads and the one an instance was placed with have to come out of the
         /// same arithmetic, and two places computing an inverse is two places to get it wrong — as
         /// well as thousands of inversions a frame done twice for one answer.
-        void place(
-            const SceneDesc& scene, std::span<const InstanceRecord> records, std::uint32_t slot, Graveyard& graveyard);
+        ///
+        /// @param changed the slots `updateInstanceRecords` wrote, which is the one list the rows
+        ///        are driven by. Whether a copy is then behind is `mInstanceTable`'s to know.
+        void place(const SceneDesc& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
+            std::uint32_t slot, Graveyard& graveyard);
 
         SceneBuffers(const SceneBuffers&) = delete;
         SceneBuffers& operator=(const SceneBuffers&) = delete;
@@ -87,7 +92,7 @@ namespace Rtx
         VkBuffer getNormalBlocks(std::uint32_t slot) const { return mTables[slot].mNormals.getTable(); }
         VkBuffer getTexCoordBlocks() const { return mTexCoords.getTable(); }
         VkBuffer getMeshes() const { return mMeshes.getHandle(); }
-        VkBuffer getInstances(std::uint32_t slot) const { return mTables[slot].mInstances.getHandle(); }
+        VkBuffer getInstances(std::uint32_t slot) const { return mInstanceTable.getHandle(slot); }
         VkBuffer getMaterials(std::uint32_t slot) const { return mTables[slot].mMaterials.getHandle(); }
         VkBuffer getLayers(std::uint32_t slot) const { return mTables[slot].mLayers.getHandle(); }
         VkBuffer getMasks(std::uint32_t slot) const { return mTables[slot].mMasks.getHandle(); }
@@ -120,7 +125,6 @@ namespace Rtx
         /// Everything a frame writes, once per frame in flight.
         struct Tables
         {
-            HostBuffer mInstances;
             HostBuffer mMaterials;
             HostBuffer mLayers;
             HostBuffer mMasks;
@@ -138,7 +142,6 @@ namespace Rtx
             /// recomputed every frame; the rest of a cell's are written once into every copy.
             BlockedBuffer mNormals{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
 
-            RowDebt mRowsOwed;
             RowDebt mMaterialsOwed;
 
             /// Meshes whose normals this copy has yet to be told about.
@@ -194,10 +197,11 @@ namespace Rtx
         std::vector<Shaders::GpuMaterial> mMaterialScratch;
         std::vector<Shaders::GpuLayer> mLayerScratch;
 
-        /// One row a slot, kept across frames as the one answer every copy is written from: the
-        /// rows the scene says changed are rewritten in it, and a copy that owes everything is
-        /// filled from it whole.
-        std::vector<Shaders::GpuInstance> mInstanceRows;
+        /// What a hit turns its slot into: the mesh, the material, the opacity and the motion.
+        ///
+        /// **Its own table rather than a field of `Tables`**, because the copies and what each of
+        /// them still owes are one thing and belong to one object. `SlotTable` says why.
+        SlotTable<Shaders::GpuInstance> mInstanceTable;
 
         // Refilled per placement rather than reallocated: a scene is thousands of these and this is
         // the frame path.
