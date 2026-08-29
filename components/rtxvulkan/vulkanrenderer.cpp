@@ -366,6 +366,12 @@ namespace Rtx
 
         if (slot == sWorld)
         {
+            // **The reports of a world that has gone are dropped, and this is the only place they
+            // are.** A caller counts the frames it drew, so an arrival or a resize keeps its
+            // reports and hands them over as it asks; a new world is that count starting again, and
+            // a report from before it would answer the next question with the wrong frame.
+            mReports.clear();
+
             // A sum over one scene means nothing over the next, so it goes back with the scene
             // rather than being carried empty into one it cannot describe. Neither does a motion
             // vector, which would point at where something stood in a world that is no longer there.
@@ -634,7 +640,7 @@ namespace Rtx
         ++mFrame;
     }
 
-    FrameResult VulkanRenderer::finishOldest()
+    void VulkanRenderer::finishOldest()
     {
         assert(mFinished < mFrame && "nothing in flight to finish");
 
@@ -661,20 +667,39 @@ namespace Rtx
         frame.mGraveyard.clear();
 
         ++mFinished;
-        return FrameResult{
+
+        // **What the ring can hold is what a report stays valid for.** `FrameResult::mGpu` is a
+        // span into the frame's own timer, good until that slot comes round and resolves again —
+        // which is `sFrameSlots` finishes away. A report nothing has collected by then would hand
+        // back zones belonging to a later frame, so the oldest goes. A caller that asks once a
+        // frame never reaches this: it leaves at most one here.
+        if (mReports.size() >= sFrameSlots)
+            mReports.erase(mReports.begin());
+
+        mReports.push_back(FrameResult{
             .mHits = hits,
             .mWaitMs = waited,
             .mGpu = frame.mTimer.resolve(),
             .mReconstruction = frame.mReconstruction,
-        };
+        });
     }
 
     std::optional<FrameResult> VulkanRenderer::finishFrame()
     {
-        if (mFinished == mFrame)
-            return std::nullopt;
+        // **What is already in hand before anything is waited for.** A frame the ring drained to
+        // make room has been finished and its report is here; waiting again would wait the frame
+        // after it and hand back a report a frame ahead of the one the caller is asking about.
+        if (mReports.empty())
+        {
+            if (mFinished == mFrame)
+                return std::nullopt;
 
-        return finishOldest();
+            finishOldest();
+        }
+
+        const FrameResult report = mReports.front();
+        mReports.erase(mReports.begin());
+        return report;
     }
 
     void VulkanRenderer::finishThrough(const std::uint64_t frame)

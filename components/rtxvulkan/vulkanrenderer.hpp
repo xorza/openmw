@@ -218,8 +218,8 @@ namespace Rtx
         /// Submits what a frame recorded, under its own fence, and counts it as in flight.
         void submitFrame(Frame& frame);
 
-        /// Waits for the oldest frame in flight and reads back what it measured.
-        FrameResult finishOldest();
+        /// Waits the oldest frame in flight out and puts what it came to in `mReports`.
+        void finishOldest();
 
         /// Waits until `frame` is finished, where it was ever submitted.
         void finishThrough(std::uint64_t frame);
@@ -253,6 +253,20 @@ namespace Rtx
         /// is in flight, and there are never more of those than there are slots.
         std::uint64_t mFrame = 0;
         std::uint64_t mFinished = 0;
+
+        /// What frames have come to and nothing has asked for yet, oldest first.
+        ///
+        /// **A frame's report belongs to the frame and not to whichever call did the waiting.**
+        /// `beginFrame` waits a slot out when the ring is full, and the report of the frame it
+        /// waited used to go on the floor — so a caller asking once a frame was answered for fewer
+        /// than half of them, and a run's figures were a sample of whichever frames it reached.
+        ///
+        /// **Never longer than `sFrameSlots`, because that is how long a report stays true.**
+        /// `FrameResult::mGpu` is a span into the frame's own timer and the slot resolves again
+        /// when it comes round, so a report held past that would carry another frame's zones.
+        /// `finishOldest` drops the oldest rather than let that happen, and a caller asking once a
+        /// frame never gets near it. A new world drops what is left, and `setScene` says why.
+        std::vector<FrameResult> mReports;
 
         /// The interface's ring runs on its own count: a menu is drawn on frames with no world.
         std::uint64_t mGuiFrame = 0;

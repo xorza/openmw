@@ -104,9 +104,12 @@ namespace Rtx
             EXPECT_FALSE(mRenderer->finishFrame().has_value()) << "a frame came back twice";
         }
 
-        /// A third frame waits for the first, whose slot it takes, and the first's numbers go with
-        /// it: a caller that wants them collects them before the slot comes round.
-        TEST_F(RtxFramesTest, aThirdFrameInFlightTakesTheFirstOnesSlot)
+        /// A third frame waits for the first, whose slot it takes, and the first still reports.
+        ///
+        /// **Whichever call did the waiting, the report belongs to the frame.** The ring drains
+        /// itself to make room, and a caller asking once a frame is answered once a frame however
+        /// many of them that drain accounted for.
+        TEST_F(RtxFramesTest, aFrameTheRingDrainedToMakeRoomStillReports)
         {
             mRenderer->renderFrame(ahead(), FrameOptions{});
             moveTo(-1000.0f);
@@ -115,10 +118,36 @@ namespace Rtx
             mRenderer->renderFrame(ahead(), FrameOptions{});
 
             // The third placement wrote the copy the first frame traced, and could only do so once
-            // the first frame had finished — so what comes back starts at the second.
-            EXPECT_EQ(finishedHits(), 0u) << "the second frame's count, or a frame that never finished";
-            EXPECT_EQ(finishedHits(), sEveryPixel) << "the third frame read a copy the first frame was still using";
-            EXPECT_FALSE(mRenderer->finishFrame().has_value());
+            // the first frame had finished — which is the drain, and the frame it accounted for.
+            EXPECT_EQ(finishedHits(), sEveryPixel) << "the wall the first frame was drawn against";
+            EXPECT_EQ(finishedHits(), 0u) << "the second, with the wall moved behind the eye";
+            EXPECT_EQ(finishedHits(), sEveryPixel) << "the third, with it moved back";
+            EXPECT_FALSE(mRenderer->finishFrame().has_value()) << "a frame reported twice";
+        }
+
+        /// A caller that stops collecting loses the reports that have stopped being true.
+        ///
+        /// **A report is a span into its frame's own timer**, good until that slot comes round and
+        /// resolves again — `sFrameSlots` finishes away. Holding one past that would hand back the
+        /// zones of a later frame, so the oldest goes instead. Five frames drawn and nothing asked
+        /// for in between is one more finish than the ring can answer for, and the first frame is
+        /// the one it cannot.
+        TEST_F(RtxFramesTest, aReportIsDroppedRatherThanHeldPastTheFrameItDescribes)
+        {
+            for (int at = 0; at < 5; ++at)
+            {
+                if (at > 0)
+                    moveTo(at % 2 == 0 ? 200.0f : -1000.0f);
+
+                mRenderer->renderFrame(ahead(), FrameOptions{});
+            }
+
+            // The first frame's wall was in front of the eye; what comes back starts at the second.
+            EXPECT_EQ(finishedHits(), 0u) << "the second frame, or the first held past its timer";
+            EXPECT_EQ(finishedHits(), sEveryPixel);
+            EXPECT_EQ(finishedHits(), 0u);
+            EXPECT_EQ(finishedHits(), sEveryPixel);
+            EXPECT_FALSE(mRenderer->finishFrame().has_value()) << "five frames answered five times";
         }
 
         /// Several placements before a trace are one frame, and the trace reads the last of them.
@@ -182,8 +211,9 @@ namespace Rtx
             deformTo(400.0f);
             mRenderer->renderFrame(ahead(), FrameOptions{});
 
-            EXPECT_EQ(finishedHits(), 0u);
-            EXPECT_EQ(finishedHits(), sEveryPixel);
+            EXPECT_EQ(finishedHits(), sEveryPixel) << "the first pose, in front of the eye";
+            EXPECT_EQ(finishedHits(), 0u) << "the second, moved behind it";
+            EXPECT_EQ(finishedHits(), sEveryPixel) << "the third, moved back";
             EXPECT_FALSE(mRenderer->finishFrame().has_value());
         }
     }

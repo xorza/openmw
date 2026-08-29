@@ -2,11 +2,9 @@
 
 - `verify` differs from itself between runs, at worst 1 to 8 of 255 on 0.01% of the pixels of
   `island-crossing`. The same viewpoint is reproducible under `shot` and under `bench`, each with a
-  renderer of its own, so it is `verify` reusing one renderer across sixteen views.
-
-- `bench` reports a frame result for fewer than half its frames: `beginFrame`'s own drain consumes
-  the oldest frame when the ring is full, so the `finishFrame` that follows finds nothing and the
-  run's wait, GPU and hit rows are sampled from whichever frames it happened to reach.
+  renderer of its own, and a renderer per view inside `verify` does not stop it. What `verify` and
+  `bench` share and `shot` does not is `StagedWorld`; what `verify` alone does is stage sixteen
+  views into one `World`.
 
 - The same camera renders lit under `shot` and near-black under `bench`. At `19388,-27476,3000`
   looking at `20421,-25763,2300`, `shot --cell=2,-4 --albedo --upscale=off --exposure=1` reads a

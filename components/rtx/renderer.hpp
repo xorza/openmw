@@ -494,8 +494,12 @@ namespace Rtx
         /// it is known here.
         virtual Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) = 0;
 
-        /// Waits for the oldest frame still in flight and says what it came to, or nothing where
-        /// none is.
+        /// What the oldest frame nothing has asked about came to, waiting for it where it is still
+        /// in flight, or nothing where every frame drawn has been reported.
+        ///
+        /// **A frame's report belongs to the frame and not to whichever call did the waiting.** The
+        /// ring drains itself when a new frame wants a slot, and what it drained is reported here
+        /// like anything else — a caller asking once a frame is answered once a frame.
         ///
         /// **Where the pipeline is paid for and where it pays, and the submit is what divides the
         /// two.** Called after `renderFrame` the oldest frame in flight is the one just submitted,

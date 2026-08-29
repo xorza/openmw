@@ -20,43 +20,25 @@ pixels. Holding the exposure does not stop it and makes a second view join in.
 the streaming path. Both are reproducible. The two wall clocks a run used to read are fixed and
 `verify` states its frame length like everything else.
 
-**What is left is the one thing `verify` alone does: sixteen views through one renderer.** Something
-carries from a view into the next. `setScene` resets the reference sum, the previous camera and the
-slot bookkeeping, so what remains is device memory a departed scene wrote and a new one was handed,
-the accumulator's images, and whatever the sea and fog passes keep across a scene.
+**And it is not the renderer either.** Giving `verify` a renderer of its own per view leaves
+`island-crossing` differing by as much as 9 of 255. So cross-view state in the renderer is out, and
+with it the whole premise this section started from.
+
+**What that leaves is the `World` the views share.** `verify` and `bench` both stage through
+`StagedWorld`; `shot` does not, and `shot` is byte-identical. `bench --views=island-crossing` is
+identical too — and it renders the same frame 0 that `verify` does. The difference between them is
+that `verify` walks sixteen views into one `World` in a fixed order, so what that view is staged
+into depends on what the fifteen others loaded and dropped.
 
 **Next, in order.**
 
-1. **Say whether it is the reuse at all.** Give `verify` a renderer per view. If it goes away, the
-   cause is cross-view state and the search is bounded to what `setScene` does not reset. If it does
-   not, everything above is wrong and the view itself has something.
-2. **If it is the reuse, bisect what carries.** The order to suspect is memory a new scene is handed
-   after an old one gave it back — which is uninitialised-read shaped, and matches a few thousand
-   pixels differing by a few levels rather than a whole frame shifting.
-3. **The fix is not a renderer per view.** That would hide it: the game reuses one renderer across
-   every cell it ever loads, so whatever this is, a player meets it. A new scene must not be able to
-   read what an old one wrote.
-
-## 2. `bench` reports a frame result for fewer than half its frames
-
-**Root cause, and it is exact.** `beginFrame` drains the ring when it is full:
-
-```cpp
-while (mFrame - mFinished >= sFrameSlots)
-    finishOldest();
-```
-
-`finishOldest` returns a `FrameResult` and `beginFrame` discards it. The `finishFrame` that follows
-then finds `mFinished == mFrame` and returns nothing, so the run's wait, GPU and hit rows are
-sampled from whichever frames the caller happened to reach first.
-
-**The fix.** A result belongs to the frame that produced it, and which call did the waiting is not
-the caller's business. `finishOldest`'s result goes into a small queue — at most `sFrameSlots` can
-be pending, since that is the cap on frames in flight — and `finishFrame` pops from it before
-waiting for anything. `beginFrame` stops discarding; `finishFrame` stops missing.
-
-That also fixes a smaller wrong thing: `finishFrame` currently means "wait for the oldest", and it
-should mean "give me the next frame's report", which is what every caller wants it for.
+1. **Run `verify` on that view alone**, which needs the view filter `bench` has and `verify` does
+   not. If one view in isolation is reproducible, the shared `World` is the cause and the search is
+   what a cell load leaves behind in it.
+2. **If it still differs alone**, the cause is in `StagedWorld` for that view, and `bench` reaching
+   the same camera reproducibly says the difference is in the staging rather than the frame.
+3. **Either way the fix is not isolation.** The game loads cell after cell into one world for hours;
+   whatever this is, a player meets it.
 
 ## 3. One camera renders lit under `shot` and near-black under `bench`
 
@@ -77,22 +59,33 @@ the other. `Rtx::sCompositeFrom` is where they swap.
 **This became tractable only now.** Both runs are reproducible, so the comparison is a diff rather
 than an inference — which is what every earlier attempt at this lacked.
 
+**The two shading paths agree, so it is not shading.** Measured: `shot` at that camera reads a linear
+mean of 0.03434 with 46 of its 133 terrain materials baked, and **the same 0.03434** with every one
+of them forced onto the layer stack. `CompositeQueue`'s claim that a chunk waiting for its bake looks
+like one that has it holds, at least here.
+
+**What is left is what the ring holds.** The two are not looking at the same world: `shot` has 8653
+instances, all of them placed, and 890 materials that are not terrain; `bench` around there has
+19040 instance slots with 8455 placed — the rest are gaps departed cells left — and 1281.
+
+**What the pictures show.** `bench`'s frame is black to the eye with one faint horizon curve;
+`shot`'s at the same camera is lit ground filling the frame. Every ray hits in both, and the sea is
+at z −0.5 with the camera at 3000, so what is black is the ground itself.
+
+**So a terrain surface is being shaded with an albedo of nearly nothing, in `bench` and not in
+`shot`, on a path the two agree about.** What is left that `bench` does and `shot` does not is
+churn: 19040 instance slots with 8455 placed, against 8653 all placed, and a texture array that has
+had slots freed by departed cells and taken over.
+
 **Next, in order.**
 
-1. **Compare the two scenes at that camera**, field by field rather than by hashing structs with
-   padding in them: how many instances, which meshes, and for the chunk under the camera which
-   shading path its material takes.
-2. **If they take different paths, compare the paths.** The claim `CompositeQueue` makes is that a
-   chunk waiting for its bake looks the same as one that has it — "the picture is right from the
-   first frame and what the bake buys is the cost of that hit". Nothing tests that claim. A test
-   that shades one chunk both ways and compares is what it wants, and it belongs beside
-   `terraincomposite.cpp`, which already checks the bake against hand-computed values and never
-   against the shader.
-3. **If they take the same path**, the difference is in what the ring holds, and that is a streaming
-   question rather than a shading one.
+1. **Follow one hit.** Take a pixel in the black, read back which instance it hit, and read that
+   instance's material and its layers' texture slots. Compare with the same pixel under `shot`.
+2. **If the slots differ, ask who freed them.** A material naming a slot a departed cell gave back
+   and a new texture took over is the shape of it, and `dropTextures` and the array's reuse are
+   where that would live.
 
 ## Order
 
-2 first: it is exact, it is small, and every measurement after it is read off a report that is
-currently a sample. Then 3, because the test it wants is worth having whatever the answer is. Then
-1, which is the longest and the only one with a step that could show the whole premise wrong.
+3 next, because the test it wants is worth having whatever the answer is. Then 1, which is the
+longest and the only one with a step that could show its own premise wrong.
