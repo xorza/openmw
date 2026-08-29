@@ -714,15 +714,11 @@ namespace Rtx
 
         /// A room's `AMBI` record, as Berandas, Propylon Chamber writes it: ambient `15, 15, 15`,
         /// sunlight `10, 16, 16`, fog `15, 21, 21` at a depth of one. Red is the low byte.
-        ESM::Cell makeRoom(std::uint32_t ambient, std::uint32_t sunlight, std::uint32_t fog)
+        ESM::Cell::AMBIstruct makeRoom(std::uint32_t ambient, std::uint32_t sunlight, std::uint32_t fog)
         {
-            ESM::Cell cell;
-            cell.mHasAmbi = true;
-            cell.mAmbi.mAmbient = ambient;
-            cell.mAmbi.mSunlight = sunlight;
-            cell.mAmbi.mFog = fog;
-            cell.mAmbi.mFogDensity = 1.0f;
-            return cell;
+            return ESM::Cell::AMBIstruct{
+                .mAmbient = ambient, .mSunlight = sunlight, .mFog = fog, .mFogDensity = 1.0f
+            };
         }
 
         /// A room is lit by its own record under the engine's sun, and nothing of the hour reaches it.
@@ -733,7 +729,7 @@ namespace Rtx
         /// gives a room with no sun, which is what makes the first row the record's doing.
         TEST(RtxRoomLightTest, aRoomIsLitByItsRecordUnderTheEnginesSun)
         {
-            const ESM::Cell chamber = makeRoom(0x000F0F0F, 0x0010100A, 0x0015150F);
+            const ESM::Cell::AMBIstruct chamber = makeRoom(0x000F0F0F, 0x0010100A, 0x0015150F);
             const Daylight room = makeRoomLight(chamber);
 
             const osg::Vec3f sunlight = decodeColour(0x0010100Au);
@@ -747,7 +743,7 @@ namespace Rtx
             EXPECT_EQ(room.mSkyHorizon, decodeColour(0x0015150Fu));
             EXPECT_EQ(room.mSkyZenith, room.mSkyHorizon);
 
-            const Fog air = interiorFog(chamber);
+            const Fog air = roomFog(decodeColour(0x0015150Fu), 1.0f);
             EXPECT_EQ(room.mFog.mColour, air.mColour);
             EXPECT_FLOAT_EQ(room.mFog.mExtinction, air.mExtinction);
 
@@ -759,12 +755,21 @@ namespace Rtx
             EXPECT_EQ(unlit.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
             EXPECT_EQ(unlit.mAmbient, room.mAmbient);
 
-            // And a cell that never wrote one is read as the game reads it: black throughout.
+            // **Night-Eye is added where the game adds it**: to the file's own numbers, before the
+            // decode. `15 / 255 + 0.35 = 0.40882`, and `((0.40882 + 0.055) / 1.055)^2.4 = 0.13914`.
+            const Daylight seen = makeRoomLight(chamber, osg::Vec3f(0.35f, 0.35f, 0.35f));
+            EXPECT_NEAR(seen.mAmbient.x(), 0.13914f, 2e-4f);
+            EXPECT_EQ(seen.mSun.mIrradiance, room.mSun.mIrradiance) << "the effect is an ambient and not a sun";
+
+            // **A cell that wrote no record is a black room**, in the game and here: its `mAmbi` is
+            // the zeros the loader left, and both hosts hand those over rather than checking
+            // `mHasAmbi` first.
             ESM::Cell unwritten;
             unwritten.mHasAmbi = false;
-            const Daylight bare = makeRoomLight(unwritten);
+            const Daylight bare = makeRoomLight(unwritten.mAmbi);
             EXPECT_EQ(bare.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
             EXPECT_EQ(bare.mAmbient, osg::Vec3f(0.0f, 0.0f, 0.0f));
+            EXPECT_FLOAT_EQ(bare.mFog.mExtinction, 0.0f);
         }
 
         TEST(RtxLightBuilderTest, anAshStormBlowsAwayFromRedMountainAndNothingElseTurnsAtAll)

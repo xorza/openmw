@@ -532,6 +532,12 @@ namespace MWRender
 
     void RenderingManager::configureAmbient(const MWWorld::Cell& cell)
     {
+        // **Kept as it was recorded, beside the lift it is about to get.** A renderer that lights a
+        // room itself wants the numbers the content wrote — `WorldState::mRoomAmbient`.
+        mRoomAmbient = cell.getMood().mAmbiantColor;
+        mRoomSunlight = cell.getMood().mDirectionalColor;
+        mRoomFog = cell.getMood().mFogColor;
+
         bool isInterior = !cell.isExterior() && !cell.isQuasiExterior();
         bool needsAdjusting = false;
         needsAdjusting = isInterior && (!Settings::shaders().mClassicFalloff || Settings::shaders().mClusteredLighting);
@@ -902,6 +908,10 @@ namespace MWRender
             .mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) },
             .mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) },
             .mFogDepth = mFogDepth,
+            .mRoomAmbient = mRoomAmbient,
+            .mRoomSunlight = mRoomSunlight,
+            .mRoomFog = mRoomFog,
+            .mNightEye = mSunLight->getAmbient() - mAmbientColor,
             .mNearClip = mNearClip,
             .mViewDistance = mViewDistance,
             .mProjectionMatrix = mPerViewUniformStateUpdater->getProjectionMatrix(),

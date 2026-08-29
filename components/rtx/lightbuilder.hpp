@@ -10,6 +10,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/esm3/loadcell.hpp>
 #include <components/misc/constants.hpp>
 #include <components/sky/timeofday.hpp>
 
@@ -18,7 +19,6 @@
 
 namespace ESM
 {
-    struct Cell;
     struct Light;
     struct Region;
 }
@@ -391,18 +391,26 @@ namespace Rtx
     Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour);
 
     /// A room's light, out of its own `AMBI` record — with `makeDaylight`, the other of the two
-    /// places a `Daylight` is built.
+    /// places a `Daylight` is built, and the one the game and the harness both light a room by.
     ///
-    /// **A room has a sun, and it is the game's.** `RenderingManager::configureAmbient` lights every
-    /// interior with the record's sunlight colour as a directional light from `Sky::roomSun`, at
-    /// full share and never at night, and the game's traced frame reads exactly that back out of the
-    /// rasterizer's state.
+    /// **The record, and not the rasterizer's reading of it.** `RenderingManager::configureAmbient`
+    /// lifts an interior's ambient to `minimum interior brightness` before its own lights see it,
+    /// which balances a falloff curve this renderer does not have, and `openmw-rtxtool` has no
+    /// rasterizer to read. So both hand over the four numbers the cell wrote, in the record's own
+    /// type, and this is the one reading of them.
+    ///
+    /// **A room has a sun, and it is the game's.** `configureAmbient` lights every interior with the
+    /// record's sunlight colour as a directional light from `Sky::roomSun`, at full share and never
+    /// at night.
     ///
     /// The sky is the fog colour at both ends, since a room has no dome and its air stands in
     /// wherever a ray gets out. The stars are nought and the exposure bias is one, which is what the
-    /// game holds a room at. The record is read as the game reads it, whether or not the cell wrote
-    /// one: a room with no `AMBI` is lit black.
-    Daylight makeRoomLight(const ESM::Cell& cell);
+    /// game holds a room at.
+    ///
+    /// @param nightEye what the Night-Eye effect adds to every channel of the ambient, in the
+    ///        file's own space — which is where `RenderingManager::updateAmbient` adds it, so it is
+    ///        added before the decode here as well. Nothing for the harness, which casts no spells.
+    Daylight makeRoomLight(const ESM::Cell::AMBIstruct& room, const osg::Vec3f& nightEye = osg::Vec3f());
 
     /// What the air leaves of a body in the sky, per channel.
     ///

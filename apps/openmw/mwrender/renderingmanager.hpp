@@ -403,6 +403,11 @@ namespace MWRender
         /// What was last handed to `configureFog`, before it became a ramp. `SceneFrame::mFogDepth`.
         float mFogDepth = 0.0f;
 
+        /// What was last handed to `configureAmbient`, before the lift. `SceneFrame::mRoomAmbient`.
+        std::uint32_t mRoomAmbient = 0;
+        std::uint32_t mRoomSunlight = 0;
+        std::uint32_t mRoomFog = 0;
+
         /// What the weather records blowing at, before the gust. `SceneFrame::mBaseWindSpeed`.
         float mBaseWindSpeed = 0.0f;
 

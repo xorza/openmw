@@ -4,7 +4,7 @@
 
 #include <components/debug/debugging.hpp>
 #include <components/esm3/loadcell.hpp>
-#include <components/rtx/fogbuilder.hpp>
+#include <components/rtx/lightbuilder.hpp>
 
 #include "world.hpp"
 
@@ -41,6 +41,6 @@ namespace RtxTool
         // which the cell says nothing about.
         if (!cell.isExterior())
             out() << "fog:         depth " << cell.mAmbi.mFogDensity << ", extinction "
-                  << Rtx::interiorFog(cell).mExtinction << " per unit\n";
+                  << Rtx::makeRoomLight(cell.mAmbi).mFog.mExtinction << " per unit\n";
     }
 }

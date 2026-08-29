@@ -29,6 +29,7 @@
 #include <MyGUI_RenderManager.h>
 
 #include <components/debug/debuglog.hpp>
+#include <components/esm3/loadcell.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguirtx/rendermanager.hpp>
 #include <components/nifosg/nifloader.hpp>
@@ -768,13 +769,27 @@ namespace MWRender
 
         // The horizon is the fog and the zenith is the sky's own, which is the pair Morrowind
         // records: one colour for the air, and one for the dome it fades into overhead.
-        const osg::Vec3f haze = Rtx::decodeColour(world.mAir.mColour);
+        // **A room's light is built once, out of the record the cell wrote** — `Rtx::makeRoomLight`,
+        // which is what `openmw-rtxtool` reads out of the content files — and not out of the
+        // rasterizer's reading of it. `mAmbientColour` carries the lift `configureAmbient` gives an
+        // interior for its own falloff curve and `mSunPosition` where it points a directional
+        // light, and neither is a fact about the room. What the game adds for Night-Eye comes over
+        // as itself.
+        const std::optional<Rtx::Daylight> room = world.isOutdoors()
+            ? std::nullopt
+            : std::optional(Rtx::makeRoomLight(ESM::Cell::AMBIstruct{ .mAmbient = world.mRoomAmbient,
+                                                   .mSunlight = world.mRoomSunlight,
+                                                   .mFog = world.mRoomFog,
+                                                   .mFogDensity = world.mFogDepth },
+                osg::Vec3f(world.mNightEye.x(), world.mNightEye.y(), world.mNightEye.z())));
+
+        const osg::Vec3f haze = room.has_value() ? room->mSkyHorizon : Rtx::decodeColour(world.mAir.mColour);
 
         // **The sky's own colour, and an interior has none.** The weather system stops writing it
         // the moment the player steps inside, so what the sky is still holding belongs to wherever
         // they were last outdoors — and the air's own colour stands in, which is what a room's sky
         // is anyway. A quasi-exterior is on the outdoor side of that: it has weather.
-        const osg::Vec3f zenith = world.isOutdoors() ? Rtx::decodeColour(world.mSkyColour) : haze;
+        const osg::Vec3f zenith = room.has_value() ? room->mSkyZenith : Rtx::decodeColour(world.mSkyColour);
 
         // **Before the frame is assembled, because the fill is measured against it.** Every layer
         // that lights comes out of the weather's own ambient, so what the sheets add has to be known
@@ -786,19 +801,22 @@ namespace MWRender
         // **The sun is not assembled here.** Everything the world says about it goes to the one
         // builder that decides what a sun may be — which is what keeps the game and the harness
         // under the same sky, and what makes a sun that lights an empty night impossible to write.
-        const Rtx::Skylight sky = Rtx::makeSkylight(Rtx::SkyReading{
-            .mSunPosition = discAt,
-            .mSunShare = world.mSunDiscColour.a(),
+        // A room's sun arrives built, by the builder the harness lights one with.
+        const Rtx::Skylight sky = room.has_value()
+            ? Rtx::Skylight{ .mSun = room->mSun, .mSunAloft = room->mSunAloft, .mAmbient = room->mAmbient }
+            : Rtx::makeSkylight(Rtx::SkyReading{
+                .mSunPosition = discAt,
+                .mSunShare = world.mSunDiscColour.a(),
 
-            // **The deck keeps the sun after the ground has lost it**, and the hour is what says how
-            // much of it is left — `Rtx::sunShareAloft`. The ground's own share arrives from the
-            // weather system, which reads the same `Sky::sunShareAt` at the same hour.
-            .mSunShareAloft = Rtx::sunShareAloft(world.mGameHour, Sky::TimeOfDaySettings::shared()),
-            .mSunColour = Rtx::decodeColour(world.mSunColour),
-            .mAmbient = Rtx::decodeColour(world.mAmbientColour),
-            .mDiscColour = Rtx::decodeColour(world.mSunDiscColour),
-            .mGlare = world.mSunGlare,
-        });
+                // **The deck keeps the sun after the ground has lost it**, and the hour is what says how
+                // much of it is left — `Rtx::sunShareAloft`. The ground's own share arrives from the
+                // weather system, which reads the same `Sky::sunShareAt` at the same hour.
+                .mSunShareAloft = Rtx::sunShareAloft(world.mGameHour, Sky::TimeOfDaySettings::shared()),
+                .mSunColour = Rtx::decodeColour(world.mSunColour),
+                .mAmbient = Rtx::decodeColour(world.mAmbientColour),
+                .mDiscColour = Rtx::decodeColour(world.mSunDiscColour),
+                .mGlare = world.mSunGlare,
+            });
 
         // **Before the frame rather than into it, because the deck is lit by them.** A cloud layer
         // takes the moons' light like anything else under a night sky, and `Rtx::deckLight` is
@@ -836,8 +854,9 @@ namespace MWRender
         //
         // **After the budget, because the air is lit by the dome it stands in.** The record says
         // what hue the fog comes back in and the dome's mean says how bright; a room has no dome
-        // and keeps its record as it is.
-        const Rtx::Fog air = world.isInteriorCell()
+        // and keeps its record as it is, and a quasi-exterior keeps its record under the sky it has.
+        const Rtx::Fog air = room.has_value() ? room->mFog
+            : world.isInteriorCell()
             ? Rtx::roomFog(haze, world.mFogDepth)
             : Rtx::exteriorFog(Rtx::fogColour(budget.mMean, haze), world.mFogDepth, world.mBaseWindSpeed);
 
@@ -910,8 +929,9 @@ namespace MWRender
         // **The hour is held back only outdoors, because the bias is the hour's and an interior has
         // no hour.** A cell's `AMBI` is dark by the same measure a midnight is, and holding a room
         // back by two stops is not what an eye walking into one does — it adapts to the room.
-        const float bias
-            = world.isOutdoors() ? Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient) : 1.0f;
+        // `Rtx::makeRoomLight` is where a room's one is said.
+        const float bias = room.has_value() ? room->mExposureBias
+                                            : Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient);
 
         const Rtx::FrameResult result
             = mRenderer->renderFrame(constants, Rtx::FrameOptions{ .mExposureBias = bias, .mExposure = std::nullopt });

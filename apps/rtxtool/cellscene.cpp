@@ -294,9 +294,12 @@ namespace RtxTool
         // **A room is lit out of its own record, sun included.** `Rtx::makeRoomLight` is what the
         // game does with an `AMBI`, so a `shot` of a room stands under the light a played frame
         // does; the weather and the hour are an exterior's business and decide nothing here.
+        //
+        // `mAmbi` and not a check of `mHasAmbi`: the game copies the record into its mood whether
+        // or not the cell wrote one, so a cell that never did is a black room in both.
         if (!centre.isExterior())
         {
-            const Rtx::Daylight room = Rtx::makeRoomLight(centre);
+            const Rtx::Daylight room = Rtx::makeRoomLight(centre.mAmbi);
             return RegionLoad{ .mLighting
                 = CellLighting{ .mAmbient = room.mAmbient, .mWaterLevel = level, .mDaylight = room, .mFog = room.mFog },
                 .mReport = std::move(report) };

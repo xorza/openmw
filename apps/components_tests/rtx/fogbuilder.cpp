@@ -4,6 +4,7 @@
 
 #include <components/esm3/loadcell.hpp>
 #include <components/rtx/fogbuilder.hpp>
+#include <components/rtx/lightbuilder.hpp>
 #include <components/settings/values.hpp>
 
 namespace Rtx
@@ -102,19 +103,17 @@ namespace Rtx
         /// value is that range's shipped default and it is now written down rather than read.
         TEST(RtxFogTest, aRoomsAirIsWhatTheContentSaidAndNotWhatTheViewDistanceIs)
         {
-            ESM::Cell room;
-            room.mHasAmbi = true;
-            room.mAmbi.mFogDensity = 0.75f;
-            room.mAmbi.mFog = 0x00808080;
+            const ESM::Cell::AMBIstruct room{ .mFog = 0x00808080, .mFogDensity = 0.75f };
+            const auto air = [&room] { return makeRoomLight(room).mFog.mExtinction; };
 
-            const float thick = interiorFog(room).mExtinction;
+            const float thick = air();
             EXPECT_NEAR(thick, 6.1888e-6f, 1e-10f) << "the customs office, from its own record alone";
 
             Settings::camera().mViewingDistance.set(4.0f * 8192.0f);
-            EXPECT_FLOAT_EQ(interiorFog(room).mExtinction, thick) << "a cellar cleared because the sky got bigger";
+            EXPECT_FLOAT_EQ(air(), thick) << "a cellar cleared because the sky got bigger";
 
             Settings::camera().mViewingDistance.set(2048.0f);
-            EXPECT_FLOAT_EQ(interiorFog(room).mExtinction, thick) << "and thickened because it got smaller";
+            EXPECT_FLOAT_EQ(air(), thick) << "and thickened because it got smaller";
 
             Settings::camera().mViewingDistance.set(7168.0f);
         }

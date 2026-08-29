@@ -2,11 +2,6 @@
 
 #include <osg/Vec3f>
 
-namespace ESM
-{
-    struct Cell;
-}
-
 namespace Rtx
 {
     /// The air in a cell, in the units the shader takes.
@@ -160,7 +155,4 @@ namespace Rtx
     /// there is no ring of cut ground for a second element to hide, and `sInteriorFogReach` says why
     /// the first one is not measured over the world's size either.
     Fog roomFog(const osg::Vec3f& colour, float depth);
-
-    /// A room's air out of its `AMBI` record, for a cell the simulation is not holding open.
-    Fog interiorFog(const ESM::Cell& cell);
 }

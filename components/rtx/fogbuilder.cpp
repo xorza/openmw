@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include <components/esm3/loadcell.hpp>
-
 #include "distantland.hpp"
 #include "lightbuilder.hpp"
 
@@ -71,13 +69,5 @@ namespace Rtx
 
             .mEdge = 0.0f,
         };
-    }
-
-    Fog interiorFog(const ESM::Cell& cell)
-    {
-        if (!cell.mHasAmbi)
-            return {};
-
-        return roomFog(decodeColour(cell.mAmbi.mFog), cell.mAmbi.mFogDensity);
     }
 }

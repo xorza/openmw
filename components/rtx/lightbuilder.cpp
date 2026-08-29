@@ -11,6 +11,7 @@
 #include <components/fallback/fallback.hpp>
 #include <components/misc/constants.hpp>
 #include <components/sceneutil/lightmanager.hpp>
+#include <components/sceneutil/util.hpp>
 #include <components/sky/sun.hpp>
 #include <components/sky/timeofday.hpp>
 #include <components/weather/downpour.hpp>
@@ -545,9 +546,9 @@ namespace Rtx
         return makeLight(negative ? -recorded : recorded, static_cast<float>(record.mData.mRadius), position);
     }
 
-    Daylight makeRoomLight(const ESM::Cell& cell)
+    Daylight makeRoomLight(const ESM::Cell::AMBIstruct& room, const osg::Vec3f& nightEye)
     {
-        const osg::Vec3f haze = decodeColour(cell.mAmbi.mFog);
+        const osg::Vec3f haze = decodeColour(room.mFog);
         const Sky::SunPlacement sun = Sky::roomSun();
 
         const Skylight sky = makeSkylight(SkyReading{
@@ -556,8 +557,8 @@ namespace Rtx
 
             // Nothing stands above a room's ground to ask.
             .mSunShareAloft = 0.0f,
-            .mSunColour = decodeColour(cell.mAmbi.mSunlight),
-            .mAmbient = decodeColour(cell.mAmbi.mAmbient),
+            .mSunColour = decodeColour(room.mSunlight),
+            .mAmbient = decodeColour(SceneUtil::colourFromRGB(room.mAmbient) + osg::Vec4f(nightEye, 0.0f)),
         });
 
         return Daylight{
@@ -568,7 +569,7 @@ namespace Rtx
             .mAmbient = sky.mAmbient,
             .mStarFade = 0.0f,
             .mExposureBias = 1.0f,
-            .mFog = interiorFog(cell),
+            .mFog = roomFog(haze, room.mFogDensity),
         };
     }
 }

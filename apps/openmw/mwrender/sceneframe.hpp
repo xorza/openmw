@@ -1,6 +1,7 @@
 #ifndef GAME_RENDER_SCENEFRAME_H
 #define GAME_RENDER_SCENEFRAME_H
 
+#include <cstdint>
 #include <optional>
 
 #include "weatherresult.hpp"
@@ -141,7 +142,8 @@ namespace MWRender
         /// and neither is a thing the hour of the day can be asked for.
         Sky::SkyRoll mSkyRoll;
 
-        /// Includes the night-eye effect, because that is where it has already been added.
+        /// Includes the night-eye effect, because that is where it has already been added — and, in
+        /// a room, the lift `configureAmbient` gives it. `mRoomAmbient` is the record.
         osg::Vec4f mAmbientColour;
 
         /// Meaningless in an `Interior`, where the weather system stops writing it and it keeps
@@ -177,6 +179,27 @@ namespace MWRender
         ///
         /// A weather's blended `Land_Fog_Depth` outdoors, and a cell's `AMBI` density indoors.
         float mFogDepth = 0.0f;
+
+        /// The cell's own `AMBI` record — its ambient, sunlight and fog as three packed colours —
+        /// beside `mFogDepth`, which is the record's fourth number.
+        ///
+        /// **The record and not `mAmbientColour`, for a renderer that lights a room itself.**
+        /// `configureAmbient` lifts an interior's ambient to `minimum interior brightness` before
+        /// the rasterizer's lights see it, which balances a falloff curve of the rasterizer's own,
+        /// and turns its sunlight into a directional light at a position of its choosing.
+        /// `Rtx::makeRoomLight` reads these four the way `openmw-rtxtool` reads them out of the
+        /// content files, so a played frame and a `shot` stand in one room.
+        ///
+        /// Meaningless outdoors, where the weather system writes the sky — the same way
+        /// `mSkyColour` is meaningless in a room.
+        std::uint32_t mRoomAmbient = 0;
+        std::uint32_t mRoomSunlight = 0;
+        std::uint32_t mRoomFog = 0;
+
+        /// What `updateAmbient` added to the ambient for the Night-Eye effect, in the file's space:
+        /// `mAmbientColour` less the cell's own. Read back rather than restated, so the number is
+        /// the rasterizer's and there is one of it. Nought without the effect.
+        osg::Vec4f mNightEye;
 
         float mNearClip = 0.0f;
         float mViewDistance = 0.0f;
