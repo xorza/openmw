@@ -1,6 +1,7 @@
 #include "sceneextractor.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <unordered_map>
 
 #include "error.hpp"
@@ -100,7 +101,8 @@ namespace Rtx
             return nullptr;
         }
 
-        /// How much of an actor there is, from the two uniforms the game fades one with.
+        /// How much of an actor there is under `stateSet`, from the two uniforms the game fades one
+        /// with — or `inherited`, where it carries neither.
         ///
         /// **Both off the same state set, which is what tells them from a model's own animation.**
         /// `MWRender::TransparencyUpdater` writes `alpha` and `actorFade` as a pair on a state set
@@ -111,27 +113,35 @@ namespace Rtx
         /// animated surface twice.
         ///
         /// The product is what `objects.frag` reaches for the same surface: `diffuseColor.a * alpha
-        /// * actorFade`, of which the first factor is already in the material.
-        float readActorFade(std::span<const Shading> shading)
+        /// * actorFade`, of which the first factor is already in the material. Nearest wins, exactly
+        /// as a rasterizing cull would resolve the uniform, which is what inheriting down the chain
+        /// comes to; the scene root carries a pair of ones, so a chain that reaches the bottom
+        /// answers the same as no chain.
+        float fadeThrough(const osg::StateSet& stateSet, float inherited)
         {
-            // Nearest wins, exactly as a rasterizing cull would resolve the uniform. The scene root
-            // carries a pair of ones, so a walk that reaches the bottom answers the same as no walk.
-            for (auto it = shading.rbegin(); it != shading.rend(); ++it)
-            {
-                const osg::Uniform* fade = it->mStateSet->getUniform(std::string("actorFade"));
-                if (fade == nullptr)
-                    continue;
+            // Named once for the process. A `std::string` built for every state set of every
+            // drawable's chain, every frame, was a measurable share of the walk.
+            static const std::string sActorFade("actorFade");
+            static const std::string sAlpha("alpha");
 
-                float actorFade = 1.0f;
-                float alpha = 1.0f;
-                fade->get(actorFade);
-                if (const osg::Uniform* hidden = it->mStateSet->getUniform(std::string("alpha")))
-                    hidden->get(alpha);
+            const osg::Uniform* fade = stateSet.getUniform(sActorFade);
+            if (fade == nullptr)
+                return inherited;
 
-                return actorFade * alpha;
-            }
+            float actorFade = 1.0f;
+            float alpha = 1.0f;
+            fade->get(actorFade);
+            if (const osg::Uniform* hidden = stateSet.getUniform(sAlpha))
+                hidden->get(alpha);
 
-            return 1.0f;
+            return actorFade * alpha;
+        }
+
+        /// Whether `node` comes from `library`, which is the one question cheap enough to ask of
+        /// every node before a `dynamic_cast` that nearly all of them fail.
+        bool isFrom(const osg::Node& node, const char* library)
+        {
+            return std::strcmp(node.libraryName(), library) == 0;
         }
 
         /// The texture bound at `unit`, or null.
@@ -282,6 +292,9 @@ namespace Rtx
         /// Descends into the children of `node` that are in the world. See below.
         void descend(osg::Node& node);
 
+        /// Puts `stateSet` at the near end of the chain, with the fade resolved through it.
+        void pushShading(const osg::StateSet& stateSet, bool animated);
+
         /// Runs one node of an `osgParticle` simulation, if that is what this node is. See below.
         bool stepParticles(osg::Node& node);
 
@@ -413,10 +426,15 @@ namespace Rtx
             // walk happens on the first frame, and was twelve behind after a savegame load — where
             // the loading screen's frames are updates with no walk between them — which froze every
             // actor in the world and left them sliding about in the pose they arrived in.
-            if (auto* skeleton = dynamic_cast<SceneUtil::Skeleton*>(group))
+            //
+            // **Gated on the library before the cast**, here and below. Both classes are
+            // `SceneUtil`'s, and a node from `osg` or `NifOsg` — which is nearly every node in a
+            // cell — answers the gate in a byte where a failed `dynamic_cast` walks the class
+            // hierarchy to say the same thing.
+            if (auto* skeleton = isFrom(node, "SceneUtil") ? dynamic_cast<SceneUtil::Skeleton*>(group) : nullptr)
                 skeleton->markReached(static_cast<unsigned int>(mFrame));
         }
-        else if (auto* source = dynamic_cast<SceneUtil::LightSource*>(&node))
+        else if (auto* source = isFrom(node, "SceneUtil") ? dynamic_cast<SceneUtil::LightSource*>(&node) : nullptr)
         {
             // **Worked out here rather than taken on trust**, because there is not always somebody
             // to trust: the harness puts its lamps in a graph it never runs an update traversal
@@ -439,12 +457,12 @@ namespace Rtx
         const std::size_t held = mShading.size();
 
         if (const osg::StateSet* own = node.getStateSet())
-            mShading.push_back(Shading{ .mStateSet = own });
+            pushShading(*own, false);
 
         // Above the node's own, which is where a rasterizing cull would push it too: what a
         // controller decided this frame overrides what the model was authored with.
         if (const osg::StateSet* animated = mExtractor.animate(node))
-            mShading.push_back(Shading{ .mStateSet = animated, .mAnimated = true });
+            pushShading(*animated, true);
 
         const unsigned int arms = mExtractor.isFirstPerson(node.getNodeMask()) ? 1u : 0u;
         mFirstPerson += arms;
@@ -497,8 +515,10 @@ namespace Rtx
         }
 
         // Cast the group and not the node: this walk reaches far more drawables than groups, and
-        // only a group can be a sequence.
-        if (auto* frames = dynamic_cast<osg::Sequence*>(node.asGroup()))
+        // only a group can be a sequence. And the class before the cast: `osg` is every plain
+        // group in a cell, and nothing derives from `Sequence`.
+        if (auto* frames
+            = std::strcmp(node.className(), "Sequence") == 0 ? dynamic_cast<osg::Sequence*>(node.asGroup()) : nullptr)
         {
             frames->traverse(mSequenceClock);
 
@@ -536,6 +556,11 @@ namespace Rtx
     /// world transform off the visitor's node path, and this is the walk standing on one.
     bool MirrorTraversal::stepParticles(osg::Node& node)
     {
+        // The two libraries a processor or an updater can come from: `osgParticle`'s own, and
+        // `NifOsg::Emitter` over them. A node from anywhere else fails both casts below.
+        if (!isFrom(node, "osgParticle") && !isFrom(node, "NifOsg"))
+            return false;
+
         if (auto* processor = dynamic_cast<osgParticle::ParticleProcessor*>(&node))
         {
             if (osgParticle::ParticleSystem* system = processor->getParticleSystem())
@@ -618,6 +643,16 @@ namespace Rtx
         mHere = above;
     }
 
+    void MirrorTraversal::pushShading(const osg::StateSet& stateSet, const bool animated)
+    {
+        const float above = mShading.empty() ? 1.0f : mShading.back().mFade;
+        mShading.push_back(Shading{
+            .mStateSet = &stateSet,
+            .mFade = fadeThrough(stateSet, above),
+            .mAnimated = animated,
+        });
+    }
+
     void MirrorTraversal::apply(osg::Drawable& drawable)
     {
         if (mStepOnly)
@@ -625,7 +660,7 @@ namespace Rtx
 
         const std::size_t held = mShading.size();
         if (const osg::StateSet* own = drawable.getStateSet())
-            mShading.push_back(Shading{ .mStateSet = own });
+            pushShading(*own, false);
 
         mExtractor.addDrawable(drawable, getNodePath(), mShading, placed(), mFirstPerson > 0, *mStats);
 
@@ -1158,7 +1193,7 @@ namespace Rtx
         // Read for every surface and not for actors alone, because nothing here knows which is
         // which: what a mirror can see is a state set above this drawable that says how much of it
         // the game is showing, and the world's own answer to that is one.
-        const float fade = readActorFade(shading);
+        const float fade = shading.empty() ? 1.0f : shading.back().mFade;
 
         if (held == mPlacements.end())
         {
@@ -1534,7 +1569,8 @@ namespace Rtx
         if (sheet)
             ++stats.mSheets;
 
-        const Index mesh = mScene.addMesh(arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, sheet);
+        const Index mesh
+            = mScene.addMesh(arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, sheet, deforming);
         mMeshes.emplace(&drawable, Known{ .mIndex = mesh, .mEpoch = mEpoch });
         ++stats.mMeshesAdded;
         if (deforming)

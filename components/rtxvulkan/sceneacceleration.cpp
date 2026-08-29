@@ -23,6 +23,10 @@ namespace Rtx
 {
     namespace
     {
+        /// What a row counts as, kept beside it so the counts move with the row.
+        constexpr std::uint8_t sRowCutout = 1;
+        constexpr std::uint8_t sRowMicromapped = 2;
+
         /// Brackets a build where there is a timer to bracket it with.
         ///
         /// **The load path has none.** Building every structure from scratch is a cell arriving and
@@ -554,6 +558,8 @@ namespace Rtx
         mBottomLevelAddresses.resize(slots, 0);
         mBottomLevelRooms.resize(slots);
         mBuildScratch.resize(slots, 0);
+        mUpdateScratch.resize(slots, 0);
+        mUpdatable.resize(slots, 0);
 
         // The build reads these through pointers it keeps until the command is recorded, so they
         // live across the whole function rather than inside the loop.
@@ -624,13 +630,22 @@ namespace Rtx
 
             attachMicromap(slot, mBuildGeometries[at], mBuildMicromapLinks[at]);
 
+            // **Only a mesh that deforms is built to be refitted.** The flag costs a structure its
+            // tightness and the trace that reads it a little; a few dozen actors pay it and the
+            // thousands of static meshes around them do not.
+            mUpdatable[slot] = mesh.mDeforming ? 1 : 0;
+
+            // ALLOW_DATA_ACCESS is what lets a shader read a hit triangle's vertices back out of
+            // the structure, which is the whole reason nothing here binds a vertex buffer.
+            VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+                | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR;
+            if (mesh.mDeforming)
+                flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+
             mBuilds[at] = VkAccelerationStructureBuildGeometryInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-                // ALLOW_DATA_ACCESS is what lets a shader read a hit triangle's vertices back out of
-                // the structure, which is the whole reason nothing here binds a vertex buffer.
-                .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-                    | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR,
+                .flags = flags,
                 .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
                 .geometryCount = 1,
                 .pGeometries = &mBuildGeometries[at],
@@ -645,6 +660,7 @@ namespace Rtx
             if (triangles == 0)
             {
                 mBuildScratch[slot] = 0;
+                mUpdateScratch[slot] = 0;
                 mBuildSizes.resize(meshes.size());
                 mBuildSizes[at] = 0;
                 continue;
@@ -666,6 +682,7 @@ namespace Rtx
             // Kept so a rebuild of this one mesh does not have to ask the driver its size again.
             // The same geometry describes it, so the answer cannot have changed.
             mBuildScratch[slot] = sizes.buildScratchSize;
+            mUpdateScratch[slot] = sizes.updateScratchSize;
 
             mBuildRanges[at] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = triangles };
         }
@@ -746,7 +763,8 @@ namespace Rtx
         for (const Index mesh : deformed)
         {
             assert(mesh < mBottomLevel.size() && "a mesh this holds no structure for");
-            scratchTotal = alignUp(scratchTotal + mBuildScratch[mesh], scratchAlignment);
+            scratchTotal = alignUp(
+                scratchTotal + (mUpdatable[mesh] != 0 ? mUpdateScratch[mesh] : mBuildScratch[mesh]), scratchAlignment);
         }
 
         if (mRefitScratch.getSize() < scratchTotal)
@@ -803,24 +821,33 @@ namespace Rtx
         for (std::uint32_t i = 0; i < count; ++i)
         {
             const Index index = deformed[i];
+            const bool updatable = mUpdatable[index] != 0;
 
-            // **Built into the structure that is already there**, rather than into a new one beside
-            // it. A build overwrites its destination outright, the geometry it is given is the same
-            // shape as last time so it needs no more room, and the structure's handle is what every
-            // top-level instance already points at.
+            // **Into the structure that is already there**, rather than into a new one beside it:
+            // its handle is what every top-level row already points at. An update where the build
+            // allowed one, with the same flags as that build, which the update requires — and a
+            // build in place for a mesh that was built without the flag, which overwrites its
+            // destination outright and needs no more room for the same shape.
+            VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+                | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR;
+            if (updatable)
+                flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+
             mRefitBuilds[i] = VkAccelerationStructureBuildGeometryInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-                .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-                    | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR,
-                .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+                .flags = flags,
+                .mode = updatable ? VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR
+                                  : VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+                .srcAccelerationStructure = updatable ? mBottomLevel[index] : VK_NULL_HANDLE,
                 .dstAccelerationStructure = mBottomLevel[index],
                 .geometryCount = 1,
                 .pGeometries = &mRefitGeometries[i],
                 .scratchData = { .deviceAddress = scratchAddress + scratchAt },
             };
 
-            scratchAt = alignUp(scratchAt + mBuildScratch[index], scratchAlignment);
+            scratchAt
+                = alignUp(scratchAt + (updatable ? mUpdateScratch[index] : mBuildScratch[index]), scratchAlignment);
         }
     }
 
@@ -837,7 +864,17 @@ namespace Rtx
         CommandPool& pool, const SceneDesc& scene, std::span<const InstanceRecord> records, GpuTimer* timer)
     {
         prepareRefit(scene);
-        prepareTopLevel(scene, records);
+
+        // **Nothing moved and nothing deformed is nothing to build.** The top level is the same top
+        // level; building it again over the same rows was a submit and a fence on every frame of a
+        // standing camera. A refit alone still rebuilds the top level, because a top level caches
+        // the bounds of what it names.
+        const bool moved = !scene.getMoved().empty() || records.size() != mRows.size();
+        if (moved)
+            prepareTopLevel(scene, records);
+
+        if (!moved && mRefitBuilds.empty())
+            return;
 
         // **One submit, and the barrier between them is what the fence used to be.** The top level
         // is built over structures the refit has just rewritten, which is a dependency inside a
@@ -852,8 +889,6 @@ namespace Rtx
 
     void SceneAcceleration::prepareTopLevel(const SceneDesc& scene, std::span<const InstanceRecord> records)
     {
-        const DeviceFunctions& functions = mDevice.getFunctions();
-
         // **Checked here rather than left to the driver.** A scene that grew a mesh since `setScene`
         // built the structures is a caller breaking `placeScene`'s contract, and the only symptom is
         // a top level naming a bottom level that was never made — which surfaces as an invalid handle
@@ -864,63 +899,99 @@ namespace Rtx
                 + std::to_string(scene.getMeshes().size())
                 + " without being built again; placeScene can only move what setScene made");
 
-        mCutoutInstanceCount = 0;
-        mMicromappedInstanceCount = 0;
-        mRowScratch.clear();
-        mRowScratch.reserve(records.size());
-
-        for (std::uint32_t index = 0; index < records.size(); ++index)
+        // **Every row where the table grew, and the rows the scene named otherwise.** The slot
+        // table only ever grows — a freed slot is taken over, never closed — so growing is a cell
+        // arriving and not a frame, and it is the one time the structure has to be made for a new
+        // count. A scene with nothing placed still gets a structure over no rows: the trace binds
+        // one whatever the scene holds.
+        const auto slots = static_cast<std::uint32_t>(records.size());
+        if (mTopLevel == VK_NULL_HANDLE || slots > mRows.size())
         {
-            const InstanceRecord& record = records[index];
+            mRows.resize(slots, VkAccelerationStructureInstanceKHR{});
+            mRowFlags.resize(slots, 0);
 
-            // **A gap contributes no row rather than a masked one.** Its slot still names it — the
-            // custom index below is the slot and not the row — so skipping costs the build one
-            // primitive it would otherwise have to sort and never hit.
-            if (!record.mPlaced)
-                continue;
+            for (std::uint32_t slot = 0; slot < slots; ++slot)
+                placeRow(slot, records[slot]);
 
-            // Morrowind's sheet geometry is lit and hit from both faces, so nothing is culled.
-            VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-            if (record.mTranslucent)
+            // **Written where the builder reads it.** Staging these was a buffer made, a copy
+            // recorded, a submit and a wait on the queue for a memcpy.
+            growTo(mInstances, mDevice, mRows.size() * sizeof(VkAccelerationStructureInstanceKHR), sBuildInputUsage);
+            mInstances.write(std::span<const VkAccelerationStructureInstanceKHR>(mRows));
+            mDevice.setName(
+                VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mInstances.getHandle()), "instances");
+
+            sizeTopLevel(slots);
+        }
+        else
+        {
+            for (const Index slot : scene.getMoved())
             {
-                // Nothing built one for it, and forcing is the whole of how a candidate reaches the
-                // shader that measures how much of it there is.
-                flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
+                placeRow(slot, records[slot]);
+                mInstances.writeAt(slot * sizeof(VkAccelerationStructureInstanceKHR),
+                    std::span<const VkAccelerationStructureInstanceKHR>(&mRows[slot], 1));
             }
-            else if (record.mCutout)
-            {
-                // Counted here rather than in a pass of its own: this loop already visits every
-                // record and skips the same gaps, and a scene is tens of thousands of them.
-                ++mCutoutInstanceCount;
-
-                // **A mesh a micromap answers for must not be forced non-opaque.** Forcing overrides
-                // what the micromap decided, so every microtriangle it resolved as opaque would go
-                // back to asking — the whole of the saving, handed back at the instance. Where there
-                // is no micromap the force is what makes the cutout work at all.
-                if (record.mMesh < mMicromaps.size() && mMicromaps[record.mMesh] != VK_NULL_HANDLE)
-                    ++mMicromappedInstanceCount;
-                else
-                    flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
-            }
-
-            mRowScratch.push_back(VkAccelerationStructureInstanceKHR{
-                .transform = toVulkanTransform(record.mTransform),
-                // A record's position is the custom index the shader reads back at a hit.
-                .instanceCustomIndex = index & 0xFFFFFFu,
-                .mask = record.mMask,
-                .flags = flags,
-                .accelerationStructureReference = mBottomLevelAddresses[record.mMesh],
-            });
         }
 
-        mInstanceCount = static_cast<std::uint32_t>(mRowScratch.size());
+        mInstanceCount = scene.getPlacedCount();
+    }
 
-        // **Written where the builder reads it.** These are rewritten whole every frame, so staging
-        // them was a buffer made, a copy recorded, a submit and a wait on the queue for a memcpy.
-        const std::span<const VkAccelerationStructureInstanceKHR> rows(mRowScratch);
-        growTo(mInstances, mDevice, rows.size_bytes(), sBuildInputUsage);
+    void SceneAcceleration::placeRow(const Index slot, const InstanceRecord& record)
+    {
+        std::uint8_t& counted = mRowFlags[slot];
+        if ((counted & sRowCutout) != 0)
+            --mCutoutInstanceCount;
+        if ((counted & sRowMicromapped) != 0)
+            --mMicromappedInstanceCount;
+        counted = 0;
 
-        mInstances.write(rows);
+        // **A gap is an inactive row and not a row left out.** Its slot is the custom index a hit
+        // reads back, so the rows cannot close up around it; a reference of nought is what the
+        // build reads as an instance to skip, and it costs the build nothing it would ever trace.
+        if (!record.mPlaced)
+        {
+            mRows[slot] = VkAccelerationStructureInstanceKHR{};
+            return;
+        }
+
+        // Morrowind's sheet geometry is lit and hit from both faces, so nothing is culled.
+        VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        if (record.mTranslucent)
+        {
+            // Nothing built one for it, and forcing is the whole of how a candidate reaches the
+            // shader that measures how much of it there is.
+            flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
+        }
+        else if (record.mCutout)
+        {
+            counted |= sRowCutout;
+            ++mCutoutInstanceCount;
+
+            // **A mesh a micromap answers for must not be forced non-opaque.** Forcing overrides
+            // what the micromap decided, so every microtriangle it resolved as opaque would go
+            // back to asking — the whole of the saving, handed back at the instance. Where there
+            // is no micromap the force is what makes the cutout work at all.
+            if (record.mMesh < mMicromaps.size() && mMicromaps[record.mMesh] != VK_NULL_HANDLE)
+            {
+                counted |= sRowMicromapped;
+                ++mMicromappedInstanceCount;
+            }
+            else
+                flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
+        }
+
+        mRows[slot] = VkAccelerationStructureInstanceKHR{
+            .transform = toVulkanTransform(record.mTransform),
+            // A row's position is the custom index the shader reads back at a hit.
+            .instanceCustomIndex = slot & 0xFFFFFFu,
+            .mask = record.mMask,
+            .flags = flags,
+            .accelerationStructureReference = mBottomLevelAddresses[record.mMesh],
+        };
+    }
+
+    void SceneAcceleration::sizeTopLevel(const std::uint32_t slots)
+    {
+        const DeviceFunctions& functions = mDevice.getFunctions();
 
         mTopLevelGeometry = VkAccelerationStructureGeometryKHR{
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
@@ -944,12 +1015,12 @@ namespace Rtx
         VkAccelerationStructureBuildSizesInfoKHR sizes{
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR,
         };
-        functions.mGetAccelerationStructureBuildSizes(mDevice.getHandle(),
-            VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &mTopLevelBuild, &mInstanceCount, &sizes);
+        functions.mGetAccelerationStructureBuildSizes(
+            mDevice.getHandle(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &mTopLevelBuild, &slots, &sizes);
 
         // **The old structure goes before the new one is made over the same buffer.** Nothing is
-        // reading it: every submit on this path waits, and so does the trace, so by the time a frame
-        // is placing the world again the last one has finished with it.
+        // reading it: every submit on this path waits, and so does the trace, so by the time a cell
+        // is arriving the last frame has finished with it.
         if (mTopLevel != VK_NULL_HANDLE)
         {
             functions.mDestroyAccelerationStructure(mDevice.getHandle(), mTopLevel, nullptr);
@@ -957,6 +1028,7 @@ namespace Rtx
         }
 
         mTopLevelBytes = sizes.accelerationStructureSize;
+        mTopLevelSlots = slots;
 
         // Grown to the high-water mark and kept, both of them. A structure is created at offset zero
         // of whatever this holds and asks only that it be large enough.
@@ -977,7 +1049,6 @@ namespace Rtx
         checkVk(functions.mCreateAccelerationStructure(mDevice.getHandle(), &create, nullptr, &mTopLevel),
             "vkCreateAccelerationStructureKHR");
         mDevice.setName(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR, reinterpret_cast<std::uint64_t>(mTopLevel), "scene");
-        mDevice.setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mInstances.getHandle()), "instances");
 
         mTopLevelBuild.dstAccelerationStructure = mTopLevel;
         mTopLevelBuild.scratchData.deviceAddress = mTopLevelScratch.getDeviceAddress();
@@ -985,7 +1056,7 @@ namespace Rtx
 
     void SceneAcceleration::recordTopLevel(VkCommandBuffer commands, GpuTimer* timer)
     {
-        const VkAccelerationStructureBuildRangeInfoKHR range{ .primitiveCount = mInstanceCount };
+        const VkAccelerationStructureBuildRangeInfoKHR range{ .primitiveCount = mTopLevelSlots };
         const VkAccelerationStructureBuildRangeInfoKHR* ranges = &range;
 
         openZone(timer, commands, "tlas");

@@ -306,21 +306,16 @@ namespace Rtx
 
         // **Indexed by slot, gaps included.** A hit reads its slot back as the custom index and
         // looks the row up here directly, so a table that closed its gaps would answer for the
-        // wrong placement.
-        //
-        // Resized rather than reassigned: a gap's row is never read, so filling the whole table
-        // with zeroes before writing the rows over them is a second pass across three megabytes a
-        // frame that nothing needs.
+        // wrong placement. A gap's row is never read, so it is never written either.
         const std::span<const MeshInstance> placements = scene.getInstances();
-        mInstanceScratch.resize(records.size());
+        mInstanceRows.resize(records.size());
 
-        for (std::size_t slot = 0; slot < records.size(); ++slot)
-        {
+        const auto placeRow = [&](const std::size_t slot) {
             const InstanceRecord& record = records[slot];
             if (!record.mPlaced)
-                continue;
+                return;
 
-            Shaders::GpuInstance& row = mInstanceScratch[slot];
+            Shaders::GpuInstance& row = mInstanceRows[slot];
             row.mMesh = record.mMesh;
             row.mMaterial = placements[slot].mMaterial == sNoIndex ? sentinel : placements[slot].mMaterial;
             row.mOpacity = placements[slot].mOpacity;
@@ -328,6 +323,28 @@ namespace Rtx
             for (int r = 0; r < 3; ++r)
                 row.mMotion[r] = osg::Vec4f(record.mMotion.mRows[r][0], record.mMotion.mRows[r][1],
                     record.mMotion.mRows[r][2], record.mMotion.mRows[r][3]);
+        };
+
+        // **The rows the scene says changed, and the table whole only where it was made again.**
+        // A world is tens of thousands of placements and a frame moves hundreds; writing every row
+        // to change those was a memcpy of megabytes a frame. What settled is written too, because
+        // its motion went back to nothing and the row still said otherwise.
+        if (outgrow(mInstances, records.size() * sizeof(Shaders::GpuInstance)))
+        {
+            for (std::size_t slot = 0; slot < records.size(); ++slot)
+                placeRow(slot);
+
+            mInstances.write(std::span<const Shaders::GpuInstance>(mInstanceRows));
+        }
+        else
+        {
+            for (const std::span<const Index> changed : { scene.getSettled(), scene.getMoved() })
+                for (const Index slot : changed)
+                {
+                    placeRow(slot);
+                    mInstances.writeAt(slot * sizeof(Shaders::GpuInstance),
+                        std::span<const Shaders::GpuInstance>(&mInstanceRows[slot], 1));
+                }
         }
 
         mLightScratch.clear();
@@ -362,7 +379,6 @@ namespace Rtx
         // carry a one-element stand-in of its own to say the same thing, five of them, and the one
         // table that had none is what cost a device. What stops the shader reading an empty table is
         // its count, exactly as it always was.
-        const std::span<const Shaders::GpuInstance> instances(mInstanceScratch);
         const std::span<const Shaders::GpuLight> lights(mLightScratch);
         const std::span<const std::uint32_t> indices = mLightGrid.getIndices();
         const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);
@@ -372,14 +388,12 @@ namespace Rtx
             .mInverseCell = mLightGrid.getInverseCell(),
             .mSize = mLightGrid.getSize(),
         };
-        reserve(mInstances, instances.size_bytes());
         reserve(mLights, lights.size_bytes());
         reserve(mLightOffsets, mLightGrid.getOffsets().size_bytes());
         reserve(mLightIndices, indices.size_bytes());
         reserve(mGrid, sizeof(geometry));
         reserve(mEmitters, emitters.size_bytes());
 
-        mInstances.write(instances);
         mLights.write(lights);
         mLightOffsets.write(mLightGrid.getOffsets());
         mLightIndices.write(indices);

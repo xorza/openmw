@@ -81,11 +81,15 @@ namespace Rtx
         ///
         /// The deformed half is what a skinned body is: its triangles never change and its vertices
         /// change every frame, so the mesh keeps its slice of the shared position buffer and only
-        /// the contents of that slice — and the structure over it — are made again. A rebuild rather
-        /// than a refit: `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR` costs every static
-        /// mesh in the cell a larger structure and a slower trace to make a few dozen actors cheaper
-        /// to animate, which is M12's measurement to take and not an assumption to build on. It is
-        /// skipped outright where nothing deformed, which is every frame of a world with no actor.
+        /// the contents of that slice — and the structure over it — are made again. **Refitted, not
+        /// rebuilt**, for a mesh the scene marked deforming: its structure was built with
+        /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR`, which costs that mesh alone a
+        /// larger structure, and every static mesh in the cell keeps the tight one. A mesh that was
+        /// not marked and deforms anyway is built again, as it always was.
+        ///
+        /// **And the whole of it is skipped where nothing moved and nothing deformed**, which is
+        /// every frame of a standing camera in a place with no actor: the top level is the same top
+        /// level, and there is nothing to submit.
         ///
         /// **`records` is handed in rather than made here**, because `SceneBuffers` needs the same
         /// rows and building them twice was thousands of matrix inversions a frame done again for
@@ -194,9 +198,16 @@ namespace Rtx
         /// held the last frame's entries would be two answers to one question.
         void prepareRefit(const SceneDesc& scene);
 
-        /// Everything the top-level build needs before a command buffer exists: the instance rows,
-        /// the buffer they are written to, the structure itself and the scratch to build it in.
+        /// Everything the top-level build needs before a command buffer exists. The rows the scene
+        /// says changed are rewritten where the builder reads them; where the slot table grew, every
+        /// row is, and the structure and its scratch are made again for the new count.
         void prepareTopLevel(const SceneDesc& scene, std::span<const InstanceRecord> records);
+
+        /// Writes one row from its record, keeping the counts in step.
+        void placeRow(Index slot, const InstanceRecord& record);
+
+        /// Makes the top level for `slots` rows, over storage grown to hold it.
+        void sizeTopLevel(std::uint32_t slots);
 
         void recordRefit(VkCommandBuffer commands, GpuTimer* timer);
         void recordTopLevel(VkCommandBuffer commands, GpuTimer* timer);
@@ -227,8 +238,10 @@ namespace Rtx
 
         Buffer mTopLevelStorage;
 
-        /// The rows the top level is built from. Rewritten whole every frame, so it is written where
-        /// the builder reads it rather than staged into place.
+        /// The rows the top level is built from, one a slot and kept across frames: the rows the
+        /// scene says changed are rewritten in place, where the builder reads them. A gap is an
+        /// inactive row — a reference of nought — and not a row left out, because a row's index is
+        /// the slot a hit reads back.
         HostBuffer mInstances;
 
         std::vector<VkAccelerationStructureKHR> mBottomLevel;
@@ -255,10 +268,22 @@ namespace Rtx
         /// fifty thousand driver calls a frame to be told the same fifty thousand numbers.
         std::vector<VkDeviceAddress> mBottomLevelAddresses;
 
+        /// Kept across frames and built into again, made anew only when the slot table grows
+        /// past what it was sized for. It was destroyed and created every frame, which asked the
+        /// driver for a size and a handle to build the same structure it had just thrown away.
         VkAccelerationStructureKHR mTopLevel = VK_NULL_HANDLE;
 
-        /// What each mesh's build asked for, so a rebuild does not have to ask the driver again.
+        /// How many rows the top level was made for, which is what its build ranges over.
+        std::uint32_t mTopLevelSlots = 0;
+
+        /// What each mesh's build asked for, so a rebuild does not have to ask the driver again;
+        /// and what a refit asks for, for a mesh that was built to be refitted.
         std::vector<VkDeviceSize> mBuildScratch;
+        std::vector<VkDeviceSize> mUpdateScratch;
+
+        /// Whether each mesh's structure was built with `ALLOW_UPDATE`, which is the scene's
+        /// `MeshRange::mDeforming` at the time it was built.
+        std::vector<std::uint8_t> mUpdatable;
 
         /// Every mesh slot, for the whole-scene build the constructor does through the same path an
         /// arrival takes. Kept so that path allocates nothing per scene.
@@ -308,8 +333,12 @@ namespace Rtx
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> mRefitRanges;
         std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> mRefitRangePointers;
 
-        // Refilled per placement rather than reallocated: a scene is tens of thousands of these.
-        std::vector<VkAccelerationStructureInstanceKHR> mRowScratch;
+        /// One row a slot, mirroring `mInstances`, so a slot that changed can be rewritten alone.
+        std::vector<VkAccelerationStructureInstanceKHR> mRows;
+
+        /// What each row counts as — `sRowCutout`, `sRowMicromapped` — so the counts below can be
+        /// kept by the row that changed rather than recounted over every row a frame.
+        std::vector<std::uint8_t> mRowFlags;
 
         // Refilled per build: which material a mesh is worn by, or the sentinel for more than one.
         std::vector<Index> mMaterialOfMesh;

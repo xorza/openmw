@@ -8,6 +8,13 @@ it worked. The numbers quoted as "today" are the ship at 1080p quality unless sa
 frame has no water, the composite bake is on its own thread and an arrival rides the placement's
 submit. Ship 1 % low 26 → 48 fps at the same median; guild 78 → 90 fps.
 
+**Steps 1–3 done.** The placement rewrites the rows the scene names (`getMoved` and `getSettled`)
+and keeps the top level; deforming meshes are built with `ALLOW_UPDATE` and refitted with
+`MODE_UPDATE`, and an unchanged pose names nothing; the fade is resolved as the shading chain is
+built and the walk's casts are gated on the library. Same-state A/B, release, 1080p quality:
+ship `place` 2.05 → 1.05 ms, frame 13.3–14.4 → 11.8 median, p99 18–20 → 16, 1 % low 50–55 → 61–64
+fps, `refit` GPU zone 0.40 → 0.13 ms; guild frame 10.5 → 10.0, `place` 1.16 → 0.74, 95 → 100 fps.
+
 **The rule this plan lives under.** *Feature-complete first, then fast.* Steps 1–3 and 5 are
 structural and change no picture, so they can land whenever the frame they fix is in front of you.
 Everything else waits for the renderer to draw everything the game has, and is measured again then.

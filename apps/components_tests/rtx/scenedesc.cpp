@@ -241,6 +241,90 @@ namespace Rtx
             scene.clearPlacement();
             EXPECT_TRUE(scene.getDeformed().empty());
             EXPECT_EQ(scene.getMeshes().size(), 2u) << "clearing where things are keeps what they are";
+
+            // **A pose that did not change names nothing.** The walk poses every rig it meets and
+            // cannot tell which of them the engine animated; the scene can, by looking. A pose that
+            // differs by one normal is a change like any other.
+            scene.updateMesh(moving, posed, sPosedNormals);
+            EXPECT_TRUE(scene.getDeformed().empty()) << "an unchanged pose named a structure to build";
+
+            std::array<osg::Vec3f, 4> turned = sPosedNormals;
+            turned[3] = osg::Vec3f(0.0f, 1.0f, 0.0f);
+            scene.updateMesh(moving, posed, turned);
+            EXPECT_EQ(sorted(scene.getDeformed()), (std::vector<Index>{ moving }));
+            EXPECT_EQ(scene.getNormals()[scene.getMeshes()[moving].mVertexOffset + 3], osg::Vec3f(0.0f, 1.0f, 0.0f));
+
+            // The finding the caller made about a mesh is kept beside its range, for a backend
+            // that builds a deforming mesh's structure to be refitted.
+            EXPECT_FALSE(scene.getMeshes()[still].mDeforming);
+            const Index rig = scene.addMesh(sQuadPositions, sNormals, {}, sQuadIndices, false, true);
+            EXPECT_TRUE(scene.getMeshes()[rig].mDeforming);
+        }
+
+        /// Every change to a placement's row is reported, and nothing else is.
+        ///
+        /// **What lets a backend rewrite hundreds of rows a frame and not tens of thousands.** The
+        /// row carries the transform, the opacity and what traversal is told about the material, so
+        /// each of those changing is a row; a texture scrolling under the same material is not. And
+        /// what settled — the rows whose motion went back to nothing — is reported the frame after,
+        /// or a backend would leave last frame's motion in a row for ever.
+        TEST(RtxSceneDescTest, aRowIsReportedWhenAPlacementIsPlacedMovedFadedDroppedOrReclassed)
+        {
+            SceneDesc scene;
+            const Index mesh = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices);
+            const Index glass = scene.addMaterial(Material{
+                .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f),
+                .mAlphaMode = AlphaMode::Blend,
+            });
+
+            const Index one = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = glass });
+            const Index two = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = glass });
+            EXPECT_EQ(sorted(scene.getMoved()), (std::vector<Index>{ one, two })) << "a placement made is a row";
+            EXPECT_TRUE(scene.getSettled().empty());
+
+            scene.advancePlacement();
+            EXPECT_TRUE(scene.getMoved().empty());
+            EXPECT_EQ(sorted(scene.getSettled()), (std::vector<Index>{ one, two })) << "what moved is what settles";
+
+            // A fade that changes the number is a row; one that does not is nothing. And the settled
+            // list is the last moved list and nothing older.
+            scene.fadeInstance(one, 0.5f);
+            scene.fadeInstance(one, 0.5f);
+            EXPECT_EQ(sorted(scene.getMoved()), (std::vector<Index>{ one }));
+            scene.advancePlacement();
+            EXPECT_EQ(sorted(scene.getSettled()), (std::vector<Index>{ one }));
+
+            // A material crossing opaque re-classes every placement wearing it; a texture scrolling
+            // under it re-classes none.
+            Material worn = scene.getMaterials()[glass];
+            worn.mTextureTransform = osg::Vec4f(1.0f, 1.0f, 0.25f, 0.0f);
+            scene.setMaterial(glass, worn);
+            EXPECT_TRUE(scene.getMoved().empty()) << "a texture scrolling reported the placements wearing it";
+
+            worn.mDiffuseColour.a() = 1.0f;
+            scene.setMaterial(glass, worn);
+            EXPECT_EQ(sorted(scene.getMoved()), (std::vector<Index>{ one, two }));
+            scene.advancePlacement();
+
+            // A move is a row and a fade in the same frame is the same row twice, which is one row
+            // written twice and not a wrong one.
+            scene.moveInstance(two, osg::Matrixf::translate(0.0f, 0.0f, 5.0f));
+            scene.fadeInstance(two, 0.25f);
+            EXPECT_EQ(sorted(scene.getMoved()), (std::vector<Index>{ two, two }));
+            scene.advancePlacement();
+
+            // A dropped slot is a row to write inactive, and the slot it frees is the next
+            // placement's — both reported, on the frames they happen.
+            scene.dropInstance(two);
+            EXPECT_EQ(sorted(scene.getMoved()), (std::vector<Index>{ two }));
+            scene.advancePlacement();
+            EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh }), two);
+            EXPECT_EQ(sorted(scene.getMoved()), (std::vector<Index>{ two }));
+
+            // Both lists go with the scene.
+            scene.clear();
+            EXPECT_TRUE(scene.getMoved().empty());
+            EXPECT_TRUE(scene.getSettled().empty());
         }
 
         /// An emitter's sphere is derived from the sprites rather than passed in, so the rejection

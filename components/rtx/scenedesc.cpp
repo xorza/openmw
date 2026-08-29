@@ -32,7 +32,7 @@ namespace Rtx
     }
 
     Index SceneDesc::addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, bool sheet)
+        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, bool sheet, bool deforming)
     {
         assert(!positions.empty());
         assert(normals.empty() || normals.size() == positions.size());
@@ -76,6 +76,7 @@ namespace Rtx
             .mIndexOffset = elements.mOffset,
             .mIndexCount = elements.mCount,
             .mSheet = sheet,
+            .mDeforming = deforming,
         };
 
         writeMesh(range, positions, normals, texCoords, indices);
@@ -172,9 +173,15 @@ namespace Rtx
         assert(positions.size() == range.mVertexCount);
         assert(normals.empty() || normals.size() == range.mVertexCount);
 
-        std::copy(positions.begin(), positions.end(), mPositions.begin() + range.mVertexOffset);
+        const auto heldPositions = mPositions.begin() + range.mVertexOffset;
+        const auto heldNormals = mNormals.begin() + range.mVertexOffset;
+        if (std::equal(positions.begin(), positions.end(), heldPositions)
+            && (normals.empty() || std::equal(normals.begin(), normals.end(), heldNormals)))
+            return;
+
+        std::copy(positions.begin(), positions.end(), heldPositions);
         if (!normals.empty())
-            std::copy(normals.begin(), normals.end(), mNormals.begin() + range.mVertexOffset);
+            std::copy(normals.begin(), normals.end(), heldNormals);
 
         // Named once however many callers reach it, because a backend builds one structure per mesh
         // and building it twice in a frame is the same answer for twice the cost. Linear over a list
@@ -211,6 +218,8 @@ namespace Rtx
         if (mMaterials[material] == what)
             return;
 
+        const bool reclassed = mMaterials[material].getTraversed() != what.getTraversed();
+
         // **The new set taken before the old is given back.** A flipbook that comes round to a frame
         // it already had names the same texture twice running; releasing first would take that slot
         // to zero, empty its path and hand it to the next thing that asked — a slot changing
@@ -220,6 +229,13 @@ namespace Rtx
 
         mMaterials[material] = what;
         noteMaterial(material);
+
+        // Linear over the placements on the frame a surface crosses opaque, which a fade does twice
+        // in its life; the flipbooks and the scrolls that animate every frame never come here.
+        if (reclassed)
+            for (Index slot = 0; slot < mInstances.size(); ++slot)
+                if (mInstances[slot].isPlaced() && mInstances[slot].mMaterial == material)
+                    mMoved.push_back(slot);
     }
 
     void SceneDesc::holdTexture(Index texture)
@@ -448,7 +464,11 @@ namespace Rtx
         assert(slot < mInstances.size());
         assert(mInstances[slot].isPlaced() && "a slot nothing stands in");
 
+        if (mInstances[slot].mOpacity == opacity)
+            return;
+
         mInstances[slot].mOpacity = opacity;
+        mMoved.push_back(slot);
     }
 
     bool SceneDesc::moveInstance(Index slot, const osg::Matrixf& transform)
@@ -471,6 +491,7 @@ namespace Rtx
 
         mInstances[slot] = MeshInstance{};
         mFreeSlots.push_back(slot);
+        mMoved.push_back(slot);
         --mPlacedCount;
     }
 
@@ -479,6 +500,8 @@ namespace Rtx
         for (const Index slot : mMoved)
             mPrevious[slot] = mInstances[slot].mTransform;
 
+        // Swapped and not copied: the two lists trade buffers, and neither allocates on the frame.
+        mSettled.swap(mMoved);
         mMoved.clear();
     }
 
@@ -622,6 +645,7 @@ namespace Rtx
         mInstances.clear();
         mPrevious.clear();
         mMoved.clear();
+        mSettled.clear();
         mFreeSlots.clear();
         mPlacedCount = 0;
         mMaterials.clear();

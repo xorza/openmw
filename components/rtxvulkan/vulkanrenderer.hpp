@@ -66,6 +66,16 @@ namespace Rtx
             std::unique_ptr<SceneBuffers> mBuffers;
             std::unique_ptr<TextureArray> mTextures;
 
+            /// One row per placement slot, made whole when the scene is built and kept across
+            /// frames, with the rows the scene says changed rewritten by each placement.
+            ///
+            /// **Here rather than in either half**, because both need the same rows and each used
+            /// to build its own: the acceleration structure for the transforms it places, the
+            /// instance table for the motion the shader reads. A row carries a matrix inverse, and
+            /// a nine-by-nine exterior is fifty thousand rows. Per scene, because a picture inside
+            /// the interface places against rows of its own.
+            std::vector<InstanceRecord> mRecords;
+
             /// Which revision of the mesh table the structures were built from, so `extendScene` can
             /// tell a scene that only gained textures from one that gained geometry too.
             ///
@@ -233,15 +243,6 @@ namespace Rtx
 
         std::unique_ptr<VisibilityPass> mPass;
         SceneStats mStats;
-
-        /// One row per placement slot, remade whenever the world is built or moved, and read by both
-        /// halves of it.
-        ///
-        /// **Here rather than in either of them**, because both need the same rows and each used to
-        /// build its own: the acceleration structure for the transforms it places, the instance table
-        /// for the motion the shader reads. A row carries a matrix inverse, and a nine-by-nine
-        /// exterior is fifty thousand rows. Refilled in place; a frame path does not allocate.
-        std::vector<InstanceRecord> mRecordScratch;
 
         /// Held by value rather than built with the scene, because they depend on neither the
         /// scene nor the size of the image: what they read is pushed at record time. The filter is

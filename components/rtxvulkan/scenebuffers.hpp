@@ -172,9 +172,12 @@ namespace Rtx
         HostBuffer mSpriteTileOffsets;
         HostBuffer mSpriteTileIndices;
 
-        // Refilled per placement rather than reallocated: a scene is tens of thousands of instances
-        // and this is the frame path.
-        std::vector<Shaders::GpuInstance> mInstanceScratch;
+        /// One row a slot, kept across frames: the rows the scene says changed are rewritten in
+        /// it and in the table, and the whole of it goes over only when the table is made again.
+        std::vector<Shaders::GpuInstance> mInstanceRows;
+
+        // Refilled per placement rather than reallocated: a scene is thousands of these and this is
+        // the frame path.
         std::vector<Shaders::GpuLight> mLightScratch;
 
         SpriteTiles mSpriteTiles;

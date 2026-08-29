@@ -44,6 +44,11 @@ namespace Rtx
         /// through its back.
         bool mSheet = false;
 
+        /// Whether this mesh is re-posed by `updateMesh` — a skinned body, a morphed face — which is
+        /// what tells a backend to build its structure so it can be refitted rather than built
+        /// again. The caller's finding, like `mSheet`: the scene keeps it and draws nothing from it.
+        bool mDeforming = false;
+
         Index getTriangleCount() const { return mIndexCount / 3; }
     };
 
@@ -183,6 +188,27 @@ namespace Rtx
         /// for it — which is what a transmittance needs anyway. A reader deciding what to do with a
         /// candidate asks this one first.
         bool isTranslucent() const { return mAlphaMode == AlphaMode::Blend && mDiffuseColour.a() < 1.0f; }
+
+        /// What a placement's row tells traversal about the material it wears.
+        ///
+        /// **Stated once, because two things read it.** The record builder puts these three answers
+        /// into the acceleration structure's row, and `setMaterial` has to know whether a rewrite
+        /// changed any of them — a fade crossing opaque does, a flipbook turning does not — so the
+        /// placements wearing the material can be rewritten. Two lists of the same three fields
+        /// would drift.
+        struct Traversed
+        {
+            MaterialKind mKind = MaterialKind::Surface;
+            bool mCutout = false;
+            bool mTranslucent = false;
+
+            bool operator==(const Traversed& other) const = default;
+        };
+
+        Traversed getTraversed() const
+        {
+            return Traversed{ .mKind = mKind, .mCutout = isCutout(), .mTranslucent = isTranslucent() };
+        }
     };
 
     /// One layer of a terrain material: a ground texture and the weights that place it.
@@ -426,10 +452,12 @@ namespace Rtx
         /// vertex count comes out of a content file and a run that straddled a block would be
         /// written across two device allocations that are not next to each other.
         ///
-        /// `sheet` is `MeshRange::mSheet`, and it is the caller's finding: the scene keeps it and
-        /// draws no conclusion of its own from the triangles it was handed.
+        /// `sheet` is `MeshRange::mSheet` and `deforming` is `MeshRange::mDeforming`, and both are
+        /// the caller's findings: the scene keeps them and draws no conclusion of its own from the
+        /// triangles it was handed.
         Index addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-            std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, bool sheet = false);
+            std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, bool sheet = false,
+            bool deforming = false);
 
         /// Replaces one mesh's positions and normals, keeping its topology and its index.
         ///
@@ -442,7 +470,10 @@ namespace Rtx
         /// `normals` may be empty where the mesh has none. Both are contracts on the caller.
         ///
         /// The mesh joins `getDeformed` for the frame, which is what tells a backend whose
-        /// acceleration structure to build again.
+        /// acceleration structure to build again — unless nothing moved: a pose equal to the one
+        /// already held writes nothing and names nothing, so an actor standing still two cells away
+        /// costs no copy and no refit. Compared rather than trusted, because the walk poses every
+        /// rig it meets and cannot know which of them the engine animated.
         void updateMesh(Index mesh, std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals);
 
         Index addMaterial(const Material& material);
@@ -457,6 +488,13 @@ namespace Rtx
         /// Writing back what is already there costs nothing — the row is only reported as written
         /// when something actually changed, so a paused game re-reads its fires and uploads none
         /// of them.
+        ///
+        /// **A material that changes what traversal is told rewrites every placement wearing it.**
+        /// Its kind, whether it is a cutout and whether it is translucent go into the acceleration
+        /// structure's row and not only into the material table; an alpha controller fading a
+        /// surface past opaque changes those rows, so the slots wearing the material join
+        /// `getMoved`. A flipbook turning or a texture scrolling changes none of them and costs the
+        /// placements nothing.
         void setMaterial(Index material, const Material& what);
 
         /// Copies `weights` into the shared mask table and returns where they landed.
@@ -543,10 +581,16 @@ namespace Rtx
         /// Fades the placement in `slot`.
         ///
         /// Separate from `moveInstance` because the two are separate facts: an actor fading on the
-        /// spot has not moved, and an actor walking is not fading. Neither records the other.
+        /// spot has not moved, and an actor walking is not fading. A fade that changed the number
+        /// joins `getMoved` all the same, because it is a row to rewrite — the opacity a shader
+        /// reads and the translucency traversal is told — and its previous transform stays equal to
+        /// its current one, so it carries no motion.
         void fadeInstance(Index slot, float opacity);
 
         /// Empties `slot`. Its index is not reused until the next `addInstance` asks for one.
+        ///
+        /// The slot joins `getMoved`: a backend has to write its row inactive, or the structure
+        /// goes on tracing what stood there.
         void dropInstance(Index slot);
 
         /// Ends a frame's placement: what moved becomes where things were.
@@ -554,7 +598,7 @@ namespace Rtx
         /// **Costs what moved and not what stands.** Only a slot that reported a move can have a
         /// previous transform that differs from its current one, so only those have to be caught
         /// up — which is what makes a world of fifty thousand placements and three hundred movers
-        /// cost three hundred.
+        /// cost three hundred. What was moved becomes `getSettled`, and `getMoved` starts empty.
         void advancePlacement();
 
         /// Appends one particle system's live sprites, and the emitter that names them.
@@ -639,11 +683,22 @@ namespace Rtx
         /// Where each slot stood before the last `advancePlacement`, indexed alongside the slots.
         std::span<const osg::Matrixf> getPrevious() const { return mPrevious; }
 
-        /// The slots that have moved since the last `advancePlacement`, each once.
+        /// The slots whose row changed since the last `advancePlacement`: placed, moved, faded,
+        /// dropped, or wearing a material that changed what traversal is told.
         ///
-        /// A placement that has just been made is here too: a slot nothing has uploaded yet needs
-        /// writing for the same reason one that moved does.
+        /// **What a backend rewrites, and all it rewrites.** A world is tens of thousands of
+        /// placements and a frame changes hundreds; a row table written whole every frame was a
+        /// millisecond of the game's CPU to change nothing. A slot can appear more than once where
+        /// two facts about it changed in one frame, which costs one row written twice.
         std::span<const Index> getMoved() const { return mMoved; }
+
+        /// The slots the last `advancePlacement` caught up, whose motion is now still.
+        ///
+        /// **The other half of what a backend rewrites.** A row carries the motion between where a
+        /// placement stood and where it stands, and that motion goes back to nothing on the frame
+        /// after the move — which is a frame on which the slot did not move. Without this list a
+        /// backend writing only `getMoved` would leave last frame's motion in the row for ever.
+        std::span<const Index> getSettled() const { return mSettled; }
         std::span<const Material> getMaterials() const { return mMaterials; }
         std::span<const MaterialLayer> getLayers() const { return mLayers; }
         std::span<const Light> getLights() const { return mLights; }
@@ -789,6 +844,7 @@ namespace Rtx
         std::vector<MeshInstance> mInstances;
         std::vector<osg::Matrixf> mPrevious;
         std::vector<Index> mMoved;
+        std::vector<Index> mSettled;
         std::vector<Index> mFreeSlots;
         std::uint32_t mPlacedCount = 0;
 

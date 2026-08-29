@@ -21,6 +21,8 @@ namespace Rtx
     struct Transform3x4
     {
         float mRows[3][4];
+
+        bool operator==(const Transform3x4& other) const = default;
     };
 
     Transform3x4 toTransform3x4(const osg::Matrixf& matrix);
@@ -82,6 +84,8 @@ namespace Rtx
         /// reads back and closing a gap would rename every placement after it. A record that is not
         /// placed describes nothing and must not reach an acceleration structure.
         bool mPlaced = false;
+
+        bool operator==(const InstanceRecord& other) const = default;
     };
 
     /// Fills `records` with one row per slot the scene holds, in slot order.
@@ -96,4 +100,14 @@ namespace Rtx
     /// An out-parameter refilled in place, because a cell is thousands of instances and a rebuild
     /// must not go back to the allocator for a buffer it already had.
     void makeInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records);
+
+    /// Rewrites the rows of the slots the scene says changed — `getMoved` and `getSettled` — and
+    /// leaves every other row as the last call left it.
+    ///
+    /// **What a frame costs, and it is what moved.** A record carries a matrix inverse and a
+    /// nine-by-nine exterior is fifty thousand of them; building all of them again to change a
+    /// hundred was most of what placing the world cost the CPU. `records` must be what
+    /// `makeInstanceRecords` filled for this scene, and is grown here where the scene grew — a slot
+    /// that arrived is in `getMoved`.
+    void updateInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records);
 }

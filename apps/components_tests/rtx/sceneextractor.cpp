@@ -2121,10 +2121,16 @@ namespace Rtx
 
             EXPECT_EQ(scene.getInstances().size(), 1u) << "a second placement rather than the one that faded";
             EXPECT_EQ(scene.getInstances().front().mOpacity, 0.25f);
-            EXPECT_TRUE(scene.getMoved().empty()) << "a placement that faded on the spot reported moving";
+
+            // A fade is a row to rewrite — what traversal is told changed — and not a move: the
+            // record carries no motion, or the actor would smear across the frame it faded on.
+            ASSERT_EQ(scene.getMoved().size(), 1u) << "a placement that faded on the spot reported no row to write";
+            EXPECT_EQ(scene.getMoved().front(), 0u);
 
             Rtx::makeInstanceRecords(scene, records);
             EXPECT_TRUE(records.front().mTranslucent);
+            EXPECT_EQ(records.front().mMotion, Rtx::toTransform3x4(osg::Matrixf::identity()))
+                << "a fade on the spot carried a motion";
         }
 
         /// The emissive multiplier is folded into the colour, because their product is all the

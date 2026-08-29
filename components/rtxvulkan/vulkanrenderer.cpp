@@ -337,7 +337,7 @@ namespace Rtx
 
         // Made here for the same reason a frame's are: both of the two below want them, and this is
         // the only place that knows both.
-        makeInstanceRecords(scene, mRecordScratch);
+        makeInstanceRecords(scene, held.mRecords);
 
         // **One submit for the whole cell.** Every structure, every table and every texture is
         // recorded into this and the queue is asked once, at the flush below; each of them used to
@@ -350,8 +350,8 @@ namespace Rtx
         if (slot == sWorld)
             mWaves.describe(sea);
 
-        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, mRecordScratch, textures);
-        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, mRecordScratch);
+        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, held.mRecords, textures);
+        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, held.mRecords);
         held.mTextures = std::make_unique<TextureArray>(
             mDevice, setup, static_cast<std::uint32_t>(scene.getTextures().size()), textures);
         held.mBuiltMeshes = scene.getMeshRevision();
@@ -488,17 +488,18 @@ namespace Rtx
         // where `extendScene` came through, and asking twice costs two comparisons a slot.
         held.mAcceleration->release(scene.getFreedMeshes());
 
-        // **Once, and both halves read it.** The rows carry a matrix inverse apiece and a
-        // nine-by-nine exterior is fifty thousand of them; the acceleration structure and the
-        // instance table were each building the whole set for themselves.
-        makeInstanceRecords(scene, mRecordScratch);
+        // **Once, for the slots that changed, and both halves read it.** The rows carry a matrix
+        // inverse apiece and a nine-by-nine exterior is fifty thousand of them; the acceleration
+        // structure and the instance table were each building the whole set for themselves, every
+        // frame, to change a hundred of them.
+        updateInstanceRecords(scene, held.mRecords);
 
-        held.mAcceleration->place(mPool, scene, mRecordScratch, ofTheWorld ? &mTimer : nullptr);
+        held.mAcceleration->place(mPool, scene, held.mRecords, ofTheWorld ? &mTimer : nullptr);
 
         // **Only what a moving world changed**, which is the instance rows, the lights and the
         // vertices of anything skinned. Rebuilding all of it was measured at twenty to twenty-seven
         // milliseconds on a nine-by-nine region and was the largest single cost in the frame.
-        held.mBuffers->place(scene, mRecordScratch);
+        held.mBuffers->place(scene, held.mRecords);
 
         if (!ofTheWorld)
             return;
