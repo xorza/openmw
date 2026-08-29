@@ -21,6 +21,7 @@
 #include <components/rtx/texturebuilder.hpp>
 
 #include <apps/rtxtool/cellscene.hpp>
+#include <apps/rtxtool/framing.hpp>
 #include <apps/rtxtool/lighting.hpp>
 #include <apps/rtxtool/world.hpp>
 
@@ -233,7 +234,10 @@ namespace RtxTool
             for (std::uint32_t frame = 0; frame < sFrames; ++frame)
             {
                 camera.mFrame = frame;
-                renderer->renderFrame(camera, Rtx::FrameOptions{});
+                // The exposure adapts over how long a frame stood for, so a run that let it read
+                // the wall would resolve differently every time — which is the one thing this test
+                // is about. `RtxTool::sStepRate` says the rest.
+                renderer->renderFrame(camera, Rtx::FrameOptions{ .mSinceLast = sStepSeconds });
 
                 if (frame + sMeasured >= sFrames)
                 {

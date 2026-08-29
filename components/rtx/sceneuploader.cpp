@@ -41,7 +41,7 @@ namespace Rtx
         // no next frame waits for the baker first and takes everything.
         mComposites.gather(scene, images);
 
-        if (mStaged)
+        if (mStaged || mSettled)
             mComposites.finish();
 
         const std::size_t baked

@@ -22,6 +22,7 @@
 #include <components/sky/clouds.hpp>
 #include <components/sky/skyroll.hpp>
 
+#include "framehashes.hpp"
 #include "framing.hpp"
 #include "perfcontrol.hpp"
 #include "stagedworld.hpp"
@@ -33,12 +34,6 @@ namespace RtxTool
     namespace
     {
         using Clock = std::chrono::steady_clock;
-
-        /// What the world advances per frame, which is `PosedActors`' own step and not a second
-        /// opinion about it: an actor has to move the same amount per frame here as it does in the
-        /// game, and two clocks that disagreed would make a run irreproducible in the one way that
-        /// matters.
-        constexpr float sStepRate = 60.0f;
 
         std::ostream& out()
         {
@@ -224,6 +219,18 @@ namespace RtxTool
 
         out() << "\n";
 
+        // **A hashed run is not a timed one**, and it says so where the times are read rather than
+        // only in `--help`: reading a frame back submits a copy and waits on it, so every frame is
+        // serialised against the device and the rows below measure that.
+        const bool judging = !request.mHashes.empty() || !request.mAgainst.empty();
+        if (judging)
+            out() << "       hashing every frame, so the times below are not a benchmark\n";
+
+        FrameHashes hashes;
+        const FrameHashes reference = request.mAgainst.empty() ? FrameHashes{} : FrameHashes::read(request.mAgainst);
+        // Cleared and refilled by every frame that is hashed, never freed.
+        std::vector<std::uint8_t> pixelScratch;
+
         std::vector<BenchPlace> places;
         places.reserve(request.mViews.size());
 
@@ -267,6 +274,11 @@ namespace RtxTool
             }
 
             Rtx::SceneUploader uploader;
+
+            // **A hashed run takes its composites on the schedule and not off the baker's clock**,
+            // which is what `SceneUploader::setSettled` is for. It stalls at the crossing that
+            // queued them, and a run being hashed has already given up on its own times.
+            uploader.setSettled(judging);
 
             const Clock::time_point buildStart = Clock::now();
             uploader.hand(*renderer, Rtx::sWorld, staged.getScene(), world.getImageManager(), Rtx::SeaState{});
@@ -387,12 +399,19 @@ namespace RtxTool
                 const std::optional<Rtx::FrameResult> result = renderer->finishFrame();
 
                 renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
-                    Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                    Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
+                        .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
                         .mFilter = request.mFilter,
                         .mExposure = request.mExposure });
 
                 if (window != nullptr && !renderer->presentFrame())
                     renderer->resize(window->getWidth(), window->getHeight());
+
+                if (judging)
+                {
+                    renderer->readPixels(pixelScratch);
+                    hashes.add(view.mName, frame, pixelScratch);
+                }
 
                 const double frameMs = std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count();
 
@@ -464,6 +483,25 @@ namespace RtxTool
             return 1;
         }
 
+        if (!request.mHashes.empty())
+        {
+            hashes.write(request.mHashes);
+            out() << std::format(
+                "\nwrote {} frame hashes to {}\n", hashes.frameCount(), Files::pathToUnicodeString(request.mHashes));
+        }
+
+        int judgement = 0;
+        if (!request.mAgainst.empty())
+        {
+            out() << std::format("\nagainst {}\n", Files::pathToUnicodeString(request.mAgainst));
+            for (const FrameHashes::ViewDifference& difference : hashes.against(reference))
+            {
+                out() << std::format("  {:<28} {}\n", difference.mView, describe(difference));
+                if (!difference.same())
+                    judgement = 1;
+            }
+        }
+
         std::uint32_t frames = 0;
         double lasted = 0.0;
         for (const BenchPlace& place : places)
@@ -481,6 +519,6 @@ namespace RtxTool
             out() << "wrote " << Files::pathToUnicodeString(request.mJson) << '\n';
         }
 
-        return 0;
+        return judgement;
     }
 }

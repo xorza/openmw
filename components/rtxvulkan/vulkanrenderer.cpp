@@ -849,10 +849,15 @@ namespace Rtx
 
         // **How long since the last one, which a motion vector cannot say.** A vector carries a
         // distance; how fast that was depends on the time it took, and the upscaler tunes how hard
-        // it denoises against exactly that.
+        // it denoises against exactly that. The exposure adapts over it too.
+        //
+        // **Taken off the wall only where the caller has no schedule**, which is a window and the
+        // game. A run that steps its world by the frame index and reads the clock for this is a run
+        // whose pictures depend on how fast it drew them — `FrameOptions::mSinceLast` says the rest.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-        const float sinceLastMs
-            = mLastFrameAt.has_value() ? std::chrono::duration<float, std::milli>(now - *mLastFrameAt).count() : 0.0f;
+        const float sinceLastMs = options.mSinceLast.has_value()
+            ? *options.mSinceLast * 1000.0f
+            : (mLastFrameAt.has_value() ? std::chrono::duration<float, std::milli>(now - *mLastFrameAt).count() : 0.0f);
         mLastFrameAt = now;
 
         // The count is an atomic sum over the frame, so it starts each one at nothing — and it is

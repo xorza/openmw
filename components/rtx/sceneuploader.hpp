@@ -84,6 +84,21 @@ namespace Rtx
         /// and not about the frame.
         void setStaged(bool staged) { mStaged = staged; }
 
+        /// Whether a hand-over waits for the bakes it queued before it takes any.
+        ///
+        /// **Which frame a composite lands on is otherwise the baker thread's answer, not the
+        /// schedule's.** A chunk arrives, a bake is queued, and it comes back whenever a thread
+        /// finishes it — so two runs of one build take it on different frames and draw different
+        /// pictures from the crossing onwards. That is a run that cannot be compared with itself,
+        /// which is the same reason `Rtx::FrameOptions::mSinceLast` exists.
+        ///
+        /// **The per-frame bound is kept.** Waiting is not collecting: a settled run still takes
+        /// `sCompositesPerFrame` and no more, so the arrival pattern is the one the streaming path
+        /// really has and only the thread's timing is gone. What it costs is a stall at the
+        /// crossing that queued the bakes, which is a trade a measured run can make and a game
+        /// cannot.
+        void setSettled(bool settled) { mSettled = settled; }
+
     private:
         /// **Whether the pair in front of it is the pair it last built, and appending is only
         /// allowed onto that.**
@@ -101,6 +116,7 @@ namespace Rtx
             const Renderer& renderer, std::uint32_t slot, const SceneDesc& scene, std::uint32_t textures) const;
 
         bool mStaged = false;
+        bool mSettled = false;
 
         /// The distant chunks waiting for their ground to be flattened, and the thread flattening
         /// them.

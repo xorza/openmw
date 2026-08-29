@@ -1,8 +1,11 @@
 # Open issues
 
-- `openmw-rtxtool verify`'s `island-crossing` view differs from itself run to run in one build
-  (worst 4 of 255 on 0.01% of the pixels, release, upscaling off), while the other fifteen views
-  are byte-identical between runs.
+- `verify`'s `island-crossing` differs from itself between runs, at worst 1 to 6 of 255 on 0.01% of
+  the pixels, while the other fifteen views are identical. Not the two causes a `bench` run had:
+  `verify` states a frame's length like every measured command now does, and it stages its
+  composites, so the bake queue never leaves one to a worker thread's timing. Six hundred and sixty
+  frames of `bench --suite=streaming --hashes` are identical, so whatever this is does not reach a
+  streaming run.
 
 - `bench` reports a frame result for fewer than half its frames: `beginFrame`'s own drain consumes
   the oldest frame when the ring is full, so the `finishFrame` that follows finds nothing and the

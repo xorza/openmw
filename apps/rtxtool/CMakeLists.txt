@@ -13,6 +13,8 @@ set(RTXTOOL_FILES
     contactsheet.hpp
     find.cpp
     find.hpp
+    framehashes.cpp
+    framehashes.hpp
     framing.cpp
     framing.hpp
     placement.cpp

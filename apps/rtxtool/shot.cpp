@@ -146,6 +146,7 @@ namespace RtxTool
             const auto frameStart = std::chrono::steady_clock::now();
             reconstruction = renderer->renderFrame(makeFrameConstants(framing, extents),
                 Rtx::FrameOptions{ .mAccumulate = averaging ? frame + 1 : 0,
+                    .mSinceLast = sStepSeconds,
                     .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
                     .mJitter = request.mJitter,
                     .mFilter = request.mFilter,

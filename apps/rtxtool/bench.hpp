@@ -38,6 +38,16 @@ namespace RtxTool
         /// Where to write the run as a record, or empty for none.
         std::filesystem::path mJson;
 
+        /// Where to write one hash a frame, and a previous run's hashes to compare this one with.
+        /// Either is empty where it was not asked for.
+        ///
+        /// **Asking for either stops the run being a benchmark.** A hash reads the frame back, and
+        /// a read back submits a copy and waits on it — so every frame is serialised against the
+        /// device and the times the run prints measure that instead. It says so where it prints
+        /// them. `FrameHashes` says what this is for.
+        std::filesystem::path mHashes;
+        std::filesystem::path mAgainst;
+
         /// perf's control fifo, or empty where the run is not being profiled.
         ///
         /// A recording bounded by this holds the measured frames of every place and nothing

@@ -234,9 +234,17 @@ namespace RtxTool
             "decision, which is 7168 against a cell of 8192 and so barely leaves the active grid");
 
         addOption("against", bpo::value<std::string>()->default_value(""),
-            "with `verify`, a directory a previous `verify` wrote, to subtract this run from. The "
-            "reference is always a run of the previous build on this machine and never a corpus in "
-            "the tree: the picture is a function of the driver and the card as much as of the code");
+            "with `verify`, a directory a previous `verify` wrote, to subtract this run from; with "
+            "`bench`, a file a previous `--hashes` wrote, to say which frames of the run now draw "
+            "something else. The reference is always a run of the previous build on this machine "
+            "and never a corpus in the tree: the picture is a function of the driver and the card "
+            "as much as of the code");
+
+        addOption("hashes", bpo::value<std::string>()->default_value(""),
+            "with `bench`, write one hash a frame to this file — the oracle a moving camera has "
+            "instead of `verify`'s stills, since six hundred frames of pictures is a few hundred "
+            "megabytes. Reading a frame back waits on the device, so a run under this or "
+            "--against is not a benchmark and its times are not comparable with one");
 
         addOption("out", bpo::value<std::string>()->default_value("shot.png"),
             "where to write the image, or with `verify` the directory to write every view into "

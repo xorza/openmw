@@ -276,6 +276,16 @@ namespace Rtx
         /// glint, which are exactly the pixels a filter is most likely to get wrong.
         std::uint32_t mAccumulate = 0;
 
+        /// How long this frame stands for, in seconds, or nothing to take it off the wall clock.
+        ///
+        /// **The last thing in a frame that ran on the wall.** The eye adapts in real time and an
+        /// upscaler tunes itself against how fast a motion vector was travelled, so a game leaves
+        /// this empty and the renderer times itself. A measured run cannot: two runs of one build
+        /// then adapt by different amounts and draw different pictures, which is a run that cannot
+        /// be compared with itself — and everything else a run animates already steps by the frame
+        /// index for exactly that reason. A caller with a schedule states it here.
+        std::optional<float> mSinceLast;
+
         /// What to multiply the exposure this frame measures for itself by. One leaves it alone, and
         /// a fixed `mExposure` is not touched by it at all.
         ///

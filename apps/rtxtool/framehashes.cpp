@@ -1,0 +1,139 @@
+#include "framehashes.hpp"
+
+#include <algorithm>
+#include <charconv>
+#include <format>
+#include <fstream>
+#include <sstream>
+
+#include <smhasher/MurmurHash3.h>
+
+#include <components/files/conversion.hpp>
+#include <components/rtx/error.hpp>
+
+namespace RtxTool
+{
+    namespace
+    {
+        /// How many differing frames a report names before it stops counting them out.
+        constexpr std::size_t sNamed = 6;
+    }
+
+    void FrameHashes::add(const std::string_view view, const std::uint32_t frame, std::span<const std::uint8_t> pixels)
+    {
+        // **A pointer and not a value**, which is this fork's signature: the seed is two words, so
+        // that a hash can be chained onto the one before it. Nothing is chained here.
+        static constexpr std::array<std::uint64_t, 2> sSeed{};
+
+        Frame held{ .mView = std::string(view), .mFrame = frame };
+        MurmurHash3_x64_128(pixels.data(), static_cast<int>(pixels.size()), sSeed.data(), held.mHash.data());
+        mFrames.push_back(std::move(held));
+    }
+
+    void FrameHashes::write(const std::filesystem::path& file) const
+    {
+        std::ofstream out(file);
+        for (const Frame& held : mFrames)
+            out << std::format("{} {} {:016x}{:016x}\n", held.mView, held.mFrame, held.mHash[0], held.mHash[1]);
+
+        // **Thrown and not reported**, the way `shot --dump` answers the same failure: a reference
+        // that did not get written and a command that still succeeded is the next run comparing
+        // against whatever was at that path before.
+        if (!out)
+            throw Rtx::Error("could not write " + Files::pathToUnicodeString(file));
+    }
+
+    FrameHashes FrameHashes::read(const std::filesystem::path& file)
+    {
+        std::ifstream in(file);
+        if (!in)
+            throw Rtx::Error("could not read " + Files::pathToUnicodeString(file));
+
+        FrameHashes held;
+        std::string line;
+        while (std::getline(in, line))
+        {
+            if (line.empty())
+                continue;
+
+            std::istringstream fields(line);
+            Frame frame;
+            std::string hash;
+            fields >> frame.mView >> frame.mFrame >> hash;
+
+            // **Every line or none.** A reference read half way is one that matches the frames it
+            // reached and says nothing about the rest, which reads as a pass.
+            if (!fields || hash.size() != 32)
+                throw Rtx::Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+
+            for (int half = 0; half < 2; ++half)
+            {
+                const char* from = hash.data() + half * 16;
+                if (std::from_chars(from, from + 16, frame.mHash[half], 16).ec != std::errc{})
+                    throw Rtx::Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+            }
+
+            held.mFrames.push_back(std::move(frame));
+        }
+
+        return held;
+    }
+
+    std::vector<FrameHashes::ViewDifference> FrameHashes::against(const FrameHashes& reference) const
+    {
+        std::vector<ViewDifference> differences;
+
+        for (const Frame& held : mFrames)
+        {
+            if (differences.empty() || differences.back().mView != held.mView)
+                differences.push_back(ViewDifference{ .mView = held.mView });
+
+            ViewDifference& difference = differences.back();
+            ++difference.mFrames;
+
+            const auto found = std::find_if(reference.mFrames.begin(), reference.mFrames.end(),
+                [&](const Frame& was) { return was.mFrame == held.mFrame && was.mView == held.mView; });
+
+            if (found == reference.mFrames.end())
+                ++difference.mUnmatched;
+            else if (found->mHash != held.mHash)
+                difference.mDiffering.push_back(held.mFrame);
+        }
+
+        // **What the reference drew and this run did not**, which is a schedule that changed rather
+        // than a picture that did: a run of fewer frames matches every frame it drew.
+        for (ViewDifference& difference : differences)
+        {
+            const auto missing = std::count_if(reference.mFrames.begin(), reference.mFrames.end(),
+                [&](const Frame& was) { return was.mView == difference.mView; });
+
+            if (static_cast<std::uint32_t>(missing) > difference.mFrames)
+                difference.mUnmatched += static_cast<std::uint32_t>(missing) - difference.mFrames;
+        }
+
+        return differences;
+    }
+
+    std::string describe(const FrameHashes::ViewDifference& difference)
+    {
+        if (difference.same())
+            return std::format("{} frames, every one of them the same", difference.mFrames);
+
+        std::string report;
+        if (!difference.mDiffering.empty())
+        {
+            report = std::format("{} of {} frames differ, at ", difference.mDiffering.size(), difference.mFrames);
+            for (std::size_t at = 0; at < std::min(sNamed, difference.mDiffering.size()); ++at)
+                report += (at > 0 ? ", " : "") + std::to_string(difference.mDiffering[at]);
+
+            if (difference.mDiffering.size() > sNamed)
+                report += std::format(" and {} more", difference.mDiffering.size() - sNamed);
+        }
+
+        if (difference.mUnmatched > 0)
+            report += std::format(
+                "{}{} frames the two runs do not share", report.empty() ? "" : "; ", difference.mUnmatched);
+
+        return report;
+    }
+}

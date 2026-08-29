@@ -654,6 +654,8 @@ namespace RtxTool
                 request.mSuite = suite;
                 request.mShaderDirectory = resources / "rtx" / "shaders";
                 request.mJson = variables["json"].as<std::string>();
+                request.mHashes = variables["hashes"].as<std::string>();
+                request.mAgainst = variables["against"].as<std::string>();
                 request.mPerfControl = variables["perf-control"].as<std::string>();
                 request.mWidth = width;
                 request.mHeight = height;
