@@ -7,6 +7,7 @@
 #include <components/esm/util.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/fallback/fallback.hpp>
+#include <components/misc/rng.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/sceneutil/vismask.hpp>
@@ -23,6 +24,13 @@ namespace RtxTool
         , mWorld(&world)
         , mActors(actors)
     {
+        // **The one input to a staged picture that nothing else states.** A particle's direction,
+        // speed and lifetime, and a flickering lamp's phase, are drawn from `Misc::Rng`, which is
+        // one generator for the process — so a second staging carried on from wherever the first
+        // left it and drew a different world. The clock is stated at `setSeconds`, the sea at
+        // `mSeaSeconds` and the frame's own duration at `Rtx::FrameOptions::mSinceLast`.
+        Misc::Rng::init(sSeed);
+
         const RegionLoad arrived = loadRegion(world, cell, *mRoot, mScene, mExtractor, mLoaded, request.mWeather,
             request.mDay, request.mHour, actors.mProps);
 
@@ -137,7 +145,13 @@ namespace RtxTool
             mStaged = mirror(0);
     }
 
-    StagedWorld::~StagedWorld() = default;
+    StagedWorld::~StagedWorld()
+    {
+        // **A staged world gives its ground back**, which is `dropCellsOutside`'s rule applied to
+        // the whole region rather than to the cells behind a moving camera. What it costs the next
+        // staging not to have is at `World::clearTerrain`.
+        mWorld->clearTerrain();
+    }
 
     void StagedWorld::warmEmitters()
     {

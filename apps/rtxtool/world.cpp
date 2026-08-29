@@ -304,6 +304,27 @@ namespace RtxTool
             mTerrain->unloadCell(x, y);
     }
 
+    void World::clearTerrain()
+    {
+        // Backwards through what `buildTerrain` stood up, which is the order the members are
+        // declared in and for the reasons given there. The residency is ahead of all of it: the
+        // view it holds was handed out by the world about to go.
+        mResident.reset();
+        mTerrain.reset();
+
+        if (mObjectPaging != nullptr)
+        {
+            // The paging is the one manager registered by hand rather than by its own constructor,
+            // so it is the one that has to be taken out by hand.
+            mResourceSystem->removeResourceManager(mObjectPaging.get());
+            mObjectPaging.reset();
+        }
+
+        mCompileRoot = nullptr;
+        mTerrainParent = nullptr;
+        mTerrainStorage.reset();
+    }
+
     Resource::SceneManager& World::getSceneManager()
     {
         return *mResourceSystem->getSceneManager();

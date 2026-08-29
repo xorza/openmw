@@ -164,7 +164,8 @@ namespace RtxTool
         /// does not have to know terrain exists, which is the whole argument for mirroring a graph
         /// rather than reading the content files twice.
         ///
-        /// The returned node lives as long as this `World` does.
+        /// The returned node lives until `clearTerrain`, and from there for as long as whoever hung
+        /// it under a graph holds it.
         osg::ref_ptr<osg::Group> buildTerrain(const ESM::Cell& cell);
 
         /// Says which square of cells is loaded, which the terrain needs and the caller owns.
@@ -186,7 +187,21 @@ namespace RtxTool
         /// something did.
         void unloadTerrain(int x, int y);
 
-        /// The node `buildTerrain` accumulates into, or null before the first exterior.
+        /// Puts the terrain back to never built, so the next region staged here stands on its own
+        /// ground.
+        ///
+        /// **This `World` outlives a `StagedWorld` and its terrain outlived it too.** A region
+        /// staged second therefore stood on what the first left: with the quad tree off, the cells
+        /// nothing had unloaded, walked straight into the second region's scene; with it on, the
+        /// chunks `Terrain::ObjectPaging` had merged, which leave out whatever square was active
+        /// when they were built and are cached against the chunk rather than the square. Measured,
+        /// staging Balmora before the island crossing left the crossing with a hundred and
+        /// forty-four instances of another place's ground under the grid, and with the quad tree
+        /// three instances, three textures and 5.8% of the pixels.
+        void clearTerrain();
+
+        /// The node `buildTerrain` accumulates into, or null before the first exterior and after
+        /// `clearTerrain`.
         ///
         /// For a caller that wants to know which chunks are new: the count before it loads and the
         /// count after bound exactly the ones it caused.

@@ -228,6 +228,14 @@ namespace RtxTool
         /// frame is supposed to show.
         static constexpr float sWarmSeconds = 2.0f;
 
+        /// What the world's random draws start from, every time a region is staged.
+        ///
+        /// **A number, not an option**: nothing here wants a second world, and a caller that could
+        /// choose would be a caller that could make a run incomparable with the one before it. One
+        /// rather than nought, because `Misc::Rng::Generator` is a Lehmer generator and nought is
+        /// not a state it has.
+        static constexpr unsigned int sSeed = 1;
+
         /// What this weather drives past the eye, kept because `driveWeather` aims it every frame:
         /// an ash storm blows off Red Mountain at whoever is watching, so where the camera stands
         /// is half the answer.

@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -42,6 +43,10 @@ namespace RtxTool
         /// camera keeps three columns and swaps three for three.
         constexpr std::string_view sFrom = "-3,-2";
         constexpr std::string_view sTo = "-2,-2";
+
+        /// Far enough from the two above that their rings do not touch, so a region read after one
+        /// of them shares no cell with it.
+        constexpr std::string_view sAway = "-2,-9";
 
         /// Brings the ring around `centre` in, takes the ones that left off, and mirrors what is
         /// left — which is what `runWindow`'s `bring` does, in the same order and for the same
@@ -167,6 +172,69 @@ namespace RtxTool
             }
 
             EXPECT_EQ(sheets, std::size_t{ 1 }) << "the sea was placed once per cell again";
+        }
+
+        /// A region read after another one stands on its own ground, and lights its own flames.
+        ///
+        /// **Two things outlived the reading that made them**, and `World::clearTerrain` and
+        /// `StagedWorld::sSeed` say what each was. Two readings of one region, differing in nothing
+        /// but whether another was read between them: nothing about the second is a function of the
+        /// first, so the two come to one answer.
+        TEST(RtxCrossingTest, aRegionReadAfterAnotherStandsOnItsOwnGround)
+        {
+            Files::ConfigurationManager config;
+            bpo::variables_map variables;
+            const std::unique_ptr<World> world = openWorld(config, variables);
+            if (world == nullptr)
+                GTEST_SKIP() << "no Morrowind installation configured";
+
+            const ESM::Cell* away = world->findCell(sAway);
+            const ESM::Cell* town = world->findCell(sFrom);
+            ASSERT_NE(away, nullptr);
+            ASSERT_NE(town, nullptr);
+
+            // **Nobody standing in it and its emitters running**, which is the pair of answers under
+            // test: the ground comes from the terrain, and the flames from a generator the process
+            // shares. Residents would only add a third thing to explain a count with.
+            const ActorRequest props{ .mResidents = false, .mProps = true };
+
+            struct Reading
+            {
+                std::uint32_t mPlaced = 0;
+
+                /// Every sprite's position, added up without their signs.
+                ///
+                /// **A count is the wrong oracle for an emitter**: a birth rate the generator did
+                /// not move emits the same number of particles from somewhere else. Absolute,
+                /// because a plume is roughly symmetric about its own emitter and the signed sum of
+                /// one is most of the way to nought.
+                double mSpriteSum = 0.0;
+            };
+
+            const auto read = [&](const ESM::Cell& cell) {
+                StagedWorld staged(*world, cell, StagingRequest{}, props);
+
+                Reading held{ .mPlaced = staged.getScene().getPlacedCount() };
+                for (const Rtx::Sprite& sprite : staged.getScene().getSprites())
+                {
+                    const float sum = std::abs(sprite.mPosition.x()) + std::abs(sprite.mPosition.y())
+                        + std::abs(sprite.mPosition.z());
+                    held.mSpriteSum += static_cast<double>(sum);
+                }
+
+                return held;
+            };
+
+            const Reading alone = read(*away);
+            ASSERT_GT(alone.mPlaced, 0u) << "the region placed nothing, so this proves nothing";
+            ASSERT_GT(alone.mSpriteSum, 0.0) << "the region emitted nothing, so this proves half of it";
+
+            read(*town);
+
+            const Reading after = read(*away);
+            EXPECT_EQ(after.mPlaced, alone.mPlaced) << "the region stood on the ground of the one read before it";
+            EXPECT_EQ(after.mSpriteSum, alone.mSpriteSum)
+                << "the emitters carried on from where the one before left off";
         }
 
         /// Walking every frame leaves the scene exactly where it was.
