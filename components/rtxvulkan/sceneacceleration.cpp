@@ -219,8 +219,7 @@ namespace Rtx
     {
         assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies of the rows");
 
-        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-            mPositions[slot].open(device, sBuildInputUsage, "positions");
+        mPositions.open(device, slots, sBuildInputUsage, "positions");
         mRowTable.open(device, slots, sBuildInputUsage, "instances");
         mIndices.open(device, sBuildInputUsage, "indices");
 
@@ -234,7 +233,7 @@ namespace Rtx
         // Every copy of the positions holds what it will ever read from here, so what a copy owes
         // from now on is the poses it missed.
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-            mPositionsOwed[slot].settle();
+            mPositions.settle(slot);
 
         // **The geometry, every micromap, every bottom level and the top level in one submit.** Each
         // was its own round trip; the host writes above are visible to the submit without a barrier,
@@ -267,7 +266,7 @@ namespace Rtx
         // The scene's own reach, so a block exists for every run it has handed out. Blocks already
         // made are left exactly where they are.
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-            mPositions[slot].reserve(static_cast<std::uint32_t>(scene.getPositions().size()));
+            mPositions.reserve(static_cast<std::uint32_t>(scene.getPositions().size()));
         mIndices.reserve(static_cast<std::uint32_t>(scene.getIndices().size()));
 
         for (const Index mesh : meshes)
@@ -280,10 +279,10 @@ namespace Rtx
             // whichever copy its frame owns, so it goes into every one.
             const std::span<const osg::Vec3f> positions
                 = scene.getPositions().subspan(range.mVertexOffset, range.mVertexCount);
-            mPositions[0].writeAt(range.mVertexOffset, positions);
+            mPositions.at(0).writeAt(range.mVertexOffset, positions);
             if (range.mDeforming)
                 for (std::uint32_t slot = 1; slot < mSlots; ++slot)
-                    mPositions[slot].writeAt(range.mVertexOffset, positions);
+                    mPositions.at(slot).writeAt(range.mVertexOffset, positions);
 
             mIndices.writeAt(range.mIndexOffset, scene.getIndices().subspan(range.mIndexOffset, range.mIndexCount));
         }
@@ -659,7 +658,7 @@ namespace Rtx
                                   .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
                                   .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
                                   .vertexData = { .deviceAddress = mesh.mVertexCount > 0
-                                          ? mPositions[0].addressOf(mesh.mVertexOffset)
+                                          ? mPositions.at(0).addressOf(mesh.mVertexOffset)
                                           : 0 },
                                   .vertexStride = sizeof(osg::Vec3f),
                                   // **Guarded, because a freed slot has no vertices.** A slot the
@@ -800,16 +799,12 @@ namespace Rtx
         // copy, which owes every pose since it was last written: the frame before last's as well as
         // this one's, or a mesh that stood still this frame would be refitted from a pose two
         // frames old the next time it moved.
-        for (std::uint32_t each = 0; each < mSlots; ++each)
-            mPositionsOwed[each].owe(deformed);
+        mPositions.write(deformed);
+        mPositions.sync(slot, [&](const Index mesh, BlockedBuffer& into) {
+            into.writeAt(scene.getMeshes()[mesh].mVertexOffset, scene.getMeshPositions(mesh));
+        });
 
-        BlockedBuffer& positions = mPositions[slot];
-        for (const Index mesh : mPositionsOwed[slot].mRows)
-        {
-            const MeshRange& range = scene.getMeshes()[mesh];
-            positions.writeAt(range.mVertexOffset, scene.getMeshPositions(mesh));
-        }
-        mPositionsOwed[slot].settle();
+        BlockedBuffer& positions = mPositions.at(slot);
 
         if (deformed.empty())
         {

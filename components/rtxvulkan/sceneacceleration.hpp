@@ -252,16 +252,11 @@ namespace Rtx
         /// reads these in a shader: a hit gets its vertices back out of the structure through
         /// position fetch, so they are a build input and a write target and nothing else — which is
         /// why there is no table of their addresses beside them.
-        /// One copy per frame in flight, because a refit reads a deforming mesh's positions and
-        /// the frame after next writes the next pose over them. A mesh that never deforms is written
-        /// into the first copy alone: its structure is built from there once and never refitted.
-        std::array<BlockedBuffer, sFrameSlots> mPositions{
-            BlockedBuffer{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) },
-            BlockedBuffer{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) },
-        };
-
-        /// Which poses each copy of the positions has yet to be told.
-        std::array<RowDebt, sFrameSlots> mPositionsOwed;
+        ///
+        /// **A mesh that never deforms is written into the first copy alone**: its structure is
+        /// built from there once and never refitted, so the copies past it would hold a pose nothing
+        /// ever reads.
+        SlotBlocks mPositions{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
         std::uint32_t mSlots = 1;
 
         BlockedBuffer mIndices{ Shaders::INDEX_BLOCK, sizeof(std::uint32_t) };

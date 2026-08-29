@@ -219,6 +219,46 @@ namespace Rtx
             EXPECT_GE(mTable.getCopyBytes(0), 512 * sizeof(TestRow));
         }
 
+        /// Blocks keep the same account as rows: named by `write`, cleared only by `sync`.
+        TEST_F(RtxSlotTableTest, blocksOweEveryRunNamedSinceThatCopyWasLastFilled)
+        {
+            SlotBlocks blocks(64, sizeof(std::uint32_t));
+            blocks.open(*mHarness->mDevice, 2, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test blocks");
+            blocks.reserve(128);
+
+            blocks.write(2);
+            blocks.write(5);
+
+            std::vector<Index> filled;
+            blocks.sync(0, [&](const Index at, BlockedBuffer&) { filled.push_back(at); });
+            EXPECT_EQ(filled, (std::vector<Index>{ 2, 5 }));
+            EXPECT_TRUE(blocks.getOwed(0).empty()) << "the copy that was filled still owes";
+
+            blocks.write(9);
+
+            filled.clear();
+            blocks.sync(1, [&](const Index at, BlockedBuffer&) { filled.push_back(at); });
+            EXPECT_EQ(filled, (std::vector<Index>{ 2, 5, 9 })) << "the copy that was not filled forgot two runs";
+        }
+
+        /// `settle` says a copy holds everything there is, which is how a load ends.
+        TEST_F(RtxSlotTableTest, settlingSaysACopyHoldsEverythingThereIs)
+        {
+            SlotBlocks blocks(64, sizeof(std::uint32_t));
+            blocks.open(*mHarness->mDevice, 2, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test blocks");
+            blocks.reserve(128);
+
+            blocks.write(3);
+            blocks.settle(0);
+
+            std::vector<Index> filled;
+            blocks.sync(0, [&](const Index at, BlockedBuffer&) { filled.push_back(at); });
+            EXPECT_TRUE(filled.empty()) << "a settled copy was filled again";
+
+            blocks.sync(1, [&](const Index at, BlockedBuffer&) { filled.push_back(at); });
+            EXPECT_EQ(filled, (std::vector<Index>{ 3 })) << "settling one copy answered for the other";
+        }
+
         /// A table with nothing in it still has a buffer, because a descriptor has to be bound.
         TEST_F(RtxSlotTableTest, aTableWithNoRowsStillHasABufferToBind)
         {

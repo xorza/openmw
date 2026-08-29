@@ -66,9 +66,9 @@ namespace Rtx
         /// staging buffer, a copy command, a submit and a wait on the queue.
         ///
         /// **Into `slot`'s copy of every table a frame writes**, which the frame after next reads
-        /// again and no frame in between: the caller has waited that frame's fence. The instance
-        /// rows keep their own copies and their own account of what each is owed — `SlotTable` —
-        /// while the materials and the normals still carry a `RowDebt` apiece here.
+        /// again and no frame in between: the caller has waited that frame's fence. Every table
+        /// keeps its own copies and its own account of what each of them is owed, which is what
+        /// `SlotTable` and `SlotBlocks` are for.
         ///
         /// `scene` must be the one the constructor was given. `records` are the rows the
         /// acceleration structure was placed with, handed in rather than made again: the motion
@@ -89,11 +89,11 @@ namespace Rtx
         /// **Tables of addresses and not the data.** The vertex attributes are lists of blocks, so
         /// what a shader binds is where the blocks are; it resolves a global id to one of them
         /// itself. See `BlockedBuffer`.
-        VkBuffer getNormalBlocks(std::uint32_t slot) const { return mTables[slot].mNormals.getTable(); }
+        VkBuffer getNormalBlocks(std::uint32_t slot) const { return mNormalTable.at(slot).getTable(); }
         VkBuffer getTexCoordBlocks() const { return mTexCoords.getTable(); }
         VkBuffer getMeshes() const { return mMeshes.getHandle(); }
         VkBuffer getInstances(std::uint32_t slot) const { return mInstanceTable.getHandle(slot); }
-        VkBuffer getMaterials(std::uint32_t slot) const { return mTables[slot].mMaterials.getHandle(); }
+        VkBuffer getMaterials(std::uint32_t slot) const { return mMaterialTable.getHandle(slot); }
         VkBuffer getLayers(std::uint32_t slot) const { return mTables[slot].mLayers.getHandle(); }
         VkBuffer getMasks(std::uint32_t slot) const { return mTables[slot].mMasks.getHandle(); }
         VkBuffer getLights(std::uint32_t slot) const { return mTables[slot].mLights.getHandle(); }
@@ -122,10 +122,13 @@ namespace Rtx
         VkDeviceSize getBytes() const;
 
     private:
-        /// Everything a frame writes, once per frame in flight.
+        /// What a frame writes whole, once per frame in flight.
+        ///
+        /// **What is written by the row has left this**, because a table and the account of what
+        /// each copy of it still owes are one thing: `mInstanceTable`, `mMaterialTable` and
+        /// `mNormalTable` keep their own. These are the ones a placement fills from end to end.
         struct Tables
         {
-            HostBuffer mMaterials;
             HostBuffer mLayers;
             HostBuffer mMasks;
             HostBuffer mLights;
@@ -136,21 +139,6 @@ namespace Rtx
             HostBuffer mEmitters;
             HostBuffer mSpriteTileOffsets;
             HostBuffer mSpriteTileIndices;
-
-            /// **Blocked like the geometry they belong to**, so a scene that grows keeps the blocks
-            /// it already has and adds one. Per frame in flight because a skinned body's are
-            /// recomputed every frame; the rest of a cell's are written once into every copy.
-            BlockedBuffer mNormals{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
-
-            RowDebt mMaterialsOwed;
-
-            /// Meshes whose normals this copy has yet to be told about.
-            RowDebt mNormalsOwed;
-
-            /// How many materials the table held when the sentinel row past them was last written
-            /// into this copy, so a table that grew has its sentinel moved and one that did not
-            /// leaves it alone.
-            std::size_t mMaterialCount = 0;
         };
 
         /// Grows one of this object's tables to exactly `bytes`, burying what that displaced.
@@ -194,7 +182,6 @@ namespace Rtx
         std::array<Tables, sFrameSlots> mTables;
 
         std::vector<Shaders::GpuMesh> mMeshScratch;
-        std::vector<Shaders::GpuMaterial> mMaterialScratch;
         std::vector<Shaders::GpuLayer> mLayerScratch;
 
         /// What a hit turns its slot into: the mesh, the material, the opacity and the motion.
@@ -202,6 +189,15 @@ namespace Rtx
         /// **Its own table rather than a field of `Tables`**, because the copies and what each of
         /// them still owes are one thing and belong to one object. `SlotTable` says why.
         SlotTable<Shaders::GpuInstance> mInstanceTable;
+
+        /// Every material the scene holds, and one row past them for the sentinel a placement with
+        /// no material of its own wears.
+        SlotTable<Shaders::GpuMaterial> mMaterialTable;
+
+        /// **Blocked like the geometry they belong to**, so a scene that grows keeps the blocks it
+        /// already has and adds one. One copy per frame in flight because a skinned body's normals
+        /// are recomputed every frame; the rest of a cell's are written once into every copy.
+        SlotBlocks mNormalTable{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
 
         // Refilled per placement rather than reallocated: a scene is thousands of these and this is
         // the frame path.

@@ -13,6 +13,7 @@
 
 #include <components/rtx/scenedesc.hpp>
 
+#include "blockedbuffer.hpp"
 #include "device.hpp"
 #include "frameslots.hpp"
 #include "graveyard.hpp"
@@ -201,5 +202,119 @@ namespace Rtx
 
         /// Cleared and refilled by `resize`, never freed: the rows one growth appended.
         std::vector<Index> mAppended;
+    };
+
+    /// One `BlockedBuffer` per frame in flight, and what each copy has yet to be told.
+    ///
+    /// **`SlotTable`'s sibling for a table whose truth lives elsewhere.** A row table is written
+    /// from host rows this object owns; a block table holds a mesh's vertices, and those are the
+    /// scene's — so the caller says how to read one and this says which ones are owed. The rule
+    /// either way is the same and it is the whole point of both: a copy is behind because `write`
+    /// named it, and `sync` is the only thing that clears that.
+    class SlotBlocks
+    {
+    public:
+        SlotBlocks(std::uint32_t blockSize, std::uint32_t stride)
+            : mCopies{ BlockedBuffer{ blockSize, stride }, BlockedBuffer{ blockSize, stride } }
+        {
+        }
+
+        void open(const Device& device, std::uint32_t slots, VkBufferUsageFlags usage, std::string_view name)
+        {
+            assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies");
+            mSlots = slots;
+            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+                mCopies[slot].open(device, usage, name);
+        }
+
+        /// Makes room in every copy for `elements`. Nothing already written moves, which is what a
+        /// block table is for, so this owes nothing on its own.
+        void reserve(std::uint32_t elements)
+        {
+            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+                mCopies[slot].reserve(elements);
+        }
+
+        /// Says that `at`'s run has changed, so every copy owes it.
+        void write(Index at)
+        {
+            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+                mOwed[slot].push_back(at);
+        }
+
+        void write(std::span<const Index> runs)
+        {
+            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+                mOwed[slot].insert(mOwed[slot].end(), runs.begin(), runs.end());
+        }
+
+        /// Says that `slot`'s copy holds everything there is to hold, which is what a load ends
+        /// with: a load writes every copy through `at` and this is what tells the account.
+        void settle(std::uint32_t slot)
+        {
+            assert(slot < mSlots);
+            mOwed[slot].clear();
+        }
+
+        /// Writes the runs `slot`'s copy owes and clears the debt.
+        ///
+        /// @param fill `void(Index at, BlockedBuffer& into)`, which copies that one run in. Called
+        ///        once per owed run and never for a run this copy already has.
+        template <class Fill>
+        void sync(std::uint32_t slot, Fill&& fill)
+        {
+            assert(slot < mSlots);
+            for (const Index at : mOwed[slot])
+                fill(at, mCopies[slot]);
+
+            mOwed[slot].clear();
+        }
+
+        /// One copy, written or read behind the account's back.
+        ///
+        /// **The one way to break the rule this type is for**, and it is here because a load has to
+        /// break it: an arrival fills every copy whole and then says so with `settle`, which is
+        /// cheaper and clearer than naming every run it just wrote. A caller that writes through
+        /// this and does not settle has left the account describing a copy that no longer matches
+        /// it, which is the whole failure this replaced. Per-frame writes go through `write` and
+        /// `sync`.
+        BlockedBuffer& at(std::uint32_t slot)
+        {
+            assert(slot < mSlots);
+            return mCopies[slot];
+        }
+
+        const BlockedBuffer& at(std::uint32_t slot) const
+        {
+            assert(slot < mSlots);
+            return mCopies[slot];
+        }
+
+        VkDeviceSize getBytes() const
+        {
+            VkDeviceSize total = 0;
+            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+                total += mCopies[slot].getBytes();
+
+            return total;
+        }
+
+        std::span<const Index> getOwed(std::uint32_t slot) const
+        {
+            assert(slot < mSlots);
+            return mOwed[slot];
+        }
+
+    private:
+        std::uint32_t mSlots = 1;
+        std::array<BlockedBuffer, sFrameSlots> mCopies;
+
+        /// **Runs and not a `RowDebt`, because there is no "everything" here to owe.** A row table
+        /// can fill a copy whole from the rows it holds; a block table's data is the scene's, and
+        /// nothing here knows how many runs there are or how to read one. A copy starts owing
+        /// nothing and a load fills it through `at`.
+        ///
+        /// Cleared and refilled, never freed: it settles at the busiest pair of frames so far.
+        std::array<std::vector<Index>, sFrameSlots> mOwed;
     };
 }

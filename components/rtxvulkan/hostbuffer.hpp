@@ -27,8 +27,8 @@ namespace Rtx
     ///
     /// **Nothing here synchronises, because the owner keeps one of these per frame in flight.**
     /// `SceneBuffers` holds a copy of each table per frame slot and writes the copy the frame before
-    /// last has finished with — `RowDebt` is what each copy still owes — so the trace that read this
-    /// buffer has finished before anything writes it again. A ring of staging blocks inside the
+    /// last has finished with — `SlotTable` is what knows which rows each copy still owes — so the
+    /// trace that read this buffer has finished before anything writes it again. A ring of staging blocks inside the
     /// buffer would be guarding the same hazard twice. A host write made before a submit is visible
     /// to that submit without a barrier, which is what makes the build commands that read these
     /// safe in the same recording.
