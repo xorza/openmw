@@ -37,22 +37,22 @@ namespace Rtx
         /// @param indirect the bounce to put the albedo back into — the filter's output, or the
         ///        buffer's own channel where nothing filtered it. Whose image it is depends on how
         ///        many wavelet levels ran, which is why it is named rather than assumed.
-        /// @param history the running sum, at least as large as `target` and in
-        ///        `VK_IMAGE_LAYOUT_GENERAL`. Null where `mAccumulate` is zero, which is every frame
-        ///        that is not building a reference.
+        /// @param sum the running total a reference is built out of, at least as large as
+        ///        `target` and in `VK_IMAGE_LAYOUT_GENERAL`. Null where `mAccumulate` is zero, which
+        ///        is every frame that is not building a reference.
         /// @param colour the recombined frame, in `VK_IMAGE_LAYOUT_GENERAL` and in linear radiance.
-        void record(VkCommandBuffer commands, const GBuffer& buffer, const Image& indirect, const Image* history,
+        void record(VkCommandBuffer commands, const GBuffer& buffer, const Image& indirect, const Image* sum,
             const Image& colour, const Shaders::CompositeConstants& constants) const;
 
     private:
         ComputePipeline mPipeline;
 
-        /// What the history binding points at when there is no history.
+        /// What the sum's binding points at when nothing is being summed.
         ///
         /// **A descriptor has to point somewhere and this one is never read.** The shader touches
         /// the sum only inside `if (mAccumulate > 0u)`, so a caller that never averages would
         /// otherwise carry a full-size float image for a binding nothing looks at — sixteen bytes a
         /// pixel, which is 133 MiB at 4K. One texel does the same job.
-        Image mNoHistory;
+        Image mNoSum;
     };
 }

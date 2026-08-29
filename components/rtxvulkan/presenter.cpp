@@ -67,7 +67,6 @@ namespace Rtx
 
             mSwapchain = std::make_unique<Swapchain>(device, mSurface, drawableSize(window));
             mPool = std::make_unique<CommandPool>(device);
-            mAcquired = makeSemaphore(device.getHandle());
             remakeImageSync();
         }
         catch (...)
@@ -91,18 +90,7 @@ namespace Rtx
         // Nothing here could be done about a device that will not go idle anyway.
         vkDeviceWaitIdle(mDevice.getHandle());
 
-        for (const VkSemaphore semaphore : mRendered)
-            vkDestroySemaphore(mDevice.getHandle(), semaphore, nullptr);
-        mRendered.clear();
-
-        for (const VkFence fence : mPresenting)
-            vkDestroyFence(mDevice.getHandle(), fence, nullptr);
-        mPresenting.clear();
-
-        if (mAcquired != VK_NULL_HANDLE)
-            vkDestroySemaphore(mDevice.getHandle(), mAcquired, nullptr);
-        mAcquired = VK_NULL_HANDLE;
-
+        releaseImageSync();
         mPool.reset();
 
         // After the swapchain, which was made from it.
@@ -113,12 +101,24 @@ namespace Rtx
         mSurface = VK_NULL_HANDLE;
     }
 
-    void Presenter::remakeImageSync()
+    void Presenter::releaseImageSync()
     {
+        for (const Acquisition& acquisition : mAcquiring)
+            vkDestroySemaphore(mDevice.getHandle(), acquisition.mSemaphore, nullptr);
+        mAcquiring.clear();
+
         for (const VkSemaphore semaphore : mRendered)
             vkDestroySemaphore(mDevice.getHandle(), semaphore, nullptr);
+        mRendered.clear();
+
         for (const VkFence fence : mPresenting)
             vkDestroyFence(mDevice.getHandle(), fence, nullptr);
+        mPresenting.clear();
+    }
+
+    void Presenter::remakeImageSync()
+    {
+        releaseImageSync();
 
         // **Rebuilt with the swapchain, because the image count is the surface's to decide.** A
         // recreate can come back with a different number, and a vector sized to the old one is then
@@ -131,6 +131,15 @@ namespace Rtx
         mPool->reset();
 
         const std::uint32_t images = mSwapchain->getImageCount();
+
+        // **Made again rather than reused**, because a slot can arrive here signalled with nothing
+        // left to wait it: a suboptimal acquire hands back both an image and a signal, and it is the
+        // present after it that reports the swapchain stale. Destroying the semaphore is what clears
+        // that signal, and `releaseImageSync` above is where it happens.
+        mAcquiring.assign(images, Acquisition{});
+        for (Acquisition& acquisition : mAcquiring)
+            acquisition.mSemaphore = makeSemaphore(mDevice.getHandle());
+        mAcquisition = 0;
 
         mRendered.assign(images, VK_NULL_HANDLE);
         for (VkSemaphore& semaphore : mRendered)
@@ -167,8 +176,18 @@ namespace Rtx
 
     bool Presenter::present(const Image& frame)
     {
+        Acquisition& acquisition = mAcquiring[mAcquisition];
+        mAcquisition = (mAcquisition + 1) % static_cast<std::uint32_t>(mAcquiring.size());
+
+        // **A slot is free when its blit has run, and not when the call that queued it returned.**
+        // The blit waits the semaphore the acquire signalled, so until it runs both operations are
+        // still pending on that semaphore and it may not be handed to another acquire.
+        if (acquisition.mBlit != VK_NULL_HANDLE)
+            awaitVk(mDevice.getHandle(), acquisition.mBlit, "the blit that last took this acquire semaphore");
+        acquisition.mBlit = VK_NULL_HANDLE;
+
         std::uint32_t index = 0;
-        if (!mSwapchain->acquire(mAcquired, index))
+        if (!mSwapchain->acquire(acquisition.mSemaphore, index))
         {
             mStale = true;
             return false;
@@ -244,7 +263,7 @@ namespace Rtx
 
         const VkSemaphoreSubmitInfo wait{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = mAcquired,
+            .semaphore = acquisition.mSemaphore,
             .stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
         };
         const VkSemaphoreSubmitInfo signal{
@@ -267,6 +286,7 @@ namespace Rtx
         };
         checkVk(vkQueueSubmit2(mDevice.getQueue(), 1, &submit, mPresenting[index]), "vkQueueSubmit2");
 
+        acquisition.mBlit = mPresenting[index];
         rememberUse(frame.getHandle(), mPresenting[index]);
 
         if (mSwapchain->present(mRendered[index], index))

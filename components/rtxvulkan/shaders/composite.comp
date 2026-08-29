@@ -27,7 +27,7 @@ layout(set = 0, binding = 1, GBUFFER_RADIANCE) uniform readonly image2D indirect
 layout(set = 0, binding = 2, GBUFFER_ALBEDO) uniform readonly image2D albedo;
 
 /// The running sum, when `mAccumulate` asks for one.
-layout(set = 0, binding = 3, rgba32f) uniform image2D history;
+layout(set = 0, binding = 3, rgba32f) uniform image2D sum;
 
 /// The frame, in the linear radiance everything after this reads: an upscaler across several of
 /// them, and then the curve.
@@ -53,8 +53,8 @@ void main()
     // — losing exactly the fireflies a reference is wanted to measure.
     if (frame.mAccumulate > 0u)
     {
-        const vec3 total = frame.mAccumulate > 1u ? imageLoad(history, at).rgb + resolved : resolved;
-        imageStore(history, at, vec4(total, 1.0));
+        const vec3 total = frame.mAccumulate > 1u ? imageLoad(sum, at).rgb + resolved : resolved;
+        imageStore(sum, at, vec4(total, 1.0));
         resolved = total / float(frame.mAccumulate);
     }
 

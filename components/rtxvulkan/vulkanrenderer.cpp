@@ -284,7 +284,7 @@ namespace Rtx
         // is 33 MiB at 1080p and 133 MiB at 4K, and it buys a sum that neither rounds nor clips —
         // which is worth every byte to the reference mode and nothing at all to the frame a window
         // or a plain shot draws. The first averaging frame is what asks for it.
-        mHistory.reset();
+        mSum.reset();
     }
 
     std::string VulkanRenderer::describeDevice() const
@@ -367,7 +367,7 @@ namespace Rtx
             // A sum over one scene means nothing over the next, so it goes back with the scene
             // rather than being carried empty into one it cannot describe. Neither does a motion
             // vector, which would point at where something stood in a world that is no longer there.
-            mHistory.reset();
+            mSum.reset();
             mPreviousCamera = Shaders::VisibilityConstants{};
 
             // The copies are new and alike, so nothing has read either.
@@ -599,9 +599,6 @@ namespace Rtx
         mStats.mMicromappedInstances = held.mAcceleration->getMicromappedInstanceCount();
         mStats.mMicromapTally = held.mAcceleration->getMicromapTally();
         mStats.mTableBytes = held.mBuffers->getBytes();
-
-        // A frame whose instances moved is not one the last frame reprojects onto.
-        mHistory.reset();
     }
 
     VulkanRenderer::Frame& VulkanRenderer::beginFrame()
@@ -927,10 +924,10 @@ namespace Rtx
         };
 
         // Made by the first frame that averages, and that frame is the one that fills it.
-        const bool fresh = options.mAccumulate > 0 && mHistory == nullptr;
+        const bool fresh = options.mAccumulate > 0 && mSum == nullptr;
         if (fresh)
-            mHistory = std::make_unique<Image>(mDevice, mRenderWidth, mRenderHeight, VK_FORMAT_R32G32B32A32_SFLOAT,
-                VK_IMAGE_USAGE_STORAGE_BIT, "history");
+            mSum = std::make_unique<Image>(
+                mDevice, mRenderWidth, mRenderHeight, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "sum");
 
         // **A history is worthless after a jump no motion vector can describe.** A zero basis catches
         // the frames that have no past at all — a resize, a rebuild, the first one — and nothing
@@ -970,8 +967,8 @@ namespace Rtx
 
         // The first write needs no contents and nothing to wait on; every one after reads what
         // the last left, which the queue orders and does not make visible.
-        if (mHistory != nullptr)
-            mHistory->transition(commands, fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL,
+        if (mSum != nullptr)
+            mSum->transition(commands, fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL,
                 VK_IMAGE_LAYOUT_GENERAL,
                 fresh ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                 fresh ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
@@ -1023,7 +1020,7 @@ namespace Rtx
         }
 
         timer.open(commands, "composite");
-        mComposite.record(commands, *mChannels, *indirect, mHistory.get(), *mColour,
+        mComposite.record(commands, *mChannels, *indirect, mSum.get(), *mColour,
             Shaders::CompositeConstants{
                 .mWidth = mRenderWidth,
                 .mHeight = mRenderHeight,

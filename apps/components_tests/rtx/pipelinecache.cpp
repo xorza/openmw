@@ -88,12 +88,12 @@ namespace Rtx
 
             // Another vendor's, at byte eight of the header.
             std::vector<std::uint8_t> elsewhere = blob;
-            elsewhere[8] ^= 0xFF;
+            elsewhere.at(8) ^= 0xFF;
             EXPECT_FALSE(PipelineCache::accepts(elsewhere, properties)) << "another vendor";
 
             // The same driver after an update, which is what the UUID is for.
             std::vector<std::uint8_t> updated = blob;
-            updated[16] ^= 0xFF;
+            updated.at(16) ^= 0xFF;
             EXPECT_FALSE(PipelineCache::accepts(updated, properties)) << "another driver build";
 
             // And a write that stopped part way through the header itself.

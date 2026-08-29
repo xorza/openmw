@@ -73,9 +73,12 @@ namespace Rtx
         VkExtent2D getExtent() const;
 
     private:
-        /// One semaphore, one fence and one command buffer per swapchain image, made again whenever
-        /// the count changes.
+        /// Two semaphores, one fence and one command buffer per swapchain image, made again
+        /// whenever the count changes.
         void remakeImageSync();
+
+        /// Destroys what `remakeImageSync` made. The caller owes the `waitIdle` before it.
+        void releaseImageSync();
 
         /// Records that `image` was read by the present `fence` will signal.
         void rememberUse(VkImage image, VkFence fence);
@@ -90,10 +93,29 @@ namespace Rtx
         /// constructor's body.
         std::unique_ptr<Swapchain> mSwapchain;
 
-        /// Signalled by the acquire and waited by the blit. One is enough: the blit is submitted
-        /// straight away, and the next acquire first waits on the fence of whichever frame last
-        /// used the image it hands back.
-        VkSemaphore mAcquired = VK_NULL_HANDLE;
+        /// What an acquire signals and the blit behind it waits.
+        struct Acquisition
+        {
+            VkSemaphore mSemaphore = VK_NULL_HANDLE;
+
+            /// Signalled once the blit that took this slot has run. Null until something takes it.
+            VkFence mBlit = VK_NULL_HANDLE;
+        };
+
+        /// One per swapchain image, **taken in turn and never indexed by the image**, which is the
+        /// one thing an acquire cannot be keyed on: the image is what it returns.
+        ///
+        /// **A semaphore handed to `vkAcquireNextImageKHR` must carry no operation still pending**,
+        /// and the acquire's own signal stays pending until the blit that waits it has run. The blit
+        /// is submitted at once but does not run at once — with two frames in flight it queues
+        /// behind a whole frame of tracing — so one semaphore for every acquire is a frame handing
+        /// the layers `VUID-vkAcquireNextImageKHR-semaphore-01779` and the device an undefined wait.
+        /// A slot comes free exactly when its blit's fence signals, which is why the fence is kept
+        /// beside it.
+        std::vector<Acquisition> mAcquiring;
+
+        /// Which slot the next acquire takes.
+        std::uint32_t mAcquisition = 0;
 
         /// Signalled by the blit and waited by the present. **Per swapchain image and not one**: a
         /// present may still be reading the semaphore a frame signalled, and there is no fence that

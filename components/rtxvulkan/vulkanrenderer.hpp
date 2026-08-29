@@ -308,13 +308,18 @@ namespace Rtx
         /// whole question `readPixels` asks, and a headless run never answers it.
         const Image* mPresented = nullptr;
 
-        /// The running sum, and null until a frame asks to be averaged into one.
+        /// The running sum a reference is built out of, and null until a frame asks for one.
+        ///
+        /// **Not a history, and nothing here reprojects.** The denoiser's past is `mHistoryStale`,
+        /// `mPreviousCamera` and the image pairs `AccumulatePass` keeps. This is a plain per-pixel
+        /// total over however many frames the caller asked to average, so a world that moved under
+        /// it is what it is a sum of rather than a reason to drop it.
         ///
         /// **Whether it exists is also whether anything has written it**, because the frame that
         /// makes one is the frame that fills it: the first write needs no contents and nothing to
         /// wait on, and every one after reads what the last left — a hazard across submits that the
         /// fence orders and does not make visible.
-        std::unique_ptr<Image> mHistory;
+        std::unique_ptr<Image> mSum;
 
         /// What every `GBuffer` here is shaped by — one description, however many of them the
         /// frame's size brings and takes away. `GBufferLayout` says why the channels have a set.

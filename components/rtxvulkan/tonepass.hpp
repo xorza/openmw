@@ -67,7 +67,7 @@ namespace Rtx
 
         /// What binding four holds where there is no pyramid. **A descriptor a shader declares has
         /// to be bound whether or not the branch that reads it runs**, and one texel is the whole
-        /// cost of saying so — `CompositePass::mNoHistory` is the same field for the same reason.
+        /// cost of saying so — `CompositePass::mNoSum` is the same field for the same reason.
         Image mNoBloom;
     };
 }
