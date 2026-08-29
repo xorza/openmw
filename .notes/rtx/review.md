@@ -1,0 +1,302 @@
+# Review of the RTX fork against `upstream/master`
+
+Merge base `d720b4c82ccfa1f4d89353699929545945d79a2c`. The diff is 615 files, +92145/−4906.
+The RTX-owned places hold about 385 files and 79,900 lines. The upstream-owned places hold 216
+files, +10257/−4844.
+
+Delete an item when it is addressed. Delete a heading when it is empty. This file lists open items
+only.
+
+Each item describes what is there and what it costs. No item says how to fix it.
+
+## The RT path reaches into the rasterizer build and its behaviour
+
+The project rule is: with `[RTX] enabled` off, the tree behaves exactly as upstream, and a change
+to the rasterizer is a bug even when nobody can see it. These items break that rule.
+
+- [ ] `apps/openmw/mwrender/sceneframe.hpp` is an upstream-side header. Its comments name
+      `Rtx::makeSkylight`, `Rtx::fogExtinction`, `Rtx::makeRoomLight`, `Rtx::describeClouds`,
+      `components/rtx` and `openmw-rtxtool` (lines 104, 176, 190, 242, 256).
+      `apps/openmw/mwrender/windowsetup.hpp:33` names `Rtx::surfaceWindowFlag` and
+      `renderingmanager.cpp:1472` names `Rtx::TerrainComposite`. The rasterizer's frame description
+      is documented in terms of the ray tracer.
+- [ ] `apps/openmw/mwrender/animation.cpp` `setLightEffect` removes `cutoffMult = 3`. The GL glow
+      light radius is now one third of what upstream draws. The same function adds
+      `mGlowLight->setActorFade`, and `ActorAnimation::setAlpha` now fades item lights. Both change
+      the GL picture.
+- [ ] `components/sceneutil/lightmanager.cpp` `LightSource::animate` and `update` rewrite diffuse,
+      specular and ambient every frame from base colours, a brightness scale and the actor fade.
+      Upstream did not scale a light's ambient by actor fade. `components/sceneutil/lightcontroller.*`
+      is rewritten (145 changed lines): the flicker and pulse model that every GL light follows is a
+      different model from upstream's.
+- [ ] `apps/openmw/mwrender/globalmap.cpp` (514 changed lines) replaces the render-to-texture path
+      with a CPU path, and `files/shaders/compatibility/globalmap.{vert,frag}` are deleted. The GL
+      global map is drawn by different code from upstream's.
+- [ ] `apps/openmw/mwrender/localmap.cpp` (286 changed lines) replaces the per-scene `zmin`/`zmax`
+      with fixed `sMapEyeHeight = 50000`, `sMapNear = 5`, `sMapFar = 150000`, and removes
+      `LocalMapRenderToTexture`. The GL local map camera is not upstream's camera.
+- [ ] `apps/openmw/mwgui/mapwindow.cpp` `getLocalViewingDistance` reads
+      `getRenderingManager()->getTerrainReach()` where upstream read
+      `Settings::camera().mViewingDistance`. The GL map's viewing distance now depends on the
+      renderer.
+- [ ] `apps/openmw/mwrender/characterpreview.cpp` (417 changed lines) rebuilds the doll's light rig
+      and camera through `OffscreenViewSpec`. The GL inventory doll is drawn by different code.
+- [ ] `extern/osg-ffmpeg-videoplayer/*` (third-party code) changes `getVideoTexture()` to
+      `getVideoImage()`. `apps/openmw/mwgui/videowidget.cpp` then re-uploads every frame through
+      `MyGUIPlatform::Picture::set`. The GL video path uploads where upstream shared a texture.
+- [ ] `components/nifosg/nifloader.cpp` (344 changed lines, 73 of them naming `Surface`),
+      `components/shader/shadervisitor.cpp` and `components/terrain/material.cpp` author a
+      `Surface::Material` on every state set. `shadervisitor.cpp` replaces the `defaultTextures`
+      list with `Surface::textureRoleNamed`. The rasterizer's loader path runs RT-only bookkeeping
+      on every model.
+- [ ] `components/esmloader/load.hpp` replaces the `Query` fields `mLoadActivators`,
+      `mLoadContainers`, `mLoadDoors`, `mLoadStatics` with `ModelRecordMask mModels`, and adds
+      `mLoadLandTextures` and `mLoadRegions`. `apps/navmeshtool/main.cpp` and
+      `apps/bulletobjecttool/main.cpp` change to follow. Two tools that do not render change for a
+      harness that does.
+- [ ] `apps/openmw/mwworld/weather.cpp` loses 452 lines and gains 97. The precipitation code moves
+      to `components/weather/precipitation.cpp` (537 lines) and `downpour.cpp`. The rasterizer's
+      weather is now two files in two trees, and the move shows as a delete and a create.
+
+## The upstream diff carries moves and renames that add nothing to the RT path
+
+Every item here is a file a reviewer opens and finds no RT code in.
+
+- [ ] `apps/openmw/mwrender/vismask.hpp` moved to `components/sceneutil/vismask.hpp` and the
+      namespace changed from `MWRender` to `SceneUtil`. 40 files change for it. 18 of them change
+      nothing else: `apps/launcher/CMakeLists.txt`, `apps/openmw/main.cpp`,
+      `mwclass/{activator,door,esm4base,static}.cpp`, `mwgui/postprocessorhud.cpp`,
+      `mwmechanics/actors.cpp`, `mwrender/{actorspaths,bulletdebugdraw,effectmanager,groundcover,
+      navmesh,npcanimation,objects,pathgrid,recastmesh}.cpp`, `mwworld/projectilemanager.cpp`.
+      `apps/opencs/view/render/mask.hpp` and `apps/opencs/editor.cpp` change too. The RT side reads
+      three of the constants: `Mask_Water`, `Mask_UpdateVisitor`, `Mask_Lighting`.
+- [ ] 15 files move from `apps/openmw/mwrender/` to `apps/openmw/mwrender/gl/`. Git reports most at
+      96-100% similarity (`distortion`, `luminancecalculator`, `opaqueblit`, `pingpongcanvas`,
+      `pingpongcull`, `precipitationocclusion`, `ripples`, `ripplesimulation`, `transparentpass`,
+      `water`, `waterawaretransparentbin`, `skyutil.cpp`). Four are edited as well
+      (`postprocessor.cpp` 91%, `screenshotmanager.hpp` 52%, `skyutil.hpp` 75%, `sky.hpp` 77%).
+      Every consumer's include changes (`mwlua/postprocessingbindings.cpp`, `mwlua/debugbindings.cpp`,
+      `mwgui/windowmanagerimp.cpp`, `mwworld/worldimp.cpp`, and others). The `gl/` directory alone
+      is 34 files and 8,212 inserted lines in the diff.
+- [ ] `apps/openmw/mwrender/sky.cpp` (961 lines) is deleted and `apps/openmw/mwrender/gl/sky.cpp`
+      (571 lines) is created. The sky's arithmetic goes to `components/sky/{sun,timeofday,moonmodel,
+      clouds,skyroll}` (1,000 lines). Git shows a delete and a create, not a move, so the lift
+      cannot be reviewed as one.
+- [ ] The `Renderer`/`Stage`/`OffscreenView`/`SceneFrame`/`WindowSetup`/`ScreenshotWriter`/
+      `WeatherResult` seam adds `renderer.hpp` (293 lines), `stage.*`, `sceneframe.hpp` (310),
+      `offscreenview.hpp` (148), `gl/glrenderer.*` (847), `gl/gloffscreenview.*` (485),
+      `windowsetup.*`, and edits `renderingmanager.*` (645), `engine.cpp` (472). The constructor
+      signatures then change from `osgViewer::Viewer*`/`osg::Group*` to `Renderer&`/`Stage&`
+      through `mwworld/worldimp.*`, `mwgui/{windowmanagerimp,inventorywindow,race,charactercreation,
+      loadingscreen,savegamedialog,videowidget,settingswindow,mapwindow}.*`,
+      `mwinput/{inputmanagerimp,actionmanager}.*`, `mwlua/{luamanagerimp,weatherbindings}.cpp`.
+      `getPostProcessor()` becomes nullable and `mwlua/postprocessingbindings.cpp` (39 lines) and
+      `mwlua/debugbindings.cpp` grow null checks. About 40 files change for a seam the RT path
+      needs in one place.
+- [ ] `apps/openmw/mwrender/objectpaging.*` is deleted and `components/terrain/objectpaging.*`
+      (896 + 120 lines) is created with a new `Terrain::ObjectStorage` seam and
+      `apps/openmw/mwrender/objectstorage.*` (212 lines). Git shows a delete and a create.
+- [ ] `components/myguiplatform/*` gains about 800 lines: `OSGTexture` is rewritten (in-place image,
+      `Subload`, `DirtyRows`, `promote()`), and `GuiRenderManager`, `Picture`, `pixels`,
+      `RegionTexture`, `AdditiveLayer` change. `savegamedialog`, `videowidget`, `inventorywindow`,
+      `race`, `loadingscreen` change to follow. The GL GUI path is rewritten so that a second GUI
+      backend can share a base class.
+- [ ] Peripheral edits, each a separate file to open: `apps/launcher/graphicspage.cpp` and
+      `ui/graphicspage.ui` (RTX toggle, +26), `apps/launcher/CMakeLists.txt` (one blank line),
+      `components/{crashcatcher,debug,features,sdlutil,stereo}/*`, six
+      `files/data/l10n/OMWEngine/*.yaml`, `files/data/mygui/openmw_settings_window.layout` (+36),
+      `docs/source/reference/modding/settings/rtx.rst` (+50), `files/settings-default.cfg` (+29),
+      `components/settings/categories/rtx.hpp`, `components/settings/values.hpp`,
+      `files/shaders/CMakeLists.txt`.
+
+## Two constants that must differ are equal, and a sum that drops fields
+
+- [ ] `components/rtxvulkan/shaders/lib/random.glsl:21` `SEED_LAMPS_PANE = 0x53u` and line 26
+      `SEED_LAMPS_MIRROR = 0x53u`. The comment above the second says "Two constants and not one,
+      because two reservoirs seeded alike step the same sequence and keep the same lamps." A pane
+      in front of water (`visibility.comp:98`) and the water's reflection reservoir
+      (`water.glsl:267`) draw from one sequence.
+- [ ] `components/rtx/sceneextractor.cpp` `ExtractionStats::operator+=` sums thirteen fields and
+      omits `mSheets`, `mComposites` and `mEmissiveLamps` (incremented at lines 1570, 1492, 847).
+      `apps/rtxtool/scene.cpp:498-499` adds the settled walk to the staged walk and prints
+      `mComposites` and `mSheets`. The settled walk's composites and sheets are missing from the
+      report.
+
+## Work is done per frame that the frame did not change
+
+- [ ] `components/rtx/sceneextractor.cpp` increments
+      `stats.mTextureFormats[describeFormat(*pending.mSprite)]` per emitter per frame. This builds
+      a `std::string` and inserts into a `std::map` on the frame path. `getTextureTransform`
+      builds `std::string(sNames[unit])` per pass. `readMask` calls `image.getColor` per texel.
+- [ ] `components/rtx/moonbuilder.cpp` `makeMoon` constructs `Sky::MoonModel(nameOf(moon))` on
+      every call. The constructor does fallback-map string lookups. `rtxrenderer.cpp` and
+      `apps/rtxtool/lighting.cpp` call it twice per frame.
+- [ ] `components/rtx/scenedesc.cpp` `release()` allocates two `std::vector<char>` on every sweep
+      frame. `setMaterial` reclassifies by a scan over every instance. `forEachPlacement` allocates
+      a per-mesh box vector on every `getBounds` and `getContentBoundsWithin`.
+- [ ] `components/rtx/frametimes.hpp` holds `std::vector<std::vector<double>> mTimes`, one
+      allocation per inner zone.
+- [ ] `components/rtxvulkan/scenebuffers.cpp` `place` refills `mLightScratch`, `mSpriteScratch`
+      and `mEmitterScratch`, calls `mLightGrid.rebuild`, and writes the light, offset, index, grid
+      and emitter tables whole on every placement. `SlotTable` tracks changed rows for instances and
+      materials. The lights have no such account, so a still cell with three hundred lamps rewrites
+      and re-bins them every frame.
+- [ ] `components/rtxvulkan/guitextures.*` is synchronous. `getView`, `read` and `writeWith` all
+      call `flush()`, which is a submit and a wait. `drawGui` calls `getView` per batch. A texture
+      written in a frame costs one submit-and-wait inside that frame. `videowidget.cpp` writes one
+      texture per frame.
+- [ ] `components/rtxvulkan/vulkanrenderer.cpp:894-897` and `finishOldest` map and unmap
+      `Frame::mHitCount` twice per frame when counting. `Buffer::map` calls `vkMapMemory` on every
+      call.
+- [ ] `components/rtxvulkan/sceneacceleration.cpp:268-269` `writeGeometry` calls
+      `mPositions.reserve` once per slot, and `SlotBlocks::reserve` already loops over every slot.
+      The reservation runs `mSlots²` times.
+- [ ] `apps/rtxtool/world.cpp` `findCell` scans every cell record per call. `cellscene.cpp` calls
+      it for each of the nine squares on every crossing and once per departed cell.
+      `apps/rtxtool/objectstorage.cpp` builds an exterior index over the same data.
+- [ ] `apps/rtxtool/stagedworld.cpp` walks the graph twice in the constructor: `mirror(0)` at line
+      439, then again at line 482 or through `mPosed->settle()`. The first walk's result is
+      discarded on the actor path.
+
+## The same number or the same arithmetic is written in more than one place
+
+- [ ] The sRGB decode exists three times: `components/rtx/lightbuilder.cpp` `channelToLinear`,
+      `components/rtx/texelreader.cpp` `toLinear`, `components/rtx/shadingmap.cpp` anonymous
+      `toLinear`.
+- [ ] `apps/rtxtool/picture.cpp:40-47,219` restates `apps/openmw/mwrender/localmap.cpp:40-42,169-170`
+      (`50000`, `5`, `150000`, light `(-0.3, -0.3, 0.7)`, diffuse `0.7`, ambient `0.3`) and
+      `characterpreview.cpp:69` (`12.3f`, the `700`/`71` doll camera). A change to the game's map
+      or doll makes `rtxtool map`/`doll` a different picture with nothing to say so.
+- [ ] `apps/rtxtool/objectstorage.cpp` `collectReferences` and `apps/rtxtool/world.cpp`
+      `forEachObject` both implement the moved-ref, leased-ref and deleted-ref reduction over
+      `cell.mContextList`, each with its own `typeOf` and `departed` lambdas.
+      `apps/openmw/mwrender/objectstorage.cpp` is a third copy of the same reduction.
+- [ ] `apps/rtxtool/lighting.cpp` `applyLighting` and `apps/openmw/mwrender/rtx/rtxrenderer.cpp`
+      `traceWorld` each assemble an `Rtx::FrameWorld` from the same inputs: `describeStars`,
+      `skyBudget`, `makeMoon` for both moons, `fogColour`, `describeClouds` with `deckLight` and
+      `stormDirection`, `describePatches`. Two assemblies of one frame.
+- [ ] `components/rtxvulkan/vulkanrenderer.cpp` builds `SceneStats` with the same eight designated
+      initialisers in `setScene` (435-444) and `extendScene` (497-506), and assigns five of them by
+      hand in `placeScene` (600-604).
+- [ ] `components/rtxvulkan/commands.cpp` `CommandPool::submit` (56-94) and `endAndWait` (141-175)
+      both build `mSubmitScratch` from `mDeferred` plus one buffer and both clear the three deferred
+      lists.
+- [ ] `Buffer`, `HostBuffer`, `Texture`, `ShaderModule` and `DeviceMemory` each write the same
+      move constructor, move assignment and `destroy` by hand. `Buffer::write` maps and unmaps per
+      write; `HostBuffer` stays mapped. Two buffer classes serve one job.
+- [ ] `components/rtxvulkan/texture.cpp` `Texture` owns its own `VkImage`, view and memory and a
+      local `barrier` lambda (150-172) that restates `Image::transitionLevels`. `Image` exists.
+- [ ] `components/rtxvulkan/sceneacceleration.cpp` `buildMeshes` (654-678) and `prepareRefit`
+      (851-868) build the same `VkAccelerationStructureGeometryKHR` triangles block, with the same
+      "Guarded, because a freed slot has no vertices" comment word for word.
+- [ ] `components/rtxvulkan/shaders/lib/fog.glsl` `fogWeatherAlong` (429-438) and
+      `fogUniformAlong` (700-714) each write the per-stretch sun and moons block: the probe,
+      `lightThrough`, `fogBeamDepth` for the sun and for each moon, `daylightReaching`.
+- [ ] `components/rtxvulkan/shaders/lib/sea.glsl:183` `pixelKey(uvec2(cell)) * 0x9E3779B9u`
+      restates the first half of `randomSeed`.
+- [ ] `components/rtxvulkan/visibilitypass.cpp:307-324` names bindings `13`..`19` and
+      `sFrameBinding + 1..3` as literals. `bindings.glsl` declares the same numbers. The two are
+      kept in step by hand and by one `assert(filled == writes.size())`.
+- [ ] `apps/rtxtool/main.cpp:663-670` builds `ActorRequest` by hand where `actorsFrom(variables)`
+      (line 217) exists. Lines 623-627 and 676-680 both spell the "was validation asked for" test.
+- [ ] `ShotRequest`, `ViewRequest`, `BenchRequest` and `VerifyRequest` each carry the same block
+      (shader directory, size, field of view, upscale, preset, delight, filter, exposure, weather,
+      hour, day, actors). `main.cpp` `dispatch` fills the block four times by hand (601-618,
+      637-670, 705-726, 731-762).
+- [ ] The harness parses floats two ways: `std::stof` in `views.cpp:23` (locale-dependent) and
+      `std::istringstream` with the classic locale in `placement.cpp:81`. `placement.cpp:76`
+      says `from_chars` is unavailable for floats on libc++; `main.cpp:120` and `world.cpp:368`
+      use `from_chars` for integers.
+- [ ] `apps/rtxtool/lighting.hpp` `CellLighting` carries `mAmbient` and `mFog` beside
+      `mDaylight`, which already holds both. `lighting.cpp` `settle` copies them across.
+- [ ] `apps/openmw/mwrender/rtx/tracedview.cpp` keeps its own `sNextName` counter for MyGUI texture
+      names. `MyGUIPlatform::Picture` has a naming scheme for the same purpose.
+
+## Requirements and code that nothing uses
+
+- [ ] `components/rtxvulkan/device.hpp` `DeviceFunctions` loads `vkCreateRayTracingPipelinesKHR`,
+      `vkGetRayTracingShaderGroupHandlesKHR`, `vkCmdTraceRaysKHR`,
+      `vkCmdCopyAccelerationStructureKHR` and `vkCmdWriteAccelerationStructuresPropertiesKHR`. No
+      file outside `device.*` names them. `device.cpp:26` throws if any is missing.
+- [ ] `components/rtxvulkan/requirements.cpp` requires `VK_KHR_ray_tracing_pipeline`,
+      `VK_EXT_ray_tracing_invocation_reorder` and the features `rayTracingPipeline`,
+      `rayTraversalPrimitiveCulling`, `rayTracingInvocationReorder`, `timelineSemaphore`,
+      `hostQueryReset`, `samplerAnisotropy`. The renderer is compute with ray queries. No shader
+      names a reorder hint. Every sampler sets `anisotropyEnable = VK_FALSE`. Query pools are reset
+      on the command buffer. A device without one of these is refused for a capability nothing
+      uses. The optional `VK_NV_cluster_acceleration_structure` and
+      `VK_NV_partitioned_acceleration_structure` are enabled and unused.
+- [ ] `apps/rtxtool/view.cpp:50-65` `OnScopeExit` is defined and never instantiated.
+- [ ] `apps/rtxtool/cellscene.cpp` `readRegion` and `dropCellsOutside` take `Rtx::SceneDesc& scene`
+      and `Rtx::SceneExtractor& extractor` and never read them. `loadRegion` passes them through.
+- [ ] `apps/openmw/mwrender/rtx/rtxrenderer.cpp` calls `addMoonFaces` and `addSkyContent` once.
+      `dropMoonFaces` and `dropSkyContent` have no caller in the game.
+- [ ] `components/rtxmetal/metalrenderer.mm` is a factory that always returns null with a reason.
+      `components/rtxmetal/CMakeLists.txt` compiles `shaders/visibility.metal` for it.
+
+## Two paths for one job, and asymmetric interfaces
+
+- [ ] `components/rtxvulkan/vulkanrenderer.cpp` `placeScene` has two bodies: a view scene runs
+      `submitAndWait` (535-546), the world defers into the frame (548-598). `traceGuiTexture`
+      (1178-1306) restates `renderFrame`'s `VisibilityInputs` block (ten fields) and the
+      accumulate, filter, composite and tone chain with different images.
+- [ ] `SceneAcceleration::place` returns whether it recorded; `SceneBuffers::place` returns
+      nothing. `SceneBuffers::getBytes` omits `mSpriteTileOffsets` and `mSpriteTileIndices`
+      although `Tables` holds them and `binSprites` grows them.
+- [ ] `VulkanRenderer::sceneAt` const overload is a `const_cast` of the non-const one.
+- [ ] `components/rtxvulkan/shaders/lib/bindings.glsl` declares set-0 bindings out of order
+      (15 before 14) with set-2 bindings `0, 6, 5, 1, 2, 4, 3, 8, 9, 7, 10` interleaved among them.
+      `tone.comp` declares binding 3 before binding 2. `visibilitypass.cpp` `sBindings` builds the
+      layout by index, so the reader has no one list to compare.
+- [ ] `components/rtxvulkan/shaders/lib/lights.glsl:237-254` places `litCosine`'s doc inside
+      `weighLamps`'s doc, and `weighLamps`'s `@param` block above `considerLamp`.
+- [ ] `apps/rtxtool/shot.hpp:19` includes `<components/rtx/renderer.hpp>` between two namespace
+      blocks.
+- [ ] `components/rtx/CMakeLists.txt` lists `compositequeue` after `spritetiles`.
+      `components/rtxvulkan/CMakeLists.txt` lists `slottable.hpp` between `frameslots` and
+      `gbuffer`. `apps/rtxtool/CMakeLists.txt` lists `lighting`, `motion`, `npc`, `objectstorage`,
+      `posedactors`, `options`, `perfcontrol`, `picture`, `view`, `viewpoint`, `validationchoice`,
+      `verify` out of alphabetical order.
+
+## Harness command plumbing is copied per command
+
+- [ ] `apps/rtxtool/main.cpp` `dispatch` (475-770) is one 300-line function of
+      `variables["..."].as<...>()` copies, one block per command.
+- [ ] `apps/rtxtool/bench.cpp` `runBench` (169-523) mixes timing, hashing, JSON, crossing
+      accounting and reporting in one function. `report` and `writeJson` restate the same fields
+      by hand in two formats.
+- [ ] `apps/rtxtool/view.cpp` `runWindow` (116-511) holds a 100-line event lambda and the frame
+      loop in one function.
+- [ ] `apps/rtxtool/options.cpp:87-91` `--npc` help says "They come naked" while `--clothes`
+      (line 101) defaults to on and dresses them.
+- [ ] `files/rtx/views.cfg` `seyda-neen-customs` has a comment between two of its fields.
+
+## Comments that describe code that no longer exists
+
+- [ ] `apps/openmw/mwrender/rtx/rtxrenderer.hpp` `mComplained` carries the doc of another member
+      ("The one sequence every mirror walk in this renderer poses at.").
+- [ ] `components/rtxvulkan/vulkanrenderer.hpp:437-443` `mNgx` has two merged doc paragraphs. The
+      first says `describeDevice` takes a share of its own; `describeDevice` now calls
+      `Dlss::probe`.
+- [ ] `components/rtxvulkan/vulkanrenderer.hpp:407-419` the view-chain doc ("Its own chain and not
+      the frame's ... Grown to the largest picture asked for") sits on `mViewScenes`.
+- [ ] `components/rtxvulkan/structurestorage.hpp:40-42` says the renderer is synchronous and a
+      fence-keyed retirement list has to grow here. `Graveyard` exists and `release` buries rooms
+      in it.
+- [ ] `components/rtxvulkan/commands.hpp:17-20` says `CommandPool` is "Setup only" and nothing in
+      it is shaped for a frame. `allocate`, `begin` and `submit` are the frame path.
+- [ ] `components/rtxvulkan/swapchain.cpp:29-30` says tone mapping "is M8's, and this is where they
+      will land". `TonePass` exists.
+- [ ] `components/rtxvulkan/gbuffer.cpp:67-69` says the mask is "One float ... See `gbuffer.h` for
+      why it is not a byte". `gbuffer.h` defines `GBUFFER_MASK` as `R8_UNORM` and argues that it is
+      a byte. `readChannel` widens bytes.
+- [ ] `components/rtxvulkan/physicaldevice.cpp:66-68` "Why a candidate was rejected, or empty when
+      it was not." sits above `hasResizableBar`.
+- [ ] `components/rtxvulkan/texture.hpp:67` says "the shader is told the count and does not index
+      past it". No count reaches the shader.
+- [ ] `apps/rtxtool/cellscene.hpp:59-73` glues two doc blocks on `LoadedCell`, and 137-150 glues
+      two on `RegionLoad`. `apps/rtxtool/stagedworld.hpp:112-119` puts `driveWeather`'s doc on
+      `frame`.
+- [ ] `apps/rtxtool/main.cpp:490-492` states "Boost skips the first token" twice.
+- [ ] `components/rtxvulkan/shaders/lib/sprites.glsl:17-27` splits `puffLight`'s doc with an empty
+      `///` line. `bindings.glsl:258-259` has a double blank line.

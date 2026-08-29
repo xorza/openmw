@@ -932,19 +932,13 @@ namespace MWRender
     {
         const WorldState world = describeWorld();
 
-        // **The eye, which is what a cull would have used.** The detail a chunk is built at has to
-        // be the detail the primary rays hit, and asking from anywhere else would put the ground a
-        // reflection sees at a different level from the ground beside it.
-        mResident.follow(mTerrain);
-        mResident.setViewPoint(mStage.getCamera().getInverseViewMatrix().getTrans());
-
         const SceneFrame frame{
             .mScene = *mSceneRoot,
             .mCamera = mStage.getCamera(),
             .mWhen = mStage.getFrameStamp(),
             .mWorld = world,
             .mImages = *mResourceSystem->getImageManager(),
-            .mResident = &mResident,
+            .mTerrain = *mTerrain,
         };
 
         mRenderer.renderFrame(frame);

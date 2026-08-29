@@ -8,7 +8,6 @@
 #include "sceneframe.hpp"
 
 #include "weatherresult.hpp"
-#include <components/rtx/terrainresidency.hpp>
 
 #include <components/settings/settings.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -385,10 +384,6 @@ namespace MWRender
         std::unique_ptr<Water> mWater;
         std::unordered_map<ESM::RefId, WorldspaceChunkMgr> mWorldspaceChunks;
         Terrain::World* mTerrain;
-
-        /// Where the terrain's own chunks are, for the renderer that walks rather than culls. Costs
-        /// a `Terrain::View` and nothing at all where the terrain parents its chunks.
-        Rtx::TerrainResidency mResident;
 
         std::unique_ptr<TerrainStorage> mTerrainStorage;
 

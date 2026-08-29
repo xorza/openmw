@@ -16,6 +16,7 @@
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/skybuilder.hpp>
+#include <components/rtx/terrainresidency.hpp>
 
 #include "../renderer.hpp"
 
@@ -309,6 +310,11 @@ namespace MWRender
         /// what was measured off the two sky meshes.
         Rtx::SkyContent mSkyContent;
         std::unique_ptr<Rtx::SceneExtractor> mExtractor;
+
+        /// Where the terrain's own chunks are, for a walk that no cull precedes. Held beside the
+        /// extractor that asks it, and costs a `Terrain::View` and nothing else — the world that
+        /// parents its chunks hands out no view and this then does nothing.
+        Rtx::TerrainResidency mResident;
 
         /// Which of place, extend and rebuild a frame is, and what a rebuild has to describe.
         Rtx::SceneUploader mUploader;
