@@ -702,6 +702,19 @@ namespace Rtx
         std::span<const Material> getMaterials() const { return mMaterials; }
         std::span<const MaterialLayer> getLayers() const { return mLayers; }
         std::span<const Light> getLights() const { return mLights; }
+
+        /// Puts the lights in an order that depends on the lights and not on the walk that found
+        /// them. Once, where a walk ends.
+        ///
+        /// **A picture must not depend on the order cells were loaded in.** A walk meets lights in
+        /// graph order, and a graph gains and loses cells as a player moves — so the same place
+        /// walked twice hands the same lights over in a different order. Every one of them is still
+        /// there, and the picture still changes: the grid bins them in that order and a reservoir
+        /// streams them in it, so one cell's sample falls on a different lamp and its neighbourhood
+        /// moves by a level or two. It is a handful of pixels around one lamp, which is small enough
+        /// to be read as noise and is not.
+        void orderLights();
+
         /// How many times the scene's **structure** has changed: its meshes and its textures.
         ///
         /// **What a rebuild costs is why this is separate from the tables.** A mesh appearing means

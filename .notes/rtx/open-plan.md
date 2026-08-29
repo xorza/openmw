@@ -3,43 +3,6 @@
 What `ISSUES.md` lists, what has been ruled out for each, and the fix each one wants. Delete a
 section when it is done, and the file when they all are.
 
-## 1. `verify` differs from itself, and only `verify` does
-
-`island-crossing` differs between two runs of one build by one to eight of 255 on 0.01% of its
-pixels. Holding the exposure does not stop it and makes a second view join in.
-
-**What that is not.** It is not the view and it is not the staged path:
-
-| the same viewpoint, twice | result |
-| --- | --- |
-| `bench --views=island-crossing --hashes` | identical |
-| `shot --view=island-crossing` | byte-identical PNGs |
-| `verify` | differs |
-
-`shot` stages its composites exactly as `verify` does, and `bench` reaches the same camera through
-the streaming path. Both are reproducible. The two wall clocks a run used to read are fixed and
-`verify` states its frame length like everything else.
-
-**And it is not the renderer either.** Giving `verify` a renderer of its own per view leaves
-`island-crossing` differing by as much as 9 of 255. So cross-view state in the renderer is out, and
-with it the whole premise this section started from.
-
-**What that leaves is the `World` the views share.** `verify` and `bench` both stage through
-`StagedWorld`; `shot` does not, and `shot` is byte-identical. `bench --views=island-crossing` is
-identical too — and it renders the same frame 0 that `verify` does. The difference between them is
-that `verify` walks sixteen views into one `World` in a fixed order, so what that view is staged
-into depends on what the fifteen others loaded and dropped.
-
-**Next, in order.**
-
-1. **Run `verify` on that view alone**, which needs the view filter `bench` has and `verify` does
-   not. If one view in isolation is reproducible, the shared `World` is the cause and the search is
-   what a cell load leaves behind in it.
-2. **If it still differs alone**, the cause is in `StagedWorld` for that view, and `bench` reaching
-   the same camera reproducibly says the difference is in the staging rather than the frame.
-3. **Either way the fix is not isolation.** The game loads cell after cell into one world for hours;
-   whatever this is, a player meets it.
-
 ## 3. One camera renders lit under `shot` and near-black under `bench`
 
 At `19388,-27476,3000` looking at `20421,-25763,2300`: `shot --cell=2,-4 --albedo --upscale=off
@@ -87,5 +50,4 @@ had slots freed by departed cells and taken over.
 
 ## Order
 
-3 next, because the test it wants is worth having whatever the answer is. Then 1, which is the
-longest and the only one with a step that could show its own premise wrong.
+One left.

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <tuple>
 
 #include "error.hpp"
 
@@ -493,6 +494,19 @@ namespace Rtx
         mFreeSlots.push_back(slot);
         mMoved.push_back(slot);
         --mPlacedCount;
+    }
+
+    void SceneDesc::orderLights()
+    {
+        // **A total order and not a distance**, so that two lights the walk could hand over either
+        // way round come out the same way round every time. Position separates all but the lamps
+        // standing in one another, and what they carry separates those.
+        std::sort(mLights.begin(), mLights.end(), [](const Light& a, const Light& b) {
+            return std::make_tuple(a.mPosition.x(), a.mPosition.y(), a.mPosition.z(), a.mIntensity.x(),
+                       a.mIntensity.y(), a.mIntensity.z(), a.mReach, a.mRadius)
+                < std::make_tuple(b.mPosition.x(), b.mPosition.y(), b.mPosition.z(), b.mIntensity.x(), b.mIntensity.y(),
+                    b.mIntensity.z(), b.mReach, b.mRadius);
+        });
     }
 
     void SceneDesc::advancePlacement()

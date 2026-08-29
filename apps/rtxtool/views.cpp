@@ -152,4 +152,25 @@ namespace RtxTool
         const auto found = std::find_if(views.begin(), views.end(), [&](const View& v) { return v.mName == name; });
         return found == views.end() ? nullptr : &*found;
     }
+
+    std::vector<View> chooseViews(const std::vector<View>& views, const std::vector<std::string>& named)
+    {
+        // **"all" is a name nothing may take, and it means every view.** `bench` reaches this
+        // through a suite as well, so the word has to mean the same on either road in.
+        if (named.empty() || (named.size() == 1 && named.front() == "all"))
+            return views;
+
+        std::vector<View> chosen;
+        chosen.reserve(named.size());
+        for (const std::string& name : named)
+        {
+            const View* view = findView(views, name);
+            if (view == nullptr)
+                throw std::runtime_error("no view is called \"" + name + "\"; --list-views prints them");
+
+            chosen.push_back(*view);
+        }
+
+        return chosen;
+    }
 }

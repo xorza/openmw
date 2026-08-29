@@ -174,8 +174,8 @@ namespace RtxTool
             "by --views");
 
         addOption("views", bpo::value<std::string>()->default_value(""),
-            "with `bench`, profile these views.cfg ids instead of a suite, comma separated and run "
-            "in the order written. --views=all runs every view there is");
+            "with `bench`, profile these views.cfg views by name rather than a suite; with "
+            "`verify`, render only these. --views=all runs every view there is");
 
         addOption("seconds", bpo::value<float>()->default_value(10.0f),
             "with `bench`, how many seconds of world to run at each place. World and not wall: the "

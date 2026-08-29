@@ -190,8 +190,8 @@ namespace RtxTool
         if (request.mAgainst.empty())
             return 0;
 
-        out() << std::format(
-            "{} views, {} differ, {} without a reference\n", request.mViews.size(), differing, unmatched);
+        out() << std::format("{} {}, {} differ, {} without a reference\n", request.mViews.size(),
+            request.mViews.size() == 1 ? "view" : "views", differing, unmatched);
 
         return differing + unmatched > 0 ? 1 : 0;
     }

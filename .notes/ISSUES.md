@@ -1,10 +1,10 @@
 # Open issues
 
-- `verify` differs from itself between runs, at worst 1 to 8 of 255 on 0.01% of the pixels of
-  `island-crossing`. The same viewpoint is reproducible under `shot` and under `bench`, each with a
-  renderer of its own, and a renderer per view inside `verify` does not stop it. What `verify` and
-  `bench` share and `shot` does not is `StagedWorld`; what `verify` alone does is stage sixteen
-  views into one `World`.
+- Staging one view twice in a single process gives two different pictures: `bench
+  --views=balmora,island-crossing,balmora,island-crossing --hashes` gives `balmora` the same hash
+  twice and `island-crossing` two different ones. The scene differs by one sprite — 350 particles
+  against 351 — because an emitter in the shared graph keeps running between stagings. Every other
+  path is reproducible: sixteen `verify` views and a 660-frame streaming run.
 
 - The same camera renders lit under `shot` and near-black under `bench`. At `19388,-27476,3000`
   looking at `20421,-25763,2300`, `shot --cell=2,-4 --albedo --upscale=off --exposure=1` reads a

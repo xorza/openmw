@@ -72,4 +72,12 @@ namespace RtxTool
 
     /// The view called `name`, or null.
     const View* findView(const std::vector<View>& views, std::string_view name);
+
+    /// The views `named` asks for, in the order it names them; every one of them where it names
+    /// none or names "all". Throws `std::runtime_error` naming a view that is not there.
+    ///
+    /// **One place decides what a list of view names means.** `bench` reaches it through a suite as
+    /// well as from the command line and `verify` names them directly, and a filter that behaved
+    /// differently between the two would make a run of one impossible to reproduce with the other.
+    std::vector<View> chooseViews(const std::vector<View>& views, const std::vector<std::string>& named);
 }

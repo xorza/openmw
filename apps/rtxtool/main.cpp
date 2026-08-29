@@ -436,9 +436,6 @@ namespace RtxTool
             const std::vector<View> views = loadViews(resources / "rtx" / "views.cfg");
             const std::string named = variables["views"].as<std::string>();
 
-            if (named == "all")
-                return views;
-
             std::vector<std::string> wanted;
             if (named.empty())
             {
@@ -460,17 +457,7 @@ namespace RtxTool
             else
                 wanted = splitNames(named);
 
-            std::vector<View> chosen;
-            chosen.reserve(wanted.size());
-            for (const std::string& name : wanted)
-            {
-                const View* view = findView(views, name);
-                if (view == nullptr)
-                    throw std::runtime_error("no view is called \"" + name + "\"; --list-views prints them");
-
-                chosen.push_back(*view);
-            }
-
+            const std::vector<View> chosen = chooseViews(views, wanted);
             if (chosen.empty())
                 throw std::runtime_error("nothing to profile: no view was named");
 
@@ -614,7 +601,8 @@ namespace RtxTool
                 const auto [width, height] = parseSize(variables["size"].as<std::string>());
 
                 VerifyRequest request;
-                request.mViews = loadViews(resources / "rtx" / "views.cfg");
+                request.mViews = chooseViews(
+                    loadViews(resources / "rtx" / "views.cfg"), splitNames(variables["views"].as<std::string>()));
                 request.mShaderDirectory = resources / "rtx" / "shaders";
                 request.mOut = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
                 request.mAgainst = variables["against"].as<std::string>();

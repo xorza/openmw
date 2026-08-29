@@ -34,6 +34,12 @@ namespace Rtx
     {
         const bool mine = recognises(renderer, slot, scene, renderer.getTextureCount(slot));
 
+        // **Here rather than where a walk ends, because a scene can be walked more than once.** The
+        // game walks its precipitation beside its world, and a light met by the second walk would be
+        // outside an order the first had settled. This is the one point every path passes and the
+        // last before anything reads them. `SceneDesc::orderLights` says what depends on it.
+        scene.orderLights();
+
         // **Before anything reads what arrived, because a composite coming back is an arrival.**
         // The queue hands its baker whatever the walk marked for flattening and takes back a
         // bounded number of what the baker finished; a composite taken here took a texture slot on
