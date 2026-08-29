@@ -5,6 +5,7 @@
 #include <cmath>
 #include <string>
 
+#include <components/esm3/loadcell.hpp>
 #include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/fallback/fallback.hpp>
@@ -520,10 +521,14 @@ namespace Rtx
             + decodeColour(source.getBaseAmbient()) * source.getAmbientScale();
     }
 
+    bool castsWherePlaced(const ESM::Light& record)
+    {
+        return (record.mData.mFlags & ESM::Light::OffDefault) == 0;
+    }
+
     std::optional<Light> makeLight(const ESM::Light& record, const osg::Vec3f& position)
     {
-        constexpr int notPlaced = ESM::Light::Carry | ESM::Light::OffDefault;
-        if ((record.mData.mFlags & notPlaced) != 0)
+        if (!castsWherePlaced(record))
             return std::nullopt;
 
         // **Described the way the graph describes it, so the test above answers for both.**
@@ -538,5 +543,32 @@ namespace Rtx
         const bool negative = (record.mData.mFlags & ESM::Light::Negative) != 0;
 
         return makeLight(negative ? -recorded : recorded, static_cast<float>(record.mData.mRadius), position);
+    }
+
+    Daylight makeRoomLight(const ESM::Cell& cell)
+    {
+        const osg::Vec3f haze = decodeColour(cell.mAmbi.mFog);
+        const Sky::SunPlacement sun = Sky::roomSun();
+
+        const Skylight sky = makeSkylight(SkyReading{
+            .mSunPosition = sun.mPosition,
+            .mSunShare = sun.mShare,
+
+            // Nothing stands above a room's ground to ask.
+            .mSunShareAloft = 0.0f,
+            .mSunColour = decodeColour(cell.mAmbi.mSunlight),
+            .mAmbient = decodeColour(cell.mAmbi.mAmbient),
+        });
+
+        return Daylight{
+            .mSun = sky.mSun,
+            .mSunAloft = sky.mSunAloft,
+            .mSkyHorizon = haze,
+            .mSkyZenith = haze,
+            .mAmbient = sky.mAmbient,
+            .mStarFade = 0.0f,
+            .mExposureBias = 1.0f,
+            .mFog = interiorFog(cell),
+        };
     }
 }

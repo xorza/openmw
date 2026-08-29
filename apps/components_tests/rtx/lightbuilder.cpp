@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <components/esm3/loadcell.hpp>
 #include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/fallback/fallback.hpp>
@@ -711,6 +712,61 @@ namespace Rtx
             }
         }
 
+        /// A room's `AMBI` record, as Berandas, Propylon Chamber writes it: ambient `15, 15, 15`,
+        /// sunlight `10, 16, 16`, fog `15, 21, 21` at a depth of one. Red is the low byte.
+        ESM::Cell makeRoom(std::uint32_t ambient, std::uint32_t sunlight, std::uint32_t fog)
+        {
+            ESM::Cell cell;
+            cell.mHasAmbi = true;
+            cell.mAmbi.mAmbient = ambient;
+            cell.mAmbi.mSunlight = sunlight;
+            cell.mAmbi.mFog = fog;
+            cell.mAmbi.mFogDensity = 1.0f;
+            return cell;
+        }
+
+        /// A room is lit by its own record under the engine's sun, and nothing of the hour reaches it.
+        ///
+        /// **The sunlight is a sun.** At full share the direct term is the whole of `DAYLIGHT` times
+        /// the decoded colour and the dusk term is nought, so the ambient is the record's exactly;
+        /// the sky is the fog at both ends, because a room has no dome. A record with no sunlight
+        /// gives a room with no sun, which is what makes the first row the record's doing.
+        TEST(RtxRoomLightTest, aRoomIsLitByItsRecordUnderTheEnginesSun)
+        {
+            const ESM::Cell chamber = makeRoom(0x000F0F0F, 0x0010100A, 0x0015150F);
+            const Daylight room = makeRoomLight(chamber);
+
+            const osg::Vec3f sunlight = decodeColour(0x0010100Au);
+            EXPECT_EQ(room.mSun.mPosition, Sky::roomSun().mPosition);
+            EXPECT_FLOAT_EQ(room.mSun.mIrradiance.x(), sunlight.x() * Shaders::DAYLIGHT);
+            EXPECT_FLOAT_EQ(room.mSun.mIrradiance.y(), sunlight.y() * Shaders::DAYLIGHT);
+            EXPECT_FLOAT_EQ(room.mSun.mIrradiance.z(), sunlight.z() * Shaders::DAYLIGHT);
+            EXPECT_GT(room.mSun.mIrradiance.length2(), 0.0f) << "the chamber's sunlight is dim, not absent";
+
+            EXPECT_EQ(room.mAmbient, decodeColour(0x000F0F0Fu));
+            EXPECT_EQ(room.mSkyHorizon, decodeColour(0x0015150Fu));
+            EXPECT_EQ(room.mSkyZenith, room.mSkyHorizon);
+
+            const Fog air = interiorFog(chamber);
+            EXPECT_EQ(room.mFog.mColour, air.mColour);
+            EXPECT_FLOAT_EQ(room.mFog.mExtinction, air.mExtinction);
+
+            EXPECT_FLOAT_EQ(room.mStarFade, 0.0f);
+            EXPECT_FLOAT_EQ(room.mExposureBias, 1.0f) << "the game holds a room at one";
+
+            // The record decides: the same room with its sunlight written black has no sun.
+            const Daylight unlit = makeRoomLight(makeRoom(0x000F0F0F, 0x00000000, 0x0015150F));
+            EXPECT_EQ(unlit.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
+            EXPECT_EQ(unlit.mAmbient, room.mAmbient);
+
+            // And a cell that never wrote one is read as the game reads it: black throughout.
+            ESM::Cell unwritten;
+            unwritten.mHasAmbi = false;
+            const Daylight bare = makeRoomLight(unwritten);
+            EXPECT_EQ(bare.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
+            EXPECT_EQ(bare.mAmbient, osg::Vec3f(0.0f, 0.0f, 0.0f));
+        }
+
         TEST(RtxLightBuilderTest, anAshStormBlowsAwayFromRedMountainAndNothingElseTurnsAtAll)
         {
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);
@@ -741,15 +797,28 @@ namespace Rtx
                 EXPECT_EQ(stormDirection(weather, standing), north) << "weather " << weather;
         }
 
-        /// Three kinds of record place a mesh and no light, and one kind is nonsense.
-        TEST(RtxLightBuilderTest, carriedNegativeAndUnlitRecordsCastNothing)
+        /// An unlit record places a mesh and no light, a negative one is nonsense, and a carryable
+        /// one burns where it lies.
+        ///
+        /// **Carryable is not carried.** A hundred and fifty-one of `Morrowind.esm`'s light records
+        /// can be picked up — every candle and torch among them — and the game lights a cell with
+        /// the ones lying in it: `MWClass::Light::insertObjectRendering` withholds a light source
+        /// for `OffDefault` and for nothing else. Refusing `Carry` here was every candle on every
+        /// table gone dark by the record route, while the graph route lit them.
+        TEST(RtxLightBuilderTest, anUnlitRecordCastsNothingAndACarryableOneBurnsWhereItLies)
         {
-            for (const std::int32_t flag : { ESM::Light::Carry, ESM::Light::Negative, ESM::Light::OffDefault })
-                EXPECT_FALSE(makeLight(makeRecord(100, 0x00FFFFFF, flag), osg::Vec3f()).has_value()) << "flag " << flag;
+            EXPECT_FALSE(castsWherePlaced(makeRecord(100, 0x00FFFFFF, ESM::Light::OffDefault)));
+            EXPECT_FALSE(makeLight(makeRecord(100, 0x00FFFFFF, ESM::Light::OffDefault), osg::Vec3f()).has_value());
 
-            // The flags that only say how a light animates leave it burning.
-            for (const std::int32_t flag : { ESM::Light::Flicker, ESM::Light::Fire, ESM::Light::Pulse })
+            EXPECT_FALSE(makeLight(makeRecord(100, 0x00FFFFFF, ESM::Light::Negative), osg::Vec3f()).has_value());
+
+            // The flags that say what a light is or how it animates leave it burning.
+            for (const std::int32_t flag :
+                { ESM::Light::Carry, ESM::Light::Dynamic, ESM::Light::Flicker, ESM::Light::Fire, ESM::Light::Pulse })
+            {
+                EXPECT_TRUE(castsWherePlaced(makeRecord(100, 0x00FFFFFF, flag))) << "flag " << flag;
                 EXPECT_TRUE(makeLight(makeRecord(100, 0x00FFFFFF, flag), osg::Vec3f()).has_value()) << "flag " << flag;
+            }
 
             // A file on disk that something else wrote, so a radius of nothing is data and not a
             // broken contract.

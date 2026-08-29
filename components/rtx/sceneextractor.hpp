@@ -115,8 +115,8 @@ namespace Rtx
         /// Geometry with no vertices or no triangles. Morrowind ships some.
         std::uint32_t mSkippedEmpty = 0;
 
-        /// Lamps taken off the graph. Zero in the harness, which has no `LightManager` and reads
-        /// the cell's `LIGH` records instead.
+        /// `LightSource`s taken off the graph — the `LIGH` references' own lamps, and not the lamp
+        /// a glowing surface is given for itself, which `SceneDesc::getLights` holds beside them.
         std::uint32_t mLights = 0;
 
         ExtractionStats& operator+=(const ExtractionStats& other);

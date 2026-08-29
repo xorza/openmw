@@ -106,20 +106,17 @@ namespace RtxTool
 
         /// How many cells the region actually found. Fewer than asked for at a coastline.
         std::uint32_t mCells = 0;
-
-        /// The cell's ambient, linear. Black for an exterior, whose sky is M5's.
-        osg::Vec3f mAmbient;
     };
 
-    /// Mirrors one cell's geometry through `extractor`, and reports what else it holds.
+    /// Mirrors a region's geometry and lamps through `extractor`, and reports what else it holds.
     ///
-    /// The content arrives by two routes and only one of them is the scene graph: lights are not
-    /// in it at all, because `NifOsg` never reads `NiLight`. They come off the `LIGH` records the
-    /// same references point at, and leave here in the report.
-    /// The same, over a square of exterior cells centred on `centre`.
+    /// **The lamps go into the graph and not into the report**, exactly as the game places them:
+    /// `NifOsg` never reads `NiLight`, so a `LIGH` reference's light is a `SceneUtil::LightSource`
+    /// hung beside its mesh, where every walk that mirrors the graph meets it again.
     ///
-    ///        Ignored for an interior, which has no neighbours. Cells the content files do not
-    ///        define are open sea and are skipped rather than missing.
+    /// @param centre the cell asked for, and the middle of the square of exterior cells read
+    ///        around it. An interior has no neighbours and is read alone. Cells the content files
+    ///        do not define are open sea and are skipped rather than missing.
     /// @param loaded which cells are already in the scene. Cells named here are left alone and
     ///        every cell this places is added to it, so a caller that keeps one across calls walks
     ///        into a region rather than reloading it.

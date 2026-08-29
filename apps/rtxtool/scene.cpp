@@ -1,5 +1,7 @@
 #include "scene.hpp"
 
+#include <osg/Vec3f>
+
 #include <cstdint>
 #include <ostream>
 
@@ -56,11 +58,12 @@ namespace RtxTool
             translucent += material.isTranslucent() ? 1 : 0;
             glowing += material.mEmissiveColour.length2() > 0.0f || material.mEmissive != Rtx::sNoIndex ? 1 : 0;
         }
+        const osg::Vec3f& ambient = staged.getLighting().mAmbient;
         out << "  cutout materials:     " << cutouts << ", " << tested << " of them alpha-tested outright\n"
             << "  translucent:          " << translucent << ", which a cutoff cannot answer for\n"
             << "  emissive materials:   " << glowing << '\n'
-            << "  lights:               " << staged.getScene().getLights().size() << " casting, ambient "
-            << report.mAmbient.x() << ", " << report.mAmbient.y() << ", " << report.mAmbient.z() << '\n'
+            << "  lights:               " << staged.getScene().getLights().size() << " casting, ambient " << ambient.x()
+            << ", " << ambient.y() << ", " << ambient.z() << '\n'
             << "  deforming drawables:  " << stats.mDeformed << '\n'
             << "  flattened ground:     " << stats.mComposites << " chunks past a cell\n"
             << "  emitters:             " << stats.mEmitters << " holding " << stats.mSprites << " live particles\n"

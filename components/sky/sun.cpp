@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <osg/Math>
+
 namespace Sky
 {
     namespace
@@ -127,5 +129,13 @@ namespace Sky
         colour += osg::componentMultiply(colour, ambient);
 
         return osg::Vec3f(std::min(1.0f, colour.x()), std::min(1.0f, colour.y()), std::min(1.0f, colour.z()));
+    }
+
+    SunPlacement roomSun()
+    {
+        osg::Vec3f position(-1.0f, osg::DegreesToRadians(45.0f), osg::DegreesToRadians(45.0f));
+        position.normalize();
+
+        return SunPlacement{ .mPosition = position, .mDirection = -position, .mShare = 1.0f, .mNight = false };
     }
 }

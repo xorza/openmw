@@ -18,6 +18,7 @@
 
 namespace ESM
 {
+    struct Cell;
     struct Light;
     struct Region;
 }
@@ -29,12 +30,20 @@ namespace SceneUtil
 
 namespace Rtx
 {
+    /// Whether a `LIGH` reference standing in a cell casts at all.
+    ///
+    /// **The game's rule, and the one place the renderer states it.**
+    /// `MWClass::Light::insertObjectRendering` builds no light source for a record flagged **off by
+    /// default** — an unlit brazier is a mesh and nothing else — and every other record burns where
+    /// it stands, a torch on a table included: *carryable* says what an inventory may do with it and
+    /// nothing about the cell it lies in. Both routes to a light read this, so a graph built here
+    /// and a record read here cannot come to place different lamps.
+    bool castsWherePlaced(const ESM::Light& record);
+
     /// The light a `LIGH` reference casts, or nothing where it casts none.
     ///
-    /// Two kinds of record place no light. A **carried** one is a torch in a pack, lit only when
-    /// something equips it, and an **off by default** one does not burn while it sits in a cell.
-    ///
-    /// A **negative** record is refused further down. It *subtracts* illumination — a trick
+    /// A record that does not cast where it stands — `castsWherePlaced` — places no light, and a
+    /// **negative** one is refused further down. It *subtracts* illumination — a trick
     /// available to a renderer accumulating into a framebuffer and meaningless to anything that
     /// traces a ray to an emitter — and this describes it as the negative colour the game's scene
     /// graph builds, so the overload below refuses both paths with one test.
@@ -380,6 +389,20 @@ namespace Rtx
     /// rather than the extinction it becomes, because those are two different curves and the engine
     /// converts after blending.
     Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour);
+
+    /// A room's light, out of its own `AMBI` record — with `makeDaylight`, the other of the two
+    /// places a `Daylight` is built.
+    ///
+    /// **A room has a sun, and it is the game's.** `RenderingManager::configureAmbient` lights every
+    /// interior with the record's sunlight colour as a directional light from `Sky::roomSun`, at
+    /// full share and never at night, and the game's traced frame reads exactly that back out of the
+    /// rasterizer's state.
+    ///
+    /// The sky is the fog colour at both ends, since a room has no dome and its air stands in
+    /// wherever a ray gets out. The stars are nought and the exposure bias is one, which is what the
+    /// game holds a room at. The record is read as the game reads it, whether or not the cell wrote
+    /// one: a room with no `AMBI` is lit black.
+    Daylight makeRoomLight(const ESM::Cell& cell);
 
     /// What the air leaves of a body in the sky, per channel.
     ///

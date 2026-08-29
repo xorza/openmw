@@ -33,7 +33,8 @@ namespace RtxTool
         /// whose fall settles rather than splashes. `VisibilityConstants::mRainOnWater`.
         float mRainOnWater = 0.0f;
 
-        /// The sun and the sky over an exterior. An interior leaves this dark.
+        /// The sun and the sky over an exterior, or a room's own out of its `AMBI` record —
+        /// `Rtx::makeDaylight` and `Rtx::makeRoomLight`, the two places one is built.
         Rtx::Daylight mDaylight;
 
         /// Whether this cell has a sky over it.

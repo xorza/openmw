@@ -16,7 +16,6 @@
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/sceneutil/lightcommon.hpp>
@@ -175,12 +174,6 @@ namespace RtxTool
         if (terrain != nullptr && !root.containsNode(terrain))
             root.addChild(terrain);
 
-        // Interiors were authored against a renderer with no bounce, so the cell's own ambient
-        // is most of what lights one. An exterior's `AMBI` is the weather system's business and
-        // is not read here.
-        if (!centre.isExterior() && centre.mHasAmbi)
-            report.mAmbient = Rtx::decodeColour(centre.mAmbi.mAmbient);
-
         for (const ESM::Cell* cell : arrived)
         {
             LoadedCell& entry = loaded[keyOf(*cell)];
@@ -262,7 +255,12 @@ namespace RtxTool
                 // **And it happens whether or not the model went to the props.** A lantern whose
                 // flame has to be instanced somewhere it can run still stands where it stood and
                 // still lights the street; attaching after the prop test lost every one of them.
-                if (object.mLight != nullptr)
+                //
+                // **And not at all for a record that does not cast where it stands.** The game builds
+                // no light source for one (`Rtx::castsWherePlaced` says which), so there is none in
+                // its graph for a walk to find — and a `LightSource` carries no flag the mirror could
+                // read the refusal off, which is why the graph route decides it here.
+                if (object.mLight != nullptr && Rtx::castsWherePlaced(*object.mLight))
                     // **The mirror does not filter on it**, so it decides nothing here. It is what
                     // the game marks a light node with, so the two graphs look the same to anything
                     // that ever does.
@@ -293,14 +291,16 @@ namespace RtxTool
         // Left at never here, and `StagedWorld` writes what its own plane answers.
         const float level = -std::numeric_limits<float>::infinity();
 
-        // An interior's sky is never seen and its sun never shines, so the daylight stays dark.
-        // Its air is its own, out of the same `AMBI` its ambient came from.
+        // **A room is lit out of its own record, sun included.** `Rtx::makeRoomLight` is what the
+        // game does with an `AMBI`, so a `shot` of a room stands under the light a played frame
+        // does; the weather and the hour are an exterior's business and decide nothing here.
         if (!centre.isExterior())
-            return RegionLoad{ .mLighting = CellLighting{ .mAmbient = report.mAmbient,
-                                   .mWaterLevel = level,
-                                   .mDaylight = {},
-                                   .mFog = Rtx::interiorFog(centre) },
+        {
+            const Rtx::Daylight room = Rtx::makeRoomLight(centre);
+            return RegionLoad{ .mLighting
+                = CellLighting{ .mAmbient = room.mAmbient, .mWaterLevel = level, .mDaylight = room, .mFog = room.mFog },
                 .mReport = std::move(report) };
+        }
 
         const Rtx::Daylight daylight = Rtx::makeDaylight(weather, hour);
 
