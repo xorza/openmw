@@ -2596,6 +2596,83 @@ namespace Rtx
             EXPECT_EQ(render(flipped), render(tilted)) << "which way the normals were authored is not information";
         }
 
+        /// A leaf is lit through its back, and nothing else is.
+        ///
+        /// The wall stands square to the camera and the sun is put behind it. A solid takes nothing
+        /// from there and the pixel is black; a sheet with a mask takes `SHEET_TRANSMISSION` of
+        /// what the same sun would give its front. The sheet's texture is white and whole, so its
+        /// albedo is one: the front under an irradiance of two is 2 / pi = 0.63662, and the back is
+        /// half that, 0.31831 — the number the sun test reaches for a front of albedo a half. A lamp
+        /// behind it is the same arithmetic on the lamp test's falloff: 4000 * 3.99760e-4 / pi
+        /// = 0.50898 on the front, and half of it on the back.
+        ///
+        /// The two controls say which fact each is. The same card not doubled is a solid, and a
+        /// doubled card with no mask is cloth: a tabard is seen from the side it is lit from. Both
+        /// are black from behind.
+        TEST_F(RtxVisibilityTest, aLeafIsLitThroughItsBackAndClothAndSolidsAreNot)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            TestTexture white;
+            makeOpaqueSheet(white);
+            const std::span<const TextureData> textures(&white.mData, 1);
+
+            const osg::Vec3f behind(0.0f, 50.0f, 0.0f);
+            const osg::Vec3f before(0.0f, -50.0f, 0.0f);
+
+            const auto render = [&](bool sheet, bool masked, const osg::Vec3f& lit, bool lamp) {
+                SceneDesc scene;
+
+                Material material;
+                if (masked)
+                {
+                    material.mDiffuse = scene.addTexture(VFS::Path::NormalizedView("sheet.dds"));
+                    material.mAlphaMode = AlphaMode::Cutout;
+                    material.mAlphaRef = 0.5f;
+                }
+
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices, sheet),
+                    .mMaterial = scene.addMaterial(material) });
+
+                if (lamp)
+                    scene.addLight(Light{
+                        .mPosition = lit,
+                        .mIntensity = osg::Vec3f(4000.0f, 4000.0f, 4000.0f),
+                        .mReach = 500.0f,
+                    });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+                camera.mSunPosition = lit / lit.length();
+                camera.mSunIrradiance = lamp ? osg::Vec3f() : osg::Vec3f(2.0f, 2.0f, 2.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+
+                std::vector<std::uint8_t> pixels;
+                EXPECT_GT(
+                    countHits(scene, masked ? textures : std::span<const TextureData>(), camera, size, pixels), 0u);
+                return mRadiance[centre];
+            };
+
+            const float front = 2.0f * Shaders::INV_PI;
+
+            EXPECT_NEAR(render(true, true, before, false), front, 1e-3f) << "a leaf's front is a Lambert front";
+            EXPECT_NEAR(render(true, true, behind, false), front * Shaders::SHEET_TRANSMISSION, 1e-3f)
+                << "and its back takes the sun at the transmission";
+
+            EXPECT_EQ(render(false, true, behind, false), 0.0f) << "a solid with the same mask takes nothing";
+            EXPECT_EQ(render(true, false, behind, false), 0.0f) << "and neither does cloth: doubled, but no mask";
+
+            const float lamplit = 4000.0f * 3.99760e-4f * Shaders::INV_PI;
+            EXPECT_NEAR(render(true, true, before, true), lamplit, 1e-3f) << "a lamp before the leaf";
+            EXPECT_NEAR(render(true, true, behind, true), lamplit * Shaders::SHEET_TRANSMISSION, 1e-3f)
+                << "is the same lamp behind it, at the transmission";
+            EXPECT_EQ(render(false, true, behind, true), 0.0f) << "and a solid takes nothing from it";
+        }
+
         /// A surface that glows lights its neighbours through the lamp it is given, and not through
         /// the bounce as well.
         ///

@@ -38,6 +38,12 @@ namespace Rtx
         Index mIndexOffset = 0;
         Index mIndexCount = 0;
 
+        /// Whether the content doubled every triangle of this mesh with a reversed twin, which is
+        /// how Morrowind says a card is seen from either face. `SheetFold` says why the twins are
+        /// gone and this is what is left of them; a shader reads it as leave to light the mesh
+        /// through its back.
+        bool mSheet = false;
+
         Index getTriangleCount() const { return mIndexCount / 3; }
     };
 
@@ -415,8 +421,11 @@ namespace Rtx
         /// Throws where the mesh is longer than a block. **Named rather than asserted**, because a
         /// vertex count comes out of a content file and a run that straddled a block would be
         /// written across two device allocations that are not next to each other.
+        ///
+        /// `sheet` is `MeshRange::mSheet`, and it is the caller's finding: the scene keeps it and
+        /// draws no conclusion of its own from the triangles it was handed.
         Index addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-            std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices);
+            std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, bool sheet = false);
 
         /// Replaces one mesh's positions and normals, keeping its topology and its index.
         ///

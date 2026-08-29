@@ -329,6 +329,23 @@ namespace Rtx::Shaders
     /// visible in shade, and a glowing mushroom is not as bright as the sun on it.
     RTX_CONST float EMISSIVE_INTENSITY = 16.0;
 
+    /// What light on the far side of a leaf is worth to the side being looked at, against the same
+    /// light on the near side.
+    ///
+    /// **A leaf is a sheet with a mask, and it is the one surface in the game lit from behind.**
+    /// The content marks it exactly — a card doubled for its back, under an alpha property — and a
+    /// real leaf passes about half of what it reflects, so a canopy against the sun glows through
+    /// rather than going black. The same albedo on either side: what colours the light through a
+    /// leaf is the leaf. Half, rather than the tenth a leaf transmits absolutely, because the term
+    /// scales the surface's own diffuse response and not the sun; the reference implementation
+    /// measured backlit foliage a quarter brighter at this value and no noisier.
+    ///
+    /// **The far side's light is the term, and the shadow it would have cast stays whole.** What a
+    /// leaf lets through to the ground under it arrives by the bounce that lands on the leaf's
+    /// underside and gathers the sun there — so a shadow ray thinning itself through the leaf's body
+    /// as well would deliver the same light twice.
+    RTX_CONST float SHEET_TRANSMISSION = 0.5;
+
     /// How far a ray carries fog before whatever is behind it stops mattering.
     ///
     /// Four hundred metres. Past this the transmittance of even the thinnest weather is a rounding
@@ -726,6 +743,11 @@ namespace Rtx::Shaders
     {
         uint mVertexOffset;
         uint mIndexOffset;
+
+        /// One where the content doubled every triangle of this mesh for its back, which is
+        /// `Rtx::MeshRange::mSheet`. With a mask on its material, that is a leaf, and
+        /// `SHEET_TRANSMISSION` says what the light on its far side is worth to it.
+        uint mSheet;
     };
 
     struct GpuInstance
@@ -980,7 +1002,7 @@ namespace Rtx::Shaders
     // that produces a plausible wrong image rather than an error. GLSL is pinned separately, by the
     // `--scalar-block-layout` the build hands the validator.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
-    static_assert(sizeof(GpuMesh) == 8, "GpuMesh must be scalar-packed on every side");
+    static_assert(sizeof(GpuMesh) == 12, "GpuMesh must be scalar-packed on every side");
     static_assert(sizeof(GpuInstance) == 60, "GpuInstance must be scalar-packed on every side");
     static_assert(sizeof(GpuLight) == 32, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");

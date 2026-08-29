@@ -34,6 +34,16 @@ bool isTranslucent(GpuMaterial material)
     return material.mOpacity < 1.0;
 }
 
+/// Whether a material carries a mask a ray is tested against: a cutoff, a texture to read it off,
+/// and no translucency — a pane is there everywhere, thinly, and has no holes to find.
+///
+/// The host's `Material::isCutout`, asked again here because the build marks an instance by it
+/// and the shader must agree about which candidates it meant.
+bool hasMask(GpuMaterial material)
+{
+    return !isTranslucent(material) && material.mAlphaCutoff > 0.0 && material.mDiffuse != NO_TEXTURE;
+}
+
 /// How much of a surface is there, before its texture is read.
 ///
 /// **The material's own alpha and the placement's fade**, which are two different facts: every
@@ -90,18 +100,14 @@ bool alphaPasses(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, ve
     const GpuInstance instance = instances[instanceIndex];
     const GpuMaterial material = materials[instance.mMaterial];
 
-    // **Met and not tested, in the two cases where there is nothing to test.** A cutoff asks where
-    // the holes in a mask are. A translucent material has none — it is there everywhere, thinly —
-    // and a material with no diffuse texture has no mask at all, which the sample below would answer
-    // for by reading a descriptor nothing bound.
-    //
-    // Both arrive here because forcing an instance non-opaque says nothing about its material: a
-    // pane of glass is forced for its own alpha, and an actor is forced for the fade its placement
-    // carries. Neither promises a mask.
+    // **Met and not tested where there is nothing to test.** A material with no mask arrives here
+    // because forcing an instance non-opaque says nothing about its material: a pane of glass is
+    // forced for its own alpha, and an actor is forced for the fade its placement carries. Neither
+    // promises a mask, and a texture nothing bound must not be read for one.
     //
     // **The material and not the placement.** An actor the game is fading keeps every hole in its
     // mask, because a fade is not a hole — what the fade does to what is left is measured elsewhere.
-    if (isTranslucent(material) || material.mDiffuse == NO_TEXTURE)
+    if (!hasMask(material))
         return true;
 
     vec2 uv[3];
@@ -260,6 +266,15 @@ struct Surface
     /// `sampledOpacity`, which is what a shadow ray asks of the same surface through
     /// `candidateTransmittance` — so the two cannot haze one surface two ways.
     float mOpacity;
+
+    /// What light on the far side of this surface is worth to the side the ray met, against the
+    /// same light on the near side. Nought for everything solid; `SHEET_TRANSMISSION` for a leaf.
+    ///
+    /// **Two facts and neither alone is a leaf.** The mesh says the content doubled it for its
+    /// back — `GpuMesh::mSheet` — and the material says it carries a mask. A tabard is doubled and
+    /// has none, and is cloth lit from the side it is seen from; a pane carries a mask and is not
+    /// doubled, and passes light by its opacity rather than by this.
+    float mTransmission;
 };
 
 /// Traverses, and resolves whatever it hit.
@@ -281,6 +296,7 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     surface.mDistance = frame.mFar;
     surface.mFootprint = 0.0;
     surface.mOpacity = 1.0;
+    surface.mTransmission = 0.0;
 
     rayQueryEXT query;
     // No blanket opaque flag: the per-instance bits the build set from each material are what decide
@@ -305,8 +321,8 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     surface.mInstance = rayQueryGetIntersectionInstanceCustomIndexEXT(query, true);
 
     const GpuInstance instance = instances[surface.mInstance];
-    const uvec3 corner
-        = triangleCorners(meshes[instance.mMesh], rayQueryGetIntersectionPrimitiveIndexEXT(query, true));
+    const GpuMesh mesh = meshes[instance.mMesh];
+    const uvec3 corner = triangleCorners(mesh, rayQueryGetIntersectionPrimitiveIndexEXT(query, true));
     const vec3 weight = cornerWeights(rayQueryGetIntersectionBarycentricsEXT(query, true));
 
     const mat4x3 toWorld = rayQueryGetIntersectionObjectToWorldEXT(query, true);
@@ -342,6 +358,8 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     const GpuMaterial material = materials[instance.mMaterial];
     surface.mWater = material.mKind == KIND_WATER;
     surface.mEmissiveColour = material.mEmissiveColour;
+
+    surface.mTransmission = mesh.mSheet != 0u && hasMask(material) ? SHEET_TRANSMISSION : 0.0;
 
     vec2 uv[3];
     triangleUvs(corner, uv);

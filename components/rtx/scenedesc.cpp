@@ -32,7 +32,7 @@ namespace Rtx
     }
 
     Index SceneDesc::addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices)
+        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, bool sheet)
     {
         assert(!positions.empty());
         assert(normals.empty() || normals.size() == positions.size());
@@ -75,6 +75,7 @@ namespace Rtx
             .mVertexCount = vertices.mCount,
             .mIndexOffset = elements.mOffset,
             .mIndexCount = elements.mCount,
+            .mSheet = sheet,
         };
 
         writeMesh(range, positions, normals, texCoords, indices);

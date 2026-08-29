@@ -165,11 +165,25 @@ Reservoir noLamps()
 /// march into the same one, so a single ray stands for the whole march rather than for one place in
 /// it, and the estimator is unbiased over the sum it was accumulated from.
 ///
+/// The cosine a diffuse surface takes a light at, with what a sheet takes from its far side.
+///
+/// **One statement of what "facing" means, used by the sun, the moons and every lamp.** A solid
+/// takes the near side and nothing from behind; a sheet with a mask — a leaf — takes the far side
+/// at `SHEET_TRANSMISSION` of the near, `GpuMesh::mSheet` having said so. Never both at once: a
+/// direction is on one side of a plane or the other.
+float litCosine(vec3 normal, vec3 towards, float transmission)
+{
+    const float cosine = dot(normal, towards);
+    return max(cosine, 0.0) + transmission * max(-cosine, 0.0);
+}
+
 /// @param normal the surface's, or nothing at all for a point in a medium — the air and a puff have
 ///        no direction to face away from, so every lamp reaching them counts whole.
 /// @param scale what this asker's own share of a lamp is worth: `INV_PI` for a Lambert surface,
 ///        `INV_FOUR_PI` times a step's weight for the air.
-void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, float scale)
+/// @param transmission what the far side of a sheet is worth, out of `Surface::mTransmission`.
+///        Nought for a solid and for a point in a medium, which has no far side.
+void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, float scale, float transmission)
 {
     const bool facing = dot(normal, normal) > 0.0;
 
@@ -180,7 +194,7 @@ void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, 
         if (!(lamp.mReaching > 0.0))
             continue;
 
-        const float cosine = facing ? dot(normal, lamp.mTowards) : 1.0;
+        const float cosine = facing ? litCosine(normal, lamp.mTowards, transmission) : 1.0;
         if (cosine <= 0.0)
             continue;
 

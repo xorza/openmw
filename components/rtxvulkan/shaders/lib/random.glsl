@@ -46,6 +46,14 @@ const uint SEED_LAMPS_FOG = 0x58u;
 /// And one for the lamp a layer of sprites holds, beside the sun's and the sky's own rays there.
 const uint SEED_LAMPS_SPRITE = 0x59u;
 
+/// And one for which face of a sheet the eye's bounce leaves by.
+///
+/// **Beside the bounce's own pair and not out of it.** The direction is drawn from the tile's
+/// `STREAM_BOUNCE`, which has two channels and no third; a side taken from one of them would tie
+/// which face is asked to where in the hemisphere it is asked, and a sheet's two faces would be
+/// sampled as two halves of one hemisphere rather than as two hemispheres.
+const uint SEED_SHEET_SIDE = 0x5Au;
+
 /// How far each stream's sequence advances between frames.
 ///
 /// **An additive recurrence with an irrational step**, which is the cheapest sequence whose every

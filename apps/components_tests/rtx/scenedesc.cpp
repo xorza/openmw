@@ -50,6 +50,11 @@ namespace Rtx
 
             EXPECT_EQ(scene.getMeshPositions(second)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
             EXPECT_EQ(scene.getMeshIndices(second)[5], 3u);
+
+            // And whether the caller found it doubled for its back, which the scene keeps and
+            // never works out for itself.
+            EXPECT_FALSE(scene.getMeshes()[first].mSheet);
+            EXPECT_TRUE(scene.getMeshes()[scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, true)].mSheet);
         }
 
         /// A mesh without normals or texture coordinates must still leave the attribute buffers as

@@ -1527,7 +1527,14 @@ namespace Rtx
         if (texCoordArray != nullptr && texCoordArray->size() == arrays.mPositions.size())
             texCoords = std::span(texCoordArray->asVector());
 
-        const Index mesh = mScene.addMesh(arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch);
+        // Before the mesh is written, so the copy the content drew for a card's back never reaches
+        // a structure. Once per drawable and never for a pose: a rig moves the two copies together,
+        // so the pairs found in the bind pose are the pairs.
+        const bool sheet = mSheetFold.fold(arrays.mPositions, mIndexScratch);
+        if (sheet)
+            ++stats.mSheets;
+
+        const Index mesh = mScene.addMesh(arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, sheet);
         mMeshes.emplace(&drawable, Known{ .mIndex = mesh, .mEpoch = mEpoch });
         ++stats.mMeshesAdded;
         if (deforming)

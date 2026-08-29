@@ -144,6 +144,7 @@ if (OPENMW_RTX)
         rtx/sceneextractor.cpp
         rtx/sceneuploader.cpp
         rtx/shadingmap.cpp
+        rtx/sheetfold.cpp
         rtx/spanallocator.cpp
         rtx/spritelight.cpp
         rtx/spriteshade.cpp

@@ -418,7 +418,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             }
 
             // Straight up, because a particle has no normal and the sky is above it either way.
-            skyThrough = skyReaching(sprite.mPosition, skyward, pixelKey(pixel) + SEED_SKY_REACHING);
+            skyThrough = skyReaching(sprite.mPosition, skyward, 0.0, pixelKey(pixel) + SEED_SKY_REACHING);
 
             // **The lamp that matters where the layer starts, and its answer for all of them.** The
             // reservoir picks by what a lamp delivers here, so the one traced to is the one the
@@ -426,7 +426,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             uint lampState = randomSeed(pixelKey(pixel) + SEED_LAMPS_SPRITE);
 
             Reservoir lamps = noLamps();
-            weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), INV_FOUR_PI);
+            weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), INV_FOUR_PI, 0.0);
 
             lampThrough = lampVisible(lamps, vec2(randomNext(lampState), randomNext(lampState)));
             lampToward = lamps.mTowards;

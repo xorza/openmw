@@ -28,7 +28,9 @@
 /// @param seed which draw sequence the lamp reservoir steps. **One per depth of the path**, because
 ///        a bounce shades a second surface and two reservoirs stepping one sequence would keep
 ///        correlated lamps at both ends of it.
-vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
+/// @param transmission what a light on the far side of the surface is worth to this side, which
+///        is `Surface::mTransmission`: nought for a solid, `SHEET_TRANSMISSION` for a leaf.
+vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uint seed)
 {
     vec3 radiance = vec3(0.0);
 
@@ -62,7 +64,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     // none and leave the penumbra — the only part of the integral the cone is wide enough to
     // matter to — no better resolved for it.
 
-    const float sunCosine = dot(normal, frame.mSunPosition);
+    const float sunCosine = litCosine(normal, frame.mSunPosition, transmission);
     if (sunCosine > 0.0 && frame.mSunIrradiance != vec3(0.0))
     {
         const float through
@@ -82,7 +84,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     // the hours around dawn, so a daylit frame reaches `mIrradiance` of nothing and traces neither.
     for (uint moon = 0u; moon < 2u; ++moon)
     {
-        const float moonCosine = dot(normal, frame.mMoons[moon].mDirection);
+        const float moonCosine = litCosine(normal, frame.mMoons[moon].mDirection, transmission);
         if (moonCosine <= 0.0 || frame.mMoons[moon].mIrradiance == vec3(0.0))
             continue;
 
@@ -111,7 +113,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, uint seed)
     // **With one lamp in the cell it is exactly the arithmetic that was here before**: the sum is
     // that lamp's weight, the ratio is one, and what is left is the term that was always there.
     Reservoir kept = noLamps();
-    weighLamps(kept, state, position, normal, INV_PI);
+    weighLamps(kept, state, position, normal, INV_PI, transmission);
 
     radiance += lampsThrough(kept, lampDraw);
 
@@ -193,9 +195,25 @@ vec3 shadeSurface(Surface surface, vec3 incoming, uint seed)
     // (`objects.frag:244`): added after the multiply, so it glows through whatever the surface is
     // made of rather than being tinted by it.
     return surface.mAlbedo
-        * (incoming + gather(surface.mPosition, surface.mNormal, surface.mFootprint, seed)
+        * (incoming
+            + gather(surface.mPosition, surface.mNormal, surface.mFootprint, surface.mTransmission, seed)
             + surface.mEmissiveColour * EMISSIVE_INTENSITY)
         + surface.mEmitted;
+}
+
+/// Which face of a surface a diffuse sample leaves by, and what the sample is then worth.
+///
+/// **A sheet has two hemispheres and one ray.** Its diffuse response is the near hemisphere whole
+/// and the far one at `transmission`, so the far side is taken with probability
+/// `transmission / (1 + transmission)` and either sample is weighed by `1 + transmission` — which
+/// is exactly the two integrals' sum, and one ray however many faces there are. A solid never
+/// draws: its weight is one and its normal is its own.
+///
+/// @param draw one number in `[0, 1)`, read only where there is a far side to choose.
+vec3 sampledFace(vec3 normal, float transmission, float draw, out float weight)
+{
+    weight = 1.0 + transmission;
+    return transmission > 0.0 && draw * weight > 1.0 ? -normal : normal;
 }
 
 /// How fast a bounce ray's cone widens, against a primary ray's.
@@ -216,7 +234,12 @@ const float BOUNCE_SPREAD = 1.0;
 /// **One sample, and it is binary.** That is as noisy as a single sample can be, and it multiplies a
 /// term already carried by one — so it rides the same filter, and the estimator is unbiased where a
 /// cheaper guess would not be.
-float skyReaching(vec3 position, vec3 normal, uint seed)
+///
+/// **A sheet asks both faces**, by `sampledFace`: a leaf in the open sees the sky over its back as
+/// well, at `transmission` of what it sees over its front, so what reaches it runs to
+/// `1 + transmission` of a solid's whole. The side is drawn after the direction and only where
+/// there is one to draw, so a solid's sequence is what it was.
+float skyReaching(vec3 position, vec3 normal, float transmission, uint seed)
 {
     // **A room traces nothing**, which is most of what this costs: its ambient is a fill rather than
     // the sky, so `pathEnd` would throw the answer away and the ray is not spent to get it.
@@ -226,7 +249,10 @@ float skyReaching(vec3 position, vec3 normal, uint seed)
     uint state = randomSeed(seed);
     const vec2 draw = vec2(randomNext(state), randomNext(state));
 
-    return lightThrough(position, cosineDirection(normal, draw), frame.mFar);
+    float weight;
+    const vec3 face = sampledFace(normal, transmission, transmission > 0.0 ? randomNext(state) : 0.0, weight);
+
+    return weight * lightThrough(position, cosineDirection(face, draw), frame.mFar);
 }
 
 /// What reaches a surface from everything that is not a light: one diffuse bounce.
@@ -240,7 +266,18 @@ float skyReaching(vec3 position, vec3 normal, uint seed)
 /// it is by far the largest source in the scene, and a surface facing it should be lit by it.
 vec3 bounceLight(Surface surface, uvec2 pixel)
 {
-    const vec3 towards = cosineDirection(surface.mNormal, unitPair(pixel, STREAM_BOUNCE));
+    // A sheet bounces off either face, and `SEED_SHEET_SIDE` says why the side is not drawn from
+    // the pair the direction is.
+    float weight;
+    float side = 0.0;
+    if (surface.mTransmission > 0.0)
+    {
+        uint state = randomSeed(pixelKey(pixel) + SEED_SHEET_SIDE);
+        side = randomNext(state);
+    }
+    const vec3 face = sampledFace(surface.mNormal, surface.mTransmission, side, weight);
+
+    const vec3 towards = cosineDirection(face, unitPair(pixel, STREAM_BOUNCE));
     const Surface hit
         = trace(surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, MASK_SOLID);
 
@@ -252,9 +289,10 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     // them is the depth. Without it a flooded floor reads brighter than the same floor seen from
     // over the surface, which is the disagreement M6 closed.
     if (!hit.mHit)
-        return skyGlow(towards) * daylightReaching(surface.mPosition);
+        return weight * skyGlow(towards) * daylightReaching(surface.mPosition);
 
-    const float reaching = skyReaching(hit.mPosition, hit.mNormal, pixelKey(pixel) + SEED_SKY_REACHING);
+    const float reaching
+        = skyReaching(hit.mPosition, hit.mNormal, hit.mTransmission, pixelKey(pixel) + SEED_SKY_REACHING);
 
     // **Its glow is not counted here, because a lamp already stands for it.** Every surface that
     // glows is given one by the extractor — `Rtx::emissiveLight` — and that lamp reaches this
@@ -265,7 +303,7 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     unlit.mEmissiveColour = vec3(0.0);
     unlit.mEmitted = vec3(0.0);
 
-    return shadeSurface(unlit, pathEnd(hit.mPosition, reaching), pixelKey(pixel) + SEED_LAMPS_BOUNCE);
+    return weight * shadeSurface(unlit, pathEnd(hit.mPosition, reaching), pixelKey(pixel) + SEED_LAMPS_BOUNCE);
 }
 
 #endif

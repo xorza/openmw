@@ -2227,6 +2227,49 @@ namespace Rtx
             EXPECT_FALSE(extractOne(false));
         }
 
+        /// A card the content doubled for its back reaches the scene as one copy, marked a sheet.
+        ///
+        /// Eight vertices and four triangles, because that is how a leaf is spelled in the files:
+        /// the back has vertices of its own, so the pair is found by position and not by index.
+        /// `SheetFold` says why the copy goes; this says the extractor asks it, keeps its answer on
+        /// the mesh, and counts it.
+        TEST(RtxSceneExtractorTest, aCardDoubledForItsBackIsFoldedToOneCopyAndMarkedASheet)
+        {
+            osg::ref_ptr<osg::Geometry> card = new osg::Geometry;
+            card->setVertexArray(makePositions({
+                osg::Vec3f(0.0f, 0.0f, 0.0f),
+                osg::Vec3f(1.0f, 0.0f, 0.0f),
+                osg::Vec3f(1.0f, 1.0f, 0.0f),
+                osg::Vec3f(0.0f, 1.0f, 0.0f),
+                osg::Vec3f(0.0f, 0.0f, 0.0f),
+                osg::Vec3f(1.0f, 0.0f, 0.0f),
+                osg::Vec3f(1.0f, 1.0f, 0.0f),
+                osg::Vec3f(0.0f, 1.0f, 0.0f),
+            }));
+            card->addPrimitiveSet(makeTriangles({ 0, 1, 2, 0, 2, 3, 6, 5, 4, 7, 6, 4 }));
+            describe(*card->getOrCreateStateSet());
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+            const ExtractionStats stats = extractor.extract(*card, osg::Matrixf::identity(), 0);
+
+            EXPECT_EQ(stats.mSheets, 1u);
+            ASSERT_EQ(scene.getMeshes().size(), 1u);
+            EXPECT_TRUE(scene.getMeshes()[0].mSheet);
+            EXPECT_EQ(scene.getMeshes()[0].getTriangleCount(), 2u) << "the back is gone";
+            EXPECT_EQ(scene.getMeshes()[0].mVertexCount, 8u) << "its vertices stay; nothing points at them";
+
+            // A plain quad is a quad: nothing paired, nothing dropped, not a sheet.
+            osg::ref_ptr<osg::Geometry> quad = makeQuad();
+            describe(*quad->getOrCreateStateSet());
+
+            Rtx::SceneDesc plain;
+            SceneExtractor other(plain);
+            EXPECT_EQ(other.extract(*quad, osg::Matrixf::identity(), 0).mSheets, 0u);
+            EXPECT_FALSE(plain.getMeshes()[0].mSheet);
+            EXPECT_EQ(plain.getMeshes()[0].getTriangleCount(), 2u);
+        }
+
         /// A surface nothing described is a canary rather than a guess.
         ///
         /// Every state set the content pipeline produces carries a description; one that does not

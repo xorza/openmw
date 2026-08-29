@@ -73,7 +73,8 @@ namespace RtxTool
             << "  model would not load: " << report.mUnreadable << '\n'
             << "  unreadable drawables: " << stats.mSkippedUnknown << '\n'
             << "  empty geometry:       " << stats.mSkippedEmpty << '\n'
-            << "  undescribed surfaces: " << stats.mUndescribedMaterials << '\n';
+            << "  undescribed surfaces: " << stats.mUndescribedMaterials << '\n'
+            << "  sheets:               " << stats.mSheets << " of the meshes, doubled for their backs\n";
 
         if (twice)
         {

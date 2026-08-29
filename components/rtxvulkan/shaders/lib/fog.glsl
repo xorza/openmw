@@ -410,7 +410,7 @@ vec4 fogWeatherAlong(vec3 origin, vec3 direction, float distance, float offset, 
             // drop, and dropping them bought 3% on Balmora and nothing at all in an interior: at
             // this layer's scale height there is no thin fraction of the ray to skip.
             scattered += weight * (frame.mFogColour + sun + moons);
-            weighLamps(lamps, lampState, position, vec3(0.0), INV_FOUR_PI * weight);
+            weighLamps(lamps, lampState, position, vec3(0.0), INV_FOUR_PI * weight, 0.0);
             transmittance -= weight;
         }
     }

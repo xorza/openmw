@@ -154,14 +154,17 @@ namespace Rtx
                 range.mVertexOffset, scene.getTexCoords().subspan(range.mVertexOffset, range.mVertexCount));
         }
 
-        // **Whole, and it is eight bytes a slot.** A mesh arriving moves nothing already in this,
+        // **Whole, and it is twelve bytes a slot.** A mesh arriving moves nothing already in this,
         // but sizing it to the scene means growing it, and growing means writing it — so the rows
         // that did not change are written again for the price of not having to know which did.
         mMeshScratch.clear();
         mMeshScratch.reserve(scene.getMeshes().size());
         for (const MeshRange& mesh : scene.getMeshes())
-            mMeshScratch.push_back(
-                Shaders::GpuMesh{ .mVertexOffset = mesh.mVertexOffset, .mIndexOffset = mesh.mIndexOffset });
+            mMeshScratch.push_back(Shaders::GpuMesh{
+                .mVertexOffset = mesh.mVertexOffset,
+                .mIndexOffset = mesh.mIndexOffset,
+                .mSheet = mesh.mSheet ? 1u : 0u,
+            });
 
         reserve(mMeshes, mMeshScratch.size() * sizeof(Shaders::GpuMesh));
         mMeshes.write(std::span<const Shaders::GpuMesh>(mMeshScratch));
