@@ -17,11 +17,11 @@
 #include <osgParticle/Shooter>
 
 #include <components/fallback/fallback.hpp>
-#include <components/sceneutil/material.hpp>
 #include <components/nifosg/particle.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/controller.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/sceneutil/visitor.hpp>
 #include <components/settings/values.hpp>

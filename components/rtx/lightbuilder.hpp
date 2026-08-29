@@ -7,7 +7,6 @@
 #include <string>
 #include <string_view>
 
-
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
@@ -335,7 +334,6 @@ namespace Rtx
     /// @param floats,strings the tables to look in — `Fallback::Map`'s own, or a test's.
     void requireWeather(std::string_view weather, const std::map<std::string, float, std::less<>>& floats,
         const std::map<std::string, std::string, std::less<>>& strings);
-
 
     /// The name that index spells, for whoever has to hand one back to `makeDaylight`. Empty for
     /// an index past the ten.

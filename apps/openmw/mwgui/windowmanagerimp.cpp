@@ -9,7 +9,6 @@
 #include <osg/Camera>
 #include <osg/FrameStamp>
 
-
 #include <MyGUI_ClipboardManager.h>
 #include <MyGUI_FactoryManager.h>
 #include <MyGUI_InputManager.h>

@@ -22,9 +22,9 @@ namespace Sky
 
     MoonModel::MoonModel(std::string_view name)
         : MoonModel(setting(name, "Fade_In_Start"), setting(name, "Fade_In_Finish"), setting(name, "Fade_Out_Start"),
-              setting(name, "Fade_Out_Finish"), setting(name, "Axis_Offset"), setting(name, "Speed"),
-              setting(name, "Daily_Increment"), setting(name, "Fade_Start_Angle"), setting(name, "Fade_End_Angle"),
-              setting(name, "Moon_Shadow_Early_Fade_Angle"))
+            setting(name, "Fade_Out_Finish"), setting(name, "Axis_Offset"), setting(name, "Speed"),
+            setting(name, "Daily_Increment"), setting(name, "Fade_Start_Angle"), setting(name, "Fade_End_Angle"),
+            setting(name, "Moon_Shadow_Early_Fade_Angle"))
     {
     }
 

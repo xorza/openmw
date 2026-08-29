@@ -2362,9 +2362,13 @@ namespace NifOsg
             }
 
             // Only ever off: a material file can ask for both faces and has no way to ask for one,
-            // which is why the description says nothing here and its default stands.
+            // so a file that does not ask leaves the scene root's culling, and the description's
+            // default, standing.
             if (material->mTwoSided)
+            {
+                surface.mTwoSided = true;
                 stateset->setMode(GL_CULL_FACE, osg::StateAttribute::OFF);
+            }
             handleDepthFlags(stateset, material->mDepthTest, material->mDepthWrite);
         }
 

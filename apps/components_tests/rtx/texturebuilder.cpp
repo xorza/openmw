@@ -16,7 +16,6 @@
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
-
 namespace Rtx
 {
     namespace

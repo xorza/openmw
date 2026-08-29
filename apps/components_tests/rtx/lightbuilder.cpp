@@ -6,7 +6,6 @@
 
 #include <gtest/gtest.h>
 
-
 #include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/fallback/fallback.hpp>
@@ -255,7 +254,6 @@ namespace Rtx
                 { "Weather_Clear_Cloud_Speed", "1.25" },
                 { "Weather_Clear_Clouds_Maximum_Percent", "1.0" },
 
-
                 // The sun's own ramp, seeded with the shipped numbers so that the two ways this
                 // test can be run — against these or against a real installation — agree. The night
                 // value being the blue one is what the disc is here to not be painted with.
@@ -311,7 +309,6 @@ namespace Rtx
             const Daylight down = makeDaylight("Clear", 19.5f);
             EXPECT_FLOAT_EQ(down.mSun.mDiscColour.x(), 1.0f);
             EXPECT_LT(down.mSun.mDiscColour.z(), down.mSun.mDiscColour.x()) << "warm on the way down, never blue";
-
 
             // The wind comes off the same file and a key per weather, so a storm reading harder
             // than fair weather is what says the name reached the lookup rather than a constant
@@ -386,7 +383,6 @@ namespace Rtx
                 refusedFor(key, [&] { requireWeather("Blight", without, strings); });
             }
         }
-
 
         /// A sun below the horizon is not a sun, in either term.
         ///

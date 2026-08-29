@@ -19,7 +19,6 @@
 #include "shaders/scene.h"
 #include "shaders/visibility.h"
 
-
 namespace Rtx
 {
     namespace
@@ -127,8 +126,8 @@ namespace Rtx
             // A name that is none of the ten is left to the map, which refuses it as a key it will
             // not consider; one of the ten with nothing written for it is refused here, by name.
             if (weatherIndex(weather).has_value())
-                requireWeather(weather, Fallback::Map::getFloatFallbackMap(), Fallback::Map::getNonNumericFallbackMap());
-
+                requireWeather(
+                    weather, Fallback::Map::getFloatFallbackMap(), Fallback::Map::getNonNumericFallbackMap());
 
             // **The game's own four-point ramp rather than a step between four phases.** Each
             // quantity crosses dawn over a window of its own — the sun can be up before the sky has
@@ -389,7 +388,6 @@ namespace Rtx
         const auto refuse = [&weather](const std::string& key) {
             throw Error("weather \"" + std::string(weather) + "\" has no \"" + key
                 + "\" in openmw.cfg: run openmw-iniimporter on Morrowind.ini, which writes every weather's keys");
-
         };
 
         for (const std::string_view ramp : rampNames)

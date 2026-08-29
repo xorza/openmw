@@ -112,7 +112,7 @@ namespace Rtx
         Shaders::VisibilityConstants camera = mPerspective
             ? makeCameraFromView(mView, mFieldOfView, mOptions.mWidth, mOptions.mHeight, mNear, mFar)
             : makeOrthographicCameraFromView(
-                  mView, mBoxWidth, mBoxHeight, mOptions.mWidth, mOptions.mHeight, mNear, mFar);
+                mView, mBoxWidth, mBoxHeight, mOptions.mWidth, mOptions.mHeight, mNear, mFar);
 
         // `setRowOrder` says why the GUI's copy comes out the other way up.
         if (mRowOrder == RowOrder::BottomFirst)

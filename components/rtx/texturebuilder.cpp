@@ -6,13 +6,13 @@
 
 #include <osg/Image>
 
-#include <components/debug/debuglog.hpp>
-#include <components/resource/imagemanager.hpp>
 #include "alphaimage.hpp"
 #include "compositequeue.hpp"
 #include "error.hpp"
 #include "scenedesc.hpp"
 #include "shadingmap.hpp"
+#include <components/debug/debuglog.hpp>
+#include <components/resource/imagemanager.hpp>
 
 namespace Rtx
 {

@@ -491,10 +491,24 @@ namespace RtxTool
                 continue;
             }
 
+            const ESM::Light* light
+                = ref.mType == ESM::REC_LIGH ? EsmLoader::find<ESM::Light>(mEsmData, ref.mRefId) : nullptr;
+
             VFS::Path::Normalized model(EsmLoader::getModel(mEsmData, ref.mRefId, ref.mType));
             if (model.empty())
             {
-                ++skipped.mNoModel;
+                // **A light with no mesh still burns, and the game places it** —
+                // `MWClass::Light::insertObjectRendering` inserts the reference "even if model is
+                // empty, so that the light is added". A propylon chamber is lit by nothing else:
+                // eight `blue_128_pulse` and `purp_01_128_pulse` records in a room whose ambient is
+                // fifteen over 255, and skipping them with the markers rendered the room black.
+                if (light == nullptr)
+                {
+                    ++skipped.mNoModel;
+                    continue;
+                }
+
+                handle(Object{ .mTransform = makeTransform(ref), .mLight = light });
                 continue;
             }
 
@@ -504,7 +518,7 @@ namespace RtxTool
             handle(Object{
                 .mModel = Misc::ResourceHelpers::correctMeshPath(model),
                 .mTransform = makeTransform(ref),
-                .mLight = ref.mType == ESM::REC_LIGH ? EsmLoader::find<ESM::Light>(mEsmData, ref.mRefId) : nullptr,
+                .mLight = light,
             });
         }
 

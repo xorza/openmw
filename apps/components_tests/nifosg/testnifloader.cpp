@@ -17,7 +17,9 @@
 #include <osgDB/Registry>
 
 #include <array>
+#include <initializer_list>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -72,10 +74,6 @@ namespace
         }
     };
 
-    struct NifOsgLoaderTest : Test, BaseNifOsgLoaderTest
-    {
-    };
-
     /// Finds the surface description the loader authored, wherever in the graph it landed.
     struct FindMaterial : osg::NodeVisitor
     {
@@ -97,6 +95,38 @@ namespace
         }
     };
 
+    struct NifOsgLoaderTest : Test, BaseNifOsgLoaderTest
+    {
+        /// The description the loader authors for one triangle carrying `properties`, or nothing
+        /// where it authored none.
+        ///
+        /// A copy and not a pointer, because the graph the description hangs on dies with the call.
+        std::optional<Surface::Material> describeTriangle(std::initializer_list<Nif::NiProperty*> properties)
+        {
+            Nif::NiTriShapeData data;
+            data.mRecordType = Nif::RC_NiTriShapeData;
+            data.mVertices = { osg::Vec3f(0, 0, 0), osg::Vec3f(1, 0, 0), osg::Vec3f(1, 1, 0) };
+            data.mNumVertices = 3;
+            data.mTriangles = { 0, 1, 2 };
+
+            Nif::NiTriShape shape;
+            init(shape);
+            shape.mData = Nif::NiGeometryDataPtr(&data);
+            for (Nif::NiProperty* property : properties)
+                shape.mProperties.push_back(Nif::RecordPtrT<Nif::NiProperty>(property));
+
+            Nif::NIFFile file(testNif);
+            file.mRoots.push_back(&shape);
+            osg::ref_ptr<osg::Node> result = Loader::load(file, &mImageManager, &mMaterialManager);
+
+            FindMaterial find;
+            result->accept(find);
+            if (find.mFound == nullptr)
+                return std::nullopt;
+            return *find.mFound;
+        }
+    };
+
     /// A shape carries what its properties said, and not only what they compiled to.
     ///
     /// **This is the round trip that used to be one.** `NiAlphaProperty` became an `osg::BlendFunc`
@@ -108,12 +138,6 @@ namespace
     /// would need a VFS with an image in it, and real content exercises every role rather than two.
     TEST_F(NifOsgLoaderTest, shouldDescribeASurfaceFromItsProperties)
     {
-        Nif::NiTriShapeData data;
-        data.mRecordType = Nif::RC_NiTriShapeData;
-        data.mVertices = { osg::Vec3f(0, 0, 0), osg::Vec3f(1, 0, 0), osg::Vec3f(1, 1, 0) };
-        data.mNumVertices = 3;
-        data.mTriangles = { 0, 1, 2 };
-
         Nif::NiMaterialProperty colours;
         init(static_cast<Nif::NiObjectNET&>(colours));
         colours.mRecordType = Nif::RC_NiMaterialProperty;
@@ -138,79 +162,61 @@ namespace
         stencil.mZFailAction = Nif::NiStencilProperty::Action::Keep;
         stencil.mPassAction = Nif::NiStencilProperty::Action::Keep;
 
-        Nif::NiTriShape shape;
-        init(shape);
-        shape.mData = Nif::NiGeometryDataPtr(&data);
-        shape.mProperties.push_back(Nif::RecordPtrT<Nif::NiProperty>(&colours));
-        shape.mProperties.push_back(Nif::RecordPtrT<Nif::NiProperty>(&alpha));
-        shape.mProperties.push_back(Nif::RecordPtrT<Nif::NiProperty>(&stencil));
-
-        Nif::NIFFile file(testNif);
-        file.mRoots.push_back(&shape);
-        osg::ref_ptr<osg::Node> result = Loader::load(file, &mImageManager, &mMaterialManager);
-
-        FindMaterial find;
-        result->accept(find);
-        ASSERT_NE(find.mFound, nullptr) << "every shape the loader builds is described";
+        const std::optional<Surface::Material> found = describeTriangle({ &colours, &alpha, &stencil });
+        ASSERT_TRUE(found.has_value()) << "every shape the loader builds is described";
 
         // Alpha testing and no blending, so the surface is a cutout at the threshold over 255.
-        EXPECT_EQ(find.mFound->mAlphaMode, Surface::AlphaMode::Cutout);
-        EXPECT_FLOAT_EQ(find.mFound->mAlphaRef, 128.0f / 255.0f);
+        EXPECT_EQ(found->mAlphaMode, Surface::AlphaMode::Cutout);
+        EXPECT_FLOAT_EQ(found->mAlphaRef, 128.0f / 255.0f);
 
-        // Two-sided, which is what `DrawMode::Both` asks for — and, on its own, also what a surface
-        // nothing spoke about would have said. The test below is what makes this one mean something.
-        EXPECT_TRUE(find.mFound->mTwoSided);
+        // Two-sided, which is what `DrawMode::Both` asks for and nothing else in a NIF does: the
+        // scene root culls back faces, so a surface nothing spoke about shows one. The test below
+        // is the other half.
+        EXPECT_TRUE(found->mTwoSided);
 
         // The material's alpha rides in the diffuse colour, which is where the NIF keeps it.
-        EXPECT_EQ(find.mFound->mDiffuseColour, osg::Vec4f(0.25f, 0.5f, 0.75f, 0.5f));
-        EXPECT_EQ(find.mFound->mAmbientColour, osg::Vec3f(0.1f, 0.2f, 0.3f));
-        EXPECT_EQ(find.mFound->mEmissiveColour, osg::Vec3f(0.5f, 0.25f, 0.0f));
-        EXPECT_FLOAT_EQ(find.mFound->mEmissiveMult, 2.0f);
+        EXPECT_EQ(found->mDiffuseColour, osg::Vec4f(0.25f, 0.5f, 0.75f, 0.5f));
+        EXPECT_EQ(found->mAmbientColour, osg::Vec3f(0.1f, 0.2f, 0.3f));
+        EXPECT_EQ(found->mEmissiveColour, osg::Vec3f(0.5f, 0.25f, 0.0f));
+        EXPECT_FLOAT_EQ(found->mEmissiveMult, 2.0f);
 
         // Morrowind has specular lighting off, and the loader zeroes it rather than describing what
         // the record happens to hold.
-        EXPECT_EQ(find.mFound->mSpecularColour, osg::Vec3f(0.0f, 0.0f, 0.0f));
-        EXPECT_FLOAT_EQ(find.mFound->mGlossiness, 0.0f);
+        EXPECT_EQ(found->mSpecularColour, osg::Vec3f(0.0f, 0.0f, 0.0f));
+        EXPECT_FLOAT_EQ(found->mGlossiness, 0.0f);
     }
 
-    /// A stencil property is the one record that makes a surface single-sided.
+    /// A surface shows one face unless a stencil property draws both.
     ///
-    /// **The direction that has to be tested, because the other one is the default.** OpenGL culls
-    /// nothing until told to and no other NIF record turns culling on, so `mTwoSided` is true for
-    /// almost everything and an assertion that it is true proves nothing on its own. This is the
-    /// same shape as the test above with the draw mode changed, so the difference in the answer can
-    /// only be the draw mode.
-    TEST_F(NifOsgLoaderTest, aStencilPropertyThatDrawsOneFaceDescribesASingleSidedSurface)
+    /// **The default is what the scene root does, and the record is the only thing that changes
+    /// it.** The game turns `GL_CULL_FACE` on over the whole scene and the three shipped archives
+    /// hold no `NiStencilProperty` at all, so nearly every surface in Morrowind is the first row.
+    /// The three shapes differ in the one property, so the difference in the answer can only be the
+    /// draw mode — and the two-sided row is what keeps the other two from being an assertion of the
+    /// default.
+    TEST_F(NifOsgLoaderTest, aSurfaceShowsOneFaceUnlessAStencilPropertyDrawsBoth)
     {
-        Nif::NiTriShapeData data;
-        data.mRecordType = Nif::RC_NiTriShapeData;
-        data.mVertices = { osg::Vec3f(0, 0, 0), osg::Vec3f(1, 0, 0), osg::Vec3f(1, 1, 0) };
-        data.mNumVertices = 3;
-        data.mTriangles = { 0, 1, 2 };
+        using DrawMode = Nif::NiStencilProperty::DrawMode;
 
-        Nif::NiStencilProperty stencil;
-        init(static_cast<Nif::NiObjectNET&>(stencil));
-        stencil.mRecordType = Nif::RC_NiStencilProperty;
-        stencil.mDrawMode = Nif::NiStencilProperty::DrawMode::CounterClockwise;
-        stencil.mTestFunction = Nif::NiStencilProperty::TestFunc::Always;
-        stencil.mFailAction = Nif::NiStencilProperty::Action::Keep;
-        stencil.mZFailAction = Nif::NiStencilProperty::Action::Keep;
-        stencil.mPassAction = Nif::NiStencilProperty::Action::Keep;
+        const auto describedWith = [this](std::optional<DrawMode> drawMode) {
+            Nif::NiStencilProperty stencil;
+            init(static_cast<Nif::NiObjectNET&>(stencil));
+            stencil.mRecordType = Nif::RC_NiStencilProperty;
+            stencil.mDrawMode = drawMode.value_or(DrawMode::Default);
+            stencil.mTestFunction = Nif::NiStencilProperty::TestFunc::Always;
+            stencil.mFailAction = Nif::NiStencilProperty::Action::Keep;
+            stencil.mZFailAction = Nif::NiStencilProperty::Action::Keep;
+            stencil.mPassAction = Nif::NiStencilProperty::Action::Keep;
 
-        Nif::NiTriShape shape;
-        init(shape);
-        shape.mData = Nif::NiGeometryDataPtr(&data);
-        shape.mProperties.push_back(Nif::RecordPtrT<Nif::NiProperty>(&stencil));
+            const std::optional<Surface::Material> found
+                = drawMode.has_value() ? describeTriangle({ &stencil }) : describeTriangle({});
+            EXPECT_TRUE(found.has_value());
+            return found.has_value() && found->mTwoSided;
+        };
 
-        Nif::NIFFile file(testNif);
-        file.mRoots.push_back(&shape);
-        osg::ref_ptr<osg::Node> result = Loader::load(file, &mImageManager, &mMaterialManager);
-
-        FindMaterial find;
-        result->accept(find);
-        ASSERT_NE(find.mFound, nullptr);
-
-        EXPECT_FALSE(find.mFound->mTwoSided);
+        EXPECT_FALSE(describedWith(std::nullopt)) << "nothing spoke, and the scene root culls";
+        EXPECT_FALSE(describedWith(DrawMode::CounterClockwise));
+        EXPECT_TRUE(describedWith(DrawMode::Both));
     }
 
     /// A source that always says the same thing, so a controller's output is what it computed and
@@ -263,32 +269,16 @@ namespace
     /// Blending wins over testing, and the threshold survives for a renderer that would rather cut.
     TEST_F(NifOsgLoaderTest, shouldDescribeABlendedSurfaceAsBlendedAndKeepItsThreshold)
     {
-        Nif::NiTriShapeData data;
-        data.mRecordType = Nif::RC_NiTriShapeData;
-        data.mVertices = { osg::Vec3f(0, 0, 0), osg::Vec3f(1, 0, 0), osg::Vec3f(1, 1, 0) };
-        data.mNumVertices = 3;
-        data.mTriangles = { 0, 1, 2 };
-
         Nif::NiAlphaProperty alpha;
         init(static_cast<Nif::NiObjectNET&>(alpha));
         alpha.mRecordType = Nif::RC_NiAlphaProperty;
         alpha.mFlags = Nif::NiAlphaProperty::Flag_Blending | Nif::NiAlphaProperty::Flag_Testing;
         alpha.mThreshold = 64;
 
-        Nif::NiTriShape shape;
-        init(shape);
-        shape.mData = Nif::NiGeometryDataPtr(&data);
-        shape.mProperties.push_back(Nif::RecordPtrT<Nif::NiProperty>(&alpha));
-
-        Nif::NIFFile file(testNif);
-        file.mRoots.push_back(&shape);
-        osg::ref_ptr<osg::Node> result = Loader::load(file, &mImageManager, &mMaterialManager);
-
-        FindMaterial find;
-        result->accept(find);
-        ASSERT_NE(find.mFound, nullptr);
-        EXPECT_EQ(find.mFound->mAlphaMode, Surface::AlphaMode::Blend);
-        EXPECT_FLOAT_EQ(find.mFound->mAlphaRef, 64.0f / 255.0f);
+        const std::optional<Surface::Material> found = describeTriangle({ &alpha });
+        ASSERT_TRUE(found.has_value());
+        EXPECT_EQ(found->mAlphaMode, Surface::AlphaMode::Blend);
+        EXPECT_FLOAT_EQ(found->mAlphaRef, 64.0f / 255.0f);
     }
 
     TEST_F(NifOsgLoaderTest, shouldLoadFileWithDefaultNode)

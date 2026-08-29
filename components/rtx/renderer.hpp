@@ -397,7 +397,8 @@ namespace Rtx
         /// it too, so a doll gets the same decision a cell does — see `SceneUploader`, which is
         /// where that decision is made once for both.
         virtual void setScene(
-            std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> textures, const SeaState& sea) = 0;
+            std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> textures, const SeaState& sea)
+            = 0;
 
         /// The same scene with more in it: geometry and textures appended, nothing renumbered.
         ///
@@ -413,7 +414,8 @@ namespace Rtx
         /// Only for a scene whose tables **grew**. A `retain` that closed the gaps renumbers every
         /// index, and the answer to that is still `setScene`.
         virtual void extendScene(
-            std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea) = 0;
+            std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
+            = 0;
 
         /// Say that the next frame has no usable past.
         ///
@@ -536,7 +538,8 @@ namespace Rtx
         /// there is no previous one to reconstruct it from. `camera.mTransparentBackground` is what
         /// says the picture stops where nothing was hit.
         virtual void traceGuiTexture(
-            std::uint32_t texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options) = 0;
+            std::uint32_t texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options)
+            = 0;
 
         /// A scene of its own for a picture inside the interface to be traced against.
         ///

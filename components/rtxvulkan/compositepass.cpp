@@ -28,7 +28,7 @@ namespace Rtx
 
     CompositePass::CompositePass(const Device& device, CommandPool& pool, const std::filesystem::path& shaderDirectory)
         : mPipeline(device, sBindings, sizeof(Shaders::CompositeConstants), {}, shaderDirectory / "composite.comp.spv",
-              "composite")
+            "composite")
         , mNoHistory(device, 1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "no-history")
     {
         // A bound storage image has to be in the layout its descriptor names whether the shader

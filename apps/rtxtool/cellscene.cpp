@@ -209,42 +209,48 @@ namespace RtxTool
                     return;
                 }
 
-                osg::ref_ptr<osg::Node> node;
-                try
-                {
-                    // **An instance per reference, which is what the game makes.** A shared template
-                    // is one node walked under a hundred paths, so a hundred crates were one
-                    // placement between them until an anchor was invented to tell them apart. Give
-                    // each its own node and the node path identifies it again, exactly as it does
-                    // in the game — and the anchor stops being needed.
-                    node = world.getSceneManager().getInstance(object.mModel);
-                }
-                catch (const std::exception& e)
-                {
-                    Log(Debug::Warning) << "Cannot load " << object.mModel << ": " << e.what();
-                    ++report.mUnreadable;
-                    return;
-                }
-
-                // **The same test `SceneManager::getInstance` makes**, and for the same reason: a
-                // particle emitter is an update callback, so a graph with none of those has nothing
-                // that changes between frames. Everything else in a cell is still, and a template
-                // shared by every reference of the model is the cheaper thing to walk.
-                //
-                // Reported *instead of* mirrored, because the instance somebody makes of it shares
-                // these very drawables and would place the same candle a second time.
                 osg::ref_ptr<osg::MatrixTransform> where = new osg::MatrixTransform(osg::Matrixd(object.mTransform));
 
-                const bool prop = liveProps
-                    && (node->getUpdateCallback() != nullptr || node->getNumChildrenRequiringUpdateTraversal() > 0);
+                // **A light with no mesh has nothing to load and nothing to instance**, and goes
+                // straight to `addLight` below. `World::forEachObject` says why it arrives at all.
+                if (!object.mModel.empty())
+                {
+                    osg::ref_ptr<osg::Node> node;
+                    try
+                    {
+                        // **An instance per reference, which is what the game makes.** A shared
+                        // template is one node walked under a hundred paths, so a hundred crates
+                        // were one placement between them until an anchor was invented to tell them
+                        // apart. Give each its own node and the node path identifies it again,
+                        // exactly as it does in the game — and the anchor stops being needed.
+                        node = world.getSceneManager().getInstance(object.mModel);
+                    }
+                    catch (const std::exception& e)
+                    {
+                        Log(Debug::Warning) << "Cannot load " << object.mModel << ": " << e.what();
+                        ++report.mUnreadable;
+                        return;
+                    }
 
-                // The model goes in first where it is going in at all, so that `addLight` below can
-                // find an `AttachLight` node inside it.
-                if (prop)
-                    report.mProps.push_back(
-                        CellProp{ .mModel = object.mModel, .mTransform = object.mTransform, .mParent = group });
-                else
-                    where->addChild(node);
+                    // **The same test `SceneManager::getInstance` makes**, and for the same reason:
+                    // a particle emitter is an update callback, so a graph with none of those has
+                    // nothing that changes between frames. Everything else in a cell is still, and
+                    // a template shared by every reference of the model is the cheaper thing to
+                    // walk.
+                    //
+                    // Reported *instead of* mirrored, because the instance somebody makes of it
+                    // shares these very drawables and would place the same candle a second time.
+                    const bool prop = liveProps
+                        && (node->getUpdateCallback() != nullptr || node->getNumChildrenRequiringUpdateTraversal() > 0);
+
+                    // The model goes in first where it is going in at all, so that `addLight` below
+                    // can find an `AttachLight` node inside it.
+                    if (prop)
+                        report.mProps.push_back(
+                            CellProp{ .mModel = object.mModel, .mTransform = object.mTransform, .mParent = group });
+                    else
+                        where->addChild(node);
+                }
 
                 // **A `LIGH` reference's light goes into the graph, exactly as the game puts it
                 // there.** Read out of the record into a list instead, it was something no walk

@@ -2251,7 +2251,6 @@ namespace Rtx
             const std::array<std::uint8_t, 4> green{ 0, 255, 0, 255 };
             const std::array<std::uint8_t, 4> dimRed{ 6, 0, 0, 255 };
 
-
             const MipLevel one{ 0, 1, 1 };
             const auto describe = [&one](std::span<const std::uint8_t> bytes) {
                 return TextureData{
@@ -2322,7 +2321,6 @@ namespace Rtx
             const std::array<std::uint8_t, 3> mapped = render(1, 2, osg::Vec3f());
             EXPECT_EQ(mapped[0], mapGlow) << "the map's own red, undimmed by the green under it";
             EXPECT_EQ(mapped[1], 0) << "and none of the green, which nothing is lighting";
-
         }
 
         /// A masked surface in front of a wall: the ray stops on what survives the cutout and goes

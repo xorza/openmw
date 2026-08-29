@@ -72,7 +72,7 @@ namespace Rtx
 
             explicit Passes(const Device& device)
                 : mForming(device, sFormBindings, sizeof(Shaders::WaveFormConstants), {},
-                      Testing::getShaderDirectory() / "waveform.comp.spv", "test-waveform")
+                    Testing::getShaderDirectory() / "waveform.comp.spv", "test-waveform")
                 , mLine(device, sLineBindings, sizeof(Shaders::WaveConstants), {},
                       Testing::getShaderDirectory() / "waveline.comp.spv", "test-waveline")
                 , mComposing(device, sComposeBindings, sizeof(Shaders::WaveComposeConstants), {},

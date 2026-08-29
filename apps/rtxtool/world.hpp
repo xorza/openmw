@@ -101,11 +101,13 @@ namespace RtxTool
         /// One object a cell places.
         struct Object
         {
+            /// Empty for a person, and for a light with no mesh.
             VFS::Path::Normalized mModel;
             osg::Matrixf mTransform;
 
             /// The `LIGH` record this reference stands for, or null. A candle is both things at
-            /// once: a mesh to place and a light to cast, arriving by the same reference.
+            /// once: a mesh to place and a light to cast, arriving by the same reference. A pulse
+            /// light is only the second, and arrives with `mModel` empty.
             ///
             /// Points into the loaded content, which outlives every call.
             const ESM::Light* mLight = nullptr;
@@ -121,16 +123,17 @@ namespace RtxTool
         /// What `forEachObject` met but could not place.
         struct SkippedObjects
         {
-            /// References to a record type whose model this tool does not read — lights, creatures,
-            /// items on the floor. Their geometry is real; loading it needs more of the content
-            /// files than the static world does.
+            /// References whose record type is none of the model-bearing ones
+            /// `EsmLoader::ModelRecords` lists, so there is nothing to look a model up in.
             std::uint32_t mUnknownType = 0;
 
-            /// References whose record has no model at all. Markers, mostly.
+            /// References whose record has no model and casts no light. Markers, mostly: a `LIGH`
+            /// with no mesh is handed over rather than counted here.
             std::uint32_t mNoModel = 0;
         };
 
-        /// Calls `handle` for every object the cell places that has a model to draw.
+        /// Calls `handle` for every object the cell places: a model to draw, a light to cast, or a
+        /// person to assemble.
         SkippedObjects forEachObject(const ESM::Cell& cell, const std::function<void(const Object&)>& handle);
 
         /// Where the game would stand a character who walked into `destination`, if anything leads

@@ -107,13 +107,15 @@ namespace Surface
 
         /// Whether both faces of this surface are drawn and lit.
         ///
-        /// **True unless something says otherwise, because that is what the content means.**
-        /// OpenGL culls nothing until it is told to, and the only record in a NIF that tells it to
-        /// is a `NiStencilProperty` with a draw mode other than `Both` — a shader property's
-        /// "double sided" flag and a material file's can turn culling off and never on. So a
-        /// surface nothing has spoken about is two-sided, which Morrowind leans on heavily: every
-        /// leaf, banner and sheet in the game is one quad meant to be seen from behind.
-        bool mTwoSided = true;
+        /// **False unless the content says otherwise, because that is what the game draws.** The
+        /// scene root turns `GL_CULL_FACE` on for everything under it
+        /// (`apps/openmw/mwrender/renderingmanager.cpp`), so a surface nothing has spoken about
+        /// shows one face, and only two records speak: a `NiStencilProperty` whose draw mode is
+        /// `Both`, and a material file's two-sided flag, which can turn culling off and never on.
+        /// Vanilla Morrowind has neither — none of its three archives holds a `NiStencilProperty`
+        /// — and a leaf or banner meant to be seen from behind is modelled as a second copy wound
+        /// the other way, which is `Rtx::SheetFold`'s business and not this flag's.
+        bool mTwoSided = false;
 
         /// Alpha included: `NiMaterialProperty` keeps the surface's opacity here and nowhere else.
         osg::Vec4f mDiffuseColour{ 1.0f, 1.0f, 1.0f, 1.0f };

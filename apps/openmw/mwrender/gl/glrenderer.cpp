@@ -136,8 +136,7 @@ namespace MWRender
     {
         mViewer = new osgViewer::Viewer;
         mViewer->getCamera()->getOrCreateStateSet()->removeAttribute(osg::StateAttribute::MATERIAL);
-        SceneUtil::disableFFPStateForRenderer(
-            static_cast<osgViewer::Renderer*>(mViewer->getCamera()->getRenderer()));
+        SceneUtil::disableFFPStateForRenderer(static_cast<osgViewer::Renderer*>(mViewer->getCamera()->getRenderer()));
         mViewer->setReleaseContextAtEndOfFrameHint(false);
         mViewer->setLightingMode(osgViewer::View::NO_LIGHT);
 

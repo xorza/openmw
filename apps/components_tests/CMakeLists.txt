@@ -165,6 +165,7 @@ if (OPENMW_RTX)
         rtxtool/crossing.cpp
         rtxtool/framing.cpp
         rtxtool/installation.cpp
+        rtxtool/lamps.cpp
         rtxtool/material.cpp
         rtxtool/pagedterrain.cpp
         rtxtool/perfcontrol.cpp

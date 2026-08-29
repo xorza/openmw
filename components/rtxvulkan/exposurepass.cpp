@@ -39,7 +39,7 @@ namespace Rtx
 
     ExposurePass::ExposurePass(const Device& device, const std::filesystem::path& shaderDirectory)
         : mHistogramPipeline(device, sHistogramBindings, sizeof(Shaders::HistogramConstants), {},
-              shaderDirectory / "histogram.comp.spv", "histogram")
+            shaderDirectory / "histogram.comp.spv", "histogram")
         , mReducePipeline(device, sReduceBindings, sizeof(Shaders::ExposureConstants), {},
               shaderDirectory / "exposure.comp.spv", "exposure")
         , mHistogram(device, Shaders::EXPOSURE_BINS * sizeof(std::uint32_t),

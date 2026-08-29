@@ -72,10 +72,9 @@ namespace RtxTool
 
         // Nought in a room, for the reason the deck and the stars are: there is no dome to be short
         // of, and the cell's own ambient already reaches every surface.
-        const Rtx::SkyBudget budget = lighting.mOutdoors
-            ? Rtx::skyBudget(
-                  lighting.mDaylight.mSkyHorizon, lighting.mDaylight.mSkyZenith, stars.mGlow, lighting.mAmbient)
-            : Rtx::SkyBudget{};
+        const Rtx::SkyBudget budget = lighting.mOutdoors ? Rtx::skyBudget(lighting.mDaylight.mSkyHorizon,
+                                          lighting.mDaylight.mSkyZenith, stars.mGlow, lighting.mAmbient)
+                                                         : Rtx::SkyBudget{};
 
         // **Before the deck as well, because a deck is lit by them.** A room has neither moon over
         // it, and an alpha of nothing is a disc the sky skips and a light that delivers nothing.

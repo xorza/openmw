@@ -1038,7 +1038,7 @@ namespace Rtx
             // Nothing stands out there, and an empty answer is what says so rather than a box at the
             // origin that a camera would then be placed from.
             EXPECT_FALSE(scene.getContentBoundsWithin(osg::BoundingBoxf(500.0f, 500.0f, 500.0f, 600.0f, 600.0f, 600.0f))
-                    .valid());
+                             .valid());
         }
 
     }
