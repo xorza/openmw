@@ -118,44 +118,39 @@ before against 15.35 after, back to back.
 **The contract it changes** is stated in `frames.cpp`: several placements before a trace are one
 frame, and the trace reads the last of them. The ring counts frames the caller asked for.
 
-## 5. Terrain that blinks, and body parts in the air — **two causes fixed, one left**
+## 5. Terrain that blinks, and body parts in the air — **fixed**
 
-**Reproduced headlessly.** `bench --suite=streaming --albedo --exposure=1 --upscale=off`: 97 of 600
-frames swing more than 40% in mean brightness. Frame 289 puts an enormous terrain chunk directly on
-the camera; 288 and 290, 103 units either side, are open water. Rendered on their own with `shot`,
-those two cameras give linear means of 0.01576 and 0.01502 — the content is the same, so the
-streaming path is what differs.
+Reported from `view`: parts of a moving NPC stay behind, and terrain blinks at a camera that moves a
+little. Confirmed fixed by eye after the two causes below.
 
-**Ruled out, each by measurement:** the lighting and the fog (`--albedo` alone still swings), the
-exposure (`--exposure=1`), the upscaler (`--upscale=off`), the composite bake queue (collecting none
-changes nothing), the specialized kernel (one variant across all 600 frames), `outgrow`'s doubling,
-and §3 — the old serial order swings 142 times.
-
-**It is the second table copy.** Forcing both frames onto one copy takes 97 swings to 5.
-
-**Cause A — the harness advanced the epoch on the wrong side of the hand-over.**
+**Cause A — the epoch was advanced on the wrong side of the hand-over.**
 `SceneExtractor::advance` calls `SceneDesc::advancePlacement`, which swaps `mMoved` into `mSettled`.
-`StagedWorld` called it at the *end* of a walk, so by the time `placeScene` ran `getMoved()` was
-already empty and the acceleration owed its copies nothing. The game advances after its trace, which
-is the same instant as the head of the next walk — and that is where it now sits.
+`StagedWorld::mirror` called it at the *end* of a walk, so `getMoved()` was already empty when
+`placeScene` ran and the acceleration owed its copies nothing. `PosedActors::advanceTo` did the same,
+on the path actors take. The game advances after its trace, which is the same instant as the head of
+the next walk, and that is where both now sit.
 
-**Cause A applies twice.** `StagedWorld::mirror` was one of the two walks the harness has;
-`PosedActors::advanceTo` — the path every scene with actors in it takes — advanced on the same wrong
-side, and that is the one an NPC's limbs go through.
+**Cause B — the two tables disagreed about what a copy owes.** `SceneBuffers` owed `getSettled()`
+and `getMoved()`; `SceneAcceleration` owed only `getMoved()`. A frame walked twice settles the first
+walk's moves before the placement after the second, so a copy reading only `getMoved` never hears of
+them.
 
-**Cause B — the two tables disagreed about what a copy owes.** `SceneBuffers::place` owed
-`getSettled()` and `getMoved()`; `SceneAcceleration::place` owed only `getMoved()`. A frame walked
-twice — a crossing, or the game's precipitation subtree beside its world — settles the first walk's
-moves before the placement after the second, so a copy reading only `getMoved` never learns of them.
+**And the mechanism behind both is gone.** `.notes/rtx/slot-tables.md` is the account:
+`updateInstanceRecords` is now the one place the scene's change lists are read, and `SlotTable` /
+`SlotBlocks` own every per-copy account there is.
 
-**And the early return asked the scene rather than the copy.** `SceneAcceleration::place` skipped
-the top level when `getMoved()` was empty, which is no longer the same question as whether this
-copy's rows are about to change — a copy carrying a debt from an earlier frame would keep it and be
-traced stale. It now asks the debt. A standing camera still returns early: `tlas` stays at 0.2 ms.
+### A metric that was not measuring this
 
-**Where it stands:** 97 swings to 26, and frames 287–291 read 34.8, 33.1, 29.7, 27.9, 25.9 — a
-smooth descent where they read 127, 127, 42, 125, 125. One copy still gives 5, so something is
-outstanding; 19 of the 26 are §4's crossings, which is the next step anyway.
+`bench --suite=streaming --albedo --exposure=1` swings more than 40% on 26 frames of 600, and that
+number did not move for **any** of it: not the two fixes, not the redesign, not §4, and not with both
+frames forced onto one table copy. Disabling the sweep, waiting for every composite bake, and turning
+off the denoiser each leave it at 26, with the same values to the digit — 47.7, 8.9, 3.2, 28.6 at
+frames 266 to 269.
+
+It is deterministic, so it is not a race, and nothing in the frame path changes it. The camera skims
+terrain along that flight and the frames genuinely differ. **Do not read this number as a defect
+signal.** It was useful once — it took 97 to 26 while real bugs were being removed — and it has
+nothing left to say.
 
 ## 6. `island-crossing` differs from itself between runs — not yet root-caused
 
@@ -173,10 +168,9 @@ before hunting it.
 2. §2, done.
 3. §3, done — brought forward, because the detector §5 needs is a pipelined `bench`, and the
    sync-validation run said it was safe to turn on.
-4. §5 — two causes found and fixed, and the mechanism behind them replaced. Seven swings of the
-   original ninety-seven are left once §4's nineteen come out.
+4. §5, done.
 5. §4, done.
-6. §6 — re-measure now that §4 is out, then hunt.
+6. §6 — the only one left.
 
 **Do not give `view` the `finishFrame` its siblings have.** It is the only path that runs the ring
 at its cap, which is where §1 was found and where §5 still lives.
