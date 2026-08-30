@@ -49,20 +49,12 @@ namespace RtxTool
 
         // Walks every mesh, so it is asked for once and the answer kept.
         const osg::BoundingBoxf bounds = scene.getBounds();
-        const Placement placement = placeCamera(bounds, request.mFieldOfView, request.mOrigin, request.mTarget);
+        const Placement placement = placeCamera(bounds, request.mFrame.mFieldOfView, request.mOrigin, request.mTarget);
 
         const Clock::time_point deviceStart = Clock::now();
         std::string reason;
-        const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(
-            Rtx::RendererOptions{
-                .mShaderDirectory = request.mShaderDirectory,
-                .mWidth = request.mWidth,
-                .mHeight = request.mHeight,
-                .mUpscale = request.mUpscale,
-                .mPreset = request.mPreset,
-                .mValidation = validation,
-            },
-            reason);
+        const std::unique_ptr<Rtx::Renderer> renderer
+            = Rtx::createRenderer(request.mFrame.describeRenderer(validation), reason);
         if (renderer == nullptr)
         {
             out << reason << '\n';
@@ -86,14 +78,14 @@ namespace RtxTool
         const Rtx::SceneStats& stats = renderer->getSceneStats();
 
         Framing framing = Framing::lookingFrom(placement);
-        framing.mFieldOfView = request.mFieldOfView;
+        framing.mFieldOfView = request.mFrame.mFieldOfView;
 
         // Far enough to cross any cell: the largest exterior view in the game is a few tens of
         // thousands of units, and a primary ray that reaches this has left the world. No floor under
         // it here, unlike `bench` and `view` — see `Framing::mFar`.
         framing.mFar = bounds.radius() * 8.0f;
         framing.mLighting = request.mLighting;
-        framing.mDelight = request.mDelight;
+        framing.mDelight = request.mFrame.mDelight;
         framing.mShowAlbedo = request.mShowAlbedo;
 
         // **Accumulating replaces repeating rather than joining it.** A run of `--accumulate=4` that
@@ -109,7 +101,7 @@ namespace RtxTool
         // each frame sampled inside its pixel, so a run of traces at one seed hands it the same
         // sample over and over — the frames still resolve, and the extra detail they were supposed
         // to carry was never in them.
-        const bool sequenced = averaging || request.mUpscale != Rtx::Upscale::Off;
+        const bool sequenced = averaging || request.mFrame.mUpscale != Rtx::Upscale::Off;
 
         std::vector<double> frameTimes;
         frameTimes.reserve(frames);
@@ -149,8 +141,8 @@ namespace RtxTool
                     .mSinceLast = sStepSeconds,
                     .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
                     .mJitter = request.mJitter,
-                    .mFilter = request.mFilter,
-                    .mExposure = request.mExposure });
+                    .mFilter = request.mFrame.mFilter,
+                    .mExposure = request.mFrame.mExposure });
             const Rtx::FrameResult result = renderer->finishFrame().value();
             frameTimes.push_back(
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count());

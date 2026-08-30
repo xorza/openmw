@@ -26,31 +26,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
       `traceWorld` each assemble an `Rtx::FrameWorld` from the same inputs: `describeStars`,
       `skyBudget`, `makeMoon` for both moons, `fogColour`, `describeClouds` with `deckLight` and
       `stormDirection`, `describePatches`. Two assemblies of one frame.
-- [ ] `Buffer`, `HostBuffer`, `ShaderModule` and `DeviceMemory` each write the same move
-      constructor, move assignment and `destroy` by hand. Two buffer classes serve one job.
-- [ ] `ShotRequest`, `ViewRequest`, `BenchRequest` and `VerifyRequest` each carry the same block
-      (shader directory, size, field of view, upscale, preset, delight, filter, exposure, weather,
-      hour, day, actors). `main.cpp` `dispatch` fills the block four times by hand (601-618,
-      637-670, 705-726, 731-762).
-
-## Requirements and code that nothing uses
-
-- [ ] `components/rtxvulkan/device.hpp` `DeviceFunctions` loads `vkCreateRayTracingPipelinesKHR`,
-      `vkGetRayTracingShaderGroupHandlesKHR`, `vkCmdTraceRaysKHR`,
-      `vkCmdCopyAccelerationStructureKHR` and `vkCmdWriteAccelerationStructuresPropertiesKHR`. No
-      file outside `device.*` names them. `device.cpp:26` throws if any is missing.
-- [ ] `components/rtxvulkan/requirements.cpp` requires `VK_KHR_ray_tracing_pipeline`,
-      `VK_EXT_ray_tracing_invocation_reorder` and the features `rayTracingPipeline`,
-      `rayTraversalPrimitiveCulling`, `rayTracingInvocationReorder`, `timelineSemaphore`,
-      `hostQueryReset`, `samplerAnisotropy`. The renderer is compute with ray queries. No shader
-      names a reorder hint. Every sampler sets `anisotropyEnable = VK_FALSE`. Query pools are reset
-      on the command buffer. A device without one of these is refused for a capability nothing
-      uses. The optional `VK_NV_cluster_acceleration_structure` and
-      `VK_NV_partitioned_acceleration_structure` are enabled and unused.
-- [ ] `apps/openmw/mwrender/rtx/rtxrenderer.cpp` calls `addMoonFaces` and `addSkyContent` once.
-      `dropMoonFaces` and `dropSkyContent` have no caller in the game.
-- [ ] `components/rtxmetal/metalrenderer.mm` is a factory that always returns null with a reason.
-      `components/rtxmetal/CMakeLists.txt` compiles `shaders/visibility.metal` for it.
 
 ## Two paths for one job, and asymmetric interfaces
 
@@ -68,8 +43,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
       layout by index, so the reader has no one list to compare.
 - [ ] `components/rtxvulkan/shaders/lib/lights.glsl:237-254` places `litCosine`'s doc inside
       `weighLamps`'s doc, and `weighLamps`'s `@param` block above `considerLamp`.
-- [ ] `apps/rtxtool/shot.hpp:19` includes `<components/rtx/renderer.hpp>` between two namespace
-      blocks.
 - [ ] `components/rtx/CMakeLists.txt` lists `compositequeue` after `spritetiles`.
       `components/rtxvulkan/CMakeLists.txt` lists `slottable.hpp` between `frameslots` and
       `gbuffer`. `apps/rtxtool/CMakeLists.txt` lists `lighting`, `motion`, `npc`, `objectstorage`,

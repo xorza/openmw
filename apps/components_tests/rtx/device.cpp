@@ -111,8 +111,8 @@ namespace Rtx
             // Device construction throws when any of these is missing, so reaching here already
             // proves it; asserting names the contract for anyone reading the failure.
             const DeviceFunctions& functions = mHarness->mDevice->getFunctions();
-            EXPECT_NE(functions.mCmdTraceRays, nullptr);
             EXPECT_NE(functions.mCmdBuildAccelerationStructures, nullptr);
+            EXPECT_NE(functions.mGetAccelerationStructureDeviceAddress, nullptr);
             EXPECT_NE(functions.mGetAccelerationStructureBuildSizes, nullptr);
             EXPECT_NE(functions.mCmdBuildMicromaps, nullptr);
         }
@@ -150,7 +150,7 @@ namespace Rtx
             EXPECT_NE(
                 report.find(mHarness->mDevice->getPhysicalDevice().getProperties().mProperties2.properties.deviceName),
                 std::string::npos);
-            EXPECT_NE(report.find("max ray recursion depth"), std::string::npos);
+            EXPECT_NE(report.find("max primitive count"), std::string::npos);
         }
     }
 }

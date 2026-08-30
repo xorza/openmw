@@ -38,8 +38,7 @@ namespace Rtx
 
         Batch batch(pool);
         {
-            Buffer staging(device, noise.mBytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            Buffer staging = Buffer::staging(device, noise.mBytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
             staging.write(std::span<const std::uint8_t>(noise.mBytes));
 
             const VkCommandBuffer commands = batch.getCommands();

@@ -7,7 +7,6 @@
 #include <vulkan/vulkan_core.h>
 
 #include "buffer.hpp"
-#include "hostbuffer.hpp"
 
 namespace Rtx
 {
@@ -66,7 +65,7 @@ namespace Rtx
         /// submitted and waited again; taken here they go to the queue in that same call, ordered
         /// ahead of it by the barriers each upload and build ends in, and the round trip they cost
         /// is the one the placement was already paying. Ends `commands`.
-        void defer(VkCommandBuffer commands, std::vector<Buffer>&& staging, std::vector<HostBuffer>&& hostStaging);
+        void defer(VkCommandBuffer commands, std::vector<Buffer>&& staging);
 
         /// Submits `commands` behind whatever was deferred, signalling `fence` where one is given,
         /// and does not wait. Ends `commands`. What the deferred batches read from goes to `kept`,
@@ -106,7 +105,6 @@ namespace Rtx
         /// their copies read.
         std::vector<VkCommandBuffer> mDeferred;
         std::vector<Buffer> mDeferredStaging;
-        std::vector<HostBuffer> mDeferredHostStaging;
 
         /// Refilled per submit: a frame is three of them, and none allocates.
         std::vector<VkCommandBufferSubmitInfo> mSubmitScratch;
@@ -151,11 +149,6 @@ namespace Rtx
         /// Holds `staging` until this batch has been submitted and waited on.
         void keep(Buffer&& staging);
 
-        /// The same for a buffer the host wrote into directly, which is what a build input the
-        /// device reads once and never again is: written before the submit, read inside it, and of
-        /// no use to anyone afterwards.
-        void keep(HostBuffer&& staging);
-
         /// Submits what has been recorded and waits for it, then releases the staging. Does nothing
         /// where nothing was recorded, so a batch nobody used costs nothing.
         void flush();
@@ -171,7 +164,6 @@ namespace Rtx
         CommandPool& mPool;
         VkCommandBuffer mCommands = VK_NULL_HANDLE;
         std::vector<Buffer> mStaging;
-        std::vector<HostBuffer> mHostStaging;
     };
 
     /// A device-local buffer holding `bytes`, staged through host-visible memory.

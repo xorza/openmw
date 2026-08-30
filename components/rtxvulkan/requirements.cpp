@@ -17,13 +17,11 @@ namespace Rtx
 
         constexpr std::array sRequiredDeviceExtensions{
             VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
             VK_KHR_RAY_QUERY_EXTENSION_NAME,
             VK_KHR_RAY_TRACING_POSITION_FETCH_EXTENSION_NAME,
             VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME,
             VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
             VK_EXT_OPACITY_MICROMAP_EXTENSION_NAME,
-            VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME,
             // **Asking the driver what it made of a shader.** Occupancy is a register count and a
             // workgroup size, and the register count belongs to the driver's own compiler — no
             // offline tool has it. Required rather than optional because a device that will not say
@@ -35,16 +33,11 @@ namespace Rtx
         constexpr std::array sOptionalDeviceExtensions{
             // Turns a device loss from "the driver said no" into a list of what had not completed.
             VK_EXT_DEVICE_FAULT_EXTENSION_NAME,
-            // Weighed at M12, not before.
-            VK_NV_CLUSTER_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-            VK_NV_PARTITIONED_ACCELERATION_STRUCTURE_EXTENSION_NAME,
         };
 
         constexpr std::array sRequiredDeviceFeatures{
             RequiredFeature{
                 "shaderInt64", +[](DeviceFeatures& f) -> VkBool32& { return f.mFeatures2.features.shaderInt64; } },
-            RequiredFeature{ "samplerAnisotropy",
-                +[](DeviceFeatures& f) -> VkBool32& { return f.mFeatures2.features.samplerAnisotropy; } },
 
             RequiredFeature{ "bufferDeviceAddress",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.bufferDeviceAddress; } },
@@ -64,10 +57,6 @@ namespace Rtx
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.shaderSampledImageArrayNonUniformIndexing; } },
             RequiredFeature{
                 "scalarBlockLayout", +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.scalarBlockLayout; } },
-            RequiredFeature{
-                "timelineSemaphore", +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.timelineSemaphore; } },
-            RequiredFeature{
-                "hostQueryReset", +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.hostQueryReset; } },
 
             RequiredFeature{
                 "synchronization2", +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan13.synchronization2; } },
@@ -83,10 +72,6 @@ namespace Rtx
 
             RequiredFeature{ "accelerationStructure",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mAccelerationStructure.accelerationStructure; } },
-            RequiredFeature{ "rayTracingPipeline",
-                +[](DeviceFeatures& f) -> VkBool32& { return f.mRayTracingPipeline.rayTracingPipeline; } },
-            RequiredFeature{ "rayTraversalPrimitiveCulling",
-                +[](DeviceFeatures& f) -> VkBool32& { return f.mRayTracingPipeline.rayTraversalPrimitiveCulling; } },
             RequiredFeature{ "rayQuery", +[](DeviceFeatures& f) -> VkBool32& { return f.mRayQuery.rayQuery; } },
             RequiredFeature{ "rayTracingPositionFetch",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mPositionFetch.rayTracingPositionFetch; } },
@@ -95,21 +80,17 @@ namespace Rtx
             RequiredFeature{ "micromap", +[](DeviceFeatures& f) -> VkBool32& { return f.mOpacityMicromap.micromap; } },
             RequiredFeature{ "pipelineExecutableInfo",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mPipelineExecutable.pipelineExecutableInfo; } },
-            RequiredFeature{ "rayTracingInvocationReorder",
-                +[](DeviceFeatures& f) -> VkBool32& { return f.mInvocationReorder.rayTracingInvocationReorder; } },
         };
     }
 
     DeviceFeatures::DeviceFeatures()
     {
         void* next = nullptr;
-        chain(next, mInvocationReorder, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_EXT);
         chain(next, mOpacityMicromap, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPACITY_MICROMAP_FEATURES_EXT);
         chain(next, mPipelineExecutable, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR);
         chain(next, mRayTracingMaintenance1, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_MAINTENANCE_1_FEATURES_KHR);
         chain(next, mPositionFetch, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_POSITION_FETCH_FEATURES_KHR);
         chain(next, mRayQuery, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR);
-        chain(next, mRayTracingPipeline, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR);
         chain(next, mAccelerationStructure, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR);
         chain(next, mVulkan14, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES);
         chain(next, mVulkan13, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES);
@@ -120,10 +101,7 @@ namespace Rtx
     DeviceProperties::DeviceProperties()
     {
         void* next = nullptr;
-        chain(
-            next, mInvocationReorder, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_PROPERTIES_EXT);
         chain(next, mOpacityMicromap, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPACITY_MICROMAP_PROPERTIES_EXT);
-        chain(next, mRayTracingPipeline, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR);
         chain(next, mAccelerationStructure, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR);
         chain(next, mVulkan12, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES);
         chain(next, mVulkan11, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES);

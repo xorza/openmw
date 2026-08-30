@@ -114,12 +114,10 @@ namespace Rtx
     /// in the same table the trace reads, and a moon drawn from the mean of its portrait rather than
     /// the portrait itself is a coloured circle.
     ///
-    /// Safe to call again on a scene that already has them — `addTexture` hands back the slot it
-    /// already gave — though each call takes a hold, so each wants its own `dropMoonFaces`.
+    /// **Held for the life of the scene and never given back.** A moon is drawn by a ray that
+    /// reached nothing, so no material can speak for the slot and the sweep would take it on the
+    /// first frame a cell died. Both callers hold one scene for as long as they run.
     MoonFaces addMoonFaces(SceneDesc& scene);
-
-    /// Gives back the holds `addMoonFaces` took.
-    void dropMoonFaces(SceneDesc& scene, const MoonFaces& faces);
 
     /// A moon placed from angles somebody else worked out.
     ///

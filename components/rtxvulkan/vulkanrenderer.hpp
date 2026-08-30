@@ -150,7 +150,7 @@ namespace Rtx
             /// What the GUI is drawn out of, rewritten every frame it has anything in it and grown
             /// to the busiest frame so far. Host-visible device memory, so writing it is a memcpy
             /// and there is no staging copy and no transfer to record.
-            HostBuffer mGuiVertices;
+            Buffer mGuiVertices;
             Graveyard mGuiGraveyard;
         };
 

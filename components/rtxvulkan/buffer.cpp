@@ -1,17 +1,28 @@
 #include "buffer.hpp"
 
+#include <algorithm>
 #include <cassert>
-#include <utility>
 
 #include "device.hpp"
 #include "result.hpp"
 
 namespace Rtx
 {
-    Buffer::Buffer(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties)
-        : mDevice(device.getHandle())
-        , mSize(size)
+    namespace
+    {
+        /// Video memory the host can write. Required rather than fallen back from — see `Requirements`.
+        constexpr VkMemoryPropertyFlags sResizableBar = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+            | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        constexpr VkMemoryPropertyFlags sStaging
+            = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    }
+
+    Buffer::Buffer(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
+        bool readable)
+        : mSize(size)
         , mAddressable((usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0)
+        , mReadable(readable)
     {
         assert(size > 0);
 
@@ -21,46 +32,29 @@ namespace Rtx
             .usage = usage,
             .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         };
-        checkVk(vkCreateBuffer(mDevice, &create, nullptr, &mHandle), "vkCreateBuffer");
+        checkVk(
+            vkCreateBuffer(device.getHandle(), &create, nullptr, mHandle.put(device.getHandle())), "vkCreateBuffer");
 
         VkMemoryRequirements requirements{};
-        vkGetBufferMemoryRequirements(mDevice, mHandle, &requirements);
+        vkGetBufferMemoryRequirements(device.getHandle(), mHandle.get(), &requirements);
 
         mMemory = DeviceMemory(device, requirements.size, requirements.memoryTypeBits, properties, mAddressable);
-        checkVk(vkBindBufferMemory(mDevice, mHandle, mMemory.getHandle(), 0), "vkBindBufferMemory");
-
-        if ((properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
-            mMapped = mMemory.map();
+        checkVk(vkBindBufferMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), 0), "vkBindBufferMemory");
     }
 
-    Buffer::~Buffer()
+    Buffer Buffer::deviceLocal(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage)
     {
-        destroy();
+        return Buffer(device, size, usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
     }
 
-    Buffer::Buffer(Buffer&& other) noexcept
-        : mDevice(other.mDevice)
-        , mHandle(std::exchange(other.mHandle, VK_NULL_HANDLE))
-        , mMemory(std::move(other.mMemory))
-        , mSize(other.mSize)
-        , mMapped(std::exchange(other.mMapped, nullptr))
-        , mAddressable(other.mAddressable)
+    Buffer Buffer::hostWritten(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage)
     {
+        return Buffer(device, size, usage, sResizableBar, false);
     }
 
-    Buffer& Buffer::operator=(Buffer&& other) noexcept
+    Buffer Buffer::staging(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage)
     {
-        if (this != &other)
-        {
-            destroy();
-            mDevice = other.mDevice;
-            mHandle = std::exchange(other.mHandle, VK_NULL_HANDLE);
-            mMemory = std::move(other.mMemory);
-            mSize = other.mSize;
-            mMapped = std::exchange(other.mMapped, nullptr);
-            mAddressable = other.mAddressable;
-        }
-        return *this;
+        return Buffer(device, size, usage, sStaging, true);
     }
 
     VkDeviceAddress Buffer::getDeviceAddress() const
@@ -69,17 +63,23 @@ namespace Rtx
 
         const VkBufferDeviceAddressInfo info{
             .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-            .buffer = mHandle,
+            .buffer = mHandle.get(),
         };
-        return vkGetBufferDeviceAddress(mDevice, &info);
+        return vkGetBufferDeviceAddress(mHandle.getDevice(), &info);
     }
 
-    void Buffer::destroy()
+    Buffer growTo(Buffer& held, const Device& device, VkDeviceSize bytes, VkBufferUsageFlags usage)
     {
-        if (mHandle != VK_NULL_HANDLE)
-            vkDestroyBuffer(mDevice, mHandle, nullptr);
-        mHandle = VK_NULL_HANDLE;
-        mMapped = nullptr;
-        mMemory = DeviceMemory();
+        // **One byte and not none.** Vulkan has no zero-sized buffer, so a table with nothing in it
+        // still gets the smallest one that can be bound — which is what the shader's descriptor
+        // needs and what nothing in it has to read.
+        const VkDeviceSize wanted = std::max(bytes, VkDeviceSize{ 1 });
+        if (held.getSize() >= wanted)
+            return Buffer();
+
+        Buffer displaced = std::move(held);
+        held = Buffer::hostWritten(device, wanted, usage);
+
+        return displaced;
     }
 }

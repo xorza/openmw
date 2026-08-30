@@ -12,8 +12,8 @@
 
 #include <components/rtx/shaders/bloom.h>
 #include <components/rtxvulkan/bloompass.hpp>
+#include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
-#include <components/rtxvulkan/hostbuffer.hpp>
 #include <components/rtxvulkan/image.hpp>
 
 #include "harness.hpp"
@@ -42,7 +42,7 @@ namespace Rtx
         /// path leaves it.
         void paint(CommandPool& pool, const Device& device, const Image& image, std::span<const float> pixels)
         {
-            const HostBuffer staging(device, pixels.size_bytes(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+            const Buffer staging = Buffer::hostWritten(device, pixels.size_bytes(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
             staging.writeAt(0, pixels);
 
             pool.submitAndWait([&](VkCommandBuffer commands) {

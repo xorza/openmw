@@ -51,7 +51,7 @@ namespace Rtx
 
         Block& block = mBlocks.emplace_back();
         block.mUnits = made;
-        block.mBuffer = Buffer(device, VkDeviceSize{ made } * sAlignment, mUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        block.mBuffer = Buffer::deviceLocal(device, VkDeviceSize{ made } * sAlignment, mUsage);
         device.setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(block.mBuffer.getHandle()),
             mName + " " + std::to_string(mBlocks.size() - 1));
 

@@ -109,8 +109,8 @@ namespace Rtx
             const std::uint32_t grid = static_cast<std::uint32_t>(sWaveTiles[index].mGrid);
             const std::uint32_t levels = levelsFor(sWaveTiles[index].mGrid);
 
-            tile.mField = Buffer(mDevice, fieldOf(sWaveTiles[index].mGrid) * 2 * sizeof(float),
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            tile.mField = Buffer::deviceLocal(
+                mDevice, fieldOf(sWaveTiles[index].mGrid) * 2 * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
             tile.mSurface = std::make_unique<Image>(
                 mDevice, grid, grid, GBUFFER_ALBEDO, usage, std::format("wave surface {}", index), levels);

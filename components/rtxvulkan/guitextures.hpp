@@ -10,8 +10,8 @@
 
 #include <components/rtx/renderer.hpp>
 
+#include "buffer.hpp"
 #include "commands.hpp"
-#include "hostbuffer.hpp"
 #include "image.hpp"
 
 namespace Rtx
@@ -142,7 +142,7 @@ namespace Rtx
         /// than this holds flushes partway through and carries on, which costs a submit and bounds
         /// what the staging can grow to; sizing it to the largest frame instead would hold a load's
         /// worth of textures in host-visible video memory for the rest of the session.
-        HostBuffer mStaging;
+        Buffer mStaging;
         VkDeviceSize mStagingUsed = 0;
 
         /// Textures given back, held until `bury` hands them to a frame's graveyard.

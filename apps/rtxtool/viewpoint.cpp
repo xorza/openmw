@@ -109,15 +109,16 @@ namespace RtxTool
         // the network is a picture and a cost that the installed library was free to change out
         // from under a corpus that never said which one it meant.
         const std::string exposure
-            = request.mExposure.has_value() ? std::format("{}", *request.mExposure) : std::string("auto");
+            = request.mFrame.mExposure.has_value() ? std::format("{}", *request.mFrame.mExposure) : std::string("auto");
 
         return std::format(
             "--cell=\"{}\" --pos={},{},{} --look={},{},{} --fov={} --size={}x{} --weather={}"
             " --hour={} --day={} --exposure={} --upscale={} --preset={} --filter={} --validation={}"
             " --sync-validation={} --gpu-validation={}{}",
-            request.mCell, origin.x(), origin.y(), origin.z(), target.x(), target.y(), target.z(), request.mFieldOfView,
-            width, height, request.mWeather, request.mHour, request.mDay, exposure, Rtx::upscaleName(request.mUpscale),
-            Rtx::presetName(request.mPreset), request.mFilter, validation.mEnabled, validation.mSynchronization,
-            validation.mGpuAssisted, request.mShowAlbedo ? " --albedo" : "");
+            request.mCell, origin.x(), origin.y(), origin.z(), target.x(), target.y(), target.z(),
+            request.mFrame.mFieldOfView, width, height, request.mFrame.mWeather, request.mFrame.mHour,
+            request.mFrame.mDay, exposure, Rtx::upscaleName(request.mFrame.mUpscale),
+            Rtx::presetName(request.mFrame.mPreset), request.mFrame.mFilter, validation.mEnabled,
+            validation.mSynchronization, validation.mGpuAssisted, request.mShowAlbedo ? " --albedo" : "");
     }
 }

@@ -119,8 +119,8 @@ namespace RtxTool
                  << std::format(R"(  "suite": "{}",)", request.mSuite) << '\n'
                  << std::format(R"(  "output": [{}, {}],)", extents.mOutputWidth, extents.mOutputHeight) << '\n'
                  << std::format(R"(  "render": [{}, {}],)", extents.mRenderWidth, extents.mRenderHeight) << '\n'
-                 << std::format(R"(  "upscale": "{}",)", Rtx::upscaleName(request.mUpscale)) << '\n'
-                 << std::format(R"(  "preset": "{}",)", Rtx::presetName(request.mPreset)) << '\n'
+                 << std::format(R"(  "upscale": "{}",)", Rtx::upscaleName(request.mFrame.mUpscale)) << '\n'
+                 << std::format(R"(  "preset": "{}",)", Rtx::presetName(request.mFrame.mPreset)) << '\n'
                  << std::format(R"(  "frames": {}, "warmup": {}, "validation": {},)", request.getMeasured(),
                         request.getWarmup(), validating)
                  << '\n'
@@ -192,23 +192,14 @@ namespace RtxTool
 
         std::unique_ptr<Window> window;
         if (request.mWindow)
-            window = std::make_unique<Window>("OpenMW RTX - bench", request.mWidth, request.mHeight);
+            window = std::make_unique<Window>("OpenMW RTX - bench", request.mFrame.mWidth, request.mFrame.mHeight);
 
         std::string reason;
         // **One renderer for the whole run.** Standing one up compiles every pipeline and costs a
         // quarter of a second; doing that per place would put a cold device in front of every
         // measurement and make the first place in the list systematically the slowest.
         const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(
-            Rtx::RendererOptions{
-                .mShaderDirectory = request.mShaderDirectory,
-                .mWidth = request.mWidth,
-                .mHeight = request.mHeight,
-                .mUpscale = request.mUpscale,
-                .mPreset = request.mPreset,
-                .mWindow = window == nullptr ? nullptr : window->getHandle(),
-                .mValidation = validation,
-            },
-            reason);
+            request.mFrame.describeRenderer(validation, window == nullptr ? nullptr : window->getHandle()), reason);
         if (renderer == nullptr)
         {
             out() << reason << '\n';
@@ -225,8 +216,8 @@ namespace RtxTool
         if (extents.mRenderWidth != extents.mOutputWidth || extents.mRenderHeight != extents.mOutputHeight)
             out() << std::format(" traced at {}x{}", extents.mRenderWidth, extents.mRenderHeight);
 
-        out() << std::format(
-            ", upscale {}, preset {}", Rtx::upscaleName(request.mUpscale), Rtx::presetName(request.mPreset));
+        out() << std::format(", upscale {}, preset {}", Rtx::upscaleName(request.mFrame.mUpscale),
+            Rtx::presetName(request.mFrame.mPreset));
 
         // **Said before the run rather than after it.** A figure measured under the layers is not
         // one to compare against anything, and finding that out at the end is finding it out after
@@ -274,17 +265,8 @@ namespace RtxTool
             if (window != nullptr)
                 window->setTitle("OpenMW RTX - bench - " + view.mName);
 
-            StagedWorld staged(world, *cell,
-                StagingRequest{
-
-                    .mWeather = request.mWeather,
-                    .mHour = view.mHour.value_or(request.mHour),
-                    .mDay = request.mDay,
-                    .mFieldOfView = request.mFieldOfView,
-                    .mOrigin = view.mOrigin,
-                    .mTarget = view.mTarget,
-                },
-                request.mActors);
+            StagedWorld staged(world, *cell, request.mFrame.describeStaging(view.mHour, view.mOrigin, view.mTarget),
+                request.mFrame.mActors);
 
             if (staged.empty())
             {
@@ -427,9 +409,9 @@ namespace RtxTool
                 }
 
                 Framing framing = Framing::lookingFrom(standing);
-                framing.mFieldOfView = request.mFieldOfView;
+                framing.mFieldOfView = request.mFrame.mFieldOfView;
                 framing.mFar = far;
-                framing.mDelight = request.mDelight;
+                framing.mDelight = request.mFrame.mDelight;
 
                 framing.mLighting = staged.getLighting();
                 framing.mLighting.mSeconds = static_cast<float>(frame) / sStepRate;
@@ -447,8 +429,8 @@ namespace RtxTool
                 renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
                     Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
                         .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                        .mFilter = request.mFilter,
-                        .mExposure = request.mExposure });
+                        .mFilter = request.mFrame.mFilter,
+                        .mExposure = request.mFrame.mExposure });
 
                 if (window != nullptr && !renderer->presentFrame())
                     renderer->resize(window->getWidth(), window->getHeight());
@@ -508,7 +490,7 @@ namespace RtxTool
                 .mView = view.mName,
                 .mCell = view.mCell,
                 .mNote = view.mNote,
-                .mHour = view.mHour.value_or(request.mHour),
+                .mHour = view.mHour.value_or(request.mFrame.mHour),
                 .mBuildMs = buildMs,
                 .mFrames = static_cast<std::uint32_t>(frameTimes.size()),
                 .mWallSeconds = std::chrono::duration<double>(runEnd - runStart).count(),

@@ -25,10 +25,10 @@ namespace RtxTool
         {
             ViewRequest request;
             request.mCell = "Balmora, Guild of Fighters";
-            request.mFieldOfView = 60.0f;
-            request.mWeather = "Ashstorm";
-            request.mHour = 17.25f;
-            request.mFilter = false;
+            request.mFrame.mFieldOfView = 60.0f;
+            request.mFrame.mWeather = "Ashstorm";
+            request.mFrame.mHour = 17.25f;
+            request.mFrame.mFilter = false;
             return request;
         }
 
@@ -47,7 +47,7 @@ namespace RtxTool
             EXPECT_NE(describeProfile(request, validation, origin, target, 64, 64).find("--exposure=auto"),
                 std::string::npos);
 
-            request.mExposure = 0.25f;
+            request.mFrame.mExposure = 0.25f;
             EXPECT_NE(describeProfile(request, validation, origin, target, 64, 64).find("--exposure=0.25"),
                 std::string::npos);
         }
@@ -103,7 +103,7 @@ namespace RtxTool
             const Rtx::ValidationOptions gpu{ .mEnabled = true, .mGpuAssisted = true };
 
             ViewRequest denoised = makeRequest();
-            denoised.mFilter = true;
+            denoised.mFrame.mFilter = true;
 
             EXPECT_NE(describeProfile(shaded, off, at, to, 8, 8), describeProfile(albedo, off, at, to, 8, 8));
             EXPECT_NE(describeProfile(shaded, off, at, to, 8, 8), describeProfile(denoised, off, at, to, 8, 8));
@@ -115,9 +115,9 @@ namespace RtxTool
             // rendered at another mode through another network — the same line, a different frame,
             // and a different price.
             ViewRequest upscaled = makeRequest();
-            upscaled.mUpscale = Rtx::Upscale::Performance;
+            upscaled.mFrame.mUpscale = Rtx::Upscale::Performance;
             ViewRequest latest = makeRequest();
-            latest.mPreset = Rtx::Preset::E;
+            latest.mFrame.mPreset = Rtx::Preset::E;
 
             EXPECT_NE(describeProfile(shaded, off, at, to, 8, 8), describeProfile(upscaled, off, at, to, 8, 8));
             EXPECT_NE(describeProfile(shaded, off, at, to, 8, 8), describeProfile(latest, off, at, to, 8, 8));

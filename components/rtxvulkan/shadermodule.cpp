@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <fstream>
-#include <utility>
 #include <vector>
 
 #include <components/files/conversion.hpp>
@@ -43,7 +42,6 @@ namespace Rtx
     }
 
     ShaderModule::ShaderModule(const Device& device, const std::filesystem::path& path)
-        : mDevice(device.getHandle())
     {
         const std::vector<std::uint32_t> words = readSpirv(path);
 
@@ -53,43 +51,12 @@ namespace Rtx
             .pCode = words.data(),
         };
 
-        checkVk(vkCreateShaderModule(mDevice, &createInfo, nullptr, &mHandle), "vkCreateShaderModule");
+        checkVk(vkCreateShaderModule(device.getHandle(), &createInfo, nullptr, mHandle.put(device.getHandle())),
+            "vkCreateShaderModule");
 
-        // A constructor that throws runs no destructor; the name is built from a path, so it can.
-        try
-        {
-            device.setName(VK_OBJECT_TYPE_SHADER_MODULE, reinterpret_cast<std::uint64_t>(mHandle),
-                Files::pathToUnicodeString(path.filename()).c_str());
-        }
-        catch (...)
-        {
-            vkDestroyShaderModule(mDevice, mHandle, nullptr);
-            mHandle = VK_NULL_HANDLE;
-            throw;
-        }
-    }
-
-    ShaderModule::~ShaderModule()
-    {
-        if (mHandle != VK_NULL_HANDLE)
-            vkDestroyShaderModule(mDevice, mHandle, nullptr);
-    }
-
-    ShaderModule::ShaderModule(ShaderModule&& other) noexcept
-        : mDevice(other.mDevice)
-        , mHandle(std::exchange(other.mHandle, VK_NULL_HANDLE))
-    {
-    }
-
-    ShaderModule& ShaderModule::operator=(ShaderModule&& other) noexcept
-    {
-        if (this != &other)
-        {
-            if (mHandle != VK_NULL_HANDLE)
-                vkDestroyShaderModule(mDevice, mHandle, nullptr);
-            mDevice = other.mDevice;
-            mHandle = std::exchange(other.mHandle, VK_NULL_HANDLE);
-        }
-        return *this;
+        // The name is built from a path, so it can throw — and a member that has been constructed is
+        // destroyed on the way out even where the object it belongs to never was.
+        device.setName(VK_OBJECT_TYPE_SHADER_MODULE, reinterpret_cast<std::uint64_t>(mHandle.get()),
+            Files::pathToUnicodeString(path.filename()).c_str());
     }
 }

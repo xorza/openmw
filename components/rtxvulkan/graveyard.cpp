@@ -24,12 +24,6 @@ namespace Rtx
             mBuffers.push_back(std::move(buffer));
     }
 
-    void Graveyard::bury(HostBuffer&& buffer)
-    {
-        if (buffer.getHandle() != VK_NULL_HANDLE)
-            mHostBuffers.push_back(std::move(buffer));
-    }
-
     void Graveyard::bury(Texture&& texture)
     {
         if (texture.getView() != VK_NULL_HANDLE)
@@ -83,7 +77,6 @@ namespace Rtx
         mMicromaps.clear();
         mRooms.clear();
         mBuffers.clear();
-        mHostBuffers.clear();
         mTextures.clear();
         mImages.clear();
 

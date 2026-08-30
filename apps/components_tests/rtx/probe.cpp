@@ -15,7 +15,6 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/computepipeline.hpp>
 #include <components/rtxvulkan/device.hpp>
-#include <components/rtxvulkan/hostbuffer.hpp>
 
 #include "harness.hpp"
 
@@ -61,19 +60,17 @@ namespace Rtx
             return pattern;
         }
 
-        /// `values` on the device, in whichever memory this leg of the test is asking about.
-        ///
-        /// Both of the kinds the renderer keeps geometry in: resizable-BAR video memory the host
-        /// writes straight into, which is what the normals are, and ordinary device-local memory
-        /// staged through a copy, which is what the indices and texture coordinates are.
-        HostBuffer place(const Device& device, CommandPool&, std::span<const osg::Vec3f> values, HostBuffer*)
+        /// `values` in resizable-BAR video memory, which is where the normals are.
+        Buffer placeHostWritten(const Device& device, CommandPool&, std::span<const osg::Vec3f> values)
         {
-            HostBuffer held(device, values.size_bytes(), sUsage);
+            Buffer held = Buffer::hostWritten(device, values.size_bytes(), sUsage);
             held.write(values);
             return held;
         }
 
-        Buffer place(const Device& device, CommandPool& pool, std::span<const osg::Vec3f> values, Buffer*)
+        /// `values` in ordinary device-local memory staged through a copy, which is where the
+        /// indices and the texture coordinates are.
+        Buffer placeStaged(const Device& device, CommandPool& pool, std::span<const osg::Vec3f> values)
         {
             Batch upload(pool);
             Buffer held = uploadBuffer(device, upload, values, sUsage);
@@ -81,13 +78,15 @@ namespace Rtx
             return held;
         }
 
+        /// Which of the two a leg of the test asks about.
+        using Place = Buffer (*)(const Device&, CommandPool&, std::span<const osg::Vec3f>);
+
         /// Runs the probe and gives back the three readings end to end.
         std::vector<osg::Vec3f> runProbe(const Device& device, const ComputePipeline& pipeline, CommandPool& pool,
-            VkBuffer source, VkDeviceAddress address, const HostBuffer& blocks)
+            VkBuffer source, VkDeviceAddress address, const Buffer& blocks)
         {
-            const Buffer readings(device, sizeof(osg::Vec3f) * sCount * Shaders::PROBE_READINGS,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            const Buffer readings = Buffer::staging(
+                device, sizeof(osg::Vec3f) * sCount * Shaders::PROBE_READINGS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
             const VkDescriptorBufferInfo from{ source, 0, VK_WHOLE_SIZE };
             const VkDescriptorBufferInfo into{ readings.getHandle(), 0, VK_WHOLE_SIZE };
@@ -141,26 +140,26 @@ namespace Rtx
         }
 
         /// One memory kind, all three readings, against the pattern.
-        template <class Held>
         void expectEveryReadingAgrees(const Device& device, const ComputePipeline& pipeline, CommandPool& pool,
-            const std::vector<osg::Vec3f>& pattern, const std::string& memory)
+            const std::vector<osg::Vec3f>& pattern, Place place, const std::string& memory)
         {
-            const Held whole = place(device, pool, std::span<const osg::Vec3f>(pattern), static_cast<Held*>(nullptr));
+            const Buffer whole = place(device, pool, std::span<const osg::Vec3f>(pattern));
 
             // The same pattern again, cut into separate buffers at separate addresses.
-            std::vector<Held> blocks;
+            std::vector<Buffer> blocks;
             std::vector<VkDeviceAddress> addresses;
             for (std::uint32_t start = 0; start < sCount; start += sBlock)
             {
                 const std::span<const osg::Vec3f> part
                     = std::span<const osg::Vec3f>(pattern).subspan(start, std::min(sBlock, sCount - start));
-                blocks.push_back(place(device, pool, part, static_cast<Held*>(nullptr)));
+                blocks.push_back(place(device, pool, part));
                 addresses.push_back(blocks.back().getDeviceAddress());
             }
 
             ASSERT_EQ(addresses.size(), 3u) << "the block arithmetic is only exercised by more than one block";
 
-            HostBuffer table(device, addresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            Buffer table = Buffer::hostWritten(
+                device, addresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
             table.write(std::span<const VkDeviceAddress>(addresses));
 
             const std::vector<osg::Vec3f> read
@@ -190,10 +189,10 @@ namespace Rtx
         /// nothing else did; with nothing able to ask this, it had to be put to a whole traced frame
         /// and answered by elimination, which cost a day and reached the wrong answer twice.
         ///
-        /// **Both memory kinds, because the renderer uses both.** Normals live in a `HostBuffer` —
-        /// resizable-BAR video memory the host writes straight into, and write-combining — and
-        /// indices and texture coordinates in ordinary device-local memory staged through a copy. A
-        /// pointer read that only misbehaves in one of them would look like a shader bug.
+        /// **Both memory kinds, because the renderer uses both.** Normals live in resizable-BAR
+        /// video memory the host writes straight into, which is write-combining, and indices and
+        /// texture coordinates in ordinary device-local memory staged through a copy. A pointer read
+        /// that only misbehaves in one of them would look like a shader bug.
         TEST(RtxProbeTest, aPointerAndADescriptorReadTheSameBytes)
         {
             std::string reason;
@@ -208,8 +207,8 @@ namespace Rtx
 
             const std::vector<osg::Vec3f> pattern = makePattern();
 
-            expectEveryReadingAgrees<HostBuffer>(device, pipeline, pool, pattern, "host-visible");
-            expectEveryReadingAgrees<Buffer>(device, pipeline, pool, pattern, "device-local");
+            expectEveryReadingAgrees(device, pipeline, pool, pattern, placeHostWritten, "host-visible");
+            expectEveryReadingAgrees(device, pipeline, pool, pattern, placeStaged, "device-local");
         }
     }
 }

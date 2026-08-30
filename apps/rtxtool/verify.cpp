@@ -86,21 +86,16 @@ namespace RtxTool
     {
         std::filesystem::create_directories(request.mOut);
 
-        std::string reason;
         // **Upscaling off, and not offered as an option.** Ray Reconstruction is temporal and
         // carries state the code below cannot hold still: two builds that describe the same scene
         // identically write different bytes through it, and fifteen of sixteen views once read as
         // changed by a refactor that changed nothing. One renderer for the whole run, for the
         // reason `bench` gives.
-        const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(
-            Rtx::RendererOptions{
-                .mShaderDirectory = request.mShaderDirectory,
-                .mWidth = request.mWidth,
-                .mHeight = request.mHeight,
-                .mUpscale = Rtx::Upscale::Off,
-                .mValidation = validation,
-            },
-            reason);
+        Rtx::RendererOptions options = request.mFrame.describeRenderer(validation);
+        options.mUpscale = Rtx::Upscale::Off;
+
+        std::string reason;
+        const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(options, reason);
         if (renderer == nullptr)
         {
             out() << reason << '\n';
@@ -127,16 +122,8 @@ namespace RtxTool
                 return 1;
             }
 
-            StagedWorld staged(world, *cell,
-                StagingRequest{
-                    .mWeather = request.mWeather,
-                    .mHour = view.mHour.value_or(request.mHour),
-                    .mDay = request.mDay,
-                    .mFieldOfView = request.mFieldOfView,
-                    .mOrigin = view.mOrigin,
-                    .mTarget = view.mTarget,
-                },
-                request.mActors);
+            StagedWorld staged(world, *cell, request.mFrame.describeStaging(view.mHour, view.mOrigin, view.mTarget),
+                request.mFrame.mActors);
 
             if (staged.empty())
             {
@@ -151,10 +138,10 @@ namespace RtxTool
             uploader.hand(*renderer, Rtx::sWorld, staged.getScene(), world.getImageManager(), Rtx::SeaState{});
 
             Framing framing = Framing::lookingFrom(staged.getPlacement());
-            framing.mFieldOfView = request.mFieldOfView;
+            framing.mFieldOfView = request.mFrame.mFieldOfView;
             framing.mFar = std::max(staged.getScene().getBounds().radius() * 8.0f, 10000.0f);
             framing.mLighting = staged.getLighting();
-            framing.mDelight = request.mDelight;
+            framing.mDelight = request.mFrame.mDelight;
 
             // **One frame at seed zero.** Everything a repeat buys is a timing figure, and this
             // command measures nothing; a second frame would only give the sampler somewhere else
@@ -164,8 +151,8 @@ namespace RtxTool
             renderer->renderFrame(makeFrameConstants(framing, extents),
                 Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
                     .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                    .mFilter = request.mFilter,
-                    .mExposure = request.mExposure });
+                    .mFilter = request.mFrame.mFilter,
+                    .mExposure = request.mFrame.mExposure });
 
             std::vector<std::uint8_t> pixels;
             renderer->readPixels(pixels);

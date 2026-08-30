@@ -48,7 +48,7 @@ namespace RtxTool
                 .mCell = request.mCell,
                 .mOrigin = camera.getOrigin(),
                 .mTarget = camera.getTarget(),
-                .mWeather = request.mWeather,
+                .mWeather = request.mFrame.mWeather,
                 .mHour = clock.getHour(),
                 .mDay = clock.getDay(),
             };
@@ -88,23 +88,13 @@ namespace RtxTool
         }
     }
 
-    int runWindow(World& world, const ESM::Cell& centre, const Rtx::ValidationOptions& validation, ViewRequest request,
-        const ActorRequest& actors)
+    int runWindow(World& world, const ESM::Cell& centre, const Rtx::ValidationOptions& validation, ViewRequest request)
     {
-        Window window(request.mTitle, request.mWidth, request.mHeight);
+        Window window(request.mTitle, request.mFrame.mWidth, request.mFrame.mHeight);
 
         std::string reason;
-        const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(
-            Rtx::RendererOptions{
-                .mShaderDirectory = request.mShaderDirectory,
-                .mWidth = request.mWidth,
-                .mHeight = request.mHeight,
-                .mUpscale = request.mUpscale,
-                .mPreset = request.mPreset,
-                .mWindow = window.getHandle(),
-                .mValidation = validation,
-            },
-            reason);
+        const std::unique_ptr<Rtx::Renderer> renderer
+            = Rtx::createRenderer(request.mFrame.describeRenderer(validation, window.getHandle()), reason);
         if (renderer == nullptr)
         {
             out() << reason << '\n';
@@ -115,15 +105,7 @@ namespace RtxTool
         // goes somewhere, which used to make it the one caller with its own copy of loading, the
         // ring, the sweep and the actor snapshot — and the copy is what drifted.
         StagedWorld staged(world, centre,
-            StagingRequest{
-                .mWeather = request.mWeather,
-                .mHour = request.mHour,
-                .mDay = request.mDay,
-                .mFieldOfView = request.mFieldOfView,
-                .mOrigin = request.mOrigin,
-                .mTarget = request.mTarget,
-            },
-            actors);
+            request.mFrame.describeStaging(std::nullopt, request.mOrigin, request.mTarget), request.mFrame.mActors);
 
         if (staged.empty())
         {
@@ -172,7 +154,7 @@ namespace RtxTool
 
         /// The one clock the hour, the sea and the fog run on. `WorldClock` says which reading each
         /// thing takes and why.
-        WorldClock clock(request.mDay, request.mHour);
+        WorldClock clock(request.mFrame.mDay, request.mFrame.mHour);
 
         /// The weather being turned into, and how far along. Empty where the sky is settled.
         std::optional<std::string> turningInto;
@@ -185,9 +167,9 @@ namespace RtxTool
         /// run the sun round the clock without a frame being dropped.
         const auto moveSky = [&] {
             if (turningInto.has_value())
-                staged.setSky(request.mWeather, *turningInto, turned, clock.getDay(), clock.getHour());
+                staged.setSky(request.mFrame.mWeather, *turningInto, turned, clock.getDay(), clock.getHour());
             else
-                staged.setSky(request.mWeather, clock.getDay(), clock.getHour());
+                staged.setSky(request.mFrame.mWeather, clock.getDay(), clock.getHour());
 
             request.mLighting = staged.getLighting();
         };
@@ -257,12 +239,13 @@ namespace RtxTool
                         // **Turned into rather than swapped for.** A transition is the one thing the
                         // harness never ran — the blend the shader carries was exercised only in the
                         // game, which is the surface nobody iterates on.
-                        const std::uint32_t at = Rtx::weatherIndex(turningInto.value_or(request.mWeather)).value();
+                        const std::uint32_t at
+                            = Rtx::weatherIndex(turningInto.value_or(request.mFrame.mWeather)).value();
 
                         // Whatever the last one was turning into is where this one starts from, so
                         // pressing the key twice does not jump.
                         if (turningInto.has_value())
-                            request.mWeather = *turningInto;
+                            request.mFrame.mWeather = *turningInto;
 
                         turningInto = std::string(Rtx::weatherName(
                             Rtx::nextRegionWeather(world.findRegion(staged.getRegion()), at, forward)));
@@ -357,8 +340,8 @@ namespace RtxTool
                         request.mTitle, framesSinceTitle / elapsed, sizes, at.x(), at.y(), at.z(), camera.getSpeed(),
                         clock.getDay(), clockFace(clock.getHour()),
                         turningInto.has_value()
-                            ? std::format("{} to {} {:.0f}%", request.mWeather, *turningInto, turned * 100.0f)
-                            : request.mWeather));
+                            ? std::format("{} to {} {:.0f}%", request.mFrame.mWeather, *turningInto, turned * 100.0f)
+                            : request.mFrame.mWeather));
 
                 framesSinceTitle = 0;
                 lastTitle = now;
@@ -407,7 +390,7 @@ namespace RtxTool
                     if (turned >= 1.0f)
                     {
                         // Arrived: the sky it was turning into is simply the sky now.
-                        request.mWeather = *turningInto;
+                        request.mFrame.mWeather = *turningInto;
                         turningInto.reset();
                         turned = 0.0f;
                     }
@@ -422,9 +405,9 @@ namespace RtxTool
             Framing framing;
             framing.mOrigin = camera.getOrigin();
             framing.mForward = camera.getForward();
-            framing.mFieldOfView = request.mFieldOfView;
+            framing.mFieldOfView = request.mFrame.mFieldOfView;
             framing.mFar = far;
-            framing.mDelight = request.mDelight;
+            framing.mDelight = request.mFrame.mDelight;
             framing.mShowAlbedo = request.mShowAlbedo;
 
             // **A screenshot is the path with no clock at all.** The seconds carry the sea and the
@@ -450,8 +433,8 @@ namespace RtxTool
             // it drops are numbers a window does not report.
             renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
                 Rtx::FrameOptions{ .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                    .mFilter = request.mFilter,
-                    .mExposure = request.mExposure });
+                    .mFilter = request.mFrame.mFilter,
+                    .mExposure = request.mFrame.mExposure });
 
             if (!renderer->presentFrame())
                 resized = true;

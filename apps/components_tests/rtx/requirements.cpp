@@ -29,18 +29,16 @@ namespace Rtx
                  next != nullptr; next = next->pNext)
                 linked.insert(next);
 
-            EXPECT_EQ(linked.size(), 12u) << "a member was added to DeviceFeatures without chaining it";
+            EXPECT_EQ(linked.size(), 10u) << "a member was added to DeviceFeatures without chaining it";
             EXPECT_TRUE(linked.contains(&features.mFeatures2));
             EXPECT_TRUE(linked.contains(&features.mVulkan12));
             EXPECT_TRUE(linked.contains(&features.mVulkan13));
             EXPECT_TRUE(linked.contains(&features.mVulkan14));
             EXPECT_TRUE(linked.contains(&features.mAccelerationStructure));
-            EXPECT_TRUE(linked.contains(&features.mRayTracingPipeline));
             EXPECT_TRUE(linked.contains(&features.mRayQuery));
             EXPECT_TRUE(linked.contains(&features.mPositionFetch));
             EXPECT_TRUE(linked.contains(&features.mRayTracingMaintenance1));
             EXPECT_TRUE(linked.contains(&features.mOpacityMicromap));
-            EXPECT_TRUE(linked.contains(&features.mInvocationReorder));
             EXPECT_TRUE(linked.contains(&features.mPipelineExecutable));
         }
 
@@ -53,13 +51,11 @@ namespace Rtx
                  next != nullptr; next = next->pNext)
                 linked.insert(next);
 
-            EXPECT_EQ(linked.size(), 7u) << "a member was added to DeviceProperties without chaining it";
+            EXPECT_EQ(linked.size(), 5u) << "a member was added to DeviceProperties without chaining it";
             EXPECT_TRUE(linked.contains(&properties.mVulkan11));
             EXPECT_TRUE(linked.contains(&properties.mVulkan12));
             EXPECT_TRUE(linked.contains(&properties.mAccelerationStructure));
-            EXPECT_TRUE(linked.contains(&properties.mRayTracingPipeline));
             EXPECT_TRUE(linked.contains(&properties.mOpacityMicromap));
-            EXPECT_TRUE(linked.contains(&properties.mInvocationReorder));
         }
 
         /// A hand-written table of two dozen accessors is where a copy-paste sends two entries at the

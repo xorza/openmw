@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
@@ -22,7 +23,7 @@ namespace Rtx
 
         /// What a copy would be written from, and what it would be written with.
         ///
-        /// **These tests ask the bookkeeping and not the picture.** `HostBuffer` is write-combining
+        /// **These tests ask the bookkeeping and not the picture.** `Buffer` is write-combining
         /// and hands out no readable pointer, deliberately, so what a copy actually holds cannot be
         /// read back at any sensible cost. What can be checked is the debt — which rows a copy is
         /// about to be given — and that is where every one of the failures this type replaced lived:

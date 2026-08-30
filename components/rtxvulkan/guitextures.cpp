@@ -116,7 +116,7 @@ namespace Rtx
             at = 0;
 
             if (bytes > mStaging.getSize())
-                mStaging = HostBuffer(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+                mStaging = Buffer::hostWritten(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
         }
 
         mStaging.writeAt(at, rgba);

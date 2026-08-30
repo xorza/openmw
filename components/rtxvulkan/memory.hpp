@@ -4,6 +4,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "owned.hpp"
+
 namespace Rtx
 {
     class Device;
@@ -24,27 +26,27 @@ namespace Rtx
         /// @param deviceAddress whether the memory will back a buffer whose device address is taken.
         DeviceMemory(const Device& device, VkDeviceSize size, std::uint32_t typeBits, VkMemoryPropertyFlags properties,
             bool deviceAddress);
-        ~DeviceMemory();
 
         DeviceMemory(const DeviceMemory&) = delete;
         DeviceMemory& operator=(const DeviceMemory&) = delete;
+
+        /// **Written out, because the mapping has to be let go of with the allocation.** Everything
+        /// else here empties itself; a pointer into memory the source no longer holds does not.
         DeviceMemory(DeviceMemory&& other) noexcept;
         DeviceMemory& operator=(DeviceMemory&& other) noexcept;
 
-        VkDeviceMemory getHandle() const { return mHandle; }
+        VkDeviceMemory getHandle() const { return mHandle.get(); }
 
-        /// The whole allocation, mapped. Only valid on host-visible memory, which is asserted.
+        /// The whole allocation, mapped, or null where the memory is not host-visible.
         ///
-        /// **There is no unmapping.** Both buffers map once and keep the pointer for as long as they
-        /// hold the allocation, and memory need not be unmapped before it is freed.
-        void* map() const;
+        /// **Mapped once at allocation and never unmapped.** The pointer a driver hands back does
+        /// not move, so asking again is a call and a lock for an address already held — and memory
+        /// need not be unmapped before it is freed.
+        void* map() const { return mMapped; }
 
     private:
-        void destroy();
-
-        VkDevice mDevice = VK_NULL_HANDLE;
-        VkDeviceMemory mHandle = VK_NULL_HANDLE;
-        bool mHostVisible = false;
+        Owned<VkDeviceMemory, vkFreeMemory> mHandle;
+        void* mMapped = nullptr;
     };
 
     /// The index of a memory type satisfying `properties`, out of those `typeBits` allows.

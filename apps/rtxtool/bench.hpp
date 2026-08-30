@@ -2,18 +2,15 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <optional>
 #include <string>
 #include <vector>
 
-#include <components/rtx/reconstruction.hpp>
-#include <components/rtx/renderer.hpp>
-#include <components/rtx/upscale.hpp>
-
-#include "gpuclock.hpp"
-#include "posedactors.hpp"
-#include "views.hpp"
 #include <components/rtx/frametimes.hpp>
+#include <components/rtx/renderer.hpp>
+
+#include "framerequest.hpp"
+#include "gpuclock.hpp"
+#include "views.hpp"
 
 namespace Rtx
 {
@@ -27,14 +24,14 @@ namespace RtxTool
     /// A profiling run, over a list of places.
     struct BenchRequest
     {
+        FrameRequest mFrame;
+
         /// Which suite this came from, for the report and the record. Empty where the views were
         /// named on the command line instead.
         std::string mSuite;
 
         /// The places to run, in the order they are run in.
         std::vector<View> mViews;
-
-        std::filesystem::path mShaderDirectory;
 
         /// Where to write the run as a record, or empty for none.
         std::filesystem::path mJson;
@@ -55,10 +52,6 @@ namespace RtxTool
         /// between them, so what the profile attributes time to is what the report's figures came
         /// from. See `PerfControl`.
         std::filesystem::path mPerfControl;
-
-        std::uint32_t mWidth = 1920;
-        std::uint32_t mHeight = 1080;
-        float mFieldOfView = 60.0f;
 
         /// How many seconds of *world* each place is run for.
         ///
@@ -84,25 +77,6 @@ namespace RtxTool
         /// swapchain, so it does not pace the loop; what it costs is one present per frame, and it
         /// is the only way to see that a place is being profiled facing a wall.
         bool mWindow = true;
-
-        Rtx::Upscale mUpscale = Rtx::Upscale::Off;
-
-        /// Which network it runs. Pinned rather than left to the library, whose own default has
-        /// moved between SDK versions, so that two runs are comparable.
-        Rtx::Preset mPreset = Rtx::Preset::D;
-        float mDelight = 1.0f;
-        bool mFilter = true;
-        std::optional<float> mExposure;
-
-        std::string mWeather = "Clear";
-
-        /// The hour a place stands at where it fixes none of its own. `View::mHour` says which wins.
-        float mHour = sDefaultHour;
-
-        /// Which day, counted from the one a new game begins on. Only the moons read it.
-        int mDay = 0;
-
-        ActorRequest mActors;
 
         /// How many frames each place is measured over, which is `mFrames` or what `mSeconds` comes
         /// to at the rate the world steps.

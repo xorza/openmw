@@ -17,7 +17,6 @@
 #include "device.hpp"
 #include "frameslots.hpp"
 #include "graveyard.hpp"
-#include "hostbuffer.hpp"
 
 namespace Rtx
 {
@@ -115,7 +114,7 @@ namespace Rtx
             assert(slot < mSlots);
             assert(mDevice != nullptr && "sync before open");
 
-            HostBuffer& copy = mCopies[slot];
+            Buffer& copy = mCopies[slot];
             RowDebt& owed = mOwed[slot];
             const VkDeviceSize needed = mRows.size() * sizeof(Row);
 
@@ -196,7 +195,7 @@ namespace Rtx
         std::string mName;
 
         std::vector<Row> mRows;
-        std::array<HostBuffer, sFrameSlots> mCopies;
+        std::array<Buffer, sFrameSlots> mCopies;
         std::array<RowDebt, sFrameSlots> mOwed;
 
         /// Cleared and refilled by `resize`, never freed: the rows one growth appended.

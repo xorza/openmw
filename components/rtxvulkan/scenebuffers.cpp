@@ -137,7 +137,7 @@ namespace Rtx
         {
             Tables& tables = mTables[slot];
 
-            for (HostBuffer* table : { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightOffsets,
+            for (Buffer* table : { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightOffsets,
                      &tables.mGrid, &tables.mLightIndices, &tables.mSprites, &tables.mEmitters,
                      &tables.mSpriteTileOffsets, &tables.mSpriteTileIndices })
                 graveyard.bury(growTo(*table, device, 0, sTableUsage));
@@ -206,12 +206,12 @@ namespace Rtx
         mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mMeshes.getHandle()), "meshes");
     }
 
-    void SceneBuffers::reserve(HostBuffer& held, const VkDeviceSize bytes, Graveyard& graveyard)
+    void SceneBuffers::reserve(Buffer& held, const VkDeviceSize bytes, Graveyard& graveyard)
     {
         graveyard.bury(growTo(held, *mDevice, bytes, sTableUsage));
     }
 
-    bool SceneBuffers::outgrow(HostBuffer& held, const VkDeviceSize bytes, Graveyard& graveyard)
+    bool SceneBuffers::outgrow(Buffer& held, const VkDeviceSize bytes, Graveyard& graveyard)
     {
         if (held.getSize() >= bytes)
             return false;

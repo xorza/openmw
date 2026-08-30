@@ -195,7 +195,6 @@ namespace Rtx
     std::string PhysicalDevice::describe() const
     {
         const VkPhysicalDeviceProperties& base = mProperties->mProperties2.properties;
-        const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& rt = mProperties->mRayTracingPipeline;
         const VkPhysicalDeviceAccelerationStructurePropertiesKHR& as = mProperties->mAccelerationStructure;
 
         std::ostringstream out;
@@ -224,24 +223,11 @@ namespace Rtx
             out << bits << " bits at " << base.limits.timestampPeriod << " ns a tick\n";
 
         out << "\nray tracing\n"
-            << "  shader group handle size:     " << rt.shaderGroupHandleSize << " bytes\n"
-            << "  shader group base alignment:  " << rt.shaderGroupBaseAlignment << " bytes\n"
-            << "  max ray recursion depth:      " << rt.maxRayRecursionDepth << '\n'
-            << "  max ray dispatch invocations: " << rt.maxRayDispatchInvocationCount << '\n'
             << "  max geometry count:           " << as.maxGeometryCount << '\n'
             << "  max instance count:           " << as.maxInstanceCount << '\n'
             << "  max primitive count:          " << as.maxPrimitiveCount << '\n'
             << "  micromap subdivision levels:  " << mProperties->mOpacityMicromap.maxOpacity2StateSubdivisionLevel
             << " (2-state), " << mProperties->mOpacityMicromap.maxOpacity4StateSubdivisionLevel << " (4-state)\n";
-
-        // A driver may expose the extension and then decline to reorder, which would make every
-        // measurement of SER meaningless. The hint is the only way to tell.
-        out << "  invocation reorder:           "
-            << (mProperties->mInvocationReorder.rayTracingInvocationReorderReorderingHint
-                           == VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_EXT
-                       ? "reorders"
-                       : "accepts the call and does nothing")
-            << '\n';
 
         out << "\noptional extensions present\n";
         if (mOptionalExtensions.empty())

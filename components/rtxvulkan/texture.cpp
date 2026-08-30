@@ -94,8 +94,7 @@ namespace Rtx
         mImage = std::make_unique<Image>(device, data.mWidth, data.mHeight, toVulkanFormat(data.mFormat),
             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, levels);
 
-        Buffer staging(device, data.mBytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        Buffer staging = Buffer::staging(device, data.mBytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
         staging.write(data.mBytes);
 
         // Every level in one submit: the levels are already contiguous in the source, so this is one

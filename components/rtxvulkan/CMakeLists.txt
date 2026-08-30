@@ -161,14 +161,13 @@ set(RTX_VULKAN_FILES
     gputimer.hpp
     graveyard.cpp
     graveyard.hpp
-    hostbuffer.cpp
-    hostbuffer.hpp
     image.cpp
     image.hpp
     instance.cpp
     instance.hpp
     memory.cpp
     memory.hpp
+    owned.hpp
     physicaldevice.cpp
     physicaldevice.hpp
     presenter.cpp

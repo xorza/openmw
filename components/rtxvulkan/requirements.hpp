@@ -40,7 +40,6 @@ namespace Rtx
         VkPhysicalDeviceVulkan13Features mVulkan13{};
         VkPhysicalDeviceVulkan14Features mVulkan14{};
         VkPhysicalDeviceAccelerationStructureFeaturesKHR mAccelerationStructure{};
-        VkPhysicalDeviceRayTracingPipelineFeaturesKHR mRayTracingPipeline{};
         VkPhysicalDeviceRayQueryFeaturesKHR mRayQuery{};
         VkPhysicalDeviceRayTracingPositionFetchFeaturesKHR mPositionFetch{};
         VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR mRayTracingMaintenance1{};
@@ -49,7 +48,6 @@ namespace Rtx
         /// What lets the driver be asked how it compiled a pipeline: registers a thread, spills,
         /// waves a multiprocessor. See `ComputePipeline`, which is where the answer is read.
         VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR mPipelineExecutable{};
-        VkPhysicalDeviceRayTracingInvocationReorderFeaturesEXT mInvocationReorder{};
     };
 
     /// The properties worth reporting or budgeting against, read in one chained query.
@@ -66,9 +64,7 @@ namespace Rtx
         VkPhysicalDeviceVulkan11Properties mVulkan11{};
         VkPhysicalDeviceVulkan12Properties mVulkan12{};
         VkPhysicalDeviceAccelerationStructurePropertiesKHR mAccelerationStructure{};
-        VkPhysicalDeviceRayTracingPipelinePropertiesKHR mRayTracingPipeline{};
         VkPhysicalDeviceOpacityMicromapPropertiesEXT mOpacityMicromap{};
-        VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT mInvocationReorder{};
     };
 
     /// A feature the renderer will not start without, and how to reach it in the chain.

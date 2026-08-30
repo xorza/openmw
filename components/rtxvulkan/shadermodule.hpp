@@ -4,6 +4,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "owned.hpp"
+
 namespace Rtx
 {
     class Device;
@@ -18,17 +20,15 @@ namespace Rtx
     {
     public:
         ShaderModule(const Device& device, const std::filesystem::path& path);
-        ~ShaderModule();
 
         ShaderModule(const ShaderModule&) = delete;
         ShaderModule& operator=(const ShaderModule&) = delete;
-        ShaderModule(ShaderModule&& other) noexcept;
-        ShaderModule& operator=(ShaderModule&& other) noexcept;
+        ShaderModule(ShaderModule&&) noexcept = default;
+        ShaderModule& operator=(ShaderModule&&) noexcept = default;
 
-        VkShaderModule getHandle() const { return mHandle; }
+        VkShaderModule getHandle() const { return mHandle.get(); }
 
     private:
-        VkDevice mDevice = VK_NULL_HANDLE;
-        VkShaderModule mHandle = VK_NULL_HANDLE;
+        Owned<VkShaderModule, vkDestroyShaderModule> mHandle;
     };
 }

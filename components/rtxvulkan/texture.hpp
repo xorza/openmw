@@ -12,7 +12,6 @@
 #include <memory>
 
 #include "buffer.hpp"
-#include "hostbuffer.hpp"
 #include "image.hpp"
 #include "setlayout.hpp"
 
@@ -145,7 +144,7 @@ namespace Rtx
         /// Every texture's shading map, host side, so growing the buffer does not have to ask the
         /// descriptions for maps it has already uploaded. A cell's worth is a megabyte or so.
         std::vector<float> mShadingValues;
-        HostBuffer mShading;
+        Buffer mShading;
         VkSampler mSampler = VK_NULL_HANDLE;
         SetLayout mLayout;
         VkDescriptorPool mPool = VK_NULL_HANDLE;

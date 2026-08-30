@@ -224,8 +224,7 @@ namespace Rtx
         const std::uint32_t width = getWidthAt(level);
         const std::uint32_t height = getHeightAt(level);
         const VkDeviceSize bytes = VkDeviceSize{ width } * height * mTexelBytes;
-        const Buffer staging(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        const Buffer staging = Buffer::staging(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
         pool.submitAndWait([&](VkCommandBuffer commands) {
             transition(commands, layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,

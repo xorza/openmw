@@ -1,6 +1,5 @@
 #include "memory.hpp"
 
-#include <cassert>
 #include <string>
 #include <utility>
 
@@ -30,8 +29,6 @@ namespace Rtx
 
     DeviceMemory::DeviceMemory(const Device& device, VkDeviceSize size, std::uint32_t typeBits,
         VkMemoryPropertyFlags properties, bool deviceAddress)
-        : mDevice(device.getHandle())
-        , mHostVisible((properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
     {
         const VkMemoryAllocateFlagsInfo flags{
             .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
@@ -45,18 +42,18 @@ namespace Rtx
             .memoryTypeIndex = findMemoryType(device, typeBits, properties),
         };
 
-        checkVk(vkAllocateMemory(mDevice, &allocate, nullptr, &mHandle), "vkAllocateMemory");
-    }
+        checkVk(vkAllocateMemory(device.getHandle(), &allocate, nullptr, mHandle.put(device.getHandle())),
+            "vkAllocateMemory");
 
-    DeviceMemory::~DeviceMemory()
-    {
-        destroy();
+        // **Mapped here rather than by whoever holds this**, so the pointer goes when the allocation
+        // does: a buffer that kept its own would hand out an address into memory it had moved away.
+        if ((properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
+            checkVk(vkMapMemory(device.getHandle(), mHandle.get(), 0, VK_WHOLE_SIZE, 0, &mMapped), "vkMapMemory");
     }
 
     DeviceMemory::DeviceMemory(DeviceMemory&& other) noexcept
-        : mDevice(other.mDevice)
-        , mHandle(std::exchange(other.mHandle, VK_NULL_HANDLE))
-        , mHostVisible(other.mHostVisible)
+        : mHandle(std::move(other.mHandle))
+        , mMapped(std::exchange(other.mMapped, nullptr))
     {
     }
 
@@ -64,27 +61,10 @@ namespace Rtx
     {
         if (this != &other)
         {
-            destroy();
-            mDevice = other.mDevice;
-            mHandle = std::exchange(other.mHandle, VK_NULL_HANDLE);
-            mHostVisible = other.mHostVisible;
+            mHandle = std::move(other.mHandle);
+            mMapped = std::exchange(other.mMapped, nullptr);
         }
+
         return *this;
-    }
-
-    void* DeviceMemory::map() const
-    {
-        assert(mHostVisible);
-
-        void* mapped = nullptr;
-        checkVk(vkMapMemory(mDevice, mHandle, 0, VK_WHOLE_SIZE, 0, &mapped), "vkMapMemory");
-        return mapped;
-    }
-
-    void DeviceMemory::destroy()
-    {
-        if (mHandle != VK_NULL_HANDLE)
-            vkFreeMemory(mDevice, mHandle, nullptr);
-        mHandle = VK_NULL_HANDLE;
     }
 }

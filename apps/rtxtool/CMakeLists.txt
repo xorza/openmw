@@ -17,6 +17,8 @@ set(RTXTOOL_FILES
     find.hpp
     framehashes.cpp
     framehashes.hpp
+    framerequest.cpp
+    framerequest.hpp
     framing.cpp
     framing.hpp
     gpuclock.cpp

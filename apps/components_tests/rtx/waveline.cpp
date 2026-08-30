@@ -42,9 +42,8 @@ namespace Rtx
         std::vector<osg::Vec2f> transform(
             const Device& device, const ComputePipeline& pipeline, CommandPool& pool, std::span<const osg::Vec2f> grid)
         {
-            const Buffer field(device, grid.size_bytes(),
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            const Buffer field = Buffer::staging(
+                device, grid.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
             void* mapped = field.map();
             std::memcpy(mapped, grid.data(), grid.size_bytes());

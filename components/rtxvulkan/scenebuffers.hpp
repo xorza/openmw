@@ -19,7 +19,6 @@
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
 #include "frameslots.hpp"
-#include "hostbuffer.hpp"
 #include "slottable.hpp"
 
 namespace Rtx
@@ -129,28 +128,28 @@ namespace Rtx
         /// `mNormalTable` keep their own. These are the ones a placement fills from end to end.
         struct Tables
         {
-            HostBuffer mLayers;
-            HostBuffer mMasks;
-            HostBuffer mLights;
-            HostBuffer mLightOffsets;
-            HostBuffer mGrid;
-            HostBuffer mLightIndices;
-            HostBuffer mSprites;
-            HostBuffer mEmitters;
-            HostBuffer mSpriteTileOffsets;
-            HostBuffer mSpriteTileIndices;
+            Buffer mLayers;
+            Buffer mMasks;
+            Buffer mLights;
+            Buffer mLightOffsets;
+            Buffer mGrid;
+            Buffer mLightIndices;
+            Buffer mSprites;
+            Buffer mEmitters;
+            Buffer mSpriteTileOffsets;
+            Buffer mSpriteTileIndices;
         };
 
         /// Grows one of this object's tables to exactly `bytes`, burying what that displaced.
         ///
         /// A thin name over `growTo` — the rule that a table is never nothing lives there, and this
         /// only saves every call site from repeating what is the same for all of them.
-        void reserve(HostBuffer& held, VkDeviceSize bytes, Graveyard& graveyard);
+        void reserve(Buffer& held, VkDeviceSize bytes, Graveyard& graveyard);
 
         /// Makes `held` able to hold `bytes`, doubling so that a table that keeps growing is made
         /// again a logarithmic number of times rather than once per arrival. True where it was made
         /// again, which is a table holding nothing that the caller has to fill whole.
-        bool outgrow(HostBuffer& held, VkDeviceSize bytes, Graveyard& graveyard);
+        bool outgrow(Buffer& held, VkDeviceSize bytes, Graveyard& graveyard);
 
         /// Reserves room for the scene's attributes, copies in the runs `meshes` names — into every
         /// copy of the normals — and rewrites the per-mesh row table.
@@ -172,7 +171,7 @@ namespace Rtx
 
         /// One row a mesh slot, so a hit can turn its slot into offsets into the tables above.
         /// Rewritten whole whenever a mesh arrives or leaves, which is a few kilobytes.
-        HostBuffer mMeshes;
+        Buffer mMeshes;
 
         // **Host-visible and rewritten from `place`, not uploaded once.** Anything that animates a
         // state set gives the mirror a new material every frame — OpenMW's water cycles thirty-two

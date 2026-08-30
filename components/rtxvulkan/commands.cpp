@@ -43,14 +43,12 @@ namespace Rtx
             "vkResetCommandPool");
     }
 
-    void CommandPool::defer(
-        VkCommandBuffer commands, std::vector<Buffer>&& staging, std::vector<HostBuffer>&& hostStaging)
+    void CommandPool::defer(VkCommandBuffer commands, std::vector<Buffer>&& staging)
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
         mDeferred.push_back(commands);
 
         std::move(staging.begin(), staging.end(), std::back_inserter(mDeferredStaging));
-        std::move(hostStaging.begin(), hostStaging.end(), std::back_inserter(mDeferredHostStaging));
     }
 
     void CommandPool::submitWithDeferred(VkCommandBuffer commands, VkFence fence)
@@ -82,7 +80,6 @@ namespace Rtx
     {
         mDeferred.clear();
         mDeferredStaging.clear();
-        mDeferredHostStaging.clear();
     }
 
     void CommandPool::submit(VkCommandBuffer commands, VkFence fence, Graveyard& kept)
@@ -96,8 +93,6 @@ namespace Rtx
         for (const VkCommandBuffer deferred : mDeferred)
             kept.bury(deferred);
         for (Buffer& staging : mDeferredStaging)
-            kept.bury(std::move(staging));
-        for (HostBuffer& staging : mDeferredHostStaging)
             kept.bury(std::move(staging));
 
         forgetDeferred();
@@ -190,11 +185,6 @@ namespace Rtx
         mStaging.push_back(std::move(staging));
     }
 
-    void Batch::keep(HostBuffer&& staging)
-    {
-        mHostStaging.push_back(std::move(staging));
-    }
-
     void Batch::flush()
     {
         if (mCommands == VK_NULL_HANDLE)
@@ -202,7 +192,6 @@ namespace Rtx
             // Staging with nothing recorded is a caller that kept a buffer and then decided against
             // the copy; it has no reader either way.
             mStaging.clear();
-            mHostStaging.clear();
             return;
         }
 
@@ -210,7 +199,6 @@ namespace Rtx
         // time `endAndWait` returns, so this is where a staging buffer stops being read.
         mPool.endAndWait(std::exchange(mCommands, VK_NULL_HANDLE));
         mStaging.clear();
-        mHostStaging.clear();
     }
 
     void Batch::defer()
@@ -218,23 +206,19 @@ namespace Rtx
         if (mCommands == VK_NULL_HANDLE)
         {
             mStaging.clear();
-            mHostStaging.clear();
             return;
         }
 
-        mPool.defer(std::exchange(mCommands, VK_NULL_HANDLE), std::move(mStaging), std::move(mHostStaging));
+        mPool.defer(std::exchange(mCommands, VK_NULL_HANDLE), std::move(mStaging));
         mStaging.clear();
-        mHostStaging.clear();
     }
 
     Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage)
     {
-        Buffer staging(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        Buffer staging = Buffer::hostWritten(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
         staging.write(bytes);
 
-        Buffer result(
-            device, bytes.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        Buffer result = Buffer::deviceLocal(device, bytes.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
         const VkCommandBuffer commands = batch.getCommands();
         const VkBufferCopy region{ .size = bytes.size() };

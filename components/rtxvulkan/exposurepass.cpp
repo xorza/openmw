@@ -42,11 +42,10 @@ namespace Rtx
             shaderDirectory / "histogram.comp.spv", "histogram")
         , mReducePipeline(device, sReduceBindings, sizeof(Shaders::ExposureConstants), {},
               shaderDirectory / "exposure.comp.spv", "exposure")
-        , mHistogram(device, Shaders::EXPOSURE_BINS * sizeof(std::uint32_t),
-              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-        , mExposure(device, sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+        , mHistogram(Buffer::deviceLocal(device, Shaders::EXPOSURE_BINS * sizeof(std::uint32_t),
+              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
+        , mExposure(Buffer::deviceLocal(
+              device, sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
     {
     }
 

@@ -109,15 +109,6 @@ namespace Rtx
         return loaded;
     }
 
-    void dropSkyContent(SceneDesc& scene, const SkyContent& textures)
-    {
-        for (const Index slot : textures.mClouds)
-            if (slot != sNoIndex)
-                scene.dropTexture(slot);
-
-        dropNightSky(scene, textures.mNight);
-    }
-
     DeckLight deckLight(const Sun& sun, const osg::Vec3f& skyMean, std::span<const MoonPlacement, 2> moons)
     {
         // **The sky's own radiance, less what the deck keeps of it.** A layer under a hemisphere of

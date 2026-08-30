@@ -77,7 +77,4 @@ namespace Rtx
     /// A missing or unreadable mesh comes back with nothing in it, which draws no night sky rather
     /// than failing: the file is content and content is what a mod replaces.
     NightSky readNightSky(SceneDesc& scene, Resource::SceneManager& scenes);
-
-    /// Gives back the holds it took.
-    void dropNightSky(SceneDesc& scene, const NightSky& sky);
 }

@@ -6130,8 +6130,7 @@ namespace Rtx
             // The format the shader declares for `colour`. A narrower one makes every load and store
             // through it undefined for the whole image, which the layers say and nothing else does.
             Image target(device, size, size, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "cost-target");
-            const Buffer hits(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            const Buffer hits = Buffer::staging(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
             // Once, so that the frames below start from laid-out images rather than each paying
             // transitions the real loop pays at startup.

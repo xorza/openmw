@@ -38,8 +38,7 @@ namespace Rtx
         {
             const Device& device = *mHarness->mDevice;
 
-            const Buffer buffer(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            const Buffer buffer = Buffer::staging(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 
             void* const mapped = buffer.map();
             ASSERT_NE(mapped, nullptr);
@@ -63,8 +62,7 @@ namespace Rtx
         {
             const Device& device = *mHarness->mDevice;
 
-            Buffer first(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            Buffer first = Buffer::staging(device, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 
             void* const mapped = first.map();
             const Buffer second = std::move(first);

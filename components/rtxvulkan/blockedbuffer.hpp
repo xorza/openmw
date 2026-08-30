@@ -9,7 +9,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include "hostbuffer.hpp"
+#include "buffer.hpp"
 
 namespace Rtx
 {
@@ -109,11 +109,11 @@ namespace Rtx
         std::uint32_t mBlockSize;
         std::uint32_t mStride;
 
-        std::vector<HostBuffer> mBlocks;
+        std::vector<Buffer> mBlocks;
 
         /// Kept beside the blocks rather than asked for, because a device address is a driver call
         /// and a table of them goes to the device on every growth.
         std::vector<VkDeviceAddress> mAddresses;
-        HostBuffer mTable;
+        Buffer mTable;
     };
 }

@@ -327,14 +327,4 @@ namespace Rtx
 
         return sky;
     }
-
-    void dropNightSky(SceneDesc& scene, const NightSky& sky)
-    {
-        if (sky.mField != sNoIndex)
-            scene.dropTexture(sky.mField);
-
-        for (const NightSky::Patch& patch : sky.mPatches)
-            if (patch.mTexture != sNoIndex)
-                scene.dropTexture(patch.mTexture);
-    }
 }

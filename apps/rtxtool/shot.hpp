@@ -3,10 +3,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
-#include <string>
 
 #include <osg/Vec3f>
 
+#include "framerequest.hpp"
 #include "lighting.hpp"
 #include "motion.hpp"
 
@@ -14,8 +14,6 @@ namespace Resource
 {
     class ImageManager;
 }
-
-#include <components/rtx/renderer.hpp>
 
 namespace Rtx
 {
@@ -27,33 +25,16 @@ namespace RtxTool
     /// Everything the screenshot needs that is not the world itself.
     struct ShotRequest
     {
+        FrameRequest mFrame;
+
         std::filesystem::path mOutput;
-        std::filesystem::path mShaderDirectory;
 
         /// What moves between traced frames, or null for a world that holds still. Borrowed for the
         /// length of the call.
         Motion* mMotion = nullptr;
 
-        /// The size the picture is written at. What it is traced at follows from `mUpscale`, and
-        /// the summary line says so whenever the two differ.
-        std::uint32_t mWidth = 1920;
-        std::uint32_t mHeight = 1080;
-        float mFieldOfView = 60.0f;
-
         /// How many seconds the water has been moving. `StagingRequest::mSeaSeconds` says why.
         float mSeaSeconds = 0.0f;
-
-        /// Whether Ray Reconstruction stands between the trace and the picture, and how hard it
-        /// works. It denoises for itself, so `mFilter` stops meaning anything once this is on.
-        Rtx::Upscale mUpscale = Rtx::Upscale::Off;
-
-        /// Which network it runs. Pinned rather than left to the library, whose own default has
-        /// moved between SDK versions, so that two runs are comparable.
-        Rtx::Preset mPreset = Rtx::Preset::D;
-
-        /// How much of the lighting painted into each texture to divide back out, from zero to one.
-        /// Zero shows the textures as they were drawn, with their lighting still in them.
-        float mDelight = 1.0f;
 
         /// Whether each frame samples a different point inside its pixel.
         ///
@@ -61,10 +42,6 @@ namespace RtxTool
         /// turns a converged reference into an antialiased one, and it is what an upscaler
         /// reconstructs detail from.
         bool mJitter = false;
-
-        /// Whether the denoiser runs. Off is how a reference is made, and how the noise the filter
-        /// is meant to remove can be looked at.
-        bool mFilter = true;
 
         /// Write the albedo with no shading over it.
         bool mShowAlbedo = false;
@@ -89,10 +66,6 @@ namespace RtxTool
         /// after the display curve is where the filter figures stopped being figures. `readPixels`
         /// gives the first and `Channel::Radiance` the second.
         std::filesystem::path mDump;
-
-        /// What to scale the frame by before the display curve, or nothing to measure it off the
-        /// frame. A picture wants it measured; a reference wants it held still.
-        std::optional<float> mExposure;
 
         /// How many times to trace the same frame before reporting on it.
         ///
@@ -129,14 +102,6 @@ namespace RtxTool
         /// Filled in from the cell once it has been read, which is why both commands take their
         /// request by value.
         CellLighting mLighting;
-
-        /// When and in what weather, for the exterior that has a sky. A weather is named as the
-        /// fallback settings spell it, and the hour is on a twenty-four hour clock.
-        std::string mWeather = "Clear";
-        float mHour = 12.0f;
-
-        /// Which day, counted from the one a new game begins on. Only the moons read it.
-        int mDay = 0;
 
         /// Where to stand and what to look at. Both default to a view of the whole cell from outside
         /// it, which is the only placement that needs nothing known about the cell.

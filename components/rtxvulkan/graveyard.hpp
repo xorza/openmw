@@ -7,7 +7,6 @@
 #include <vulkan/vulkan_core.h>
 
 #include "buffer.hpp"
-#include "hostbuffer.hpp"
 #include "image.hpp"
 #include "structurestorage.hpp"
 #include "texture.hpp"
@@ -38,7 +37,6 @@ namespace Rtx
         /// Each takes an empty one and does nothing with it, so a caller can bury what a growth
         /// displaced without asking whether it displaced anything.
         void bury(Buffer&& buffer);
-        void bury(HostBuffer&& buffer);
         void bury(Texture&& texture);
 
         /// By pointer where the others are by value, because `Image` is not movable: what owns one
@@ -69,7 +67,6 @@ namespace Rtx
         // Cleared and refilled, never freed: a frame path does not allocate, and what a frame
         // buries settles at the busiest frame so far.
         std::vector<Buffer> mBuffers;
-        std::vector<HostBuffer> mHostBuffers;
         std::vector<Texture> mTextures;
         std::vector<std::unique_ptr<Image>> mImages;
         std::vector<VkAccelerationStructureKHR> mStructures;

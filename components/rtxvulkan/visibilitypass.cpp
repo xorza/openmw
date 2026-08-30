@@ -111,9 +111,8 @@ namespace Rtx
         bool countHits)
         : mDevice(device)
         , mBlueNoise(uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
-        , mConstants(device, sizeof(Shaders::VisibilityConstants),
-              VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+        , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
+              VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         , mCountHits(countHits ? 1u : 0u)
         , mChannelLayout(channelLayout.getHandle())
         , mVolumeLayout(volumeLayout.getHandle())

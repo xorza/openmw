@@ -486,8 +486,9 @@ namespace Rtx
             dataBytes = alignUp(dataBytes + micromap.getData().size(), sMicromapInputAlignment);
         }
 
-        HostBuffer triangleArray(mDevice, triangleBytes + sMicromapInputAlignment, sMicromapInputUsage);
-        HostBuffer states(mDevice, dataBytes + sMicromapInputAlignment, sMicromapInputUsage);
+        Buffer triangleArray
+            = Buffer::hostWritten(mDevice, triangleBytes + sMicromapInputAlignment, sMicromapInputUsage);
+        Buffer states = Buffer::hostWritten(mDevice, dataBytes + sMicromapInputAlignment, sMicromapInputUsage);
 
         const VkDeviceSize trianglePad = padTo(triangleArray.getDeviceAddress(), sMicromapInputAlignment);
         const VkDeviceSize statePad = padTo(states.getDeviceAddress(), sMicromapInputAlignment);
@@ -565,8 +566,7 @@ namespace Rtx
 
         // A driver may want no scratch at all for micromaps this small; a buffer of nothing is not
         // one that can be made, and the address of this one is then never read.
-        Buffer scratch(
-            mDevice, std::max<VkDeviceSize>(scratchTotal, 1), sScratchUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        Buffer scratch = Buffer::deviceLocal(mDevice, std::max<VkDeviceSize>(scratchTotal, 1), sScratchUsage);
         const VkDeviceAddress scratchAddress = scratch.getDeviceAddress();
 
         std::vector<VkMicromapBuildInfoEXT> live;
@@ -741,7 +741,7 @@ namespace Rtx
         // Scratch is transient: it is read and written by the build and never again. It is handed to
         // the batch below rather than left to this scope, because the build it feeds has only been
         // recorded when this function returns — and the batch frees it the moment the flush does.
-        Buffer scratch(mDevice, scratchTotal, sScratchUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        Buffer scratch = Buffer::deviceLocal(mDevice, scratchTotal, sScratchUsage);
         const VkDeviceAddress scratchAddress = scratch.getDeviceAddress();
 
         for (std::size_t at = 0; at < meshes.size(); ++at)
@@ -830,7 +830,7 @@ namespace Rtx
         }
 
         if (mRefitScratch.getSize() < scratchTotal)
-            mRefitScratch = Buffer(mDevice, scratchTotal, sScratchUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            mRefitScratch = Buffer::deviceLocal(mDevice, scratchTotal, sScratchUsage);
 
         const VkDeviceAddress scratchAddress = mRefitScratch.getDeviceAddress();
 
@@ -1077,12 +1077,12 @@ namespace Rtx
         // Grown to the high-water mark and kept, both of them. A structure is created at offset zero
         // of whatever this holds and asks only that it be large enough.
         if (mTopLevelStorage.getSize() < sizes.accelerationStructureSize)
-            graveyard.bury(std::exchange(mTopLevelStorage,
-                Buffer(mDevice, sizes.accelerationStructureSize, sStorageUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)));
+            graveyard.bury(std::exchange(
+                mTopLevelStorage, Buffer::deviceLocal(mDevice, sizes.accelerationStructureSize, sStorageUsage)));
 
         if (mTopLevelScratch.getSize() < sizes.buildScratchSize)
-            graveyard.bury(std::exchange(mTopLevelScratch,
-                Buffer(mDevice, sizes.buildScratchSize, sScratchUsage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)));
+            graveyard.bury(
+                std::exchange(mTopLevelScratch, Buffer::deviceLocal(mDevice, sizes.buildScratchSize, sScratchUsage)));
 
         const VkAccelerationStructureCreateInfoKHR create{
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,

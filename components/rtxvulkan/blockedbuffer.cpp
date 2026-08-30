@@ -28,7 +28,7 @@ namespace Rtx
 
         while (mBlocks.size() < wanted)
         {
-            HostBuffer made(*mDevice, getBlockBytes(), mUsage);
+            Buffer made = Buffer::hostWritten(*mDevice, getBlockBytes(), mUsage);
 
             // **Zeroed at birth, not left as the allocator found it.** A block is longer than what
             // is put in it and holds gaps between the runs handed out, and a picture that depended
@@ -43,7 +43,8 @@ namespace Rtx
 
         // Made again rather than appended to, which is what a table of a few dozen addresses is
         // worth: the handle changes, and every descriptor naming it is pushed afresh each frame.
-        mTable = HostBuffer(*mDevice, mAddresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        mTable = Buffer::hostWritten(
+            *mDevice, mAddresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         mTable.write(std::span<const VkDeviceAddress>(mAddresses));
         mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mTable.getHandle()), mName + " blocks");
     }

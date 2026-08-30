@@ -37,6 +37,7 @@
 #include "cellchoice.hpp"
 #include "cellscene.hpp"
 #include "find.hpp"
+#include "framerequest.hpp"
 #include "npc.hpp"
 #include "options.hpp"
 #include "picture.hpp"
@@ -246,17 +247,29 @@ namespace RtxTool
                 view.mHour = *given;
         }
 
-        /// When and in what weather the region stands, likewise.
-        StagingRequest stagingFrom(const bpo::variables_map& variables, float hour)
+        /// The whole of a `FrameRequest`, from the command line.
+        ///
+        /// @param hour where the clock stands. `chooseView` decides it for a single place, and
+        ///        `applyHour` for a run of them — so it is passed rather than read here.
+        FrameRequest frameFrom(const bpo::variables_map& variables, const std::filesystem::path& resources, float hour)
         {
-            StagingRequest request;
+            const auto [width, height] = parseSize(variables["size"].as<std::string>());
+
+            FrameRequest request;
+            request.mShaderDirectory = resources / "rtx" / "shaders";
+            request.mWidth = width;
+            request.mHeight = height;
+            request.mFieldOfView = variables["fov"].as<float>();
+            request.mUpscale = parseUpscale(variables["upscale"].as<std::string>());
+            request.mPreset = parsePreset(variables["preset"].as<std::string>());
+            request.mDelight = variables["delight"].as<float>();
+            request.mFilter = variables["filter"].as<bool>();
+            request.mExposure = parseExposure(variables["exposure"].as<std::string>());
             request.mWeather = variables["weather"].as<std::string>();
             request.mHour = hour;
             request.mDay = variables["day"].as<int>();
-            request.mFieldOfView = variables["fov"].as<float>();
+            request.mActors = actorsFrom(variables);
 
-            // Where to stand is left out: a report is not taken from anywhere, and the two commands
-            // that read one derive the camera from the region's own bounds.
             return request;
         }
 
@@ -309,26 +322,19 @@ namespace RtxTool
         ///
         /// An interior's illumination is its own lamps over its own `AMBI`; an exterior's is the sky
         /// and the weather, which the cell says nothing about and the clock decides.
-        int runShot(World& world, const std::string& cellSpec, const Rtx::ValidationOptions& validation,
-            ShotRequest request, const ActorRequest& actors)
+        int runShot(
+            World& world, const std::string& cellSpec, const Rtx::ValidationOptions& validation, ShotRequest request)
         {
             const ESM::Cell* cell = findCellOrComplain(world, cellSpec);
             if (cell == nullptr)
                 return 1;
 
+            StagingRequest staging = request.mFrame.describeStaging(std::nullopt, request.mOrigin, request.mTarget);
+            staging.mSeaSeconds = request.mSeaSeconds;
+
             // Held for the whole render: the extractor keys its meshes on node pointers, and actors
             // freed while the scene still names them is a dangling identity.
-            StagedWorld staged(world, *cell,
-                StagingRequest{
-                    .mWeather = request.mWeather,
-                    .mHour = request.mHour,
-                    .mDay = request.mDay,
-                    .mFieldOfView = request.mFieldOfView,
-                    .mSeaSeconds = request.mSeaSeconds,
-                    .mOrigin = request.mOrigin,
-                    .mTarget = request.mTarget,
-                },
-                actors);
+            StagedWorld staged(world, *cell, staging, request.mFrame.mActors);
 
             request.mLighting = staged.getLighting();
             request.mOrigin = staged.getPlacement().mOrigin;
@@ -351,8 +357,8 @@ namespace RtxTool
             return renderShot(staged.getScene(), world.getImageManager(), validation, request);
         }
 
-        int runView(World& world, const std::string& cellSpec, const Rtx::ValidationOptions& validation,
-            ViewRequest request, const ActorRequest& actors)
+        int runView(
+            World& world, const std::string& cellSpec, const Rtx::ValidationOptions& validation, ViewRequest request)
         {
             const ESM::Cell* cell = findCellOrComplain(world, cellSpec);
             if (cell == nullptr)
@@ -360,7 +366,7 @@ namespace RtxTool
 
             printCellHeading(*cell);
 
-            return runWindow(world, *cell, validation, std::move(request), actors);
+            return runWindow(world, *cell, validation, std::move(request));
         }
 
         /// Where the command line and the view file meet.
@@ -565,8 +571,10 @@ namespace RtxTool
                 if (cell == nullptr)
                     return 1;
 
-                return runTextures(world, *cell, stagingFrom(variables, chosen.mHour), actorsFrom(variables),
-                    variables["out"].as<std::string>(), variables["delight"].as<float>());
+                const FrameRequest frame = frameFrom(variables, resources, chosen.mHour);
+
+                return runTextures(world, *cell, frame.describeStaging(), frame.mActors,
+                    variables["out"].as<std::string>(), frame.mDelight);
             }
 
             if (command == "doll")
@@ -610,7 +618,9 @@ namespace RtxTool
                 if (cell == nullptr)
                     return 1;
 
-                return runMap(world, *cell, stagingFrom(variables, chosen.mHour), actorsFrom(variables), request);
+                const FrameRequest frame = frameFrom(variables, resources, chosen.mHour);
+
+                return runMap(world, *cell, frame.describeStaging(), frame.mActors, request);
             }
 
             if (command == "scene")
@@ -627,31 +637,20 @@ namespace RtxTool
                 if (!needle.empty())
                     return runFind(world, *cell, needle);
 
-                return runScene(world, *cell, stagingFrom(variables, chosen.mHour), actorsFrom(variables),
-                    variables["twice"].as<bool>());
+                const FrameRequest frame = frameFrom(variables, resources, chosen.mHour);
+
+                return runScene(world, *cell, frame.describeStaging(), frame.mActors, variables["twice"].as<bool>());
             }
 
             if (command == "verify")
             {
-                const auto [width, height] = parseSize(variables["size"].as<std::string>());
-
                 VerifyRequest request;
+                request.mFrame = frameFrom(variables, resources, variables["hour"].as<float>());
                 request.mViews = chooseViews(
                     loadViews(resources / "rtx" / "views.cfg"), splitNames(variables["views"].as<std::string>()));
                 applyHour(variables, request.mViews);
-                request.mShaderDirectory = resources / "rtx" / "shaders";
                 request.mOut = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
                 request.mAgainst = variables["against"].as<std::string>();
-                request.mWidth = width;
-                request.mHeight = height;
-                request.mFieldOfView = variables["fov"].as<float>();
-                request.mDelight = variables["delight"].as<float>();
-                request.mFilter = variables["filter"].as<bool>();
-                request.mExposure = parseExposure(variables["exposure"].as<std::string>());
-                request.mWeather = variables["weather"].as<std::string>();
-                request.mHour = variables["hour"].as<float>();
-                request.mDay = variables["day"].as<int>();
-                request.mActors = actorsFrom(variables);
 
                 const Rtx::ValidationOptions validation = validationForMeasuring(variables, false);
 
@@ -663,34 +662,20 @@ namespace RtxTool
 
             if (command == "bench")
             {
-                const auto [width, height] = parseSize(variables["size"].as<std::string>());
-
                 std::string suite;
                 BenchRequest request;
+                request.mFrame = frameFrom(variables, resources, variables["hour"].as<float>());
                 request.mViews = chooseBenchViews(variables, resources, suite);
                 applyHour(variables, request.mViews);
                 request.mSuite = suite;
-                request.mShaderDirectory = resources / "rtx" / "shaders";
                 request.mJson = variables["json"].as<std::string>();
                 request.mHashes = variables["hashes"].as<std::string>();
                 request.mAgainst = variables["against"].as<std::string>();
                 request.mPerfControl = variables["perf-control"].as<std::string>();
-                request.mWidth = width;
-                request.mHeight = height;
-                request.mFieldOfView = variables["fov"].as<float>();
                 request.mSeconds = variables["seconds"].as<float>();
                 request.mWarmup = variables["warmup"].as<float>();
                 request.mFrames = variables["frames"].as<std::uint32_t>();
                 request.mWindow = variables["window"].as<bool>();
-                request.mUpscale = parseUpscale(variables["upscale"].as<std::string>());
-                request.mPreset = parsePreset(variables["preset"].as<std::string>());
-                request.mDelight = variables["delight"].as<float>();
-                request.mFilter = variables["filter"].as<bool>();
-                request.mExposure = parseExposure(variables["exposure"].as<std::string>());
-                request.mWeather = variables["weather"].as<std::string>();
-                request.mHour = variables["hour"].as<float>();
-                request.mDay = variables["day"].as<int>();
-                request.mActors = actorsFrom(variables);
 
                 const Rtx::ValidationOptions validation = validationForMeasuring(variables, request.mWindow);
 
@@ -702,15 +687,12 @@ namespace RtxTool
 
             if (command == "shot" || command == "view")
             {
-                const auto [width, height] = parseSize(variables["size"].as<std::string>());
-
                 // With nothing on the command line, the ship at Seyda Neen: where the game starts,
                 // and the one place every player of this game has stood.
                 const Chosen chosen = chooseView(variables, resources);
 
+                const FrameRequest frame = frameFrom(variables, resources, chosen.mHour);
                 const Rtx::ValidationOptions validation = validationFrom(variables, command == "view");
-
-                const ActorRequest actors = actorsFrom(variables);
 
                 World world(config, variables, resources);
                 pageTerrainFrom(world, variables);
@@ -718,37 +700,23 @@ namespace RtxTool
                 if (command == "view")
                 {
                     ViewRequest request;
+                    request.mFrame = frame;
                     request.mTitle = chosen.mTitle;
                     request.mView = chosen.mView;
                     request.mNote = chosen.mNote;
                     request.mCell = chosen.mCell;
-                    request.mShaderDirectory = resources / "rtx" / "shaders";
                     request.mScreenshotDirectory = config.getScreenshotPath();
-                    request.mWidth = width;
-                    request.mHeight = height;
-                    request.mFieldOfView = variables["fov"].as<float>();
                     request.mOrigin = chosen.mOrigin;
                     request.mTarget = chosen.mTarget;
                     request.mFrames = variables["frames"].as<std::uint32_t>();
                     request.mShowAlbedo = variables["albedo"].as<bool>();
-                    request.mFilter = variables["filter"].as<bool>();
-                    request.mExposure = parseExposure(variables["exposure"].as<std::string>());
-                    request.mUpscale = parseUpscale(variables["upscale"].as<std::string>());
-                    request.mPreset = parsePreset(variables["preset"].as<std::string>());
-                    request.mDelight = variables["delight"].as<float>();
-                    request.mWeather = variables["weather"].as<std::string>();
-                    request.mHour = chosen.mHour;
-                    request.mDay = variables["day"].as<int>();
 
-                    return runView(world, chosen.mCell, validation, request, actors);
+                    return runView(world, chosen.mCell, validation, request);
                 }
 
                 ShotRequest request;
+                request.mFrame = frame;
                 request.mOutput = variables["out"].as<std::string>();
-                request.mShaderDirectory = resources / "rtx" / "shaders";
-                request.mWidth = width;
-                request.mHeight = height;
-                request.mFieldOfView = variables["fov"].as<float>();
                 request.mSeaSeconds = variables["sea-time"].as<float>();
                 request.mOrigin = chosen.mOrigin;
                 request.mTarget = chosen.mTarget;
@@ -756,14 +724,6 @@ namespace RtxTool
                 request.mTail = variables["tail"].as<bool>();
                 request.mDump = variables["dump"].as<std::string>();
                 request.mJitter = variables["jitter"].as<bool>();
-                request.mFilter = variables["filter"].as<bool>();
-                request.mExposure = parseExposure(variables["exposure"].as<std::string>());
-                request.mDelight = variables["delight"].as<float>();
-                request.mWeather = variables["weather"].as<std::string>();
-                request.mHour = chosen.mHour;
-                request.mDay = variables["day"].as<int>();
-                request.mUpscale = parseUpscale(variables["upscale"].as<std::string>());
-                request.mPreset = parsePreset(variables["preset"].as<std::string>());
 
                 // **A reference cannot be built through a denoiser.** `--accumulate` averages frames
                 // towards the truth and Ray Reconstruction resolves each of them towards its own
@@ -772,11 +732,11 @@ namespace RtxTool
                 // rather than refused, because the default is on and nobody asking for a reference
                 // is asking for this; someone who names `--upscale` too gets what they named.
                 if (variables["accumulate"].as<std::uint32_t>() > 0 && variables["upscale"].defaulted())
-                    request.mUpscale = Rtx::Upscale::Off;
+                    request.mFrame.mUpscale = Rtx::Upscale::Off;
                 request.mRepeat = variables["repeat"].as<std::uint32_t>();
                 request.mAccumulate = variables["accumulate"].as<std::uint32_t>();
 
-                return runShot(world, chosen.mCell, validation, request, actors);
+                return runShot(world, chosen.mCell, validation, request);
             }
 
             out() << "Unknown command: " << command << "\n\n";

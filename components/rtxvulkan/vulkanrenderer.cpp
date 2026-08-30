@@ -91,9 +91,8 @@ namespace Rtx
 
     VulkanRenderer::Frame::Frame(const Device& device, CommandPool& pool)
         : mTimer(device)
-        , mHitCount(device, sizeof(std::uint32_t),
-              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+        , mHitCount(Buffer::staging(
+              device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         , mGraveyard(device, pool)
         , mGuiGraveyard(device, pool)
     {

@@ -89,12 +89,11 @@ namespace Rtx
             const ComputePipeline& line = passes.mLine;
             const ComputePipeline& composing = passes.mComposing;
 
-            constexpr VkMemoryPropertyFlags visible
-                = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-            const Buffer table(device, amplitudes.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, visible);
-            const Buffer turning(device, frequencies.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, visible);
-            const Buffer field(device, 3 * sCells * sizeof(osg::Vec2f), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, visible);
+            const Buffer table = Buffer::staging(device, amplitudes.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            const Buffer turning
+                = Buffer::staging(device, frequencies.size_bytes(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            const Buffer field
+                = Buffer::staging(device, 3 * sCells * sizeof(osg::Vec2f), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
             std::memcpy(table.map(), amplitudes.data(), amplitudes.size_bytes());
             std::memcpy(turning.map(), frequencies.data(), frequencies.size_bytes());

@@ -87,12 +87,9 @@ namespace Rtx
     /// opaque grey, which over a cloud deck is the entire sky. Missing means no deck, as it does for
     /// the two weathers that name no texture at all.
     ///
-    /// Safe to call again on a scene that already has them — `addTexture` hands back the slot it
-    /// already gave — though each call takes a hold, so each wants its own `dropSkyContent`.
+    /// **Held for the life of the scene and never given back**, for the reason `addMoonFaces`
+    /// gives: nothing a sweep can read names a sky texture.
     SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes);
-
-    /// Gives back the holds `addSkyContent` took.
-    void dropSkyContent(SceneDesc& scene, const SkyContent& textures);
 
     /// What a cloud deck radiates from below, where its own body shadows it and where it does not.
     ///
