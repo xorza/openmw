@@ -11,6 +11,8 @@ set(RTXTOOL_FILES
     cellscene.hpp
     contactsheet.cpp
     contactsheet.hpp
+    exteriorindex.cpp
+    exteriorindex.hpp
     find.cpp
     find.hpp
     framehashes.cpp

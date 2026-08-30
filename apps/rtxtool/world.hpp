@@ -22,6 +22,7 @@
 
 #include <components/rtx/terrainresidency.hpp>
 
+#include "exteriorindex.hpp"
 #include "objectstorage.hpp"
 #include "terrainstorage.hpp"
 
@@ -282,6 +283,10 @@ namespace RtxTool
         // Built in the initialiser list: `EsmData` is move-constructible and not assignable, which is
         // the right shape for something this size and means it cannot be filled in from the body.
         EsmLoader::EsmData mEsmData;
+
+        // Before `mObjectStorage`, which reads it and does not own it.
+        ExteriorIndex mExteriors;
+
         std::unique_ptr<Resource::ResourceSystem> mResourceSystem;
 
         // Built on the first exterior asked for. The grid keeps the chunks it made: its destructor

@@ -11,11 +11,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
 
 ## Work is done per frame that the frame did not change
 
-- [ ] `components/rtxvulkan/scenebuffers.cpp` `place` refills `mLightScratch`, `mSpriteScratch`
-      and `mEmitterScratch`, calls `mLightGrid.rebuild`, and writes the light, offset, index, grid
-      and emitter tables whole on every placement. `SlotTable` tracks changed rows for instances and
-      materials. The lights have no such account, so a still cell with three hundred lamps rewrites
-      and re-bins them every frame.
 - [ ] `components/rtxvulkan/guitextures.*` is synchronous. `getView`, `read` and `writeWith` all
       call `flush()`, which is a submit and a wait. `drawGui` calls `getView` per batch. A texture
       written in a frame costs one submit-and-wait inside that frame. `videowidget.cpp` writes one
@@ -23,12 +18,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
 - [ ] `components/rtxvulkan/vulkanrenderer.cpp:894-897` and `finishOldest` map and unmap
       `Frame::mHitCount` twice per frame when counting. `Buffer::map` calls `vkMapMemory` on every
       call.
-- [ ] `apps/rtxtool/world.cpp` `findCell` scans every cell record per call. `cellscene.cpp` calls
-      it for each of the nine squares on every crossing and once per departed cell.
-      `apps/rtxtool/objectstorage.cpp` builds an exterior index over the same data.
-- [ ] `apps/rtxtool/stagedworld.cpp` walks the graph twice in the constructor: `mirror(0)` at line
-      439, then again at line 482 or through `mPosed->settle()`. The first walk's result is
-      discarded on the actor path.
 
 ## The same number or the same arithmetic is written in more than one place
 

@@ -61,13 +61,25 @@ namespace RtxTool
         std::uint32_t tested = 0;
         std::uint32_t translucent = 0;
         std::uint32_t glowing = 0;
+
+        // **Counted off the scene and not off a walk's own account.** What a walk reports it met is
+        // what *that* walk met, and a staged world is walked twice — so the flattened chunks and the
+        // folded sheets, which are met once each and never again, are nought in whichever of the two
+        // the report happens to be reading. The scene carries both facts per row.
+        std::uint32_t flattened = 0;
         for (const Rtx::Material& material : scene.getMaterials())
         {
             cutouts += material.isCutout() ? 1 : 0;
             tested += material.mAlphaMode == Rtx::AlphaMode::Cutout ? 1 : 0;
             translucent += material.isTranslucent() ? 1 : 0;
             glowing += material.mEmissiveColour.length2() > 0.0f || material.mEmissive != Rtx::sNoIndex ? 1 : 0;
+            flattened += material.mFlatten ? 1 : 0;
         }
+
+        std::uint32_t sheets = 0;
+        for (const Rtx::MeshRange& mesh : scene.getMeshes())
+            sheets += mesh.mSheet ? 1 : 0;
+
         const osg::Vec3f& ambient = staged.getLighting().mAmbient;
         out << "  cutout materials:     " << cutouts << ", " << tested << " of them alpha-tested outright\n"
             << "  translucent:          " << translucent << ", which a cutoff cannot answer for\n"
@@ -75,7 +87,7 @@ namespace RtxTool
             << "  lights:               " << staged.getScene().getLights().size() << " casting, ambient " << ambient.x()
             << ", " << ambient.y() << ", " << ambient.z() << '\n'
             << "  deforming drawables:  " << stats.mDeformed << '\n'
-            << "  flattened ground:     " << stats.mComposites << " chunks past a cell\n"
+            << "  flattened ground:     " << flattened << " chunks past a cell\n"
             << "  emitters:             " << stats.mEmitters << " holding " << stats.mSprites << " live particles\n"
             << "  residents:            " << staged.getActorCount() << " posed, " << staged.getPropCount()
             << " live props\n";
@@ -87,7 +99,7 @@ namespace RtxTool
             << "  unreadable drawables: " << stats.mSkippedUnknown << '\n'
             << "  empty geometry:       " << stats.mSkippedEmpty << '\n'
             << "  undescribed surfaces: " << stats.mUndescribedMaterials << '\n'
-            << "  sheets:               " << stats.mSheets << " of the meshes, doubled for their backs\n";
+            << "  sheets:               " << sheets << " of the meshes, doubled for their backs\n";
 
         if (twice)
         {

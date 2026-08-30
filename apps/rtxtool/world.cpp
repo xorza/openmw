@@ -149,7 +149,8 @@ namespace RtxTool
         : mEncoder(makeEncoder(variables))
         , mFileCollections(makeFileCollections(config, variables, resourcePath))
         , mEsmData(loadContent(variables, mFileCollections, mReaders, mEncoder))
-        , mObjectStorage(mEsmData)
+        , mExteriors(mEsmData)
+        , mObjectStorage(mEsmData, mExteriors)
     {
         Fallback::Map::init(variables["fallback"].as<Fallback::FallbackMap>().mMap);
 
@@ -375,13 +376,7 @@ namespace RtxTool
 
             if (parsedX.ec == std::errc() && parsedX.ptr == first.data() + first.size() && parsedY.ec == std::errc()
                 && parsedY.ptr == second.data() + second.size())
-            {
-                for (const ESM::Cell& cell : mEsmData.mCells)
-                    if (cell.isExterior() && cell.getGridX() == x && cell.getGridY() == y)
-                        return &cell;
-
-                return nullptr;
-            }
+                return mExteriors.find(x, y);
         }
 
         for (const ESM::Cell& cell : mEsmData.mCells)

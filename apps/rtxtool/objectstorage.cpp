@@ -13,12 +13,10 @@
 
 namespace RtxTool
 {
-    ObjectStorage::ObjectStorage(const EsmLoader::EsmData& content)
+    ObjectStorage::ObjectStorage(const EsmLoader::EsmData& content, const ExteriorIndex& exteriors)
         : mContent(&content)
+        , mExteriors(&exteriors)
     {
-        for (const ESM::Cell& cell : content.mCells)
-            if (cell.isExterior())
-                mExteriors.emplace(std::pair(cell.getGridX(), cell.getGridY()), &cell);
     }
 
     void ObjectStorage::collectReferences(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
@@ -46,11 +44,11 @@ namespace RtxTool
         {
             for (int cellY = startCell.y(); cellY < startCell.y() + size; ++cellY)
             {
-                const auto found = mExteriors.find(std::pair(cellX, cellY));
-                if (found == mExteriors.end())
+                const ESM::Cell* found = mExteriors->find(cellX, cellY);
+                if (found == nullptr)
                     continue;
 
-                const ESM::Cell& cell = *found->second;
+                const ESM::Cell& cell = *found;
 
                 // **What a later content file moved out of this cell.** Only that file carries the
                 // `MVRF`, so a block written by an earlier one still stands the reference where it

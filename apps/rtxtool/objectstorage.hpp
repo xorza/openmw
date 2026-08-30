@@ -1,15 +1,11 @@
 #pragma once
 
 #include <map>
-#include <utility>
 
 #include <components/esm3/refnum.hpp>
 #include <components/terrain/objectstorage.hpp>
 
-namespace ESM
-{
-    struct Cell;
-}
+#include "exteriorindex.hpp"
 
 namespace EsmLoader
 {
@@ -27,7 +23,10 @@ namespace RtxTool
     class ObjectStorage final : public Terrain::ObjectStorage
     {
     public:
-        explicit ObjectStorage(const EsmLoader::EsmData& content);
+        /// @param exteriors where a square is, which this asks for every cell a chunk covers. Read
+        ///        rather than built here, because the harness asks the same question at a crossing
+        ///        and the two must not be two answers.
+        ObjectStorage(const EsmLoader::EsmData& content, const ExteriorIndex& exteriors);
 
         void collectReferences(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
             std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const override;
@@ -38,12 +37,6 @@ namespace RtxTool
 
     private:
         const EsmLoader::EsmData* mContent;
-
-        /// The exteriors by grid position, built once.
-        ///
-        /// **Because a chunk asks for a square of them.** The content files are a flat list of two
-        /// thousand cells with no order this can bisect, and a chunk sixty-four cells wide would
-        /// scan it four thousand times to find what stands in it.
-        std::map<std::pair<int, int>, const ESM::Cell*> mExteriors;
+        const ExteriorIndex* mExteriors;
     };
 }
