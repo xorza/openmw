@@ -113,6 +113,7 @@ if (OPENMW_RTX)
         rtx/alphaimage.cpp
         rtx/bloompass.cpp
         rtx/bluenoise.cpp
+        rtx/buffer.cpp
         rtx/cloudshell.cpp
         rtx/computepipeline.cpp
         rtx/device.cpp

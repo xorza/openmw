@@ -15,9 +15,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
       call `flush()`, which is a submit and a wait. `drawGui` calls `getView` per batch. A texture
       written in a frame costs one submit-and-wait inside that frame. `videowidget.cpp` writes one
       texture per frame.
-- [ ] `components/rtxvulkan/vulkanrenderer.cpp:894-897` and `finishOldest` map and unmap
-      `Frame::mHitCount` twice per frame when counting. `Buffer::map` calls `vkMapMemory` on every
-      call.
 
 ## The same number or the same arithmetic is written in more than one place
 
@@ -33,15 +30,8 @@ Each item describes what is there and what it costs. No item says how to fix it.
       `traceWorld` each assemble an `Rtx::FrameWorld` from the same inputs: `describeStars`,
       `skyBudget`, `makeMoon` for both moons, `fogColour`, `describeClouds` with `deckLight` and
       `stormDirection`, `describePatches`. Two assemblies of one frame.
-- [ ] `components/rtxvulkan/vulkanrenderer.cpp` builds `SceneStats` with the same eight designated
-      initialisers in `setScene` (435-444) and `extendScene` (497-506), and assigns five of them by
-      hand in `placeScene` (600-604).
-- [ ] `components/rtxvulkan/commands.cpp` `CommandPool::submit` (56-94) and `endAndWait` (141-175)
-      both build `mSubmitScratch` from `mDeferred` plus one buffer and both clear the three deferred
-      lists.
 - [ ] `Buffer`, `HostBuffer`, `Texture`, `ShaderModule` and `DeviceMemory` each write the same
-      move constructor, move assignment and `destroy` by hand. `Buffer::write` maps and unmaps per
-      write; `HostBuffer` stays mapped. Two buffer classes serve one job.
+      move constructor, move assignment and `destroy` by hand. Two buffer classes serve one job.
 - [ ] `components/rtxvulkan/texture.cpp` `Texture` owns its own `VkImage`, view and memory and a
       local `barrier` lambda (150-172) that restates `Image::transitionLevels`. `Image` exists.
 - [ ] `components/rtxvulkan/sceneacceleration.cpp` `buildMeshes` (654-678) and `prepareRefit`

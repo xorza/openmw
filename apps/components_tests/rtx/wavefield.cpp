@@ -97,9 +97,7 @@ namespace Rtx
             const Buffer field(device, 3 * sCells * sizeof(osg::Vec2f), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, visible);
 
             std::memcpy(table.map(), amplitudes.data(), amplitudes.size_bytes());
-            table.unmap();
             std::memcpy(turning.map(), frequencies.data(), frequencies.size_bytes());
-            turning.unmap();
 
             constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
             const Image surface(device, sCount, sCount, GBUFFER_ALBEDO, usage, "test-wave-surface");

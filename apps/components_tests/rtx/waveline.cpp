@@ -48,7 +48,6 @@ namespace Rtx
 
             void* mapped = field.map();
             std::memcpy(mapped, grid.data(), grid.size_bytes());
-            field.unmap();
 
             const VkDescriptorBufferInfo info{ field.getHandle(), 0, VK_WHOLE_SIZE };
             const VkWriteDescriptorSet write{
@@ -97,7 +96,6 @@ namespace Rtx
             std::vector<osg::Vec2f> read(grid.size());
             const void* out = field.map();
             std::memcpy(read.data(), out, grid.size_bytes());
-            field.unmap();
 
             return read;
         }

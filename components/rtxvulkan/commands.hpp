@@ -86,6 +86,18 @@ namespace Rtx
         VkCommandBuffer begin();
         void endAndWait(VkCommandBuffer commands);
 
+        /// Submits every deferred batch and then `commands`, as one submit signalling `fence`.
+        ///
+        /// **In that order and in one call, which is the whole of what deferring is for.** Command
+        /// buffers in a submit run in order as far as the barriers between them say, and a deferred
+        /// batch ends every upload and every build in one — so what `commands` reads of them is
+        /// what it would have read had they been recorded into it.
+        void submitWithDeferred(VkCommandBuffer commands, VkFence fence);
+
+        /// Lets go of what was deferred, once it has been submitted and whoever wanted its staging
+        /// has taken it.
+        void forgetDeferred();
+
         const Device& mDevice;
         VkCommandPool mHandle = VK_NULL_HANDLE;
         VkFence mFence = VK_NULL_HANDLE;

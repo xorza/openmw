@@ -34,19 +34,26 @@ namespace Rtx
         /// `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`, which is asserted.
         VkDeviceAddress getDeviceAddress() const;
 
-        void* map() const { return mMemory.map(); }
-        void unmap() const { mMemory.unmap(); }
+        /// The whole buffer in main memory, or null where its memory is not host-visible.
+        ///
+        /// **Mapped once and left mapped, as `HostBuffer` is.** The pointer a driver hands back does
+        /// not move, so asking for it again is a call and a lock for an address already held — and
+        /// the frame that counts its hits asked for one twice a frame.
+        void* map() const
+        {
+            assert(mMapped != nullptr && "a map of a buffer the host cannot reach");
+            return mMapped;
+        }
 
         /// Copies `data` to the start of a host-visible buffer.
         template <class T>
         void write(std::span<const T> data) const
         {
             const std::size_t bytes = data.size_bytes();
+            assert(mMapped != nullptr && "a write to a buffer the host cannot reach");
             assert(bytes <= mSize);
 
-            void* mapped = map();
-            std::memcpy(mapped, data.data(), bytes);
-            unmap();
+            std::memcpy(mMapped, data.data(), bytes);
         }
 
     private:
@@ -56,6 +63,11 @@ namespace Rtx
         VkBuffer mHandle = VK_NULL_HANDLE;
         DeviceMemory mMemory;
         VkDeviceSize mSize = 0;
+
+        /// Held from construction to destruction. Memory need not be unmapped before it is freed,
+        /// which is what lets the mapping end with the allocation rather than with a call.
+        void* mMapped = nullptr;
+
         bool mAddressable = false;
     };
 }

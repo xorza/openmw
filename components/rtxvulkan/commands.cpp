@@ -53,10 +53,8 @@ namespace Rtx
         std::move(hostStaging.begin(), hostStaging.end(), std::back_inserter(mDeferredHostStaging));
     }
 
-    void CommandPool::submit(VkCommandBuffer commands, VkFence fence, Graveyard& kept)
+    void CommandPool::submitWithDeferred(VkCommandBuffer commands, VkFence fence)
     {
-        checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
-
         mSubmitScratch.clear();
         mSubmitScratch.reserve(mDeferred.size() + 1);
         for (const VkCommandBuffer deferred : mDeferred)
@@ -78,6 +76,20 @@ namespace Rtx
         if (fence != VK_NULL_HANDLE)
             checkVk(vkResetFences(mDevice.getHandle(), 1, &fence), "vkResetFences");
         checkVk(vkQueueSubmit2(mDevice.getQueue(), 1, &submit, fence), "vkQueueSubmit2");
+    }
+
+    void CommandPool::forgetDeferred()
+    {
+        mDeferred.clear();
+        mDeferredStaging.clear();
+        mDeferredHostStaging.clear();
+    }
+
+    void CommandPool::submit(VkCommandBuffer commands, VkFence fence, Graveyard& kept)
+    {
+        checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
+
+        submitWithDeferred(commands, fence);
 
         // The deferred batches run ahead of `commands` and are finished when it is, so what they
         // hold goes under the same fence.
@@ -88,9 +100,7 @@ namespace Rtx
         for (HostBuffer& staging : mDeferredHostStaging)
             kept.bury(std::move(staging));
 
-        mDeferred.clear();
-        mDeferredStaging.clear();
-        mDeferredHostStaging.clear();
+        forgetDeferred();
     }
 
     void CommandPool::free(std::span<const VkCommandBuffer> commands)
@@ -142,36 +152,15 @@ namespace Rtx
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
-        // **Whatever was deferred goes first, in this same submit.** Command buffers in one submit
-        // run in order as far as the barriers between them say, and a deferred batch ends every
-        // upload and every build in one — so what `commands` reads of them is what it would have
-        // read had they been recorded into it.
-        mDeferred.push_back(commands);
-
-        mSubmitScratch.clear();
-        mSubmitScratch.reserve(mDeferred.size());
-        for (const VkCommandBuffer buffer : mDeferred)
-            mSubmitScratch.push_back(VkCommandBufferSubmitInfo{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-                .commandBuffer = buffer,
-            });
-
-        const VkSubmitInfo2 submit{
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-            .commandBufferInfoCount = static_cast<std::uint32_t>(mSubmitScratch.size()),
-            .pCommandBufferInfos = mSubmitScratch.data(),
-        };
-
-        checkVk(vkResetFences(mDevice.getHandle(), 1, &mFence), "vkResetFences");
-        checkVk(vkQueueSubmit2(mDevice.getQueue(), 1, &submit, mFence), "vkQueueSubmit2");
+        submitWithDeferred(commands, mFence);
         awaitVk(mDevice.getHandle(), mFence, "a one-off submit");
 
-        // The copies have run, so this is where a deferred batch's staging stops being read.
-        vkFreeCommandBuffers(
-            mDevice.getHandle(), mHandle, static_cast<std::uint32_t>(mDeferred.size()), mDeferred.data());
-        mDeferred.clear();
-        mDeferredStaging.clear();
-        mDeferredHostStaging.clear();
+        // The copies have run, so this is where a deferred batch's staging stops being read, and
+        // where every buffer that carried one can go back to the pool.
+        free(mDeferred);
+        free(std::span<const VkCommandBuffer>(&commands, 1));
+
+        forgetDeferred();
     }
 
     Batch::~Batch()

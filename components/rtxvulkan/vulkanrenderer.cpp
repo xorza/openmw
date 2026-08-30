@@ -435,16 +435,7 @@ namespace Rtx
         setup.flush();
 
         if (slot == sWorld)
-            mStats = SceneStats{
-                .mInstances = held.mAcceleration->getInstanceCount(),
-                .mCutoutInstances = held.mAcceleration->getCutoutInstanceCount(),
-                .mMicromappedInstances = held.mAcceleration->getMicromappedInstanceCount(),
-                .mMicromapTally = held.mAcceleration->getMicromapTally(),
-                .mStructureBytes = held.mAcceleration->getStructureBytes(),
-                .mTableBytes = held.mBuffers->getBytes(),
-                .mTextureCount = held.mTextures->getCount(),
-                .mTextureBytes = held.mTextures->getBytes(),
-            };
+            readStats(held);
     }
 
     void VulkanRenderer::extendScene(
@@ -508,16 +499,7 @@ namespace Rtx
         // describes the same surfaces — and throwing it away is a visible flash every time an actor
         // walks into view with a texture nobody has worn yet.
         if (slot == sWorld)
-            mStats = SceneStats{
-                .mInstances = held.mAcceleration->getInstanceCount(),
-                .mCutoutInstances = held.mAcceleration->getCutoutInstanceCount(),
-                .mMicromappedInstances = held.mAcceleration->getMicromappedInstanceCount(),
-                .mMicromapTally = held.mAcceleration->getMicromapTally(),
-                .mStructureBytes = held.mAcceleration->getStructureBytes(),
-                .mTableBytes = held.mBuffers->getBytes(),
-                .mTextureCount = held.mTextures->getCount(),
-                .mTextureBytes = held.mTextures->getBytes(),
-            };
+            readStats(held);
     }
 
     std::uint32_t VulkanRenderer::getTextureCount(std::uint32_t slot) const
@@ -611,11 +593,25 @@ namespace Rtx
 
         mWorldSlot = into;
 
+        readPlacedStats(held);
+    }
+
+    void VulkanRenderer::readPlacedStats(const ViewScene& held)
+    {
         mStats.mInstances = held.mAcceleration->getInstanceCount();
         mStats.mCutoutInstances = held.mAcceleration->getCutoutInstanceCount();
         mStats.mMicromappedInstances = held.mAcceleration->getMicromappedInstanceCount();
         mStats.mMicromapTally = held.mAcceleration->getMicromapTally();
         mStats.mTableBytes = held.mBuffers->getBytes();
+    }
+
+    void VulkanRenderer::readStats(const ViewScene& held)
+    {
+        readPlacedStats(held);
+
+        mStats.mStructureBytes = held.mAcceleration->getStructureBytes();
+        mStats.mTextureCount = held.mTextures->getCount();
+        mStats.mTextureBytes = held.mTextures->getBytes();
     }
 
     VulkanRenderer::Frame& VulkanRenderer::beginFrame()
@@ -672,10 +668,7 @@ namespace Rtx
         // are the device's clock.
         std::uint32_t hits = 0;
         if (mCountHits)
-        {
             hits = *static_cast<const std::uint32_t*>(frame.mHitCount.map());
-            frame.mHitCount.unmap();
-        }
 
         // What this frame may still have been reading is nothing's now.
         frame.mGraveyard.clear();
@@ -907,14 +900,11 @@ namespace Rtx
         // The count is an atomic sum over the frame, so it starts each one at nothing — and it is
         // not started at all where the trace was specialized to write nothing into it, which is the
         // other half of taking the counter out of the game: the atomic went with `COUNT_HITS`, and
-        // this is the two mappings a frame it never reads was still paying for. Here and not where
+        // this is the write a frame that never reads it was still paying for. Here and not where
         // the frame opened, because a picture inside the interface traced between the two adds to
         // whichever buffer it is handed.
         if (mCountHits)
-        {
             *static_cast<std::uint32_t*>(frame.mHitCount.map()) = 0;
-            frame.mHitCount.unmap();
-        }
 
         // **What reconstructs this frame, decided once and by one rule.** Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame

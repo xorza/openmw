@@ -231,8 +231,6 @@ namespace Rtx
         });
 
         pixels.resize(bytes);
-        const void* mapped = staging.map();
-        std::memcpy(pixels.data(), mapped, bytes);
-        staging.unmap();
+        std::memcpy(pixels.data(), staging.map(), bytes);
     }
 }

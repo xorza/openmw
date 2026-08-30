@@ -199,6 +199,16 @@ namespace Rtx
         ViewScene& sceneAt(std::uint32_t slot);
         const ViewScene& sceneAt(std::uint32_t slot) const;
 
+        /// Reads into `mStats` what a placement can have moved, which is every figure but the three
+        /// a build settles.
+        ///
+        /// **Split from the rest because one of those three is a loop over every texture**, and a
+        /// placement runs on the frame path. What a placement cannot change it does not go and ask.
+        void readPlacedStats(const ViewScene& held);
+
+        /// Reads all of `mStats`, for a scene that has just been built or extended.
+        void readStats(const ViewScene& held);
+
         /// @param width, height what the frame is **presented** at. What it is traced at is the
         ///        upscaler's answer for that, or the same numbers where nothing upscales.
         void createTargets(std::uint32_t width, std::uint32_t height);

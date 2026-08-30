@@ -34,8 +34,10 @@ namespace Rtx
         VkDeviceMemory getHandle() const { return mHandle; }
 
         /// The whole allocation, mapped. Only valid on host-visible memory, which is asserted.
+        ///
+        /// **There is no unmapping.** Both buffers map once and keep the pointer for as long as they
+        /// hold the allocation, and memory need not be unmapped before it is freed.
         void* map() const;
-        void unmap() const;
 
     private:
         void destroy();

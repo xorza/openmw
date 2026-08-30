@@ -28,6 +28,9 @@ namespace Rtx
 
         mMemory = DeviceMemory(device, requirements.size, requirements.memoryTypeBits, properties, mAddressable);
         checkVk(vkBindBufferMemory(mDevice, mHandle, mMemory.getHandle(), 0), "vkBindBufferMemory");
+
+        if ((properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
+            mMapped = mMemory.map();
     }
 
     Buffer::~Buffer()
@@ -40,6 +43,7 @@ namespace Rtx
         , mHandle(std::exchange(other.mHandle, VK_NULL_HANDLE))
         , mMemory(std::move(other.mMemory))
         , mSize(other.mSize)
+        , mMapped(std::exchange(other.mMapped, nullptr))
         , mAddressable(other.mAddressable)
     {
     }
@@ -53,6 +57,7 @@ namespace Rtx
             mHandle = std::exchange(other.mHandle, VK_NULL_HANDLE);
             mMemory = std::move(other.mMemory);
             mSize = other.mSize;
+            mMapped = std::exchange(other.mMapped, nullptr);
             mAddressable = other.mAddressable;
         }
         return *this;
@@ -74,6 +79,7 @@ namespace Rtx
         if (mHandle != VK_NULL_HANDLE)
             vkDestroyBuffer(mDevice, mHandle, nullptr);
         mHandle = VK_NULL_HANDLE;
+        mMapped = nullptr;
         mMemory = DeviceMemory();
     }
 }

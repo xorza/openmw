@@ -136,7 +136,6 @@ namespace Rtx
             std::vector<osg::Vec3f> read(sCount * Shaders::PROBE_READINGS);
             const void* mapped = readings.map();
             std::memcpy(read.data(), mapped, read.size() * sizeof(osg::Vec3f));
-            readings.unmap();
 
             return read;
         }

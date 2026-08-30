@@ -81,11 +81,6 @@ namespace Rtx
         return mapped;
     }
 
-    void DeviceMemory::unmap() const
-    {
-        vkUnmapMemory(mDevice, mHandle);
-    }
-
     void DeviceMemory::destroy()
     {
         if (mHandle != VK_NULL_HANDLE)
