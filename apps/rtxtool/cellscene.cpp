@@ -96,8 +96,7 @@ namespace RtxTool
         return std::to_string(square.mX) + ',' + std::to_string(square.mY);
     }
 
-    std::uint32_t dropCellsOutside(World& world, const ESM::Cell& centre, osg::Group& root, Rtx::SceneDesc& scene,
-        Rtx::SceneExtractor& extractor, LoadedCells& loaded)
+    std::uint32_t dropCellsOutside(World& world, const ESM::Cell& centre, osg::Group& root, LoadedCells& loaded)
     {
         if (!centre.isExterior())
             return 0;
@@ -134,8 +133,7 @@ namespace RtxTool
         return went;
     }
 
-    CellReport readRegion(World& world, const ESM::Cell& centre, osg::Group& root, Rtx::SceneDesc& scene,
-        Rtx::SceneExtractor& extractor, LoadedCells& loaded, bool liveProps)
+    CellReport readRegion(World& world, const ESM::Cell& centre, osg::Group& root, LoadedCells& loaded, bool liveProps)
     {
         CellReport report;
 
@@ -285,7 +283,7 @@ namespace RtxTool
         Rtx::SceneExtractor& extractor, LoadedCells& loaded, std::string_view weather, int day, float hour,
         bool liveProps)
     {
-        CellReport report = readRegion(world, centre, root, scene, extractor, loaded, liveProps);
+        CellReport report = readRegion(world, centre, root, loaded, liveProps);
 
         // **The sheet is the world's and not the region's**, so whoever owns it says where it is.
         // Left at never here, and `StagedWorld` writes what its own plane answers.
@@ -300,8 +298,7 @@ namespace RtxTool
         if (!centre.isExterior())
         {
             const Rtx::Daylight room = Rtx::makeRoomLight(centre.mAmbi);
-            return RegionLoad{ .mLighting
-                = CellLighting{ .mAmbient = room.mAmbient, .mWaterLevel = level, .mDaylight = room, .mFog = room.mFog },
+            return RegionLoad{ .mLighting = CellLighting{ .mWaterLevel = level, .mDaylight = room },
                 .mReport = std::move(report) };
         }
 
@@ -312,14 +309,12 @@ namespace RtxTool
         // is a weather the table knows.
         const std::uint32_t identity = Rtx::weatherIndex(weather).value();
 
-        return RegionLoad{ .mLighting = CellLighting{ .mAmbient = daylight.mAmbient,
-                               .mWaterLevel = level,
+        return RegionLoad{ .mLighting = CellLighting{ .mWaterLevel = level,
                                .mDaylight = daylight,
                                .mOutdoors = true,
                                .mDay = day,
                                .mHour = hour,
-                               .mWeather = identity,
-                               .mFog = daylight.mFog },
+                               .mWeather = identity },
             .mReport = std::move(report) };
     }
 }

@@ -1,8 +1,6 @@
 #include "texelreader.hpp"
 
-#include <algorithm>
 #include <cassert>
-#include <cmath>
 
 #include "colourblock.hpp"
 
@@ -36,18 +34,5 @@ namespace Rtx
             = ColourBlock::read(texture.mBytes.subspan(at).first<8>(), texture.mFormat == TextureFormat::Bc1RgbaSrgb);
 
         return block.mPalette[block.indexAt(std::size_t{ y % 4 } * 4 + x % 4)];
-    }
-
-    float toLinear(float encoded)
-    {
-        return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
-    }
-
-    float toEncoded(float linear)
-    {
-        const float value
-            = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(std::max(linear, 0.0f), 1.0f / 2.4f) - 0.055f;
-
-        return std::clamp(value, 0.0f, 1.0f);
     }
 }

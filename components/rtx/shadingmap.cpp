@@ -6,6 +6,8 @@
 
 #include "colourblock.hpp"
 #include "error.hpp"
+#include "shaders/colour.h"
+#include "srgb.hpp"
 #include "texturedata.hpp"
 
 namespace Rtx
@@ -19,17 +21,6 @@ namespace Rtx
         /// smooth: a correction with an edge in it would put that edge into the frame.
         constexpr int sBlurPasses = 3;
 
-        /// Rec. 709, in linear light, which is where a luminance means anything.
-        float luminanceOf(float red, float green, float blue)
-        {
-            return 0.2126f * red + 0.7152f * green + 0.0722f * blue;
-        }
-
-        float toLinear(float encoded)
-        {
-            return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
-        }
-
         /// What one block or one texel contributes: the sum of its colours in linear light, and
         /// how many counted. A transparent texel is not a colour and does not belong in an average
         /// of them.
@@ -41,7 +32,7 @@ namespace Rtx
 
         osg::Vec3f linearOf(const osg::Vec3f& colour, bool srgb)
         {
-            return srgb ? osg::Vec3f(toLinear(colour.x()), toLinear(colour.y()), toLinear(colour.z())) : colour;
+            return srgb ? toLinear(colour) : colour;
         }
 
         /// The colours of a block, from its palette and the indices that chose it.
@@ -141,7 +132,8 @@ namespace Rtx
         // a block resolves once for every texel in it.
         readTexels(texture, [&](std::uint32_t x, std::uint32_t y, const TexelSum& texels) {
             const std::size_t cell = cellOf(x, y);
-            sums[cell] += luminanceOf(texels.mSum.x(), texels.mSum.y(), texels.mSum.z());
+            // Rec. 709, in linear light, which is where a luminance means anything.
+            sums[cell] += texels.mSum * Shaders::LUMINANCE_WEIGHTS;
             counts[cell] += texels.mCount;
         });
 

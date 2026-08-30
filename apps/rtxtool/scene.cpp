@@ -80,7 +80,7 @@ namespace RtxTool
         for (const Rtx::MeshRange& mesh : scene.getMeshes())
             sheets += mesh.mSheet ? 1 : 0;
 
-        const osg::Vec3f& ambient = staged.getLighting().mAmbient;
+        const osg::Vec3f& ambient = staged.getLighting().mDaylight.mAmbient;
         out << "  cutout materials:     " << cutouts << ", " << tested << " of them alpha-tested outright\n"
             << "  translucent:          " << translucent << ", which a cutoff cannot answer for\n"
             << "  emissive materials:   " << glowing << '\n'

@@ -52,7 +52,7 @@ namespace RtxTool
             kept.push_back(root);
 
             LoadedCells loaded;
-            readRegion(world, cell, *root, scene, extractor, loaded, /*liveProps=*/false);
+            readRegion(world, cell, *root, loaded, /*liveProps=*/false);
             return extractor.extract(*root, osg::Matrixf::identity(), 0);
         }
 

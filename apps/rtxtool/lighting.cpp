@@ -13,9 +13,7 @@ namespace RtxTool
     {
         void settle(CellLighting& lighting, const Rtx::Daylight& daylight, int day, float hour)
         {
-            lighting.mAmbient = daylight.mAmbient;
             lighting.mDaylight = daylight;
-            lighting.mFog = daylight.mFog;
             lighting.mDay = day;
             lighting.mHour = hour;
         }
@@ -73,7 +71,7 @@ namespace RtxTool
         // Nought in a room, for the reason the deck and the stars are: there is no dome to be short
         // of, and the cell's own ambient already reaches every surface.
         const Rtx::SkyBudget budget = lighting.mOutdoors ? Rtx::skyBudget(lighting.mDaylight.mSkyHorizon,
-                                          lighting.mDaylight.mSkyZenith, stars.mGlow, lighting.mAmbient)
+                                          lighting.mDaylight.mSkyZenith, stars.mGlow, lighting.mDaylight.mAmbient)
                                                          : Rtx::SkyBudget{};
 
         // **Before the deck as well, because a deck is lit by them.** A room has neither moon over
@@ -90,13 +88,13 @@ namespace RtxTool
         // **The air is lit by the dome it stands in, and this is where the dome's mean is.** The
         // weather reader handed over the recorded colour as a hue; a room keeps it, since there is
         // no dome over one.
-        Rtx::Fog air = lighting.mFog;
+        Rtx::Fog air = lighting.mDaylight.mFog;
         if (lighting.mOutdoors)
-            air.mColour = Rtx::fogColour(budget.mMean, lighting.mFog.mColour);
+            air.mColour = Rtx::fogColour(budget.mMean, lighting.mDaylight.mFog.mColour);
 
         Rtx::FrameWorld world{
             .mSun = lighting.mDaylight.mSun,
-            .mAmbient = lighting.mAmbient,
+            .mAmbient = lighting.mDaylight.mAmbient,
             .mAmbientFromSky = lighting.mOutdoors ? 1.0f : 0.0f,
             .mSkyHorizon = lighting.mDaylight.mSkyHorizon,
             .mSkyZenith = lighting.mDaylight.mSkyZenith,

@@ -8,6 +8,7 @@
 #include <osg/Vec3f>
 
 #include "shadingmap.hpp"
+#include "srgb.hpp"
 #include "texelreader.hpp"
 
 namespace Rtx
@@ -100,9 +101,7 @@ namespace Rtx
                 for (std::uint32_t x = 0; x < level.mWidth; ++x)
                 {
                     const osg::Vec3f stored = texelAt(texture, level, x, y);
-                    made.mTexels.push_back(encoded
-                            ? osg::Vec3f(toLinear(stored.x()), toLinear(stored.y()), toLinear(stored.z()))
-                            : stored);
+                    made.mTexels.push_back(encoded ? toLinear(stored) : stored);
                 }
 
             return made;

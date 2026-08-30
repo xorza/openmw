@@ -21,9 +21,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
 
 ## The same number or the same arithmetic is written in more than one place
 
-- [ ] The sRGB decode exists three times: `components/rtx/lightbuilder.cpp` `channelToLinear`,
-      `components/rtx/texelreader.cpp` `toLinear`, `components/rtx/shadingmap.cpp` anonymous
-      `toLinear`.
 - [ ] `apps/rtxtool/picture.cpp:40-47,219` restates `apps/openmw/mwrender/localmap.cpp:40-42,169-170`
       (`50000`, `5`, `150000`, light `(-0.3, -0.3, 0.7)`, diffuse `0.7`, ambient `0.3`) and
       `characterpreview.cpp:69` (`12.3f`, the `700`/`71` doll camera). A change to the game's map
@@ -68,8 +65,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
       `std::istringstream` with the classic locale in `placement.cpp:81`. `placement.cpp:76`
       says `from_chars` is unavailable for floats on libc++; `main.cpp:120` and `world.cpp:368`
       use `from_chars` for integers.
-- [ ] `apps/rtxtool/lighting.hpp` `CellLighting` carries `mAmbient` and `mFog` beside
-      `mDaylight`, which already holds both. `lighting.cpp` `settle` copies them across.
 - [ ] `apps/openmw/mwrender/rtx/tracedview.cpp` keeps its own `sNextName` counter for MyGUI texture
       names. `MyGUIPlatform::Picture` has a naming scheme for the same purpose.
 
@@ -87,9 +82,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
       on the command buffer. A device without one of these is refused for a capability nothing
       uses. The optional `VK_NV_cluster_acceleration_structure` and
       `VK_NV_partitioned_acceleration_structure` are enabled and unused.
-- [ ] `apps/rtxtool/view.cpp:50-65` `OnScopeExit` is defined and never instantiated.
-- [ ] `apps/rtxtool/cellscene.cpp` `readRegion` and `dropCellsOutside` take `Rtx::SceneDesc& scene`
-      and `Rtx::SceneExtractor& extractor` and never read them. `loadRegion` passes them through.
 - [ ] `apps/openmw/mwrender/rtx/rtxrenderer.cpp` calls `addMoonFaces` and `addSkyContent` once.
       `dropMoonFaces` and `dropSkyContent` have no caller in the game.
 - [ ] `components/rtxmetal/metalrenderer.mm` is a factory that always returns null with a reason.

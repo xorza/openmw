@@ -287,13 +287,13 @@ namespace RtxTool
         if (mPosed != nullptr)
             mPosed->unplace();
 
-        const CellReport arrived = readRegion(*mWorld, *cell, *mRoot, mScene, mExtractor, mLoaded, mActors.mProps);
+        const CellReport arrived = readRegion(*mWorld, *cell, *mRoot, mLoaded, mActors.mProps);
 
         // **The ring that arrived and the ones that left.** The working set is a square that follows
         // the camera, not everything ever visited; without the second half this grows for as long as
         // the run lasts and stops resembling the game after the first crossing.
         const Crossing crossed{ .mArrived = arrived.mCells,
-            .mDeparted = dropCellsOutside(*mWorld, *cell, *mRoot, mScene, mExtractor, mLoaded) };
+            .mDeparted = dropCellsOutside(*mWorld, *cell, *mRoot, mLoaded) };
 
         // Built, then walked, which is the split the game has too. The walk is also what tells the
         // sweep below that the departed cells are no longer met.

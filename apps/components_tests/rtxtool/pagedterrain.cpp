@@ -63,7 +63,7 @@ namespace RtxTool
             LoadedCells loaded;
             Rtx::SceneExtractor extractor(scene);
 
-            readRegion(world, cell, *root, scene, extractor, loaded, /*liveProps=*/false);
+            readRegion(world, cell, *root, loaded, /*liveProps=*/false);
             world.setTerrainViewPoint(osg::Vec3f(cell.getGridX() * sCellSize, cell.getGridY() * sCellSize, 0.0f));
 
             extractor.follow(ask ? world.getTerrainResidency() : nullptr);
@@ -224,8 +224,8 @@ namespace RtxTool
 
                 for (const ESM::Cell* stop : route)
                 {
-                    readRegion(*world, *stop, *root, scene, extractor, loaded, /*liveProps=*/false);
-                    dropCellsOutside(*world, *stop, *root, scene, extractor, loaded);
+                    readRegion(*world, *stop, *root, loaded, /*liveProps=*/false);
+                    dropCellsOutside(*world, *stop, *root, loaded);
 
                     // Only after the first stop is there a paged world to follow.
                     extractor.follow(world->getTerrainResidency());

@@ -85,10 +85,9 @@ namespace RtxTool
     /// its ground under the one node `Terrain::TerrainGrid` accumulates into, so a departure is a
     /// child removed from the root *and* an `unloadCell` — and dropping only the first leaves a
     /// working set that gains ground for as long as the camera flies.
-    std::uint32_t dropCellsOutside(World& world, const ESM::Cell& centre, osg::Group& root, Rtx::SceneDesc& scene,
-        Rtx::SceneExtractor& extractor, LoadedCells& loaded);
+    std::uint32_t dropCellsOutside(World& world, const ESM::Cell& centre, osg::Group& root, LoadedCells& loaded);
 
-    /// What reading a cell produced besides the scene itself.
+    /// What reading a cell produced besides the graph itself.
     struct CellReport
     {
         World::SkippedObjects mSkipped;
@@ -108,7 +107,10 @@ namespace RtxTool
         std::uint32_t mCells = 0;
     };
 
-    /// Mirrors a region's geometry and lamps through `extractor`, and reports what else it holds.
+    /// Builds a region's graph under `root`, and reports what it holds that a walk will not find.
+    ///
+    /// **The graph and not the scene.** What puts a region into a `Rtx::SceneDesc` is the walk a
+    /// caller makes afterwards, so this reads content and parents nodes and nothing else.
     ///
     /// **The lamps go into the graph and not into the report**, exactly as the game places them:
     /// `NifOsg` never reads `NiLight`, so a `LIGH` reference's light is a `SceneUtil::LightSource`
@@ -117,17 +119,16 @@ namespace RtxTool
     /// @param centre the cell asked for, and the middle of the square of exterior cells read
     ///        around it. An interior has no neighbours and is read alone. Cells the content files
     ///        do not define are open sea and are skipped rather than missing.
-    /// @param loaded which cells are already in the scene. Cells named here are left alone and
+    /// @param loaded which cells are already in the graph. Cells named here are left alone and
     ///        every cell this places is added to it, so a caller that keeps one across calls walks
     ///        into a region rather than reloading it.
     /// @param liveProps whether a reference whose model carries an update callback is *left out* of
-    ///        the scene and reported in `mProps` instead. **Because it has to be one or the other.**
+    ///        the graph and reported in `mProps` instead. **Because it has to be one or the other.**
     ///        A prop that is going to be instanced and stepped brings its own copy of the same
     ///        geometry — the clone shares the drawables — so mirroring the template as well would
     ///        stand two candles in one place. A caller with nowhere to keep an instance passes false
     ///        and gets the still template, which is a candle with an authored spark on it.
-    CellReport readRegion(World& world, const ESM::Cell& centre, osg::Group& root, Rtx::SceneDesc& scene,
-        Rtx::SceneExtractor& extractor, LoadedCells& loaded, bool liveProps);
+    CellReport readRegion(World& world, const ESM::Cell& centre, osg::Group& root, LoadedCells& loaded, bool liveProps);
 
     /// Which exterior square a point stands in.
     ///

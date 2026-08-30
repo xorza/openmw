@@ -82,6 +82,8 @@ set(RTX_FILES
     spriteshade.hpp
     spritetiles.cpp
     spritetiles.hpp
+    srgb.cpp
+    srgb.hpp
     compositequeue.cpp
     compositequeue.hpp
     terraincomposite.cpp

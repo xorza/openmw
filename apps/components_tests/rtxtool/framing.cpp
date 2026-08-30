@@ -176,7 +176,7 @@ namespace RtxTool
             EXPECT_EQ(outdoors.mDay, 5);
             EXPECT_FLOAT_EQ(outdoors.mCloudSpeed, Sky::cloudSpeed("Overcast"));
             EXPECT_EQ(outdoors.mDaylight.mSkyZenith, Rtx::makeDaylight("Overcast", 12.0f).mSkyZenith);
-            EXPECT_GT(outdoors.mFog.mExtinction, 0.0f);
+            EXPECT_GT(outdoors.mDaylight.mFog.mExtinction, 0.0f);
 
             // **And the two are different skies**, whichever file the numbers came out of, which is
             // what says the weather key does anything at all.
@@ -238,10 +238,11 @@ namespace RtxTool
 
             // **An interior has no sky for a clock to move.** Every field comes back as it went in,
             // including the weather it was never under.
-            const CellLighting room{ .mAmbient = osg::Vec3f(0.1f, 0.2f, 0.3f), .mWaterLevel = -8.0f };
+            const CellLighting room{ .mWaterLevel = -8.0f,
+                .mDaylight = Rtx::Daylight{ .mAmbient = osg::Vec3f(0.1f, 0.2f, 0.3f) } };
             CellLighting moved = room;
             relight(moved, "Overcast", 5, 3.0f);
-            EXPECT_EQ(moved.mAmbient, room.mAmbient);
+            EXPECT_EQ(moved.mDaylight.mAmbient, room.mDaylight.mAmbient);
             EXPECT_EQ(moved.mWaterLevel, room.mWaterLevel);
             EXPECT_EQ(moved.mWeather, room.mWeather);
             EXPECT_EQ(moved.mDay, room.mDay);

@@ -20,6 +20,7 @@
 #include "shaders/colour.h"
 #include "shaders/scene.h"
 #include "shaders/visibility.h"
+#include "srgb.hpp"
 
 namespace Rtx
 {
@@ -104,11 +105,6 @@ namespace Rtx
             "Snow",
             "Blizzard",
         };
-
-        float channelToLinear(float encoded)
-        {
-            return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
-        }
 
     }
 
@@ -481,7 +477,7 @@ namespace Rtx
 
     osg::Vec3f decodeColour(const osg::Vec4f& encoded)
     {
-        return osg::Vec3f(channelToLinear(encoded.x()), channelToLinear(encoded.y()), channelToLinear(encoded.z()));
+        return toLinear(osg::Vec3f(encoded.x(), encoded.y(), encoded.z()));
     }
 
     osg::Vec3f decodeColour(const osg::Vec3f& encoded)
@@ -575,8 +571,7 @@ namespace Rtx
 
     osg::Vec3f decodeColour(std::uint32_t packed)
     {
-        const auto channel
-            = [](std::uint32_t bits) { return channelToLinear(static_cast<float>(bits & 0xFFu) / 255.0f); };
+        const auto channel = [](std::uint32_t bits) { return toLinear(static_cast<float>(bits & 0xFFu) / 255.0f); };
 
         return osg::Vec3f(channel(packed), channel(packed >> 8), channel(packed >> 16));
     }

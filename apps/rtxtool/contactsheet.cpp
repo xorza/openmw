@@ -6,6 +6,7 @@
 
 #include <components/rtx/error.hpp>
 #include <components/rtx/shadingmap.hpp>
+#include <components/rtx/srgb.hpp>
 #include <components/rtx/texelreader.hpp>
 #include <components/rtx/texturedata.hpp>
 

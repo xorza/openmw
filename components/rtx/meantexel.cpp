@@ -9,6 +9,7 @@
 
 #include "alphaimage.hpp"
 #include "error.hpp"
+#include "srgb.hpp"
 #include "texelreader.hpp"
 #include "texturebuilder.hpp"
 
@@ -62,7 +63,7 @@ namespace Rtx
                 const osg::Vec3f stored = texelAt(described, level, x, y);
                 const double opacity = alpha.at(0, x, y) / 255.0;
 
-                total += osg::Vec3d(toLinear(stored.x()), toLinear(stored.y()), toLinear(stored.z())) * opacity;
+                total += osg::Vec3d(toLinear(stored)) * opacity;
                 covered += opacity;
             }
 

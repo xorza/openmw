@@ -2,8 +2,6 @@
 
 #include <limits>
 
-#include <osg/Vec3f>
-
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
@@ -19,8 +17,6 @@ namespace RtxTool
     /// itself and its sun belongs to the hour, and neither is anywhere a ray can find them.
     struct CellLighting
     {
-        osg::Vec3f mAmbient;
-
         /// How long the water has been moving, in seconds. Zero is a still sea and a deterministic
         /// frame, which is what a screenshot wants; a window passes its own clock.
         float mSeconds = 0.0f;
@@ -35,6 +31,10 @@ namespace RtxTool
 
         /// The sun and the sky over an exterior, or a room's own out of its `AMBI` record —
         /// `Rtx::makeDaylight` and `Rtx::makeRoomLight`, the two places one is built.
+        ///
+        /// **The ambient and the air are in here and nowhere else.** Both used to sit beside this as
+        /// copies, which is two answers to one question and a stale one whenever the hour moved
+        /// without them.
         Rtx::Daylight mDaylight;
 
         /// Whether this cell has a sky over it.
@@ -46,7 +46,7 @@ namespace RtxTool
 
         /// When the world stands, on Morrowind's own count of days from the one a new game begins
         /// and a twenty-four hour clock. **Only the moons read these** — where the sun is and what
-        /// the air is doing were settled into `mDaylight` and `mFog` when the hour was chosen, and a
+        /// the air is doing were settled into `mDaylight` when the hour was chosen, and a
         /// moon cannot be, because its phase needs a date the sun never asked for.
         int mDay = 0;
         float mHour = 12.0f;
@@ -85,10 +85,6 @@ namespace RtxTool
         /// accumulates it off its own clock and a run of frames takes it off the frame index, which
         /// is the difference `Sky::SkyRoll::after` is for.
         Sky::SkyRoll mRoll;
-
-        /// The air in the cell, whichever of the two places it came from: an interior's `AMBI` or
-        /// the weather over an exterior. A zero extinction is a cell with no fog, and costs nothing.
-        Rtx::Fog mFog;
     };
 
     /// Writes how the cell is lit into the constants a frame is traced with.

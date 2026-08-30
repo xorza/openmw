@@ -262,11 +262,7 @@ namespace RtxTool
             osg::ref_ptr<osg::Group> root = new osg::Group;
             LoadedCells loaded;
 
-            // A scene of its own, thrown away with the call: this audits what the graph holds, and
-            // `readRegion` needs somewhere to put the water quad no graph can carry.
-            Rtx::SceneDesc placed;
-            Rtx::SceneExtractor extractor(placed);
-            readRegion(world, *cell, *root, placed, extractor, loaded, /*liveProps=*/false);
+            readRegion(world, *cell, *root, loaded, /*liveProps=*/false);
 
             Audit audit;
             root->accept(audit);
