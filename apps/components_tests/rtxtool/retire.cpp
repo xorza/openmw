@@ -63,8 +63,15 @@ namespace RtxTool
             return kept.back();
         }
 
-        /// Builds one room into its own root, mirrors it, and hands back what lit it.
-        CellLighting loadAndMirror(World& world, const ESM::Cell& cell, std::vector<osg::ref_ptr<osg::Group>>& kept,
+        /// What one room's load left standing.
+        struct Room
+        {
+            osg::ref_ptr<osg::Group> mRoot;
+            CellLighting mLighting;
+        };
+
+        /// Builds one room into its own root, mirrors it, and hands back the graph and what lit it.
+        Room loadAndMirror(World& world, const ESM::Cell& cell, std::vector<osg::ref_ptr<osg::Group>>& kept,
             Rtx::SceneDesc& scene, Rtx::SceneExtractor& extractor)
         {
             const osg::ref_ptr<osg::Group> root = keepRoot(kept);
@@ -74,7 +81,7 @@ namespace RtxTool
                 = loadRegion(world, cell, *root, scene, extractor, loaded, "Clear", 0, 12.0f, false).mLighting;
             extractor.extract(*root, osg::Matrixf::identity(), 0);
 
-            return lit;
+            return Room{ .mRoot = root, .mLighting = lit };
         }
 
         /// One number per mesh, over the vertices and the triangles it actually holds.
@@ -290,15 +297,15 @@ namespace RtxTool
             std::vector<osg::ref_ptr<osg::Group>> kept;
             Rtx::SceneDesc scene;
             Rtx::SceneExtractor extractor(scene);
-            CellLighting lighting;
             loadAndMirror(*world, *first, kept, scene, extractor);
 
             ASSERT_TRUE(extractor.retire().empty());
 
+            Room room;
             for (int pass = 0; pass < 2; ++pass)
             {
                 scene.clearPlacement();
-                lighting = loadAndMirror(*world, *second, kept, scene, extractor);
+                room = loadAndMirror(*world, *second, kept, scene, extractor);
 
                 if (pass == 0)
                 {
@@ -306,10 +313,16 @@ namespace RtxTool
                 }
             }
 
+            // **The same graph walked into a scene of its own, and not the room loaded a third
+            // time.** A lamp's flicker phase is derived from its `SceneUtil::LightSource` id and the
+            // ids are one counter for the process, so another load lights the same room at another
+            // point of the same flame — which is a difference in the light where this is measuring a
+            // difference in the geometry. What the two scenes do not share is what they are here
+            // for: one names its meshes and textures in the order a compaction left them, the other
+            // in the order a walk produced.
             Rtx::SceneDesc alone;
             Rtx::SceneExtractor fresh(alone);
-            CellLighting freshly;
-            freshly = loadAndMirror(*world, *second, kept, alone, fresh);
+            fresh.extract(*room.mRoot, osg::Matrixf::identity(), 0);
 
             // The last walk put the second room back; this is the sweep that takes the first one's
             // placements with it, and without it the scene is still holding both.
@@ -333,52 +346,46 @@ namespace RtxTool
 
             const Rtx::FrameExtents extents = renderer->getExtents();
 
-            // **One camera for both**, derived from the scene that never lost anything: the two hold
-            // the same geometry, so the same view of it is what makes the pictures comparable at all.
+            // **One camera and one lighting for both.** The two scenes hold the same geometry and are
+            // the same room, so the same view of it under the same lamps is what makes the pictures
+            // comparable at all. The camera is derived from the scene that never lost anything.
             const Placement placement = placeCamera(alone.getBounds(), 60.0f, std::nullopt, std::nullopt);
 
-            const auto draw
-                = [&](const Rtx::SceneDesc& drawn, const CellLighting& lit, std::vector<std::uint8_t>& out) {
-                      const Rtx::SceneTextures described(drawn, world->getImageManager());
-                      renderer->setScene(Rtx::sWorld, drawn, described.getDescriptions(), Rtx::SeaState{});
+            const auto draw = [&](const Rtx::SceneDesc& drawn, std::vector<std::uint8_t>& out) {
+                const Rtx::SceneTextures described(drawn, world->getImageManager());
+                renderer->setScene(Rtx::sWorld, drawn, described.getDescriptions(), Rtx::SeaState{});
 
-                      Rtx::Shaders::VisibilityConstants camera = Rtx::makeCamera(placement.mOrigin, placement.mTarget,
-                          60.0f, extents.mRenderWidth, extents.mRenderHeight, 100000.0f);
-                      applyLighting(lit, camera);
+                Rtx::Shaders::VisibilityConstants camera = Rtx::makeCamera(placement.mOrigin, placement.mTarget, 60.0f,
+                    extents.mRenderWidth, extents.mRenderHeight, 100000.0f);
+                applyLighting(room.mLighting, camera);
 
-                      // Held rather than measured: an exposure taken off the frame turns any difference at
-                      // all into a difference everywhere, which is a worse instrument than the pixels.
-                      renderer->renderFrame(camera, Rtx::FrameOptions{ .mExposure = 1.0f });
-                      const Rtx::FrameResult result = renderer->finishFrame().value();
-                      renderer->readPixels(out);
-                      return result.mHits;
-                  };
+                // Held rather than measured: an exposure taken off the frame turns any difference at
+                // all into a difference everywhere, which is a worse instrument than the pixels.
+                renderer->renderFrame(camera, Rtx::FrameOptions{ .mExposure = 1.0f });
+                const Rtx::FrameResult result = renderer->finishFrame().value();
+                renderer->readPixels(out);
+                return result.mHits;
+            };
 
             std::vector<std::uint8_t> compacted;
             std::vector<std::uint8_t> whole;
-            const std::uint32_t hitsCompacted = draw(scene, lighting, compacted);
-            const std::uint32_t hitsWhole = draw(alone, freshly, whole);
+            const std::uint32_t hitsCompacted = draw(scene, compacted);
+            const std::uint32_t hitsWhole = draw(alone, whole);
 
             ASSERT_GT(hitsWhole, 0u) << "the camera faced away from the room";
             EXPECT_EQ(hitsCompacted, hitsWhole);
             ASSERT_EQ(compacted.size(), whole.size());
-            // **Within a display step or two, and not to the byte.** A compaction reorders the
-            // bottom-level structures, so traversal reaches a pixel's candidates in a different
-            // order and a sum of the same terms in a different order differs in its last bit. What
-            // that cannot do is move a surface: measured here, 1,193 of 921,600 bytes differ and
-            // none by more than 2 of 255, where a mesh built over the wrong range shows up as a
-            // wall in the wrong place and a hit count that disagrees.
-            std::size_t differing = 0;
-            int worst = 0;
-            for (std::size_t at = 0; at < compacted.size(); ++at)
-            {
-                const int gap = std::abs(static_cast<int>(compacted[at]) - static_cast<int>(whole[at]));
-                worst = std::max(worst, gap);
-                differing += gap != 0 ? 1 : 0;
-            }
 
-            EXPECT_LE(worst, 2) << "a difference this size is a surface somewhere else, not a rounded sum";
-            EXPECT_LT(differing, compacted.size() / 100);
+            // **To the byte, and there is no tolerance here to hide behind.** A compaction reorders
+            // the bottom-level structures and the tables that name them, and the trace comes out of
+            // the far side with the same 921,600 bytes: reaching a pixel's candidates in another
+            // order is not the same as reaching other candidates. A mesh built over the wrong range
+            // shows up as a wall in the wrong place, which is thousands of bytes and not one.
+            std::size_t differing = 0;
+            for (std::size_t at = 0; at < compacted.size(); ++at)
+                differing += compacted[at] != whole[at] ? 1 : 0;
+
+            EXPECT_EQ(differing, std::size_t{ 0 }) << "the compacted scene drew a different picture";
         }
 
     }
