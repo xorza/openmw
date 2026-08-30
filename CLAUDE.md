@@ -53,6 +53,17 @@ around.
 
 Upstream's constraints are not ours. Where they conflict, ours win.
 
+**Where the two have to meet, priorities in order:**
+
+1. **A clean seam, and one answer shared with the old renderer.** No hacks: the RT path asks its
+   question of whatever holds the answer rather than reverse-engineering where the answer was put,
+   and the two renderers read one description of a thing rather than each deriving its own. A
+   callback chain walked for a type, a `dynamic_cast` standing in for a question, a second copy of a
+   fact the game already states — each of those buys a smaller diff, and none of them is worth it.
+2. **The smallest diff against upstream.** What the first does not settle is settled by what a
+   reviewer has to read: fewer upstream files touched, fewer lines in each, and an addition in
+   preference to an edit.
+
 - **Two renderers in one binary, one of them chosen at startup — and the other is then never
   started.** `-DOPENMW_RTX=ON` decides whether the ray tracer is *built*; `[RTX] enabled` decides
   whether it *runs*, read once before the window exists. Not a refactor of the existing renderer,
