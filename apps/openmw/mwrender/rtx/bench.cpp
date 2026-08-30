@@ -2,7 +2,9 @@
 
 #ifdef OPENMW_RTX_BENCH
 
+#include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <cstdlib>
 #include <format>
 #include <optional>
@@ -10,12 +12,18 @@
 #include <string_view>
 #include <vector>
 
+#include <osg/Vec3f>
+
 #include <components/debug/debuglog.hpp>
+#include <components/esm/position.hpp>
 #include <components/rtx/frametimes.hpp>
 #include <components/rtx/renderer.hpp>
 
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/statemanager.hpp"
+#include "../../mwbase/world.hpp"
+#include "../../mwworld/ptr.hpp"
+#include "../../mwworld/refdata.hpp"
 
 namespace MWRender
 {
@@ -61,7 +69,24 @@ namespace MWRender
         if (spec == nullptr || *spec == '\0')
             return;
 
-        const std::string_view text(spec);
+        std::string_view text(spec);
+
+        // **The speed comes off the end first**, so what is left is the run and its warm-up and the
+        // two spellings need not know about each other.
+        if (const std::size_t at = text.find('@'); at != std::string_view::npos)
+        {
+            const std::string_view speed = text.substr(at + 1);
+            const auto* end = speed.data() + speed.size();
+            if (std::from_chars(speed.data(), end, mSpeed).ec != std::errc{} || !(mSpeed > 0.0f))
+            {
+                Log(Debug::Error) << "OPENMW_RTX_BENCH names a speed that is not a positive number: " << speed;
+                mSpeed = 0.0f;
+                return;
+            }
+
+            text = text.substr(0, at);
+        }
+
         const std::size_t split = text.find(':');
         const std::optional<Span> run = readSpan(text.substr(0, split));
 
@@ -115,6 +140,8 @@ namespace MWRender
         mHeld->mGpu.add(result.mGpu);
         mMeasuredMs += frameMs;
 
+        fly(frameMs);
+
         const bool enough = mWanted > 0 ? mHeld->mFrames.size() >= mWanted : mMeasuredMs >= mWantedSeconds * 1000.0;
         if (!enough)
             return;
@@ -126,6 +153,49 @@ namespace MWRender
         // where it stood would leave the save, the log and the device wherever they happened to be,
         // and the next thing anyone would debug is the benchmark.
         MWBase::Environment::get().getStateManager()->requestQuit();
+    }
+
+    void Bench::fly(double frameMs)
+    {
+        if (!(mSpeed > 0.0f))
+            return;
+
+        MWBase::World& world = *MWBase::Environment::get().getWorld();
+        const MWWorld::Ptr player = world.getPlayerPtr();
+        if (player.isEmpty())
+            return;
+
+        // **Counted before the move below and not after it.** The move pulls the next ring in, and
+        // that read lands in the frame after this one — which is the frame that arrives here
+        // standing in a cell it was not drawn in last time, and the frame that paid for it.
+        const void* cell = player.getCell();
+        if (mCell != nullptr && cell != mCell)
+        {
+            ++mCrossings;
+            mCrossWorstMs = std::max(mCrossWorstMs, frameMs);
+        }
+
+        mCell = cell;
+
+        // **The heading the engine measures**, which is clockwise from north rather than
+        // counter-clockwise from east, and horizontal: a route follows the ground the cells are laid
+        // out on, and the pitch a save happens to have left would fly it into the sky or the sea.
+        const ESM::Position& stood = player.getRefData().getPosition();
+        const osg::Vec3f ahead(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
+
+        // **Held at the height the save left**, because nothing here flies: gravity would sink the
+        // route into the sea over ten seconds, and a route that ends underwater measures the wrong
+        // frame. The ground still rises through it, so a stretch of a long route is inside a hill.
+        if (!mHeight.has_value())
+            mHeight = stood.pos[2];
+
+        osg::Vec3f step = ahead * (mSpeed * static_cast<float>(frameMs) / 1000.0f);
+        step.z() = *mHeight - stood.pos[2];
+
+        // **`moveObjectBy` and not `moveObject`, because the player is an actor.** The actor's
+        // position lives in the physics world as well, and a move that writes only the world's copy
+        // is written back over it on the next step, so the route never leaves the cell it began in.
+        world.moveObjectBy(player, step, true);
     }
 
     std::string Bench::describeRun() const
@@ -151,6 +221,12 @@ namespace MWRender
         out += Rtx::describeTimes("frame ms", frames);
         out += Rtx::describeTimes("wait ms", waits);
         out += Rtx::describeZones(zones);
+
+        // Only where the run went somewhere, because a bench that stands still has nothing to say
+        // here — the same rule `openmw-rtxtool bench` prints its crossing line under.
+        if (mCrossings > 0)
+            out += std::format("  {} crossings — {:.0f} ms worst\n", mCrossings, mCrossWorstMs);
+
         out += std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", mHeld->mFrames.size(),
             mMeasuredMs / 1000.0, frames.getRate(), frames.getLowRate());
 
