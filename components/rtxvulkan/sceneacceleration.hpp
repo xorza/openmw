@@ -122,7 +122,12 @@ namespace Rtx
         ///
         /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
         /// the positions, and what it replaces goes to `graveyard` all the same.
-        void extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures, Graveyard& graveyard);
+        ///
+        /// @param timer the frame the arrival lands in, so its builds are one zone of that frame's
+        ///        report rather than device time nothing accounts for. Null for a picture inside the
+        ///        interface, which is not timed — `VulkanRenderer::placeScene` says why.
+        void extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures, GpuTimer* timer,
+            Graveyard& graveyard);
 
         /// Destroys the structures of `meshes` and gives their storage back.
         ///

@@ -21,6 +21,20 @@ Every setting here is read once, at startup.
    Use the ray tracing renderer instead of the OpenGL one. Takes effect on the next start.
 
 .. omw-setting::
+   :title: distant land cells
+   :type: float32
+   :range: ≥ 0
+   :default: 4
+
+   How far out from the eye the world is built, in cells. Rays go everywhere, so this says how much
+   world exists rather than how far the camera can see, and the fog closes at the same distance —
+   air tuned to a shorter reach makes a world built four cells out look like one built none.
+
+   Zero hands the decision back to :code:`viewing distance` in the camera section, which answers a
+   different question for a renderer that culls: at 7168 units against a cell of 8192 it barely
+   leaves the active grid.
+
+.. omw-setting::
    :title: upscale
    :type: string
    :range: off, performance, balanced, quality, dlaa
@@ -38,3 +52,19 @@ Every setting here is read once, at startup.
 
    A name this does not know is refused rather than quietly defaulted, and a build without
    :code:`-DOPENMW_RTX_DLSS=ON` refuses anything but :code:`off`.
+
+.. omw-setting::
+   :title: preset
+   :type: string
+   :range: default, d, e
+   :default: d
+
+   Which Ray Reconstruction network to run, where :code:`upscale` runs one at all. Ray
+   Reconstruction keeps its own presets, and they are not super-resolution's: A through C are
+   retired, :code:`d` is the default transformer model and :code:`e` is the latest.
+
+   :code:`default` hands the choice to the installed library. What that picks has changed between
+   SDK versions and between the convolutional and transformer models, so two machines under it do
+   not run the same network — which is why this is pinned rather than left to it.
+
+   A name this does not know is refused rather than quietly defaulted.

@@ -60,7 +60,8 @@ namespace RtxTool
                          megabytes(place.mScene.mTextureBytes))
                   << std::format("  build {:.0f} ms   {:.1f}% of primary rays hit\n", place.mBuildMs, place.mHitPercent)
                   << Rtx::describeHeadings() << Rtx::describeTimes("frame ms", place.mFrame)
-                  << Rtx::describeTimes("wait ms", place.mWait) << Rtx::describeTimes("place ms", place.mPlace);
+                  << Rtx::describeTimes("wait ms", place.mWait) << Rtx::describeTimes("walk ms", place.mWalk)
+                  << Rtx::describeTimes("place ms", place.mPlace);
 
             // **The device's own account of the same frame, medians only.** Six distributions would
             // be a wall; what this row answers is "which of them is the expensive one", and the row
@@ -124,7 +125,8 @@ namespace RtxTool
                             place.mCrossings, place.mCrossRebuilds, place.mCrossWorstMs, place.mCrossReadMs,
                             place.mCrossBuildMs, place.mTravelled)
                      << R"("frameMs": )" << asJson(place.mFrame) << R"(, "waitMs": )" << asJson(place.mWait)
-                     << R"(, "placeMs": )" << asJson(place.mPlace) << R"(, "gpuMs": {)";
+                     << R"(, "walkMs": )" << asJson(place.mWalk) << R"(, "placeMs": )" << asJson(place.mPlace)
+                     << R"(, "gpuMs": {)";
 
                 for (std::size_t zone = 0; zone < place.mGpu.size(); ++zone)
                     file << std::format(R"({}"{}": {})", zone == 0 ? "" : ", ", place.mGpu[zone].mName,
@@ -236,9 +238,11 @@ namespace RtxTool
 
         std::vector<double> frameTimes;
         std::vector<double> waitTimes;
+        std::vector<double> walkTimes;
         std::vector<double> placeTimes;
         frameTimes.reserve(measured);
         waitTimes.reserve(measured);
+        walkTimes.reserve(measured);
         placeTimes.reserve(measured);
 
         bool stopped = false;
@@ -288,6 +292,7 @@ namespace RtxTool
 
             frameTimes.clear();
             waitTimes.clear();
+            walkTimes.clear();
             placeTimes.clear();
 
             std::uint32_t crossings = 0;
@@ -362,12 +367,34 @@ namespace RtxTool
                 // **After the first, which is the frame the build above already made**, and by
                 // frame index rather than by the clock: a world stepped by how long the last frame
                 // took would render a different sequence on every machine and on every build.
+                double walkMs = 0.0;
+                bool moved = false;
+                if (frame > 0 && staged.getMotion() != nullptr)
+                {
+                    const Clock::time_point walkStart = Clock::now();
+                    moved = staged.getMotion()->step(frame);
+                    walkMs = std::chrono::duration<double, std::milli>(Clock::now() - walkStart).count();
+                }
+
+                // **Between the walk and the placement, which is where the wait belongs.** The walk
+                // runs beside the device drawing the frame behind; the placement cannot, because it
+                // writes the copy of the tables that frame is still tracing and `placeScene` waits
+                // that frame out first. Waited for here, the stall is one figure and it is in
+                // `wait ms`; left to the placement it is inside `place ms` as well, and that row
+                // then reads as placement work — 8.3 ms at 3840x2160 against 1.8 at 1920x1080, for
+                // the same rows written.
                 //
+                // **Before the submit below, which is what makes this the frame behind** rather than
+                // the one about to be made — `Renderer::finishFrame` says why. So the rows below
+                // report a frame one older than the wall time beside them, and both are medians
+                // over the run.
+                const std::optional<Rtx::FrameResult> result = renderer->finishFrame();
+
                 // Handed rather than placed because a step walks the whole graph and sweeps it: an
                 // actor drawing a weapon brings a mesh nothing has built, and a sweep that closed a
                 // gap renumbers what the last frame was built from.
                 double placeMs = 0.0;
-                if (frame > 0 && staged.getMotion() != nullptr && staged.getMotion()->step(frame))
+                if (moved)
                 {
                     const Clock::time_point placeStart = Clock::now();
                     uploader.hand(*renderer, Rtx::sWorld, staged.getScene(), world.getImageManager(), Rtx::SeaState{});
@@ -392,12 +419,6 @@ namespace RtxTool
                 // by. Held to the frame index so the same run draws the same samples twice over.
                 framing.mFrame = frame;
 
-                // **Before the submit below, which is what makes this the frame behind** rather than
-                // the one about to be made — `Renderer::finishFrame` says why. So the rows below
-                // report a frame one older than the wall time beside them, and both are medians
-                // over the run.
-                const std::optional<Rtx::FrameResult> result = renderer->finishFrame();
-
                 renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
                     Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
                         .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
@@ -418,6 +439,7 @@ namespace RtxTool
                 if (frame >= warmup)
                 {
                     frameTimes.push_back(frameMs);
+                    walkTimes.push_back(walkMs);
                     placeTimes.push_back(placeMs);
                     if (result.has_value())
                     {
@@ -462,6 +484,7 @@ namespace RtxTool
                 .mWallSeconds = std::chrono::duration<double>(runEnd - runStart).count(),
                 .mFrame = Rtx::summarise(frameTimes),
                 .mWait = Rtx::summarise(waitTimes),
+                .mWalk = Rtx::summarise(walkTimes),
                 .mPlace = Rtx::summarise(placeTimes),
                 .mGpu = std::vector<Rtx::GpuZone>(zones.begin(), zones.end()),
                 .mHitPercent = static_cast<double>(hits) / pixels * 100.0,

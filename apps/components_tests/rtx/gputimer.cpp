@@ -20,19 +20,20 @@ namespace Rtx
         constexpr std::uint32_t sSize = 64;
         constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
 
-        /// A wall across the view, far enough away to fill the frame.
+        /// A square across the view, far enough away to fill the frame.
+        const std::array<osg::Vec3f, 4> sWallCorners{
+            osg::Vec3f(-500.0f, 200.0f, -500.0f),
+            osg::Vec3f(500.0f, 200.0f, -500.0f),
+            osg::Vec3f(500.0f, 200.0f, 500.0f),
+            osg::Vec3f(-500.0f, 200.0f, 500.0f),
+        };
+
+        /// That wall, on its own, as a scene.
         SceneDesc wall()
         {
-            const std::array corners{
-                osg::Vec3f(-500.0f, 200.0f, -500.0f),
-                osg::Vec3f(500.0f, 200.0f, -500.0f),
-                osg::Vec3f(500.0f, 200.0f, 500.0f),
-                osg::Vec3f(-500.0f, 200.0f, 500.0f),
-            };
-
             SceneDesc scene;
             scene.addInstance(MeshInstance{
-                .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(corners, {}, {}, sQuadIndices) });
+                .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(sWallCorners, {}, {}, sQuadIndices) });
 
             return scene;
         }
@@ -96,7 +97,7 @@ namespace Rtx
 
             renderer->resize(sSize, sSize);
 
-            const SceneDesc scene = wall();
+            SceneDesc scene = wall();
             renderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
 
             const Shaders::VisibilityConstants camera
@@ -156,6 +157,27 @@ namespace Rtx
             const Drawn after = draw(*renderer, camera);
             EXPECT_EQ(after.mGpu.size(), drawn.mGpu.size()) << "last frame's zones were carried into this one";
             EXPECT_FALSE(reports(after.mGpu, "tlas"));
+
+            // **A cell arriving says so too, and that is the frame worth having a figure for.** The
+            // structures its meshes bring are recorded ahead of the placement and ride its submit,
+            // so without a bracket of their own they are device time the frame's fence carries and
+            // no zone accounts for — which is exactly the frame a player feels.
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, -50.0f, 0.0f),
+                .mMesh = scene.addMesh(sWallCorners, {}, {}, sQuadIndices) });
+
+            renderer->extendScene(Rtx::sWorld, scene, {}, SeaState{});
+            const Drawn arrived = draw(*renderer, camera);
+
+            EXPECT_TRUE(reports(arrived.mGpu, "blas")) << "a mesh arrived and its structure was built unmeasured";
+
+            // First, because the builds run before the top level that names what they built, and a
+            // duration rather than a bracket that closed on itself.
+            EXPECT_EQ(arrived.mGpu.front().mName, "blas");
+            EXPECT_GT(arrived.mGpu.front().mMs, 0.0) << "the arrival's builds took no time at all";
+
+            // And only on the frame the arrival landed in.
+            const Drawn settled = draw(*renderer, camera);
+            EXPECT_FALSE(reports(settled.mGpu, "blas")) << "nothing arrived, so nothing was built";
         }
     }
 }

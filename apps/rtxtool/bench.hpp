@@ -123,16 +123,21 @@ namespace RtxTool
         std::uint32_t mFrames = 0;
         double mWallSeconds = 0.0;
 
-        /// The whole per-frame cost, and the two shares of it worth telling apart.
+        /// The whole per-frame cost, and the three shares of it worth telling apart.
         ///
-        /// **`mWait` is the CPU standing still for the device and `mPlace` is the renderer being
-        /// told what moved** — the top level rebuilt and every skinned mesh's structure refitted.
-        /// What is left over is the harness standing in for the game — posing the actors, running
-        /// the emitters and walking the graph again — and the frame's own record. Lumping the three
-        /// would hide which of them a place is slow because of; a wait near the frame is a device
-        /// that cannot keep up, and a wait near nought is a CPU that cannot.
+        /// **`mWait` is the CPU standing still for the device, `mWalk` is the harness standing in
+        /// for the game, and `mPlace` is the renderer being told what moved** — posing the actors,
+        /// running the emitters and walking the graph again, and then the top level rebuilt with
+        /// every skinned mesh's structure refitted. What is left over is the frame's own record.
+        /// Lumping them would hide which of them a place is slow because of; a wait near the frame
+        /// is a device that cannot keep up, and a wait near nought is a CPU that cannot.
+        ///
+        /// **The walk is a row because it is the largest CPU cost of a streaming frame**, and it is
+        /// the one cost here the game pays as well — it walks its own graph every frame. Inside
+        /// `mFrame` it is a figure only a profile finds.
         Rtx::FrameTimes mFrame;
         Rtx::FrameTimes mWait;
+        Rtx::FrameTimes mWalk;
         Rtx::FrameTimes mPlace;
 
         /// What the device itself says each stretch of the frame cost, most expensive first. Empty

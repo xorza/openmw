@@ -455,8 +455,19 @@ namespace Rtx
         // reading any of them would see it torn. A cell crossing is tens of milliseconds of work
         // in any case, and the frame it lands in is not one this renderer keeps smooth. A picture
         // inside the interface is traced and waited for, so it has nothing to wait.
+        //
+        // **And it opens the frame it lands in, so that its builds have a zone.** The batch below
+        // rides that frame's placement submit, ahead of the refit and the top level, so the bracket
+        // around the builds has to be written against that frame's timer — and `beginFrame` clears
+        // the timer, so a zone opened before it would be forgotten. Nothing is in flight to wait
+        // for by then. A picture inside the interface opens no frame and is not timed, which is the
+        // rule `placeScene` states.
+        GpuTimer* timer = nullptr;
         if (slot == sWorld)
+        {
             finishFrames();
+            timer = &beginFrame().mTimer;
+        }
 
         Graveyard& graveyard = frameSlot(mFrame).mGraveyard;
 
@@ -474,7 +485,7 @@ namespace Rtx
         if (scene.getMeshRevision() != held.mBuiltMeshes)
         {
             held.mBuffers->extend(scene, graveyard);
-            held.mAcceleration->extend(setup, scene, arrived, graveyard);
+            held.mAcceleration->extend(setup, scene, arrived, timer, graveyard);
             held.mBuiltMeshes = scene.getMeshRevision();
         }
 

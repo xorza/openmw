@@ -32,9 +32,10 @@ namespace Rtx
 
         /// Brackets a build where there is a timer to bracket it with.
         ///
-        /// **The load path has none.** Building every structure from scratch is a cell arriving and
-        /// not a frame, and its cost is already reported as a build time; giving it zones would put
-        /// them in whichever frame report came next.
+        /// **The load path has none, and neither has a picture inside the interface.** Building
+        /// every structure from scratch is a scene arriving and not a frame, and its cost is already
+        /// reported as a build time; giving it zones would put them in whichever frame report came
+        /// next.
         void openZone(GpuTimer* timer, VkCommandBuffer commands, std::string_view name)
         {
             if (timer != nullptr)
@@ -359,8 +360,8 @@ namespace Rtx
         return total;
     }
 
-    void SceneAcceleration::extend(
-        Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures, Graveyard& graveyard)
+    void SceneAcceleration::extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures,
+        GpuTimer* timer, Graveyard& graveyard)
     {
         // **Departures first, and their rooms go to the graveyard rather than straight back**, so an
         // arrival this frame cannot be built into room a frame in flight is still tracing. The two
@@ -369,8 +370,15 @@ namespace Rtx
         release(scene.getFreedMeshes(), graveyard);
 
         writeGeometry(scene, scene.getArrivedMeshes());
+
+        // **The builds a crossing brings, bracketed as one zone.** Without it they are device time
+        // the frame's fence carries and no zone accounts for, so the frame a player feels is the one
+        // frame whose report says nothing about what made it slow. Micromaps and structures under
+        // one name, because a crossing pays for both together and neither is asked for separately.
+        openZone(timer, batch.getCommands(), "blas");
         buildMicromaps(batch, scene, textures, scene.getArrivedMeshes(), graveyard);
         buildMeshes(batch, scene, scene.getArrivedMeshes(), graveyard);
+        closeZone(timer, batch.getCommands());
     }
 
     void SceneAcceleration::buildMicromaps(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures,
