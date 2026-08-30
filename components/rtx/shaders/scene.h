@@ -329,14 +329,36 @@ namespace Rtx::Shaders
     /// weather colour — every one of them three orders below this.
     RTX_CONST float MAX_SUN_RADIANCE = 1000.0f;
 
-    /// What an emissive of one is worth, as light.
+    /// What an emissive of one is worth on screen.
     ///
     /// **The original's scale is not this renderer's.** There a fully lit surface reached one and an
     /// emissive of one matched it; here the direct sun is `DAYLIGHT`, so the same number has to be
-    /// carried across or a glow that read as bright becomes a rounding error. Matched to the sky
-    /// rather than to the sun, which is about a fifth of it: what these materials are for is being
-    /// visible in shade, and a glowing mushroom is not as bright as the sun on it.
-    RTX_CONST float EMISSIVE_INTENSITY = 16.0;
+    /// carried across or a glow that read as bright becomes a rounding error.
+    ///
+    /// **What sets it is what a night frame shows.** A night's exposure is metered off a dark scene,
+    /// so a surface held high enough washes to white and loses the pattern on it — a glowing
+    /// mushroom cap reading as a blob rather than as a mushroom. `FLAME_INTENSITY` says the same of
+    /// a sprite and answers it by deriving a fully lit white card, `DAYLIGHT / pi`; this sits a half
+    /// above that, chosen against rendered frames rather than derived, because a material's one and
+    /// a sprite's one are two content conventions and not one.
+    ///
+    /// **A quarter of what the same glow lights by, and the two are split on purpose.** What such a
+    /// surface *lights* is not what washed out, so `EMISSIVE_LAMP_INTENSITY` holds where it was.
+    ///
+    /// **What that costs is stated rather than hidden**: a glowing surface now looks dimmer than the
+    /// light it throws, and those are two statements about one material that no longer agree. The
+    /// exposure is why the split is worth making at all — a cut of eight moves a cap only a quarter
+    /// on screen, because dimming the glow dims the frame it is metered against.
+    RTX_CONST float EMISSIVE_INTENSITY = 4.0f;
+
+    /// What an emissive of one is worth as light, which `emissiveLight` builds its lamp from.
+    ///
+    /// **Matched to the sky rather than to the sun, which is about a fifth of it**: what these
+    /// materials are for is being visible in shade, and a glowing mushroom is not as bright as the
+    /// sun on it. That is the argument this number was chosen under, and it is kept here because
+    /// this is the half of the old constant that still carries it — `EMISSIVE_INTENSITY` says why
+    /// the other half moved and what the difference costs.
+    RTX_CONST float EMISSIVE_LAMP_INTENSITY = 16.0f;
 
     /// What light on the far side of a leaf is worth to the side being looked at, against the same
     /// light on the near side.
@@ -809,15 +831,18 @@ namespace Rtx::Shaders
         vec3 mIntensity;
         float mReach;
 
-        /// How big the glowing part is, in world units — which is how far short of the centre its
-        /// shadow ray stops. Zero is a point.
+        /// How big the glowing part is, in world units, and nought where nothing measured it. A
+        /// shadow ray opens to this, so a source with one casts a penumbra. `Rtx::Light` says which
+        /// lamps carry one.
         ///
-        /// **Read for visibility and not for radiometry.** The falloff above is a point light's and
-        /// stays one, because the air and a puff of smoke evaluate the same falloff and neither can
-        /// sample an area.
-        ///
-        /// **It no longer softens an edge**, and `lampVisible` says what happened to that.
-        float mRadius;
+        /// **And it is what makes the falloff above a sphere's rather than a point's.** An inverse
+        /// square runs away at zero distance, which is where the air beside a lamp is sampled; a
+        /// source with an extent flattens inside its own surface instead.
+        float mSourceRadius;
+
+        /// How far short of the centre that ray stops. `Rtx::Light` says why it is a separate
+        /// question from the size.
+        float mClearance;
     };
 
     /// Where the lamps were binned, so a shader can find the few that reach a point.
@@ -926,10 +951,10 @@ namespace Rtx::Shaders
     /// **A white card square to the sun, which is what the original's one meant.** There a fully
     /// lit surface reached one and an additive sprite at one reached the same white, so the two
     /// stand at one level here: a card under `DAYLIGHT` leaves `DAYLIGHT / pi`. This is not
-    /// `EMISSIVE_INTENSITY`, which is matched to the sky so that a glowing material shows in shade.
-    /// A flame carried at that scale is six times its own meaning, and at night the exposure then
-    /// puts every texel of it past white — the fringe the texture painted goes with the core, and a
-    /// sprite reads as a cut-out that switches on.
+    /// `EMISSIVE_INTENSITY`, which is a material's convention and not a sprite's, and which sits a
+    /// half above this. A flame carried at that scale is more than its own meaning, and at night the
+    /// exposure then puts every texel of it past white — the fringe the texture painted goes with
+    /// the core, and a sprite reads as a cut-out that switches on.
     RTX_CONST float FLAME_INTENSITY = DAYLIGHT * INV_PI;
 
     /// How strongly smoke throws the sun forward: Henyey-Greenstein's asymmetry.
@@ -1034,7 +1059,7 @@ namespace Rtx::Shaders
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
     static_assert(sizeof(GpuMesh) == 12, "GpuMesh must be scalar-packed on every side");
     static_assert(sizeof(GpuInstance) == 60, "GpuInstance must be scalar-packed on every side");
-    static_assert(sizeof(GpuLight) == 32, "GpuLight must be scalar-packed on every side");
+    static_assert(sizeof(GpuLight) == 36, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
     static_assert(sizeof(GpuMaterial) == 72, "GpuMaterial must be scalar-packed on every side");

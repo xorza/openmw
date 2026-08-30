@@ -503,9 +503,9 @@ namespace Rtx
         // standing in one another, and what they carry separates those.
         std::sort(mLights.begin(), mLights.end(), [](const Light& a, const Light& b) {
             return std::make_tuple(a.mPosition.x(), a.mPosition.y(), a.mPosition.z(), a.mIntensity.x(),
-                       a.mIntensity.y(), a.mIntensity.z(), a.mReach, a.mRadius)
+                       a.mIntensity.y(), a.mIntensity.z(), a.mReach, a.mSourceRadius, a.mClearance)
                 < std::make_tuple(b.mPosition.x(), b.mPosition.y(), b.mPosition.z(), b.mIntensity.x(), b.mIntensity.y(),
-                    b.mIntensity.z(), b.mReach, b.mRadius);
+                    b.mIntensity.z(), b.mReach, b.mSourceRadius, b.mClearance);
         });
     }
 

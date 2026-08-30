@@ -42,6 +42,28 @@ uvec2 lampsInCell(vec3 cell)
     return uvec2(lightOffsets[index], lightOffsets[index + 1u]);
 }
 
+/// How many lamps one point may weigh before it stops.
+///
+/// **A budget, and not a limit a healthy grid reaches.** `Rtx::LightGrid` trades its cell size
+/// against two budgets — the cells it may hold and the entries those cells may name — so a lamp
+/// whose reach is unusually long makes the cell *coarser* rather than the table larger. Carried far
+/// enough that is one cell holding every lamp in the scene, and every point inside it walking all of
+/// them. At two million pixels, and sixty-four froxels for every column of the air, a walk that long
+/// stops being a cost and becomes a kernel the driver cannot pre-empt: `Xid 109, CTX SWITCH
+/// TIMEOUT`, and the device is reset under the frame.
+///
+/// **So the length of this walk is a property of the shader and never of the content.** Nothing the
+/// world can hold makes a kernel here run for an unbounded time. What a scene past the budget loses
+/// is the lamps a point weighs last, which are the ones its cell listed last — a bias, and one that
+/// only appears where the alternative is no picture at all.
+const uint LAMPS_AT_A_POINT = 256u;
+
+/// The same range, cut to that budget.
+uvec2 lampsWithin(uvec2 near)
+{
+    return uvec2(near.x, min(near.y, near.x + LAMPS_AT_A_POINT));
+}
+
 /// The same, for a caller holding a place instead of a cell.
 uvec2 lampsReaching(vec3 position)
 {
@@ -52,12 +74,21 @@ uvec2 lampsReaching(vec3 position)
 ///
 /// An inverse square windowed to arrive at exactly zero where the light's reach ends. Morrowind's
 /// reach is a hard cutoff, and merely clipping an inverse square leaves a visible ring on the floor
-/// where it stops. The `+ 1` keeps the singularity at zero distance finite; a lamp is not a point.
-float falloff(float distance, float reach)
+/// where it stops. What keeps the singularity at zero distance finite is `source`, below.
+float falloff(float distance, float reach, float source)
 {
     const float ratio = distance / reach;
     const float window = clamp(1.0 - ratio * ratio * ratio * ratio, 0.0, 1.0);
-    return window * window / (distance * distance + 1.0);
+
+    // **The lamp's own extent is what the singularity is softened by, because that is what a lamp
+    // is.** An inverse square is the field of a point, and a point has no field at itself: within a
+    // flame's own radius the arithmetic runs away, and what it drew was a hard bright bead hanging
+    // in the air wherever the fog sampled beside a lamp — a firefly, and not the glow of the thing
+    // it belongs to. A sphere's irradiance flattens inside its own surface instead. One unit is the
+    // floor, which is what a lamp carrying no size behaves as and what this read before.
+    const float held = max(source, 1.0);
+
+    return window * window / (distance * distance + held * held);
 }
 
 /// The integral of `falloff` along a ray, over the stretch of it between `from` and `to`.
@@ -69,14 +100,14 @@ float falloff(float distance, float reach)
 ///
 /// Exact, and it is exact because the integrand is a rational function of one quantity. With `s`
 /// measured from the ray's closest approach to the lamp and `r^2 = h^2 + s^2`, `falloff` is
-/// `(1 - (r/R)^4)^2 / (r^2 + 1)`; in units of the reach that is `(1 - q^2)^2 / (q + e)` with
-/// `q = r^2/R^2` and `e = 1/R^2`, which divides out to a cubic in `q` and a remainder over the
+/// `(1 - (r/R)^4)^2 / (r^2 + source^2)`; in units of the reach that is `(1 - q^2)^2 / (q + e)` with
+/// `q = r^2/R^2` and `e = source^2/R^2`, which divides out to a cubic in `q` and a remainder over the
 /// divisor. The cubic is an even polynomial in `s` and the remainder is the `atan`.
 ///
 /// @param perpendicular how far the lamp stands off the ray's line.
 /// @param from where the stretch starts, measured from the closest approach and signed.
 /// @param to where it ends, likewise.
-float falloffAlong(float perpendicular, float from, float to, float reach)
+float falloffAlong(float perpendicular, float from, float to, float reach, float source)
 {
     // **Clipped to the chord and not merely evaluated over the stretch.** Past the reach the window
     // is exactly zero, and the polynomial that stands for it there is not.
@@ -93,7 +124,8 @@ float falloffAlong(float perpendicular, float from, float to, float reach)
     // In units of the reach, where the chord runs from `bump` to one and the guard `falloff` keeps
     // against the singularity is this much of it.
     const float bump = perpendicular * perpendicular / (reach * reach);
-    const float guard = 1.0 / (reach * reach);
+    const float held = max(source, 1.0);
+    const float guard = held * held / (reach * reach);
 
     const float c2 = -guard;
     const float c1 = guard * guard - 2.0;
@@ -140,13 +172,14 @@ struct Lamp
     /// What share of that intensity arrives here, or nothing where the lamp does not reach.
     float mReaching;
 
-    /// How big the glowing part is, in world units — carried for the one consumer that traces.
+    /// How big the glowing part is, and how far short of it a ray stops.
     ///
-    /// **Visibility only, which is why it is beside the falloff rather than in it.** A surface
-    /// draws its shadow ray from somewhere on a source this wide instead of from its centre; the
-    /// air and a puff of smoke trace nothing and read past this, and all three still agree about
-    /// the reach and the falloff, which is the whole point of the record.
-    float mRadius;
+    /// **The first is read twice and the second once.** `falloff` above softens its singularity by
+    /// the size, so every asker gets it and all three still agree about what arrives — which is the
+    /// whole point of the record. The clearance is the tracer's alone: the air and a puff of smoke
+    /// trace nothing and read past it.
+    float mSourceRadius;
+    float mClearance;
 };
 
 Lamp lampAt(GpuLight lamp, vec3 position)
@@ -159,9 +192,10 @@ Lamp lampAt(GpuLight lamp, vec3 position)
     // half of a light and the only reason the test is worth making at all. Zero distance is the
     // other half of it — a lamp standing exactly on the point has no direction to be lit from.
     if (distance >= lamp.mReach || distance <= 0.0)
-        return Lamp(vec3(0.0), distance, lamp.mIntensity, 0.0, lamp.mRadius);
+        return Lamp(vec3(0.0), distance, lamp.mIntensity, 0.0, lamp.mSourceRadius, lamp.mClearance);
 
-    return Lamp(offset / distance, distance, lamp.mIntensity, falloff(distance, lamp.mReach), lamp.mRadius);
+    return Lamp(offset / distance, distance, lamp.mIntensity, falloff(distance, lamp.mReach, lamp.mSourceRadius),
+        lamp.mSourceRadius, lamp.mClearance);
 }
 
 /// What every lamp reaching a point delivers there, as irradiance and with nothing in the way.
@@ -177,7 +211,7 @@ vec3 lampsAt(vec3 position)
 {
     vec3 total = vec3(0.0);
 
-    const uvec2 near = lampsReaching(position);
+    const uvec2 near = lampsWithin(lampsReaching(position));
     for (uint i = near.x; i < near.y; ++i)
     {
         const Lamp lamp = lampAt(lights[lightIndices[i]], position);
@@ -207,11 +241,12 @@ struct Reservoir
     /// What the lamp held would deliver there with nothing in the way.
     vec3 mRadiance;
 
-    /// Where it stands, for the one shadow ray this buys, and how big it is — which is how far
-    /// short of the centre that ray stops.
+    /// Where it stands, for the one shadow ray this buys, how wide that ray may be aimed, and how
+    /// far short of the centre it stops.
     vec3 mTowards;
     float mDistance;
-    float mRadius;
+    float mSourceRadius;
+    float mClearance;
 
     /// The held lamp's own weight, and the weight of every candidate including it.
     float mWeight;
@@ -221,7 +256,7 @@ struct Reservoir
 /// A reservoir that has weighed nothing, which buys no ray and delivers nothing.
 Reservoir noLamps()
 {
-    return Reservoir(vec3(0.0), vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0, 0.0);
+    return Reservoir(vec3(0.0), vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0, 0.0, 0.0);
 }
 
 /// Weighs every lamp reaching `from` into `kept`.
@@ -283,7 +318,8 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
         kept.mRadiance = unshadowed;
         kept.mTowards = lamp.mTowards;
         kept.mDistance = lamp.mDistance;
-        kept.mRadius = lamp.mRadius;
+        kept.mSourceRadius = lamp.mSourceRadius;
+        kept.mClearance = lamp.mClearance;
         kept.mWeight = weight;
     }
 }
@@ -293,7 +329,7 @@ void weighLamps(
 {
     const bool facing = dot(normal, normal) > 0.0;
 
-    const uvec2 near = lampsReaching(from);
+    const uvec2 near = lampsWithin(lampsReaching(from));
     for (uint i = near.x; i < near.y; ++i)
     {
         const Lamp lamp = lampAt(lights[lightIndices[i]], from);
@@ -321,40 +357,46 @@ void holdBrightestLamp(inout Reservoir kept, vec3 from, float scale)
 
 /// What the world leaves of the lamp a reservoir held, from none of it to all.
 ///
-/// **The one ray**, aimed at the lamp. Nothing is traced where every lamp was faced away from or out
-/// of reach, which is most of the frame.
+/// **The one ray**, aimed somewhere on the lamp. Nothing is traced where every lamp was faced away
+/// from or out of reach, which is most of the frame.
 ///
-/// It stops at whichever is further back from the centre — the lamp's own surface, or the unit of
-/// clearance every shadow ray already keeps — so a source with a size never reaches inside itself
-/// and one without behaves exactly as it did.
+/// **It stops the clearance short of its own closest approach, and not of the centre.** Those are
+/// the same length only for the ray down the middle. Take the clearance off the distance to the
+/// centre and aim off-axis, and the ray runs *past* the source and into whatever fitting stands
+/// around it — a lantern's frame, a sconce's bracket, a candle's holder — which is the densest
+/// geometry anywhere near a lamp, and it comes back as fully shadowed. Measured against the closest
+/// approach instead, every sampled direction ends at least the clearance away from the source
+/// whatever angle it left at, and the grazing rays that used to end inside the fitting now stop
+/// soonest of all.
 ///
-/// **At the lamp and not somewhere on it, and that is a picture feature given up deliberately.** A
-/// ray drawn across a source's disc is what makes a large source cast a soft edge, and it is what
-/// `mRadius` was carried for. But every lamp in Morrowind sits inside something — a lantern's frame,
-/// a sconce's bracket, a candle's holder — so an off-centre ray ends among that fitting and comes
-/// back as fully shadowed. What the cone drew was therefore not a penumbra but the lamp shadowing
-/// itself: a systematic dimming of every lamp-lit surface, and on top of it a black speckle wherever
-/// a pixel's single sample lost the whole lamp. Measured on the mages guild, 4.3 % of the frame
-/// speckled against 1.6 %, and the whole room darker with it; on a lantern-lit wall, 4.9 % against
-/// 0.3 %. A denoiser hid the speckle and could not put the light back.
-///
-/// The soft edge is worth having and comes back when a lamp's own fitting stops occluding it.
-/// `.notes/ISSUES.md` carries that.
-float lampVisible(Reservoir kept)
+/// **Only a source whose size was measured opens the cone, and that is the whole of what fixed the
+/// speckle.** `Rtx::Light::mSourceRadius` says which those are: an emissive glow is a shape, and a
+/// ray aimed anywhere across it is aimed at geometry that really emits. A `LIGH` record states no
+/// size, so the sixteenth that used to stand in for one aimed the ray across a sphere that reached
+/// into the lantern's own frame — and the ray came back fully shadowed, charging the whole lamp to
+/// the pixel. That drew a black speckle over every lamp-lit wall in the game and took light off all
+/// of them: 4.9 % of a lit wall speckled against 0.3 %, and the mages guild darker with it.
+float lampVisible(Reservoir kept, vec2 draw)
 {
     if (!(kept.mWeight > 0.0))
         return 1.0;
 
-    return lightThrough(kept.mFrom, kept.mTowards, kept.mDistance - max(kept.mRadius, SHADOW_BIAS));
+    const vec3 towards = coneDirection(kept.mTowards, min(kept.mSourceRadius / kept.mDistance, 1.0), draw);
+
+    // How far along this direction the source stands beside it, which is where the ray is closest to
+    // the lamp and so where the clearance has to be measured from.
+    const float along = kept.mDistance * dot(towards, kept.mTowards);
+
+    return lightThrough(kept.mFrom, towards, along - max(kept.mClearance, SHADOW_BIAS));
 }
 
 /// What every lamp a reservoir stands for delivers, once the one it held has been traced to.
-vec3 lampsThrough(Reservoir kept)
+vec3 lampsThrough(Reservoir kept, vec2 draw)
 {
     if (!(kept.mWeight > 0.0))
         return vec3(0.0);
 
-    return kept.mRadiance * (kept.mTotal / kept.mWeight) * lampVisible(kept);
+    return kept.mRadiance * (kept.mTotal / kept.mWeight) * lampVisible(kept, draw);
 }
 
 #endif

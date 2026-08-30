@@ -273,7 +273,7 @@ namespace Rtx
     }
 
     void VisibilityPass::pushInputs(VkCommandBuffer commands, const ComputePipeline& pipeline,
-        const VisibilityInputs& inputs, const GBuffer& buffer, const Buffer& hitCount) const
+        const VisibilityInputs& inputs, const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const
     {
         const VkWriteDescriptorSetAccelerationStructureKHR sceneWrite{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
@@ -397,13 +397,15 @@ namespace Rtx
         // The three sets nothing pushes: the bindless textures a scene brought, the channels the
         // trace writes, and the air in front of the camera. Each is written when what it names is
         // made, and bound as it is.
-        const std::array<VkDescriptorSet, 3> sets{ inputs.mTextures, buffer.getSet(), inputs.mFogVolume->getSet() };
+        const std::array<VkDescriptorSet, 3> sets{ inputs.mTextures, buffer.getSet(),
+            inputs.mFogVolume->getSet(frame) };
         vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 1,
             static_cast<std::uint32_t>(sets.size()), sets.data(), 0, nullptr);
     }
 
     void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer) const
+        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, const bool historyLost,
+        GpuTimer* timer) const
     {
         assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
 
@@ -413,6 +415,16 @@ namespace Rtx
         assert(inputs.mTextures != VK_NULL_HANDLE && "a trace whose texture array named no set");
 
         Shaders::VisibilityConstants described = constants;
+
+        // **A basis of nothing is how this block already says there is no previous frame**, so a
+        // door or a rebuild is told to every reprojection at once rather than to each of them
+        // separately. The frame that carries it reprojects nothing, which is what it is for.
+        if (historyLost)
+        {
+            described.mPreviousForward = Shaders::vec3();
+            described.mPreviousRight = Shaders::vec3();
+            described.mPreviousUp = Shaders::vec3();
+        }
 
         // **The tiles' widths come off the pass that built them**, so what the shader divides by is
         // what is actually bound rather than a second statement of the same table.
@@ -433,14 +445,14 @@ namespace Rtx
 
         // Taken for writing whether or not it is filled, because the trace binds a descriptor to it
         // either way and a descriptor names the layout its image is in.
-        inputs.mFogVolume->begin(commands);
+        inputs.mFogVolume->begin(commands, constants.mFrame);
 
         if (const ComputePipeline* air = volumePipelineFor(variant); air != nullptr)
         {
             openZone(timer, commands, "air");
 
             vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, air->getHandle());
-            pushInputs(commands, *air, inputs, buffer, hitCount);
+            pushInputs(commands, *air, inputs, buffer, hitCount, constants.mFrame);
 
             // **Every column the image has and not every column the camera needs.** A traced view is
             // drawn into a volume grown to the largest one asked for, and the pixel at its edge
@@ -458,7 +470,7 @@ namespace Rtx
 
         const ComputePipeline& pipeline = pipelineFor(variant);
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
-        pushInputs(commands, pipeline, inputs, buffer, hitCount);
+        pushInputs(commands, pipeline, inputs, buffer, hitCount, constants.mFrame);
         vkCmdDispatch(commands, groupsFor(constants.mCamera.mWidth, Shaders::VISIBILITY_WORKGROUP),
             groupsFor(constants.mCamera.mHeight, Shaders::VISIBILITY_WORKGROUP), 1);
 

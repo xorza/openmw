@@ -29,6 +29,37 @@ vec3 movedBy(uint index, vec3 position)
     return was - position;
 }
 
+/// Where a point standing `was` from the previous eye lands on that eye's screen, from nought to one
+/// across it — or a negative coordinate where it lands on no screen at all.
+///
+/// **The inverse of the generation in `rayAt`, and shared for the reason `rayAt` itself is.** A
+/// pixel reprojects the surface it found and the fog volume reprojects every froxel of its own grid;
+/// two derivations of one projection are two chances to disagree about where the previous frame was.
+///
+/// **An offset from the eye and never a world position.** `mCameraMotion` is the step between two
+/// eyes, differenced on the host where a float still has digits to spare — where the two positions
+/// themselves are six figures long and nearly equal.
+vec2 previousScreen(vec3 was)
+{
+    // A basis of nothing is what the frame carries where there is no previous frame at all: the
+    // first, a resize, a new scene, and any jump a motion vector could not describe.
+    if (!(dot(frame.mPreviousForward, frame.mPreviousForward) > 0.0))
+        return vec2(-1.0);
+
+    // Behind the previous eye there is no answer, and the divide below would fold such a point back
+    // into the frame as a plausible coordinate.
+    const float ahead = dot(was, frame.mPreviousForward);
+    if (!(ahead > 0.0))
+        return vec2(-1.0);
+
+    // The basis carries the image plane's half extents, so dividing by each vector's own square
+    // undoes the direction and the scale together.
+    const float across = dot(was, frame.mPreviousRight) / dot(frame.mPreviousRight, frame.mPreviousRight);
+    const float down = -dot(was, frame.mPreviousUp) / dot(frame.mPreviousUp, frame.mPreviousUp);
+
+    return (vec2(across, down) / ahead) * 0.5 + 0.5;
+}
+
 /// Where a surface stood on the previous frame's screen, less where it stands on this one, in
 /// pixels.
 ///
@@ -51,18 +82,11 @@ vec2 reprojected(uvec2 pixel, vec3 was)
     if (frame.mCamera.mOrthographic != 0u)
         return vec2(0.0);
 
-    // Behind the previous eye there is no answer, and the divide below would fold such a point back
-    // into the frame as a plausible coordinate.
-    const float ahead = dot(was, frame.mPreviousForward);
-    if (!(ahead > 0.0))
+    const vec2 screen = previousScreen(was);
+    if (screen.x < 0.0)
         return vec2(0.0);
 
-    // The inverse of the ray generation. The basis carries the image plane's half extents, so
-    // dividing by each vector's own square undoes the direction and the scale together.
-    const float across = dot(was, frame.mPreviousRight) / dot(frame.mPreviousRight, frame.mPreviousRight);
-    const float down = -dot(was, frame.mPreviousUp) / dot(frame.mPreviousUp, frame.mPreviousUp);
-
-    const vec2 before = (vec2(across, down) / ahead * 0.5 + 0.5) * vec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
+    const vec2 before = screen * vec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
     return before - (vec2(pixel) + 0.5 + frame.mCamera.mJitter);
 }
 

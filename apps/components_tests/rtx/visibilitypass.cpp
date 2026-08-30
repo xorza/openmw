@@ -2301,27 +2301,28 @@ namespace Rtx
                 return std::array<std::uint8_t, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
 
-            // A fortieth of a glow on a white surface. The scale carries the original's "one is a
-            // fully lit surface" onto this renderer's, and at sixteen that is 0.4 linear, which
-            // encodes to `1.055 * 0.4^(1/2.4) - 0.055 = 0.66514`, or 170.
+            // A glow on a white surface, taken so that the product is 0.4 linear whatever the scale
+            // is — which encodes to `1.055 * 0.4^(1/2.4) - 0.055 = 0.66514`, or 170. The scale
+            // carries the original's "one is a fully lit surface" onto this renderer's, and what is
+            // pinned here is the encoding and not the scale.
             const float glow = 0.4f / Shaders::EMISSIVE_INTENSITY;
             const std::uint8_t glowing = encodeSrgb(glow * Shaders::EMISSIVE_INTENSITY);
             EXPECT_EQ(glowing, 170) << "the glow was meant to sit inside the display's range";
 
-            const osg::Vec3f fortieth(glow, glow, glow);
-            EXPECT_EQ(render(0, sNoIndex, fortieth)[0], glowing) << "a glow on white";
+            const osg::Vec3f chosen(glow, glow, glow);
+            EXPECT_EQ(render(0, sNoIndex, chosen)[0], glowing) << "a glow on white";
 
             // The same glow on a texture with no red in it keeps the texture's colour, because the
             // glow goes through the albedo. Added past it, the surface would come back white.
-            const std::array<std::uint8_t, 3> onGreen = render(1, sNoIndex, fortieth);
+            const std::array<std::uint8_t, 3> onGreen = render(1, sNoIndex, chosen);
             EXPECT_EQ(onGreen[1], glowing) << "the same glow, still through green";
             EXPECT_EQ(onGreen[0], 0) << "and with none of the red the white one had";
 
             // The map is the other way round: red light off a green surface. Through the albedo it
-            // would be black, since green times red is nothing. Six of 255 is 0.023529, times
-            // sixteen is 0.37647, which encodes to 165 — reached without the texture's help.
+            // would be black, since green times red is nothing. Six of 255 is 0.023529, times four
+            // is 0.094118, which encodes to 86 — reached without the texture's help.
             const std::uint8_t mapGlow = encodeSrgb(6.0f / 255.0f * Shaders::EMISSIVE_INTENSITY);
-            EXPECT_EQ(mapGlow, 165);
+            EXPECT_EQ(mapGlow, 86);
 
             const std::array<std::uint8_t, 3> mapped = render(1, 2, osg::Vec3f());
             EXPECT_EQ(mapped[0], mapGlow) << "the map's own red, undimmed by the green under it";
@@ -2689,7 +2690,11 @@ namespace Rtx
         /// over ten thousand square units is 1,250 per steradian, which reaches
         /// `2 * sqrt(1250 / (0.25 pi)) + 128 = 207.79`; a hundred units off, the wall's centre gets
         ///
-        ///   1250 * 0.5 * (1 - (100 / 207.79)^4)^2 / (100^2 + 1) / pi = 0.017816
+        ///   1250 * 0.5 * (1 - (100 / 207.79)^4)^2 / (100^2 + 70.71^2) / pi = 0.011878
+        ///
+        /// The `70.71` is the quad's own half-diagonal, which is the extent `emissiveLight` is handed
+        /// and what `falloff` softens its singularity by: a glow that size is a sphere and not a
+        /// point, so a wall a hundred units off divides by `100^2 + 70.71^2` and never by `100^2 + 1`.
         TEST_F(RtxVisibilityTest, aGlowingSurfaceLightsItsNeighboursByItsLampAndNotByTheBounceAsWell)
         {
             constexpr std::uint32_t size = 33;
@@ -2729,34 +2734,17 @@ namespace Rtx
             };
 
             EXPECT_EQ(render(false), 0.0f) << "no lamp, and the bounce hands the glow back";
-            EXPECT_NEAR(render(true), 0.017816f, 0.0005f) << "the lamp, and nothing else";
+            EXPECT_NEAR(render(true), 0.011878f, 0.0005f) << "the lamp, and nothing else";
         }
 
-        /// The sun casts a penumbra, and a lamp casts an edge whatever its size.
+        /// A source whose size was measured casts a penumbra, where one that carries none casts an
+        /// edge.
         ///
-        /// **The whole of a soft shadow is where the shadow ray leaves from.** The sun is a disc
-        /// half a degree across, so it is not one direction: the ray is drawn from somewhere on it,
-        /// and the band an occluder hides some of it from is the penumbra. How wide that band is, is
-        /// arithmetic — the source's own size seen from the occluder — and that is what this pins at
-        /// both of its edges and in the middle.
-        ///
-        ///     half-width = 2000 * tan(0.034907) = 69.84
-        ///
-        /// at the two degrees the shadow cone is drawn from, which `SUN_SHADOW_RADIUS` says is wider
-        /// than the disc and why.
-        ///
-        /// **A lamp is drawn from its centre instead, so it casts an edge however large it is.**
-        /// `lampVisible` says why, and what that trade bought. The arithmetic a sized lamp *would*
-        /// cast is kept here, because it is what comes back when a lamp's own fitting stops
-        /// occluding it: 400 units out with a source radius of 20 and the occluder halfway, a ray
-        /// leaving a point 20 units off the axis crosses the occluder's plane 10 off it, so
-        ///
-        ///     half-width = 200 * tan(asin(20 / 400))       = 10.013
-        ///     lit one unit inside, u = -1 / 10.013         = -0.09987
-        ///     (acos(u) - u * sqrt(1 - u^2)) / pi           = 0.56348
-        ///
-        /// What it casts today is the edge below instead, one unit either side, for a source of
-        /// radius 20 exactly as for one of radius 0.
+        /// **The whole of a soft shadow is where the shadow ray leaves from.** A lamp with an extent
+        /// and the sun's half-degree disc are neither of them one direction: the ray is drawn from
+        /// somewhere on the source, and the band an occluder hides some of it from is the penumbra.
+        /// How wide that band is, is arithmetic — the source's own size seen from the occluder — and
+        /// that is what this pins at both of its edges and in the middle.
         ///
         /// A half-plane occluder, so the geometry is one number: an edge at `x = X` in a plane
         /// parallel to the wall, hung behind it and so out of the camera's own view. The wall is at
@@ -2765,7 +2753,27 @@ namespace Rtx
         /// and averaging the column is averaging draws of one quantity rather than smearing several.
         /// Each is divided by what the same pixel reads with nothing in the way, so the falloff and
         /// the cosine — which do differ down the column — cancel and what is left is visibility.
-        TEST_F(RtxVisibilityTest, theSunCastsAPenumbraAndALampCastsAnEdgeWhateverItsSize)
+        ///
+        /// **The lamp** stands 400 units out with a source radius of 20, and the occluder hangs
+        /// halfway: a ray leaving a point 20 units off the axis crosses the occluder's plane 10 off
+        /// it, so an edge twelve units either side is wholly clear of the cone or wholly across it.
+        ///
+        ///     half-width = 200 * tan(asin(20 / 400)) = 10.013
+        ///
+        /// **The sun** is one direction everywhere, so its penumbra grows with nothing but the
+        /// occluder's distance — two thousand units of it, at the two degrees the shadow cone is
+        /// drawn from, which `SUN_SHADOW_RADIUS` says is wider than the disc and why.
+        ///
+        ///     half-width = 2000 * tan(0.034907) = 69.84
+        ///
+        /// **And the same lamp with no measured size is the edge a record's lamp casts.**
+        /// `Rtx::Light::mSourceRadius` says which lamps carry one and which do not. At `X = -1` it is
+        /// still fully lit and at `X = +1` fully dark, where the sized one is part-lit at both — the
+        /// segment of a disc of radius 10.013 cut one unit off its centre:
+        ///
+        ///     u        = -1 / 10.013                          = -0.09987
+        ///     lit      = (acos(u) - u * sqrt(1 - u^2)) / pi    = 0.56348
+        TEST_F(RtxVisibilityTest, aMeasuredSourceCastsAPenumbraAndAnUnmeasuredOneCastsAnEdge)
         {
             constexpr std::uint32_t size = 33;
             constexpr std::uint32_t column = size / 2;
@@ -2827,7 +2835,8 @@ namespace Rtx
                 .mPosition = osg::Vec3f(0.0f, -400.0f, 0.0f),
                 .mIntensity = osg::Vec3f(400000.0f, 400000.0f, 400000.0f),
                 .mReach = 10000.0f,
-                .mRadius = 20.0f,
+                .mSourceRadius = 20.0f,
+                .mClearance = 20.0f,
             };
 
             Shaders::VisibilityConstants lampCamera = base;
@@ -2838,26 +2847,34 @@ namespace Rtx
             renderRadiance(sceneWith(lamp, lampDepth, std::nullopt), lampCamera, size, lampOpen, 1, false);
             ASSERT_GT(lampOpen[(std::size_t{ column } * size + column) * 4], 0.0f) << "the lamp lights the wall";
 
-            // The same lamp with no size at all, which now answers identically: one ray from the
-            // centre, and nothing about the source's radius reaches the shadow.
-            Light point = lamp;
-            point.mRadius = 0.0f;
-
-            for (const auto& [named, sized] : { std::pair{ "a lamp with a size", lamp }, { "a point", point } })
-            {
-                EXPECT_FLOAT_EQ(visible(sceneWith(sized, lampDepth, -1.0f), lampOpen, lampCamera, 1), 1.0f)
-                    << named << " is lit right up to its shadow";
-                EXPECT_FLOAT_EQ(visible(sceneWith(sized, lampDepth, 1.0f), lampOpen, lampCamera, 1), 0.0f)
-                    << named << " is dark from there on, with no band in between";
-            }
-
-            // Twelve units either side is where the penumbra a radius of 20 would cast reaches, and
-            // both answers are already saturated there — so this is what says the band is gone
-            // rather than merely narrower.
             EXPECT_FLOAT_EQ(visible(sceneWith(lamp, lampDepth, -12.0f), lampOpen, lampCamera, 1), 1.0f)
-                << "and no part of a sized source is hidden outside where its penumbra would reach";
+                << "the whole source clears an edge outside its penumbra";
             EXPECT_FLOAT_EQ(visible(sceneWith(lamp, lampDepth, 12.0f), lampOpen, lampCamera, 1), 0.0f)
-                << "nor lit across the far side of it";
+                << "and none of it clears one across the far side";
+            EXPECT_NEAR(visible(sceneWith(lamp, lampDepth, 0.0f), lampOpen, lampCamera, 64), 0.5f, 0.05f)
+                << "and exactly half of it stands on the shadow's own edge";
+
+            // The same lamp with nothing measuring it: the edge a record's lamp casts, crossing from
+            // wholly lit to wholly dark inside the two units the sized one is still part-lit across.
+            //
+            // **Its own open reading, and it has to be its own.** A size softens the singularity in
+            // `falloff` as well as widening the shadow ray, so the two lamps do not deliver the same
+            // light at the same place — 400 units out, one divides by `400^2 + 20^2` and the other
+            // by `400^2 + 1`. Divided by the sized lamp's reading, a point that clears every ray
+            // would read 1.0025 rather than one.
+            Light point = lamp;
+            point.mSourceRadius = 0.0f;
+            point.mClearance = 0.0f;
+
+            std::vector<float> pointOpen;
+            renderRadiance(sceneWith(point, lampDepth, std::nullopt), lampCamera, size, pointOpen, 1, false);
+
+            EXPECT_FLOAT_EQ(visible(sceneWith(point, lampDepth, -1.0f), pointOpen, lampCamera, 1), 1.0f)
+                << "an unmeasured source is lit right up to its shadow";
+            EXPECT_FLOAT_EQ(visible(sceneWith(point, lampDepth, 1.0f), pointOpen, lampCamera, 1), 0.0f)
+                << "and dark from there on, with no band in between";
+            EXPECT_NEAR(visible(sceneWith(lamp, lampDepth, -1.0f), lampOpen, lampCamera, 64), 0.56348f, 0.05f)
+                << "where a measured source is still inside its own penumbra at both";
 
             // The sun, whose disc is the one this renderer draws and so the one it shadows by.
             constexpr float sunDepth = -2000.0f;
@@ -6154,7 +6171,7 @@ namespace Rtx
 
             // And the volume it is integrated into belongs to the camera's size, so a steady frame
             // finds the same one every time.
-            const FogVolume fogVolume(device, volumeLayout, size, size);
+            const FogVolume fogVolume(device, pool, volumeLayout, size, size);
 
             const VisibilityInputs inputs{
                 .mScene = acceleration.getTopLevel(),
@@ -6212,7 +6229,7 @@ namespace Rtx
                 vkBeginCommandBuffer(commands, &begin);
                 waves.record(commands, camera.mTime);
                 channels.begin(commands);
-                pass.record(commands, inputs, channels, hits, camera, nullptr);
+                pass.record(commands, inputs, channels, hits, camera, true, nullptr);
                 channels.handOver(commands);
                 // No history: a still frame averages nothing, and the pass stands in for the
                 // binding rather than making the caller carry an image it never reads.

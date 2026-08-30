@@ -44,6 +44,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     const vec2 sunDraw = vec2(randomNext(state), randomNext(state));
     const vec2 moonDraw[2]
         = vec2[2](vec2(randomNext(state), randomNext(state)), vec2(randomNext(state), randomNext(state)));
+    const vec2 lampDraw = vec2(randomNext(state), randomNext(state));
 
     // **The cloud deck stands over the sun and the moons alike**, and it is the one occluder no ray
     // finds: the clouds are not in the acceleration structure and never will be, so what a light
@@ -115,7 +116,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     Reservoir kept = noLamps();
     weighLamps(kept, state, position, normal, INV_PI, transmission, false);
 
-    radiance += lampsThrough(kept);
+    radiance += lampsThrough(kept, lampDraw);
 
     return radiance;
 }

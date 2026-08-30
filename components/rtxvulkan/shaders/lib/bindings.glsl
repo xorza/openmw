@@ -295,19 +295,32 @@ layout(set = 0, binding = 22) uniform sampler2D waveCurvature[WAVE_CASCADES];
 layout(set = 0, binding = 23) uniform sampler3D fogField;
 
 // The air in front of the eye, integrated once for a block of pixels rather than once per pixel.
-// `Rtx::FogVolume` says what each image holds and why the sun has one of its own.
+// `Rtx::FogVolume` says what each image holds and why there are three pairs of them.
 //
 // **A set of its own, which is the set `GBuffer` already argued for.** Set zero is pushed, the
-// device allows 32 push descriptors and this renderer had reached exactly that once — so a pair of
-// images belonging to a camera's size goes with the owner that holds them.
+// device allows 32 push descriptors and this renderer had reached exactly that once — so images
+// belonging to a camera's size go with the owner that holds them.
 //
-// **Each image is named twice because Vulkan has no descriptor that is both.** The pass writes them
-// as storage images and the trace samples them; the two accessors below are the same memory, and
-// each shader references only the pair it uses.
-layout(set = 3, binding = 0) uniform sampler3D fogVolumeAir;
-layout(set = 3, binding = 1) uniform sampler3D fogVolumeSunward;
+// **Each image is named twice wherever a pass both reads and writes it**, because Vulkan has no
+// descriptor that is both. Which physical image the first two pairs name swaps every frame:
+// `FogVolume::getSet` hands over the set whose history is what the last frame wrote.
 
-layout(set = 3, binding = 2, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeAirTarget;
-layout(set = 3, binding = 3, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeSunwardTarget;
+/// What the air scatters at a point in `rgb` and its extinction per world unit in `a`, as the
+/// previous frame left it — and the sun's transport there beside it. These are the quantities that
+/// reproject, so these are the ones a frame averages against.
+layout(set = 3, binding = 0) uniform sampler3D fogWasScatter;
+layout(set = 3, binding = 1) uniform sampler3D fogWasSunward;
+
+/// The same two, as this frame writes them.
+layout(set = 3, binding = 2, FOG_VOLUME_FORMAT) uniform writeonly image3D fogScatterTarget;
+layout(set = 3, binding = 3, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSunwardTarget;
+
+/// Both accumulated front to back, which is what a pixel reads. `a` of the first is what is left of
+/// a ray at that depth.
+layout(set = 3, binding = 4, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeAirTarget;
+layout(set = 3, binding = 5, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeSunwardTarget;
+
+layout(set = 3, binding = 6) uniform sampler3D fogVolumeAir;
+layout(set = 3, binding = 7) uniform sampler3D fogVolumeSunward;
 
 #endif

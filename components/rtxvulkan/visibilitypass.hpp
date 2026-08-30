@@ -142,12 +142,17 @@ namespace Rtx
         ///        and at least as large as the frame. It writes a picture no longer: the indirect
         ///        term has to survive to the filter with the albedo still divided out.
         /// @param hitCount a storage buffer of one `uint32` the shader increments per hit.
+        /// @param historyLost whether the frame before this one is worth reprojecting into. Written
+        ///        into the block as a basis of nothing, which is what every shader here already
+        ///        reads as "there is no previous frame" — so a door, a resize and a rebuild reach
+        ///        the fog volume's own filter by the route the motion vectors already take.
         /// @param timer where the two zones this records go, or nothing where nobody is counting.
         ///        The fog volume and the trace are two dispatches and one of them is new, so they
         ///        are timed apart — and the pass opens them because it is what decides whether the
         ///        first happens at all.
         void record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer) const;
+            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, bool historyLost,
+            GpuTimer* timer) const;
 
     private:
         /// Makes every kernel this pass can ever need, before it returns.
@@ -179,7 +184,7 @@ namespace Rtx
         /// questions of the same tables the trace does: it traces shadow rays against the same
         /// structure, resolves the same alpha out of the same textures, and reads the same lamps.
         void pushInputs(VkCommandBuffer commands, const ComputePipeline& pipeline, const VisibilityInputs& inputs,
-            const GBuffer& buffer, const Buffer& hitCount) const;
+            const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const;
 
         /// The kernel for `variant`, which `compileEvery` made.
         const ComputePipeline& pipelineFor(VisibilityVariant variant) const;

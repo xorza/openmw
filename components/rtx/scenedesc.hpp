@@ -267,14 +267,26 @@ namespace Rtx
         /// what lights the place, so the reach is stretched while the brightness is not.
         float mReach = 0.0f;
 
-        /// How big the glowing part is, in world units, which is how far short of the centre its
-        /// shadow ray stops. `lampVisible` says why it is no longer what shadows are soft by.
+        /// How big the glowing part is, in world units, and **nought where nothing measured it**.
         ///
-        /// **Not the recorded radius either**, and for once not a stretched version of it: this is
-        /// the flame rather than the room it lights. `makeLight` is the one place it is derived and
-        /// says what from; zero, which is what a light built by hand carries, is a point source and
-        /// casts the edge a point source casts.
-        float mRadius = 0.0f;
+        /// A shadow ray opens to this, so a source that carries one casts a penumbra as wide as it
+        /// is and a source that does not casts an edge. Only an emissive material can fill it: the
+        /// glow is a shape the renderer can see, so its extent is measured off the triangles that
+        /// carry it. A `LIGH` record states how far its lamp reaches and nothing at all about how
+        /// big the flame is, so a lamp built from one leaves this at nought.
+        ///
+        /// **It is also what stops the falloff running away at the lamp itself**, which is where the
+        /// air beside one is sampled. `falloff` says what that drew before.
+        float mSourceRadius = 0.0f;
+
+        /// How far short of the centre that ray stops.
+        ///
+        /// **A clearance, and it is not the same question as the size.** A lamp sits inside its own
+        /// fitting — a lantern's frame, a sconce's bracket, a candle's holder — so a ray that runs
+        /// all the way to the light ends among that fitting and comes back as fully shadowed. An
+        /// emissive glow stops at its own extent, because the shape is the light. A record's lamp
+        /// stops at what `makeLight` estimates the flame inside the fitting to be.
+        float mClearance = 0.0f;
     };
 
     /// The sun, as a directional light and as something to look at.

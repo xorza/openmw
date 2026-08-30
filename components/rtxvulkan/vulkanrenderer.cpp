@@ -244,7 +244,7 @@ namespace Rtx
         });
 
         mChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mRenderWidth, mRenderHeight);
-        mFogVolume = std::make_unique<FogVolume>(mDevice, mFogVolumeLayout, mRenderWidth, mRenderHeight);
+        mFogVolume = std::make_unique<FogVolume>(mDevice, mPool, mFogVolumeLayout, mRenderWidth, mRenderHeight);
         mAccumulate.resize(mRenderWidth, mRenderHeight);
         mFilter.resize(mRenderWidth, mRenderHeight);
 
@@ -1014,7 +1014,7 @@ namespace Rtx
         }
 
         mChannels->begin(commands);
-        mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled, &timer);
+        mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled, historyLost, &timer);
         mChannels->handOver(commands);
 
         // Where the bounce ended up: the filter's last level, or the channel the trace wrote
@@ -1183,7 +1183,7 @@ namespace Rtx
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
 
         mViewChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mViewWidth, mViewHeight);
-        mViewFogVolume = std::make_unique<FogVolume>(mDevice, mFogVolumeLayout, mViewWidth, mViewHeight);
+        mViewFogVolume = std::make_unique<FogVolume>(mDevice, mPool, mFogVolumeLayout, mViewWidth, mViewHeight);
         mViewAccumulate.resize(mViewWidth, mViewHeight);
         mViewFilter.resize(mViewWidth, mViewHeight);
     }
@@ -1250,7 +1250,7 @@ namespace Rtx
                 mWaves.record(commands, camera.mTime);
 
             mViewChannels->begin(commands);
-            mPass->record(commands, inputs, *mViewChannels, frameSlot(mFrame).mHitCount, camera, nullptr);
+            mPass->record(commands, inputs, *mViewChannels, frameSlot(mFrame).mHitCount, camera, true, nullptr);
             mViewChannels->handOver(commands);
 
             // A doll and a map tile are one frame with no frame before them, so the accumulator is

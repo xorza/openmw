@@ -430,7 +430,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             Reservoir lamps = noLamps();
             weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), INV_FOUR_PI, 0.0, false);
 
-            lampThrough = lampVisible(lamps);
+            lampThrough = lampVisible(lamps, vec2(randomNext(lampState), randomNext(lampState)));
             lampToward = lamps.mTowards;
         }
 

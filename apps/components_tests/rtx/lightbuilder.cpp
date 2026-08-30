@@ -365,7 +365,8 @@ namespace Rtx
                 ASSERT_TRUE(fromRecord.has_value() && fromGraph.has_value()) << "packed " << packed;
                 EXPECT_EQ(fromRecord->mIntensity, fromGraph->mIntensity) << "packed " << packed;
                 EXPECT_EQ(fromRecord->mReach, fromGraph->mReach);
-                EXPECT_EQ(fromRecord->mRadius, fromGraph->mRadius);
+                EXPECT_EQ(fromRecord->mSourceRadius, fromGraph->mSourceRadius);
+                EXPECT_EQ(fromRecord->mClearance, fromGraph->mClearance);
                 EXPECT_EQ(fromRecord->mPosition, fromGraph->mPosition);
             }
         }
@@ -394,8 +395,10 @@ namespace Rtx
             EXPECT_FLOAT_EQ(light->mReach, 328.0f);
 
             // A sixteenth of the record: 6.25 units, which is nine centimetres across at seventy
-            // units to the metre — a flame, and not the metre and a half the reach describes.
-            EXPECT_FLOAT_EQ(light->mRadius, 6.25f);
+            // units to the metre — a flame, and not the metre and a half the reach describes. The
+            // fitting around it is a quarter of the record, which is what the ray keeps clear of.
+            EXPECT_FLOAT_EQ(light->mSourceRadius, 6.25f);
+            EXPECT_FLOAT_EQ(light->mClearance, 25.0f);
 
             // Doubling the radius quadruples the brightness, doubles the flame and rather less than
             // doubles the reach: 200 * 200 * 0.25 * pi = 31415.9, 200 / 16 = 12.5, and
@@ -404,13 +407,14 @@ namespace Rtx
             ASSERT_TRUE(larger.has_value());
             EXPECT_NEAR(larger->mIntensity.x(), 31415.9f, 0.1f);
             EXPECT_FLOAT_EQ(larger->mReach, 528.0f);
-            EXPECT_FLOAT_EQ(larger->mRadius, 12.5f);
+            EXPECT_FLOAT_EQ(larger->mSourceRadius, 12.5f);
+            EXPECT_FLOAT_EQ(larger->mClearance, 50.0f);
 
             // The two readings of the record are one reading: an emitter of fixed radiance is
             // brighter by its area, so the brightness has to be the square of the size for a candle
             // and a brazier to be the same fire at two scales rather than two arbitrary lamps.
             EXPECT_NEAR(larger->mIntensity.x() / light->mIntensity.x(),
-                (larger->mRadius / light->mRadius) * (larger->mRadius / light->mRadius), 1e-4f);
+                (larger->mSourceRadius / light->mSourceRadius) * (larger->mSourceRadius / light->mSourceRadius), 1e-4f);
         }
 
         /// A surface that glows is given the lamp its glow comes to, and the lamp reaches as far as
@@ -432,7 +436,8 @@ namespace Rtx
             EXPECT_EQ(lamp->mIntensity, osg::Vec3f(200.0f, 100.0f, 0.0f));
             EXPECT_NEAR(lamp->mReach, 2.0f * equivalent + 128.0f, 1e-3f);
             EXPECT_NEAR(lamp->mReach, 159.915f, 1e-2f);
-            EXPECT_EQ(lamp->mRadius, 7.5f) << "the glow's own extent, which its shadow rays stop short of";
+            EXPECT_EQ(lamp->mSourceRadius, 7.5f) << "the glow's own extent, which its shadow rays open to";
+            EXPECT_EQ(lamp->mClearance, 7.5f) << "and stop short of, the shape being the light";
 
             // The same brightness by a recorded lamp reaches the same distance, which is the rule.
             const std::optional<Light> recorded = makeLight(osg::Vec3f(1.0f, 0.5f, 0.0f), equivalent, osg::Vec3f());

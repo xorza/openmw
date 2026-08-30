@@ -510,7 +510,7 @@ void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 d
         const float leave = min(min(next.x, next.y), next.z);
         const float ahead = min(leave, exit);
 
-        const uvec2 near = lampsInCell(cell);
+        const uvec2 near = lampsWithin(lampsInCell(cell));
         for (uint i = near.x; i < near.y; ++i)
         {
             const GpuLight held = lights[lightIndices[i]];
@@ -537,7 +537,9 @@ void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 d
             // own density do not correlate over the stretch, which they do not: the falloff varies
             // over a lamp's reach and the density over a scale height.
             const float absorbed = exp(-fogColumn(origin, direction, from)) - exp(-fogColumn(origin, direction, to));
-            const float share = falloffAlong(perpendicular, from - closest, to - closest, held.mReach) / (to - from);
+            const float share
+                = falloffAlong(perpendicular, from - closest, to - closest, held.mReach, held.mSourceRadius)
+                / (to - from);
 
             // Asked of `lampAt` rather than worked out here, so the direction the shadow ray takes
             // and the reach it stops at are the same answer every other consumer of a lamp gets.
@@ -592,7 +594,7 @@ vec4 fogUniformAlong(vec3 origin, vec3 direction, float distance, float offset, 
     uint lampState = randomSeed(seed + SEED_LAMPS_FOG);
     Reservoir lamps = noLamps();
     weighLampsAlong(lamps, lampState, origin, direction, span);
-    scattered += lampsThrough(lamps);
+    scattered += lampsThrough(lamps, vec2(randomNext(lampState), randomNext(lampState)));
 
     const FogSources sources = fogSourcesAlong(direction);
 

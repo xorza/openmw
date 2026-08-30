@@ -2173,8 +2173,8 @@ namespace Rtx
         /// its area comes to — and none where a `LightSource` already stands over the same thing.
         ///
         /// The unit quad glows at (0.5, 0.25, 0) with no texture, so its radiance is that colour at
-        /// `EMISSIVE_INTENSITY`. Placed at twice its size and five units up it has an area of four
-        /// and balances at (1, 1, 5), so the lamp's intensity is the radiance times a quarter of
+        /// `EMISSIVE_LAMP_INTENSITY`. Placed at twice its size and five units up it has an area of
+        /// four and balances at (1, 1, 5), so the lamp's intensity is the radiance times a quarter of
         /// four, and its radius is the far corner's distance from the middle: `sqrt(2)`.
         ///
         /// **A torch is a record and a mesh, and the record is the light.** The same quad with a
@@ -2207,15 +2207,17 @@ namespace Rtx
             EXPECT_NEAR(lamp.mPosition.y(), 1.0f, 1e-5f);
             EXPECT_NEAR(lamp.mPosition.z(), 5.0f, 1e-5f);
 
-            const osg::Vec3f radiance = osg::Vec3f(0.5f, 0.25f, 0.0f) * Shaders::EMISSIVE_INTENSITY;
+            const osg::Vec3f radiance = osg::Vec3f(0.5f, 0.25f, 0.0f) * Shaders::EMISSIVE_LAMP_INTENSITY;
             EXPECT_NEAR(lamp.mIntensity.x(), radiance.x(), 1e-4f);
             EXPECT_NEAR(lamp.mIntensity.y(), radiance.y(), 1e-4f);
             EXPECT_EQ(lamp.mIntensity.z(), 0.0f);
-            EXPECT_NEAR(lamp.mRadius, std::sqrt(2.0f), 1e-5f);
+            EXPECT_NEAR(lamp.mSourceRadius, std::sqrt(2.0f), 1e-5f) << "the glow's own measured extent";
+            EXPECT_NEAR(lamp.mClearance, std::sqrt(2.0f), 1e-5f) << "which its ray also stops at";
 
             const std::vector<Light> lit = lampsOf(true);
             ASSERT_EQ(lit.size(), 1u) << "the record's own lamp and nothing beside it";
-            EXPECT_EQ(lit.front().mRadius, 100.0f / 16.0f) << "a record's source is a sixteenth of its radius";
+            EXPECT_EQ(lit.front().mSourceRadius, 100.0f / 16.0f) << "a record's flame is a sixteenth of its radius";
+            EXPECT_EQ(lit.front().mClearance, 25.0f) << "and the fitting around it a quarter";
         }
 
         /// Two-sidedness is what the content said, not what the pipeline state happens to be.

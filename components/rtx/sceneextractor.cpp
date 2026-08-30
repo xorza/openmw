@@ -1711,7 +1711,7 @@ namespace Rtx
                 = textureMean(material.mEmissive, described->getTexture(Surface::TextureRole::Emissive), osg::Vec3f());
 
             material.mEmissiveRadiance
-                = (osg::componentMultiply(albedo, material.mEmissiveColour) + glow) * Shaders::EMISSIVE_INTENSITY;
+                = (osg::componentMultiply(albedo, material.mEmissiveColour) + glow) * Shaders::EMISSIVE_LAMP_INTENSITY;
         }
 
         // **Scaled about the middle of the texture, then offset**, which is what `NifOsg` builds its
