@@ -13,6 +13,7 @@
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "frameworld.hpp"
 #include "lightbuilder.hpp"
 #include "meantexel.hpp"
 #include "shaders/colour.h"
@@ -213,11 +214,7 @@ namespace Rtx
     {
         // Straight up with no texture, which is a patch the sky skips — and what an interior and a
         // mesh with fewer than six of them both leave behind.
-        const Shaders::SkyPatch none{ .mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f),
-            .mRight = osg::Vec3f(1.0f, 0.0f, 0.0f),
-            .mUp = osg::Vec3f(0.0f, 1.0f, 0.0f),
-            .mAngularRadius = 0.0f,
-            .mTexture = Shaders::NO_TEXTURE };
+        const Shaders::SkyPatch none = noPatch();
 
         for (std::size_t patch = 0; patch < patches.size(); ++patch)
         {

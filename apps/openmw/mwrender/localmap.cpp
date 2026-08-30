@@ -13,6 +13,7 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/files/memorystream.hpp>
 #include <components/misc/constants.hpp>
+#include <components/sceneutil/offscreenframing.hpp>
 #include <components/sceneutil/visitor.hpp>
 #include <components/settings/values.hpp>
 
@@ -160,14 +161,10 @@ namespace MWRender
                 | SceneUtil::Mask_Object | SceneUtil::Mask_Static;
             spec.mProjection = OffscreenViewSpec::Orthographic{ .mWidth = static_cast<float>(mMapWorldSize),
                 .mHeight = static_cast<float>(mMapWorldSize) };
-            spec.mNear = 5.f;
+            spec.mNear = SceneUtil::sMapNear;
             spec.mFar = (zmax - zmin) + 10.f;
             spec.mClearColour = osg::Vec4f(0.f, 0.f, 0.f, 1.f);
-            // Flat and from nowhere in particular: a chart is read for what is where, and a sun
-            // angle that made shadows would only make it harder to read.
-            spec.mSunDirection = osg::Vec3f(-0.3f, -0.3f, 0.7f);
-            spec.mSunDiffuse = osg::Vec4f(0.7f, 0.7f, 0.7f, 1.f);
-            spec.mSunAmbient = osg::Vec4f(0.3f, 0.3f, 0.3f, 1.f);
+            spec.mSun = SceneUtil::mapLight();
             spec.mFromWorld = true;
 
             segment.mView = mRenderer.createOffscreenView(spec);

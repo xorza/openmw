@@ -25,6 +25,26 @@ namespace Rtx
         return stars;
     }
 
+    Shaders::SkyPatch noPatch()
+    {
+        Shaders::SkyPatch none{};
+        none.mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f);
+        none.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
+        none.mUp = osg::Vec3f(0.0f, 1.0f, 0.0f);
+        none.mAngularRadius = 0.0f;
+        none.mTexture = Shaders::NO_TEXTURE;
+
+        return none;
+    }
+
+    std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> noPatches()
+    {
+        std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> patches;
+        patches.fill(noPatch());
+
+        return patches;
+    }
+
     void applyWorld(const FrameWorld& world, Shaders::VisibilityConstants& constants)
     {
         constants.mSunPosition = world.mSun.mPosition;
@@ -71,5 +91,47 @@ namespace Rtx
 
         for (std::size_t moon = 0; moon < world.mMoons.size(); ++moon)
             constants.mMoons[moon] = describeMoon(world.mMoons[moon]);
+    }
+
+    FrameWorld describeWorld(const WorldReading& reading)
+    {
+        const Daylight& day = reading.mDaylight;
+
+        const Shaders::StarField stars = reading.mOutdoors
+            ? describeStars(day.mStarFade, reading.mGlare, reading.mStarRoll, reading.mSky)
+            : noStars();
+
+        const SkyBudget budget
+            = reading.mOutdoors ? skyBudget(day.mSkyHorizon, day.mSkyZenith, stars.mGlow, day.mAmbient) : SkyBudget{};
+
+        Fog air = day.mFog;
+        if (reading.mFogFromSky)
+            air.mColour = fogColour(budget.mMean, air.mColour);
+
+        FrameWorld world{
+            .mSun = day.mSun,
+            .mAmbient = day.mAmbient,
+            .mAmbientFromSky = reading.mOutdoors ? 1.0f : 0.0f,
+            .mSkyHorizon = day.mSkyHorizon,
+            .mSkyZenith = day.mSkyZenith,
+            .mSkyFill = budget.mFill,
+            .mAir = air,
+            .mWaterLevel = reading.mWaterLevel,
+            .mSeconds = reading.mSeconds,
+            .mRainOnWater = reading.mRainOnWater,
+            .mStars = stars,
+            .mMoons = reading.mMoons,
+        };
+
+        if (reading.mOutdoors)
+        {
+            world.mClouds = describeClouds(reading.mWeather, reading.mNextWeather, reading.mCloudBlend,
+                deckLight(day.mSunAloft, budget.mMean, reading.mMoons), reading.mCloudDirection,
+                reading.mNextCloudDirection, reading.mCloudRoll, reading.mSky);
+
+            describePatches(reading.mStarRoll, reading.mSky, world.mSkyPatches);
+        }
+
+        return world;
     }
 }

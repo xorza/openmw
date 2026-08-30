@@ -27,6 +27,7 @@
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/upscale.hpp>
 
+#include <components/sceneutil/offscreenframing.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
 #include <limits>
@@ -592,7 +593,8 @@ namespace RtxTool
                     return 1;
                 }
 
-                const PictureRequest request = pictureFrom(variables, resources, 512, 1024);
+                const PictureRequest request
+                    = pictureFrom(variables, resources, SceneUtil::sInventoryWidth, SceneUtil::sInventoryHeight);
 
                 World world(config, variables, resources);
 

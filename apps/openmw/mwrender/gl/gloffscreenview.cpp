@@ -303,9 +303,9 @@ namespace MWRender
             SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*stateset);
 
             osg::ref_ptr<SceneUtil::Light> sun = new SceneUtil::Light;
-            sun->setPosition(osg::Vec4f(spec.mSunDirection, 0.f));
-            sun->setDiffuse(spec.mSunDiffuse);
-            sun->setAmbient(spec.mSunAmbient);
+            sun->setPosition(osg::Vec4f(spec.mSun.mDirection, 0.f));
+            sun->setDiffuse(spec.mSun.mDiffuse);
+            sun->setAmbient(spec.mSun.mAmbient);
             sun->setSpecular(osg::Vec4f(0.f, 0.f, 0.f, 0.f));
             sun->setConstantAttenuation(1.f);
             sun->setLinearAttenuation(0.f);

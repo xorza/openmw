@@ -1,16 +1,15 @@
 #include "characterpreview.hpp"
 
 #include <algorithm>
-#include <cmath>
 
 #include <osg/Group>
 #include <osg/Matrixf>
 #include <osg/PositionAttitudeTransform>
 
 #include <components/debug/debuglog.hpp>
-#include <components/fallback/fallback.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/nodecallback.hpp>
+#include <components/sceneutil/offscreenframing.hpp>
 
 #include "../mwworld/class.hpp"
 #include "../mwworld/inventorystore.hpp"
@@ -22,26 +21,6 @@
 #include "offscreenview.hpp"
 #include "renderer.hpp"
 #include <components/sceneutil/vismask.hpp>
-
-namespace
-{
-    /// How Morrowind lights the figure in the inventory and the one on the race screen: one
-    /// directional light, from the game's own fallback settings, and no other.
-    void describeInventoryLight(MWRender::OffscreenViewSpec& spec)
-    {
-        const float azimuth = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationX"));
-        const float altitude = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationY"));
-
-        spec.mSunDirection = osg::Vec3f(
-            -std::cos(azimuth) * std::sin(altitude), std::sin(azimuth) * std::sin(altitude), std::cos(altitude));
-        spec.mSunDiffuse = osg::Vec4f(Fallback::Map::getFloat("Inventory_DirectionalDiffuseR"),
-            Fallback::Map::getFloat("Inventory_DirectionalDiffuseG"),
-            Fallback::Map::getFloat("Inventory_DirectionalDiffuseB"), 1.f);
-        spec.mSunAmbient = osg::Vec4f(Fallback::Map::getFloat("Inventory_DirectionalAmbientR"),
-            Fallback::Map::getFloat("Inventory_DirectionalAmbientG"),
-            Fallback::Map::getFloat("Inventory_DirectionalAmbientB"), 1.f);
-    }
-}
 
 namespace MWRender
 {
@@ -66,12 +45,12 @@ namespace MWRender
         // Everything: the one bit left out is the one that tells an update traversal apart from a
         // cull, and nothing in the subtree carries it.
         spec.mMask = ~SceneUtil::Mask_UpdateVisitor;
-        spec.mProjection = OffscreenViewSpec::Perspective{ .mFieldOfView = 12.3f };
-        spec.mNear = 4.f;
-        spec.mFar = 10000.f;
+        spec.mProjection = OffscreenViewSpec::Perspective{ .mFieldOfView = SceneUtil::sPreviewFieldOfView };
+        spec.mNear = SceneUtil::sPreviewNear;
+        spec.mFar = SceneUtil::sPreviewFar;
         // Transparent: the figure is composited over the window behind it.
         spec.mClearColour = osg::Vec4f(0.f, 0.f, 0.f, 0.f);
-        describeInventoryLight(spec);
+        spec.mSun = SceneUtil::inventoryLight();
 
         mView = renderer.createOffscreenView(spec);
 
@@ -126,7 +105,8 @@ namespace MWRender
 
     InventoryPreview::InventoryPreview(
         Renderer& renderer, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character)
-        : CharacterPreview(renderer, resourceSystem, character, 512, 1024, osg::Vec3f(0, 700, 71), osg::Vec3f(0, 0, 71))
+        : CharacterPreview(renderer, resourceSystem, character, SceneUtil::sInventoryWidth, SceneUtil::sInventoryHeight,
+            SceneUtil::inventoryCamera().mOrigin, SceneUtil::inventoryCamera().mTarget)
     {
     }
 

@@ -57,7 +57,7 @@ namespace MWRender
             mTrace.setOrthographic(box.mWidth, box.mHeight, spec.mNear, spec.mFar);
         }
 
-        mTrace.setLight(spec.mSunDirection, spec.mSunDiffuse, spec.mSunAmbient);
+        mTrace.setLight(spec.mSun.mDirection, spec.mSun.mDiffuse, spec.mSun.mAmbient);
         mTrace.setClearColour(spec.mClearColour);
 
         // What `OffscreenView::getTexture` promises, and what the widgets showing one invert V for.

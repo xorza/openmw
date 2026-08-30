@@ -6,9 +6,11 @@
 #include <osg/Vec3f>
 
 #include "fogbuilder.hpp"
+#include "lightbuilder.hpp"
 #include "moonbuilder.hpp"
 #include "scenedesc.hpp"
 #include "shaders/visibility.h"
+#include "skybuilder.hpp"
 
 namespace Weather
 {
@@ -53,6 +55,16 @@ namespace Rtx
     /// units are built with that warning on.
     Shaders::CloudDeck noDeck();
     Shaders::StarField noStars();
+
+    /// A patch the sky skips: straight up, no size and no texture.
+    ///
+    /// **Written out rather than left to `{}`.** `Shaders::SkyPatch` is a shader struct with no
+    /// defaults of its own, so a value-initialised one names texture slot zero — a real texture,
+    /// belonging to whatever the scene put there. Only its radius of nothing kept it off the screen.
+    Shaders::SkyPatch noPatch();
+
+    /// Six of those, which is the whole sky a world with none has.
+    std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> noPatches();
 
     struct FrameWorld
     {
@@ -106,8 +118,8 @@ namespace Rtx
         Shaders::StarField mStars = noStars();
 
         /// The nebulae and constellations painted across the star sphere. `describePatches` fills
-        /// them; a default leaves every one with no texture, which is a room's night sky.
-        std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> mSkyPatches{};
+        /// them; the default is `noPatches`, which is a room's night sky.
+        std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> mSkyPatches = noPatches();
 
         /// Masser and Secunda, in that order. An alpha of nothing is a moon the sky skips, which is
         /// what an interior and an interface trace both leave behind.
@@ -118,4 +130,66 @@ namespace Rtx
     ///
     /// The camera's half is `makeCamera*`'s and is expected to be there already.
     void applyWorld(const FrameWorld& world, Shaders::VisibilityConstants& constants);
+
+    /// What a frame's sky, air and water are, as far as neither host can work it out for the other.
+    ///
+    /// **A `Daylight` and the handful of things a `Daylight` does not carry.** How each host reaches
+    /// one is its own business and stays so: the game reports what a live weather system settled on,
+    /// and the harness derives it from the content files at an hour it was told. What follows is
+    /// arithmetic over that, and `describeWorld` is where it happens once.
+    struct WorldReading
+    {
+        Daylight mDaylight;
+
+        /// Whether there is a sky over this cell at all. Nothing under `false` draws a deck, a star,
+        /// a patch or a moon, and nothing measures a sky budget it has no sky for.
+        bool mOutdoors = false;
+
+        /// Whether the air takes its colour from the dome it stands in.
+        ///
+        /// **Not the same question as `mOutdoors`, and a quasi-exterior is where they part.** Such a
+        /// cell has weather over it and a room's air in it: Morrowind records its fog in the cell
+        /// rather than in the weather, so the dome's mean must not be mixed into a colour the
+        /// content already stated.
+        bool mFogFromSky = false;
+
+        /// The weather's `Glare_View`, which is what keeps the stars in under an overcast.
+        float mGlare = 1.0f;
+
+        /// How far the star sphere has turned and the deck has scrolled — `Sky::SkyRoll`'s two.
+        float mStarRoll = 0.0f;
+        float mCloudRoll = 0.0f;
+
+        /// Where the sky's own sheets sit in the scene's texture table.
+        SkyContent mSky;
+
+        /// Masser and Secunda, placed and with their faces named. **An input and not a derivation**:
+        /// the game is handed the angles by its weather system and the harness works them out from a
+        /// date, and neither can do the other's.
+        std::array<MoonPlacement, 2> mMoons;
+
+        std::uint32_t mWeather = Shaders::WEATHER_CLEAR;
+        std::uint32_t mNextWeather = Shaders::WEATHER_CLEAR;
+
+        /// How far the *deck* has crossed, which is not how far the weather has.
+        float mCloudBlend = 0.0f;
+
+        /// Which way each weather's sheet is turned, on the same terms as `mMoons`.
+        osg::Vec3f mCloudDirection;
+        osg::Vec3f mNextCloudDirection;
+
+        float mWaterLevel = -std::numeric_limits<float>::infinity();
+        float mSeconds = 0.0f;
+        float mRainOnWater = 0.0f;
+    };
+
+    /// Assembles the frame's world half out of what a host read.
+    ///
+    /// **The order is the whole of what this is for.** The stars have to be known before the sky's
+    /// budget, because what the sheets add is measured out of the weather's ambient; the budget
+    /// before the air, because the air is lit by the dome it stands in; and both before the deck,
+    /// which is lit by the dome and by the moons under it. Written out at each host, that order was
+    /// four chances for one of them to drift — and `FrameWorld` above lists three times it already
+    /// had.
+    FrameWorld describeWorld(const WorldReading& reading);
 }

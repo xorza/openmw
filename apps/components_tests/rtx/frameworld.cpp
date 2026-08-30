@@ -503,5 +503,131 @@ namespace Rtx
             // answer "how deep is this point" with never.
             EXPECT_LT(constants.mWaterLevel, -1.0e30f);
         }
+
+        /// A sky to describe a world under, with every sheet the assembly can reach for.
+        SkyContent skyWithSheets()
+        {
+            SkyContent textures;
+            textures.mClouds.fill(Rtx::sNoIndex);
+            textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
+            textures.mCloudMean[Rtx::Shaders::WEATHER_CLEAR] = 0.435f;
+            textures.mShell = sShell;
+            textures.mNight.mField = 5;
+            textures.mNight.mTile = 0.25f;
+            textures.mNight.mGlow = osg::Vec3f(0.02f, 0.03f, 0.04f);
+
+            return textures;
+        }
+
+        /// A reading whose numbers are distinct, so a field taken from the wrong one shows.
+        WorldReading reading()
+        {
+            return WorldReading{
+                .mDaylight = Daylight{
+                    .mSun = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
+                        .mIrradiance = osg::Vec3f(8.0f, 4.0f, 2.0f),
+                        .mDiscColour = osg::Vec3f(1.0f, 0.8f, 0.65f) },
+                    .mSunAloft = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
+                        .mIrradiance = osg::Vec3f(9.0f, 5.0f, 3.0f) },
+                    .mSkyHorizon = osg::Vec3f(0.21f, 0.22f, 0.23f),
+                    .mSkyZenith = osg::Vec3f(0.31f, 0.32f, 0.33f),
+                    .mAmbient = osg::Vec3f(0.11f, 0.12f, 0.13f),
+                    .mStarFade = 1.0f,
+                    .mFog = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f), .mExtinction = 1.5e-4f },
+                },
+                .mOutdoors = true,
+                .mFogFromSky = true,
+                .mGlare = 1.0f,
+                .mStarRoll = 0.125f,
+                .mCloudRoll = 0.25f,
+                .mSky = skyWithSheets(),
+                .mWeather = Rtx::Shaders::WEATHER_CLEAR,
+                .mNextWeather = Rtx::Shaders::WEATHER_CLEAR,
+                .mWaterLevel = -37.5f,
+                .mSeconds = 12.25f,
+                .mRainOnWater = 0.35f,
+            };
+        }
+
+        /// A room draws no sky at all, and keeps the air its own record states.
+        ///
+        /// **The whole of what `mOutdoors` decides, asserted in one place.** Each of these used to
+        /// be a branch written twice — once in the game and once in the harness — and a room that
+        /// drew an outdoor deck is the shape the drift took the last three times.
+        TEST(RtxFrameWorldTest, aRoomDrawsNoDeckNoStarsAndNoPatches)
+        {
+            WorldReading room = reading();
+            room.mOutdoors = false;
+            room.mFogFromSky = false;
+
+            const FrameWorld world = describeWorld(room);
+
+            EXPECT_EQ(world.mClouds.mTexture, Rtx::Shaders::NO_TEXTURE);
+            EXPECT_EQ(world.mStars.mTexture, Rtx::Shaders::NO_TEXTURE);
+            EXPECT_EQ(world.mSkyPatches[0].mTexture, Rtx::Shaders::NO_TEXTURE);
+
+            EXPECT_EQ(world.mAmbientFromSky, 0.0f);
+            EXPECT_EQ(world.mSkyFill, osg::Vec3f());
+
+            EXPECT_EQ(world.mAir.mColour, room.mDaylight.mFog.mColour)
+                << "a room has no dome for its air to take a colour from";
+        }
+
+        /// An exterior's air is the record's hue under the dome's own mean, and a quasi-exterior's
+        /// is the record as it stands.
+        ///
+        /// **Two readings that differ in one flag and must not come out alike.** A quasi-exterior is
+        /// outdoors — it has weather, a deck and stars — and its fog is written in the cell rather
+        /// than in the weather, so mixing the dome into it would state a colour the content never
+        /// wrote.
+        TEST(RtxFrameWorldTest, onlyAnAirLitByTheDomeTakesItsColourFromIt)
+        {
+            const WorldReading open = reading();
+
+            WorldReading quasi = open;
+            quasi.mFogFromSky = false;
+
+            const FrameWorld outside = describeWorld(open);
+            const FrameWorld inside = describeWorld(quasi);
+
+            EXPECT_NE(outside.mAir.mColour, inside.mAir.mColour) << "one flag, and it decided nothing";
+
+            EXPECT_EQ(inside.mAir.mColour, open.mDaylight.mFog.mColour);
+
+            const SkyBudget budget = skyBudget(open.mDaylight.mSkyHorizon, open.mDaylight.mSkyZenith,
+                describeStars(open.mDaylight.mStarFade, open.mGlare, open.mStarRoll, open.mSky).mGlow,
+                open.mDaylight.mAmbient);
+            EXPECT_EQ(outside.mAir.mColour, fogColour(budget.mMean, open.mDaylight.mFog.mColour));
+
+            // And both are outdoors, which is what makes them the same case but for the air.
+            EXPECT_EQ(outside.mAmbientFromSky, 1.0f);
+            EXPECT_EQ(inside.mAmbientFromSky, 1.0f);
+            EXPECT_NE(inside.mClouds.mTexture, Rtx::Shaders::NO_TEXTURE);
+            EXPECT_NE(inside.mStars.mTexture, Rtx::Shaders::NO_TEXTURE);
+        }
+
+        /// The deck is lit by the dome the stars are counted into, which is the order this exists
+        /// to keep.
+        ///
+        /// **Brighter stars make a brighter deck, and nothing else in the reading moves.** The star
+        /// glow is spent into `SkyBudget::mMean`, the mean lights the deck, and a host that
+        /// described its deck before its stars would light it out of a sky one term short.
+        TEST(RtxFrameWorldTest, whatTheStarsAddReachesTheDeckThatHangsUnderThem)
+        {
+            WorldReading dark = reading();
+            dark.mDaylight.mSun = Sun{};
+            dark.mDaylight.mSunAloft = Sun{};
+            dark.mDaylight.mStarFade = 0.0f;
+
+            WorldReading starry = dark;
+            starry.mDaylight.mStarFade = 1.0f;
+
+            const FrameWorld night = describeWorld(dark);
+            const FrameWorld stars = describeWorld(starry);
+
+            EXPECT_GT(stars.mStars.mGlow.x(), night.mStars.mGlow.x()) << "the fade decided nothing";
+            EXPECT_GT(stars.mClouds.mShadowed.x(), night.mClouds.mShadowed.x())
+                << "the deck was lit out of a sky the stars had not been counted into";
+        }
     }
 }

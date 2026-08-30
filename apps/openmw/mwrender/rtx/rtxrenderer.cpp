@@ -793,13 +793,6 @@ namespace MWRender
         // is anyway. A quasi-exterior is on the outdoor side of that: it has weather.
         const osg::Vec3f zenith = room.has_value() ? room->mSkyZenith : Rtx::decodeColour(world.mSkyColour);
 
-        // **Before the frame is assembled, because the fill is measured against it.** Every layer
-        // that lights comes out of the weather's own ambient, so what the sheets add has to be known
-        // before what is left over can be.
-        const Rtx::Shaders::StarField stars = world.isOutdoors()
-            ? Rtx::describeStars(world.mNightFade, world.mSunGlare, world.mSkyRoll.mStars, mSkyContent)
-            : Rtx::noStars();
-
         // **The sun is not assembled here.** Everything the world says about it goes to the one
         // builder that decides what a sun may be — which is what keeps the game and the harness
         // under the same sky, and what makes a sun that lights an empty night impossible to write.
@@ -819,6 +812,20 @@ namespace MWRender
                 .mDiscColour = Rtx::decodeColour(world.mSunDiscColour),
                 .mGlare = world.mSunGlare,
             });
+
+        // **The recorded depth, and not the ramp `MWRender::FogManager` made of it.** That ramp
+        // exists to hide a far clip plane and this renderer has no far clip to hide, so per the
+        // fork's own rule it does not come across. What is read instead is the number the content
+        // wrote, handed to the one builder that knows what a cell's air may be — which is what
+        // `openmw-rtxtool` calls out of the same records, so a screenshot and a played frame stand
+        // in one air.
+        //
+        // **A quasi-exterior takes a room's air under an outdoor sky**, and this is the one place
+        // that can tell one: `WorldReading::mFogFromSky` says what turns on it.
+        const bool fogFromSky = world.isOutdoors() && !world.isInteriorCell();
+        const Rtx::Fog air = room.has_value() ? room->mFog
+            : fogFromSky                      ? Rtx::exteriorFog(haze, world.mFogDepth, world.mBaseWindSpeed)
+                                              : Rtx::roomFog(haze, world.mFogDepth);
 
         // **Before the frame rather than into it, because the deck is lit by them.** A cloud layer
         // takes the moons' light like anything else under a night sky, and `Rtx::deckLight` is
@@ -841,47 +848,34 @@ namespace MWRender
             moons[moon].mFace = mMoonFaces.of(static_cast<Rtx::Moon>(moon));
         }
 
-        // **What the sky is worth as light, read once.** The fill is what a ray cannot find in the
-        // dome and the mean is the whole of it, and a frame that read the two apart could hold two
-        // ideas of how bright its own sky is.
-        const Rtx::SkyBudget budget
-            = world.isOutdoors() ? Rtx::skyBudget(haze, zenith, stars.mGlow, sky.mAmbient) : Rtx::SkyBudget{};
+        const auto weatherId = static_cast<std::uint32_t>(world.mWeatherId);
 
-        // **The recorded depth, and not the ramp `MWRender::FogManager` made of it.** That ramp
-        // exists to hide a far clip plane and this renderer has no far clip to hide, so per the
-        // fork's own rule it does not come across. What is read instead is the number the content
-        // wrote, handed to the one builder that knows what a cell's air may be — which is what
-        // `openmw-rtxtool` calls out of the same records, so a screenshot and a played frame stand
-        // in one air.
-        //
-        // **After the budget, because the air is lit by the dome it stands in.** The record says
-        // what hue the fog comes back in and the dome's mean says how bright; a room has no dome
-        // and keeps its record as it is, and a quasi-exterior keeps its record under the sky it has.
-        const Rtx::Fog air = room.has_value() ? room->mFog
-            : world.isInteriorCell()
-            ? Rtx::roomFog(haze, world.mFogDepth)
-            : Rtx::exteriorFog(Rtx::fogColour(budget.mMean, haze), world.mFogDepth, world.mBaseWindSpeed);
+        const Rtx::FrameWorld described = Rtx::describeWorld(Rtx::WorldReading{
+            .mDaylight = Rtx::Daylight{
+                .mSun = sky.mSun,
+                .mSunAloft = sky.mSunAloft,
+                .mSkyHorizon = haze,
+                .mSkyZenith = zenith,
+                .mAmbient = sky.mAmbient,
+                .mStarFade = world.mNightFade,
+                .mFog = air,
+            },
+            .mOutdoors = world.isOutdoors(),
+            .mFogFromSky = fogFromSky,
+            .mGlare = world.mSunGlare,
+            .mStarRoll = world.mSkyRoll.mStars,
+            .mCloudRoll = world.mSkyRoll.mClouds,
+            .mSky = mSkyContent,
+            .mMoons = moons,
+            .mWeather = weatherId,
 
-        Rtx::FrameWorld described{
-            .mSun = sky.mSun,
-            .mAmbient = sky.mAmbient,
-
-            // **A room's ambient is a fill and an exterior's is the sky**, which is what says whether
-            // a point that can see neither still gets it. `VisibilityConstants::mAmbientFromSky`
-            // carries the whole of the difference.
-            .mAmbientFromSky = world.isOutdoors() ? 1.0f : 0.0f,
-            .mSkyHorizon = haze,
-
-            .mSkyZenith = zenith,
-
-            // **What the weather says a night is worth, less what its sky can carry**, and nothing
-            // at all in a room. The game lights a night by an ambient on every surface and this
-            // renderer lights it by tracing the dome, which is an order short — `SkyBudget::mFill`
-            // carries the rest of it. Indoors there is no dome to be short of, and the cell's own
-            // ambient already reaches every surface as `mAmbient`.
-            .mSkyFill = budget.mFill,
-
-            .mAir = air,
+            // **The current weather twice where nothing is arriving**, since the deck crosses
+            // unconditionally: naming it on both sides at a blend of nothing is what lets it.
+            .mNextWeather = world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
+                                                             : weatherId,
+            .mCloudBlend = world.mCloudBlend,
+            .mCloudDirection = world.mCloudDirection,
+            .mNextCloudDirection = world.mNextCloudDirection,
 
             // Negative infinity and not zero: zero is sea level, and a cell with no water has to
             // answer "how deep is this point" with never.
@@ -892,28 +886,7 @@ namespace MWRender
             // slow down whenever the frame did.
             .mSeconds = static_cast<float>(when.getSimulationTime()),
             .mRainOnWater = Rtx::rainOnWater(frame.mWorld.mPrecipitation),
-
-            // **The two layers of sky over everything else, and an interior has neither.** Left at
-            // their defaults indoors, which is a texture slot of `NO_TEXTURE` and a fade of
-            // nothing — the shader skips both before it samples anything.
-            //
-            // **The current weather twice where nothing is arriving**, since the deck crosses
-            // unconditionally: naming it on both sides at a blend of nothing is what lets it.
-            .mClouds = world.isOutdoors() ? Rtx::describeClouds(static_cast<std::uint32_t>(world.mWeatherId),
-                           world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
-                                                            : static_cast<std::uint32_t>(world.mWeatherId),
-                           world.mCloudBlend, Rtx::deckLight(sky.mSunAloft, budget.mMean, moons), world.mCloudDirection,
-                           world.mNextCloudDirection, world.mSkyRoll.mClouds, mSkyContent)
-                                          : Rtx::noDeck(),
-
-            .mStars = stars,
-            .mMoons = moons,
-        };
-
-        // The nebulae and the constellations, on the star sphere and turning with it. An interior
-        // leaves them at their defaults, which is no texture and so nothing drawn.
-        if (world.isOutdoors())
-            Rtx::describePatches(world.mSkyRoll.mStars, mSkyContent, described.mSkyPatches);
+        });
 
         Rtx::applyWorld(described, constants);
 

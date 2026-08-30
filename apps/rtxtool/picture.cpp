@@ -1,6 +1,5 @@
 #include "picture.hpp"
 
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -10,7 +9,6 @@
 #include <vector>
 
 #include <osg/FrameStamp>
-#include <osg/Math>
 #include <osg/Matrixf>
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
@@ -18,13 +16,13 @@
 #include <components/debug/debugging.hpp>
 #include <components/esm/util.hpp>
 #include <components/esm3/loadcell.hpp>
-#include <components/fallback/fallback.hpp>
 #include <components/files/conversion.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/rtx/offscreentrace.hpp>
 #include <components/rtx/png.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneuploader.hpp>
+#include <components/sceneutil/offscreenframing.hpp>
 
 #include "actor.hpp"
 #include "npc.hpp"
@@ -35,34 +33,15 @@ namespace RtxTool
 {
     namespace
     {
-        /// The game's own inventory framing (`MWRender::InventoryPreview`): 512 by 1024, from seven
-        /// hundred units in front of the figure at the height of its head.
-        constexpr float sDollFieldOfView = 12.3f;
-        constexpr float sDollNear = 4.0f;
-        constexpr float sDollFar = 10000.0f;
-
-        /// The game's own map framing (`MWRender::LocalMap`).
+        /// **The harness's own, where the game's is the segment it is about to draw.** `LocalMap`
+        /// fits the camera to each tile's z extent, which it knows because it has just measured it;
+        /// this stands above every cell there is and sees far enough to reach the bottom of one.
         constexpr float sMapEyeHeight = 50000.0f;
-        constexpr float sMapNear = 5.0f;
         constexpr float sMapFar = 150000.0f;
 
-        /// The light a doll is lit by, as the ini records it. The same arithmetic
-        /// `describeInventoryLight` does in the game, from the same four keys.
-        void lightAsInventory(Rtx::OffscreenTrace& trace)
+        void lightAs(Rtx::OffscreenTrace& trace, const SceneUtil::FlatLight& light)
         {
-            const float azimuth = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationX"));
-            const float altitude = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationY"));
-
-            const osg::Vec3f towards(
-                -std::cos(azimuth) * std::sin(altitude), std::sin(azimuth) * std::sin(altitude), std::cos(altitude));
-
-            trace.setLight(towards,
-                osg::Vec4f(Fallback::Map::getFloat("Inventory_DirectionalDiffuseR"),
-                    Fallback::Map::getFloat("Inventory_DirectionalDiffuseG"),
-                    Fallback::Map::getFloat("Inventory_DirectionalDiffuseB"), 1.0f),
-                osg::Vec4f(Fallback::Map::getFloat("Inventory_DirectionalAmbientR"),
-                    Fallback::Map::getFloat("Inventory_DirectionalAmbientG"),
-                    Fallback::Map::getFloat("Inventory_DirectionalAmbientB"), 1.0f));
+            trace.setLight(light.mDirection, light.mDiffuse, light.mAmbient);
         }
 
         std::unique_ptr<Rtx::Renderer> makeRenderer(const PictureRequest& request, std::ostream& out)
@@ -150,12 +129,13 @@ namespace RtxTool
         Rtx::OffscreenTrace trace(
             *renderer, request.mWidth, request.mHeight, actor.getRoot(), ~NifOsg::Loader::getHiddenNodeMask());
 
-        trace.setPerspective(sDollFieldOfView, sDollNear, sDollFar);
+        trace.setPerspective(SceneUtil::sPreviewFieldOfView, SceneUtil::sPreviewNear, SceneUtil::sPreviewFar);
         trace.setClearColour(clear);
-        lightAsInventory(trace);
+        lightAs(trace, SceneUtil::inventoryLight());
 
-        const osg::Vec3f origin = request.mOrigin.value_or(osg::Vec3f(0.0f, 700.0f, 71.0f));
-        const osg::Vec3f target = request.mTarget.value_or(osg::Vec3f(0.0f, 0.0f, 71.0f));
+        const SceneUtil::PreviewCamera camera = SceneUtil::inventoryCamera();
+        const osg::Vec3f origin = request.mOrigin.value_or(camera.mOrigin);
+        const osg::Vec3f target = request.mTarget.value_or(camera.mTarget);
         trace.setView(osg::Matrixf::lookAt(origin, target, osg::Vec3f(0.0f, 0.0f, 1.0f)));
 
         // **Its own clock, and it has to read as a frame that has happened.** The traversal number
@@ -210,13 +190,9 @@ namespace RtxTool
         // One cell across, which is what a tile is: the game divides a cell's bounds into this and
         // draws one of these per square.
         const float side = static_cast<float>(ESM::getCellSize(ESM::Cell::sDefaultWorldspaceId));
-        trace.setOrthographic(side, side, sMapNear, sMapFar);
+        trace.setOrthographic(side, side, SceneUtil::sMapNear, sMapFar);
         trace.setClearColour(clear);
-
-        // Flat and from nowhere in particular, exactly as `LocalMap::draw` asks for it: a chart is
-        // read for what is where, and a sun angle that made shadows would only make it harder.
-        trace.setLight(
-            osg::Vec3f(-0.3f, -0.3f, 0.7f), osg::Vec4f(0.7f, 0.7f, 0.7f, 1.0f), osg::Vec4f(0.3f, 0.3f, 0.3f, 1.0f));
+        lightAs(trace, SceneUtil::mapLight());
 
         // The middle of the cell for an exterior, whose square is known before anything is read;
         // the middle of what was staged for an interior, whose extent is whatever the room is.

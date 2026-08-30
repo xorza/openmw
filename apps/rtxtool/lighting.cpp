@@ -1,10 +1,12 @@
 #include "lighting.hpp"
 
-#include <components/rtx/fogbuilder.hpp>
+#include <array>
+#include <cstddef>
+
 #include <components/rtx/frameworld.hpp>
+#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/shaders/visibility.h>
-#include <components/rtx/skybuilder.hpp>
 #include <components/sky/clouds.hpp>
 
 namespace RtxTool
@@ -61,23 +63,18 @@ namespace RtxTool
 
     void applyLighting(const CellLighting& lighting, Rtx::Shaders::VisibilityConstants& constants)
     {
-        // **Before the frame is assembled, because the fill is measured against it**, and a room has
-        // neither: every layer that lights comes out of the weather's ambient, so what the sheets add
-        // has to be known before what is left over can be.
-        const Rtx::Shaders::StarField stars = lighting.mOutdoors
-            ? Rtx::describeStars(lighting.mDaylight.mStarFade, lighting.mGlare, lighting.mRoll.mStars, lighting.mSky)
-            : Rtx::noStars();
-
-        // Nought in a room, for the reason the deck and the stars are: there is no dome to be short
-        // of, and the cell's own ambient already reaches every surface.
-        const Rtx::SkyBudget budget = lighting.mOutdoors ? Rtx::skyBudget(lighting.mDaylight.mSkyHorizon,
-                                          lighting.mDaylight.mSkyZenith, stars.mGlow, lighting.mDaylight.mAmbient)
-                                                         : Rtx::SkyBudget{};
-
-        // **Before the deck as well, because a deck is lit by them.** A room has neither moon over
-        // it, and an alpha of nothing is a disc the sky skips and a light that delivers nothing.
+        // **Worked out before the reading, because these two are what the game is handed rather
+        // than derives.** A moon needs a date the sun never asked for, and a storm is aimed by a
+        // weather system this harness does not run — so each side reaches them its own way and the
+        // assembly takes them as they are.
+        //
+        // **A room has neither**, and nothing under it is asked for: an alpha of nothing is a moon
+        // the sky skips, and a storm aimed at a body under a roof is arithmetic nobody reads.
         std::array<Rtx::MoonPlacement, 2> moons{};
+        osg::Vec3f storm;
+        osg::Vec3f nextStorm;
         if (lighting.mOutdoors)
+        {
             for (const Rtx::Moon moon : { Rtx::Moon::Masser, Rtx::Moon::Secunda })
             {
                 Rtx::MoonPlacement placed = Rtx::makeMoon(moon, lighting.mDay, lighting.mHour, lighting.mGlare);
@@ -85,48 +82,32 @@ namespace RtxTool
                 moons[static_cast<std::size_t>(moon)] = placed;
             }
 
-        // **The air is lit by the dome it stands in, and this is where the dome's mean is.** The
-        // weather reader handed over the recorded colour as a hue; a room keeps it, since there is
-        // no dome over one.
-        Rtx::Fog air = lighting.mDaylight.mFog;
-        if (lighting.mOutdoors)
-            air.mColour = Rtx::fogColour(budget.mMean, lighting.mDaylight.mFog.mColour);
+            // **Asked of the eye, which is the only body standing in this weather.** The game aims
+            // an ashstorm at the player and reports where it settled; every caller here has already
+            // put its camera in `mOrigin`, so the same rule reaches the same answer.
+            storm = Rtx::stormDirection(lighting.mWeather, constants.mOrigin);
+            nextStorm = Rtx::stormDirection(lighting.mNextWeather, constants.mOrigin);
+        }
 
-        Rtx::FrameWorld world{
-            .mSun = lighting.mDaylight.mSun,
-            .mAmbient = lighting.mDaylight.mAmbient,
-            .mAmbientFromSky = lighting.mOutdoors ? 1.0f : 0.0f,
-            .mSkyHorizon = lighting.mDaylight.mSkyHorizon,
-            .mSkyZenith = lighting.mDaylight.mSkyZenith,
-
-            .mSkyFill = budget.mFill,
-            .mAir = air,
+        const Rtx::WorldReading reading{
+            .mDaylight = lighting.mDaylight,
+            .mOutdoors = lighting.mOutdoors,
+            .mFogFromSky = lighting.mOutdoors,
+            .mGlare = lighting.mGlare,
+            .mStarRoll = lighting.mRoll.mStars,
+            .mCloudRoll = lighting.mRoll.mClouds,
+            .mSky = lighting.mSky,
+            .mMoons = moons,
+            .mWeather = lighting.mWeather,
+            .mNextWeather = lighting.mNextWeather,
+            .mCloudBlend = lighting.mCloudBlend,
+            .mCloudDirection = storm,
+            .mNextCloudDirection = nextStorm,
             .mWaterLevel = lighting.mWaterLevel,
             .mSeconds = lighting.mSeconds,
             .mRainOnWater = lighting.mRainOnWater,
-
-            .mStars = stars,
-            .mMoons = moons,
         };
 
-        // **The deck and the painted patches, and an interior has neither.** A room has no cloud
-        // over it and no constellations in it, and the defaults are what say so — a texture slot of
-        // `NO_TEXTURE`, which the shader skips before it samples anything.
-        if (lighting.mOutdoors)
-        {
-            // **Asked of the eye, which is the only body standing in this weather.** The game aims
-            // an ashstorm at the player. Every caller here has already put its camera in `mOrigin`,
-            // so the same rule reaches the same answer for whoever is looking.
-            const osg::Vec3f origin = constants.mOrigin;
-
-            world.mClouds = Rtx::describeClouds(lighting.mWeather, lighting.mNextWeather, lighting.mCloudBlend,
-                Rtx::deckLight(lighting.mDaylight.mSunAloft, budget.mMean, moons),
-                Rtx::stormDirection(lighting.mWeather, origin), Rtx::stormDirection(lighting.mNextWeather, origin),
-                lighting.mRoll.mClouds, lighting.mSky);
-
-            Rtx::describePatches(lighting.mRoll.mStars, lighting.mSky, world.mSkyPatches);
-        }
-
-        Rtx::applyWorld(world, constants);
+        Rtx::applyWorld(Rtx::describeWorld(reading), constants);
     }
 }

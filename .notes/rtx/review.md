@@ -16,17 +16,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
       written in a frame costs one submit-and-wait inside that frame. `videowidget.cpp` writes one
       texture per frame.
 
-## The same number or the same arithmetic is written in more than one place
-
-- [ ] `apps/rtxtool/picture.cpp:40-47,219` restates `apps/openmw/mwrender/localmap.cpp:40-42,169-170`
-      (`50000`, `5`, `150000`, light `(-0.3, -0.3, 0.7)`, diffuse `0.7`, ambient `0.3`) and
-      `characterpreview.cpp:69` (`12.3f`, the `700`/`71` doll camera). A change to the game's map
-      or doll makes `rtxtool map`/`doll` a different picture with nothing to say so.
-- [ ] `apps/rtxtool/lighting.cpp` `applyLighting` and `apps/openmw/mwrender/rtx/rtxrenderer.cpp`
-      `traceWorld` each assemble an `Rtx::FrameWorld` from the same inputs: `describeStars`,
-      `skyBudget`, `makeMoon` for both moons, `fogColour`, `describeClouds` with `deckLight` and
-      `stormDirection`, `describePatches`. Two assemblies of one frame.
-
 ## Two paths for one job, and asymmetric interfaces
 
 - [ ] `components/rtxvulkan/vulkanrenderer.cpp` `placeScene` has two bodies: a view scene runs

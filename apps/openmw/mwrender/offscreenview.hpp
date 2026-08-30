@@ -8,6 +8,8 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/sceneutil/offscreenframing.hpp>
+
 namespace MyGUI
 {
     class ITexture;
@@ -76,9 +78,7 @@ namespace MWRender
         osg::Vec4f mClearColour;
 
         /// The only light there is, pointing towards where it comes from.
-        osg::Vec3f mSunDirection;
-        osg::Vec4f mSunDiffuse;
-        osg::Vec4f mSunAmbient;
+        SceneUtil::FlatLight mSun;
 
         /// Whether `mScene` is a piece of the world or a group the game assembled for this picture
         /// alone. The world arrives already lit, already placed relative to the eye and already
