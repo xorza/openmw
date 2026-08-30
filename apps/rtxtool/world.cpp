@@ -31,6 +31,7 @@
 #include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
+#include <components/surface/material.hpp>
 #include <components/terrain/chunkmanager.hpp>
 #include <components/terrain/objectpaging.hpp>
 #include <components/terrain/quadtreeworld.hpp>
@@ -116,7 +117,7 @@ namespace RtxTool
             query.mLoadRegions = true;
             // Everything that names a model, because everything a cell places has to be rendered:
             // a room missing its lamps and its bookshelves is not the room.
-            query.mModels = EsmLoader::allModelRecords();
+            query.mLoadAllModels = true;
             return EsmLoader::loadEsmData(query, contentFiles, fileCollections, readers, &encoder);
         }
 
@@ -165,6 +166,10 @@ namespace RtxTool
             .mHiddenNodeMask = SceneUtil::Mask_UpdateVisitor,
             .mSoftEffects = Settings::shaders().mSoftParticles,
         });
+
+        // Before anything is read, because it decides what reading a model records. Nothing but a
+        // renderer that traces asks what the content says a surface is.
+        Surface::describeSurfaces(true);
 
         const auto& archives = variables["fallback-archive"].as<StringsVector>();
         VFS::registerArchives(&mVfs, mFileCollections, archives, true, &mEncoder.getStatelessEncoder());

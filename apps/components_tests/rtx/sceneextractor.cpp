@@ -26,18 +26,22 @@
 #include <osgParticle/RadialShooter>
 #include <osgUtil/UpdateVisitor>
 
+#include <components/esm3/loadligh.hpp>
 #include <components/nifosg/nifloader.hpp>
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/spritelight.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
+#include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
 #include <components/sceneutil/skeleton.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/surface/material.hpp>
 
 namespace Rtx
@@ -379,8 +383,13 @@ namespace Rtx
         /// function of that clock alone, so the walk is where the two can be made to agree.
         TEST(RtxSceneExtractorTest, aWalkMirrorsALampAtTheInstantItWasToldRatherThanAtRest)
         {
-            osg::ref_ptr<SceneUtil::LightSource> lamp = makeLightSource(100.0f, osg::Vec4f(1, 1, 1, 1));
-            lamp->getController().setType(SceneUtil::LightController::LT_PulseSlow);
+            ESM::Light record;
+            record.mData.mRadius = 100;
+            record.mData.mColor = 0x00FFFFFF;
+            record.mData.mFlags = ESM::Light::PulseSlow;
+
+            osg::ref_ptr<SceneUtil::LightSource> lamp = SceneUtil::createLightSource(
+                SceneUtil::LightCommon(record), SceneUtil::Mask_Lighting, /*isExterior=*/false);
 
             const auto litAt = [&lamp](double seconds) {
                 Rtx::SceneDesc scene;

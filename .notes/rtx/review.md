@@ -9,55 +9,6 @@ only.
 
 Each item describes what is there and what it costs. No item says how to fix it.
 
-## The RT path reaches into the rasterizer build and its behaviour
-
-The project rule is: with `[RTX] enabled` off, the tree behaves exactly as upstream, and a change
-to the rasterizer is a bug even when nobody can see it. These items break that rule.
-
-- [ ] `apps/openmw/mwrender/sceneframe.hpp` is an upstream-side header. Its comments name
-      `Rtx::makeSkylight`, `Rtx::fogExtinction`, `Rtx::makeRoomLight`, `Rtx::describeClouds`,
-      `components/rtx` and `openmw-rtxtool` (lines 104, 176, 190, 242, 256).
-      `apps/openmw/mwrender/windowsetup.hpp:33` names `Rtx::surfaceWindowFlag` and
-      `renderingmanager.cpp:1472` names `Rtx::TerrainComposite`. The rasterizer's frame description
-      is documented in terms of the ray tracer.
-- [ ] `apps/openmw/mwrender/animation.cpp` `setLightEffect` removes `cutoffMult = 3`. The GL glow
-      light radius is now one third of what upstream draws. The same function adds
-      `mGlowLight->setActorFade`, and `ActorAnimation::setAlpha` now fades item lights. Both change
-      the GL picture.
-- [ ] `components/sceneutil/lightmanager.cpp` `LightSource::animate` and `update` rewrite diffuse,
-      specular and ambient every frame from base colours, a brightness scale and the actor fade.
-      Upstream did not scale a light's ambient by actor fade. `components/sceneutil/lightcontroller.*`
-      is rewritten (145 changed lines): the flicker and pulse model that every GL light follows is a
-      different model from upstream's.
-- [ ] `apps/openmw/mwrender/globalmap.cpp` (514 changed lines) replaces the render-to-texture path
-      with a CPU path, and `files/shaders/compatibility/globalmap.{vert,frag}` are deleted. The GL
-      global map is drawn by different code from upstream's.
-- [ ] `apps/openmw/mwrender/localmap.cpp` (286 changed lines) replaces the per-scene `zmin`/`zmax`
-      with fixed `sMapEyeHeight = 50000`, `sMapNear = 5`, `sMapFar = 150000`, and removes
-      `LocalMapRenderToTexture`. The GL local map camera is not upstream's camera.
-- [ ] `apps/openmw/mwgui/mapwindow.cpp` `getLocalViewingDistance` reads
-      `getRenderingManager()->getTerrainReach()` where upstream read
-      `Settings::camera().mViewingDistance`. The GL map's viewing distance now depends on the
-      renderer.
-- [ ] `apps/openmw/mwrender/characterpreview.cpp` (417 changed lines) rebuilds the doll's light rig
-      and camera through `OffscreenViewSpec`. The GL inventory doll is drawn by different code.
-- [ ] `extern/osg-ffmpeg-videoplayer/*` (third-party code) changes `getVideoTexture()` to
-      `getVideoImage()`. `apps/openmw/mwgui/videowidget.cpp` then re-uploads every frame through
-      `MyGUIPlatform::Picture::set`. The GL video path uploads where upstream shared a texture.
-- [ ] `components/nifosg/nifloader.cpp` (344 changed lines, 73 of them naming `Surface`),
-      `components/shader/shadervisitor.cpp` and `components/terrain/material.cpp` author a
-      `Surface::Material` on every state set. `shadervisitor.cpp` replaces the `defaultTextures`
-      list with `Surface::textureRoleNamed`. The rasterizer's loader path runs RT-only bookkeeping
-      on every model.
-- [ ] `components/esmloader/load.hpp` replaces the `Query` fields `mLoadActivators`,
-      `mLoadContainers`, `mLoadDoors`, `mLoadStatics` with `ModelRecordMask mModels`, and adds
-      `mLoadLandTextures` and `mLoadRegions`. `apps/navmeshtool/main.cpp` and
-      `apps/bulletobjecttool/main.cpp` change to follow. Two tools that do not render change for a
-      harness that does.
-- [ ] `apps/openmw/mwworld/weather.cpp` loses 452 lines and gains 97. The precipitation code moves
-      to `components/weather/precipitation.cpp` (537 lines) and `downpour.cpp`. The rasterizer's
-      weather is now two files in two trees, and the move shows as a delete and a create.
-
 ## The upstream diff carries moves and renames that add nothing to the RT path
 
 Every item here is a file a reviewer opens and finds no RT code in.
@@ -78,6 +29,11 @@ Every item here is a file a reviewer opens and finds no RT code in.
       Every consumer's include changes (`mwlua/postprocessingbindings.cpp`, `mwlua/debugbindings.cpp`,
       `mwgui/windowmanagerimp.cpp`, `mwworld/worldimp.cpp`, and others). The `gl/` directory alone
       is 34 files and 8,212 inserted lines in the diff.
+- [ ] `apps/openmw/mwworld/weather.cpp` loses 452 lines and gains 97. The precipitation code moves
+      to `components/weather/precipitation.cpp` (537 lines) and `downpour.cpp`, and the time-of-day
+      arithmetic to `components/sky/`. The bodies are unchanged — `TimeOfDayInterpolator::getValue`
+      is identical to upstream's — but git shows a delete and a create, so the lift cannot be
+      reviewed as one.
 - [ ] `apps/openmw/mwrender/sky.cpp` (961 lines) is deleted and `apps/openmw/mwrender/gl/sky.cpp`
       (571 lines) is created. The sky's arithmetic goes to `components/sky/{sun,timeofday,moonmodel,
       clouds,skyroll}` (1,000 lines). Git shows a delete and a create, not a move, so the lift

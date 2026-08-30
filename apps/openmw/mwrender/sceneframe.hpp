@@ -101,8 +101,8 @@ namespace MWRender
         ///
         /// **And the alpha is the whole of "is there a sun".** It is nought all night and at the two
         /// hours the sun is level with the horizon, ramping across dawn and dusk, and it is what a
-        /// ray tracer scales its *sunlight* by rather than only its disc — `Rtx::makeSkylight`
-        /// says why a renderer that scaled only the disc had shadows swinging across a dark sky.
+        /// ray tracer scales its *sunlight* by rather than only its disc: one that scaled the disc
+        /// alone had shadows swinging across a dark sky.
         osg::Vec4f mSunDiscColour{ 1.0f, 1.0f, 1.0f, 0.0f };
 
         /// How much of the sun this weather lets through, which dims a disc under an overcast but
@@ -173,9 +173,8 @@ namespace MWRender
         ///
         /// **The record and not the ramp, because the ramp is a rasterizer's workaround.** Its start
         /// and end exist to hide a far clip plane, and a renderer with no far clip has nothing to
-        /// hide: `Rtx::fogExtinction` reads this depth over the distance the picture actually
-        /// reaches, which is the same thing `openmw-rtxtool` reads out of the content files. Two
-        /// hosts, one derivation.
+        /// hide: it reads this depth over the distance its picture actually reaches, which is the
+        /// number the content files state. Two hosts, one derivation.
         ///
         /// A weather's blended `Land_Fog_Depth` outdoors, and a cell's `AMBI` density indoors.
         float mFogDepth = 0.0f;
@@ -186,9 +185,9 @@ namespace MWRender
         /// **The record and not `mAmbientColour`, for a renderer that lights a room itself.**
         /// `configureAmbient` lifts an interior's ambient to `minimum interior brightness` before
         /// the rasterizer's lights see it, which balances a falloff curve of the rasterizer's own,
-        /// and turns its sunlight into a directional light at a position of its choosing.
-        /// `Rtx::makeRoomLight` reads these four the way `openmw-rtxtool` reads them out of the
-        /// content files, so a played frame and a `shot` stand in one room.
+        /// and turns its sunlight into a directional light at a position of its choosing. A
+        /// renderer that lights the room itself reads these four as the content files state them,
+        /// so a played frame and an offline one stand in one room.
         ///
         /// Meaningless outdoors, where the weather system writes the sky — the same way
         /// `mSkyColour` is meaningless in a room.
@@ -232,16 +231,16 @@ namespace MWRender
         ///
         /// **Not `mWindSpeed`, and the two are eight times apart.** That one is what the drops are
         /// leant by, so it is the gust — `Weather::gustSpeed` multiplies the record by eight and
-        /// caps it at seventy. This is the record, which is the number `openmw-rtxtool` reads
-        /// straight out of the content files, and the two paths have to stand in one air.
+        /// caps it at seventy. This is the record, which is the number the content files state, and
+        /// the two paths have to stand in one air.
         float mBaseWindSpeed = 0.0f;
 
         /// Masser and Secunda, as the weather system last settled them.
         ///
-        /// **The world's own numbers and not a placement**, which is what keeps this header off the
-        /// ray tracer: `components/rtx` is not built at all with the option off, and this is a
-        /// header the rasterizer reads. An alpha of nothing is a moon that is not drawn, which is
-        /// what a value-initialised pair says before the weather system has spoken.
+        /// **The world's own numbers and not a placement**, which is what keeps this header clear
+        /// of the ray tracer's types: none of that code is built at all with the option off, and
+        /// this is a header the rasterizer reads. An alpha of nothing is a moon that is not drawn,
+        /// which is what a value-initialised pair says before the weather system has spoken.
         MoonState mMoons[2] = {};
 
         /// Which way each of the two cloud decks is driven.
@@ -253,8 +252,8 @@ namespace MWRender
         /// **One each, because the rasterizer turns each of its two cloud meshes by its own
         /// weather's storm.** The second is unit length only while a weather is arriving:
         /// `WeatherResult` states it during a transition, and otherwise holds zero until the first
-        /// one and the last one's answer after that. `Rtx::describeClouds` reads a zero as due
-        /// north, and a deck at a blend of nothing is not drawn either way.
+        /// one and the last one's answer after that. A renderer that draws one deck reads a zero as
+        /// due north, and a deck at a blend of nothing is not drawn either way.
         osg::Vec3f mCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
         osg::Vec3f mNextCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
 

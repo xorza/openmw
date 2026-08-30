@@ -180,10 +180,10 @@ namespace MWWorld
     /// A class that acts as a model for the moons.
     /// One moon's place in the sky, as the renderer wants it stated.
     ///
-    /// **The arithmetic is `Weather::MoonModel`'s and this is the adapter.** Two renderers need the
-    /// same answers out of the `Moons_*` settings — this one and `openmw-rtxtool`, which has no
-    /// weather system to ask — so the clock itself sits in a component below both, and what is left
-    /// here is turning what it says into the type the sky was already being handed.
+    /// **The arithmetic is `Weather::MoonModel`'s and this is the adapter.** Two hosts need the
+    /// same answers out of the `Moons_*` settings — this one, and an offline one with no weather
+    /// system to ask — so the clock itself sits in a component below both, and what is left here is
+    /// turning what it says into the type the sky was already being handed.
     class MoonModel
     {
     public:

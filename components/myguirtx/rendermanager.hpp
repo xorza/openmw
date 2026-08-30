@@ -46,6 +46,10 @@ namespace MyGUIRtx
         void shutdown() override;
         void setAdditiveBlend(bool additive) override;
 
+        /// Nothing, because a picture on the device here is a Vulkan image and an `osg::Texture2D`
+        /// is a name in a context this backend never made.
+        std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture) override { return nullptr; }
+
         static RenderManager& getInstance() { return *getInstancePtr(); }
         static RenderManager* getInstancePtr()
         {

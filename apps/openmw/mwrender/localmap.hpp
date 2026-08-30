@@ -151,6 +151,11 @@ namespace MWRender
             /// again when a neighbour arriving makes a better one possible.
             std::unique_ptr<OffscreenView> mView;
 
+            /// The depth range `mView` was described with, so that a request naming another one
+            /// rebuilds it rather than drawing through the wrong slab.
+            float mZMin = 0.f;
+            float mZMax = 0.f;
+
             MyGUIPlatform::Picture mFogOfWar{ "fog of war" };
             osg::ref_ptr<osg::Image> mFogOfWarImage;
         };
@@ -176,7 +181,8 @@ namespace MWRender
         void requestInteriorMap(const MWWorld::CellStore* cell);
 
         /// The segment's view, made the first time it is asked for and redrawn every time after.
-        void draw(int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector);
+        void draw(
+            int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax);
 
         osg::BoundingBox mBounds;
         osg::Vec2f mCenter;

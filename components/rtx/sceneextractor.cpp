@@ -4,6 +4,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "callbacks.hpp"
 #include "error.hpp"
 #include "lightbuilder.hpp"
 #include "posecull.hpp"
@@ -436,16 +437,7 @@ namespace Rtx
         }
         else if (auto* source = isFrom(node, "SceneUtil") ? dynamic_cast<SceneUtil::LightSource*>(&node) : nullptr)
         {
-            // **Worked out here rather than taken on trust**, because there is not always somebody
-            // to trust: the harness puts its lamps in a graph it never runs an update traversal
-            // over, so every one of them stood at its resting brightness — no flicker, no pulse and
-            // no actor fade — in the one tool a rendering change is meant to be checked with.
-            //
-            // The game's update traversal has already done this, on this same clock, and gets the
-            // same answer as this does: a light's animation is a function of the clock alone.
-            source->animate(mStamp->getSimulationTime());
-
-            mExtractor.addLight(*source, getNodePath(), placed(), *mStats);
+            mExtractor.addLight(*source, getNodePath(), placed(), mStamp->getSimulationTime(), *mStats);
         }
         else if (stepParticles(node))
         {
@@ -986,9 +978,8 @@ namespace Rtx
         SceneUtil::StateSetUpdater* findUpdater(osg::Node& node)
         {
             for (osg::Callback* chain : { node.getCullCallback(), node.getUpdateCallback() })
-                for (osg::Callback* callback = chain; callback != nullptr; callback = callback->getNestedCallback())
-                    if (auto* updater = dynamic_cast<SceneUtil::StateSetUpdater*>(callback))
-                        return updater;
+                if (auto* updater = findCallback<SceneUtil::StateSetUpdater>(chain))
+                    return updater;
 
             return nullptr;
         }
@@ -1030,7 +1021,7 @@ namespace Rtx
     }
 
     void SceneExtractor::addLight(const SceneUtil::LightSource& source, const osg::NodePath& path,
-        const osg::Matrixf& place, ExtractionStats& stats)
+        const osg::Matrixf& place, double simulationTime, ExtractionStats& stats)
     {
         // **A torch is a `LIGH` record and a glowing mesh, and the record is the light.** What
         // hangs beside this source under the same node is that mesh, and it earns no lamp of its
@@ -1039,16 +1030,17 @@ namespace Rtx
         if (path.size() >= 2)
             mLitParents.push_back(path[path.size() - 2]);
 
-        // **The recorded colours and this frame's scalars, and never the double-buffered pair the
-        // rasterizer draws from.** `lightColour` says why the two are not the same light: a scale
-        // of a display-encoded number is not a scale of the light it stands for. It leaves this
-        // walk with nothing to know about which buffer a frame belongs to.
+        // **The recorded colours and this frame's scalars, and never the colours the rasterizer
+        // draws from.** `lightColour` says why the two are not the same light: a scale of a
+        // display-encoded number is not a scale of the light it stands for. It leaves this walk with
+        // nothing to know about which of a light's two buffers a frame belongs to.
         //
         // **`LightSource::getEmpty` is not asked**, and that is deliberate: it means the model this
         // light hangs on has no geometry (`CheckEmptyLightVisitor`, `lightutil.cpp:17-38`), which is
         // a rasterizer's reason to skip a light and not a statement that the light is off. A `LIGH`
         // whose mesh is empty still burns.
-        const std::optional<Light> made = makeLight(lightColour(source), source.getRadius(), place.getTrans());
+        const std::optional<Light> made
+            = makeLight(lightColour(source, simulationTime), source.getSourceRadius(), place.getTrans());
         if (!made.has_value())
             return;
 

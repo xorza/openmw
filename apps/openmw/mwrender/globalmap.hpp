@@ -39,9 +39,12 @@ namespace MWRender
     /// **All of it is in main memory and none of it is rendered.** The overlay is composed out of
     /// local map tiles, which is what it always was; the render-to-texture it used to go through
     /// existed to do one downscale on the device, and paid for that with a camera per cell, a
-    /// shader, a second copy of the image and a read back to keep the two in step. A box filter over
-    /// the tile is both cheaper and better — the device sampled four texels of a picture it was
-    /// shrinking fourteen-fold.
+    /// shader, a second copy of the image and a read back to keep the two in step.
+    ///
+    /// **The downscale is the device's own, worked out here.** `sampleBilinear` is what a sampler
+    /// set to `GL_LINEAR` does, four texels of a fourteen-fold reduction and aliasing included, so
+    /// the map is the map the game has always shown. What moved is where the work happens, not what
+    /// a player sees.
     class GlobalMap
     {
     public:

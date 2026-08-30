@@ -12,6 +12,7 @@
 
 #include <components/esm3/loadcell.hpp>
 #include <components/misc/constants.hpp>
+#include <components/sceneutil/lightcontroller.hpp>
 #include <components/sky/timeofday.hpp>
 
 #include "fogbuilder.hpp"
@@ -112,7 +113,27 @@ namespace Rtx
     /// arrives here raised to 2.4, which turns an even flicker of three tenths into a lopsided one
     /// of eight tenths up and five down. The scalars are taken apart from the colours and applied
     /// after the decode, where a half means a half.
-    osg::Vec3f lightColour(const SceneUtil::LightSource& source);
+    osg::Vec3f lightColour(const SceneUtil::LightSource& source, double simulationTime);
+
+    /// How much of what a light radiates is arriving at `simulationTime` seconds, as a multiplier
+    /// on its recorded colour.
+    ///
+    /// A `LIGH` record says *that* a light flickers or pulses and never says how: it carries a
+    /// colour, a radius and four flags, and no amplitude, rate or phase anywhere. So every number
+    /// behind this is chosen in the implementation, and each says what it was chosen from.
+    ///
+    /// **This renderer's own animation, and not the one the rasterizer draws.**
+    /// `SceneUtil::LightController` walks a light's brightness about at fifteen steps a second and
+    /// keeps the walk's state, which is a picture of a flame rather than a model of one — and it
+    /// only advances where an update traversal runs it, which is not everywhere this renderer
+    /// works. Lands in `1 +- depth` and averages exactly one over time, so a light that animates is
+    /// as bright on average as the same light standing still.
+    ///
+    /// **A function of the clock and of `id`, and of nothing else.** No state a frame advances,
+    /// which is what makes it the same at a given instant however it is reached: at any frame rate,
+    /// from any renderer, in the harness, and however many times one frame asks. What separates two
+    /// candles standing together is the light's own id.
+    float lightBrightness(SceneUtil::LightController::LightType type, int id, double simulationTime);
 
     /// What to hold a measured exposure back by, for a sky delivering this much light.
     ///

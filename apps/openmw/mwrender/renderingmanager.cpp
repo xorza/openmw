@@ -1469,7 +1469,7 @@ namespace MWRender
             // **Whether a composite map can be made at all is the renderer's to say**, not a
             // tuning knob's: it is a render target, and the ray tracing path initialises no OpenGL.
             // `Terrain::sNoCompositeMap` is what that one answers, so every chunk arrives as its
-            // layer stack and `Rtx::TerrainComposite` bakes the flattened texture on the CPU.
+            // layer stack for that renderer to flatten however it can.
             const float compMapLevel = mRenderer.getTerrainCompositeMapLevel();
             const int vertexLodMod = Settings::terrain().mVertexLodMod;
             const float maxCompGeometrySize = Settings::terrain().mMaxCompositeGeometrySize;
@@ -1657,9 +1657,12 @@ namespace MWRender
         // **Straight ahead, and not the corners of a frustum.** `getTerrainViewDistance` widens the
         // rasterizer's answer by the field of view, because its fog is not radial and the corners
         // reach further than the middle — which is about where ground has to be *built* and not
-        // about how much world there is. A zero angle is the width this question actually has, and
-        // it is what leaves the rasterizer's map exactly the size upstream draws it.
-        return mRenderer.getTerrainViewDistance(mViewDistance, 0.0f);
+        // about how much world there is. A zero angle is the width this question actually has.
+        //
+        // **The setting rather than `mViewDistance`**, which is the same number until a Lua script
+        // sets its own. The map upstream draws is the size the setting says, and this has to leave
+        // the rasterizer's map exactly that size.
+        return mRenderer.getTerrainViewDistance(Settings::camera().mViewingDistance, 0.0f);
     }
 
     void RenderingManager::setViewDistance(float distance, bool delay)

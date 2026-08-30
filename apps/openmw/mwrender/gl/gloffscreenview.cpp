@@ -7,7 +7,6 @@
 #include <osg/FrameStamp>
 #include <osg/Group>
 #include <osg/Image>
-#include <osg/Material>
 #include <osg/PolygonMode>
 #include <osg/Texture2D>
 #include <osg/Viewport>
@@ -19,6 +18,7 @@
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/fog.hpp>
 #include <components/sceneutil/lightmanager.hpp>
+#include <components/sceneutil/material.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/rtt.hpp>
 #include <components/sceneutil/shadow.hpp>
@@ -177,7 +177,13 @@ namespace MWRender
             , mFromWorld(spec.mFromWorld)
         {
             setNodeMask(SceneUtil::Mask_RenderToTexture);
-            setColorBufferInternalFormat(spec.mClearColour.a() < 1.f ? GL_RGBA : GL_RGB);
+
+            // **A picture of a group needs its alpha and a picture of the world does not.** The doll
+            // is composited over the window behind it, so what it did not cover has to say so; a map
+            // tile covers all of itself and keeps whatever colour format the frame buffer settled on.
+            if (!spec.mFromWorld)
+                setColorBufferInternalFormat(GL_RGBA);
+
             setDepthBufferInternalFormat(GL_DEPTH24_STENCIL8);
 
             buildProjection(spec);
@@ -284,8 +290,14 @@ namespace MWRender
             // sky in this picture, so both distances go past anything that could be in the frame.
             stateset->addUniform(new osg::Uniform("far", 10000000.0f));
             stateset->addUniform(new osg::Uniform("skyBlendingStart", 8000000.0f));
-            stateset->addUniform(new osg::Uniform(
-                "screenRes", osg::Vec2f{ static_cast<float>(spec.mWidth), static_cast<float>(spec.mHeight) }));
+            // **A pair of ones for a picture of the world.** The shaders divide a fragment's
+            // position by this to reach the sky behind it and to find its light cluster, and a
+            // picture of the world is drawn by the frame's own light manager against a chain that
+            // was never built for it — so what its own size would buy is nothing, and the pair the
+            // map has always been given is what it gets.
+            stateset->addUniform(new osg::Uniform("screenRes",
+                mFromWorld ? osg::Vec2f{ 1.f, 1.f }
+                           : osg::Vec2f{ static_cast<float>(spec.mWidth), static_cast<float>(spec.mHeight) }));
 
             SceneUtil::disableFog(*stateset, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
             SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*stateset);
@@ -331,15 +343,18 @@ namespace MWRender
             lit->setMode(GL_NORMALIZE, osg::StateAttribute::ON);
             lit->setMode(GL_CULL_FACE, osg::StateAttribute::ON);
 
-            osg::ref_ptr<osg::Material> material = new osg::Material;
-            material->setColorMode(osg::Material::OFF);
-            material->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(1, 1, 1, 1));
-            material->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(1, 1, 1, 1));
-            material->setSpecular(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.f, 0.f, 0.f, 0.f));
+            // What a mesh carrying no material of its own is drawn with, as the eight uniforms the
+            // object shaders read it through as well as the attribute itself.
+            osg::ref_ptr<SceneUtil::Material> material = new SceneUtil::Material;
+            material->updateStateSet(lit);
             lit->setAttribute(material);
 
             lit->addUniform(new osg::Uniform("near", spec.mNear));
-            lit->addUniform(new osg::Uniform("emissiveMult", 1.f));
+
+            // The two the object shaders scale every fragment's alpha by. Nothing here fades, and an
+            // unwritten uniform is not the same as one holding a one.
+            lit->addUniform(new osg::Uniform("alpha", 1.f));
+            lit->addUniform(new osg::Uniform("actorFade", 1.f));
 
             // The shaders sample a shadow map at unit 7 whether or not one was rendered, and an
             // unbound sampler on a bound unit is undefined rather than empty. This one always

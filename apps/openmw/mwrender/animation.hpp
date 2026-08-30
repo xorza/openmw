@@ -466,12 +466,7 @@ namespace MWRender
         virtual void showCarriedLeft(bool show) {}
         virtual void setWeaponGroup(const std::string& group, bool relativeDuration) {}
         virtual void setVampire(bool vampire) {}
-        /// @param actorFade how visible this actor is, out of the distance fade alone.
-        /// @param alpha what Invisibility and Chameleon leave of it.
-        ///
-        /// **Every light the actor carries follows it**, which is why this is virtual: `Animation`
-        /// holds one of them and `ActorAnimation` holds the rest.
-        virtual void setAlpha(float actorFade, float alpha);
+        void setAlpha(float actorFade, float alpha);
         virtual void setPitchFactor(float factor) {}
         virtual void attachArrow() {}
         virtual void detachArrow() {}

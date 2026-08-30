@@ -385,7 +385,7 @@ namespace Rtx
         /// that moves with the thing carrying it exists: a torch in an NPC's hand is no cell
         /// record, and neither is a lamp something picked up and put down.
         void addLight(const SceneUtil::LightSource& source, const osg::NodePath& path, const osg::Matrixf& place,
-            ExtractionStats& stats);
+            double simulationTime, ExtractionStats& stats);
 
         /// Resolves one drawable and places it. The visitor's whole contract with this class.
         ///

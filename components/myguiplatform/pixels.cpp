@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstring>
 
 #include <osg/Image>
@@ -62,6 +63,45 @@ namespace MyGUIPlatform
                 into[2] = static_cast<std::uint8_t>(std::clamp(colour.b(), 0.f, 1.f) * 255.f + 0.5f);
                 into[3] = static_cast<std::uint8_t>(std::clamp(colour.a(), 0.f, 1.f) * 255.f + 0.5f);
             }
+    }
+
+    void sampleBilinear(const osg::Image& image, float u, float v, std::uint8_t (&out)[4])
+    {
+        const int width = image.s();
+        const int height = image.t();
+
+        const float tu = u * static_cast<float>(width) - 0.5f;
+        const float tv = v * static_cast<float>(height) - 0.5f;
+
+        const float flooredU = std::floor(tu);
+        const float flooredV = std::floor(tv);
+        const float fracU = tu - flooredU;
+        const float fracV = tv - flooredV;
+
+        const auto clampX
+            = [width](float coordinate) { return std::clamp(static_cast<int>(coordinate), 0, width - 1); };
+        const auto clampY
+            = [height](float coordinate) { return std::clamp(static_cast<int>(coordinate), 0, height - 1); };
+
+        const int left = clampX(flooredU);
+        const int right = clampX(flooredU + 1.0f);
+        const int bottom = clampY(flooredV);
+        const int top = clampY(flooredV + 1.0f);
+
+        const std::uint8_t* lowerLeft = image.data(left, bottom);
+        const std::uint8_t* lowerRight = image.data(right, bottom);
+        const std::uint8_t* upperLeft = image.data(left, top);
+        const std::uint8_t* upperRight = image.data(right, top);
+
+        for (int channel = 0; channel < 4; ++channel)
+        {
+            const float lower
+                = std::lerp(static_cast<float>(lowerLeft[channel]), static_cast<float>(lowerRight[channel]), fracU);
+            const float upper
+                = std::lerp(static_cast<float>(upperLeft[channel]), static_cast<float>(upperRight[channel]), fracU);
+
+            out[channel] = static_cast<std::uint8_t>(std::lround(std::lerp(lower, upper, fracV)));
+        }
     }
 
     void gatherRegion(const osg::Image& image, int x, int y, int width, int height, std::vector<std::uint8_t>& rows)

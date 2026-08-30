@@ -51,6 +51,7 @@
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
 #include <components/settings/values.hpp>
+#include <components/surface/material.hpp>
 #include <components/terrain/chunkmanager.hpp>
 
 #include "../offscreenview.hpp"
@@ -117,6 +118,11 @@ namespace MWRender
         , mStartTick(osg::Timer::instance()->tick())
         , mExtractor(std::make_unique<Rtx::SceneExtractor>(mScene, &mTraversals))
     {
+        // **Before any content is read, because it decides what reading one records.** This is the
+        // only renderer that asks what the content says a surface is, and the answer is stored on
+        // every state set as it is built — so nothing else in the process pays for it.
+        Surface::describeSurfaces(true);
+
         // **What the shader visitor is told a GPU offers.** It runs on every model OpenMW loads
         // and needs a number to fit texture slots into; without a GL context there is nothing to
         // ask. The value only decides how many slots it is willing to use — the roles it labels

@@ -516,6 +516,13 @@ namespace MyGUIPlatform
         return true;
     }
 
+    std::unique_ptr<MyGUI::ITexture> RenderManager::shareTexture(osg::Texture2D& texture)
+    {
+        // Not in `mTextures`, because MyGUI's table is keyed by name and this one has no name to be
+        // found under. It belongs to the caller, who is drawing something it already owns.
+        return std::make_unique<OSGTexture>(&texture);
+    }
+
     MyGUI::ITexture* RenderManager::createTexture(const std::string& name)
     {
         const auto it = mTextures.insert_or_assign(name, OSGTexture(name, mImageManager)).first;

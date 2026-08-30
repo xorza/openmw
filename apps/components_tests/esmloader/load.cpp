@@ -40,10 +40,13 @@ namespace
     TEST_F(EsmLoaderTest, loadEsmDataShouldSupportOmwgame)
     {
         Query query;
+        query.mLoadActivators = true;
         query.mLoadCells = true;
+        query.mLoadContainers = true;
+        query.mLoadDoors = true;
         query.mLoadGameSettings = true;
         query.mLoadLands = true;
-        query.mModels = modelRecords<ESM::Activator, ESM::Container, ESM::Door, ESM::Static>();
+        query.mLoadStatics = true;
         ESM::ReadersCache readers;
         ToUTF8::Utf8Encoder* const encoder = nullptr;
         const EsmData esmData = loadEsmData(query, mContentFiles, mFileCollections, readers, encoder);
@@ -59,10 +62,13 @@ namespace
     TEST_F(EsmLoaderTest, shouldIgnoreCellsWhenQueryLoadCellsIsFalse)
     {
         Query query;
+        query.mLoadActivators = true;
         query.mLoadCells = false;
+        query.mLoadContainers = true;
+        query.mLoadDoors = true;
         query.mLoadGameSettings = true;
         query.mLoadLands = true;
-        query.mModels = modelRecords<ESM::Activator, ESM::Container, ESM::Door, ESM::Static>();
+        query.mLoadStatics = true;
         ESM::ReadersCache readers;
         ToUTF8::Utf8Encoder* const encoder = nullptr;
         const EsmData esmData = loadEsmData(query, mContentFiles, mFileCollections, readers, encoder);
@@ -78,10 +84,13 @@ namespace
     TEST_F(EsmLoaderTest, shouldIgnoreCellsGameSettingsWhenQueryLoadGameSettingsIsFalse)
     {
         Query query;
+        query.mLoadActivators = true;
         query.mLoadCells = true;
+        query.mLoadContainers = true;
+        query.mLoadDoors = true;
         query.mLoadGameSettings = false;
         query.mLoadLands = true;
-        query.mModels = modelRecords<ESM::Activator, ESM::Container, ESM::Door, ESM::Static>();
+        query.mLoadStatics = true;
         ESM::ReadersCache readers;
         ToUTF8::Utf8Encoder* const encoder = nullptr;
         const EsmData esmData = loadEsmData(query, mContentFiles, mFileCollections, readers, encoder);
@@ -94,7 +103,7 @@ namespace
         EXPECT_EQ(esmData.get<ESM::Static>().size(), 2);
     }
 
-    /// A type the mask does not name is skipped even when the file is full of it.
+    /// A type the query does not name is skipped even when the file is full of it.
     ///
     /// The gate is per type rather than all-or-nothing because what it lets through decides what the
     /// caller's world is made of: the navmesh tools ask for the four record types that carry
@@ -102,7 +111,7 @@ namespace
     TEST_F(EsmLoaderTest, shouldIgnoreRecordTypesTheQueryDoesNotName)
     {
         Query query;
-        query.mModels = modelRecords<ESM::Activator>();
+        query.mLoadActivators = true;
         ESM::ReadersCache readers;
         ToUTF8::Utf8Encoder* const encoder = nullptr;
         const EsmData esmData = loadEsmData(query, mContentFiles, mFileCollections, readers, encoder);
@@ -130,10 +139,13 @@ namespace
     TEST_F(EsmLoaderTest, loadEsmDataShouldSkipUnsupportedFormats)
     {
         Query query;
+        query.mLoadActivators = true;
         query.mLoadCells = true;
+        query.mLoadContainers = true;
+        query.mLoadDoors = true;
         query.mLoadGameSettings = true;
         query.mLoadLands = true;
-        query.mModels = modelRecords<ESM::Activator, ESM::Container, ESM::Door, ESM::Static>();
+        query.mLoadStatics = true;
         const std::vector<std::string> contentFiles{ { "script.omwscripts" } };
         ESM::ReadersCache readers;
         ToUTF8::Utf8Encoder* const encoder = nullptr;

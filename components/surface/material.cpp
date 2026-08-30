@@ -100,8 +100,23 @@ namespace Surface
         return std::nullopt;
     }
 
+    namespace
+    {
+        /// Written once by the host before it loads anything, and read from many threads after that.
+        /// No synchronisation, because there is no write to race with by the time content arrives.
+        bool sDescribing = false;
+    }
+
+    void describeSurfaces(bool describe)
+    {
+        sDescribing = describe;
+    }
+
     void setMaterial(osg::StateSet& stateSet, const Material& material)
     {
+        if (!sDescribing)
+            return;
+
         if (Material* writable = getWritableMaterial(stateSet))
         {
             *writable = material;

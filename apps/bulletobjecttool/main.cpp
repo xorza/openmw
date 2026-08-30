@@ -161,11 +161,13 @@ namespace
 
         ESM::ReadersCache readers;
         EsmLoader::Query query;
+        query.mLoadActivators = true;
         query.mLoadCells = true;
+        query.mLoadContainers = true;
+        query.mLoadDoors = true;
         query.mLoadGameSettings = true;
         query.mLoadLands = true;
-        // The record types that carry collision, which is what this tool walks.
-        query.mModels = EsmLoader::modelRecords<ESM::Activator, ESM::Container, ESM::Door, ESM::Static>();
+        query.mLoadStatics = true;
         const EsmLoader::EsmData esmData
             = EsmLoader::loadEsmData(query, contentFiles, fileCollections, readers, &encoder);
 

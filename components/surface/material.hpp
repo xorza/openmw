@@ -159,7 +159,19 @@ namespace Surface
         bool operator==(const Material& other) const = default;
     };
 
+    /// Whether anything in this process will read what a surface is, decided once before any content
+    /// is loaded.
+    ///
+    /// **Off unless a host says otherwise, because describing a surface costs a store per state
+    /// set.** A rasterizer draws from the state set itself and never asks what the content said, so
+    /// it would be paying an allocation per model for an answer nobody reads. `setMaterial` does
+    /// nothing while this is off, and `getMaterial` then finds nothing — which is the same answer a
+    /// state set the content pipeline never described already gives.
+    void describeSurfaces(bool describe);
+
     /// Hangs `material` off the state set describing the same surface, replacing any already there.
+    ///
+    /// Does nothing where no host asked for descriptions.
     ///
     /// **Safe under `osgDB::SharedStateManager`, and not by accident.** After load, equal state sets
     /// across every model in the cache are collapsed into one, and it compares pipeline state

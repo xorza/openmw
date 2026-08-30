@@ -17,6 +17,7 @@
 #include <components/debug/debuglog.hpp>
 #include <components/files/memorystream.hpp>
 #include <components/misc/constants.hpp>
+#include <components/myguiplatform/pixels.hpp>
 #include <components/resource/imagemanager.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/workqueue.hpp>
@@ -293,37 +294,24 @@ namespace MWRender
         const int originX = (cellX - mMinX) * cellSize;
         const int originY = (cellY - mMinY) * cellSize;
 
-        const int tileWidth = tile->s();
-        const int tileHeight = tile->t();
-
         mCellScratch.resize(static_cast<std::size_t>(cellSize) * cellSize * 4);
 
         for (int y = 0; y < cellSize; ++y)
         {
             for (int x = 0; x < cellSize; ++x)
             {
-                const int left = x * tileWidth / cellSize;
-                const int right = std::max(left + 1, (x + 1) * tileWidth / cellSize);
-                const int bottom = y * tileHeight / cellSize;
-                const int top = std::max(bottom + 1, (y + 1) * tileHeight / cellSize);
+                std::uint8_t sampled[4];
+                MyGUIPlatform::sampleBilinear(*tile, (x + 0.5f) / cellSize, (y + 0.5f) / cellSize, sampled);
 
-                unsigned int sum[4] = { 0, 0, 0, 0 };
-                for (int sampleY = bottom; sampleY < top; ++sampleY)
-                {
-                    const std::uint8_t* row = tile->data(left, sampleY);
-                    for (int sampleX = left; sampleX < right; ++sampleX, row += 4)
-                        for (int channel = 0; channel < 4; ++channel)
-                            sum[channel] += row[channel];
-                }
-
-                const unsigned int taken = (right - left) * (top - bottom);
+                // One texel of the mask per pixel of the overlay, so the sampler's own answer here
+                // is that texel: the same lookup at the same place, whichever way it is taken.
                 const unsigned int mask = *mAlphaImage->data(originX + x, originY + y);
 
                 std::uint8_t* out = mCellScratch.data() + (static_cast<std::size_t>(y) * cellSize + x) * 4;
-                out[0] = static_cast<std::uint8_t>(sum[0] / taken);
-                out[1] = static_cast<std::uint8_t>(sum[1] / taken);
-                out[2] = static_cast<std::uint8_t>(sum[2] / taken);
-                out[3] = static_cast<std::uint8_t>(sum[3] / taken * mask / 255);
+                out[0] = sampled[0];
+                out[1] = sampled[1];
+                out[2] = sampled[2];
+                out[3] = static_cast<std::uint8_t>(sampled[3] * mask / 255);
             }
         }
 

@@ -18,6 +18,7 @@ set(RTX_FILES
     alphaimage.hpp
     bluenoise.cpp
     bluenoise.hpp
+    callbacks.hpp
     camera.cpp
     camera.hpp
     cloudshell.cpp

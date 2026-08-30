@@ -1,7 +1,6 @@
 #include "animation.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <limits>
 
 #include <osg/BlendFunc>
@@ -1546,14 +1545,6 @@ namespace MWRender
 
     void Animation::setObjectRoot(const std::string& model, bool forceskeleton, bool baseonly, bool isCreature)
     {
-        // **Everything under the object root goes with it below**, and the carried light is the one
-        // such thing with an owner outside. No caller has one yet: `addExtraLight` runs once, in
-        // `ObjectAnimation`'s constructor, after its only call here. Re-attaching the node would not
-        // be the fix if one ever did — `SceneUtil::addLight` hangs a light on the model's own
-        // `AttachLight`, so one carried across to a new root would light from the origin rather than
-        // from the wick.
-        assert(!mExtraLightSource && "rebuilding the object root would drop the carried light");
-
         osg::ref_ptr<osg::StateSet> previousStateset;
         if (mObjectRoot)
         {
@@ -1899,6 +1890,9 @@ namespace MWRender
         }
         if (mExtraLightSource)
             mExtraLightSource->setActorFade(actorFade);
+        // **Nothing in the rasterizer reads this one.** A glow light is built here rather than by
+        // `SceneUtil::createLightSource`, so it carries no `LightController` and nothing scales what
+        // it radiates; a renderer that reads the fade itself is what this is for.
         if (mGlowLight)
             mGlowLight->setActorFade(actorFade);
     }
@@ -1915,14 +1909,12 @@ namespace MWRender
         }
         else
         {
-            // 1 pt of Light magnitude corresponds to 1 foot of radius, and nothing is added on top
-            // of it. The ray tracer reads a light's radius as the size the light really is and
-            // derives its intensity from the square of that, so a padded one arrives nine times too
-            // bright; and the rasterizer softens its own cut-off with `light radius multiplier`,
-            // which reaches every point light at once.
-            const float radius = effect * std::ceil(Constants::UnitsPerFoot);
+            // 1 pt of Light magnitude corresponds to 1 foot of radius
+            float radius = effect * std::ceil(Constants::UnitsPerFoot);
+            // Arbitrary multiplier used to make the obvious cut-off less obvious
+            float cutoffMult = 3;
 
-            if (!mGlowLight || radius != mGlowLight->getRadius())
+            if (!mGlowLight || (radius * cutoffMult) != mGlowLight->getRadius())
             {
                 if (mGlowLight)
                 {
@@ -1943,11 +1935,15 @@ namespace MWRender
                 mInsert->addChild(mGlowLight);
                 mGlowLight->setLight(light);
 
+                // What the light really is, beside the widened cut-off below. Read by a renderer
+                // that takes a light's radius for its size; the rasterizer reads neither.
+                mGlowLight->setSourceRadius(radius);
+
                 // Starts as hidden as its owner, since `setAlpha` returns early when nothing moved.
                 mGlowLight->setActorFade(mActorFade);
             }
 
-            mGlowLight->setRadius(radius);
+            mGlowLight->setRadius(radius * cutoffMult);
         }
     }
 

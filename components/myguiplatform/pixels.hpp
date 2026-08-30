@@ -36,6 +36,19 @@ namespace MyGUIPlatform
     /// quick way.
     void writeRgba(const osg::Image& image, std::uint8_t* into);
 
+    /// One texel of `image` at `u`, `v`, filtered the way a sampler set to `GL_LINEAR` and
+    /// `GL_CLAMP_TO_EDGE` filters one, into `out` as four bytes.
+    ///
+    /// **A device's own answer, worked out here.** The world map overlay used to be composited by a
+    /// camera drawing a local map tile into it, so what a cell looks like on the map is what that
+    /// sampler made of it: four texels of a fourteen-fold reduction, aliasing and all. The
+    /// compositing moved to main memory and the picture has to stay where it was — an average over
+    /// the whole footprint is a better filter and a different map, which is a change to what the
+    /// game shows rather than to how it is drawn.
+    ///
+    /// The image must be four bytes a pixel.
+    void sampleBilinear(const osg::Image& image, float u, float v, std::uint8_t (&out)[4]);
+
     /// Copies a rectangle of `image` into `rows`, tightly packed, four bytes a pixel, row zero
     /// first — `height` rows of `width` pixels and nothing between them.
     ///

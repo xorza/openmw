@@ -29,6 +29,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -263,6 +264,25 @@ namespace EsmLoader
             ShallowModels mModels;
         };
 
+        /// Whether the query asks for this model-bearing type. The four the query names one by one
+        /// are the types that carry collision, which is what every caller but one wants.
+        template <class T>
+        bool wanted(const Query& query)
+        {
+            if (query.mLoadAllModels)
+                return true;
+            if constexpr (std::is_same_v<T, ESM::Activator>)
+                return query.mLoadActivators;
+            else if constexpr (std::is_same_v<T, ESM::Container>)
+                return query.mLoadContainers;
+            else if constexpr (std::is_same_v<T, ESM::Door>)
+                return query.mLoadDoors;
+            else if constexpr (std::is_same_v<T, ESM::Static>)
+                return query.mLoadStatics;
+            else
+                return false;
+        }
+
         /// Reads the record into the `i`th model table if that is the one `name` belongs to.
         ///
         /// Returns false both when the type does not match and when it matches a type the query did
@@ -271,7 +291,7 @@ namespace EsmLoader
         bool loadModelRecord(const Query& query, const ESM::NAME& name, ESM::ESMReader& reader, ShallowContent& content)
         {
             using T = std::tuple_element_t<i, ModelRecords>;
-            if (name.toInt() != T::sRecordId || !query.mModels.test(i))
+            if (name.toInt() != T::sRecordId || !wanted<T>(query))
                 return false;
 
             loadRecord(reader, std::get<i>(content.mModels));

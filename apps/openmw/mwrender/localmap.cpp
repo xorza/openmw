@@ -32,15 +32,6 @@ namespace
         return val * val;
     }
 
-    /// **The map camera hangs at a fixed height and looks through a fixed slab**, rather than being
-    /// fitted to whatever happens to be loaded. A tile should not change because a neighbouring cell
-    /// arrived, and a projection that never changes is what lets a segment keep one picture and
-    /// redraw it instead of building a new one. Orthographic depth is linear, so even a slab this
-    /// deep still resolves to a hundredth of a unit in a 24-bit buffer.
-    constexpr float sMapEyeHeight = 50000.f;
-    constexpr float sMapNear = 5.f;
-    constexpr float sMapFar = 150000.f;
-
     std::pair<int, int> divideIntoSegments(const osg::BoundingBox& bounds, int mapSize)
     {
         osg::Vec2f min(bounds.xMin(), bounds.yMin());
@@ -142,10 +133,18 @@ namespace MWRender
         }
     }
 
-    void LocalMap::draw(int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector)
+    void LocalMap::draw(
+        int segmentX, int segmentY, float left, float top, const osg::Vec3d& upVector, float zmin, float zmax)
     {
         MapSegment& segment = mInterior ? mInteriorSegments[std::make_pair(segmentX, segmentY)]
                                         : mExteriorSegments[std::make_pair(segmentX, segmentY)];
+
+        // **Rebuilt where the slab moved, because the slab is in the projection.** The depth range
+        // is fitted to what is loaded, so it changes as neighbouring cells arrive, and a view is
+        // described once when it is made. Upstream builds a camera for every tile it draws; this
+        // keeps the one it has wherever the range it was built for still holds.
+        if (segment.mView && (segment.mZMin != zmin || segment.mZMax != zmax))
+            segment.mView.reset();
 
         if (!segment.mView)
         {
@@ -161,8 +160,8 @@ namespace MWRender
                 | SceneUtil::Mask_Object | SceneUtil::Mask_Static;
             spec.mProjection = OffscreenViewSpec::Orthographic{ .mWidth = static_cast<float>(mMapWorldSize),
                 .mHeight = static_cast<float>(mMapWorldSize) };
-            spec.mNear = sMapNear;
-            spec.mFar = sMapFar;
+            spec.mNear = 5.f;
+            spec.mFar = (zmax - zmin) + 10.f;
             spec.mClearColour = osg::Vec4f(0.f, 0.f, 0.f, 1.f);
             // Flat and from nowhere in particular: a chart is read for what is where, and a sun
             // angle that made shadows would only make it harder to read.
@@ -172,10 +171,12 @@ namespace MWRender
             spec.mFromWorld = true;
 
             segment.mView = mRenderer.createOffscreenView(spec);
+            segment.mZMin = zmin;
+            segment.mZMax = zmax;
         }
 
-        segment.mView->setView(osg::Matrixf::lookAt(
-            osg::Vec3f(left, top, sMapEyeHeight), osg::Vec3f(left, top, sMapEyeHeight - 1.f), osg::Vec3f(upVector)));
+        segment.mView->setView(
+            osg::Matrixf::lookAt(osg::Vec3f(left, top, zmax + 5), osg::Vec3f(left, top, zmin), osg::Vec3f(upVector)));
         segment.mView->redraw();
     }
 
@@ -268,8 +269,12 @@ namespace MWRender
         const int x = cell->getCell()->getGridX();
         const int y = cell->getCell()->getGridY();
 
+        osg::BoundingSphere bound = mSceneRoot->getBound();
+        float zmin = bound.center().z() - bound.radius();
+        float zmax = bound.center().z() + bound.radius();
+
         draw(x, y, x * mMapWorldSize + mMapWorldSize / 2.f, y * mMapWorldSize + mMapWorldSize / 2.f,
-            osg::Vec3d(0, 1, 0));
+            osg::Vec3d(0, 1, 0), zmin, zmax);
 
         if (segment.mFogOfWarImage != nullptr)
             return;
@@ -339,6 +344,8 @@ namespace MWRender
         // Apply a little padding
         mBounds.set(mBounds._min - osg::Vec3f(padding, padding, 0.f), mBounds._max + osg::Vec3f(padding, padding, 0.f));
 
+        float zMin = mBounds.zMin();
+        float zMax = mBounds.zMax();
         mCenter = osg::Vec2f(mBounds.center().x(), mBounds.center().y());
 
         // If there is fog state in the CellStore (e.g. when it came from a savegame) we need to do some checks
@@ -405,7 +412,7 @@ namespace MWRender
 
                 osg::Vec2f pos = osg::Vec2f(rotatedCenter.x(), rotatedCenter.y()) + mCenter;
 
-                draw(x, y, pos.x(), pos.y(), osg::Vec3f(north.x(), north.y(), 0.f));
+                draw(x, y, pos.x(), pos.y(), osg::Vec3f(north.x(), north.y(), 0.f), zMin, zMax);
 
                 auto coords = std::make_pair(x, y);
                 MapSegment& segment = mInteriorSegments[coords];

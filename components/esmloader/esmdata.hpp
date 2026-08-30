@@ -4,7 +4,6 @@
 #include <components/esm/defs.hpp>
 #include <components/esm/refid.hpp>
 #include <components/esmloader/lessbyid.hpp>
-#include <components/misc/tuplemeta.hpp>
 #include <components/vfs/pathutil.hpp>
 
 // The record types of `ModelRecords`, whose definitions the list below needs and whose headers are
@@ -32,7 +31,6 @@
 #include <components/esm3/loadweap.hpp>
 
 #include <algorithm>
-#include <bitset>
 #include <cstdint>
 #include <span>
 #include <string_view>
@@ -71,12 +69,6 @@ namespace EsmLoader
         ESM::Container, ESM::Creature, ESM::Door, ESM::Ingredient, ESM::Light, ESM::Lockpick, ESM::Miscellaneous,
         ESM::NPC, ESM::Potion, ESM::Probe, ESM::Repair, ESM::Static, ESM::Weapon>;
 
-    /// Which of `ModelRecords` a caller wants, one bit each.
-    ///
-    /// Selective rather than all-or-nothing because the answer decides what the caller's world is
-    /// made of: a navmesh built with the lights and the books in it is a different navmesh.
-    using ModelRecordMask = std::bitset<std::tuple_size_v<ModelRecords>>;
-
     namespace Details
     {
         template <class T>
@@ -91,21 +83,6 @@ namespace EsmLoader
 
     /// One vector per type of `ModelRecords`, each sorted by record id.
     using ModelStore = Details::AsVectors<ModelRecords>::Type;
-
-    /// The mask naming exactly `Ts`, which the compiler checks against the list.
-    template <class... Ts>
-    ModelRecordMask modelRecords()
-    {
-        ModelRecordMask mask;
-        (mask.set(Misc::TupleTypeIndex<Ts, ModelRecords>::value), ...);
-        return mask;
-    }
-
-    /// Every model-bearing type there is, for a caller that places whatever a cell holds.
-    inline ModelRecordMask allModelRecords()
-    {
-        return ModelRecordMask().set();
-    }
 
     /// A land texture as the terrain asks for one.
     ///

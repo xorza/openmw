@@ -16,7 +16,6 @@
 #include <components/misc/constants.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/clusteredlighting.hpp>
-#include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 
 namespace SceneUtil
@@ -145,28 +144,15 @@ namespace SceneUtil
         // double buffered, since one of them may be in use by the draw thread at any given time
         DoubleBuffer<osg::ref_ptr<Light>> mLight;
 
-        // What the light radiates before anything dims it. The colours inside mLight are one
-        // frame's and nothing more: `update` writes them from these every frame, and LightManager's
-        // distance fade then scales in place what it finds there.
-        osg::Vec4f mBaseDiffuse;
-        osg::Vec4f mBaseSpecular;
-        osg::Vec4f mBaseAmbient;
-
         // LightSource will affect objects within this radius
         float mRadius;
+
+        // What the content says the light's radius is, where that is not mRadius. Zero otherwise.
+        float mSourceRadius = 0.f;
 
         int mId;
 
         float mActorFade;
-
-        // How much of the base colours above is arriving, as `animate` last worked it out. Kept
-        // because a consumer working in linear light cannot use the frame's colours: those are the
-        // recorded numbers, which are display-encoded, and scaling one is not scaling the light it
-        // stands for.
-        float mDiffuseScale;
-        float mAmbientScale;
-
-        LightController mController;
 
         size_t mLastAppliedFrame;
 
@@ -184,59 +170,39 @@ namespace SceneUtil
         /// The LightSource will affect objects within this radius.
         void setRadius(float radius) { mRadius = radius; }
 
-        /// How much of the actor carrying this light the game is showing, from nothing to all of it.
-        void setActorFade(float fade) { mActorFade = fade; }
-
-        /// The animation this light's brightness follows. Steady until something gives it a type.
-        LightController& getController() { return mController; }
-
-        /// What the light radiates before anything dims it, in the recorded numbers.
-        const osg::Vec4f& getBaseDiffuse() const { return mBaseDiffuse; }
-
-        const osg::Vec4f& getBaseAmbient() const { return mBaseAmbient; }
-
-        /// What this frame multiplies the recorded diffuse and specular by: the animation and the
-        /// actor's fade together.
-        float getDiffuseScale() const { return mDiffuseScale; }
-
-        /// And what it multiplies the recorded ambient by, which the animation does not reach.
-        /// `update` says why.
-        float getAmbientScale() const { return mAmbientScale; }
-
-        /// Works out how much of what this light radiates is arriving at `simulationTime` seconds:
-        /// the animation at that instant, and the fade of whatever carries the light.
+        /// How far the light reaches, as the content states it.
         ///
-        /// **Safe for anyone to call, and safe to call twice.** The animation is a function of the
-        /// clock alone, so a renderer that would rather compute a light where it reads one gets the
-        /// same answer as the traversal that already did.
-        void animate(double simulationTime);
+        /// **Not always `getRadius()`, which is a cut-off.** `Animation::setLightEffect` widens a
+        /// glow light's cut-off threefold to soften the edge of its falloff, and a consumer that
+        /// takes the radius for the size of the light then reads a light nine times the area. Every
+        /// other light leaves the two alike, which is what an unset one answers.
+        float getSourceRadius() const { return mSourceRadius > 0.f ? mSourceRadius : mRadius; }
 
-        /// The same, and then writes the frame's colours for a rasterizer to draw from.
-        void update(size_t frame, double simulationTime);
+        void setSourceRadius(float radius) { mSourceRadius = radius; }
+
+        void setActorFade(float alpha) { mActorFade = alpha; }
+
+        float getActorFade() const { return mActorFade; }
 
         void setEmpty(bool empty) { mEmpty = empty; }
 
         bool getEmpty() const { return mEmpty; }
 
         /// Get the Light safe for modification in the given frame.
-        /// @par Used internally to synchronize the light's position with the position of the LightSource,
-        /// and externally to scale down what the light radiates this frame. A colour written here lasts
-        /// until the next frame, which `update` writes from the base colours instead.
+        /// @par May be used externally to animate the light's color/attenuation properties,
+        /// and is used internally to synchronize the light's position with the position of the LightSource.
         Light* getLight(size_t frame) { return mLight[frame % 2]; }
+
+        const Light* getLight(size_t frame) const { return mLight[frame % 2]; }
 
         /// @warning It is recommended not to replace an existing Light, because there might still be
         /// references to it in the light StateSet cache that are associated with this LightSource's ID.
         /// These references will stay valid due to ref_ptr but will point to the old object.
-        /// @warning Do not modify the \a light after you've called this function. Its colours are
-        /// taken here, and `update` writes over whatever is in the buffers with what it took.
+        /// @warning Do not modify the \a light after you've called this function.
         void setLight(Light* light)
         {
             mLight[0] = light;
             mLight[1] = new Light(*light);
-
-            mBaseDiffuse = light->getDiffuse();
-            mBaseSpecular = light->getSpecular();
-            mBaseAmbient = light->getAmbient();
         }
 
         /// Get the unique ID for this light source.

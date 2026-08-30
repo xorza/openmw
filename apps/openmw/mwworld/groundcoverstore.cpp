@@ -17,8 +17,8 @@ namespace MWWorld
         const std::vector<std::string>& groundcoverFiles, ToUTF8::Utf8Encoder* encoder, Loading::Listener* listener)
     {
         ::EsmLoader::Query query;
+        query.mLoadStatics = true;
         query.mLoadCells = true;
-        query.mModels = ::EsmLoader::modelRecords<ESM::Static>();
 
         ESM::ReadersCache readers;
         ::EsmLoader::EsmData content

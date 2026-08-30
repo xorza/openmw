@@ -29,8 +29,8 @@ namespace MWRender
     /// `SDL_CreateWindow`, so a caller that set them afterwards would be setting them for the next
     /// window.
     ///
-    /// @param surfaceFlag what the window is for: `SDL_WINDOW_OPENGL` for the rasterizer, whatever
-    ///        `Rtx::surfaceWindowFlag` answers for the ray tracer.
+    /// @param surfaceFlag what the window is for: `SDL_WINDOW_OPENGL` for the rasterizer, and
+    ///        whatever surface the other renderer's backend asks for.
     WindowPlacement describeWindow(Uint32 surfaceFlag);
 
     /// Reads `openmw.png` from beside the resources and gives it to the window.

@@ -1,8 +1,10 @@
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <map>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -16,6 +18,7 @@
 
 #include <components/rtx/shaders/visibility.h>
 #include <components/sceneutil/lightcommon.hpp>
+#include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/util.hpp>
@@ -45,6 +48,239 @@ namespace Rtx
             osg::ref_ptr<SceneUtil::LightSource> source = new SceneUtil::LightSource;
             source->setLight(light);
             return source;
+        }
+
+        /// One light's animation, sampled.
+        struct Lamp
+        {
+            SceneUtil::LightController::LightType mType;
+            int mId = 1;
+
+            float at(double seconds) const { return lightBrightness(mType, mId, seconds); }
+
+            /// `count` samples, `step` seconds apart, from zero.
+            std::vector<float> run(std::size_t count, double step) const
+            {
+                std::vector<float> out;
+                out.reserve(count);
+
+                for (std::size_t i = 0; i < count; ++i)
+                    out.push_back(at(static_cast<double>(i) * step));
+
+                return out;
+            }
+        };
+
+        /// How often the light crosses its own resting brightness, per second.
+        float crossingsPerSecond(const std::vector<float>& run, double step)
+        {
+            std::size_t crossings = 0;
+            for (std::size_t i = 1; i < run.size(); ++i)
+                if ((run[i] - 1.0f) * (run[i - 1] - 1.0f) < 0.0f)
+                    ++crossings;
+
+            return static_cast<float>(static_cast<double>(crossings) / (static_cast<double>(run.size() - 1) * step));
+        }
+
+        float mean(const std::vector<float>& run)
+        {
+            double total = 0.0;
+            for (const float value : run)
+                total += static_cast<double>(value);
+
+            return static_cast<float>(total / static_cast<double>(run.size()));
+        }
+
+        /// A light the record says nothing about burns at exactly what it is.
+        TEST(RtxLightBuilderTest, aSteadyLightIsExactlyOne)
+        {
+            const Lamp steady{ SceneUtil::LightController::LT_Normal };
+
+            for (const double seconds : { 0.0, 0.017, 3.5, 1e5 })
+                EXPECT_EQ(steady.at(seconds), 1.0f);
+        }
+
+        /// A flame stays inside its depth and, over time, radiates exactly what the record says.
+        ///
+        /// **The mean is the point.** The rasterizer's own animation walks toward a random target
+        /// between a quarter and one, so a flickering light averages 0.63 of its recorded colour;
+        /// this one averages the colour itself, so a candle is as bright as the record says it is.
+        TEST(RtxLightBuilderTest, aFlameStaysWithinItsDepthAndAveragesOne)
+        {
+            for (const SceneUtil::LightController::LightType type :
+                { SceneUtil::LightController::LT_Flicker, SceneUtil::LightController::LT_FlickerSlow,
+                    SceneUtil::LightController::LT_Pulse, SceneUtil::LightController::LT_PulseSlow })
+            {
+                const Lamp lamp{ type };
+                const std::vector<float> run = lamp.run(60000, 0.01);
+                const bool pulse
+                    = type == SceneUtil::LightController::LT_Pulse || type == SceneUtil::LightController::LT_PulseSlow;
+
+                // The bands are weighted to sum to one, so the depth is a bound and not a statistic.
+                const float depth = pulse ? 0.35f : 0.30f;
+                EXPECT_GE(*std::min_element(run.begin(), run.end()), 1.0f - depth);
+                EXPECT_LE(*std::max_element(run.begin(), run.end()), 1.0f + depth);
+
+                // Ten minutes is at least a hundred turns of the slowest band any of them carries,
+                // so what is left of it here is a thousandth.
+                EXPECT_NEAR(mean(run), 1.0f, 0.001f);
+
+                // And it did move, rather than sitting at its mean and passing the two tests above.
+                EXPECT_GT(*std::max_element(run.begin(), run.end()) - *std::min_element(run.begin(), run.end()), depth);
+            }
+        }
+
+        /// The fast flicker is the flame itself and the slow one is that flame seen through glass.
+        ///
+        /// Both are four bands of one ladder; the slow one takes its window a step down, so it loses
+        /// the puffing at the top and gains a drift at the bottom. One step of the ladder is 2.618,
+        /// and the rate at which the light crosses its own mean follows it: about 11 times a second
+        /// against about 4.
+        TEST(RtxLightBuilderTest, theSlowFlickerIsTheSameFlameOneStepDownTheLadder)
+        {
+            const Lamp fast{ SceneUtil::LightController::LT_Flicker };
+            const Lamp slow{ SceneUtil::LightController::LT_FlickerSlow };
+
+            // 200 hertz, so the nine-hertz band's own crossings are resolved rather than counted
+            // twice.
+            const float busy = crossingsPerSecond(fast.run(12000, 0.005), 0.005);
+            const float gentle = crossingsPerSecond(slow.run(12000, 0.005), 0.005);
+
+            EXPECT_GT(busy, 8.0f);
+            EXPECT_LT(gentle, 6.0f);
+            EXPECT_GT(busy, gentle * 2.0f) << "the two flicker flags read as the same light";
+        }
+
+        /// A pulse is one sine, so it comes back to where it was and its two halves cancel exactly.
+        ///
+        /// The slow one turns once every three seconds and the fast one is a step of the ladder
+        /// above it, at 3 / 2.618 = 1.1459 seconds.
+        TEST(RtxLightBuilderTest, aPulseIsExactlyPeriodic)
+        {
+            const Lamp slow{ SceneUtil::LightController::LT_PulseSlow };
+
+            for (const double seconds : { 0.0, 0.3, 1.7, 10.5, 123.25 })
+            {
+                EXPECT_NEAR(slow.at(seconds), slow.at(seconds + 3.0), 1e-5f);
+
+                // Half a turn on, the sine is its own negative, so the pair averages the resting
+                // brightness whatever phase this lamp was given.
+                EXPECT_NEAR(slow.at(seconds) + slow.at(seconds + 1.5), 2.0f, 1e-5f);
+            }
+
+            const Lamp fast{ SceneUtil::LightController::LT_Pulse };
+            constexpr double period = 3.0 / 2.618034;
+
+            for (const double seconds : { 0.0, 0.3, 1.7, 10.5 })
+                EXPECT_NEAR(fast.at(seconds), fast.at(seconds + period), 1e-5f);
+        }
+
+        /// The clock and the light's id are the whole of the state, so one instant is one answer.
+        ///
+        /// **What this buys is that anyone may ask.** This renderer's walk, the harness and a test
+        /// all reach the same answer for a frame, at any frame rate, in any order, and however many
+        /// times — which is what lets the light be computed where it is read rather than written
+        /// once by whichever traversal got there first, of which the harness runs none.
+        TEST(RtxLightBuilderTest, theSameInstantAlwaysGivesTheSameBrightness)
+        {
+            const Lamp lamp{ SceneUtil::LightController::LT_FlickerSlow };
+            const std::vector<double> scrambled = { 4.5, 0.25, 91.0, 4.5, 0.25, 17.75, 91.0 };
+
+            std::vector<float> first;
+            for (const double seconds : scrambled)
+                first.push_back(lamp.at(seconds));
+
+            for (std::size_t i = 0; i < scrambled.size(); ++i)
+                EXPECT_EQ(lamp.at(scrambled[i]), first[i]) << "at " << scrambled[i];
+
+            EXPECT_EQ(first[0], first[3]);
+            EXPECT_EQ(first[2], first[6]);
+        }
+
+        /// Two candles standing together do not flicker together.
+        ///
+        /// Their ids are the only thing separating them, and ids are handed out in sequence — so
+        /// neighbours are exactly the case this has to answer for. Measured across sixty-four of
+        /// them rather than between two.
+        TEST(RtxLightBuilderTest, lampsBuiltTogetherStillFlickerApart)
+        {
+            std::vector<float> lit;
+            for (int id = 0; id < 64; ++id)
+                lit.push_back(Lamp{ SceneUtil::LightController::LT_PulseSlow, id }.at(0.0));
+
+            double total = 0.0;
+            for (const float value : lit)
+                total += static_cast<double>(value);
+
+            const double average = total / static_cast<double>(lit.size());
+            double spread = 0.0;
+            for (const float value : lit)
+                spread += (static_cast<double>(value) - average) * (static_cast<double>(value) - average);
+
+            // A pulse read at one instant across uniform phases has a deviation of 0.35 / sqrt(2),
+            // which is 0.247. Half of that is far below anything sixty-four ids reach by chance and
+            // far above the nothing a shared phase would give.
+            EXPECT_GT(std::sqrt(spread / static_cast<double>(lit.size())), 0.12);
+        }
+
+        /// A light is dimmed by its owner, whatever it radiates with and whatever it is doing.
+        ///
+        /// **The fade reaches the ambient, which no animation does.** A Light spell's glow puts its
+        /// whole output in the ambient, so a fade that reached only the diffuse would leave the glow
+        /// burning at full strength up to the frame the actor's node mask cut it.
+        TEST(RtxLightBuilderTest, aLightIsDimmedByItsOwnersFade)
+        {
+            const osg::Vec4f grey(128.0f / 255.0f, 128.0f / 255.0f, 128.0f / 255.0f, 1.0f);
+            const osg::Vec4f glow(1.5f, 1.5f, 1.5f, 1.0f);
+
+            const osg::ref_ptr<SceneUtil::LightSource> full = makeGraphLight(grey, glow);
+            const osg::ref_ptr<SceneUtil::LightSource> half = makeGraphLight(grey, glow);
+            half->setActorFade(0.5f);
+
+            EXPECT_NEAR(lightColour(*half, 0.0).x(), lightColour(*full, 0.0).x() * 0.5f, 1e-5f);
+
+            // What the distance fade reaches exactly at `actors processing range`, which is the
+            // frame before the node mask takes the whole actor out of the picture.
+            const osg::ref_ptr<SceneUtil::LightSource> gone = makeGraphLight(grey, glow);
+            gone->setActorFade(0.0f);
+
+            EXPECT_EQ(lightColour(*gone, 0.0), osg::Vec3f());
+        }
+
+        /// The animation reaches the diffuse and stops there.
+        ///
+        /// **Because the ambient is not a flame.** The white one `ActorAnimation::addHiddenItemLight`
+        /// adds is what a lamp in a pack lights its bearer with, and it has no flame of its own to
+        /// flicker: a lantern the actor is not holding would otherwise pulse against a body it is
+        /// nowhere near.
+        TEST(RtxLightBuilderTest, anAnimationReachesTheDiffuseAndNotTheAmbient)
+        {
+            // A record with the slow pulse flag, so the light is built the way the game builds one:
+            // a controller carrying the record's colour, added behind the collect callback.
+            ESM::Light record = makeRecord(100, 0x00FFFFFF, 0);
+            record.mData.mFlags |= ESM::Light::PulseSlow;
+
+            const osg::ref_ptr<SceneUtil::LightSource> lamp = SceneUtil::createLightSource(
+                SceneUtil::LightCommon(record), SceneUtil::Mask_Lighting, /*isExterior=*/false, osg::Vec4f(1, 1, 1, 1));
+
+            // A pulse turns once in three seconds. Eight samples across it put one of them within an
+            // eighth of a turn of the peak, so the deepest is at least `0.35 * cos(pi / 8)` from
+            // rest — and every one of them carries the same ambient, which is the point.
+            const osg::Vec3f white = lightColour(*makeGraphLight(osg::Vec4f(), osg::Vec4f(1, 1, 1, 1)), 0.0);
+
+            float deepest = 0.0f;
+            for (int i = 0; i < 8; ++i)
+            {
+                const osg::Vec3f lit = lightColour(*lamp, static_cast<double>(i) * 0.375);
+
+                // The record's own white, decoded, plus the ambient that does not animate.
+                const float diffuse = lit.x() - white.x();
+                EXPECT_GT(diffuse, 0.0f) << "at sample " << i;
+
+                deepest = std::max(deepest, std::abs(diffuse - 1.0f));
+            }
+
+            EXPECT_GT(deepest, 0.32f) << "the animation never ran";
         }
 
         /// The packing is `0xAABBGGRR`: red in the low byte.
@@ -98,18 +334,18 @@ namespace Rtx
         {
             // 128 of 255 is 0.50196 encoded, and ((0.50196 + 0.055) / 1.055)^2.4 = 0.21586 linear.
             const osg::Vec4f grey(128.0f / 255.0f, 0.0f, 0.0f, 1.0f);
-            EXPECT_NEAR(lightColour(*makeGraphLight(grey, osg::Vec4f())).x(), 0.21586f, 1e-5f);
+            EXPECT_NEAR(lightColour(*makeGraphLight(grey, osg::Vec4f()), 0.0).x(), 0.21586f, 1e-5f);
 
             // What `Animation::setLightEffect` builds: nothing in the diffuse, 1.5 in the ambient.
             // ((1.5 + 0.055) / 1.055)^2.4 = 2.53716, and a walk reading the diffuse alone gets zero.
             const osg::Vec3f glow
-                = lightColour(*makeGraphLight(osg::Vec4f(0, 0, 0, 0), osg::Vec4f(1.5f, 1.5f, 1.5f, 1)));
+                = lightColour(*makeGraphLight(osg::Vec4f(0, 0, 0, 0), osg::Vec4f(1.5f, 1.5f, 1.5f, 1)), 0.0);
             EXPECT_NEAR(glow.x(), 2.53716f, 1e-4f);
             EXPECT_NEAR(glow.z(), 2.53716f, 1e-4f);
 
             // Both at once add as light adds, after each is decoded and not before: 0.21586 of red
             // on top of 2.53716 of white.
-            const osg::Vec3f both = lightColour(*makeGraphLight(grey, osg::Vec4f(1.5f, 1.5f, 1.5f, 1)));
+            const osg::Vec3f both = lightColour(*makeGraphLight(grey, osg::Vec4f(1.5f, 1.5f, 1.5f, 1)), 0.0);
             EXPECT_NEAR(both.x(), 2.75302f, 1e-4f);
             EXPECT_NEAR(both.y(), 2.53716f, 1e-4f);
 
@@ -123,7 +359,8 @@ namespace Rtx
 
                 const osg::ref_ptr<SceneUtil::LightSource> graph
                     = makeGraphLight(SceneUtil::colourFromRGB(packed), osg::Vec4f());
-                const std::optional<Rtx::Light> fromGraph = makeLight(lightColour(*graph), 100.0f, osg::Vec3f(1, 2, 3));
+                const std::optional<Rtx::Light> fromGraph
+                    = makeLight(lightColour(*graph, 0.0), 100.0f, osg::Vec3f(1, 2, 3));
 
                 ASSERT_TRUE(fromRecord.has_value() && fromGraph.has_value()) << "packed " << packed;
                 EXPECT_EQ(fromRecord->mIntensity, fromGraph->mIntensity) << "packed " << packed;
@@ -848,7 +1085,7 @@ namespace Rtx
                 SceneUtil::LightCommon(subtracting), SceneUtil::Mask_Lighting, /*isExterior=*/false);
             ASSERT_NE(built, nullptr);
 
-            const osg::Vec3f radiated = lightColour(*built);
+            const osg::Vec3f radiated = lightColour(*built, 0.0);
             ASSERT_LT(radiated.x(), 0.0f) << "the graph did not build a light that subtracts, so this proves nothing";
 
             EXPECT_FALSE(makeLight(radiated, 100.0f, osg::Vec3f()).has_value()) << "the walk mirrored it anyway";
@@ -860,7 +1097,7 @@ namespace Rtx
             const osg::ref_ptr<SceneUtil::LightSource> lit = SceneUtil::createLightSource(
                 SceneUtil::LightCommon(ordinary), SceneUtil::Mask_Lighting, /*isExterior=*/false);
 
-            EXPECT_TRUE(makeLight(lightColour(*lit), 100.0f, osg::Vec3f()).has_value());
+            EXPECT_TRUE(makeLight(lightColour(*lit, 0.0), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(ordinary, osg::Vec3f()).has_value());
 
             // **A black record subtracts nothing, so the flag on it decides nothing either.** Both
@@ -870,7 +1107,7 @@ namespace Rtx
             const osg::ref_ptr<SceneUtil::LightSource> dark = SceneUtil::createLightSource(
                 SceneUtil::LightCommon(unlit), SceneUtil::Mask_Lighting, /*isExterior=*/false);
 
-            EXPECT_TRUE(makeLight(lightColour(*dark), 100.0f, osg::Vec3f()).has_value());
+            EXPECT_TRUE(makeLight(lightColour(*dark, 0.0), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(unlit, osg::Vec3f()).has_value());
         }
     }

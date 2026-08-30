@@ -3,7 +3,7 @@
 #include <iostream>
 
 #include <osg/Notify>
-#include <osg/Image>
+#include <osg/Texture2D>
 
 #include "audiofactory.hpp"
 #include "videostate.hpp"
@@ -39,7 +39,7 @@ void VideoPlayer::playVideo(std::unique_ptr<std::istream>&& inputstream, const s
         mState->init(std::move(inputstream), name);
 
         // wait until we have the first picture
-        while (mState->video_st && !mState->mImage.get())
+        while (mState->video_st && !mState->mTexture.get())
         {
             if (!mState->update())
                 break;
@@ -64,26 +64,26 @@ void VideoPlayer::commitFrame()
         mState->commitFrame();
 }
 
-const osg::Image* VideoPlayer::getVideoImage() const
+osg::ref_ptr<osg::Texture2D> VideoPlayer::getVideoTexture()
 {
     if (mState)
-        return mState->mImage;
-    return nullptr;
+        return mState->mTexture;
+    return osg::ref_ptr<osg::Texture2D>();
 }
 
 int VideoPlayer::getVideoWidth()
 {
     int width=0;
-    if (mState && mState->mImage.get())
-        width = mState->mImage->s();
+    if (mState && mState->mTexture.get() && mState->mTexture->getImage())
+        width = mState->mTexture->getImage()->s();
     return width;
 }
 
 int VideoPlayer::getVideoHeight()
 {
     int height=0;
-    if (mState && mState->mImage.get())
-        height = mState->mImage->t();
+    if (mState && mState->mTexture.get() && mState->mTexture->getImage())
+        height = mState->mTexture->getImage()->t();
     return height;
 }
 

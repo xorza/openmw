@@ -1,12 +1,19 @@
 #ifndef OPENMW_COMPONENTS_MYGUIPLATFORM_GUIRENDERMANAGER_H
 #define OPENMW_COMPONENTS_MYGUIPLATFORM_GUIRENDERMANAGER_H
 
+#include <memory>
+
 #include <MyGUI_RenderManager.h>
+
+namespace osg
+{
+    class Texture2D;
+}
 
 namespace MyGUIPlatform
 {
 
-    /// MyGUI's render manager, plus the two calls MyGUI does not declare and every backend needs.
+    /// MyGUI's render manager, plus the calls MyGUI does not declare and every backend needs.
     ///
     /// **Neutral, despite where it lives**, for the reason `Picture` is: this is MyGUI's own
     /// interface with two lifetime hooks on it, and it has no idea what draws. It exists so that one
@@ -29,6 +36,15 @@ namespace MyGUIPlatform
         /// scaled layer hands it a proxy standing in front of the real one; the blend mode belongs
         /// to whatever is finally drawing, which is this.
         virtual void setAdditiveBlend(bool additive) = 0;
+
+        /// A picture the game already holds on the device, drawn where it lies. Null where this
+        /// backend cannot draw one, and the caller then hands over the pixels instead.
+        ///
+        /// **The video is the one caller.** Its decoder writes into an OSG texture and swaps the
+        /// image under it every frame, which the rasterizer draws untouched; a backend that never
+        /// opens a GL context cannot see that texture at all and is given the frame through
+        /// `Picture` instead.
+        virtual std::unique_ptr<MyGUI::ITexture> shareTexture(osg::Texture2D& texture) = 0;
     };
 
 }
