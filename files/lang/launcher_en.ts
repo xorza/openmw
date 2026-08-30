@@ -250,6 +250,14 @@
         <source>Vertical Synchronization</source>
         <translation></translation>
     </message>
+    <message>
+        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an Ada-class NVIDIA GPU.</source>
+        <translation></translation>
+    </message>
+    <message>
+        <source>Experimental Ray Tracing</source>
+        <translation></translation>
+    </message>
 </context>
 <context>
     <name>ImportPage</name>
@@ -411,6 +419,10 @@ to default Morrowind fonts. Check this box if you still prefer original fonts ov
     </message>
     <message>
         <source>Screen </source>
+        <translation></translation>
+    </message>
+    <message>
+        <source>This build was made without the ray tracing renderer.</source>
         <translation></translation>
     </message>
     <message>

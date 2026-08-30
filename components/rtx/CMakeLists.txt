@@ -37,6 +37,8 @@ set(RTX_FILES
     frametimes.hpp
     frameworld.cpp
     frameworld.hpp
+    imageformat.cpp
+    imageformat.hpp
     instancerecord.cpp
     instancerecord.hpp
     lightbuilder.cpp

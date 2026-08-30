@@ -10,6 +10,7 @@
 #include "alphaimage.hpp"
 #include "compositequeue.hpp"
 #include "error.hpp"
+#include "imageformat.hpp"
 #include "scenedesc.hpp"
 #include "shadingmap.hpp"
 #include <components/debug/debuglog.hpp>
@@ -31,42 +32,46 @@ namespace Rtx
 
     namespace
     {
-        /// What OpenSceneGraph decoded, as one of the formats this renderer uploads.
+        /// What the content is, as one of the formats this renderer uploads.
         ///
         /// Nothing where the file is something else, so the caller says so with the file's name in
         /// the message. `TextureFormat` is why every case is sRGB.
-        std::optional<TextureFormat> toTextureFormat(GLenum pixelFormat)
+        std::optional<TextureFormat> toTextureFormat(ImageFormat format)
         {
-            switch (pixelFormat)
+            switch (format)
             {
-                // Both DXT1 spellings land on the format that reads the alpha bit, and the header
-                // that claims there is none is not consulted. A BC1 block is punch-through whenever
-                // its first endpoint sorts below its second, which is how every mask in the game is
-                // stored; almost none of Morrowind's files set `DDPF_ALPHAPIXELS`, so believing the
-                // header would decode that bit as opaque black and leave every canopy a solid card.
-                // The bytes are identical either way — this only chooses whether the bit is looked at.
-                case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
-                case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+                // Both DXT1 spellings reach `ImageFormat::Bc1`, and it lands on the format that
+                // reads the alpha bit. A BC1 block is punch-through whenever its first endpoint
+                // sorts below its second, which is how every mask in the game is stored; almost
+                // none of Morrowind's files set `DDPF_ALPHAPIXELS`, so believing the header would
+                // decode that bit as opaque black and leave every canopy a solid card. The bytes
+                // are identical either way — this only chooses whether the bit is looked at.
+                case ImageFormat::Bc1:
                     return TextureFormat::Bc1RgbaSrgb;
-                case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
+                case ImageFormat::Bc2:
                     return TextureFormat::Bc2Srgb;
-                case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
+                case ImageFormat::Bc3:
                     return TextureFormat::Bc3Srgb;
 
                 // **Not every file the game ships is a block.** The sky's cloud decks are plain
                 // 32-bit `DDPF_RGB`, which is what a texture painted for a full-screen dome would
                 // be, and taking only the compressed formats drew every weather's clouds grey.
-                // Three-channel spellings are absent deliberately: a `GL_RGB` upload would need the
-                // fourth channel written in, which means owning a buffer, and nothing in this game
-                // stores an opaque texture without one.
-                case GL_RGBA:
+                case ImageFormat::Rgba8:
                     return TextureFormat::Rgba8Srgb;
-                case GL_BGRA:
+                case ImageFormat::Bgra8:
                     return TextureFormat::Bgra8Srgb;
 
-                default:
+                // Three-channel and single-channel spellings are refused deliberately: uploading
+                // one would need the missing channels written in, which means owning a buffer, and
+                // nothing this renderer reads stores a texture without them.
+                case ImageFormat::Rgb8:
+                case ImageFormat::Luminance:
+                case ImageFormat::LuminanceAlpha:
+                case ImageFormat::Unnamed:
                     return std::nullopt;
             }
+
+            return std::nullopt;
         }
 
         /// What a texture that could not be read is drawn as.
@@ -102,7 +107,7 @@ namespace Rtx
 
     TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels)
     {
-        const std::optional<TextureFormat> format = toTextureFormat(image.getPixelFormat());
+        const std::optional<TextureFormat> format = toTextureFormat(readFormat(image));
         if (!format.has_value())
             throw Error("texture \"" + image.getFileName() + "\" is pixel format "
                 + std::to_string(image.getPixelFormat()) + ", which is not one this renderer uploads");

@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstddef>
 
 #include <gtest/gtest.h>
 
@@ -6,6 +7,8 @@
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/shaders/colour.h>
 #include <components/rtx/shaders/scene.h>
+
+#include "allocations.hpp"
 
 namespace Rtx
 {
@@ -380,6 +383,28 @@ namespace Rtx
             const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
             const MoonPlacement half = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.5f);
             EXPECT_NEAR(luminanceOf(half.mIrradiance), 0.5f * luminanceOf(full.mIrradiance), 1e-7f);
+        }
+
+        /// Placing a moon goes to the heap not at all, and answers the same either way.
+        ///
+        /// **Both moons are placed on every frame, by the game and by the harness alike.** A clock
+        /// is ten `Moons_*` lookups and a size is one more, every one of them a key built on the
+        /// spot — twenty-two allocations a frame, for numbers that are fixed for the run.
+        TEST(RtxMoonBuilderTest, placingAMoonReadsNothingItHasAlreadyRead)
+        {
+            seed();
+
+            const MoonPlacement first = makeMoon(Moon::Masser, 3, 21.0f, 1.0f);
+
+            const std::size_t before = Testing::getAllocationCount();
+            const MoonPlacement again = makeMoon(Moon::Masser, 3, 21.0f, 1.0f);
+            const std::size_t after = Testing::getAllocationCount();
+
+            EXPECT_EQ(after, before) << after - before << " allocations to place a moon";
+
+            EXPECT_EQ(again.mDirection, first.mDirection);
+            EXPECT_EQ(again.mAlpha, first.mAlpha);
+            EXPECT_EQ(again.mAngularRadius, first.mAngularRadius);
         }
     }
 }

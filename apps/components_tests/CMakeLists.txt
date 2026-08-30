@@ -129,6 +129,7 @@ if (OPENMW_RTX)
         rtx/guitextures.cpp
         rtx/harness.cpp
         rtx/harness.hpp
+        rtx/imageformat.cpp
         rtx/instancerecord.cpp
         rtx/lightbuilder.cpp
         rtx/lightgrid.cpp

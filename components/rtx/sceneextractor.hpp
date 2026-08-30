@@ -1,11 +1,10 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
 #include <span>
-#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -15,6 +14,7 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
+#include "imageformat.hpp"
 #include "scenedesc.hpp"
 #include "sheetfold.hpp"
 
@@ -44,6 +44,13 @@ namespace Terrain
 
 namespace Rtx
 {
+    /// How many textures of one format a walk met, and how many of those brought mips.
+    struct FormatCount
+    {
+        std::uint32_t mMet = 0;
+        std::uint32_t mMipped = 0;
+    };
+
     /// What one extraction pass did.
     ///
     /// The reused counts are the interesting half: a mirror that adds nothing on a second pass over
@@ -101,11 +108,21 @@ namespace Rtx
         /// description with it.
         std::uint32_t mUndescribedMaterials = 0;
 
-        /// What the textures a scene reached for turned out to be.
+        /// What the textures a scene reached for turned out to be, one entry per `ImageFormat`.
         ///
         /// Kept because the answer decides how they are uploaded, and guessing it from what the
         /// content files ought to contain is how a renderer ends up with a path nothing takes.
-        std::map<std::string, std::uint32_t> mTextureFormats;
+        ///
+        /// **Counted by enumerator and named at the end.** A walk meets every texture of every
+        /// material it reads, and animated ones again on each frame; naming one where it is met
+        /// builds a `std::string` on the frame path to key a map by.
+        std::array<FormatCount, sImageFormatCount> mTextureFormats{};
+
+        /// The pixel format the `Unnamed` count last stood for, or zero.
+        ///
+        /// The number is the whole of what makes that count worth printing: a format nothing names
+        /// is a canary, and the reader's next step is to look this one up.
+        std::uint32_t mUnnamedFormat = 0;
 
         /// Geometry with no vertices or no triangles. Morrowind ships some.
         std::uint32_t mSkippedEmpty = 0;

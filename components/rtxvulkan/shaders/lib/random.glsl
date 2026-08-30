@@ -13,38 +13,43 @@
 /// hit the eye found and the hit its bounce found — and two reservoirs stepping the same sequence
 /// would choose correlated lamps at both ends of it. These are seeds for `randomSeed` rather than
 /// channels of the tile, which has only `RANDOM_STREAMS` of them and answers a different question.
+///
+/// **Each one is the one before it and one more, and none of them is a number written out.** What a
+/// seed owes the others is only that it differ from them, and a list of literals states that in a
+/// way nothing checks — two of them spelled alike compile, and the two reservoirs then draw one
+/// sequence and keep the same lamps.
 const uint SEED_LAMPS_EYE = 0x51u;
-const uint SEED_LAMPS_BOUNCE = 0x52u;
+const uint SEED_LAMPS_BOUNCE = SEED_LAMPS_EYE + 1u;
 
 /// And a third for the pane the eye is looking through, which shades beside the surface behind it
 /// and would choose the same lamp at both if it stepped the same sequence.
-const uint SEED_LAMPS_PANE = 0x53u;
+const uint SEED_LAMPS_PANE = SEED_LAMPS_BOUNCE + 1u;
 
 /// Water shades two surfaces from one hit — what it reflects and what is seen through it — and each
 /// of them opens a reservoir of its own. **Two constants and not one**, because two reservoirs
 /// seeded alike step the same sequence and keep the same lamps.
-const uint SEED_LAMPS_MIRROR = 0x53u;
-const uint SEED_LAMPS_THROUGH = 0x54u;
+const uint SEED_LAMPS_MIRROR = SEED_LAMPS_PANE + 1u;
+const uint SEED_LAMPS_THROUGH = SEED_LAMPS_MIRROR + 1u;
 
 /// And one more for the direction a path's end asks the sky about, which is not a lamp at all.
 ///
 /// **A sequence of its own, because it is drawn beside a reservoir and not out of one.** Stepping
 /// the lamps' would move which lamp a hit chose every time the hemisphere was asked a question, and
 /// the two have nothing to do with each other.
-const uint SEED_SKY_REACHING = 0x56u;
+const uint SEED_SKY_REACHING = SEED_LAMPS_THROUGH + 1u;
 
 /// And one for where on the sun's disc a sprite layer's shadow ray leaves from.
 ///
 /// **Not the one above, which is drawn in the same breath.** Two draws seeded alike take the same
 /// numbers, so the point on the disc and the direction into the sky would move together across the
 /// whole frame — a pattern rather than noise, and the filter keeps a pattern.
-const uint SEED_SPRITE_SUN = 0x57u;
+const uint SEED_SPRITE_SUN = SEED_SKY_REACHING + 1u;
 
 /// And one for the lamp a fog march holds out of every lamp at every one of its steps.
-const uint SEED_LAMPS_FOG = 0x58u;
+const uint SEED_LAMPS_FOG = SEED_SPRITE_SUN + 1u;
 
 /// And one for the lamp a layer of sprites holds, beside the sun's and the sky's own rays there.
-const uint SEED_LAMPS_SPRITE = 0x59u;
+const uint SEED_LAMPS_SPRITE = SEED_LAMPS_FOG + 1u;
 
 /// And one for which face of a sheet the eye's bounce leaves by.
 ///
@@ -52,7 +57,7 @@ const uint SEED_LAMPS_SPRITE = 0x59u;
 /// `STREAM_BOUNCE`, which has two channels and no third; a side taken from one of them would tie
 /// which face is asked to where in the hemisphere it is asked, and a sheet's two faces would be
 /// sampled as two halves of one hemisphere rather than as two hemispheres.
-const uint SEED_SHEET_SIDE = 0x5Au;
+const uint SEED_SHEET_SIDE = SEED_LAMPS_SPRITE + 1u;
 
 /// How far each stream's sequence advances between frames.
 ///

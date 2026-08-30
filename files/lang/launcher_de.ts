@@ -183,6 +183,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an Ada-class NVIDIA GPU.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Experimental Ray Tracing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Custom:</source>
         <translation type="unfinished"></translation>
     </message>
@@ -411,6 +419,10 @@ to default Morrowind fonts. Check this box if you still prefer original fonts ov
     </message>
     <message>
         <source>Screen </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This build was made without the ray tracing renderer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

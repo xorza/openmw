@@ -40,8 +40,18 @@ namespace RtxTool
             << "  triangles:            " << scene.getTriangleCount() << '\n'
             << "  vertex+index bytes:   " << scene.getGeometryBytes() / 1024 << " KiB\n";
 
-        for (const auto& [format, count] : stats.mTextureFormats)
-            out << "  " << count << " x " << format << '\n';
+        for (std::size_t at = 0; at < stats.mTextureFormats.size(); ++at)
+        {
+            const Rtx::FormatCount& count = stats.mTextureFormats[at];
+            const auto format = static_cast<Rtx::ImageFormat>(at);
+
+            if (count.mMipped > 0)
+                out << "  " << count.mMipped << " x " << Rtx::nameOf(format) << ", with mips\n";
+            if (count.mMet > count.mMipped)
+                out << "  " << count.mMet - count.mMipped << " x " << Rtx::nameOf(format) << ", one level\n";
+            if (count.mMet > 0 && format == Rtx::ImageFormat::Unnamed)
+                out << "    which was pixel format " << stats.mUnnamedFormat << '\n';
+        }
 
         // Which materials traversal will have to stop and ask about, which of those asked for it
         // outright, and which of them a cutoff cannot answer for at all. The second and third being

@@ -149,42 +149,38 @@ namespace Rtx
                 stateSet.getTextureAttribute(unit, osg::StateAttribute::TEXTURE));
         }
 
-        /// The image's format, as a name a person can act on.
-        std::string describeFormat(const osg::Image& image)
+        /// Counts `image` under its format, and its mips beside it.
+        void countFormat(const osg::Image& image, ExtractionStats& stats)
         {
-            std::string name;
-            switch (image.getPixelFormat())
-            {
-                // One entry for both spellings: whether the file's header claimed alpha decides
-                // nothing, since a BC1 block carries its punch-through bit either way.
-                case GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
-                case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
-                    name = "BC1 (DXT1)";
-                    break;
-                case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
-                    name = "BC2 (DXT3)";
-                    break;
-                case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
-                    name = "BC3 (DXT5)";
-                    break;
-                case GL_RGB:
-                    name = "RGB8";
-                    break;
-                case GL_RGBA:
-                    name = "RGBA8";
-                    break;
-                case GL_LUMINANCE:
-                    name = "L8";
-                    break;
-                case GL_LUMINANCE_ALPHA:
-                    name = "LA8";
-                    break;
-                default:
-                    name = "pixel format " + std::to_string(image.getPixelFormat());
-                    break;
-            }
+            const ImageFormat format = readFormat(image);
 
-            return name + (image.getNumMipmapLevels() > 1 ? ", with mips" : ", one level");
+            FormatCount& count = stats.mTextureFormats[static_cast<std::size_t>(format)];
+            ++count.mMet;
+            if (image.getNumMipmapLevels() > 1)
+                ++count.mMipped;
+
+            if (format == ImageFormat::Unnamed)
+                stats.mUnnamedFormat = static_cast<std::uint32_t>(image.getPixelFormat());
+        }
+
+        /// Every plain counter of `stats`, as one list.
+        ///
+        /// **The one place they are named, and a binding takes every member or none.** A field
+        /// added to `ExtractionStats` and not added here does not compile, which is what keeps the
+        /// sum below from dropping one and reporting a number that is short.
+        auto countersOf(auto& stats)
+        {
+            auto& [meshesAdded, materialsAdded, sheets, composites, meshesReused, materialsReused, instances, deformed,
+                emitters, sprites, skippedUnknown, undescribedMaterials, formats, unnamedFormat, skippedEmpty, lights]
+                = stats;
+
+            // The two the sum owes something other than addition, and so the two left out of it.
+            (void)formats;
+            (void)unnamedFormat;
+
+            return std::array{ &meshesAdded, &materialsAdded, &sheets, &composites, &meshesReused, &materialsReused,
+                &instances, &deformed, &emitters, &sprites, &skippedUnknown, &undescribedMaterials, &skippedEmpty,
+                &lights };
         }
 
         /// A pass's texture matrix for `unit`, as the `uv * xy + zw` the shader wants.
@@ -194,11 +190,13 @@ namespace Rtx
         /// and the translation it picks up is this matrix's last row.
         osg::Vec4f getTextureTransform(const osg::StateSet& stateSet, unsigned int unit)
         {
-            // Terrain binds two units and no more, so the names are spelled rather than built.
-            static constexpr std::array<std::string_view, 2> sNames{ "texMat0", "texMat1" };
+            // Terrain binds two units and no more, so the names are spelled rather than built —
+            // and named once for the process, because `getUniform` asks for a `std::string` and a
+            // ground material is read for every chunk that arrives.
+            static const std::array<std::string, 2> sNames{ "texMat0", "texMat1" };
             assert(unit < sNames.size());
 
-            const osg::Uniform* uniform = stateSet.getUniform(std::string(sNames[unit]));
+            const osg::Uniform* uniform = stateSet.getUniform(sNames[unit]);
             osg::Matrixf matrix;
             if (uniform == nullptr || !uniform->get(matrix))
                 return osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f);
@@ -224,21 +222,20 @@ namespace Rtx
 
     ExtractionStats& ExtractionStats::operator+=(const ExtractionStats& other)
     {
-        mLights += other.mLights;
-        for (const auto& [format, count] : other.mTextureFormats)
-            mTextureFormats[format] += count;
+        const auto sum = countersOf(*this);
+        const auto add = countersOf(other);
+        for (std::size_t at = 0; at < sum.size(); ++at)
+            *sum[at] += *add[at];
 
-        mMeshesAdded += other.mMeshesAdded;
-        mMeshesReused += other.mMeshesReused;
-        mMaterialsAdded += other.mMaterialsAdded;
-        mMaterialsReused += other.mMaterialsReused;
-        mInstances += other.mInstances;
-        mDeformed += other.mDeformed;
-        mEmitters += other.mEmitters;
-        mSprites += other.mSprites;
-        mSkippedUnknown += other.mSkippedUnknown;
-        mUndescribedMaterials += other.mUndescribedMaterials;
-        mSkippedEmpty += other.mSkippedEmpty;
+        for (std::size_t at = 0; at < mTextureFormats.size(); ++at)
+        {
+            mTextureFormats[at].mMet += other.mTextureFormats[at].mMet;
+            mTextureFormats[at].mMipped += other.mTextureFormats[at].mMipped;
+        }
+
+        if (other.mUnnamedFormat != 0)
+            mUnnamedFormat = other.mUnnamedFormat;
+
         return *this;
     }
 
@@ -1240,7 +1237,7 @@ namespace Rtx
         if (mSpriteScratch.empty())
             return;
 
-        ++stats.mTextureFormats[describeFormat(*pending.mSprite)];
+        countFormat(*pending.mSprite, stats);
 
         // **Which way the quad faces, and `osgParticle` offers two answers.** A `BILLBOARD` system's
         // axes are the screen's and are recomputed into view space every frame, which is a disc
@@ -1514,7 +1511,7 @@ namespace Rtx
         if (image == nullptr || image->getFileName().empty())
             return sNoIndex;
 
-        ++stats.mTextureFormats[describeFormat(*image)];
+        countFormat(*image, stats);
         return mScene.addTexture(VFS::Path::Normalized(image->getFileName()));
     }
 

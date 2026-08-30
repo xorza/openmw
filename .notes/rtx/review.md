@@ -9,28 +9,8 @@ only.
 
 Each item describes what is there and what it costs. No item says how to fix it.
 
-## Two constants that must differ are equal, and a sum that drops fields
-
-- [ ] `components/rtxvulkan/shaders/lib/random.glsl:21` `SEED_LAMPS_PANE = 0x53u` and line 26
-      `SEED_LAMPS_MIRROR = 0x53u`. The comment above the second says "Two constants and not one,
-      because two reservoirs seeded alike step the same sequence and keep the same lamps." A pane
-      in front of water (`visibility.comp:98`) and the water's reflection reservoir
-      (`water.glsl:267`) draw from one sequence.
-- [ ] `components/rtx/sceneextractor.cpp` `ExtractionStats::operator+=` sums thirteen fields and
-      omits `mSheets` and `mComposites`.
-      `apps/rtxtool/scene.cpp:498-499` adds the settled walk to the staged walk and prints
-      `mComposites` and `mSheets`. The settled walk's composites and sheets are missing from the
-      report.
-
 ## Work is done per frame that the frame did not change
 
-- [ ] `components/rtx/sceneextractor.cpp` increments
-      `stats.mTextureFormats[describeFormat(*pending.mSprite)]` per emitter per frame. This builds
-      a `std::string` and inserts into a `std::map` on the frame path. `getTextureTransform`
-      builds `std::string(sNames[unit])` per pass. `readMask` calls `image.getColor` per texel.
-- [ ] `components/rtx/moonbuilder.cpp` `makeMoon` constructs `Sky::MoonModel(nameOf(moon))` on
-      every call. The constructor does fallback-map string lookups. `rtxrenderer.cpp` and
-      `apps/rtxtool/lighting.cpp` call it twice per frame.
 - [ ] `components/rtx/scenedesc.cpp` `release()` allocates two `std::vector<char>` on every sweep
       frame. `setMaterial` reclassifies by a scan over every instance. `forEachPlacement` allocates
       a per-mesh box vector on every `getBounds` and `getContentBoundsWithin`.

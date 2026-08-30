@@ -60,6 +60,19 @@ namespace Rtx
             return moon == Moon::Masser ? sMasser : sSecunda;
         }
 
+        /// This moon's clock, built once.
+        ///
+        /// **`MoonModel`'s constructor reads ten `Moons_*` settings by name**, each of them a key
+        /// built on the spot, and both moons are placed on every frame. What it holds is fixed for
+        /// the run: `at` is given the day and the hour and reads nothing else.
+        const Sky::MoonModel& clockOf(Moon moon)
+        {
+            static const Sky::MoonModel sMasser{ nameOf(Moon::Masser) };
+            static const Sky::MoonModel sSecunda{ nameOf(Moon::Secunda) };
+
+            return moon == Moon::Masser ? sMasser : sSecunda;
+        }
+
         /// This moon's colour, on a scale where Masser's luminance is one.
         ///
         /// **The difference in brightness is kept and only the level is taken out.** Secunda's
@@ -150,7 +163,7 @@ namespace Rtx
 
     MoonPlacement makeMoon(Moon moon, int day, float hour, float glare)
     {
-        const Sky::MoonMoment moment = Sky::MoonModel(nameOf(moon)).at(day, hour);
+        const Sky::MoonMoment moment = clockOf(moon).at(day, hour);
 
         return placeMoon(
             moon, moment.mAlongArc, moment.mAxisOffset, static_cast<int>(moment.mPhase), moment.mDaylightFade * glare);

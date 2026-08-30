@@ -183,6 +183,14 @@
         <translation>16</translation>
     </message>
     <message>
+        <source>Replaces the OpenGL renderer with the experimental Vulkan ray tracing renderer. Needs an Ada-class NVIDIA GPU.</source>
+        <translation>Ersätter OpenGL-renderaren med den experimentella Vulkan-renderaren med strålspårning. Kräver ett NVIDIA-grafikkort av Ada-klass.</translation>
+    </message>
+    <message>
+        <source>Experimental Ray Tracing</source>
+        <translation>Experimentell strålspårning</translation>
+    </message>
+    <message>
         <source>Custom:</source>
         <translation>Egen:</translation>
     </message>
@@ -415,6 +423,10 @@ de ordinarie fonterna i Morrowind. Bocka denna ruta om du ändå föredrar ordin
     <message>
         <source>Screen </source>
         <translation>Skärm </translation>
+    </message>
+    <message>
+        <source>This build was made without the ray tracing renderer.</source>
+        <translation>Denna version kompilerades utan strålspårningsrenderaren.</translation>
     </message>
     <message>
         <source>Error receiving resolutions</source>
