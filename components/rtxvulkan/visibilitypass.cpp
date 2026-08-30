@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <components/rtx/bluenoise.hpp>
+#include <components/rtx/shaders/bindings.h>
 
 #include "buffer.hpp"
 #include "commands.hpp"
@@ -34,32 +35,30 @@ namespace Rtx
         constexpr auto sCompute = VK_SHADER_STAGE_COMPUTE_BIT;
         constexpr auto sStorage = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
-        /// Where the tables end and the frame's own block begins.
-        constexpr std::uint32_t sFrameBinding = 20;
-
         /// The structure, the tables a hit reads, the frame itself and the sea, in the order the
         /// shader declares them. The channels the trace writes are not here: `GBuffer` says
         /// why they have a set of their own.
-        constexpr std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> sBindings = [] {
-            std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> declared{};
-            declared[0] = VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, sCompute };
+        constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> sBindings = [] {
+            std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> declared{};
+            declared[Shaders::BIND_SCENE] = VkDescriptorSetLayoutBinding{ Shaders::BIND_SCENE,
+                VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, sCompute };
 
             // One up to the frame are storage buffers: the hit count, then every table in the order
             // `record` writes them.
-            for (std::uint32_t binding = 1; binding < sFrameBinding; ++binding)
+            for (std::uint32_t binding = Shaders::BIND_HITS; binding < Shaders::BIND_FRAME; ++binding)
                 declared[binding] = VkDescriptorSetLayoutBinding{ binding, sStorage, 1, sCompute };
 
-            declared[sFrameBinding]
-                = VkDescriptorSetLayoutBinding{ sFrameBinding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sCompute };
+            declared[Shaders::BIND_FRAME]
+                = VkDescriptorSetLayoutBinding{ Shaders::BIND_FRAME, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sCompute };
 
             // Then the two the sea was synthesised into, one descriptor a cascade.
-            for (std::uint32_t binding = sFrameBinding + 1; binding < sFrameBinding + 3; ++binding)
+            for (const std::uint32_t binding : { Shaders::BIND_WAVE_SURFACE, Shaders::BIND_WAVE_CURVATURE })
                 declared[binding] = VkDescriptorSetLayoutBinding{ binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                     Shaders::WAVE_CASCADES, sCompute };
 
             // And the one the fog's field was drawn into, which is one volume rather than a cascade
             // of tiles: the air has no near band and no far one, it has a field read at three scales.
-            declared[sFrameBinding + 3] = VkDescriptorSetLayoutBinding{ sFrameBinding + 3,
+            declared[Shaders::BIND_FOG_FIELD] = VkDescriptorSetLayoutBinding{ Shaders::BIND_FOG_FIELD,
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, sCompute };
 
             return declared;
@@ -363,29 +362,29 @@ namespace Rtx
               };
 
         // The one write whose payload hangs off `pNext` rather than off a pointer field.
-        append(0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, &sceneWrite, nullptr, nullptr);
+        append(Shaders::BIND_SCENE, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, &sceneWrite, nullptr, nullptr);
 
         for (std::uint32_t i = 0; i < buffers.size(); ++i)
-            appendBuffer(i + 1, buffers[i]);
+            appendBuffer(Shaders::BIND_HITS + i, buffers[i]);
 
-        appendBuffer(13, noiseWrite);
-        appendBuffer(14, shadingWrite);
-        appendBuffer(15, gridWrite);
-        appendBuffer(16, spriteWrite);
-        appendBuffer(17, emitterWrite);
-        appendBuffer(18, tileOffsetWrite);
-        appendBuffer(19, tileIndexWrite);
-        appendUniform(sFrameBinding, frameWrite);
+        appendBuffer(Shaders::BIND_BLUE_NOISE, noiseWrite);
+        appendBuffer(Shaders::BIND_SHADING, shadingWrite);
+        appendBuffer(Shaders::BIND_LIGHT_GRID, gridWrite);
+        appendBuffer(Shaders::BIND_SPRITES, spriteWrite);
+        appendBuffer(Shaders::BIND_EMITTERS, emitterWrite);
+        appendBuffer(Shaders::BIND_SPRITE_TILE_OFFSETS, tileOffsetWrite);
+        appendBuffer(Shaders::BIND_SPRITE_TILE_INDICES, tileIndexWrite);
+        appendUniform(Shaders::BIND_FRAME, frameWrite);
 
         // **Sampled from `GENERAL` rather than moved to a read-only layout**, for the reason
         // `BloomPass` gives: these are written as storage images and read as sampled ones a few
         // dispatches apart, and `GENERAL` is the one layout both accesses are legal from.
-        appendImages(sFrameBinding + 1, surfaces);
-        appendImages(sFrameBinding + 2, curvatures);
+        appendImages(Shaders::BIND_WAVE_SURFACE, surfaces);
+        appendImages(Shaders::BIND_WAVE_CURVATURE, curvatures);
 
         const VkDescriptorImageInfo fogWrite{ inputs.mFog->getSampler(), inputs.mFog->getField().getView(),
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-        append(sFrameBinding + 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, &fogWrite, nullptr);
+        append(Shaders::BIND_FOG_FIELD, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, &fogWrite, nullptr);
 
         // Every binding the layout declares, written exactly once — a shader that grew one and a
         // record that did not is the failure this counts.

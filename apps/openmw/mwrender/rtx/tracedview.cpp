@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
-#include <format>
 #include <variant>
 
 #include <osg/Image>
@@ -11,6 +10,7 @@
 #include <MyGUI_ITexture.h>
 #include <MyGUI_RenderManager.h>
 
+#include <components/myguiplatform/picture.hpp>
 #include <components/myguirtx/texture.hpp>
 #include <components/resource/resourcesystem.hpp>
 
@@ -20,9 +20,6 @@ namespace MWRender
 {
     namespace
     {
-        /// Names have to be unique in MyGUI's own table, and nothing outside ever looks one up.
-        unsigned int sNextName = 0;
-
         std::uint8_t channel(float value)
         {
             return static_cast<std::uint8_t>(std::clamp(value, 0.f, 1.f) * 255.f + 0.5f);
@@ -66,7 +63,8 @@ namespace MWRender
         // What `OffscreenView::getTexture` promises, and what the widgets showing one invert V for.
         mTrace.setRowOrder(Rtx::RowOrder::BottomFirst);
 
-        mTexture = MyGUI::RenderManager::getInstance().createTexture(std::format("rtx offscreen view {}", sNextName++));
+        mTexture
+            = MyGUI::RenderManager::getInstance().createTexture(MyGUIPlatform::uniqueTextureName("rtx offscreen view"));
         mTexture->createManual(
             mWidth, mHeight, MyGUI::TextureUsage::Static | MyGUI::TextureUsage::Write, MyGUI::PixelFormat::R8G8B8A8);
 

@@ -18,10 +18,15 @@
 namespace MyGUIPlatform
 {
 
-    Picture::Picture(std::string_view label)
+    std::string uniqueTextureName(std::string_view label)
     {
         static unsigned int next = 0;
-        mName = std::string(label) + " " + std::to_string(next++);
+        return std::string(label) + " " + std::to_string(next++);
+    }
+
+    Picture::Picture(std::string_view label)
+        : mName(uniqueTextureName(label))
+    {
     }
 
     Picture::~Picture()

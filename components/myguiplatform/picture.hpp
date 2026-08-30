@@ -22,6 +22,13 @@ namespace MyGUIPlatform
 {
     class RegionTexture;
 
+    /// A name nothing else in MyGUI's texture table will have, out of `label`.
+    ///
+    /// **MyGUI keys its textures by name**, so everything that makes one needs a name of its own —
+    /// and one counter for all of them, because two makers counting separately hand out the same
+    /// name the moment they are given the same label.
+    std::string uniqueTextureName(std::string_view label);
+
     /// Pixels the game holds in main memory, in front of the GUI.
     ///
     /// **Renderer-neutral, despite where it lives.** It names MyGUI's own factory and its

@@ -6,8 +6,9 @@
 // Everything the trace is handed, and the three accessors that resolve a global vertex
 // or index id to the block it lives in.
 //
-// **One file, because a binding number is a fact shared with `VisibilityPass` and nothing
-// else here has an opinion about it.** What each channel is *for* is written beside it.
+// **The declarations, and `bindings.h` next door holds the numbers** — set zero's are a fact shared
+// with `VisibilityPass`, which writes the same slots. What each channel is *for* is written here,
+// beside the thing itself.
 //
 // **Four sets, by who made what they name.** Set zero is the frame and the scene's tables, pushed;
 // set one is the bindless textures a scene owns; set two is the channels a `GBuffer` owns, and
@@ -15,6 +16,7 @@
 // holds. The split is not tidiness — the device allows 32 push descriptors and this had reached
 // exactly 32, so every list that keeps growing moved to the owner that already holds it.
 
+#include "bindings.h"
 #include "gbuffer.h"
 #include "scene.h"
 #include "visibility.h"
@@ -22,7 +24,7 @@
 
 #include "texturearray.glsl"
 
-layout(set = 0, binding = 0) uniform accelerationStructureEXT sceneTop;
+layout(set = 0, binding = BIND_SCENE) uniform accelerationStructureEXT sceneTop;
 
 /// Everything already resolved: direct light, emission, the sky, water, and the fog over all of it.
 layout(set = 2, binding = 0, GBUFFER_RADIANCE) uniform writeonly image2D direct;
@@ -32,7 +34,7 @@ layout(set = 2, binding = 0, GBUFFER_RADIANCE) uniform writeonly image2D direct;
 // ran 0.65-0.78 for an identical count. Only 5.5% of rays hit, and the reduction would have cost the
 // device a subgroup-arithmetic requirement it does not otherwise need. Measure again if a pass ever
 // hits most of its pixels.
-layout(set = 0, binding = 1) buffer HitCount
+layout(set = 0, binding = BIND_HITS) buffer HitCount
 {
     uint hits;
 };
@@ -62,17 +64,17 @@ layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer Ind
     uint at[];
 };
 
-layout(set = 0, binding = 2, scalar) readonly buffer NormalBlocks
+layout(set = 0, binding = BIND_NORMALS, scalar) readonly buffer NormalBlocks
 {
     uint64_t normalBlocks[];
 };
 
-layout(set = 0, binding = 3, scalar) readonly buffer TexCoordBlocks
+layout(set = 0, binding = BIND_TEXCOORDS, scalar) readonly buffer TexCoordBlocks
 {
     uint64_t texCoordBlocks[];
 };
 
-layout(set = 0, binding = 4, scalar) readonly buffer IndexBlocks
+layout(set = 0, binding = BIND_INDICES, scalar) readonly buffer IndexBlocks
 {
     uint64_t indexBlocks[];
 };
@@ -92,50 +94,50 @@ uint indexAt(uint element)
     return IndexBlock(indexBlocks[element / INDEX_BLOCK]).at[element % INDEX_BLOCK];
 }
 
-layout(set = 0, binding = 5, scalar) readonly buffer Meshes
+layout(set = 0, binding = BIND_MESHES, scalar) readonly buffer Meshes
 {
     GpuMesh meshes[];
 };
 
-layout(set = 0, binding = 6, scalar) readonly buffer Instances
+layout(set = 0, binding = BIND_INSTANCES, scalar) readonly buffer Instances
 {
     GpuInstance instances[];
 };
 
-layout(set = 0, binding = 7, scalar) readonly buffer Materials
+layout(set = 0, binding = BIND_MATERIALS, scalar) readonly buffer Materials
 {
     GpuMaterial materials[];
 };
 
-layout(set = 0, binding = 8, scalar) readonly buffer Layers
+layout(set = 0, binding = BIND_LAYERS, scalar) readonly buffer Layers
 {
     GpuLayer layers[];
 };
 
-layout(set = 0, binding = 9, scalar) readonly buffer Masks
+layout(set = 0, binding = BIND_MASKS, scalar) readonly buffer Masks
 {
     float masks[];
 };
 
-layout(set = 0, binding = 10, scalar) readonly buffer Lights
+layout(set = 0, binding = BIND_LIGHTS, scalar) readonly buffer Lights
 {
     GpuLight lights[];
 };
 
 /// Where each cell's lamps start, with a sentinel so the last cell's end needs no special case.
-layout(set = 0, binding = 11, scalar) readonly buffer LightOffsets
+layout(set = 0, binding = BIND_LIGHT_OFFSETS, scalar) readonly buffer LightOffsets
 {
     uint lightOffsets[];
 };
 
 /// Every cell's lamps, run together in cell order.
-layout(set = 0, binding = 12, scalar) readonly buffer LightIndices
+layout(set = 0, binding = BIND_LIGHT_INDICES, scalar) readonly buffer LightIndices
 {
     uint lightIndices[];
 };
 
 /// The blue-noise tile, `RANDOM_STREAMS` channels interleaved per pixel. See `Rtx::BlueNoise`.
-layout(set = 0, binding = 13, scalar) readonly buffer BlueNoiseTile
+layout(set = 0, binding = BIND_BLUE_NOISE, scalar) readonly buffer BlueNoiseTile
 {
     float blueNoise[];
 };
@@ -145,7 +147,7 @@ layout(set = 0, binding = 13, scalar) readonly buffer BlueNoiseTile
 layout(set = 2, binding = 6, GBUFFER_DEPTH) uniform writeonly image2D depth;
 
 /// Where the lamps were binned, which is scene geometry rather than camera geometry.
-layout(set = 0, binding = 15, scalar) readonly buffer LightGridBlock
+layout(set = 0, binding = BIND_LIGHT_GRID, scalar) readonly buffer LightGridBlock
 {
     GpuLightGrid grid;
 };
@@ -155,7 +157,7 @@ layout(set = 2, binding = 5, GBUFFER_MOTION) uniform writeonly image2D motion;
 
 /// What each texture already has painted into it, `SHADING_EXTENT` squared factors apiece and one
 /// texture after another. A texture with no estimate holds ones.
-layout(set = 0, binding = 14, scalar) readonly buffer ShadingMaps
+layout(set = 0, binding = BIND_SHADING, scalar) readonly buffer ShadingMaps
 {
     float shading[];
 };
@@ -225,7 +227,7 @@ layout(set = 2, binding = 7, GBUFFER_MOTION) uniform writeonly image2D reflectio
 layout(set = 2, binding = 10, GBUFFER_STARS) uniform writeonly image2D starsShown;
 
 /// Every live particle in the scene, one emitter's run after another's.
-layout(set = 0, binding = 16, scalar) readonly buffer Sprites
+layout(set = 0, binding = BIND_SPRITES, scalar) readonly buffer Sprites
 {
     GpuSprite sprites[];
 };
@@ -235,7 +237,7 @@ layout(set = 0, binding = 16, scalar) readonly buffer Sprites
 /// **No count beside it, because nothing walks these.** The buffer never shrinks, so its length
 /// outlives the cell that filled it — and since the sprite tiles replaced the loop over emitters,
 /// the only way in is from a sprite the tile named, which can only name one that is real.
-layout(set = 0, binding = 17, scalar) readonly buffer Emitters
+layout(set = 0, binding = BIND_EMITTERS, scalar) readonly buffer Emitters
 {
     GpuEmitter emitters[];
 };
@@ -243,14 +245,14 @@ layout(set = 0, binding = 17, scalar) readonly buffer Emitters
 /// Where each screen tile's sprites begin, with a sentinel so the last tile needs no special case.
 ///
 /// `Rtx::SpriteTiles` says why the layer is binned per tile and the emitters are not.
-layout(set = 0, binding = 18, scalar) readonly buffer SpriteTileOffsets
+layout(set = 0, binding = BIND_SPRITE_TILE_OFFSETS, scalar) readonly buffer SpriteTileOffsets
 {
     uint spriteTileOffsets[];
 };
 
 /// Every tile's sprites, run together in tile order and ascending inside each run — which is the
 /// order the march used to walk them in, and so the order they still composite in.
-layout(set = 0, binding = 19, scalar) readonly buffer SpriteTileIndices
+layout(set = 0, binding = BIND_SPRITE_TILE_INDICES, scalar) readonly buffer SpriteTileIndices
 {
     uint spriteTileIndices[];
 };
@@ -264,7 +266,7 @@ layout(set = 0, binding = 19, scalar) readonly buffer SpriteTileIndices
 // **Uniform and not storage**, which is worth 0.14 ms of the trace at Balmora: every pixel reads
 // half of these fields several times over, and a uniform block is promoted to a constant bank the
 // way the push constants it replaces were, where a storage buffer is a memory read like any other.
-layout(set = 0, binding = 20, scalar) uniform Frame
+layout(set = 0, binding = BIND_FRAME, scalar) uniform Frame
 {
     VisibilityConstants frame;
 };
@@ -277,10 +279,10 @@ layout(set = 0, binding = 20, scalar) uniform Frame
 // `tr(H)` are different numbers, and their difference is the curvature the cone threw away.
 
 /// The two slopes, their own second moment, and the elevation squared.
-layout(set = 0, binding = 21) uniform sampler2D waveSurface[WAVE_CASCADES];
+layout(set = 0, binding = BIND_WAVE_SURFACE) uniform sampler2D waveSurface[WAVE_CASCADES];
 
 /// The three curvatures.
-layout(set = 0, binding = 22) uniform sampler2D waveCurvature[WAVE_CASCADES];
+layout(set = 0, binding = BIND_WAVE_CURVATURE) uniform sampler2D waveCurvature[WAVE_CASCADES];
 
 /// The fog's fractal field, drawn once for the life of the device and read at three world scales.
 ///
@@ -292,7 +294,7 @@ layout(set = 0, binding = 22) uniform sampler2D waveCurvature[WAVE_CASCADES];
 /// axis holds one value all the way up, so every bank in it is a column.
 ///
 /// `Rtx::bakeFogNoise` says what is in it, and why every level of the chain carries one spread.
-layout(set = 0, binding = 23) uniform sampler3D fogField;
+layout(set = 0, binding = BIND_FOG_FIELD) uniform sampler3D fogField;
 
 // The air in front of the eye, integrated once for a block of pixels rather than once per pixel.
 // `Rtx::FogVolume` says what each image holds and why there are three pairs of them.

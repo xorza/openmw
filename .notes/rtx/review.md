@@ -28,15 +28,10 @@ Each item describes what is there and what it costs. No item says how to fix it.
       `stormDirection`, `describePatches`. Two assemblies of one frame.
 - [ ] `Buffer`, `HostBuffer`, `ShaderModule` and `DeviceMemory` each write the same move
       constructor, move assignment and `destroy` by hand. Two buffer classes serve one job.
-- [ ] `components/rtxvulkan/visibilitypass.cpp:307-324` names bindings `13`..`19` and
-      `sFrameBinding + 1..3` as literals. `bindings.glsl` declares the same numbers. The two are
-      kept in step by hand and by one `assert(filled == writes.size())`.
 - [ ] `ShotRequest`, `ViewRequest`, `BenchRequest` and `VerifyRequest` each carry the same block
       (shader directory, size, field of view, upscale, preset, delight, filter, exposure, weather,
       hour, day, actors). `main.cpp` `dispatch` fills the block four times by hand (601-618,
       637-670, 705-726, 731-762).
-- [ ] `apps/openmw/mwrender/rtx/tracedview.cpp` keeps its own `sNextName` counter for MyGUI texture
-      names. `MyGUIPlatform::Picture` has a naming scheme for the same purpose.
 
 ## Requirements and code that nothing uses
 
