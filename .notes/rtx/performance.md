@@ -338,12 +338,48 @@ These change no pixel. They are the 1 % low on any route: 4.6 fps today.
 
 10. **A froxel fog volume outdoors.** The per-pixel march integrates the same field, the same
     lamps and the same eight sun probes for every pixel of every frame. A frustum-aligned grid —
-    240×135×64 at 1920×1080 — integrated once per froxel in a compute pass before the trace, with
-    the previous frame's volume reprojected in, and one trilinear fetch per pixel. The interior
-    closed form stays. This is what every shipping volumetric does and the fog's grain is far
-    coarser than a froxel.
+    240×135×64 at 1920×1080 — integrated in a compute pass before the trace, and one trilinear fetch
+    per pixel. The interior closed form stays. This is what every shipping volumetric does and the
+    fog's grain is far coarser than a froxel.
     *Number:* the march is 3.4 ms at noon and 7.6 at dawn (§3.2); a volume costs about a
     millisecond of its own, so −2.5 noon and −6.5 dawn. The largest GPU lever there is.
+
+    **The design, read out of the code.**
+    - **`fogAlong` has exactly one caller** — `visibility.comp`, for the primary ray, from the eye.
+      Nothing else marches. So a view-aligned volume serves every caller there is, and no reflection
+      or shadow path needs a second answer. This is what makes the step small rather than sprawling.
+    - **One dispatch and one image, a thread to a column.** A thread per (x, y) of the grid walks its
+      64 slices in order, carrying `transmittance` and `scattered` exactly as `fogWeatherAlong` does
+      now, and writes the *accumulated* pair into a half-float RGBA 3D image — three channels of
+      light and the transmittance, which is what `fogAlong` already returns. Front-to-back in one
+      pass means no second integration pass and no second image.
+    - **The slices take `fogDepth`'s own `fraction²` curve**, dense near the eye. **They do not
+      keep the sampling the march has**, and the difference is the one thing to look at in the
+      picture: the march spreads its 24 steps over `min(distance, FOG_REACH)`, so a wall at 500
+      units gets all 24 of them inside 500 units, where a volume spanning the whole 30,000 puts
+      about 8 of its 64 slices there. The quadratic curve is what keeps that from being coarse
+      rather than what makes it equal.
+    - **The rays are the win.** Eight sun probes a pixel is 16.6 M rays at 1920×1080 (2.07 M pixels
+      × 8). One a froxel is 2.07 M at 240×135×64, and one per stretch of eight slices — which is
+      what `FOG_SHADOW_RAYS` already means — is 259 K, an eighth of that.
+    - **The lamp reservoir moves with it**: one reservoir and one ray per froxel rather than per
+      pixel-march, which is the same rule at a coarser grain.
+    - **`fogEdgeAlong` stays per pixel.** It is a closed form and costs nothing.
+    - **Not behind a specialisation constant.** `VisibilityVariant` already compiles sixteen kernels
+      and one takes about half a second, so another constant is thirty-two. The volume simply
+      *replaces* the march in the outdoor kernel — `FOG_UNIFORM` still picks the interior closed
+      form, and `fogWeatherAlong` becomes the fetch. Nothing that turns the air off changes.
+    - **Two bindings for one image.** The pass writes it as a storage image in a set of its own; the
+      trace reads it as a sampled image through the pushed set 0, which is where every other input
+      the fog uses already arrives. A barrier between the dispatch and the trace is what orders them.
+    - **The column's ray comes from `rayAt`**, the same call the trace makes from a pixel, so the
+      two cannot disagree about where a column points.
+    - Roughly 500 lines: the 3D image — `Image` already takes a depth and `FogTile` is the one
+      caller that passes one — the pass, the shader, the dispatch and its zone in `renderFrame`, and
+      the fetch in `fog.glsl`. Reprojection is a second
+      stage and only if the noise asks for it.
+    - *Check it with:* `shot` at the ship at noon and at `seyda-neen-ship-dawn`, at the target, for
+      the picture and for the `trace` zone.
 11. **Post at the resolution that shows.** Bloom's pyramid, the exposure histogram and the
     composite run at 3840×2160 for 1.3 ms; bloom from a half-resolution source and the histogram
     from a quarter-resolution one change nothing a viewer sees.
