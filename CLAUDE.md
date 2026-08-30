@@ -74,9 +74,10 @@ taken, which is what makes "does the RT path do this correctly" answerable by co
 `components/rtx*/`, `components/surface/`, `components/myguirtx/`, `apps/rtxtool/`,
 `apps/openmw/mwrender/rtx/`, `apps/components_tests/{rtx,rtxtool,surface}/`, `files/rtx/` and
 `.notes/`. Where the RT path cannot work without touching an upstream file, name the file and the
-change and wait for a go-ahead. What is allowed is lifting shared arithmetic into `components/` so
-both renderers read one answer — `components/sky/` and `components/weather/` are that — with the
-rasterizer still reading what it read before. A gap in upstream's data is met by a hard failure
+change and wait for a go-ahead. What is allowed is lifting shared code into `components/` so both
+hosts read one answer — `components/sky/`, `components/weather/` and `components/sceneutil/vismask.hpp`
+are that — with the rasterizer still reading what it read before. Git shows those lifts as a delete
+and a create unless it is asked for `-M20%`. A gap in upstream's data is met by a hard failure
 naming it, never by a patch to it.
 
 **No merge-back discipline inside the RTX places.** This code is not upstreaming; do not shape it

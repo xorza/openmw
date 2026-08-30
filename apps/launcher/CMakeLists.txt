@@ -72,7 +72,6 @@ target_link_libraries(openmw-launcher
     components_qt
 )
 
-
 target_link_libraries(openmw-launcher Qt::Widgets Qt::Core Qt::Svg)
 
 if (WIN32)
