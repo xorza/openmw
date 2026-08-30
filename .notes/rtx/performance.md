@@ -121,6 +121,12 @@ here. The game is device-bound at this setting like the harness is.
 the worst 276–289 ms, 2.5 s in them over the run — 1.8 reading and 0.7 building. The table above is
 the same route before it.
 
+**And after the terrain view is warmed** (five runs): frame median 6.4–8.3, mean 11.1–12.8, p95
+34.5–35.3, p99 110–112, worst 213–222, 8.9–9.1 fps at the 1 % low. The walk is 3.5–4.2 at the median
+against 4.8–5.0, and its worst frame is 36–37 ms against 90–100. Nineteen crossings, the worst
+203–215 ms, 1.7 s in them — 1.0 reading and 0.7 building. **The same six hundred frames take
+6.7–7.7 s of wall against 9.5–9.9.**
+
 **A crossing is a 100–300 ms frame, and there are nineteen of them.** The median is the still
 frame's median. Everything above p95 is a crossing or the paging in the frames around one. The
 `wait` column stays at 1 ms: the device is idle through all of it. This is a CPU tail.
@@ -143,6 +149,11 @@ worst wait shows.
 *The route holds the height the save left, so it flies inside the hills for a stretch. The trace
 reads 1.4 ms and the GPU rows of this run mean nothing. The crossing and CPU rows are the ones to
 read.*
+
+**After the terrain view is warmed** (three runs): median 7.63–7.66, mean 9.70–9.96, p95 17.5–18.4,
+p99 43–58, worst 198–253, and 17.2–23.1 fps at the 1 % low against 13.6–17.9. The game gains less
+than the harness, because `CellPreloader` had already warmed some of it — and **the worst crossing
+does not reliably move**: 198, 206 and 253 ms against 256–265.
 
 ### 2.6 The game on a route, profiled
 
@@ -299,25 +310,20 @@ These change no pixel. They are the 1 % low on any route: 4.6 fps today.
    fence signals, then swapped. Needs nothing the ring does not already have (`Graveyard`,
    fence-per-frame).
    *Number:* worst crossing 300 → tens of ms; route 1 % low 4.6 → 30+.
-7. **Paging off the walk.** **Measured, and the cause is ours** (§2.6). `Rtx::TerrainResidency`
-   makes a `Terrain::View` of its own and only ever calls `Terrain::World::collect` on it.
-   `CellPreloader` preloads the *camera's* view, not that one — so the RT path's view is always cold
-   and `collect` builds every chunk it wants on the frame it wants it. `Terrain::World::preload` is
-   public, so the fix is a call and not an upstream edit: preload our own view ahead of the eye, and
-   `collect` finds what it needs already built.
-   *Number:* `QuadTreeWorld::collect`, `ObjectPaging::createChunk` and `Optimizer::optimize` leave
-   the main thread's profile; the game's worst crossing falls from 256–265 ms.
-   **The fold's other half waits on this**: `SheetFold::fold` is now one pass, and what is left of
+7. **The paging that is left.** `TerrainResidency` warms its own view on a thread of its own now
+   (§2.4, §2.5), and `QuadTreeWorld::collect` **halved rather than left**: 15.4 % of a route's
+   samples against 27.2 %, with `preload` taking 11.0 % on the warming thread. Two candidates for
+   the remainder, and they want telling apart before either is built. **The lead may be too short** —
+   the thread aims where the eye will be thirty steps on, and sixty measured worse
+   (`TerrainResidency::sLeadSteps` says how). **Or the two race**: the thread and `collect` can want
+   one chunk at once, and nothing says the second finds the first's work rather than repeating it.
+   The plan's other half — a chunk that is not ready is a chunk that is not drawn this frame — needs
+   `Terrain::QuadTreeWorld::loadRenderingNode` able to answer "not yet", which is an upstream change
+   to name and ask for.
+   **The fold's other half waits here too**: `SheetFold::fold` is one pass now, and what is left of
    its cost is that `ObjectPaging` hands the extractor a freshly merged `osg::Geometry` per chunk and
    per level change. The extractor keys meshes on the drawable pointer, so nothing is folded twice —
-   the merge simply has no back-reference to the sources whose answers it could reuse. In the game, `CellPreloader::preloadTerrain` builds the quad tree's
-   chunks and the paged statics on its worker for the player's position, and `TerrainResidency`
-   then finds them in the chunk cache. The harness has no preloader, so *its* crossing pays what
-   the game's does not. First measure the game on a route (`rtxtool travel` in `todo.txt`, or a
-   Lua script flying the player) and split the 119 ms per crossing into what the game also pays
-   (read, instance, mirror, upload) and what only the harness pays (chunk builds). Then give the
-   harness a preloader or stop quoting its paging. Either way `collect()` must stop building
-   chunks on the walk: a chunk that is not ready is a chunk that is not drawn this frame.
+   the merge simply has no back-reference to the sources whose answers it could reuse.
    *Number:* `QuadTreeWorld::collect` under 5 % of a route's profile.
 8. **Estimate a texture once.** `SceneTextures` builds a `ShadingMap` for every arriving texture
    every time it arrives; the composite queue already caches by file. One cache, keyed by
@@ -458,7 +464,7 @@ kernel's shape is settled.
 | step | what | gain | picture | after |
 |---|---|---|---|---|
 | 6 | arrivals on a second queue, no ring drain | at most 5–9 ms of a 260 ms crossing (§2.6) | none | — |
-| 7 | preload the RT path's own terrain view | the main thread's largest cost (§2.6) | none | — |
+| 7 | the paging that is left: lead, race, or "not yet" | `collect` is 15.4 % after halving | none | — |
 | 9 | composite bake on the GPU | a core freed; chunks baked on arrival | none | 6 |
 | 10 | froxel fog volume | −3.4 ms noon, more at dawn | reprojected | — |
 | 11 | post at half resolution | −0.5 ms | none | — |

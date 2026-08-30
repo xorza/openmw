@@ -129,6 +129,11 @@ namespace Terrain
 
         void setActiveGrid(const osg::Vec4i& grid) { mActiveGrid = grid; }
 
+        /// The square `collect` and a cull resolve against, for a caller that has to `preload` the
+        /// same one — `preload` takes it as an argument and would otherwise be warming a different
+        /// set of chunks than the one about to be asked for.
+        const osg::Vec4i& getActiveGrid() const { return mActiveGrid; }
+
     protected:
         Storage* mStorage;
 

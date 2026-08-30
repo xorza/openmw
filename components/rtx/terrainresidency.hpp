@@ -1,6 +1,13 @@
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <stop_token>
+#include <thread>
+
 #include <osg/Vec3f>
+#include <osg/Vec4i>
 #include <osg/ref_ptr>
 
 #include "sceneextractor.hpp"
@@ -24,10 +31,20 @@ namespace Rtx
     ///
     /// **A view of its own, and one view.** Two would be two sets of chunks at two levels of detail
     /// for one frame, which is what the reflection and the primary ray must not disagree about.
+    ///
+    /// **And a second view on a thread, which is what keeps `collect` cheap.** `collect` builds
+    /// whatever it asks for that is not already built — a terrain chunk, and the merge of every
+    /// static standing on it — on the frame that asks. `CellPreloader` warms the *camera's* view and
+    /// only for a destination, so nothing warms this one: measured on a route in the game, the
+    /// paging under `collect` was the largest cost of the main thread's frame after the walk itself.
+    /// The thread here asks for the same square a little ahead of the eye, so the chunks the next
+    /// frames want are built before they are asked for.
     class TerrainResidency final : public Residency
     {
     public:
         TerrainResidency();
+
+        /// Stops the warming thread. A preload in flight is cut short rather than waited out.
         ~TerrainResidency() override;
 
         TerrainResidency(const TerrainResidency&) = delete;
@@ -43,6 +60,30 @@ namespace Rtx
         void collect(osg::NodeVisitor& visitor) override;
 
     private:
+        /// How many view points ahead the warming thread aims.
+        ///
+        /// **Warming where the eye stands buys nothing.** The chunk set changes when the eye crosses
+        /// a level-of-detail boundary, and a thread warming the point `collect` just used has never
+        /// asked for the set on the far side of it — so the frame that crosses still builds. Aiming
+        /// ahead by the distance the eye covered over the last several frames is what puts the build
+        /// before the crossing rather than on it.
+        ///
+        /// **Thirty and not sixty, measured.** Twice the lead warms a square centred further from
+        /// the eye, so it spends the thread on chunks the near levels do not want yet: on the island
+        /// route it moved the median frame from 7.1–7.9 ms to 8.5–9.2 and left the p99 and the worst
+        /// frame where they were.
+        static constexpr float sLeadSteps = 30.0f;
+
+        /// How far ahead that aim may reach, whatever the eye did. A door or a fast travel moves the
+        /// eye a worldspace at a time, and extrapolating that would warm a square nobody is going to
+        /// look at.
+        static constexpr float sLeadLimit = 8192.0f;
+
+        /// Hands the thread the square to warm next, and where to centre it.
+        void ask();
+
+        void warm(std::stop_token stop);
+
         Terrain::World* mTerrain = nullptr;
 
         /// Null for a world that parents its chunks, which is what `createView` answers there. That
@@ -50,6 +91,33 @@ namespace Rtx
         osg::ref_ptr<Terrain::View> mView;
 
         osg::Vec3f mViewPoint;
+
+        /// Where the eye was and what the square was when the thread was last asked. The step
+        /// between two of these is a heading and a speed without anything having to be told either,
+        /// and a step of nothing is an ask worth skipping.
+        osg::Vec3f mLastAsked;
+        osg::Vec4i mLastGrid;
+        bool mAskedOnce = false;
+
+        std::mutex mMutex;
+        std::condition_variable_any mWake;
+
+        /// What the thread is to warm, written under the lock and read once it wakes. A frame that
+        /// asks while it is busy overwrites this rather than queueing, so it always warms the
+        /// newest place and never a backlog of stale ones.
+        osg::Vec3f mWantedPoint;
+        osg::Vec4i mWantedGrid;
+        bool mWanted = false;
+
+        /// **`Terrain::World::preload` is thread safe except into one view from two threads**, so
+        /// the thread fills this one and `collect` fills `mView`.
+        osg::ref_ptr<Terrain::View> mWarmView;
+
+        /// Cuts a preload short where the world is going away. `preload` reads it as it goes.
+        std::atomic<bool> mAbort{ false };
+
+        /// **Last, so it is joined before anything it touches is destroyed.**
+        std::jthread mWorker;
     };
 
 }
