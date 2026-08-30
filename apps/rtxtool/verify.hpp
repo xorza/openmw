@@ -49,7 +49,9 @@ namespace RtxTool
         std::optional<float> mExposure;
 
         std::string mWeather = "Clear";
-        float mHour = 12.0f;
+
+        /// The hour a place stands at where it fixes none of its own. `View::mHour` says which wins.
+        float mHour = sDefaultHour;
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.
         int mDay = 0;

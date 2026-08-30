@@ -12,12 +12,18 @@ changes shape.
   frames after 60 of warm-up. `openmw-rtxtool shot --repeat=100` for one frame's best of 100, which
   is the number an A/B is read from. The in-game bench through `OPENMW_RTX_BENCH=600:120
   release.sh game`.
+- **What a bench row now carries.** The CPU frame split three ways — `walk` is the graph walk the
+  harness does for the game, `wait` is the CPU standing still for the device and `place` is the
+  renderer being told what moved. `gpu ms` carries `blas` on the frames a cell arrived. Each place
+  names the hour it stood at, and the clock and throttle reason the card held as it ended.
 - **CPU profile.** `apps/rtxtool/profile.sh`, which is `perf record -e task-clock -F 5999
   --call-graph fp` over the measured frames only. The reports are in `build-release/perf/`.
-- **GPU profile.** The renderer's own timestamp zones. Neither `nsys` nor `ncu` is installed, so
-  what a pass costs *inside* the trace kernel was measured by removing it: edit one constant or
-  one early return in the shader, rebuild `openmw-rtx-vulkan-shaders`, run `shot`, revert. Every
-  such edit was reverted and the tree is clean.
+- **GPU profile.** The renderer's own timestamp zones, and `nsys` for the timeline — Nsight Systems
+  is installed and the driver lets a non-root user profile
+  (`NVreg_RestrictProfilingToAdminUsers=0`, `/etc/modprobe.d/nvidia-profiling.conf`). `ncu` is not
+  installed, so what a pass costs *inside* the trace kernel is measured by removing it: edit one
+  constant or one early return in the shader, rebuild `openmw-rtx-vulkan-shaders`, run `shot`,
+  revert. That is how §3.2 was taken. Every such edit was reverted and the tree is clean.
 
 **The GPU is power-capped under load.** `nvidia-smi` during a bench reports
 `clocks_throttle_reasons.sw_power_cap = Active` at 1770–1875 MHz and 65–68 °C. Cool, the card runs
@@ -59,6 +65,19 @@ after that, from `build-release/`.
   the same as `d` (5.16 against 5.06–5.47). It is a third of the frame and has no dial.
 - **Post is 1.3 ms at 3840×2160.** Bloom 0.47, tone 0.31, exposure 0.28, composite 0.20, all at
   output resolution.
+
+**The dawn row, which the table above predates.** `views.cfg` has the ship at 6.5 h as
+`seyda-neen-ship-dawn`, taking its camera from the noon view so the two cannot drift apart, and
+`[default]` runs both. Measured on this branch: at 1920×1080 quality the noon ship is 8.19 ms median
+(trace 4.12, 1965–2010 MHz) against dawn's 11.99 (trace 7.53, 2070 MHz) — **the trace goes up 83 %
+for the hour alone**, and the walk sits at 3.7–4.3 ms behind either.
+
+**And a caveat the clock line does not catch.** The 3840×2160 pass of the same suite read noon 18.12
+(trace 9.20) and dawn 26.59 (trace 18.24) at 69–70 °C, on a card that had been benching for four
+minutes — and it read the guild's `upscale` at 9.76 ms against the 5.78 in the table, for identical
+work. That is heat, not a change. **A suite run back to back with another is not comparable with one
+run cold**, and a clock sampled at the two ends of a place does not show it: sample through the run
+if this keeps mattering.
 
 ### 2.2 Harness, one frame, best of 100 (`shot`, ship, 3840×2160 performance)
 
@@ -220,18 +239,6 @@ Priorities as `CLAUDE.md` has them: how it looks, then performance, and *feature
 So the steps that change no picture come first and can land any time; the steps that trade
 quality are listed with what they cost on screen and are the user's call; and every step ends in
 the measurement that says it worked.
-
-### 5.0 Measure the right thing first
-
-1. **A `walk` row in `bench`** beside `place`, timing `PosedActors::step`, and `place` measured
-   after `finishFrame` so it stops carrying the fence wait (`.notes/ISSUES.md`). Without it the
-   largest CPU cost of a moving frame has no number.
-2. **A GPU zone on a crossing's builds** in `SceneAcceleration::extend`, so `gpu ms` says what a
-   crossing costs the device.
-3. **Dawn in the default suite.** `views.cfg` gains the ship at 6.5 h, and it is the row the target
-   is judged on.
-4. **Quote the clock.** `bench` prints `nvidia-smi`'s graphics clock and throttle reason at the end
-   of each place, so a number carries the clock it was taken at.
 
 ### 5.1 The tail — crossings and paging
 
@@ -395,12 +402,11 @@ kernel's shape is settled.
 
 | step | what | gain | picture | after |
 |---|---|---|---|---|
-| 1–4 | walk row, build zone, dawn view, clock in the report | — | — | — |
-| 5 | fold once, without a sort | −2 s of CPU per route | none | 1 |
-| 6 | arrivals on a second queue, no ring drain | worst crossing ÷ 10 | none | 2 |
-| 7 | paging off the walk; measure the game on a route | route 1 % low 4.6 → 30+ | none | 1 |
+| 5 | fold once, without a sort | −2 s of CPU per route | none | — |
+| 6 | arrivals on a second queue, no ring drain | worst crossing ÷ 10 | none | — |
+| 7 | paging off the walk; measure the game on a route | route 1 % low 4.6 → 30+ | none | — |
 | 9 | composite bake on the GPU | a core freed; chunks baked on arrival | none | 6 |
-| 10 | froxel fog volume | −3.4 ms noon, more at dawn | reprojected | 3 |
+| 10 | froxel fog volume | −3.4 ms noon, more at dawn | reprojected | — |
 | 11 | post at half resolution | −0.5 ms | none | — |
 | 8 | texture estimate cache | crossing CPU | none | — |
 | 12 | lamp ray by contribution | −0.3 to −0.6 ms | bounded bias | 10 |

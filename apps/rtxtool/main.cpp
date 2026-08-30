@@ -49,6 +49,7 @@
 #include "validationchoice.hpp"
 #include "verify.hpp"
 #include "view.hpp"
+#include "viewpoint.hpp"
 #include "views.hpp"
 #include "world.hpp"
 
@@ -208,12 +209,34 @@ namespace RtxTool
             };
         }
 
+        /// What `--hour` named, or nothing where it was left at its default. `hourFor` is the rule
+        /// this feeds.
+        std::optional<float> hourGiven(const bpo::variables_map& variables)
+        {
+            if (variables["hour"].defaulted())
+                return std::nullopt;
+
+            return variables["hour"].as<float>();
+        }
+
+        /// `hourFor` over a run's whole list of places: an explicit `--hour` is every place's, and
+        /// none of them keeps its own.
+        void applyHour(const bpo::variables_map& variables, std::vector<View>& views)
+        {
+            const std::optional<float> given = hourGiven(variables);
+            if (!given.has_value())
+                return;
+
+            for (View& view : views)
+                view.mHour = *given;
+        }
+
         /// When and in what weather the region stands, likewise.
-        StagingRequest stagingFrom(const bpo::variables_map& variables)
+        StagingRequest stagingFrom(const bpo::variables_map& variables, float hour)
         {
             StagingRequest request;
             request.mWeather = variables["weather"].as<std::string>();
-            request.mHour = variables["hour"].as<float>();
+            request.mHour = hour;
             request.mDay = variables["day"].as<int>();
             request.mFieldOfView = variables["fov"].as<float>();
 
@@ -340,6 +363,10 @@ namespace RtxTool
 
             std::optional<osg::Vec3f> mOrigin;
             std::optional<osg::Vec3f> mTarget;
+
+            /// Resolved here rather than left to each command, so a view measured at dawn is drawn
+            /// at dawn by every one of them.
+            float mHour = sDefaultHour;
         };
 
         /// Where someone starts when they have said nothing about where: the ship at Seyda Neen,
@@ -394,6 +421,7 @@ namespace RtxTool
                     .mNote = {},
                     .mOrigin = origin,
                     .mTarget = target,
+                    .mHour = hourFor(hourGiven(variables), std::nullopt),
                 };
 
             return Chosen{
@@ -403,6 +431,7 @@ namespace RtxTool
                 .mNote = view->mNote,
                 .mOrigin = origin.has_value() ? origin : view->mOrigin,
                 .mTarget = target.has_value() ? target : view->mTarget,
+                .mHour = hourFor(hourGiven(variables), view->mHour),
             };
         }
 
@@ -449,7 +478,16 @@ namespace RtxTool
         int runListViews(const std::filesystem::path& resources)
         {
             for (const View& view : loadViews(resources / "rtx" / "views.cfg"))
-                out() << "  " << view.mName << "\n      " << view.mCell << "\n      " << view.mNote << '\n';
+            {
+                out() << "  " << view.mName << "\n      " << view.mCell;
+
+                // A place that fixes its hour is a different frame from the same camera at noon, and
+                // this listing is how a view is found.
+                if (view.mHour.has_value())
+                    out() << " at " << clockFace(*view.mHour);
+
+                out() << "\n      " << view.mNote << '\n';
+            }
 
             return 0;
         }
@@ -512,7 +550,7 @@ namespace RtxTool
                 if (cell == nullptr)
                     return 1;
 
-                return runTextures(world, *cell, stagingFrom(variables), actorsFrom(variables),
+                return runTextures(world, *cell, stagingFrom(variables, chosen.mHour), actorsFrom(variables),
                     variables["out"].as<std::string>(), variables["delight"].as<float>());
             }
 
@@ -557,7 +595,7 @@ namespace RtxTool
                 if (cell == nullptr)
                     return 1;
 
-                return runMap(world, *cell, stagingFrom(variables), actorsFrom(variables), request);
+                return runMap(world, *cell, stagingFrom(variables, chosen.mHour), actorsFrom(variables), request);
             }
 
             if (command == "scene")
@@ -574,8 +612,8 @@ namespace RtxTool
                 if (!needle.empty())
                     return runFind(world, *cell, needle);
 
-                return runScene(
-                    world, *cell, stagingFrom(variables), actorsFrom(variables), variables["twice"].as<bool>());
+                return runScene(world, *cell, stagingFrom(variables, chosen.mHour), actorsFrom(variables),
+                    variables["twice"].as<bool>());
             }
 
             if (command == "verify")
@@ -585,6 +623,7 @@ namespace RtxTool
                 VerifyRequest request;
                 request.mViews = chooseViews(
                     loadViews(resources / "rtx" / "views.cfg"), splitNames(variables["views"].as<std::string>()));
+                applyHour(variables, request.mViews);
                 request.mShaderDirectory = resources / "rtx" / "shaders";
                 request.mOut = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
                 request.mAgainst = variables["against"].as<std::string>();
@@ -621,6 +660,7 @@ namespace RtxTool
                 std::string suite;
                 BenchRequest request;
                 request.mViews = chooseBenchViews(variables, resources, suite);
+                applyHour(variables, request.mViews);
                 request.mSuite = suite;
                 request.mShaderDirectory = resources / "rtx" / "shaders";
                 request.mJson = variables["json"].as<std::string>();
@@ -704,7 +744,7 @@ namespace RtxTool
                     request.mPreset = parsePreset(variables["preset"].as<std::string>());
                     request.mDelight = variables["delight"].as<float>();
                     request.mWeather = variables["weather"].as<std::string>();
-                    request.mHour = variables["hour"].as<float>();
+                    request.mHour = chosen.mHour;
                     request.mDay = variables["day"].as<int>();
 
                     return runView(world, chosen.mCell, validation, request, actors);
@@ -727,7 +767,7 @@ namespace RtxTool
                 request.mExposure = parseExposure(variables["exposure"].as<std::string>());
                 request.mDelight = variables["delight"].as<float>();
                 request.mWeather = variables["weather"].as<std::string>();
-                request.mHour = variables["hour"].as<float>();
+                request.mHour = chosen.mHour;
                 request.mDay = variables["day"].as<int>();
                 request.mUpscale = parseUpscale(variables["upscale"].as<std::string>());
                 request.mPreset = parsePreset(variables["preset"].as<std::string>());

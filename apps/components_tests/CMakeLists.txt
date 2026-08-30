@@ -165,6 +165,7 @@ if (OPENMW_RTX)
         rtxtool/contactsheet.cpp
         rtxtool/crossing.cpp
         rtxtool/framing.cpp
+        rtxtool/gpuclock.cpp
         rtxtool/installation.cpp
         rtxtool/lamps.cpp
         rtxtool/material.cpp

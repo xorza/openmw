@@ -9,6 +9,7 @@
 #include <components/rtx/renderer.hpp>
 
 #include "view.hpp"
+#include "views.hpp"
 
 namespace RtxTool
 {
@@ -78,9 +79,17 @@ namespace RtxTool
         if (!spot.mNote.empty())
             block += std::format("note = {}\n", spot.mNote);
 
-        return block
-            + std::format("cell = {}\npos = {}, {}, {}\nlook = {}, {}, {}\n", spot.mCell, spot.mOrigin.x(),
-                spot.mOrigin.y(), spot.mOrigin.z(), spot.mTarget.x(), spot.mTarget.y(), spot.mTarget.z());
+        block += std::format("cell = {}\npos = {}, {}, {}\nlook = {}, {}, {}\n", spot.mCell, spot.mOrigin.x(),
+            spot.mOrigin.y(), spot.mOrigin.z(), spot.mTarget.x(), spot.mTarget.y(), spot.mTarget.z());
+
+        // **The hour only where the window was not at the file's own**, because an hour written down
+        // fixes the place at it. A block pasted from a window flown at dawn has to bring the dawn
+        // with it — the light is most of what the frame is — and one from a window at noon should
+        // leave the view free to be measured at whatever hour a run names.
+        if (spot.mHour != sDefaultHour)
+            block += std::format("hour = {}\n", spot.mHour);
+
+        return block;
     }
 
     std::string describeProfile(const ViewRequest& request, const Rtx::ValidationOptions& validation,

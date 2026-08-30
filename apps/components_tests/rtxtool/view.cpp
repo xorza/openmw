@@ -213,6 +213,29 @@ namespace RtxTool
             ASSERT_TRUE(read.front().mTarget.has_value());
             EXPECT_EQ(*read.front().mOrigin, spot.mOrigin);
             EXPECT_EQ(*read.front().mTarget, spot.mTarget);
+
+            // **Noon writes no hour**, so a view pasted from an ordinary window is still free to be
+            // measured at whatever hour a run names.
+            EXPECT_FALSE(read.front().mHour.has_value()) << describeBlock(spot);
+
+            // **And any other hour writes one**, because the light is most of what the frame is: a
+            // block pasted from a window flown at dawn has to bring the dawn with it.
+            Viewpoint dawn = spot;
+            dawn.mHour = 6.5f;
+
+            const std::filesystem::path second
+                = std::filesystem::temp_directory_path() / "openmw-rtx-viewpoint-dawn.cfg";
+            {
+                std::ofstream out(second);
+                out << describeSpot(dawn) << describeBlock(dawn);
+            }
+
+            const std::vector<View> back = loadViews(second);
+            std::filesystem::remove(second);
+
+            ASSERT_EQ(back.size(), 1u);
+            ASSERT_TRUE(back.front().mHour.has_value());
+            EXPECT_EQ(*back.front().mHour, 6.5f);
         }
 
         /// A window opened by `--cell` has no view to replace, so the block names one after the cell.
@@ -328,6 +351,107 @@ look = 8292, 300, 700
                 readViews(std::string("[start]\ncell = -3,-2\nto = finish\nspeed = quickly\n") + std::string(sEnd)),
                 std::runtime_error)
                 << "a speed that is not a number";
+        }
+
+        /// A place says when it is looked at, and takes where it stands from another place.
+        ///
+        /// **The pair is the point.** A dawn row and a noon row of one camera mean something beside
+        /// each other only where the camera is identical by construction — coordinates copied by
+        /// hand drift the first time either is moved, and the pair then reads two cameras as a
+        /// difference the hour made.
+        TEST(RtxViewsTest, aPlaceFixesItsHourAndTakesItsCameraFromWhatItIsLike)
+        {
+            const std::vector<View> read = readViews(R"(
+[ship]
+cell = -2,-9
+pos = 100, 200, 300
+look = 100, 300, 300
+
+[ship-dawn]
+like = ship
+hour = 6.5
+
+[ship-dusk-from-the-mast]
+like = ship
+pos = 100, 200, 900
+hour = 19.25
+)");
+
+            ASSERT_EQ(read.size(), std::size_t{ 3 });
+
+            // A place that fixes nothing keeps its hour absent, which is what lets a run name one.
+            const View* noon = findView(read, "ship");
+            ASSERT_NE(noon, nullptr);
+            EXPECT_FALSE(noon->mHour.has_value());
+
+            const View* dawn = findView(read, "ship-dawn");
+            ASSERT_NE(dawn, nullptr);
+            ASSERT_TRUE(dawn->mHour.has_value());
+            EXPECT_EQ(*dawn->mHour, 6.5f);
+
+            // The whole camera, taken rather than restated.
+            EXPECT_EQ(dawn->mCell, "-2,-9");
+            ASSERT_TRUE(dawn->mOrigin.has_value());
+            ASSERT_TRUE(dawn->mTarget.has_value());
+            EXPECT_EQ(*dawn->mOrigin, osg::Vec3f(100.0f, 200.0f, 300.0f));
+            EXPECT_EQ(*dawn->mTarget, osg::Vec3f(100.0f, 300.0f, 300.0f));
+
+            // **What a borrower states itself is kept**, so a place may sit somewhere else under
+            // the same cell and the same view of it.
+            const View* mast = findView(read, "ship-dusk-from-the-mast");
+            ASSERT_NE(mast, nullptr);
+            ASSERT_TRUE(mast->mOrigin.has_value());
+            EXPECT_EQ(*mast->mOrigin, osg::Vec3f(100.0f, 200.0f, 900.0f)) << "its own position was overwritten";
+            EXPECT_EQ(*mast->mTarget, osg::Vec3f(100.0f, 300.0f, 300.0f)) << "the look it did not state";
+            EXPECT_EQ(mast->mCell, "-2,-9");
+        }
+
+        /// Every way of writing an hour or a likeness wrong is a refusal.
+        ///
+        /// A view that quietly stood at another hour, or in another place, would report a number
+        /// against a frame nobody asked for — which is the failure this whole file exists to stop.
+        TEST(RtxViewsTest, anHourOrALikenessThatCannotBeMeantIsRefused)
+        {
+            constexpr std::string_view sShip = "[ship]\ncell = -2,-9\npos = 1, 2, 3\nlook = 1, 9, 3\n";
+
+            EXPECT_THROW(readViews(std::string(sShip) + "[dawn]\nlike = ship\nhour = dawn\n"), std::runtime_error)
+                << "an hour that is not a number";
+
+            EXPECT_THROW(readViews(std::string(sShip) + "[dawn]\nlike = ship\nhour = 24\n"), std::runtime_error)
+                << "an hour off the end of the clock";
+
+            EXPECT_THROW(readViews(std::string(sShip) + "[dawn]\nlike = ship\nhour = -1\n"), std::runtime_error)
+                << "an hour before the day began";
+
+            // Midnight and a moment before the next one are both hours of the day.
+            EXPECT_NO_THROW(readViews(std::string(sShip) + "[dark]\nlike = ship\nhour = 0\n"));
+            EXPECT_NO_THROW(readViews(std::string(sShip) + "[late]\nlike = ship\nhour = 23.99\n"));
+
+            EXPECT_THROW(readViews(std::string(sShip) + "[dawn]\nlike = nowhere\n"), std::runtime_error)
+                << "like a view that is not there";
+
+            EXPECT_THROW(readViews("[dawn]\nlike = dawn\n"), std::runtime_error) << "like itself";
+
+            EXPECT_THROW(
+                readViews(std::string(sShip) + "[dawn]\nlike = ship\n[later]\nlike = dawn\n"), std::runtime_error)
+                << "a chain, which would make the order things are read in decide what a view is";
+        }
+
+        /// Which hour wins, which is the one rule the three commands that draw a view all read.
+        TEST(RtxViewsTest, theHourOnTheCommandLineBeatsTheOneAPlaceFixes)
+        {
+            // Neither says anything: noon, the hour a picture of a place is taken at.
+            EXPECT_EQ(hourFor(std::nullopt, std::nullopt), sDefaultHour);
+
+            // Only the place: the place decides, which is what makes a view id one frame.
+            EXPECT_EQ(hourFor(std::nullopt, 6.5f), 6.5f);
+
+            // The command line, over a place that fixes one and over a place that does not.
+            EXPECT_EQ(hourFor(9.0f, 6.5f), 9.0f);
+            EXPECT_EQ(hourFor(9.0f, std::nullopt), 9.0f);
+
+            // And the two disagree, or none of the above says anything.
+            EXPECT_NE(hourFor(std::nullopt, 6.5f), hourFor(9.0f, 6.5f));
         }
 
         /// Where the camera stands part-way along, hand-computed and clamped at the far end.

@@ -26,6 +26,7 @@
 #include "framing.hpp"
 #include "perfcontrol.hpp"
 #include "stagedworld.hpp"
+#include "viewpoint.hpp"
 #include "window.hpp"
 #include "world.hpp"
 
@@ -53,9 +54,9 @@ namespace RtxTool
 
             out() << '\n'
                   << std::format(
-                         "  cell {}   {} instances ({} cutouts)   {:.1f} MiB structures   {} textures, "
+                         "  cell {} at {}   {} instances ({} cutouts)   {:.1f} MiB structures   {} textures, "
                          "{:.1f} MiB\n",
-                         place.mCell, place.mScene.mInstances, place.mScene.mCutoutInstances,
+                         place.mCell, clockFace(place.mHour), place.mScene.mInstances, place.mScene.mCutoutInstances,
                          megabytes(place.mScene.mStructureBytes), place.mScene.mTextureCount,
                          megabytes(place.mScene.mTextureBytes))
                   << std::format("  build {:.0f} ms   {:.1f}% of primary rays hit\n", place.mBuildMs, place.mHitPercent)
@@ -66,7 +67,7 @@ namespace RtxTool
             // **The device's own account of the same frame, medians only.** Six distributions would
             // be a wall; what this row answers is "which of them is the expensive one", and the row
             // above already says how much the whole frame varies.
-            out() << Rtx::describeZones(place.mGpu);
+            out() << Rtx::describeZones(place.mGpu) << describeClock(place.mClock);
 
             // **Only for a route, because a place that stands still has nothing to say here.** The
             // worst is the one to read: a crossing is a dropped frame, and an average over six
@@ -83,6 +84,19 @@ namespace RtxTool
 
             out() << std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", place.mFrames,
                 place.mWallSeconds, place.mFrame.getRate(), place.mFrame.getLowRate());
+        }
+
+        /// Null where nothing answered, so a record taken on a machine with no `nvidia-smi` says it
+        /// carries no clock rather than claiming one of zero.
+        std::string asJson(const GpuClock& clock)
+        {
+            if (!clock.mRead)
+                return "null";
+
+            return std::format(
+                R"({{"lowestMhz": {}, "highestMhz": {}, "memoryMhz": {}, "temperatureC": {}, "throttle": "{}"}})",
+                clock.mLowestMhz, clock.mHighestMhz, clock.mMemoryMhz, clock.mTemperatureC,
+                describeThrottle(clock.mThrottleMask));
         }
 
         std::string asJson(const Rtx::FrameTimes& times)
@@ -115,8 +129,9 @@ namespace RtxTool
             for (std::size_t at = 0; at < places.size(); ++at)
             {
                 const BenchPlace& place = places[at];
-                file << std::format(R"(    {{"view": "{}", "cell": "{}", "instances": {}, "buildMs": {:.2f}, )",
-                    place.mView, place.mCell, place.mScene.mInstances, place.mBuildMs)
+                file << std::format(
+                    R"(    {{"view": "{}", "cell": "{}", "hour": {}, "instances": {}, "buildMs": {:.2f}, )",
+                    place.mView, place.mCell, place.mHour, place.mScene.mInstances, place.mBuildMs)
                      << std::format(R"("frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
                             place.mWallSeconds, place.mHitPercent)
                      << std::format(
@@ -132,7 +147,7 @@ namespace RtxTool
                     file << std::format(R"({}"{}": {})", zone == 0 ? "" : ", ", place.mGpu[zone].mName,
                         asJson(place.mGpu[zone].mTimes));
 
-                file << "}}" << (at + 1 < places.size() ? "," : "") << '\n';
+                file << "}, \"clock\": " << asJson(place.mClock) << "}" << (at + 1 < places.size() ? "," : "") << '\n';
             }
 
             file << "  ]\n}\n";
@@ -263,7 +278,7 @@ namespace RtxTool
                 StagingRequest{
 
                     .mWeather = request.mWeather,
-                    .mHour = request.mHour,
+                    .mHour = view.mHour.value_or(request.mHour),
                     .mDay = request.mDay,
                     .mFieldOfView = request.mFieldOfView,
                     .mOrigin = view.mOrigin,
@@ -306,6 +321,9 @@ namespace RtxTool
             // interior with nothing moving in it never places and never reports one.
             Rtx::GpuBreakdown gpu;
 
+            // Both ends of the measured window, so what it reports bounds the frames between them.
+            GpuClock clock;
+
             std::uint32_t hits = 0;
 
             // Restarted when the warmup ends, so `mWallSeconds` covers the frames `mFrames`
@@ -325,6 +343,13 @@ namespace RtxTool
 
                 if (frame == warmup)
                 {
+                    // **Where the measured frames begin, and again where they end.** One reading is
+                    // one moment: taken only at the end it is a card already climbing off the load,
+                    // and it would print a fast clock over frames drawn at a slower one. Outside
+                    // the wall clock and before `frameStart`, so the process spawn it costs is in
+                    // no frame's time.
+                    clock.add(readGpuClock());
+
                     runStart = Clock::now();
                     profiling.enable();
                 }
@@ -465,6 +490,10 @@ namespace RtxTool
             const Clock::time_point runEnd = Clock::now();
             profiling.disable();
 
+            // After the wall clock above and not before it, so the spawn this costs is outside the
+            // run it describes.
+            clock.add(readGpuClock());
+
             if (frameTimes.empty())
                 break;
 
@@ -479,6 +508,7 @@ namespace RtxTool
                 .mView = view.mName,
                 .mCell = view.mCell,
                 .mNote = view.mNote,
+                .mHour = view.mHour.value_or(request.mHour),
                 .mBuildMs = buildMs,
                 .mFrames = static_cast<std::uint32_t>(frameTimes.size()),
                 .mWallSeconds = std::chrono::duration<double>(runEnd - runStart).count(),
@@ -487,6 +517,7 @@ namespace RtxTool
                 .mWalk = Rtx::summarise(walkTimes),
                 .mPlace = Rtx::summarise(placeTimes),
                 .mGpu = std::vector<Rtx::GpuZone>(zones.begin(), zones.end()),
+                .mClock = clock,
                 .mHitPercent = static_cast<double>(hits) / pixels * 100.0,
                 .mCrossings = crossings,
                 .mCrossRebuilds = crossRebuilds,

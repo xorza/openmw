@@ -10,6 +10,7 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/upscale.hpp>
 
+#include "gpuclock.hpp"
 #include "posedactors.hpp"
 #include "views.hpp"
 #include <components/rtx/frametimes.hpp>
@@ -94,7 +95,9 @@ namespace RtxTool
         std::optional<float> mExposure;
 
         std::string mWeather = "Clear";
-        float mHour = 12.0f;
+
+        /// The hour a place stands at where it fixes none of its own. `View::mHour` says which wins.
+        float mHour = sDefaultHour;
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.
         int mDay = 0;
@@ -115,6 +118,10 @@ namespace RtxTool
         std::string mView;
         std::string mCell;
         std::string mNote;
+
+        /// The hour it stood at. Reported because it is most of what a frame costs: a low sun makes
+        /// every shadow ray long and grazing, and two rows at different hours are not comparable.
+        float mHour = sDefaultHour;
 
         /// What `setScene` cost: every bottom-level structure built and every texture uploaded.
         /// The same cost a cell arriving in the game pays.
@@ -143,6 +150,10 @@ namespace RtxTool
         /// What the device itself says each stretch of the frame cost, most expensive first. Empty
         /// where the device cannot write timestamps.
         std::vector<Rtx::GpuZone> mGpu;
+
+        /// What the card was clocked at as this place ended. Every GPU figure above is at that
+        /// clock, and two runs taken at different ones are not an A/B.
+        GpuClock mClock;
 
         /// What fraction of primary rays hit something, as a percentage. A place profiled facing a
         /// wall is fast and means nothing, and this is what says so without opening a window.

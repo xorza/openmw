@@ -153,6 +153,13 @@ what only a window shows — how something moves, whether an artefact is a still
 **No benching and no frame times until the renderer draws everything the game has.** Land the
 feature, check it with `shot`, and move on.
 
+**Profiling.** `apps/rtxtool/profile.sh` records the CPU with `perf` over the measured frames only.
+Nsight Systems is installed, and this machine's driver lets a non-root user profile the device —
+`/etc/modprobe.d/nvidia-profiling.conf` sets `NVreg_RestrictProfilingToAdminUsers=0` — so a GPU
+timeline is `nsys profile ./openmw-rtxtool bench ...` and needs no sudo. Nsight Compute (`ncu`) is
+not installed, so what a pass costs *inside* the trace kernel is still measured by removing it and
+re-running `shot`. `.notes/rtx/performance.md` §1 is the method and §2 the numbers it produced.
+
 ## Conventions
 
 **C++20, `.clang-format` at 120 columns.** The user's global Rust rules do not apply to this tree;

@@ -130,7 +130,7 @@ namespace RtxTool
             StagedWorld staged(world, *cell,
                 StagingRequest{
                     .mWeather = request.mWeather,
-                    .mHour = request.mHour,
+                    .mHour = view.mHour.value_or(request.mHour),
                     .mDay = request.mDay,
                     .mFieldOfView = request.mFieldOfView,
                     .mOrigin = view.mOrigin,

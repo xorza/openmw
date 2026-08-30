@@ -17,6 +17,8 @@ set(RTXTOOL_FILES
     framehashes.hpp
     framing.cpp
     framing.hpp
+    gpuclock.cpp
+    gpuclock.hpp
     placement.cpp
     placement.hpp
     scene.cpp

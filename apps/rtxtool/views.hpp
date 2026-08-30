@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <osg/Vec3f>
@@ -43,6 +44,13 @@ namespace RtxTool
         Placement at(const Placement& start, float part) const;
     };
 
+    /// The hour a place stands at where neither the view nor the command line names one.
+    ///
+    /// Noon, because it is the hour a picture of a place is taken at. **It is not the hour a budget
+    /// is written against** — a low sun makes every shadow ray long and grazing, and doubles the
+    /// trace — which is why the views the target is judged on fix `hour` themselves.
+    inline constexpr float sDefaultHour = 12.0f;
+
     /// A place worth looking at, by name.
     ///
     /// A view id is the unit of comparison across commits: the same name renders the same frame
@@ -59,12 +67,31 @@ namespace RtxTool
         std::optional<osg::Vec3f> mOrigin;
         std::optional<osg::Vec3f> mTarget;
 
+        /// The hour this place is looked at, or absent for whatever hour the run is at.
+        ///
+        /// **The conditions belong to the place, for the reason the coordinates do.** A view id has
+        /// to name one frame, and a frame at dawn and the same camera at noon are not one frame —
+        /// so a place measured at dawn says so here rather than in whoever remembers to pass
+        /// `--hour`. An `--hour` on the command line still wins, which is the rule every other
+        /// field a view fixes already follows.
+        std::optional<float> mHour;
+
         std::string mNote;
 
         /// Where a bench run flies from here, or absent for a place that stands still. A shot and a
         /// window ignore it: one is a still and the other is flown by hand.
         std::optional<Route> mRoute;
     };
+
+    /// The hour a place stands at, from what the command line named and what the view fixes.
+    ///
+    /// **The command line wins over a view, as it already does for `pos` and `look`.** A view that
+    /// fixes an hour names a condition its frame is about; it does not overrule the person running
+    /// the tool. Noon where neither says anything.
+    ///
+    /// @param given what `--hour` named, or nothing where it was left at its default.
+    /// @param fixed what the view fixes, or nothing where it fixes none.
+    float hourFor(const std::optional<float>& given, const std::optional<float>& fixed);
 
     /// Reads the view file. Throws when it is missing or malformed — a mistyped view should say so
     /// rather than quietly render somewhere else.

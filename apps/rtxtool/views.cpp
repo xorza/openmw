@@ -14,24 +14,90 @@ namespace RtxTool
 {
     namespace
     {
-        float parseSpeed(const std::string& view, const std::string& text)
+        /// A field written as a number, or a throw naming the view, the field and what was written.
+        ///
+        /// **The whole of the text, so a trailing letter is a refusal** rather than a number and a
+        /// shrug: `speed = 1500u` is a typo, and a benchmark that flew at 1500 anyway would report a
+        /// figure nobody asked for.
+        float parseNumber(const std::string& view, std::string_view field, const std::string& text)
         {
             std::size_t read = 0;
-            float speed = 0.0f;
+            float value = 0.0f;
             try
             {
-                speed = std::stof(text, &read);
+                value = std::stof(text, &read);
             }
             catch (const std::exception&)
             {
                 read = 0;
             }
 
-            if (read != text.size() || !(speed > 0.0f))
+            if (read != text.size())
+                throw std::runtime_error(
+                    "view \"" + view + "\" has " + std::string(field) + " \"" + text + "\", which is not a number");
+
+            return value;
+        }
+
+        float parseSpeed(const std::string& view, const std::string& text)
+        {
+            const float speed = parseNumber(view, "speed", text);
+            if (!(speed > 0.0f))
                 throw std::runtime_error("view \"" + view + "\" has speed \"" + text
                     + "\", which is not a positive number of units a second");
 
             return speed;
+        }
+
+        float parseHour(const std::string& view, const std::string& text)
+        {
+            const float hour = parseNumber(view, "hour", text);
+            if (!(hour >= 0.0f) || !(hour < 24.0f))
+                throw std::runtime_error("view \"" + view + "\" has hour \"" + text
+                    + "\", which is not an hour of the day from 0 up to but not including 24");
+
+            return hour;
+        }
+
+        /// Fills each borrower in from the view its `like` names.
+        ///
+        /// **A place at another hour is the same place, and this is what keeps it so.** A dawn row
+        /// and a noon row of one camera mean something beside each other only where the camera is
+        /// identical by construction; coordinates copied by hand drift the first time either is
+        /// moved, and a pair measuring two cameras reads as a difference the hour made.
+        ///
+        /// **One level, and a route is not among what is taken.** The view a `like` names states its
+        /// own place, which leaves no chain to walk and no cycle to detect. A route is left behind
+        /// because flying from a place is a different measurement rather than the same place under
+        /// another light, and a borrower that wants one writes its own.
+        void resolveLikes(std::vector<View>& views, const std::vector<std::pair<std::size_t, std::string>>& likes)
+        {
+            for (const auto& [at, name] : likes)
+            {
+                View& borrower = views[at];
+                if (borrower.mName == name)
+                    throw std::runtime_error("view \"" + borrower.mName + "\" is like itself");
+
+                const auto lent = std::find_if(
+                    likes.begin(), likes.end(), [&](const auto& l) { return views[l.first].mName == name; });
+                if (lent != likes.end())
+                    throw std::runtime_error("view \"" + borrower.mName + "\" is like \"" + name
+                        + "\", which is itself like another view; only a view that states its own place may be lent");
+
+                const View* source = findView(views, name);
+                if (source == nullptr)
+                    throw std::runtime_error(
+                        "view \"" + borrower.mName + "\" is like \"" + name + "\", which is not a view");
+
+                // Written through the vector while `source` points into it, which the check above
+                // makes safe: the two are different views and nothing here resizes.
+                if (borrower.mCell.empty())
+                    borrower.mCell = source->mCell;
+                if (!borrower.mOrigin.has_value())
+                    borrower.mOrigin = source->mOrigin;
+                if (!borrower.mTarget.has_value())
+                    borrower.mTarget = source->mTarget;
+            }
         }
 
         /// Pairs each `to` with the view it names and with the `speed` beside it.
@@ -78,6 +144,11 @@ namespace RtxTool
         }
     }
 
+    float hourFor(const std::optional<float>& given, const std::optional<float>& fixed)
+    {
+        return given.has_value() ? *given : fixed.value_or(sDefaultHour);
+    }
+
     std::vector<View> loadViews(const std::filesystem::path& path)
     {
         Settings::CategorySettingValueMap entries;
@@ -92,6 +163,7 @@ namespace RtxTool
         // yet, so the pairing waits until every section is in.
         std::vector<std::pair<std::size_t, std::string>> ends;
         std::vector<std::pair<std::size_t, float>> speeds;
+        std::vector<std::pair<std::size_t, std::string>> likes;
 
         std::vector<View> views;
         for (const auto& [key, value] : entries)
@@ -115,16 +187,24 @@ namespace RtxTool
                 ends.emplace_back(views.size() - 1, value);
             else if (field == "speed")
                 speeds.emplace_back(views.size() - 1, parseSpeed(section, value));
+            else if (field == "hour")
+                view.mHour = parseHour(section, value);
+            else if (field == "like")
+                likes.emplace_back(views.size() - 1, value);
             else
                 throw std::runtime_error("view \"" + section + "\" has no field called \"" + field + "\"");
         }
 
+        if (views.empty())
+            throw std::runtime_error(Files::pathToUnicodeString(path) + " defines no views");
+
+        // Before the cell is demanded and before a route is paired: a borrower takes both from what
+        // it is like, and either check run first would reject a view that is about to be complete.
+        resolveLikes(views, likes);
+
         for (const View& view : views)
             if (view.mCell.empty())
                 throw std::runtime_error("view \"" + view.mName + "\" names no cell");
-
-        if (views.empty())
-            throw std::runtime_error(Files::pathToUnicodeString(path) + " defines no views");
 
         resolveRoutes(views, ends, speeds);
         return views;

@@ -5,6 +5,8 @@
 
 #include <osg/Vec3f>
 
+#include "views.hpp"
+
 namespace Rtx
 {
     struct ValidationOptions;
@@ -42,8 +44,12 @@ namespace RtxTool
         osg::Vec3f mTarget;
 
         /// As the fallback settings spell it, and a twenty-four hour clock.
+        ///
+        /// **The same default the view file's absent `hour` means**, because `describeBlock` writes
+        /// the hour out only where it differs from it — the two disagreeing would put `hour = 12`
+        /// into every pasted block and fix at noon a place that meant to take the run's hour.
         std::string mWeather;
-        float mHour = 12.0f;
+        float mHour = sDefaultHour;
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.
         int mDay = 0;

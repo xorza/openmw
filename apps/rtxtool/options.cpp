@@ -10,6 +10,8 @@
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
 
+#include "views.hpp"
+
 namespace bpo = boost::program_options;
 
 namespace RtxTool
@@ -155,9 +157,9 @@ namespace RtxTool
             "content files spell it: Clear, Cloudy, Foggy, Overcast, Rain, Thunderstorm, Ashstorm, "
             "Blight, Snow, Blizzard. The ones that drop something drop it here too");
 
-        addOption("hour", bpo::value<float>()->default_value(12.0f),
+        addOption("hour", bpo::value<float>()->default_value(sDefaultHour),
             "what time an exterior's sun is at, on a twenty-four hour clock. An interior is lit "
-            "by its own lamps and does not care");
+            "by its own lamps and does not care. Given, it beats an hour a view fixes for itself");
 
         addOption("day", bpo::value<int>()->default_value(0),
             "which day the world stands on, counted from the one a new game starts — 16 Last Seed, "
