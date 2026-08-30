@@ -16,6 +16,7 @@
 #include <components/misc/constants.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/clusteredlighting.hpp>
+#include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 
 namespace SceneUtil
@@ -154,6 +155,9 @@ namespace SceneUtil
 
         float mActorFade;
 
+        // The animation this light follows, which is also one of its update callbacks.
+        osg::ref_ptr<LightController> mController;
+
         size_t mLastAppliedFrame;
 
         bool mEmpty = false;
@@ -169,6 +173,20 @@ namespace SceneUtil
 
         /// The LightSource will affect objects within this radius.
         void setRadius(float radius) { mRadius = radius; }
+
+        /// Gives this light the animation it follows, and drives it.
+        ///
+        /// **One call, because a light that carried an animation nobody drove would stand still and
+        /// a light driven by one it does not carry could not say what it is doing.** The callback is
+        /// how the rasterizer's frame reaches it; this is how anything else asks what it is.
+        void setController(LightController* controller)
+        {
+            mController = controller;
+            addUpdateCallback(controller);
+        }
+
+        /// What the content said this light does, or null where it said nothing.
+        const LightController* getController() const { return mController; }
 
         /// How far the light reaches, as the content states it.
         ///

@@ -4,7 +4,6 @@
 #include <cstring>
 #include <unordered_map>
 
-#include "callbacks.hpp"
 #include "error.hpp"
 #include "lightbuilder.hpp"
 #include "posecull.hpp"
@@ -978,8 +977,9 @@ namespace Rtx
         SceneUtil::StateSetUpdater* findUpdater(osg::Node& node)
         {
             for (osg::Callback* chain : { node.getCullCallback(), node.getUpdateCallback() })
-                if (auto* updater = findCallback<SceneUtil::StateSetUpdater>(chain))
-                    return updater;
+                for (osg::Callback* callback = chain; callback != nullptr; callback = callback->getNestedCallback())
+                    if (auto* updater = dynamic_cast<SceneUtil::StateSetUpdater*>(callback))
+                        return updater;
 
             return nullptr;
         }

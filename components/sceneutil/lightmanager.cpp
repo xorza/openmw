@@ -666,7 +666,9 @@ namespace SceneUtil
     LightSource::LightSource(const LightSource& copy, const osg::CopyOp& copyop)
         : osg::Node(copy, copyop)
         , mRadius(copy.mRadius)
+        , mSourceRadius(copy.mSourceRadius)
         , mActorFade(copy.mActorFade)
+        , mController(copy.mController)
         , mLastAppliedFrame(copy.mLastAppliedFrame)
     {
         mId = sLightId++;

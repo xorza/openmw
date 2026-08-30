@@ -16,7 +16,6 @@
 #include <components/sky/timeofday.hpp>
 #include <components/weather/downpour.hpp>
 
-#include "callbacks.hpp"
 #include "error.hpp"
 #include "shaders/colour.h"
 #include "shaders/scene.h"
@@ -631,8 +630,7 @@ namespace Rtx
 
     osg::Vec3f lightColour(const SceneUtil::LightSource& source, double simulationTime)
     {
-        const SceneUtil::LightController* animation
-            = findCallback<SceneUtil::LightController>(source.getUpdateCallback());
+        const SceneUtil::LightController* animation = source.getController();
 
         // **The controller's colours where there is one, and the light's own where there is not.**
         // Every light the content places is built by `SceneUtil::createLightSource`, which hands the

@@ -151,7 +151,7 @@ namespace SceneUtil
         if (esmLight.mPulseSlow)
             ctrl->setType(SceneUtil::LightController::LT_PulseSlow);
 
-        lightSource->addUpdateCallback(ctrl);
+        lightSource->setController(ctrl);
 
         return lightSource;
     }
