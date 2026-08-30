@@ -167,7 +167,7 @@ namespace MWRender
         options.mUpscale = *upscale;
         options.mPreset = *preset;
         options.mWindow = mWindow;
-        options.mValidation.mEnabled = Settings::rtx().mValidation;
+        options.mValidation.mEnabled = Rtx::sValidationByDefault;
 
         // **The one place that clears it.** The hit count is a harness figure — `shot` prints it,
         // `bench` reports it, tests assert on it — and nothing in the game ever reads it, so the

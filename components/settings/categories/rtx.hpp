@@ -29,15 +29,6 @@ namespace Settings
         /// a world built to another is a world you cannot see — see `Rtx::distantLandReach`.
         SettingValue<float> mDistantLandCells{ mIndex, "RTX", "distant land cells" };
 
-        /// Loads the Vulkan validation layers and refuses to start on anything they object to.
-        ///
-        /// **No control offers this, on purpose.** It is a developer's diagnostic: it costs a large
-        /// part of the frame rate, it needs layers that are not on a player's machine, and what it
-        /// does when it finds something is stop. It is reached by editing `settings.cfg`, which is
-        /// the audience it has; `openmw-rtxtool --validation` is the same switch for the harness and
-        /// is on there by default outside a Release build.
-        SettingValue<bool> mValidation{ mIndex, "RTX", "validation" };
-
         /// How hard DLSS Ray Reconstruction works, or `off` for none of it.
         ///
         /// A name rather than a number, and unrecognised is refused rather than defaulted — see

@@ -62,24 +62,6 @@ namespace RtxTool
 
         constexpr std::string_view applicationName = "RtxTool";
 
-        /// Whether the validation layers load without anyone asking.
-        ///
-        /// **On outside a Release build**, because the alternative is what this fork just spent an
-        /// afternoon on: a window that stuttered and froze with nothing in the log, whose cause was
-        /// a ray query built with its end behind its start — undefined, silent, and named outright
-        /// by GPU-assisted validation the first time it was switched on. A rule the layers can check
-        /// is one nobody should have to think to check for.
-        ///
-        /// They are not free. GPU-assisted validation instruments every shader and costs roughly
-        /// half the frame rate, and the layers themselves allocate on the frame path, which is why
-        /// the test that counts allocations builds its own device without them. `--validation=false`
-        /// turns them off for a measurement, and a Release build never had them.
-#ifdef OPENMW_RTX_VALIDATION_BY_DEFAULT
-        constexpr bool sValidationByDefault = true;
-#else
-        constexpr bool sValidationByDefault = false;
-#endif
-
         /// Which layers a run wants, from what the command line asked for.
         ///
         /// Shared because `info` and every other command have to agree: a device that reported its
@@ -485,7 +467,7 @@ namespace RtxTool
             const bool hasVerb = argc >= 2 && argv[1][0] != '-';
             const std::string command = hasVerb ? argv[1] : "view";
 
-            bpo::options_description options = makeOptionsDescription(sValidationByDefault);
+            bpo::options_description options = makeOptionsDescription(Rtx::sValidationByDefault);
 
             // Boost skips the first token as the program name; here that token is the verb.
             // Boost skips the first token as the program name; when there is a verb, that token is

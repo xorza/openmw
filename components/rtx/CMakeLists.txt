@@ -119,6 +119,13 @@ add_library(openmw-rtx STATIC ${RTX_FILES} ${RTX_SHADER_HEADERS})
 # `<osg/Vec3f>` — so every consumer needs the include paths this carries.
 target_link_libraries(openmw-rtx PUBLIC components)
 
+# **`PUBLIC`, because the constant it decides is in a header both hosts read.** The layers are on
+# unless this is a Release build, the same condition the debug object names use, and
+# `Rtx::sValidationByDefault` is where that lands. Here rather than on each host, so the game and the
+# harness cannot come to disagree about when a frame is being checked.
+target_compile_definitions(openmw-rtx PUBLIC
+                           $<$<NOT:$<CONFIG:Release>>:OPENMW_RTX_VALIDATION_BY_DEFAULT>)
+
 target_compile_options(openmw-rtx PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
 
 if (BUILD_WITH_CODE_COVERAGE)

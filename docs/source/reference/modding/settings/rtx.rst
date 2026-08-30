@@ -38,13 +38,3 @@ Every setting here is read once, at startup.
 
    A name this does not know is refused rather than quietly defaulted, and a build without
    :code:`-DOPENMW_RTX_DLSS=ON` refuses anything but :code:`off`.
-
-.. omw-setting::
-   :title: validation
-   :type: boolean
-   :range: true, false
-   :default: false
-
-   Load the Vulkan validation layers. A developer setting: with the layers on, any error they report
-   stops the process at the call that caused it, so the renderer cannot limp on producing undefined
-   contents, and the frame rate is not representative of anything. Off costs nothing.

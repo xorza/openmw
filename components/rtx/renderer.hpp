@@ -47,6 +47,33 @@ namespace Rtx
         bool mAbortOnError = true;
     };
 
+    /// Whether the validation layers load without anyone asking.
+    ///
+    /// **On outside a Release build**, because the alternative is what this fork once spent an
+    /// afternoon on: a window that stuttered and froze with nothing in the log, whose cause was a
+    /// ray query built with its end behind its start — undefined, silent, and named outright by
+    /// GPU-assisted validation the first time it was switched on. A rule the layers can check is one
+    /// nobody should have to think to check for.
+    ///
+    /// They are not free. GPU-assisted validation instruments every shader and costs roughly half
+    /// the frame rate, and the layers themselves allocate on the frame path, which is why the test
+    /// that counts allocations builds its own device without them. So a Release build never has
+    /// them, and `openmw-rtxtool --validation=false` turns them off in any other for a measurement.
+    ///
+    /// **The build decides this and nothing else does.** It was a `[RTX] validation` setting, which
+    /// put a developer's diagnostic in a player's configuration file and let the build that numbers
+    /// are quoted from load the layers by leaving a line behind — which is exactly what happened, so
+    /// every in-game figure taken under it was measured through them. The build type is the one
+    /// thing that already says whether this run is being developed or being measured.
+    ///
+    /// One answer for both hosts, out of `openmw-rtx`'s own `PUBLIC` definition: the game and the
+    /// harness disagreeing about when the layers load is two renderers to debug.
+#ifdef OPENMW_RTX_VALIDATION_BY_DEFAULT
+    inline constexpr bool sValidationByDefault = true;
+#else
+    inline constexpr bool sValidationByDefault = false;
+#endif
+
     struct RendererOptions
     {
         /// Where the build wrote the compiled shaders for whichever backend this is.
