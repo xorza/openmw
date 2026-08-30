@@ -61,7 +61,7 @@ namespace Rtx
         /// this one does because building one compiles a shader, would bind a set the pipeline
         /// cannot accept. The count moves to the allocation, where it costs what the scene actually
         /// uses.
-        VkDescriptorSetLayout makeLayout(const Device& device)
+        SetLayout makeLayout(const Device& device)
         {
             const VkDescriptorSetLayoutBinding binding{
                 .binding = 0,
@@ -81,17 +81,7 @@ namespace Rtx
                 .pBindingFlags = &flags,
             };
 
-            const VkDescriptorSetLayoutCreateInfo create{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .pNext = &bindingFlags,
-                .bindingCount = 1,
-                .pBindings = &binding,
-            };
-
-            VkDescriptorSetLayout layout = VK_NULL_HANDLE;
-            checkVk(vkCreateDescriptorSetLayout(device.getHandle(), &create, nullptr, &layout),
-                "vkCreateDescriptorSetLayout");
-            return layout;
+            return SetLayout(device, std::span(&binding, 1), 0, &bindingFlags);
         }
     }
 
@@ -271,6 +261,7 @@ namespace Rtx
     TextureArray::TextureArray(const Device& device, Batch& batch, std::uint32_t slots,
         std::span<const TextureData> textures, Graveyard& graveyard)
         : mDevice(device)
+        , mLayout(makeLayout(device))
     {
         if (slots > sMaxTextures)
             throw Error("a scene with " + std::to_string(slots) + " textures is past the "
@@ -302,7 +293,6 @@ namespace Rtx
         // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
         // is paid once. `extend` then only ever writes the range that is new.
         constexpr std::uint32_t count = sMaxTextures;
-        mLayout = makeLayout(device);
 
         const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count };
         const VkDescriptorPoolCreateInfo describePool{
@@ -320,12 +310,13 @@ namespace Rtx
             .descriptorSetCount = 1,
             .pDescriptorCounts = &count,
         };
+        const VkDescriptorSetLayout named = mLayout.getHandle();
         const VkDescriptorSetAllocateInfo allocate{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
             .pNext = &variable,
             .descriptorPool = mPool,
             .descriptorSetCount = 1,
-            .pSetLayouts = &mLayout,
+            .pSetLayouts = &named,
         };
         checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, &mSet), "vkAllocateDescriptorSets");
 
@@ -466,8 +457,6 @@ namespace Rtx
     {
         if (mPool != VK_NULL_HANDLE)
             vkDestroyDescriptorPool(mDevice.getHandle(), mPool, nullptr);
-        if (mLayout != VK_NULL_HANDLE)
-            vkDestroyDescriptorSetLayout(mDevice.getHandle(), mLayout, nullptr);
         if (mSampler != VK_NULL_HANDLE)
             vkDestroySampler(mDevice.getHandle(), mSampler, nullptr);
     }

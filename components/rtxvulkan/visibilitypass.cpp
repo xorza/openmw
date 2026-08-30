@@ -38,7 +38,7 @@ namespace Rtx
         constexpr std::uint32_t sFrameBinding = 20;
 
         /// The structure, the tables a hit reads, the frame itself and the sea, in the order the
-        /// shader declares them. The channels the trace writes are not here: `GBufferLayout` says
+        /// shader declares them. The channels the trace writes are not here: `GBuffer` says
         /// why they have a set of their own.
         constexpr std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> sBindings = [] {
             std::array<VkDescriptorSetLayoutBinding, sFrameBinding + 4> declared{};
@@ -108,7 +108,7 @@ namespace Rtx
     }
 
     VisibilityPass::VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
-        VkDescriptorSetLayout textureLayout, const GBufferLayout& channelLayout, const FogVolumeLayout& volumeLayout,
+        VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
         bool countHits)
         : mDevice(device)
         , mBlueNoise(uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))

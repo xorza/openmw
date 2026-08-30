@@ -182,6 +182,8 @@ set(RTX_VULKAN_FILES
     sceneacceleration.cpp
     sceneacceleration.hpp
     scenebuffers.cpp
+    setlayout.cpp
+    setlayout.hpp
     scenebuffers.hpp
     shadermodule.cpp
     shadermodule.hpp

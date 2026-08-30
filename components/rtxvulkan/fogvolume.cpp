@@ -43,8 +43,7 @@ namespace Rtx
         }
     }
 
-    FogVolumeLayout::FogVolumeLayout(const Device& device)
-        : mDevice(device)
+    SetLayout FogVolume::describeLayout(const Device& device)
     {
         // Sampled where a pass reads and storage where it writes. One image is named twice wherever
         // both happen, because Vulkan has no one descriptor that is both.
@@ -54,23 +53,11 @@ namespace Rtx
                 sampledAt(binding) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
                 VK_SHADER_STAGE_COMPUTE_BIT, nullptr };
 
-        const VkDescriptorSetLayoutCreateInfo describe{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = static_cast<std::uint32_t>(bindings.size()),
-            .pBindings = bindings.data(),
-        };
-        checkVk(vkCreateDescriptorSetLayout(mDevice.getHandle(), &describe, nullptr, &mHandle),
-            "vkCreateDescriptorSetLayout");
+        return SetLayout(device, bindings);
     }
 
-    FogVolumeLayout::~FogVolumeLayout()
-    {
-        if (mHandle != VK_NULL_HANDLE)
-            vkDestroyDescriptorSetLayout(mDevice.getHandle(), mHandle, nullptr);
-    }
-
-    FogVolume::FogVolume(const Device& device, CommandPool& pool, const FogVolumeLayout& layout, std::uint32_t width,
-        std::uint32_t height)
+    FogVolume::FogVolume(
+        const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width, std::uint32_t height)
         : mDevice(device)
         , mColumns(columnsFor(width))
         , mRows(columnsFor(height))

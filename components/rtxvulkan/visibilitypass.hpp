@@ -20,10 +20,9 @@ namespace Rtx
     class Device;
     class FogTile;
     class FogVolume;
-    class FogVolumeLayout;
     class GBuffer;
-    class GBufferLayout;
     class GpuTimer;
+    class SetLayout;
     class SceneBuffers;
     class WavePass;
 
@@ -130,8 +129,8 @@ namespace Rtx
         ///        it — so it is specialized away rather than branched on, and the game's module
         ///        carries no atomic at all.
         VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
-            VkDescriptorSetLayout textureLayout, const GBufferLayout& channelLayout,
-            const FogVolumeLayout& volumeLayout, bool countHits);
+            VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
+            bool countHits);
 
         VisibilityPass(const VisibilityPass&) = delete;
         VisibilityPass& operator=(const VisibilityPass&) = delete;

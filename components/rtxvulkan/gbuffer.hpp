@@ -6,36 +6,11 @@
 #include <vulkan/vulkan_core.h>
 
 #include "image.hpp"
+#include "setlayout.hpp"
 
 namespace Rtx
 {
     class Device;
-
-    /// What a `GBuffer`'s set is shaped like, held apart from any one of them.
-    ///
-    /// **A layout is a description and a set is an allocation, and the two have different lifetimes
-    /// here.** The channels are built again whenever the frame changes size; the pipeline that
-    /// writes them names this once, when it is created, and a pipeline layout is fixed for good.
-    ///
-    /// **And the channels have a set at all because push descriptors run out.** The device this is
-    /// written against allows 32 of them in a layout, the trace had reached exactly 32, and the
-    /// thing that keeps growing is this list. So the list moved off the counted path — onto the one
-    /// with no per-frame cost at all, since a set written once is bound rather than pushed.
-    class GBufferLayout
-    {
-    public:
-        explicit GBufferLayout(const Device& device);
-        ~GBufferLayout();
-
-        GBufferLayout(const GBufferLayout&) = delete;
-        GBufferLayout& operator=(const GBufferLayout&) = delete;
-
-        VkDescriptorSetLayout getHandle() const { return mHandle; }
-
-    private:
-        const Device& mDevice;
-        VkDescriptorSetLayout mHandle = VK_NULL_HANDLE;
-    };
 
     /// What the trace leaves behind, before anything has decided what the picture looks like.
     ///
@@ -62,7 +37,13 @@ namespace Rtx
         /// numbers.
         static constexpr std::uint32_t sChannels = 11;
 
-        GBuffer(const Device& device, const GBufferLayout& layout, std::uint32_t width, std::uint32_t height);
+        GBuffer(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height);
+
+        /// The set every `GBuffer` is addressed through, made once and outliving all of them.
+        ///
+        /// **Separate from the buffer because a pipeline layout names every set it will ever be
+        /// handed**, and the trace's pipelines are built before any camera has a size.
+        static SetLayout describeLayout(const Device& device);
         ~GBuffer();
 
         GBuffer(const GBuffer&) = delete;

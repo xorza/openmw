@@ -6,33 +6,12 @@
 #include <vulkan/vulkan_core.h>
 
 #include "image.hpp"
+#include "setlayout.hpp"
 
 namespace Rtx
 {
     class CommandPool;
     class Device;
-
-    /// The set a fog volume is addressed through, made once and outliving every volume made against
-    /// it.
-    ///
-    /// **Separate from the volume for the reason `GBufferLayout` gives**: a pipeline layout names
-    /// every set it will ever be handed, and `VisibilityPass` builds its pipelines before any camera
-    /// has a size — so the layout has to exist before the images do.
-    class FogVolumeLayout
-    {
-    public:
-        explicit FogVolumeLayout(const Device& device);
-        ~FogVolumeLayout();
-
-        FogVolumeLayout(const FogVolumeLayout&) = delete;
-        FogVolumeLayout& operator=(const FogVolumeLayout&) = delete;
-
-        VkDescriptorSetLayout getHandle() const { return mHandle; }
-
-    private:
-        const Device& mDevice;
-        VkDescriptorSetLayout mHandle = VK_NULL_HANDLE;
-    };
 
     /// The air in front of the eye, integrated once for a block of pixels rather than once per pixel.
     ///
@@ -74,8 +53,12 @@ namespace Rtx
         ///        it. Its contents are never read — a first frame carries no basis to reproject
         ///        with — so it is laid out and not cleared.
         /// @param width, height the camera's, in pixels. The grid covers them at `FOG_VOLUME_SCALE`.
-        FogVolume(const Device& device, CommandPool& pool, const FogVolumeLayout& layout, std::uint32_t width,
+        FogVolume(const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width,
             std::uint32_t height);
+
+        /// The set every fog volume is addressed through, made once and outliving all of them, for
+        /// the reason `GBuffer::describeLayout` gives.
+        static SetLayout describeLayout(const Device& device);
         ~FogVolume();
 
         FogVolume(const FogVolume&) = delete;

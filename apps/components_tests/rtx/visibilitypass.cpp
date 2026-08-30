@@ -6094,8 +6094,8 @@ namespace Rtx
             const SceneBuffers buffers(device, scene, records, 1, graveyard);
 
             const TextureArray textures(device, setup, 0, {}, graveyard);
-            const GBufferLayout channelLayout(device);
-            const FogVolumeLayout volumeLayout(device);
+            const SetLayout channelLayout = GBuffer::describeLayout(device);
+            const SetLayout volumeLayout = FogVolume::describeLayout(device);
             VisibilityPass pass(
                 device, setup, Testing::getShaderDirectory(), textures.getLayout(), channelLayout, volumeLayout, true);
             setup.flush();

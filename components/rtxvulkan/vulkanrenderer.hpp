@@ -351,18 +351,18 @@ namespace Rtx
         std::unique_ptr<Image> mSum;
 
         /// What every `GBuffer` here is shaped by — one description, however many of them the
-        /// frame's size brings and takes away. `GBufferLayout` says why the channels have a set.
+        /// frame's size brings and takes away. `GBuffer` says why the channels have a set.
         ///
         /// **Declared before both of them**, because the trace's pipeline names it when it is built
         /// and every buffer allocates from it.
-        GBufferLayout mChannelLayout;
+        SetLayout mChannelLayout;
 
         /// What the trace writes and the composite reads: one frame's light, still in pieces.
         std::unique_ptr<GBuffer> mChannels;
 
         /// The same for the air, which is a camera's the way the channels are. Declared before both
         /// volumes for the reason `mChannelLayout` is.
-        FogVolumeLayout mFogVolumeLayout;
+        SetLayout mFogVolumeLayout;
 
         /// Where the frame's air is integrated, one column to a block of pixels.
         std::unique_ptr<FogVolume> mFogVolume;

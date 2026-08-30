@@ -12,6 +12,7 @@
 #include "buffer.hpp"
 #include "hostbuffer.hpp"
 #include "memory.hpp"
+#include "setlayout.hpp"
 
 namespace Rtx
 {
@@ -103,7 +104,7 @@ namespace Rtx
         TextureArray(const TextureArray&) = delete;
         TextureArray& operator=(const TextureArray&) = delete;
 
-        VkDescriptorSetLayout getLayout() const { return mLayout; }
+        VkDescriptorSetLayout getLayout() const { return mLayout.getHandle(); }
         VkDescriptorSet getSet() const { return mSet; }
 
         /// Every texture's shading map, back to back, `SHADING_EXTENT` squared floats apiece.
@@ -141,7 +142,7 @@ namespace Rtx
         std::vector<float> mShadingValues;
         HostBuffer mShading;
         VkSampler mSampler = VK_NULL_HANDLE;
-        VkDescriptorSetLayout mLayout = VK_NULL_HANDLE;
+        SetLayout mLayout;
         VkDescriptorPool mPool = VK_NULL_HANDLE;
         VkDescriptorSet mSet = VK_NULL_HANDLE;
     };

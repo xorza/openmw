@@ -82,7 +82,7 @@ namespace Rtx
         constexpr VkImageUsageFlags sReadable = sUsage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
 
-    GBuffer::GBuffer(const Device& device, const GBufferLayout& layout, std::uint32_t width, std::uint32_t height)
+    GBuffer::GBuffer(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height)
         : mDevice(device)
         , mDirect(device, width, height, sRadiance, sUsage, "g-direct")
         , mIndirect(device, width, height, sRadiance, sReadable, "g-indirect")
@@ -198,27 +198,14 @@ namespace Rtx
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
     }
 
-    GBufferLayout::GBufferLayout(const Device& device)
-        : mDevice(device)
+    SetLayout GBuffer::describeLayout(const Device& device)
     {
         // Every channel is a storage image the trace writes, and channel `i` is binding `i`.
-        std::array<VkDescriptorSetLayoutBinding, GBuffer::sChannels> bindings{};
+        std::array<VkDescriptorSetLayoutBinding, sChannels> bindings{};
         for (std::uint32_t channel = 0; channel < bindings.size(); ++channel)
             bindings[channel] = VkDescriptorSetLayoutBinding{ channel, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
                 VK_SHADER_STAGE_COMPUTE_BIT, nullptr };
 
-        const VkDescriptorSetLayoutCreateInfo describe{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = static_cast<std::uint32_t>(bindings.size()),
-            .pBindings = bindings.data(),
-        };
-        checkVk(vkCreateDescriptorSetLayout(device.getHandle(), &describe, nullptr, &mHandle),
-            "vkCreateDescriptorSetLayout");
-    }
-
-    GBufferLayout::~GBufferLayout()
-    {
-        if (mHandle != VK_NULL_HANDLE)
-            vkDestroyDescriptorSetLayout(mDevice.getHandle(), mHandle, nullptr);
+        return SetLayout(device, bindings);
     }
 }
