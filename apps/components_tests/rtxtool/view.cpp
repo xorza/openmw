@@ -417,6 +417,12 @@ hour = 19.25
             EXPECT_THROW(readViews(std::string(sShip) + "[dawn]\nlike = ship\nhour = dawn\n"), std::runtime_error)
                 << "an hour that is not a number";
 
+            // **The whole of the field, so a number with a letter after it is a typo and not an
+            // hour.** A view that stood at six because `6h` began with a six would report a figure
+            // against a frame nobody asked for.
+            EXPECT_THROW(readViews(std::string(sShip) + "[dawn]\nlike = ship\nhour = 6h\n"), std::runtime_error)
+                << "an hour with a letter after it";
+
             EXPECT_THROW(readViews(std::string(sShip) + "[dawn]\nlike = ship\nhour = 24\n"), std::runtime_error)
                 << "an hour off the end of the clock";
 

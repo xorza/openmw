@@ -1,8 +1,9 @@
 #include "placement.hpp"
 
+#include "parsefloat.hpp"
+
 #include <cmath>
-#include <locale>
-#include <sstream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -73,15 +74,11 @@ namespace RtxTool
             const std::size_t comma = text.find(',');
             const std::string_view field = text.substr(0, comma);
 
-            // Not `std::from_chars`: libc++ ships the floating-point overload only from macOS 26,
-            // and this is a command line, where trailing rubbish has to be rejected rather than
-            // quietly ignored. The classic locale is what keeps the decimal separator a point
-            // wherever this runs, and `eof` is what says the whole field was consumed — the same
-            // question `from_chars` answers with its end pointer.
-            std::istringstream stream{ std::string(field) };
-            stream.imbue(std::locale::classic());
-            if (!(stream >> result[axis]) || !stream.eof())
+            const std::optional<float> value = parseFloat(field);
+            if (!value.has_value())
                 fail();
+
+            result[axis] = *value;
 
             const bool last = axis == 2;
             if ((comma == std::string_view::npos) != last)

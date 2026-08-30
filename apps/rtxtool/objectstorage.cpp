@@ -3,11 +3,7 @@
 #include <algorithm>
 #include <cassert>
 
-#include <components/debug/debuglog.hpp>
-#include <components/esm3/cellref.hpp>
-#include <components/esm3/esmreader.hpp>
 #include <components/esm3/loadcell.hpp>
-#include <components/esm3/readerscache.hpp>
 #include <components/esmloader/esmdata.hpp>
 #include <components/esmloader/lessbyid.hpp>
 
@@ -29,105 +25,14 @@ namespace RtxTool
 
         out.clear();
 
-        const auto typeOf = [&](const ESM::RefId& id) {
-            const auto found = std::lower_bound(
-                mContent->mRefIdTypes.begin(), mContent->mRefIdTypes.end(), id, EsmLoader::LessById{});
-            return found == mContent->mRefIdTypes.end() || found->mId != id ? 0 : static_cast<int>(found->mType);
-        };
-
-        // **Its own, because chunks are built on the paging's working threads.** A cache shared with
-        // the caller would be two threads seeking one file handle. The game's implementation does
-        // the same, for the same reason.
-        ESM::ReadersCache readers;
-
-        for (int cellX = startCell.x(); cellX < startCell.x() + size; ++cellX)
-        {
-            for (int cellY = startCell.y(); cellY < startCell.y() + size; ++cellY)
-            {
-                const ESM::Cell* found = mExteriors->find(cellX, cellY);
-                if (found == nullptr)
-                    continue;
-
-                const ESM::Cell& cell = *found;
-
-                // **What a later content file moved out of this cell.** Only that file carries the
-                // `MVRF`, so a block written by an earlier one still stands the reference where it
-                // used to be — and a chunk that merged it there would have a building in two places.
-                const auto departed = [&](const ESM::RefNum& refNum) {
-                    return std::find(cell.mMovedRefs.begin(), cell.mMovedRefs.end(), refNum) != cell.mMovedRefs.end();
-                };
-
-                for (std::size_t i = 0; i < cell.mContextList.size(); ++i)
-                {
-                    try
-                    {
-                        const ESM::ReadersCache::BusyItem reader
-                            = readers.get(static_cast<std::size_t>(cell.mContextList[i].index));
-                        cell.restore(*reader, static_cast<int>(i));
-
-                        ESM::CellRef ref;
-                        ESM::MovedCellRef movedRef;
-                        bool deleted = false;
-                        bool moved = false;
-                        while (ESM::Cell::getNextRef(
-                            *reader, ref, deleted, movedRef, moved, ESM::Cell::GetNextRefMode::LoadOnlyNotMoved))
-                        {
-                            if (moved)
-                                continue;
-
-                            const int recordType = typeOf(ref.mRefID);
-                            if (!Terrain::pagedType(recordType, size >= 2))
-                                continue;
-                            if (deleted || departed(ref.mRefNum))
-                            {
-                                out.erase(ref.mRefNum);
-                                continue;
-                            }
-
-                            out.insert_or_assign(ref.mRefNum,
-                                Terrain::PagedCellRef{
-                                    .mRefId = ref.mRefID,
-                                    .mRefNum = ref.mRefNum,
-                                    .mPosition = ref.mPos.asVec3(),
-                                    .mRotation = ref.mPos.asRotationVec3(),
-                                    .mScale = ref.mScale,
-                                    .mType = recordType,
-                                });
-                        }
-                    }
-                    catch (const std::exception& e)
-                    {
-                        Log(Debug::Warning) << "Failed to collect references from cell \"" << cell.getDescription()
-                                            << "\": " << e.what();
-                        continue;
-                    }
-                }
-
-                // **And what one moved in**, which this cell's own reference blocks never mention.
-                for (const auto& [leased, deleted] : cell.mLeasedRefs)
-                {
-                    if (deleted)
-                    {
-                        out.erase(leased.mRefNum);
-                        continue;
-                    }
-
-                    const int recordType = typeOf(leased.mRefID);
-                    if (!Terrain::pagedType(recordType, size >= 2))
-                        continue;
-
-                    out.insert_or_assign(leased.mRefNum,
-                        Terrain::PagedCellRef{
-                            .mRefId = leased.mRefID,
-                            .mRefNum = leased.mRefNum,
-                            .mPosition = leased.mPos.asVec3(),
-                            .mRotation = leased.mPos.asRotationVec3(),
-                            .mScale = leased.mScale,
-                            .mType = recordType,
-                        });
-                }
-            }
-        }
+        Terrain::collectPagedRefs(
+            size, startCell, [&](int x, int y) { return mExteriors->find(x, y); },
+            [&](const ESM::RefId& id) {
+                const auto found = std::lower_bound(
+                    mContent->mRefIdTypes.begin(), mContent->mRefIdTypes.end(), id, EsmLoader::LessById{});
+                return found == mContent->mRefIdTypes.end() || found->mId != id ? 0 : static_cast<int>(found->mType);
+            },
+            out);
     }
 
     VFS::Path::Normalized ObjectStorage::getModel(int type, const ESM::RefId& id) const

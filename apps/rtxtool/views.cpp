@@ -1,5 +1,6 @@
 #include "views.hpp"
 
+#include "parsefloat.hpp"
 #include "placement.hpp"
 
 #include <algorithm>
@@ -15,28 +16,14 @@ namespace RtxTool
     namespace
     {
         /// A field written as a number, or a throw naming the view, the field and what was written.
-        ///
-        /// **The whole of the text, so a trailing letter is a refusal** rather than a number and a
-        /// shrug: `speed = 1500u` is a typo, and a benchmark that flew at 1500 anyway would report a
-        /// figure nobody asked for.
         float parseNumber(const std::string& view, std::string_view field, const std::string& text)
         {
-            std::size_t read = 0;
-            float value = 0.0f;
-            try
-            {
-                value = std::stof(text, &read);
-            }
-            catch (const std::exception&)
-            {
-                read = 0;
-            }
-
-            if (read != text.size())
+            const std::optional<float> value = parseFloat(text);
+            if (!value.has_value())
                 throw std::runtime_error(
                     "view \"" + view + "\" has " + std::string(field) + " \"" + text + "\", which is not a number");
 
-            return value;
+            return *value;
         }
 
         float parseSpeed(const std::string& view, const std::string& text)

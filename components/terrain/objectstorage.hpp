@@ -1,6 +1,7 @@
 #ifndef OPENMW_COMPONENTS_TERRAIN_OBJECTSTORAGE_H
 #define OPENMW_COMPONENTS_TERRAIN_OBJECTSTORAGE_H
 
+#include <functional>
 #include <map>
 
 #include <osg/Vec2i>
@@ -10,6 +11,11 @@
 #include <components/esm/refid.hpp>
 #include <components/esm3/refnum.hpp>
 #include <components/vfs/pathutil.hpp>
+
+namespace ESM
+{
+    struct Cell;
+}
 
 namespace Terrain
 {
@@ -55,6 +61,25 @@ namespace Terrain
                 return false;
         }
     }
+
+    /// Every reference that pages in a square of ESM3 exterior cells, merged into `out`.
+    ///
+    /// **The reduction both worlds read one hillside through.** A later content file can move,
+    /// delete or add to what an earlier one placed, and only that file says so — so the blocks are
+    /// read in the order they were written and merged by reference number before anything is drawn.
+    /// Two spellings of that is one world with a building the other has not got.
+    ///
+    /// `out` is added to rather than cleared, so a caller reading more than one worldspace keeps
+    /// what the others found.
+    ///
+    /// @param cellAt the cell at a grid position, or null where the content files define none —
+    ///        open sea, which is skipped rather than missing.
+    /// @param typeOf what record a reference names, which the two worlds answer out of different
+    ///        stores. Read through `std::function` because this runs once per chunk built and
+    ///        never on a frame.
+    void collectPagedRefs(float size, const osg::Vec2i& startCell,
+        const std::function<const ESM::Cell*(int, int)>& cellAt, const std::function<int(const ESM::RefId&)>& typeOf,
+        std::map<ESM::RefNum, PagedCellRef>& out);
 
     /// What `ObjectPaging` asks of the content files.
     ///

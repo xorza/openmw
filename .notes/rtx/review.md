@@ -22,10 +22,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
       (`50000`, `5`, `150000`, light `(-0.3, -0.3, 0.7)`, diffuse `0.7`, ambient `0.3`) and
       `characterpreview.cpp:69` (`12.3f`, the `700`/`71` doll camera). A change to the game's map
       or doll makes `rtxtool map`/`doll` a different picture with nothing to say so.
-- [ ] `apps/rtxtool/objectstorage.cpp` `collectReferences` and `apps/rtxtool/world.cpp`
-      `forEachObject` both implement the moved-ref, leased-ref and deleted-ref reduction over
-      `cell.mContextList`, each with its own `typeOf` and `departed` lambdas.
-      `apps/openmw/mwrender/objectstorage.cpp` is a third copy of the same reduction.
 - [ ] `apps/rtxtool/lighting.cpp` `applyLighting` and `apps/openmw/mwrender/rtx/rtxrenderer.cpp`
       `traceWorld` each assemble an `Rtx::FrameWorld` from the same inputs: `describeStars`,
       `skyBudget`, `makeMoon` for both moons, `fogColour`, `describeClouds` with `deckLight` and
@@ -44,10 +40,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
       (shader directory, size, field of view, upscale, preset, delight, filter, exposure, weather,
       hour, day, actors). `main.cpp` `dispatch` fills the block four times by hand (601-618,
       637-670, 705-726, 731-762).
-- [ ] The harness parses floats two ways: `std::stof` in `views.cpp:23` (locale-dependent) and
-      `std::istringstream` with the classic locale in `placement.cpp:81`. `placement.cpp:76`
-      says `from_chars` is unavailable for floats on libc++; `main.cpp:120` and `world.cpp:368`
-      use `from_chars` for integers.
 - [ ] `apps/openmw/mwrender/rtx/tracedview.cpp` keeps its own `sNextName` counter for MyGUI texture
       names. `MyGUIPlatform::Picture` has a naming scheme for the same purpose.
 

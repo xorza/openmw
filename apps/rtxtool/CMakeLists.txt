@@ -44,6 +44,8 @@ set(RTXTOOL_FILES
     posedactors.hpp
     options.cpp
     options.hpp
+    parsefloat.cpp
+    parsefloat.hpp
     perfcontrol.cpp
     perfcontrol.hpp
     picture.cpp
