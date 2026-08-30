@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## What this is
 
 A fork of OpenMW 0.52 whose purpose is an **experimental ray-traced renderer**. Upstream OpenMW is
@@ -11,19 +9,17 @@ that. What it stops owning is the picture.
 Three documents, and they do not overlap:
 
 - **`.notes/rtx/openmw.md`** — how the host engine is built and where the seams are. Read before
-  touching anything in `apps/openmw/mwrender/`, `components/sceneutil/`, `components/resource/` or
-  the settings plumbing.
+  touching `apps/openmw/mwrender/`, `components/sceneutil/`, `components/resource/` or the settings
+  plumbing.
 - **`.notes/rtx/plan.md`** — the route: the scene-mirroring decision, the milestones, the tooling.
-- **this file** — goals and working rules. Anything that the tree, `--help` or a commit already
-  answers does not belong here.
+- **this file** — goals and working rules. Anything the tree, `--help` or a commit already answers
+  does not belong here.
 
-The reference implementation is **`/home/xxorza/Projects/rtxmw/`** — a Rust Morrowind ray tracer
-with working water, caustics and volumetric fog. Its `docs/design.md` is a long accumulation of
-findings that are mostly about *Morrowind's content* rather than about Rust: ray offsets on sheet
-geometry, discarded outermost transforms, Z-first Euler angles, the pre-lit albedo problem, DLSS
-parameter traps. **Read the relevant section before debugging something that looks already solved.**
-Its shaders are more current than its prose. Its licence is MIT OR Apache-2.0 and it is the same
-author's; this fork is GPLv3.
+**`/home/xxorza/Projects/rtxmw/`** is the reference implementation: a Rust Morrowind ray tracer with
+working water, caustics and volumetric fog. Its `docs/design.md` collects findings about
+*Morrowind's content* — ray offsets on sheet geometry, Z-first Euler angles, the pre-lit albedo
+problem — so read the relevant section before debugging something that looks already solved. Its
+shaders are more current than its prose. Same author, MIT OR Apache-2.0; this fork is GPLv3.
 
 ## Posture
 
@@ -39,111 +35,101 @@ Priorities, in order:
 Nothing else ranks: no mod compatibility, no configurability for its own sake, no portability layer,
 no abstraction over hardware this does not target.
 
-**Feature-complete first, then fast.** Until the renderer draws everything the game has, an
-optimisation is aimed at a frame that is about to change shape, and the measurement justifying it
-has to be taken again anyway. So: land what is missing, note what it costs, and act on the number
-later. The exception is a cost so large it stops the work — a harness too slow to look at, a frame
-too slow to judge — and that is a judgement to state out loud, not a licence.
+**Feature-complete first, then fast.** An optimisation aimed at a frame that is about to change
+shape needs its measurement taken again anyway. Land what is missing, note what it costs, act on the
+number later. The exception is a cost so large it stops the work — a harness too slow to look at —
+and that is a judgement to state out loud, not a licence.
 
 Sports programming — strongest technique over safest, fast path first, delete what stopped earning
 its place, settle arguments by measuring. Nothing here is published, so rewriting beats working
 around.
 
-### What that means against upstream
+## Against upstream
 
-Upstream's constraints are not ours. Where they conflict, ours win.
-
-**Where the two have to meet, priorities in order:**
+Upstream's constraints are not ours. Where they conflict, ours win. Where the two have to meet,
+priorities in order:
 
 1. **A clean seam, and one answer shared with the old renderer.** No hacks: the RT path asks its
    question of whatever holds the answer rather than reverse-engineering where the answer was put,
-   and the two renderers read one description of a thing rather than each deriving its own. A
-   callback chain walked for a type, a `dynamic_cast` standing in for a question, a second copy of a
-   fact the game already states — each of those buys a smaller diff, and none of them is worth it.
+   and the two renderers read one description rather than each deriving its own. A callback chain
+   walked for a type, a `dynamic_cast` standing in for a question, a second copy of a fact the game
+   already states — each buys a smaller diff, and none is worth it.
 2. **The smallest diff against upstream.** What the first does not settle is settled by what a
-   reviewer has to read: fewer upstream files touched, fewer lines in each, and an addition in
+   reviewer has to read: fewer upstream files touched, fewer lines in each, an addition in
    preference to an edit.
 
-- **Two renderers in one binary, one of them chosen at startup — and the other is then never
-  started.** `-DOPENMW_RTX=ON` decides whether the ray tracer is *built*; `[RTX] enabled` decides
-  whether it *runs*, read once before the window exists. Not a refactor of the existing renderer,
-  not a strategy pattern bolted onto `RenderingManager`.
+**Two renderers in one binary, and the one not chosen never starts.** `-DOPENMW_RTX=ON` decides
+whether the ray tracer is *built*; `[RTX] enabled` decides whether it *runs*, read once before the
+window exists — not a refactor of the existing renderer, not a strategy pattern bolted onto
+`RenderingManager`. With it on, **OpenGL is not initialized at all**: no GL context, no `osgViewer`
+window, no interop, no rasterized frame underneath. The window is an SDL surface, the GUI is drawn
+by the backend, and the inventory doll and the maps are traces. OSG stays, as a scene graph and a
+content loader.
 
-  **With it on, OpenGL is not initialized at all** — no GL context, no `osgViewer` graphics window,
-  no interop, no rasterized frame underneath. The window is an SDL surface for Vulkan, the GUI is
-  drawn by Vulkan, and the inventory doll and the maps are traces rather than render-to-texture
-  passes. OSG stays, as a scene graph and a content loader.
+**The rasterizer's behaviour is never changed — a change to it is a bug, including one nobody can
+see.** It is not modified, not wrapped and not conditionally compiled around; it is the path not
+taken, which is what makes "does the RT path do this correctly" answerable by comparison.
 
-  **With it off, the tree behaves exactly as upstream does.** The rasterizer is not modified, not
-  wrapped and not conditionally compiled around — it is simply the path not taken. Keeping it that
-  way is what makes "does the RT path do this correctly" answerable by comparison.
-- **Upstream's files are read-only.** A change lands in the RTX-owned places and nowhere else:
-  `components/rtx*/`, `components/surface/`, `components/myguirtx/`, `apps/rtxtool/`,
-  `apps/openmw/mwrender/rtx/`, `apps/components_tests/{rtx,rtxtool,surface}/`, `files/rtx/` and
-  `.notes/`. Everything else — upstream's source, its tests, its data and its config templates —
-  stays exactly as it is, so a review of this fork sees RTX changes and nothing beside them. Where
-  the RT path cannot work without a change to an upstream file, a lift of shared arithmetic
-  included, name the file and the change and wait for a go-ahead rather than make it. A gap in
-  upstream's data — a config template missing two weathers, say — is met on the RTX side by a hard
-  failure naming it, not by a patch to the template.
-- **No merge-back discipline inside those places.** The RTX code is not upstreaming. Do not shape
-  it around what a GitLab reviewer would accept.
+**Upstream's files are read-only.** A change lands in the RTX-owned places and nowhere else:
+`components/rtx*/`, `components/surface/`, `components/myguirtx/`, `apps/rtxtool/`,
+`apps/openmw/mwrender/rtx/`, `apps/components_tests/{rtx,rtxtool,surface}/`, `files/rtx/` and
+`.notes/`. Where the RT path cannot work without touching an upstream file, name the file and the
+change and wait for a go-ahead. What is allowed is lifting shared arithmetic into `components/` so
+both renderers read one answer — `components/sky/` and `components/weather/` are that — with the
+rasterizer still reading what it read before. A gap in upstream's data is met by a hard failure
+naming it, never by a patch to it.
 
-- **Read the old renderer first, every time.** Before fixing a bug or writing new code in the RT
-  path, find what `apps/openmw/mwrender/gl/` and the components under it already do about the same
-  thing. Morrowind's own feel and content are the target and the ray tracer is what is added on top
-  of them, so a number the game already states beats one derived here, and a behaviour it already
-  has beats one invented here. Most things that look like a gap are a field the RT path stopped
-  carrying.
+**No merge-back discipline inside the RTX places.** This code is not upstreaming; do not shape it
+around what a GitLab reviewer would accept.
 
-  **Its behaviour is never changed — a change to it is a bug**, including a change nobody can see.
-  What is allowed is lifting shared arithmetic out of it into `components/` so the two renderers
-  read one answer instead of two copies, which is what `components/sky/` and `components/weather/`
-  are. The rasterizer keeps reading exactly what it read before.
+**Read the old renderer first, every time.** Before fixing a bug or writing new code in the RT path,
+find what `apps/openmw/mwrender/gl/` and the components under it already do about it. Morrowind's
+own feel is the target: a number the game states beats one derived here, and a behaviour it has
+beats one invented here. Most things that look like a gap are a field the RT path stopped
+carrying.
 
-- **Rasterizer workarounds do not come across.** Render-bin ordering, the transparent pass, the
-  distortion pass, shadow-map tuning — the RT path answers those questions with rays. The line
-  against the rule above is what the workaround is *for*: a fix for how a triangle got onto a
-  screen stays behind, and a decision about what the world looks like comes over.
-- **A missing extension or feature is a hard failure naming it**, never a fallback path.
+**Rasterizer workarounds do not come across.** Render-bin ordering, the transparent pass, the
+distortion pass, shadow-map tuning — the RT path answers those with rays. The line is what the
+workaround is *for*: a fix for how a triangle got onto a screen stays behind, a decision about what
+the world looks like comes over.
 
-### Two renderers
+**A missing extension or feature is a hard failure naming it**, never a fallback path.
+
+## Where the code lives
 
 The picture is reached twice — **Vulkan on Ada-class NVIDIA, Metal on Apple silicon** — as two
-backends behind one API-neutral core, not a portability layer over either (`.notes/rtx/backends.md`).
+backends behind one API-neutral core, not a portability layer over either
+(`.notes/rtx/backends.md`).
 
-Content, light transport and what the scene *is* live in the core, written once. The core carries no
-graphics API and no game headers. What is true of an API lives in its backend, written twice, and
-that cost is paid rather than abstracted away.
+- `components/rtx/` — the core: the scene description, the light transport, what the scene *is*.
+  Written once, and it carries no graphics API and no game headers.
+- `components/rtxvulkan/`, `components/rtxmetal/` — the backends, picked by
+  `components/rtxbackends/`. What is true of an API lives here, written twice, and that cost is paid
+  rather than abstracted away.
+- `components/myguirtx/` — MyGUI's backend. `components/surface/` — what the content says a surface
+  is.
+- `apps/openmw/mwrender/rtx/` — the game-side owner. `apps/rtxtool/` — the harness.
+  `MWRender::Renderer` — the seam against `mwrender/gl/`.
 
 **Each machine develops its own renderer and leaves the other alone.** The backend this box cannot
 run is not built, tested or debugged here; its skipped tests are the result, not a gap to close. The
 core is the exception — a mistake there is one nobody here can see.
 
-### Where it lives, and what a frame does
-
-`components/rtx/` is the core — scene description, no graphics API, no game headers.
-`components/rtxvulkan/` and `components/rtxmetal/` are the backends, picked by
-`components/rtxbackends/`; `components/myguirtx/` is MyGUI's backend, `components/surface/` is what
-the content says a surface is. `apps/openmw/mwrender/rtx/` is the game-side owner, `apps/rtxtool/`
-the harness, and `MWRender::Renderer` the seam against `mwrender/gl/`.
-
 ## Traps
 
-The build is already configured in `build/`; `openmw-rtxtool --help` lists the harness, and the
-`CI/check_*.sh` scripts are the gates. What those do not tell you:
+The build is configured in `build/`, `openmw-rtxtool --help` lists the harness, and `CI/check_*.sh`
+are the gates. What those do not tell you:
 
-- **`bullet-dp`, not `bullet`**, if it ever has to be configured again — OpenMW needs a
+- **`bullet-dp`, not `bullet`**, if it ever has to be configured again: OpenMW needs a
   double-precision Bullet, the two Arch packages conflict, and the single-precision one has to come
   out first.
-- **Never `cmake --build --clean-first`.** Upstream declares `files/lang/*.ts` — translation files in
-  the *source* tree, with thousands of human translations in them — as build byproducts of the
-  `translations` target, so cleaning deletes them and the rebuild regenerates every translation as
-  `type="unfinished"`. `git checkout -- files/lang/` puts them back. Delete the build directory
-  instead if a clean build is really wanted.
+- **Never `cmake --build --clean-first`.** Upstream declares `files/lang/*.ts` — source-tree
+  translation files, thousands of human translations — as byproducts of the `translations` target,
+  so cleaning deletes them and the rebuild marks every translation `type="unfinished"`.
+  `git checkout -- files/lang/` puts them back. Delete the build directory instead.
 - **CI pins clang-format 14**; this box has 22 and they disagree, so run
   `CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh`.
-- **Tests are gtest binaries run directly**, with `--gtest_filter`. There is no ctest registration.
+- **Tests are gtest binaries run directly**, with `--gtest_filter`; there is no ctest registration.
   Tests that need game data **skip** when it is absent and **fail** when the path is set and wrong —
   a silent skip looks like a pass.
 - **`openmw.cfg` already points at the Morrowind install**, so nothing needs `--data`. The harness
@@ -152,21 +138,19 @@ The build is already configured in `build/`; `openmw-rtxtool --help` lists the h
 ## Verification, after changing code and before saying it works
 
 Build the targets you touched, run the test binary that covers them with a filter, then format.
-Building the world to check a one-line change in the harness is waste; so is claiming a change works
+Building the world for a one-line change in the harness is waste; so is claiming a change works
 because it compiled.
 
 **Do not open the game window to check a rendering change.** `openmw-rtxtool shot` renders the real
-renderer headlessly in about a second and prints a summary line — hit fraction, camera, frame time —
-and it takes a camera on the command line, so a hypothesis about one frame can usually be settled
-without a screenshot ever being looked at. `scene` answers "what was the renderer handed" without
-drawing, and `bench` is the only headless path with a moving camera, so it is what reproduces
-anything depending on motion or on cells arriving. `view` is for what only a window shows: how
-something moves, whether an artefact is a still or a shimmer — and `--frames N` lets something that
-cannot click drive it.
+renderer headlessly in about a second, takes a camera on the command line, and prints hit fraction,
+camera and frame time — enough to settle most hypotheses without looking at a picture. `scene`
+answers "what was the renderer handed" without drawing. `bench` is the only headless path with a
+moving camera, so it reproduces anything depending on motion or on cells arriving. `view` is for
+what only a window shows — how something moves, whether an artefact is a still or a shimmer — and
+`--frames N` drives it.
 
-**Do not bench, and do not report frame times, until the renderer draws everything the game has** —
-*Feature-complete first, then fast* taken to its conclusion. Land the feature, check it with `shot`,
-and move on.
+**No benching and no frame times until the renderer draws everything the game has.** Land the
+feature, check it with `shot`, and move on.
 
 ## Conventions
 
@@ -179,14 +163,13 @@ the posture behind them does.
   dividers.
 - **Fix stale narration in code you are already editing**, like fixing indentation on a line you are
   changing. Sweeping files you are not otherwise in is a separate task.
-- **Frame times are uniform, and an average that hides a spike is not an answer.** So work is made
-  *incremental*, never *batched behind a threshold* — a table grows and recycles its slots rather
-  than being compacted when enough of it has died, and a resource is appended rather than rebuilt
-  when it changes. If an operation cannot be made cheap, it belongs off the frame path entirely, not
-  on a rota. Report the p99 and the worst frame beside the median, because those are the ones a
-  player feels.
+- **Frame times are uniform**, and an average that hides a spike is not an answer. Work is
+  *incremental*, never *batched behind a threshold*: a table recycles its slots rather than being
+  compacted once enough of it has died, a resource is appended rather than rebuilt. What cannot be
+  made cheap belongs off the frame path entirely, not on a rota. Report the p99 and the worst frame
+  beside the median — those are the ones a player feels.
 - **Allocation is a metric on the frame path.** Persistent scratch buffers refilled with `clear()`,
-  results into an out-parameter, nothing that constructs a `std::string` or a `std::function` per
-  frame, logging that compiles out. There is a test that enforces this.
+  results into an out-parameter, no `std::string` or `std::function` per frame, logging that
+  compiles out. A test enforces it.
 - **Asserts** guard contracts the code must keep, not data the world might supply. Hot paths use the
   debug-only form; untrusted input is never an assert.
