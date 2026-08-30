@@ -2,9 +2,14 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cmath>
+#include <exception>
+#include <mutex>
 #include <span>
+#include <thread>
+#include <vector>
 
 #include <components/rtx/bluenoise.hpp>
 
@@ -116,60 +121,99 @@ namespace Rtx
         , mModule(shaderDirectory / "visibility.comp.spv")
         , mVolumeModule(shaderDirectory / "fogvolume.comp.spv")
     {
-        // **The three a game actually spends its time in**, compiled here where a load already
-        // stands still rather than on the frame that first asks for one. The day and the night are
-        // the pair a dusk crosses with nothing loading, which is the one transition a hitch would
-        // be seen at.
-        for (const VisibilityVariant common : {
-                 VisibilityVariant{ .mSun = true, .mMoons = false, .mSea = true, .mUniformFog = false },
-                 VisibilityVariant{ .mSun = false, .mMoons = true, .mSea = true, .mUniformFog = false },
-                 VisibilityVariant{ .mSun = false, .mMoons = false, .mSea = false, .mUniformFog = true },
-             })
-        {
-            pipelineFor(common, textureLayout);
-
-            // The interior has no volume, so it gets none: an even air is the one case the closed
-            // form answers and the one case nothing is dispatched for.
-            if (!common.mUniformFog)
-                volumePipelineFor(common, textureLayout);
-        }
+        compileEvery(textureLayout);
     }
 
-    ComputePipeline& VisibilityPass::pipelineFor(const VisibilityVariant variant, VkDescriptorSetLayout textureLayout)
+    void VisibilityPass::compileEvery(VkDescriptorSetLayout textureLayout)
     {
-        std::unique_ptr<ComputePipeline>& held = mPipelines[variant.index()];
-        if (held == nullptr)
+        /// One kernel to make: which tuple, and which of the two modules.
+        struct Wanted
         {
-            // One word per `constant_id`, in the order `lib/variants.glsl` declares them.
-            const std::array<std::uint32_t, 5> specialization{ mCountHits, variant.mSun ? 1u : 0u,
-                variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, variant.mUniformFog ? 1u : 0u };
+            VisibilityVariant mVariant;
+            bool mVolume = false;
+        };
 
-            held = std::make_unique<ComputePipeline>(mDevice, sBindings, 0, laterSets(textureLayout), mModule,
-                variant.describe("visibility"), specialization);
+        std::vector<Wanted> wanted;
+        wanted.reserve(VisibilityVariant::sCount + VisibilityVariant::sCount / 2);
+
+        for (const bool sun : { false, true })
+            for (const bool moons : { false, true })
+                for (const bool sea : { false, true })
+                    for (const bool evenAir : { false, true })
+                    {
+                        const VisibilityVariant variant{
+                            .mSun = sun, .mMoons = moons, .mSea = sea, .mUniformFog = evenAir
+                        };
+                        wanted.push_back(Wanted{ .mVariant = variant });
+
+                        // A room reads the closed form, so it needs no volume and gets no kernel.
+                        if (!evenAir)
+                            wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
+                    }
+
+        std::atomic<std::size_t> next{ 0 };
+        std::mutex kept;
+        std::exception_ptr failed;
+
+        const auto compile = [&] {
+            for (std::size_t at = next++; at < wanted.size(); at = next++)
+            {
+                try
+                {
+                    const VisibilityVariant variant = wanted[at].mVariant;
+                    const bool volume = wanted[at].mVolume;
+
+                    // One word per `constant_id`, in the order `lib/variants.glsl` declares them.
+                    // The volume traces no primary ray, so it counts none whatever the build asked
+                    // for; every other constant it takes is the tuple's own, and no even air ever
+                    // reaches the volume's table.
+                    const std::array<std::uint32_t, 5> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
+                        variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, variant.mUniformFog ? 1u : 0u };
+
+                    auto& table = volume ? mVolumePipelines : mPipelines;
+                    table[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
+                        laterSets(textureLayout), volume ? mVolumeModule : mModule,
+                        variant.describe(volume ? "fog volume" : "visibility"), specialization);
+                }
+                catch (...)
+                {
+                    // **The first failure and not the last**, so the message names what actually
+                    // went wrong rather than whichever thread finished after it.
+                    const std::lock_guard<std::mutex> hold(kept);
+                    if (failed == nullptr)
+                        failed = std::current_exception();
+                }
+            }
+        };
+
+        const std::size_t hands
+            = std::max<std::size_t>(1, std::min<std::size_t>(std::thread::hardware_concurrency(), wanted.size()));
+
+        {
+            std::vector<std::jthread> compiling;
+            compiling.reserve(hands);
+            for (std::size_t hand = 0; hand < hands; ++hand)
+                compiling.emplace_back(compile);
         }
+
+        if (failed != nullptr)
+            std::rethrow_exception(failed);
+    }
+
+    const ComputePipeline& VisibilityPass::pipelineFor(const VisibilityVariant variant) const
+    {
+        const std::unique_ptr<ComputePipeline>& held = mPipelines[variant.index()];
+        assert(held != nullptr && "a tuple `compileEvery` did not make");
 
         return *held;
     }
 
-    ComputePipeline& VisibilityPass::volumePipelineFor(
-        const VisibilityVariant variant, VkDescriptorSetLayout textureLayout)
+    const ComputePipeline* VisibilityPass::volumePipelineFor(const VisibilityVariant variant) const
     {
-        assert(!variant.mUniformFog && "a fog volume for a room, which reads the closed form instead");
+        assert((variant.mUniformFog || mVolumePipelines[variant.index()] != nullptr)
+            && "a banked air with no volume kernel made for it");
 
-        std::unique_ptr<ComputePipeline>& held = mVolumePipelines[variant.index()];
-        if (held == nullptr)
-        {
-            // Nothing here counts hits and nothing here has an even air, so both of those constants
-            // are nought whatever the frame is: the volume is dispatched only where the field has a
-            // shape to integrate, and it traces no primary ray to count.
-            const std::array<std::uint32_t, 5> specialization{ 0u, variant.mSun ? 1u : 0u, variant.mMoons ? 1u : 0u,
-                variant.mSea ? 1u : 0u, 0u };
-
-            held = std::make_unique<ComputePipeline>(mDevice, sBindings, 0, laterSets(textureLayout), mVolumeModule,
-                variant.describe("fog volume"), specialization);
-        }
-
-        return *held;
+        return mVolumePipelines[variant.index()].get();
     }
 
     std::array<VkDescriptorSetLayout, 3> VisibilityPass::laterSets(VkDescriptorSetLayout textureLayout) const
@@ -359,14 +403,14 @@ namespace Rtx
     }
 
     void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer)
+        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer) const
     {
         assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
 
         assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
         assert(inputs.mFog != nullptr && "a trace with no fog field drawn for it");
         assert(inputs.mFogVolume != nullptr && "a trace with no air integrated for it");
-        assert(inputs.mTextureLayout != VK_NULL_HANDLE && "a trace whose texture array named no layout");
+        assert(inputs.mTextures != VK_NULL_HANDLE && "a trace whose texture array named no set");
 
         Shaders::VisibilityConstants described = constants;
 
@@ -391,13 +435,12 @@ namespace Rtx
         // either way and a descriptor names the layout its image is in.
         inputs.mFogVolume->begin(commands);
 
-        if (!variant.mUniformFog)
+        if (const ComputePipeline* air = volumePipelineFor(variant); air != nullptr)
         {
             openZone(timer, commands, "air");
 
-            const ComputePipeline& air = volumePipelineFor(variant, inputs.mTextureLayout);
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, air.getHandle());
-            pushInputs(commands, air, inputs, buffer, hitCount);
+            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, air->getHandle());
+            pushInputs(commands, *air, inputs, buffer, hitCount);
 
             // **Every column the image has and not every column the camera needs.** A traced view is
             // drawn into a volume grown to the largest one asked for, and the pixel at its edge
@@ -413,7 +456,7 @@ namespace Rtx
 
         openZone(timer, commands, "trace");
 
-        const ComputePipeline& pipeline = pipelineFor(variant, inputs.mTextureLayout);
+        const ComputePipeline& pipeline = pipelineFor(variant);
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
         pushInputs(commands, pipeline, inputs, buffer, hitCount);
         vkCmdDispatch(commands, groupsFor(constants.mCamera.mWidth, Shaders::VISIBILITY_WORKGROUP),

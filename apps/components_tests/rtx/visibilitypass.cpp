@@ -6161,7 +6161,6 @@ namespace Rtx
                 .mBuffers = &buffers,
                 .mIndexBlocks = acceleration.getIndexBlocks(),
                 .mTextures = textures.getSet(),
-                .mTextureLayout = textures.getLayout(),
                 .mShading = textures.getShading(),
                 .mWaves = &waves,
                 .mFog = &fog,

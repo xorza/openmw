@@ -46,16 +46,12 @@ namespace Rtx
         VkBuffer mIndexBlocks = VK_NULL_HANDLE;
 
         /// The bindless texture array's set, bound once and not pushed.
-        VkDescriptorSet mTextures = VK_NULL_HANDLE;
-
-        /// The layout that set was allocated with.
         ///
-        /// **Taken fresh every frame for the reason `mIndexBlocks` is.** A scene makes its own
-        /// `TextureArray` and the array makes its own layout, so a rebuild leaves the one this pass
-        /// was constructed with destroyed — and a variant compiled later needs a live handle, since
-        /// a pipeline layout names every set it will ever be handed. A pipeline already made carries
-        /// its own copy of the definition and is not affected.
-        VkDescriptorSetLayout mTextureLayout = VK_NULL_HANDLE;
+        /// **The set and not the layout it came from.** Every array declares the same shape, so a
+        /// set from a later array binds against the pipeline layout the first one produced — and
+        /// `compileEvery` makes every kernel before any frame runs, so no layout handle has to
+        /// survive a scene rebuild to reach a pipeline being built.
+        VkDescriptorSet mTextures = VK_NULL_HANDLE;
 
         /// Every texture's shading map, which the array owns beside the textures themselves.
         VkBuffer mShading = VK_NULL_HANDLE;
@@ -142,8 +138,6 @@ namespace Rtx
 
         /// Records the trace, in whichever kernel this frame calls for.
         ///
-        /// Not `const`, because the tuple it resolves to may be one nothing has compiled yet.
-        ///
         /// @param buffer where the trace leaves its channels, all four in `VK_IMAGE_LAYOUT_GENERAL`
         ///        and at least as large as the frame. It writes a picture no longer: the indirect
         ///        term has to survive to the filter with the albedo still divided out.
@@ -153,14 +147,22 @@ namespace Rtx
         ///        are timed apart — and the pass opens them because it is what decides whether the
         ///        first happens at all.
         void record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer);
+            const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer) const;
 
     private:
-        /// The pipeline for `variant`, compiled on the first frame that asks for one.
-        ComputePipeline& pipelineFor(VisibilityVariant variant, VkDescriptorSetLayout textureLayout);
-
-        /// The same, for the pass that fills the fog volume.
-        ComputePipeline& volumePipelineFor(VisibilityVariant variant, VkDescriptorSetLayout textureLayout);
+        /// Makes every kernel this pass can ever need, before it returns.
+        ///
+        /// **The frame path must not be able to compile, and this is what makes that true.** The
+        /// trace took 2.8 seconds on a cold cache, and a frame that stopped for one held its
+        /// swapchain image and its submitted work for the whole of it: the driver answered with
+        /// `Xid 109, CTX SWITCH TIMEOUT` and reset the device. Two of the four constants turn with
+        /// the hour, so walking the clock walked straight into it.
+        ///
+        /// **In parallel, because the driver's cache is internally synchronised** and the tuples are
+        /// independent. Twenty-four kernels on a cold cache take 6.3 s of wall time against about
+        /// a minute of compiler, and `PipelineCache` outlives the process — so a warm run pays
+        /// nothing and the cold one is a load screen rather than a frame.
+        void compileEvery(VkDescriptorSetLayout textureLayout);
 
         /// The sets bound after the pushed one, in the order both kernels declare them. A pipeline
         /// layout names every set it will ever be handed, and the two kernels are handed the same.
@@ -178,6 +180,13 @@ namespace Rtx
         /// structure, resolves the same alpha out of the same textures, and reads the same lamps.
         void pushInputs(VkCommandBuffer commands, const ComputePipeline& pipeline, const VisibilityInputs& inputs,
             const GBuffer& buffer, const Buffer& hitCount) const;
+
+        /// The kernel for `variant`, which `compileEvery` made.
+        const ComputePipeline& pipelineFor(VisibilityVariant variant) const;
+
+        /// The same, for the pass that fills the fog volume. Null for an even air, which reads the
+        /// closed form and dispatches no volume.
+        const ComputePipeline* volumePipelineFor(VisibilityVariant variant) const;
 
         const Device& mDevice;
 
@@ -209,17 +218,10 @@ namespace Rtx
         std::filesystem::path mModule;
         std::filesystem::path mVolumeModule;
 
-        /// One pipeline per tuple, and most of them never made.
-        ///
-        /// **Compiled on the frame that first asks, and three of them ahead of any frame at all.**
-        /// This kernel takes about half a second to compile on a cold pipeline cache, and a frame
-        /// that stops for one is a stop the player sees — so the exterior day, the exterior night
-        /// and the interior are made at construction, which is a load. The rest are the odd hours
-        /// and the odd cells, and they cost their hitch once per build: `PipelineCache` outlives the
-        /// process and every run after the first finds them.
+        /// One pipeline per tuple, every one of them made by `compileEvery`.
         std::array<std::unique_ptr<ComputePipeline>, VisibilityVariant::sCount> mPipelines;
 
-        /// The same table for the volume, of which only the half with `mUniformFog` false is ever
+        /// The same table for the volume, of which only the half with `mUniformFog` false is
         /// filled: a room reads the closed form and no volume is dispatched for it.
         std::array<std::unique_ptr<ComputePipeline>, VisibilityVariant::sCount> mVolumePipelines;
     };
