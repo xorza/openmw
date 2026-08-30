@@ -1,4 +1,9 @@
 #include <array>
+#include <cstddef>
+#include <random>
+#include <span>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -85,6 +90,133 @@ namespace Rtx
             std::vector<std::uint32_t> none;
             EXPECT_FALSE(fold.fold(sCard, none));
             EXPECT_TRUE(none.empty());
+        }
+
+        /// The rule, written again the slow obvious way, for the cross-check below.
+        ///
+        /// **Independent of the real one on purpose.** It compares every triangle against every
+        /// other rather than looking a spelling up, and it rotates corners with a sort rather than
+        /// with an index — so the two agree only where the rule they share is the rule, and not
+        /// because they share a mistake.
+        struct Reference
+        {
+            static std::array<osg::Vec3f, 3> spelling(const osg::Vec3f& a, const osg::Vec3f& b, const osg::Vec3f& c)
+            {
+                const auto lower = [](const osg::Vec3f& l, const osg::Vec3f& r) {
+                    return std::make_tuple(l.x(), l.y(), l.z()) < std::make_tuple(r.x(), r.y(), r.z());
+                };
+
+                std::array<osg::Vec3f, 3> rotated{ a, b, c };
+                for (int turn = 0; turn < 2; ++turn)
+                    if (lower(rotated[1], rotated[0]) || lower(rotated[2], rotated[0]))
+                        rotated = { rotated[1], rotated[2], rotated[0] };
+
+                return rotated;
+            }
+
+            /// The indices that survive, and whether every triangle was one of a pair.
+            static std::pair<std::vector<std::uint32_t>, bool> fold(
+                std::span<const osg::Vec3f> positions, const std::vector<std::uint32_t>& indices)
+            {
+                const std::size_t count = indices.size() / 3;
+
+                const auto corners = [&](std::size_t t, bool reversed) {
+                    return spelling(positions[indices[3 * t]], positions[indices[3 * t + (reversed ? 2 : 1)]],
+                        positions[indices[3 * t + (reversed ? 1 : 2)]]);
+                };
+
+                enum class Fate
+                {
+                    Alone,
+                    Kept,
+                    Dropped
+                };
+                std::vector<Fate> fates(count, Fate::Alone);
+
+                for (std::size_t t = 0; t < count; ++t)
+                {
+                    if (fates[t] != Fate::Alone)
+                        continue;
+
+                    for (std::size_t other = 0; other < count; ++other)
+                    {
+                        if (other == t || fates[other] != Fate::Alone || corners(other, false) != corners(t, true))
+                            continue;
+
+                        fates[t] = Fate::Kept;
+                        fates[other] = Fate::Dropped;
+                        break;
+                    }
+                }
+
+                std::vector<std::uint32_t> kept;
+                bool sheet = count > 0;
+                for (std::size_t t = 0; t < count; ++t)
+                {
+                    if (fates[t] == Fate::Dropped)
+                        continue;
+                    if (fates[t] == Fate::Alone)
+                        sheet = false;
+
+                    kept.insert(kept.end(), indices.begin() + static_cast<std::ptrdiff_t>(3 * t),
+                        indices.begin() + static_cast<std::ptrdiff_t>(3 * t + 3));
+                }
+
+                return { kept, sheet };
+            }
+        };
+
+        /// Every shape the content can hand it, against the rule written the slow way.
+        ///
+        /// **What the three cases above cannot reach.** A doubled card is two triangles and the
+        /// answer is obvious; a merged paging chunk is tens of thousands, with the same corner
+        /// spelled by triangles far apart in the list, triangles doubled three and four times over,
+        /// and degenerate ones whose reverse is their own spelling. Which copy survives depends on
+        /// the order the pairing walks, and getting that wrong deletes geometry the player can see.
+        ///
+        /// A fixed seed, so a failure is a failure that can be run again.
+        TEST(RtxSheetFoldTest, everyShapeFoldsTheWayTheRuleSaysItShould)
+        {
+            std::mt19937 random(20260830);
+            SheetFold fold;
+
+            // A small pool of positions, so triangles collide often and the awkward cases happen
+            // rather than being hoped for.
+            for (const std::size_t corners : { std::size_t{ 3 }, std::size_t{ 5 }, std::size_t{ 12 } })
+            {
+                std::vector<osg::Vec3f> positions;
+                for (std::size_t at = 0; at < corners; ++at)
+                    positions.push_back(osg::Vec3f(static_cast<float>(at % 3), static_cast<float>(at / 3), 0.0f));
+
+                for (int attempt = 0; attempt < 200; ++attempt)
+                {
+                    const std::size_t count = 1 + random() % 24;
+
+                    std::vector<std::uint32_t> indices;
+                    for (std::size_t t = 0; t < count; ++t)
+                    {
+                        const auto corner = [&] { return static_cast<std::uint32_t>(random() % positions.size()); };
+                        const std::uint32_t a = corner();
+                        const std::uint32_t b = corner();
+                        const std::uint32_t c = corner();
+
+                        indices.insert(indices.end(), { a, b, c });
+
+                        // Half of them doubled the way the content doubles a card, so most meshes
+                        // here have twins to find rather than being noise.
+                        if (random() % 2 == 0)
+                            indices.insert(indices.end(), { a, c, b });
+                    }
+
+                    const auto [expected, expectedSheet] = Reference::fold(positions, indices);
+
+                    std::vector<std::uint32_t> folded = indices;
+                    const bool sheet = fold.fold(positions, folded);
+
+                    EXPECT_EQ(folded, expected) << "corners " << corners << ", attempt " << attempt;
+                    EXPECT_EQ(sheet, expectedSheet) << "corners " << corners << ", attempt " << attempt;
+                }
+            }
         }
     }
 }

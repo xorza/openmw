@@ -116,6 +116,11 @@ here. The game is device-bound at this setting like the harness is.
 | 1920×1080 quality | 6.77 | 16.1 | 65.8 | 214 | 306 | 19 | 298 ms | 2.9 s of 9.65 — 2.3 reading, 0.7 building | 148 | 4.7 |
 | 3840×2160 performance | 16.45 | 24.0 | 68.9 | 220 | 335 | 19 | 327 ms | 3.0 s of 14.4 — 2.4 reading, 0.7 building | 61 | 4.6 |
 
+**After the fold changed** (1920×1080 quality, three runs): frame median 8.2–8.9 ms, mean
+15.8–16.5, p99 181–190, worst 286–298, and 5.3–5.5 fps at the 1 % low. Nineteen crossings still,
+the worst 276–289 ms, 2.5 s in them over the run — 1.8 reading and 0.7 building. The table above is
+the same route before it.
+
 **A crossing is a 100–300 ms frame, and there are nineteen of them.** The median is the still
 frame's median. Everything above p95 is a crossing or the paging in the frames around one. The
 `wait` column stays at 1 ms: the device is idle through all of it. This is a CPU tail.
@@ -208,11 +213,12 @@ Two threads, each about half. Percentages are of all samples.
   `ObjectPaging::createChunk` 6.6 % (`SceneUtil::Optimizer::optimize` 5.0 % — the merge of a
   chunk's statics into one geometry), `ChunkManager::createChunk` 0.7 %. A camera at 12 000 units
   a second changes chunk levels every few frames, and every changed chunk is built on the frame.
-- `SceneExtractor::addDrawable` 20.9 % → `resolveMesh` 15.0 % → **`SheetFold::fold` 12.6 % —
-  2.2 s.** The fold sorts every triangle of every arriving mesh to find its reversed twin
-  (`introsort` 2.75 % self), and a paged chunk is one merged geometry of every static in it, so a
-  source drawable merged into several chunks is folded once per chunk and again at every level
-  change.
+- `SceneExtractor::addDrawable` **15.5 %** → **`SheetFold::fold` 5.2 %**, from 20.9 % and 12.6 %
+  when the fold sorted every triangle of every arriving mesh to find its reversed twin. It looks a
+  canonical corner triple up in a flat open-addressed table now, and hashes the corner bits rather
+  than reaching `std::hash<float>`. **What is left of it is the paging**: a chunk is one merged
+  geometry of every static in it, so a source drawable merged into several chunks is still folded
+  once per chunk and again at every level change — step 7.
 - `StagedWorld::moveTo` 12.75 % — **2.26 s, 119 ms a crossing**: reading the ring's cells,
   instancing their objects, the mirror walk, the sweep.
 - `SceneUploader::hand` 5.5 %: `extendScene` 3.85 % (`buildMicromaps` 1.05 %, of which
@@ -244,18 +250,17 @@ the measurement that says it worked.
 
 These change no pixel. They are the 1 % low on any route: 4.6 fps today.
 
-5. **Fold once, without a sort.** `SheetFold::fold` becomes a hash set of canonical corner triples,
-   O(n), and runs once per *source* drawable at load — keyed in the extractor's identity map — so a
-   merged paging chunk reuses its sources' answers instead of re-folding the merge.
-   *Number:* `fold` leaves the profile; `crossBuildMs` and the walk on a route drop by about 2 s
-   over the run.
 6. **Arrivals beside the frame, not in it.** `extendScene` stops calling `finishFrames()`. The BLAS
    builds and texture uploads of an arrival record on a second queue (async compute, or transfer
    for the uploads) with a fence of their own; the top level is rebuilt over the old set until that
    fence signals, then swapped. Needs nothing the ring does not already have (`Graveyard`,
    fence-per-frame).
    *Number:* worst crossing 300 → tens of ms; route 1 % low 4.6 → 30+.
-7. **Paging off the walk.** In the game, `CellPreloader::preloadTerrain` builds the quad tree's
+7. **Paging off the walk.** **The fold's other half waits on this**: `SheetFold::fold` is now one
+   pass, and what is left of its cost is that `ObjectPaging` hands the extractor a freshly merged
+   `osg::Geometry` per chunk and per level change. The extractor keys meshes on the drawable
+   pointer, so nothing is folded twice — the merge simply has no back-reference to the sources whose
+   answers it could reuse. In the game, `CellPreloader::preloadTerrain` builds the quad tree's
    chunks and the paged statics on its worker for the player's position, and `TerrainResidency`
    then finds them in the chunk cache. The harness has no preloader, so *its* crossing pays what
    the game's does not. First measure the game on a route (`rtxtool travel` in `todo.txt`, or a
@@ -402,7 +407,6 @@ kernel's shape is settled.
 
 | step | what | gain | picture | after |
 |---|---|---|---|---|
-| 5 | fold once, without a sort | −2 s of CPU per route | none | — |
 | 6 | arrivals on a second queue, no ring drain | worst crossing ÷ 10 | none | — |
 | 7 | paging off the walk; measure the game on a route | route 1 % low 4.6 → 30+ | none | — |
 | 9 | composite bake on the GPU | a core freed; chunks baked on arrival | none | 6 |
