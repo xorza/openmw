@@ -170,18 +170,10 @@ void main()
             // what lets it be reprojected and averaged. The transmittance is applied afterwards.
             const float extinction = fogExtinctionAt(position, stride);
 
-            // Everything between a source and this point: what the geometry stopped, what the fog
-            // took on the way down, and what any water overhead took out of it.
-            //
-            // **Each on its own slant and not the sun's.** At night `mSunPosition` points below the
-            // horizon, the floor in `fogBeamDepth` pins it, and the sun's beam comes back as nothing
-            // at all — which is what lets one expression carry both without asking the hour.
-            const vec3 moons = sources.mMoonlit
-                ? lunar
-                    * (sources.mMasser * exp(-fogBeamDepth(extinction, frame.mMoons[0].mDirection))
-                        + sources.mSecunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection)))
-                    * daylightReaching(position)
-                : vec3(0.0);
+            // What any water overhead leaves of the daylight, asked once: both sources want it.
+            const vec3 reaching = daylightReaching(position);
+
+            const vec3 moons = sources.mMoonlit ? moonsInAir(extinction, sources, lunar, reaching) : vec3(0.0);
 
             // **Isotropic, and `INV_FOUR_PI` is what isotropic is.** A lamp arrives in the air as
             // irradiance exactly as it arrives at a surface, and what comes back toward the eye is
@@ -198,9 +190,7 @@ void main()
             // than the column's. Mie's forward peak is thousands of times isotropic within a degree
             // and a column is a quarter of one, so baking it here would smear the blaze around a low
             // sun over four times its width.
-            vec3 transport = sources.mSunlit
-                ? visible * exp(-fogBeamDepth(extinction, frame.mSunPosition)) * daylightReaching(position)
-                : vec3(0.0);
+            vec3 transport = sources.mSunlit ? sunInAir(extinction, visible, reaching) : vec3(0.0);
 
             float density = extinction;
 

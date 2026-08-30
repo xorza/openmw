@@ -9,9 +9,11 @@
 
 #include <components/rtx/texturedata.hpp>
 
+#include <memory>
+
 #include "buffer.hpp"
 #include "hostbuffer.hpp"
-#include "memory.hpp"
+#include "image.hpp"
 #include "setlayout.hpp"
 
 namespace Rtx
@@ -20,7 +22,11 @@ namespace Rtx
     class Device;
     class Graveyard;
 
-    /// A sampled image on the GPU.
+    /// A sampled image on the GPU, and the levels a content file brought for it.
+    ///
+    /// **An `Image` and what was uploaded into it.** What a texture adds to an image is the upload
+    /// and the size of it; everything else — the allocation, the view, the barriers — is what an
+    /// image already is.
     class Texture
     {
     public:
@@ -28,24 +34,23 @@ namespace Rtx
         Texture() = default;
 
         Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name);
-        ~Texture();
 
         Texture(const Texture&) = delete;
         Texture& operator=(const Texture&) = delete;
-        Texture(Texture&& other) noexcept;
-        Texture& operator=(Texture&& other) noexcept;
+        Texture(Texture&&) noexcept = default;
+        Texture& operator=(Texture&&) noexcept = default;
 
-        VkImageView getView() const { return mView; }
+        /// What a sampler reads, or nothing where the slot holds no texture.
+        VkImageView getView() const { return mImage == nullptr ? VK_NULL_HANDLE : mImage->getView(); }
+
         /// The size of the data uploaded, which for a block-compressed image is what it occupies.
         VkDeviceSize getBytes() const { return mBytes; }
 
     private:
-        void destroy();
+        /// **By pointer, because `Image` is not movable** and a texture is: the array holds them in
+        /// a vector, and a slot given back is buried under the frame that may still be reading it.
+        std::unique_ptr<Image> mImage;
 
-        VkDevice mDevice = VK_NULL_HANDLE;
-        VkImage mHandle = VK_NULL_HANDLE;
-        VkImageView mView = VK_NULL_HANDLE;
-        DeviceMemory mMemory;
         VkDeviceSize mBytes = 0;
     };
 

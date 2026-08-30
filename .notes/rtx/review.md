@@ -26,13 +26,8 @@ Each item describes what is there and what it costs. No item says how to fix it.
       `traceWorld` each assemble an `Rtx::FrameWorld` from the same inputs: `describeStars`,
       `skyBudget`, `makeMoon` for both moons, `fogColour`, `describeClouds` with `deckLight` and
       `stormDirection`, `describePatches`. Two assemblies of one frame.
-- [ ] `Buffer`, `HostBuffer`, `Texture`, `ShaderModule` and `DeviceMemory` each write the same
-      move constructor, move assignment and `destroy` by hand. Two buffer classes serve one job.
-- [ ] `components/rtxvulkan/texture.cpp` `Texture` owns its own `VkImage`, view and memory and a
-      local `barrier` lambda (150-172) that restates `Image::transitionLevels`. `Image` exists.
-- [ ] `components/rtxvulkan/shaders/lib/fog.glsl` `fogWeatherAlong` (429-438) and
-      `fogUniformAlong` (700-714) each write the per-stretch sun and moons block: the probe,
-      `lightThrough`, `fogBeamDepth` for the sun and for each moon, `daylightReaching`.
+- [ ] `Buffer`, `HostBuffer`, `ShaderModule` and `DeviceMemory` each write the same move
+      constructor, move assignment and `destroy` by hand. Two buffer classes serve one job.
 - [ ] `components/rtxvulkan/visibilitypass.cpp:307-324` names bindings `13`..`19` and
       `sFrameBinding + 1..3` as literals. `bindings.glsl` declares the same numbers. The two are
       kept in step by hand and by one `assert(filled == writes.size())`.

@@ -323,6 +323,37 @@ struct FogSources
     vec3 mMoonward;
 };
 
+/// What the sun puts into one point of the air, before its own colour and before a phase function.
+///
+/// **The colour is left to the caller and so is the phase**, because the froxel volume keeps the sun
+/// in an image of its own for exactly that reason: both are functions of the direction alone, so
+/// they factor out of the integral and the trace puts them back at the pixel's own angle.
+///
+/// **Nothing here asks the hour.** At night `mSunPosition` points below the horizon, the floor in
+/// `fogBeamDepth` pins it, and the beam comes back as nothing at all.
+///
+/// @param visible what a shadow ray found between the point and the sun, or one where none was cast.
+/// @param reaching what any water overhead leaves of the daylight — `daylightReaching`, asked once
+///        by the caller because the moons below want the same answer.
+vec3 sunInAir(float extinction, float visible, vec3 reaching)
+{
+    return visible * exp(-fogBeamDepth(extinction, frame.mSunPosition)) * reaching;
+}
+
+/// What the two moons put into one point of the air.
+///
+/// **Each on its own slant and not the sun's**, which `fogBeamDepth` is where it matters: a moon
+/// standing high crosses far less air than one on the rim.
+///
+/// @param lunar what a shadow ray found between the point and the pair, which share one.
+vec3 moonsInAir(float extinction, FogSources sources, float lunar, vec3 reaching)
+{
+    return lunar
+        * (sources.mMasser * exp(-fogBeamDepth(extinction, frame.mMoons[0].mDirection))
+            + sources.mSecunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection)))
+        * reaching;
+}
+
 FogSources fogSourcesAlong(vec3 direction)
 {
     const bool sunlit = HAS_SUN && frame.mSunIrradiance != vec3(0.0);
@@ -624,17 +655,13 @@ vec4 fogUniformAlong(vec3 origin, vec3 direction, float distance, float offset, 
             if (sources.mSunlit)
             {
                 const float visible = sources.mShafts ? lightThrough(probe, frame.mSunPosition, frame.mFar) : 1.0;
-                scattered += sources.mSunward * (absorbed * visible)
-                    * exp(-fogBeamDepth(extinction, frame.mSunPosition)) * reaching;
+                scattered += sources.mSunward * absorbed * sunInAir(extinction, visible, reaching);
             }
 
             if (sources.mMoonlit)
             {
                 const float lunar = lightThrough(probe, sources.mMoonward, frame.mFar);
-                scattered += (absorbed * lunar)
-                    * (sources.mMasser * exp(-fogBeamDepth(extinction, frame.mMoons[0].mDirection))
-                        + sources.mSecunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection)))
-                    * reaching;
+                scattered += absorbed * moonsInAir(extinction, sources, lunar, reaching);
             }
         }
     }

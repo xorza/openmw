@@ -44,7 +44,8 @@ namespace Rtx
         ///
         /// **Vulkan will not let a storage image name a chain**, so an image with one is written
         /// through a second view of its own — and an image without one hands back the only view it
-        /// has, so nothing that never asked for levels has anything to know about this.
+        /// has, so nothing that never asked for levels has anything to know about this. An image
+        /// with a chain and no storage usage has none either: nothing may name it there.
         VkImageView getStorageView() const { return mStorageView != VK_NULL_HANDLE ? mStorageView : mView; }
         std::uint32_t getWidth() const { return mWidth; }
         std::uint32_t getHeight() const { return mHeight; }

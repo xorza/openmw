@@ -17,9 +17,13 @@ namespace Rtx
     {
         /// How many bytes one texel takes, for the formats this renderer makes images in.
         ///
-        /// **A read-back has to know, and only the format does.** Every image here is uncompressed
-        /// and single-plane, so this is the whole of the question — and a format that reaches here
-        /// unlisted is a new one somebody added without saying how large it is.
+        /// **A read-back has to know, and only the format does.** Nothing here is multi-planar, so
+        /// this is the whole of the question — and a format that reaches here unlisted is a new one
+        /// somebody added without saying how large it is.
+        ///
+        /// **Nought for a block format**, whose texels have no size of their own: what a content
+        /// texture holds is four-by-four blocks, and nothing reads one of those back. `read` is
+        /// where that is said.
         std::uint32_t texelBytesOf(VkFormat format)
         {
             switch (format)
@@ -31,6 +35,8 @@ namespace Rtx
                 case VK_FORMAT_R16_SFLOAT:
                     return 2;
                 case VK_FORMAT_R8G8B8A8_UNORM:
+                case VK_FORMAT_R8G8B8A8_SRGB:
+                case VK_FORMAT_B8G8R8A8_SRGB:
                     return 4;
                 case VK_FORMAT_R32_SFLOAT:
                     return 4;
@@ -40,6 +46,12 @@ namespace Rtx
                     return 8;
                 case VK_FORMAT_R32G32B32A32_SFLOAT:
                     return 16;
+
+                case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+                case VK_FORMAT_BC2_SRGB_BLOCK:
+                case VK_FORMAT_BC3_SRGB_BLOCK:
+                    return 0;
+
                 default:
                     throw Error("no texel size is recorded for this image format");
             }
@@ -92,7 +104,10 @@ namespace Rtx
         };
         checkVk(vkCreateImageView(device.getHandle(), &view, nullptr, &mView), "vkCreateImageView");
 
-        if (mipLevels > 1)
+        // **Only where something will write through it.** A storage descriptor is what this second
+        // view exists for, and an image without the usage bit can have none — a chain that is only
+        // ever sampled would be paying for a view nothing may name.
+        if (mipLevels > 1 && (usage & VK_IMAGE_USAGE_STORAGE_BIT) != 0)
         {
             VkImageViewCreateInfo first = view;
             first.subresourceRange.levelCount = 1;
@@ -204,6 +219,7 @@ namespace Rtx
     {
         assert(level < mMipLevels && "a level this image does not hold");
         assert(mDepth == 1 && "a read hands back one slice, and a volume has more than one");
+        assert(mTexelBytes > 0 && "a read of an image whose texels come in blocks");
 
         const std::uint32_t width = getWidthAt(level);
         const std::uint32_t height = getHeightAt(level);
