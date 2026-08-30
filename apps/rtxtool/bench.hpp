@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -20,6 +21,92 @@ namespace Rtx
 namespace RtxTool
 {
     class World;
+
+    /// How many cell boundaries a route crossed, and what the rings cost.
+    ///
+    /// **A count and totals rather than a distribution**, because a run of six hundred frames
+    /// crosses a couple of dozen: percentiles over that say nothing, and the number worth reading is
+    /// the worst one — that is the frame a player feels. The whole cost is in `BenchPlace::mFrame`
+    /// too, which is where it belongs: a crossing is not a separate budget, it is the frame that
+    /// dropped.
+    struct Crossings
+    {
+        std::uint32_t mCount = 0;
+
+        /// How many of those could not be appended to and cost a full build.
+        ///
+        /// **The single most useful number a route produces.** An append builds the structures the
+        /// ring brought; a rebuild builds every structure in the scene and re-describes the whole
+        /// texture table, which is append-only and has been growing since the run started. Which
+        /// one a crossing gets is decided by whether the sweep found anything to drop, so a town
+        /// appends and open country rebuilds — and the two are an order of magnitude apart.
+        std::uint32_t mRebuilds = 0;
+
+        double mWorstMs = 0.0;
+
+        /// **Split, because the two halves are fixed by different work.** Reading is the content
+        /// files, the models instanced out of them and the terrain chunks built — which the game
+        /// hides behind `CellPreloader`'s threads and this harness deliberately does not. Building
+        /// is what the renderer then does with what arrived, and is the only half this fork can fix
+        /// in `components/rtx`.
+        double mReadMs = 0.0;
+        double mBuildMs = 0.0;
+
+        /// Counts one crossing, from what its two halves took.
+        void add(bool rebuilt, double readMs, double buildMs)
+        {
+            ++mCount;
+            mRebuilds += rebuilt ? 1u : 0u;
+            mReadMs += readMs;
+            mBuildMs += buildMs;
+            mWorstMs = std::max(mWorstMs, readMs + buildMs);
+        }
+    };
+
+    /// The four figures a measured frame contributes, gathered over one place.
+    ///
+    /// **One object because they are cleared, filled and summarised together.** Four vectors kept
+    /// apart are four chances for a frame to reach three of them, and rows out of step with each
+    /// other are rows that cannot be read against each other at all.
+    struct FrameSamples
+    {
+        std::vector<double> mFrame;
+        std::vector<double> mWait;
+        std::vector<double> mWalk;
+        std::vector<double> mPlace;
+
+        void reserve(std::uint32_t frames)
+        {
+            mFrame.reserve(frames);
+            mWait.reserve(frames);
+            mWalk.reserve(frames);
+            mPlace.reserve(frames);
+        }
+
+        /// Cleared and refilled per place, never freed.
+        void clear()
+        {
+            mFrame.clear();
+            mWait.clear();
+            mWalk.clear();
+            mPlace.clear();
+        }
+
+        /// What one measured frame cost, and the two shares of it the harness itself owns.
+        void add(double frameMs, double walkMs, double placeMs)
+        {
+            mFrame.push_back(frameMs);
+            mWalk.push_back(walkMs);
+            mPlace.push_back(placeMs);
+        }
+
+        /// What the device reported for the frame behind, which arrives on its own schedule and on
+        /// the first frames of a place does not arrive at all.
+        void addWait(double waitMs) { mWait.push_back(waitMs); }
+
+        bool empty() const { return mFrame.empty(); }
+        std::uint32_t size() const { return static_cast<std::uint32_t>(mFrame.size()); }
+    };
 
     /// A profiling run, over a list of places.
     struct BenchRequest
@@ -133,33 +220,7 @@ namespace RtxTool
         /// wall is fast and means nothing, and this is what says so without opening a window.
         double mHitPercent = 0.0;
 
-        /// How many cell boundaries a route crossed, and what the rings cost.
-        ///
-        /// **A count and totals rather than a distribution**, because a run of six hundred frames
-        /// crosses a couple of dozen: percentiles over that say nothing, and the number worth
-        /// reading is the worst one — that is the frame a player feels. The whole cost is in
-        /// `mFrame` too, which is where it belongs: a crossing is not a separate budget, it is the
-        /// frame that dropped.
-        ///
-        /// **Split, because the two halves are fixed by different work.** Reading is the content
-        /// files, the models instanced out of them and the terrain chunks built — which the game
-        /// hides behind `CellPreloader`'s threads and this harness deliberately does not. Building
-        /// is what the renderer then does with what arrived, and is the only half this fork can fix
-        /// in `components/rtx`.
-        std::uint32_t mCrossings = 0;
-
-        /// How many of those could not be appended to and cost a full build.
-        ///
-        /// **The single most useful number a route produces.** An append builds the structures the
-        /// ring brought; a rebuild builds every structure in the scene and re-describes the whole
-        /// texture table, which is append-only and has been growing since the run started. Which
-        /// one a crossing gets is decided by whether the sweep found anything to drop, so a town
-        /// appends and open country rebuilds — and the two are an order of magnitude apart.
-        std::uint32_t mCrossRebuilds = 0;
-
-        double mCrossWorstMs = 0.0;
-        double mCrossReadMs = 0.0;
-        double mCrossBuildMs = 0.0;
+        Crossings mCrossings;
 
         /// How far along its route the camera got, as a fraction. One where it arrived, and less
         /// where the run ended first — a route flown too slowly to finish is measuring a shorter

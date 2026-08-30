@@ -72,13 +72,13 @@ namespace RtxTool
             // **Only for a route, because a place that stands still has nothing to say here.** The
             // worst is the one to read: a crossing is a dropped frame, and an average over six
             // hundred frames of which four were the expensive ones hides exactly the thing.
-            if (place.mCrossings > 0)
+            if (place.mCrossings.mCount > 0)
                 out() << std::format(
                     "  {} crossings, {} of them rebuilds — {:.0f} ms worst; {:.1f} s over the run, "
                     "{:.1f} reading and {:.1f} building{}\n",
-                    place.mCrossings, place.mCrossRebuilds, place.mCrossWorstMs,
-                    (place.mCrossReadMs + place.mCrossBuildMs) / 1000.0, place.mCrossReadMs / 1000.0,
-                    place.mCrossBuildMs / 1000.0,
+                    place.mCrossings.mCount, place.mCrossings.mRebuilds, place.mCrossings.mWorstMs,
+                    (place.mCrossings.mReadMs + place.mCrossings.mBuildMs) / 1000.0, place.mCrossings.mReadMs / 1000.0,
+                    place.mCrossings.mBuildMs / 1000.0,
                     place.mTravelled < 1.0 ? std::format(", {:.0f}% of the route flown", place.mTravelled * 100.0)
                                            : "");
 
@@ -113,6 +113,13 @@ namespace RtxTool
                 scene.mInstances, scene.mCutoutInstances, scene.mMicromappedInstances, scene.mMicromapTally.mOpaque,
                 scene.mMicromapTally.mTransparent, scene.mMicromapTally.mUnknown, scene.mStructureBytes,
                 scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes);
+        }
+
+        std::string asJson(const Crossings& crossings)
+        {
+            return std::format(
+                R"({{"count": {}, "rebuilds": {}, "worstMs": {:.2f}, "readMs": {:.2f}, "buildMs": {:.2f}}})",
+                crossings.mCount, crossings.mRebuilds, crossings.mWorstMs, crossings.mReadMs, crossings.mBuildMs);
         }
 
         std::string asJson(const Rtx::FrameTimes& times)
@@ -152,14 +159,10 @@ namespace RtxTool
                      << R"("scene": )" << asJson(place.mScene)
                      << std::format(R"(, "frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
                             place.mWallSeconds, place.mHitPercent)
-                     << std::format(
-                            R"("crossings": {}, "crossRebuilds": {}, "crossWorstMs": {:.2f}, "crossReadMs": {:.2f}, )"
-                            R"("crossBuildMs": {:.2f}, "travelled": {:.4f}, )",
-                            place.mCrossings, place.mCrossRebuilds, place.mCrossWorstMs, place.mCrossReadMs,
-                            place.mCrossBuildMs, place.mTravelled)
-                     << R"("frameMs": )" << asJson(place.mFrame) << R"(, "waitMs": )" << asJson(place.mWait)
-                     << R"(, "walkMs": )" << asJson(place.mWalk) << R"(, "placeMs": )" << asJson(place.mPlace)
-                     << R"(, "gpuMs": {)";
+                     << R"("crossings": )" << asJson(place.mCrossings)
+                     << std::format(R"(, "travelled": {:.4f}, )", place.mTravelled) << R"("frameMs": )"
+                     << asJson(place.mFrame) << R"(, "waitMs": )" << asJson(place.mWait) << R"(, "walkMs": )"
+                     << asJson(place.mWalk) << R"(, "placeMs": )" << asJson(place.mPlace) << R"(, "gpuMs": {)";
 
                 for (std::size_t zone = 0; zone < place.mGpu.size(); ++zone)
                     file << std::format(R"({}"{}": {})", zone == 0 ? "" : ", ", place.mGpu[zone].mName,
@@ -199,6 +202,262 @@ namespace RtxTool
     std::uint32_t BenchRequest::getWarmup() const
     {
         return static_cast<std::uint32_t>(std::lround(std::max(mWarmup, 0.0f) * sStepRate));
+    }
+
+    /// Everything one place is measured with, which is the same for every place in a run.
+    struct BenchRun
+    {
+        World& mWorld;
+        Rtx::Renderer& mRenderer;
+        const BenchRequest& mRequest;
+        PerfControl& mProfiling;
+
+        /// Where the run is shown, or null where nobody asked to watch it.
+        Window* mWindow = nullptr;
+
+        /// Whether every frame is read back and hashed, which stops the run being a benchmark:
+        /// a read back submits a copy and waits on it, so every frame is serialised against the
+        /// device and what the rows measure is that.
+        bool mJudging = false;
+        FrameHashes& mHashes;
+
+        std::uint32_t mWarmup = 0;
+        std::uint32_t mMeasured = 0;
+    };
+
+    /// Runs one place and gives back what it came to. Nothing where the run was interrupted before
+    /// a single frame had been measured.
+    ///
+    /// **The whole of the measuring, and none of the choosing or the reporting.** Which places there
+    /// are, whether each could be staged at all, and what is done with the rows are `runBench`'s;
+    /// what a place costs is this.
+    ///
+    /// @param samples and `pixelScratch` belong to the run and are refilled here, so that a place
+    ///        does not allocate what the place before it already had.
+    std::optional<BenchPlace> measurePlace(const BenchRun& run, const View& view, StagedWorld& staged,
+        FrameSamples& samples, std::vector<std::uint8_t>& pixelScratch, bool& stopped)
+    {
+        Rtx::Renderer& renderer = run.mRenderer;
+
+        Rtx::SceneUploader uploader;
+
+        // **A hashed run takes its composites on the schedule and not off the baker's clock**,
+        // which is what `SceneUploader::setSettled` is for. It stalls at the crossing that
+        // queued them, and a run being hashed has already given up on its own times.
+        uploader.setSettled(run.mJudging);
+
+        const Clock::time_point buildStart = Clock::now();
+        uploader.hand(renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
+        const double buildMs = std::chrono::duration<double, std::milli>(Clock::now() - buildStart).count();
+
+        const float far = std::max(staged.getScene().getBounds().radius() * 8.0f, 10000.0f);
+
+        samples.clear();
+
+        Crossings crossings;
+        float part = 0.0f;
+
+        // Per place, because the zones a place has are the zones its content asked for: an
+        // interior with nothing moving in it never places and never reports one.
+        Rtx::GpuBreakdown gpu;
+
+        // Both ends of the measured window, so what it reports bounds the frames between them.
+        GpuClock clock;
+
+        std::uint32_t hits = 0;
+
+        // Restarted when the warmup ends, so `mWallSeconds` covers the frames `mFrames`
+        // counts. A clock left running from here would divide six hundred frames by the time
+        // six hundred and sixty took, and the sixty are the slow ones.
+        Clock::time_point runStart = Clock::now();
+
+        for (std::uint32_t frame = 0; frame < run.mWarmup + run.mMeasured; ++frame)
+        {
+            // Pumped outside the timing: SDL is what keeps a window being drawn rather than
+            // reported as hung, and it is no part of what the renderer costs.
+            if (interrupted())
+            {
+                stopped = true;
+                break;
+            }
+
+            if (frame == run.mWarmup)
+            {
+                // **Where the measured frames begin, and again where they end.** One reading is
+                // one moment: taken only at the end it is a card already climbing off the load,
+                // and it would print a fast clock over frames drawn at a slower one. Outside
+                // the wall clock and before `frameStart`, so the process spawn it costs is in
+                // no frame's time.
+                clock.add(readGpuClock());
+
+                runStart = Clock::now();
+                run.mProfiling.enable();
+            }
+
+            const Clock::time_point frameStart = Clock::now();
+
+            // **The route runs over the measured frames and not the warm-up.** Warming up is
+            // the GPU coming off its idle clock; flying during it would start the measurement
+            // partway along and leave the first crossing outside the numbers.
+            //
+            // **And off the frame index rather than the clock**, for the reason the world is
+            // stepped that way: a camera advanced by how long the last frame took crosses its
+            // boundaries somewhere else on every machine, and where they fall is the whole
+            // measurement.
+            Placement standing = staged.getPlacement();
+            if (view.mRoute.has_value() && frame >= run.mWarmup)
+            {
+                part = view.mRoute->partAt(staged.getPlacement(), static_cast<float>(frame - run.mWarmup) / sStepRate);
+                standing = view.mRoute->at(staged.getPlacement(), part);
+            }
+
+            // **Inside the frame's own timing, because a crossing is a dropped frame.** Timing
+            // it outside would report a smooth run with a load cost printed beside it, which is
+            // the opposite of what a p99 is for.
+            if (const Crossing crossed = staged.moveTo(standing.mOrigin); crossed.happened())
+            {
+                const Clock::time_point read = Clock::now();
+                const Rtx::SceneUpload handed = uploader.hand(
+                    renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
+                const Clock::time_point built = Clock::now();
+
+                crossings.add(handed.mKind == Rtx::SceneUpload::Kind::Rebuilt,
+                    std::chrono::duration<double, std::milli>(read - frameStart).count(),
+                    std::chrono::duration<double, std::milli>(built - read).count());
+            }
+
+            // **After the first, which is the frame the build above already made**, and by
+            // frame index rather than by the clock: a world stepped by how long the last frame
+            // took would render a different sequence on every machine and on every build.
+            double walkMs = 0.0;
+            bool moved = false;
+            if (frame > 0 && staged.getMotion() != nullptr)
+            {
+                const Clock::time_point walkStart = Clock::now();
+                moved = staged.getMotion()->step(frame);
+                walkMs = std::chrono::duration<double, std::milli>(Clock::now() - walkStart).count();
+            }
+
+            // **Between the walk and the placement, which is where the wait belongs.** The walk
+            // runs beside the device drawing the frame behind; the placement cannot, because it
+            // writes the copy of the tables that frame is still tracing and `placeScene` waits
+            // that frame out first. Waited for here, the stall is one figure and it is in
+            // `wait ms`; left to the placement it is inside `place ms` as well, and that row
+            // then reads as placement work — 8.3 ms at 3840x2160 against 1.8 at 1920x1080, for
+            // the same rows written.
+            //
+            // **Before the submit below, which is what makes this the frame behind** rather than
+            // the one about to be made — `Renderer::finishFrame` says why. So the rows below
+            // report a frame one older than the wall time beside them, and both are medians
+            // over the run.
+            const std::optional<Rtx::FrameResult> result = renderer.finishFrame();
+
+            // Handed rather than placed because a step walks the whole graph and sweeps it: an
+            // actor drawing a weapon brings a mesh nothing has built, and a sweep that closed a
+            // gap renumbers what the last frame was built from.
+            double placeMs = 0.0;
+            if (moved)
+            {
+                const Clock::time_point placeStart = Clock::now();
+                uploader.hand(renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
+                placeMs = std::chrono::duration<double, std::milli>(Clock::now() - placeStart).count();
+            }
+
+            Framing framing = Framing::lookingFrom(standing);
+            framing.mFieldOfView = run.mRequest.mFrame.mFieldOfView;
+            framing.mFar = far;
+            framing.mDelight = run.mRequest.mFrame.mDelight;
+
+            framing.mLighting = staged.getLighting();
+            framing.mLighting.mSeconds = static_cast<float>(frame) / sStepRate;
+
+            // **Off the frame index, like everything else a measured run animates.** The hour
+            // does not move here, so no game time passes for the star sphere to turn on, and
+            // the deck scrolls on the player's clock — which is the one this index counts.
+            framing.mLighting.mRoll = Sky::SkyRoll::after(
+                framing.mLighting.mSeconds, framing.mLighting.mCloudSpeed, 0.0f, Sky::timescaleClouds());
+
+            // What the upscaler's sample sequence and every random draw in the shader are walked
+            // by. Held to the frame index so the same run draws the same samples twice over.
+            framing.mFrame = frame;
+
+            renderer.renderFrame(makeFrameConstants(framing, renderer.getExtents()),
+                Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
+                    .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                    .mFilter = run.mRequest.mFrame.mFilter,
+                    .mExposure = run.mRequest.mFrame.mExposure });
+
+            if (run.mWindow != nullptr && !renderer.presentFrame())
+                renderer.resize(run.mWindow->getWidth(), run.mWindow->getHeight());
+
+            if (run.mJudging)
+            {
+                renderer.readPixels(pixelScratch);
+                run.mHashes.add(view.mName, frame, pixelScratch);
+            }
+
+            const double frameMs = std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count();
+
+            if (frame >= run.mWarmup)
+            {
+                samples.add(frameMs, walkMs, placeMs);
+                if (result.has_value())
+                {
+                    samples.addWait(result->mWaitMs);
+                    gpu.add(result->mGpu);
+                    hits = result->mHits;
+                }
+            }
+        }
+
+        // The last frame is still on the device when the loop ends, and its row is owed.
+        for (std::optional<Rtx::FrameResult> last = renderer.finishFrame(); last.has_value();
+             last = renderer.finishFrame())
+        {
+            if (samples.empty())
+                continue;
+
+            samples.addWait(last->mWaitMs);
+            gpu.add(last->mGpu);
+            hits = last->mHits;
+        }
+
+        const Clock::time_point runEnd = Clock::now();
+        run.mProfiling.disable();
+
+        // After the wall clock above and not before it, so the spawn this costs is outside the
+        // run it describes.
+        clock.add(readGpuClock());
+
+        if (samples.empty())
+            return std::nullopt;
+
+        const Rtx::FrameExtents traced = renderer.getExtents();
+        const double pixels = static_cast<double>(traced.mRenderWidth) * traced.mRenderHeight;
+
+        // Once: summarising sorts the rows in place, so a second call would be re-sorting what
+        // the first one's iterators point at.
+        const std::span<const Rtx::GpuZone> zones = gpu.summariseZones();
+
+        return BenchPlace{
+            .mView = view.mName,
+            .mCell = view.mCell,
+            .mNote = view.mNote,
+            .mHour = view.mHour.value_or(run.mRequest.mFrame.mHour),
+            .mBuildMs = buildMs,
+            .mFrames = samples.size(),
+            .mWallSeconds = std::chrono::duration<double>(runEnd - runStart).count(),
+            .mFrame = Rtx::summarise(samples.mFrame),
+            .mWait = Rtx::summarise(samples.mWait),
+            .mWalk = Rtx::summarise(samples.mWalk),
+            .mPlace = Rtx::summarise(samples.mPlace),
+            .mGpu = std::vector<Rtx::GpuZone>(zones.begin(), zones.end()),
+            .mClock = clock,
+            .mHitPercent = static_cast<double>(hits) / pixels * 100.0,
+            .mCrossings = crossings,
+            .mTravelled = view.mRoute.has_value() ? static_cast<double>(part) : 1.0,
+            .mScene = renderer.getSceneStats(),
+        };
     }
 
     int runBench(World& world, const Rtx::ValidationOptions& validation, const BenchRequest& request)
@@ -260,16 +519,22 @@ namespace RtxTool
         std::vector<BenchPlace> places;
         places.reserve(request.mViews.size());
 
-        std::vector<double> frameTimes;
-        std::vector<double> waitTimes;
-        std::vector<double> walkTimes;
-        std::vector<double> placeTimes;
-        frameTimes.reserve(measured);
-        waitTimes.reserve(measured);
-        walkTimes.reserve(measured);
-        placeTimes.reserve(measured);
+        FrameSamples samples;
+        samples.reserve(measured);
 
         bool stopped = false;
+
+        const BenchRun run{
+            .mWorld = world,
+            .mRenderer = *renderer,
+            .mRequest = request,
+            .mProfiling = profiling,
+            .mWindow = window.get(),
+            .mJudging = judging,
+            .mHashes = hashes,
+            .mWarmup = warmup,
+            .mMeasured = measured,
+        };
 
         for (const View& view : request.mViews)
         {
@@ -292,242 +557,12 @@ namespace RtxTool
                 return 1;
             }
 
-            Rtx::SceneUploader uploader;
+            const std::optional<BenchPlace> place = measurePlace(run, view, staged, samples, pixelScratch, stopped);
 
-            // **A hashed run takes its composites on the schedule and not off the baker's clock**,
-            // which is what `SceneUploader::setSettled` is for. It stalls at the crossing that
-            // queued them, and a run being hashed has already given up on its own times.
-            uploader.setSettled(judging);
-
-            const Clock::time_point buildStart = Clock::now();
-            uploader.hand(*renderer, Rtx::sWorld, staged.getScene(), world.getImageManager(), Rtx::SeaState{});
-            const double buildMs = std::chrono::duration<double, std::milli>(Clock::now() - buildStart).count();
-
-            const float far = std::max(staged.getScene().getBounds().radius() * 8.0f, 10000.0f);
-
-            frameTimes.clear();
-            waitTimes.clear();
-            walkTimes.clear();
-            placeTimes.clear();
-
-            std::uint32_t crossings = 0;
-            std::uint32_t crossRebuilds = 0;
-            double crossWorstMs = 0.0;
-            double crossReadMs = 0.0;
-            double crossBuildMs = 0.0;
-            float part = 0.0f;
-
-            // Per place, because the zones a place has are the zones its content asked for: an
-            // interior with nothing moving in it never places and never reports one.
-            Rtx::GpuBreakdown gpu;
-
-            // Both ends of the measured window, so what it reports bounds the frames between them.
-            GpuClock clock;
-
-            std::uint32_t hits = 0;
-
-            // Restarted when the warmup ends, so `mWallSeconds` covers the frames `mFrames`
-            // counts. A clock left running from here would divide six hundred frames by the time
-            // six hundred and sixty took, and the sixty are the slow ones.
-            Clock::time_point runStart = Clock::now();
-
-            for (std::uint32_t frame = 0; frame < warmup + measured; ++frame)
-            {
-                // Pumped outside the timing: SDL is what keeps a window being drawn rather than
-                // reported as hung, and it is no part of what the renderer costs.
-                if (interrupted())
-                {
-                    stopped = true;
-                    break;
-                }
-
-                if (frame == warmup)
-                {
-                    // **Where the measured frames begin, and again where they end.** One reading is
-                    // one moment: taken only at the end it is a card already climbing off the load,
-                    // and it would print a fast clock over frames drawn at a slower one. Outside
-                    // the wall clock and before `frameStart`, so the process spawn it costs is in
-                    // no frame's time.
-                    clock.add(readGpuClock());
-
-                    runStart = Clock::now();
-                    profiling.enable();
-                }
-
-                const Clock::time_point frameStart = Clock::now();
-
-                // **The route runs over the measured frames and not the warm-up.** Warming up is
-                // the GPU coming off its idle clock; flying during it would start the measurement
-                // partway along and leave the first crossing outside the numbers.
-                //
-                // **And off the frame index rather than the clock**, for the reason the world is
-                // stepped that way: a camera advanced by how long the last frame took crosses its
-                // boundaries somewhere else on every machine, and where they fall is the whole
-                // measurement.
-                Placement standing = staged.getPlacement();
-                if (view.mRoute.has_value() && frame >= warmup)
-                {
-                    part = view.mRoute->partAt(staged.getPlacement(), static_cast<float>(frame - warmup) / sStepRate);
-                    standing = view.mRoute->at(staged.getPlacement(), part);
-                }
-
-                // **Inside the frame's own timing, because a crossing is a dropped frame.** Timing
-                // it outside would report a smooth run with a load cost printed beside it, which is
-                // the opposite of what a p99 is for.
-                if (const Crossing crossed = staged.moveTo(standing.mOrigin); crossed.happened())
-                {
-                    const Clock::time_point read = Clock::now();
-                    const Rtx::SceneUpload handed = uploader.hand(
-                        *renderer, Rtx::sWorld, staged.getScene(), world.getImageManager(), Rtx::SeaState{});
-                    const Clock::time_point built = Clock::now();
-
-                    ++crossings;
-                    crossRebuilds += handed.mKind == Rtx::SceneUpload::Kind::Rebuilt ? 1u : 0u;
-                    crossReadMs += std::chrono::duration<double, std::milli>(read - frameStart).count();
-                    crossBuildMs += std::chrono::duration<double, std::milli>(built - read).count();
-                    crossWorstMs
-                        = std::max(crossWorstMs, std::chrono::duration<double, std::milli>(built - frameStart).count());
-                }
-
-                // **After the first, which is the frame the build above already made**, and by
-                // frame index rather than by the clock: a world stepped by how long the last frame
-                // took would render a different sequence on every machine and on every build.
-                double walkMs = 0.0;
-                bool moved = false;
-                if (frame > 0 && staged.getMotion() != nullptr)
-                {
-                    const Clock::time_point walkStart = Clock::now();
-                    moved = staged.getMotion()->step(frame);
-                    walkMs = std::chrono::duration<double, std::milli>(Clock::now() - walkStart).count();
-                }
-
-                // **Between the walk and the placement, which is where the wait belongs.** The walk
-                // runs beside the device drawing the frame behind; the placement cannot, because it
-                // writes the copy of the tables that frame is still tracing and `placeScene` waits
-                // that frame out first. Waited for here, the stall is one figure and it is in
-                // `wait ms`; left to the placement it is inside `place ms` as well, and that row
-                // then reads as placement work — 8.3 ms at 3840x2160 against 1.8 at 1920x1080, for
-                // the same rows written.
-                //
-                // **Before the submit below, which is what makes this the frame behind** rather than
-                // the one about to be made — `Renderer::finishFrame` says why. So the rows below
-                // report a frame one older than the wall time beside them, and both are medians
-                // over the run.
-                const std::optional<Rtx::FrameResult> result = renderer->finishFrame();
-
-                // Handed rather than placed because a step walks the whole graph and sweeps it: an
-                // actor drawing a weapon brings a mesh nothing has built, and a sweep that closed a
-                // gap renumbers what the last frame was built from.
-                double placeMs = 0.0;
-                if (moved)
-                {
-                    const Clock::time_point placeStart = Clock::now();
-                    uploader.hand(*renderer, Rtx::sWorld, staged.getScene(), world.getImageManager(), Rtx::SeaState{});
-                    placeMs = std::chrono::duration<double, std::milli>(Clock::now() - placeStart).count();
-                }
-
-                Framing framing = Framing::lookingFrom(standing);
-                framing.mFieldOfView = request.mFrame.mFieldOfView;
-                framing.mFar = far;
-                framing.mDelight = request.mFrame.mDelight;
-
-                framing.mLighting = staged.getLighting();
-                framing.mLighting.mSeconds = static_cast<float>(frame) / sStepRate;
-
-                // **Off the frame index, like everything else a measured run animates.** The hour
-                // does not move here, so no game time passes for the star sphere to turn on, and
-                // the deck scrolls on the player's clock — which is the one this index counts.
-                framing.mLighting.mRoll = Sky::SkyRoll::after(
-                    framing.mLighting.mSeconds, framing.mLighting.mCloudSpeed, 0.0f, Sky::timescaleClouds());
-
-                // What the upscaler's sample sequence and every random draw in the shader are walked
-                // by. Held to the frame index so the same run draws the same samples twice over.
-                framing.mFrame = frame;
-
-                renderer->renderFrame(makeFrameConstants(framing, renderer->getExtents()),
-                    Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
-                        .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                        .mFilter = request.mFrame.mFilter,
-                        .mExposure = request.mFrame.mExposure });
-
-                if (window != nullptr && !renderer->presentFrame())
-                    renderer->resize(window->getWidth(), window->getHeight());
-
-                if (judging)
-                {
-                    renderer->readPixels(pixelScratch);
-                    hashes.add(view.mName, frame, pixelScratch);
-                }
-
-                const double frameMs = std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count();
-
-                if (frame >= warmup)
-                {
-                    frameTimes.push_back(frameMs);
-                    walkTimes.push_back(walkMs);
-                    placeTimes.push_back(placeMs);
-                    if (result.has_value())
-                    {
-                        waitTimes.push_back(result->mWaitMs);
-                        gpu.add(result->mGpu);
-                        hits = result->mHits;
-                    }
-                }
-            }
-
-            // The last frame is still on the device when the loop ends, and its row is owed.
-            for (std::optional<Rtx::FrameResult> last = renderer->finishFrame(); last.has_value();
-                 last = renderer->finishFrame())
-            {
-                if (frameTimes.empty())
-                    continue;
-
-                waitTimes.push_back(last->mWaitMs);
-                gpu.add(last->mGpu);
-                hits = last->mHits;
-            }
-
-            const Clock::time_point runEnd = Clock::now();
-            profiling.disable();
-
-            // After the wall clock above and not before it, so the spawn this costs is outside the
-            // run it describes.
-            clock.add(readGpuClock());
-
-            if (frameTimes.empty())
+            if (!place.has_value())
                 break;
 
-            const Rtx::FrameExtents traced = renderer->getExtents();
-            const double pixels = static_cast<double>(traced.mRenderWidth) * traced.mRenderHeight;
-
-            // Once: summarising sorts the rows in place, so a second call would be re-sorting what
-            // the first one's iterators point at.
-            const std::span<const Rtx::GpuZone> zones = gpu.summariseZones();
-
-            places.push_back(BenchPlace{
-                .mView = view.mName,
-                .mCell = view.mCell,
-                .mNote = view.mNote,
-                .mHour = view.mHour.value_or(request.mFrame.mHour),
-                .mBuildMs = buildMs,
-                .mFrames = static_cast<std::uint32_t>(frameTimes.size()),
-                .mWallSeconds = std::chrono::duration<double>(runEnd - runStart).count(),
-                .mFrame = Rtx::summarise(frameTimes),
-                .mWait = Rtx::summarise(waitTimes),
-                .mWalk = Rtx::summarise(walkTimes),
-                .mPlace = Rtx::summarise(placeTimes),
-                .mGpu = std::vector<Rtx::GpuZone>(zones.begin(), zones.end()),
-                .mClock = clock,
-                .mHitPercent = static_cast<double>(hits) / pixels * 100.0,
-                .mCrossings = crossings,
-                .mCrossRebuilds = crossRebuilds,
-                .mCrossWorstMs = crossWorstMs,
-                .mCrossReadMs = crossReadMs,
-                .mCrossBuildMs = crossBuildMs,
-                .mTravelled = view.mRoute.has_value() ? static_cast<double>(part) : 1.0,
-                .mScene = renderer->getSceneStats(),
-            });
-
+            places.push_back(*place);
             report(places.back());
         }
 

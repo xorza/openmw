@@ -16,8 +16,3 @@ Each item describes what is there and what it costs. No item says how to fix it.
       written in a frame costs one submit-and-wait inside that frame. `videowidget.cpp` writes one
       texture per frame.
 
-## Harness command plumbing is copied per command
-
-- [ ] `apps/rtxtool/bench.cpp` `runBench` mixes timing, hashing, JSON, crossing accounting and
-      reporting in one function.
-
