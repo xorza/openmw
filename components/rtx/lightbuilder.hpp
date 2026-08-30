@@ -62,34 +62,6 @@ namespace Rtx
     /// @param radius the recorded one. Null where it is not a size a light can have.
     std::optional<Light> makeLight(const osg::Vec3f& colour, float radius, const osg::Vec3f& position);
 
-    /// The lamp a surface that glows is given, so that what it lights is lit by a shadow ray rather
-    /// than by whichever bounce happens to land on it.
-    ///
-    /// **A glowing mushroom lit nothing, and the estimator was not wrong.** One cosine-weighted
-    /// bounce per pixel does find emissive surfaces, and what it finds is unbiased — but a cap a
-    /// few units across at the end of one ray in a hemisphere is found once in thousands of
-    /// pixels, and the denoiser takes the firefly out. A lamp is the same light delivered by the
-    /// next-event path every other lamp takes: one shadow ray the reservoir already spends.
-    ///
-    /// **A quarter of the area, and that is Cauchy's rather than a guess.** A convex body's
-    /// projected area, averaged over every direction it can be seen from, is a quarter of its
-    /// surface — so a closed glowing shape of radiance `L` delivers `L * A / 4` per steradian on
-    /// average, which is what one lamp with no direction of its own can stand for.
-    ///
-    /// **And it reaches as far as a recorded lamp of its brightness reaches.** A `LIGH` of radius
-    /// `r` is `r² * sIntensity` bright and carries `r * sReachScale + sReachBonus`; this is as
-    /// bright as some such lamp, so it carries as far as that lamp would. One rule for how far a
-    /// light of a given brightness reaches, whichever kind it is.
-    ///
-    /// @param radiance what a unit of the surface sends out, linear — `Material::mEmissiveRadiance`.
-    /// @param area how much of the surface glows, in square world units.
-    /// @param radius how far the glowing surface reaches from `position`, in world units. A shadow
-    ///        ray stops that far short of the lamp, which is what keeps the surface from shadowing
-    ///        its own light.
-    /// Null where nothing glows.
-    std::optional<Light> emissiveLight(
-        const osg::Vec3f& radiance, float area, float radius, const osg::Vec3f& position);
-
     /// What a light in the game's scene graph radiates this frame, in the renderer's units.
     ///
     /// **Both terms, because the content uses both.** A fixed-function pipeline had a diffuse and an

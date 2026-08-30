@@ -295,16 +295,10 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     const float reaching
         = skyReaching(hit.mPosition, hit.mNormal, hit.mTransmission, pixelKey(pixel) + SEED_SKY_REACHING);
 
-    // **Its glow is not counted here, because a lamp already stands for it.** Every surface that
-    // glows is given one by the extractor — `Rtx::emissiveLight` — and that lamp reaches this
-    // surface through `gather`, so a bounce that landed on the glow and counted it too would
-    // deliver the same light twice. The glow stays for the eye and for a reflection, which is
-    // looking at the surface rather than being lit by it.
-    Surface unlit = hit;
-    unlit.mEmissiveColour = vec3(0.0);
-    unlit.mEmitted = vec3(0.0);
-
-    return weight * shadeSurface(unlit, pathEnd(hit.mPosition, reaching), pixelKey(pixel) + SEED_LAMPS_BOUNCE);
+    // **Its glow is counted here, because this is the only path it takes.** Nothing gives a glowing
+    // surface a lamp of its own — `EMISSIVE_INTENSITY` says what measuring that showed — so a ray
+    // that lands on a mushroom cap is what carries the cap's glow back to whatever sent it.
+    return weight * shadeSurface(hit, pathEnd(hit.mPosition, reaching), pixelKey(pixel) + SEED_LAMPS_BOUNCE);
 }
 
 #endif

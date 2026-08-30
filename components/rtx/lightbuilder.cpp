@@ -89,28 +89,6 @@ namespace Rtx
         /// fitting is what an occluder nearly always is.
         constexpr float sFittingFraction = 0.25f;
 
-        /// The largest radius any `LIGH` in the shipped content states.
-        ///
-        /// **A ceiling on what a glowing surface may invent, and it is the game's number.** Morrowind
-        /// has no emissive lighting at all: a surface that glows is a texture, and every lamp the
-        /// world is lit by is a record with a radius. So a glow that lights further than the
-        /// brightest thing the game ever placed is this renderer inventing a light, which
-        /// `CLAUDE.md` puts below reading one.
-        ///
-        /// **And it invented enormous ones.** A glow's reach grows as the square root of its area, so
-        /// a large mesh — or a paged chunk that merged several — reaches thousands of units. Measured
-        /// across the harness's views: the median emissive lamp at Ald-Ruhn reached 7193 units and
-        /// there were 248 of them, against a median record of 256 and a maximum, over five cells, of
-        /// 1024. `LightGrid::rebuild` answers reaches like that by doubling its cell until its entry
-        /// budget fits, and carried far enough that is one cell holding every lamp in the scene.
-        ///
-        /// The brightness is scaled with it, because the two are one reading: an emitter of fixed
-        /// radiance is brighter by its area, and `makeLight` derives the reach from the brightness
-        /// through exactly that relation. Capping one and not the other would leave a lamp as bright
-        /// as it was with a hard edge where its window shuts, which is the ring `falloff` exists to
-        /// avoid.
-        constexpr float sBrightestRecord = 1024.0f;
-
         /// Morrowind's ten weathers, in `MWWorld::WeatherManager`'s registration order — which is
         /// what a script id counts along and what a `Weather_<name>_*` key spells. The shader names
         /// the same order as `WEATHER_*`; this is the only place the spellings live.
@@ -624,35 +602,10 @@ namespace Rtx
             .mIntensity = colour * (radius * radius * sIntensity),
             .mReach = radius * sReachScale + sReachBonus,
 
-            // **A sixteenth is an estimate and not a measurement**, which is what separates it from
-            // the extent an emissive shape carries — but the paragraph above argues it is a good
-            // one, and a lamp that casts no penumbra at all is the worse answer.
+            // **A sixteenth is an estimate**, and the paragraph above argues it is a good one — a
+            // lamp that casts no penumbra at all is the worse answer.
             .mSourceRadius = radius * sSourceFraction,
             .mClearance = radius * sFittingFraction,
-        };
-    }
-
-    std::optional<Light> emissiveLight(const osg::Vec3f& radiance, float area, float radius, const osg::Vec3f& position)
-    {
-        const osg::Vec3f intensity = radiance * (0.25f * area);
-        const float brightest = std::max({ intensity.x(), intensity.y(), intensity.z() });
-        if (!(brightest > 0.0f))
-            return std::nullopt;
-
-        const float equivalent = std::sqrt(brightest / sIntensity);
-        const float capped = std::min(equivalent, sBrightestRecord);
-        const float dimmed = (capped / equivalent) * (capped / equivalent);
-
-        return Light{
-            .mPosition = position,
-            .mIntensity = intensity * dimmed,
-            .mReach = capped * sReachScale + sReachBonus,
-
-            // **The glow is a shape, so its extent is measured rather than estimated** — and a
-            // source whose size is a fact is one a shadow ray may be aimed across. It stops at that
-            // same extent, because the shape is the light and a ray reaching it has arrived.
-            .mSourceRadius = radius,
-            .mClearance = radius,
         };
     }
 

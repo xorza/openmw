@@ -338,27 +338,18 @@ namespace Rtx::Shaders
     /// **What sets it is what a night frame shows.** A night's exposure is metered off a dark scene,
     /// so a surface held high enough washes to white and loses the pattern on it — a glowing
     /// mushroom cap reading as a blob rather than as a mushroom. `FLAME_INTENSITY` says the same of
-    /// a sprite and answers it by deriving a fully lit white card, `DAYLIGHT / pi`; this sits a half
-    /// above that, chosen against rendered frames rather than derived, because a material's one and
-    /// a sprite's one are two content conventions and not one.
+    /// a sprite and answers it by deriving a fully lit white card, `DAYLIGHT / pi`; this sits about
+    /// three times that, chosen against rendered frames rather than derived, because a material's
+    /// one and a sprite's one are two content conventions and not one.
     ///
-    /// **A quarter of what the same glow lights by, and the two are split on purpose.** What such a
-    /// surface *lights* is not what washed out, so `EMISSIVE_LAMP_INTENSITY` holds where it was.
-    ///
-    /// **What that costs is stated rather than hidden**: a glowing surface now looks dimmer than the
-    /// light it throws, and those are two statements about one material that no longer agree. The
-    /// exposure is why the split is worth making at all — a cut of eight moves a cap only a quarter
-    /// on screen, because dimming the glow dims the frame it is metered against.
-    RTX_CONST float EMISSIVE_INTENSITY = 4.0f;
-
-    /// What an emissive of one is worth as light, which `emissiveLight` builds its lamp from.
-    ///
-    /// **Matched to the sky rather than to the sun, which is about a fifth of it**: what these
-    /// materials are for is being visible in shade, and a glowing mushroom is not as bright as the
-    /// sun on it. That is the argument this number was chosen under, and it is kept here because
-    /// this is the half of the old constant that still carries it — `EMISSIVE_INTENSITY` says why
-    /// the other half moved and what the difference costs.
-    RTX_CONST float EMISSIVE_LAMP_INTENSITY = 16.0f;
+    /// **A glow lights nothing, and this is the whole of what it does.** A glowing surface used to
+    /// earn a lamp of its own beside what it shows. Measured with those lamps switched off, three
+    /// frames moved by 0.5 %, 1.2 % and 2.9 % — a mushroom lost the warm ring on the ground under
+    /// its cap and kept everything else, and a guild lit by its own sconces was hard to tell apart.
+    /// What the lamps cost was a light in the grid for every glowing shape in the world, 474 of them
+    /// at Seyda Neen and 248 at Ald-Ruhn, and they were the reach that drove `LightGrid` to coarsen
+    /// its cell. Morrowind lights what it means to light with a `LIGH` record.
+    RTX_CONST float EMISSIVE_INTENSITY = 8.0f;
 
     /// What light on the far side of a leaf is worth to the side being looked at, against the same
     /// light on the near side.
@@ -831,9 +822,8 @@ namespace Rtx::Shaders
         vec3 mIntensity;
         float mReach;
 
-        /// How big the glowing part is, in world units, and nought where nothing measured it. A
-        /// shadow ray opens to this, so a source with one casts a penumbra. `Rtx::Light` says which
-        /// lamps carry one.
+        /// How big the glowing part is, in world units. A shadow ray opens to this, so a lamp with
+        /// one casts a penumbra. `Rtx::Light` says what it is derived from.
         ///
         /// **And it is what makes the falloff above a sphere's rather than a point's.** An inverse
         /// square runs away at zero distance, which is where the air beside a lamp is sampled; a
@@ -951,8 +941,8 @@ namespace Rtx::Shaders
     /// **A white card square to the sun, which is what the original's one meant.** There a fully
     /// lit surface reached one and an additive sprite at one reached the same white, so the two
     /// stand at one level here: a card under `DAYLIGHT` leaves `DAYLIGHT / pi`. This is not
-    /// `EMISSIVE_INTENSITY`, which is a material's convention and not a sprite's, and which sits a
-    /// half above this. A flame carried at that scale is more than its own meaning, and at night the
+    /// `EMISSIVE_INTENSITY`, which is a material's convention and not a sprite's, and which sits
+    /// about three times this. A flame carried at that scale is more than its own meaning, and at night the
     /// exposure then puts every texel of it past white — the fringe the texture painted goes with
     /// the core, and a sprite reads as a cut-out that switches on.
     RTX_CONST float FLAME_INTENSITY = DAYLIGHT * INV_PI;

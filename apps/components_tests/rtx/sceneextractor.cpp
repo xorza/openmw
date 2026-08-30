@@ -2169,18 +2169,14 @@ namespace Rtx
             EXPECT_EQ(extractOne(1.0f), osg::Vec3f(0.5f, 0.25f, 0.0f));
         }
 
-        /// A glowing surface is given a lamp where its surface balances, as bright as its glow over
-        /// its area comes to — and none where a `LightSource` already stands over the same thing.
+        /// A glowing surface earns no lamp, and a `LightSource` beside it is what does the lighting.
         ///
-        /// The unit quad glows at (0.5, 0.25, 0) with no texture, so its radiance is that colour at
-        /// `EMISSIVE_LAMP_INTENSITY`. Placed at twice its size and five units up it has an area of
-        /// four and balances at (1, 1, 5), so the lamp's intensity is the radiance times a quarter of
-        /// four, and its radius is the far corner's distance from the middle: `sqrt(2)`.
+        /// **Morrowind lights what it means to light with a `LIGH` record**, and a glow is a texture.
+        /// `EMISSIVE_INTENSITY` says what a glow is worth and why it is worth no lamp.
         ///
-        /// **A torch is a record and a mesh, and the record is the light.** The same quad with a
-        /// `LightSource` beside it under one node earns no lamp of its own; the one lamp in the
-        /// scene is the record's, told apart by the source size a record derives.
-        TEST(RtxSceneExtractorTest, aGlowingSurfaceIsGivenALampAndATorchsMeshIsNot)
+        /// The record's own lamp is still there and still derives its two sizes from the radius the
+        /// record states: a flame a sixteenth of it, and the fitting around that flame a quarter.
+        TEST(RtxSceneExtractorTest, aGlowingSurfaceEarnsNoLampAndARecordDoesTheLighting)
         {
             const auto lampsOf = [](bool torch) {
                 osg::ref_ptr<osg::MatrixTransform> root = new osg::MatrixTransform(
@@ -2194,25 +2190,12 @@ namespace Rtx
 
                 Rtx::SceneDesc scene;
                 SceneExtractor extractor(scene);
-                const ExtractionStats stats = extractor.extract(*root, osg::Matrixf::identity(), 0);
-                EXPECT_EQ(stats.mEmissiveLamps, torch ? 0u : 1u);
+                extractor.extract(*root, osg::Matrixf::identity(), 0);
 
                 return std::vector<Light>(scene.getLights().begin(), scene.getLights().end());
             };
 
-            const std::vector<Light> lamps = lampsOf(false);
-            ASSERT_EQ(lamps.size(), 1u);
-            const Light& lamp = lamps.front();
-            EXPECT_NEAR(lamp.mPosition.x(), 1.0f, 1e-5f);
-            EXPECT_NEAR(lamp.mPosition.y(), 1.0f, 1e-5f);
-            EXPECT_NEAR(lamp.mPosition.z(), 5.0f, 1e-5f);
-
-            const osg::Vec3f radiance = osg::Vec3f(0.5f, 0.25f, 0.0f) * Shaders::EMISSIVE_LAMP_INTENSITY;
-            EXPECT_NEAR(lamp.mIntensity.x(), radiance.x(), 1e-4f);
-            EXPECT_NEAR(lamp.mIntensity.y(), radiance.y(), 1e-4f);
-            EXPECT_EQ(lamp.mIntensity.z(), 0.0f);
-            EXPECT_NEAR(lamp.mSourceRadius, std::sqrt(2.0f), 1e-5f) << "the glow's own measured extent";
-            EXPECT_NEAR(lamp.mClearance, std::sqrt(2.0f), 1e-5f) << "which its ray also stops at";
+            EXPECT_TRUE(lampsOf(false).empty()) << "a glow on its own lights nothing";
 
             const std::vector<Light> lit = lampsOf(true);
             ASSERT_EQ(lit.size(), 1u) << "the record's own lamp and nothing beside it";

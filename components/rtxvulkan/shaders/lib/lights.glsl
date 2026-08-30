@@ -369,13 +369,10 @@ void holdBrightestLamp(inout Reservoir kept, vec3 from, float scale)
 /// whatever angle it left at, and the grazing rays that used to end inside the fitting now stop
 /// soonest of all.
 ///
-/// **Only a source whose size was measured opens the cone, and that is the whole of what fixed the
-/// speckle.** `Rtx::Light::mSourceRadius` says which those are: an emissive glow is a shape, and a
-/// ray aimed anywhere across it is aimed at geometry that really emits. A `LIGH` record states no
-/// size, so the sixteenth that used to stand in for one aimed the ray across a sphere that reached
-/// into the lantern's own frame — and the ray came back fully shadowed, charging the whole lamp to
-/// the pixel. That drew a black speckle over every lamp-lit wall in the game and took light off all
-/// of them: 4.9 % of a lit wall speckled against 0.3 %, and the mages guild darker with it.
+/// **The clearance and the size are two numbers because they answer two questions**, and reading one
+/// for both is what drew a black speckle over every lamp-lit wall in the game: aimed across the
+/// flame and stopped at the flame, half the rays a wall sends ended among the fitting and charged
+/// the whole lamp to the pixel. Measured on a lantern wall, 4.9 % of it speckled against 1.2 %.
 float lampVisible(Reservoir kept, vec2 draw)
 {
     if (!(kept.mWeight > 0.0))

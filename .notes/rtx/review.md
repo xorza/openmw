@@ -17,7 +17,7 @@ Each item describes what is there and what it costs. No item says how to fix it.
       in front of water (`visibility.comp:98`) and the water's reflection reservoir
       (`water.glsl:267`) draw from one sequence.
 - [ ] `components/rtx/sceneextractor.cpp` `ExtractionStats::operator+=` sums thirteen fields and
-      omits `mSheets`, `mComposites` and `mEmissiveLamps` (incremented at lines 1570, 1492, 847).
+      omits `mSheets` and `mComposites`.
       `apps/rtxtool/scene.cpp:498-499` adds the settled walk to the staged walk and prints
       `mComposites` and `mSheets`. The settled walk's composites and sheets are missing from the
       report.

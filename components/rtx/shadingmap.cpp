@@ -138,7 +138,7 @@ namespace Rtx
         };
 
         // Luminance is linear in the colour, so the luminance of a sum is the sum of luminances and
-        // a block can be read once for both this and `meanColour`.
+        // a block resolves once for every texel in it.
         readTexels(texture, [&](std::uint32_t x, std::uint32_t y, const TexelSum& texels) {
             const std::size_t cell = cellOf(x, y);
             sums[cell] += luminanceOf(texels.mSum.x(), texels.mSum.y(), texels.mSum.z());
@@ -208,19 +208,6 @@ namespace Rtx
 
         for (float& value : mValues)
             value = std::clamp(value / mean, sFloor, sCeiling);
-    }
-
-    osg::Vec3f meanColour(const TextureData& texture)
-    {
-        TexelSum total;
-        readTexels(texture, [&](std::uint32_t, std::uint32_t, const TexelSum& texels) {
-            total.mSum += texels.mSum;
-            total.mCount += texels.mCount;
-        });
-
-        // Every texel transparent is a cutout with no colour to speak of, and no colour is what a
-        // surface with none radiates.
-        return total.mCount > 0 ? total.mSum / static_cast<float>(total.mCount) : osg::Vec3f();
     }
 
     float paintedLight(std::span<const float> map, float u, float v)

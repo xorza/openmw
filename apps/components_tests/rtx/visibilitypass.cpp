@@ -2319,10 +2319,10 @@ namespace Rtx
             EXPECT_EQ(onGreen[0], 0) << "and with none of the red the white one had";
 
             // The map is the other way round: red light off a green surface. Through the albedo it
-            // would be black, since green times red is nothing. Six of 255 is 0.023529, times four
-            // is 0.094118, which encodes to 86 — reached without the texture's help.
+            // would be black, since green times red is nothing. Six of 255 is 0.023529, times eight
+            // is 0.188235, which encodes to 120 — reached without the texture's help.
             const std::uint8_t mapGlow = encodeSrgb(6.0f / 255.0f * Shaders::EMISSIVE_INTENSITY);
-            EXPECT_EQ(mapGlow, 86);
+            EXPECT_EQ(mapGlow, 120);
 
             const std::array<std::uint8_t, 3> mapped = render(1, 2, osg::Vec3f());
             EXPECT_EQ(mapped[0], mapGlow) << "the map's own red, undimmed by the green under it";
@@ -2675,66 +2675,6 @@ namespace Rtx
             EXPECT_NEAR(render(true, true, behind, true), lamplit * Shaders::SHEET_TRANSMISSION, 1e-3f)
                 << "is the same lamp behind it, at the transmission";
             EXPECT_EQ(render(false, true, behind, true), 0.0f) << "and a solid takes nothing from it";
-        }
-
-        /// A surface that glows lights its neighbours through the lamp it is given, and not through
-        /// the bounce as well.
-        ///
-        /// **Two paths to one light, and one of them is switched off.** A cosine bounce that lands
-        /// on a glowing surface used to count its glow, and the lamp the extractor now derives
-        /// delivers the same light by a shadow ray — so the bounce hands the glow back, or a wall by
-        /// a mushroom is lit twice over. With no sun, a black sky and no ambient, a wall facing a
-        /// glowing quad and nothing else is exactly as dark as if the quad's lamp were absent.
-        ///
-        /// The lamp's own arithmetic, on the wall's default albedo of a half: a radiance of a half
-        /// over ten thousand square units is 1,250 per steradian, which reaches
-        /// `2 * sqrt(1250 / (0.25 pi)) + 128 = 207.79`; a hundred units off, the wall's centre gets
-        ///
-        ///   1250 * 0.5 * (1 - (100 / 207.79)^4)^2 / (100^2 + 70.71^2) / pi = 0.011878
-        ///
-        /// The `70.71` is the quad's own half-diagonal, which is the extent `emissiveLight` is handed
-        /// and what `falloff` softens its singularity by: a glow that size is a sphere and not a
-        /// point, so a wall a hundred units off divides by `100^2 + 70.71^2` and never by `100^2 + 1`.
-        TEST_F(RtxVisibilityTest, aGlowingSurfaceLightsItsNeighboursByItsLampAndNotByTheBounceAsWell)
-        {
-            constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
-
-            // The eye between the glowing quad and the wall, looking at the wall's middle.
-            Shaders::VisibilityConstants camera
-                = makeCamera(osg::Vec3f(0.0f, -50.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mSkyHorizon = osg::Vec3f();
-            camera.mSkyZenith = osg::Vec3f();
-            camera.mAmbient = osg::Vec3f();
-
-            // A hundred-unit quad a hundred units off the wall, wound to face it, glowing white.
-            const std::array<osg::Vec3f, 4> glowing{
-                osg::Vec3f(-50.0f, -100.0f, -50.0f),
-                osg::Vec3f(-50.0f, -100.0f, 50.0f),
-                osg::Vec3f(50.0f, -100.0f, 50.0f),
-                osg::Vec3f(50.0f, -100.0f, -50.0f),
-            };
-            Material glow;
-            glow.mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
-
-            const auto render = [&](bool withLamp) {
-                SceneDesc scene;
-                scene.addInstance(MeshInstance{
-                    .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(sWallQuad, {}, {}, sQuadIndices) });
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(glowing, {}, {}, sQuadIndices),
-                    .mMaterial = scene.addMaterial(glow) });
-                if (withLamp)
-                    scene.addLight(*emissiveLight(osg::Vec3f(0.5f, 0.5f, 0.5f), 10000.0f, 50.0f * std::sqrt(2.0f),
-                        osg::Vec3f(0.0f, -100.0f, 0.0f)));
-
-                std::vector<std::uint8_t> pixels;
-                EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
-                return decodeSrgb(pixels[centre]);
-            };
-
-            EXPECT_EQ(render(false), 0.0f) << "no lamp, and the bounce hands the glow back";
-            EXPECT_NEAR(render(true), 0.011878f, 0.0005f) << "the lamp, and nothing else";
         }
 
         /// A source whose size was measured casts a penumbra, where one that carries none casts an
