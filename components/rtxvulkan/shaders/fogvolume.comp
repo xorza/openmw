@@ -1,0 +1,177 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_query : require
+#extension GL_EXT_ray_tracing_position_fetch : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// The weather's air, integrated once for a block of pixels instead of once for each of them.
+//
+// **This is the march `fogAlong` used to make, moved.** Every term is the one the per-pixel version
+// carried and in the same order — the same coverage field, the same closed-form self-shadowing, the
+// same one shadow ray per stretch, the same reservoir over the lamps. What changed is who pays: a
+// thread here stands for `FOG_VOLUME_SCALE` squared pixels, and the trace reads what it left.
+//
+// **A thread to a column, and the whole column in one pass.** Front-to-back is the only order in
+// which transmittance can be carried, and carrying it is what lets a slice hold the *accumulated*
+// answer rather than its own share — so a pixel whose surface stands at any depth reads one fetch
+// and never a sum.
+//
+// `Rtx::FogVolume` says why there are two images and what is in each.
+
+#include "camera.h"
+#include "scene.h"
+#include "visibility.h"
+
+#include "lib/bindings.glsl"
+#include "lib/fog.glsl"
+#include "lib/lights.glsl"
+#include "lib/traversal.glsl"
+#include "lib/underwater.glsl"
+#include "lib/variants.glsl"
+
+layout(local_size_x = FOG_VOLUME_WORKGROUP, local_size_y = FOG_VOLUME_WORKGROUP) in;
+
+/// The air untouched, which is what a frame with no fog in it has to be exactly.
+void clearColumn(ivec2 column)
+{
+    for (uint slice = 0u; slice < FOG_VOLUME_SLICES; ++slice)
+    {
+        imageStore(fogVolumeAirTarget, ivec3(column, slice), vec4(0.0, 0.0, 0.0, 1.0));
+        imageStore(fogVolumeSunwardTarget, ivec3(column, slice), vec4(0.0));
+    }
+}
+
+void main()
+{
+    const ivec3 grid = imageSize(fogVolumeAirTarget);
+    const ivec2 column = ivec2(gl_GlobalInvocationID.xy);
+    if (column.x >= grid.x || column.y >= grid.y)
+        return;
+
+    // No air is the frame untouched, and it has to be exactly that: a lit surface with fog over it
+    // is a differently lit one, and the tests that measure radiance turn this off.
+    if (!(frame.mFogExtinction > 0.0))
+    {
+        clearColumn(column);
+        return;
+    }
+
+    // **The ray through the middle of the block this column stands for, from `rayAt`** — the same
+    // call the trace makes from a pixel, so the two cannot disagree about where a column points.
+    // Half a pixel back, because `rayAt` adds its own.
+    const vec2 centre = vec2(column) * float(FOG_VOLUME_SCALE) + (0.5 * float(FOG_VOLUME_SCALE) - 0.5);
+    const Ray ray = rayAt(frame.mCamera, centre);
+    const vec3 origin = frame.mOrigin + ray.mOffset;
+    const vec3 direction = ray.mDirection;
+
+    const FogSources sources = fogSourcesAlong(direction);
+
+    // **The whole reach and not the distance to a surface**, which is the one thing a volume cannot
+    // know: it is integrated before anything has been traced. The quadratic curve is what keeps the
+    // near end from being coarse — a third of the slices land inside the first tenth of the reach.
+    const float span = FOG_REACH;
+
+    // **The middle of every slice and of every stretch, and the march's jitter does not come
+    // across.** Per pixel that jitter buys noise, which is what a temporal denoiser is for; per
+    // column it moves an eight-pixel block of the frame together every frame, which is structure —
+    // and Ray Reconstruction keeps structure. Nothing in this pass draws a random number, so a
+    // still camera over still air writes the same volume every frame.
+    //
+    // What the jitter was hiding is mostly not here to hide: sixty-four slices read with a trilinear
+    // fetch is a far better quadrature than twenty-four steps read at a point.
+    const float middle = 0.5;
+
+    float transmittance = 1.0;
+    vec3 scattered = vec3(0.0);
+    vec3 sunward = vec3(0.0);
+    float behind = 0.0;
+
+    for (uint stretch = 0u; stretch < FOG_SHADOW_RAYS; ++stretch)
+    {
+        // One ray for the whole stretch, from a point drawn anywhere along it — which is what
+        // `FOG_SHADOW_RAYS` has always meant, and what makes eight probes stand for sixty-four
+        // slices.
+        float visible = 1.0;
+        float lunar = 1.0;
+        if (sources.mShafts || sources.mMoonlit)
+        {
+            const float reach
+                = fogDepth(float((stretch + 1u) * FOG_VOLUME_SLICES_PER_RAY) / float(FOG_VOLUME_SLICES)) * span;
+            const vec3 probe = origin + direction * mix(behind, reach, middle);
+
+            if (sources.mShafts)
+                visible = lightThrough(probe, frame.mSunPosition, frame.mFar);
+            if (sources.mMoonlit)
+                lunar = lightThrough(probe, sources.mMoonward, frame.mFar);
+        }
+
+        for (uint k = 0u; k < FOG_VOLUME_SLICES_PER_RAY; ++k)
+        {
+            const uint slice = stretch * FOG_VOLUME_SLICES_PER_RAY + k;
+            const float ahead = fogDepth(float(slice + 1u) / float(FOG_VOLUME_SLICES)) * span;
+            const float stride = ahead - behind;
+
+            const vec3 position = origin + direction * (behind + middle * stride);
+            const float extinction = fogExtinctionAt(position, stride);
+            behind = ahead;
+
+            // What this slice is worth to the frame, computed once and used twice: what it scatters
+            // in is weighted by it, and what the transmittance loses to it is exactly it, since
+            // `T * (1 - absorbed)` is `T - T * absorbed`.
+            const float weight = transmittance * (1.0 - exp(-extinction * stride));
+
+            // Everything between a source and this point: what the geometry stopped, what the fog
+            // took on the way down, and what any water overhead took out of it.
+            //
+            // **Each on its own slant and not the sun's.** At night `mSunPosition` points below the
+            // horizon, the floor in `fogBeamDepth` pins it, and the sun's beam comes back as nothing
+            // at all — which is what lets one expression carry both without asking the hour.
+            const vec3 moons = sources.mMoonlit
+                ? lunar
+                    * (sources.mMasser * exp(-fogBeamDepth(extinction, frame.mMoons[0].mDirection))
+                        + sources.mSecunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection)))
+                    * daylightReaching(position)
+                : vec3(0.0);
+
+            scattered += weight * (frame.mFogColour + moons);
+
+            // **The sun without its irradiance and without its phase**, which is the whole of what
+            // the second image is for: both are functions of the direction alone, so they factor out
+            // of the integral exactly and the trace puts them back at the pixel's own angle rather
+            // than the column's. Mie's forward peak is thousands of times isotropic within a degree
+            // and a column is a quarter of one, so baking it here would smear the blaze around a low
+            // sun over four times its width.
+            if (sources.mSunlit)
+                sunward += weight * visible * exp(-fogBeamDepth(extinction, frame.mSunPosition))
+                    * daylightReaching(position);
+
+            // **A reservoir a slice, where the march kept one for a whole ray.** The march could
+            // add its single estimate to the ray's total and be done, because a pixel shows the
+            // total and nothing else; a slice has to hold what stands in front of it alone, so an
+            // estimate spanning the column would light air the surface is in front of. One ray per
+            // slice is what that costs, and it is the ray count the march already spent per pixel.
+            //
+            // **Held rather than drawn.** `considerLamp` says why: a choice re-rolled per froxel
+            // is a rectangle rather than noise.
+            //
+            // **Isotropic, and `INV_FOUR_PI` is what isotropic is.** A lamp arrives in the air as
+            // irradiance exactly as it arrives at a surface, and what comes back toward the eye is
+            // that irradiance spread over the sphere.
+            Reservoir lamps = noLamps();
+            holdBrightestLamp(lamps, position, INV_FOUR_PI * weight);
+            scattered += lampsThrough(lamps);
+
+            transmittance -= weight;
+
+            // **The accumulation at the slice's far edge**, which is the depth `fogVolumeAlong`
+            // resolves a distance to. Written here rather than gathered afterwards because the
+            // column is one thread and the running pair is already in its registers.
+            imageStore(fogVolumeAirTarget, ivec3(column, slice), vec4(scattered, transmittance));
+            imageStore(fogVolumeSunwardTarget, ivec3(column, slice), vec4(sunward, 0.0));
+        }
+    }
+}

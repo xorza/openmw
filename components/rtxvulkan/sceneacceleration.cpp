@@ -30,24 +30,6 @@ namespace Rtx
         constexpr std::uint8_t sRowMicromapped = 2;
         constexpr std::uint8_t sRowWater = 4;
 
-        /// Brackets a build where there is a timer to bracket it with.
-        ///
-        /// **The load path has none, and neither has a picture inside the interface.** Building
-        /// every structure from scratch is a scene arriving and not a frame, and its cost is already
-        /// reported as a build time; giving it zones would put them in whichever frame report came
-        /// next.
-        void openZone(GpuTimer* timer, VkCommandBuffer commands, std::string_view name)
-        {
-            if (timer != nullptr)
-                timer->open(commands, name);
-        }
-
-        void closeZone(GpuTimer* timer, VkCommandBuffer commands)
-        {
-            if (timer != nullptr)
-                timer->close(commands);
-        }
-
         /// `VkAccelerationStructureCreateInfoKHR::offset` must be a multiple of this.
         constexpr VkDeviceSize sStructureAlignment = 256;
 

@@ -11,7 +11,9 @@
 #include "buffer.hpp"
 #include "commands.hpp"
 #include "fogtile.hpp"
+#include "fogvolume.hpp"
 #include "gbuffer.hpp"
+#include "gputimer.hpp"
 #include "scenebuffers.hpp"
 #include "wavepass.hpp"
 
@@ -19,9 +21,9 @@ namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t extent)
+        std::uint32_t groupsFor(std::uint32_t extent, std::uint32_t workgroup)
         {
-            return (extent + Shaders::VISIBILITY_WORKGROUP - 1) / Shaders::VISIBILITY_WORKGROUP;
+            return (extent + workgroup - 1) / workgroup;
         }
 
         constexpr auto sCompute = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -86,9 +88,9 @@ namespace Rtx
         return (mSun ? 1u : 0u) | (mMoons ? 2u : 0u) | (mSea ? 4u : 0u) | (mUniformFog ? 8u : 0u);
     }
 
-    std::string VisibilityVariant::describe() const
+    std::string VisibilityVariant::describe(const std::string_view kernel) const
     {
-        std::string name = "visibility";
+        std::string name(kernel);
         if (mSun)
             name += " sun";
         if (mMoons)
@@ -101,7 +103,8 @@ namespace Rtx
     }
 
     VisibilityPass::VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
-        VkDescriptorSetLayout textureLayout, const GBufferLayout& channelLayout, bool countHits)
+        VkDescriptorSetLayout textureLayout, const GBufferLayout& channelLayout, const FogVolumeLayout& volumeLayout,
+        bool countHits)
         : mDevice(device)
         , mBlueNoise(uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
         , mConstants(device, sizeof(Shaders::VisibilityConstants),
@@ -109,7 +112,9 @@ namespace Rtx
               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
         , mCountHits(countHits ? 1u : 0u)
         , mChannelLayout(channelLayout.getHandle())
+        , mVolumeLayout(volumeLayout.getHandle())
         , mModule(shaderDirectory / "visibility.comp.spv")
+        , mVolumeModule(shaderDirectory / "fogvolume.comp.spv")
     {
         // **The three a game actually spends its time in**, compiled here where a load already
         // stands still rather than on the frame that first asks for one. The day and the night are
@@ -120,7 +125,14 @@ namespace Rtx
                  VisibilityVariant{ .mSun = false, .mMoons = true, .mSea = true, .mUniformFog = false },
                  VisibilityVariant{ .mSun = false, .mMoons = false, .mSea = false, .mUniformFog = true },
              })
+        {
             pipelineFor(common, textureLayout);
+
+            // The interior has no volume, so it gets none: an even air is the one case the closed
+            // form answers and the one case nothing is dispatched for.
+            if (!common.mUniformFog)
+                volumePipelineFor(common, textureLayout);
+        }
     }
 
     ComputePipeline& VisibilityPass::pipelineFor(const VisibilityVariant variant, VkDescriptorSetLayout textureLayout)
@@ -132,48 +144,41 @@ namespace Rtx
             const std::array<std::uint32_t, 5> specialization{ mCountHits, variant.mSun ? 1u : 0u,
                 variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, variant.mUniformFog ? 1u : 0u };
 
-            const std::array<VkDescriptorSetLayout, 2> laterSets{ textureLayout, mChannelLayout };
-            held = std::make_unique<ComputePipeline>(
-                mDevice, sBindings, 0, laterSets, mModule, variant.describe(), specialization);
+            held = std::make_unique<ComputePipeline>(mDevice, sBindings, 0, laterSets(textureLayout), mModule,
+                variant.describe("visibility"), specialization);
         }
 
         return *held;
     }
 
-    void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
-        const Buffer& hitCount, const Shaders::VisibilityConstants& constants)
+    ComputePipeline& VisibilityPass::volumePipelineFor(
+        const VisibilityVariant variant, VkDescriptorSetLayout textureLayout)
     {
-        assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
+        assert(!variant.mUniformFog && "a fog volume for a room, which reads the closed form instead");
 
-        assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
-        assert(inputs.mFog != nullptr && "a trace with no fog field drawn for it");
-        assert(inputs.mTextureLayout != VK_NULL_HANDLE && "a trace whose texture array named no layout");
-
-        // **How many emitters there are is the scene's answer and not the camera's.** The table
-        // never shrinks, so its length says nothing about this frame; taking the count off the
-        // buffers here is what keeps a caller from having to know the table exists at all.
-        Shaders::VisibilityConstants described = constants;
-
-        // **The tiles' widths come off the pass that built them**, so what the shader divides by is
-        // what is actually bound rather than a second statement of the same table.
-        std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> surfaces{};
-        std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> curvatures{};
-
-        for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
+        std::unique_ptr<ComputePipeline>& held = mVolumePipelines[variant.index()];
+        if (held == nullptr)
         {
-            const VkSampler sampler = inputs.mWaves->getSampler();
-            surfaces[cascade] = { sampler, inputs.mWaves->getSurface(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
-            curvatures[cascade] = { sampler, inputs.mWaves->getCurvature(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
+            // Nothing here counts hits and nothing here has an even air, so both of those constants
+            // are nought whatever the frame is: the volume is dispatched only where the field has a
+            // shape to integrate, and it traces no primary ray to count.
+            const std::array<std::uint32_t, 5> specialization{ 0u, variant.mSun ? 1u : 0u, variant.mMoons ? 1u : 0u,
+                variant.mSea ? 1u : 0u, 0u };
 
-            described.mWaveExtent[cascade] = inputs.mWaves->getExtent(cascade);
+            held = std::make_unique<ComputePipeline>(mDevice, sBindings, 0, laterSets(textureLayout), mVolumeModule,
+                variant.describe("fog volume"), specialization);
         }
 
-        described.mWaveSlope = inputs.mWaves->getSlope();
+        return *held;
+    }
 
-        const WaveCurvature& curvature = inputs.mWaves->getMoments();
-        described.mWaveCurvature = curvature.mWhole;
-        std::copy(curvature.mResolved.begin(), curvature.mResolved.end(), std::begin(described.mWaveResolved));
+    std::array<VkDescriptorSetLayout, 3> VisibilityPass::laterSets(VkDescriptorSetLayout textureLayout) const
+    {
+        return { textureLayout, mChannelLayout, mVolumeLayout };
+    }
 
+    void VisibilityPass::writeConstants(VkCommandBuffer commands, const Shaders::VisibilityConstants& described) const
+    {
         // **Both directions, because one buffer serves every trace.** The write has to wait for the
         // last dispatch that read it — a traced view and the world are two traces — and the next
         // dispatch has to wait for the write. **And for the last write**, which two frames in
@@ -221,7 +226,11 @@ namespace Rtx
             .pBufferMemoryBarriers = &written,
         };
         vkCmdPipelineBarrier2(commands, &handOver);
+    }
 
+    void VisibilityPass::pushInputs(VkCommandBuffer commands, const ComputePipeline& pipeline,
+        const VisibilityInputs& inputs, const GBuffer& buffer, const Buffer& hitCount) const
+    {
         const VkWriteDescriptorSetAccelerationStructureKHR sceneWrite{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
             .accelerationStructureCount = 1,
@@ -252,6 +261,17 @@ namespace Rtx
         const VkDescriptorBufferInfo tileIndexWrite{ inputs.mBuffers->getSpriteTileIndices(inputs.mSlot), 0,
             VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo frameWrite{ mConstants.getHandle(), 0, VK_WHOLE_SIZE };
+
+        // **The tiles' widths come off the pass that built them**, so what the shader divides by is
+        // what is actually bound rather than a second statement of the same table.
+        std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> surfaces{};
+        std::array<VkDescriptorImageInfo, Shaders::WAVE_CASCADES> curvatures{};
+        for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
+        {
+            const VkSampler sampler = inputs.mWaves->getSampler();
+            surfaces[cascade] = { sampler, inputs.mWaves->getSurface(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
+            curvatures[cascade] = { sampler, inputs.mWaves->getCurvature(cascade).getView(), VK_IMAGE_LAYOUT_GENERAL };
+        }
 
         // **Nothing bound here may be nothing.** A descriptor the shader declares and a null handle
         // is undefined at the dispatch: the driver may fault, may not, and says nothing either way —
@@ -323,12 +343,6 @@ namespace Rtx
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         append(sFrameBinding + 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, &fogWrite, nullptr);
 
-        // **Resolved from the constants this frame is about to be traced with**, and from nothing
-        // kept between frames: a dusk moves the tuple and a doorway moves it again.
-        const ComputePipeline& pipeline
-            = pipelineFor(VisibilityVariant::resolve(constants, inputs.mWater), inputs.mTextureLayout);
-
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
         // Every binding the layout declares, written exactly once — a shader that grew one and a
         // record that did not is the failure this counts.
         assert(filled == writes.size() && "a binding the layout declares was left unwritten");
@@ -336,12 +350,75 @@ namespace Rtx
         vkCmdPushDescriptorSet(
             commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 0, filled, writes.data());
 
-        // The two sets nothing pushes: the bindless textures a scene brought, and the channels this
-        // writes. Both are written when what they name is made, and bound as they are.
-        const std::array<VkDescriptorSet, 2> sets{ inputs.mTextures, buffer.getSet() };
+        // The three sets nothing pushes: the bindless textures a scene brought, the channels the
+        // trace writes, and the air in front of the camera. Each is written when what it names is
+        // made, and bound as it is.
+        const std::array<VkDescriptorSet, 3> sets{ inputs.mTextures, buffer.getSet(), inputs.mFogVolume->getSet() };
         vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 1,
             static_cast<std::uint32_t>(sets.size()), sets.data(), 0, nullptr);
-        vkCmdDispatch(commands, groupsFor(constants.mCamera.mWidth), groupsFor(constants.mCamera.mHeight), 1);
     }
 
+    void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
+        const Buffer& hitCount, const Shaders::VisibilityConstants& constants, GpuTimer* timer)
+    {
+        assert(buffer.getWidth() >= constants.mCamera.mWidth && buffer.getHeight() >= constants.mCamera.mHeight);
+
+        assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
+        assert(inputs.mFog != nullptr && "a trace with no fog field drawn for it");
+        assert(inputs.mFogVolume != nullptr && "a trace with no air integrated for it");
+        assert(inputs.mTextureLayout != VK_NULL_HANDLE && "a trace whose texture array named no layout");
+
+        Shaders::VisibilityConstants described = constants;
+
+        // **The tiles' widths come off the pass that built them**, so what the shader divides by is
+        // what is actually bound rather than a second statement of the same table.
+        for (std::size_t cascade = 0; cascade < Shaders::WAVE_CASCADES; ++cascade)
+            described.mWaveExtent[cascade] = inputs.mWaves->getExtent(cascade);
+
+        described.mWaveSlope = inputs.mWaves->getSlope();
+
+        const WaveCurvature& curvature = inputs.mWaves->getMoments();
+        described.mWaveCurvature = curvature.mWhole;
+        std::copy(curvature.mResolved.begin(), curvature.mResolved.end(), std::begin(described.mWaveResolved));
+
+        writeConstants(commands, described);
+
+        // **Resolved from the constants this frame is about to be traced with**, and from nothing
+        // kept between frames: a dusk moves the tuple and a doorway moves it again.
+        const VisibilityVariant variant = VisibilityVariant::resolve(constants, inputs.mWater);
+
+        // Taken for writing whether or not it is filled, because the trace binds a descriptor to it
+        // either way and a descriptor names the layout its image is in.
+        inputs.mFogVolume->begin(commands);
+
+        if (!variant.mUniformFog)
+        {
+            openZone(timer, commands, "air");
+
+            const ComputePipeline& air = volumePipelineFor(variant, inputs.mTextureLayout);
+            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, air.getHandle());
+            pushInputs(commands, air, inputs, buffer, hitCount);
+
+            // **Every column the image has and not every column the camera needs.** A traced view is
+            // drawn into a volume grown to the largest one asked for, and the pixel at its edge
+            // interpolates against the column outside it — which has to hold air rather than
+            // whatever was there.
+            vkCmdDispatch(commands, groupsFor(inputs.mFogVolume->getColumns(), Shaders::FOG_VOLUME_WORKGROUP),
+                groupsFor(inputs.mFogVolume->getRows(), Shaders::FOG_VOLUME_WORKGROUP), 1);
+
+            closeZone(timer, commands);
+
+            inputs.mFogVolume->handOver(commands);
+        }
+
+        openZone(timer, commands, "trace");
+
+        const ComputePipeline& pipeline = pipelineFor(variant, inputs.mTextureLayout);
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
+        pushInputs(commands, pipeline, inputs, buffer, hitCount);
+        vkCmdDispatch(commands, groupsFor(constants.mCamera.mWidth, Shaders::VISIBILITY_WORKGROUP),
+            groupsFor(constants.mCamera.mHeight, Shaders::VISIBILITY_WORKGROUP), 1);
+
+        closeZone(timer, commands);
+    }
 }

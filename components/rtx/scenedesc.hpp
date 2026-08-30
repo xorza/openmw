@@ -267,7 +267,8 @@ namespace Rtx
         /// what lights the place, so the reach is stretched while the brightness is not.
         float mReach = 0.0f;
 
-        /// How big the glowing part is, in world units, which is what its shadows are soft by.
+        /// How big the glowing part is, in world units, which is how far short of the centre its
+        /// shadow ray stops. `lampVisible` says why it is no longer what shadows are soft by.
         ///
         /// **Not the recorded radius either**, and for once not a stretched version of it: this is
         /// the flame rather than the room it lights. `makeLight` is the one place it is derived and

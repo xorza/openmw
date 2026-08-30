@@ -94,6 +94,22 @@ from the side and asks its eight sun probes on every pixel, and the moons are st
 budget has to be written against dawn, not noon: today dawn is 50 fps at the target before the CPU
 is counted.
 
+**After the fog volume** (step 10, landed). One A/B, both legs back to back so they share a clock:
+
+| view | trace before | trace after | `air` | frame before | frame after |
+|---|---:|---:|---:|---:|---:|
+| ship noon | 7.79 | 4.30 | 0.22 | 14.70 | 11.93 |
+| ship dawn | 15.37 | 7.50 | 0.31 | 22.73 | 15.00 |
+
+Both legs predate the change that aims a lamp's shadow ray at its centre (`lampVisible`), so the
+A/B above is the fog volume alone.
+
+A second run of the finished pass, on a colder clock — every zone in it about 15 % slower,
+`upscale` included — read trace 5.00 and 8.38 with `air` at 0.18 and 0.26. Both legs say the same
+thing: **dawn's fog march is gone and the trace nearly halves.** The floor §3.2 measured by
+deleting the air outright is 4.39 noon and 7.41 dawn, so what the volume still spends over having
+no air at all is about 0.8 ms at noon and 1.2 at dawn — the fetch, the two images and the pass.
+
 ### 2.3 The game
 
 `OPENMW_RTX_BENCH=600:120 release.sh game --config <dir with validation = false>`. The quicksave
@@ -195,7 +211,7 @@ Read out of `visibility.comp` and `lib/`. A lit ground pixel outdoors at noon:
 | 1 | the bounce (`bounceLight`), a cosine ray |
 | 1 | `skyReaching` at the bounce hit |
 | 1 + 0–2 + 1 | sun, moons and a lamp at the bounce hit (`shadeSurface` again) |
-| 8 (+8) | `FOG_SHADOW_RAYS` sun probes along the fog march, and eight moon probes when a moon is up |
+| 0 | the air, which is a trilinear fetch: `FOG_SHADOW_RAYS` sun probes and as many moon probes are spent once per `FOG_VOLUME_SCALE` squared pixels, in the volume |
 | — | 24 `FOG_STEPS` of extinction, each weighing every lamp in its grid cell into one reservoir |
 | 0–2 | water: reflection and refraction, each shaded |
 
@@ -207,6 +223,10 @@ the light grid along the ray (`FOG_CELLS_ALONG = 32`), and the same eight shadow
 
 `shot --repeat=100`, 3840×2160 performance, GPU `trace` zone in ms. Each row is one edit against
 the base measured immediately after it, so the pair shares a clock.
+
+**Taken before step 10, so every fog row here is about the per-pixel march the volume replaced.**
+They are kept because they are what sized the step, and because the floor — no air at all — is what
+the volume is still measured against.
 
 | removed | ship noon | ship dawn | guild |
 |---|---:|---:|---:|
@@ -336,58 +356,15 @@ These change no pixel. They are the 1 % low on any route: 4.6 fps today.
 
 ### 5.2 The median — GPU, no picture change
 
-10. **A froxel fog volume outdoors.** The per-pixel march integrates the same field, the same
-    lamps and the same eight sun probes for every pixel of every frame. A frustum-aligned grid —
-    240×135×64 at 1920×1080 — integrated in a compute pass before the trace, and one trilinear fetch
-    per pixel. The interior closed form stays. This is what every shipping volumetric does and the
-    fog's grain is far coarser than a froxel.
-    *Number:* the march is 3.4 ms at noon and 7.6 at dawn (§3.2); a volume costs about a
-    millisecond of its own, so −2.5 noon and −6.5 dawn. The largest GPU lever there is.
-
-    **The design, read out of the code.**
-    - **`fogAlong` has exactly one caller** — `visibility.comp`, for the primary ray, from the eye.
-      Nothing else marches. So a view-aligned volume serves every caller there is, and no reflection
-      or shadow path needs a second answer. This is what makes the step small rather than sprawling.
-    - **One dispatch and one image, a thread to a column.** A thread per (x, y) of the grid walks its
-      64 slices in order, carrying `transmittance` and `scattered` exactly as `fogWeatherAlong` does
-      now, and writes the *accumulated* pair into a half-float RGBA 3D image — three channels of
-      light and the transmittance, which is what `fogAlong` already returns. Front-to-back in one
-      pass means no second integration pass and no second image.
-    - **The slices take `fogDepth`'s own `fraction²` curve**, dense near the eye. **They do not
-      keep the sampling the march has**, and the difference is the one thing to look at in the
-      picture: the march spreads its 24 steps over `min(distance, FOG_REACH)`, so a wall at 500
-      units gets all 24 of them inside 500 units, where a volume spanning the whole 30,000 puts
-      about 8 of its 64 slices there. The quadratic curve is what keeps that from being coarse
-      rather than what makes it equal.
-    - **The rays are the win.** Eight sun probes a pixel is 16.6 M rays at 1920×1080 (2.07 M pixels
-      × 8). One a froxel is 2.07 M at 240×135×64, and one per stretch of eight slices — which is
-      what `FOG_SHADOW_RAYS` already means — is 259 K, an eighth of that.
-    - **The lamp reservoir moves with it**: one reservoir and one ray per froxel rather than per
-      pixel-march, which is the same rule at a coarser grain.
-    - **`fogEdgeAlong` stays per pixel.** It is a closed form and costs nothing.
-    - **Not behind a specialisation constant.** `VisibilityVariant` already compiles sixteen kernels
-      and one takes about half a second, so another constant is thirty-two. The volume simply
-      *replaces* the march in the outdoor kernel — `FOG_UNIFORM` still picks the interior closed
-      form, and `fogWeatherAlong` becomes the fetch. Nothing that turns the air off changes.
-    - **Two bindings for one image.** The pass writes it as a storage image in a set of its own; the
-      trace reads it as a sampled image through the pushed set 0, which is where every other input
-      the fog uses already arrives. A barrier between the dispatch and the trace is what orders them.
-    - **The column's ray comes from `rayAt`**, the same call the trace makes from a pixel, so the
-      two cannot disagree about where a column points.
-    - Roughly 500 lines: the 3D image — `Image` already takes a depth and `FogTile` is the one
-      caller that passes one — the pass, the shader, the dispatch and its zone in `renderFrame`, and
-      the fetch in `fog.glsl`. Reprojection is a second
-      stage and only if the noise asks for it.
-    - *Check it with:* `shot` at the ship at noon and at `seyda-neen-ship-dawn`, at the target, for
-      the picture and for the `trace` zone.
 11. **Post at the resolution that shows.** Bloom's pyramid, the exposure histogram and the
     composite run at 3840×2160 for 1.3 ms; bloom from a half-resolution source and the histogram
     from a quarter-resolution one change nothing a viewer sees.
     *Number:* about −0.5 ms, an estimate from the zone sizes; measure it.
 12. **The lamp reservoir's ray only when it is worth one.** `lampVisible` traces the held lamp
-    whatever its weight. Skip the ray when the held lamp's unshadowed contribution is under a
-    fraction of the pixel's direct light, and credit it whole. This is a bias, bounded by the
-    threshold — set it where a reference cannot tell (`--accumulate`).
+    whatever its weight, and the volume now buys one per froxel — so this reaches both. Skip the ray
+    when the held lamp's unshadowed contribution is under a fraction of the point's direct light,
+    and credit it whole. This is a bias, bounded by the threshold — set it where a reference cannot
+    tell (`--accumulate`).
     *Number:* −0.3 to −0.6 ms, most indoors.
 
 ### 5.3 Quality for speed — the dials
@@ -397,9 +374,6 @@ Reconstruction is a denoiser, so what a dial adds is noise it removes, up to a p
 
 | dial | ship noon | ship dawn | guild | what a viewer sees |
 |---|---:|---:|---:|---|
-| fog: 4 shadow rays, 24 steps | −1.0 | ~−2 | ~−0.6 | shaft edges a touch noisier; RR removes it |
-| fog: 4 shadow rays, 12 steps | −1.4 | ~−3 | ~−0.7 | as above, plus a coarser step through thick fog |
-| fog: 2 shadow rays, 8 steps | −2.1 | −4.5 | −1.3 | banding in dawn shafts; lamp halos noisier indoors |
 | the bounce at half resolution (one ray per 2×2, or checkerboard + reproject) | ~−1.2 | ~−2.2 | ~−1.0 | softer indirect light on small clutter; RR is built for this input |
 | no `skyReaching` at the bounce hit | −0.9 | −0.7 | 0 | a bounce that lands under an overhang reads the open sky — brighter bounce under bridges and eaves |
 | the lamp at the bounce hit unshadowed | ~−0.5 | ~−1 | ~−0.7 | light leaks in the bounce term only, one bounce deep |
@@ -408,9 +382,10 @@ Reconstruction is a denoiser, so what a dial adds is noise it removes, up to a p
 | Ray Reconstruction preset `e` | 0 | 0 | 0 | — |
 | distant statics, people, props off | 0 | 0 | 0 | not a lever |
 
-Together the cheapest fog row and the half-resolution bounce are −2.2 ms on the ship at noon and
-about −4 at dawn: at the target that is 62 → 72 fps at noon and 50 → 63 at dawn, from two dials.
-Step 10 makes the fog rows moot: take the cheap halves now only if step 10 is far.
+**The three fog rows are gone with the march they cut.** Step 10 took the whole of what they were
+trading against, and the volume's own dials — `FOG_VOLUME_SCALE` and `FOG_VOLUME_SLICES` — are
+worth about a fifth of what the march's were. The half-resolution bounce is now the only large one
+left, at about −1.2 ms at noon and −2.2 at dawn.
 
 ### 5.4 The median — CPU
 
@@ -431,7 +406,7 @@ Step 10 makes the fog rows moot: take the cheap halves now only if step 10 is fa
   plus the wavelet filter was costed: the filter is 10.6 ms at 3840×2160, 2.6 at 1920×1080, plus
   accumulate and SR — no cheaper and worse. It stays.
 - **The micromaps.** 0.5 ms at noon on the ship, and the classifier not the level is the limit.
-  Worth a look at dawn in the Bitter Coast canopy after step 10, not before.
+  Worth a look at dawn in the Bitter Coast canopy now that step 10 has landed.
 - **Instance and content dials.** §3.3: they do not move the device.
 
 ### 5.6 From `review.md` — work the frame did not ask for
@@ -492,8 +467,8 @@ names any of them. The renderer is compute with ray queries, so SER — which `C
 the posture — cannot apply to it: reordering is a ray-tracing-pipeline feature. Either the trace
 moves to a ray-tracing pipeline with `hitObjectReorder` around the bounce and the fog probes,
 where divergence is (a measurement to take: the bounce at dawn is 4.5 ms and wholly divergent), or
-the requirements come out and the posture's SER line with them. Decide after step 10, when the
-kernel's shape is settled.
+the requirements come out and the posture's SER line with them. Step 10 has settled the kernel's
+shape, so this is decidable now — and the fog march it would have reordered is no longer in there.
 
 ## 6. The order, in one place
 
@@ -502,20 +477,20 @@ kernel's shape is settled.
 | 6 | arrivals on a second queue, no ring drain | at most 5–9 ms of a 260 ms crossing (§2.6) | none | — |
 | 7 | the paging that is left: lead, race, or "not yet" | `collect` is 15.4 % after halving | none | — |
 | 9 | composite bake on the GPU | a core freed; chunks baked on arrival | none | 6 |
-| 10 | froxel fog volume | −3.4 ms noon, more at dawn | reprojected | — |
 | 11 | post at half resolution | −0.5 ms | none | — |
 | 8 | texture estimate cache | crossing CPU | none | — |
-| 12 | lamp ray by contribution | −0.3 to −0.6 ms | bounded bias | 10 |
-| §5.3 | the dials | −1 to −3.3 ms | named per row | the user's call |
+| 12 | lamp ray by contribution | −0.3 to −0.6 ms | bounded bias | — |
+| §5.3 | the dials | −1.2 to −2.2 ms | named per row | the user's call |
 | 13 | incremental walk | −2 ms CPU | none | 5–7, and only when the CPU is on the path |
 | 14 | the `review.md` items, §5.6 — the light tables first | `place` and `tlas` on a still cell; the rest small | none | — |
-| — | SER, or drop its requirements | unmeasured | none | 10 |
+| — | SER, or drop its requirements | unmeasured | none | — |
 
-**The arithmetic at the target, at 1.8 GHz.** Ship noon today: trace 8.7 + RR 5.1 + post 1.9 =
-15.7 ms. After 10 and 11: trace ~6.2, post 1.4 — 12.7 ms, 79 fps, and the CPU's 3.7 ms fits
-behind it twice over. **Dawn today is 22 ms of device, 45 fps.** After 10 and 11 it is trace ~9 +
-5.1 + 1.4 = 15.5 ms — under the budget with nothing to spare. The half-resolution bounce (−2.2 at
-dawn) is what buys dawn its headroom, so it is the one dial in §5.3 the plan counts on.
+**The arithmetic at the target, after step 10.** Ship noon: trace 4.3 + `air` 0.2 + RR 4.9 + post
+1.6 = 11.0 ms, 91 fps, and the CPU's 3.7 ms fits behind it three times over. **Dawn is 13.5 ms of
+device, 74 fps** — trace 7.5 + 0.3 + 4.7 + 1.6, against 22 before. Step 11 takes about half a
+millisecond off both. **The budget is met at both hours with the trace as it stands**, so what §5.3
+sells and §5.2 still owes are headroom for the cells this was not measured in rather than the price
+of admission.
 
 ## Appendix — raw data
 

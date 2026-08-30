@@ -31,7 +31,7 @@ namespace Rtx
     class GpuTimer
     {
     public:
-        /// The most zones one frame may open. Eleven are used; the rest is room to bisect one.
+        /// The most zones one frame may open. Twelve are used; the rest is room to bisect one.
         static constexpr std::uint32_t sMaxZones = 24;
 
         explicit GpuTimer(const Device& device);
@@ -86,4 +86,22 @@ namespace Rtx
         /// Which of `mZones` is open, or `mZones.size()` for none.
         std::size_t mOpen = 0;
     };
+
+    /// Brackets a piece of work where there is a timer to bracket it with.
+    ///
+    /// **Two paths record the same commands and only one of them is a frame.** A scene arriving
+    /// builds every structure from scratch and a picture inside the interface traces its own camera;
+    /// neither is counted, and zones opened there would land in whichever frame report came next. So
+    /// the caller passes what it has, which is sometimes nothing.
+    inline void openZone(GpuTimer* timer, VkCommandBuffer commands, std::string_view name)
+    {
+        if (timer != nullptr)
+            timer->open(commands, name);
+    }
+
+    inline void closeZone(GpuTimer* timer, VkCommandBuffer commands)
+    {
+        if (timer != nullptr)
+            timer->close(commands);
+    }
 }

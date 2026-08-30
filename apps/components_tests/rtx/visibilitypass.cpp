@@ -27,6 +27,7 @@
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/compositepass.hpp>
 #include <components/rtxvulkan/fogtile.hpp>
+#include <components/rtxvulkan/fogvolume.hpp>
 #include <components/rtxvulkan/gbuffer.hpp>
 #include <components/rtxvulkan/graveyard.hpp>
 #include <components/rtxvulkan/image.hpp>
@@ -2731,13 +2732,31 @@ namespace Rtx
             EXPECT_NEAR(render(true), 0.017816f, 0.0005f) << "the lamp, and nothing else";
         }
 
-        /// A source with a size casts a penumbra, where a point casts an edge.
+        /// The sun casts a penumbra, and a lamp casts an edge whatever its size.
         ///
-        /// **The whole of a soft shadow is where the shadow ray leaves from.** A lamp is a flame and
-        /// the sun is a disc half a degree across, so neither is one direction: the ray is drawn
-        /// from somewhere on the source, and the band an occluder hides some of it from is the
-        /// penumbra. How wide that band is, is arithmetic — the source's own size seen from the
-        /// occluder — and that is what this pins at both of its edges and in the middle.
+        /// **The whole of a soft shadow is where the shadow ray leaves from.** The sun is a disc
+        /// half a degree across, so it is not one direction: the ray is drawn from somewhere on it,
+        /// and the band an occluder hides some of it from is the penumbra. How wide that band is, is
+        /// arithmetic — the source's own size seen from the occluder — and that is what this pins at
+        /// both of its edges and in the middle.
+        ///
+        ///     half-width = 2000 * tan(0.034907) = 69.84
+        ///
+        /// at the two degrees the shadow cone is drawn from, which `SUN_SHADOW_RADIUS` says is wider
+        /// than the disc and why.
+        ///
+        /// **A lamp is drawn from its centre instead, so it casts an edge however large it is.**
+        /// `lampVisible` says why, and what that trade bought. The arithmetic a sized lamp *would*
+        /// cast is kept here, because it is what comes back when a lamp's own fitting stops
+        /// occluding it: 400 units out with a source radius of 20 and the occluder halfway, a ray
+        /// leaving a point 20 units off the axis crosses the occluder's plane 10 off it, so
+        ///
+        ///     half-width = 200 * tan(asin(20 / 400))       = 10.013
+        ///     lit one unit inside, u = -1 / 10.013         = -0.09987
+        ///     (acos(u) - u * sqrt(1 - u^2)) / pi           = 0.56348
+        ///
+        /// What it casts today is the edge below instead, one unit either side, for a source of
+        /// radius 20 exactly as for one of radius 0.
         ///
         /// A half-plane occluder, so the geometry is one number: an edge at `x = X` in a plane
         /// parallel to the wall, hung behind it and so out of the camera's own view. The wall is at
@@ -2746,27 +2765,7 @@ namespace Rtx
         /// and averaging the column is averaging draws of one quantity rather than smearing several.
         /// Each is divided by what the same pixel reads with nothing in the way, so the falloff and
         /// the cosine — which do differ down the column — cancel and what is left is visibility.
-        ///
-        /// **The lamp** stands 400 units out with a source radius of 20, and the occluder hangs
-        /// halfway: a ray leaving a point 20 units off the axis crosses the occluder's plane 10 off
-        /// it, so an edge twelve units either side is wholly clear of the cone or wholly across it.
-        ///
-        ///     half-width = 200 * tan(asin(20 / 400)) = 10.013
-        ///
-        /// **The sun** is one direction everywhere, so its penumbra grows with nothing but the
-        /// occluder's distance — two thousand units of it, at the two degrees the shadow cone is
-        /// drawn from, which `SUN_SHADOW_RADIUS` says is wider than the disc and why.
-        ///
-        ///     half-width = 2000 * tan(0.034907) = 69.84
-
-        ///
-        /// **And the same lamp with no size at all is the edge this replaced.** At `X = -1` it is
-        /// still fully lit and at `X = +1` fully dark, where the sized one is part-lit at both — the
-        /// segment of a disc of radius 10.013 cut one unit off its centre:
-        ///
-        ///     u        = -1 / 10.013                          = -0.09987
-        ///     lit      = (acos(u) - u * sqrt(1 - u^2)) / pi    = 0.56348
-        TEST_F(RtxVisibilityTest, aSourceWithASizeCastsAPenumbraAndAPointSourceCastsAnEdge)
+        TEST_F(RtxVisibilityTest, theSunCastsAPenumbraAndALampCastsAnEdgeWhateverItsSize)
         {
             constexpr std::uint32_t size = 33;
             constexpr std::uint32_t column = size / 2;
@@ -2839,24 +2838,26 @@ namespace Rtx
             renderRadiance(sceneWith(lamp, lampDepth, std::nullopt), lampCamera, size, lampOpen, 1, false);
             ASSERT_GT(lampOpen[(std::size_t{ column } * size + column) * 4], 0.0f) << "the lamp lights the wall";
 
-            EXPECT_FLOAT_EQ(visible(sceneWith(lamp, lampDepth, -12.0f), lampOpen, lampCamera, 1), 1.0f)
-                << "the whole source clears an edge outside its penumbra";
-            EXPECT_FLOAT_EQ(visible(sceneWith(lamp, lampDepth, 12.0f), lampOpen, lampCamera, 1), 0.0f)
-                << "and none of it clears one across the far side";
-            EXPECT_NEAR(visible(sceneWith(lamp, lampDepth, 0.0f), lampOpen, lampCamera, 64), 0.5f, 0.05f)
-                << "and exactly half of it stands on the shadow's own edge";
-
-            // The same lamp with no size at all: the edge this replaced, crossing from wholly lit to
-            // wholly dark inside the two units the sized one is still part-lit across.
+            // The same lamp with no size at all, which now answers identically: one ray from the
+            // centre, and nothing about the source's radius reaches the shadow.
             Light point = lamp;
             point.mRadius = 0.0f;
 
-            EXPECT_FLOAT_EQ(visible(sceneWith(point, lampDepth, -1.0f), lampOpen, lampCamera, 1), 1.0f)
-                << "a point source is lit right up to its shadow";
-            EXPECT_FLOAT_EQ(visible(sceneWith(point, lampDepth, 1.0f), lampOpen, lampCamera, 1), 0.0f)
-                << "and dark from there on, with no band in between";
-            EXPECT_NEAR(visible(sceneWith(lamp, lampDepth, -1.0f), lampOpen, lampCamera, 64), 0.56348f, 0.05f)
-                << "where a source with a size is still inside its own penumbra at both";
+            for (const auto& [named, sized] : { std::pair{ "a lamp with a size", lamp }, { "a point", point } })
+            {
+                EXPECT_FLOAT_EQ(visible(sceneWith(sized, lampDepth, -1.0f), lampOpen, lampCamera, 1), 1.0f)
+                    << named << " is lit right up to its shadow";
+                EXPECT_FLOAT_EQ(visible(sceneWith(sized, lampDepth, 1.0f), lampOpen, lampCamera, 1), 0.0f)
+                    << named << " is dark from there on, with no band in between";
+            }
+
+            // Twelve units either side is where the penumbra a radius of 20 would cast reaches, and
+            // both answers are already saturated there — so this is what says the band is gone
+            // rather than merely narrower.
+            EXPECT_FLOAT_EQ(visible(sceneWith(lamp, lampDepth, -12.0f), lampOpen, lampCamera, 1), 1.0f)
+                << "and no part of a sized source is hidden outside where its penumbra would reach";
+            EXPECT_FLOAT_EQ(visible(sceneWith(lamp, lampDepth, 12.0f), lampOpen, lampCamera, 1), 0.0f)
+                << "nor lit across the far side of it";
 
             // The sun, whose disc is the one this renderer draws and so the one it shadows by.
             constexpr float sunDepth = -2000.0f;
@@ -6137,8 +6138,9 @@ namespace Rtx
 
             const TextureArray textures(device, setup, 0, {}, graveyard);
             const GBufferLayout channelLayout(device);
+            const FogVolumeLayout volumeLayout(device);
             VisibilityPass pass(
-                device, setup, Testing::getShaderDirectory(), textures.getLayout(), channelLayout, true);
+                device, setup, Testing::getShaderDirectory(), textures.getLayout(), channelLayout, volumeLayout, true);
             setup.flush();
 
             // **Built here and not inside the frame**, which is where the sea's own allocation is:
@@ -6150,6 +6152,10 @@ namespace Rtx
             // the same way.
             const FogTile fog(device, pool);
 
+            // And the volume it is integrated into belongs to the camera's size, so a steady frame
+            // finds the same one every time.
+            const FogVolume fogVolume(device, volumeLayout, size, size);
+
             const VisibilityInputs inputs{
                 .mScene = acceleration.getTopLevel(),
                 .mBuffers = &buffers,
@@ -6159,6 +6165,7 @@ namespace Rtx
                 .mShading = textures.getShading(),
                 .mWaves = &waves,
                 .mFog = &fog,
+                .mFogVolume = &fogVolume,
             };
 
             const GBuffer channels(device, channelLayout, size, size);
@@ -6206,7 +6213,7 @@ namespace Rtx
                 vkBeginCommandBuffer(commands, &begin);
                 waves.record(commands, camera.mTime);
                 channels.begin(commands);
-                pass.record(commands, inputs, channels, hits, camera);
+                pass.record(commands, inputs, channels, hits, camera, nullptr);
                 channels.handOver(commands);
                 // No history: a still frame averages nothing, and the pass stands in for the
                 // binding rather than making the caller carry an image it never reads.

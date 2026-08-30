@@ -109,6 +109,7 @@ namespace Rtx
         , mUpscale(options.mUpscale)
         , mPreset(options.mPreset)
         , mChannelLayout(mDevice)
+        , mFogVolumeLayout(mDevice)
         , mAccumulate(mDevice, options.mShaderDirectory)
         , mFilter(mDevice, options.mShaderDirectory)
         , mViewAccumulate(mDevice, options.mShaderDirectory)
@@ -243,6 +244,7 @@ namespace Rtx
         });
 
         mChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mRenderWidth, mRenderHeight);
+        mFogVolume = std::make_unique<FogVolume>(mDevice, mFogVolumeLayout, mRenderWidth, mRenderHeight);
         mAccumulate.resize(mRenderWidth, mRenderHeight);
         mFilter.resize(mRenderWidth, mRenderHeight);
 
@@ -422,8 +424,8 @@ namespace Rtx
         // of a game that has no world yet — and the pass belongs to neither scene.
         if (mPass == nullptr)
         {
-            mPass = std::make_unique<VisibilityPass>(
-                mDevice, setup, mShaderDirectory, held.mTextures->getLayout(), mChannelLayout, mCountHits);
+            mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
+                mChannelLayout, mFogVolumeLayout, mCountHits);
             mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
         }
 
@@ -946,6 +948,7 @@ namespace Rtx
             .mShading = mWorld.mTextures->getShading(),
             .mWaves = &mWaves,
             .mFog = &mFog,
+            .mFogVolume = mFogVolume.get(),
             .mWater = mWorld.mAcceleration->getWaterInstanceCount() > 0,
         };
 
@@ -1011,9 +1014,7 @@ namespace Rtx
         }
 
         mChannels->begin(commands);
-        timer.open(commands, "trace");
-        mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled);
-        timer.close(commands);
+        mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled, &timer);
         mChannels->handOver(commands);
 
         // Where the bounce ended up: the filter's last level, or the channel the trace wrote
@@ -1182,6 +1183,7 @@ namespace Rtx
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
 
         mViewChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mViewWidth, mViewHeight);
+        mViewFogVolume = std::make_unique<FogVolume>(mDevice, mFogVolumeLayout, mViewWidth, mViewHeight);
         mViewAccumulate.resize(mViewWidth, mViewHeight);
         mViewFilter.resize(mViewWidth, mViewHeight);
     }
@@ -1231,6 +1233,7 @@ namespace Rtx
             .mShading = array.getShading(),
             .mWaves = &mWaves,
             .mFog = &mFog,
+            .mFogVolume = mViewFogVolume.get(),
             .mWater = acceleration.getWaterInstanceCount() > 0,
         };
 
@@ -1248,7 +1251,7 @@ namespace Rtx
                 mWaves.record(commands, camera.mTime);
 
             mViewChannels->begin(commands);
-            mPass->record(commands, inputs, *mViewChannels, frameSlot(mFrame).mHitCount, camera);
+            mPass->record(commands, inputs, *mViewChannels, frameSlot(mFrame).mHitCount, camera, nullptr);
             mViewChannels->handOver(commands);
 
             // A doll and a map tile are one frame with no frame before them, so the accumulator is

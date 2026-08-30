@@ -9,11 +9,11 @@
 // **One file, because a binding number is a fact shared with `VisibilityPass` and nothing
 // else here has an opinion about it.** What each channel is *for* is written beside it.
 //
-// **Three sets, by who made what they name.** Set zero is the frame and the scene's tables, pushed;
+// **Four sets, by who made what they name.** Set zero is the frame and the scene's tables, pushed;
 // set one is the bindless textures a scene owns; set two is the channels a `GBuffer` owns, and
-// channel `i` of `GBuffer::everyChannel` is binding `i` there. The split is not tidiness — the
-// device allows 32 push descriptors and this had reached exactly 32, so the list that keeps growing
-// moved to the owner that already holds it.
+// channel `i` of `GBuffer::everyChannel` is binding `i` there; set three is the air a `FogVolume`
+// holds. The split is not tidiness — the device allows 32 push descriptors and this had reached
+// exactly 32, so every list that keeps growing moved to the owner that already holds it.
 
 #include "gbuffer.h"
 #include "scene.h"
@@ -293,5 +293,21 @@ layout(set = 0, binding = 22) uniform sampler2D waveCurvature[WAVE_CASCADES];
 ///
 /// `Rtx::bakeFogNoise` says what is in it, and why every level of the chain carries one spread.
 layout(set = 0, binding = 23) uniform sampler3D fogField;
+
+// The air in front of the eye, integrated once for a block of pixels rather than once per pixel.
+// `Rtx::FogVolume` says what each image holds and why the sun has one of its own.
+//
+// **A set of its own, which is the set `GBuffer` already argued for.** Set zero is pushed, the
+// device allows 32 push descriptors and this renderer had reached exactly that once — so a pair of
+// images belonging to a camera's size goes with the owner that holds them.
+//
+// **Each image is named twice because Vulkan has no descriptor that is both.** The pass writes them
+// as storage images and the trace samples them; the two accessors below are the same memory, and
+// each shader references only the pair it uses.
+layout(set = 3, binding = 0) uniform sampler3D fogVolumeAir;
+layout(set = 3, binding = 1) uniform sampler3D fogVolumeSunward;
+
+layout(set = 3, binding = 2, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeAirTarget;
+layout(set = 3, binding = 3, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeSunwardTarget;
 
 #endif

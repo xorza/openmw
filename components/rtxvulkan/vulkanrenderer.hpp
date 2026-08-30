@@ -22,6 +22,7 @@
 #include "device.hpp"
 #include "exposurepass.hpp"
 #include "fogtile.hpp"
+#include "fogvolume.hpp"
 #include "frameslots.hpp"
 #include "gbuffer.hpp"
 #include "gputimer.hpp"
@@ -359,6 +360,13 @@ namespace Rtx
         /// What the trace writes and the composite reads: one frame's light, still in pieces.
         std::unique_ptr<GBuffer> mChannels;
 
+        /// The same for the air, which is a camera's the way the channels are. Declared before both
+        /// volumes for the reason `mChannelLayout` is.
+        FogVolumeLayout mFogVolumeLayout;
+
+        /// Where the frame's air is integrated, one column to a block of pixels.
+        std::unique_ptr<FogVolume> mFogVolume;
+
         /// The camera the last frame was traced with, for reprojecting this one against.
         ///
         /// Its basis is all zero until a frame has been traced, and after a resize or a new scene —
@@ -420,6 +428,7 @@ namespace Rtx
         std::vector<std::uint32_t> mFreeViewScenes;
 
         std::unique_ptr<GBuffer> mViewChannels;
+        std::unique_ptr<FogVolume> mViewFogVolume;
         std::unique_ptr<Image> mViewColour;
         std::unique_ptr<Image> mViewTarget;
         std::uint32_t mViewWidth = 0;

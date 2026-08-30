@@ -47,6 +47,7 @@ set(RTX_SHADERS
     shaders/bloomup.comp
     shaders/composite.comp
     shaders/exposure.comp
+    shaders/fogvolume.comp
     shaders/gui.frag
     shaders/gui.vert
     shaders/histogram.comp
@@ -144,6 +145,8 @@ set(RTX_VULKAN_FILES
     exposurepass.hpp
     fogtile.cpp
     fogtile.hpp
+    fogvolume.cpp
+    fogvolume.hpp
     frameslots.hpp
     slottable.hpp
     gbuffer.cpp

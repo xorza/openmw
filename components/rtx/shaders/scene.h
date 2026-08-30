@@ -6,6 +6,15 @@
 
 #include "portable.h"
 
+// What the fog volume's two images are made of, said once for both sides that have to agree.
+// `gbuffer.h` says why a format is a macro and not a constant, and what it costs when the two
+// statements of it drift.
+#ifdef RTX_HOST
+#define FOG_VOLUME_FORMAT VK_FORMAT_R16G16B16A16_SFLOAT
+#else
+#define FOG_VOLUME_FORMAT rgba16f
+#endif
+
 // The scene's tables, and the scale its brightnesses are measured on, as both sides see them.
 // Scalar block layout throughout, so a `uint` is four bytes and a `vec2` is eight on both sides and
 // there is nothing to translate.
@@ -535,6 +544,25 @@ namespace Rtx::Shaders
     /// — and reading this either way would take the air off precisely there.
     RTX_CONST float FOG_EDGE_RISE = 0.4226183f;
 
+    /// How many pixels of the frame one column of the fog volume stands for, on each axis.
+    ///
+    /// **What the volume carries is coarser than a pixel, and both halves of it are.** The field's
+    /// finest scale is `FOG_GRAIN` units across, which at any distance worth marching covers far
+    /// more than eight pixels; a shaft's edge is a penumbra and not a line. What a smaller number
+    /// would buy is a sharper copy of an answer that has no detail at that size, and the volume
+    /// costs memory and bandwidth on all three axes at once.
+    RTX_CONST uint FOG_VOLUME_SCALE = 8u;
+
+    /// How many slices a column is integrated in.
+    ///
+    /// **More than the march it replaces takes over one ray**, because a column stands for
+    /// `FOG_VOLUME_SCALE` squared pixels and pays once for all of them. The march spends 24 steps
+    /// per pixel; this spends 64 per sixty-four pixels.
+    RTX_CONST uint FOG_VOLUME_SLICES = 64u;
+
+    /// How many columns one workgroup of the volume pass covers, on each axis.
+    RTX_CONST uint FOG_VOLUME_WORKGROUP = 8u;
+
     /// What shading a hit takes. `Rtx::MaterialKind`, which these must agree with.
     RTX_CONST uint KIND_SURFACE = 0u;
     RTX_CONST uint KIND_TERRAIN = 1u;
@@ -781,12 +809,14 @@ namespace Rtx::Shaders
         vec3 mIntensity;
         float mReach;
 
-        /// How big the glowing part is, in world units — which is the whole of what its shadows are
-        /// soft by. Zero is a point, and a point casts an edge.
+        /// How big the glowing part is, in world units — which is how far short of the centre its
+        /// shadow ray stops. Zero is a point.
         ///
         /// **Read for visibility and not for radiometry.** The falloff above is a point light's and
         /// stays one, because the air and a puff of smoke evaluate the same falloff and neither can
-        /// sample an area; what this changes is where the one shadow ray leaves from.
+        /// sample an area.
+        ///
+        /// **It no longer softens an edge**, and `lampVisible` says what happened to that.
         float mRadius;
     };
 

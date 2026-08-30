@@ -42,7 +42,6 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     // place in the sequence and the reservoir's own draws follow them. Otherwise a lamp arriving in
     // the next cell along would move the penumbra of the one already there.
     const vec2 sunDraw = vec2(randomNext(state), randomNext(state));
-    const vec2 lampDraw = vec2(randomNext(state), randomNext(state));
     const vec2 moonDraw[2]
         = vec2[2](vec2(randomNext(state), randomNext(state)), vec2(randomNext(state), randomNext(state)));
 
@@ -114,9 +113,9 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     // **With one lamp in the cell it is exactly the arithmetic that was here before**: the sum is
     // that lamp's weight, the ratio is one, and what is left is the term that was always there.
     Reservoir kept = noLamps();
-    weighLamps(kept, state, position, normal, INV_PI, transmission);
+    weighLamps(kept, state, position, normal, INV_PI, transmission, false);
 
-    radiance += lampsThrough(kept, lampDraw);
+    radiance += lampsThrough(kept);
 
     return radiance;
 }
