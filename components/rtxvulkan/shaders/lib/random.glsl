@@ -104,6 +104,17 @@ vec2 unitPair(uvec2 pixel, uint stream)
     return vec2(randomAt(pixel, stream), randomAt(pixel, stream + 1u));
 }
 
+/// A key stepped by the multiplier every sequence here starts from.
+///
+/// **The whole of what a pattern that must not move needs, and the first half of `randomSeed`.**
+/// Rain rings are keyed on the cell they fell in and have to stay there from one frame to the next,
+/// so the frame is exactly what they may not mix in — and a second spelling of this step is a
+/// second idea of what a key is worth.
+uint steppedKey(uint key)
+{
+    return key * 0x9E3779B9u;
+}
+
 /// A stream of draws for one pixel, where the tile above gives one.
 ///
 /// **The tile answers a different question and cannot be stretched to this one.** Blue noise is an
@@ -122,7 +133,7 @@ uint randomSeed(uint key)
     // The frame is mixed in here rather than by the caller, so a sequence advances between frames
     // without anyone having to remember to make it — which is what lets the accumulator in front of
     // the filter see an independent draw each time rather than the same one over and over.
-    uint state = key * 0x9E3779B9u + frame.mFrame * 0xC2B2AE35u;
+    uint state = steppedKey(key) + frame.mFrame * 0xC2B2AE35u;
     state ^= state >> 16u;
     state *= 0x7FEB352Du;
 

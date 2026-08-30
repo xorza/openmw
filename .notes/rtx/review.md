@@ -34,19 +34,12 @@ Each item describes what is there and what it costs. No item says how to fix it.
       move constructor, move assignment and `destroy` by hand. Two buffer classes serve one job.
 - [ ] `components/rtxvulkan/texture.cpp` `Texture` owns its own `VkImage`, view and memory and a
       local `barrier` lambda (150-172) that restates `Image::transitionLevels`. `Image` exists.
-- [ ] `components/rtxvulkan/sceneacceleration.cpp` `buildMeshes` (654-678) and `prepareRefit`
-      (851-868) build the same `VkAccelerationStructureGeometryKHR` triangles block, with the same
-      "Guarded, because a freed slot has no vertices" comment word for word.
 - [ ] `components/rtxvulkan/shaders/lib/fog.glsl` `fogWeatherAlong` (429-438) and
       `fogUniformAlong` (700-714) each write the per-stretch sun and moons block: the probe,
       `lightThrough`, `fogBeamDepth` for the sun and for each moon, `daylightReaching`.
-- [ ] `components/rtxvulkan/shaders/lib/sea.glsl:183` `pixelKey(uvec2(cell)) * 0x9E3779B9u`
-      restates the first half of `randomSeed`.
 - [ ] `components/rtxvulkan/visibilitypass.cpp:307-324` names bindings `13`..`19` and
       `sFrameBinding + 1..3` as literals. `bindings.glsl` declares the same numbers. The two are
       kept in step by hand and by one `assert(filled == writes.size())`.
-- [ ] `apps/rtxtool/main.cpp:663-670` builds `ActorRequest` by hand where `actorsFrom(variables)`
-      (line 217) exists. Lines 623-627 and 676-680 both spell the "was validation asked for" test.
 - [ ] `ShotRequest`, `ViewRequest`, `BenchRequest` and `VerifyRequest` each carry the same block
       (shader directory, size, field of view, upscale, preset, delight, filter, exposure, weather,
       hour, day, actors). `main.cpp` `dispatch` fills the block four times by hand (601-618,

@@ -197,6 +197,21 @@ namespace RtxTool
         /// Who stands in the region, from the command line. **One reading of it**, because a
         /// report that described a differently populated cell than the one `shot` renders is the
         /// drift this tool exists to catch.
+        /// The layers a run that will be measured or compared gets, which is none unless it asked.
+        ///
+        /// **Off unless somebody asked, whatever the build default is.** The layers cost between a
+        /// tenth and half the frame rate, and a profiling run that quietly measured one under
+        /// instrumentation is worse than no run at all: it produces a number, and the number is
+        /// wrong. GPU-assisted validation instruments every shader besides, so a picture drawn under
+        /// one is not the picture the next run will be compared against.
+        Rtx::ValidationOptions validationForMeasuring(const bpo::variables_map& variables, bool windowed)
+        {
+            const bool asked = !variables["validation"].defaulted() || !variables["sync-validation"].defaulted()
+                || !variables["gpu-validation"].defaulted();
+
+            return asked ? validationFrom(variables, windowed) : Rtx::ValidationOptions{};
+        }
+
         ActorRequest actorsFrom(const bpo::variables_map& variables)
         {
             return ActorRequest{
@@ -638,14 +653,7 @@ namespace RtxTool
                 request.mDay = variables["day"].as<int>();
                 request.mActors = actorsFrom(variables);
 
-                // **Off unless somebody asked**, for the reason `bench` gives it: GPU-assisted
-                // validation instruments every shader, and a picture drawn under an instrumented
-                // shader is not the picture the next run will be compared against.
-                const bool asked = !variables["validation"].defaulted() || !variables["sync-validation"].defaulted()
-                    || !variables["gpu-validation"].defaulted();
-
-                const Rtx::ValidationOptions validation
-                    = asked ? validationFrom(variables, false) : Rtx::ValidationOptions{};
+                const Rtx::ValidationOptions validation = validationForMeasuring(variables, false);
 
                 World world(config, variables, resources);
                 pageTerrainFrom(world, variables);
@@ -682,24 +690,9 @@ namespace RtxTool
                 request.mWeather = variables["weather"].as<std::string>();
                 request.mHour = variables["hour"].as<float>();
                 request.mDay = variables["day"].as<int>();
-                request.mActors = ActorRequest{
-                    .mCreatures = variables["actor"].as<std::vector<std::string>>(),
-                    .mPeople = variables["npc"].as<std::vector<std::string>>(),
-                    .mSeconds = variables["actor-time"].as<float>(),
-                    .mResidents = variables["people"].as<bool>(),
-                    .mProps = variables["props"].as<bool>(),
-                    .mClothes = variables["clothes"].as<bool>(),
-                };
+                request.mActors = actorsFrom(variables);
 
-                // **Off unless somebody asked, whatever the build default is.** The layers cost
-                // between a tenth and half the frame rate, and a profiling run that quietly
-                // measured one under instrumentation is worse than no run at all: it produces a
-                // number, and the number is wrong.
-                const bool asked = !variables["validation"].defaulted() || !variables["sync-validation"].defaulted()
-                    || !variables["gpu-validation"].defaulted();
-
-                const Rtx::ValidationOptions validation
-                    = asked ? validationFrom(variables, request.mWindow) : Rtx::ValidationOptions{};
+                const Rtx::ValidationOptions validation = validationForMeasuring(variables, request.mWindow);
 
                 World world(config, variables, resources);
                 pageTerrainFrom(world, variables);

@@ -180,7 +180,7 @@ vec2 rainSlope(vec2 at, float footprint, out float lost)
 
             // Keyed on the cell alone, so an impact stays where it fell from one frame to the next.
             // `randomSeed` mixes the frame in and is exactly what this must not use.
-            uint state = pixelKey(uvec2(cell)) * 0x9E3779B9u;
+            uint state = steppedKey(pixelKey(uvec2(cell)));
 
             const vec2 jitter = vec2(randomNext(state), randomNext(state));
             const float offset = randomNext(state);

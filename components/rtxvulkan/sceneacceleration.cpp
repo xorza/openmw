@@ -67,6 +67,35 @@ namespace Rtx
             return (alignment - address % alignment) % alignment;
         }
 
+        /// One mesh's triangles as the builder takes them, out of addresses a caller worked out.
+        ///
+        /// **`maxVertex` is guarded, because a freed slot has no vertices.** A slot the scene has
+        /// taken back keeps its index and its room and holds a count of zero until something fits
+        /// into it; subtracting one there wraps, and the driver is handed four billion vertices.
+        ///
+        /// **Opaque as built**, and overridden per instance where a material says otherwise: opacity
+        /// is a property of the material and a mesh does not carry one, so the top-level flags are
+        /// the only place the question can be answered exactly — unless a micromap answers it, which
+        /// is the one case where the mesh does carry it.
+        VkAccelerationStructureGeometryKHR describeTriangles(
+            const MeshRange& mesh, VkDeviceAddress positions, VkDeviceAddress indices)
+        {
+            return VkAccelerationStructureGeometryKHR{
+                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+                .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+                .geometry = { .triangles = {
+                                  .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
+                                  .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
+                                  .vertexData = { .deviceAddress = positions },
+                                  .vertexStride = sizeof(osg::Vec3f),
+                                  .maxVertex = mesh.mVertexCount > 0 ? mesh.mVertexCount - 1 : 0,
+                                  .indexType = VK_INDEX_TYPE_UINT32,
+                                  .indexData = { .deviceAddress = indices },
+                              } },
+                .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
+            };
+        }
+
         /// Everything between a micromap build and the structure build that references it.
         void barrierAfterMicromaps(VkCommandBuffer commands)
         {
@@ -640,32 +669,12 @@ namespace Rtx
             }
 
             // Indices are mesh-local, so each structure is handed the slice of the shared buffers
-            // that belongs to it and addresses vertex zero as its own first vertex.
-            mBuildGeometries[at] = VkAccelerationStructureGeometryKHR{
-                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
-                .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
-                .geometry = { .triangles = {
-                                  .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
-                                  .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
-                                  .vertexData = { .deviceAddress = mesh.mVertexCount > 0
-                                          ? mPositions.at(0).addressOf(mesh.mVertexOffset)
-                                          : 0 },
-                                  .vertexStride = sizeof(osg::Vec3f),
-                                  // **Guarded, because a freed slot has no vertices.** A slot the
-                                  // scene has taken back keeps its index and its room and holds a
-                                  // count of zero until something fits into it; subtracting one
-                                  // there wraps, and the driver is handed four billion vertices.
-                                  .maxVertex = mesh.mVertexCount > 0 ? mesh.mVertexCount - 1 : 0,
-                                  .indexType = VK_INDEX_TYPE_UINT32,
-                                  .indexData = { .deviceAddress
-                                      = mesh.mIndexCount > 0 ? mIndices.addressOf(mesh.mIndexOffset) : 0 },
-                              } },
-                // Opaque as built, and overridden per instance where a material says otherwise:
-                // opacity is a property of the material and a mesh does not carry one, so the
-                // top-level flags are the only place the question can be answered exactly — unless
-                // a micromap answers it below, which is the one case where the mesh does carry it.
-                .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
-            };
+            // that belongs to it and addresses vertex zero as its own first vertex. The addresses
+            // are guarded here as well: a freed slot's run is nothing, and `addressOf` would name
+            // where it used to be.
+            mBuildGeometries[at]
+                = describeTriangles(mesh, mesh.mVertexCount > 0 ? mPositions.at(0).addressOf(mesh.mVertexOffset) : 0,
+                    mesh.mIndexCount > 0 ? mIndices.addressOf(mesh.mIndexOffset) : 0);
 
             attachMicromap(slot, mBuildGeometries[at], mBuildMicromapLinks[at]);
 
@@ -838,24 +847,8 @@ namespace Rtx
 
             // The same description the first build was given, which is what makes the structure it
             // produces the same size as the one already sitting at this mesh's offset.
-            mRefitGeometries[i] = VkAccelerationStructureGeometryKHR{
-                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
-                .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
-                .geometry = { .triangles = {
-                                  .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
-                                  .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
-                                  .vertexData = { .deviceAddress = positions.addressOf(mesh.mVertexOffset) },
-                                  .vertexStride = sizeof(osg::Vec3f),
-                                  // **Guarded, because a freed slot has no vertices.** A slot the
-                                  // scene has taken back keeps its index and its room and holds a
-                                  // count of zero until something fits into it; subtracting one
-                                  // there wraps, and the driver is handed four billion vertices.
-                                  .maxVertex = mesh.mVertexCount > 0 ? mesh.mVertexCount - 1 : 0,
-                                  .indexType = VK_INDEX_TYPE_UINT32,
-                                  .indexData = { .deviceAddress = mIndices.addressOf(mesh.mIndexOffset) },
-                              } },
-                .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
-            };
+            mRefitGeometries[i] = describeTriangles(
+                mesh, positions.addressOf(mesh.mVertexOffset), mIndices.addressOf(mesh.mIndexOffset));
 
             attachMicromap(index, mRefitGeometries[i], mRefitMicromapLinks[i]);
 
