@@ -125,6 +125,49 @@ the same route before it.
 frame's median. Everything above p95 is a crossing or the paging in the frames around one. The
 `wait` column stays at 1 ms: the device is idle through all of it. This is a CPU tail.
 
+### 2.5 The game on a route
+
+`OPENMW_RTX_BENCH=10s:2s@12000` on `bench_seyda_need`, 1994×1366 traced at 1329×911 (quality). The
+speed is the harness's, and the heading is the way the save left the player facing. Four runs.
+
+| frame med | mean | p95 | p99 | worst | crossings | worst crossing | fps | 1 % low |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 7.6–8.0 | 10.3–11.2 | 19.8–22.7 | 56–74 | 256–265 | 18 | 256–265 ms | 125–132 | 13.6–17.9 |
+
+**The game's worst crossing is the harness's.** 256–265 ms against 276–289: `CellPreloader` flattens
+the typical bad frame — the p99 is 56–74 against the harness's 181–190 — and it does not save the
+worst one. **And the device is idle through all of it**: `wait` reads 0.00 ms at the median in the
+game as it does in the harness, so the ring drain an arrival does is worth at most the 5–9 ms its
+worst wait shows.
+
+*The route holds the height the save left, so it flies inside the hills for a stretch. The trace
+reads 1.4 ms and the GPU rows of this run mean nothing. The crossing and CPU rows are the ones to
+read.*
+
+### 2.6 The game on a route, profiled
+
+`perf record -e task-clock -F 5999 --call-graph fp -D 6000` over the run above: 112K samples, 18.7
+core-seconds, nothing lost. Percentages are of all samples on every thread.
+
+| what | share | whose thread |
+|---|---:|---|
+| `DetourNavigator::AsyncNavMeshUpdater::process` | 44.2 % | upstream's navmesh workers |
+| `Rtx::CompositeQueue::work` → `TerrainComposite` | 20.6 % (11.2 self) | our composite worker — step 9 |
+| `OMW::Engine::frame` | 16.5 % | **the main thread, whole** |
+| ├ `RtxRenderer::renderFrame` | 12.1 % | |
+| ├ `SceneExtractor::walk` | 7.7 % | |
+| ├ `QuadTreeWorld::collect` → `handOver` → `loadRenderingNode` | 4.8 % | |
+| ├ `ObjectPaging::getChunk` → `createChunk` → `Optimizer::optimize` | 3.4 % → 3.3 % → 2.6 % | |
+| ├ `SceneUploader::hand` → `extendScene` | 2.3 % → 1.8 % | |
+| └ `SheetFold::fold` | 1.7 % self | after step 5 |
+
+- **Half the CPU a route burns is upstream's navmesh**, on its own threads and off the frame path.
+  It is not ours to fix and it is why the machine is busy.
+- **The main thread's whole frame is 16.5 %**, and a third of that is the terrain paging: the RT
+  path's own `collect` builds chunks and merges statics *on the frame*. That is the spike.
+- **The arrival is 1.8 %.** `extendScene`, its builds and its ring drain together are a twentieth of
+  what the paging costs, which is what §5.1 step 6 is aimed at.
+
 ## 3. Where the time goes — GPU
 
 ### 3.1 What one pixel pays
@@ -256,11 +299,18 @@ These change no pixel. They are the 1 % low on any route: 4.6 fps today.
    fence signals, then swapped. Needs nothing the ring does not already have (`Graveyard`,
    fence-per-frame).
    *Number:* worst crossing 300 → tens of ms; route 1 % low 4.6 → 30+.
-7. **Paging off the walk.** **The fold's other half waits on this**: `SheetFold::fold` is now one
-   pass, and what is left of its cost is that `ObjectPaging` hands the extractor a freshly merged
-   `osg::Geometry` per chunk and per level change. The extractor keys meshes on the drawable
-   pointer, so nothing is folded twice — the merge simply has no back-reference to the sources whose
-   answers it could reuse. In the game, `CellPreloader::preloadTerrain` builds the quad tree's
+7. **Paging off the walk.** **Measured, and the cause is ours** (§2.6). `Rtx::TerrainResidency`
+   makes a `Terrain::View` of its own and only ever calls `Terrain::World::collect` on it.
+   `CellPreloader` preloads the *camera's* view, not that one — so the RT path's view is always cold
+   and `collect` builds every chunk it wants on the frame it wants it. `Terrain::World::preload` is
+   public, so the fix is a call and not an upstream edit: preload our own view ahead of the eye, and
+   `collect` finds what it needs already built.
+   *Number:* `QuadTreeWorld::collect`, `ObjectPaging::createChunk` and `Optimizer::optimize` leave
+   the main thread's profile; the game's worst crossing falls from 256–265 ms.
+   **The fold's other half waits on this**: `SheetFold::fold` is now one pass, and what is left of
+   its cost is that `ObjectPaging` hands the extractor a freshly merged `osg::Geometry` per chunk and
+   per level change. The extractor keys meshes on the drawable pointer, so nothing is folded twice —
+   the merge simply has no back-reference to the sources whose answers it could reuse. In the game, `CellPreloader::preloadTerrain` builds the quad tree's
    chunks and the paged statics on its worker for the player's position, and `TerrainResidency`
    then finds them in the chunk cache. The harness has no preloader, so *its* crossing pays what
    the game's does not. First measure the game on a route (`rtxtool travel` in `todo.txt`, or a
@@ -407,8 +457,8 @@ kernel's shape is settled.
 
 | step | what | gain | picture | after |
 |---|---|---|---|---|
-| 6 | arrivals on a second queue, no ring drain | worst crossing ÷ 10 | none | — |
-| 7 | paging off the walk; measure the game on a route | route 1 % low 4.6 → 30+ | none | — |
+| 6 | arrivals on a second queue, no ring drain | at most 5–9 ms of a 260 ms crossing (§2.6) | none | — |
+| 7 | preload the RT path's own terrain view | the main thread's largest cost (§2.6) | none | — |
 | 9 | composite bake on the GPU | a core freed; chunks baked on arrival | none | 6 |
 | 10 | froxel fog volume | −3.4 ms noon, more at dawn | reprojected | — |
 | 11 | post at half resolution | −0.5 ms | none | — |
