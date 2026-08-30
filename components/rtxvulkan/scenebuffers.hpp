@@ -138,6 +138,12 @@ namespace Rtx
             Buffer mEmitters;
             Buffer mSpriteTileOffsets;
             Buffer mSpriteTileIndices;
+
+            /// What one copy of them occupies.
+            ///
+            /// **Beside the declarations, because a table added above and forgotten here is a
+            /// figure that quietly stops accounting for it.** Two of them already were.
+            VkDeviceSize getBytes() const;
         };
 
         /// Grows one of this object's tables to exactly `bytes`, burying what that displaced.

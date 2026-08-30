@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <utility>
 
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
@@ -32,6 +33,39 @@ namespace Rtx
 {
     namespace
     {
+        /// The bounce resolved: the temporal mean, and then the cascade over it.
+        ///
+        /// **The barrier between them is the reason this is one call.** Two compute dispatches are
+        /// unordered inside a command buffer, so the cascade reads what the accumulator wrote only
+        /// where something says so — and the picture-inside-the-interface copy of this chain said
+        /// nothing at all.
+        ///
+        /// @param timer null where the run is not being timed, which a picture is not.
+        const Image& recordDenoise(VkCommandBuffer commands, const GBuffer& channels, AccumulatePass& accumulate,
+            const AtrousPass& filter, const Shaders::Camera& camera, const bool historyLost, GpuTimer* const timer)
+        {
+            // **The temporal half first, and the cascade is what fills in where it was rejected.**
+            // The accumulator replaces the trace's single sample with the mean of the frames this
+            // surface has been seen over, and hands on the variance of that mean — which is what
+            // lets the levels below stop at an edge in the light rather than only at an edge in the
+            // geometry.
+            openZone(timer, commands, "accumulate");
+            const Image& moments = accumulate.record(commands, channels, camera, historyLost);
+            closeZone(timer, commands);
+
+            // The cascade reads what the accumulator just wrote, in both channels.
+            for (const Image* written : { &channels.getIndirect(), &moments })
+                written->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
+            openZone(timer, commands, "filter");
+            const Image& indirect = filter.record(commands, channels, moments, camera);
+            closeZone(timer, commands);
+
+            return indirect;
+        }
+
         /// The instance a window needs, which is the headless one plus whatever SDL asks for.
         InstanceOptions instanceOptionsFor(const RendererOptions& options)
         {
@@ -332,7 +366,7 @@ namespace Rtx
         return mInstance.getValidationLog() != nullptr;
     }
 
-    VulkanRenderer::ViewScene& VulkanRenderer::sceneAt(std::uint32_t slot)
+    const VulkanRenderer::ViewScene& VulkanRenderer::sceneAt(std::uint32_t slot) const
     {
         if (slot == sWorld)
             return mWorld;
@@ -341,9 +375,26 @@ namespace Rtx
         return *mViewScenes[slot];
     }
 
-    const VulkanRenderer::ViewScene& VulkanRenderer::sceneAt(std::uint32_t slot) const
+    VulkanRenderer::ViewScene& VulkanRenderer::sceneAt(std::uint32_t slot)
     {
-        return const_cast<VulkanRenderer*>(this)->sceneAt(slot);
+        return const_cast<ViewScene&>(std::as_const(*this).sceneAt(slot));
+    }
+
+    VisibilityInputs VulkanRenderer::describeInputs(
+        const ViewScene& held, const std::uint32_t slot, const FogVolume* const volume) const
+    {
+        return VisibilityInputs{
+            .mScene = held.mAcceleration->getTopLevel(),
+            .mBuffers = held.mBuffers.get(),
+            .mSlot = slot,
+            .mIndexBlocks = held.mAcceleration->getIndexBlocks(),
+            .mTextures = held.mTextures->getSet(),
+            .mShading = held.mTextures->getShading(),
+            .mWaves = &mWaves,
+            .mFog = &mFog,
+            .mFogVolume = volume,
+            .mWater = held.mAcceleration->getWaterInstanceCount() > 0,
+        };
     }
 
     void VulkanRenderer::setScene(
@@ -519,6 +570,36 @@ namespace Rtx
         held.mTextures->drop(textures, frameSlot(mFrame).mGraveyard);
     }
 
+    bool VulkanRenderer::recordPlacement(ViewScene& held, const SceneDesc& scene, VkCommandBuffer commands,
+        const std::uint32_t slot, GpuTimer* const timer, Graveyard& graveyard)
+    {
+        // **What the scene let go of, given back here.** Walking away from a ring frees its meshes
+        // and nothing arrives to take them over until the walk reaches the far side of the next one,
+        // so a frame that only places is the one that must not hold their structures. Already done
+        // where `extendScene` came through, and asking twice costs two comparisons a slot.
+        held.mAcceleration->release(scene.getFreedMeshes(), graveyard);
+
+        // **Once, for the slots that changed, and both halves read it.** The rows carry a matrix
+        // inverse apiece and a nine-by-nine exterior is fifty thousand of them; the acceleration
+        // structure and the instance table were each building the whole set for themselves, every
+        // frame, to change a hundred of them.
+        updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
+
+        const bool built
+            = held.mAcceleration->place(commands, scene, held.mRecords, held.mChangedRecords, slot, timer, graveyard);
+
+        // **Nothing to report, because nothing here is recorded.** The tables are host-visible and
+        // this writes them; what the trace reads of them is made visible by the submit that follows,
+        // which is why only the half above has a command buffer and an answer about it.
+        //
+        // **Only what a moving world changed**, which is the instance rows, the lights and the
+        // vertices of anything skinned. Rebuilding all of it was measured at twenty to twenty-seven
+        // milliseconds on a nine-by-nine region and was the largest single cost in the frame.
+        held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, slot, graveyard);
+
+        return built;
+    }
+
     void VulkanRenderer::placeScene(std::uint32_t slot, const SceneDesc& scene, const SeaState& sea)
     {
         ViewScene& held = sceneAt(slot);
@@ -530,13 +611,8 @@ namespace Rtx
         if (slot != sWorld)
         {
             Graveyard& graveyard = frameSlot(mFrame).mGraveyard;
-            held.mAcceleration->release(scene.getFreedMeshes(), graveyard);
-            updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
-
-            mPool.submitAndWait([&](VkCommandBuffer commands) {
-                held.mAcceleration->place(commands, scene, held.mRecords, held.mChangedRecords, 0, nullptr, graveyard);
-            });
-            held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, 0, graveyard);
+            mPool.submitAndWait(
+                [&](VkCommandBuffer commands) { recordPlacement(held, scene, commands, 0, nullptr, graveyard); });
             return;
         }
 
@@ -559,18 +635,6 @@ namespace Rtx
         if (mReadBy[into] != sNeverRead)
             finishThrough(mReadBy[into]);
 
-        // **What the scene let go of, given back here.** Walking away from a ring frees its meshes
-        // and nothing arrives to take them over until the walk reaches the far side of the next one,
-        // so a frame that only places is the one that must not hold their structures. Already done
-        // where `extendScene` came through, and asking twice costs two comparisons a slot.
-        held.mAcceleration->release(scene.getFreedMeshes(), frame.mGraveyard);
-
-        // **Once, for the slots that changed, and both halves read it.** The rows carry a matrix
-        // inverse apiece and a nine-by-nine exterior is fifty thousand of them; the acceleration
-        // structure and the instance table were each building the whole set for themselves, every
-        // frame, to change a hundred of them.
-        updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
-
         // **The placement's own submit, without a fence and without a wait.** A picture inside the
         // interface traced before this frame's trace needs the top level to have reached the queue;
         // the frame's fence, later on the queue, covers this submit too. Nothing recorded is
@@ -578,17 +642,10 @@ namespace Rtx
         const VkCommandBuffer placement = takePlaceCommands(frame);
         mPool.begin(placement);
 
-        const bool built = held.mAcceleration->place(
-            placement, scene, held.mRecords, held.mChangedRecords, into, &frame.mTimer, frame.mGraveyard);
-        if (built)
+        if (recordPlacement(held, scene, placement, into, &frame.mTimer, frame.mGraveyard))
             mPool.submit(placement, VK_NULL_HANDLE, frame.mGraveyard);
         else
             checkVk(vkEndCommandBuffer(placement), "vkEndCommandBuffer");
-
-        // **Only what a moving world changed**, which is the instance rows, the lights and the
-        // vertices of anything skinned. Rebuilding all of it was measured at twenty to twenty-seven
-        // milliseconds on a nine-by-nine region and was the largest single cost in the frame.
-        held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, into, frame.mGraveyard);
 
         mWorldSlot = into;
 
@@ -933,18 +990,7 @@ namespace Rtx
         // Into the copy this frame traces, which the frame before last is done with.
         mWorld.mBuffers->binSprites(camera.mOrigin, camera.mCamera, camera.mSunPosition, mWorldSlot, frame.mGraveyard);
 
-        const VisibilityInputs inputs{
-            .mScene = mWorld.mAcceleration->getTopLevel(),
-            .mBuffers = mWorld.mBuffers.get(),
-            .mSlot = mWorldSlot,
-            .mIndexBlocks = mWorld.mAcceleration->getIndexBlocks(),
-            .mTextures = mWorld.mTextures->getSet(),
-            .mShading = mWorld.mTextures->getShading(),
-            .mWaves = &mWaves,
-            .mFog = &mFog,
-            .mFogVolume = mFogVolume.get(),
-            .mWater = mWorld.mAcceleration->getWaterInstanceCount() > 0,
-        };
+        const VisibilityInputs inputs = describeInputs(mWorld, mWorldSlot, mFogVolume.get());
 
         // Made by the first frame that averages, and that frame is the one that fills it.
         const bool fresh = options.mAccumulate > 0 && mSum == nullptr;
@@ -1019,25 +1065,8 @@ namespace Rtx
         const Image* indirect = &mChannels->getIndirect();
         if (filtering)
         {
-            // **The temporal half first, and the cascade is what fills in where it was
-            // rejected.** The accumulator replaces the trace's single sample with the mean of
-            // the frames this surface has been seen over, and hands on the variance of that
-            // mean — which is what lets the levels below stop at an edge in the light rather
-            // than only at an edge in the geometry.
-            timer.open(commands, "accumulate");
-            const Image& moments = mAccumulate.record(commands, *mChannels, sampled.mCamera, historyLost);
+            indirect = &recordDenoise(commands, *mChannels, mAccumulate, mFilter, sampled.mCamera, historyLost, &timer);
             historyAnswered = true;
-            timer.close(commands);
-
-            // The cascade reads what the accumulator just wrote, in both channels.
-            for (const Image* written : { &mChannels->getIndirect(), &moments })
-                written->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-
-            timer.open(commands, "filter");
-            indirect = &mFilter.record(commands, *mChannels, moments, sampled.mCamera);
-            timer.close(commands);
         }
 
         timer.open(commands, "composite");
@@ -1189,10 +1218,6 @@ namespace Rtx
         assert(camera.mCamera.mWidth == options.mWidth && camera.mCamera.mHeight == options.mHeight
             && "the camera has to be built for the part of the texture it fills");
 
-        const bool ofTheWorld = options.mScene == sWorld;
-        assert((ofTheWorld || (options.mScene < mViewScenes.size() && mViewScenes[options.mScene] != nullptr))
-            && "a trace against a scene nothing holds");
-
         const bool held = mGuiTextures.holds(texture);
         assert(held && "a trace into a slot nothing holds");
 
@@ -1207,28 +1232,15 @@ namespace Rtx
         // are the frame's neighbours. A stall here is a picture's cost and not a frame's.
         finishFrames();
 
-        const SceneAcceleration& acceleration
-            = ofTheWorld ? *mWorld.mAcceleration : *mViewScenes[options.mScene]->mAcceleration;
-        SceneBuffers* buffers = ofTheWorld ? mWorld.mBuffers.get() : mViewScenes[options.mScene]->mBuffers.get();
-        const TextureArray& array = ofTheWorld ? *mWorld.mTextures : *mViewScenes[options.mScene]->mTextures;
+        ViewScene& traced = sceneAt(options.mScene);
 
         // A doll and a map trace the same shader, so they need the same list — against their own
         // camera, which is not the frame's.
-        const std::uint32_t slot = ofTheWorld ? mWorldSlot : 0;
-        buffers->binSprites(camera.mOrigin, camera.mCamera, camera.mSunPosition, slot, frameSlot(mFrame).mGraveyard);
+        const std::uint32_t slot = options.mScene == sWorld ? mWorldSlot : 0;
+        traced.mBuffers->binSprites(
+            camera.mOrigin, camera.mCamera, camera.mSunPosition, slot, frameSlot(mFrame).mGraveyard);
 
-        const VisibilityInputs inputs{
-            .mScene = acceleration.getTopLevel(),
-            .mBuffers = buffers,
-            .mSlot = slot,
-            .mIndexBlocks = acceleration.getIndexBlocks(),
-            .mTextures = array.getSet(),
-            .mShading = array.getShading(),
-            .mWaves = &mWaves,
-            .mFog = &mFog,
-            .mFogVolume = mViewFogVolume.get(),
-            .mWater = acceleration.getWaterInstanceCount() > 0,
-        };
+        const VisibilityInputs inputs = describeInputs(traced, slot, mViewFogVolume.get());
 
         // **Not counted, and not timed.** The hit count and the frame report are the frame's; a
         // picture drawn between two of them would overwrite both. The buffer is still bound because
@@ -1250,8 +1262,8 @@ namespace Rtx
             // A doll and a map tile are one frame with no frame before them, so the accumulator is
             // a pass-through that says so: no history, and the largest variance there is, which is
             // what tells the cascade to filter as widely as it can.
-            const Image& viewMoments = mViewAccumulate.record(commands, *mViewChannels, camera.mCamera, true);
-            const Image& indirect = mViewFilter.record(commands, *mViewChannels, viewMoments, camera.mCamera);
+            const Image& indirect
+                = recordDenoise(commands, *mViewChannels, mViewAccumulate, mViewFilter, camera.mCamera, true, nullptr);
 
             mComposite.record(commands, *mViewChannels, indirect, nullptr, *mViewColour,
                 Shaders::CompositeConstants{
@@ -1271,7 +1283,7 @@ namespace Rtx
             // looked at beside the widgets around it, and neither is a frame the pyramid was built
             // over — `TonePass::record` reads a null one as no veil.
             mTone->record(commands, *mViewColour, mExposure.getExposure(), mViewChannels->getStarsShown(), nullptr,
-                array.getSet(), *mViewTarget,
+                inputs.mTextures, *mViewTarget,
                 toneFor(
                     camera, options.mWidth, options.mHeight, mViewChannels->getWidth(), mViewChannels->getHeight()));
 

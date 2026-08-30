@@ -31,6 +31,7 @@
 #include "guitextures.hpp"
 #include "instance.hpp"
 #include "tonepass.hpp"
+#include "visibilitypass.hpp"
 #include "wavepass.hpp"
 
 namespace Rtx
@@ -46,7 +47,6 @@ namespace Rtx
     class SceneAcceleration;
     class SceneBuffers;
     class TextureArray;
-    class VisibilityPass;
 
     /// `Renderer` over Vulkan.
     ///
@@ -196,8 +196,28 @@ namespace Rtx
     private:
         /// The scene a slot names — `sWorld`'s, or a picture's. A slot nothing holds is a caller
         /// bug, so it is asserted rather than reported.
-        ViewScene& sceneAt(std::uint32_t slot);
+        ///
+        /// **The const one does the work.** Casting the other way round takes the constness off an
+        /// object that may really have it, which is the one direction of this pair that is not
+        /// always sound.
         const ViewScene& sceneAt(std::uint32_t slot) const;
+        ViewScene& sceneAt(std::uint32_t slot);
+
+        /// What the trace reads a scene through, for whichever copy `slot` names.
+        ///
+        /// **Ten fields, and a frame and a picture inside the interface each used to name them.**
+        /// The two differ in the copy they read and in the fog volume they march, and in nothing
+        /// else — so a field added for one of them reached the other only if somebody remembered.
+        VisibilityInputs describeInputs(const ViewScene& held, std::uint32_t slot, const FogVolume* volume) const;
+
+        /// Everything a placement of `held` is, recorded into `commands` and written into copy
+        /// `slot`. True where anything was recorded, which is what says whether `commands` is worth
+        /// submitting.
+        ///
+        /// **What differs between the world's placement and a picture's is around this and not in
+        /// it**: which copy, whether a frame is opened and timed, and whether the submit waits.
+        static bool recordPlacement(ViewScene& held, const SceneDesc& scene, VkCommandBuffer commands,
+            std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard);
 
         /// Reads into `mStats` what a placement can have moved, which is every figure but the three
         /// a build settles.

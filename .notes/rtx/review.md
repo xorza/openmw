@@ -18,14 +18,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
 
 ## Two paths for one job, and asymmetric interfaces
 
-- [ ] `components/rtxvulkan/vulkanrenderer.cpp` `placeScene` has two bodies: a view scene runs
-      `submitAndWait` (535-546), the world defers into the frame (548-598). `traceGuiTexture`
-      (1178-1306) restates `renderFrame`'s `VisibilityInputs` block (ten fields) and the
-      accumulate, filter, composite and tone chain with different images.
-- [ ] `SceneAcceleration::place` returns whether it recorded; `SceneBuffers::place` returns
-      nothing. `SceneBuffers::getBytes` omits `mSpriteTileOffsets` and `mSpriteTileIndices`
-      although `Tables` holds them and `binSprites` grows them.
-- [ ] `VulkanRenderer::sceneAt` const overload is a `const_cast` of the non-const one.
 - [ ] `components/rtxvulkan/shaders/lib/bindings.glsl` declares set-0 bindings out of order
       (15 before 14) with set-2 bindings `0, 6, 5, 1, 2, 4, 3, 8, 9, 7, 10` interleaved among them.
       `tone.comp` declares binding 3 before binding 2. `visibilitypass.cpp` `sBindings` builds the

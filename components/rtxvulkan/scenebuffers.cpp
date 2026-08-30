@@ -433,6 +433,13 @@ namespace Rtx
         });
     }
 
+    VkDeviceSize SceneBuffers::Tables::getBytes() const
+    {
+        return mLayers.getSize() + mMasks.getSize() + mLights.getSize() + mLightOffsets.getSize() + mGrid.getSize()
+            + mLightIndices.getSize() + mSprites.getSize() + mEmitters.getSize() + mSpriteTileOffsets.getSize()
+            + mSpriteTileIndices.getSize();
+    }
+
     VkDeviceSize SceneBuffers::getBytes() const
     {
         // The indices are not counted here: they belong to the acceleration structure, which reports
@@ -440,12 +447,7 @@ namespace Rtx
         VkDeviceSize total = mTexCoords.getBytes() + mMeshes.getSize() + mInstanceTable.getBytes()
             + mMaterialTable.getBytes() + mNormalTable.getBytes();
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-        {
-            const Tables& tables = mTables[slot];
-            total += tables.mLayers.getSize() + tables.mMasks.getSize() + tables.mLights.getSize()
-                + tables.mLightOffsets.getSize() + tables.mLightIndices.getSize() + tables.mGrid.getSize()
-                + tables.mSprites.getSize() + tables.mEmitters.getSize();
-        }
+            total += mTables[slot].getBytes();
 
         return total;
     }
