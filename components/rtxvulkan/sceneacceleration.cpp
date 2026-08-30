@@ -247,9 +247,9 @@ namespace Rtx
     void SceneAcceleration::writeGeometry(const SceneDesc& scene, std::span<const Index> meshes)
     {
         // The scene's own reach, so a block exists for every run it has handed out. Blocks already
-        // made are left exactly where they are.
-        for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-            mPositions.reserve(static_cast<std::uint32_t>(scene.getPositions().size()));
+        // made are left exactly where they are, and one call reaches every copy — `SlotBlocks` is
+        // what holds one per frame in flight.
+        mPositions.reserve(static_cast<std::uint32_t>(scene.getPositions().size()));
         mIndices.reserve(static_cast<std::uint32_t>(scene.getIndices().size()));
 
         for (const Index mesh : meshes)

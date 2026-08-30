@@ -53,6 +53,16 @@ namespace Rtx
 
 namespace Rtx
 {
+    namespace
+    {
+        /// How many frames a row is made room for when its zone first reports one.
+        ///
+        /// **Longer than the runs anyone measures**, which is ten seconds of stepped frames for
+        /// `bench` and a handful for `shot`. A run past it pays one growth per zone and is right
+        /// either way — this is room, not a limit.
+        constexpr std::size_t sExpectedFrames = 1024;
+    }
+
     void GpuBreakdown::add(std::span<const GpuSpan> spans)
     {
         for (const GpuSpan& span : spans)
@@ -66,6 +76,11 @@ namespace Rtx
             {
                 mNames.emplace_back(span.mName);
                 mTimes.emplace_back();
+
+                // **Room for the run taken on the frame the zone first appears.** A row that grows
+                // does it inside a frame it is timing, and what a growth costs is a copy of every
+                // sample taken so far — landing on one frame of the run and reported as its worst.
+                mTimes.back().reserve(sExpectedFrames);
             }
 
             mTimes[at].push_back(span.mMs);

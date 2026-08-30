@@ -1201,5 +1201,40 @@ namespace Rtx
                              .valid());
         }
 
+        /// A mesh's extent follows whatever was written into it, by either writer.
+        ///
+        /// **The box is kept where the positions are, and not measured where it is asked for** — so
+        /// both writers owe it an answer. A skinned body reaches somewhere else on every frame it is
+        /// posed, and a slot that was given back reaches nowhere at all.
+        TEST(RtxSceneDescTest, aMeshesExtentFollowsWhateverWasWrittenIntoIt)
+        {
+            SceneDesc scene;
+
+            const Index quad = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, false, true);
+            const Index material = scene.addMaterial(Material{});
+            scene.addInstance(
+                MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = quad, .mMaterial = material });
+
+            // The unit square in the xy plane that the fixture is.
+            EXPECT_FLOAT_EQ(scene.getBounds().xMin(), 0.0f);
+            EXPECT_FLOAT_EQ(scene.getBounds().xMax(), 1.0f);
+
+            // The same four vertices three units along x, which is what a pose is: the count a
+            // deforming mesh keeps and the places it keeps none of.
+            std::array<osg::Vec3f, sQuadPositions.size()> posed{};
+            for (std::size_t at = 0; at < posed.size(); ++at)
+                posed[at] = sQuadPositions[at] + osg::Vec3f(3.0f, 0.0f, 0.0f);
+
+            scene.updateMesh(quad, posed, {});
+
+            EXPECT_FLOAT_EQ(scene.getBounds().xMin(), 3.0f) << "the extent stayed where the first pose put it";
+            EXPECT_FLOAT_EQ(scene.getBounds().xMax(), 4.0f);
+
+            // And a slot handed back reaches nowhere, however the instance standing on it is left:
+            // an empty answer is what a camera is not placed from.
+            ASSERT_TRUE(scene.release({}, {}));
+            EXPECT_FALSE(scene.getBounds().valid());
+        }
+
     }
 }

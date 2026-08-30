@@ -15,6 +15,16 @@ namespace Rtx
         /// Half, because the alpha it is standing in for is very nearly binary already: Morrowind's
         /// masks are painted, not anti-aliased, and the fringe a filter puts on them is a texel wide.
         constexpr float sBlendCutoff = 0.5f;
+
+        /// The box every one of `positions` fits in.
+        osg::BoundingBoxf boundsOf(std::span<const osg::Vec3f> positions)
+        {
+            osg::BoundingBoxf bounds;
+            for (const osg::Vec3f& position : positions)
+                bounds.expandBy(position);
+
+            return bounds;
+        }
     }
 
     float Material::getAlphaCutoff() const
@@ -78,6 +88,7 @@ namespace Rtx
             .mIndexCount = elements.mCount,
             .mSheet = sheet,
             .mDeforming = deforming,
+            .mBounds = boundsOf(positions),
         };
 
         writeMesh(range, positions, normals, texCoords, indices);
@@ -183,6 +194,11 @@ namespace Rtx
         std::copy(positions.begin(), positions.end(), heldPositions);
         if (!normals.empty())
             std::copy(normals.begin(), normals.end(), heldNormals);
+
+        // **A pose the size of the last one still reaches somewhere else.** An arm that came down is
+        // the same count of vertices in a different place, and a box left where the bind pose put it
+        // is what a camera would then be framed from.
+        mMeshes[mesh].mBounds = boundsOf(positions);
 
         // Named once however many callers reach it, because a backend builds one structure per mesh
         // and building it twice in a frame is the same answer for twice the cost. Linear over a list
@@ -530,16 +546,18 @@ namespace Rtx
     namespace
     {
         /// A byte per entry, set for everything `keep` names. Duplicates and any order are fine.
-        std::vector<char> keepFlags(std::size_t count, std::span<const Index> keep)
+        void markKept(std::vector<char>& flags, std::size_t count, std::span<const Index> keep)
         {
-            std::vector<char> flags(count, 0);
+            // Cleared before it is grown, so the fill reaches every row rather than only the rows
+            // past the length the last sweep left.
+            flags.clear();
+            flags.resize(count, 0);
+
             for (const Index index : keep)
             {
                 assert(index < count);
                 flags[index] = 1;
             }
-
-            return flags;
         }
     }
 
@@ -559,23 +577,20 @@ namespace Rtx
         if (meshes.size() == liveMeshes && materials.size() == liveMaterials)
             return false;
 
-        // Allocated here rather than kept, because this runs on the frame a cell left and on no
-        // other. What it is not allowed to do is allocate on the frames in between, which is what
-        // the test above is for.
-        std::vector<char> keptMesh = keepFlags(mMeshes.size(), meshes);
-        std::vector<char> keptMaterial = keepFlags(mMaterials.size(), materials);
+        markKept(mKeptMeshes, mMeshes.size(), meshes);
+        markKept(mKeptMaterials, mMaterials.size(), materials);
 
         // A slot already free is not one to free again.
         for (const Index slot : mFreeMeshes)
-            keptMesh[slot] = 1;
+            mKeptMeshes[slot] = 1;
 
         for (const Index slot : mFreeMaterials)
-            keptMaterial[slot] = 1;
+            mKeptMaterials[slot] = 1;
 
         std::size_t freedMeshes = 0;
         for (Index index = 0; index < mMeshes.size(); ++index)
         {
-            if (keptMesh[index] != 0)
+            if (mKeptMeshes[index] != 0)
                 continue;
 
             // **The slot stays where it is and only its geometry goes back.** Nothing is moved down
@@ -590,6 +605,7 @@ namespace Rtx
 
             range.mVertexCount = 0;
             range.mIndexCount = 0;
+            range.mBounds = osg::BoundingBoxf();
 
             mFreeMeshes.push_back(index);
             noteMesh(index, SlotNews::Freed);
@@ -599,7 +615,7 @@ namespace Rtx
         std::size_t freedMaterials = 0;
         for (Index index = 0; index < mMaterials.size(); ++index)
         {
-            if (keptMaterial[index] != 0)
+            if (mKeptMaterials[index] != 0)
                 continue;
 
             // **What it named goes with it**, and before its layer run does: the run is what says
@@ -738,19 +754,15 @@ namespace Rtx
     template <class Visit>
     void SceneDesc::forEachPlacement(Visit&& visit) const
     {
-        // **Each mesh's local box carried through its instances**, rather than every vertex of every
-        // instance — the difference between eight transforms per instance and several hundred.
-        std::vector<osg::BoundingBoxf> local(mMeshes.size());
-        for (std::size_t i = 0; i < mMeshes.size(); ++i)
-            for (const osg::Vec3f& position : getMeshPositions(static_cast<Index>(i)))
-                local[i].expandBy(position);
-
         for (const MeshInstance& instance : mInstances)
         {
             if (!instance.isPlaced())
                 continue;
 
-            const osg::BoundingBoxf& box = local[instance.mMesh];
+            // **Each mesh's own box carried through its instances**, rather than every vertex of
+            // every instance — the difference between eight transforms per instance and several
+            // hundred. The mesh kept it as its vertices arrived, so nothing is walked here at all.
+            const osg::BoundingBoxf& box = mMeshes[instance.mMesh].mBounds;
             if (!box.valid())
                 continue;
 

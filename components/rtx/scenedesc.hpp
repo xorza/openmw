@@ -49,6 +49,15 @@ namespace Rtx
         /// again. The caller's finding, like `mSheet`: the scene keeps it and draws nothing from it.
         bool mDeforming = false;
 
+        /// The box this mesh's vertices fit in, in the space they are stated in. Invalid where the
+        /// slot is free.
+        ///
+        /// **Written where the vertices are, and nowhere else.** A mesh's own extent is a fact about
+        /// its positions, so it is taken once as they arrive and taken again only where `updateMesh`
+        /// replaces them — which is what lets a question about where a scene reaches be eight
+        /// transforms per instance rather than a walk over every vertex in the table.
+        osg::BoundingBoxf mBounds;
+
         Index getTriangleCount() const { return mIndexCount / 3; }
     };
 
@@ -895,6 +904,15 @@ namespace Rtx
         std::vector<Index> mFreeMeshes;
         std::vector<Index> mFreeMaterials;
         std::vector<Index> mFreeTextures;
+
+        /// Which slots a sweep was told to keep, one flag per row of the table beside it.
+        ///
+        /// **Held rather than made, because a sweep runs on the frame a cell left** — the frame that
+        /// is already giving thousands of runs back to the allocators, and the last one that should
+        /// also be sizing two buffers to the whole table. Refilled by `release` and read by nobody
+        /// else.
+        std::vector<char> mKeptMeshes;
+        std::vector<char> mKeptMaterials;
 
         /// Where a mesh's vertices and indices, a material's layers and a layer's weights live.
         ///

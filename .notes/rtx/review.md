@@ -11,11 +11,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
 
 ## Work is done per frame that the frame did not change
 
-- [ ] `components/rtx/scenedesc.cpp` `release()` allocates two `std::vector<char>` on every sweep
-      frame. `setMaterial` reclassifies by a scan over every instance. `forEachPlacement` allocates
-      a per-mesh box vector on every `getBounds` and `getContentBoundsWithin`.
-- [ ] `components/rtx/frametimes.hpp` holds `std::vector<std::vector<double>> mTimes`, one
-      allocation per inner zone.
 - [ ] `components/rtxvulkan/scenebuffers.cpp` `place` refills `mLightScratch`, `mSpriteScratch`
       and `mEmitterScratch`, calls `mLightGrid.rebuild`, and writes the light, offset, index, grid
       and emitter tables whole on every placement. `SlotTable` tracks changed rows for instances and
@@ -28,9 +23,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
 - [ ] `components/rtxvulkan/vulkanrenderer.cpp:894-897` and `finishOldest` map and unmap
       `Frame::mHitCount` twice per frame when counting. `Buffer::map` calls `vkMapMemory` on every
       call.
-- [ ] `components/rtxvulkan/sceneacceleration.cpp:268-269` `writeGeometry` calls
-      `mPositions.reserve` once per slot, and `SlotBlocks::reserve` already loops over every slot.
-      The reservation runs `mSlots²` times.
 - [ ] `apps/rtxtool/world.cpp` `findCell` scans every cell record per call. `cellscene.cpp` calls
       it for each of the nine squares on every crossing and once per departed cell.
       `apps/rtxtool/objectstorage.cpp` builds an exterior index over the same data.
