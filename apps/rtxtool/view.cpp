@@ -1,12 +1,16 @@
 #include "view.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <format>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <span>
+#include <string_view>
 
 #include <SDL.h>
 
@@ -70,21 +74,44 @@ namespace RtxTool
             return "handed over";
         }
 
-        void printHelp()
+        /// One key the window answers, the line `F1` prints for it, and what it does.
+        ///
+        /// **One list and not two.** The help named every key and the event switch matched every
+        /// key, so a binding added to one of them and forgotten in the other was either a key
+        /// nobody could find or a line of help nothing answered.
+        struct Binding
         {
+            /// As `F1` prints it on the left, which is not always one key: `, .` is a pair that
+            /// differ only in direction and reach one action.
+            std::string_view mKeys;
+            std::string_view mSummary;
+
+            /// The keys it answers. `mSecond` is `SDLK_UNKNOWN` where there is only one.
+            SDL_Keycode mFirst;
+            SDL_Keycode mSecond;
+
+            std::function<void(const SDL_Keysym&)> mPress;
+
+            /// **`SDLK_UNKNOWN` answers nothing**, because SDL reports it for a key it has no name
+            /// for, and every one-key binding would otherwise claim that press.
+            bool answers(SDL_Keycode key) const { return key != SDLK_UNKNOWN && (key == mFirst || key == mSecond); }
+        };
+
+        void printHelp(std::span<const Binding> bindings)
+        {
+            // **Prose, because there is no binding to read these off.** `FlyCamera` asks SDL what is
+            // held down every frame rather than answering an event, so these four describe input
+            // nothing in the switch can drift from.
             out() << "\n"
                      "  W A S D        move,  Q E or ctrl/space for down and up\n"
                      "  right drag     look\n"
                      "  shift / alt    six times faster / seven times slower\n"
-                     "  wheel          change the base speed\n"
-                     "  T              run the clock,  a day and a half a minute,  and the air with it\n"
-                     "  , .            an hour back and forward,  shift for a day\n"
-                     "  [ ]            the weather either side of this one, of those the region gets\n"
-                     "  P              print this spot as a views.cfg block\n"
-                     "  F3             print this spot as a command line, for profiling\n"
-                     "  F2             write a screenshot\n"
-                     "  F1             this list\n"
-                     "  Esc            quit\n\n";
+                     "  wheel          change the base speed\n";
+
+            for (const Binding& binding : bindings)
+                out() << std::format("  {:<14} {}\n", binding.mKeys, binding.mSummary);
+
+            out() << '\n';
         }
     }
 
@@ -147,8 +174,6 @@ namespace RtxTool
 
         const float far = std::max(staged.getScene().getBounds().radius() * 8.0f, 10000.0f);
 
-        printHelp();
-
         /// How long a weather takes to become the next one, in real seconds.
         constexpr float sTransitionSeconds = 4.0f;
 
@@ -178,6 +203,93 @@ namespace RtxTool
         bool looking = false;
         bool resized = false;
         std::uint32_t drawn = 0;
+
+        const std::array<Binding, 8> bindings{
+            Binding{ "T", "run the clock,  a day and a half a minute,  and the air with it", SDLK_t, SDLK_UNKNOWN,
+                [&](const SDL_Keysym&) {
+                    clock.toggle();
+                    out() << (clock.isRunning() ? "the clock is running\n" : "the clock is stopped\n");
+                } },
+
+            Binding{ ", .", "an hour back and forward,  shift for a day", SDLK_COMMA, SDLK_PERIOD,
+                [&](const SDL_Keysym& pressed) {
+                    const bool forward = pressed.sym == SDLK_PERIOD;
+
+                    if ((pressed.mod & KMOD_SHIFT) != 0)
+                        clock.nudgeDay(forward ? 1 : -1);
+                    else
+                        clock.nudgeHour(forward ? 1.0f : -1.0f);
+
+                    moveSky();
+                } },
+
+            Binding{ "[ ]", "the weather either side of this one, of those the region gets", SDLK_LEFTBRACKET,
+                SDLK_RIGHTBRACKET,
+                [&](const SDL_Keysym& pressed) {
+                    const bool forward = pressed.sym == SDLK_RIGHTBRACKET;
+
+                    // **Only the weathers the camera's own region ever gets.** Walking all ten
+                    // offers skies the game would never produce there — snow on the Bitter Coast,
+                    // an ashstorm on Solstheim — and a window is for looking at what the game looks
+                    // like. The name cannot be one of the unknown ones by now: the region would
+                    // have thrown while it was being lit.
+                    //
+                    // **Turned into rather than swapped for.** A transition is the one thing the
+                    // harness never ran — the blend the shader carries was exercised only in the
+                    // game, which is the surface nobody iterates on.
+                    const std::uint32_t at = Rtx::weatherIndex(turningInto.value_or(request.mFrame.mWeather)).value();
+
+                    // Whatever the last one was turning into is where this one starts from, so
+                    // pressing the key twice does not jump.
+                    if (turningInto.has_value())
+                        request.mFrame.mWeather = *turningInto;
+
+                    turningInto = std::string(
+                        Rtx::weatherName(Rtx::nextRegionWeather(world.findRegion(staged.getRegion()), at, forward)));
+                    turned = 0.0f;
+
+                    moveSky();
+                } },
+
+            Binding{ "P", "print this spot as a views.cfg block", SDLK_p, SDLK_UNKNOWN,
+                [&](const SDL_Keysym&) {
+                    // The readable line above both formats, so a log of them says where each one is
+                    // without anything having to parse it back first.
+                    const Viewpoint spot = spotOf(request, camera, clock);
+                    out() << describeSpot(spot) << describeBlock(spot);
+                } },
+
+            Binding{ "F3", "print this spot as a command line, for profiling", SDLK_F3, SDLK_UNKNOWN,
+                [&](const SDL_Keysym&) {
+                    const Rtx::FrameExtents shown = renderer->getExtents();
+                    out() << describeSpot(spotOf(request, camera, clock))
+                          << describeProfile(request, validation, camera.getOrigin(), camera.getTarget(),
+                                 shown.mOutputWidth, shown.mOutputHeight)
+                          << '\n';
+                } },
+
+            Binding{ "F2", "write a screenshot", SDLK_F2, SDLK_UNKNOWN,
+                [&](const SDL_Keysym&) {
+                    if (drawn == 0)
+                        return;
+
+                    const Rtx::FrameExtents shown = renderer->getExtents();
+                    const std::filesystem::path file
+                        = request.mScreenshotDirectory / ("rtx-" + std::to_string(SDL_GetTicks()) + ".png");
+                    std::vector<std::uint8_t> pixels;
+                    renderer->readPixels(pixels);
+                    Rtx::writePng(file, shown.mOutputWidth, shown.mOutputHeight, pixels);
+                    out() << "wrote " << Files::pathToUnicodeString(file) << '\n';
+                } },
+
+            // The list holding the binding that prints it: the reference is bound while the array is
+            // built and read only once it stands, which is every press.
+            Binding{ "F1", "this list", SDLK_F1, SDLK_UNKNOWN, [&](const SDL_Keysym&) { printHelp(bindings); } },
+
+            Binding{ "Esc", "quit", SDLK_ESCAPE, SDLK_UNKNOWN, [&](const SDL_Keysym&) { running = false; } },
+        };
+
+        printHelp(bindings);
 
         const auto handle = [&](const SDL_Event& event) {
             switch (event.type)
@@ -211,83 +323,20 @@ namespace RtxTool
                     camera.scaleSpeed(event.wheel.y > 0 ? 1.3f : 1.0f / 1.3f);
                     break;
                 case SDL_KEYDOWN:
-                    if (event.key.keysym.sym == SDLK_ESCAPE)
-                        running = false;
-                    else if (event.key.keysym.sym == SDLK_F1)
-                        printHelp();
-                    else if (event.key.keysym.sym == SDLK_COMMA || event.key.keysym.sym == SDLK_PERIOD)
-                    {
-                        const bool forward = event.key.keysym.sym == SDLK_PERIOD;
-                        const bool byDay = (event.key.keysym.mod & KMOD_SHIFT) != 0;
+                {
+                    const auto found = std::find_if(bindings.begin(), bindings.end(),
+                        [&](const Binding& binding) { return binding.answers(event.key.keysym.sym); });
 
-                        if (byDay)
-                            clock.nudgeDay(forward ? 1 : -1);
-                        else
-                            clock.nudgeHour(forward ? 1.0f : -1.0f);
+                    if (found != bindings.end())
+                        found->mPress(event.key.keysym);
 
-                        moveSky();
-                    }
-                    else if (event.key.keysym.sym == SDLK_LEFTBRACKET || event.key.keysym.sym == SDLK_RIGHTBRACKET)
-                    {
-                        const bool forward = event.key.keysym.sym == SDLK_RIGHTBRACKET;
-
-                        // **Only the weathers the camera's own region ever gets.** Walking all ten
-                        // offers skies the game would never produce there — snow on the Bitter Coast,
-                        // an ashstorm on Solstheim — and a window is for looking at what the game
-                        // looks like. The name cannot be one of the unknown ones by now: the region
-                        // would have thrown while it was being lit.
-                        // **Turned into rather than swapped for.** A transition is the one thing the
-                        // harness never ran — the blend the shader carries was exercised only in the
-                        // game, which is the surface nobody iterates on.
-                        const std::uint32_t at
-                            = Rtx::weatherIndex(turningInto.value_or(request.mFrame.mWeather)).value();
-
-                        // Whatever the last one was turning into is where this one starts from, so
-                        // pressing the key twice does not jump.
-                        if (turningInto.has_value())
-                            request.mFrame.mWeather = *turningInto;
-
-                        turningInto = std::string(Rtx::weatherName(
-                            Rtx::nextRegionWeather(world.findRegion(staged.getRegion()), at, forward)));
-                        turned = 0.0f;
-
-                        moveSky();
-                    }
-                    else if (event.key.keysym.sym == SDLK_t)
-                    {
-                        clock.toggle();
-                        out() << (clock.isRunning() ? "the clock is running\n" : "the clock is stopped\n");
-                    }
-                    else if (event.key.keysym.sym == SDLK_p)
-                    {
-                        // The readable line above both formats, so a log of them says where each
-                        // one is without anything having to parse it back first.
-                        const Viewpoint spot = spotOf(request, camera, clock);
-                        out() << describeSpot(spot) << describeBlock(spot);
-                    }
-                    else if (event.key.keysym.sym == SDLK_F3)
-                    {
-                        const Rtx::FrameExtents shown = renderer->getExtents();
-                        out() << describeSpot(spotOf(request, camera, clock))
-                              << describeProfile(request, validation, camera.getOrigin(), camera.getTarget(),
-                                     shown.mOutputWidth, shown.mOutputHeight)
-                              << '\n';
-                    }
-                    else if (event.key.keysym.sym == SDLK_F2 && drawn > 0)
-                    {
-                        const Rtx::FrameExtents shown = renderer->getExtents();
-                        const std::filesystem::path file
-                            = request.mScreenshotDirectory / ("rtx-" + std::to_string(SDL_GetTicks()) + ".png");
-                        std::vector<std::uint8_t> pixels;
-                        renderer->readPixels(pixels);
-                        Rtx::writePng(file, shown.mOutputWidth, shown.mOutputHeight, pixels);
-                        out() << "wrote " << Files::pathToUnicodeString(file) << '\n';
-                    }
                     break;
+                }
                 default:
                     break;
             }
         };
+
         Clock::time_point previous = Clock::now();
         const Clock::time_point began = previous;
 
@@ -328,20 +377,23 @@ namespace RtxTool
             if (now - lastTitle >= titleInterval)
             {
                 const double elapsed = std::chrono::duration<double>(now - lastTitle).count();
-                const osg::Vec3f at = camera.getOrigin();
                 const Rtx::FrameExtents shown = renderer->getExtents();
 
-                std::string sizes = std::format("{}x{}", shown.mOutputWidth, shown.mOutputHeight);
-                if (shown.mRenderWidth != shown.mOutputWidth)
-                    sizes = std::format("{}x{} to {}", shown.mRenderWidth, shown.mRenderHeight, sizes);
-
-                window.setTitle(
-                    std::format("{}  |  {:.0f} fps  |  {}  |  {:.0f}, {:.0f}, {:.0f}  |  {:.0f} u/s  |  day {} {} {}",
-                        request.mTitle, framesSinceTitle / elapsed, sizes, at.x(), at.y(), at.z(), camera.getSpeed(),
-                        clock.getDay(), clockFace(clock.getHour()),
-                        turningInto.has_value()
-                            ? std::format("{} to {} {:.0f}%", request.mFrame.mWeather, *turningInto, turned * 100.0f)
-                            : request.mFrame.mWeather));
+                window.setTitle(describeTitle(WindowTitle{
+                    .mName = request.mTitle,
+                    .mFps = framesSinceTitle / elapsed,
+                    .mOutputWidth = shown.mOutputWidth,
+                    .mOutputHeight = shown.mOutputHeight,
+                    .mRenderWidth = shown.mRenderWidth,
+                    .mRenderHeight = shown.mRenderHeight,
+                    .mOrigin = camera.getOrigin(),
+                    .mSpeed = camera.getSpeed(),
+                    .mDay = clock.getDay(),
+                    .mHour = clock.getHour(),
+                    .mWeather = request.mFrame.mWeather,
+                    .mInto = turningInto.has_value() ? std::string_view(*turningInto) : std::string_view(),
+                    .mTurned = turned,
+                }));
 
                 framesSinceTitle = 0;
                 lastTitle = now;

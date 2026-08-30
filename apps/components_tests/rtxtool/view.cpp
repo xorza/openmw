@@ -123,6 +123,62 @@ namespace RtxTool
             EXPECT_NE(describeProfile(shaded, off, at, to, 8, 8), describeProfile(latest, off, at, to, 8, 8));
         }
 
+        /// A title whose every number is distinct, so a field printed from the wrong one shows.
+        WindowTitle makeTitle()
+        {
+            return WindowTitle{
+                .mName = "balmora",
+                .mFps = 61.4,
+                .mOutputWidth = 2560,
+                .mOutputHeight = 1440,
+                .mRenderWidth = 2560,
+                .mRenderHeight = 1440,
+                .mOrigin = osg::Vec3f(-19216.5f, -14896.25f, 160.0f),
+                .mSpeed = 512.0f,
+                .mDay = 3,
+                .mHour = 17.25f,
+                .mWeather = "Ashstorm",
+            };
+        }
+
+        /// The bar says one size where nothing upscales and both where something does.
+        ///
+        /// **Two extents printed alike would be the one line that cannot say whether a run is
+        /// upscaling**, which is the first thing to check when a window looks soft.
+        TEST(RtxWindowTitleTest, bothExtentsAreNamedOnlyWhereTheyDiffer)
+        {
+            const WindowTitle same = makeTitle();
+            EXPECT_NE(describeTitle(same).find("2560x1440"), std::string::npos);
+            EXPECT_EQ(describeTitle(same).find(" to "), std::string::npos) << "one extent was printed as two";
+
+            WindowTitle upscaled = same;
+            upscaled.mRenderWidth = 1280;
+            upscaled.mRenderHeight = 720;
+
+            EXPECT_NE(describeTitle(upscaled).find("1280x720 to 2560x1440"), std::string::npos);
+        }
+
+        /// A settled sky names one weather and a crossing names both, with how far along it is.
+        TEST(RtxWindowTitleTest, aSkyThatIsTurningSaysWhatIntoAndHowFar)
+        {
+            const std::string settled = describeTitle(makeTitle());
+            EXPECT_NE(settled.find("Ashstorm"), std::string::npos);
+            EXPECT_EQ(settled.find(" to Clear"), std::string::npos);
+
+            WindowTitle turning = makeTitle();
+            turning.mInto = "Clear";
+            turning.mTurned = 0.25f;
+
+            EXPECT_NE(describeTitle(turning).find("Ashstorm to Clear 25%"), std::string::npos);
+        }
+
+        /// Everything that moves while the window is open reaches the bar, and each of them once.
+        TEST(RtxWindowTitleTest, everyMovingNumberIsInTheBar)
+        {
+            EXPECT_EQ(describeTitle(makeTitle()),
+                "balmora  |  61 fps  |  2560x1440  |  -19216, -14896, 160  |  512 u/s  |  day 3 17:15 Ashstorm");
+        }
+
         Viewpoint makeSpot()
         {
             return Viewpoint{

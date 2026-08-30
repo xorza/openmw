@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include <osg/Vec3f>
 
@@ -78,6 +79,43 @@ namespace RtxTool
     /// file refuses to load, so what the window printed could never have gone where it was printed
     /// to go. Numbers are shortest-round-trip for the reason `describeProfile` gives.
     std::string describeBlock(const Viewpoint& spot);
+
+    /// What a window's own title bar says.
+    ///
+    /// **Everything that moves while the window is open, and nothing that does not.** The cell and
+    /// the view's name are on the command line and in `views.cfg`, and a bar that repeated them
+    /// would spend its width on what the person who opened it already knows.
+    struct WindowTitle
+    {
+        /// What the window is called, which is the view's name or the cell's.
+        std::string_view mName;
+
+        double mFps = 0.0;
+
+        /// What the frame is presented at, and what it was traced at. The bar says both only where
+        /// they differ, because equal numbers twice say nothing.
+        std::uint32_t mOutputWidth = 0;
+        std::uint32_t mOutputHeight = 0;
+        std::uint32_t mRenderWidth = 0;
+        std::uint32_t mRenderHeight = 0;
+
+        osg::Vec3f mOrigin;
+
+        /// How fast the camera flies, in units a second.
+        float mSpeed = 0.0f;
+
+        int mDay = 0;
+        float mHour = sDefaultHour;
+
+        /// The weather now, what it is turning into, and how far along. `mInto` is empty where the
+        /// sky is settled, which is every frame but the four seconds after a weather key.
+        std::string_view mWeather;
+        std::string_view mInto;
+        float mTurned = 0.0f;
+    };
+
+    /// The title bar as one line, rewritten five times a second.
+    std::string describeTitle(const WindowTitle& title);
 
     /// One line of arguments that renders this frame again, wherever it is pasted.
     ///

@@ -92,6 +92,22 @@ namespace RtxTool
         return block;
     }
 
+    std::string describeTitle(const WindowTitle& title)
+    {
+        // Both extents only where they differ, which is every run that upscales and no other.
+        std::string sizes = std::format("{}x{}", title.mOutputWidth, title.mOutputHeight);
+        if (title.mRenderWidth != title.mOutputWidth)
+            sizes = std::format("{}x{} to {}", title.mRenderWidth, title.mRenderHeight, sizes);
+
+        const std::string sky = title.mInto.empty()
+            ? std::string(title.mWeather)
+            : std::format("{} to {} {:.0f}%", title.mWeather, title.mInto, title.mTurned * 100.0f);
+
+        return std::format("{}  |  {:.0f} fps  |  {}  |  {:.0f}, {:.0f}, {:.0f}  |  {:.0f} u/s  |  day {} {} {}",
+            title.mName, title.mFps, sizes, title.mOrigin.x(), title.mOrigin.y(), title.mOrigin.z(), title.mSpeed,
+            title.mDay, clockFace(title.mHour), sky);
+    }
+
     std::string describeProfile(const ViewRequest& request, const Rtx::ValidationOptions& validation,
         const osg::Vec3f& origin, const osg::Vec3f& target, std::uint32_t width, std::uint32_t height)
     {

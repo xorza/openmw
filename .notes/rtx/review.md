@@ -20,6 +20,4 @@ Each item describes what is there and what it costs. No item says how to fix it.
 
 - [ ] `apps/rtxtool/bench.cpp` `runBench` mixes timing, hashing, JSON, crossing accounting and
       reporting in one function.
-- [ ] `apps/rtxtool/view.cpp` `runWindow` (116-511) holds a 100-line event lambda and the frame
-      loop in one function.
 
