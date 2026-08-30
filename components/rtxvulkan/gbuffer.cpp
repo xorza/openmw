@@ -64,8 +64,8 @@ namespace Rtx
         /// the two answers stay together.
         constexpr VkFormat sDepth = GBUFFER_DEPTH;
 
-        /// One float for a value that is a yes or a no and a value between nought and one. See
-        /// `gbuffer.h` for why it is not a byte.
+        /// One byte for a yes or a no, and for a value between nought and one. `gbuffer.h` argues
+        /// why a byte is enough for both and what a float cost.
         constexpr VkFormat sMask = GBUFFER_MASK;
 
         /// Three bytes for three fractions, which is what `gbuffer.h` argues a modulation is.

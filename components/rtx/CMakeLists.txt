@@ -24,9 +24,11 @@ set(RTX_FILES
     cloudshell.hpp
     colourblock.cpp
     colourblock.hpp
-    error.hpp
+    compositequeue.cpp
+    compositequeue.hpp
     distantland.cpp
     distantland.hpp
+    error.hpp
     fogbuilder.cpp
     fogbuilder.hpp
     fognoise.cpp
@@ -84,8 +86,6 @@ set(RTX_FILES
     spritetiles.hpp
     srgb.cpp
     srgb.hpp
-    compositequeue.cpp
-    compositequeue.hpp
     terraincomposite.cpp
     terraincomposite.hpp
     terrainresidency.cpp

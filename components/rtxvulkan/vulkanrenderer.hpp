@@ -442,6 +442,11 @@ namespace Rtx
         /// allocates nothing.
         std::vector<GuiDraw> mGuiDraws;
 
+        /// Scenes belonging to pictures rather than to the world, by slot, and the slots nothing
+        /// holds.
+        std::vector<std::unique_ptr<ViewScene>> mViewScenes;
+        std::vector<std::uint32_t> mFreeViewScenes;
+
         /// What a picture inside the interface is traced through: a map tile, the inventory doll,
         /// the race preview. Null until something asks for one.
         ///
@@ -451,12 +456,8 @@ namespace Rtx
         /// between two of them.
         ///
         /// **Grown to the largest picture asked for and never shrunk.** There are three or four
-        /// sizes in the whole game and every pass below takes the extent it is dispatched over, so
-        /// a smaller picture uses a corner of a larger one's images rather than rebuilding them.
-        /// Scenes belonging to pictures rather than to the world, by slot.
-        std::vector<std::unique_ptr<ViewScene>> mViewScenes;
-        std::vector<std::uint32_t> mFreeViewScenes;
-
+        /// sizes in the whole game and every pass here takes the extent it is dispatched over, so a
+        /// smaller picture uses a corner of a larger one's images rather than rebuilding them.
         std::unique_ptr<GBuffer> mViewChannels;
         std::unique_ptr<FogVolume> mViewFogVolume;
         std::unique_ptr<Image> mViewColour;
@@ -474,11 +475,11 @@ namespace Rtx
         std::unique_ptr<Presenter> mPresenter;
 
 #ifdef OPENMW_RTX_DLSS
-        /// A share of the process's NGX runtime, held for as long as this renderer upscales, and
-        /// null where it does not. `describeDevice` takes a share of its own to answer with, which
-        /// is this same object wherever this one is holding it.
-        /// NGX, where this renderer was asked to upscale. **Owned outright and null otherwise** —
-        /// built in the constructor, destroyed with the renderer, and the only one in the process.
+        /// NGX, where this renderer was asked to upscale.
+        ///
+        /// **Owned outright and null otherwise** — built in the constructor, destroyed with the
+        /// renderer, and the only one in the process. What `describeDevice` reports comes from
+        /// `Dlss::probe` instead, which asks the device without standing a runtime up.
         std::unique_ptr<Dlss> mNgx;
 
         /// Ray Reconstruction, built for one pair of resolutions and so rebuilt by every resize.

@@ -259,16 +259,6 @@ Reservoir noLamps()
     return Reservoir(vec3(0.0), vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0, 0.0, 0.0);
 }
 
-/// Weighs every lamp reaching `from` into `kept`.
-///
-/// **One walk and three askers**, which is what stopped the fog and the sprites going unshadowed:
-/// a surface, a step of a fog march and a layer of particles all want the same question — which of
-/// these lamps is worth the one ray — and each used to answer it its own way or not at all.
-///
-/// **Called more than once builds one reservoir over all of it.** The fog weighs every step of a
-/// march into the same one, so a single ray stands for the whole march rather than for one place in
-/// it, and the estimator is unbiased over the sum it was accumulated from.
-///
 /// The cosine a diffuse surface takes a light at, with what a sheet takes from its far side.
 ///
 /// **One statement of what "facing" means, used by the sun, the moons and every lamp.** A solid
@@ -281,12 +271,6 @@ float litCosine(vec3 normal, vec3 towards, float transmission)
     return max(cosine, 0.0) + transmission * max(-cosine, 0.0);
 }
 
-/// @param normal the surface's, or nothing at all for a point in a medium — the air and a puff have
-///        no direction to face away from, so every lamp reaching them counts whole.
-/// @param scale what this asker's own share of a lamp is worth: `INV_PI` for a Lambert surface,
-///        `INV_FOUR_PI` times a step's weight for the air.
-/// @param transmission what the far side of a sheet is worth, out of `Surface::mTransmission`.
-///        Nought for a solid and for a point in a medium, which has no far side.
 /// Offers one candidate to `kept`, already resolved to what it delivers at `from`.
 ///
 /// **The reservoir's own rule, written once**, because two walks feed it: the point one below, and
@@ -324,6 +308,22 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
     }
 }
 
+/// Weighs every lamp reaching `from` into `kept`.
+///
+/// **One walk and three askers**, which is what stopped the fog and the sprites going unshadowed:
+/// a surface, a step of a fog march and a layer of particles all want the same question — which of
+/// these lamps is worth the one ray — and each used to answer it its own way or not at all.
+///
+/// **Called more than once builds one reservoir over all of it.** The fog weighs every step of a
+/// march into the same one, so a single ray stands for the whole march rather than for one place in
+/// it, and the estimator is unbiased over the sum it was accumulated from.
+///
+/// @param normal the surface's, or nothing at all for a point in a medium — the air and a puff have
+///        no direction to face away from, so every lamp reaching them counts whole.
+/// @param scale what this asker's own share of a lamp is worth: `INV_PI` for a Lambert surface,
+///        `INV_FOUR_PI` times a step's weight for the air.
+/// @param transmission what the far side of a sheet is worth, out of `Surface::mTransmission`.
+///        Nought for a solid and for a point in a medium, which has no far side.
 void weighLamps(
     inout Reservoir kept, inout uint state, vec3 from, vec3 normal, float scale, float transmission, bool greedy)
 {

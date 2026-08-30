@@ -23,8 +23,25 @@ set(RTXTOOL_FILES
     framing.hpp
     gpuclock.cpp
     gpuclock.hpp
+    lighting.cpp
+    lighting.hpp
+    motion.hpp
+    npc.cpp
+    npc.hpp
+    objectstorage.cpp
+    objectstorage.hpp
+    options.cpp
+    options.hpp
+    parsefloat.cpp
+    parsefloat.hpp
+    perfcontrol.cpp
+    perfcontrol.hpp
+    picture.cpp
+    picture.hpp
     placement.cpp
     placement.hpp
+    posedactors.cpp
+    posedactors.hpp
     scene.cpp
     scene.hpp
     shot.cpp
@@ -35,31 +52,14 @@ set(RTXTOOL_FILES
     terrainstorage.hpp
     textures.cpp
     textures.hpp
-    lighting.cpp
-    lighting.hpp
-    motion.hpp
-    npc.cpp
-    npc.hpp
-    objectstorage.cpp
-    objectstorage.hpp
-    posedactors.cpp
-    posedactors.hpp
-    options.cpp
-    options.hpp
-    parsefloat.cpp
-    parsefloat.hpp
-    perfcontrol.cpp
-    perfcontrol.hpp
-    picture.cpp
-    picture.hpp
-    view.cpp
-    view.hpp
-    viewpoint.cpp
-    viewpoint.hpp
     validationchoice.cpp
     validationchoice.hpp
     verify.cpp
     verify.hpp
+    view.cpp
+    view.hpp
+    viewpoint.cpp
+    viewpoint.hpp
     views.cpp
     views.hpp
     waterplane.cpp

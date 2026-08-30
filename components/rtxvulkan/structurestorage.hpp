@@ -37,9 +37,9 @@ namespace Rtx
     /// gives its run back and the next structure that fits takes it, which is the same "slots, not
     /// compaction" rule the scene itself is built on — nothing is moved, so nothing is renumbered.
     ///
-    /// The renderer is synchronous, so a structure destroyed after a release cannot be in flight.
-    /// When the frame stops waiting on the queue this is one of the places that has to grow a
-    /// fence-keyed retirement list.
+    /// **A room is given back through a `Graveyard` and never straight to `give`.** A frame that
+    /// traced the structure standing in it may still be on the queue when the mesh it belonged to
+    /// goes, so what says the room is free again is the fence of the frame that buried it.
     class StructureStorage
     {
     public:

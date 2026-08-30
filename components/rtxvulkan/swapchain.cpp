@@ -26,8 +26,8 @@ namespace Rtx
                 throw Error("the surface offers no formats");
 
             // A plain unsigned-normalised format, because the blit that fills it converts between
-            // formats and an sRGB target would silently encode an image that is not linear yet.
-            // Tone mapping and the transfer function are M8's, and this is where they will land.
+            // formats and an sRGB target would encode an image that `TonePass` has already encoded:
+            // the curve and the transfer function have both run by the time anything reaches here.
             for (const VkSurfaceFormatKHR& format : formats)
                 if (format.format == VK_FORMAT_B8G8R8A8_UNORM || format.format == VK_FORMAT_R8G8B8A8_UNORM)
                     return format;

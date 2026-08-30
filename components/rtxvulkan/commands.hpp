@@ -13,10 +13,11 @@ namespace Rtx
     class Device;
     class Graveyard;
 
-    /// A command pool and the one-shot submit that setup work is made of.
+    /// The one command pool, and both ways a submit is made out of it.
     ///
-    /// Setup only. Recording a frame means reusing a buffer against a fence, not allocating one and
-    /// waiting for the queue to drain, and nothing here is shaped for that.
+    /// **Setup and the frame path both, which is why there are two.** A load asks the queue once per
+    /// resource and waits for it; a frame cannot wait, because a frame that drained the queue could
+    /// not hand the CPU the next one to walk. What each half costs is on the members themselves.
     class CommandPool
     {
     public:

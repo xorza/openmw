@@ -69,7 +69,10 @@ namespace Rtx
         /// equal to the table an uploader compares against, so a trailing free slot does not read as
         /// a scene this array has never seen.
         ///
-        /// `textures` may be empty; the shader is told the count and does not index past it.
+        /// `textures` may be empty. The shader declares the array unsized and is told no count at
+        /// all: what keeps every read in range is that the array is as long as the scene's table,
+        /// and a slot nothing describes is one no material names — which is what
+        /// `descriptorBindingPartiallyBound` is required for.
         ///
         /// `graveyard` is where what this displaces goes: nothing at construction, but the path is
         /// one.

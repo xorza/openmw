@@ -63,8 +63,6 @@ namespace Rtx
             return total;
         }
 
-        /// Why a candidate was rejected, or empty when it was not.
-        ///
         /// Whether any memory type is video memory the host can write into directly.
         ///
         /// **Required, and not fallen back from.** Every table the frame rewrites — the instance

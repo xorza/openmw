@@ -60,23 +60,18 @@ namespace RtxTool
         osg::ref_ptr<osg::Group> mParent;
     };
 
-    /// Which cells are in the graph, and the group each one's references hang under.
+    /// What a cell brought: the group its references hang under.
     ///
     /// **A group per cell is what makes a cell able to leave.** Taking that node off the root is the
     /// whole of unloading: the next walk does not reach what was under it, and the sweep that
-    /// follows takes its placements, its meshes and its materials with it.
-    /// What a cell brought.
-    ///
-    /// **Its water quad, and that is now the whole of it.** A cell's references hang under a group
-    /// and a walk finds them every time — its lights included, since those are `LightSource` nodes
-    /// exactly as the game makes them. The water is the exception: an analytic quad goes straight
-    /// into the scene, so nothing can re-find it and the cell is the only thing that knows when it
-    /// should go.
+    /// follows takes its placements, its meshes and its materials with it. Its lights go the same
+    /// way, being `LightSource` nodes exactly as the game makes them.
     struct LoadedCell
     {
         osg::ref_ptr<osg::Group> mNode;
     };
 
+    /// Which cells are in the graph, by the name `--cell` spells each one with.
     using LoadedCells = std::map<std::string, LoadedCell>;
 
     /// Takes every cell outside the active grid around `centre` off the graph. Returns how many.
@@ -151,11 +146,6 @@ namespace RtxTool
     /// is a cell record there, which is what `World::findCell` says by answering nothing.
     std::string cellAt(const CellSquare& square);
 
-    /// Everything a region puts into `scene`, and how its centre is lit.
-    ///
-    /// Geometry and lights through `extractor` and `scene`, and the sky, water and air as the
-    /// return. **In the library rather than beside `main` because it has three callers now** — the
-    /// screenshot, the window, and the test that needs a frame of real content to measure.
     /// What loading a region left for its caller to place.
     ///
     /// The lights and the water are already in the scene; these two are not, because neither is
@@ -172,6 +162,11 @@ namespace RtxTool
         CellReport mReport;
     };
 
+    /// Everything a region puts into `scene`, and how its centre is lit.
+    ///
+    /// Geometry and lights through `extractor` and `scene`, and the sky, water and air as the
+    /// return. **In the library rather than beside `main` because it has three callers now** — the
+    /// screenshot, the window, and the test that needs a frame of real content to measure.
     RegionLoad loadRegion(World& world, const ESM::Cell& centre, osg::Group& root, Rtx::SceneDesc& scene,
         Rtx::SceneExtractor& extractor, LoadedCells& loaded, std::string_view weather, int day, float hour,
         bool liveProps);

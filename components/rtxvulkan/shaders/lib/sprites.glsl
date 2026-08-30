@@ -24,7 +24,6 @@
 /// sky's own ambient, where it was invisible. That is the *mean*: which side of the puff the sun's
 /// share leaves by is `SMOKE_ANISOTROPY`'s, and it arrives here folded into `sunLit`.
 ///
-
 /// The lamps arrive the way they arrive at the fog — as irradiance spread over the whole sphere —
 /// because a puff is the same kind of thing the fog is, only denser and in one place. So it is the
 /// same `lampsAt` and the same one multiply on the sum.

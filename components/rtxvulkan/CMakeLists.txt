@@ -148,19 +148,18 @@ set(RTX_VULKAN_FILES
     fogvolume.cpp
     fogvolume.hpp
     frameslots.hpp
-    slottable.hpp
     gbuffer.cpp
     gbuffer.hpp
+    gputimer.cpp
+    gputimer.hpp
     graphicspipeline.cpp
     graphicspipeline.hpp
+    graveyard.cpp
+    graveyard.hpp
     guipass.cpp
     guipass.hpp
     guitextures.cpp
     guitextures.hpp
-    gputimer.cpp
-    gputimer.hpp
-    graveyard.cpp
-    graveyard.hpp
     image.cpp
     image.hpp
     instance.cpp
@@ -170,10 +169,10 @@ set(RTX_VULKAN_FILES
     owned.hpp
     physicaldevice.cpp
     physicaldevice.hpp
-    presenter.cpp
-    presenter.hpp
     pipelinecache.cpp
     pipelinecache.hpp
+    presenter.cpp
+    presenter.hpp
     requirements.cpp
     requirements.hpp
     result.cpp
@@ -181,11 +180,12 @@ set(RTX_VULKAN_FILES
     sceneacceleration.cpp
     sceneacceleration.hpp
     scenebuffers.cpp
+    scenebuffers.hpp
     setlayout.cpp
     setlayout.hpp
-    scenebuffers.hpp
     shadermodule.cpp
     shadermodule.hpp
+    slottable.hpp
     structurestorage.cpp
     structurestorage.hpp
     swapchain.cpp

@@ -343,7 +343,8 @@ namespace MWRender
         /// What the world's clock last read, so the emitters can be handed the gap since.
         double mLastSimulationTime = 0.0;
 
-        /// The one sequence every mirror walk in this renderer poses at.
+        /// Whether a camera the builder refused has already been reported. `traceWorld` says why
+        /// once is the whole of it.
         bool mComplained = false;
 
         /// Where `OPENMW_RTX_SHOT` says to write traced frames, and how many are left to write.

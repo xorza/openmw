@@ -99,6 +99,22 @@ namespace RtxTool
                 describeThrottle(clock.mThrottleMask));
         }
 
+        /// Everything a scene came to, so the record can compare what a change cost in memory as
+        /// well as in time.
+        ///
+        /// **Every field, because the report beside it chooses and this does not.** A human report
+        /// leaves out what nobody reads at a glance; a record exists to be diffed against the same
+        /// run on another commit, and a figure it never wrote is one nobody can go back for.
+        std::string asJson(const Rtx::SceneStats& scene)
+        {
+            return std::format(R"({{"instances": {}, "cutoutInstances": {}, "micromappedInstances": {}, )"
+                               R"("micromapOpaque": {:.6f}, "micromapTransparent": {:.6f}, "micromapUnknown": {:.6f}, )"
+                               R"("structureBytes": {}, "tableBytes": {}, "textureCount": {}, "textureBytes": {}}})",
+                scene.mInstances, scene.mCutoutInstances, scene.mMicromappedInstances, scene.mMicromapTally.mOpaque,
+                scene.mMicromapTally.mTransparent, scene.mMicromapTally.mUnknown, scene.mStructureBytes,
+                scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes);
+        }
+
         std::string asJson(const Rtx::FrameTimes& times)
         {
             return std::format(
@@ -108,8 +124,10 @@ namespace RtxTool
 
         /// Writes the run as one record, for comparing against the same run on another commit.
         ///
-        /// Hand-written rather than through a library: this is a flat object of numbers, and the
-        /// alternative is a dependency for the sake of six lines.
+        /// Hand-written rather than through a library: this is numbers and the names of places, and
+        /// the alternative is a dependency for the sake of a page. Whatever is a record of its own —
+        /// a scene, a distribution, a clock — has an `asJson` above, so a field added to one of
+        /// those reaches this without anybody remembering to come here.
         void writeJson(const std::filesystem::path& path, const BenchRequest& request, const Rtx::FrameExtents& extents,
             bool validating, const std::vector<BenchPlace>& places)
         {
@@ -129,10 +147,10 @@ namespace RtxTool
             for (std::size_t at = 0; at < places.size(); ++at)
             {
                 const BenchPlace& place = places[at];
-                file << std::format(
-                    R"(    {{"view": "{}", "cell": "{}", "hour": {}, "instances": {}, "buildMs": {:.2f}, )",
-                    place.mView, place.mCell, place.mHour, place.mScene.mInstances, place.mBuildMs)
-                     << std::format(R"("frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
+                file << std::format(R"(    {{"view": "{}", "cell": "{}", "hour": {}, "buildMs": {:.2f}, )", place.mView,
+                    place.mCell, place.mHour, place.mBuildMs)
+                     << R"("scene": )" << asJson(place.mScene)
+                     << std::format(R"(, "frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
                             place.mWallSeconds, place.mHitPercent)
                      << std::format(
                             R"("crossings": {}, "crossRebuilds": {}, "crossWorstMs": {:.2f}, "crossReadMs": {:.2f}, )"

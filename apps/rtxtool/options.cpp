@@ -88,8 +88,7 @@ namespace RtxTool
         addOption("npc", bpo::value<StringsVector>()->default_value(StringsVector(), "")->composing(),
             "put a person in front of the camera, by their NPC record id -- fargoth, "
             "\"caius cosades\". Repeatable, and they stand in the same row the creatures do. They "
-            "come naked: what an NPC is wearing lives in an inventory the simulation owns, and skin "
-            "is the surface this renderer most needs to be looking at anyway");
+            "arrive dressed out of their own record, which --clothes is what turns off");
         addOption("people", bpo::value<bool>()->default_value(true)->implicit_value(true),
             "put the region's own residents in it, assembled from their races' body parts and "
             "standing where the cell puts them. On, because a town with nobody in it is not the "

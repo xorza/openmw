@@ -1,5 +1,8 @@
+#include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <ostream>
 #include <set>
@@ -141,24 +144,6 @@ namespace RtxTool
                 throw std::runtime_error("not an exposure: " + std::string(text));
 
             return value;
-        }
-
-        void printUsage(const bpo::options_description& options)
-        {
-            out() << "Drives the experimental ray tracing renderer without the game window.\n\n"
-                     "Usage: openmw-rtxtool <command> [options]\n\n"
-                     "Commands:\n"
-                     "  info     report the device this renderer would run on\n"
-                     "  scene    read a cell and report what the renderer would be handed\n"
-                     "  shot     render a cell and write a PNG, with no window\n"
-                     "  view     open a window on a cell and fly around it\n"
-                     "  bench    time a run of frames at each of a list of places\n"
-                     "  textures every texture a cell uses, vanilla beside de-lit, as one sheet\n"
-                     "  doll     the inventory doll of one person, traced against a scene of its own\n"
-                     "  map      one local-map tile of a cell, traced straight down\n"
-                     "  verify   render every view and say what moved since the last run\n\n"
-                     "With no arguments at all: a window on the ship at Seyda Neen, where the game starts.\n\n"
-                  << options;
         }
 
         /// Applies every terrain option at once: whether the world pages, how far, and whether
@@ -514,6 +499,266 @@ namespace RtxTool
             return 0;
         }
 
+        /// What every command is handed: the line it was given, the configuration that line was
+        /// read against, and where the resources are.
+        struct Command
+        {
+            const bpo::variables_map& mVariables;
+            Files::ConfigurationManager& mConfig;
+            const std::filesystem::path& mResources;
+        };
+
+        int commandInfo(const Command& command)
+        {
+            const Rtx::ValidationOptions validation = validationFrom(command.mVariables, false);
+
+            return runInfo(command.mResources / "rtx" / "shaders", validation);
+        }
+
+        int commandTextures(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+            const Chosen chosen = chooseView(variables, command.mResources);
+
+            World world(command.mConfig, variables, command.mResources);
+            pageTerrainFrom(world, variables);
+
+            const ESM::Cell* cell = findCellOrComplain(world, chosen.mCell);
+            if (cell == nullptr)
+                return 1;
+
+            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
+
+            return runTextures(world, *cell, frame.describeStaging(), frame.mActors, variables["out"].as<std::string>(),
+                frame.mDelight);
+        }
+
+        int commandDoll(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+
+            // **The first of them, because `--npc` is the row `shot` stands up.** One picture is of
+            // one person, and the option is shared rather than duplicated so that the same name
+            // reaches the same record either way.
+            //
+            // Read before the content files are, so a run that named nobody says so in the time it
+            // takes to print a line.
+            const StringsVector people = variables["npc"].as<StringsVector>();
+            if (people.empty())
+            {
+                out() << "doll needs somebody: --npc=<id>. `openmw-rtxtool scene --find=<text>` finds one.\n";
+                return 1;
+            }
+
+            const PictureRequest request
+                = pictureFrom(variables, command.mResources, SceneUtil::sInventoryWidth, SceneUtil::sInventoryHeight);
+
+            World world(command.mConfig, variables, command.mResources);
+
+            const ESM::NPC* npc = findNpc(world, people.front());
+            if (npc == nullptr)
+            {
+                out() << "no NPC record is called \"" << people.front() << "\".\n";
+                return 1;
+            }
+
+            return runDoll(world, *npc, request);
+        }
+
+        int commandMap(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+            const Chosen chosen = chooseView(variables, command.mResources);
+            const PictureRequest request = pictureFrom(variables, command.mResources, 1024, 1024);
+
+            World world(command.mConfig, variables, command.mResources);
+            pageTerrainFrom(world, variables);
+
+            const ESM::Cell* cell = findCellOrComplain(world, chosen.mCell);
+            if (cell == nullptr)
+                return 1;
+
+            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
+
+            return runMap(world, *cell, frame.describeStaging(), frame.mActors, request);
+        }
+
+        int commandScene(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+            const Chosen chosen = chooseView(variables, command.mResources);
+
+            World world(command.mConfig, variables, command.mResources);
+            pageTerrainFrom(world, variables);
+
+            const ESM::Cell* cell = findCellOrComplain(world, chosen.mCell);
+            if (cell == nullptr)
+                return 1;
+
+            const std::string needle = variables["find"].as<std::string>();
+            if (!needle.empty())
+                return runFind(world, *cell, needle);
+
+            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
+
+            return runScene(world, *cell, frame.describeStaging(), frame.mActors, variables["twice"].as<bool>());
+        }
+
+        int commandVerify(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+
+            VerifyRequest request;
+            request.mFrame = frameFrom(variables, command.mResources, variables["hour"].as<float>());
+            request.mViews = chooseViews(
+                loadViews(command.mResources / "rtx" / "views.cfg"), splitNames(variables["views"].as<std::string>()));
+            applyHour(variables, request.mViews);
+            request.mOut = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
+            request.mAgainst = variables["against"].as<std::string>();
+
+            const Rtx::ValidationOptions validation = validationForMeasuring(variables, false);
+
+            World world(command.mConfig, variables, command.mResources);
+            pageTerrainFrom(world, variables);
+
+            return runVerify(world, validation, request);
+        }
+
+        int commandBench(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+
+            std::string suite;
+            BenchRequest request;
+            request.mFrame = frameFrom(variables, command.mResources, variables["hour"].as<float>());
+            request.mViews = chooseBenchViews(variables, command.mResources, suite);
+            applyHour(variables, request.mViews);
+            request.mSuite = suite;
+            request.mJson = variables["json"].as<std::string>();
+            request.mHashes = variables["hashes"].as<std::string>();
+            request.mAgainst = variables["against"].as<std::string>();
+            request.mPerfControl = variables["perf-control"].as<std::string>();
+            request.mSeconds = variables["seconds"].as<float>();
+            request.mWarmup = variables["warmup"].as<float>();
+            request.mFrames = variables["frames"].as<std::uint32_t>();
+            request.mWindow = variables["window"].as<bool>();
+
+            const Rtx::ValidationOptions validation = validationForMeasuring(variables, request.mWindow);
+
+            World world(command.mConfig, variables, command.mResources);
+            pageTerrainFrom(world, variables);
+
+            return runBench(world, validation, request);
+        }
+
+        /// A shot and a window are one path with a window on the end of it: the same cell, the same
+        /// camera and the same frame, and they part only over what is done with the frames.
+        int shotOrView(const Command& command, const bool windowed)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+
+            // With nothing on the command line, the ship at Seyda Neen: where the game starts, and
+            // the one place every player of this game has stood.
+            const Chosen chosen = chooseView(variables, command.mResources);
+
+            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
+            const Rtx::ValidationOptions validation = validationFrom(variables, windowed);
+
+            World world(command.mConfig, variables, command.mResources);
+            pageTerrainFrom(world, variables);
+
+            if (windowed)
+            {
+                ViewRequest request;
+                request.mFrame = frame;
+                request.mTitle = chosen.mTitle;
+                request.mView = chosen.mView;
+                request.mNote = chosen.mNote;
+                request.mCell = chosen.mCell;
+                request.mScreenshotDirectory = command.mConfig.getScreenshotPath();
+                request.mOrigin = chosen.mOrigin;
+                request.mTarget = chosen.mTarget;
+                request.mFrames = variables["frames"].as<std::uint32_t>();
+                request.mShowAlbedo = variables["albedo"].as<bool>();
+
+                return runView(world, chosen.mCell, validation, request);
+            }
+
+            ShotRequest request;
+            request.mFrame = frame;
+            request.mOutput = variables["out"].as<std::string>();
+            request.mSeaSeconds = variables["sea-time"].as<float>();
+            request.mOrigin = chosen.mOrigin;
+            request.mTarget = chosen.mTarget;
+            request.mShowAlbedo = variables["albedo"].as<bool>();
+            request.mTail = variables["tail"].as<bool>();
+            request.mDump = variables["dump"].as<std::string>();
+            request.mJitter = variables["jitter"].as<bool>();
+
+            // **A reference cannot be built through a denoiser.** `--accumulate` averages frames
+            // towards the truth and Ray Reconstruction resolves each of them towards its own
+            // opinion, so a thousand of those converge on the network rather than on the integral —
+            // the same argument `mFilter` carries, one denoiser along. Turned off rather than
+            // refused, because the default is on and nobody asking for a reference is asking for
+            // this; someone who names `--upscale` too gets what they named.
+            if (variables["accumulate"].as<std::uint32_t>() > 0 && variables["upscale"].defaulted())
+                request.mFrame.mUpscale = Rtx::Upscale::Off;
+            request.mRepeat = variables["repeat"].as<std::uint32_t>();
+            request.mAccumulate = variables["accumulate"].as<std::uint32_t>();
+
+            return runShot(world, chosen.mCell, validation, request);
+        }
+
+        int commandShot(const Command& command)
+        {
+            return shotOrView(command, false);
+        }
+
+        int commandView(const Command& command)
+        {
+            return shotOrView(command, true);
+        }
+
+        /// One verb: what it is called, the line `--help` prints for it, and what it does.
+        struct Verb
+        {
+            std::string_view mName;
+            std::string_view mSummary;
+            int (*mRun)(const Command&);
+        };
+
+        /// Every command there is.
+        ///
+        /// **One list and not two.** The usage printed a name and a summary for each and the
+        /// dispatch matched each name against a block of its own, so a verb added to one of them and
+        /// forgotten in the other was either a command nobody could find or a line of help nothing
+        /// answered. In the order `--help` prints them, which is the order they were written to be
+        /// read in rather than a sorted one.
+        constexpr std::array<Verb, 9> sVerbs{
+            Verb{ "info", "report the device this renderer would run on", commandInfo },
+            Verb{ "scene", "read a cell and report what the renderer would be handed", commandScene },
+            Verb{ "shot", "render a cell and write a PNG, with no window", commandShot },
+            Verb{ "view", "open a window on a cell and fly around it", commandView },
+            Verb{ "bench", "time a run of frames at each of a list of places", commandBench },
+            Verb{ "textures", "every texture a cell uses, vanilla beside de-lit, as one sheet", commandTextures },
+            Verb{ "doll", "the inventory doll of one person, traced against a scene of its own", commandDoll },
+            Verb{ "map", "one local-map tile of a cell, traced straight down", commandMap },
+            Verb{ "verify", "render every view and say what moved since the last run", commandVerify },
+        };
+
+        void printUsage(const bpo::options_description& options)
+        {
+            out() << "Drives the experimental ray tracing renderer without the game window.\n\n"
+                     "Usage: openmw-rtxtool <command> [options]\n\n"
+                     "Commands:\n";
+
+            for (const Verb& verb : sVerbs)
+                out() << std::format("  {:<8} {}\n", verb.mName, verb.mSummary);
+
+            out() << "\nWith no arguments at all: a window on the ship at Seyda Neen, where the game starts.\n\n"
+                  << options;
+        }
+
         int dispatch(int argc, char* argv[])
         {
             Platform::init();
@@ -522,14 +767,14 @@ namespace RtxTool
             // `ConfigurationManager::readConfiguration` walks the variables map and looks every key
             // up in the options description it was handed, so a key that is deliberately not in that
             // description — which is what a hidden positional is — makes it throw.
+            //
             // A window is what this is for, so that is what it does when nobody says otherwise —
             // with no arguments at all, or with only options and no verb.
             const bool hasVerb = argc >= 2 && argv[1][0] != '-';
-            const std::string command = hasVerb ? argv[1] : "view";
+            const std::string_view command = hasVerb ? argv[1] : "view";
 
             bpo::options_description options = makeOptionsDescription(Rtx::sValidationByDefault);
 
-            // Boost skips the first token as the program name; here that token is the verb.
             // Boost skips the first token as the program name; when there is a verb, that token is
             // the verb.
             bpo::variables_map variables;
@@ -552,198 +797,22 @@ namespace RtxTool
 
             const std::filesystem::path resources = variables["resources"].as<Files::MaybeQuotedPath>();
 
-            if (command == "info")
-            {
-                const Rtx::ValidationOptions validation = validationFrom(variables, false);
-
-                return runInfo(resources / "rtx" / "shaders", validation);
-            }
-
+            // Before the verb, as `--help` is: a switch that answers instead of the command is one
+            // the command never sees.
             if (variables["list-views"].as<bool>())
                 return runListViews(resources);
 
-            if (command == "textures")
+            const auto found = std::find_if(
+                sVerbs.begin(), sVerbs.end(), [command](const Verb& verb) { return verb.mName == command; });
+
+            if (found == sVerbs.end())
             {
-                const Chosen chosen = chooseView(variables, resources);
-                World world(config, variables, resources);
-                pageTerrainFrom(world, variables);
-
-                const ESM::Cell* cell = findCellOrComplain(world, chosen.mCell);
-                if (cell == nullptr)
-                    return 1;
-
-                const FrameRequest frame = frameFrom(variables, resources, chosen.mHour);
-
-                return runTextures(world, *cell, frame.describeStaging(), frame.mActors,
-                    variables["out"].as<std::string>(), frame.mDelight);
+                out() << "Unknown command: " << command << "\n\n";
+                printUsage(options);
+                return 1;
             }
 
-            if (command == "doll")
-            {
-                // **The first of them, because `--npc` is the row `shot` stands up.** One picture is
-                // of one person, and the option is shared rather than duplicated so that the same
-                // name reaches the same record either way.
-                //
-                // Read before the content files are, so a run that named nobody says so in the time
-                // it takes to print a line.
-                const StringsVector people = variables["npc"].as<StringsVector>();
-                if (people.empty())
-                {
-                    out() << "doll needs somebody: --npc=<id>. `openmw-rtxtool scene --find=<text>` finds one.\n";
-                    return 1;
-                }
-
-                const PictureRequest request
-                    = pictureFrom(variables, resources, SceneUtil::sInventoryWidth, SceneUtil::sInventoryHeight);
-
-                World world(config, variables, resources);
-
-                const ESM::NPC* npc = findNpc(world, people.front());
-                if (npc == nullptr)
-                {
-                    out() << "no NPC record is called \"" << people.front() << "\".\n";
-                    return 1;
-                }
-
-                return runDoll(world, *npc, request);
-            }
-
-            if (command == "map")
-            {
-                const Chosen chosen = chooseView(variables, resources);
-                const PictureRequest request = pictureFrom(variables, resources, 1024, 1024);
-
-                World world(config, variables, resources);
-                pageTerrainFrom(world, variables);
-
-                const ESM::Cell* cell = findCellOrComplain(world, chosen.mCell);
-                if (cell == nullptr)
-                    return 1;
-
-                const FrameRequest frame = frameFrom(variables, resources, chosen.mHour);
-
-                return runMap(world, *cell, frame.describeStaging(), frame.mActors, request);
-            }
-
-            if (command == "scene")
-            {
-                const Chosen chosen = chooseView(variables, resources);
-                World world(config, variables, resources);
-                pageTerrainFrom(world, variables);
-
-                const ESM::Cell* cell = findCellOrComplain(world, chosen.mCell);
-                if (cell == nullptr)
-                    return 1;
-
-                const std::string needle = variables["find"].as<std::string>();
-                if (!needle.empty())
-                    return runFind(world, *cell, needle);
-
-                const FrameRequest frame = frameFrom(variables, resources, chosen.mHour);
-
-                return runScene(world, *cell, frame.describeStaging(), frame.mActors, variables["twice"].as<bool>());
-            }
-
-            if (command == "verify")
-            {
-                VerifyRequest request;
-                request.mFrame = frameFrom(variables, resources, variables["hour"].as<float>());
-                request.mViews = chooseViews(
-                    loadViews(resources / "rtx" / "views.cfg"), splitNames(variables["views"].as<std::string>()));
-                applyHour(variables, request.mViews);
-                request.mOut = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
-                request.mAgainst = variables["against"].as<std::string>();
-
-                const Rtx::ValidationOptions validation = validationForMeasuring(variables, false);
-
-                World world(config, variables, resources);
-                pageTerrainFrom(world, variables);
-
-                return runVerify(world, validation, request);
-            }
-
-            if (command == "bench")
-            {
-                std::string suite;
-                BenchRequest request;
-                request.mFrame = frameFrom(variables, resources, variables["hour"].as<float>());
-                request.mViews = chooseBenchViews(variables, resources, suite);
-                applyHour(variables, request.mViews);
-                request.mSuite = suite;
-                request.mJson = variables["json"].as<std::string>();
-                request.mHashes = variables["hashes"].as<std::string>();
-                request.mAgainst = variables["against"].as<std::string>();
-                request.mPerfControl = variables["perf-control"].as<std::string>();
-                request.mSeconds = variables["seconds"].as<float>();
-                request.mWarmup = variables["warmup"].as<float>();
-                request.mFrames = variables["frames"].as<std::uint32_t>();
-                request.mWindow = variables["window"].as<bool>();
-
-                const Rtx::ValidationOptions validation = validationForMeasuring(variables, request.mWindow);
-
-                World world(config, variables, resources);
-                pageTerrainFrom(world, variables);
-
-                return runBench(world, validation, request);
-            }
-
-            if (command == "shot" || command == "view")
-            {
-                // With nothing on the command line, the ship at Seyda Neen: where the game starts,
-                // and the one place every player of this game has stood.
-                const Chosen chosen = chooseView(variables, resources);
-
-                const FrameRequest frame = frameFrom(variables, resources, chosen.mHour);
-                const Rtx::ValidationOptions validation = validationFrom(variables, command == "view");
-
-                World world(config, variables, resources);
-                pageTerrainFrom(world, variables);
-
-                if (command == "view")
-                {
-                    ViewRequest request;
-                    request.mFrame = frame;
-                    request.mTitle = chosen.mTitle;
-                    request.mView = chosen.mView;
-                    request.mNote = chosen.mNote;
-                    request.mCell = chosen.mCell;
-                    request.mScreenshotDirectory = config.getScreenshotPath();
-                    request.mOrigin = chosen.mOrigin;
-                    request.mTarget = chosen.mTarget;
-                    request.mFrames = variables["frames"].as<std::uint32_t>();
-                    request.mShowAlbedo = variables["albedo"].as<bool>();
-
-                    return runView(world, chosen.mCell, validation, request);
-                }
-
-                ShotRequest request;
-                request.mFrame = frame;
-                request.mOutput = variables["out"].as<std::string>();
-                request.mSeaSeconds = variables["sea-time"].as<float>();
-                request.mOrigin = chosen.mOrigin;
-                request.mTarget = chosen.mTarget;
-                request.mShowAlbedo = variables["albedo"].as<bool>();
-                request.mTail = variables["tail"].as<bool>();
-                request.mDump = variables["dump"].as<std::string>();
-                request.mJitter = variables["jitter"].as<bool>();
-
-                // **A reference cannot be built through a denoiser.** `--accumulate` averages frames
-                // towards the truth and Ray Reconstruction resolves each of them towards its own
-                // opinion, so a thousand of those converge on the network rather than on the
-                // integral — the same argument `mFilter` carries, one denoiser along. Turned off
-                // rather than refused, because the default is on and nobody asking for a reference
-                // is asking for this; someone who names `--upscale` too gets what they named.
-                if (variables["accumulate"].as<std::uint32_t>() > 0 && variables["upscale"].defaulted())
-                    request.mFrame.mUpscale = Rtx::Upscale::Off;
-                request.mRepeat = variables["repeat"].as<std::uint32_t>();
-                request.mAccumulate = variables["accumulate"].as<std::uint32_t>();
-
-                return runShot(world, chosen.mCell, validation, request);
-            }
-
-            out() << "Unknown command: " << command << "\n\n";
-            printUsage(options);
-            return 1;
+            return found->mRun(Command{ variables, config, resources });
         }
 
         int run(int argc, char* argv[])
