@@ -158,13 +158,24 @@ namespace Rtx
 
     std::array<const Image*, GBuffer::sChannels> GBuffer::everyChannel() const
     {
-        const std::array<const Image*, sChannels> every{ &mDirect, &mIndirect, &mAlbedo, &mSpecular, &mGuide, &mMotion,
-            &mDepth, &mReflectionMotion, &mParticleMask, &mBiasMask, &mStarsShown };
+        // **Placed by name and not by position.** The binding a channel is written to is its index
+        // here, and an initializer list said that only by the order somebody happened to write it
+        // in — so reordering the list rebound every channel, which compiles, runs, and hands each
+        // pass a different image than it declared.
+        std::array<const Image*, sChannels> every{};
+        every[Shaders::CHANNEL_DIRECT] = &mDirect;
+        every[Shaders::CHANNEL_INDIRECT] = &mIndirect;
+        every[Shaders::CHANNEL_ALBEDO] = &mAlbedo;
+        every[Shaders::CHANNEL_SPECULAR] = &mSpecular;
+        every[Shaders::CHANNEL_GUIDE] = &mGuide;
+        every[Shaders::CHANNEL_MOTION] = &mMotion;
+        every[Shaders::CHANNEL_DEPTH] = &mDepth;
+        every[Shaders::CHANNEL_REFLECTION_MOTION] = &mReflectionMotion;
+        every[Shaders::CHANNEL_PARTICLE_MASK] = &mParticleMask;
+        every[Shaders::CHANNEL_BIAS_MASK] = &mBiasMask;
+        every[Shaders::CHANNEL_STARS_SHOWN] = &mStarsShown;
 
-        // **Too many is a compiler error and too few is not**, which is the direction that hurts: an
-        // aggregate short of its size fills the rest with null and every sweep below then walks off
-        // one. Naming one more than the list has says so at build time; naming one fewer says so
-        // here.
+        // A channel this forgot is a null the sweeps below would walk off, and nothing else says so.
         assert(std::find(every.begin(), every.end(), nullptr) == every.end() && "a channel slot the list did not fill");
 
         return every;
@@ -200,7 +211,8 @@ namespace Rtx
 
     SetLayout GBuffer::describeLayout(const Device& device)
     {
-        // Every channel is a storage image the trace writes, and channel `i` is binding `i`.
+        // Every channel is a storage image the trace writes, and they are bound one per number from
+        // nought — which is what `gbuffer.h`'s `CHANNEL_*` are, so nothing here has to name them.
         std::array<VkDescriptorSetLayoutBinding, sChannels> bindings{};
         for (std::uint32_t channel = 0; channel < bindings.size(); ++channel)
             bindings[channel] = VkDescriptorSetLayoutBinding{ channel, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,

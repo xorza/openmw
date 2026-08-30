@@ -29,16 +29,16 @@ layout(set = 0, binding = 0, rgba32f) uniform readonly image2D colour;
 /// The picture, as bytes a display understands.
 layout(set = 0, binding = 1, rgba8) uniform writeonly image2D target;
 
+/// What the star field has to be drawn through, at the trace's own extent. `bindings.glsl` declares
+/// the other end of it.
+layout(set = 0, binding = 2, GBUFFER_STARS) uniform readonly image2D starsShown;
+
 /// What to scale the frame by before the curve — measured off this same image by the two passes
 /// before this one, or written straight in where a caller named a fixed value.
 layout(set = 0, binding = 3, scalar) readonly buffer Exposure
 {
     float exposure;
 };
-
-/// What the star field has to be drawn through, at the trace's own extent. `bindings.glsl` declares
-/// the other end of it.
-layout(set = 0, binding = 2, GBUFFER_STARS) uniform readonly image2D starsShown;
 
 /// The bloom pyramid's finest level, which holds the blur of every level under it.
 layout(set = 0, binding = 4) uniform sampler2D bloom;

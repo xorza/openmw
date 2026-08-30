@@ -18,10 +18,6 @@ Each item describes what is there and what it costs. No item says how to fix it.
 
 ## Two paths for one job, and asymmetric interfaces
 
-- [ ] `components/rtxvulkan/shaders/lib/bindings.glsl` declares set-0 bindings out of order
-      (15 before 14) with set-2 bindings `0, 6, 5, 1, 2, 4, 3, 8, 9, 7, 10` interleaved among them.
-      `tone.comp` declares binding 3 before binding 2. `visibilitypass.cpp` `sBindings` builds the
-      layout by index, so the reader has no one list to compare.
 - [ ] `components/rtxvulkan/shaders/lib/lights.glsl:237-254` places `litCosine`'s doc inside
       `weighLamps`'s doc, and `weighLamps`'s `@param` block above `considerLamp`.
 - [ ] `components/rtx/CMakeLists.txt` lists `compositequeue` after `spritetiles`.
@@ -71,4 +67,4 @@ Each item describes what is there and what it costs. No item says how to fix it.
       `frame`.
 - [ ] `apps/rtxtool/main.cpp:490-492` states "Boost skips the first token" twice.
 - [ ] `components/rtxvulkan/shaders/lib/sprites.glsl:17-27` splits `puffLight`'s doc with an empty
-      `///` line. `bindings.glsl:258-259` has a double blank line.
+      `///` line.

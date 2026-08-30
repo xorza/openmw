@@ -55,4 +55,55 @@
 
 #endif
 
+// Which binding of set two each channel is.
+//
+// **The trace declares them and `GBuffer` writes them, and neither had a name for a single one.**
+// The shader spelled a number in each layout qualifier and the C++ built its layout and its writes
+// by walking an initializer list, so the two agreed only for as long as nobody reordered the list —
+// which is a change that compiles, runs, and hands every pass the wrong image.
+
+#ifdef RTX_HOST
+
+#include <cstdint>
+
+namespace Rtx::Shaders
+{
+    using uint = std::uint32_t;
+
+#endif
+
+    /// What the trace resolved on its own: direct light, emission, the sky, water and the fog.
+    RTX_CONST uint CHANNEL_DIRECT = 0;
+
+    /// The one bounce, demodulated — the only channel a filter may touch.
+    RTX_CONST uint CHANNEL_INDIRECT = 1;
+
+    /// What the composite multiplies the bounce back in by, and what an upscaler demodulates each
+    /// half of a pixel by.
+    RTX_CONST uint CHANNEL_ALBEDO = 2;
+    RTX_CONST uint CHANNEL_SPECULAR = 3;
+
+    /// The shading normal and the roughness, which is what a filter and an upscaler compare
+    /// surfaces by.
+    RTX_CONST uint CHANNEL_GUIDE = 4;
+
+    /// Where things stood on the previous frame's screen, and how far away they are now.
+    RTX_CONST uint CHANNEL_MOTION = 5;
+    RTX_CONST uint CHANNEL_DEPTH = 6;
+    RTX_CONST uint CHANNEL_REFLECTION_MOTION = 7;
+
+    /// Where a sprite reached, and where the past is not worth carrying forward.
+    RTX_CONST uint CHANNEL_PARTICLE_MASK = 8;
+    RTX_CONST uint CHANNEL_BIAS_MASK = 9;
+
+    /// How much of the star field a pixel still shows, for the pass that draws it.
+    RTX_CONST uint CHANNEL_STARS_SHOWN = 10;
+
+    /// How many the set declares, which is the last of them and one more.
+    RTX_CONST uint CHANNEL_COUNT = 11;
+
+#ifdef RTX_HOST
+}
+#endif
+
 #endif

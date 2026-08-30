@@ -5,6 +5,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/shaders/gbuffer.h>
+
 #include "image.hpp"
 #include "setlayout.hpp"
 
@@ -32,10 +34,10 @@ namespace Rtx
     class GBuffer
     {
     public:
-        /// How many channels there are, which is also how many bindings the set declares: channel
-        /// `i` of `everyChannel` is binding `i`, so neither side keeps a table of the other's
-        /// numbers.
-        static constexpr std::uint32_t sChannels = 11;
+        /// How many channels there are, which is also how many bindings the set declares.
+        /// `shaders/gbuffer.h` is where each one's number is said, for this and for the trace that
+        /// writes them.
+        static constexpr std::uint32_t sChannels = Shaders::CHANNEL_COUNT;
 
         GBuffer(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height);
 
