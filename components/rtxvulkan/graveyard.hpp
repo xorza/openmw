@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -7,6 +8,7 @@
 
 #include "buffer.hpp"
 #include "hostbuffer.hpp"
+#include "image.hpp"
 #include "structurestorage.hpp"
 #include "texture.hpp"
 
@@ -38,6 +40,10 @@ namespace Rtx
         void bury(Buffer&& buffer);
         void bury(HostBuffer&& buffer);
         void bury(Texture&& texture);
+
+        /// By pointer where the others are by value, because `Image` is not movable: what owns one
+        /// owns it through a `unique_ptr` and hands that over.
+        void bury(std::unique_ptr<Image>&& image);
         void bury(VkAccelerationStructureKHR structure);
         void bury(VkMicromapEXT micromap);
 
@@ -65,6 +71,7 @@ namespace Rtx
         std::vector<Buffer> mBuffers;
         std::vector<HostBuffer> mHostBuffers;
         std::vector<Texture> mTextures;
+        std::vector<std::unique_ptr<Image>> mImages;
         std::vector<VkAccelerationStructureKHR> mStructures;
         std::vector<VkMicromapEXT> mMicromaps;
         std::vector<Room> mRooms;

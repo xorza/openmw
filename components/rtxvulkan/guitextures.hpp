@@ -17,6 +17,7 @@
 namespace Rtx
 {
     class Device;
+    class Graveyard;
 
     /// Every texture the GUI draws with, addressed by slot.
     ///
@@ -61,6 +62,15 @@ namespace Rtx
         void write(std::uint32_t slot, const Renderer::GuiRegion& region, std::span<const std::uint8_t> rgba);
 
         void drop(std::uint32_t slot);
+
+        /// Hands `kept` every texture given back since the last call, to be destroyed when its
+        /// fence says nothing is drawing with them.
+        ///
+        /// **A texture is given back a frame after it was last drawn with, and that draw is still on
+        /// the queue.** The interface is submitted without a wait and its fence is read two frames
+        /// later, so nothing here can say when a view stops being read — the graveyard of the frame
+        /// being recorded is what knows, exactly as it does for everything else on the frame path.
+        void bury(Graveyard& kept);
 
         /// What the pass samples, or null where nothing holds that slot.
         VkImageView getView(std::uint32_t slot);
@@ -107,8 +117,7 @@ namespace Rtx
         void read(std::uint32_t slot, std::vector<std::uint8_t>& pixels);
 
     private:
-        /// Submits what has been recorded and waits for it, then takes back the staging and lets go
-        /// of the textures that were given back while it was pending.
+        /// Submits what has been recorded and waits for it, then takes back the staging.
         ///
         /// Costs nothing where nothing is pending, which is what lets every accessor call it.
         void flush();
@@ -136,7 +145,7 @@ namespace Rtx
         HostBuffer mStaging;
         VkDeviceSize mStagingUsed = 0;
 
-        /// Textures given back, held until the batch that names them has been submitted.
+        /// Textures given back, held until `bury` hands them to a frame's graveyard.
         std::vector<std::unique_ptr<Image>> mRetired;
 
         /// Last, so that it is destroyed first: its own destructor flushes, and what it has

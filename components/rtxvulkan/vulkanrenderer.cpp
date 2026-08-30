@@ -793,6 +793,11 @@ namespace Rtx
             gui.mGuiGraveyard.clear();
         }
 
+        // **After the clear and before the submit, so the closed windows ride under this frame.**
+        // A texture given back was drawn with as recently as the interface still on the queue, and
+        // this frame's fence is the first one that says every one of those draws has finished.
+        mGuiTextures.bury(gui.mGuiGraveyard);
+
         gui.mGuiGraveyard.bury(
             growTo(gui.mGuiVertices, mDevice, vertices.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
         gui.mGuiVertices.write(vertices);

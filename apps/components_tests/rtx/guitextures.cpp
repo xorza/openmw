@@ -20,6 +20,8 @@ namespace Rtx
     {
         constexpr std::uint32_t sExtent = 8;
 
+        constexpr std::array<std::uint8_t, 4> sWhite{ 255, 255, 255, 255 };
+
         constexpr std::uint32_t packColour(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha)
         {
             return static_cast<std::uint32_t>(red) | (static_cast<std::uint32_t>(green) << 8)
@@ -561,6 +563,34 @@ namespace Rtx
             mRenderer->drawGui({}, {});
 
             EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 17, 34, 51, 255 }));
+        }
+
+        /// A texture given back outlives the interface that was drawn with it.
+        ///
+        /// **A window closes on the frame after the one it was last drawn on**, and that draw is
+        /// still on the queue: the interface is submitted without being waited for, and its fence is
+        /// read two frames later. So this walks the path a closing window takes with two draws
+        /// still in flight, and the layers are what say whether anything was destroyed under one —
+        /// the fixture fails the test on any complaint they make.
+        TEST_F(RtxGuiDrawTest, aTextureGivenBackOutlivesTheDrawItWasUsedIn)
+        {
+            // Given back in the middle of the test rather than at the end of it, so it is not one
+            // of the fixture's to hold.
+            const std::uint32_t closing = mRenderer->addGuiTexture(1, 1);
+            mRenderer->writeGuiTexture(closing, Renderer::GuiRegion{ 0, 0, 1, 1 }, sWhite);
+
+            // Two draws, neither waited for, which is both slots of the ring in flight at once.
+            drawQuad(closing, -1.0f, 1.0f, 0.0f, 0.0f, packColour(255, 0, 0, 255));
+            drawQuad(closing, 0.0f, 0.0f, 1.0f, -1.0f, packColour(0, 255, 0, 255));
+
+            // The window closes, and the next one opens: making a texture and drawing with it is
+            // what used to submit, wait for its own batch alone, and destroy the one above.
+            mRenderer->dropGuiTexture(closing);
+
+            const std::uint32_t opening = makeTexel(sWhite);
+            drawQuad(opening, -1.0f, 1.0f, 1.0f, -1.0f, packColour(0, 0, 255, 255));
+
+            EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 0, 0, 255, 255 }));
         }
     }
 }

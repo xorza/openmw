@@ -4,6 +4,7 @@
 
 #include "commands.hpp"
 #include "device.hpp"
+#include "graveyard.hpp"
 #include "image.hpp"
 
 namespace Rtx
@@ -128,9 +129,13 @@ namespace Rtx
     {
         mBatch.flush();
         mStagingUsed = 0;
+    }
 
-        // After the flush and not before it: what was recorded names these, and the flush is where
-        // it stops.
+    void GuiTextures::bury(Graveyard& kept)
+    {
+        for (std::unique_ptr<Image>& image : mRetired)
+            kept.bury(std::move(image));
+
         mRetired.clear();
     }
 
@@ -141,8 +146,8 @@ namespace Rtx
         // **Put aside rather than destroyed, so giving a texture back costs no submit.** A clear or
         // a copy recorded against this image has not run yet, and destroying it under a recorded
         // command is a use after free; flushing here instead would put a round trip on every window
-        // that closes, and a load closes a great many. Nothing else is in flight to hold it: every
-        // submit here waits, and so does the one that drew with it.
+        // that closes, and a load closes a great many. What was drawn with it is on the queue too,
+        // which is why the wait that frees it is a frame's and not this class's — see `bury`.
         mRetired.push_back(std::move(mImages[slot]));
         mFree.push_back(slot);
     }

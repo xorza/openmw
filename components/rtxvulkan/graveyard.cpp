@@ -60,6 +60,12 @@ namespace Rtx
             mCommands.push_back(commands);
     }
 
+    void Graveyard::bury(std::unique_ptr<Image>&& image)
+    {
+        if (image != nullptr)
+            mImages.push_back(std::move(image));
+    }
+
     void Graveyard::clear()
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
@@ -79,6 +85,7 @@ namespace Rtx
         mBuffers.clear();
         mHostBuffers.clear();
         mTextures.clear();
+        mImages.clear();
 
         mPool.free(mCommands);
         mCommands.clear();
