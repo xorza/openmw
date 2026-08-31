@@ -169,6 +169,19 @@ namespace Rtx
         mStale = false;
     }
 
+    void Presenter::setVerticalSync(SDLUtil::VSyncMode mode)
+    {
+        if (!mSwapchain->setVerticalSync(mode))
+            return;
+
+        // The same rebuild `resize` makes, for the same reason: a present mode is a property of the
+        // swapchain object, so changing it means a new one and every frame in flight has to be done
+        // with the old one first.
+        mDevice.waitIdle();
+        mSwapchain->recreate(getExtent());
+        remakeImageSync();
+    }
+
     VkExtent2D Presenter::getExtent() const
     {
         return mSwapchain->getExtent();

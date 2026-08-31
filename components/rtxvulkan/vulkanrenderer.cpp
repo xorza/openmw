@@ -812,6 +812,19 @@ namespace Rtx
         }
     }
 
+    void VulkanRenderer::setVerticalSync(SDLUtil::VSyncMode mode)
+    {
+        // Headless: `shot`, `bench` and `verify` present to nothing, and a run with no surface has
+        // no refresh to meet.
+        if (mPresenter == nullptr)
+            return;
+
+        // The swapchain goes with the command pool a handed-over batch is sitting in, exactly as a
+        // resize does.
+        mGuiTextures.finish();
+        mPresenter->setVerticalSync(mode);
+    }
+
     void VulkanRenderer::resize(std::uint32_t width, std::uint32_t height)
     {
         if (mPresenter != nullptr)

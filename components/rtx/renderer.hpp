@@ -18,6 +18,8 @@
 #include "upscale.hpp"
 #include "wavespectrum.hpp"
 
+#include <components/sdlutil/vsyncmode.hpp>
+
 struct SDL_Window;
 
 namespace Rtx
@@ -522,6 +524,16 @@ namespace Rtx
         /// Resizes the **presented** image. What the trace runs at follows from the upscaler, and
         /// `getExtents` is what says. Kept by the backend, so nothing here allocates per frame.
         virtual void resize(std::uint32_t width, std::uint32_t height) = 0;
+
+        /// How the presented image should meet the monitor's refresh.
+        ///
+        /// **`SDLUtil::VSyncMode` and not a spelling of this fork's own**, because it is the setting
+        /// the game already reads and the rasterizer already acts on. A second enum over the same
+        /// three values is a second thing to keep in step for nothing.
+        ///
+        /// Costs a swapchain rebuild where it changes anything, so it is a settings-change call and
+        /// not a frame one.
+        virtual void setVerticalSync(SDLUtil::VSyncMode mode) = 0;
 
         /// What the last `resize` settled on. **The camera has to be built for the render extent**,
         /// because the trace's per-pixel ray spread comes from it.

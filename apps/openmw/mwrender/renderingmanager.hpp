@@ -46,11 +46,6 @@ namespace ESM
     using RefNum = FormId;
 }
 
-namespace Fx
-{
-    class StateUpdater;
-}
-
 namespace Terrain
 {
     class ObjectPaging;

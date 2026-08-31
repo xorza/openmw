@@ -75,6 +75,7 @@ namespace Rtx::Testing
 
         const Rtx::SceneStats& getSceneStats() const override { return mStats; }
         void resize(std::uint32_t, std::uint32_t) override {}
+        void setVerticalSync(SDLUtil::VSyncMode) override {}
         Rtx::FrameExtents getExtents() const override { return {}; }
         Rtx::Reconstruction renderFrame(const Rtx::Shaders::VisibilityConstants&, const Rtx::FrameOptions&) override
         {

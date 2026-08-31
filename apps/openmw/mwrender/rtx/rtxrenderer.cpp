@@ -502,6 +502,11 @@ namespace MWRender
         return std::make_unique<TracedView>(spec, *this, *mRenderer);
     }
 
+    void RtxRenderer::setVSync(SDLUtil::VSyncMode mode)
+    {
+        mRenderer->setVerticalSync(mode);
+    }
+
     MyGUI::ITexture& RtxRenderer::freezeFrame()
     {
         const Rtx::TracedFrame frame = readFrame();

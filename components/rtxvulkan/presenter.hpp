@@ -6,6 +6,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/sdlutil/vsyncmode.hpp>
+
 struct SDL_Window;
 
 namespace Rtx
@@ -69,6 +71,10 @@ namespace Rtx
 
         /// Rebuilds at `extent`. Waits for everything in flight, so it is a stall by construction.
         void resize(VkExtent2D extent);
+
+        /// Says how the presented image should meet the refresh, rebuilding only where that changes
+        /// the mode the surface will actually run in.
+        void setVerticalSync(SDLUtil::VSyncMode mode);
 
         VkExtent2D getExtent() const;
 

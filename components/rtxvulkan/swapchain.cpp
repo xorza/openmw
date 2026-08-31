@@ -1,6 +1,8 @@
 #include "swapchain.hpp"
 
 #include <algorithm>
+#include <initializer_list>
+#include <string_view>
 
 #include <components/debug/debuglog.hpp>
 
@@ -37,7 +39,12 @@ namespace Rtx
             return formats.front();
         }
 
-        VkPresentModeKHR choosePresentMode(VkPhysicalDevice device, VkSurfaceKHR surface)
+        /// What the surface will actually accept, in the order the caller would rather have.
+        ///
+        /// **FIFO is the only mode a surface must support**, so it ends every list here and nothing
+        /// below has to answer for a driver that offers little else.
+        VkPresentModeKHR chooseFrom(
+            VkPhysicalDevice device, VkSurfaceKHR surface, std::initializer_list<VkPresentModeKHR> wanted)
         {
             std::uint32_t count = 0;
             checkVk(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &count, nullptr),
@@ -46,12 +53,50 @@ namespace Rtx
             checkVk(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &count, modes.data()),
                 "vkGetPhysicalDeviceSurfacePresentModesKHR");
 
-            // Mailbox for a tool someone is steering: it keeps the latest frame instead of queueing
-            // it, so the view follows the mouse. FIFO is the only mode a surface must support.
-            if (std::find(modes.begin(), modes.end(), VK_PRESENT_MODE_MAILBOX_KHR) != modes.end())
-                return VK_PRESENT_MODE_MAILBOX_KHR;
+            for (const VkPresentModeKHR mode : wanted)
+                if (std::find(modes.begin(), modes.end(), mode) != modes.end())
+                    return mode;
 
             return VK_PRESENT_MODE_FIFO_KHR;
+        }
+
+        /// The present mode a vertical sync setting asks for.
+        ///
+        /// **Mailbox is what `Disabled` means here and not immediate.** Immediate tears, and the
+        /// setting a player reaches for when they turn vsync off is latency rather than a torn
+        /// frame — mailbox keeps the newest frame and drops the rest, which is the same answer with
+        /// the tearing taken out. Immediate stands behind it for a surface with no mailbox.
+        ///
+        /// `Adaptive` is FIFO that gives up and tears when a frame misses its refresh, which is
+        /// exactly what the rasterizer's adaptive vsync does through SDL.
+        VkPresentModeKHR presentModeFor(VkPhysicalDevice device, VkSurfaceKHR surface, SDLUtil::VSyncMode mode)
+        {
+            switch (mode)
+            {
+                case SDLUtil::VSyncMode::Disabled:
+                    return chooseFrom(device, surface, { VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR });
+                case SDLUtil::VSyncMode::Adaptive:
+                    return chooseFrom(device, surface, { VK_PRESENT_MODE_FIFO_RELAXED_KHR });
+                case SDLUtil::VSyncMode::Enabled:
+                    break;
+            }
+
+            return VK_PRESENT_MODE_FIFO_KHR;
+        }
+
+        std::string_view nameOf(VkPresentModeKHR mode)
+        {
+            switch (mode)
+            {
+                case VK_PRESENT_MODE_MAILBOX_KHR:
+                    return "mailbox";
+                case VK_PRESENT_MODE_IMMEDIATE_KHR:
+                    return "immediate";
+                case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+                    return "fifo relaxed";
+                default:
+                    return "fifo";
+            }
         }
     }
 
@@ -67,12 +112,11 @@ namespace Rtx
             throw Error("the queue this renderer submits on cannot present to this surface");
 
         mFormat = chooseFormat(device.getPhysicalDevice().getHandle(), surface);
-        mPresentMode = choosePresentMode(device.getPhysicalDevice().getHandle(), surface);
+        mPresentMode = presentModeFor(device.getPhysicalDevice().getHandle(), surface, mVerticalSync);
 
         create(extent);
 
-        Log(Debug::Info) << "Swapchain: " << mImages.size() << " images, "
-                         << (mPresentMode == VK_PRESENT_MODE_MAILBOX_KHR ? "mailbox" : "fifo");
+        Log(Debug::Info) << "Swapchain: " << mImages.size() << " images, " << nameOf(mPresentMode);
     }
 
     Swapchain::~Swapchain()
@@ -137,6 +181,27 @@ namespace Rtx
     {
         destroy();
         create(extent);
+    }
+
+    bool Swapchain::setVerticalSync(SDLUtil::VSyncMode mode)
+    {
+        if (mode == mVerticalSync)
+            return false;
+
+        mVerticalSync = mode;
+
+        // **What the surface offers decides, so two settings can mean one mode.** A driver with no
+        // relaxed FIFO answers `Adaptive` with plain FIFO, and rebuilding the swapchain to arrive at
+        // the mode it already had is a stall for nothing.
+        const VkPresentModeKHR wanted
+            = presentModeFor(mDevice.getPhysicalDevice().getHandle(), mSurface, mVerticalSync);
+        if (wanted == mPresentMode)
+            return false;
+
+        mPresentMode = wanted;
+        Log(Debug::Info) << "Swapchain: presenting " << nameOf(mPresentMode);
+
+        return true;
     }
 
     bool Swapchain::acquire(VkSemaphore ready, std::uint32_t& index)

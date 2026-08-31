@@ -142,10 +142,10 @@ namespace MWRender
         osgUtil::IncrementalCompileOperation* getCompileOperation() const override { return nullptr; }
         void setCompileOperation(osgUtil::IncrementalCompileOperation* operation) override {}
 
-        /// The swapchain picks its own present mode and does not offer to change it while it is
-        /// up. Answering this would mean rebuilding it — a stall — for a setting nothing on this
-        /// path has asked for yet.
-        void setVSync(SDLUtil::VSyncMode mode) override {}
+        /// **A present mode, which is what a swapchain calls this.** Off is mailbox rather than
+        /// immediate — the newest frame and no tearing — and adaptive is relaxed FIFO. Costs a
+        /// swapchain rebuild where it changes anything, so the settings window is the only caller.
+        void setVSync(SDLUtil::VSyncMode mode) override;
 
         /// GLSL is the rasterizer's language. What this renderer draws with is compiled SPIR-V, and
         /// swapping it under a running frame is not a thing it offers.

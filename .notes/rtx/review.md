@@ -9,23 +9,7 @@ open items only.
 
 Each item describes what is there and what it costs. No item says how to fix it.
 
-## One fact, stated twice
-
-- [ ] `EsmLoader::ModelRecords` says "adding a type is this line alone", but `Query`'s per-type
-      flags and the four `if constexpr` branches of `wanted<T>()` in `load.cpp` are a second list
-      that has to agree with the tuple by hand, and nothing checks that the two agree.
-
-## A setting that silently does nothing
-
-- [ ] `RtxRenderer::setVSync` is an empty override while the settings window still offers "VSync
-      mode", so under the ray tracer the change is accepted and nothing happens. The fork's own
-      standard, written beside the ray tracing switch in `settingswindow.cpp`, is that a dead
-      control says why it is dead.
-
 ## The upstream diff carries lines that do nothing
-
-- [ ] `apps/openmw/mwrender/renderingmanager.hpp` forward-declares
-      `namespace Fx { class StateUpdater; }` and nothing in the header names `Fx::`.
 
 - [ ] `#include <components/sceneutil/vismask.hpp>` sits inside the quoted-include group — after
       `"util.hpp"` and its siblings — in `renderingmanager.cpp`, `localmap.cpp`,

@@ -5,6 +5,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/sdlutil/vsyncmode.hpp>
+
 namespace Rtx
 {
     class Device;
@@ -34,6 +36,14 @@ namespace Rtx
         /// Rebuilds at a new size. The caller must have waited for every frame still in flight.
         void recreate(VkExtent2D extent);
 
+        /// Says how the presented image should meet the refresh, and answers whether that changed
+        /// the present mode — which is what says a rebuild is owed.
+        ///
+        /// **A setting and not a mode**, because what a surface offers is the surface's to say: two
+        /// settings collapse onto one mode where a driver is missing the other, and a caller that
+        /// spoke in Vulkan enums would have to know that to avoid rebuilding for nothing.
+        bool setVerticalSync(SDLUtil::VSyncMode mode);
+
         VkExtent2D getExtent() const { return mExtent; }
         VkImage getImage(std::uint32_t index) const { return mImages[index]; }
         std::uint32_t getImageCount() const { return static_cast<std::uint32_t>(mImages.size()); }
@@ -47,6 +57,11 @@ namespace Rtx
         VkSwapchainKHR mHandle = VK_NULL_HANDLE;
         VkSurfaceFormatKHR mFormat{};
         VkPresentModeKHR mPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+
+        /// **Off by default, which is what a window someone is steering wants.** The harness and the
+        /// inventory doll follow a mouse, and the game overwrites this from its own setting before
+        /// the first frame.
+        SDLUtil::VSyncMode mVerticalSync = SDLUtil::VSyncMode::Disabled;
         VkExtent2D mExtent{};
         std::vector<VkImage> mImages;
     };

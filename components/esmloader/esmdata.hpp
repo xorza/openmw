@@ -57,9 +57,14 @@ namespace EsmLoader
     /// Every record type that names a model, in one list.
     ///
     /// They are read, merged and looked up identically, so this list is the only thing that
-    /// distinguishes them: the reader, the store, the query and the model lookup are all generated
-    /// from it, and adding a type is this line alone. Cells, lands and game settings are absent
-    /// because each keys on something other than a record id and has its own path.
+    /// distinguishes them: the reader, the store and the model lookup are all generated from it,
+    /// and adding a type is this line alone. Cells, lands and game settings are absent because each
+    /// keys on something other than a record id and has its own path.
+    ///
+    /// **What the list does not generate is a way to ask for one type by name.** `Query` carries a
+    /// flag for each of the four that bear collision and `Load::wanted` reads them one by one, so a
+    /// type added here arrives for `mLoadAllModels` and for nothing narrower until somebody gives it
+    /// a flag of its own. That second list is upstream's shape and the four are every caller it has.
     ///
     /// `ESM::NPC` is here for what it *names* rather than for what it draws: its own `mModel` is
     /// almost always empty, and a person is assembled out of the `ESM::BodyPart` records their race

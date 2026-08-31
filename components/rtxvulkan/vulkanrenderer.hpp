@@ -173,6 +173,8 @@ namespace Rtx
         void placeScene(std::uint32_t slot, const SceneDesc& scene, const SeaState& sea) override;
         const SceneStats& getSceneStats() const override { return mStats; }
         void resize(std::uint32_t width, std::uint32_t height) override;
+
+        void setVerticalSync(SDLUtil::VSyncMode mode) override;
         FrameExtents getExtents() const override;
         Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) override;
         std::optional<FrameResult> finishFrame() override;
