@@ -13,23 +13,34 @@ Sections C and D need a measurement.
 
 ## A. What bounds a frame today
 
-**A1. The exteriors are CPU-bound, so no GPU item below buys a frame there.** Per-view, at
-1920×1080 with a quality upscale:
+**A1. The exteriors are CPU-bound, and it is the scene extractor re-deriving a scene that did not
+change.** Measured at the shoreline, 1920x1080, quality upscale:
 
-| view | frame | wait on GPU | CPU walk | gpu trace |
-|---|---|---|---|---|
-| seyda-neen-shore | 7.17 | **0.00** | 5.73 | 1.10 |
-| seyda-neen-ship | 6.50 | 2.24 | 3.06 | 1.74 |
-| balmora-mages-guild | 5.73 | **4.28** | 0.88 | 1.75 |
+| config | frame | wait on GPU | CPU walk |
+|---|---|---|---|
+| default | 7.14 | 0.00 | 5.62 |
+| `--people=0` | 5.58 | 1.75 | 3.01 |
 
-The shore never waits on the device at all: its frame *is* `walk`, so a trace made faster there
-changes nothing a player sees. The guild is the other end, almost all wait — and it is the one
-place a ray-coherence change does nothing, because a room's rays were never far apart.
+**Not cell loading.** Crossings are counted separately by the bench, and `walk`'s *best* frame is
+4.33 ms — every frame pays it. Nor is it camera motion: it is the same with a still camera.
 
-**Profile that walk before spending anything more on the GPU outdoors.**
-`apps/rtxtool/profile.sh` records the CPU over the measured frames. Until it moves, GPU work
-outdoors buys headroom rather than frames — worth having for when the CPU does move, and worth
-naming as headroom rather than as a speed-up.
+Two costs, and they separate cleanly. The cell's animated residents are 2.6 ms of the 5.6, which is
+skinned geometry that genuinely has to be re-read each frame. What is left with them held still is
+**3.0 ms to conclude that nothing moved**: 65.9% of the profile is `SceneExtractor::extractWorld`
+→ `walk` → `MirrorTraversal::apply`, with `osg::Group::traverse` at 11.6% self,
+`SceneExtractor::addDrawable` at 10.5%, `resolveMesh` at 7.1%, `retire` at 4.2%, and about **17% of
+the frame inside `hashtable_policy.h`** — the per-drawable "do I already know this?" lookups.
+
+**The incremental design already works at the level it was built for**, which is content:
+`ExtractionStats::mMeshesReused` counts exactly those lookups succeeding, and nothing is re-added.
+What has no fast path is one level up — the walk descends the whole graph and asks per drawable,
+where for a static subtree the answer is "unchanged" for the whole subtree at once. The pose
+numbers the extractor already keeps (`sceneextractor.hpp`, "the rule that they only ever go up")
+are the place to hang that.
+
+**For shader work in the meantime, bench with `--people=0`.** It puts the frame back on the GPU —
+wait goes from 0.00 to 1.75 ms — so a change to the trace shows up in frame time instead of being
+hidden behind the walk. Its own help says it is "what a profiling run should hold still".
 
 ## B. Cleanups that change no pixel
 
