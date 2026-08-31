@@ -14,10 +14,10 @@ budget from `plan.md` §5: 3840×2160 out of 1920×1080 traced at 60 fps, which 
   `OPENMW_RTX_BENCH=10s:2s@12000` on a save is the game's own crossing measurement. **It prints the
   harness's rows** — frame, wait, walk, place, and crossings with the rebuilds among them — off the
   same `Rtx::FrameSamples`, so a row of one can be read against a row of the other.
-- **`scene hand` and `scene extend` in the log** (verbose) are what an arrival costs the frame it
-  lands on, and between them they name every millisecond of the `place ms` row: the composites
-  taken, the textures described, and then the renderer's own draining, describing, building and
-  placing. Nothing else can see it — the device's zones cover what a crossing records, not the CPU
+- **`scene hand`, `scene extend` and `scene build` in the log** (verbose) are what an arrival costs
+  the frame it lands on, and between them they name every millisecond of the `place ms` row: the
+  composites taken, the textures described, then the renderer's own draining, describing, building
+  and placing, and inside the build the classification against the structures. Nothing else can see it — the device's zones cover what a crossing records, not the CPU
   that recorded it.
 - `apps/rtxtool/profile.sh --view=<v>` is the CPU explanation (perf, measured frames only).
   Reports land in `build-release/perf*/`.
@@ -90,6 +90,22 @@ Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames
   **104.7 ms is classifying opacity micromaps** for 443 arriving meshes against 2.2 ms of bottom
   level structures and 2.3 ms of `AlphaBounds`. A quarter of a millisecond a mesh, all on one frame.
   This is the figure the whole lane rests on.
+- **The micromaps are worth 1.3% of the trace and cost 105 ms of a crossing frame.** Measured with
+  the classification patched out, over the exteriors and interiors suites — thirteen places, paired:
+  the trace zones sum to **23.46 ms without against 23.16 with**, and the worst single place moves
+  0.17 ms. Eleven of the thirteen deltas are positive, so the effect is real and it is small. The
+  tally says why: at seyda-neen-ship 3,153 microtriangles come back opaque and 3,078 transparent
+  against **94,140 unknown**, so 94% of what the classifier looked at still asks the alpha test.
+- **Neither knob binds.** `sTexelsPerMicrotriangle` 16 → 64 took the tally from 6.2% to 4.5% and the
+  trace nowhere; `sSubdivisionCeiling` 5 → 4 took it to 5.6% and nothing else moved either. So the
+  work is spread thinly over many triangles at low levels rather than clamped at the ceiling, and
+  there is no constant to turn.
+- **A trap: the first `scene hand` of a run is not a micromap measurement.** Its "in the renderer"
+  figure is the startup `setScene`, and that is the texture array — 567 textures at Seyda Neen.
+  Removing the micromap classification entirely leaves it at 254–261 ms against a baseline of
+  253–263. It is beautifully repeatable and it measures the wrong thing. `scene build` is the line
+  that isolates the classification, and bounding the opportunity — patching the term out and running
+  the same measurement — is what should settle whether a metric points at it at all.
 - **A hierarchical classifier does not help — measured, and it costs 28% more.** `AlphaBounds`
   answers for a whole box and a microtriangle's box lies inside its parent's, so a coarse-to-fine
   sweep that only asks about what its parent left open looks free. It is not: counted over a run,
@@ -108,23 +124,28 @@ the paired-run rule of §1, at the place named. What a step trades away is writt
 
 ### Lane A — the crossing spike (worst 233 ms in the game; target: no crossing frame over ~25 ms)
 
-Three of this lane's items are closed by measurement rather than by code. The frame thread neither
-builds terrain chunks nor is outrun by the thread that does, and the harness's synchronous reader is
-not what made a crossing long: the game, preloading on threads, drops the same frame. §2 carries all
-three numbers. **What is left is one call — the arrival handed to the device — and 90% of that is
-classifying opacity micromaps.**
+Most of this lane is closed by measurement rather than by code. The frame thread neither builds
+terrain chunks nor is outrun by the thread that does; the harness's synchronous reader is not what
+made a crossing long, since the game preloads on threads and drops the same frame; and the classifier
+that costs the frame cannot be made cheaper in place — a hierarchy over it was counted and lost, and
+neither of its constants binds. §2 carries every number. **What is left is one call — the arrival
+handed to the device. Nine tenths of what that call *builds* is classifying opacity micromaps, and
+they are worth 1.3% of the trace.**
 
-- **A2. Bound what one frame classifies, or take it off the frame.** 105 of the 115 ms worst
-  build is the micromap classification over 443 arriving meshes. **The unit to bound is meshes, not
-  bytes** — the texture uploads beside them are 7 ms. Making the classifier itself cheaper is closed
-  by §2: the hierarchy was measured and lost. What is left is when it runs, not how fast it is:
-  (a) classify a bounded number a frame; (b) move it to a thread of its own, the way
-  `CompositeQueue` moved the composite bake, and let the frame collect what is finished.
-  **Neither is free, and the note that said so was wrong.** A bottom-level structure names its
-  micromap when it is *built*, so a mesh that arrives without one and gets it later has to be built
-  again — which is 2.2 ms for 443 meshes, cheap, but it is a second build and it has to be bounded
-  too. Quality cost: none — a mesh tracing without a micromap draws the same picture and only asks
-  the alpha test more often. Gate: `scene extend` and `place ms` worst, in the game.
+- **A2. Take the micromap classification off the frame.** 105 of the 115 ms worst build is it, over
+  443 arriving meshes — and §2 prices what it buys at 1.3% of the trace. **A term worth 1.3% has no
+  business costing a fifth of a second on the frame a player crosses a cell on**, and the preamble
+  above says why no amount of making it faster settles that. What is left is when it runs. Two
+  shapes, and the second is the tree's own precedent:
+  (a) classify a bounded number a frame; (b) a thread of its own, the way `CompositeQueue` moved the
+  composite bake, with the frame collecting what is finished.
+  **Neither is free.** A bottom-level structure names its micromap when it is *built*, so a mesh
+  that arrives without one and gets it later has to be built again — 2.2 ms for 443 meshes, cheap,
+  but it is a second build and it has to be bounded too. Quality cost: none — a mesh tracing without
+  a micromap draws the same picture and only asks the alpha test more often, and §2 prices the whole
+  suite's worth of that at 1.3% of the trace. Gate: `scene build` and `place ms` worst in the game,
+  with the suite trace held. **The unit to bound is meshes, not bytes** — the texture uploads beside
+  them are 7 ms.
 - **A7. Do not wait out a frame to place an arrival.** `finishFrames` cost 23.0 and 18.0 ms on two
   of eighteen crossings. It is there because an arrival writes every copy of the tables; a copy the
   arrival could write into instead would cost the wait nothing. Gate: the draining figure in
@@ -197,6 +218,7 @@ Hidden under the GPU today; it is the 1% low and the power bill, and it grows wi
 
 ### Order of attack
 
-A2 first — A5 says the crossing spike is this fork's, and A2 is now the whole of it. Then B1+B2 (cheap, measured, ~1.5 ms at the budget hour), then B3
+A2 first — A5 says the crossing spike is this fork's, A2 is most of it, and §2 has settled what the
+term it moves is worth. Then B1+B2 (cheap, measured, ~1.5 ms at the budget hour), then B3
 (the interior's 7.7 is the worst median in the table). D1/D2 whenever touching that file. E after
 B, starting at E0. A6 and C parked.

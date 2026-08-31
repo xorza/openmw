@@ -2,15 +2,18 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstring>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include <components/debug/debuglog.hpp>
 #include <components/rtx/alphabounds.hpp>
 #include <components/rtx/alphaimage.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/frametimes.hpp>
 #include <components/rtx/micromap.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
@@ -387,8 +390,21 @@ namespace Rtx
         // frame whose report says nothing about what made it slow. Micromaps and structures under
         // one name, because a crossing pays for both together and neither is asked for separately.
         openZone(timer, batch.getCommands(), "blas");
+
+        // **The two apart, because only one of them is on the CPU.** The zone above brackets what
+        // the device runs; what the frame pays here is classifying an opacity micromap per arriving
+        // mesh, and that is nearly all of it — 92 ms against 2 on a crossing of 443 meshes. Nothing
+        // else can see it: `buildMeshes` records commands, so a device timer around the pair reports
+        // the half that is not the cost.
+        const auto opened = std::chrono::steady_clock::now();
         buildMicromaps(batch, scene, textures, scene.getArrivedMeshes(), graveyard);
+        const auto classified = std::chrono::steady_clock::now();
         buildMeshes(batch, scene, scene.getArrivedMeshes(), graveyard);
+
+        Log(Debug::Verbose) << "  scene build: " << since(opened, classified) << " ms classifying "
+                            << scene.getArrivedMeshes().size() << " meshes, "
+                            << since(classified, std::chrono::steady_clock::now()) << " recording structures";
+
         closeZone(timer, batch.getCommands());
     }
 
