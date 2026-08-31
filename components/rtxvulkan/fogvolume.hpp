@@ -73,11 +73,13 @@ namespace Rtx
         /// frame, the same pair to write this frame, and the integrated pair.
         VkDescriptorSet getSet(std::uint64_t frame) const { return mSets[writtenAt(frame)]; }
 
-        /// Takes every image for writing, waiting on whatever read them for the frame before.
+        /// Takes every image for what the frame ahead does to it, waiting on whatever read them for
+        /// the frame before.
         ///
         /// **The point pair is not discarded**, because the frame about to be drawn reads what the
         /// frame before left in it. Only the half being written this frame comes from undefined, and
-        /// only the integrated pair does so unconditionally.
+        /// only the integrated pair does so unconditionally — and that pair is taken for sampling as
+        /// well as for writing, because an interior binds it without dispatching any air into it.
         void begin(VkCommandBuffer commands, std::uint64_t frame) const;
 
         /// Orders the dispatch that wrote them against the trace that samples them.

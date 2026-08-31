@@ -44,16 +44,11 @@ namespace RtxTool
             trace.setLight(light.mDirection, light.mDiffuse, light.mAmbient);
         }
 
-        std::unique_ptr<Rtx::Renderer> makeRenderer(const PictureRequest& request, std::ostream& out)
+        std::unique_ptr<Rtx::Renderer> makeRenderer(
+            const PictureRequest& request, const Rtx::ValidationOptions& validation, std::ostream& out)
         {
             std::string reason;
-            std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(
-                Rtx::RendererOptions{
-                    .mShaderDirectory = request.mShaderDirectory,
-                    .mWidth = request.mWidth,
-                    .mHeight = request.mHeight,
-                },
-                reason);
+            std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(request.describeRenderer(validation), reason);
 
             if (renderer == nullptr)
                 out << reason << '\n';
@@ -103,7 +98,18 @@ namespace RtxTool
         }
     }
 
-    int runDoll(World& world, const ESM::NPC& npc, const PictureRequest& request)
+    Rtx::RendererOptions PictureRequest::describeRenderer(const Rtx::ValidationOptions& validation) const
+    {
+        return Rtx::RendererOptions{
+            .mShaderDirectory = mShaderDirectory,
+            .mWidth = mWidth,
+            .mHeight = mHeight,
+            .mValidation = validation,
+        };
+    }
+
+    int runDoll(
+        World& world, const ESM::NPC& npc, const Rtx::ValidationOptions& validation, const PictureRequest& request)
     {
         std::ostream& out = Debug::getRawStdout();
 
@@ -113,7 +119,7 @@ namespace RtxTool
         if (actor.getPosedBones() == 0)
             out << "warning: the keyframes reached none of the skeleton's bones — this is the bind pose.\n";
 
-        const std::unique_ptr<Rtx::Renderer> renderer = makeRenderer(request, out);
+        const std::unique_ptr<Rtx::Renderer> renderer = makeRenderer(request, validation, out);
         if (renderer == nullptr)
             return 1;
 
@@ -158,7 +164,7 @@ namespace RtxTool
     }
 
     int runMap(World& world, const ESM::Cell& cell, const StagingRequest& staging, const ActorRequest& actors,
-        const PictureRequest& request)
+        const Rtx::ValidationOptions& validation, const PictureRequest& request)
     {
         std::ostream& out = Debug::getRawStdout();
 
@@ -171,7 +177,7 @@ namespace RtxTool
             return 1;
         }
 
-        const std::unique_ptr<Rtx::Renderer> renderer = makeRenderer(request, out);
+        const std::unique_ptr<Rtx::Renderer> renderer = makeRenderer(request, validation, out);
         if (renderer == nullptr)
             return 1;
 

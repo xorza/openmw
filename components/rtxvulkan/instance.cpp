@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include <components/debug/debuglog.hpp>
 
@@ -111,25 +112,21 @@ namespace Rtx
         std::vector<VkValidationFeatureEnableEXT> enabled;
         VkValidationFeaturesEXT validationFeatures{};
 
-        // What GPU-assisted validation does about reads past the end of a buffer.
-        //
-        /// **Its own instrumentation is what makes it unaffordable here**, and it says so: the layer
-        // warns that a shader with this many storage buffers "will be very slow to compile and
-        // runtime performance may also be slow", and points at this setting. Left alone it is worse
-        // than slow — a window under GPU-AV loses the device inside half a minute.
-        //
-        // Turning it on hands the same job to the hardware's own robust buffer access, which returns
-        // zero for a read past the end instead of instrumenting every access to catch it. What is
-        // given up is the *report*; what is kept is everything else GPU-AV checks, including what a
-        // ray query does with its own arguments — which is what it caught here first.
-        const VkBool32 robustness = VK_TRUE;
-        const VkLayerSettingEXT robustSetting{
-            .pLayerName = sValidationLayer,
-            .pSettingName = "gpuav_force_on_robustness",
-            .type = VK_LAYER_SETTING_TYPE_BOOL32_EXT,
-            .valueCount = 1,
-            .pValues = &robustness,
+        const VkBool32 on = VK_TRUE;
+
+        // What the layer will not turn on by itself, gathered as each validation below asks for it.
+        std::vector<VkLayerSettingEXT> settings;
+
+        const auto turnOn = [&](const char* name) {
+            settings.push_back(VkLayerSettingEXT{
+                .pLayerName = sValidationLayer,
+                .pSettingName = name,
+                .type = VK_LAYER_SETTING_TYPE_BOOL32_EXT,
+                .valueCount = 1,
+                .pValues = &on,
+            });
         };
+
         VkLayerSettingsCreateInfoEXT layerSettings{};
 
         const void* next = nullptr;
@@ -140,9 +137,39 @@ namespace Rtx
             next = &messengerInfo;
 
             if (options.mSynchronizationValidation)
+            {
                 enabled.push_back(VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT);
+
+                // **Without this, synchronization validation cannot see a compute shader's accesses
+                // at all**, and every pass this renderer has is a compute dispatch reading and
+                // writing images through descriptors. The layer leaves it off because attributing an
+                // access to a resource a set merely *holds* can name a hazard on one the shader
+                // never touched; what it buys is the whole class it is being asked about.
+                //
+                // Measured on a doll with the cascade's barriers taken out: five runs of five wrote
+                // five different pictures, and the layer reported nothing until this was set.
+                turnOn("syncval_shader_accesses_heuristic");
+            }
+
             if (options.mGpuAssistedValidation)
+            {
                 enabled.push_back(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT);
+
+                // What GPU-assisted validation does about reads past the end of a buffer.
+                //
+                // **Its own instrumentation is what makes it unaffordable here**, and it says so:
+                // the layer warns that a shader with this many storage buffers "will be very slow to
+                // compile and runtime performance may also be slow", and points at this setting.
+                // Left alone it is worse than slow — a window under GPU-AV loses the device inside
+                // half a minute.
+                //
+                // Turning it on hands the same job to the hardware's own robust buffer access, which
+                // returns zero for a read past the end instead of instrumenting every access to
+                // catch it. What is given up is the *report*; what is kept is everything else GPU-AV
+                // checks, including what a ray query does with its own arguments — which is what it
+                // caught here first.
+                turnOn("gpuav_force_on_robustness");
+            }
 
             if (!enabled.empty())
             {
@@ -155,13 +182,13 @@ namespace Rtx
                 next = &validationFeatures;
             }
 
-            if (options.mGpuAssistedValidation)
+            if (!settings.empty())
             {
                 layerSettings = VkLayerSettingsCreateInfoEXT{
                     .sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT,
                     .pNext = next,
-                    .settingCount = 1,
-                    .pSettings = &robustSetting,
+                    .settingCount = static_cast<std::uint32_t>(settings.size()),
+                    .pSettings = settings.data(),
                 };
                 next = &layerSettings;
             }

@@ -161,7 +161,8 @@ namespace Rtx
         /// can serve a window that keeps several frames in flight.
         void begin(VkCommandBuffer commands) const;
 
-        /// Orders the pass that wrote them against the pass about to read them.
+        /// Orders the pass that wrote them against the pass about to read them, or in the
+        /// accumulator's case to write one of them back.
         void handOver(VkCommandBuffer commands) const;
 
     private:

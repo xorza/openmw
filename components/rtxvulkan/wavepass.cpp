@@ -165,7 +165,13 @@ namespace Rtx
             .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
             .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+
+            // **Written as well as read, because the transform runs in place.** Each of the six
+            // passes over a field reads it and writes it back, so what follows one is a write after
+            // a write as much as a read after one — and a dependency naming only the read leaves the
+            // two writes unordered against each other. The execution order held either way, which is
+            // why nothing was ever seen to go wrong.
+            .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
         };
         const VkDependencyInfo dependency{
             .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,

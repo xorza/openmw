@@ -183,13 +183,24 @@ namespace Rtx
     {
         const std::size_t written = writtenAt(frame);
 
-        // **The half being written is discarded and the half being read is not.** Every texel of the
-        // first is written before any is read, so keeping its contents would cost a decompress and
-        // buy nothing; the second is this frame's history and has to survive.
-        for (const Image* image : { &mScatter[written], &mSunward[written], &mAir, &mAirSunward })
+        // **Discarded, because every texel of it is written before any is read.** Keeping what the
+        // frame before last left here would cost a decompress and buy nothing. The other half of the
+        // pair is this frame's history and survives, three loops down.
+        for (const Image* image : { &mScatter[written], &mSunward[written] })
             image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
+        // **Sampled as well as written, because a frame that dispatches no air still binds these.**
+        // An interior integrates its own even haze and runs no volume pass, so what follows this
+        // barrier is the trace with the pair bound — `VisibilityPass::record` says why it is bound
+        // either way. Named for the write alone, this covered only the frames with an air pass to
+        // hand over.
+        for (const Image* image : { &mAir, &mAirSunward })
+            image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
         // **From `GENERAL` and not from undefined**, which is the whole of what makes a history a
         // history: the frame that wrote it two frames ago left it here, and discarding it would hand

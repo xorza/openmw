@@ -564,7 +564,7 @@ namespace RtxTool
                 return 1;
             }
 
-            return runDoll(world, *npc, request);
+            return runDoll(world, *npc, validationFrom(variables, false), request);
         }
 
         int commandMap(const Command& command)
@@ -583,7 +583,8 @@ namespace RtxTool
 
             const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
 
-            return runMap(world, *cell, frame.describeStaging(), frame.mActors, request);
+            return runMap(
+                world, *cell, frame.describeStaging(), frame.mActors, validationFrom(variables, false), request);
         }
 
         int commandScene(const Command& command)

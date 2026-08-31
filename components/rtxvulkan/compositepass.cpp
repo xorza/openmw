@@ -32,7 +32,7 @@ namespace Rtx
         , mNoSum(device, 1, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "no-sum")
     {
         // A bound storage image has to be in the layout its descriptor names whether the shader
-        // reads it or not, so the one texel is laid out once and then left alone forever.
+        // reads it or not, so the one texel is laid out here and never leaves `GENERAL` again.
         pool.submitAndWait([this](VkCommandBuffer commands) {
             mNoSum.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
@@ -52,6 +52,17 @@ namespace Rtx
         assert(sum == nullptr || (sum->getWidth() >= constants.mWidth && sum->getHeight() >= constants.mHeight));
 
         const Image& bound = sum != nullptr ? *sum : mNoSum;
+
+        // **The stand-in is ordered here, and the real sum is the caller's to order.** Nothing
+        // writes this one texel — the shader's store sits behind `mAccumulate`, and a stand-in is
+        // bound only where that is nought — but synchronization validation reasons from the
+        // descriptor set rather than from the branch, so two frames' composites read to it as two
+        // unordered writes. One barrier on one texel is cheaper than a check nobody can leave on.
+        if (sum == nullptr)
+            mNoSum.transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
         const std::array<VkDescriptorImageInfo, 5> images{
             VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getDirect().getView(), VK_IMAGE_LAYOUT_GENERAL },

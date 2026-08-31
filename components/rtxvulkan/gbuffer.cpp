@@ -203,10 +203,16 @@ namespace Rtx
 
     void GBuffer::handOver(VkCommandBuffer commands) const
     {
+        // **Written as well as read, because the accumulator writes its channel back.** It replaces
+        // `CHANNEL_INDIRECT` with the mean at the same texel — `accumulate.comp` says why that
+        // aliasing is allowed — so what follows the trace is a write after a write on that one
+        // channel and a read after one on the other ten. A dependency naming only the read left the
+        // two writes unordered against each other.
         for (const Image* image : everyChannel())
             image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
     }
 
     SetLayout GBuffer::describeLayout(const Device& device)

@@ -6,6 +6,8 @@
 
 #include <osg/Vec3f>
 
+#include <components/rtx/renderer.hpp>
+
 namespace ESM
 {
     struct Cell;
@@ -42,6 +44,15 @@ namespace RtxTool
         /// only: a map tile is straight down over the cell by construction.
         std::optional<osg::Vec3f> mOrigin;
         std::optional<osg::Vec3f> mTarget;
+
+        /// The renderer this picture is traced by, which `FrameRequest::describeRenderer` is for
+        /// every other command.
+        ///
+        /// **The layers are an argument and not a field, so that no caller can leave them out.**
+        /// These two commands used to build their options inline and name every field but that one,
+        /// so `--sync-validation` was parsed, accepted and then dropped: the layer was never loaded,
+        /// and a run under it came back clean because nothing was checking.
+        Rtx::RendererOptions describeRenderer(const Rtx::ValidationOptions& validation) const;
     };
 
     /// The inventory doll, traced against a scene of its own and written as a PNG.
@@ -50,12 +61,13 @@ namespace RtxTool
     /// walks a staged cell into `Rtx::sWorld`; this walks one assembled figure into a view scene of
     /// its own, poses it, hands it over and traces it — the path the game takes for a doll and the
     /// race preview, and the one that had no test above the camera arithmetic.
-    int runDoll(World& world, const ESM::NPC& npc, const PictureRequest& request);
+    int runDoll(
+        World& world, const ESM::NPC& npc, const Rtx::ValidationOptions& validation, const PictureRequest& request);
 
     /// One local-map tile of a cell: an orthographic trace of the staged world, straight down.
     ///
     /// The game's own framing, from `MWRender::LocalMap` — one cell across, from fifty thousand
     /// units up, with a flat light that makes no shadows because a chart is read for what is where.
     int runMap(World& world, const ESM::Cell& cell, const StagingRequest& staging, const ActorRequest& actors,
-        const PictureRequest& request);
+        const Rtx::ValidationOptions& validation, const PictureRequest& request);
 }
