@@ -12,6 +12,7 @@
 #include <components/resource/imagemanager.hpp>
 
 #include "error.hpp"
+#include "frametimes.hpp"
 #include "texturebuilder.hpp"
 
 namespace Rtx

@@ -14,9 +14,11 @@ budget from `plan.md` §5: 3840×2160 out of 1920×1080 traced at 60 fps, which 
   `OPENMW_RTX_BENCH=10s:2s@12000` on a save is the game's own crossing measurement. **It prints the
   harness's rows** — frame, wait, walk, place, and crossings with the rebuilds among them — off the
   same `Rtx::FrameSamples`, so a row of one can be read against a row of the other.
-- **`scene extend` in the log** (verbose) is what one arrival costs the frame it lands on, split
-  into draining the frames in flight, describing the textures and building the structures. Nothing
-  else can see it: the device's zones cover what a crossing records, not the CPU that recorded it.
+- **`scene hand` and `scene extend` in the log** (verbose) are what an arrival costs the frame it
+  lands on, and between them they name every millisecond of the `place ms` row: the composites
+  taken, the textures described, and then the renderer's own draining, describing, building and
+  placing. Nothing else can see it — the device's zones cover what a crossing records, not the CPU
+  that recorded it.
 - `apps/rtxtool/profile.sh --view=<v>` is the CPU explanation (perf, measured frames only).
   Reports land in `build-release/perf*/`.
 - **`composite bake` in the log** (verbose) is what a chunk's flattening costs, by layer count and
@@ -82,12 +84,20 @@ Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames
   tripled the median to 17 ms and put the worst crossing at 751 and 879 — and there walk and place
   were barely a third of it, the rest being the engine contending for cores. `place` worst held at
   127–154 across all four, which is the figure to trust.
-- **And the placement is one call**: the worst `scene extend` on that route is **121 ms for 44
-  textures and 434 meshes** — 3.3 ms draining the frames in flight, 10.1 describing the textures,
-  and **107.6 building**. The build is `SceneAcceleration::extend`: an opacity micromap classified
-  on the CPU per arriving mesh, and the bottom-level structures recorded after it. A quarter of a
-  millisecond a mesh, and it all lands on one frame. This is the figure the whole lane rests on and
-  it is the steadiest one on the route.
+- **And the placement is one call, split all the way down.** The worst crossing measured:
+  `scene hand` 0.3 ms on composites, 7.3 describing 24 textures, **124.4 in the renderer**;
+  `scene extend` 0.2 draining, 6.9 describing, **115.3 building**, 1.9 placing; and of that build,
+  **104.7 ms is classifying opacity micromaps** for 443 arriving meshes against 2.2 ms of bottom
+  level structures and 2.3 ms of `AlphaBounds`. A quarter of a millisecond a mesh, all on one frame.
+  This is the figure the whole lane rests on.
+- **A hierarchical classifier does not help — measured, and it costs 28% more.** `AlphaBounds`
+  answers for a whole box and a microtriangle's box lies inside its parent's, so a coarse-to-fine
+  sweep that only asks about what its parent left open looks free. It is not: counted over a run,
+  it made **92.2 million box tests against the flat walk's 72.1 million**, because a coarse
+  microtriangle's box is wide enough to straddle the cutoff nearly always and almost nothing
+  inherits. The intermediate levels are then pure overhead, and 129% is within a whisker of the
+  arithmetic worst case of 133%. Counted rather than timed, so the result does not depend on what
+  else the machine was doing.
 - **Draining is not free either.** `finishFrames` cost 23.0 and 18.0 ms on two of the eighteen
   crossings, against 3.3 on the worst — a frame in flight the arrival had to wait out.
 
@@ -104,15 +114,17 @@ not what made a crossing long: the game, preloading on threads, drops the same f
 three numbers. **What is left is one call — the arrival handed to the device — and 90% of that is
 classifying opacity micromaps.**
 
-- **A2. Bound what one frame classifies.** 108 of the 121 ms worst `scene extend` is
-  `SceneAcceleration::extend` over 434 arriving meshes: a micromap classified on the CPU apiece,
-  then the structures. **The unit to bound is meshes, not bytes** — the texture uploads beside them
-  are 10 ms. Two shapes, and the second is the tree's own precedent: (a) classify a bounded number a
-  frame and let the rest trace without a micromap until their turn, which is correct meanwhile and
-  only slower; (b) move the classification to a thread of its own, the way `CompositeQueue` moved
-  the composite bake, and let the frame collect what is finished. Quality cost: none either way — a
-  micromap is an optimisation, and a mesh without one traces the same picture. Gate: `scene extend`
-  and `place ms` worst, in the game.
+- **A2. Bound what one frame classifies, or take it off the frame.** 105 of the 115 ms worst
+  build is the micromap classification over 443 arriving meshes. **The unit to bound is meshes, not
+  bytes** — the texture uploads beside them are 7 ms. Making the classifier itself cheaper is closed
+  by §2: the hierarchy was measured and lost. What is left is when it runs, not how fast it is:
+  (a) classify a bounded number a frame; (b) move it to a thread of its own, the way
+  `CompositeQueue` moved the composite bake, and let the frame collect what is finished.
+  **Neither is free, and the note that said so was wrong.** A bottom-level structure names its
+  micromap when it is *built*, so a mesh that arrives without one and gets it later has to be built
+  again — which is 2.2 ms for 443 meshes, cheap, but it is a second build and it has to be bounded
+  too. Quality cost: none — a mesh tracing without a micromap draws the same picture and only asks
+  the alpha test more often. Gate: `scene extend` and `place ms` worst, in the game.
 - **A7. Do not wait out a frame to place an arrival.** `finishFrames` cost 23.0 and 18.0 ms on two
   of eighteen crossings. It is there because an arrival writes every copy of the tables; a copy the
   arrival could write into instead would cost the wait nothing. Gate: the draining figure in

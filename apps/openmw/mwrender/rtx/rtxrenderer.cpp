@@ -38,6 +38,7 @@
 #include <components/rtx/error.hpp>
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/frameimage.hpp>
+#include <components/rtx/frametimes.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
@@ -666,8 +667,7 @@ namespace MWRender
             // One walk over the whole graph, where every path is already distinct.
             = mExtractor->extractWorld(frame.mScene, osg::Matrixf::identity(), 0, mFrame);
 
-        const double walkMs
-            = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - walked).count();
+        const double walkMs = Rtx::since(walked, std::chrono::steady_clock::now());
 
         const bool traced = traceWorld(frame, found, walkMs);
 
@@ -712,8 +712,7 @@ namespace MWRender
         // harness's too and are written once (`Rtx::SceneUploader`).
         const std::chrono::steady_clock::time_point handing = std::chrono::steady_clock::now();
         const Rtx::SceneUpload handed = mUploader.hand(*mRenderer, Rtx::sWorld, mScene, frame.mImages, Rtx::SeaState{});
-        const double placeMs
-            = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - handing).count();
+        const double placeMs = Rtx::since(handing, std::chrono::steady_clock::now());
 
         mHasScene = true;
 
@@ -933,8 +932,8 @@ namespace MWRender
         // wait on the device on its own cannot say.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
         if (mEnteredOnce && result.has_value())
-            mBench.frame(*result, std::chrono::duration<double, std::milli>(now - mEntered).count(), walkMs, placeMs,
-                handed.mKind == Rtx::SceneUpload::Kind::Rebuilt);
+            mBench.frame(
+                *result, Rtx::since(mEntered, now), walkMs, placeMs, handed.mKind == Rtx::SceneUpload::Kind::Rebuilt);
 
         mEntered = now;
         mEnteredOnce = true;

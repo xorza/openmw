@@ -1,8 +1,12 @@
 #include "sceneuploader.hpp"
 
+#include <chrono>
 #include <limits>
 #include <span>
 
+#include <components/debug/debuglog.hpp>
+
+#include "frametimes.hpp"
 #include "renderer.hpp"
 #include "scenedesc.hpp"
 #include "texturebuilder.hpp"
@@ -34,6 +38,11 @@ namespace Rtx
     {
         const bool mine = recognises(renderer, slot, scene, renderer.getTextureCount(slot));
 
+        // **Where a crossing frame goes.** The game reports this whole call as `place ms` and it is
+        // the largest row of a crossing; without the three figures below, which of its parts cost
+        // the frame is guesswork. Two clock reads on a frame that places nothing.
+        const auto entered = std::chrono::steady_clock::now();
+
         // **Here rather than where a walk ends, because a scene can be walked more than once.** The
         // game walks its precipitation beside its world, and a light met by the second walk would be
         // outside an order the first had settled. This is the one point every path passes and the
@@ -52,6 +61,8 @@ namespace Rtx
 
         const std::size_t baked
             = mComposites.collect(scene, mStaged ? std::numeric_limits<std::size_t>::max() : sCompositesPerFrame);
+
+        const auto collected = std::chrono::steady_clock::now();
 
         // Geometry the walk has not met before has no bottom-level structure and no uploaded
         // texture. **Which is a cell change and a load, not a frame** — a door opening moves
@@ -98,6 +109,8 @@ namespace Rtx
         const SceneTextures textures = reset ? SceneTextures(scene, images, &mComposites)
                                              : SceneTextures(scene, images, scene.getArrivedTextures(), &mComposites);
 
+        const auto described = std::chrono::steady_clock::now();
+
         SceneUpload done;
         done.mDescribed = textures.getDescriptions().size();
         done.mUnreadable = textures.getUnreadable();
@@ -119,6 +132,12 @@ namespace Rtx
         }
 
         scene.clearArrivals();
+
+        const auto handed = std::chrono::steady_clock::now();
+
+        Log(Debug::Verbose) << "scene hand: " << since(entered, collected) << " ms on composites, "
+                            << since(collected, described) << " describing " << done.mDescribed << " textures, "
+                            << since(described, handed) << " in the renderer";
 
         mRenderer = &renderer;
         mSlot = slot;

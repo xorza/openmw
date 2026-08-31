@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -10,6 +11,16 @@
 
 namespace Rtx
 {
+    /// Milliseconds between two readings of the steady clock, which is what every figure here is.
+    ///
+    /// **One spelling, because it was written seven times.** `std::chrono::duration<double,
+    /// std::milli>(to - from).count()` says nothing a reader needs and hides which way round the
+    /// subtraction goes; every timed stretch in this fork now reads the same way.
+    inline double since(std::chrono::steady_clock::time_point from, std::chrono::steady_clock::time_point to)
+    {
+        return std::chrono::duration<double, std::milli>(to - from).count();
+    }
+
     /// What a run of frame times came to, in milliseconds.
     ///
     /// **A distribution and not an average**, because the two questions a renderer gets asked are

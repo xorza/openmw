@@ -10,6 +10,7 @@
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/frametimes.hpp>
 #include <components/rtx/scenedesc.hpp>
 
 #ifdef OPENMW_RTX_DLSS
@@ -498,7 +499,7 @@ namespace Rtx
         // **Where an arrival's cost is, and the only place it is visible.** The game measures this
         // whole as `place ms` and the device's own zones say nothing about it, because everything
         // below records rather than executes. Reached whenever anything arrives — a ring at a
-        // crossing, and a composite coming back on each of the frames after one — so the four clock
+        // crossing, and a composite coming back on each of the frames after one — so the five clock
         // reads are a handful of frames apiece and not every frame.
         const auto entered = std::chrono::steady_clock::now();
 
@@ -546,12 +547,6 @@ namespace Rtx
         }
 
         const auto built = std::chrono::steady_clock::now();
-        const auto since
-            = [](auto from, auto to) { return std::chrono::duration<double, std::milli>(to - from).count(); };
-
-        Log(Debug::Verbose) << "scene extend: " << arrived.size() << " textures, " << scene.getArrivedMeshes().size()
-                            << " meshes — " << since(entered, drained) << " ms draining, " << since(drained, described)
-                            << " describing, " << since(described, built) << " building";
 
         // **Deferred to the placement's submit, not flushed ahead of it.** `placeScene` submits
         // what was recorded here in the same call as the refit and the top level, ahead of them,
@@ -564,6 +559,13 @@ namespace Rtx
         // Always, because the top level names every instance and an arrival changed the list. It is
         // rebuilt every frame regardless, so an arrival costs it nothing.
         placeScene(slot, scene, sea);
+
+        const auto placed = std::chrono::steady_clock::now();
+
+        Log(Debug::Verbose) << "scene extend: " << arrived.size() << " textures, " << scene.getArrivedMeshes().size()
+                            << " meshes — " << since(entered, drained) << " ms draining, " << since(drained, described)
+                            << " describing, " << since(described, built) << " building, " << since(built, placed)
+                            << " placing";
 
         // **The history is kept.** Nothing was renumbered, so what the last frame resolved still
         // describes the same surfaces — and throwing it away is a visible flash every time an actor
@@ -735,8 +737,7 @@ namespace Rtx
 
         const auto start = std::chrono::steady_clock::now();
         awaitVk(mDevice.getHandle(), frame.mFence, "a frame");
-        const double waited
-            = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        const double waited = since(start, std::chrono::steady_clock::now());
 
         frame.mPending = false;
 
