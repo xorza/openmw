@@ -99,6 +99,10 @@ namespace Rtx
             return read;
         }
 
+        struct RtxWaveLineTest : Testing::DeviceTest
+        {
+        };
+
         /// One wavevector transforms into the plane wave it stands for.
         ///
         /// **The whole of what a transform has to be right about, in one reading.** A single entry
@@ -109,14 +113,9 @@ namespace Rtx
         ///
         /// Three entries rather than one, because a wavevector along an axis cannot tell the rows
         /// from the columns: the third leans both ways at once.
-        TEST(RtxWaveLineTest, oneWavevectorTransformsIntoThePlaneWaveItStandsFor)
+        TEST_F(RtxWaveLineTest, oneWavevectorTransformsIntoThePlaneWaveItStandsFor)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             CommandPool pool(device);
             const ComputePipeline pipeline(device, sBindings, sizeof(Shaders::WaveConstants), {},
                 Testing::getShaderDirectory() / "waveline.comp.spv", "test-waveline");
@@ -155,14 +154,9 @@ namespace Rtx
         /// at `-k` is the conjugate of the one at `k` has a real inverse, which is what lets two
         /// real fields share one transform: pack one into the real part of the spectrum and the
         /// other into the imaginary part, and the two come out separated.
-        TEST(RtxWaveLineTest, aConjugateSymmetricGridTransformsIntoSomethingReal)
+        TEST_F(RtxWaveLineTest, aConjugateSymmetricGridTransformsIntoSomethingReal)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             CommandPool pool(device);
             const ComputePipeline pipeline(device, sBindings, sizeof(Shaders::WaveConstants), {},
                 Testing::getShaderDirectory() / "waveline.comp.spv", "test-waveline");

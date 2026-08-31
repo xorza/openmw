@@ -14,6 +14,7 @@
 #include <components/weather/downpour.hpp>
 
 #include "cellscene.hpp"
+#include "content.hpp"
 #include "world.hpp"
 
 namespace RtxTool
@@ -50,7 +51,7 @@ namespace RtxTool
         // **Both of the weather's constants, read once and where the other one is.** The first is a
         // game setting and comes from the store; the second is a fallback and comes from the ini,
         // which is the only reason they are fetched differently.
-        mStormWindSpeed = world.findGameSetting("fStromWindSpeed", 50.0f);
+        mStormWindSpeed = world.getContent().findGameSetting("fStromWindSpeed", 50.0f);
         mRainGravity = Fallback::Map::getFloat("Weather_Precip_Gravity");
 
         mWeatherNode = new osg::PositionAttitudeTransform;
@@ -106,9 +107,9 @@ namespace RtxTool
         //
         // **An interior is entered rather than framed.** Where something in the world teleports here,
         // the camera stands and faces exactly as the game would stand and face a character who had
-        // just walked in — see `World::findArrival`. Framing is what is left for a cell nothing leads
+        // just walked in — see `Content::findArrival`. Framing is what is left for a cell nothing leads
         // to, and for every exterior.
-        const std::optional<ESM::Position> arrival = mWorld->findArrival(cell);
+        const std::optional<ESM::Position> arrival = mWorld->getContent().findArrival(cell);
         mPlacement
             = arrival.has_value() ? placeOnArrival(*arrival, request.mOrigin, request.mTarget) : frame(cell, request);
 
@@ -270,7 +271,7 @@ namespace RtxTool
         // **Open sea, and the answer is to keep what is already loaded.** Every point has a square;
         // not every square has a cell record, and a camera over the water is standing in one of the
         // ones that does not. The game holds its last grid there too.
-        const ESM::Cell* cell = mWorld->findCell(cellAt(square));
+        const ESM::Cell* cell = mWorld->getContent().findCell(cellAt(square));
         if (cell == nullptr)
             return {};
 

@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxvulkan/commands.hpp>
@@ -60,41 +62,43 @@ namespace Rtx::Testing
         return {};
     }
 
+    /// Something built once for the whole binary, and the reason where it could not be.
+    ///
+    /// **Held by whoever declares one rather than in a function-local static**, so that a gtest
+    /// environment can close it while the process is still whole — see the teardowns in
+    /// `harness.cpp` and `rtxtool/installation.cpp`, and the comment on `DeviceTeardown` for what
+    /// static destruction did instead.
+    template <class T>
+    struct Once
+    {
+        std::unique_ptr<T> mValue;
+        std::string mReason;
+        bool mTried = false;
+
+        template <class Build>
+        T* get(std::string& reason, Build&& build)
+        {
+            if (!mTried)
+            {
+                mTried = true;
+                mValue = build(mReason);
+            }
+
+            reason = mReason;
+            return mValue.get();
+        }
+
+        /// Closes it, and says so to anything that asks afterwards rather than answering an empty
+        /// reason — which a test would report as a skip with no explanation.
+        void release(std::string why)
+        {
+            mValue.reset();
+            mReason = std::move(why);
+        }
+    };
+
     namespace Details
     {
-        /// Something built once for the whole binary, and the reason where it could not be.
-        ///
-        /// Held here rather than in a function-local static so that `releaseDevices` can close it
-        /// while the process is still whole; see the environment in `harness.cpp`.
-        template <class T>
-        struct Once
-        {
-            std::unique_ptr<T> mValue;
-            std::string mReason;
-            bool mTried = false;
-
-            template <class Build>
-            T* get(std::string& reason, Build&& build)
-            {
-                if (!mTried)
-                {
-                    mTried = true;
-                    mValue = build(mReason);
-                }
-
-                reason = mReason;
-                return mValue.get();
-            }
-
-            /// Closes it, and says so to anything that asks afterwards rather than answering an
-            /// empty reason — which a test would report as a skip with no explanation.
-            void release()
-            {
-                mValue.reset();
-                mReason = "the suite closed its devices after the last test";
-            }
-        };
-
         /// Keyed on validation, which is the only axis any of these vary along.
         inline Once<Harness>& harnessCache(bool validation)
         {
@@ -205,6 +209,74 @@ namespace Rtx::Testing
         return Details::rendererCache(true).get(
             reason, [](std::string& why) { return Details::buildRenderer(true, why); });
     }
+
+    /// The base of a test that drives Vulkan directly.
+    ///
+    /// **One shape for the skip.** The suite had two: a fixture in some files and the same four
+    /// lines written out in every test of the others. Which one a file used said nothing about the
+    /// file, and a test that has to remember to ask for the reason is a test that can forget to.
+    class DeviceTest : public ::testing::Test
+    {
+    protected:
+        void SetUp() override
+        {
+            std::string reason;
+            mHarness = getHarness(reason);
+            if (mHarness == nullptr)
+                GTEST_SKIP() << reason;
+        }
+
+        Device& getDevice() const { return *mHarness->mDevice; }
+
+        /// A pool on that device, opened on the first ask and closed with the test.
+        CommandPool& getPool()
+        {
+            if (mPool == nullptr)
+                mPool = std::make_unique<CommandPool>(getDevice());
+
+            return *mPool;
+        }
+
+        Harness* mHarness = nullptr;
+
+    private:
+        std::unique_ptr<CommandPool> mPool;
+    };
+
+    /// The base of a test that renders.
+    ///
+    /// **The validation errors are drained before the test and reported after it**, which two of the
+    /// five files that render did not do at all: a hazard the layers caught went onto a list nothing
+    /// ever read. Draining first is how the slate is cleared — whatever a previous test left behind
+    /// is not this one's to report.
+    class RendererTest : public ::testing::Test
+    {
+    protected:
+        void SetUp() override
+        {
+            std::string reason;
+            mRenderer = getRenderer(reason);
+            if (mRenderer == nullptr)
+                GTEST_SKIP() << reason;
+
+            mRenderer->takeValidationErrors(mErrors);
+        }
+
+        void TearDown() override
+        {
+            if (mRenderer == nullptr)
+                return;
+
+            mRenderer->takeValidationErrors(mErrors);
+            for (const std::string& error : mErrors)
+                ADD_FAILURE() << "validation error: " << error;
+        }
+
+        Renderer* mRenderer = nullptr;
+
+    private:
+        std::vector<std::string> mErrors;
+    };
 
     /// One half float, as the number it stands for.
     ///

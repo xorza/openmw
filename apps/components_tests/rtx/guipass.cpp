@@ -76,21 +76,18 @@ namespace Rtx
             }
         };
 
-        class RtxGuiPassTest : public ::testing::Test
+        class RtxGuiPassTest : public Testing::DeviceTest
         {
         protected:
             void SetUp() override
             {
-                std::string reason;
-                mHarness = Testing::getHarness(reason);
+                Testing::DeviceTest::SetUp();
                 if (mHarness == nullptr)
-                    GTEST_SKIP() << reason;
+                    return;
 
                 mHarness->mInstance->getValidationLog()->clear();
 
-                mPool = std::make_unique<CommandPool>(*mHarness->mDevice);
-                mPass = std::make_unique<GuiPass>(
-                    *mHarness->mDevice, Testing::getShaderDirectory(), VK_FORMAT_R8G8B8A8_UNORM);
+                mPass = std::make_unique<GuiPass>(getDevice(), Testing::getShaderDirectory(), VK_FORMAT_R8G8B8A8_UNORM);
             }
 
             void TearDown() override
@@ -99,7 +96,6 @@ namespace Rtx
                     return;
 
                 mPass.reset();
-                mPool.reset();
 
                 for (const ValidationMessage& message :
                     mHarness->mInstance->getValidationLog()->getErrorsOnThisThread())
@@ -118,11 +114,11 @@ namespace Rtx
                         | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                     "gui test target");
 
-                Batch upload(*mPool);
+                Batch upload(getPool());
                 const Buffer buffer = uploadBuffer(device, upload, vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
                 upload.flush();
 
-                mPool->submitAndWait([&](VkCommandBuffer commands) {
+                getPool().submitAndWait([&](VkCommandBuffer commands) {
                     target.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                         VK_PIPELINE_STAGE_2_NONE, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
@@ -140,7 +136,7 @@ namespace Rtx
                     mPass->record(commands, target, buffer.getHandle(), draws);
                 });
 
-                target.read(*mPool, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, pixels);
+                target.read(getPool(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, pixels);
                 ASSERT_EQ(pixels.size(), std::size_t{ sExtent } * sExtent * 4);
             }
 
@@ -152,18 +148,16 @@ namespace Rtx
                 return { pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3] };
             }
 
-            Testing::Harness* mHarness = nullptr;
             /// A texture on the device, waited for. The renderer records these into a batch it
             /// flushes once for a whole cell; a test wants the one texture ready on the next line.
             Texture makeTexture(const TextureData& data, std::string_view name)
             {
-                Batch upload(*mPool);
-                Texture texture(*mHarness->mDevice, upload, data, name);
+                Batch upload(getPool());
+                Texture texture(getDevice(), upload, data, name);
                 upload.flush();
                 return texture;
             }
 
-            std::unique_ptr<CommandPool> mPool;
             std::unique_ptr<GuiPass> mPass;
         };
 

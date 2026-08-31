@@ -205,6 +205,10 @@ namespace Rtx
             return read;
         }
 
+        struct RtxWaveFieldTest : Testing::DeviceTest
+        {
+        };
+
         /// One amplitude becomes the cosine it stands for, and its own two derivatives beside it.
         ///
         /// **Everything between the host's spectrum and the shader's surface, in one reading.** A
@@ -216,14 +220,9 @@ namespace Rtx
         /// and the slope and the curvature are that differentiated once and twice. Getting the
         /// mirror index, the sign of the turn, the `i k` factors, the packing of two fields into one
         /// transform, or the half-grid shift wrong all move this somewhere the comparison sees.
-        TEST(RtxWaveFieldTest, oneAmplitudeBecomesTheWaveItStandsForAndItsDerivatives)
+        TEST_F(RtxWaveFieldTest, oneAmplitudeBecomesTheWaveItStandsForAndItsDerivatives)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             CommandPool pool(device);
             const Passes passes(device);
 

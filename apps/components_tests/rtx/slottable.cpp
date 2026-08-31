@@ -28,19 +28,17 @@ namespace Rtx
         /// read back at any sensible cost. What can be checked is the debt — which rows a copy is
         /// about to be given — and that is where every one of the failures this type replaced lived:
         /// a copy that was never told about a row it had to have.
-        class RtxSlotTableTest : public ::testing::Test
+        class RtxSlotTableTest : public Testing::DeviceTest
         {
         protected:
             void SetUp() override
             {
-                std::string reason;
-                mHarness = Testing::getHarness(reason);
+                Testing::DeviceTest::SetUp();
                 if (mHarness == nullptr)
-                    GTEST_SKIP() << reason;
+                    return;
 
-                mPool = std::make_unique<CommandPool>(*mHarness->mDevice);
-                mGraveyard = std::make_unique<Graveyard>(*mHarness->mDevice, *mPool);
-                mTable.open(*mHarness->mDevice, 2, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
+                mGraveyard = std::make_unique<Graveyard>(getDevice(), getPool());
+                mTable.open(getDevice(), 2, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
             }
 
             /// Which rows `slot` is owed, sorted and with the duplicates a repeated write leaves.
@@ -55,8 +53,6 @@ namespace Rtx
 
             void sync(std::uint32_t slot) { mTable.sync(slot, *mGraveyard); }
 
-            Testing::Harness* mHarness = nullptr;
-            std::unique_ptr<CommandPool> mPool;
             std::unique_ptr<Graveyard> mGraveyard;
             SlotTable<TestRow> mTable;
         };

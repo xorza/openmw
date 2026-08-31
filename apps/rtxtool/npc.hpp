@@ -10,13 +10,14 @@ namespace ESM
 namespace RtxTool
 {
     struct ActorModel;
+    class Content;
     class World;
 
     /// The person `id` names, or null where the content files have no such record.
     ///
     /// Matched the way Morrowind matches a record id: case-insensitively, so `fargoth` and `Fargoth`
     /// are one person.
-    const ESM::NPC* findNpc(const World& world, std::string_view id);
+    const ESM::NPC* findNpc(const Content& content, std::string_view id);
 
     /// Assembles a person out of the body parts their race and sex call for.
     ///

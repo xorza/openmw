@@ -5,9 +5,6 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/program_options/variables_map.hpp>
-
-#include <components/files/configurationmanager.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/sceneutil/visitor.hpp>
@@ -24,8 +21,6 @@ namespace RtxTool
 {
     namespace
     {
-        namespace bpo = boost::program_options;
-
         /// A frame's worth of elapsed time. These tests are about the animation clock, which is
         /// `pose`'s first argument; the second only drives what integrates rather than samples, and
         /// nothing being posed here has an emitter on it.
@@ -53,6 +48,10 @@ namespace RtxTool
             return furthest;
         }
 
+        struct RtxActorTest : InstallationTest
+        {
+        };
+
         /// An actor loads, poses, and poses differently at a different time.
         ///
         /// **The headless half of what the game window was being opened for.** A skinned body's
@@ -62,15 +61,9 @@ namespace RtxTool
         ///
         /// It is written as one test over one loaded world because opening one costs about a second:
         /// the assertions are cheap and the fixture is not.
-        TEST(RtxActorTest, aCreatureLoadsPosedAndMovesBetweenPoses)
+        TEST_F(RtxActorTest, aCreatureLoadsPosedAndMovesBetweenPoses)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            Actor actor(*world, loadCreature(*world, sCreature), osg::Matrixf::identity());
+            Actor actor(getWorld(), loadCreature(getWorld(), sCreature), osg::Matrixf::identity());
 
             EXPECT_EQ(actor.getSkeleton().value(), "meshes/r/xcliffracer.nif")
                 << "an actor's skeleton is a second file beside its model";
@@ -144,17 +137,11 @@ namespace RtxTool
         /// built without stripping it comes out wearing a magenta torso and a grey chevron nobody
         /// drew. That defect has no other shape than this: more meshes in the graph than the outfit
         /// put there.
-        TEST(RtxActorTest, aPersonIsAssembledFromTheirRacesBodyParts)
+        TEST_F(RtxActorTest, aPersonIsAssembledFromTheirRacesBodyParts)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
             // A scene each, so the triangle count is this person's and not a running total.
             const auto assemble = [&](const char* id, bool dressed) {
-                const ESM::NPC* who = findNpc(*world, id);
+                const ESM::NPC* who = findNpc(getContent(), id);
                 EXPECT_NE(who, nullptr) << id;
                 if (who == nullptr)
                     return Assembled{};
@@ -162,7 +149,7 @@ namespace RtxTool
                 Rtx::SceneDesc scene;
                 Rtx::SceneExtractor extractor(scene);
 
-                Actor actor(*world, buildNpc(*world, *who, dressed), osg::Matrixf::identity());
+                Actor actor(getWorld(), buildNpc(getWorld(), *who, dressed), osg::Matrixf::identity());
                 actor.pose(0.0f, sStep);
 
                 const Rtx::ExtractionStats stats = extractor.extract(actor.getRoot(), actor.getTransform(), 0);
@@ -198,6 +185,10 @@ namespace RtxTool
             EXPECT_NE(cat.mSkeleton, woman.mSkeleton);
         }
 
+        struct RtxNpcTest : InstallationTest
+        {
+        };
+
         /// A weapon goes in the hand, and its kind decides the stance the hand is in.
         ///
         /// **A weapon is not a body part and does not go through the paper doll.** It is the item's
@@ -208,14 +199,8 @@ namespace RtxTool
         ///
         /// A shield needs none of this and is not tested here: all sixty-five of the shipped shields
         /// name a `PRT_Shield` body part, so one goes on with the rest of the wardrobe.
-        TEST(RtxNpcTest, aWeaponHangsInTheHandAndItsKindSetsTheStance)
+        TEST_F(RtxNpcTest, aWeaponHangsInTheHandAndItsKindSetsTheStance)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
             /// What hangs on the weapon bone, and what stance was chosen to hold it in.
             struct Armed
             {
@@ -225,12 +210,12 @@ namespace RtxTool
             };
 
             const auto arm = [&](const char* id, bool dressed) {
-                const ESM::NPC* who = findNpc(*world, id);
+                const ESM::NPC* who = findNpc(getContent(), id);
                 EXPECT_NE(who, nullptr) << id;
                 if (who == nullptr)
                     return Armed{};
 
-                const ActorModel built = buildNpc(*world, *who, dressed);
+                const ActorModel built = buildNpc(getWorld(), *who, dressed);
 
                 SceneUtil::NodeMap bones;
                 SceneUtil::NodeMapVisitor collect(bones);

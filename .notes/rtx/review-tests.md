@@ -1,46 +1,11 @@
 # Review of the RTX test suite
 
 Scope: `apps/components_tests/{rtx,rtxtool,surface}` — 80 files, ~26,700 lines, 518 tests in 91
-gtest suites. A fresh build runs them all green in 22.8 s on this machine, none skipped (it has
+gtest suites. A fresh build runs them all green in 21.3 s on this machine, none skipped (it has
 both the GPU and the game data).
 
 Delete an item when it is addressed. Delete a heading when it is empty. This file lists open items
 only. The plan at the bottom orders the work; strike its steps as they land.
-
-## One world is read from disk once per test
-
-- [ ] 27 tests across `rtxtool/{actor,stability,retire,lamps,props,pagedterrain,crossing,material}.cpp`
-      each call `openWorld`, and every call re-reads and merges the full content files.
-      The device-side suite caches its instance, device and renderer once per binary
-      (`rtx/harness.hpp` + the teardown environment in `harness.cpp`); nothing caches a `World`.
-      The reopens carry the tool suites to roughly 7 of the run's 23 seconds
-      (PagedTerrain 2.6 s, Crossing 2.5 s, Retire 2.0 s, the rest behind them).
-      A cache has one hazard to own: `World` borrows references into the
-      `ConfigurationManager` and the `variables_map` it was opened with, so the three must live
-      and die together.
-
-- [ ] Every call site repeats the same five lines — `ConfigurationManager`, `variables_map`,
-      `openWorld`, null check, `GTEST_SKIP` — and the skip string
-      `"no Morrowind installation configured"` is written out 27 times because `openWorld`
-      returns null without a reason, where the device harness hands one back.
-
-## The draw-and-read loop is written six times
-
-- [ ] `visibilitypass.cpp`'s fixture owns the render loop (`countHits`, `renderPicture`,
-      `renderRadiance`, `renderFiltered`, `inSceneOrder`); `dlss.cpp`, `frames.cpp`,
-      `guitextures.cpp`, `gputimer.cpp` and `sceneextractor.cpp` each write their own
-      resize/setScene/renderFrame/readback loop of the same shape.
-
-- [ ] Nine files hand-build the same one-quad scene — `frames`, `gputimer`, `sheetfold`,
-      `sceneextractor`, `guitextures`, `visibilitypass`, `instancerecord`, `dlss`,
-      `scenedesc` — each with its own corner list, index list and builder name
-      (`makeWall`, `wall()`, `makeSheet`, a bare `quad`). `dlss.cpp` also re-derives a channel
-      `meanOf` beside the one in `visibilitypass.cpp`.
-
-- [ ] The four-line skip preamble (`reason`, get, null check, `GTEST_SKIP`) appears about 40
-      times in three flavours (harness, renderer, unvalidated). Some files hold it in a
-      fixture's `SetUp` (`visibilitypass`, `frames`); others inline it per test (`gputimer`,
-      `dlss`, `structurestorage`, `wavepass`) — two shapes for one thing.
 
 ## Files that hold several suites' worth of tests
 
@@ -66,36 +31,29 @@ only. The plan at the bottom orders the work; strike its steps as they land.
 
 ## Runtime heads
 
-- [ ] The suite spends a fifth of its time in five tests: `RtxDlssTest.anUpscaledFrame…`
-      3.2 s, `RtxUpscalerStabilityTest.aStillCamera…` 2.5 s,
-      `RtxRetireTest.aCompactedScene…` 1.8 s, `RtxDlssTest.rayReconstruction…` 0.9 s,
-      `RtxPagedTerrainTest.aPagedWorldStandsStatics…` 0.8 s. Under the 30 s flag today, and
-      the world cache above buys ~5 s back — worth knowing before adding to these suites.
+- [ ] The suite spends a third of its time in four tests: `RtxDlssTest.anUpscaledFrame…`
+      3.4 s, `RtxUpscalerStabilityTest.aStillCamera…` 2.4 s,
+      `RtxRetireTest.aCompactedScene…` 1.7 s, `RtxDlssTest.rayReconstruction…` 0.9 s. None of
+      it is a world reopen any more, so no cache buys any of it back — these are frames the
+      device actually draws. Under the 30 s flag today, and worth knowing before adding to
+      these suites.
 
 ## Plan
 
-Order matters: step 1 is independent pure win; steps 2–3 build the shared pieces the splits then
-import, so they come before the splits; 4–6 are then mechanical moves. After every step: build
-`components-tests`, run `--gtest_filter='Rtx*:Surface*'`, all green, note the time.
+Steps 1–3 landed. What is left is the splits, which import the fixtures in `rtx/harness.hpp`
+(`DeviceTest`, `RendererTest`) and `rtxtool/installation.hpp` (`InstallationTest`). After every
+step: build `components-tests`, run `--gtest_filter='Rtx*:Surface*'`, all green, note the time.
 
-1. **Cache the world per binary.** Give `rtxtool/installation` the same shape as
-   `rtx/harness`: a `Once`-style cache owning config + variables + world together, a reason
-   string instead of a bare null, and a teardown environment that closes it before `main`
-   returns. Collapse the 27 call sites to the four-line skip shape.
-2. **Extract the shared scenes and probes.** One header beside `harness.hpp` for the quad
-   corners/indices, `makeWall`/`makeSheet`-class builders, `encodeSrgb`/`decodeSrgb`,
-   `meanOf`/`contrastOf` and the centre-pixel probe. Point the nine local copies at it.
-3. **Extract the render-loop fixture.** Move `RtxVisibilityTest`'s `countHits`/
-   `renderRadiance`/`renderFiltered`/`inSceneOrder` and its skip-in-`SetUp` into a header the
-   other five draw-and-read files can also derive from; fold their private loops into it
-   where they are the same loop.
-4. **Split `visibilitypass.cpp` along its domains** into `rtx/visibility/`: the fixture
-   header plus one file per domain group (camera+jitter+motion, surfaces+mips+panes,
-   sun+moons+sky, water, fog, sprites+worldedge, filter+exposure+history, framecost). The
-   small standalone suites ride with their nearest domain file. CMakeLists names the new
-   files; test names do not change.
+4. **Split `visibilitypass.cpp` along its domains** into `rtx/visibility/`: a fixture header
+   deriving from `Testing::RendererTest` and carrying the file's ~600 lines of helpers
+   (`countHits`, `renderRadiance`, `renderFiltered`, `inSceneOrder`, `encodeSrgb`/`decodeSrgb`,
+   `meanOf`/`contrastOf`, the wall and the water columns), plus one file per domain group
+   (camera+jitter+motion, surfaces+mips+panes, sun+moons+sky, water, fog, sprites+worldedge,
+   filter+exposure+history, framecost). The small standalone suites ride with their nearest
+   domain file. CMakeLists names the new files; test names do not change.
 5. **Split `sceneextractor.cpp` by its helper clusters** (materials, skinning, particles,
-   lights, retire) the same way, sharing what step 2 extracted.
+   lights, retire) the same way. It renders nothing, so what it shares is a scene-graph helper
+   header rather than a fixture.
 6. **Move suites to the files their production code names**: SkyBuilder tests out of
    `frameworld.cpp` into `skybuilder.cpp`; the three lamp suites out of `lightbuilder.cpp` if
    it is being touched anyway; `view.cpp`'s four suites likewise — lowest value, do last or

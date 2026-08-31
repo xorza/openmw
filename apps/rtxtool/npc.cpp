@@ -21,6 +21,7 @@
 #include <components/settings/values.hpp>
 
 #include "actor.hpp"
+#include "content.hpp"
 #include "world.hpp"
 
 namespace RtxTool
@@ -126,7 +127,7 @@ namespace RtxTool
         /// **The game's own refusal**: a bow with no arrows and a crossbow with no bolts stay in the
         /// pack, so an archer out of ammunition is somebody standing empty-handed rather than
         /// somebody miming.
-        bool hasAmmunitionFor(const World& world, const ESM::NPC& npc, int type)
+        bool hasAmmunitionFor(const Content& content, const ESM::NPC& npc, int type)
         {
             const int wanted = type == ESM::Weapon::MarksmanBow ? ESM::Weapon::Arrow
                 : type == ESM::Weapon::MarksmanCrossbow         ? ESM::Weapon::Bolt
@@ -135,7 +136,7 @@ namespace RtxTool
                 return true;
 
             for (const ESM::ContItem& carried : npc.mInventory.mList)
-                if (const ESM::Weapon* ammunition = world.findRecord<ESM::Weapon>(carried.mItem))
+                if (const ESM::Weapon* ammunition = content.findRecord<ESM::Weapon>(carried.mItem))
                     if (ammunition->mData.mType == wanted)
                         return true;
 
@@ -150,18 +151,18 @@ namespace RtxTool
         /// the damage comparison stands on its own — the same substitution `dress` makes for armour.
         /// It decides one armed person in nine: 1,513 of Morrowind's 3,041 NPC records carry a
         /// weapon and 169 of those carry two.
-        const ESM::Weapon* drawnWeapon(const World& world, const ESM::NPC& npc)
+        const ESM::Weapon* drawnWeapon(const Content& content, const ESM::NPC& npc)
         {
             const ESM::Weapon* best = nullptr;
             int hardest = -1;
 
             for (const ESM::ContItem& carried : npc.mInventory.mList)
             {
-                const ESM::Weapon* weapon = world.findRecord<ESM::Weapon>(carried.mItem);
+                const ESM::Weapon* weapon = content.findRecord<ESM::Weapon>(carried.mItem);
                 if (weapon == nullptr || isAmmunition(weapon->mData.mType) || weapon->mModel.empty())
                     continue;
 
-                if (!hasAmmunitionFor(world, npc, weapon->mData.mType))
+                if (!hasAmmunitionFor(content, npc, weapon->mData.mType))
                     continue;
 
                 if (const int blow = hardestBlow(*weapon); blow > hardest)
@@ -357,7 +358,7 @@ namespace RtxTool
         /// compares two pieces of armour of the same kind by a rating scaled by the wearer's skill in
         /// that armour's weight class; those are autocalculated stats the harness has no route to, so
         /// the record's own rating stands in. Where the two disagree somebody wears the other cuirass.
-        std::array<Garment, WornCount> dress(const World& world, const ESM::NPC& npc, bool beast)
+        std::array<Garment, WornCount> dress(const Content& content, const ESM::NPC& npc, bool beast)
         {
             std::array<Garment, WornCount> wearing{};
 
@@ -366,7 +367,7 @@ namespace RtxTool
                 std::optional<Wearing> where;
                 Garment garment;
 
-                if (const ESM::Clothing* clothes = world.findRecord<ESM::Clothing>(carried.mItem))
+                if (const ESM::Clothing* clothes = content.findRecord<ESM::Clothing>(carried.mItem))
                 {
                     where = wornAsClothing(clothes->mData.mType);
                     garment = Garment{ .mParts = &clothes->mParts,
@@ -374,7 +375,7 @@ namespace RtxTool
                         .mKind = clothes->mData.mType,
                         .mWorth = clothes->mData.mValue };
                 }
-                else if (const ESM::Armor* armour = world.findRecord<ESM::Armor>(carried.mItem))
+                else if (const ESM::Armor* armour = content.findRecord<ESM::Armor>(carried.mItem))
                 {
                     where = wornAsArmour(armour->mData.mType);
                     garment = Garment{ .mParts = &armour->mParts,
@@ -414,11 +415,11 @@ namespace RtxTool
         /// body is only partly authored, and a person missing a forearm because nobody drew a female
         /// one is a hole in the middle of them.
         const ESM::BodyPart* findSkin(
-            const World& world, const ESM::RefId& race, ESM::BodyPart::MeshPart want, bool female)
+            const Content& content, const ESM::RefId& race, ESM::BodyPart::MeshPart want, bool female)
         {
             const ESM::BodyPart* fallback = nullptr;
 
-            for (const ESM::BodyPart& part : world.getRecords<ESM::BodyPart>())
+            for (const ESM::BodyPart& part : content.getRecords<ESM::BodyPart>())
             {
                 if (!wearable(part) || part.mRace != race || part.mData.mPart != want)
                     continue;
@@ -438,9 +439,9 @@ namespace RtxTool
         /// **Asked of the body parts rather than of the race record**, which the harness does not
         /// load: the two beast races are exactly the two with a tail to skin, and deriving it from
         /// the content beats a list of two names that a content file could extend.
-        bool isBeast(const World& world, const ESM::RefId& race)
+        bool isBeast(const Content& content, const ESM::RefId& race)
         {
-            for (const ESM::BodyPart& part : world.getRecords<ESM::BodyPart>())
+            for (const ESM::BodyPart& part : content.getRecords<ESM::BodyPart>())
                 if (wearable(part) && part.mRace == race && part.mData.mPart == ESM::BodyPart::MP_Tail)
                     return true;
 
@@ -452,13 +453,13 @@ namespace RtxTool
         /// Read off the same settings the game reads, so a content file that replaces the base
         /// animation replaces it here too. One beast skeleton serves both sexes, which is Morrowind's
         /// own arrangement and not a simplification.
-        VFS::Path::Normalized skeletonFor(const World& world, bool female, bool beast)
+        VFS::Path::Normalized skeletonFor(const Content& content, bool female, bool beast)
         {
             const VFS::Path::Normalized& named = beast ? Settings::models().mBaseanimkna.get()
                 : female                               ? Settings::models().mBaseanimfemale.get()
                                                        : Settings::models().mBaseanim.get();
 
-            return Misc::ResourceHelpers::correctActorModelPath(named, world.getResourceSystem().getVFS());
+            return Misc::ResourceHelpers::correctActorModelPath(named, &content.getVfs());
         }
 
         /// Every part slot of one body, with what has claimed it and how firmly.
@@ -502,14 +503,14 @@ namespace RtxTool
         ///
         /// A garment lists a female and a male part per slot and may leave either out, so a woman in
         /// something only drawn for men wears the man's version rather than a hole.
-        VFS::Path::Normalized garmentPiece(const World& world, const ESM::PartReference& part, bool female)
+        VFS::Path::Normalized garmentPiece(const Content& content, const ESM::PartReference& part, bool female)
         {
             const ESM::BodyPart* found = nullptr;
             if (female && !part.mFemale.empty())
-                found = world.findRecord<ESM::BodyPart>(part.mFemale);
+                found = content.findRecord<ESM::BodyPart>(part.mFemale);
 
             if (found == nullptr && !part.mMale.empty())
-                found = world.findRecord<ESM::BodyPart>(part.mMale);
+                found = content.findRecord<ESM::BodyPart>(part.mMale);
 
             if (found == nullptr)
                 return VFS::Path::Normalized();
@@ -538,18 +539,19 @@ namespace RtxTool
         }
     }
 
-    const ESM::NPC* findNpc(const World& world, std::string_view id)
+    const ESM::NPC* findNpc(const Content& content, std::string_view id)
     {
-        return world.findRecord<ESM::NPC>(ESM::RefId::stringRefId(id));
+        return content.findRecord<ESM::NPC>(ESM::RefId::stringRefId(id));
     }
 
     ActorModel buildNpc(World& world, const ESM::NPC& npc, const bool dressed)
     {
+        const Content& content = world.getContent();
         const bool female = !npc.isMale();
-        const bool beast = isBeast(world, npc.mRace);
+        const bool beast = isBeast(content, npc.mRace);
 
         ActorModel built;
-        built.mSkeleton = skeletonFor(world, female, beast);
+        built.mSkeleton = skeletonFor(content, female, beast);
 
         // An instance rather than a template, because parts are about to be hung on this one's bones
         // and the template is shared with everyone else of this sex.
@@ -575,7 +577,7 @@ namespace RtxTool
         // to reach one keeps it — so a cuirass takes the chest the shirt would have had, and a robe
         // over both takes the lot.
         const std::array<Garment, WornCount> wearing
-            = dressed ? dress(world, npc, beast) : std::array<Garment, WornCount>{};
+            = dressed ? dress(content, npc, beast) : std::array<Garment, WornCount>{};
         Outfit outfit;
 
         for (int worn = 0; worn < WornCount; ++worn)
@@ -592,7 +594,7 @@ namespace RtxTool
                     continue;
 
                 outfit.claim(
-                    static_cast<ESM::PartReferenceType>(part.mPart), priority, garmentPiece(world, part, female));
+                    static_cast<ESM::PartReferenceType>(part.mPart), priority, garmentPiece(content, part, female));
             }
 
             if (worn == WornRobe)
@@ -604,17 +606,17 @@ namespace RtxTool
         }
 
         // Their own face, and their own hair unless a helmet took the skull.
-        if (const ESM::BodyPart* head = world.findRecord<ESM::BodyPart>(npc.mHead))
+        if (const ESM::BodyPart* head = content.findRecord<ESM::BodyPart>(npc.mHead))
             outfit.claim(ESM::PRT_Head, 1, Misc::ResourceHelpers::correctMeshPath(head->mModel.getNormalized()));
 
         if (outfit.getPriority(ESM::PRT_Head) <= 1)
-            if (const ESM::BodyPart* hair = world.findRecord<ESM::BodyPart>(npc.mHair))
+            if (const ESM::BodyPart* hair = content.findRecord<ESM::BodyPart>(npc.mHair))
                 outfit.claim(ESM::PRT_Hair, 1, Misc::ResourceHelpers::correctMeshPath(hair->mModel.getNormalized()));
 
         // And skin wherever nothing was put on, which under a full suit of armour is nowhere.
         for (const SkinSlot& slot : sSkin)
             if (outfit.bare(slot.mSlot))
-                if (const ESM::BodyPart* skin = findSkin(world, npc.mRace, slot.mPart, female))
+                if (const ESM::BodyPart* skin = findSkin(content, npc.mRace, slot.mPart, female))
                     outfit.claim(slot.mSlot, 1, Misc::ResourceHelpers::correctMeshPath(skin->mModel.getNormalized()));
 
         // **Held rather than worn, so it comes off the record and not off a part list.** A shield is
@@ -625,7 +627,7 @@ namespace RtxTool
         // **Drawn, which the game would not do.** Morrowind holsters an undrawn weapon out of sight
         // and only `showWeapons` puts it in a hand; a harness that hid it would be hiding the thing
         // it exists to look at. `--clothes=false` is what takes it off along with everything else.
-        const ESM::Weapon* weapon = dressed ? drawnWeapon(world, npc) : nullptr;
+        const ESM::Weapon* weapon = dressed ? drawnWeapon(content, npc) : nullptr;
         if (weapon != nullptr)
         {
             outfit.claim(ESM::PRT_Weapon, 1, Misc::ResourceHelpers::correctMeshPath(weapon->mModel.getNormalized()));

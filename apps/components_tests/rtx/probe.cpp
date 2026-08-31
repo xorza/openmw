@@ -182,6 +182,10 @@ namespace Rtx
                 }
         }
 
+        struct RtxProbeTest : Testing::DeviceTest
+        {
+        };
+
         /// A descriptor, a pointer, and a pointer out of a block table all read the same bytes.
         ///
         /// **The question that stopped the geometry blocking, asked of the device directly.** Moving
@@ -193,14 +197,9 @@ namespace Rtx
         /// video memory the host writes straight into, which is write-combining, and indices and
         /// texture coordinates in ordinary device-local memory staged through a copy. A pointer read
         /// that only misbehaves in one of them would look like a shader bug.
-        TEST(RtxProbeTest, aPointerAndADescriptorReadTheSameBytes)
+        TEST_F(RtxProbeTest, aPointerAndADescriptorReadTheSameBytes)
         {
-            std::string reason;
-            const Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             const ComputePipeline pipeline(device, sBindings, sizeof(Shaders::ProbeConstants), {},
                 Testing::getShaderDirectory() / "probe.comp.spv", "probe");
             CommandPool pool(device);

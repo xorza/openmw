@@ -22,6 +22,8 @@
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/vismask.hpp>
 
+#include "content.hpp"
+
 namespace RtxTool
 {
     namespace
@@ -74,7 +76,7 @@ namespace RtxTool
                 if (loaded.contains(spec))
                     continue;
 
-                if (const ESM::Cell* cell = world.findCell(spec))
+                if (const ESM::Cell* cell = world.getContent().findCell(spec))
                 {
                     loaded.emplace(std::move(spec), nullptr);
                     visit(*cell);
@@ -123,7 +125,7 @@ namespace RtxTool
             // **The ground goes with the references standing on it.** They arrive by two routes —
             // the cell's own group, and the one node `Terrain::TerrainGrid` accumulates into — so
             // taking the group off the root drops only half of what the cell brought.
-            if (const ESM::Cell* left = world.findCell(entry->first))
+            if (const ESM::Cell* left = world.getContent().findCell(entry->first))
                 world.unloadTerrain(left->getGridX(), left->getGridY());
 
             entry = loaded.erase(entry);
@@ -192,7 +194,8 @@ namespace RtxTool
             osg::ref_ptr<osg::Group> group = new osg::Group;
             group->setName(cell.mName.empty() ? "cell" : cell.mName);
 
-            const World::SkippedObjects skipped = world.forEachObject(cell, [&](const World::Object& object) {
+            const Content& content = world.getContent();
+            const Content::SkippedObjects skipped = content.forEachObject(cell, [&](const Content::Object& object) {
                 if (object.mPerson != nullptr)
                 {
                     report.mPeople.push_back(
@@ -203,7 +206,7 @@ namespace RtxTool
                 osg::ref_ptr<osg::MatrixTransform> where = new osg::MatrixTransform(osg::Matrixd(object.mTransform));
 
                 // **A light with no mesh has nothing to load and nothing to instance**, and goes
-                // straight to `addLight` below. `World::forEachObject` says why it arrives at all.
+                // straight to `addLight` below. `Content::forEachObject` says why it arrives at all.
                 if (!object.mModel.empty())
                 {
                     osg::ref_ptr<osg::Node> node;

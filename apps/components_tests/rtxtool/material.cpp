@@ -13,10 +13,7 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/program_options/variables_map.hpp>
-
 #include <components/esm3/loadcell.hpp>
-#include <components/files/configurationmanager.hpp>
 #include <components/sceneutil/texturetype.hpp>
 #include <components/surface/material.hpp>
 
@@ -24,6 +21,7 @@
 #include <components/terrain/terraindrawable.hpp>
 
 #include <apps/rtxtool/cellscene.hpp>
+#include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/world.hpp>
 
 #include "installation.hpp"
@@ -32,8 +30,6 @@ namespace RtxTool
 {
     namespace
     {
-        namespace bpo = boost::program_options;
-
         /// An exterior with a town in it and the densest interior the shipped content has: between
         /// them, foliage, water, terrain, architecture, clutter, lit rooms and actors.
         constexpr std::string_view sExterior = "-2,-9";
@@ -256,7 +252,7 @@ namespace RtxTool
 
         Audit auditCell(World& world, std::string_view name)
         {
-            const ESM::Cell* cell = world.findCell(std::string(name));
+            const ESM::Cell* cell = world.getContent().findCell(std::string(name));
             EXPECT_NE(cell, nullptr) << name;
 
             osg::ref_ptr<osg::Group> root = new osg::Group;
@@ -269,23 +265,21 @@ namespace RtxTool
             return audit;
         }
 
+        struct RtxSurfaceMaterialTest : InstallationTest
+        {
+        };
+
         /// Every surface the shipped content produces describes itself, and says the same thing the
         /// OpenGL state beside it says.
         ///
         /// **This is what makes deleting the other half safe.** While both are authored the two can
         /// be compared over real content; the day the OpenGL renderer builds its state sets *from*
         /// the description, this is the test that says nothing changed.
-        TEST(RtxSurfaceMaterialTest, everySurfaceInACellIsDescribedAndAgreesWithItsState)
+        TEST_F(RtxSurfaceMaterialTest, everySurfaceInACellIsDescribedAndAgreesWithItsState)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
             for (const std::string_view name : { sExterior, sInterior })
             {
-                const Audit audit = auditCell(*world, name);
+                const Audit audit = auditCell(getWorld(), name);
 
                 EXPECT_GT(audit.mSurfaces, 100u) << name << " should be full of things";
                 EXPECT_EQ(audit.mUndescribed, 0u) << name << ": " << audit.mFirstComplaint;

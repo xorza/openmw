@@ -103,7 +103,7 @@ namespace RtxTool
 
         for (const std::string& id : request.mPeople)
         {
-            const ESM::NPC* who = findNpc(mWorld, id);
+            const ESM::NPC* who = findNpc(mWorld.getContent(), id);
             if (who == nullptr)
             {
                 Log(Debug::Warning) << "No such person as " << id;

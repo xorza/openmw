@@ -311,7 +311,7 @@ namespace RtxTool
         int runShot(
             World& world, const std::string& cellSpec, const Rtx::ValidationOptions& validation, ShotRequest request)
         {
-            const ESM::Cell* cell = findCellOrComplain(world, cellSpec);
+            const ESM::Cell* cell = findCellOrComplain(world.getContent(), cellSpec);
             if (cell == nullptr)
                 return 1;
 
@@ -346,7 +346,7 @@ namespace RtxTool
         int runView(
             World& world, const std::string& cellSpec, const Rtx::ValidationOptions& validation, ViewRequest request)
         {
-            const ESM::Cell* cell = findCellOrComplain(world, cellSpec);
+            const ESM::Cell* cell = findCellOrComplain(world.getContent(), cellSpec);
             if (cell == nullptr)
                 return 1;
 
@@ -520,10 +520,11 @@ namespace RtxTool
             const bpo::variables_map& variables = command.mVariables;
             const Chosen chosen = chooseView(variables, command.mResources);
 
-            World world(command.mConfig, variables, command.mResources);
+            const Content content(command.mConfig, variables, command.mResources);
+            World world(content);
             pageTerrainFrom(world, variables);
 
-            const ESM::Cell* cell = findCellOrComplain(world, chosen.mCell);
+            const ESM::Cell* cell = findCellOrComplain(content, chosen.mCell);
             if (cell == nullptr)
                 return 1;
 
@@ -553,9 +554,10 @@ namespace RtxTool
             const PictureRequest request
                 = pictureFrom(variables, command.mResources, SceneUtil::sInventoryWidth, SceneUtil::sInventoryHeight);
 
-            World world(command.mConfig, variables, command.mResources);
+            const Content content(command.mConfig, variables, command.mResources);
+            World world(content);
 
-            const ESM::NPC* npc = findNpc(world, people.front());
+            const ESM::NPC* npc = findNpc(content, people.front());
             if (npc == nullptr)
             {
                 out() << "no NPC record is called \"" << people.front() << "\".\n";
@@ -571,10 +573,11 @@ namespace RtxTool
             const Chosen chosen = chooseView(variables, command.mResources);
             const PictureRequest request = pictureFrom(variables, command.mResources, 1024, 1024);
 
-            World world(command.mConfig, variables, command.mResources);
+            const Content content(command.mConfig, variables, command.mResources);
+            World world(content);
             pageTerrainFrom(world, variables);
 
-            const ESM::Cell* cell = findCellOrComplain(world, chosen.mCell);
+            const ESM::Cell* cell = findCellOrComplain(content, chosen.mCell);
             if (cell == nullptr)
                 return 1;
 
@@ -588,16 +591,17 @@ namespace RtxTool
             const bpo::variables_map& variables = command.mVariables;
             const Chosen chosen = chooseView(variables, command.mResources);
 
-            World world(command.mConfig, variables, command.mResources);
+            const Content content(command.mConfig, variables, command.mResources);
+            World world(content);
             pageTerrainFrom(world, variables);
 
-            const ESM::Cell* cell = findCellOrComplain(world, chosen.mCell);
+            const ESM::Cell* cell = findCellOrComplain(content, chosen.mCell);
             if (cell == nullptr)
                 return 1;
 
             const std::string needle = variables["find"].as<std::string>();
             if (!needle.empty())
-                return runFind(world, *cell, needle);
+                return runFind(content, *cell, needle);
 
             const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
 
@@ -618,7 +622,8 @@ namespace RtxTool
 
             const Rtx::ValidationOptions validation = validationForMeasuring(variables, false);
 
-            World world(command.mConfig, variables, command.mResources);
+            const Content content(command.mConfig, variables, command.mResources);
+            World world(content);
             pageTerrainFrom(world, variables);
 
             return runVerify(world, validation, request);
@@ -645,7 +650,8 @@ namespace RtxTool
 
             const Rtx::ValidationOptions validation = validationForMeasuring(variables, request.mWindow);
 
-            World world(command.mConfig, variables, command.mResources);
+            const Content content(command.mConfig, variables, command.mResources);
+            World world(content);
             pageTerrainFrom(world, variables);
 
             return runBench(world, validation, request);
@@ -664,7 +670,8 @@ namespace RtxTool
             const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
             const Rtx::ValidationOptions validation = validationFrom(variables, windowed);
 
-            World world(command.mConfig, variables, command.mResources);
+            const Content content(command.mConfig, variables, command.mResources);
+            World world(content);
             pageTerrainFrom(world, variables);
 
             if (windowed)

@@ -67,15 +67,14 @@ namespace Rtx
         /// **One test rather than five, because NGX is global to the process and keyed by device.**
         /// Two of these alive at once is not something the SDK promises to survive, and the five
         /// questions share the one expensive setup.
-        TEST(RtxDlssTest, rayReconstructionBuildsAndResolvesAFlatFrame)
+        struct RtxDlssTest : Testing::DeviceTest
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
+        };
 
-            const Device& device = *harness->mDevice;
-            const Dlss ngx(device, harness->mInstance->getHandle());
+        TEST_F(RtxDlssTest, rayReconstructionBuildsAndResolvesAFlatFrame)
+        {
+            const Device& device = getDevice();
+            const Dlss ngx(device, mHarness->mInstance->getHandle());
             if (!ngx.isAvailable())
                 GTEST_SKIP() << ngx.getObstacle();
 
@@ -83,10 +82,10 @@ namespace Rtx
             // keeps one runtime per process and its shutdown is unconditional, so the second to be
             // destroyed would leave the first holding a feature that answers `FAIL_NotInitialized`
             // — which nothing else here would notice.
-            EXPECT_THROW(Dlss(device, harness->mInstance->getHandle()), Error);
+            EXPECT_THROW(Dlss(device, mHarness->mInstance->getHandle()), Error);
 
             // And asking the capability question does not disturb it, which is what `probe` is for.
-            EXPECT_TRUE(Dlss::probe(device, harness->mInstance->getHandle()).mAvailable);
+            EXPECT_TRUE(Dlss::probe(device, mHarness->mInstance->getHandle()).mAvailable);
 
             // **The frame budget's own numbers, asked of DLSS rather than assumed.** `plan.md` §5.3
             // settles on 1920×1080 internal to 3840×2160, and Performance is the mode that ratio
@@ -166,7 +165,7 @@ namespace Rtx
             fill(pool, *bias, { 0.0f, 0.0f, 0.0f, 0.0f });
             fill(pool, *output, { 0.0f, 0.0f, 0.0f, 0.0f });
 
-            harness->mInstance->getValidationLog()->clear();
+            mHarness->mInstance->getValidationLog()->clear();
 
             pool.submitAndWait([&](VkCommandBuffer commands) {
                 pass->record(commands,
@@ -217,7 +216,7 @@ namespace Rtx
             // **DLSS records its own commands into that buffer**, and success says only that NGX
             // liked the parameter map — not that what it recorded was valid. The layers are what
             // have an opinion about the resources it then touched.
-            for (const ValidationMessage& message : harness->mInstance->getValidationLog()->getErrorsOnThisThread())
+            for (const ValidationMessage& message : mHarness->mInstance->getValidationLog()->getErrorsOnThisThread())
                 ADD_FAILURE() << "validation error from the evaluation: " << message.mText;
 
             // Released here rather than at the end of the scope, so a failure to release is this
@@ -247,7 +246,7 @@ namespace Rtx
         /// one. It is a weak claim about sharpness and a strong one about everything that goes wrong
         /// here, since a frame that lost an input, read the wrong image, or skipped the curve is not
         /// off by five per cent but by all of it.
-        TEST(RtxDlssTest, anUpscaledFrameIsTheSameFrameLarger)
+        TEST_F(RtxDlssTest, anUpscaledFrameIsTheSameFrameLarger)
         {
             std::string reason;
             Renderer* plain = Testing::getRenderer(reason);

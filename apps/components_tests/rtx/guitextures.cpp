@@ -45,20 +45,16 @@ namespace Rtx
         /// **No scene, and that is the point.** A main menu and a loading screen are drawn over a
         /// frame nothing traced, so everything here has to work before `setScene` has been called
         /// even once.
-        class RtxGuiDrawTest : public ::testing::Test
+        class RtxGuiDrawTest : public Testing::RendererTest
         {
         protected:
             void SetUp() override
             {
-                std::string reason;
-                mRenderer = Testing::getRenderer(reason);
+                Testing::RendererTest::SetUp();
                 if (mRenderer == nullptr)
-                    GTEST_SKIP() << reason;
+                    return;
 
                 mRenderer->resize(sExtent, sExtent);
-
-                std::vector<std::string> stale;
-                mRenderer->takeValidationErrors(stale);
             }
 
             void TearDown() override
@@ -70,10 +66,7 @@ namespace Rtx
                     mRenderer->dropGuiTexture(texture);
                 mHeld.clear();
 
-                std::vector<std::string> errors;
-                mRenderer->takeValidationErrors(errors);
-                for (const std::string& error : errors)
-                    ADD_FAILURE() << "validation error: " << error;
+                Testing::RendererTest::TearDown();
             }
 
             /// A one-texel texture of this colour, dropped when the test ends.
@@ -113,7 +106,6 @@ namespace Rtx
                 return { mPixels[offset], mPixels[offset + 1], mPixels[offset + 2], mPixels[offset + 3] };
             }
 
-            Renderer* mRenderer = nullptr;
             std::vector<std::uint32_t> mHeld;
             std::vector<std::uint8_t> mPixels;
         };

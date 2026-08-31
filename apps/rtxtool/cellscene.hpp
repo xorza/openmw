@@ -15,6 +15,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 
+#include "content.hpp"
 #include "lighting.hpp"
 #include "world.hpp"
 
@@ -85,7 +86,7 @@ namespace RtxTool
     /// What reading a cell produced besides the graph itself.
     struct CellReport
     {
-        World::SkippedObjects mSkipped;
+        Content::SkippedObjects mSkipped;
 
         /// References whose model is named but will not load. Logged individually as they fail.
         std::uint32_t mUnreadable = 0;
@@ -143,7 +144,7 @@ namespace RtxTool
     /// The exterior cell a point stands in, as `--cell` spells it.
     ///
     /// A point outside every cell the content files define still has a square: what it does not have
-    /// is a cell record there, which is what `World::findCell` says by answering nothing.
+    /// is a cell record there, which is what `Content::findCell` says by answering nothing.
     std::string cellAt(const CellSquare& square);
 
     /// What loading a region left for its caller to place.

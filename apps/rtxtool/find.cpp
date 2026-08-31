@@ -8,16 +8,16 @@
 
 #include <components/debug/debugging.hpp>
 
-#include "world.hpp"
+#include "content.hpp"
 
 namespace RtxTool
 {
-    int runFind(World& world, const ESM::Cell& cell, std::string_view needle)
+    int runFind(const Content& content, const ESM::Cell& cell, std::string_view needle)
     {
         std::ostream& out = Debug::getRawStdout();
 
         std::uint32_t found = 0;
-        world.forEachObject(cell, [&](const World::Object& object) {
+        content.forEachObject(cell, [&](const Content::Object& object) {
             if (object.mModel.value().find(needle) == std::string::npos)
                 return;
 

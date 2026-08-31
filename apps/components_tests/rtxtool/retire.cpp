@@ -9,10 +9,7 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/program_options/variables_map.hpp>
-
 #include <components/esm3/loadcell.hpp>
-#include <components/files/configurationmanager.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -20,6 +17,7 @@
 #include <components/rtx/texturebuilder.hpp>
 
 #include <apps/rtxtool/cellscene.hpp>
+#include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/lighting.hpp>
 #include <apps/rtxtool/placement.hpp>
 #include <apps/rtxtool/world.hpp>
@@ -31,8 +29,6 @@ namespace RtxTool
 {
     namespace
     {
-        namespace bpo = boost::program_options;
-
         /// Two interiors far enough apart in the content to share little and near enough in kind to
         /// share something: both are Imperial buildings in the same town, so the same barrels,
         /// tables and lamps stand in each.
@@ -120,6 +116,10 @@ namespace RtxTool
             return prints;
         }
 
+        struct RtxRetireTest : InstallationTest
+        {
+        };
+
         /// A cell the walk stopped finding leaves the scene, and what the next cell shares with it
         /// stays exactly where it was.
         ///
@@ -129,16 +129,10 @@ namespace RtxTool
         /// one room's geometry while the shared models — met again in the second walk, through the
         /// very pointers the resource cache handed out for the first — carry through the compaction
         /// and go on resolving.
-        TEST(RtxRetireTest, aCellTheWalkStoppedFindingLeavesAndWhatIsSharedStays)
+        TEST_F(RtxRetireTest, aCellTheWalkStoppedFindingLeavesAndWhatIsSharedStays)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* first = world->findCell(std::string(sFirst));
-            const ESM::Cell* second = world->findCell(std::string(sSecond));
+            const ESM::Cell* first = getContent().findCell(std::string(sFirst));
+            const ESM::Cell* second = getContent().findCell(std::string(sSecond));
             ASSERT_NE(first, nullptr);
             ASSERT_NE(second, nullptr);
 
@@ -146,7 +140,7 @@ namespace RtxTool
             Rtx::SceneDesc scene;
             Rtx::SceneExtractor extractor(scene);
 
-            const Rtx::ExtractionStats one = readCell(*world, *first, scene, kept, extractor);
+            const Rtx::ExtractionStats one = readCell(getWorld(), *first, scene, kept, extractor);
             ASSERT_GT(one.mMeshesAdded, 0u);
 
             const std::size_t held = scene.getMeshes().size();
@@ -160,7 +154,7 @@ namespace RtxTool
             // The second room, and only the second room. The first is still in the resource cache,
             // so its drawables are alive and would be recognised if anything walked them.
             scene.clearPlacement();
-            const Rtx::ExtractionStats two = readCell(*world, *second, scene, kept, extractor);
+            const Rtx::ExtractionStats two = readCell(getWorld(), *second, scene, kept, extractor);
 
             ASSERT_GT(two.mMeshesReused, 0u) << "two Imperial interiors that share no model at all";
             ASSERT_GT(two.mMeshesAdded, 0u);
@@ -233,7 +227,7 @@ namespace RtxTool
             Rtx::SceneDesc alone;
             {
                 Rtx::SceneExtractor fresh(alone);
-                readCell(*world, *second, alone, kept, fresh);
+                readCell(getWorld(), *second, alone, kept, fresh);
             }
 
             EXPECT_EQ(meshFingerprints(scene), meshFingerprints(alone));
@@ -241,7 +235,7 @@ namespace RtxTool
             // And the survivors go on resolving through the identity map: a third walk of the same
             // room adds nothing at all, because nothing moved under it.
             scene.clearPlacement();
-            const Rtx::ExtractionStats again = readCell(*world, *second, scene, kept, extractor);
+            const Rtx::ExtractionStats again = readCell(getWorld(), *second, scene, kept, extractor);
 
             EXPECT_EQ(again.mMeshesAdded, 0u) << "a survivor was not recognised after the sweep";
             EXPECT_EQ(again.mMaterialsAdded, 0u);
@@ -253,7 +247,7 @@ namespace RtxTool
             // of every room ever entered.
             extractor.retire();
             scene.clearPlacement();
-            readCell(*world, *first, scene, kept, extractor);
+            readCell(getWorld(), *first, scene, kept, extractor);
 
             // A percent of slack, and it is external fragmentation rather than a leak: best fit
             // puts a run in the smallest hole that holds it and leaves the remainder, and a
@@ -275,19 +269,13 @@ namespace RtxTool
         /// The two scenes name their meshes and their textures in different orders — one is what a
         /// compaction left and the other what a walk produced — so a picture that matches is the
         /// indices agreeing all the way through the build and not the tables happening to be equal.
-        TEST(RtxRetireTest, aCompactedSceneRendersAsOneThatNeverLostAnything)
+        TEST_F(RtxRetireTest, aCompactedSceneRendersAsOneThatNeverLostAnything)
         {
             if (const std::string obstacle = Rtx::Testing::findInstanceObstacle(); !obstacle.empty())
                 GTEST_SKIP() << obstacle;
 
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* first = world->findCell(std::string(sFirst));
-            const ESM::Cell* second = world->findCell(std::string(sSecond));
+            const ESM::Cell* first = getContent().findCell(std::string(sFirst));
+            const ESM::Cell* second = getContent().findCell(std::string(sSecond));
             ASSERT_NE(first, nullptr);
             ASSERT_NE(second, nullptr);
 
@@ -297,7 +285,7 @@ namespace RtxTool
             std::vector<osg::ref_ptr<osg::Group>> kept;
             Rtx::SceneDesc scene;
             Rtx::SceneExtractor extractor(scene);
-            loadAndMirror(*world, *first, kept, scene, extractor);
+            loadAndMirror(getWorld(), *first, kept, scene, extractor);
 
             ASSERT_TRUE(extractor.retire().empty());
 
@@ -305,7 +293,7 @@ namespace RtxTool
             for (int pass = 0; pass < 2; ++pass)
             {
                 scene.clearPlacement();
-                room = loadAndMirror(*world, *second, kept, scene, extractor);
+                room = loadAndMirror(getWorld(), *second, kept, scene, extractor);
 
                 if (pass == 0)
                 {
@@ -352,7 +340,7 @@ namespace RtxTool
             const Placement placement = placeCamera(alone.getBounds(), 60.0f, std::nullopt, std::nullopt);
 
             const auto draw = [&](const Rtx::SceneDesc& drawn, std::vector<std::uint8_t>& out) {
-                const Rtx::SceneTextures described(drawn, world->getImageManager());
+                const Rtx::SceneTextures described(drawn, getWorld().getImageManager());
                 renderer->setScene(Rtx::sWorld, drawn, described.getDescriptions(), Rtx::SeaState{});
 
                 Rtx::Shaders::VisibilityConstants camera = Rtx::makeCamera(placement.mOrigin, placement.mTarget, 60.0f,

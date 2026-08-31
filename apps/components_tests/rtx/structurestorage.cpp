@@ -20,19 +20,18 @@ namespace Rtx
         /// leave holes in.
         constexpr VkDeviceSize sBlock = 16 * sAlignment;
 
+        struct RtxStructureStorageTest : Testing::DeviceTest
+        {
+        };
+
         /// Room is handed out in order, given back where it was, and taken up again by what fits.
         ///
         /// **Hand-computed throughout.** A structure of 1,024 bytes is four units and a structure of
         /// 2,048 is eight, so the three below fill a sixteen-unit block exactly — and the fourth has
         /// nowhere to go but a block of its own.
-        TEST(RtxStructureStorageTest, roomGivenBackIsWhereTheNextStructureThatFitsGoes)
+        TEST_F(RtxStructureStorageTest, roomGivenBackIsWhereTheNextStructureThatFitsGoes)
         {
-            std::string reason;
-            const Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             StructureStorage storage(
                 VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                 "test structures");
@@ -73,14 +72,9 @@ namespace Rtx
         /// **A load knows its whole total and asks for it; an arrival does not.** So the size named
         /// is a floor rather than a ceiling, and a single mesh whose structure is larger than that
         /// floor cannot be refused for it.
-        TEST(RtxStructureStorageTest, aStructureLargerThanTheBlockAskedForGetsOneThatHoldsIt)
+        TEST_F(RtxStructureStorageTest, aStructureLargerThanTheBlockAskedForGetsOneThatHoldsIt)
         {
-            std::string reason;
-            const Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             StructureStorage storage(
                 VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                 "test structures");

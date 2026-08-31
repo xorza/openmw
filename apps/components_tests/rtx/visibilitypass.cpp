@@ -500,31 +500,9 @@ namespace Rtx
             return std::min(2.0f * std::sqrt(unresolved), 1.0f);
         }
 
-        class RtxVisibilityTest : public ::testing::Test
+        class RtxVisibilityTest : public Testing::RendererTest
         {
         protected:
-            void SetUp() override
-            {
-                std::string reason;
-                mRenderer = Testing::getRenderer(reason);
-                if (mRenderer == nullptr)
-                    GTEST_SKIP() << reason;
-
-                // Draining is how the slate is cleared: whatever a previous test left behind is not
-                // this one's to report.
-                mRenderer->takeValidationErrors(mErrors);
-            }
-
-            void TearDown() override
-            {
-                if (mRenderer == nullptr)
-                    return;
-
-                mRenderer->takeValidationErrors(mErrors);
-                for (const std::string& error : mErrors)
-                    ADD_FAILURE() << "validation error: " << error;
-            }
-
             /// Renders `scene` at `size` square and returns how many primary rays hit.
             /// @param sea what the water is doing. A state with no height in it is a flat sea, which
             ///        is what a test asserting an exact transmittance through one needs.
@@ -768,10 +746,8 @@ namespace Rtx
                 return mNumbered;
             }
 
-            Renderer* mRenderer = nullptr;
             std::vector<float> mRadiance;
             std::vector<TextureData> mNumbered;
-            std::vector<std::string> mErrors;
         };
 
         /// Halton, against its own definition worked out by hand.
@@ -829,15 +805,14 @@ namespace Rtx
         /// The fix is that the owner opens every table when it is built rather than when something
         /// writes to one, because the write is exactly what does not happen. This is the assertion
         /// that says so, and it is the one that would have caught it.
-        TEST(RtxSceneTableTest, aSceneWithNothingInItStillBindsATableForEverythingDeclared)
+        struct RtxSceneTableTest : Testing::DeviceTest
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
+        };
 
-            Device& device = *harness->mDevice;
-            CommandPool pool(device);
+        TEST_F(RtxSceneTableTest, aSceneWithNothingInItStillBindsATableForEverythingDeclared)
+        {
+            Device& device = getDevice();
+            CommandPool& pool = getPool();
 
             const SceneDesc empty;
             Batch setup(pool);

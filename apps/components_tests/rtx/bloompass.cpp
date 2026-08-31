@@ -100,20 +100,19 @@ namespace Rtx
             }
         };
 
+        struct RtxBloomPassTest : Testing::DeviceTest
+        {
+        };
+
         /// A frame with nothing to spread comes out of the pyramid as it went in.
         ///
         /// **Both kernels are partitions of one**, so a flat frame halved is the same flat frame at
         /// every level, and mixing a value with itself at any weight is that value. A weight table
         /// that summed to anything else, a mix taken the wrong way round, or a level read before the
         /// dispatch that filled it had finished, all move this.
-        TEST(RtxBloomPassTest, aFlatFrameComesBackFlat)
+        TEST_F(RtxBloomPassTest, aFlatFrameComesBackFlat)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
 
             Bloomed run(device, sWidth, sHeight);
             EXPECT_EQ(run.mBloom.getLevelCount(), Shaders::BLOOM_LEVELS) << "a frame with room for every halving";
@@ -146,14 +145,9 @@ namespace Rtx
         /// brightest thing that went in, the square's own texels have to come out dimmer than the
         /// square was, and a texel that was black has to come out lit. Between those the glow must
         /// fall away, which is the whole of what six halvings and five tents are for.
-        TEST(RtxBloomPassTest, oneBrightSquareSpreadsAndFallsAwayWithDistance)
+        TEST_F(RtxBloomPassTest, oneBrightSquareSpreadsAndFallsAwayWithDistance)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
 
             constexpr float sBright = 8.0f;
             constexpr std::uint32_t sBlock = 16;
@@ -203,14 +197,9 @@ namespace Rtx
         /// The levels are counted down from `BLOOM_LEVELS` and stop at `BLOOM_NARROWEST`, so a
         /// thumbnail gets a narrower pyramid and something smaller than one texel of it gets none —
         /// which the display pass reads as no lens rather than as a sampled stand-in.
-        TEST(RtxBloomPassTest, aFrameTooSmallToHalveGetsNoPyramid)
+        TEST_F(RtxBloomPassTest, aFrameTooSmallToHalveGetsNoPyramid)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
 
             // 40 by 32 halves to 20, 10 and 5 across, and to 16, 8 and 4 down — three levels, where
             // the fourth would be 2 high.

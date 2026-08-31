@@ -19,15 +19,14 @@ namespace Rtx
 {
     namespace
     {
-        class RtxDeviceTest : public ::testing::Test
+        class RtxDeviceTest : public Testing::DeviceTest
         {
         protected:
             void SetUp() override
             {
-                std::string reason;
-                mHarness = Testing::getHarness(reason);
+                Testing::DeviceTest::SetUp();
                 if (mHarness == nullptr)
-                    GTEST_SKIP() << reason;
+                    return;
 
                 mHarness->mInstance->getValidationLog()->clear();
             }
@@ -41,8 +40,6 @@ namespace Rtx
                     mHarness->mInstance->getValidationLog()->getErrorsOnThisThread())
                     ADD_FAILURE() << "validation error: " << message.mText;
             }
-
-            Testing::Harness* mHarness = nullptr;
         };
 
         /// Object names are what make a capture readable, and a capture is most wanted on a run that

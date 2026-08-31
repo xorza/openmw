@@ -16,6 +16,7 @@
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/wavespectrum.hpp>
 
+#include "content.hpp"
 #include "framing.hpp"
 #include "stagedworld.hpp"
 #include "world.hpp"
@@ -115,7 +116,7 @@ namespace RtxTool
 
         for (const View& view : request.mViews)
         {
-            const ESM::Cell* cell = world.findCell(view.mCell);
+            const ESM::Cell* cell = world.getContent().findCell(view.mCell);
             if (cell == nullptr)
             {
                 out() << std::format("  {:<28} no cell called \"{}\"\n", view.mName, view.mCell);

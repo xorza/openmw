@@ -28,6 +28,10 @@ namespace Rtx
             pool.submitAndWait([&](VkCommandBuffer commands) { waves.record(commands, seconds); });
         }
 
+        struct RtxWavePassTest : Testing::DeviceTest
+        {
+        };
+
         /// The last level of every chain is the sea state itself.
         ///
         /// **What the shader reads off it, and the whole reason the moments ride in a fourth
@@ -35,14 +39,9 @@ namespace Rtx
         /// surface's variance, `E[|s|^2]` off the curvature is its mean square slope, and the
         /// variance texture's own last level is how far the curvature's trace fluctuates. All three
         /// are sums over the amplitudes that a transform and nine halvings must not have moved.
-        TEST(RtxWavePassTest, theLastLevelOfEachChainIsTheSeaStateItself)
+        TEST_F(RtxWavePassTest, theLastLevelOfEachChainIsTheSeaStateItself)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             CommandPool pool(device);
             const WavePass waves(device, pool, Testing::getShaderDirectory());
 
@@ -109,14 +108,9 @@ namespace Rtx
         /// average of what it covers. A blit with a linear filter is exactly that, and this is what
         /// says so — a driver that took the nearest texel instead would leave the variance at zero
         /// and every distant sea polished.
-        TEST(RtxWavePassTest, aLevelOfTheChainIsTheMeanOfWhatItCovers)
+        TEST_F(RtxWavePassTest, aLevelOfTheChainIsTheMeanOfWhatItCovers)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             CommandPool pool(device);
             const WavePass waves(device, pool, Testing::getShaderDirectory());
 
@@ -195,14 +189,9 @@ namespace Rtx
         ///
         /// Integer levels, because a fraction of one is a blend of two of them and the shader's own
         /// blend of two shares stands in for that.
-        TEST(RtxWavePassTest, theResolvedCurvatureTableIsWhatASamplerFinds)
+        TEST_F(RtxWavePassTest, theResolvedCurvatureTableIsWhatASamplerFinds)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             CommandPool pool(device);
             const WavePass waves(device, pool, Testing::getShaderDirectory());
 
@@ -260,14 +249,9 @@ namespace Rtx
         /// turns at its own `omega`, so a second later the surface is a different surface and not the
         /// same one shifted — which is what a correlation well under one says and what a rigid
         /// translation could not.
-        TEST(RtxWavePassTest, theSurfaceAtAnotherMomentIsAnotherSurface)
+        TEST_F(RtxWavePassTest, theSurfaceAtAnotherMomentIsAnotherSurface)
         {
-            std::string reason;
-            Testing::Harness* harness = Testing::getHarness(reason);
-            if (harness == nullptr)
-                GTEST_SKIP() << reason;
-
-            const Device& device = *harness->mDevice;
+            const Device& device = getDevice();
             CommandPool pool(device);
             const WavePass waves(device, pool, Testing::getShaderDirectory());
 

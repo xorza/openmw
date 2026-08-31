@@ -42,15 +42,14 @@ namespace Rtx
         /// next frame while the device draws this one, so the tables a frame traces have to be the
         /// ones it was placed with and not the ones the placement after overwrote — which is why
         /// every test here places and draws several frames before it asks about any of them.
-        class RtxFramesTest : public ::testing::Test
+        class RtxFramesTest : public Testing::RendererTest
         {
         protected:
             void SetUp() override
             {
-                std::string reason;
-                mRenderer = Testing::getRenderer(reason);
+                Testing::RendererTest::SetUp();
                 if (mRenderer == nullptr)
-                    GTEST_SKIP() << reason;
+                    return;
 
                 mRenderer->resize(sSize, sSize);
                 mWall = mScene.addMesh(wallAt(200.0f), {}, {}, sQuadIndices);
@@ -82,7 +81,6 @@ namespace Rtx
                 return result.has_value() ? result->mHits : ~0u;
             }
 
-            Renderer* mRenderer = nullptr;
             SceneDesc mScene;
             Index mWall = 0;
             Index mInstance = 0;

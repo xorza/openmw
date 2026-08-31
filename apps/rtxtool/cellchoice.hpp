@@ -9,13 +9,13 @@ namespace ESM
 
 namespace RtxTool
 {
-    class World;
+    class Content;
 
     /// The cell a command was pointed at, or null with the complaint already printed.
     ///
     /// **Every command starts here**, which is why it is not any one of their business: the
     /// complaint has to read the same whichever of them could not find the cell.
-    const ESM::Cell* findCellOrComplain(World& world, const std::string& cellSpec);
+    const ESM::Cell* findCellOrComplain(const Content& content, const std::string& cellSpec);
 
     /// Which cell a report is about, and the two things about it nothing else says.
     ///

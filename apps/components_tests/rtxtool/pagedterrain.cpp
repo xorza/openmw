@@ -15,10 +15,7 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/program_options/variables_map.hpp>
-
 #include <components/esm3/loadcell.hpp>
-#include <components/files/configurationmanager.hpp>
 #include <components/misc/constants.hpp>
 #include <components/rtx/compositequeue.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -28,6 +25,7 @@
 #include <components/rtx/texturebuilder.hpp>
 
 #include <apps/rtxtool/cellscene.hpp>
+#include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/world.hpp>
 
 #include "installation.hpp"
@@ -36,8 +34,6 @@ namespace RtxTool
 {
     namespace
     {
-        namespace bpo = boost::program_options;
-
         /// An exterior with a lot of open ground in it, so the chunks are most of what is placed.
         constexpr std::string_view sOutdoors = "-2,-9";
 
@@ -182,6 +178,10 @@ namespace RtxTool
             return tally;
         }
 
+        struct RtxPagedTerrainTest : InstallationTest
+        {
+        };
+
         /// The ground a camera leaves gets its statics back.
         ///
         /// **The active grid follows the camera, and it used to only ever widen.** `readRegion`
@@ -195,25 +195,18 @@ namespace RtxTool
         /// Two placements of one cell, differing in nothing but what came before: a fresh one, and
         /// one that went two cells east and came back. The statics standing past the grid have to
         /// come to the same count, because it is the same world seen from the same place.
-        TEST(RtxPagedTerrainTest, theGroundACameraLeavesGetsItsStaticsBack)
+        TEST_F(RtxPagedTerrainTest, theGroundACameraLeavesGetsItsStaticsBack)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* home = world->findCell(std::string(sBuiltUp));
+            const ESM::Cell* home = getContent().findCell(std::string(sBuiltUp));
             ASSERT_NE(home, nullptr);
 
             // Two cells east, so the square the camera leaves behind is clear of the one it comes
             // back to — a neighbour would share a column with home and hide half the answer.
-            const ESM::Cell* away = world->findCell("-1,-2");
+            const ESM::Cell* away = getContent().findCell("-1,-2");
             ASSERT_NE(away, nullptr);
 
-            world->pageTerrain(true);
-            world->setTerrainViewDistance(2.0f * sCellSize);
+            getWorld().pageTerrain(true);
+            getWorld().setTerrainViewDistance(2.0f * sCellSize);
 
             /// Walks `route`, staging each stop the way a moving camera does, and leaves the scene
             /// holding what the last stop placed.
@@ -224,12 +217,12 @@ namespace RtxTool
 
                 for (const ESM::Cell* stop : route)
                 {
-                    readRegion(*world, *stop, *root, loaded, /*liveProps=*/false);
-                    dropCellsOutside(*world, *stop, *root, loaded);
+                    readRegion(getWorld(), *stop, *root, loaded, /*liveProps=*/false);
+                    dropCellsOutside(getWorld(), *stop, *root, loaded);
 
                     // Only after the first stop is there a paged world to follow.
-                    extractor.follow(world->getTerrainResidency());
-                    world->setTerrainViewPoint(
+                    extractor.follow(getWorld().getTerrainResidency());
+                    getWorld().setTerrainViewPoint(
                         osg::Vec3f(stop->getGridX() * sCellSize, stop->getGridY() * sCellSize, 0.0f));
 
                     scene.clearPlacement();
@@ -267,25 +260,19 @@ namespace RtxTool
         /// **Two runs of one cell, differing in nothing but whether the residency is handed over.**
         /// A count that went up for any other reason would show up as the control placing the same
         /// number, which is what the second assertion is for.
-        TEST(RtxPagedTerrainTest, aPagedWorldsGroundReachesTheMirrorAndOnlyBecauseItWasAskedFor)
+        TEST_F(RtxPagedTerrainTest, aPagedWorldsGroundReachesTheMirrorAndOnlyBecauseItWasAskedFor)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* cell = world->findCell(std::string(sOutdoors));
+            const ESM::Cell* cell = getContent().findCell(std::string(sOutdoors));
             ASSERT_NE(cell, nullptr);
 
-            world->pageTerrain(true);
+            getWorld().pageTerrain(true);
 
             Rtx::SceneDesc asked;
-            placeOutdoors(*world, *cell, asked, true);
-            ASSERT_NE(world->getTerrainResidency(), nullptr) << "the run did not page its terrain";
+            placeOutdoors(getWorld(), *cell, asked, true);
+            ASSERT_NE(getWorld().getTerrainResidency(), nullptr) << "the run did not page its terrain";
 
             Rtx::SceneDesc unasked;
-            placeOutdoors(*world, *cell, unasked, false);
+            placeOutdoors(getWorld(), *cell, unasked, false);
 
             EXPECT_GT(asked.getPlacedCount(), unasked.getPlacedCount())
                 << "the chunks a quad tree hides never reached the mirror";
@@ -296,21 +283,15 @@ namespace RtxTool
         /// **The other half of the same rule**, and what stops the ground being placed twice: a
         /// caller that both walked the graph and asked every terrain world it knew would count
         /// `TerrainGrid`'s chunks once each way.
-        TEST(RtxPagedTerrainTest, aGridWorldOffersNoResidencyBecauseItsChunksAreInTheGraph)
+        TEST_F(RtxPagedTerrainTest, aGridWorldOffersNoResidencyBecauseItsChunksAreInTheGraph)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* cell = world->findCell(std::string(sOutdoors));
+            const ESM::Cell* cell = getContent().findCell(std::string(sOutdoors));
             ASSERT_NE(cell, nullptr);
 
             Rtx::SceneDesc scene;
-            placeOutdoors(*world, *cell, scene, true);
+            placeOutdoors(getWorld(), *cell, scene, true);
 
-            EXPECT_EQ(world->getTerrainResidency(), nullptr);
+            EXPECT_EQ(getWorld().getTerrainResidency(), nullptr);
             EXPECT_GT(scene.getPlacedCount(), 0u) << "a grid world's ground is found by walking, and was not";
         }
 
@@ -327,16 +308,11 @@ namespace RtxTool
         /// **Three worlds and not one**, because `pageTerrain` and `pageStatics` are read when the
         /// terrain is built and a world that has built it ignores both. The three are the same cell:
         /// paged with its statics, paged without them, and the grid that pages nothing.
-        TEST(RtxPagedTerrainTest, aPagedWorldStandsStaticsPastTheActiveGridAndAGridWorldStandsNone)
+        TEST_F(RtxPagedTerrainTest, aPagedWorldStandsStaticsPastTheActiveGridAndAGridWorldStandsNone)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
+            const std::unique_ptr<World> paged = openWorld();
 
-            const std::unique_ptr<World> paged = openWorld(config, variables);
-            if (paged == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* cell = paged->findCell(std::string(sBuiltUp));
+            const ESM::Cell* cell = getContent().findCell(std::string(sBuiltUp));
             ASSERT_NE(cell, nullptr);
 
             const osg::Vec2f middle = middleOf(*cell);
@@ -354,8 +330,7 @@ namespace RtxTool
             const std::uint32_t stood = standingBeyond(withStatics, middle, sGridReach);
             EXPECT_GT(stood, 0u) << "the distant ground came up bare";
 
-            const std::unique_ptr<World> bare = openWorld(config, variables);
-            ASSERT_NE(bare, nullptr);
+            const std::unique_ptr<World> bare = openWorld();
 
             bare->pageTerrain(true);
             bare->pageStatics(false);
@@ -371,8 +346,7 @@ namespace RtxTool
             // rather than a second world's worth of everything.
             EXPECT_EQ(tallyGround(withStatics).mChunks, tallyGround(withoutStatics).mChunks);
 
-            const std::unique_ptr<World> grid = openWorld(config, variables);
-            ASSERT_NE(grid, nullptr);
+            const std::unique_ptr<World> grid = openWorld();
 
             grid->pageTerrain(false);
 
@@ -402,27 +376,21 @@ namespace RtxTool
         /// distance` of 7168 leaves at once — so the control already reaches a chunk a whole cell
         /// across, which is exactly the size a composite map is made for. Unforced, that run alone
         /// loses five placements their material and the four-cell run loses thirty-two.
-        TEST(RtxPagedTerrainTest, noChunkIsTexturedByARenderTargetHoweverLargeItIs)
+        TEST_F(RtxPagedTerrainTest, noChunkIsTexturedByARenderTargetHoweverLargeItIs)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* cell = world->findCell(std::string(sOutdoors));
+            const ESM::Cell* cell = getContent().findCell(std::string(sOutdoors));
             ASSERT_NE(cell, nullptr);
 
-            world->pageTerrain(true);
+            getWorld().pageTerrain(true);
 
             Rtx::SceneDesc grid;
-            placeOutdoors(*world, *cell, grid, true);
+            placeOutdoors(getWorld(), *cell, grid, true);
             const GroundTally near = tallyGround(grid);
 
-            world->setTerrainViewDistance(4.0f * sCellSize);
+            getWorld().setTerrainViewDistance(4.0f * sCellSize);
 
             Rtx::SceneDesc paged;
-            placeOutdoors(*world, *cell, paged, true);
+            placeOutdoors(getWorld(), *cell, paged, true);
             const GroundTally far = tallyGround(paged);
 
             EXPECT_GT(far.mChunks, near.mChunks) << "four cells of distance produced no more ground than none";
@@ -465,26 +433,20 @@ namespace RtxTool
         ///
         /// `follow` is what makes it structural: the residency is the extractor's, so no walk can be
         /// the one that forgets. This is the test that says a second walk does not undo the first.
-        TEST(RtxPagedTerrainTest, aSecondWorldWalkKeepsTheGroundTheGraphDoesNotParent)
+        TEST_F(RtxPagedTerrainTest, aSecondWorldWalkKeepsTheGroundTheGraphDoesNotParent)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* cell = world->findCell(std::string(sOutdoors));
+            const ESM::Cell* cell = getContent().findCell(std::string(sOutdoors));
             ASSERT_NE(cell, nullptr);
 
-            world->pageTerrain(true);
+            getWorld().pageTerrain(true);
 
             Rtx::SceneDesc once;
-            placeOutdoors(*world, *cell, once, true, 1);
+            placeOutdoors(getWorld(), *cell, once, true, 1);
             const GroundTally loaded = tallyGround(once);
             ASSERT_GT(loaded.mChunks, 0u) << "no paged ground was placed at all";
 
             Rtx::SceneDesc again;
-            placeOutdoors(*world, *cell, again, true, 3);
+            placeOutdoors(getWorld(), *cell, again, true, 3);
             const GroundTally standing = tallyGround(again);
 
             EXPECT_EQ(standing.mChunks, loaded.mChunks) << "walking the world again swept the ground a quad tree hides";
@@ -508,22 +470,16 @@ namespace RtxTool
         ///
         /// A radius barely past the grid, because every composite in the scene is baked here and each
         /// one costs tens of milliseconds — the figure `plan.md` §6 records.
-        TEST(RtxPagedTerrainTest, groundPastACellIsFlattenedIntoOneTextureTheUploaderCanRead)
+        TEST_F(RtxPagedTerrainTest, groundPastACellIsFlattenedIntoOneTextureTheUploaderCanRead)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* cell = world->findCell(std::string(sOutdoors));
+            const ESM::Cell* cell = getContent().findCell(std::string(sOutdoors));
             ASSERT_NE(cell, nullptr);
 
-            world->pageTerrain(true);
-            world->setTerrainViewDistance(1.25f * sCellSize);
+            getWorld().pageTerrain(true);
+            getWorld().setTerrainViewDistance(1.25f * sCellSize);
 
             Rtx::SceneDesc scene;
-            placeOutdoors(*world, *cell, scene, true);
+            placeOutdoors(getWorld(), *cell, scene, true);
 
             const auto flattenedSlots = [&] {
                 std::vector<Rtx::Index> slots;
@@ -544,11 +500,11 @@ namespace RtxTool
             // **A second queue that is never collected**, so there is still something waiting when the
             // scene is cleared at the end of this test.
             Rtx::CompositeQueue holding;
-            holding.gather(scene, world->getImageManager());
+            holding.gather(scene, getWorld().getImageManager());
             ASSERT_EQ(holding.getWaitingCount(), asked);
 
             Rtx::CompositeQueue queue;
-            queue.gather(scene, world->getImageManager());
+            queue.gather(scene, getWorld().getImageManager());
             EXPECT_EQ(queue.getWaitingCount(), asked);
             EXPECT_TRUE(flattenedSlots().empty()) << "a chunk was flattened by the hand-over rather than by the baker";
 
@@ -566,7 +522,7 @@ namespace RtxTool
             const std::vector<Rtx::Index> flattened = flattenedSlots();
             ASSERT_EQ(flattened.size(), asked) << "the queue finished without flattening what it took on";
 
-            const Rtx::SceneTextures described(scene, world->getImageManager(), &queue);
+            const Rtx::SceneTextures described(scene, getWorld().getImageManager(), &queue);
             EXPECT_EQ(described.getUnreadable(), 0u) << "a composite the uploader would draw grey";
 
             // The whole chunk in one texel, per composite. Different ground averages to a different
@@ -613,7 +569,7 @@ namespace RtxTool
             // an entry holding an index into a table that no longer has it — and reading that index
             // is past the end of an emptied span, which is the quietest kind of wrong.
             scene.clear();
-            holding.gather(scene, world->getImageManager());
+            holding.gather(scene, getWorld().getImageManager());
             EXPECT_EQ(holding.getWaitingCount(), 0u) << "a cleared scene left a bake waiting on a material it forgot";
         }
     }

@@ -10,10 +10,7 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/program_options/variables_map.hpp>
-
 #include <components/esm3/loadcell.hpp>
-#include <components/files/configurationmanager.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -21,6 +18,7 @@
 #include <components/rtx/texturebuilder.hpp>
 
 #include <apps/rtxtool/cellscene.hpp>
+#include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/framing.hpp>
 #include <apps/rtxtool/lighting.hpp>
 #include <apps/rtxtool/world.hpp>
@@ -32,8 +30,6 @@ namespace RtxTool
 {
     namespace
     {
-        namespace bpo = boost::program_options;
-
         /// How far a run of frames of one still camera spread around their own mean, as an RMS over
         /// `[0, 1]`.
         ///
@@ -82,19 +78,18 @@ namespace RtxTool
         struct Balmora
         {
             // **Declaration order is destruction order reversed, and that is the order this needs.**
-            // The renderer holds device memory filled from the scene and reached through the world's
-            // image manager, so it has to go first; putting it above either of them would tear down
-            // what it was built from while it still existed.
-            std::unique_ptr<World> mWorld;
+            // The renderer holds device memory filled from the scene, so it has to go first; putting
+            // it above the scene would tear down what it was built from while it still existed. The
+            // world it read its images through belongs to the fixture, which outlives this.
             Rtx::SceneDesc mScene;
             std::unique_ptr<Rtx::Renderer> mRenderer;
             CellLighting mLighting;
 
-            /// Non-empty where the machine cannot answer: no device, no installation, no shaders.
+            /// Non-empty where the machine cannot answer: no device, no shaders, no Balmora.
             std::string mObstacle;
         };
 
-        Balmora loadBalmora(Files::ConfigurationManager& config, bpo::variables_map& variables, Rtx::Upscale upscale)
+        Balmora loadBalmora(World& world, Rtx::Upscale upscale)
         {
             Balmora held;
 
@@ -104,16 +99,9 @@ namespace RtxTool
                 return held;
             }
 
-            held.mWorld = openWorld(config, variables);
-            if (held.mWorld == nullptr)
-            {
-                held.mObstacle = "no Morrowind installation is configured, and a synthetic scene cannot see this";
-                return held;
-            }
-
             // Balmora from outside, which is the harness's default exterior: buildings, terrain and
             // a horizon, all at pixel scale from here.
-            const ESM::Cell* cell = held.mWorld->findCell("-3,-2");
+            const ESM::Cell* cell = world.getContent().findCell("-3,-2");
             if (cell == nullptr)
             {
                 held.mObstacle = "the configured installation has no Balmora, so it is not Morrowind";
@@ -127,8 +115,7 @@ namespace RtxTool
             // forty-nine cells would be a different fixture wearing the same number.
             LoadedCells loaded;
             held.mLighting
-                = loadRegion(*held.mWorld, *cell, *root, held.mScene, extractor, loaded, "Clear", 0, 12.0f, false)
-                      .mLighting;
+                = loadRegion(world, *cell, *root, held.mScene, extractor, loaded, "Clear", 0, 12.0f, false).mLighting;
 
             // **The walk is what places anything at all.** `loadRegion` builds the graph and nothing
             // more, so without this the scene held whatever had been put into it directly — which
@@ -157,11 +144,15 @@ namespace RtxTool
                 return held;
             }
 
-            const Rtx::SceneTextures described(held.mScene, held.mWorld->getImageManager());
+            const Rtx::SceneTextures described(held.mScene, world.getImageManager());
             held.mRenderer->setScene(Rtx::sWorld, held.mScene, described.getDescriptions(), Rtx::SeaState{});
 
             return held;
         }
+
+        struct RtxUpscalerStabilityTest : InstallationTest
+        {
+        };
 
         /// A still camera over real content, and whether the resolve settles.
         ///
@@ -204,11 +195,9 @@ namespace RtxTool
         /// 0.0069. A check that cannot fail on its own subject is worse than an honest skip.
         ///
         /// A frame that is black is also a still one, so this asserts the picture is lit first.
-        TEST(RtxUpscalerStabilityTest, aStillCameraResolvesToAStillPicture)
+        TEST_F(RtxUpscalerStabilityTest, aStillCameraResolvesToAStillPicture)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            Balmora held = loadBalmora(config, variables, Rtx::Upscale::Dlaa);
+            Balmora held = loadBalmora(getWorld(), Rtx::Upscale::Dlaa);
             if (!held.mObstacle.empty())
                 GTEST_SKIP() << held.mObstacle;
 

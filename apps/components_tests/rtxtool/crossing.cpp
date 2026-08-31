@@ -11,17 +11,15 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/program_options/variables_map.hpp>
-
 #include <components/debug/debugging.hpp>
 #include <components/esm3/loadcell.hpp>
-#include <components/files/configurationmanager.hpp>
 #include <components/misc/constants.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
 
 #include <apps/rtxtool/cellscene.hpp>
+#include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/stagedworld.hpp>
 #include <apps/rtxtool/world.hpp>
 
@@ -32,8 +30,6 @@ namespace RtxTool
 {
     namespace
     {
-        namespace bpo = boost::program_options;
-
         std::ostream& out()
         {
             return Debug::getRawStdout();
@@ -66,6 +62,10 @@ namespace RtxTool
             return went;
         }
 
+        struct RtxCrossingTest : InstallationTest
+        {
+        };
+
         /// What a crossing actually costs the renderer, which is the question the harness exists to
         /// put a number on.
         ///
@@ -79,16 +79,10 @@ namespace RtxTool
         ///
         /// Measured here at Balmora: 1,397 meshes to 1,665, and 50 textures described where a
         /// rebuild would have decoded and shading-estimated all 231 again.
-        TEST(RtxCrossingTest, walkingIntoTheNextCellAppendsBecauseATownSharesItsModels)
+        TEST_F(RtxCrossingTest, walkingIntoTheNextCellAppendsBecauseATownSharesItsModels)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* from = world->findCell(sFrom);
-            const ESM::Cell* to = world->findCell(sTo);
+            const ESM::Cell* from = getContent().findCell(sFrom);
+            const ESM::Cell* to = getContent().findCell(sTo);
             ASSERT_NE(from, nullptr);
             ASSERT_NE(to, nullptr);
 
@@ -100,28 +94,29 @@ namespace RtxTool
             Rtx::Testing::CountingRenderer renderer;
             LoadedCells loaded;
 
-            EXPECT_EQ(crossTo(*world, *from, *root, scene, loaded, extractor), 0u) << "nothing was loaded to leave yet";
+            EXPECT_EQ(crossTo(getWorld(), *from, *root, scene, loaded, extractor), 0u)
+                << "nothing was loaded to leave yet";
 
             // The first ring has nothing to append to, so it builds whatever it found.
             const Rtx::SceneUpload first
-                = uploader.hand(renderer, Rtx::sWorld, scene, world->getImageManager(), Rtx::SeaState{});
+                = uploader.hand(renderer, Rtx::sWorld, scene, getWorld().getImageManager(), Rtx::SeaState{});
             ASSERT_EQ(first.mKind, Rtx::SceneUpload::Kind::Rebuilt);
             ASSERT_GT(scene.getPlacedCount(), std::size_t{ 0 }) << "the ring placed no geometry";
 
             // Standing still is the ordinary frame: the walk finds everything where it was.
             extractor.extract(*root, osg::Matrixf::identity(), 0);
             extractor.advance();
-            EXPECT_EQ(uploader.hand(renderer, Rtx::sWorld, scene, world->getImageManager(), Rtx::SeaState{}).mKind,
+            EXPECT_EQ(uploader.hand(renderer, Rtx::sWorld, scene, getWorld().getImageManager(), Rtx::SeaState{}).mKind,
                 Rtx::SceneUpload::Kind::Placed);
 
             const std::size_t meshesBefore = scene.getMeshes().size();
             const std::size_t texturesBefore = scene.getTextures().size();
 
-            EXPECT_EQ(crossTo(*world, *to, *root, scene, loaded, extractor), 3u)
+            EXPECT_EQ(crossTo(getWorld(), *to, *root, scene, loaded, extractor), 3u)
                 << "a step of one cell east leaves the three columns behind it";
 
             const Rtx::SceneUpload crossed
-                = uploader.hand(renderer, Rtx::sWorld, scene, world->getImageManager(), Rtx::SeaState{});
+                = uploader.hand(renderer, Rtx::sWorld, scene, getWorld().getImageManager(), Rtx::SeaState{});
             EXPECT_EQ(crossed.mKind, Rtx::SceneUpload::Kind::Extended);
             EXPECT_GT(scene.getMeshes().size(), meshesBefore) << "three cells arrived and brought no geometry";
 
@@ -144,18 +139,12 @@ namespace RtxTool
         /// surface from the game's — a different extent, a different tessellation and a different
         /// shoreline — and everything the harness ever judged about caustics, the glitter path or a
         /// grazing Fresnel was judged against it.
-        TEST(RtxCrossingTest, theSeaIsOneSheetTheWorldOwns)
+        TEST_F(RtxCrossingTest, theSeaIsOneSheetTheWorldOwns)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* from = world->findCell(sFrom);
+            const ESM::Cell* from = getContent().findCell(sFrom);
             ASSERT_NE(from, nullptr);
 
-            StagedWorld staged(*world, *from, StagingRequest{}, ActorRequest{});
+            StagedWorld staged(getWorld(), *from, StagingRequest{}, ActorRequest{});
             ASSERT_FALSE(staged.empty());
 
             // Balmora is inland and its cells still have water: every exterior does, and the sea is
@@ -180,16 +169,10 @@ namespace RtxTool
         /// `StagedWorld::sSeed` say what each was. Two readings of one region, differing in nothing
         /// but whether another was read between them: nothing about the second is a function of the
         /// first, so the two come to one answer.
-        TEST(RtxCrossingTest, aRegionReadAfterAnotherStandsOnItsOwnGround)
+        TEST_F(RtxCrossingTest, aRegionReadAfterAnotherStandsOnItsOwnGround)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* away = world->findCell(sAway);
-            const ESM::Cell* town = world->findCell(sFrom);
+            const ESM::Cell* away = getContent().findCell(sAway);
+            const ESM::Cell* town = getContent().findCell(sFrom);
             ASSERT_NE(away, nullptr);
             ASSERT_NE(town, nullptr);
 
@@ -212,7 +195,7 @@ namespace RtxTool
             };
 
             const auto read = [&](const ESM::Cell& cell) {
-                StagedWorld staged(*world, cell, StagingRequest{}, props);
+                StagedWorld staged(getWorld(), cell, StagingRequest{}, props);
 
                 Reading held{ .mPlaced = staged.getScene().getPlacedCount() };
                 for (const Rtx::Sprite& sprite : staged.getScene().getSprites())
@@ -247,15 +230,9 @@ namespace RtxTool
         /// A walk that leaves the scene where it was is the whole property: emptied and refilled on
         /// the same cadence, so a light counted twice per walk or one nothing put back both show up
         /// as a count that moves.
-        TEST(RtxCrossingTest, walkingEveryFrameLeavesTheSceneWhereItWas)
+        TEST_F(RtxCrossingTest, walkingEveryFrameLeavesTheSceneWhereItWas)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* from = world->findCell(sFrom);
+            const ESM::Cell* from = getContent().findCell(sFrom);
             ASSERT_NE(from, nullptr);
 
             // **Nobody in it, which is the case under test.** A region with residents or live props
@@ -263,7 +240,7 @@ namespace RtxTool
             // their stepping and reported that this worked.
             const ActorRequest empty{ .mResidents = false, .mProps = false };
 
-            StagedWorld staged(*world, *from, StagingRequest{}, empty);
+            StagedWorld staged(getWorld(), *from, StagingRequest{}, empty);
             ASSERT_FALSE(staged.empty());
             ASSERT_EQ(staged.getActorCount(), std::size_t{ 0 });
             ASSERT_NE(staged.getMotion(), nullptr) << "a still world is walked every frame too";
@@ -290,20 +267,14 @@ namespace RtxTool
         /// scene, the top level and the instance count all look right.
         ///
         /// Residents on, paged terrain on: the two conditions together are the bug.
-        TEST(RtxCrossingTest, aPagedWorldsGroundSurvivesTheFramesAfterIt)
+        TEST_F(RtxCrossingTest, aPagedWorldsGroundSurvivesTheFramesAfterIt)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* from = world->findCell(std::string(sFrom));
+            const ESM::Cell* from = getContent().findCell(std::string(sFrom));
             ASSERT_NE(from, nullptr);
 
-            world->pageTerrain(true);
+            getWorld().pageTerrain(true);
 
-            StagedWorld staged(*world, *from, StagingRequest{}, ActorRequest{});
+            StagedWorld staged(getWorld(), *from, StagingRequest{}, ActorRequest{});
             ASSERT_FALSE(staged.empty());
             ASSERT_GT(staged.getActorCount(), std::size_t{ 0 }) << "no residents, so the stepper under test never runs";
             ASSERT_NE(staged.getMotion(), nullptr);
@@ -341,18 +312,12 @@ namespace RtxTool
         /// This counts them. That their geometry went with them is the parenting itself, which no
         /// count can see: a record dropped while the node stays hung on the root leaves a creature
         /// standing with nothing owning it, and both halves are needed.
-        TEST(RtxCrossingTest, theResidentsOfACellLeaveWithIt)
+        TEST_F(RtxCrossingTest, theResidentsOfACellLeaveWithIt)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* from = world->findCell(std::string(sFrom));
+            const ESM::Cell* from = getContent().findCell(std::string(sFrom));
             ASSERT_NE(from, nullptr);
 
-            StagedWorld staged(*world, *from, StagingRequest{}, ActorRequest{});
+            StagedWorld staged(getWorld(), *from, StagingRequest{}, ActorRequest{});
             const std::size_t standing = staged.getActorCount();
             ASSERT_GT(standing, std::size_t{ 0 }) << "a town with nobody in it cannot show anyone leaving";
 
@@ -372,18 +337,12 @@ namespace RtxTool
         /// in, three cells died, `SceneDesc::release` emptied the light table on the way past — and
         /// every lamp read out of a `LIGH` record went out and stayed out, because the walk that was
         /// supposed to refill the table had never carried them in the first place.
-        TEST(RtxCrossingTest, aCrossingLeavesTheLampsBurning)
+        TEST_F(RtxCrossingTest, aCrossingLeavesTheLampsBurning)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* from = world->findCell(sFrom);
+            const ESM::Cell* from = getContent().findCell(sFrom);
             ASSERT_NE(from, nullptr);
 
-            StagedWorld staged(*world, *from, StagingRequest{}, ActorRequest{});
+            StagedWorld staged(getWorld(), *from, StagingRequest{}, ActorRequest{});
             ASSERT_FALSE(staged.empty());
 
             const std::size_t before = staged.getScene().getLights().size();
@@ -405,14 +364,8 @@ namespace RtxTool
         /// twenty boundaries, and if each one only adds then what is being measured after the fifth
         /// is a world no player ever holds. This walks a straight line of cells and asserts the
         /// count settles instead of climbing.
-        TEST(RtxCrossingTest, walkingAcrossManyCellsHoldsAGridRatherThanEverythingVisited)
+        TEST_F(RtxCrossingTest, walkingAcrossManyCellsHoldsAGridRatherThanEverythingVisited)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
             const osg::ref_ptr<osg::Group> root = new osg::Group;
 
             Rtx::SceneDesc scene;
@@ -425,10 +378,10 @@ namespace RtxTool
             // North out of Balmora, one cell at a time, over land the whole way.
             for (int y = -2; y <= 6; ++y)
             {
-                const ESM::Cell* cell = world->findCell("-3," + std::to_string(y));
+                const ESM::Cell* cell = getContent().findCell("-3," + std::to_string(y));
                 ASSERT_NE(cell, nullptr) << "no cell at -3," << y;
 
-                crossTo(*world, *cell, *root, scene, loaded, extractor);
+                crossTo(getWorld(), *cell, *root, scene, loaded, extractor);
                 placed = scene.getPlacedCount();
 
                 if (y == -1)

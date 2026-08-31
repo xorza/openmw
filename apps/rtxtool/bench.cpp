@@ -22,6 +22,7 @@
 #include <components/sky/clouds.hpp>
 #include <components/sky/skyroll.hpp>
 
+#include "content.hpp"
 #include "framehashes.hpp"
 #include "framing.hpp"
 #include "perfcontrol.hpp"
@@ -538,7 +539,7 @@ namespace RtxTool
 
         for (const View& view : request.mViews)
         {
-            const ESM::Cell* cell = world.findCell(view.mCell);
+            const ESM::Cell* cell = world.getContent().findCell(view.mCell);
             if (cell == nullptr)
             {
                 out() << "\n" << view.mName << ": no cell called \"" << view.mCell << "\"\n";

@@ -10,14 +10,12 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/program_options/variables_map.hpp>
-
 #include <components/esm3/loadcell.hpp>
-#include <components/files/configurationmanager.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 
 #include <apps/rtxtool/cellscene.hpp>
+#include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/posedactors.hpp>
 #include <apps/rtxtool/world.hpp>
 
@@ -27,8 +25,6 @@ namespace RtxTool
 {
     namespace
     {
-        namespace bpo = boost::program_options;
-
         /// The fullest interior the shipped content has: fifty-five emitters in one room, which is
         /// where the reference implementation measured the cost of drawing them.
         constexpr std::string_view sCell = "Seyda Neen, Census and Excise Office";
@@ -59,6 +55,10 @@ namespace RtxTool
             return fresh.size();
         }
 
+        struct RtxLivePropsTest : InstallationTest
+        {
+        };
+
         /// A cell's emitters are placed by the live props and by nothing else, and they run.
         ///
         /// **A template is one object handed to every reference and nothing ever updates it**, so
@@ -68,15 +68,9 @@ namespace RtxTool
         ///
         /// The assertion is that the sprites *move*, not that there are more of them: both paths
         /// fill the emitter's quota, so the counts agree and the count says nothing.
-        TEST(RtxLivePropsTest, aCellsEmittersArePlacedByTheLivePropsAndRun)
+        TEST_F(RtxLivePropsTest, aCellsEmittersArePlacedByTheLivePropsAndRun)
         {
-            Files::ConfigurationManager config;
-            bpo::variables_map variables;
-            const std::unique_ptr<World> world = openWorld(config, variables);
-            if (world == nullptr)
-                GTEST_SKIP() << "no Morrowind installation configured";
-
-            const ESM::Cell* cell = world->findCell(std::string(sCell));
+            const ESM::Cell* cell = getContent().findCell(std::string(sCell));
             ASSERT_NE(cell, nullptr);
 
             // What one walk of the shared templates gives: every emitter in the room, each holding
@@ -87,7 +81,7 @@ namespace RtxTool
                 osg::ref_ptr<osg::Group> root = new osg::Group;
                 Rtx::SceneExtractor extractor(seeded);
                 LoadedCells loaded;
-                readRegion(*world, *cell, *root, loaded, /*liveProps=*/false);
+                readRegion(getWorld(), *cell, *root, loaded, /*liveProps=*/false);
                 seedStats = extractor.extract(*root, osg::Matrixf::identity(), 0);
             }
 
@@ -97,14 +91,14 @@ namespace RtxTool
             osg::ref_ptr<osg::Group> root = new osg::Group;
             Rtx::SceneExtractor extractor(live);
             LoadedCells loaded;
-            const CellReport report = readRegion(*world, *cell, *root, loaded, /*liveProps=*/true);
+            const CellReport report = readRegion(getWorld(), *cell, *root, loaded, /*liveProps=*/true);
             const Rtx::ExtractionStats mirrored = extractor.extract(*root, osg::Matrixf::identity(), 0);
 
             EXPECT_EQ(mirrored.mEmitters, 0u) << "a reference that is going to be instanced is not mirrored too";
             ASSERT_FALSE(report.mProps.empty());
 
             const ActorRequest request{ .mResidents = false, .mProps = true };
-            PosedActors posed(*world, live, extractor, *root, request);
+            PosedActors posed(getWorld(), live, extractor, *root, request);
             posed.addProps(report.mProps);
             const Rtx::ExtractionStats settled = posed.settle();
 
@@ -143,7 +137,7 @@ namespace RtxTool
                 osg::ref_ptr<osg::Group> twiceRoot = new osg::Group;
                 Rtx::SceneExtractor twice(again);
                 LoadedCells once;
-                readRegion(*world, *cell, *twiceRoot, once, /*liveProps=*/false);
+                readRegion(getWorld(), *cell, *twiceRoot, once, /*liveProps=*/false);
                 twice.extract(*twiceRoot, osg::Matrixf::identity(), 0);
             }
 

@@ -6,7 +6,7 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/rtx/lightbuilder.hpp>
 
-#include "world.hpp"
+#include "content.hpp"
 
 namespace RtxTool
 {
@@ -21,9 +21,9 @@ namespace RtxTool
         }
     }
 
-    const ESM::Cell* findCellOrComplain(World& world, const std::string& cellSpec)
+    const ESM::Cell* findCellOrComplain(const Content& content, const std::string& cellSpec)
     {
-        const ESM::Cell* cell = world.findCell(cellSpec);
+        const ESM::Cell* cell = content.findCell(cellSpec);
         if (cell == nullptr)
             out() << "No cell is called \"" << cellSpec << "\".\n";
 

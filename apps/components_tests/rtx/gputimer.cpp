@@ -88,22 +88,21 @@ namespace Rtx
         /// What is asserted is that each is measured separately, that each is a real duration, and
         /// that together they fit inside the submit that contained them — which is the cross-check
         /// that says these are the device's clock and not something invented.
-        TEST(RtxGpuTimerTest, aFrameAccountsForItsOwnDeviceTimePassByPass)
+        struct RtxGpuTimerTest : Testing::RendererTest
         {
-            std::string reason;
-            Renderer* renderer = Testing::getRenderer(reason);
-            if (renderer == nullptr)
-                GTEST_SKIP() << reason;
+        };
 
-            renderer->resize(sSize, sSize);
+        TEST_F(RtxGpuTimerTest, aFrameAccountsForItsOwnDeviceTimePassByPass)
+        {
+            mRenderer->resize(sSize, sSize);
 
             SceneDesc scene = wall();
-            renderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
 
             const Shaders::VisibilityConstants camera
                 = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sSize, sSize, 10000.0f);
 
-            const Drawn drawn = draw(*renderer, camera);
+            const Drawn drawn = draw(*mRenderer, camera);
             if (drawn.mGpu.empty())
                 GTEST_SKIP() << "this device cannot write timestamps";
 
@@ -120,7 +119,7 @@ namespace Rtx
 
             Shaders::VisibilityConstants flooded = camera;
             flooded.mWaterLevel = 0.0f;
-            const Drawn wet = draw(*renderer, flooded);
+            const Drawn wet = draw(*mRenderer, flooded);
             EXPECT_TRUE(reports(wet.mGpu, "waves")) << "a frame with water in it synthesised no sea";
             EXPECT_EQ(wet.mGpu.front().mName, "waves")
                 << "the sea was synthesised somewhere other than before the trace";
@@ -143,8 +142,8 @@ namespace Rtx
             // point of carrying them in the same report is that they are the same frame's cost.
             EXPECT_FALSE(reports(drawn.mGpu, "tlas")) << "nothing was placed, so nothing was built";
 
-            renderer->placeScene(Rtx::sWorld, scene, SeaState{});
-            const Drawn placed = draw(*renderer, camera);
+            mRenderer->placeScene(Rtx::sWorld, scene, SeaState{});
+            const Drawn placed = draw(*mRenderer, camera);
 
             EXPECT_TRUE(reports(placed.mGpu, "tlas")) << "the top level was rebuilt and went unmeasured";
             EXPECT_GT(placed.mGpu.size(), drawn.mGpu.size()) << "placing the world added no zone";
@@ -154,7 +153,7 @@ namespace Rtx
             EXPECT_EQ(placed.mGpu.front().mName, "tlas");
 
             // And the report does not accumulate: the frame after is its own again.
-            const Drawn after = draw(*renderer, camera);
+            const Drawn after = draw(*mRenderer, camera);
             EXPECT_EQ(after.mGpu.size(), drawn.mGpu.size()) << "last frame's zones were carried into this one";
             EXPECT_FALSE(reports(after.mGpu, "tlas"));
 
@@ -165,8 +164,8 @@ namespace Rtx
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, -50.0f, 0.0f),
                 .mMesh = scene.addMesh(sWallCorners, {}, {}, sQuadIndices) });
 
-            renderer->extendScene(Rtx::sWorld, scene, {}, SeaState{});
-            const Drawn arrived = draw(*renderer, camera);
+            mRenderer->extendScene(Rtx::sWorld, scene, {}, SeaState{});
+            const Drawn arrived = draw(*mRenderer, camera);
 
             EXPECT_TRUE(reports(arrived.mGpu, "blas")) << "a mesh arrived and its structure was built unmeasured";
 
@@ -176,7 +175,7 @@ namespace Rtx
             EXPECT_GT(arrived.mGpu.front().mMs, 0.0) << "the arrival's builds took no time at all";
 
             // And only on the frame the arrival landed in.
-            const Drawn settled = draw(*renderer, camera);
+            const Drawn settled = draw(*mRenderer, camera);
             EXPECT_FALSE(reports(settled.mGpu, "blas")) << "nothing arrived, so nothing was built";
         }
     }

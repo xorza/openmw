@@ -15,18 +15,8 @@ namespace Rtx
 {
     namespace
     {
-        class RtxPipelineCacheTest : public ::testing::Test
+        struct RtxPipelineCacheTest : Testing::DeviceTest
         {
-        protected:
-            void SetUp() override
-            {
-                std::string reason;
-                mHarness = Testing::getHarness(reason);
-                if (mHarness == nullptr)
-                    GTEST_SKIP() << reason;
-            }
-
-            Testing::Harness* mHarness = nullptr;
         };
 
         /// The device has a cache, and what it writes is what the loader will take back.

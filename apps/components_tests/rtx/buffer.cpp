@@ -15,18 +15,8 @@ namespace Rtx
 {
     namespace
     {
-        class RtxBufferTest : public ::testing::Test
+        struct RtxBufferTest : Testing::DeviceTest
         {
-        protected:
-            void SetUp() override
-            {
-                std::string reason;
-                mHarness = Testing::getHarness(reason);
-                if (mHarness == nullptr)
-                    GTEST_SKIP() << reason;
-            }
-
-            Testing::Harness* mHarness = nullptr;
         };
 
         /// A buffer the host can reach is mapped once and keeps the address for its life.

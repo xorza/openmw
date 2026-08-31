@@ -26,6 +26,7 @@
 #include <components/sky/clouds.hpp>
 #include <components/sky/skyroll.hpp>
 
+#include "content.hpp"
 #include "framing.hpp"
 #include "stagedworld.hpp"
 #include "viewpoint.hpp"
@@ -244,8 +245,8 @@ namespace RtxTool
                     if (turningInto.has_value())
                         request.mFrame.mWeather = *turningInto;
 
-                    turningInto = std::string(
-                        Rtx::weatherName(Rtx::nextRegionWeather(world.findRegion(staged.getRegion()), at, forward)));
+                    turningInto = std::string(Rtx::weatherName(
+                        Rtx::nextRegionWeather(world.getContent().findRegion(staged.getRegion()), at, forward)));
                     turned = 0.0f;
 
                     moveSky();
