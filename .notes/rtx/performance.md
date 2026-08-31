@@ -58,6 +58,19 @@ Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames
   weight and dividing by the pick probability is unbiased by construction and adds only variance.
   Daylight and every interior are bit-identical; the only `verify` view that moves at the default
   hour is the dawn one, which fixes its own hour where the moons are up.
+- **The interior trace is not lamp-bound.** Across the six interiors, trace against lamp count is
+  **r = −0.18** and against instance count **r = +0.69**: vivec-canalworks has the most lamps (34)
+  and the second-lowest trace, andrano-tomb has 32 and the lowest of all, addamasartus has 17 and
+  more trace than either. Patching the lamp term out entirely takes the suite from 29.50 ms to
+  24.10 — **18%, and it does not scale with lamp count**, which is the reservoir working as designed:
+  the cost is the one shadow ray, not the walk over candidates.
+- **The bounce's lamp shadow ray is 11% of the interior trace and it is not for sale.** Skipping it
+  and taking the unshadowed estimate saves 3.37 ms of the 29.50 — two thirds of the whole lamp term,
+  and balmora-mages-guild goes 6.90 to 6.30. Converged over 512 samples, the cost is indirect lamp
+  light that no longer knows what is in its way: Arkngthand's darkest fifth lifts **20%**, and
+  **27% of its pixels lift by over a tenth with 82% of those in solid patches** — shadows filling in
+  over a quarter of the frame, not noise. It reads as 15 of 255 at worst because the regions are
+  dark, and it is still the wrong trade by the order this fork works to.
 - **Upscale**: preset e = preset d within noise (~5.0 ms at 4K out). The in-tree denoiser costs
   2.3–3.0 ms at 1080p *without* producing 4K, so atrous + a separate SR would land at the same
   price as Ray Reconstruction. RR stays; there is no cheap seat in this row.
@@ -167,12 +180,12 @@ look at is the one thing a still cannot show**: B1 halves the samples in a penum
 moonlight, so whether the filter and Ray Reconstruction settle that or whether it crawls has to be
 watched in `view --hour=1` on a moonlit exterior.
 
-- **B3. Size the interior's lamp pressure.** Interior trace (7.7 ms) is the bounce plus two
-  reservoir walks per pixel (up to 256 lamps each) plus their shadow rays. First measure, then
-  trade: (a) trace vs lamp count across the interiors suite; (b) a tighter light-grid cell so a
-  point weighs fewer candidates; (c) an A/B that skips the depth-1 lamp *shadow ray* (keeps the
-  reservoir, takes the unshadowed estimate) — biases indirect slightly bright in lamp-dense rooms.
-  Gate: balmora-mages-guild and the interiors suite.
+**The interior is closed too, and it was never the lamps.** §2 measured it: the trace follows the
+instance count and not the lamp count, the reservoir already makes the lamps cost one ray however
+many there are, and the only trade left — dropping that ray at the bounce — buys 11% and fills in a
+quarter of Arkngthand's shadows. **What is left to look at in an interior is traversal**, which is
+B5's subject and not a shading one.
+
 - **B4. `skyReaching` at half rate.** One binary ray per bounce hit, exteriors only; checkerboard
   it and let the filter carry the other half. Small (~0.2–0.4 ms expected); measure before
   keeping. Gate: noon exterior trace.
@@ -218,9 +231,10 @@ Hidden under the GPU today; it is the 1% low and the power bill, and it grows wi
 
 ### Order of attack
 
-B3 first: with the moons done and Lane A's remaining term deferred, the interior's 7.7 ms trace is
-the worst median in the table. Then B4, then E starting at E0. D1/D2 whenever touching that file.
-A6 and C parked, and A2 last — §4.
+B4 first — it is the only cheap trace item left, and small enough that it has to be measured before
+it is believed. Then E, starting at E0, which is where the exterior walk goes and now where the
+interior trace points too. Then B5. D1/D2 whenever touching that file. A6 and C parked, and A2
+last — §4.
 
 ## 4 Deferred — the micromap classification
 
