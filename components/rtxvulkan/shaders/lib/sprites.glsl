@@ -203,6 +203,15 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     float extinction = 0.0;
     bool oriented = false;
     float width = 0.0;
+    float widest = 0.0;
+
+    // What one layer of this emitter's texture hides on average, read from its coarsest level.
+    //
+    // **Read at the first sprite that wants it rather than at the emitter**, because whether any
+    // does is a property of the sprite: `mSunLayers` counts what stands between *this* one and the
+    // sun, so an emitter's outermost sprites carry nothing and would pay two texture reads for an
+    // answer they never look at. Negative until read, which no alpha can be.
+    float layerMean = -1.0;
 
     // **What stands over the layer, asked once for it and not once for a puff.** A shadow ray inside
     // the loop below would multiply with however many sprites a rainstorm puts over a pixel, which
@@ -224,6 +233,16 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     const vec3 toSun = frame.mSunPosition;
     const vec3 skyward = vec3(0.0, 0.0, 1.0);
 
+    // **The sun's share thrown forward, which is one angle for the whole ray.** A directional source
+    // holds its angle to a straight ray, so the phase function is one evaluation for every sprite on
+    // it — the same argument `fogSourcesAlong` makes, and the reason a shape this costly is
+    // affordable at all.
+    //
+    // The light travels `-toSun` and what the eye catches travels `-direction`, so the cosine
+    // between them is this dot. Taken as the ratio to the even share, because `puffLight` gives a
+    // puff a card's worth of the sun rather than a sphere's.
+    const float thrownForward = henyeyGreenstein(SMOKE_ANISOTROPY, dot(toSun, direction)) / INV_FOUR_PI;
+
     for (uint slot = spriteTileOffsets[tile]; slot < last; ++slot)
     {
         const GpuSprite sprite = sprites[spriteTileIndices[slot]];
@@ -232,6 +251,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         {
             held = sprite.mEmitter;
             emitter = emitters[held];
+            layerMean = -1.0;
 
             const vec3 toCentre = emitter.mCentre - origin;
             const float along = dot(toCentre, direction);
@@ -257,6 +277,11 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                 // How wide the streak is against how long, which is the shape the content authored
                 // and the one thing kept from its across axis. Asked here for the same reason.
                 width = oriented ? length(emitter.mAcross) : 0.0;
+
+                // The texture's own extent, which every sprite of this emitter shares. Only the
+                // wider axis reaches the level below.
+                const vec2 size = vec2(textureSize(textures[nonuniformEXT(emitter.mTexture)], 0));
+                widest = max(size.x, size.y);
             }
         }
 
@@ -355,8 +380,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         // The sprite is `2 * mRadius` wide where the pixel's cone is `mSpreadAngle * seen` across,
         // and the ratio of the two in texels is the level that resolves it. Clamped inside the
         // logarithm rather than outside, because an eye inside the ball sees it at no distance.
-        const vec2 size = vec2(textureSize(textures[nonuniformEXT(emitter.mTexture)], 0));
-        const float lod = log2(max(max(size.x, size.y) * frame.mCamera.mSpreadAngle * seen / (2.0 * sprite.mRadius), 1.0));
+        const float lod = log2(max(widest * frame.mCamera.mSpreadAngle * seen / (2.0 * sprite.mRadius), 1.0));
 
         // The quad `osgParticle` would have drawn: texture coordinate zero at `-right -up` and
         // one at `+right +up`, about a centre at half.
@@ -457,10 +481,8 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // surface lifted toward the eye by what is left of the radius there.
             const vec3 normal = normalize(across * at.x + upward * at.y - direction * lift);
 
-            // The sun's share thrown forward, as the ratio to the even share — the light travels
-            // `-toSun` and what the eye catches travels `-direction`, so the cosine between them is
-            // this dot. `SMOKE_ANISOTROPY` says why the sky and the lamps below are not thrown.
-            sunLit *= henyeyGreenstein(SMOKE_ANISOTROPY, dot(toSun, direction)) / INV_FOUR_PI;
+            // `SMOKE_ANISOTROPY` says why the sky and the lamps below are not thrown.
+            sunLit *= thrownForward;
 
             sunLit *= ballWrap(normal, toSun);
 
@@ -489,9 +511,13 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // coarsest level. The limit keeps an opaque texture from shutting the light outright.
             if (sprite.mSunLayers > 0.0 || sprite.mSkyLayers > 0.0)
             {
-                const float coarsest = float(textureQueryLevels(textures[nonuniformEXT(emitter.mTexture)]) - 1);
-                const float mean = textureLod(textures[nonuniformEXT(emitter.mTexture)], vec2(0.5), coarsest).a;
-                const float layer = 1.0 - min(mean, SPRITE_ALPHA_LIMIT);
+                if (layerMean < 0.0)
+                {
+                    const float coarsest = float(textureQueryLevels(textures[nonuniformEXT(emitter.mTexture)]) - 1);
+                    layerMean = textureLod(textures[nonuniformEXT(emitter.mTexture)], vec2(0.5), coarsest).a;
+                }
+
+                const float layer = 1.0 - min(layerMean, SPRITE_ALPHA_LIMIT);
 
                 sunLit *= pow(layer, sprite.mSunLayers);
                 skyLit *= pow(layer, sprite.mSkyLayers);

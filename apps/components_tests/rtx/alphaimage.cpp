@@ -167,7 +167,7 @@ namespace
 
     /// The whole mip chain is decoded, because the whole mip chain is what the shader can read.
     ///
-    /// `alphaPasses` samples the mask at the level the ray's cone resolves to, so a classifier that
+    /// `candidateStops` samples the mask at the level the ray's cone resolves to, so a classifier that
     /// saw only the largest level would be bounding a fetch that never happens. The two levels below
     /// disagree outright — a level that was read from the wrong offset, or skipped, comes back with
     /// the other one's values.

@@ -73,7 +73,7 @@ bool isSeenThrough(float opacity)
 /// past and the eye asks what it covered, which are the same number seen from either side — and they
 /// stay the same number only while there is one place it is worked out.
 ///
-/// **Guarded against a material with no mask**, which `alphaPasses` says more about: a surface is
+/// **Guarded against a material with no mask**, which `candidateStops` says more about: a surface is
 /// see-through on its alpha alone, and an untextured pane is all glass and no lead.
 ///
 /// @param opacity what `surfaceOpacity` gave for this hit, made once by the caller.
@@ -87,23 +87,37 @@ float sampledOpacity(
     return clamp(covered * opacity, 0.0, 1.0);
 }
 
-/// Whether a candidate hit landed on the material or in one of its holes.
+/// Whether a candidate hit stops the ray, and what it lets past where it does not.
+///
+/// **One load of the instance and its material, for what were three questions asked in turn.** A
+/// shadow ray used to ask whether a candidate was see-through, then — of whichever answer came
+/// back — either what it let past or whether it landed in a hole, and each of those three read the
+/// instance and the material again. They are one decision about one surface, so they are one load.
 ///
 /// Only instances the build marked non-opaque reach this, and it marks them for three different
 /// reasons: a mask to test, a material's own alpha, and a placement the game is fading. Just the
-/// first has anything here to read, which is what the early answer below is for. Past it there is no
+/// first has anything to read here, which is what the early answer below is for. Past it there is no
 /// mode to branch on — the comparison is the whole test, and a surface that wants none stores a
 /// threshold nothing can fail.
 ///
-/// The level it reads at matters as much as the test does. A mask point-sampled at its finest mip
-/// answers for one texel out of the hundreds a distant pixel covers, and a binary test on that is a
-/// coin toss per pixel — a canopy comes back as speckle, and it crawls as the camera moves. Letting
-/// the cone average the mask first costs a leaf edge some of its bite, which is by a long way the
-/// better of the two errors.
-bool alphaPasses(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth)
+/// The level the mask reads at matters as much as the test does. A mask point-sampled at its finest
+/// mip answers for one texel out of the hundreds a distant pixel covers, and a binary test on that
+/// is a coin toss per pixel — a canopy comes back as speckle, and it crawls as the camera moves.
+/// Letting the cone average the mask first costs a leaf edge some of its bite, which is by a long
+/// way the better of the two errors.
+///
+/// @param through multiplied by what a see-through candidate let past. Untouched otherwise, which
+///        the compiler folds away with `seeThrough`.
+/// @param seeThrough whether a see-through candidate is walked past or taken against its cutoff like
+///        any other. **A literal at every call**, so the whole branch folds.
+bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth,
+    bool seeThrough, inout float through)
 {
     const GpuInstance instance = instances[instanceIndex];
     const GpuMaterial material = materials[instance.mMaterial];
+
+    const float opacity = surfaceOpacity(instance, material);
+    const bool walkPast = seeThrough && isSeenThrough(opacity);
 
     // **Met and not tested where there is nothing to test.** A material with no mask arrives here
     // because forcing an instance non-opaque says nothing about its material: a pane of glass is
@@ -112,37 +126,21 @@ bool alphaPasses(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, ve
     //
     // **The material and not the placement.** An actor the game is fading keeps every hole in its
     // mask, because a fade is not a hole — what the fade does to what is left is measured elsewhere.
-    if (!hasMask(material))
+    if (!walkPast && !hasMask(material))
         return true;
 
     vec2 uv[3];
     triangleUvs(triangleCorners(meshes[instance.mMesh], primitive), uv);
+    const vec3 weight = cornerWeights(bary);
 
-    const vec4 texel = sampleDiffuse(
-        material.mDiffuse, uv, cornerWeights(bary), material.mTextureTransform, crossed, direction, coneWidth);
+    if (walkPast)
+    {
+        through *= 1.0 - sampledOpacity(opacity, material, uv, weight, crossed, direction, coneWidth);
+        return false;
+    }
 
-    return texel.a >= material.mAlphaCutoff;
-}
-
-/// The same question asked of a candidate the traversal has not committed to.
-bool candidateIsSeenThrough(uint instanceIndex)
-{
-    const GpuInstance instance = instances[instanceIndex];
-    return isSeenThrough(surfaceOpacity(instance, materials[instance.mMaterial]));
-}
-
-/// How much of a ray a see-through candidate lets past it.
-float candidateTransmittance(
-    uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth)
-{
-    const GpuInstance instance = instances[instanceIndex];
-    const GpuMaterial material = materials[instance.mMaterial];
-    const float opacity = surfaceOpacity(instance, material);
-
-    vec2 uv[3];
-    triangleUvs(triangleCorners(meshes[instance.mMesh], primitive), uv);
-
-    return 1.0 - sampledOpacity(opacity, material, uv, cornerWeights(bary), crossed, direction, coneWidth);
+    return sampleDiffuse(material.mDiffuse, uv, weight, material.mTextureTransform, crossed, direction, coneWidth).a
+        >= material.mAlphaCutoff;
 }
 
 /// The candidate loop, run to completion. It confirms every hit that lands on the material rather
@@ -159,13 +157,10 @@ float candidateTransmittance(
 /// @param cone how wide the ray's cone is *at this candidate*, which is what decides how much of the
 ///        mask one pixel is looking at. Nought for a ray that carries no cone, which reads the
 ///        finest level — every shadow ray. Substituted textually, so it may name the traversal.
-/// @param through an lvalue every translucent candidate multiplies what it let past into. Untouched
-///        where `seeThrough` is false, which the compiler folds away with the branch.
-/// @param seeThrough whether a see-through candidate is walked past or resolved against its cutoff
-///        like any other. **A literal, so that it folds**: a ray that sees through cannot commit the
-///        surface it saw through, so a caller with no use for `through` must say false and get the
-///        surface. Only the shadow ray says true today — its answer is a product, and a product does
-///        not care what order its factors arrived in.
+/// @param through,seeThrough handed straight to `candidateStops`, which says what each is for. A
+///        ray that sees through cannot commit the surface it saw through, so a caller with no use
+///        for `through` must say false and get the surface. Only the shadow ray says true today —
+///        its answer is a product, and a product does not care what order its factors arrived in.
 #define RTX_RESOLVE(query, along, cone, through, seeThrough)                                                \
     while (rayQueryProceedEXT(query))                                                                       \
     {                                                                                                       \
@@ -181,15 +176,8 @@ float candidateTransmittance(
         const vec3 candidateCross                                                                           \
             = triangleCross(candidateCorners, rayQueryGetIntersectionObjectToWorldEXT(query, false));       \
                                                                                                             \
-        if ((seeThrough) && candidateIsSeenThrough(candidateInstance))                                      \
-        {                                                                                                   \
-            (through) *= candidateTransmittance(                                                            \
-                candidateInstance, candidatePrimitive, candidateBary, candidateCross, (along), (cone));     \
-            continue;                                                                                       \
-        }                                                                                                   \
-                                                                                                            \
-        if (alphaPasses(                                                                                    \
-                candidateInstance, candidatePrimitive, candidateBary, candidateCross, (along), (cone)))     \
+        if (candidateStops(candidateInstance, candidatePrimitive, candidateBary, candidateCross, (along),   \
+                (cone), (seeThrough), (through)))                                                           \
             rayQueryConfirmIntersectionEXT(query);                                                          \
     }
 
@@ -225,6 +213,32 @@ float lightThrough(vec3 from, vec3 towards, float distance)
         return 0.0;
 
     return through;
+}
+
+/// How far the nearest solid surface is along a ray, at most `reach` away.
+///
+/// **Traversal and the cutout, and no material resolved at all.** An asker that wants a distance
+/// pays for the whole of `trace` otherwise — the plane, the shading normal, the emissive, and for a
+/// piece of ground the entire layer stack with a mask read apiece — to read one float back off it.
+/// The cutout still runs, or the ray would stop in the holes of a mask.
+///
+/// **`reach` is the answer as well as the limit**, which is what makes such a ray short: an asker
+/// that only cares whether anything stands within a band hands over the band, and reads a miss as
+/// *no nearer than that*. Nothing here runs to `mFar` unless a caller asks it to.
+float solidWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread)
+{
+    rayQueryEXT query;
+    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, MASK_SOLID, origin, tmin, direction, reach);
+
+    // An lvalue the macro needs and nothing here reads: this ray sees through nothing, so what a
+    // translucent surface would have let past is never accumulated.
+    float passed = 1.0;
+    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), passed, false)
+
+    if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT)
+        return reach;
+
+    return rayQueryGetIntersectionTEXT(query, true);
 }
 
 /// What a ray found, resolved down to the inputs shading needs.
@@ -276,7 +290,7 @@ struct Surface
     /// there, which is nearly everything.
     ///
     /// `sampledOpacity`, which is what a shadow ray asks of the same surface through
-    /// `candidateTransmittance` — so the two cannot haze one surface two ways.
+    /// `candidateStops` — so the two cannot haze one surface two ways.
     float mOpacity;
 
     /// What light on the far side of this surface is worth to the side the ray met, against the

@@ -41,7 +41,7 @@ namespace Rtx
     /// Which side of a cutoff a patch of a mask is wholly on, whichever level the cone reads it at.
     ///
     /// **A micromap is a static table and the cutout it stands in for is not, and this is what
-    /// closes the gap.** `alphaPasses` samples the mask through the mip chain, at whatever level the
+    /// closes the gap.** `candidateStops` samples the mask through the mip chain, at whatever level the
     /// ray's cone can resolve — deliberately, because a mask point-sampled at its finest level is a
     /// coin toss per pixel and a canopy comes back as speckle that crawls. So a microtriangle marked
     /// opaque from the finest level alone would override the softening the cone was giving it, and

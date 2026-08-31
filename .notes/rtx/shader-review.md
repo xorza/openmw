@@ -13,31 +13,6 @@ changes no pixel and needs no bench. Sections C and D need a measurement.
 
 ## B. Duplicate loads and hoists — no pixel changes
 
-**B1. The shadow-ray candidate loop loads each instance and material twice.** In `RTX_RESOLVE`
-with `seeThrough=true` (`traversal.glsl:187-195`), `candidateIsSeenThrough` loads `instances[i]`
-and `materials[m]`, and then `candidateTransmittance` or `alphaPasses` loads both again. This is
-the sun-through-foliage path, the hottest candidate loop in the frame, and the micromap tally in
-D1 says 93.79% of cutout area still reaches it. Merge the three helpers into one candidate resolve
-that loads instance and material once and returns either "passed", "blocked", or a transmittance.
-The eye path (`seeThrough=false`) folds as before.
-
-**B2. The shore probe resolves a full material for a distance-only answer.** `water.glsl:263-265`
-traces straight down, and only `bed.mDistance` is read. `trace()` resolves the bed's albedo,
-which for terrain is a layer loop with mask reads. Two fixes compose:
-- Clamp the probe's `tmax` to `WATER_SHORE_FADE + WATER_BIAS`. The smoothstep saturates at
-  `WATER_SHORE_FADE`, so a miss on the short ray gives `shore = 1.0` exactly. The traversal
-  becomes near-free for every pixel of open water. Zero picture change, by construction.
-- Add a distance-only trace variant (traversal plus cutout test, no material resolve) and use it
-  here. The bed trace in `visibility.comp:167` must keep the full resolve — it shades.
-
-**B3. Per-sprite work that is per-emitter.** In `spritesAlong`:
-- `textureSize(textures[emitter.mTexture], 0)` runs per sprite (`sprites.glsl:358`). Hoist it into
-  the `held` block beside `oriented` and `width`.
-- The self-shade mean — `textureQueryLevels` plus the coarsest-level fetch
-  (`sprites.glsl:492-494`) — depends only on the emitter. Hoist it into the `held` block.
-- `henyeyGreenstein(SMOKE_ANISOTROPY, dot(toSun, direction)) / INV_FOUR_PI`
-  (`sprites.glsl:463`) is constant per pixel. Hoist it above the loop.
-
 **B4. Per-frame sky constants recomputed per ray.** `moonFace` derives, per ray inside a moon's
 cone: `limb = sin(mAngularRadius)`, the sun's turn (`atan` plus `sin`/`cos` pair), the light
 vector, and McEwen's phase polynomial (`sky.glsl:258-293`). All are functions of frame constants
@@ -52,7 +27,16 @@ shortens the shader.
 texel-area half runs per layer.
 
 **B6. `atrous` loads the centre texel up to three times.** `atrous.comp:104,131,137`. Read the
-centre once, seed the sums with it, and skip `(0,0)` in the loop. Micro, but free.
+centre once and use it for both the luminance and the fallback.
+
+**Worth almost nothing, and the bench says why: the cascade does not run in the shipping
+configuration.** With DLSS Ray Reconstruction on — the default — the upscaler denoises for itself
+and `accumulate`/`atrous` are not dispatched at all. No `bench` run lists either among its GPU
+timings. So this is unmeasurable except under `--upscale=off`, and it belongs with whatever else
+touches that path rather than on its own.
+
+Note also that the fuller form — seeding the sums with the centre and skipping `(0, 0)` in the
+loop — reorders the summation and so is **not** pixel-identical, unlike the rest of section B.
 
 ## C. Gated or restructured work — small, needs a measurement
 
@@ -78,16 +62,20 @@ remap (or a `gl_WorkGroupID` swizzle in the shader) with zero picture change. Tr
 group size in the same experiment — the same guidance names it. Measure with `bench` on the
 exteriors suite.
 
-**C4. Half-float the filter's images.** `GBUFFER_RADIANCE` and `GBUFFER_GUIDE` are rgba32f
-(`gbuffer.h:38,40`). The wavelet reads 25 taps of source, guide, and depth per pixel per level,
-five levels deep — this is the bandwidth-bound part of the frame. NRD runs its whole pipeline in
-FP16 and asks for HDR inputs in [0, 250] so that x² fits the format. The same argument holds
-here: the indirect channel is demodulated radiance, the accumulator's outlier clamp already
-bounds settled pixels, and the separate rgba32f `sum` image keeps the reference path exact.
-Convert `indirect`, the accumulator's colour/moments history, and the atrous ping-pong to
-rgba16f. Keep `direct` fp32 for now — the sun's disc rides in it at 1000. Guide can go rgba16f
-outright, or octahedral-normal rg16f later. Verify with `shot` image diffs day and night, then
-`bench`.
+**C4. Half-float the G-buffer's wide channels.** `GBUFFER_RADIANCE` and `GBUFFER_GUIDE` are rgba32f
+(`gbuffer.h:38,40`). NRD runs its whole pipeline in FP16 and asks for HDR inputs in [0, 250] so
+that x² fits the format; the same argument holds here, and the separate rgba32f `sum` image keeps
+the reference path exact.
+
+**But the wavelet is not the reason any more.** It was written as one, and the bench says
+`accumulate`/`atrous` never run under Ray Reconstruction (see B6). What is left is the traffic the
+trace itself pays writing eight full-frame channels, and what the upscaler pays reading them —
+which is real, since `upscale` is the largest GPU item in three of the four benched views.
+
+So the target is the write side: `guide` to rgba16f (a normal and a roughness need nothing like
+24 bits of mantissa), and `indirect` with it. Keep `direct` fp32 — the sun's disc rides in it at
+1000. Verify with `verify --views=all`, expecting *small* differences rather than none, then
+`bench` and watch `upscale` as well as `trace`.
 
 ## D. Architecture candidates — larger, research-backed
 
@@ -167,26 +155,31 @@ Sources:
 Order: safe deletions first, then exact-equivalence changes, then gated savings, then measured
 format work, then the two hardware features. Each step is one commit-sized change.
 
-1. **B1** — single-load candidate resolve in `RTX_RESOLVE`. Verify: `shot` on a foliage camera,
-   identical hit fraction and image.
-2. **B2** — shore probe: clamp `tmax` to the fade band, add the distance-only trace. Verify:
-   `shot` on a shoreline camera, identical image, note the frame-time delta.
-3. **B3** — sprite loop hoists. Verify: `shot` through rain and a campfire.
-4. **B5 + B6** — `coneLod` split and the atrous centre read. Verify: `shot` on terrain.
-5. **B4** — host-computed moon/patch constants (`MoonDisc`/`SkyPatch` gain three fields, the
-   shader loses the transcendentals). Verify: `shot` at night, both moons up.
-6. **C1** — cloud-shadow gate before the sun ray. Verify: overcast `shot` A/B under display
+**The method that worked, for the steps below.** `verify --views=all` against a directory a
+previous run wrote is the A/B: it renders all 17 views and prints `same` or the difference, which
+settles "no pixel changed" across every path at once. For a path no view covers — rain and snow
+sprites — `shot --weather=Rain` before and after does the same job. Take the baseline by rendering
+with the *old* SPIR-V still in `build-release/resources`, or by stashing the shader change. Bench
+on `build-release` only, twice: two runs agree to ±0.01 ms on GPU `trace`, so anything above 0.03
+is real.
+
+1. **B4** — host-computed moon/patch constants (`MoonDisc`/`SkyPatch` gain three fields, the
+   shader loses the transcendentals). Verify: `verify`, then `bench` at dawn.
+2. **B5** — `coneLod` split, hoisting `worldArea` and `facing` out of the terrain layer loop while
+   leaving the final expression spelled exactly as it is, so the mip level cannot move.
+3. **C1** — cloud-shadow gate before the sun ray. Verify: overcast `shot` A/B under display
    quantization, then `bench` in a storm.
-7. **C3** — workgroup swizzle and 16×8 experiment. Verify: `bench` exteriors, keep only if it
+4. **C3** — workgroup swizzle and 16×8 experiment. Verify: `bench` exteriors, keep only if it
    wins.
-8. **C2** — fog-volume lamp rays per stretch. Verify: `view` of lantern fog at night, `bench`.
-9. **C4** — fp16 for indirect, histories, atrous ping-pong, guide. Verify: `shot` diffs day,
-   night, underwater; then `bench`. Keep `direct` and `sum` fp32.
-10. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
-    anything. Host measurement, no shader change.
-11. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
-    if the numbers say the übershader loses real occupancy, prototype the pipeline port in the
-    harness. Decide on the numbers, not on the guidance alone.
-12. **D3–D5** — hold until a measurement names them: shading-map texture array when the albedo
-    path tops a profile, underwater volume when a submerged `bench` hurts, lamp presampling when
-    a scene outgrows the walk.
+5. **C2** — fog-volume lamp rays per stretch. Verify: `view` of lantern fog at night, `bench`.
+6. **C4** — rgba16f for `guide` and `indirect`. Verify: `verify` expecting small differences, then
+   `bench` watching `upscale` as well as `trace`.
+7. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
+   anything. Host measurement, no shader change.
+8. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
+   if the numbers say the übershader loses real occupancy, prototype the pipeline port in the
+   harness. Decide on the numbers, not on the guidance alone.
+9. **B6, D3–D5** — hold until a measurement names them: the atrous centre read when anything
+   runs that pass, the shading-map texture array when the albedo path tops a profile, the
+   underwater volume when a submerged `bench` hurts, lamp presampling when a scene outgrows the
+   walk.

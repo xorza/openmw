@@ -22,7 +22,7 @@ namespace Rtx
     /// function in it and a byte means what it says.
     ///
     /// **The whole chain and not the largest level, because the shader reads the whole chain.**
-    /// `alphaPasses` samples the mask at the level the ray's cone can resolve, so what a cutout
+    /// `candidateStops` samples the mask at the level the ray's cone can resolve, so what a cutout
     /// test can return at a point is bounded by every level over it and not by the finest one — and
     /// a classifier that read only the finest would be answering a question the renderer never
     /// asks. `AlphaBounds` is what turns the chain into that bound.

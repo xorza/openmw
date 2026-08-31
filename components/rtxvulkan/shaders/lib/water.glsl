@@ -257,13 +257,16 @@ vec3 shadeWater(
     //
     // From underneath there is no shore: the distance to a bed says nothing about a surface seen
     // from below it, and the ray is spared.
+    //
+    // **And the ray is no longer than the band it answers for.** The fade saturates at
+    // `WATER_SHORE_FADE`, so a bed further down and a bed nowhere at all are the same answer — which
+    // makes that length the ray's own limit, and stops every pixel of open water crossing the sea to
+    // be told it is deep.
     shore = 1.0;
     if (!fromBelow)
-    {
-        const Surface bed = trace(
-            leaving, vec3(0.0, 0.0, -1.0), WATER_BIAS, surface.mFootprint, frame.mCamera.mSpreadAngle, MASK_SOLID);
-        shore = smoothstep(0.0, WATER_SHORE_FADE, bed.mHit ? bed.mDistance : WATER_MAX_PATH);
-    }
+        shore = smoothstep(0.0, WATER_SHORE_FADE,
+            solidWithin(leaving, vec3(0.0, 0.0, -1.0), WATER_BIAS, WATER_SHORE_FADE, surface.mFootprint,
+                frame.mCamera.mSpreadAngle));
 
     const vec3 away = reflect(incident, normal);
     const WaterPath bounced = waterRay(leaving, away, surface.mFootprint, lobe, key + SEED_LAMPS_MIRROR);
