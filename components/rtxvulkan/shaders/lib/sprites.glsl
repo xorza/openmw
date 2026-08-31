@@ -437,7 +437,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             uint lampState = randomSeed(pixelKey(pixel) + SEED_LAMPS_SPRITE);
 
             Reservoir lamps = noLamps();
-            weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0, false);
+            weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0);
 
             lampThrough = lampVisible(lamps, vec2(randomNext(lampState), randomNext(lampState)));
             lampToward = lamps.mTowards;

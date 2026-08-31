@@ -285,7 +285,7 @@ float litCosine(vec3 normal, vec3 plane, vec3 towards, float transmission)
 /// **The reservoir's own rule, written once**, because two walks feed it: the point one below, and
 /// the walk along a ray that `fogUniformAlong` takes. A second copy of this is a second chance for
 /// the two to disagree about what unbiased means.
-void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshadowed, Lamp lamp, bool greedy)
+void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshadowed, Lamp lamp)
 {
     // A scalar to weigh a colour by, which is what a target function has to be. The luminance,
     // because what it decides is which lamp this pixel would most notice the loss of.
@@ -297,15 +297,7 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
 
     // Hold the newcomer with probability `weight / total`, which leaves each candidate held in
     // proportion to its weight however many follow it — one-deep reservoir sampling.
-    //
-    // **Or hold the brightest outright, for an asker whose grid is coarser than the denoiser's.**
-    // Reservoir sampling is unbiased and its variance is noise, which is only worth having where
-    // something can take it out: a choice re-rolled per pixel per frame is what a temporal denoiser
-    // is for, and a choice re-rolled per *froxel* is an eight-pixel block of the frame changing
-    // together — structure, which no per-pixel filter will touch. Holding the largest trades that
-    // for a bias with no variance at all: every lamp still counts, and all of them are shadowed and
-    // coloured like the one that dominates them.
-    if (greedy ? weight > kept.mWeight : randomNext(state) * kept.mTotal <= weight)
+    if (randomNext(state) * kept.mTotal <= weight)
     {
         kept.mFrom = from;
         kept.mRadiance = unshadowed;
@@ -335,8 +327,8 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
 ///        `INV_FOUR_PI` times a step's weight for the air.
 /// @param transmission what the far side of a sheet is worth, out of `Surface::mTransmission`.
 ///        Nought for a solid and for a point in a medium, which has no far side.
-void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, vec3 plane, float scale,
-    float transmission, bool greedy)
+void weighLamps(
+    inout Reservoir kept, inout uint state, vec3 from, vec3 normal, vec3 plane, float scale, float transmission)
 {
     const bool facing = dot(normal, normal) > 0.0;
 
@@ -351,19 +343,8 @@ void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, 
         if (cosine <= 0.0)
             continue;
 
-        considerLamp(kept, state, from, lamp.mIntensity * (cosine * lamp.mReaching * scale), lamp, greedy);
+        considerLamp(kept, state, from, lamp.mIntensity * (cosine * lamp.mReaching * scale), lamp);
     }
-}
-
-/// Every lamp reaching a point in a medium, with the brightest held rather than one drawn.
-///
-/// **For an asker on a grid coarser than a pixel**, which is the fog volume and nothing else so far.
-/// `considerLamp` says what the choice costs and what it buys. The draw a reservoir would need is
-/// not passed because nothing draws.
-void holdBrightestLamp(inout Reservoir kept, vec3 from, float scale)
-{
-    uint undrawn = 0u;
-    weighLamps(kept, undrawn, from, vec3(0.0), vec3(0.0), scale, 0.0, true);
 }
 
 /// What the world leaves of the lamp a reservoir held, from none of it to all.

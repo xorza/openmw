@@ -14,6 +14,7 @@
 #include "scene.h"
 #include "wave.h"
 #include "bindings.glsl"
+#include "footprint.glsl"
 #include "random.glsl"
 
 
@@ -164,10 +165,9 @@ vec2 rainSlope(vec2 at, float footprint, out float lost)
     if (!(frame.mRainOnWater > 0.0))
         return vec2(0.0);
 
-    // How much of a ring this cone can still tell apart, from all of it to none of it: a cone a
-    // wavelength wide covers a crest and a trough whose slopes cancel, and picking one of them
-    // instead is what makes far water a field of crawling sparks.
-    const float detail = 1.0 - smoothstep(0.25 * RAIN_RING_LENGTH, 0.75 * RAIN_RING_LENGTH, footprint);
+    const float detail = resolved(RAIN_RING_LENGTH, footprint);
+
+    // Squared, because `detail` scales a slope and what `lost` accumulates is a mean square of one.
     const float dropped = 1.0 - detail * detail;
     const float wavenumber = TAU / RAIN_RING_LENGTH;
 

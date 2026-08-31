@@ -17,6 +17,17 @@
 #include "sea.glsl"
 #include "traversal.glsl"
 
+/// What a path of water this long leaves of the light crossing it, per channel.
+///
+/// Beer-Lambert over a length, which is the form every transmittance below takes: the column over a
+/// point, the slant path down from a light, and each step of a shaft. `waterColumn`'s own `gathered`
+/// is the *integral* of this along a ray rather than a value of it, which is why that one is written
+/// out and why it takes a signed length.
+vec3 waterTransmittance(float path)
+{
+    return exp(-WATER_EXTINCTION * path);
+}
+
 /// What is left of the daylight by the time it reaches a point, as a fraction per channel.
 ///
 /// The sun and the sky both come from above, so what they lose is the water between the surface and
@@ -34,7 +45,7 @@ vec3 daylightReaching(vec3 position)
     if (!(depth > 0.0))
         return vec3(1.0);
 
-    return exp(-WATER_EXTINCTION * depth);
+    return waterTransmittance(depth);
 }
 
 /// Which way the sun travels once it is under the surface, and how far it goes to reach a depth.
@@ -93,12 +104,7 @@ vec3 lightThroughWater(vec3 position, vec3 toward, float footprint)
     // came along `mTravelling` to get here, so walking that back along the same line is the point
     // whose curvature focused it — and the whole of what makes a caustic move with the depth and
     // with the light rather than sitting still under the bed.
-    return exp(-WATER_EXTINCTION * path) * caustic(position.xy - sun.mTravelling.xy * path, depth, footprint);
-}
-
-vec3 waterTransmittance(float path)
-{
-    return exp(-WATER_EXTINCTION * path);
+    return waterTransmittance(path) * caustic(position.xy - sun.mTravelling.xy * path, depth, footprint);
 }
 
 /// What a stretch of water sends toward whoever is looking down it.
@@ -220,7 +226,7 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
     const vec3 gathered = abs(g) < 1.0e-3 ? WATER_EXTINCTION * path
                                           : (1.0 - exp(-WATER_EXTINCTION * (g * path))) / g;
 
-    const vec3 beam = WATER_SCATTER * sunward * exp(-WATER_EXTINCTION * (sun.mSlant * depth)) * gathered;
+    const vec3 beam = WATER_SCATTER * sunward * waterTransmittance(sun.mSlant * depth) * gathered;
 
     const float share = brightest(beam) / max(brightest(sky + beam), 1.0e-9);
     if (share < WATER_SHAFT_FLOOR)
@@ -250,7 +256,7 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
         const float under = max(frame.mWaterLevel - at.z, 0.0);
         const float reach = under * sun.mSlant;
 
-        const vec3 weight = exp(-WATER_EXTINCTION * (reach + along)) * (ahead - behind);
+        const vec3 weight = waterTransmittance(reach + along) * (ahead - behind);
 
         // Where the light met the surface, up-sun of where it is scattering — one point, read for
         // the lens that focused it and asked whether anything stood over it.

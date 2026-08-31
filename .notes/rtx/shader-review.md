@@ -6,39 +6,20 @@ Reviewed: every file under `components/rtxvulkan/shaders/` and the shared header
 The tree is in strong shape. The heavy duplications are already factored: one `RTX_RESOLVE`
 candidate loop, one `rayAt`, one lamp record, one falloff, one Henyey-Greenstein, one bloom kernel
 pair, and the specialization constants in `variants.glsl` already remove dead paths per frame kind.
-The findings below are what is left. Each plan step names its expected gain, its risk, and its
-verification. The working rule from CLAUDE.md holds: feature first, numbers second. Steps in
-phases 0–1 change no pixel and need no bench. Steps in phases 2–3 need a measurement.
-
-## A. Dead code and stale seams
-
-**A1. `holdBrightestLamp` has no caller.** `lights.glsl:363`. Its own comment names the fog volume
-as the caller, but `fogvolume.comp:182` calls `weighLamps(..., greedy=false)` instead. The volume
-now averages nine tenths of history (`FOG_VOLUME_HISTORY`), which is the noise removal the greedy
-mode was invented to replace. So the greedy path lost its reason. Remove `holdBrightestLamp`, the
-`greedy` parameter of `weighLamps`, and the greedy branch in `considerLamp` (`lights.glsl:308`).
-This also removes a stale comment pair that now points at a caller that does not exist.
-
-**A2. `resolved()` in `footprint.glsl` has no caller.** Only the CMake list names the file.
-`rainSlope` (`sea.glsl:170`) re-spells the same band —
-`1.0 - smoothstep(0.25 * L, 0.75 * L, footprint)` — inline, and a comment in `water.glsl:100`
-still refers to `resolved` as if it ran. Either wire `rainSlope` through `resolved()` and keep the
-file, or delete the file and fix the two comments. The first keeps one statement of what a sampler
-can still see, which is the tree's own rule.
-
-**A3. Small tidies, same pass.** `daylightReaching` (`underwater.glsl:37`) re-spells
-`waterTransmittance`. Express one through the other. `sampledOpacity` calls `surfaceOpacity`
-after `isSeenThrough` already computed it (`traversal.glsl:60,82`) — fold the two so the product
-is made once.
+The findings below are what is left. **An item is deleted from this file once it is applied or
+rejected**, so what stands here is the open list and nothing else. Each plan step names its
+verification. The working rule from CLAUDE.md holds: feature first, numbers second. Section B
+changes no pixel and needs no bench. Sections C and D need a measurement.
 
 ## B. Duplicate loads and hoists — no pixel changes
 
 **B1. The shadow-ray candidate loop loads each instance and material twice.** In `RTX_RESOLVE`
-with `seeThrough=true` (`traversal.glsl:179-188`), `candidateIsSeenThrough` loads
-`instances[i]` and `materials[m]`, and then `candidateTransmittance` or `alphaPasses` loads both
-again. This is the sun-through-foliage path, the hottest candidate loop in the frame. Merge the
-three helpers into one candidate resolve that loads instance and material once and returns either
-"passed", "blocked", or a transmittance. The eye path (`seeThrough=false`) folds as before.
+with `seeThrough=true` (`traversal.glsl:187-195`), `candidateIsSeenThrough` loads `instances[i]`
+and `materials[m]`, and then `candidateTransmittance` or `alphaPasses` loads both again. This is
+the sun-through-foliage path, the hottest candidate loop in the frame, and the micromap tally in
+D1 says 93.79% of cutout area still reaches it. Merge the three helpers into one candidate resolve
+that loads instance and material once and returns either "passed", "blocked", or a transmittance.
+The eye path (`seeThrough=false`) folds as before.
 
 **B2. The shore probe resolves a full material for a distance-only answer.** `water.glsl:263-265`
 traces straight down, and only `bed.mDistance` is read. `trace()` resolves the bed's albedo,
@@ -110,26 +91,33 @@ outright, or octahedral-normal rg16f later. Verify with `shot` image diffs day a
 
 ## D. Architecture candidates — larger, research-backed
 
-**D1. Opacity micromaps (`VK_EXT_opacity_micromap`).** The candidate loop exists to answer alpha
-cutouts in software, per candidate, with a texture fetch each (`RTX_RESOLVE`). OMMs move that
-answer into traversal hardware: known-opaque and known-transparent microtriangles never surface
-as candidates, and only the mixed border asks the shader. NVIDIA's guidance is to use OMMs
-exactly to skip ray-query candidates and their in-shader alpha test. The posture in CLAUDE.md
-already names OMMs as a goal, and the hardware is Ada. Bake at texture load with the NVIDIA OMM
-SDK, attach in the BLAS build, and keep `RTX_RESOLVE` as the fallback for mixed
-microtriangles — same picture, fewer candidates. Expect the biggest win on sun rays through
-canopies. Verify with `bench` on a foliage-heavy camera and with `shot` hit-fraction equality.
+**D1. Micromap resolve rate — measure before touching.** Opacity micromaps already ship
+(`components/rtx/micromap.{hpp,cpp}`, `microtriangles.hpp`, `alphabounds.hpp`, attached in
+`sceneacceleration.cpp`), and every cutout instance carries one. What `shot` reports at Seyda
+Neen is **3.14% opaque, 3.07% transparent, 93.79% still asking** — by triangle area, so nearly
+all of the cutout surface still reaches `RTX_RESOLVE` and pays its fetch.
+
+That may be the honest answer rather than a defect. The bake caps at `sSubdivisionCeiling = 5`
+against `sTexelsPerMicrotriangle = 16`, and the header argues both: a finer cut subdivides inside
+the compressor's own gradient and resolves nothing. Morrowind's cutouts are nets, grates and
+small fronds, where the mask boundary genuinely crosses most triangles.
+
+So measure first. Report the tally per mesh on a canopy-heavy camera and ask whether the
+unresolved area concentrates in a few large-triangle meshes — where a finer cut would pay — or
+spreads evenly, where it would not. Only then consider level 6 for the meshes that earn it. This
+is host measurement work, not shader work.
 
 **D2. Shader Execution Reordering — evaluate, do not assume.** The trace is one übershader in
 compute, and NVIDIA's guidance calls that the anti-pattern for divergent shading: ray-query
 compute cannot reorder, while an RT pipeline with SER (`VK_NV/EXT_ray_tracing_invocation_reorder`)
 buys 11–24% in shipping path tracers and up to 2× in heavy scenes. Against that: this frame's
 divergence is modest — water clusters spatially, `variants.glsl` already specializes the frame
-kind, and current frame times sit near 7 ms. The port is large (ray queries → pipelines, payload
-design, SBTs). Order it after D1 and after C3, and prototype in the harness first: measure warp
-occupancy and divergence with Nsight on a shoreline camera before writing any pipeline code. A
-cheaper middle step, if the measurement says shorelines hurt: classify water pixels and shade
-them in a second small dispatch.
+kind, and current frame times sit near 7 ms. The trace also reports a register count of 96 across
+every variant, which is a healthy occupancy figure and not the picture of a shader starved by its
+own state. The port is large (ray queries → pipelines, payload design, SBTs). Order it after C3,
+and prototype in the harness first: measure warp occupancy and divergence with Nsight on a
+shoreline camera before writing any pipeline code. A cheaper middle step, if the measurement says
+shorelines hurt: classify water pixels and shade them in a second small dispatch.
 
 **D3. Shading-map lookup as a texture array.** `paintedLight` (`texturing.glsl:68-84`) does a
 hand-rolled wrapping bilinear over an SSBO — four loads plus arithmetic on the hottest sampler
@@ -179,29 +167,26 @@ Sources:
 Order: safe deletions first, then exact-equivalence changes, then gated savings, then measured
 format work, then the two hardware features. Each step is one commit-sized change.
 
-1. **A1** — remove `holdBrightestLamp` and the `greedy` path. Build, run the rtx test binary.
-2. **A2 + A3** — settle `resolved()` (use it in `rainSlope` or delete `footprint.glsl`), fold the
-   two small re-spellings. Build, tests.
-3. **B1** — single-load candidate resolve in `RTX_RESOLVE`. Verify: `shot` on a foliage camera,
+1. **B1** — single-load candidate resolve in `RTX_RESOLVE`. Verify: `shot` on a foliage camera,
    identical hit fraction and image.
-4. **B2** — shore probe: clamp `tmax` to the fade band, add the distance-only trace. Verify:
+2. **B2** — shore probe: clamp `tmax` to the fade band, add the distance-only trace. Verify:
    `shot` on a shoreline camera, identical image, note the frame-time delta.
-5. **B3** — sprite loop hoists. Verify: `shot` through rain and a campfire.
-6. **B5 + B6** — `coneLod` split and the atrous centre read. Verify: `shot` on terrain.
-7. **B4** — host-computed moon/patch constants (`MoonDisc`/`SkyPatch` gain three fields, the
+3. **B3** — sprite loop hoists. Verify: `shot` through rain and a campfire.
+4. **B5 + B6** — `coneLod` split and the atrous centre read. Verify: `shot` on terrain.
+5. **B4** — host-computed moon/patch constants (`MoonDisc`/`SkyPatch` gain three fields, the
    shader loses the transcendentals). Verify: `shot` at night, both moons up.
-8. **C1** — cloud-shadow gate before the sun ray. Verify: overcast `shot` A/B under display
+6. **C1** — cloud-shadow gate before the sun ray. Verify: overcast `shot` A/B under display
    quantization, then `bench` in a storm.
-9. **C3** — workgroup swizzle and 16×8 experiment. Verify: `bench` exteriors, keep only if it
+7. **C3** — workgroup swizzle and 16×8 experiment. Verify: `bench` exteriors, keep only if it
    wins.
-10. **C2** — fog-volume lamp rays per stretch. Verify: `view` of lantern fog at night, `bench`.
-11. **C4** — fp16 for indirect, histories, atrous ping-pong, guide. Verify: `shot` diffs day,
-    night, underwater; then `bench`. Keep `direct` and `sum` fp32.
-12. **D1** — opacity micromaps: bake at load, attach to BLAS, keep the shader fallback. Verify:
-    hit-fraction equality on `shot`, `bench` on canopy and storm cameras.
-13. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
+8. **C2** — fog-volume lamp rays per stretch. Verify: `view` of lantern fog at night, `bench`.
+9. **C4** — fp16 for indirect, histories, atrous ping-pong, guide. Verify: `shot` diffs day,
+   night, underwater; then `bench`. Keep `direct` and `sum` fp32.
+10. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
+    anything. Host measurement, no shader change.
+11. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
     if the numbers say the übershader loses real occupancy, prototype the pipeline port in the
     harness. Decide on the numbers, not on the guidance alone.
-14. **D3–D5** — hold until a measurement names them: shading-map texture array when the albedo
+12. **D3–D5** — hold until a measurement names them: shading-map texture array when the albedo
     path tops a profile, underwater volume when a submerged `bench` hurts, lamp presampling when
     a scene outgrows the walk.

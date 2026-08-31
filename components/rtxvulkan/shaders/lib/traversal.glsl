@@ -54,10 +54,13 @@ float surfaceOpacity(GpuInstance instance, GpuMaterial material)
     return instance.mOpacity * material.mOpacity;
 }
 
-/// Whether what is behind this surface is meant to show through it, by either of those two.
-bool isSeenThrough(GpuInstance instance, GpuMaterial material)
+/// Whether what is behind a surface of this opacity is meant to show through it.
+///
+/// The product rather than the two facts it is made of, so a caller that wants the number as well as
+/// the answer makes it once.
+bool isSeenThrough(float opacity)
 {
-    return surfaceOpacity(instance, material) < 1.0;
+    return opacity < 1.0;
 }
 
 /// How much of a see-through surface is there, where a ray met it.
@@ -72,14 +75,16 @@ bool isSeenThrough(GpuInstance instance, GpuMaterial material)
 ///
 /// **Guarded against a material with no mask**, which `alphaPasses` says more about: a surface is
 /// see-through on its alpha alone, and an untextured pane is all glass and no lead.
-float sampledOpacity(GpuInstance instance, GpuMaterial material, vec2 uv[3], vec3 weight, vec3 crossed,
-    vec3 direction, float coneWidth)
+///
+/// @param opacity what `surfaceOpacity` gave for this hit, made once by the caller.
+float sampledOpacity(
+    float opacity, GpuMaterial material, vec2 uv[3], vec3 weight, vec3 crossed, vec3 direction, float coneWidth)
 {
     const float covered = material.mDiffuse == NO_TEXTURE
         ? 1.0
         : sampleDiffuse(material.mDiffuse, uv, weight, material.mTextureTransform, crossed, direction, coneWidth).a;
 
-    return clamp(covered * surfaceOpacity(instance, material), 0.0, 1.0);
+    return clamp(covered * opacity, 0.0, 1.0);
 }
 
 /// Whether a candidate hit landed on the material or in one of its holes.
@@ -123,7 +128,7 @@ bool alphaPasses(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, ve
 bool candidateIsSeenThrough(uint instanceIndex)
 {
     const GpuInstance instance = instances[instanceIndex];
-    return isSeenThrough(instance, materials[instance.mMaterial]);
+    return isSeenThrough(surfaceOpacity(instance, materials[instance.mMaterial]));
 }
 
 /// How much of a ray a see-through candidate lets past it.
@@ -131,13 +136,13 @@ float candidateTransmittance(
     uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth)
 {
     const GpuInstance instance = instances[instanceIndex];
+    const GpuMaterial material = materials[instance.mMaterial];
+    const float opacity = surfaceOpacity(instance, material);
 
     vec2 uv[3];
     triangleUvs(triangleCorners(meshes[instance.mMesh], primitive), uv);
 
-    return 1.0
-        - sampledOpacity(
-            instance, materials[instance.mMaterial], uv, cornerWeights(bary), crossed, direction, coneWidth);
+    return 1.0 - sampledOpacity(opacity, material, uv, cornerWeights(bary), crossed, direction, coneWidth);
 }
 
 /// The candidate loop, run to completion. It confirms every hit that lands on the material rather
@@ -407,8 +412,9 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     // for the reason written over it: it is the hottest sampler in the shader and an out-parameter
     // there costs every opaque surface in the frame. This is a fetch a pane of glass pays and
     // nothing else does.
-    if (isSeenThrough(instance, material))
-        surface.mOpacity = sampledOpacity(instance, material, uv, weight, crossed, direction, surface.mFootprint);
+    const float opacity = surfaceOpacity(instance, material);
+    if (isSeenThrough(opacity))
+        surface.mOpacity = sampledOpacity(opacity, material, uv, weight, crossed, direction, surface.mFootprint);
 
     if (material.mEmissive != NO_TEXTURE)
         surface.mEmitted = EMISSIVE_INTENSITY

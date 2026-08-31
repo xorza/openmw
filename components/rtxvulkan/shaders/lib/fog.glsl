@@ -577,7 +577,7 @@ void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 d
             const vec3 place = origin + direction * clamp(closest, from, to);
             const Lamp lamp = lampAt(held, place);
 
-            considerLamp(kept, state, place, lamp.mIntensity * (INV_FOUR_PI * share * absorbed), lamp, false);
+            considerLamp(kept, state, place, lamp.mIntensity * (INV_FOUR_PI * share * absorbed), lamp);
         }
 
         if (leave >= exit)

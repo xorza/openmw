@@ -179,7 +179,7 @@ void main()
             // irradiance exactly as it arrives at a surface, and what comes back toward the eye is
             // that irradiance spread over the sphere.
             Reservoir lamps = noLamps();
-            weighLamps(lamps, lampState, position, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0, false);
+            weighLamps(lamps, lampState, position, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0);
 
             vec3 inscatter = frame.mFogColour + moons
                 + lampsThrough(lamps, vec2(randomNext(lampState), randomNext(lampState)));

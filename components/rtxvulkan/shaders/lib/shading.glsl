@@ -164,7 +164,7 @@ vec3 gather(vec3 position, vec3 normal, vec3 plane, float footprint, float trans
     // **With one lamp in the cell it is exactly the arithmetic that was here before**: the sum is
     // that lamp's weight, the ratio is one, and what is left is the term that was always there.
     Reservoir kept = noLamps();
-    weighLamps(kept, state, position, normal, plane, INV_PI, transmission, false);
+    weighLamps(kept, state, position, normal, plane, INV_PI, transmission);
 
     radiance += lampsThrough(kept, lampDraw);
 
