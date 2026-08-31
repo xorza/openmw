@@ -313,6 +313,28 @@ const float BOUNCE_SPREAD = 1.0;
 /// rooms are small enough that anything further is a wall.
 const float ROOM_FILL_REACH = 140.0;
 
+/// What share of exterior points are asked whether they reach the sky, the rest paying by weight.
+///
+/// **Out of doors the ambient ray is the expensive one, by two orders of reach.** It runs to
+/// `mFar` where a room's stops at `ROOM_FILL_REACH`, and it is nearly all sky — the traversal is
+/// spent proving that nothing is there. Removing it outright takes the exteriors suite's trace from
+/// 30.9 ms to 26.3; a half of it measured 28.4, so this buys 2.5 ms of a 4.6 ms ceiling and no one
+/// of the seven places came back the wrong way.
+///
+/// **Drawn and divided by the draw, so the estimate is unbiased by construction** rather than a
+/// guess at what the untraced half would have said. What that hands the filter is variance, which
+/// is what the filter is for — and it is the same trade the moon pick makes. Nothing downstream
+/// clamps it: `pathEnd` and a sprite's fill both multiply, so a doubled sample stays worth double.
+///
+/// **Hashed rather than blue noise, because three callers must not agree.** The bounce, a water
+/// reflection and a puff of smoke each ask this, and the water's two rays already take separate
+/// seeds so that a reflection and a refraction do not keep one answer between them. A screen-space
+/// tile has one arrangement per channel and would hand every caller the same one.
+///
+/// The interior ray keeps every point: it is short, and a room is where this term does its
+/// visible work.
+const float AMBIENT_EXTERIOR_RATE = 0.5;
+
 /// How much of the ambient a surface can see, as one cosine-weighted sample of its own hemisphere.
 ///
 /// **The same integral the bounce already samples, one level further down.** A ray the eye found
@@ -321,9 +343,10 @@ const float ROOM_FILL_REACH = 140.0;
 /// stood over it. This is the missing half, and it is a visibility ray rather than a bounce: nothing
 /// is shaded at the far end, only asked whether there is one.
 ///
-/// **One sample, and it is binary.** That is as noisy as a single sample can be, and it multiplies a
-/// term already carried by one — so it rides the same filter, and the estimator is unbiased where a
-/// cheaper guess would not be.
+/// **One sample, and it is binary — half a sample out of doors.** That is as noisy as a single
+/// sample can be, and it multiplies a term already carried by one, so it rides the same filter. The
+/// estimator stays unbiased at either rate, which a cheaper guess would not be. See
+/// `AMBIENT_EXTERIOR_RATE`.
 ///
 /// **A sheet asks both faces**, by `sampledFace`: a leaf in the open sees the sky over its back as
 /// well, at `transmission` of what it sees over its front, so what reaches it runs to
@@ -357,15 +380,20 @@ float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission
     else
         towards = sphereDirection(draw);
 
-    // **How far to look for the occluder is the whole of what a room changes.** Out of doors the
-    // question is the sky and the ray runs to it. In a room the ambient is the `AMBI` fill, which
-    // stands for the bounces the room itself makes — so a wall is not an occluder of it, it is the
-    // thing making it, and a ray run to the walls comes back blocked everywhere and takes the light
-    // out of every interior. What does occlude it is what stands between a point and the room: the
-    // pillow over the sheet, the chest against the wall, the underside of a table.
-    const float reach = frame.mAmbientFromSky > 0.0 ? frame.mFar : ROOM_FILL_REACH;
+    // **How far to look for the occluder is what a room changes first.** In a room the ambient is
+    // the `AMBI` fill, which stands for the bounces the room itself makes — so a wall is not an
+    // occluder of it, it is the thing making it, and a ray run to the walls comes back blocked
+    // everywhere and takes the light out of every interior. What does occlude it is what stands
+    // between a point and the room: the pillow over the sheet, the chest against the wall, the
+    // underside of a table. A room keeps every sample too — `AMBIENT_EXTERIOR_RATE` says why.
+    if (!(frame.mAmbientFromSky > 0.0))
+        return weight * lightThrough(position, towards, ROOM_FILL_REACH);
 
-    return weight * lightThrough(position, towards, reach);
+    // Drawn last, so a solid's direction and a sheet's side are the numbers they were.
+    if (randomNext(state) >= AMBIENT_EXTERIOR_RATE)
+        return 0.0;
+
+    return weight * lightThrough(position, towards, frame.mFar) / AMBIENT_EXTERIOR_RATE;
 }
 
 /// What reaches a surface from everything that is not a light: one diffuse bounce.

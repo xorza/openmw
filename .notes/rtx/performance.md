@@ -34,18 +34,53 @@ budget from `plan.md` §5: 3840×2160 out of 1920×1080 traced at 60 fps, which 
 
 ## 2 Numbers
 
-Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames per place:
+Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames per place. Taken at
+`890b582c78`; `was` is the same measurement at `69a19dcf7e`, nineteen commits earlier — before the
+distant lights, the interior lighting fix, the one-moon ray and the GUI staging.
 
-| place                | median | p99   | trace | upscale | rest  | verdict            |
-| -------------------- | ------ | ----- | ----- | ------- | ----- | ------------------ |
-| seyda-neen-ship      | 13.1   | 18.7  | 4.9   | 4.9     | ~2.0  | tail over budget   |
-| seyda-neen-ship-dawn | 15.0   | 19.4  | 6.4   | 5.0     | ~2.3  | over budget        |
-| balmora-mages-guild  | 16.8   | 21.1  | 7.7   | 5.8     | ~1.5  | over budget        |
-| island-crossing      | 11.8   | 109.4 | 2.4   | 4.9     | ~2.3  | crossing spikes    |
+| place                | median | was  | p99   | was   | trace | was | upscale | rest | verdict          |
+| -------------------- | ------ | ---- | ----- | ----- | ----- | --- | ------- | ---- | ---------------- |
+| seyda-neen-ship      | 13.4   | 13.1 | 17.0  | 18.7  | 4.9   | 4.9 | 4.9     | ~2.1 | tail at budget   |
+| seyda-neen-ship-dawn | 14.8   | 15.0 | 18.4  | 19.4  | 6.3   | 6.4 | 4.9     | ~2.2 | over budget      |
+| balmora-mages-guild  | 11.7   | 16.8 | 15.2  | 21.1  | 4.2   | 7.7 | 5.3     | ~1.6 | inside budget    |
+| island-crossing      | 12.3   | 11.8 | 108.5 | 109.4 | 2.2   | 2.4 | 4.8     | ~2.0 | crossing spikes  |
 
-- The frame is GPU-bound everywhere: `wait` runs 10–15 ms at the budget configuration. Trace and
-  upscale are over 80% of the GPU frame; everything else together — air, tlas, refit, waves,
-  bloom, tone, exposure, composite — is ~2 ms.
+Suite trace sums at the same commit and configuration: **exteriors 30.8 ms** over seven places,
+**interiors 17.8 ms** over six — against the 29.50 the interiors read before.
+
+- **The distant lights cost the exterior nothing.** Trace is 4.9 against 4.9 at noon and 6.3
+  against 6.4 at dawn, with a lantern in every cell of the reach that the paging leaves dark. That
+  is the reservoir doing what the interior measurement below says it does: the cost is the one
+  shadow ray, not the number of lamps behind it.
+- **The interior came back inside budget, and no interior work did it.** `balmora-mages-guild` lost
+  45% of its trace and 5.1 ms of its median between the two commits, and the interiors suite went
+  29.50 to 17.82. `42a057cd33 Fix interior lighting and sky visibility` is what sits between them,
+  so a correctness fix paid this. **Lane B's interior target of ~6 ms is met at 4.2**, and the
+  trace-against-instance-count correlation holds at r = +0.72 on the new numbers.
+- **The upscale is now the largest GPU term in an interior** — 5.3 against a trace of 4.2, and 6.0
+  against 4.8 on the interiors run. Lane C is parked because the price is right against the
+  alternative, not because the term is small, and it does not fall when the trace does.
+- **The crossing is exactly where it was.** p99 108.5 against 109.4, worst frame 201 against 206,
+  worst crossing 191 against 198, and `place` worst 47.31 against 47.3. Every number Lane A and §4
+  rest on still stands.
+- **The exterior ambient ray is 15% of the exterior trace, and half of it is 8%.** `ambientReaching`
+  runs to `mFar` out of doors where a room's stops at `ROOM_FILL_REACH`, and it is nearly all sky.
+  Three adjacent runs of the exteriors suite: 30.88 ms of trace as it stood, **26.26 with the
+  exterior ray patched out** — a 4.62 ms ceiling, every place 12.6 to 19.7% — and **28.39 at half
+  rate**, which is 2.49 ms, 54% of the ceiling and 0.36 ms a place. Every one of the seven came back
+  the right way at both rates.
+- **What half rate costs the picture is the moon pick's order.** Converged with `--upscale=off`,
+  seyda-neen-ship is **−0.000% overall** with no pixel moving 10 of 255 — the open sky is unoccluded
+  and the estimator has nothing to be noisy about. Balmora, which has a gorge and a town to occlude
+  with, is **+0.045% overall and −0.31% in the darkest fifth** at 2048 samples, against the 0.05%
+  and 0.29% the one-moon ray was accepted at. **Most of it is unconverged variance and a little is
+  not**: over four times the samples the pixels differing by more than 1 of 255 fell 1.18% to 0.66%,
+  and those differing by more than 10 held at 0.09%. A still cannot say whether that tail is a
+  handful of high-variance spots or a small real bias.
+
+- The frame is GPU-bound everywhere: `wait` runs 6–11 ms at the budget configuration, and 9.5–10.6
+  of that at the three standing places. Trace and upscale are over 80% of the GPU frame; everything
+  else together — air, tlas, refit, waves, bloom, tone, exposure, composite — is ~2 ms.
 - **Crossings**: island-crossing worst frame 206 ms, 1% low 9.1 fps. 19 crossings, worst 198 ms;
   1.6 s over the run, 1.0 reading and 0.6 building. `walk` p99 25.5 / worst 35.3; `place` p99
   12.3 / worst 47.3.
@@ -74,8 +109,11 @@ Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames
 - **Upscale**: preset e = preset d within noise (~5.0 ms at 4K out). The in-tree denoiser costs
   2.3–3.0 ms at 1080p *without* producing 4K, so atrous + a separate SR would land at the same
   price as Ray Reconstruction. RR stays; there is no cheap seat in this row.
-- **In the game** (1994×1366 window, quality upscale): 6.1–8.7 ms medians, wait ~4.6 —
-  GPU-bound at game settings too; the game's own CPU (~3 ms) currently hides under the GPU.
+- **In the game** (1994×1366 window, quality upscale): medians 6.4–7.8 ms, against 6.1–8.7 at
+  `69a19dcf7e`. GPU-bound at game settings too, and the game's own CPU (~3 ms) still hides under it.
+  The interior carried the whole move — `balmora_mages_guild` 8.69 to 7.01, where the two exteriors
+  went 6.08 to 6.36 and 7.54 to 7.76 and sit inside the run-to-run spread. `.notes/bench.txt` has
+  the rows.
 - **CPU steady state** (harness, seyda-neen-ship): walk 2.5–3.6 ms. Of on-CPU time: the mirror
   walk ~50% (MirrorTraversal + `addDrawable` 7% self + `resolveMesh` 4.5% self + ~8% in hash-table
   lookups), `RigGeometry::cull` (skinning) 10%, terrain `collect` 10%, `placeScene` 8%,
@@ -186,9 +224,12 @@ many there are, and the only trade left — dropping that ray at the bounce — 
 quarter of Arkngthand's shadows. **What is left to look at in an interior is traversal**, which is
 B5's subject and not a shading one.
 
-- **B4. `skyReaching` at half rate.** One binary ray per bounce hit, exteriors only; checkerboard
-  it and let the filter carry the other half. Small (~0.2–0.4 ms expected); measure before
-  keeping. Gate: noon exterior trace.
+**B4 is done, at the size it was estimated at.** The term the plan called `skyReaching` is
+`ambientReaching`, and out of doors it is asked of half the points and divided by the half — drawn
+rather than checkerboarded, because three callers ask it and a screen-space tile has one arrangement
+to give them. §2 has the three runs: 2.49 ms over the exteriors suite, 0.36 ms a place, against an
+estimate of 0.2–0.4. **What is left is the one thing a still cannot show**, and it is B1's question
+again: watch a shaded exterior in `view` and see whether the darker half settles or crawls.
 - **B5. Occupancy of the fat variants.** The sea/moons variants sit at 128 registers against 96.
   Measure a split of the kernel (or a register diet on the sea path) before believing in it; ray
   queries in compute cannot use SER, so thread coherence comes only from shape.
@@ -240,9 +281,14 @@ Hidden under the GPU today; it is the 1% low and the power bill, and it grows wi
 
 ### Order of attack
 
-B4 first — it is the only cheap trace item left, and small enough that it has to be measured before
-it is believed. Then E, starting at E0, which is where the exterior walk goes and now where the
+B4 is done. **E next, starting at E0**, which is where the exterior walk goes and now where the
 interior trace points too. Then B5. A6 and C parked, and A2 last — §4.
+
+**The re-baseline moved what is worth attacking.** The interior came inside budget without an
+interior change, so Lane B's remaining trace items are worth less than they read; the crossing did
+not move at all, so §4 is now the largest thing in this document by an order of magnitude and the
+only one a player feels. Everything ahead of it is still cheaper to do and cheaper to be wrong
+about, which is the argument for the order rather than for the sizes.
 
 ## 4 Deferred — the micromap classification
 
