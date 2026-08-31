@@ -6,10 +6,30 @@ Reviewed: every file under `components/rtxvulkan/shaders/` and the shared header
 The tree is in strong shape. The heavy duplications are already factored: one `RTX_RESOLVE`
 candidate loop, one `rayAt`, one lamp record, one falloff, one Henyey-Greenstein, one bloom kernel
 pair, and the specialization constants in `variants.glsl` already remove dead paths per frame kind.
-The findings below are what is left. **An item is deleted from this file once it is applied or
-rejected**, so what stands here is the open list and nothing else. Each plan step names its
-verification. The working rule from CLAUDE.md holds: feature first, numbers second. Section B
-changes no pixel and needs no bench. Sections C and D need a measurement.
+**This file lists open work and nothing else** — an item applied or ruled out is deleted, not
+marked. Each plan step names its verification. The working rule from CLAUDE.md holds: feature
+first, numbers second. Section A is what bounds a frame today. Section B changes no pixel and
+needs no bench. Sections C and D need a measurement.
+
+## A. What bounds a frame today
+
+**A1. The exteriors are CPU-bound, so no GPU item below buys a frame there.** Per-view, at
+1920×1080 with a quality upscale:
+
+| view | frame | wait on GPU | CPU walk | gpu trace |
+|---|---|---|---|---|
+| seyda-neen-shore | 7.17 | **0.00** | 5.73 | 1.10 |
+| seyda-neen-ship | 6.50 | 2.24 | 3.06 | 1.74 |
+| balmora-mages-guild | 5.73 | **4.28** | 0.88 | 1.75 |
+
+The shore never waits on the device at all: its frame *is* `walk`, so a trace made faster there
+changes nothing a player sees. The guild is the other end, almost all wait — and it is the one
+place a ray-coherence change does nothing, because a room's rays were never far apart.
+
+**Profile that walk before spending anything more on the GPU outdoors.**
+`apps/rtxtool/profile.sh` records the CPU over the measured frames. Until it moves, GPU work
+outdoors buys headroom rather than frames — worth having for when the CPU does move, and worth
+naming as headroom rather than as a speed-up.
 
 ## B. Duplicate loads and hoists — no pixel changes
 
@@ -40,42 +60,35 @@ loop — reorders the summation and so is **not** pixel-identical, unlike the re
 
 ## C. Gated or restructured work — small, needs a measurement
 
+**Neither of these can be measured by the suite as it stands**, which is the first thing to fix if
+either is taken up. `default` and `exteriors` are clear-weather noon and dawn; `interiors` have no
+fog volume dispatched at all. C1 pays only under a heavy overcast and C2 only where lamps light
+banked air, so both need a bench view that has one. Adding it is a line in `views.cfg` and a name
+in `benches.cfg`, and without it a "no change" result would say nothing.
+
 **C1. Skip the sun shadow ray under a heavy deck.** `gather` traces the sun ray and then
-multiplies by `cloudShadow` (`shading.glsl:88-93`). Reorder: evaluate `cloudShadow` first and
-skip the trace when `sunCosine * brightest(mSunIrradiance) * cloudShadow` falls under a floor of
-about 1/4096 of the frame's scale. In overcast and storm weather this removes most sun rays.
-The floor is a stated bias, the same shape as `FOG_SHAFT_FLOOR`. Verify with `shot` A/B on an
-overcast camera: the pixel difference must sit under the display's quantization.
+multiplies by `cloudShadow` (`shading.glsl:88-93`). Reorder: evaluate `cloudShadow` first — it is
+evaluated unconditionally either way, so the reorder is free — and skip the trace when
+`sunCosine * brightest(mSunIrradiance) * cloudShadow` falls under a floor.
+
+**Expect little, and know why before spending the time.** `cloudShadow` is
+`exp(-CLOUD_SHADOW_DEPTH * max(alpha - mCover, 0) * mOpacity)`, and it is measured against the
+sheet's *own mean* — so half of every sheet returns exactly one by construction, and the floor at
+`alpha = 1` is `exp(-4)`, about 0.018 rather than something vanishing. The gate therefore fires
+only where a dense texel meets a grazing cosine. Interiors and nights are already gone: `HAS_SUN`
+specializes them out. Measure on an overcast view before writing the floor.
 
 **C2. Fog volume: one lamp ray per stretch, not per slice.** `fogvolume.comp:181-185` builds a
 fresh reservoir and traces one lamp visibility ray per slice — up to 64 short rays per column.
 The sun already answers per stretch (8 rays for 64 slices), weighted by what each slice absorbed.
 Give the lamps the same shape: accumulate one reservoir per stretch over its 8 slice positions,
 trace once, and scale each slice's share by its own unshadowed lamp light. The 0.9 history and
-the jitter already average the coarsening. Verify with `view` over a lantern in fog at night,
-then `bench`.
+the jitter already average the coarsening.
 
-**C3. Workgroup swizzle for the trace.** `visibility.comp` dispatches 8×8 groups in row-major
-order. NVIDIA measures about 8% on ray-heavy compute from a Morton-style group reordering,
-because neighbouring groups then share BVH and texture cache lines. This is a dispatch-side
-remap (or a `gl_WorkGroupID` swizzle in the shader) with zero picture change. Try 16×8 as the
-group size in the same experiment — the same guidance names it. Measure with `bench` on the
-exteriors suite.
-
-**C4. Half-float the G-buffer's wide channels.** `GBUFFER_RADIANCE` and `GBUFFER_GUIDE` are rgba32f
-(`gbuffer.h:38,40`). NRD runs its whole pipeline in FP16 and asks for HDR inputs in [0, 250] so
-that x² fits the format; the same argument holds here, and the separate rgba32f `sum` image keeps
-the reference path exact.
-
-**But the wavelet is not the reason any more.** It was written as one, and the bench says
-`accumulate`/`atrous` never run under Ray Reconstruction (see B6). What is left is the traffic the
-trace itself pays writing eight full-frame channels, and what the upscaler pays reading them —
-which is real, since `upscale` is the largest GPU item in three of the four benched views.
-
-So the target is the write side: `guide` to rgba16f (a normal and a roughness need nothing like
-24 bits of mantissa), and `indirect` with it. Keep `direct` fp32 — the sun's disc rides in it at
-1000. Verify with `verify --views=all`, expecting *small* differences rather than none, then
-`bench` and watch `upscale` as well as `trace`.
+**Not pixel-identical, unlike everything applied so far.** It correlates eight slices onto one
+shadow answer, so it is a change to the estimator and has to be judged as a picture rather than
+checked with `verify`. The pass it moves is `air`, which measures 0.32–0.44 ms in the two
+exteriors that dispatch one.
 
 ## D. Architecture candidates — larger, research-backed
 
@@ -152,10 +165,11 @@ Sources:
 
 ## F. Ordered plan
 
-Order: safe deletions first, then exact-equivalence changes, then gated savings, then measured
-format work, then the two hardware features. Each step is one commit-sized change.
+Ordered by what a step is worth against what it costs to be sure of: the thing that bounds a
+frame first, then exact-equivalence cleanups, then the measurements two gated savings need before
+they can be judged, then the hardware features. Each step is one commit-sized change.
 
-**The method that worked, for the steps below.** `verify --views=all` against a directory a
+**How to check a step.** `verify --views=all` against a directory a
 previous run wrote is the A/B: it renders all 17 views and prints `same` or the difference, which
 settles "no pixel changed" across every path at once. For a path no view covers — rain and snow
 sprites — `shot --weather=Rain` before and after does the same job. Take the baseline by rendering
@@ -163,17 +177,17 @@ with the *old* SPIR-V still in `build-release/resources`, or by stashing the sha
 on `build-release` only, twice: two runs agree to ±0.01 ms on GPU `trace`, so anything above 0.03
 is real.
 
-1. **B4** — host-computed moon/patch constants (`MoonDisc`/`SkyPatch` gain three fields, the
+1. **A1** — profile the CPU walk at a shoreline. It is 5.7 ms of a 7.2 ms frame, and it outranks
+   every GPU item here for frame time.
+2. **B4** — host-computed moon/patch constants (`MoonDisc`/`SkyPatch` gain three fields, the
    shader loses the transcendentals). Verify: `verify`, then `bench` at dawn.
-2. **B5** — `coneLod` split, hoisting `worldArea` and `facing` out of the terrain layer loop while
+3. **B5** — `coneLod` split, hoisting `worldArea` and `facing` out of the terrain layer loop while
    leaving the final expression spelled exactly as it is, so the mip level cannot move.
-3. **C1** — cloud-shadow gate before the sun ray. Verify: overcast `shot` A/B under display
-   quantization, then `bench` in a storm.
-4. **C3** — workgroup swizzle and 16×8 experiment. Verify: `bench` exteriors, keep only if it
-   wins.
-5. **C2** — fog-volume lamp rays per stretch. Verify: `view` of lantern fog at night, `bench`.
-6. **C4** — rgba16f for `guide` and `indirect`. Verify: `verify` expecting small differences, then
-   `bench` watching `upscale` as well as `trace`.
+4. **A bench view under a heavy overcast, and one of lamps in banked air at night**, without which
+   C1 and C2 cannot be measured at all.
+5. **C1** — cloud-shadow gate before the sun ray, only once step 4 exists.
+6. **C2** — fog-volume lamp rays per stretch, likewise, and judged as a picture rather than by
+   `verify`.
 7. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
    anything. Host measurement, no shader change.
 8. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
