@@ -6,6 +6,7 @@
 // What an ordinary lit surface does with light: the direct sources it can ask about, the
 // one bounce it traces for everything else, and the terms an upscaler demodulates by.
 
+#include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "variants.glsl"
@@ -14,6 +15,15 @@
 #include "sky.glsl"
 #include "traversal.glsl"
 #include "underwater.glsl"
+
+/// Which end of a path a surface is being shaded at.
+///
+/// **Not a count of bounces.** What separates them is whether the result is looked at: a seabed
+/// through water and a face in a mirror are each a bounce out and each is what the pixel shows, so
+/// they are lit like anything else the eye can see. Only the hemisphere sample's far hit is a term
+/// that nothing resolves on its own, and only there is a light worth dropping.
+const uint PATH_SEEN = 0u;
+const uint PATH_INDIRECT = 1u;
 
 /// The *direct* light arriving at a point and turning back out of it, per unit albedo.
 ///
@@ -31,7 +41,8 @@
 ///        correlated lamps at both ends of it.
 /// @param transmission what a light on the far side of the surface is worth to this side, which
 ///        is `Surface::mTransmission`: nought for a solid, `SHEET_TRANSMISSION` for a leaf.
-vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uint seed)
+/// @param path `PATH_SEEN` or `PATH_INDIRECT`, which decides whether the moons are asked at all.
+vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uint seed, uint path)
 {
     vec3 radiance = vec3(0.0);
 
@@ -42,6 +53,9 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     // place in the sequence and the reservoir's own draws follow them. Otherwise a lamp arriving in
     // the next cell along would move the penumbra of the one already there.
     const vec2 sunDraw = vec2(randomNext(state), randomNext(state));
+    // **Both pairs are drawn though one moon ray is traced.** The second pair now supplies the pick
+    // between the two moons and nothing else, and its `y` is drawn for its place alone: taking it
+    // out shortens the sequence and moves every lamp draw below.
     const vec2 moonDraw[2]
         = vec2[2](vec2(randomNext(state), randomNext(state)), vec2(randomNext(state), randomNext(state)));
     const vec2 lampDraw = vec2(randomNext(state), randomNext(state));
@@ -81,21 +95,54 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     // subtends thirty-five times the sun's angle, so the cone it is drawn from is that much wider
     // and the penumbra under everything it lights is that much softer.
     //
-    // **A ray apiece and the alpha decides whether it is spent.** The game fades both moons out over
-    // the hours around dawn, so a daylit frame reaches `mIrradiance` of nothing and traces neither.
-    for (uint moon = 0u; moon < 2u; ++moon)
+    // **One ray for the pair, and the alpha decides whether it is spent.** The game fades both moons
+    // out over the hours around dawn, so a daylit frame weighs both at nothing and traces neither.
+    // Where both are up, one is drawn in proportion to what it would deliver unshadowed and its
+    // contribution divided by that probability — which is unbiased, and it is a shadow ray saved on
+    // every frame that has two moons over it. What it costs is the penumbra under crossed moonlight
+    // resolving at one sample a frame instead of two, and that is the trade the filter already
+    // carries for every lamp in the game.
+    //
+    // **And only where the eye can see the surface.** A bounce's far hit is an indirect term nothing
+    // resolves on its own, so a moon reaching it through a shadow ray of its own was the dimmest
+    // half of the dimmest thing in the frame.
+    if (HAS_MOONS && path == PATH_SEEN)
     {
-        const float moonCosine = litCosine(normal, frame.mMoons[moon].mDirection, transmission);
-        if (!HAS_MOONS || moonCosine <= 0.0 || frame.mMoons[moon].mIrradiance == vec3(0.0))
-            continue;
+        // The weight is what each would deliver unshadowed, which is everything about a moon that
+        // can be known without tracing — the same rule the lamp reservoir picks its candidate by.
+        const float masserCosine = litCosine(normal, frame.mMoons[0].mDirection, transmission);
+        const float secundaCosine = litCosine(normal, frame.mMoons[1].mDirection, transmission);
 
-        const vec3 toward
-            = coneDirection(frame.mMoons[moon].mDirection, sin(frame.mMoons[moon].mAngularRadius), moonDraw[moon]);
+        const float masser
+            = masserCosine > 0.0 ? masserCosine * dot(frame.mMoons[0].mIrradiance, LUMINANCE_WEIGHTS) : 0.0;
+        const float secunda
+            = secundaCosine > 0.0 ? secundaCosine * dot(frame.mMoons[1].mIrradiance, LUMINANCE_WEIGHTS) : 0.0;
 
-        radiance += frame.mMoons[moon].mIrradiance
-            * lightThroughWater(position, frame.mMoons[moon].mDirection, footprint)
-            * (moonCosine * INV_PI * lightThrough(position, toward, frame.mFar)
-                * cloudShadow(position, frame.mMoons[moon].mDirection));
+        if (masser + secunda > 0.0)
+        {
+            // **A probability compared against the draw, and not a weight against a scaled draw.**
+            // The two are the same until one moon weighs nothing: `takeMasser` is then nought or one
+            // and the comparison cannot choose the moon that would divide by it, whatever the draw
+            // generator's upper bound turns out to be.
+            //
+            // **Drawn from the pair the second ray no longer needs**, so every draw after it keeps
+            // its place in the sequence — taken as a step of its own it would move every lamp
+            // penumbra in the frame, which is what the ordering above exists to prevent.
+            const float takeMasser = masser / (masser + secunda);
+            const bool lit = moonDraw[1].x < takeMasser;
+
+            const uint moon = lit ? 0u : 1u;
+            const float moonCosine = lit ? masserCosine : secundaCosine;
+            const float picked = lit ? takeMasser : 1.0 - takeMasser;
+
+            const vec3 toward
+                = coneDirection(frame.mMoons[moon].mDirection, sin(frame.mMoons[moon].mAngularRadius), moonDraw[0]);
+
+            radiance += frame.mMoons[moon].mIrradiance
+                * lightThroughWater(position, frame.mMoons[moon].mDirection, footprint)
+                * (moonCosine * INV_PI * lightThrough(position, toward, frame.mFar)
+                    * cloudShadow(position, frame.mMoons[moon].mDirection) / picked);
+        }
     }
 
     // A lamp loses nothing to the water, where the sun and the sky both lose the column above the
@@ -185,7 +232,7 @@ SurfaceResponse lambertResponse(Surface surface)
 ///        hit the eye found, and `pathEnd` at the hit that hemisphere found. **One statement of what
 ///        a diffuse surface does with light, used at both depths** — writing it twice is how the two
 ///        would come to disagree.
-vec3 shadeSurface(Surface surface, vec3 incoming, uint seed)
+vec3 shadeSurface(Surface surface, vec3 incoming, uint seed, uint path)
 {
     // The emissive colour joins the light rather than the albedo, which is where the original engine
     // puts it: it sums the term with the diffuse and ambient light and multiplies the whole by the
@@ -197,7 +244,7 @@ vec3 shadeSurface(Surface surface, vec3 incoming, uint seed)
     // made of rather than being tinted by it.
     return surface.mAlbedo
         * (incoming
-            + gather(surface.mPosition, surface.mNormal, surface.mFootprint, surface.mTransmission, seed)
+            + gather(surface.mPosition, surface.mNormal, surface.mFootprint, surface.mTransmission, seed, path)
             + surface.mEmissiveColour * EMISSIVE_INTENSITY)
         + surface.mEmitted;
 }
@@ -298,7 +345,8 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     // **Its glow is counted here, because this is the only path it takes.** Nothing gives a glowing
     // surface a lamp of its own — `EMISSIVE_INTENSITY` says what measuring that showed — so a ray
     // that lands on a mushroom cap is what carries the cap's glow back to whatever sent it.
-    return weight * shadeSurface(hit, pathEnd(hit.mPosition, reaching), pixelKey(pixel) + SEED_LAMPS_BOUNCE);
+    return weight
+        * shadeSurface(hit, pathEnd(hit.mPosition, reaching), pixelKey(pixel) + SEED_LAMPS_BOUNCE, PATH_INDIRECT);
 }
 
 #endif

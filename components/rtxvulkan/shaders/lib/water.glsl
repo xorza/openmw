@@ -115,7 +115,7 @@ WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uin
 
         const float reaching = skyReaching(hit.mPosition, hit.mNormal, hit.mTransmission, seed + SEED_SKY_REACHING);
 
-        path.mRadiance = shadeSurface(hit, pathEnd(hit.mPosition, reaching), seed);
+        path.mRadiance = shadeSurface(hit, pathEnd(hit.mPosition, reaching), seed, PATH_SEEN);
         return path;
     }
 

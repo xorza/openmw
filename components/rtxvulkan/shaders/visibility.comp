@@ -43,7 +43,7 @@ layout(local_size_x = VISIBILITY_WORKGROUP, local_size_y = VISIBILITY_WORKGROUP)
 /// is how the two would come to disagree.
 void shadeSolid(Surface hit, uvec2 pixel, out vec3 direct, out vec3 bounce, out SurfaceResponse response)
 {
-    direct = shadeSurface(hit, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE);
+    direct = shadeSurface(hit, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE, PATH_SEEN);
     bounce = bounceLight(hit, pixel);
     response = lambertResponse(hit);
 }
@@ -95,7 +95,7 @@ void main()
     if (surface.mHit && !surface.mWater && surface.mOpacity < 1.0)
     {
         paneThrough = 1.0 - surface.mOpacity;
-        paneRadiance = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_PANE) * surface.mOpacity;
+        paneRadiance = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_PANE, PATH_SEEN) * surface.mOpacity;
 
         surface = trace(origin, direction, surface.mDistance + SHADOW_BIAS, cone.mWidth, cone.mSpread,
             MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON);

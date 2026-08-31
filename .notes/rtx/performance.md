@@ -39,7 +39,7 @@ Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames
 | place                | median | p99   | trace | upscale | rest  | verdict            |
 | -------------------- | ------ | ----- | ----- | ------- | ----- | ------------------ |
 | seyda-neen-ship      | 13.1   | 18.7  | 4.9   | 4.9     | ~2.0  | tail over budget   |
-| seyda-neen-ship-dawn | 16.4   | 26.9  | 8.1   | 4.8     | ~2.3  | over budget        |
+| seyda-neen-ship-dawn | 15.0   | 19.4  | 6.4   | 5.0     | ~2.3  | over budget        |
 | balmora-mages-guild  | 16.8   | 21.1  | 7.7   | 5.8     | ~1.5  | over budget        |
 | island-crossing      | 11.8   | 109.4 | 2.4   | 4.9     | ~2.3  | crossing spikes    |
 
@@ -49,9 +49,15 @@ Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames
 - **Crossings**: island-crossing worst frame 206 ms, 1% low 9.1 fps. 19 crossings, worst 198 ms;
   1.6 s over the run, 1.0 reading and 0.6 building. `walk` p99 25.5 / worst 35.3; `place` p99
   12.3 / worst 47.3.
-- **Moons**: dawn trace 8.10 against dusk 6.55 on a paired pair — the two moon shadow rays (and
-  the moons variant's 128-register occupancy) cost **~1.6 ms** at the hour the budget is written
-  against.
+- **Moons**: dawn trace was 8.10 against dusk 6.55 on a paired pair — the two moon shadow rays (and
+  the moons variant's 128-register occupancy) cost ~1.6 ms at the hour the budget is written
+  against. **One ray now, and none at the bounce: 8.42 → 6.4 ms, a quarter of the dawn trace.**
+  Measured over three paired runs a side. What it cost the picture, converged over 512 samples at
+  hour 1: the frame is **0.05% dimmer**, concentrated in the darkest fifth at 0.29% and vanishing in
+  the brightest at 0.009%. All of that is the indirect term dropped — picking one moon by irradiance
+  weight and dividing by the pick probability is unbiased by construction and adds only variance.
+  Daylight and every interior are bit-identical; the only `verify` view that moves at the default
+  hour is the dawn one, which fixes its own hour where the moons are up.
 - **Upscale**: preset e = preset d within noise (~5.0 ms at 4K out). The in-tree denoiser costs
   2.3–3.0 ms at 1080p *without* producing 4K, so atrous + a separate SR would land at the same
   price as Ray Reconstruction. RR stays; there is no cheap seat in this row.
@@ -144,16 +150,13 @@ an arrival *builds*, and §4 says what is to be done about it and why it waits.
   `contactsheet` shares the function) and `buildChain` (9.4%, an sRGB encode a million times over).
   Gate: `composite bake` in the log.
 
-### Lane B — the trace kernel (dawn 8.1, interior 7.7; target ~6 at both)
+### Lane B — the trace kernel (dawn 6.4, interior 7.7; target ~6 at both)
 
-- **B1. One moon ray, not two.** Sample one of the two moons by irradiance weight per gather and
-  divide by the pick probability. Saves ~0.8 ms whenever both moons are up; unbiased. Quality
-  cost: the penumbra under crossed moonlight resolves at one sample a frame instead of two — a
-  noise trade the filter and RR already carry for lamps. Gate: dawn trace, paired.
-- **B2. No moon rays at the bounce depth.** The bounce-hit gather traces sun + two moons + a lamp
-  ray for a term that is one bounce down and dim. Dropping the moons there loses per-moon shadows
-  in *indirect* moonlight only. With B1 this recovers most of the measured 1.6 ms. Gate: dawn
-  trace + a night `verify` still against the previous build.
+The moons are done — §2 has the numbers, and the dawn trace is at its target. **What is left to
+look at is the one thing a still cannot show**: B1 halves the samples in a penumbra under crossed
+moonlight, so whether the filter and Ray Reconstruction settle that or whether it crawls has to be
+watched in `view --hour=1` on a moonlit exterior.
+
 - **B3. Size the interior's lamp pressure.** Interior trace (7.7 ms) is the bounce plus two
   reservoir walks per pixel (up to 256 lamps each) plus their shadow rays. First measure, then
   trade: (a) trace vs lamp count across the interiors suite; (b) a tighter light-grid cell so a
@@ -206,9 +209,9 @@ Hidden under the GPU today; it is the 1% low and the power bill, and it grows wi
 ### Order of attack
 
 A7 first — it is what is left of the crossing that is not deferred, and 23 ms of a dropped frame
-for a wait that need not happen. Then B1+B2 (cheap, measured, ~1.5 ms at the budget hour), then B3
-(the interior's 7.7 is the worst median in the table). D1/D2 whenever touching that file. E after
-B, starting at E0. A6 and C parked, and A2 last — §4.
+for a wait that need not happen. Then B3: with the moons done, the interior's 7.7 ms trace is the
+worst median in the table. D1/D2 whenever touching that file. E after B, starting at E0. A6 and C
+parked, and A2 last — §4.
 
 ## 4 Deferred — the micromap classification
 

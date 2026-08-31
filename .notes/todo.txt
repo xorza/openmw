@@ -13,3 +13,5 @@
 - async terrain loader
 - resync bench, tool and game spine
 - screen upside down for loading terrains
+- distant terrain lightsources
+- precompile shaders?
