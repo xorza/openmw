@@ -8,12 +8,18 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-build="$root/build"
+build="$root/build-debug"
 
 # Configured once. `--clean-first` is never used here: it deletes files/lang/*.ts, which are source.
+#
+# **The flags are overridden because CMake's own `RelWithDebInfo` carries `-DNDEBUG`**, and that
+# compiles out every `assert` in the fork — the contracts this code states are then checked by
+# nothing at all, in the one build anybody develops in. `release.sh` is where `NDEBUG` belongs.
 if [ ! -f "$build/CMakeCache.txt" ]; then
     cmake -S "$root" -B "$build" -G Ninja \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DCMAKE_C_FLAGS_RELWITHDEBINFO="-O2 -g" \
+        -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O2 -g" \
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
         -DOPENMW_RTX=ON \
         -DOPENMW_DLSS_SDK="${OPENMW_DLSS_SDK:?point OPENMW_DLSS_SDK at an unpacked DLSS SDK}" \

@@ -118,9 +118,21 @@ core is the exception — a mistake there is one nobody here can see.
 
 ## Traps
 
-The build is configured in `build/`, `openmw-rtxtool --help` lists the harness, and `CI/check_*.sh`
+`build-debug/` is the everyday build, `openmw-rtxtool --help` lists the harness, and `CI/check_*.sh`
 are the gates. What those do not tell you:
 
+- **CMake's own `RelWithDebInfo` carries `-DNDEBUG`**, which compiles out every `assert` in the
+  tree — so the contracts this code states everywhere are checked by nothing, in the build
+  everybody develops in. Both debug directories override `CMAKE_{C,CXX}_FLAGS_RELWITHDEBINFO` to
+  `-O2 -g` for that one reason, and `grep -c NDEBUG build-*/build.ninja` is how a directory says
+  which kind it is. `GuiTextures` reached a commit reading write-combined memory through the
+  accessor that refuses it, and nothing in a full test run could tell.
+- **Three build directories, one job each, and a script apiece configures it.** `debug.sh` makes
+  `build-debug/`, the everyday one; `debug-asan.sh` makes `build-debug-asan/` and runs the tests
+  under it, `tool` in front of an argument sending it to the harness instead; `release.sh` makes
+  `build-release/`, which is `-O3 -DNDEBUG` and is where a number is taken. Each script says what
+  its own directory needs — the sanitizer's two `ASAN_OPTIONS` are not optional and `debug-asan.sh`
+  says why.
 - **`bullet-dp`, not `bullet`**, if it ever has to be configured again: OpenMW needs a
   double-precision Bullet, the two Arch packages conflict, and the single-precision one has to come
   out first.
@@ -134,7 +146,7 @@ are the gates. What those do not tell you:
   Tests that need game data **skip** when it is absent and **fail** when the path is set and wrong —
   a silent skip looks like a pass.
 - **`openmw.cfg` already points at the Morrowind install**, so nothing needs `--data`. The harness
-  runs from `build/`, since `--resources` defaults to `./resources`.
+  runs from its own build directory, since `--resources` defaults to `./resources`.
 
 ## Verification, after changing code and before saying it works
 

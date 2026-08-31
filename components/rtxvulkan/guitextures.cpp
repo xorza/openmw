@@ -76,7 +76,7 @@ namespace Rtx
         mLentSlot = slot;
         mLentRegion = region;
 
-        return std::span<std::uint8_t>(static_cast<std::uint8_t*>(mStaging[mArena].map()) + mLentAt, bytes);
+        return mStaging[mArena].writable<std::uint8_t>(mLentAt, bytes);
     }
 
     void GuiTextures::send(std::uint32_t slot)

@@ -80,15 +80,31 @@ namespace Rtx
             return mMemory.map();
         }
 
-        /// Copies `data` to `offset` bytes in. The caller keeps to the buffer, which is asserted.
+        /// `count` elements of the buffer at `offset` bytes in, to be written in place.
+        ///
+        /// **Written and never read**, which is `hostWritten`'s whole rule: a sequential fill of
+        /// write-combined memory costs what a `memcpy` costs, and reading one byte of it back costs
+        /// far more than the write did. `writeAt` is this for a caller that already holds the bytes;
+        /// this is for one that produces them where they land, which is what MyGUI's `lock` and
+        /// `unlock` are and why a GUI texture needs no buffer of its own.
+        ///
+        /// **Every host write goes through here**, so the two things that can be wrong about one —
+        /// memory the host cannot reach, and a run that leaves the buffer — are asked once.
         template <class T>
-        void writeAt(VkDeviceSize offset, std::span<const T> data) const
+        std::span<T> writable(VkDeviceSize offset, VkDeviceSize count) const
         {
             void* const mapped = mMemory.map();
             assert(mapped != nullptr && "a write to a buffer the host cannot reach");
-            assert(offset + data.size_bytes() <= mSize);
+            assert(offset + count * sizeof(T) <= mSize);
 
-            std::memcpy(static_cast<std::byte*>(mapped) + offset, data.data(), data.size_bytes());
+            return std::span<T>(reinterpret_cast<T*>(static_cast<std::byte*>(mapped) + offset), count);
+        }
+
+        /// Copies `data` to `offset` bytes in.
+        template <class T>
+        void writeAt(VkDeviceSize offset, std::span<const T> data) const
+        {
+            std::memcpy(writable<T>(offset, data.size()).data(), data.data(), data.size_bytes());
         }
 
         template <class T>
@@ -101,13 +117,7 @@ namespace Rtx
         ///
         /// **For a block, which is made longer than what will be put in it.** A buffer holding
         /// whatever was last in that memory is a picture that depends on it too.
-        void clear() const
-        {
-            void* const mapped = mMemory.map();
-            assert(mapped != nullptr && "a clear of a buffer the host cannot reach");
-
-            std::memset(mapped, 0, mSize);
-        }
+        void clear() const { std::memset(writable<std::byte>(0, mSize).data(), 0, mSize); }
 
     private:
         Buffer(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
