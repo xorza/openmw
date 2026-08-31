@@ -120,8 +120,13 @@ Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames
   inherits. The intermediate levels are then pure overhead, and 129% is within a whisker of the
   arithmetic worst case of 133%. Counted rather than timed, so the result does not depend on what
   else the machine was doing.
-- **Draining is not free either.** `finishFrames` cost 23.0 and 18.0 ms on two of the eighteen
-  crossings, against 3.3 on the worst — a frame in flight the arrival had to wait out.
+- **Draining costs 710 ms of a ten-second run and none of it is on the critical path.** Every
+  arrival calls `finishFrames` — 401 of them over a crossing run, 140 over a millisecond, worst
+  26.4 — and removing it entirely moved nothing: medians 12.96 against 13.42, p99 108 against 113,
+  worst frame 172 against 169, over three paired runs a side. The stall was absorbing device time
+  the frame waited for anyway. **A stall that measures 7% of a run and buys nothing when removed is
+  the shape to watch for**: `wait ms` reading nought at the median does not mean the device is idle
+  at an arrival.
 
 ## 3 Attack plan
 
@@ -139,10 +144,15 @@ neither of its constants binds. §2 carries every number.
 **The largest term left is the micromap classification, and it is deferred** — nine tenths of what
 an arrival *builds*, and §4 says what is to be done about it and why it waits.
 
-- **A7. Do not wait out a frame to place an arrival.** `finishFrames` cost 23.0 and 18.0 ms on two
-  of eighteen crossings. It is there because an arrival writes every copy of the tables; a copy the
-  arrival could write into instead would cost the wait nothing. Gate: the draining figure in
-  `scene extend`.
+**The arrival's pipeline stall is closed too, and it was built before it was closed.** Removing
+`finishFrames` needs four separate things, because it guards four hazards and not one: storage a
+sweep gave back and an arrival writes over while a live bottom-level structure still names it; the
+mesh table, which was one buffer rewritten end to end; the layer and mask tables, written into every
+copy on the frame a chunk arrives; and the texture array's descriptors, written without
+`UPDATE_AFTER_BIND`. All four were built and the whole thing verified — sync validation clean over
+sixteen crossings, the picture unchanged — and **the frame times did not move**, so it was reverted.
+Anyone picking this up again has the design and §2 has the number that says not to.
+
 - **A6. Cheapen the bake further, if the latency still shows.** 27 ms a chunk is one thread busy
   for most of a crossing, and what is left is inherent — a quarter of a million texels each summing
   the ground types that reach them. The two terms with a shape left to change are `paintedLight`
@@ -208,10 +218,9 @@ Hidden under the GPU today; it is the 1% low and the power bill, and it grows wi
 
 ### Order of attack
 
-A7 first — it is what is left of the crossing that is not deferred, and 23 ms of a dropped frame
-for a wait that need not happen. Then B3: with the moons done, the interior's 7.7 ms trace is the
-worst median in the table. D1/D2 whenever touching that file. E after B, starting at E0. A6 and C
-parked, and A2 last — §4.
+B3 first: with the moons done and Lane A's remaining term deferred, the interior's 7.7 ms trace is
+the worst median in the table. Then B4, then E starting at E0. D1/D2 whenever touching that file.
+A6 and C parked, and A2 last — §4.
 
 ## 4 Deferred — the micromap classification
 
