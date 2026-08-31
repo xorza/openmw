@@ -8,8 +8,8 @@ candidate loop, one `rayAt`, one lamp record, one falloff, one Henyey-Greenstein
 pair, and the specialization constants in `variants.glsl` already remove dead paths per frame kind.
 **This file lists open work and nothing else** — an item applied or ruled out is deleted, not
 marked. Each plan step names its verification. The working rule from CLAUDE.md holds: feature
-first, numbers second. Section A is what bounds a frame today. Section B changes no pixel and
-needs no bench. Sections C and D need a measurement.
+first, numbers second. Section A is what bounds a frame today. Section B changes no pixel.
+Sections C and D need a measurement.
 
 ## A. What bounds a frame today
 
@@ -31,20 +31,7 @@ place a ray-coherence change does nothing, because a room's rays were never far 
 outdoors buys headroom rather than frames — worth having for when the CPU does move, and worth
 naming as headroom rather than as a speed-up.
 
-## B. Duplicate loads and hoists — no pixel changes
-
-**B4. Per-frame sky constants recomputed per ray.** `moonFace` derives, per ray inside a moon's
-cone: `limb = sin(mAngularRadius)`, the sun's turn (`atan` plus `sin`/`cos` pair), the light
-vector, and McEwen's phase polynomial (`sky.glsl:258-293`). All are functions of frame constants
-only. Compute them on the host, and carry them in `MoonDisc` (`visibility.h`) as `mLimb`,
-`mLightInFace`, `mLunarBlend`. `skyPatches` wants the same `mLimb` treatment
-(`sky.glsl:219`). Small win — the miss path is cheap — but it is a pure consolidation and it
-shortens the shader.
-
-**B5. Shared terms in the terrain layer loop.** Each layer's `coneLod` recomputes `worldArea`,
-`facing`, and `log2(coneWidth)` (`texturing.glsl:25-43`, called from `traversal.glsl:394`). Split
-`coneLod` so the crossed/direction/coneWidth half is computed once per hit and only the
-texel-area half runs per layer.
+## B. Cleanups that change no pixel
 
 **B6. `atrous` loads the centre texel up to three times.** `atrous.comp:104,131,137`. Read the
 centre once and use it for both the luminance and the fallback.
@@ -56,7 +43,7 @@ timings. So this is unmeasurable except under `--upscale=off`, and it belongs wi
 touches that path rather than on its own.
 
 Note also that the fuller form — seeding the sums with the centre and skipping `(0, 0)` in the
-loop — reorders the summation and so is **not** pixel-identical, unlike the rest of section B.
+loop — reorders the summation and so is **not** pixel-identical.
 
 ## C. Gated or restructured work — small, needs a measurement
 
@@ -169,31 +156,49 @@ Ordered by what a step is worth against what it costs to be sure of: the thing t
 frame first, then exact-equivalence cleanups, then the measurements two gated savings need before
 they can be judged, then the hardware features. Each step is one commit-sized change.
 
+**Measure the ceiling before writing the thing.** Gut the function — return a constant from the
+top of it — build, and bench. That is the most the real change could ever save, for minutes of
+work. It has already ruled out a half-float G-buffer and settled that no sky-disc work is worth
+moving for speed, both of which read as obvious wins on the page.
+
+**Expect no time from stating a repeated computation once, and do it anyway.** `glslc -O` inlines
+through these small functions and removes some of the repeat itself, so a dedupe of pure maths
+measures flat — and it can still shift which contraction the optimizer picks, which shows up in
+`verify` as one step of 255 on a handful of pixels. That is a re-baseline, not a regression: take
+the new frames as the reference and carry on. A fact used seven times is written once because that
+is what this tree does, not because the compiler needed the help.
+
+**A value that has to be read from a buffer is the compiler's blind spot.** It cannot hoist
+`sin(someUniform)` out of a per-ray path, so anything derived from a frame constant belongs on the
+host, in the field itself — `SkyPatch::mLimb` and `CloudDeck::mBearing` are that.
+
 **How to check a step.** `verify --views=all` against a directory a
 previous run wrote is the A/B: it renders all 17 views and prints `same` or the difference, which
 settles "no pixel changed" across every path at once. For a path no view covers — rain and snow
 sprites — `shot --weather=Rain` before and after does the same job. Take the baseline by rendering
 with the *old* SPIR-V still in `build-release/resources`, or by stashing the shader change. Bench
-on `build-release` only, twice: two runs agree to ±0.01 ms on GPU `trace`, so anything above 0.03
-is real.
+on `build-release` only, twice.
+
+**Bench on a cold machine, and interleave the two builds.** Two runs agree to ±0.01 ms on GPU
+`trace` from cold, which is what makes a 0.03 ms difference readable — but after an hour of
+building and rendering the same view drifts 16% upward and the exteriors go first. A before/after
+pair taken an hour apart says nothing. Keep both SPIR-V builds and alternate them
+(`cp` into `build-release/resources/rtx/shaders/`, no rebuild needed), or compare only runs taken
+back to back.
 
 1. **A1** — profile the CPU walk at a shoreline. It is 5.7 ms of a 7.2 ms frame, and it outranks
    every GPU item here for frame time.
-2. **B4** — host-computed moon/patch constants (`MoonDisc`/`SkyPatch` gain three fields, the
-   shader loses the transcendentals). Verify: `verify`, then `bench` at dawn.
-3. **B5** — `coneLod` split, hoisting `worldArea` and `facing` out of the terrain layer loop while
-   leaving the final expression spelled exactly as it is, so the mip level cannot move.
-4. **A bench view under a heavy overcast, and one of lamps in banked air at night**, without which
+2. **A bench view under a heavy overcast, and one of lamps in banked air at night**, without which
    C1 and C2 cannot be measured at all.
-5. **C1** — cloud-shadow gate before the sun ray, only once step 4 exists.
-6. **C2** — fog-volume lamp rays per stretch, likewise, and judged as a picture rather than by
+3. **C1** — cloud-shadow gate before the sun ray, only once step 2 exists.
+4. **C2** — fog-volume lamp rays per stretch, likewise, and judged as a picture rather than by
    `verify`.
-7. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
+5. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
    anything. Host measurement, no shader change.
-8. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
+6. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
    if the numbers say the übershader loses real occupancy, prototype the pipeline port in the
    harness. Decide on the numbers, not on the guidance alone.
-9. **B6, D3–D5** — hold until a measurement names them: the atrous centre read when anything
+7. **B6, D3–D5** — hold until a measurement names them: the atrous centre read when anything
    runs that pass, the shading-map texture array when the albedo path tops a profile, the
    underwater volume when a submerged `bench` hurts, lamp presampling when a scene outgrows the
    walk.

@@ -142,7 +142,7 @@ namespace Rtx
             .mUp = placement.mUp,
             .mColour = placement.mColour,
             .mIrradiance = placement.mIrradiance,
-            .mAngularRadius = placement.mAngularRadius,
+            .mLimb = std::sin(placement.mAngularRadius),
             .mPhaseAngle = placement.mPhaseAngle,
             .mAlpha = placement.mAlpha,
             .mThroughAir = placement.mThroughAir,

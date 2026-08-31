@@ -164,9 +164,14 @@ namespace Rtx::Shaders
         vec3 mRight;
         vec3 mUp;
 
-        /// Half the angle it subtends, in radians. The nebulae reach past a radian, which is why
-        /// they read as a tint over the sky rather than as something in it.
-        float mAngularRadius;
+        /// The sine of half the angle it subtends, which is how far off the centre line a
+        /// direction at the limb stands. The nebulae reach past a radian, which is why they read as
+        /// a tint over the sky rather than as something in it.
+        ///
+        /// **The sine and not the angle**, for the reason `CloudDeck::mBearing` gives: every reader
+        /// wants it through `sin`, and a ray is not the place to take the sine of a number that is
+        /// the same for the whole frame. The host has the angle and keeps it.
+        float mLimb;
 
         uint mTexture;
     };
@@ -231,10 +236,13 @@ namespace Rtx::Shaders
         /// moon that lights nothing, and it is the one test worth making before a shadow ray.
         vec3 mIrradiance;
 
-        /// Half the angle the disc subtends. Masser's is between five and a half degrees and nine
+        /// The sine of half the angle the disc subtends, which is how far off the centre line a
+        /// direction at the limb stands. Masser's angle is between five and a half degrees and nine
         /// and a half, on the two `Moons_Masser_Size` the game ships — twenty to thirty-six times
         /// the sun either way.
-        float mAngularRadius;
+        ///
+        /// **The sine and not the angle**, for the reason `SkyPatch::mLimb` gives.
+        float mLimb;
 
         /// How far round its cycle: zero is full and pi is new.
         ///

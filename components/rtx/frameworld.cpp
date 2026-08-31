@@ -31,7 +31,7 @@ namespace Rtx
         none.mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f);
         none.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
         none.mUp = osg::Vec3f(0.0f, 1.0f, 0.0f);
-        none.mAngularRadius = 0.0f;
+        none.mLimb = 0.0f;
         none.mTexture = Shaders::NO_TEXTURE;
 
         return none;

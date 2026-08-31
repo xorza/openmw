@@ -139,7 +139,7 @@ vec3 gather(vec3 position, vec3 normal, vec3 plane, float footprint, float trans
             const float picked = lit ? takeMasser : 1.0 - takeMasser;
 
             const vec3 toward
-                = coneDirection(frame.mMoons[moon].mDirection, sin(frame.mMoons[moon].mAngularRadius), moonDraw[0]);
+                = coneDirection(frame.mMoons[moon].mDirection, frame.mMoons[moon].mLimb, moonDraw[0]);
 
             radiance += frame.mMoons[moon].mIrradiance
                 * lightThroughWater(position, frame.mMoons[moon].mDirection, footprint)

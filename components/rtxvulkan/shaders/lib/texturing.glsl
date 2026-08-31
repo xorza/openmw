@@ -12,34 +12,58 @@
 #include "scene.h"
 #include "bindings.glsl"
 
+/// What the hit's own triangle contributes to a mip level, before any texture is named.
+///
+/// **One statement of the half of `coneLod` that every texture read at a hit shares.** A terrain
+/// chunk reads four or five layers there, and the opacity and the emissive are two more; each needs
+/// the same square root, the same divide by it and the same dot against the ray. The triangle and
+/// the ray are one pair per hit, so this is worked out once and handed over.
+///
+/// **It measures at no time either way**, because `glslc` inlines these and removes some of the
+/// repeat itself. A fact used seven times is stated once regardless, and stating it does not depend
+/// on the optimizer going on making that choice.
+struct SurfaceCone
+{
+    /// Twice the triangle's area in the world. Nought for a degenerate one, which reads level zero.
+    float mArea;
+
+    /// A surface seen edge-on covers more of itself per pixel, and the cone's footprint on it grows
+    /// by the same factor. Floored, because a grazing hit sends it to infinity.
+    float mFacing;
+};
+
+/// @param crossed the triangle's edge cross product, whose length is twice its area. The texel area
+///        in `coneLod` is doubled the same way, so the two cancel in the ratio.
+SurfaceCone surfaceConeAt(vec3 crossed, vec3 direction)
+{
+    const float area = length(crossed);
+    if (!(area > 0.0))
+        return SurfaceCone(0.0, 1.0);
+
+    return SurfaceCone(area, max(abs(dot(crossed / area, direction)), 1e-3));
+}
+
 /// Which mip a cone this wide should be read from.
 ///
 /// Akenine-Moller's ray-cone formulation: the texel-to-world area ratio of the triangle fixes a
 /// base level, the cone's width where it landed moves off it, and the angle the surface presents
 /// stretches the footprint when it is seen edge-on. A compute shader has no derivatives, so this is
 /// the only thing standing between every fetch and level zero.
-/// @param crossed the triangle's edge cross product, whose length is twice its area. The texel area
-///        below is doubled the same way, so the two cancel in the ratio.
 /// @param coneWidth how wide the ray's cone is where it landed, or zero for a ray that carries no
 ///        cone at all — which is every shadow ray, and which reads the finest level.
-float coneLod(uint slot, vec2 uv0, vec2 uv1, vec2 uv2, vec3 crossed, vec3 direction, float coneWidth)
+float coneLod(uint slot, vec2 uv0, vec2 uv1, vec2 uv2, SurfaceCone cone, float coneWidth)
 {
     if (coneWidth <= 0.0)
         return 0.0;
 
-    const float worldArea = length(crossed);
     const float uvArea = abs((uv1.x - uv0.x) * (uv2.y - uv0.y) - (uv2.x - uv0.x) * (uv1.y - uv0.y));
-    if (worldArea <= 0.0 || uvArea <= 0.0)
+    if (cone.mArea <= 0.0 || uvArea <= 0.0)
         return 0.0;
 
     const vec2 size = vec2(textureSize(textures[nonuniformEXT(slot)], 0));
     const float texelArea = uvArea * size.x * size.y;
 
-    // A surface seen edge-on covers more of itself per pixel, and the cone's footprint on it grows
-    // by the same factor. Clamped because a grazing hit sends it to infinity.
-    const float facing = max(abs(dot(crossed / worldArea, direction)), 1e-3);
-
-    return 0.5 * log2(texelArea / worldArea) + log2(coneWidth) - log2(facing);
+    return 0.5 * log2(texelArea / cone.mArea) + log2(coneWidth) - log2(cone.mFacing);
 }
 
 /// The diffuse texel a hit landed on, read at the level its cone can resolve.
@@ -49,16 +73,14 @@ float coneLod(uint slot, vec2 uv0, vec2 uv1, vec2 uv2, vec3 crossed, vec3 direct
 /// resolved against a different mip than the surface it cuts would put the hole and the leaf in
 /// different places.
 /// @param transform mesh texture coordinates to this texture's, as `uv * xy + zw`.
-vec4 sampleDiffuse(
-    uint slot, vec2 uv[3], vec3 weight, vec4 transform, vec3 crossed, vec3 direction, float coneWidth)
+vec4 sampleDiffuse(uint slot, vec2 uv[3], vec3 weight, vec4 transform, SurfaceCone cone, float coneWidth)
 {
     const vec2 uv0 = uv[0] * transform.xy + transform.zw;
     const vec2 uv1 = uv[1] * transform.xy + transform.zw;
     const vec2 uv2 = uv[2] * transform.xy + transform.zw;
     const vec2 at = uv0 * weight.x + uv1 * weight.y + uv2 * weight.z;
 
-    return textureLod(
-        textures[nonuniformEXT(slot)], at, coneLod(slot, uv0, uv1, uv2, crossed, direction, coneWidth));
+    return textureLod(textures[nonuniformEXT(slot)], at, coneLod(slot, uv0, uv1, uv2, cone, coneWidth));
 }
 
 /// The light a texture already carries at `at`, bilinear across its grid and wrapping with it.
@@ -93,9 +115,9 @@ float paintedLight(uint slot, vec2 at)
 /// Only where an albedo is being read. The same sampler serves a cutout's mask, which is alpha and
 /// unaffected, and an emissive map, which is light rather than a surface and must keep what it was
 /// painted with.
-vec3 sampleAlbedo(uint slot, vec2 uv[3], vec3 weight, vec4 transform, vec3 crossed, vec3 direction, float coneWidth)
+vec3 sampleAlbedo(uint slot, vec2 uv[3], vec3 weight, vec4 transform, SurfaceCone cone, float coneWidth)
 {
-    const vec3 texel = sampleDiffuse(slot, uv, weight, transform, crossed, direction, coneWidth).rgb;
+    const vec3 texel = sampleDiffuse(slot, uv, weight, transform, cone, coneWidth).rgb;
     if (frame.mDelight <= 0.0)
         return texel;
 

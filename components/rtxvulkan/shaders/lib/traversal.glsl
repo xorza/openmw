@@ -78,11 +78,11 @@ bool isSeenThrough(float opacity)
 ///
 /// @param opacity what `surfaceOpacity` gave for this hit, made once by the caller.
 float sampledOpacity(
-    float opacity, GpuMaterial material, vec2 uv[3], vec3 weight, vec3 crossed, vec3 direction, float coneWidth)
+    float opacity, GpuMaterial material, vec2 uv[3], vec3 weight, SurfaceCone cone, float coneWidth)
 {
     const float covered = material.mDiffuse == NO_TEXTURE
         ? 1.0
-        : sampleDiffuse(material.mDiffuse, uv, weight, material.mTextureTransform, crossed, direction, coneWidth).a;
+        : sampleDiffuse(material.mDiffuse, uv, weight, material.mTextureTransform, cone, coneWidth).a;
 
     return clamp(covered * opacity, 0.0, 1.0);
 }
@@ -132,14 +132,15 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
     vec2 uv[3];
     triangleUvs(triangleCorners(meshes[instance.mMesh], primitive), uv);
     const vec3 weight = cornerWeights(bary);
+    const SurfaceCone cone = surfaceConeAt(crossed, direction);
 
     if (walkPast)
     {
-        through *= 1.0 - sampledOpacity(opacity, material, uv, weight, crossed, direction, coneWidth);
+        through *= 1.0 - sampledOpacity(opacity, material, uv, weight, cone, coneWidth);
         return false;
     }
 
-    return sampleDiffuse(material.mDiffuse, uv, weight, material.mTextureTransform, crossed, direction, coneWidth).a
+    return sampleDiffuse(material.mDiffuse, uv, weight, material.mTextureTransform, cone, coneWidth).a
         >= material.mAlphaCutoff;
 }
 
@@ -359,6 +360,10 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     const vec3 crossed = triangleCross(corners, toWorld);
     surface.mGeometric = dot(crossed, crossed) > 0.0 ? normalize(crossed) : vec3(0.0, 0.0, 1.0);
 
+    // Every texture read below shares this hit's triangle and this ray: a chunk's whole layer stack,
+    // the opacity a pane pays for, and the emissive map.
+    const SurfaceCone cone = surfaceConeAt(crossed, direction);
+
     const vec3 shading
         = normalAt(corner.x) * weight.x + normalAt(corner.y) * weight.y + normalAt(corner.z) * weight.z;
     const vec3 normal = dot(shading, shading) > 1e-8 ? normalize(mat3(toWorld) * shading) : surface.mGeometric;
@@ -412,13 +417,13 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
 
             albedo += showing
                 * sampleAlbedo(
-                    layer.mDiffuse, uv, weight, layer.mDiffuseTransform, crossed, direction, surface.mFootprint);
+                    layer.mDiffuse, uv, weight, layer.mDiffuseTransform, cone, surface.mFootprint);
         }
     }
     else if (material.mDiffuse != NO_TEXTURE)
     {
         albedo = sampleAlbedo(
-            material.mDiffuse, uv, weight, material.mTextureTransform, crossed, direction, surface.mFootprint);
+            material.mDiffuse, uv, weight, material.mTextureTransform, cone, surface.mFootprint);
     }
     surface.mAlbedo = albedo * material.mDiffuseColour.rgb;
 
@@ -428,12 +433,12 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     // nothing else does.
     const float opacity = surfaceOpacity(instance, material);
     if (isSeenThrough(opacity))
-        surface.mOpacity = sampledOpacity(opacity, material, uv, weight, crossed, direction, surface.mFootprint);
+        surface.mOpacity = sampledOpacity(opacity, material, uv, weight, cone, surface.mFootprint);
 
     if (material.mEmissive != NO_TEXTURE)
         surface.mEmitted = EMISSIVE_INTENSITY
             * sampleDiffuse(
-                material.mEmissive, uv, weight, material.mTextureTransform, crossed, direction, surface.mFootprint)
+                material.mEmissive, uv, weight, material.mTextureTransform, cone, surface.mFootprint)
                   .rgb;
 
     return surface;

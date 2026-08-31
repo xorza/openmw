@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include "fixture.hpp"
 
 namespace Rtx::Testing
@@ -85,7 +87,7 @@ namespace Rtx::Testing
             overhead.mUp = osg::Vec3f(0.0f, 1.0f, 0.0f);
             overhead.mColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
             overhead.mIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
-            overhead.mAngularRadius = moonAngularRadius(Moon::Masser);
+            overhead.mLimb = std::sin(moonAngularRadius(Moon::Masser));
             overhead.mAlpha = 1.0f;
             overhead.mFace = Shaders::NO_TEXTURE;
 
@@ -150,7 +152,7 @@ namespace Rtx::Testing
             facing.mRight = osg::Vec3f(1.0f, 0.0f, 0.0f);
             facing.mUp = osg::Vec3f(0.0f, -root, root);
             facing.mColour = osg::Vec3f(1.0f, 1.0f, 1.0f);
-            facing.mAngularRadius = 0.2f;
+            facing.mLimb = std::sin(0.2f);
             facing.mAlpha = 1.0f;
             facing.mThroughAir = osg::Vec3f(1.0f, 1.0f, 1.0f);
             facing.mFace = Shaders::NO_TEXTURE;
@@ -392,7 +394,7 @@ namespace Rtx::Testing
             covering.mUp = osg::Vec3f(0.0f, -root, root);
             covering.mColour = osg::Vec3f();
             covering.mThroughAir = osg::Vec3f(1.0f, 1.0f, 1.0f);
-            covering.mAngularRadius = 1.2f;
+            covering.mLimb = std::sin(1.2f);
             covering.mAlpha = 1.0f;
             covering.mFace = Shaders::NO_TEXTURE;
 

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include <components/rtx/cloudshell.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/shaders/scene.h>
@@ -160,7 +162,7 @@ namespace Rtx
                 EXPECT_EQ(disc.mRight, placed.mRight) << "moon " << moon;
                 EXPECT_EQ(disc.mUp, placed.mUp) << "moon " << moon;
                 EXPECT_EQ(disc.mColour, placed.mColour) << "moon " << moon;
-                EXPECT_EQ(disc.mAngularRadius, placed.mAngularRadius) << "moon " << moon;
+                EXPECT_FLOAT_EQ(disc.mLimb, std::sin(placed.mAngularRadius)) << "moon " << moon;
                 EXPECT_EQ(disc.mPhaseAngle, placed.mPhaseAngle) << "moon " << moon;
                 EXPECT_EQ(disc.mAlpha, placed.mAlpha) << "moon " << moon;
                 EXPECT_EQ(disc.mFace, static_cast<std::uint32_t>(placed.mFace)) << "moon " << moon;

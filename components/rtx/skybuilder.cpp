@@ -245,7 +245,7 @@ namespace Rtx
             patches[patch] = Shaders::SkyPatch{ .mDirection = towards,
                 .mRight = right,
                 .mUp = up,
-                .mAngularRadius = placed.mAngularRadius,
+                .mLimb = std::sin(placed.mAngularRadius),
                 .mTexture = static_cast<std::uint32_t>(placed.mTexture) };
         }
     }

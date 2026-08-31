@@ -215,9 +215,9 @@ vec3 skyPatches(vec3 direction)
             continue;
 
         // Where across the face, in units of its radius — the moons' own mapping, for the reason
-        // they share: a direction at the limb stands `sin(radius)` off the centre line.
-        const float limb = sin(sheet.mAngularRadius);
-        const vec2 at = vec2(dot(direction, sheet.mRight), dot(direction, sheet.mUp)) / max(limb, 1.0e-4);
+        // they share.
+        const vec2 at
+            = vec2(dot(direction, sheet.mRight), dot(direction, sheet.mUp)) / max(sheet.mLimb, 1.0e-4);
         if (dot(at, at) >= 1.0)
             continue;
 
@@ -252,17 +252,15 @@ vec3 moonFace(MoonDisc moon, vec3 direction, float blur, out float covered)
     if (moon.mAlpha <= 0.0 || dot(direction, moon.mDirection) <= 0.0)
         return vec3(0.0);
 
-    // Where across the face, in units of its radius. A direction at the limb stands `sin(radius)`
-    // off the centre line, so dividing by that puts the limb at one and makes the cone test a
-    // comparison this needed anyway.
-    const float limb = sin(moon.mAngularRadius);
-    const vec2 at = vec2(dot(direction, moon.mRight), dot(direction, moon.mUp)) / limb;
+    // Where across the face, in units of its radius: dividing by the limb puts it at one and makes
+    // the cone test a comparison this needed anyway.
+    const vec2 at = vec2(dot(direction, moon.mRight), dot(direction, moon.mUp)) / moon.mLimb;
     const float across = length(at);
 
     // The pixel's own spread in the same units, so the silhouette is antialiased rather than
     // stepped. A moon is degrees wide and a pixel a thousandth of one, so this is a hair either
     // side of the limb and nothing anywhere else.
-    const float fade = max(blur / limb, 1.0e-5);
+    const float fade = max(blur / moon.mLimb, 1.0e-5);
     covered = (1.0 - smoothstep(1.0 - fade, 1.0 + fade, across)) * moon.mAlpha;
     if (covered <= 0.0)
         return vec3(0.0);
