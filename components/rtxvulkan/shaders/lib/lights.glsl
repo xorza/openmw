@@ -265,10 +265,19 @@ Reservoir noLamps()
 /// takes the near side and nothing from behind; a sheet with a mask — a leaf — takes the far side
 /// at `SHEET_TRANSMISSION` of the near, `GpuMesh::mSheet` having said so. Never both at once: a
 /// direction is on one side of a plane or the other.
-float litCosine(vec3 normal, vec3 towards, float transmission)
+///
+/// **The plane says which side, and the shading normal only says how much.** Read off the shading
+/// normal alone, a wall panel whose vertices lean past their own triangle takes a lamp standing
+/// behind it as a lamp in front — and the sheet it is has no thickness for the shadow ray to stop
+/// in, so the lamp arrives unshadowed and the panel glows through itself. Four hits in a hundred
+/// carry a normal more than sixty degrees off its triangle, which is what the content is like.
+///
+/// @param plane `Surface::mGeometric`, turned out of the surface. Zero has no meaning here — an
+///        asker with no plane has no sides, and does not ask.
+float litCosine(vec3 normal, vec3 plane, vec3 towards, float transmission)
 {
     const float cosine = dot(normal, towards);
-    return max(cosine, 0.0) + transmission * max(-cosine, 0.0);
+    return dot(plane, towards) > 0.0 ? max(cosine, 0.0) : transmission * max(-cosine, 0.0);
 }
 
 /// Offers one candidate to `kept`, already resolved to what it delivers at `from`.
@@ -320,12 +329,14 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
 ///
 /// @param normal the surface's, or nothing at all for a point in a medium — the air and a puff have
 ///        no direction to face away from, so every lamp reaching them counts whole.
+/// @param plane the surface's `Surface::mGeometric`, beside the normal and going with it: `litCosine`
+///        says why a side is the plane's answer. Nothing at all where `normal` is.
 /// @param scale what this asker's own share of a lamp is worth: `INV_PI` for a Lambert surface,
 ///        `INV_FOUR_PI` times a step's weight for the air.
 /// @param transmission what the far side of a sheet is worth, out of `Surface::mTransmission`.
 ///        Nought for a solid and for a point in a medium, which has no far side.
-void weighLamps(
-    inout Reservoir kept, inout uint state, vec3 from, vec3 normal, float scale, float transmission, bool greedy)
+void weighLamps(inout Reservoir kept, inout uint state, vec3 from, vec3 normal, vec3 plane, float scale,
+    float transmission, bool greedy)
 {
     const bool facing = dot(normal, normal) > 0.0;
 
@@ -336,7 +347,7 @@ void weighLamps(
         if (!(lamp.mReaching > 0.0))
             continue;
 
-        const float cosine = facing ? litCosine(normal, lamp.mTowards, transmission) : 1.0;
+        const float cosine = facing ? litCosine(normal, plane, lamp.mTowards, transmission) : 1.0;
         if (cosine <= 0.0)
             continue;
 
@@ -352,7 +363,7 @@ void weighLamps(
 void holdBrightestLamp(inout Reservoir kept, vec3 from, float scale)
 {
     uint undrawn = 0u;
-    weighLamps(kept, undrawn, from, vec3(0.0), scale, 0.0, true);
+    weighLamps(kept, undrawn, from, vec3(0.0), vec3(0.0), scale, 0.0, true);
 }
 
 /// What the world leaves of the lamp a reservoir held, from none of it to all.

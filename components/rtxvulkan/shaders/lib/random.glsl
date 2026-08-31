@@ -200,6 +200,24 @@ vec3 coneDirection(vec3 axis, float sine, vec2 u)
     return tangent * (radius * cos(turn)) + cross(axis, tangent) * (radius * sin(turn)) + axis * (1.0 - drop);
 }
 
+/// A direction anywhere on the sphere, drawn evenly over it.
+///
+/// **For an asker with no direction to face away from**, which is a point in a medium: a puff of
+/// smoke and a step of a fog march are lit from every side, so what stands over them is a question
+/// about the whole sphere rather than about a hemisphere. `cosineDirection` is the surface's answer
+/// and `coneDirection` a source's; this is the one for a point that has neither.
+///
+/// The height is drawn evenly because a sphere's area is even in it — Archimedes' theorem, the same
+/// fact `coneDirection` leans on over its cap.
+vec3 sphereDirection(vec2 u)
+{
+    const float height = 1.0 - 2.0 * u.x;
+    const float radius = sqrt(max(1.0 - height * height, 0.0));
+    const float turn = TAU * u.y;
+
+    return vec3(radius * cos(turn), radius * sin(turn), height);
+}
+
 /// A direction about `normal`, drawn with probability proportional to its cosine.
 ///
 /// **The one distribution that cancels the cosine term.** A diffuse surface weights what arrives by

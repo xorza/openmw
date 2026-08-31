@@ -1,9 +1,32 @@
+#include <numbers>
+
 #include "fixture.hpp"
 
 namespace Rtx::Testing
 {
     namespace
     {
+        /// How far the vertex normals of `leaningFloor` lean off their own triangle.
+        ///
+        /// **Seventy degrees, which is what the content is like.** Four hits in a hundred of a
+        /// Morrowind frame carry a shading normal more than sixty degrees off the triangle it sits
+        /// on, so this is inside the range the renderer meets rather than a corner built to fail.
+        constexpr float sLeaningNormal = 70.0f * std::numbers::pi_v<float> / 180.0f;
+
+        /// A level sheet at the origin whose vertex normals all lean `sLeaningNormal` off it.
+        SceneDesc leaningFloor()
+        {
+            SceneDesc scene;
+
+            const osg::Vec3f leaning(std::sin(sLeaningNormal), 0.0f, std::cos(sLeaningNormal));
+            const std::array<osg::Vec3f, 4> normals{ leaning, leaning, leaning, leaning };
+
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), normals, {}, sQuadIndices) });
+
+            return scene;
+        }
+
         /// The sun, which is one direction everywhere and casts a shadow to the end of the world.
         ///
         /// The wall's normal is (0, -1, 0), so a sun travelling straight along it meets it square and
@@ -839,11 +862,7 @@ namespace Rtx::Testing
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, {}, camera, size, pixels, SeaState{}, 48);
 
-                float sum = 0.0f;
-                for (std::size_t at = 0; at < mRadiance.size(); at += 4)
-                    sum += mRadiance[at];
-
-                return sum / float(mRadiance.size() / 4);
+                return meanRadiance();
             };
 
             const SceneDesc open = lidAt(600.0f);
@@ -861,6 +880,112 @@ namespace Rtx::Testing
             // asked the other question: the underside sees the floor and no sky, so out of doors the
             // floor goes dark where in a room it kept most of its fill.
             EXPECT_LT(floorUnderTheLid(open, 1.0f, 600.0f), 0.1f * clear) << "and the sky does not reach under a lid";
+        }
+
+        /// Which side of a surface a light is on is its triangle's answer and never its normal's.
+        ///
+        /// **A sheet has no thickness for a shadow ray to stop in.** A floor whose vertex normals
+        /// lean seventy degrees still faces a sun *below* it — the cosine against the shading normal
+        /// is `cos 40` — and the shadow ray it then buys leaves through the floor, meets nothing,
+        /// and reports the sun as fully visible. The floor lights itself from underneath.
+        ///
+        /// The same quad and the same normal twice, with the sun mirrored about the floor's plane.
+        /// Above it, the floor takes it at the shading normal's own cosine, which here is one; below
+        /// it, the floor takes nothing at all.
+        ///
+        /// **Both halves are the assertion.** The plane deciding alone would be satisfied by a
+        /// renderer that had dropped the shading normal and taken the plane's cosine instead — which
+        /// is `cos 70`, a third of what the sun above has to deliver, and nowhere near the tolerance.
+        TEST_F(RtxVisibilityTest, aLightBehindASurfacesOwnTriangleDoesNotReachIt)
+        {
+            constexpr std::uint32_t size = 16;
+            constexpr float sunlight = 4.0f;
+
+            const SceneDesc scene = leaningFloor();
+
+            const auto litFrom = [&](float upward) {
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+                // Nothing but the sun, so what the floor shows is that one term.
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mAmbientFromSky = 1.0f;
+
+                camera.mSunPosition = osg::Vec3f(std::sin(sLeaningNormal), 0.0f, upward * std::cos(sLeaningNormal));
+                camera.mSunIrradiance = osg::Vec3f(sunlight, sunlight, sunlight);
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels, SeaState{}, 16);
+
+                return meanRadiance();
+            };
+
+            // The sun along the shading normal itself: cosine one, albedo a half, and the Lambert
+            // divisor. 0.5 * 4 / pi = 0.63662.
+            const float above = litFrom(1.0f);
+            EXPECT_NEAR(above, 0.5f * sunlight / std::numbers::pi_v<float>, 0.002f)
+                << "the shading normal still says how much";
+
+            // Mirrored: `cos 40` against the shading normal, and behind the plane.
+            EXPECT_LT(litFrom(-1.0f), 0.002f) << "and the triangle says which side";
+        }
+
+        /// A bounce does not gather through the triangle it left.
+        ///
+        /// **The same leaning normal, asked of the indirect term.** A cosine lobe about a normal
+        /// seventy degrees off its plane puts `(1 - cos 70) / 2` of its projected measure *under*
+        /// the surface — a third of it — and on sheet geometry those rays meet nothing to stop them.
+        /// So the floor gathered whatever stood beneath the floor.
+        ///
+        /// A glowing sheet on one side of the floor and then the other, with nothing else in the
+        /// scene. Above, the floor gathers `(1 + cos 70) / 2` of it, which is the form factor of a
+        /// half-space seen at that tilt. Below, it gathers none.
+        ///
+        /// The sheet's own radiance is `0.5 * 0.25 * EMISSIVE_INTENSITY`, which is one, so the floor
+        /// above comes to `0.5 * 0.67101`.
+        TEST_F(RtxVisibilityTest, aBounceDoesNotGatherThroughTheTriangleItLeft)
+        {
+            constexpr std::uint32_t size = 32;
+
+            const auto glowingAt = [](float z) {
+                SceneDesc scene = leaningFloor();
+
+                Material glowing;
+                glowing.mEmissiveColour = osg::Vec3f(0.25f, 0.25f, 0.25f);
+
+                // Wide enough that every direction off the floor which is on its side meets it, so
+                // the share below is the geometry's and not the sheet's edge.
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(makeSheet(40000.0f, z), {}, {}, sQuadIndices),
+                    .mMaterial = scene.addMaterial(glowing) });
+
+                return scene;
+            };
+
+            // Between the two, looking down, so the floor is what the eye finds either way.
+            const auto floorUnder = [&](const SceneDesc& scene) {
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -1.0f, 50.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mSunIrradiance = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mAmbientFromSky = 1.0f;
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels, SeaState{}, 64);
+
+                return meanRadiance();
+            };
+
+            const float share = 0.5f * (1.0f + std::cos(sLeaningNormal));
+
+            EXPECT_NEAR(floorUnder(glowingAt(100.0f)), 0.5f * share, 0.01f) << "the lobe is still the shading normal's";
+
+            EXPECT_LT(floorUnder(glowingAt(-100.0f)), 0.005f) << "and it stops at the triangle";
         }
 
         /// A bounce is drawn by the cosine, and two thirds is the number that says so.

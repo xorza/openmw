@@ -34,6 +34,9 @@ const uint PATH_INDIRECT = 1u;
 /// One shadow ray per light that could reach at all, and none for a light the surface faces away
 /// from — the two tests before it are what keep a cell's worth of lamps affordable.
 ///
+/// @param plane the surface's own triangle, out of `Surface::mGeometric`. **Which side of the
+///        surface a light stands on is its answer and never the shading normal's**, and `litCosine`
+///        says what it cost to read the normal for it.
 /// @param footprint how wide the cone that found this point had grown, which is the scale the
 ///        caustics are allowed to resolve waves at.
 /// @param seed which draw sequence the lamp reservoir steps. **One per depth of the path**, because
@@ -42,7 +45,7 @@ const uint PATH_INDIRECT = 1u;
 /// @param transmission what a light on the far side of the surface is worth to this side, which
 ///        is `Surface::mTransmission`: nought for a solid, `SHEET_TRANSMISSION` for a leaf.
 /// @param path `PATH_SEEN` or `PATH_INDIRECT`, which decides whether the moons are asked at all.
-vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uint seed, uint path)
+vec3 gather(vec3 position, vec3 normal, vec3 plane, float footprint, float transmission, uint seed, uint path)
 {
     vec3 radiance = vec3(0.0);
 
@@ -79,7 +82,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     // none and leave the penumbra — the only part of the integral the cone is wide enough to
     // matter to — no better resolved for it.
 
-    const float sunCosine = litCosine(normal, frame.mSunPosition, transmission);
+    const float sunCosine = litCosine(normal, plane, frame.mSunPosition, transmission);
     if (HAS_SUN && sunCosine > 0.0 && frame.mSunIrradiance != vec3(0.0))
     {
         const float through
@@ -110,8 +113,8 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     {
         // The weight is what each would deliver unshadowed, which is everything about a moon that
         // can be known without tracing — the same rule the lamp reservoir picks its candidate by.
-        const float masserCosine = litCosine(normal, frame.mMoons[0].mDirection, transmission);
-        const float secundaCosine = litCosine(normal, frame.mMoons[1].mDirection, transmission);
+        const float masserCosine = litCosine(normal, plane, frame.mMoons[0].mDirection, transmission);
+        const float secundaCosine = litCosine(normal, plane, frame.mMoons[1].mDirection, transmission);
 
         const float masser
             = masserCosine > 0.0 ? masserCosine * dot(frame.mMoons[0].mIrradiance, LUMINANCE_WEIGHTS) : 0.0;
@@ -161,7 +164,7 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
     // **With one lamp in the cell it is exactly the arithmetic that was here before**: the sum is
     // that lamp's weight, the ratio is one, and what is left is the term that was always there.
     Reservoir kept = noLamps();
-    weighLamps(kept, state, position, normal, INV_PI, transmission, false);
+    weighLamps(kept, state, position, normal, plane, INV_PI, transmission, false);
 
     radiance += lampsThrough(kept, lampDraw);
 
@@ -244,7 +247,8 @@ vec3 shadeSurface(Surface surface, vec3 incoming, uint seed, uint path)
     // made of rather than being tinted by it.
     return surface.mAlbedo
         * (incoming
-            + gather(surface.mPosition, surface.mNormal, surface.mFootprint, surface.mTransmission, seed, path)
+            + gather(surface.mPosition, surface.mNormal, surface.mGeometric, surface.mFootprint,
+                surface.mTransmission, seed, path)
             + surface.mEmissiveColour * EMISSIVE_INTENSITY)
         + surface.mEmitted;
 }
@@ -255,13 +259,41 @@ vec3 shadeSurface(Surface surface, vec3 incoming, uint seed, uint path)
 /// and the far one at `transmission`, so the far side is taken with probability
 /// `transmission / (1 + transmission)` and either sample is weighed by `1 + transmission` — which
 /// is exactly the two integrals' sum, and one ray however many faces there are. A solid never
-/// draws: its weight is one and its normal is its own.
+/// draws: its weight is one and its near face is its own.
+///
+/// **A sign rather than an axis, because a face is two vectors and not one.** The hemisphere is
+/// drawn about the shading normal and bounded by the triangle's plane, and the far face is the far
+/// side of both — so what the caller needs back is the turn to apply to each.
 ///
 /// @param draw one number in `[0, 1)`, read only where there is a far side to choose.
-vec3 sampledFace(vec3 normal, float transmission, float draw, out float weight)
+float sampledFace(float transmission, float draw, out float weight)
 {
     weight = 1.0 + transmission;
-    return transmission > 0.0 && draw * weight > 1.0 ? -normal : normal;
+    return transmission > 0.0 && draw * weight > 1.0 ? -1.0 : 1.0;
+}
+
+/// Whether a direction drawn about the shading normal has gone behind the face it left by.
+///
+/// **The lobe is the shading normal's, which is what a shading normal is for, and the triangle is
+/// what bounds it.** On this content a normal leans past its own plane often enough to matter — four
+/// hits in a hundred by more than sixty degrees — and a direction drawn past it sets off *into* the
+/// surface. Morrowind builds rooms out of sheets with no thickness, so nothing stopped such a ray:
+/// it either left the building, where a room hands nothing back and the point went dark, or it
+/// landed on the far face of the wall and handed back light the point cannot see. Measured over a
+/// converged frame of Balmora's Guild of Mages, those rays were four fifths of the mean escaped
+/// share and nineteen twentieths of the worst pixels' — 5.8% of the hemisphere at the 99th
+/// percentile against 0.4% once they stopped.
+///
+/// **What a caller takes from such a direction is nothing, because nothing is the answer**: what it
+/// points at is the inside of the surface. The cost is the part of the lobe that leans past the
+/// plane, and that loss is the shading normal's own rather than one made here.
+///
+/// @param plane the surface's `Surface::mGeometric` — or nothing at all for a point in a medium,
+///        which has no triangle to be behind.
+/// @param face which side `sampledFace` drew, which turns the plane along with the normal.
+bool behindTheFace(vec3 towards, vec3 plane, float face)
+{
+    return dot(plane, plane) > 0.0 && face * dot(towards, plane) <= 0.0;
 }
 
 /// How fast a bounce ray's cone widens, against a primary ray's.
@@ -297,13 +329,33 @@ const float ROOM_FILL_REACH = 140.0;
 /// well, at `transmission` of what it sees over its front, so what reaches it runs to
 /// `1 + transmission` of a solid's whole. The side is drawn after the direction and only where
 /// there is one to draw, so a solid's sequence is what it was.
-float ambientReaching(vec3 position, vec3 normal, float transmission, uint seed)
+///
+/// **A direction behind the surface's own triangle reaches nothing**, by `behindTheFace`: there is
+/// no ambient inside a wall.
+///
+/// @param normal the hemisphere's axis — a surface's shading normal, or nothing at all for a point
+///        in a medium, which is `weighLamps`' contract and means the same thing here: a puff of
+///        smoke has no side to face away from, so what stands over it is asked over the whole
+///        sphere rather than over a hemisphere.
+/// @param plane the surface's own triangle, as `behindTheFace` takes it.
+float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission, uint seed)
 {
     uint state = randomSeed(seed);
     const vec2 draw = vec2(randomNext(state), randomNext(state));
 
-    float weight;
-    const vec3 face = sampledFace(normal, transmission, transmission > 0.0 ? randomNext(state) : 0.0, weight);
+    float weight = 1.0;
+    vec3 towards;
+
+    if (dot(normal, normal) > 0.0)
+    {
+        const float face = sampledFace(transmission, transmission > 0.0 ? randomNext(state) : 0.0, weight);
+        towards = cosineDirection(normal * face, draw);
+
+        if (behindTheFace(towards, plane, face))
+            return 0.0;
+    }
+    else
+        towards = sphereDirection(draw);
 
     // **How far to look for the occluder is the whole of what a room changes.** Out of doors the
     // question is the sky and the ray runs to it. In a room the ambient is the `AMBI` fill, which
@@ -313,7 +365,7 @@ float ambientReaching(vec3 position, vec3 normal, float transmission, uint seed)
     // pillow over the sheet, the chest against the wall, the underside of a table.
     const float reach = frame.mAmbientFromSky > 0.0 ? frame.mFar : ROOM_FILL_REACH;
 
-    return weight * lightThrough(position, cosineDirection(face, draw), reach);
+    return weight * lightThrough(position, towards, reach);
 }
 
 /// What reaches a surface from everything that is not a light: one diffuse bounce.
@@ -336,9 +388,13 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
         uint state = randomSeed(pixelKey(pixel) + SEED_SHEET_SIDE);
         side = randomNext(state);
     }
-    const vec3 face = sampledFace(surface.mNormal, surface.mTransmission, side, weight);
+    const float face = sampledFace(surface.mTransmission, side, weight);
 
-    const vec3 towards = cosineDirection(face, unitPair(pixel, STREAM_BOUNCE));
+    const vec3 towards = cosineDirection(surface.mNormal * face, unitPair(pixel, STREAM_BOUNCE));
+
+    if (behindTheFace(towards, surface.mGeometric, face))
+        return vec3(0.0);
+
     const Surface hit
         = trace(surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, MASK_SOLID);
 
@@ -362,8 +418,8 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
         return weight * skyGlow(towards) * daylightReaching(surface.mPosition);
     }
 
-    const float reaching
-        = ambientReaching(hit.mPosition, hit.mNormal, hit.mTransmission, pixelKey(pixel) + SEED_AMBIENT_REACHING);
+    const float reaching = ambientReaching(
+        hit.mPosition, hit.mNormal, hit.mGeometric, hit.mTransmission, pixelKey(pixel) + SEED_AMBIENT_REACHING);
 
     // **Its glow is counted here, because this is the only path it takes.** Nothing gives a glowing
     // surface a lamp of its own — `EMISSIVE_INTENSITY` says what measuring that showed — so a ray

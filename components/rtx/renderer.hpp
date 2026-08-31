@@ -218,8 +218,23 @@ namespace Rtx
         /// division a reader can do, and the totals say how much surface the shares are *of*.
         MicromapTally mMicromapTally;
 
+        /// What the renderer holds in acceleration structures and in scene tables.
+        ///
+        /// **What it holds and not what the scene needs**, which is the figure a video memory budget
+        /// is spent against: neither allocator ever gives memory back, so both are the high-water
+        /// mark of what the run asked for. A block goes to whichever structure asked when no block
+        /// had room for it, and a table stays as long as the longest list it ever held.
+        ///
+        /// **So a route's figures move a little between two runs of one binary, and that is the
+        /// answer rather than a fault in it.** What arrives when is the loading threads' to decide,
+        /// not the frame clock's, so two runs of a place reach the same content by different orders
+        /// and leave the allocators arranged differently. Measured over five runs of `bench` at
+        /// Balmora: the instances, the micromap tally and every texture figure agree exactly, and
+        /// these two land on one of two values 110 KiB and 132 bytes apart — 0.05% and a millionth.
         std::uint64_t mStructureBytes = 0;
         std::uint64_t mTableBytes = 0;
+
+        /// Content, and so the same on two runs where the two above are not.
         std::uint32_t mTextureCount = 0;
         std::uint64_t mTextureBytes = 0;
     };

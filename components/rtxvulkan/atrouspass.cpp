@@ -134,6 +134,15 @@ namespace Rtx
             std::swap(source, target);
         }
 
+        // **The cascade hands over what it wrote, because nothing after it does.** The levels order
+        // themselves against each other and the last one ordered itself against nothing — so the
+        // composite dispatch that reads this result ran beside the dispatch still writing it. Two
+        // runs of one doll wrote different bytes over a thousand of its pixels, by a level or two
+        // apiece, which is what a compute read that overtook part of a compute write looks like.
+        source->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+
         // One swap past the last dispatch, so this is what that dispatch wrote.
         return *source;
     }

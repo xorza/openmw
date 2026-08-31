@@ -101,6 +101,76 @@ namespace Rtx::Testing
             }
         }
 
+        /// A room's fill reaches a puff from every side, and what stands near takes it away.
+        ///
+        /// **A puff is a point in a medium and has no face to turn away from**, so what it sees of
+        /// an `AMBI` fill is a question about the whole sphere rather than about a hemisphere. It
+        /// used to be no question at all: indoors the layer asked the world nothing and a puff's own
+        /// thickness was the whole answer, so smoke under a table came out as bright as smoke in the
+        /// middle of the floor.
+        ///
+        /// **The law is exactly linear, which is what makes this an assertion rather than a
+        /// comparison.** A sheet `h` above and another `h` below block every direction that reaches
+        /// them inside `ROOM_FILL_REACH` — that is `|d.z| >= h / reach` — and a uniform sphere draw
+        /// puts `d.z` evenly on `[-1, 1]`, so the share left is `h / reach` and nothing else. At 35
+        /// and 70 units of a 140-unit reach that is a quarter and a half of the open fill.
+        ///
+        /// **And it is the sphere the law comes from.** Drawing the cosine about the up instead
+        /// would leave `(h / reach)^2` — a sixteenth and a quarter — which the tolerance below is
+        /// nowhere near.
+        ///
+        /// The sprite is opaque and carries no lighting bake, so what a pixel shows is the fill
+        /// alone. Only the middle row is read: those rays are level, so they meet neither sheet and
+        /// the chord they cut is the same one in all three scenes.
+        TEST_F(RtxVisibilityTest, aRoomsFillReachesAPuffFromEverySideAndWhatIsNearTakesItAway)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr float reach = 140.0f;
+
+            const OneTexel white({ 255, 255, 255, 255 });
+            const std::array<TextureData, 1> puff{ white.describe() };
+
+            const auto boxedAt = [&](float half) {
+                SceneDesc scene;
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const std::array<Sprite, 1> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 40.0f, .mAlpha = 1.0f } };
+                scene.addEmitter(sprites, cut, false);
+
+                // Nothing at all where the fill is whole, rather than sheets moved out of reach: a
+                // scene with no geometry is the one case where the answer cannot be the geometry's.
+                if (half > 0.0f)
+                    for (const float z : { half, -half })
+                        scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                            .mMesh = scene.addMesh(makeSheet(4000.0f, z), {}, {}, sQuadIndices) });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -reach, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mSunIrradiance = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f(0.5f, 0.5f, 0.5f);
+                camera.mAmbientFromSky = 0.0f;
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, puff, camera, size, pixels, SeaState{}, 128);
+
+                // The middle row, whose rays leave the eye level and stay level.
+                float sum = 0.0f;
+                for (std::uint32_t x = 0; x < size; ++x)
+                    sum += mRadiance[(std::size_t{ size / 2 } * size + x) * 4];
+
+                return sum;
+            };
+
+            const float open = boxedAt(0.0f);
+            ASSERT_GT(open, 0.01f) << "the fill did not light the puff at all";
+
+            EXPECT_NEAR(boxedAt(35.0f) / open, 35.0f / reach, 0.04f) << "a quarter of the sphere is left";
+            EXPECT_NEAR(boxedAt(70.0f) / open, 70.0f / reach, 0.04f) << "and half of it at twice the room";
+        }
+
         /// The alpha every sprite test below cuts its sprite from: half, so that what it hides and
         /// what it lets through are the same size and neither can pass by being nought or one.
         constexpr float sHalfAlpha = 128.0f / 255.0f;

@@ -346,6 +346,21 @@ namespace Rtx::Testing
             return hits;
         }
 
+        /// The mean of one channel of the last render, in linear radiance.
+        ///
+        /// **The frame and not a pixel, where every pixel of it is the same measurement.** The
+        /// estimator is one sample per pixel, so a frame lit evenly is as many samples as it has
+        /// pixels and its mean is the figure with that error divided down — which is what lets a
+        /// test hold a derived number to three decimal places over a stochastic renderer.
+        float meanRadiance(std::size_t channel = 0) const
+        {
+            float sum = 0.0f;
+            for (std::size_t at = channel; at < mRadiance.size(); at += 4)
+                sum += mRadiance[at];
+
+            return sum / float(mRadiance.size() / 4);
+        }
+
         /// The picture a display would show: this pass's own tone curve and display curve over
         /// the exposure the frame measured for itself.
         ///

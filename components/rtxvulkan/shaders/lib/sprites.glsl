@@ -37,7 +37,8 @@
 /// @param daylight what `daylightReaching` says of the position, asked once by the caller.
 /// @param sunLit what the world and the puff itself leave of the sun at this point.
 /// @param skyLit the same for the sky over it.
-/// @param fillLit what the puff lets through of a room's own fill, which comes from everywhere.
+/// @param fillLit what stands between the puff and a room's own fill, which comes from everywhere:
+///        the puff's own thickness in every direction, and what the room has standing around it.
 /// @param lampLit the same for the lamps — **one shadow answer for every lamp and for the whole
 ///        layer**, where the sum beside it is this puff's own. What a lamp delivers runs as one over
 ///        the square of a distance that changes from sprite to sprite; whether it is *seen* changes
@@ -209,14 +210,14 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     // first sprite that is lit — the nearest one, and so the one whose light most of what the pixel
     // shows is composited from.
     //
-    // The sun's is skipped where there is no sun, and the sky's where the ambient is a room's own
-    // fill rather than the sky.
+    // The sun's is skipped where there is no sun. The ambient's is always taken, and what it asks
+    // about is whichever ambient the frame has: the sky over the puff, or the room around it.
     //
     // The lamp the layer traced to is also the one it is given a side toward: the reservoir picks
     // by what a lamp delivers here, so it is the one the layer would most notice the loss of.
     bool askedAbove = false;
     float sunThrough = 1.0;
-    float skyThrough = 1.0;
+    float ambientThrough = 1.0;
     float lampThrough = 1.0;
     vec3 lampToward = vec3(0.0);
 
@@ -418,11 +419,17 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
             }
 
-            // Straight up, because a particle has no normal and the sky is above it either way.
-            // **Not asked in a room**, where `puffLight` mixes to the fill and throws this away: a
-            // puff's own thickness is what stands between it and light coming from everywhere.
-            if (frame.mAmbientFromSky > 0.0)
-                skyThrough = ambientReaching(sprite.mPosition, skyward, 0.0, pixelKey(pixel) + SEED_AMBIENT_REACHING);
+            // **Cosine about the up out of doors, and the whole sphere in a room**, which is where
+            // each ambient actually comes from: the sky is above a puff and nowhere else, and a
+            // room's fill arrives from every side of it. One ray answers whichever the frame has,
+            // because `puffLight` mixes to exactly one of them.
+            //
+            // **Asked in a room too**, which it was not: a puff's own thickness was the whole of
+            // what stood between it and the fill, so smoke under a table came out as bright as
+            // smoke in the middle of the floor. `ambientReaching` reads `mAmbientFromSky` again for
+            // how far to look, and in a room that is the furniture rather than the walls.
+            ambientThrough = ambientReaching(sprite.mPosition, frame.mAmbientFromSky > 0.0 ? skyward : vec3(0.0),
+                vec3(0.0), 0.0, pixelKey(pixel) + SEED_AMBIENT_REACHING);
 
             // **The lamp that matters where the layer starts, and its answer for all of them.** The
             // reservoir picks by what a lamp delivers here, so the one traced to is the one the
@@ -430,7 +437,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             uint lampState = randomSeed(pixelKey(pixel) + SEED_LAMPS_SPRITE);
 
             Reservoir lamps = noLamps();
-            weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), INV_FOUR_PI, 0.0, false);
+            weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0, false);
 
             lampThrough = lampVisible(lamps, vec2(randomNext(lampState), randomNext(lampState)));
             lampToward = lamps.mTowards;
@@ -440,9 +447,9 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         // texture lets through to this texel. A quad hanging in the world keeps the layer's answers
         // — a rain streak is a thin thing seen by what passes through it, and has no side.
         float sunLit = sunThrough;
-        float skyLit = skyThrough;
+        float skyLit = ambientThrough;
         float lampLit = lampThrough;
-        float fillLit = 1.0;
+        float fillLit = ambientThrough;
 
         if (!oriented)
         {
@@ -473,7 +480,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                 sunLit *= sixWayThrough(toSun, across, upward, facing, shade, back);
                 skyLit *= sixWayThrough(skyward, across, upward, facing, shade, back);
                 lampLit *= sixWayThrough(lampToward, across, upward, facing, shade, back);
-                fillLit = (shade.x + shade.y + shade.z + shade.w + 1.0 + back) / 6.0;
+                fillLit *= (shade.x + shade.y + shade.z + shade.w + 1.0 + back) / 6.0;
             }
 
             // **What the rest of its own emitter leaves of the light**, as the layers of sprites

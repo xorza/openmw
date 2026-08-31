@@ -240,7 +240,14 @@ struct Surface
     /// interpolated normal, which on this content routinely points through its own triangle.
     vec3 mNormal;
 
-    /// The triangle's own plane, unturned — which is what a question about *sides* has to ask.
+    /// The triangle's own plane, turned the same way `mNormal` is.
+    ///
+    /// **What every question about *sides* asks, because the interpolated normal cannot answer
+    /// one.** A shading normal on this content routinely leans past its own triangle — four hits in
+    /// a hundred by more than sixty degrees — so it says a light behind the surface is in front of
+    /// it, and it aims a bounce into the floor the bounce left. The plane says neither. It is turned
+    /// rather than left as the winding wound it so that a caller has one vector meaning "out of this
+    /// surface" and no side of its own to work out.
     vec3 mGeometric;
 
     vec3 mAlbedo;
@@ -352,8 +359,8 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     // normal follows. And the winding drops out — flipping it flips the plane, which the turn
     // undoes — so the two hundredths of a percent of triangles wound against their own normals are
     // not a case this has to be right about.
-    const vec3 facing = faceforward(surface.mGeometric, direction, surface.mGeometric);
-    surface.mNormal = dot(normal, facing) < 0.0 ? -normal : normal;
+    surface.mGeometric = faceforward(surface.mGeometric, direction, surface.mGeometric);
+    surface.mNormal = dot(normal, surface.mGeometric) < 0.0 ? -normal : normal;
 
     const GpuMaterial material = materials[instance.mMaterial];
     surface.mWater = material.mKind == KIND_WATER;
