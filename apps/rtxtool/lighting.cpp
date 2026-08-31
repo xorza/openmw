@@ -68,23 +68,25 @@ namespace RtxTool
         // weather system this harness does not run — so each side reaches them its own way and the
         // assembly takes them as they are.
         //
-        // **A room has neither**, and nothing under it is asked for: an alpha of nothing is a moon
-        // the sky skips, and a storm aimed at a body under a roof is arithmetic nobody reads.
+        // **Placed whatever the cell is, because whether a room has moons is not this caller's
+        // answer to give.** `Rtx::describeWorld` takes the sky away from a room once, for both
+        // hosts, and a second rule here is the same question with its own copy of the answer.
         std::array<Rtx::MoonPlacement, 2> moons{};
+        for (const Rtx::Moon moon : { Rtx::Moon::Masser, Rtx::Moon::Secunda })
+        {
+            Rtx::MoonPlacement placed = Rtx::makeMoon(moon, lighting.mDay, lighting.mHour, lighting.mGlare);
+            placed.mFace = lighting.mFaces.of(moon);
+            moons[static_cast<std::size_t>(moon)] = placed;
+        }
+
+        // **Asked of the eye, which is the only body standing in this weather.** The game aims an
+        // ashstorm at the player and reports where it settled; every caller here has already put
+        // its camera in `mOrigin`, so the same rule reaches the same answer. A storm aimed at a
+        // body under a roof is arithmetic nobody reads.
         osg::Vec3f storm;
         osg::Vec3f nextStorm;
         if (lighting.mOutdoors)
         {
-            for (const Rtx::Moon moon : { Rtx::Moon::Masser, Rtx::Moon::Secunda })
-            {
-                Rtx::MoonPlacement placed = Rtx::makeMoon(moon, lighting.mDay, lighting.mHour, lighting.mGlare);
-                placed.mFace = lighting.mFaces.of(moon);
-                moons[static_cast<std::size_t>(moon)] = placed;
-            }
-
-            // **Asked of the eye, which is the only body standing in this weather.** The game aims
-            // an ashstorm at the player and reports where it settled; every caller here has already
-            // put its camera in `mOrigin`, so the same rule reaches the same answer.
             storm = Rtx::stormDirection(lighting.mWeather, constants.mOrigin);
             nextStorm = Rtx::stormDirection(lighting.mNextWeather, constants.mOrigin);
         }

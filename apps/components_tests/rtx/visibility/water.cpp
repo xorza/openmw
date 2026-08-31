@@ -303,6 +303,7 @@ namespace Rtx::Testing
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -0.05f, -eye), osg::Vec3f(0.0f, 0.0f, -eye - 10.0f), 60.0f, size, size, 10000.0f);
                 camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
+                camera.mAmbientFromSky = 1.0f;
                 camera.mWaterLevel = 0.0f;
 
                 std::vector<std::uint8_t> pixels;
@@ -366,6 +367,7 @@ namespace Rtx::Testing
             camera.mAmbient = osg::Vec3f(1.0f, 1.0f, 1.0f);
             camera.mSkyHorizon = osg::Vec3f(1.0f, 1.0f, 1.0f);
             camera.mSkyZenith = camera.mSkyHorizon;
+            camera.mAmbientFromSky = 1.0f;
             camera.mWaterLevel = 0.0f;
 
             std::vector<std::uint8_t> pixels;
@@ -456,6 +458,7 @@ namespace Rtx::Testing
                 camera.mWaterLevel = 0.0f;
                 camera.mSkyHorizon = osg::Vec3f(1.0f, 1.0f, 1.0f);
                 camera.mSkyZenith = osg::Vec3f(1.0f, 1.0f, 1.0f);
+                camera.mAmbientFromSky = 1.0f;
 
                 std::vector<std::uint8_t> withWater;
                 countHits(wet, {}, camera, size, withWater, SeaState{ .mSignificantHeight = 0.0f });
@@ -553,6 +556,7 @@ namespace Rtx::Testing
                 camera.mWaterLevel = 0.0f;
                 camera.mSkyHorizon = osg::Vec3f(0.5f, 0.0f, 0.0f);
                 camera.mSkyZenith = camera.mSkyHorizon;
+                camera.mAmbientFromSky = 1.0f;
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
@@ -663,6 +667,7 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -1.0f, above - depth), osg::Vec3f(0.0f, 0.0f, -depth), 60.0f, size, size, 10000.0f);
             camera.mSkyHorizon = osg::Vec3f(sky, sky, sky);
             camera.mSkyZenith = camera.mSkyHorizon;
+            camera.mAmbientFromSky = 1.0f;
             camera.mWaterLevel = 0.0f;
 
             // Flat, so the surface the bounce passes through neither bends it nor gathers it.

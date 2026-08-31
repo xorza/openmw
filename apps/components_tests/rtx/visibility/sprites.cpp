@@ -143,8 +143,8 @@ namespace Rtx::Testing
                 // ambient, the sun and the lamps, and none of those is here.
                 camera.mSkyHorizon = osg::Vec3f(0.6f, 0.6f, 0.6f);
                 camera.mSkyZenith = camera.mSkyHorizon;
+                camera.mAmbientFromSky = 1.0f;
                 camera.mAmbient = osg::Vec3f();
-                camera.mAmbientFromSky = 0.0f;
                 camera.mSunIrradiance = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;

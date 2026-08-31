@@ -392,13 +392,22 @@ namespace Rtx
     /// rasterizer to read. So both hand over the four numbers the cell wrote, in the record's own
     /// type, and this is the one reading of them.
     ///
-    /// **A room has a sun, and it is the game's.** `configureAmbient` lights every interior with the
-    /// record's sunlight colour as a directional light from `Sky::roomSun`, at full share and never
-    /// at night.
+    /// **A room has no sun, and its sunlight is spread instead.** `configureAmbient` puts the
+    /// record's sunlight into a directional light aimed along `(-1, 45°, 45°)` — two angles in
+    /// radians used as coordinates, which upstream's own comment calls nonsense and uses anyway. A
+    /// rasterizer can afford an arbitrary direction because the light it casts is soft and stops at
+    /// the geometry it is given. Traced, that direction is real: it casts hard shadows off nothing,
+    /// and it reaches through every crack a room's shell is built from, which is a bright seam
+    /// wherever two walls meet.
+    ///
+    /// So the record's sunlight is kept whole and its direction is taken away, over `INV_FOUR_PI` —
+    /// the same move `makeSkylight` makes on the night's sun, for the same reason. A room is as
+    /// bright as its record says and no longer has a direction the content never chose.
     ///
     /// The sky is the fog colour at both ends, since a room has no dome and its air stands in
-    /// wherever a ray gets out. The stars are nought and the exposure bias is one, which is what the
-    /// game holds a room at.
+    /// wherever a ray gets out. **It is a colour and never a light**: nothing outside a room lights
+    /// anything in it, and `describeWorld` is where that is said once for both hosts. The stars are
+    /// nought and the exposure bias is one, which is what the game holds a room at.
     ///
     /// @param nightEye what the Night-Eye effect adds to every channel of the ambient, in the
     ///        file's own space — which is where `RenderingManager::updateAmbient` adds it, so it is

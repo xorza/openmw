@@ -16,6 +16,7 @@ namespace Rtx::Testing
 
             camera.mSkyHorizon = osg::Vec3f(sFoggySky, sFoggySky, sFoggySky);
             camera.mSkyZenith = camera.mSkyHorizon;
+            camera.mAmbientFromSky = 1.0f;
             camera.mFogEdge = edge;
             return camera;
         }
@@ -31,6 +32,7 @@ namespace Rtx::Testing
                 = makeCamera(osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mSkyHorizon = osg::Vec3f(1.0f, 0.0f, 0.0f);
             camera.mSkyZenith = osg::Vec3f(0.0f, 0.0f, 1.0f);
+            camera.mAmbientFromSky = 1.0f;
 
             SceneDesc scene = makeWall();
             std::vector<std::uint8_t> pixels;
@@ -521,6 +523,7 @@ namespace Rtx::Testing
 
                 camera.mSkyHorizon = osg::Vec3f(0.10f, 0.20f, 0.40f);
                 camera.mSkyZenith = osg::Vec3f(0.40f, 0.50f, 0.90f);
+                camera.mAmbientFromSky = 1.0f;
                 camera.mFogColour = osg::Vec3f(1.0f, 0.0f, 0.0f);
                 camera.mFogEdge = edge;
 

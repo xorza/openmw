@@ -292,7 +292,7 @@ namespace RtxTool
         // Left at never here, and `StagedWorld` writes what its own plane answers.
         const float level = -std::numeric_limits<float>::infinity();
 
-        // **A room is lit out of its own record, sun included.** `Rtx::makeRoomLight` is what the
+        // **A room is lit out of its own record, and out of nothing else.** `Rtx::makeRoomLight` is what the
         // game does with an `AMBI`, so a `shot` of a room stands under the light a played frame
         // does; the weather and the hour are an exterior's business and decide nothing here.
         //

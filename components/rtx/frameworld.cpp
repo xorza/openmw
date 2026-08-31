@@ -120,11 +120,16 @@ namespace Rtx
             .mSeconds = reading.mSeconds,
             .mRainOnWater = reading.mRainOnWater,
             .mStars = stars,
-            .mMoons = reading.mMoons,
         };
 
         if (reading.mOutdoors)
         {
+            // **A moon is a light as well as a disc**, and both halves stop at the door: the weather
+            // system stops reporting the moment the player steps inside, so what it last said is
+            // still standing in the frame the room is drawn from — a moon left in one lights
+            // through every seam the shell has, and traces a shadow ray at a body over the roof.
+            world.mMoons = reading.mMoons;
+
             world.mClouds = describeClouds(reading.mWeather, reading.mNextWeather, reading.mCloudBlend,
                 deckLight(day.mSunAloft, budget.mMean, reading.mMoons), reading.mCloudDirection,
                 reading.mNextCloudDirection, reading.mCloudRoll, reading.mSky);

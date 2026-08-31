@@ -210,7 +210,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     // shows is composited from.
     //
     // The sun's is skipped where there is no sun, and the sky's where the ambient is a room's own
-    // fill rather than the sky — which `skyReaching` decides for itself.
+    // fill rather than the sky.
     //
     // The lamp the layer traced to is also the one it is given a side toward: the reservoir picks
     // by what a lamp delivers here, so it is the one the layer would most notice the loss of.
@@ -419,7 +419,10 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             }
 
             // Straight up, because a particle has no normal and the sky is above it either way.
-            skyThrough = skyReaching(sprite.mPosition, skyward, 0.0, pixelKey(pixel) + SEED_SKY_REACHING);
+            // **Not asked in a room**, where `puffLight` mixes to the fill and throws this away: a
+            // puff's own thickness is what stands between it and light coming from everywhere.
+            if (frame.mAmbientFromSky > 0.0)
+                skyThrough = ambientReaching(sprite.mPosition, skyward, 0.0, pixelKey(pixel) + SEED_AMBIENT_REACHING);
 
             // **The lamp that matters where the layer starts, and its answer for all of them.** The
             // reservoir picks by what a lamp delivers here, so the one traced to is the one the

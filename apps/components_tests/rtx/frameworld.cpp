@@ -287,12 +287,23 @@ namespace Rtx
         ///
         /// **The whole of what `mOutdoors` decides, asserted in one place.** Each of these used to
         /// be a branch written twice — once in the game and once in the harness — and a room that
-        /// drew an outdoor deck is the shape the drift took the last three times.
-        TEST(RtxFrameWorldTest, aRoomDrawsNoDeckNoStarsAndNoPatches)
+        /// drew an outdoor deck is the shape the drift took the last three times. The moons were
+        /// the one the game kept: the weather system stops reporting when the player steps inside,
+        /// so what it last said was still standing in the frame, lighting through the seams.
+        TEST(RtxFrameWorldTest, aRoomDrawsNoDeckNoStarsNoPatchesAndNoMoons)
         {
             WorldReading room = reading();
             room.mOutdoors = false;
             room.mFogFromSky = false;
+
+            // A moon a caller left behind: full in the sky, painted, and lighting.
+            room.mMoons[0] = MoonPlacement{ .mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f),
+                .mRight = osg::Vec3f(1.0f, 0.0f, 0.0f),
+                .mUp = osg::Vec3f(0.0f, 1.0f, 0.0f),
+                .mAngularRadius = 0.1f,
+                .mAlpha = 1.0f,
+                .mFace = 7,
+                .mIrradiance = osg::Vec3f(0.05f, 0.05f, 0.06f) };
 
             const FrameWorld world = describeWorld(room);
 
@@ -300,11 +311,25 @@ namespace Rtx
             EXPECT_EQ(world.mStars.mTexture, Rtx::Shaders::NO_TEXTURE);
             EXPECT_EQ(world.mSkyPatches[0].mTexture, Rtx::Shaders::NO_TEXTURE);
 
+            // **Both halves, because a moon is a disc and a light.** `VisibilityVariant` folds its
+            // kernel away on the pair, so leaving either would keep a room tracing shadow rays at a
+            // body that is not over it.
+            EXPECT_EQ(world.mMoons[0].mAlpha, 0.0f) << "no moon drawn in a room";
+            EXPECT_EQ(world.mMoons[0].mIrradiance, osg::Vec3f()) << "and none lighting one";
+            EXPECT_EQ(world.mMoons[0].mFace, Rtx::sNoIndex) << "and no portrait to draw";
+
             EXPECT_EQ(world.mAmbientFromSky, 0.0f);
             EXPECT_EQ(world.mSkyFill, osg::Vec3f());
 
             EXPECT_EQ(world.mAir.mColour, room.mDaylight.mFog.mColour)
                 << "a room has no dome for its air to take a colour from";
+
+            // The same reading out of doors keeps every one of them, so the rows above are the
+            // flag's doing rather than the assembly dropping a moon it was handed.
+            room.mOutdoors = true;
+            const FrameWorld open = describeWorld(room);
+            EXPECT_EQ(open.mMoons[0].mAlpha, 1.0f);
+            EXPECT_EQ(open.mMoons[0].mIrradiance, osg::Vec3f(0.05f, 0.05f, 0.06f));
         }
 
         /// An exterior's air is the record's hue under the dome's own mean, and a quasi-exterior's

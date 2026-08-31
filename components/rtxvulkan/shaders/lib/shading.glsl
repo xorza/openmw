@@ -179,13 +179,13 @@ vec3 gather(vec3 position, vec3 normal, float footprint, float transmission, uin
 /// over the point — `daylightReaching`'s approximation, and the same one the bounce's own escape to
 /// the sky uses.
 ///
-/// @param reaching how much of the sky the point can see, out of `skyReaching`. It bites only on
-///        the share of the ambient that *is* the sky — `mAmbientFromSky` — because a room's `AMBI`
-///        is a fill standing for the bounces that room makes and reaches a corner as much as
-///        anywhere else. One is what an asker with no hemisphere to trace hands over.
+/// @param reaching how much of the ambient the point can see, out of `ambientReaching`. It bites on
+///        the whole of it and on both sides of a door: what a room changes is how far the ray looked
+///        for the occluder, not whether the answer applies. One is what an asker with no hemisphere
+///        to trace hands over.
 vec3 pathEnd(vec3 position, float reaching)
 {
-    return frame.mAmbient * (daylightReaching(position) * (1.0 - frame.mAmbientFromSky * (1.0 - reaching)));
+    return frame.mAmbient * (daylightReaching(position) * reaching);
 }
 
 /// What a shading model made of a surface, in the terms a temporal upscaler demodulates by.
@@ -271,13 +271,23 @@ vec3 sampledFace(vec3 normal, float transmission, float draw, out float weight)
 /// which reads the coarse mips a bounce should see without collapsing every one to the top level.
 const float BOUNCE_SPREAD = 1.0;
 
-/// How much of the sky a surface can see, as one cosine-weighted sample of its own hemisphere.
+/// How far a room's fill looks for what is standing over a point, in world units.
+///
+/// **Two metres, which is the furniture and not the room.** A cell's `AMBI` ambient is a flat stand
+/// in for every bounce the room makes, and it used to reach a point wedged under a pillow exactly as
+/// fully as one in the middle of the floor — so white cloth lit its own contact shadow, and every
+/// crevice next to something pale came out brighter than the surface beside it. What takes the fill
+/// away is what is close enough to be in front of the room rather than part of it, and Morrowind's
+/// rooms are small enough that anything further is a wall.
+const float ROOM_FILL_REACH = 140.0;
+
+/// How much of the ambient a surface can see, as one cosine-weighted sample of its own hemisphere.
 ///
 /// **The same integral the bounce already samples, one level further down.** A ray the eye found
 /// gathers a real hemisphere and is occluded by whatever it hits; what *that* ray landed on was
-/// handed the open sky whatever stood over it, so a point in an exterior hollow was lit as though
-/// the sky reached it. This is the missing half, and it is a visibility ray rather than a bounce:
-/// nothing is shaded at the far end, only asked whether there is one.
+/// handed the whole ambient whatever stood over it, so a point in a hollow was lit as though nothing
+/// stood over it. This is the missing half, and it is a visibility ray rather than a bounce: nothing
+/// is shaded at the far end, only asked whether there is one.
 ///
 /// **One sample, and it is binary.** That is as noisy as a single sample can be, and it multiplies a
 /// term already carried by one — so it rides the same filter, and the estimator is unbiased where a
@@ -287,20 +297,23 @@ const float BOUNCE_SPREAD = 1.0;
 /// well, at `transmission` of what it sees over its front, so what reaches it runs to
 /// `1 + transmission` of a solid's whole. The side is drawn after the direction and only where
 /// there is one to draw, so a solid's sequence is what it was.
-float skyReaching(vec3 position, vec3 normal, float transmission, uint seed)
+float ambientReaching(vec3 position, vec3 normal, float transmission, uint seed)
 {
-    // **A room traces nothing**, which is most of what this costs: its ambient is a fill rather than
-    // the sky, so `pathEnd` would throw the answer away and the ray is not spent to get it.
-    if (!(frame.mAmbientFromSky > 0.0))
-        return 1.0;
-
     uint state = randomSeed(seed);
     const vec2 draw = vec2(randomNext(state), randomNext(state));
 
     float weight;
     const vec3 face = sampledFace(normal, transmission, transmission > 0.0 ? randomNext(state) : 0.0, weight);
 
-    return weight * lightThrough(position, cosineDirection(face, draw), frame.mFar);
+    // **How far to look for the occluder is the whole of what a room changes.** Out of doors the
+    // question is the sky and the ray runs to it. In a room the ambient is the `AMBI` fill, which
+    // stands for the bounces the room itself makes — so a wall is not an occluder of it, it is the
+    // thing making it, and a ray run to the walls comes back blocked everywhere and takes the light
+    // out of every interior. What does occlude it is what stands between a point and the room: the
+    // pillow over the sheet, the chest against the wall, the underside of a table.
+    const float reach = frame.mAmbientFromSky > 0.0 ? frame.mFar : ROOM_FILL_REACH;
+
+    return weight * lightThrough(position, cosineDirection(face, draw), reach);
 }
 
 /// What reaches a surface from everything that is not a light: one diffuse bounce.
@@ -332,15 +345,25 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     // The glow and not the disc: the sun is already a term of its own in `gather`, and a bounce
     // that found it in the sky would be the same light counted twice.
     //
+    // **A room has nothing outside it, so a ray that got out of one brings back nothing.** The dome
+    // a room draws is its fog colour standing in for the *picture* wherever a ray leaves the shell,
+    // and it is far brighter than the room itself: lighting with it drew a bright band along the
+    // foot of every wall. `mAmbientFromSky` is where a cell answers whether its sky is a light, and
+    // `ambientReaching` reads the same field to decide how far to look for what blocks the fill.
+    //
     // Dimmed by the column of water over the point, on `daylightReaching`'s vertical approximation
     // and for its reason: this ray left for the sky and the sky is above, so what stands between
     // them is the depth. Without it a flooded floor reads brighter than the same floor seen from
     // over the surface, which is the disagreement M6 closed.
     if (!hit.mHit)
+    {
+        if (!(frame.mAmbientFromSky > 0.0))
+            return vec3(0.0);
         return weight * skyGlow(towards) * daylightReaching(surface.mPosition);
+    }
 
     const float reaching
-        = skyReaching(hit.mPosition, hit.mNormal, hit.mTransmission, pixelKey(pixel) + SEED_SKY_REACHING);
+        = ambientReaching(hit.mPosition, hit.mNormal, hit.mTransmission, pixelKey(pixel) + SEED_AMBIENT_REACHING);
 
     // **Its glow is counted here, because this is the only path it takes.** Nothing gives a glowing
     // surface a lamp of its own — `EMISSIVE_INTENSITY` says what measuring that showed — so a ray

@@ -24,6 +24,7 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = osg::Vec3f(0.20f, 0.15f, 0.60f);
             camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
+            camera.mAmbientFromSky = 1.0f;
 
             const auto shade = [&](bool filter) {
                 std::vector<std::uint8_t> pixels;
@@ -97,6 +98,7 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -8000.0f, 200.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = osg::Vec3f(0.20f, 0.15f, 0.60f);
             camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
+            camera.mAmbientFromSky = 1.0f;
 
             const auto render = [&](std::uint32_t accumulate, bool filter) {
                 std::vector<float> values;
@@ -235,6 +237,7 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -1200.0f, 900.0f), osg::Vec3f(0.0f, 0.0f, 250.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = osg::Vec3f(0.20f, 0.15f, 0.60f);
             camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
+            camera.mAmbientFromSky = 1.0f;
 
             // Green, where this sky has its widest range between the horizon and the zenith. A row
             // at a time, so that sixty-four pixels stand behind every number and the sampling noise
@@ -298,10 +301,12 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, 0.0f, 200.0f), osg::Vec3f(0.0f, 1000.0f, 200.0f), 60.0f, size, size, 100000.0f);
             bright.mSkyHorizon = osg::Vec3f(0.8f, 0.8f, 0.8f);
             bright.mSkyZenith = bright.mSkyHorizon;
+            bright.mAmbientFromSky = 1.0f;
 
             Shaders::VisibilityConstants dim = bright;
             dim.mSkyHorizon = bright.mSkyHorizon / 32.0f;
             dim.mSkyZenith = dim.mSkyHorizon;
+            dim.mAmbientFromSky = 1.0f;
 
             std::vector<std::uint8_t> pixels;
 
@@ -377,6 +382,7 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -8000.0f, 200.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = osg::Vec3f(0.20f, 0.15f, 0.60f);
             camera.mSkyZenith = osg::Vec3f(0.80f, 0.65f, 0.15f);
+            camera.mAmbientFromSky = 1.0f;
 
             mRenderer->resize(size, size);
             mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
@@ -496,6 +502,7 @@ namespace Rtx::Testing
             // really do have different answers and averaging them really is wrong.
             camera.mSkyHorizon = osg::Vec3f(0.90f, 0.10f, 0.05f);
             camera.mSkyZenith = osg::Vec3f(0.05f, 0.20f, 0.90f);
+            camera.mAmbientFromSky = 1.0f;
 
             const auto renderSequence = [&](std::uint32_t frames) {
                 std::vector<float> values;

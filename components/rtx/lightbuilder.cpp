@@ -302,10 +302,6 @@ namespace Rtx
 
     Skylight makeSkylight(const SkyReading& sky)
     {
-        // A quarter of the irradiance over pi: what a directional source comes to once its direction
-        // is taken away. The header carries the derivation and the reason.
-        const float directionless = 0.25f * Shaders::INV_PI;
-
         const osg::Vec3f irradiance = sky.mSunColour * Shaders::DAYLIGHT;
         const float share = std::clamp(sky.mSunShare, 0.0f, 1.0f);
 
@@ -327,7 +323,7 @@ namespace Rtx
         return Skylight{
             .mSun = sunAbove(sky, share),
             .mSunAloft = sunAbove(sky, sky.mSunShareAloft),
-            .mAmbient = sky.mAmbient + irradiance * (dusk * directionless),
+            .mAmbient = sky.mAmbient + irradiance * (dusk * Shaders::INV_FOUR_PI),
         };
     }
 
@@ -685,24 +681,16 @@ namespace Rtx
     Daylight makeRoomLight(const ESM::Cell::AMBIstruct& room, const osg::Vec3f& nightEye)
     {
         const osg::Vec3f haze = decodeColour(room.mFog);
-        const Sky::SunPlacement sun = Sky::roomSun();
+        const osg::Vec3f fill = decodeColour(SceneUtil::colourFromRGB(room.mAmbient) + osg::Vec4f(nightEye, 0.0f));
 
-        const Skylight sky = makeSkylight(SkyReading{
-            .mSunPosition = sun.mPosition,
-            .mSunShare = sun.mShare,
-
-            // Nothing stands above a room's ground to ask.
-            .mSunShareAloft = 0.0f,
-            .mSunColour = decodeColour(room.mSunlight),
-            .mAmbient = decodeColour(SceneUtil::colourFromRGB(room.mAmbient) + osg::Vec4f(nightEye, 0.0f)),
-        });
+        // The record's sunlight, kept whole and put where light with no direction belongs — the same
+        // move `makeSkylight` makes on the night's sun, for the same reason and by the same factor.
+        const osg::Vec3f spread = decodeColour(room.mSunlight) * (Shaders::DAYLIGHT * Shaders::INV_FOUR_PI);
 
         return Daylight{
-            .mSun = sky.mSun,
-            .mSunAloft = sky.mSunAloft,
             .mSkyHorizon = haze,
             .mSkyZenith = haze,
-            .mAmbient = sky.mAmbient,
+            .mAmbient = fill + spread,
             .mStarFade = 0.0f,
             .mExposureBias = 1.0f,
             .mFog = roomFog(haze, room.mFogDensity),

@@ -40,6 +40,7 @@ namespace Rtx::Testing
                 camera.mSunIrradiance = irradiance;
                 camera.mSkyHorizon = sky;
                 camera.mSkyZenith = sky;
+                camera.mAmbientFromSky = 1.0f;
 
                 std::vector<std::uint8_t> pixels;
                 EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
@@ -428,6 +429,7 @@ namespace Rtx::Testing
                 Shaders::VisibilityConstants camera = base;
                 camera.mSkyHorizon = sky;
                 camera.mSkyZenith = sky;
+                camera.mAmbientFromSky = 1.0f;
 
                 std::vector<std::uint8_t> pixels;
                 EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
@@ -786,50 +788,56 @@ namespace Rtx::Testing
                 << "and half a disc stands on the shadow's own edge, two thousand units back";
         }
 
-        /// What terminates a path is occluded out of doors, and is a room's own fill indoors.
+        /// What terminates a path is occluded on both sides of a door, and only the reach differs.
         ///
         /// **The first level was always occluded and the second never was.** A bounce ray that hits
         /// something is shaded there and the path stops, and what it was handed was the open sky
         /// whatever stood over it — so a hollow was lit as though the sky reached into it.
-        /// `skyReaching` is the missing half, and `mAmbientFromSky` is what says whether it applies:
-        /// a cell's `AMBI` stands for the bounces that room makes and reaches a corner as much as
-        /// anywhere, where an exterior's ambient is the sky and a point that cannot see it does not
-        /// get it.
+        /// `ambientReaching` is the missing half, and `mAmbientFromSky` says how far it looks: out
+        /// of doors the ambient is the sky and the ray runs to it, and in a room the ambient is the
+        /// `AMBI` fill, which the walls make rather than block, so only what is within
+        /// `ROOM_FILL_REACH` takes it away.
         ///
         /// A floor under a lid, lit by nothing but the ambient. Every bounce off the floor lands on
-        /// the lid's underside, which sees the floor and no sky at all — so out of doors the floor
-        /// goes dark and in a room it does not move.
+        /// the lid's underside, and what that underside is handed is the whole of the claim.
         ///
-        /// **The claim is the ratio and not either level.** What a converged one-bounce estimate
-        /// comes to depends on the filter it is read through; what cannot depend on anything is that
-        /// the same scene under the same ambient is an order darker once the sky is the thing being
-        /// occluded. The floor below the room's reading is there to catch a black frame.
-        TEST_F(RtxVisibilityTest, whatTerminatesAPathIsOccludedOutOfDoorsAndNotInARoom)
+        /// **In a room it goes as the square of the height, which is Malley's method read
+        /// backwards.** A cosine-drawn direction has `d.z = sqrt(1 - u)`, so `P(d.z >= c) = 1 - c^2`;
+        /// a ray from the lid reaches the floor within `r` exactly where `d.z >= h / r`, so what is
+        /// left unblocked is `(h / r)^2`. At 35 and 70 units under a reach of 140 that is 0.0625 and
+        /// 0.25 — a factor of four for a doubling — and past 140 nothing is blocked at all.
+        ///
+        /// The lid is 8000 across, so an escape past its edge is 2.2% at 600 units and nothing worth
+        /// naming at 70: `tan(theta) > 4000 / 600` is `d.z < 0.1474`, and `0.1474^2` is that.
+        TEST_F(RtxVisibilityTest, aRoomsFillIsTakenAwayByWhatIsNearAndAnExteriorsSkyByAnything)
         {
             constexpr std::uint32_t size = 32;
 
-            SceneDesc scene;
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
-            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, 600.0f), {}, {}, sQuadIndices) });
+            const auto lidAt = [](float lid) {
+                SceneDesc scene;
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(makeSheet(4000.0f, lid), {}, {}, sQuadIndices) });
 
-            // Between the two, looking down, so the eye finds the floor and the floor's own bounce
-            // finds the lid.
-            Shaders::VisibilityConstants camera = makeCamera(
-                osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                return scene;
+            };
 
             // Nothing but the ambient, so what the floor shows is the path's own end and no more.
-            camera.mSkyHorizon = osg::Vec3f();
-            camera.mSkyZenith = osg::Vec3f();
-            camera.mSunIrradiance = osg::Vec3f();
-            camera.mAmbient = osg::Vec3f(0.5f, 0.5f, 0.5f);
+            const auto floorUnderTheLid = [&](const SceneDesc& scene, float fromSky, float lid) {
+                // Between the two, looking down, so the eye finds the floor and the floor's own
+                // bounce finds the lid.
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -1.0f, 0.5f * lid), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
 
-            const auto floorUnderTheLid = [&](float fromSky) {
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mSunIrradiance = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f(0.5f, 0.5f, 0.5f);
                 camera.mAmbientFromSky = fromSky;
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{}, 32);
+                countHits(scene, {}, camera, size, pixels, SeaState{}, 48);
 
                 float sum = 0.0f;
                 for (std::size_t at = 0; at < mRadiance.size(); at += 4)
@@ -838,11 +846,21 @@ namespace Rtx::Testing
                 return sum / float(mRadiance.size() / 4);
             };
 
-            const float room = floorUnderTheLid(0.0f);
-            const float outside = floorUnderTheLid(1.0f);
+            const SceneDesc open = lidAt(600.0f);
 
-            EXPECT_GT(room, 0.01f) << "a room's own fill reaches the second level";
-            EXPECT_LT(outside, 0.1f * room) << "and the sky does not reach under a lid";
+            const float near = floorUnderTheLid(lidAt(35.0f), 0.0f, 35.0f);
+            const float mid = floorUnderTheLid(lidAt(70.0f), 0.0f, 70.0f);
+            const float clear = floorUnderTheLid(open, 0.0f, 600.0f);
+
+            ASSERT_GT(near, 0.0f) << "a room's fill still reaches the second level";
+
+            EXPECT_NEAR(mid / near, 4.0f, 0.4f) << "twice the height is four times the fill";
+            EXPECT_NEAR(clear / mid, 3.91f, 0.4f) << "and past the reach it is whole, less the edge";
+
+            // **The sky is occluded by anything at all**, which is the same lid at the same height
+            // asked the other question: the underside sees the floor and no sky, so out of doors the
+            // floor goes dark where in a room it kept most of its fill.
+            EXPECT_LT(floorUnderTheLid(open, 1.0f, 600.0f), 0.1f * clear) << "and the sky does not reach under a lid";
         }
 
         /// A bounce is drawn by the cosine, and two thirds is the number that says so.
@@ -885,6 +903,7 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
             camera.mSkyHorizon = horizon;
             camera.mSkyZenith = zenith;
+            camera.mAmbientFromSky = 1.0f;
 
             const auto shade = [&](std::uint32_t frame, std::uint32_t accumulate = 0) {
                 camera.mFrame = frame;

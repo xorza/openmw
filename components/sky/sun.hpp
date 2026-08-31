@@ -93,13 +93,4 @@ namespace Sky
     /// @param ambient the ambient at this same hour, which the clamp below needs.
     osg::Vec3f sunDiscAt(
         float hour, const TimeOfDaySettings& times, const osg::Vec4f& sunsetColour, const osg::Vec4f& ambient);
-
-    /// The sun the engine stands in every room.
-    ///
-    /// **Morrowind lights an interior with a directional light, and this is where it points it**: a
-    /// light position of `(-1, 45°, 45°)`, two angles in radians used as coordinates, which the
-    /// engine's own comment calls nonsense and uses anyway (`RenderingManager::configureAmbient`,
-    /// `interiorSunPos`). Its colour is the cell's `AMBI` sunlight and is not here. All of it is
-    /// there at every hour, because a room has no dusk: `mShare` is one and it is never night.
-    SunPlacement roomSun();
 }

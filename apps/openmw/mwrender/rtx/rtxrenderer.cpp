@@ -806,7 +806,7 @@ namespace MWRender
         // **The sun is not assembled here.** Everything the world says about it goes to the one
         // builder that decides what a sun may be — which is what keeps the game and the harness
         // under the same sky, and what makes a sun that lights an empty night impossible to write.
-        // A room's sun arrives built, by the builder the harness lights one with.
+        // A room has none, and `Rtx::makeRoomLight` is where that is said for both hosts.
         const Rtx::Skylight sky = room.has_value()
             ? Rtx::Skylight{ .mSun = room->mSun, .mSunAloft = room->mSunAloft, .mAmbient = room->mAmbient }
             : Rtx::makeSkylight(Rtx::SkyReading{

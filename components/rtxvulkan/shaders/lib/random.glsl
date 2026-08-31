@@ -36,14 +36,14 @@ const uint SEED_LAMPS_THROUGH = SEED_LAMPS_MIRROR + 1u;
 /// **A sequence of its own, because it is drawn beside a reservoir and not out of one.** Stepping
 /// the lamps' would move which lamp a hit chose every time the hemisphere was asked a question, and
 /// the two have nothing to do with each other.
-const uint SEED_SKY_REACHING = SEED_LAMPS_THROUGH + 1u;
+const uint SEED_AMBIENT_REACHING = SEED_LAMPS_THROUGH + 1u;
 
 /// And one for where on the sun's disc a sprite layer's shadow ray leaves from.
 ///
 /// **Not the one above, which is drawn in the same breath.** Two draws seeded alike take the same
 /// numbers, so the point on the disc and the direction into the sky would move together across the
 /// whole frame — a pattern rather than noise, and the filter keeps a pattern.
-const uint SEED_SPRITE_SUN = SEED_SKY_REACHING + 1u;
+const uint SEED_SPRITE_SUN = SEED_AMBIENT_REACHING + 1u;
 
 /// And one for the lamp a fog march holds out of every lamp at every one of its steps.
 const uint SEED_LAMPS_FOG = SEED_SPRITE_SUN + 1u;

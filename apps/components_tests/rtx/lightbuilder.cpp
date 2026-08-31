@@ -930,25 +930,39 @@ namespace Rtx
             };
         }
 
-        /// A room is lit by its own record under the engine's sun, and nothing of the hour reaches it.
+        /// A room is lit by its own record and by nothing else, and it has no sun in it.
         ///
-        /// **The sunlight is a sun.** At full share the direct term is the whole of `DAYLIGHT` times
-        /// the decoded colour and the dusk term is nought, so the ambient is the record's exactly;
-        /// the sky is the fog at both ends, because a room has no dome. A record with no sunlight
-        /// gives a room with no sun, which is what makes the first row the record's doing.
-        TEST(RtxRoomLightTest, aRoomIsLitByItsRecordUnderTheEnginesSun)
+        /// **The sunlight is light and not a sun.** `configureAmbient` aims a directional light down
+        /// an arbitrary vector, which traced is a hard shadow off a direction the content never
+        /// chose and a bright seam through every join in the shell — so the record's sunlight keeps
+        /// its energy and loses its direction, over `INV_FOUR_PI`.
+        ///
+        /// A directional source of irradiance `E` delivers `E / 4` averaged over every orientation a
+        /// surface can take, and a uniform hemisphere of radiance `L` delivers `pi L` to all of
+        /// them, so `L = E / 4pi` is the same light with the direction taken out. `DAYLIGHT / 4pi`
+        /// is `8 * 0.0795775 = 0.636620` of the decoded colour.
+        ///
+        /// A record's colour is `0x00BBGGRR`, so `0x0010100A` is a red of ten and a green and blue of
+        /// sixteen. The ambient decodes `15 / 255 = 0.058824` to `((0.058824 + 0.055) / 1.055)^2.4 =
+        /// 0.0047770` in every channel. Red: `10 / 255 = 0.039216` is under the curve's knee, so it
+        /// decodes `0.039216 / 12.92 = 0.0030353` and the sum is
+        /// `0.0047770 + 0.0030353 * 0.636620 = 0.0067093`. Green and blue: `16 / 255` decodes
+        /// `0.0051815` and the sum is `0.0080756`.
+        TEST(RtxRoomLightTest, aRoomIsLitByItsRecordAndHasNoSunInIt)
         {
             const ESM::Cell::AMBIstruct chamber = makeRoom(0x000F0F0F, 0x0010100A, 0x0015150F);
             const Daylight room = makeRoomLight(chamber);
 
-            const osg::Vec3f sunlight = decodeColour(0x0010100Au);
-            EXPECT_EQ(room.mSun.mPosition, Sky::roomSun().mPosition);
-            EXPECT_FLOAT_EQ(room.mSun.mIrradiance.x(), sunlight.x() * Shaders::DAYLIGHT);
-            EXPECT_FLOAT_EQ(room.mSun.mIrradiance.y(), sunlight.y() * Shaders::DAYLIGHT);
-            EXPECT_FLOAT_EQ(room.mSun.mIrradiance.z(), sunlight.z() * Shaders::DAYLIGHT);
-            EXPECT_GT(room.mSun.mIrradiance.length2(), 0.0f) << "the chamber's sunlight is dim, not absent";
+            // **Nothing anywhere gates a room's sun on a second field**, so a zero irradiance is the
+            // whole of it: no direct term, no shadow ray, no disc drawn, and the kernel's `HAS_SUN`
+            // folds away. `Sun::mIrradiance` carries that invariant.
+            EXPECT_EQ(room.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
+            EXPECT_EQ(room.mSunAloft.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f)) << "and no deck over it";
 
-            EXPECT_EQ(room.mAmbient, decodeColour(0x000F0F0Fu));
+            EXPECT_NEAR(room.mAmbient.x(), 0.0067093f, 1e-6f);
+            EXPECT_NEAR(room.mAmbient.y(), 0.0080756f, 1e-6f);
+            EXPECT_NEAR(room.mAmbient.z(), 0.0080756f, 1e-6f) << "blue shares the green byte";
+
             EXPECT_EQ(room.mSkyHorizon, decodeColour(0x0015150Fu));
             EXPECT_EQ(room.mSkyZenith, room.mSkyHorizon);
 
@@ -959,16 +973,19 @@ namespace Rtx
             EXPECT_FLOAT_EQ(room.mStarFade, 0.0f);
             EXPECT_FLOAT_EQ(room.mExposureBias, 1.0f) << "the game holds a room at one";
 
-            // The record decides: the same room with its sunlight written black has no sun.
+            // **The spread is the sunlight's doing and nothing else's**: the same room with its
+            // sunlight written black keeps the record's ambient exactly, so what the row above adds
+            // came from the `AMBI` and not from a floor put under every interior.
             const Daylight unlit = makeRoomLight(makeRoom(0x000F0F0F, 0x00000000, 0x0015150F));
-            EXPECT_EQ(unlit.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
-            EXPECT_EQ(unlit.mAmbient, room.mAmbient);
+            EXPECT_EQ(unlit.mAmbient, decodeColour(0x000F0F0Fu));
+            EXPECT_LT(unlit.mAmbient.x(), room.mAmbient.x()) << "and the sunlight is worth something";
 
             // **Night-Eye is added where the game adds it**: to the file's own numbers, before the
-            // decode. `15 / 255 + 0.35 = 0.40882`, and `((0.40882 + 0.055) / 1.055)^2.4 = 0.13914`.
+            // decode, and to the ambient alone. `15 / 255 + 0.35 = 0.40882`, and
+            // `((0.40882 + 0.055) / 1.055)^2.4 = 0.13914`, with the red channel's own share of the
+            // sunlight on top.
             const Daylight seen = makeRoomLight(chamber, osg::Vec3f(0.35f, 0.35f, 0.35f));
-            EXPECT_NEAR(seen.mAmbient.x(), 0.13914f, 2e-4f);
-            EXPECT_EQ(seen.mSun.mIrradiance, room.mSun.mIrradiance) << "the effect is an ambient and not a sun";
+            EXPECT_NEAR(seen.mAmbient.x(), 0.13914f + 0.0019323f, 2e-4f);
 
             // **A cell that wrote no record is a black room**, in the game and here: its `mAmbi` is
             // the zeros the loader left, and both hosts hand those over rather than checking

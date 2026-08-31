@@ -297,24 +297,5 @@ namespace Sky
                 previous = at;
             }
         }
-
-        /// A room's sun is the engine's, and all of it is there.
-        ///
-        /// `(-1, pi/4, pi/4)` has length `sqrt(1 + 2 * 0.61685) = 1.49456`, so the unit position is
-        /// `(-0.66910, 0.52552, 0.52552)`: from the west, and forty-five degrees up. The light
-        /// travels back along it, as the rasterizer's `mSunVector = -interiorSunPos` says.
-        TEST(RtxRoomSunTest, aRoomsSunIsTheEnginesAndAllThere)
-        {
-            const SunPlacement room = roomSun();
-
-            EXPECT_NEAR(room.mPosition.x(), -0.66910f, 1e-4f);
-            EXPECT_NEAR(room.mPosition.y(), 0.52552f, 1e-4f);
-            EXPECT_NEAR(room.mPosition.z(), 0.52552f, 1e-4f);
-            EXPECT_FLOAT_EQ(room.mPosition.length(), 1.0f);
-            EXPECT_EQ(room.mDirection, -room.mPosition);
-
-            EXPECT_FLOAT_EQ(room.mShare, 1.0f);
-            EXPECT_FALSE(room.mNight);
-        }
     }
 }

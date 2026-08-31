@@ -364,11 +364,25 @@ namespace Rtx::Shaders
 
         /// How much of `mAmbient` arrives from the sky, from none of it to all.
         ///
-        /// **The two things an ambient can be, told apart.** Out of doors it is the sky: a point that
-        /// cannot see the sky does not get it, which is what `pathEnd` occludes. Inside, it is the
-        /// cell's own `AMBI` — a fill standing for every bounce the room makes, which reaches a
-        /// corner as much as the middle of the floor — and occluding that by what a ray can escape
-        /// to would take the light out of every interior, since none of them escapes anything.
+        /// **The two things an ambient can be, told apart.** Out of doors it is the sky. Inside it
+        /// is the cell's own `AMBI`, a fill standing for every bounce the room makes. Two answers
+        /// hang off which one it is.
+        ///
+        /// **Whether the sky is a light at all.** A room's dome is its fog colour standing in for
+        /// the picture wherever a ray leaves the shell, and lighting anything with that drew a
+        /// bright band along the foot of every wall. Nought here, and a bounce that reached nothing
+        /// brings back nothing.
+        ///
+        /// **How far `ambientReaching` looks for what stands over a point.** Out of doors the
+        /// ambient is the sky and the ray runs to it, so anything at all takes it away. In a room
+        /// the walls *make* the fill rather than block it, so only what is within
+        /// `ROOM_FILL_REACH` does — a ray run out to the walls comes back blocked everywhere and
+        /// empties every interior, and occluding by nothing at all let white cloth light its own
+        /// contact shadow.
+        ///
+        /// **A frame assembled by hand is a room until it says otherwise**, since nothing else in
+        /// the constants says which a cell is. `Rtx::describeWorld` writes this on every frame
+        /// either host renders, so only a test builds one that has not.
         ///
         /// One and nought are the only values either host writes today, and a fraction is what a
         /// cell part open to the sky would want.

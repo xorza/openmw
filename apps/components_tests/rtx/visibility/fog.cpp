@@ -16,6 +16,7 @@ namespace Rtx::Testing
         {
             camera.mSkyHorizon = osg::Vec3f(sFoggySky, sFoggySky, sFoggySky);
             camera.mSkyZenith = camera.mSkyHorizon;
+            camera.mAmbientFromSky = 1.0f;
             camera.mFogColour = sHaze;
             camera.mFogExtinction = extinction;
             camera.mWaterLevel = level;

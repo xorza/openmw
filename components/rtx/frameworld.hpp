@@ -121,8 +121,9 @@ namespace Rtx
         /// them; the default is `noPatches`, which is a room's night sky.
         std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> mSkyPatches = noPatches();
 
-        /// Masser and Secunda, in that order. An alpha of nothing is a moon the sky skips, which is
-        /// what an interior and an interface trace both leave behind.
+        /// Masser and Secunda, in that order. An alpha of nothing is a moon the sky skips and an
+        /// irradiance of nothing is one that lights nothing, which is what an interior and an
+        /// interface trace both leave behind — `describeWorld` hands a room neither.
         std::array<MoonPlacement, 2> mMoons;
     };
 
