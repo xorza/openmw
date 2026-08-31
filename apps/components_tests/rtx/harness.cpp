@@ -19,13 +19,11 @@ namespace
         {
             const std::string why = "the suite closed its devices after the last test";
 
-            // Renderers before raw devices, which is the order they were built in; neither depends
-            // on the other.
+            // The renderer before the raw devices, which is the order they were built in; neither
+            // depends on the other.
+            Rtx::Testing::Details::rendererCache().release(why);
             for (const bool validation : { true, false })
-            {
-                Rtx::Testing::Details::rendererCache(validation).release(why);
                 Rtx::Testing::Details::harnessCache(validation).release(why);
-            }
         }
     };
 

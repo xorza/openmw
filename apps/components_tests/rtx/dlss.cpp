@@ -253,13 +253,8 @@ namespace Rtx
             if (plain == nullptr)
                 GTEST_SKIP() << reason;
 
-            RendererOptions options;
-            options.mShaderDirectory = Testing::getShaderDirectory();
-            options.mWidth = 1280;
-            options.mHeight = 720;
+            RendererOptions options = Testing::describeRenderer(1280, 720);
             options.mUpscale = Upscale::Performance;
-            options.mValidation.mEnabled = true;
-            options.mValidation.mAbortOnError = false;
 
             const std::unique_ptr<Renderer> upscaling = createRenderer(options, reason);
             if (upscaling == nullptr)

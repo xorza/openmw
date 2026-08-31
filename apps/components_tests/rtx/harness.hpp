@@ -107,11 +107,10 @@ namespace Rtx::Testing
             return validation ? sValidated : sPlain;
         }
 
-        inline Once<Renderer>& rendererCache(bool validation)
+        inline Once<Renderer>& rendererCache()
         {
-            static Once<Renderer> sValidated;
-            static Once<Renderer> sPlain;
-            return validation ? sValidated : sPlain;
+            static Once<Renderer> sRenderer;
+            return sRenderer;
         }
 
         inline std::unique_ptr<Harness> build(bool validation, std::string& reason)
@@ -157,10 +156,12 @@ namespace Rtx::Testing
 
     /// The same, with no validation layers loaded.
     ///
-    /// One test wants this and wants it for a particular reason: the layers go to the heap on every
-    /// command they inspect — sixty-six times a frame in this renderer — which drowns out anything
-    /// an allocation count is trying to see. Everything else is better off validated, so this second
-    /// device is only built if something asks for it.
+    /// **The one thing in this suite that runs unvalidated, and it is measured rather than
+    /// asserted.** `getAllocationCount` replaces the global `operator new`, so it cannot tell a
+    /// layer's allocation from the renderer's; with the layers loaded, `RtxFrameCostTest` measures
+    /// 28,448 allocations over its 32 frames — 889 a frame against a budget of nought. That is not
+    /// a stricter test but a deleted one. Everything else is validated, so this second device is
+    /// only built if something asks for it.
     inline Harness* getUnvalidatedHarness(std::string& reason)
     {
         return Details::harnessCache(false).get(reason, [](std::string& why) { return Details::build(false, why); });
@@ -172,27 +173,37 @@ namespace Rtx::Testing
         return std::filesystem::path(OPENMW_RTX_SHADER_DIR);
     }
 
+    /// How every renderer in this suite is built, apart from the extent and the upscaler a caller
+    /// sets for itself.
+    ///
+    /// **One place, so that a test standing up its own renderer cannot end up validated less than
+    /// the shared one.**
+    inline RendererOptions describeRenderer(std::uint32_t width, std::uint32_t height)
+    {
+        RendererOptions options;
+        options.mShaderDirectory = getShaderDirectory();
+        options.mWidth = width;
+        options.mHeight = height;
+        options.mValidation.mEnabled = true;
+        // Tests provoke errors deliberately and assert on them; aborting would take the suite down
+        // with the first one.
+        options.mValidation.mAbortOnError = false;
+        // **On, because a missing barrier is what this suite is worst at seeing.** Every test here
+        // submits and waits, so the ordering a frame relies on is supplied by the harness rather
+        // than by the code under test, and a hazard shows as nothing at all — a traced view wrote
+        // its picture with no dependency on the write before it for as long as there have been
+        // traced views. It costs no measurable time in this suite.
+        options.mValidation.mSynchronization = true;
+
+        return options;
+    }
+
     namespace Details
     {
-        inline std::unique_ptr<Renderer> buildRenderer(bool validation, std::string& reason)
+        inline std::unique_ptr<Renderer> buildRenderer(std::string& reason)
         {
-            RendererOptions options;
-            options.mShaderDirectory = getShaderDirectory();
-            // Every test resizes to what it needs; this is only what the first target costs.
-            options.mWidth = 1;
-            options.mHeight = 1;
-            options.mValidation.mEnabled = validation;
-            // Tests provoke errors deliberately and assert on them; aborting would take the suite
-            // down with the first one.
-            options.mValidation.mAbortOnError = false;
-            // **On, because a missing barrier is what this suite is worst at seeing.** Every test
-            // here submits and waits, so the ordering a frame relies on is supplied by the harness
-            // rather than by the code under test, and a hazard shows as nothing at all — a traced
-            // view wrote its picture with no dependency on the write before it for as long as there
-            // have been traced views. It costs no measurable time in this suite.
-            options.mValidation.mSynchronization = true;
-
-            return createRenderer(options, reason);
+            // Every test resizes to what it needs; one texel is only what the first target costs.
+            return createRenderer(describeRenderer(1, 1), reason);
         }
     }
 
@@ -204,10 +215,17 @@ namespace Rtx::Testing
     /// **What makes these tests an acceptance suite for any backend.** They assert hand-computed
     /// radiances, mip levels and transmittances, none of which is a statement about an API; a
     /// backend that passes this file is correct.
+    ///
+    /// **One for the binary, and a second is what a slow test is made of.** Measured with the
+    /// on-disk pipeline cache warm: `createRenderer` costs 700–870 ms, the first `setScene` on the
+    /// result costs another 900–1150 ms because it compiles every kernel the trace can need — see
+    /// `VulkanRenderer::setScene` — and every `resize`, `setScene`, `renderFrame` and `readPixels`
+    /// after that costs between one and fifteen. So a test that traces through this one is free and
+    /// a test that stands up its own costs the suite two seconds. Only an upscaler needs its own,
+    /// because the mode is fixed when the renderer is built.
     inline Renderer* getRenderer(std::string& reason)
     {
-        return Details::rendererCache(true).get(
-            reason, [](std::string& why) { return Details::buildRenderer(true, why); });
+        return Details::rendererCache().get(reason, Details::buildRenderer);
     }
 
     /// The base of a test that drives Vulkan directly.
@@ -319,16 +337,6 @@ namespace Rtx::Testing
         }
 
         return values;
-    }
-
-    /// The same, uninstrumented, for the one test that counts allocations.
-    ///
-    /// The layers go to the heap on every command they inspect, which drowns out anything an
-    /// allocation count is trying to see.
-    inline Renderer* getUnvalidatedRenderer(std::string& reason)
-    {
-        return Details::rendererCache(false).get(
-            reason, [](std::string& why) { return Details::buildRenderer(false, why); });
     }
 
 }

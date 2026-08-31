@@ -128,13 +128,8 @@ namespace RtxTool
                 return held;
             }
 
-            Rtx::RendererOptions options;
-            options.mShaderDirectory = Rtx::Testing::getShaderDirectory();
-            options.mWidth = 1920;
-            options.mHeight = 1080;
+            Rtx::RendererOptions options = Rtx::Testing::describeRenderer(1920, 1080);
             options.mUpscale = upscale;
-            options.mValidation.mEnabled = true;
-            options.mValidation.mAbortOnError = false;
 
             std::string reason;
             held.mRenderer = Rtx::createRenderer(options, reason);

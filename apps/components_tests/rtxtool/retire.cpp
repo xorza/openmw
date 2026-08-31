@@ -1,6 +1,5 @@
 #include <cstdlib>
 #include <cstring>
-#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -271,8 +270,12 @@ namespace RtxTool
         /// indices agreeing all the way through the build and not the tables happening to be equal.
         TEST_F(RtxRetireTest, aCompactedSceneRendersAsOneThatNeverLostAnything)
         {
-            if (const std::string obstacle = Rtx::Testing::findInstanceObstacle(); !obstacle.empty())
-                GTEST_SKIP() << obstacle;
+            // **Asked for before the world is walked**, so a machine with no device skips in a
+            // millisecond rather than after two rooms of it.
+            std::string reason;
+            Rtx::Renderer* renderer = Rtx::Testing::getRenderer(reason);
+            if (renderer == nullptr)
+                GTEST_SKIP() << reason;
 
             const ESM::Cell* first = getContent().findCell(std::string(sFirst));
             const ESM::Cell* second = getContent().findCell(std::string(sSecond));
@@ -320,18 +323,10 @@ namespace RtxTool
             // fresh one has none, and a gap is a name nothing is standing in rather than a placement.
             ASSERT_EQ(scene.getPlacedCount(), alone.getPlacedCount());
 
-            Rtx::RendererOptions options;
-            options.mShaderDirectory = Rtx::Testing::getShaderDirectory();
-            options.mWidth = 640;
-            options.mHeight = 360;
-            options.mValidation.mEnabled = true;
-            options.mValidation.mAbortOnError = false;
-
-            std::string reason;
-            const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(options, reason);
-            if (renderer == nullptr)
-                GTEST_SKIP() << reason;
-
+            // **The binary's renderer rather than one of this test's own**, which nothing here wants:
+            // the only thing it needs that the shared one does not carry is an extent, and a resize
+            // costs five milliseconds. `Rtx::Testing::getRenderer` says what a second one costs.
+            renderer->resize(640, 360);
             const Rtx::FrameExtents extents = renderer->getExtents();
 
             // **One camera and one lighting for both.** The two scenes hold the same geometry and are
