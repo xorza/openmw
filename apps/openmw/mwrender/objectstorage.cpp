@@ -4,6 +4,7 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/esm3/loadcont.hpp>
 #include <components/esm3/loaddoor.hpp>
+#include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadstat.hpp>
 #include <components/esm4/loadacti.hpp>
 #include <components/esm4/loadcont.hpp>
@@ -11,6 +12,7 @@
 #include <components/esm4/loadfurn.hpp>
 #include <components/esm4/loadstat.hpp>
 #include <components/esm4/loadtree.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 
 #include "apps/openmw/mwbase/environment.hpp"
 #include "apps/openmw/mwbase/world.hpp"
@@ -42,11 +44,11 @@ namespace MWRender
         }
 
         void collectESM3References(float size, const osg::Vec2i& startCell, const MWWorld::ESMStore& store,
-            std::map<ESM::RefNum, Terrain::PagedCellRef>& refs)
+            const std::function<bool(int, bool)>& wanted, std::map<ESM::RefNum, Terrain::PagedCellRef>& refs)
         {
             Terrain::collectPagedRefs(
                 size, startCell, [&](int x, int y) { return store.get<ESM::Cell>().searchStatic(x, y); },
-                [&](const ESM::RefId& id) { return store.findStatic(id); }, refs);
+                [&](const ESM::RefId& id) { return store.findStatic(id); }, wanted, refs);
         }
 
         void collectESM4References(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
@@ -94,9 +96,35 @@ namespace MWRender
         const MWWorld::ESMStore& store = MWBase::Environment::get().getWorld()->getStore();
 
         if (worldspace == ESM::Cell::sDefaultWorldspaceId)
-            collectESM3References(size, startCell, store, out);
+            collectESM3References(size, startCell, store, Terrain::pagedType, out);
         else
             collectESM4References(size, startCell, worldspace, store, out);
+    }
+
+    void ObjectStorage::collectLights(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
+        std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const
+    {
+        out.clear();
+
+        // **ESM3 alone, and empty rather than a failure for anything else.** A `LIGH` is a Morrowind
+        // record and `collectESM4References` walks a different store with a different reference
+        // shape; a worldspace out of ESM4 content keeps exactly the lighting it has today.
+        if (worldspace != ESM::Cell::sDefaultWorldspaceId)
+            return;
+
+        collectESM3References(
+            size, startCell, MWBase::Environment::get().getWorld()->getStore(), Terrain::litType, out);
+    }
+
+    std::optional<SceneUtil::LightCommon> ObjectStorage::getLight(const ESM::RefId& id) const
+    {
+        const MWWorld::ESMStore& store = MWBase::Environment::get().getWorld()->getStore();
+
+        const ESM::Light* found = store.get<ESM::Light>().search(id);
+        if (found == nullptr)
+            return std::nullopt;
+
+        return SceneUtil::LightCommon(*found);
     }
 
     VFS::Path::Normalized ObjectStorage::getModel(int type, const ESM::RefId& id) const

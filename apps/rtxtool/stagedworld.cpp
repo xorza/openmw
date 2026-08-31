@@ -97,7 +97,7 @@ namespace RtxTool
         // **After the terrain exists and before the first walk**, because a paged world only has a
         // residency once it has been built. Every world walk from here asks it, whoever makes the
         // walk.
-        mExtractor.follow(mWorld->getTerrainResidency());
+        mExtractor.follow(mWorld->getResidencies());
 
         // The first walk. Everything after this is the same walk again, once a frame.
         mStaged = mirror(0);

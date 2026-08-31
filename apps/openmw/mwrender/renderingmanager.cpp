@@ -939,6 +939,7 @@ namespace MWRender
             .mWorld = world,
             .mImages = *mResourceSystem->getImageManager(),
             .mTerrain = *mTerrain,
+            .mObjectStorage = mObjectStorage,
         };
 
         mRenderer.renderFrame(frame);

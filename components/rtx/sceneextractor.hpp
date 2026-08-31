@@ -361,8 +361,14 @@ namespace Rtx
 
         /// What the graph does not parent, walked with every world walk from here on.
         ///
-        /// Null where nothing hides, which is every world whose ground is in the graph.
-        void follow(Residency* resident) { mResident = resident; }
+        /// **A list, because more than one thing keeps its own.** A quad tree resolves its chunks
+        /// inside a cull and parents them to nothing; the lights of the cells it pages have no node
+        /// anywhere, because the reference that carries one is not a paged type. Each is collected
+        /// into the same walk, in the order given.
+        ///
+        /// Copied, so a caller may hand over a temporary. Empty where nothing hides, which is every
+        /// world whose ground is in the graph.
+        void follow(std::span<Residency* const> residents) { mResidents.assign(residents.begin(), residents.end()); }
 
         /// Ends a frame: what was placed becomes what was placed before.
         ///
@@ -503,7 +509,7 @@ namespace Rtx
         /// What both `extract` and `extractWorld` are, differing only in whether the world's hidden
         /// geometry is asked for.
         ExtractionStats walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
-            std::size_t frame, Residency* hidden);
+            std::size_t frame, std::span<Residency* const> hidden);
 
         Index resolveTerrainMaterial(const Terrain::TerrainDrawable& terrain, ExtractionStats& stats);
 
@@ -590,7 +596,8 @@ namespace Rtx
         osg::Node::NodeMask mFirstPersonMask = 0;
 
         /// Geometry no node parents, asked of every world walk. See `follow`.
-        Residency* mResident = nullptr;
+        /// Refilled by `follow` every frame and never freed: two of them at most, so far.
+        std::vector<Residency*> mResidents;
 
         /// The sea's material and when it was last met. Not in `mMaterials`, because what identifies
         /// it is the node mask rather than any state set — see `resolveWaterMaterial`.

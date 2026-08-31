@@ -26,6 +26,7 @@ namespace Resource
 
 namespace Terrain
 {
+    class ObjectStorage;
     class World;
 }
 
@@ -303,6 +304,14 @@ namespace MWRender
         /// under no node `mScene` reaches. A renderer that walks rather than culls asks this with
         /// `Terrain::World::collect` instead, and holds whatever that asking needs itself.
         Terrain::World& mTerrain;
+
+        /// What the content files say stands where, which the paging above reads and a renderer that
+        /// lights the world with rays reads for itself.
+        ///
+        /// **The lights of the cells the paging leaves dark.** `Terrain::pagedType` does not stand a
+        /// `LIGH`, so a lantern outside the active grid has no node anywhere and no walk of any graph
+        /// can find one. `Rtx::DistantLights` reads them out of here.
+        const Terrain::ObjectStorage& mObjectStorage;
     };
 }
 

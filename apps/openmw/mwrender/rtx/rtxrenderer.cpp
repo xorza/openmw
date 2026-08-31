@@ -1,6 +1,7 @@
 #include "rtxrenderer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <format>
@@ -656,12 +657,22 @@ namespace MWRender
         // **The eye, which is what a cull would have used.** The detail a chunk is built at has to
         // be the detail the primary rays hit, and asking from anywhere else would put the ground a
         // reflection sees at a different level from the ground beside it.
+        const osg::Vec3f eye = frame.mCamera.getInverseViewMatrix().getTrans();
+
         mResident.follow(&frame.mTerrain);
-        mResident.setViewPoint(frame.mCamera.getInverseViewMatrix().getTrans());
+        mResident.setViewPoint(eye);
+
+        // **The same eye and the world's own grid.** What the game has stood for itself is what
+        // these must not stand again, and `Terrain::World` is where both renderers read that from.
+        mDistantLights.follow(&frame.mObjectStorage, frame.mTerrain.getWorldspace());
+        mDistantLights.setViewPoint(eye);
+        mDistantLights.setActiveGrid(frame.mTerrain.getActiveGrid());
+        mDistantLights.setOutdoors(!frame.mWorld.isInteriorCell());
 
         // Told once a frame, because what a paged world hides is the frame's to say. Every world
         // walk asks it from here, and the precipitation walk above cannot: it is a subtree.
-        mExtractor->follow(&mResident);
+        std::array<Rtx::Residency*, 2> hidden{ &mResident, &mDistantLights };
+        mExtractor->follow(hidden);
 
         const Rtx::ExtractionStats found
             // One walk over the whole graph, where every path is already distinct.

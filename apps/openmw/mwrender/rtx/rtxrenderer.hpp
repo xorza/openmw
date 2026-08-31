@@ -10,6 +10,7 @@
 #include <osg/ref_ptr>
 
 #include <components/myguiplatform/picture.hpp>
+#include <components/rtx/distantlights.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -318,6 +319,11 @@ namespace MWRender
         /// extractor that asks it, and costs a `Terrain::View` and nothing else — the world that
         /// parents its chunks hands out no view and this then does nothing.
         Rtx::TerrainResidency mResident;
+
+        /// The lights of the cells the paging leaves dark, beside the chunks it stands. Held here
+        /// for `mResident`'s reason: the extractor is handed both every frame and neither is on the
+        /// graph.
+        Rtx::DistantLights mDistantLights;
 
         /// Which of place, extend and rebuild a frame is, and what a rebuild has to describe.
         Rtx::SceneUploader mUploader;

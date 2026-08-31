@@ -150,8 +150,17 @@ namespace Rtx
                 ++sampled;
             }
 
-        // Nothing at all is a texture of no texels, which the assert above already refused.
-        assert(sampled > 0);
+        // **A texture that counted nothing is content, not a broken contract.** `blockSum` refuses
+        // a transparent texel because a transparent texel is not a colour, so a BC1 cutout whose
+        // every texel picks the transparent entry resolves no cell at all. A sheet with no colour
+        // in it has no painted light to divide out, which is what the map that changes nothing
+        // says.
+        if (sampled == 0)
+        {
+            mValues.fill(1.0f);
+            return;
+        }
+
         const float average = total / static_cast<float>(sampled);
         for (std::size_t cell = 0; cell < mValues.size(); ++cell)
             if (counts[cell] == 0)

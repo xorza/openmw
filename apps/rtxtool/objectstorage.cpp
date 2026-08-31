@@ -4,8 +4,10 @@
 #include <cassert>
 
 #include <components/esm3/loadcell.hpp>
+#include <components/esm3/loadligh.hpp>
 #include <components/esmloader/esmdata.hpp>
 #include <components/esmloader/lessbyid.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 
 namespace RtxTool
 {
@@ -15,8 +17,8 @@ namespace RtxTool
     {
     }
 
-    void ObjectStorage::collectReferences(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-        std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const
+    void ObjectStorage::collect(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
+        const std::function<bool(int, bool)>& wanted, std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const
     {
         // **Said rather than answered with an empty hillside.** `EsmLoader` reads ESM3 and this
         // world builds one worldspace; a chunk asked for another would silently come back bare,
@@ -32,7 +34,28 @@ namespace RtxTool
                     mContent->mRefIdTypes.begin(), mContent->mRefIdTypes.end(), id, EsmLoader::LessById{});
                 return found == mContent->mRefIdTypes.end() || found->mId != id ? 0 : static_cast<int>(found->mType);
             },
-            out);
+            wanted, out);
+    }
+
+    void ObjectStorage::collectReferences(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
+        std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const
+    {
+        collect(size, startCell, worldspace, Terrain::pagedType, out);
+    }
+
+    void ObjectStorage::collectLights(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
+        std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const
+    {
+        collect(size, startCell, worldspace, Terrain::litType, out);
+    }
+
+    std::optional<SceneUtil::LightCommon> ObjectStorage::getLight(const ESM::RefId& id) const
+    {
+        const ESM::Light* found = EsmLoader::find<ESM::Light>(*mContent, id);
+        if (found == nullptr)
+            return std::nullopt;
+
+        return SceneUtil::LightCommon(*found);
     }
 
     VFS::Path::Normalized ObjectStorage::getModel(int type, const ESM::RefId& id) const

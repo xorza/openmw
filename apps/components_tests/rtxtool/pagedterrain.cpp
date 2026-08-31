@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <osg/Group>
 #include <osg/Matrixf>
@@ -62,7 +63,7 @@ namespace RtxTool
             readRegion(world, cell, *root, loaded, /*liveProps=*/false);
             world.setTerrainViewPoint(osg::Vec3f(cell.getGridX() * sCellSize, cell.getGridY() * sCellSize, 0.0f));
 
-            extractor.follow(ask ? world.getTerrainResidency() : nullptr);
+            extractor.follow(ask ? world.getResidencies() : std::span<Rtx::Residency* const>());
 
             for (std::uint32_t at = 0; at < walks; ++at)
             {
@@ -221,7 +222,7 @@ namespace RtxTool
                     dropCellsOutside(getWorld(), *stop, *root, loaded);
 
                     // Only after the first stop is there a paged world to follow.
-                    extractor.follow(getWorld().getTerrainResidency());
+                    extractor.follow(getWorld().getResidencies());
                     getWorld().setTerrainViewPoint(
                         osg::Vec3f(stop->getGridX() * sCellSize, stop->getGridY() * sCellSize, 0.0f));
 
@@ -269,13 +270,65 @@ namespace RtxTool
 
             Rtx::SceneDesc asked;
             placeOutdoors(getWorld(), *cell, asked, true);
-            ASSERT_NE(getWorld().getTerrainResidency(), nullptr) << "the run did not page its terrain";
+            ASSERT_FALSE(getWorld().getResidencies().empty()) << "the run did not page its terrain";
 
             Rtx::SceneDesc unasked;
             placeOutdoors(getWorld(), *cell, unasked, false);
 
             EXPECT_GT(asked.getPlacedCount(), unasked.getPlacedCount())
                 << "the chunks a quad tree hides never reached the mirror";
+        }
+
+        /// A `LIGH` past the active grid lights the world, and no light is stood twice.
+        ///
+        /// **The lantern the paging never stands.** `Terrain::pagedType` leaves `REC_LIGH` out, so a
+        /// light a cell away has no model and no node — and a renderer that walks the graph finds
+        /// nothing at all to light a distant town with. `Rtx::DistantLights` reads them out of the
+        /// content files instead, and the two halves of that are asserted here: they arrive, and
+        /// they arrive only where the game has not already stood the real object.
+        ///
+        /// **Balmora, because a count has to be large enough to mean something.** A wilderness cell
+        /// holds no lantern at all, and a test that passed on nought either way would say nothing.
+        TEST_F(RtxPagedTerrainTest, aLightPastTheActiveGridReachesTheSceneAndNoneIsStoodTwice)
+        {
+            const ESM::Cell* cell = getContent().findCell(std::string(sBuiltUp));
+            ASSERT_NE(cell, nullptr);
+
+            getWorld().pageTerrain(true);
+
+            Rtx::SceneDesc scene;
+            placeOutdoors(getWorld(), *cell, scene, true);
+
+            // What `readRegion` loads, which is what the active grid comes to.
+            const int lowX = cell->getGridX() - 1;
+            const int lowY = cell->getGridY() - 1;
+            const int highX = cell->getGridX() + 1;
+            const int highY = cell->getGridY() + 1;
+
+            std::uint32_t beyond = 0;
+            for (const Rtx::Light& light : scene.getLights())
+            {
+                const int x = static_cast<int>(std::floor(light.mPosition[0] / sCellSize));
+                const int y = static_cast<int>(std::floor(light.mPosition[1] / sCellSize));
+
+                if (x < lowX || y < lowY || x > highX || y > highY)
+                    ++beyond;
+            }
+
+            EXPECT_GT(beyond, 100u) << "the cells past the grid stood no light";
+
+            // **Every light in a place of its own.** One inside the grid is on the graph and the
+            // walk has met it; the same one read out of the content files as well would be the same
+            // lantern counted twice, and two lamps standing in one spot is what that looks like.
+            std::vector<std::array<float, 3>> places;
+            places.reserve(scene.getLights().size());
+            for (const Rtx::Light& light : scene.getLights())
+                places.push_back({ light.mPosition[0], light.mPosition[1], light.mPosition[2] });
+
+            std::sort(places.begin(), places.end());
+
+            EXPECT_EQ(std::adjacent_find(places.begin(), places.end()), places.end())
+                << "two lights stand in one place";
         }
 
         /// A world that parents its chunks offers no residency, and is reached by walking.
@@ -291,7 +344,7 @@ namespace RtxTool
             Rtx::SceneDesc scene;
             placeOutdoors(getWorld(), *cell, scene, true);
 
-            EXPECT_EQ(getWorld().getTerrainResidency(), nullptr);
+            EXPECT_TRUE(getWorld().getResidencies().empty());
             EXPECT_GT(scene.getPlacedCount(), 0u) << "a grid world's ground is found by walking, and was not";
         }
 
@@ -325,7 +378,7 @@ namespace RtxTool
 
             Rtx::SceneDesc withStatics;
             placeOutdoors(*paged, *cell, withStatics, true);
-            ASSERT_NE(paged->getTerrainResidency(), nullptr) << "the run did not page its terrain";
+            ASSERT_FALSE(paged->getResidencies().empty()) << "the run did not page its terrain";
 
             const std::uint32_t stood = standingBeyond(withStatics, middle, sGridReach);
             EXPECT_GT(stood, 0u) << "the distant ground came up bare";

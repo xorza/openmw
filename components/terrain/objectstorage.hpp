@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 
 #include <osg/Vec2i>
 #include <osg/Vec3f>
@@ -10,6 +11,7 @@
 #include <components/esm/defs.hpp>
 #include <components/esm/refid.hpp>
 #include <components/esm3/refnum.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 #include <components/vfs/pathutil.hpp>
 
 namespace ESM
@@ -62,6 +64,21 @@ namespace Terrain
         }
     }
 
+    /// Whether a record type carries a light the paging leaves behind.
+    ///
+    /// **Not part of `pagedType`, and never to be merged into it.** That one decides what a distant
+    /// hillside is *made of*, both renderers read it, and `REC_LIGH` is deliberately absent — so
+    /// upstream stands no distant lantern and a renderer that started standing one would be showing
+    /// a different world. This asks a different question of the same references: which of them carry
+    /// light that nobody has placed, because the model they hang on was never paged.
+    ///
+    /// Takes `pagedType`'s two arguments so that either may be handed to `collectPagedRefs`. A light
+    /// is a light however wide the chunk is.
+    inline bool litType(int type, bool /*far*/)
+    {
+        return type == ESM::REC_LIGH;
+    }
+
     /// Every reference that pages in a square of ESM3 exterior cells, merged into `out`.
     ///
     /// **The reduction both worlds read one hillside through.** A later content file can move,
@@ -77,11 +94,15 @@ namespace Terrain
     /// @param typeOf what record a reference names, which the two worlds answer out of different
     ///        stores. Read through `std::function` because this runs once per chunk built and
     ///        never on a frame.
+    /// @param wanted which record types the caller is asking about — `pagedType` for what a chunk
+    ///        stands, `litType` for what lights it. **The caller's and not this function's**: the
+    ///        two questions read the same blocks in the same order, and the reduction by reference
+    ///        number that makes a later content file win has to be the same one for both.
     void collectPagedRefs(float size, const osg::Vec2i& startCell,
         const std::function<const ESM::Cell*(int, int)>& cellAt, const std::function<int(const ESM::RefId&)>& typeOf,
-        std::map<ESM::RefNum, PagedCellRef>& out);
+        const std::function<bool(int, bool)>& wanted, std::map<ESM::RefNum, PagedCellRef>& out);
 
-    /// What `ObjectPaging` asks of the content files.
+    /// What the paging and the ray tracer ask of the content files.
     ///
     /// **The seam `Terrain::Storage` already is, for the same reason.** The paging is a thousand
     /// lines of scene-graph work — load, merge, analyse, batch — and about forty of reading records,
@@ -101,6 +122,26 @@ namespace Terrain
         /// implementation must be safe to call on several at once.
         virtual void collectReferences(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
             std::map<ESM::RefNum, PagedCellRef>& out) const = 0;
+
+        /// Every `LIGH` reference in that same square, reduced the same way.
+        ///
+        /// **The one thing the paging does not stand, asked for separately.** `pagedType` leaves
+        /// `REC_LIGH` out, so a distant lantern has no model in either renderer — but the ray tracer
+        /// lights the world with what it can reach rather than with what a camera can see, and a
+        /// town four cells away that goes dark at dusk is the world stating something the content
+        /// files do not.
+        ///
+        /// `out` is cleared first. Called from a worker thread, so an implementation must be safe to
+        /// call on several at once.
+        virtual void collectLights(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
+            std::map<ESM::RefNum, PagedCellRef>& out) const = 0;
+
+        /// What a `LIGH` record says its light is, or nothing where the id names no such record.
+        ///
+        /// **`SceneUtil::LightCommon` and not a shape of this fork's own**, because that is what
+        /// `SceneUtil::createLightSource` takes and what every light the game places is built out
+        /// of. A second reading of the same eight fields is a second answer waiting to drift.
+        virtual std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId& id) const = 0;
 
         /// The model a record names, or empty where it names none — a marker, or a type that draws
         /// nothing.

@@ -28,6 +28,8 @@ set(RTX_FILES
     compositequeue.hpp
     distantland.cpp
     distantland.hpp
+    distantlights.cpp
+    distantlights.hpp
     error.hpp
     fogbuilder.cpp
     fogbuilder.hpp

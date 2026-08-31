@@ -12,7 +12,7 @@ namespace Terrain
 {
     void collectPagedRefs(float size, const osg::Vec2i& startCell,
         const std::function<const ESM::Cell*(int, int)>& cellAt, const std::function<int(const ESM::RefId&)>& typeOf,
-        std::map<ESM::RefNum, PagedCellRef>& out)
+        const std::function<bool(int, bool)>& wanted, std::map<ESM::RefNum, PagedCellRef>& out)
     {
         // **Its own, because chunks are built on the paging's working threads.** A cache shared with
         // the caller would be two threads seeking one file handle.
@@ -54,7 +54,7 @@ namespace Terrain
                                 continue;
 
                             const int recordType = typeOf(ref.mRefID);
-                            if (!pagedType(recordType, size >= 2))
+                            if (!wanted(recordType, size >= 2))
                                 continue;
                             if (deleted)
                             {
@@ -91,7 +91,7 @@ namespace Terrain
                     }
 
                     const int recordType = typeOf(leased.mRefID);
-                    if (!pagedType(recordType, size >= 2))
+                    if (!wanted(recordType, size >= 2))
                         continue;
 
                     out.insert_or_assign(leased.mRefNum,

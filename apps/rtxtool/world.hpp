@@ -2,12 +2,15 @@
 
 #include <memory>
 #include <optional>
+#include <span>
+#include <vector>
 
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
 
 #include <components/misc/cellgrid.hpp>
 
+#include <components/rtx/distantlights.hpp>
 #include <components/rtx/terrainresidency.hpp>
 
 #include "terrainstorage.hpp"
@@ -139,8 +142,9 @@ namespace RtxTool
         /// Read when the terrain is built, so a world that has built it ignores this.
         void pageStatics(bool paged) { mPagedStatics = paged; }
 
-        /// The terrain's chunks where the graph does not parent them, or null where it does.
-        Rtx::Residency* getTerrainResidency() { return mResident.get(); }
+        /// Everything the graph does not parent: the terrain's chunks, and the lights of the cells
+        /// the paging leaves dark. Empty for a world that parents its ground.
+        std::span<Rtx::Residency* const> getResidencies() const { return mResidencies; }
 
         /// How far out a paged world produces chunks at all, in world units.
         ///
@@ -193,6 +197,15 @@ namespace RtxTool
 
         /// Non-null only for a paged world, which is the only one that hides its chunks.
         std::unique_ptr<Rtx::TerrainResidency> mResident;
+
+        /// **Beside the chunks and on the same terms.** A `LIGH` is not a paged type, so a distant
+        /// lantern has no node for any walk to find; this reads them out of the content files
+        /// instead. Held whether or not the world pages, and handed over only when it does — there
+        /// is nothing out there for a light to fall on otherwise.
+        Rtx::DistantLights mDistantLights;
+
+        /// The two above as the extractor takes them, refilled when the terrain is built or cleared.
+        std::vector<Rtx::Residency*> mResidencies;
 
         /// The square of cells the caller says is loaded. See `setActiveCellGrid`.
         Misc::CellGrid mActiveGrid;

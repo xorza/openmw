@@ -16,6 +16,11 @@ namespace MWRender
         void collectReferences(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
             std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const override;
 
+        void collectLights(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
+            std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const override;
+
+        std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId& id) const override;
+
         VFS::Path::Normalized getModel(int type, const ESM::RefId& id) const override;
 
         int getEsmVersion(int contentFile) const override;

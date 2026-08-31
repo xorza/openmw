@@ -136,6 +136,9 @@ namespace RtxTool
                 mResident = std::make_unique<Rtx::TerrainResidency>();
                 mResident->follow(paged.get());
                 mTerrain = std::move(paged);
+
+                mDistantLights.follow(&mContent.getObjectStorage(), ESM::Cell::sDefaultWorldspaceId);
+                mResidencies = { mResident.get(), &mDistantLights };
             }
             else
                 mTerrain = std::make_unique<Terrain::TerrainGrid>(mTerrainParent, mCompileRoot, mResourceSystem.get(),
@@ -167,6 +170,8 @@ namespace RtxTool
     {
         if (mResident != nullptr)
             mResident->setViewPoint(where);
+
+        mDistantLights.setViewPoint(where);
     }
 
     void World::setActiveCellGrid(const Misc::CellGrid& grid)
@@ -177,6 +182,11 @@ namespace RtxTool
         // here when it does.
         if (mTerrain != nullptr)
             mTerrain->setActiveGrid(grid.getBounds());
+
+        // **The same grid, and for the same reason `readRegion` gives.** This world places every
+        // reference a loaded cell carries, lights included, so the cells it has loaded are exactly
+        // the ones the distant lights must leave alone.
+        mDistantLights.setActiveGrid(grid.getBounds());
     }
 
     void World::unloadTerrain(int x, int y)
@@ -192,6 +202,7 @@ namespace RtxTool
         // Backwards through what `buildTerrain` stood up, which is the order the members are
         // declared in and for the reasons given there. The residency is ahead of all of it: the
         // view it holds was handed out by the world about to go.
+        mResidencies.clear();
         mResident.reset();
         mTerrain.reset();
 

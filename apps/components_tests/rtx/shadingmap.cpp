@@ -2,6 +2,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <span>
 #include <vector>
@@ -47,6 +48,55 @@ namespace Rtx
             {
                 return TextureData{
                     .mFormat = TextureFormat::Rgba8Unorm,
+                    .mWidth = mLevel.mWidth,
+                    .mHeight = mLevel.mHeight,
+                    .mBytes = mBytes,
+                    .mLevels = std::span(&mLevel, 1),
+                };
+            }
+        };
+
+        /// The two 5-6-5 endpoints the block tests spell their palettes out of.
+        ///
+        /// Which one comes first is the whole of what decides the fourth palette entry: descending
+        /// spells four colours, ascending spells three and transparency.
+        constexpr std::uint16_t sWhite = 0xFFFF;
+        constexpr std::uint16_t sMidGrey = 0x8410;
+
+        /// A square BC1 texture whose blocks share one pair of endpoints and take their indices
+        /// from `spell`, so a test can assert its own arithmetic.
+        ///
+        /// @param spell the index byte for a block's column and line — two bits a texel, lowest
+        ///        first, so one byte spells a line of four.
+        struct Blocked
+        {
+            std::vector<std::byte> mBytes;
+            MipLevel mLevel;
+
+            template <class Spell>
+            Blocked(std::uint32_t side, std::uint16_t first, std::uint16_t second, Spell&& spell)
+                : mBytes(std::size_t{ side / 4 } * (side / 4) * 8)
+                , mLevel{ 0, side, side }
+            {
+                const std::uint32_t blocks = side / 4;
+                for (std::uint32_t row = 0; row < blocks; ++row)
+                    for (std::uint32_t column = 0; column < blocks; ++column)
+                    {
+                        const std::size_t at = (std::size_t{ row } * blocks + column) * 8;
+                        mBytes[at + 0] = std::byte{ static_cast<std::uint8_t>(first) };
+                        mBytes[at + 1] = std::byte{ static_cast<std::uint8_t>(first >> 8) };
+                        mBytes[at + 2] = std::byte{ static_cast<std::uint8_t>(second) };
+                        mBytes[at + 3] = std::byte{ static_cast<std::uint8_t>(second >> 8) };
+
+                        for (std::uint32_t line = 0; line < 4; ++line)
+                            mBytes[at + 4 + line] = std::byte{ spell(column, line) };
+                    }
+            }
+
+            TextureData describe() const
+            {
+                return TextureData{
+                    .mFormat = TextureFormat::Bc1RgbaSrgb,
                     .mWidth = mLevel.mWidth,
                     .mHeight = mLevel.mHeight,
                     .mBytes = mBytes,
@@ -174,40 +224,14 @@ namespace Rtx
         TEST(RtxShadingMapTest, aCompressedBlockAveragesItsPaletteByTheIndicesThatChoseIt)
         {
             constexpr std::uint32_t side = 256;
-            constexpr std::uint32_t blocks = side / 4;
 
-            std::vector<std::byte> bytes(std::size_t{ blocks } * blocks * 8);
-            for (std::uint32_t row = 0; row < blocks; ++row)
-                for (std::uint32_t column = 0; column < blocks; ++column)
-                {
-                    const std::size_t at = (std::size_t{ row } * blocks + column) * 8;
+            // 0x00 is four of the first endpoint, 0x55 four of the second, and 0x50 two of each.
+            const Blocked step(side, sWhite, sMidGrey, [](std::uint32_t column, std::uint32_t line) -> std::uint8_t {
+                const bool left = column < side / 8;
+                return left ? (line < 2 ? 0x00 : 0x55) : (line == 0 ? 0x50 : 0x55);
+            });
 
-                    // c0 first and larger, which is what says four colours rather than three.
-                    bytes[at + 0] = std::byte{ 0xFF };
-                    bytes[at + 1] = std::byte{ 0xFF };
-                    bytes[at + 2] = std::byte{ 0x10 };
-                    bytes[at + 3] = std::byte{ 0x84 };
-
-                    const bool left = column < blocks / 2;
-                    for (std::size_t line = 0; line < 4; ++line)
-                    {
-                        // Two bits a texel, lowest first. 0x00 is four of the first endpoint, 0x55
-                        // is four of the second, and 0x50 is two of each.
-                        const std::uint8_t indices = left ? (line < 2 ? 0x00 : 0x55) : (line == 0 ? 0x50 : 0x55);
-                        bytes[at + 4 + line] = std::byte{ indices };
-                    }
-                }
-
-            const MipLevel level{ 0, side, side };
-            const TextureData texture{
-                .mFormat = TextureFormat::Bc1RgbaSrgb,
-                .mWidth = side,
-                .mHeight = side,
-                .mBytes = bytes,
-                .mLevels = std::span(&level, 1),
-            };
-
-            const ShadingMap map(texture);
+            const ShadingMap map(step.describe());
             const std::span<const float> values = map.getValues();
             const std::size_t row = std::size_t{ sSide / 2 } * sSide;
 
@@ -215,6 +239,22 @@ namespace Rtx
             // as a cell gets.
             EXPECT_NEAR(values[row + sSide / 4], 1.3108f, 0.01f) << "the brighter half";
             EXPECT_NEAR(values[row + 3 * sSide / 4], 0.6893f, 0.01f) << "and the darker one";
+        }
+
+        /// A cutout sheet with nothing opaque anywhere in it.
+        ///
+        /// **The one texture the estimate gets no texels from.** `blockSum` refuses a transparent
+        /// texel because a transparent texel is not a colour, so a sheet transparent everywhere
+        /// resolves no cell at all — and that is content rather than a broken contract. A debug
+        /// build asserted its way out of the renderer on the first view that used one.
+        TEST(RtxShadingMapTest, aFullyTransparentCutoutComesBackNeutral)
+        {
+            // 0xFF is four texels of the fourth entry, which the ascending endpoints make
+            // transparency.
+            const Blocked blank(
+                64, sMidGrey, sWhite, [](std::uint32_t, std::uint32_t) -> std::uint8_t { return 0xFF; });
+
+            EXPECT_EQ(furthestFromNeutral(ShadingMap(blank.describe())), 0.0f);
         }
 
         /// A texture too small to fill the grid, which most of Morrowind's smaller ones are.
