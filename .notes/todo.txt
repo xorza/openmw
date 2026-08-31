@@ -15,3 +15,4 @@
 - screen upside down for loading terrains
 - distant terrain lightsources
 - precompile shaders?
+- interior outside - black
