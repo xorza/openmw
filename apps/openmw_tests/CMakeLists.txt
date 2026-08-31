@@ -20,6 +20,8 @@ file(GLOB UNITTEST_SRC_FILES
     mwgui/weightedsearch.cpp
 
     mwscript/testscripts.cpp
+
+    mwsound/testheadcache.cpp
 )
 
 if (MSVC)
