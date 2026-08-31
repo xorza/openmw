@@ -144,9 +144,17 @@ if (OPENMW_RTX)
         rtx/reconstruction.cpp
         rtx/requirements.cpp
         rtx/scenedesc.cpp
-        rtx/sceneextractor.cpp
+        rtx/extractor/fixture.hpp
+        rtx/extractor/lights.cpp
+        rtx/extractor/materials.cpp
+        rtx/extractor/particles.cpp
+        rtx/extractor/retire.cpp
+        rtx/extractor/skinning.cpp
+        rtx/extractor/stats.cpp
+        rtx/extractor/walk.cpp
         rtx/sceneuploader.cpp
         rtx/shadingmap.cpp
+        rtx/skybuilder.cpp
         rtx/sheetfold.cpp
         rtx/spanallocator.cpp
         rtx/spritelight.cpp
@@ -155,7 +163,17 @@ if (OPENMW_RTX)
         rtx/terraincomposite.cpp
         rtx/structurestorage.cpp
         rtx/texturebuilder.cpp
-        rtx/visibilitypass.cpp
+        rtx/visibility/filter.cpp
+        rtx/visibility/fixture.hpp
+        rtx/visibility/fog.cpp
+        rtx/visibility/frame.cpp
+        rtx/visibility/framecost.cpp
+        rtx/visibility/light.cpp
+        rtx/visibility/sea.cpp
+        rtx/visibility/sky.cpp
+        rtx/visibility/sprites.cpp
+        rtx/visibility/surfaces.cpp
+        rtx/visibility/water.cpp
         rtx/wavecascade.cpp
         rtx/wavefield.cpp
         rtx/waveline.cpp
@@ -179,7 +197,8 @@ if (OPENMW_RTX)
         rtxtool/terrainstorage.cpp
         rtxtool/validationchoice.cpp
         rtxtool/verify.cpp
-        rtxtool/view.cpp
+        rtxtool/viewpoint.cpp
+        rtxtool/views.cpp
         rtxtool/worldclock.cpp
         sky/clouds.cpp
         sky/skyroll.cpp
