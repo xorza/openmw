@@ -18,6 +18,7 @@
 #include <osgParticle/Particle>
 
 #include <components/misc/rng.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/stereo/multiview.hpp>
 #include <components/stereo/stereomanager.hpp>
 
@@ -35,7 +36,6 @@
 #include "../../mwbase/environment.hpp"
 
 #include "../renderbin.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace
 {

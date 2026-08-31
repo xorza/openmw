@@ -16,10 +16,10 @@
 #include <osg/StateSet>
 
 #include "bulletdebugdraw.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwbase/environment.hpp"
 

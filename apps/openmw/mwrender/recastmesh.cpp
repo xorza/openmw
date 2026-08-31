@@ -8,10 +8,9 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/detourdebugdraw.hpp>
 #include <components/sceneutil/recastmesh.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include <osg/PositionAttitudeTransform>
-
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwbase/environment.hpp"
 

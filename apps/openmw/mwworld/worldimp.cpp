@@ -43,6 +43,7 @@
 
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/sceneutil/workqueue.hpp>
 
 #include <components/detournavigator/agentbounds.hpp>
@@ -79,7 +80,6 @@
 #include "../mwrender/camera.hpp"
 #include "../mwrender/npcanimation.hpp"
 #include "../mwrender/renderingmanager.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwscript/globalscripts.hpp"
 

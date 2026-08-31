@@ -20,6 +20,7 @@
 
 #include <components/misc/resourcehelpers.hpp>
 
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 
 #include <components/vfs/manager.hpp>
@@ -36,7 +37,6 @@
 #include "../mwworld/ptr.hpp"
 
 #include "actorutil.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {

@@ -22,6 +22,7 @@
 #include <components/sceneutil/keyframe.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/visitor.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 
 #include <components/vfs/manager.hpp>
@@ -44,7 +45,6 @@
 #include "renderbin.hpp"
 #include "renderingmanager.hpp"
 #include "rotatecontroller.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace
 {

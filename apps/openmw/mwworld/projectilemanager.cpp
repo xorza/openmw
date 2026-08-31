@@ -32,6 +32,7 @@
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/visitor.hpp>
 
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 
 #include "../mwworld/class.hpp"
@@ -54,7 +55,6 @@
 #include "../mwrender/animation.hpp"
 #include "../mwrender/renderingmanager.hpp"
 #include "../mwrender/util.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwsound/sound.hpp"
 

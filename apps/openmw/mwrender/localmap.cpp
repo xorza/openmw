@@ -15,6 +15,7 @@
 #include <components/misc/constants.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
 #include <components/sceneutil/visitor.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -24,7 +25,6 @@
 
 #include "offscreenview.hpp"
 #include "renderer.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace
 {

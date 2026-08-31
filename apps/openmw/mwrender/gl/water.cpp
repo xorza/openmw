@@ -23,6 +23,7 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/rtt.hpp>
 #include <components/sceneutil/shadow.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/sceneutil/waterutil.hpp>
 
 #include <components/misc/constants.hpp>
@@ -44,7 +45,6 @@
 #include "../util.hpp"
 #include "ripples.hpp"
 #include "ripplesimulation.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {

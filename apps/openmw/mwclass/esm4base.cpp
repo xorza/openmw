@@ -4,12 +4,12 @@
 #include <MyGUI_UString.h>
 
 #include <components/sceneutil/positionattitudetransform.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwgui/tooltips.hpp"
 
 #include "../mwrender/objects.hpp"
 #include "../mwrender/renderinginterface.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwphysics/physicssystem.hpp"
 #include "../mwworld/ptr.hpp"

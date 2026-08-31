@@ -6,10 +6,10 @@
 #include <components/resource/scenemanager.hpp>
 
 #include <components/sceneutil/controller.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include "animation.hpp"
 #include "util.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 #include <algorithm>
 

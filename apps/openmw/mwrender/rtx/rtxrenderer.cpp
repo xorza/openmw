@@ -51,6 +51,7 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/upscale.hpp>
 #include <components/sceneutil/screencapture.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
 #include <components/settings/values.hpp>
 #include <components/surface/material.hpp>
@@ -65,7 +66,6 @@
 
 #include "../renderingmanager.hpp"
 #include "../screenshotwriter.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 #include "tracedview.hpp"
 

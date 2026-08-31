@@ -499,7 +499,8 @@ namespace EsmLoader
             result.mGameSettings = prepareRecords(content.mGameSettings, GetKey{});
         if (query.mLoadLands)
             result.mLands = prepareRecords(content.mLands, GetKey{});
-        result.mLandTextures = prepareLandTextures(content.mLandTextures);
+        if (query.mLoadLandTextures)
+            result.mLandTextures = prepareLandTextures(content.mLandTextures);
         if (query.mLoadRegions)
             result.mRegions = prepareRecords(content.mRegions, GetKey{});
         prepareModels(content.mModels, result.mModels, sModelIndices);
@@ -520,7 +521,7 @@ namespace EsmLoader
             prepared << ' ' << result.mRegions.size() << " regions,";
         reportModels(prepared, result.mModels, sModelIndices);
 
-        Log(Debug::Info) << "Merged across content files to" << prepared.str();
+        Log(Debug::Info) << "Prepared" << prepared.str();
 
         return result;
     }

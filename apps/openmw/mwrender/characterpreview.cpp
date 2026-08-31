@@ -10,6 +10,7 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwworld/class.hpp"
 #include "../mwworld/inventorystore.hpp"
@@ -20,7 +21,6 @@
 #include "npcanimation.hpp"
 #include "offscreenview.hpp"
 #include "renderer.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {

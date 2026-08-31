@@ -1,7 +1,5 @@
 #include "navmesh.hpp"
 
-#include <components/sceneutil/vismask.hpp>
-
 #include <components/detournavigator/guardednavmeshcacheitem.hpp>
 #include <components/detournavigator/navmeshcacheitem.hpp>
 #include <components/detournavigator/settings.hpp>
@@ -10,6 +8,7 @@
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/detourdebugdraw.hpp>
 #include <components/sceneutil/navmesh.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/sceneutil/workqueue.hpp>
 
 #include <osg/BlendFunc>

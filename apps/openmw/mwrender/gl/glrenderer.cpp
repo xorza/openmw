@@ -1,7 +1,5 @@
 #include "glrenderer.hpp"
 
-#include <components/sceneutil/vismask.hpp>
-
 #include <atomic>
 #include <cmath>
 #include <fstream>
@@ -42,6 +40,7 @@
 #include <components/sceneutil/glextensions.hpp>
 #include <components/sceneutil/screencapture.hpp>
 #include <components/sceneutil/util.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/sceneutil/workqueue.hpp>
 #include <components/sdlutil/imagetosurface.hpp>
 #include <components/sdlutil/sdlgraphicswindow.hpp>

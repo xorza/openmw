@@ -11,6 +11,7 @@
 #include <components/misc/resourcehelpers.hpp>
 #include <components/misc/rng.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 
 #include <components/esm3/loadcrea.hpp>
@@ -37,8 +38,6 @@
 #include "../mwbase/world.hpp"
 
 #include "../mwmechanics/aibreathe.hpp"
-
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwsound/constants.hpp"
 

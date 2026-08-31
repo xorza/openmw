@@ -32,6 +32,7 @@
 #include <components/misc/pathhelpers.hpp>
 #include <components/misc/resourcehelpers.hpp>
 
+#include <components/sceneutil/vismask.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
 #include <components/vfs/recursivedirectoryiterator.hpp>
@@ -62,7 +63,6 @@
 #include "actorutil.hpp"
 #include "rotatecontroller.hpp"
 #include "util.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace
 {

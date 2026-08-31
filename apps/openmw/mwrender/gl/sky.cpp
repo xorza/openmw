@@ -9,6 +9,7 @@
 #include <osgParticle/Operator>
 #include <osgParticle/ParticleSystemUpdater>
 
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 
 #include <components/sceneutil/controller.hpp>
@@ -36,7 +37,6 @@
 #include "../renderbin.hpp"
 #include "../util.hpp"
 #include "skyutil.hpp"
-#include <components/sceneutil/vismask.hpp>
 #include <components/weather/precipitation.hpp>
 
 namespace

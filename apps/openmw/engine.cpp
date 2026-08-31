@@ -15,6 +15,7 @@
 #include <components/misc/rng.hpp>
 #include <components/misc/strings/format.hpp>
 
+#include <components/sceneutil/vismask.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/registerarchives.hpp>
 
@@ -63,7 +64,6 @@
 #include "mwrender/renderer.hpp"
 #include "mwrender/renderingmanager.hpp"
 #include "mwrender/stage.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 #include "mwclass/classes.hpp"
 

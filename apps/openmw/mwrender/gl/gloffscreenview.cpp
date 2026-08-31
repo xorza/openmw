@@ -22,11 +22,11 @@
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/rtt.hpp>
 #include <components/sceneutil/shadow.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/stereo/multiview.hpp>
 
 #include "../util.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {

@@ -16,13 +16,12 @@
 #include <components/misc/convert.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/nodecallback.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
 #include <components/terrain/quadtreenode.hpp>
 
 #include "../mwworld/groundcoverstore.hpp"
-
-#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {

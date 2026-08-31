@@ -7,6 +7,7 @@
 #include <components/esm3/loaddoor.hpp>
 #include <components/esm3/loadmgef.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/soundmanager.hpp"
@@ -30,7 +31,6 @@
 #include "../mwrender/animation.hpp"
 #include "../mwrender/objects.hpp"
 #include "../mwrender/renderinginterface.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwmechanics/actorutil.hpp"
 

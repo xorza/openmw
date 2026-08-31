@@ -20,6 +20,7 @@
 
 #include <components/debug/debuglog.hpp>
 
+#include <components/sceneutil/vismask.hpp>
 #include <components/stereo/multiview.hpp>
 #include <components/stereo/stereomanager.hpp>
 
@@ -90,7 +91,6 @@
 #include "stage.hpp"
 #include "terrainstorage.hpp"
 #include "util.hpp"
-#include <components/sceneutil/vismask.hpp>
 #include <components/weather/precipitation.hpp>
 
 namespace

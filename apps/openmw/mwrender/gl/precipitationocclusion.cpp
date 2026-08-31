@@ -10,12 +10,11 @@
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
 #include <components/sceneutil/util.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
 
 #include "../../mwbase/environment.hpp"
-
-#include <components/sceneutil/vismask.hpp>
 
 namespace
 {

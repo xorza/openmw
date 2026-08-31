@@ -20,6 +20,7 @@
 #include <components/sceneutil/color.hpp>
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/nodecallback.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
 #include <components/stereo/multiview.hpp>
@@ -43,7 +44,6 @@
 #include "transparentpass.hpp"
 #include "water.hpp"
 #include "waterawaretransparentbin.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace
 {

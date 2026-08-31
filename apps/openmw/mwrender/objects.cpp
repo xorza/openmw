@@ -7,6 +7,7 @@
 #include <components/misc/strings/algorithm.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
 #include <components/sceneutil/unrefqueue.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwworld/class.hpp"
 #include "../mwworld/ptr.hpp"
@@ -15,7 +16,6 @@
 #include "creatureanimation.hpp"
 #include "esm4npcanimation.hpp"
 #include "npcanimation.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {

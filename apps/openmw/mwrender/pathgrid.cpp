@@ -12,6 +12,7 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/pathgridutil.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/world.hpp" // these includes can be removed once the static-hack is gone
@@ -19,8 +20,6 @@
 #include "../mwmechanics/pathfinding.hpp"
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/esmstore.hpp"
-
-#include <components/sceneutil/vismask.hpp>
 
 namespace MWRender
 {

@@ -1,7 +1,5 @@
 #include "actorspaths.hpp"
 
-#include <components/sceneutil/vismask.hpp>
-
 #include <components/detournavigator/settings.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -13,6 +11,7 @@
 #include <osg/StateSet>
 
 #include <components/sceneutil/material.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/world.hpp"

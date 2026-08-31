@@ -9,6 +9,7 @@
 #include <components/esm3/loadsoun.hpp>
 #include <components/misc/rng.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
+#include <components/sceneutil/vismask.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
@@ -25,7 +26,6 @@
 
 #include "../mwrender/objects.hpp"
 #include "../mwrender/renderinginterface.hpp"
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwgui/tooltips.hpp"
 

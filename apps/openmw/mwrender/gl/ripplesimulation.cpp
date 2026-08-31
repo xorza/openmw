@@ -18,7 +18,6 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/material.hpp>
-
 #include <components/sceneutil/vismask.hpp>
 
 #include "../../mwbase/environment.hpp"
