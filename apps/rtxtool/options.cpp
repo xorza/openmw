@@ -178,12 +178,13 @@ namespace RtxTool
             "with `bench`, profile these views.cfg views by name rather than a suite; with "
             "`verify`, render only these. --views=all runs every view there is");
 
-        addOption("seconds", bpo::value<float>()->default_value(10.0f),
+        addOption("seconds", bpo::value<float>()->default_value(20.0f),
             "with `bench`, how many seconds of world to run at each place. World and not wall: the "
             "world steps a sixtieth of a second per frame however long the frame took, so this is "
-            "six hundred frames either way and two builds render the same six hundred");
+            "twelve hundred frames either way and two builds render the same twelve hundred. Twenty "
+            "because ten left the CPU medians moving by more than the changes being measured");
 
-        addOption("warmup", bpo::value<float>()->default_value(1.0f),
+        addOption("warmup", bpo::value<float>()->default_value(3.0f),
             "with `bench`, how many seconds of world to draw and throw away before measuring. This "
             "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
             "for its residency as well");
