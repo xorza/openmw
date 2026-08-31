@@ -621,6 +621,11 @@ namespace MWRender
             mSkyContent = Rtx::addSkyContent(mScene, *mResources->getSceneManager());
         }
 
+        // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror and
+        // the precipitation subtree below is part of it. The harness times the same stretch, which
+        // is what lets the two rows be read against each other.
+        const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
+
         // **What the weather drops, walked as a second root.** Those nodes hang under the sky's
         // camera-relative transform, which strips the translation — so their particles are placed
         // about the origin and the eye is what puts them back. And the sky's own mask keeps the
@@ -661,7 +666,10 @@ namespace MWRender
             // One walk over the whole graph, where every path is already distinct.
             = mExtractor->extractWorld(frame.mScene, osg::Matrixf::identity(), 0, mFrame);
 
-        const bool traced = traceWorld(frame, found);
+        const double walkMs
+            = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - walked).count();
+
+        const bool traced = traceWorld(frame, found, walkMs);
 
         renderGui();
 
@@ -691,7 +699,7 @@ namespace MWRender
             keep();
     }
 
-    bool RtxRenderer::traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found)
+    bool RtxRenderer::traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs)
     {
         const osg::FrameStamp& when = frame.mWhen;
         const osg::Camera& camera = frame.mCamera;
@@ -702,7 +710,10 @@ namespace MWRender
 
         // Placed, appended or rebuilt — the decision, and the describing a rebuild needs, are the
         // harness's too and are written once (`Rtx::SceneUploader`).
+        const std::chrono::steady_clock::time_point handing = std::chrono::steady_clock::now();
         const Rtx::SceneUpload handed = mUploader.hand(*mRenderer, Rtx::sWorld, mScene, frame.mImages, Rtx::SeaState{});
+        const double placeMs
+            = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - handing).count();
 
         mHasScene = true;
 
@@ -922,7 +933,8 @@ namespace MWRender
         // wait on the device on its own cannot say.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
         if (mEnteredOnce && result.has_value())
-            mBench.frame(*result, std::chrono::duration<double, std::milli>(now - mEntered).count());
+            mBench.frame(*result, std::chrono::duration<double, std::milli>(now - mEntered).count(), walkMs, placeMs,
+                handed.mKind == Rtx::SceneUpload::Kind::Rebuilt);
 
         mEntered = now;
         mEnteredOnce = true;

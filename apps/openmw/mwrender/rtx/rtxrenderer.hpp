@@ -215,8 +215,11 @@ namespace MWRender
         /// roll are both reasons not to trace and neither is a reason not to present, so they end
         /// here rather than in `renderFrame` — see the comment on the call.
         ///
+        /// `walkMs` is what the mirror took, carried through rather than measured here: the
+        /// benchmark's row is closed at the end of the trace and the walk is over before it starts.
+        ///
         /// @return whether anything was written into the target.
-        bool traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found);
+        bool traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs);
 
         /// Writes the traced frame to a numbered PNG, where `OPENMW_RTX_SHOT` asked for it.
         void keep();

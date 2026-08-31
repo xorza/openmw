@@ -57,24 +57,31 @@ namespace MWRender
         ///
         /// `frameMs` is the whole frame and not the wait: measured from one call to the next, so it
         /// carries everything the game does between them — which is the number a player feels and
-        /// the one `result.mWaitMs` cannot see.
-        void frame(const Rtx::FrameResult& result, double frameMs);
+        /// the one `result.mWaitMs` cannot see. `walkMs` and `placeMs` are the two shares of it this
+        /// fork owns — mirroring the world, and handing the result to the device — and they are what
+        /// says whether a crossing frame is this renderer's or the engine's underneath it.
+        ///
+        /// `rebuilt` where the hand-over could not append and built the scene again from nothing,
+        /// which `Crossings` says is the most useful thing a route reports.
+        void frame(const Rtx::FrameResult& result, double frameMs, double walkMs, double placeMs, bool rebuilt);
 
     private:
-        void report() const;
+        /// Not `const`: `Rtx::summarise` sorts each row of samples where it lies.
+        void report();
         std::string describeRun() const;
         std::string describeWarmup() const;
 
         /// Flies the player forwards by what `mSpeed` comes to over `frameMs`, and counts the cell
-        /// boundary it crossed since the last call. Does nothing where the spec named no speed, or
-        /// where there is no player to move yet — and a bench that stands still crosses nothing, so
-        /// the count belongs here rather than beside the rows.
+        /// boundary it crossed since the last call — and whether that crossing had to be rebuilt.
+        /// Does nothing where the spec named no speed, or where there is no player to move yet —
+        /// and a bench that stands still crosses nothing, so the count belongs here rather than
+        /// beside the rows.
         ///
         /// **Off the frame's own length and not a fixed step**, because the game's world moves on
         /// the wall clock: a player crossing a boundary crosses it after the same distance whatever
         /// the frame rate, which is the thing being measured. The harness steps by frame index
         /// instead, for a reason `BenchRequest::mSeconds` gives, and the two are not the same run.
-        void fly(double frameMs);
+        void fly(double frameMs, bool rebuilt);
 
         // Frames or seconds, whichever the spec named; the other is zero.
         std::uint32_t mWanted = 0;
@@ -97,11 +104,13 @@ namespace MWRender
         /// Compared as an address and never read, which is all an identity needs.
         const void* mCell = nullptr;
 
-        /// How many boundaries the run crossed and what the worst of those frames cost.
+        /// How many boundaries the run crossed, how many of those could not be appended to, and
+        /// what the worst of those frames cost.
         ///
-        /// **A count and the worst, for the reason `BenchPlace` gives**: a run crosses a handful,
+        /// **A count and the worst, for the reason `Crossings` gives**: a run crosses a handful,
         /// percentiles over a handful say nothing, and the frame a player feels is the worst one.
         std::uint32_t mCrossings = 0;
+        std::uint32_t mRebuilds = 0;
         double mCrossWorstMs = 0.0;
 
         // Out of line so this header names no container, and reserved once so the run itself does
@@ -110,7 +119,7 @@ namespace MWRender
         std::unique_ptr<Held> mHeld;
 #else
         /// The shape with nothing in it, so the frame path needs no conditional of its own.
-        void frame(const Rtx::FrameResult&, double) {}
+        void frame(const Rtx::FrameResult&, double, double, double, bool) {}
 #endif
     };
 }

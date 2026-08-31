@@ -236,7 +236,7 @@ namespace RtxTool
     /// @param samples and `pixelScratch` belong to the run and are refilled here, so that a place
     ///        does not allocate what the place before it already had.
     std::optional<BenchPlace> measurePlace(const BenchRun& run, const View& view, StagedWorld& staged,
-        FrameSamples& samples, std::vector<std::uint8_t>& pixelScratch, bool& stopped)
+        Rtx::FrameSamples& samples, std::vector<std::uint8_t>& pixelScratch, bool& stopped)
     {
         Rtx::Renderer& renderer = run.mRenderer;
 
@@ -520,7 +520,7 @@ namespace RtxTool
         std::vector<BenchPlace> places;
         places.reserve(request.mViews.size());
 
-        FrameSamples samples;
+        Rtx::FrameSamples samples;
         samples.reserve(measured);
 
         bool stopped = false;

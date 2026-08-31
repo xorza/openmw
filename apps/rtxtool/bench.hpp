@@ -63,51 +63,6 @@ namespace RtxTool
         }
     };
 
-    /// The four figures a measured frame contributes, gathered over one place.
-    ///
-    /// **One object because they are cleared, filled and summarised together.** Four vectors kept
-    /// apart are four chances for a frame to reach three of them, and rows out of step with each
-    /// other are rows that cannot be read against each other at all.
-    struct FrameSamples
-    {
-        std::vector<double> mFrame;
-        std::vector<double> mWait;
-        std::vector<double> mWalk;
-        std::vector<double> mPlace;
-
-        void reserve(std::uint32_t frames)
-        {
-            mFrame.reserve(frames);
-            mWait.reserve(frames);
-            mWalk.reserve(frames);
-            mPlace.reserve(frames);
-        }
-
-        /// Cleared and refilled per place, never freed.
-        void clear()
-        {
-            mFrame.clear();
-            mWait.clear();
-            mWalk.clear();
-            mPlace.clear();
-        }
-
-        /// What one measured frame cost, and the two shares of it the harness itself owns.
-        void add(double frameMs, double walkMs, double placeMs)
-        {
-            mFrame.push_back(frameMs);
-            mWalk.push_back(walkMs);
-            mPlace.push_back(placeMs);
-        }
-
-        /// What the device reported for the frame behind, which arrives on its own schedule and on
-        /// the first frames of a place does not arrive at all.
-        void addWait(double waitMs) { mWait.push_back(waitMs); }
-
-        bool empty() const { return mFrame.empty(); }
-        std::uint32_t size() const { return static_cast<std::uint32_t>(mFrame.size()); }
-    };
-
     /// A profiling run, over a list of places.
     struct BenchRequest
     {

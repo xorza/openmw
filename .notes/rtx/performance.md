@@ -11,7 +11,12 @@ budget from `plan.md` §5: 3840×2160 out of 1920×1080 traced at 60 fps, which 
   GPU zone table per place. `--size=3840x2160 --upscale=performance` is the budget configuration;
   a plain run traces quarter the pixels and answers a different question.
 - `apps/rtxtool/bench.sh` is the same measurement inside the game (prepends to `.notes/bench.txt`);
-  `OPENMW_RTX_BENCH=10s:2s@12000` on a save is the game's own crossing measurement.
+  `OPENMW_RTX_BENCH=10s:2s@12000` on a save is the game's own crossing measurement. **It prints the
+  harness's rows** — frame, wait, walk, place, and crossings with the rebuilds among them — off the
+  same `Rtx::FrameSamples`, so a row of one can be read against a row of the other.
+- **`scene extend` in the log** (verbose) is what one arrival costs the frame it lands on, split
+  into draining the frames in flight, describing the textures and building the structures. Nothing
+  else can see it: the device's zones cover what a crossing records, not the CPU that recorded it.
 - `apps/rtxtool/profile.sh --view=<v>` is the CPU explanation (perf, measured frames only).
   Reports land in `build-release/perf*/`.
 - **`composite bake` in the log** (verbose) is what a chunk's flattening costs, by layer count and
@@ -66,31 +71,52 @@ Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames
   most of `walk ms`) is the **mirror walking the chunk geometry it hands over**: 12.8 of its 13.3
   points are under `MirrorTraversal`. That is Lane E's problem, not Lane A's, and it is where the
   steady-state walk goes on an exterior.
-- **What a crossing is made of**: 19 of them, 1.8 s over the run — **1.1 s reading the cell and
-  0.7 s building from it**. The read is the harness's own synchronous ESM reader, which the game
-  does on preload threads instead, so more than half of the 220 ms worst frame is not the
-  renderer's. A5 is what settles that split.
+- **What a crossing is made of, in the game** (A5, Seyda Neen at 12,000 u/s, four runs of ~1000
+  frames): 16–18 crossings apiece and **none of them a rebuild**, `wait` nought throughout — at a
+  window this size the game is CPU-bound, so every millisecond of walk or place is a millisecond of
+  frame. On an otherwise quiet machine the frame median is 7–8 ms and the **worst crossing 233–275**,
+  of which `walk` and `place` are 223 and 239 — so **the crossing spike is this fork's own work**.
+  The harness's synchronous reader was never the explanation, and the game's threaded preloading
+  does not shorten the frame.
+- **Take these with the editor closed.** Two runs taken with `rust-analyzer` and `clangd` busy
+  tripled the median to 17 ms and put the worst crossing at 751 and 879 — and there walk and place
+  were barely a third of it, the rest being the engine contending for cores. `place` worst held at
+  127–154 across all four, which is the figure to trust.
+- **And the placement is one call**: the worst `scene extend` on that route is **121 ms for 44
+  textures and 434 meshes** — 3.3 ms draining the frames in flight, 10.1 describing the textures,
+  and **107.6 building**. The build is `SceneAcceleration::extend`: an opacity micromap classified
+  on the CPU per arriving mesh, and the bottom-level structures recorded after it. A quarter of a
+  millisecond a mesh, and it all lands on one frame. This is the figure the whole lane rests on and
+  it is the steadiest one on the route.
+- **Draining is not free either.** `finishFrames` cost 23.0 and 18.0 ms on two of the eighteen
+  crossings, against 3.3 on the worst — a frame in flight the arrival had to wait out.
 
 ## 3 Attack plan
 
 Ordered by what a player feels, then by milliseconds. Every step carries its own measurement gate:
 the paired-run rule of §1, at the place named. What a step trades away is written beside it.
 
-### Lane A — the crossing spike (worst 220 ms; target: no crossing frame over ~25 ms)
+### Lane A — the crossing spike (worst 233 ms in the game; target: no crossing frame over ~25 ms)
 
-The frame thread neither builds terrain chunks nor is outrun by the thread that does — §2 says so
-with numbers, and the two plan items that assumed otherwise are gone. What is left of a crossing is
-the cell being read and the geometry being handed to the device.
+Three of this lane's items are closed by measurement rather than by code. The frame thread neither
+builds terrain chunks nor is outrun by the thread that does, and the harness's synchronous reader is
+not what made a crossing long: the game, preloading on threads, drops the same frame. §2 carries all
+three numbers. **What is left is one call — the arrival handed to the device — and 90% of that is
+classifying opacity micromaps.**
 
-- **A5. Measure the same crossing in the game** (`OPENMW_RTX_BENCH=10s:2s@12000` on an exterior
-  save). The harness reads a cell synchronously and the game preloads on threads, and the harness's
-  read is 1.1 s of the 1.8 the crossings cost — so the split between "the renderer" and "the
-  harness's own reader" has to be taken in the game before anything else here is tuned.
-- **A2. Bound what one frame places.** An arrival's BLAS builds and texture uploads ride the
-  placement submit in one burst (`place` worst 48 ms). Extend the composite queue's discipline
-  (2 composites a frame) to arrivals: a per-frame byte budget on the deferred batches, the rest
-  waiting a frame. Quality cost: an arriving cell's pieces appear over ~2–5 frames instead of one.
-  Gate: `place` p99/worst on island-crossing.
+- **A2. Bound what one frame classifies.** 108 of the 121 ms worst `scene extend` is
+  `SceneAcceleration::extend` over 434 arriving meshes: a micromap classified on the CPU apiece,
+  then the structures. **The unit to bound is meshes, not bytes** — the texture uploads beside them
+  are 10 ms. Two shapes, and the second is the tree's own precedent: (a) classify a bounded number a
+  frame and let the rest trace without a micromap until their turn, which is correct meanwhile and
+  only slower; (b) move the classification to a thread of its own, the way `CompositeQueue` moved
+  the composite bake, and let the frame collect what is finished. Quality cost: none either way — a
+  micromap is an optimisation, and a mesh without one traces the same picture. Gate: `scene extend`
+  and `place ms` worst, in the game.
+- **A7. Do not wait out a frame to place an arrival.** `finishFrames` cost 23.0 and 18.0 ms on two
+  of eighteen crossings. It is there because an arrival writes every copy of the tables; a copy the
+  arrival could write into instead would cost the wait nothing. Gate: the draining figure in
+  `scene extend`.
 - **A6. Cheapen the bake further, if the latency still shows.** 27 ms a chunk is one thread busy
   for most of a crossing, and what is left is inherent — a quarter of a million texels each summing
   the ground types that reach them. The two terms with a shape left to change are `paintedLight`
@@ -159,7 +185,6 @@ Hidden under the GPU today; it is the 1% low and the power bill, and it grows wi
 
 ### Order of attack
 
-A5 first: it is the only thing that says how much of the crossing spike this fork owns, and A2 is
-guesswork until it is answered. Then B1+B2 (cheap, measured, ~1.5 ms at the budget hour), then B3
+A2 first — A5 says the crossing spike is this fork's, and A2 is now the whole of it. Then B1+B2 (cheap, measured, ~1.5 ms at the budget hour), then B3
 (the interior's 7.7 is the worst median in the table). D1/D2 whenever touching that file. E after
 B, starting at E0. A6 and C parked.

@@ -58,8 +58,7 @@ namespace MWRender
     /// What the run accumulates. Out of line so the header names no container.
     struct Bench::Held
     {
-        std::vector<double> mFrames;
-        std::vector<double> mWaits;
+        Rtx::FrameSamples mSamples;
         Rtx::GpuBreakdown mGpu;
     };
 
@@ -113,16 +112,14 @@ namespace MWRender
 
         // Reserved once at a rate no frame will beat, so the run never grows a vector — a benchmark
         // that stops to reallocate is measuring its own allocator.
-        const std::size_t room = mWanted > 0 ? mWanted : static_cast<std::size_t>(mWantedSeconds * 1000.0);
-        mHeld->mFrames.reserve(room);
-        mHeld->mWaits.reserve(room);
+        mHeld->mSamples.reserve(mWanted > 0 ? mWanted : static_cast<std::uint32_t>(mWantedSeconds * 1000.0));
 
         Log(Debug::Info) << "Ray tracing bench: " << describeRun() << " after " << describeWarmup() << " warming up";
     }
 
     Bench::~Bench() = default;
 
-    void Bench::frame(const Rtx::FrameResult& result, double frameMs)
+    void Bench::frame(const Rtx::FrameResult& result, double frameMs, double walkMs, double placeMs, bool rebuilt)
     {
         if (mHeld == nullptr || mDone)
             return;
@@ -135,14 +132,14 @@ namespace MWRender
             return;
         }
 
-        mHeld->mFrames.push_back(frameMs);
-        mHeld->mWaits.push_back(result.mWaitMs);
+        mHeld->mSamples.add(frameMs, walkMs, placeMs);
+        mHeld->mSamples.addWait(result.mWaitMs);
         mHeld->mGpu.add(result.mGpu);
         mMeasuredMs += frameMs;
 
-        fly(frameMs);
+        fly(frameMs, rebuilt);
 
-        const bool enough = mWanted > 0 ? mHeld->mFrames.size() >= mWanted : mMeasuredMs >= mWantedSeconds * 1000.0;
+        const bool enough = mWanted > 0 ? mHeld->mSamples.size() >= mWanted : mMeasuredMs >= mWantedSeconds * 1000.0;
         if (!enough)
             return;
 
@@ -155,7 +152,7 @@ namespace MWRender
         MWBase::Environment::get().getStateManager()->requestQuit();
     }
 
-    void Bench::fly(double frameMs)
+    void Bench::fly(double frameMs, bool rebuilt)
     {
         if (!(mSpeed > 0.0f))
             return;
@@ -172,6 +169,7 @@ namespace MWRender
         if (mCell != nullptr && cell != mCell)
         {
             ++mCrossings;
+            mRebuilds += rebuilt ? 1u : 0u;
             mCrossWorstMs = std::max(mCrossWorstMs, frameMs);
         }
 
@@ -208,10 +206,13 @@ namespace MWRender
         return mWarmup > 0 ? std::format("{} frames", mWarmup) : std::format("{:.0f} s", mWarmupSeconds);
     }
 
-    void Bench::report() const
+    void Bench::report()
     {
-        const Rtx::FrameTimes frames = Rtx::summarise(mHeld->mFrames);
-        const Rtx::FrameTimes waits = Rtx::summarise(mHeld->mWaits);
+        Rtx::FrameSamples& samples = mHeld->mSamples;
+        const Rtx::FrameTimes frames = Rtx::summarise(samples.mFrame);
+        const Rtx::FrameTimes waits = Rtx::summarise(samples.mWait);
+        const Rtx::FrameTimes walks = Rtx::summarise(samples.mWalk);
+        const Rtx::FrameTimes places = Rtx::summarise(samples.mPlace);
         const std::span<const Rtx::GpuZone> zones = mHeld->mGpu.summariseZones();
 
         // Built whole and logged once: the report is a table, and a table split across log lines by
@@ -220,14 +221,17 @@ namespace MWRender
         out += Rtx::describeHeadings();
         out += Rtx::describeTimes("frame ms", frames);
         out += Rtx::describeTimes("wait ms", waits);
+        out += Rtx::describeTimes("walk ms", walks);
+        out += Rtx::describeTimes("place ms", places);
         out += Rtx::describeZones(zones);
 
         // Only where the run went somewhere, because a bench that stands still has nothing to say
         // here — the same rule `openmw-rtxtool bench` prints its crossing line under.
         if (mCrossings > 0)
-            out += std::format("  {} crossings — {:.0f} ms worst\n", mCrossings, mCrossWorstMs);
+            out += std::format(
+                "  {} crossings, {} of them rebuilds — {:.0f} ms worst\n", mCrossings, mRebuilds, mCrossWorstMs);
 
-        out += std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", mHeld->mFrames.size(),
+        out += std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", samples.size(),
             mMeasuredMs / 1000.0, frames.getRate(), frames.getLowRate());
 
         Log(Debug::Info) << out;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
@@ -33,6 +34,55 @@ namespace Rtx
         /// Frames a second at the ninety-ninth percentile — the "one per cent low" a frame rate is
         /// usually quoted with, and the number that says whether a run was smooth.
         double getLowRate() const;
+    };
+
+    /// The four figures a measured frame contributes, gathered over one run.
+    ///
+    /// **One object because they are cleared, filled and summarised together.** Four vectors kept
+    /// apart are four chances for a frame to reach three of them, and rows out of step with each
+    /// other are rows that cannot be read against each other at all.
+    ///
+    /// **Shared by the harness and the game**, whose two reports only mean something beside each
+    /// other: a crossing in one is measured against a crossing in the other, and a row one of them
+    /// gathered differently would be a difference read as a finding.
+    struct FrameSamples
+    {
+        std::vector<double> mFrame;
+        std::vector<double> mWait;
+        std::vector<double> mWalk;
+        std::vector<double> mPlace;
+
+        void reserve(std::uint32_t frames)
+        {
+            mFrame.reserve(frames);
+            mWait.reserve(frames);
+            mWalk.reserve(frames);
+            mPlace.reserve(frames);
+        }
+
+        /// Cleared and refilled per place, never freed.
+        void clear()
+        {
+            mFrame.clear();
+            mWait.clear();
+            mWalk.clear();
+            mPlace.clear();
+        }
+
+        /// What one measured frame cost, and the two shares of it this fork itself owns.
+        void add(double frameMs, double walkMs, double placeMs)
+        {
+            mFrame.push_back(frameMs);
+            mWalk.push_back(walkMs);
+            mPlace.push_back(placeMs);
+        }
+
+        /// What the device reported for the frame behind, which arrives on its own schedule and on
+        /// the first frames of a run does not arrive at all.
+        void addWait(double waitMs) { mWait.push_back(waitMs); }
+
+        bool empty() const { return mFrame.empty(); }
+        std::uint32_t size() const { return static_cast<std::uint32_t>(mFrame.size()); }
     };
 
     /// Sorts `times` and summarises it. At least one time, which every caller has by construction.
