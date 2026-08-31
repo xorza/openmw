@@ -5,27 +5,10 @@ upstream-owned places (the moved `mwrender/gl/` files included) hold 229 files, 
 rest is RTX-owned.
 
 Delete an item when it is addressed. Delete a heading when it is empty. This file lists open items
-only.
+only. The two frame-cost items moved to `performance.md` §3 lane D, which is where frame work is
+tracked now.
 
 Each item describes what is there and what it costs. No item says how to fix it.
-
-## Work is done inside the frame that the frame did not need
-
-- [ ] A frame that wrote any GUI texture pays a submit-and-wait inside the frame.
-      `GuiTextures::getView` and `read` call `flush()`, which is `Batch::flush()` →
-      `CommandPool::endAndWait` — a queue submit and a fence wait — and
-      `VulkanRenderer::drawGui` calls `getView` per batch, so the first batch after a write eats
-      the wait. A playing video pays it every frame; the fog of war pays it as the player walks; a
-      window opening pays it for its atlas. `Batch::defer()` — recorded work carried by the next
-      frame's own submit, no wait — exists in `commands.cpp` and nothing on the GUI-texture path
-      uses it. (`components/rtxvulkan/guitextures.cpp`, `components/rtxvulkan/commands.cpp:188`)
-
-- [ ] Under the Vulkan backend a video frame crosses host memory three times: the decoder writes
-      its `osg::Image`, `VideoWidget::commitFrame` → `Picture::set` locks and copies the whole
-      surface, and the texture write copies it again into the staging batch. `shareTexture` exists
-      on `GuiRenderManager` for exactly this caller, and the Vulkan backend's manager returns null
-      (`components/myguirtx/rendermanager.hpp:51`), so the pixel path is the only one it has. This
-      is also what drags the submit-and-wait above into every frame of a video.
 
 ## Upstream behaviour changed further than the seam needed
 
