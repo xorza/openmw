@@ -26,9 +26,9 @@ namespace Debug
     /// Set once, before anything can fail. Both a caught exception and a signal ask it.
     void setFatalDialogs(bool allowed);
 
-    /// Whether a box would be read by anyone. False where the application turned them off, and false
-    /// where a standard stream is a terminal — the crash report has already gone there, so the box
-    /// would say nothing the scrollback does not.
+    /// Whatever the application said above, and nothing else. A terminal on the standard streams
+    /// looks like a second reason to stay quiet and is not one to act on: a player who launched
+    /// from a shell is still a player.
     bool wantsFatalDialog();
 }
 

@@ -896,7 +896,10 @@ namespace MWMechanics
     {
         std::string result;
         bool isSwimming = MWBase::Environment::get().getWorld()->isSwimming(mPtr);
-        const bool isSpell = mWeaponType == ESM::Weapon::Spell;
+        // Upstream 97c3f81aba missed this call site when weapon types became RefIds; the two
+        // siblings at `isTurning` and the spell-cast branch carry the spelling this now matches.
+        // Delete when upstream fixes it.
+        const bool isSpell = mWeaponTypeId == ESM::WeaponType::Spell;
 
         if (isSwimming)
             result = isSpell ? "swimattack1" : chooseRandomGroup("swimattack");

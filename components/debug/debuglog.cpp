@@ -1,11 +1,6 @@
 #include "debuglog.hpp"
 
-#include <cstdio>
 #include <mutex>
-
-#ifndef _WIN32
-#include <unistd.h>
-#endif
 
 #include <components/files/conversion.hpp>
 #include <components/misc/strings/conversion.hpp>
@@ -29,15 +24,7 @@ namespace Debug
 
     bool wantsFatalDialog()
     {
-        if (!sFatalDialogs)
-            return false;
-
-#ifndef _WIN32
-        if (isatty(fileno(stdout)) || isatty(fileno(stderr)))
-            return false;
-#endif
-
-        return true;
+        return sFatalDialogs;
     }
 }
 

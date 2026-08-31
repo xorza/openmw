@@ -409,32 +409,27 @@ namespace MWRender
         std::unique_ptr<EffectManager> mEffectManager;
         std::unique_ptr<SceneUtil::ShadowManager> mShadowManager;
 
-        /// Where the sun is, as the world last decided.
+        /// Where the sun is, as the world last decided. `WorldState::mSunPosition` and
+        /// `::mSunVector` say what the two are.
         ///
-        /// **Held rather than pushed.** Two paths set it — an exterior's orbit and an interior's
-        /// fixed nonsense angle — and the direction the light travels is not the direction the sun
-        /// is drawn at whenever `match sunlight to sun` is off, so `mSunLight` is not a record of
-        /// it. Nothing but this remembers.
+        /// **Held rather than pushed.** Two paths set them — an exterior's orbit and an interior's
+        /// fixed nonsense angle — and `mSunLight` is a record of neither, so nothing but this
+        /// remembers.
         osg::Vec4f mSunPosition;
         osg::Vec4f mSunVector;
         bool mSunAtNight = false;
 
         float mSunVisibility = 0.f;
 
-        /// What the disc is painted with, and how much of the sun is over the horizon in `w`.
-        ///
-        /// **The other sun colour, and the one that is about the sun.** `mSunLight`'s diffuse is
-        /// what the world receives — sun and sky together, blue at night because that is the sky —
-        /// while this is white through the day and warms only as it goes down. `Sky::sunDiscAt`
-        /// builds the colour and `Sky::sunShareAt` the share; this is the copy `WorldState` reports,
-        /// so a renderer that draws its own disc is not left inferring one from the light.
+        /// The disc's own colour and the share of the sun over the horizon, which
+        /// `WorldState::mSunDiscColour` describes. Held because `Sky::sunDiscAt` and
+        /// `Sky::sunShareAt` build them and nothing else keeps the answer.
         osg::Vec4f mSunDiscColour{ 1.0f, 1.0f, 1.0f, 0.0f };
 
-        /// How much of the sun the weather lets through, which dims a disc under an overcast.
         float mSunGlare = 1.f;
 
-        /// The deck's own crossing between two weathers' cloud textures, which is not the plain
-        /// transition factor, and how far the stars have come out. Both `WorldState`'s to report.
+        /// The deck's crossing and how far the stars have come out, as `WorldState::mCloudBlend`
+        /// and `::mNightFade` describe them.
         float mCloudBlend = 0.f;
         float mNightFade = 0.f;
 

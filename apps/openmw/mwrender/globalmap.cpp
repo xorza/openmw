@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cmath>
 #include <cstring>
 #include <stdexcept>
 
@@ -71,41 +70,6 @@ namespace
                 converted->setColor(image->getColor(x, y), x, y);
 
         return converted;
-    }
-
-    /// Bilinear, because this is only reached when a savegame was written at a different map
-    /// resolution and the two grids do not line up at all.
-    void resample(const osg::Image& from, int fromX, int fromY, int fromWidth, int fromHeight, osg::Image& into,
-        int intoX, int intoY, int intoWidth, int intoHeight)
-    {
-        for (int y = 0; y < intoHeight; ++y)
-        {
-            const float v = (y + 0.5f) * fromHeight / intoHeight - 0.5f;
-            const int v0 = std::clamp(static_cast<int>(std::floor(v)), 0, fromHeight - 1);
-            const int v1 = std::clamp(v0 + 1, 0, fromHeight - 1);
-            const float vf = std::clamp(v - v0, 0.f, 1.f);
-
-            for (int x = 0; x < intoWidth; ++x)
-            {
-                const float u = (x + 0.5f) * fromWidth / intoWidth - 0.5f;
-                const int u0 = std::clamp(static_cast<int>(std::floor(u)), 0, fromWidth - 1);
-                const int u1 = std::clamp(u0 + 1, 0, fromWidth - 1);
-                const float uf = std::clamp(u - u0, 0.f, 1.f);
-
-                const std::uint8_t* a = from.data(fromX + u0, fromY + v0);
-                const std::uint8_t* b = from.data(fromX + u1, fromY + v0);
-                const std::uint8_t* c = from.data(fromX + u0, fromY + v1);
-                const std::uint8_t* d = from.data(fromX + u1, fromY + v1);
-
-                std::uint8_t* out = into.data(intoX + x, intoY + y);
-                for (int channel = 0; channel < 4; ++channel)
-                {
-                    const float top = a[channel] + (b[channel] - a[channel]) * uf;
-                    const float bottom = c[channel] + (d[channel] - c[channel]) * uf;
-                    out[channel] = static_cast<std::uint8_t>(top + (bottom - top) * vf + 0.5f);
-                }
-            }
-        }
     }
 
     struct Box
@@ -446,8 +410,12 @@ namespace MWRender
 
             std::memset(mOverlayImage->data(), 0, mOverlayImage->getTotalSizeInBytes());
 
-            resample(*image, srcBox.mLeft, imageHeight - srcBox.mBottom, srcBox.mRight - srcBox.mLeft, srcHeight,
-                *mOverlayImage, destBox.mLeft, mHeight - destBox.mBottom, destBox.mRight - destBox.mLeft, destHeight);
+            MyGUIPlatform::resampleRegion(*image,
+                MyGUIPlatform::Rect{
+                    srcBox.mLeft, imageHeight - srcBox.mBottom, srcBox.mRight - srcBox.mLeft, srcHeight },
+                *mOverlayImage,
+                MyGUIPlatform::Rect{
+                    destBox.mLeft, mHeight - destBox.mBottom, destBox.mRight - destBox.mLeft, destHeight });
         }
 
         mOverlay.set(*mOverlayImage);

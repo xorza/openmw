@@ -9,6 +9,49 @@
 
 namespace MyGUIPlatform
 {
+    namespace
+    {
+        /// One texel of `area` in `image`, filtered `GL_LINEAR` with `GL_CLAMP_TO_EDGE`, into four
+        /// bytes at `out`.
+        ///
+        /// **The one filter both public shapes are made of.** A sampler's answer and a whole
+        /// rectangle of them are the same arithmetic asked once or asked in a loop, and two spellings
+        /// of it are two roundings waiting to disagree about a map the game has always drawn one way.
+        ///
+        /// `u` and `v` are in texels of `area`, measured from its corner and already offset by the
+        /// half texel a sampler puts between a coordinate and a centre. The clamp is to `area` and
+        /// not to the image around it, so a rectangle filters as though it were the whole picture.
+        void filterTexel(const osg::Image& image, const Rect& area, float u, float v, std::uint8_t* out)
+        {
+            const float flooredU = std::floor(u);
+            const float flooredV = std::floor(v);
+            const float fracU = u - flooredU;
+            const float fracV = v - flooredV;
+
+            const auto clamped = [](float at, int extent) { return std::clamp(static_cast<int>(at), 0, extent - 1); };
+
+            const int left = area.mX + clamped(flooredU, area.mWidth);
+            const int right = area.mX + clamped(flooredU + 1.0f, area.mWidth);
+            const int bottom = area.mY + clamped(flooredV, area.mHeight);
+            const int top = area.mY + clamped(flooredV + 1.0f, area.mHeight);
+
+            const std::uint8_t* lowerLeft = image.data(left, bottom);
+            const std::uint8_t* lowerRight = image.data(right, bottom);
+            const std::uint8_t* upperLeft = image.data(left, top);
+            const std::uint8_t* upperRight = image.data(right, top);
+
+            for (int channel = 0; channel < 4; ++channel)
+            {
+                const float lower
+                    = std::lerp(static_cast<float>(lowerLeft[channel]), static_cast<float>(lowerRight[channel]), fracU);
+                const float upper
+                    = std::lerp(static_cast<float>(upperLeft[channel]), static_cast<float>(upperRight[channel]), fracU);
+
+                out[channel] = static_cast<std::uint8_t>(std::lround(std::lerp(lower, upper, fracV)));
+            }
+        }
+    }
+
     std::optional<MyGUI::PixelFormat> directFormat(const osg::Image& image)
     {
         if (image.getDataType() != GL_UNSIGNED_BYTE || !image.isDataContiguous())
@@ -67,53 +110,40 @@ namespace MyGUIPlatform
 
     void sampleBilinear(const osg::Image& image, float u, float v, std::uint8_t (&out)[4])
     {
-        const int width = image.s();
-        const int height = image.t();
+        filterTexel(image, Rect{ 0, 0, image.s(), image.t() }, u * static_cast<float>(image.s()) - 0.5f,
+            v * static_cast<float>(image.t()) - 0.5f, out);
+    }
 
-        const float tu = u * static_cast<float>(width) - 0.5f;
-        const float tv = v * static_cast<float>(height) - 0.5f;
+    void resampleRegion(const osg::Image& from, const Rect& source, osg::Image& into, const Rect& target)
+    {
+        assert(source.mWidth > 0 && source.mHeight > 0 && target.mWidth > 0 && target.mHeight > 0);
 
-        const float flooredU = std::floor(tu);
-        const float flooredV = std::floor(tv);
-        const float fracU = tu - flooredU;
-        const float fracV = tv - flooredV;
+        const float acrossU = static_cast<float>(source.mWidth) / static_cast<float>(target.mWidth);
+        const float acrossV = static_cast<float>(source.mHeight) / static_cast<float>(target.mHeight);
 
-        const auto clampX
-            = [width](float coordinate) { return std::clamp(static_cast<int>(coordinate), 0, width - 1); };
-        const auto clampY
-            = [height](float coordinate) { return std::clamp(static_cast<int>(coordinate), 0, height - 1); };
-
-        const int left = clampX(flooredU);
-        const int right = clampX(flooredU + 1.0f);
-        const int bottom = clampY(flooredV);
-        const int top = clampY(flooredV + 1.0f);
-
-        const std::uint8_t* lowerLeft = image.data(left, bottom);
-        const std::uint8_t* lowerRight = image.data(right, bottom);
-        const std::uint8_t* upperLeft = image.data(left, top);
-        const std::uint8_t* upperRight = image.data(right, top);
-
-        for (int channel = 0; channel < 4; ++channel)
+        for (int y = 0; y < target.mHeight; ++y)
         {
-            const float lower
-                = std::lerp(static_cast<float>(lowerLeft[channel]), static_cast<float>(lowerRight[channel]), fracU);
-            const float upper
-                = std::lerp(static_cast<float>(upperLeft[channel]), static_cast<float>(upperRight[channel]), fracU);
+            const float v = (static_cast<float>(y) + 0.5f) * acrossV - 0.5f;
 
-            out[channel] = static_cast<std::uint8_t>(std::lround(std::lerp(lower, upper, fracV)));
+            for (int x = 0; x < target.mWidth; ++x)
+            {
+                const float u = (static_cast<float>(x) + 0.5f) * acrossU - 0.5f;
+
+                filterTexel(from, source, u, v, into.data(target.mX + x, target.mY + y));
+            }
         }
     }
 
-    void gatherRegion(const osg::Image& image, int x, int y, int width, int height, std::vector<std::uint8_t>& rows)
+    void gatherRegion(const osg::Image& image, const Rect& area, std::vector<std::uint8_t>& rows)
     {
         assert(image.isDataContiguous());
-        assert(x >= 0 && y >= 0 && width >= 0 && height >= 0);
-        assert(x + width <= image.s() && y + height <= image.t());
+        assert(area.mX >= 0 && area.mY >= 0 && area.mWidth >= 0 && area.mHeight >= 0);
+        assert(area.mX + area.mWidth <= image.s() && area.mY + area.mHeight <= image.t());
 
-        rows.resize(static_cast<std::size_t>(width) * height * 4);
+        rows.resize(static_cast<std::size_t>(area.mWidth) * area.mHeight * 4);
 
-        for (int row = 0; row < height; ++row)
-            std::memcpy(rows.data() + static_cast<std::size_t>(row) * width * 4, image.data(x, y + row),
-                static_cast<std::size_t>(width) * 4);
+        for (int row = 0; row < area.mHeight; ++row)
+            std::memcpy(rows.data() + static_cast<std::size_t>(row) * area.mWidth * 4,
+                image.data(area.mX, area.mY + row), static_cast<std::size_t>(area.mWidth) * 4);
     }
 }

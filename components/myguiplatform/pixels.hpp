@@ -15,6 +15,18 @@ namespace osg
 
 namespace MyGUIPlatform
 {
+    /// A rectangle of an image, in texels from its corner.
+    ///
+    /// **Named rather than four loose integers**, because the two functions below take two
+    /// rectangles apiece and a transposed pair is a picture that is wrong in a way nothing asserts.
+    struct Rect
+    {
+        int mX = 0;
+        int mY = 0;
+        int mWidth = 0;
+        int mHeight = 0;
+    };
+
     /// What MyGUI can be handed a row at a time, or nothing where the image has to be read pixel by
     /// pixel first. The common cases — a decoded frame, a screenshot, a map — are all in here.
     std::optional<MyGUI::PixelFormat> directFormat(const osg::Image& image);
@@ -49,6 +61,17 @@ namespace MyGUIPlatform
     /// The image must be four bytes a pixel.
     void sampleBilinear(const osg::Image& image, float u, float v, std::uint8_t (&out)[4]);
 
+    /// Scales `source` of `from` into `target` of `into`, filtered exactly as `sampleBilinear`
+    /// filters and clamped to `source` rather than to the image around it.
+    ///
+    /// **One filter and not a second one.** A savegame written at another map resolution lands on a
+    /// grid that lines up with nothing, and what fills it has to be the sampler the rest of the map
+    /// was drawn through — a nearer or a wider filter there is a seam between the tiles a player
+    /// walked before the resolution changed and the ones they walked after.
+    ///
+    /// Both images must be four bytes a pixel, and both rectangles must lie inside their own.
+    void resampleRegion(const osg::Image& from, const Rect& source, osg::Image& into, const Rect& target);
+
     /// Copies a rectangle of `image` into `rows`, tightly packed, four bytes a pixel, row zero
     /// first — `height` rows of `width` pixels and nothing between them.
     ///
@@ -59,7 +82,7 @@ namespace MyGUIPlatform
     ///
     /// The image must be four bytes a pixel with contiguous data and the rectangle must lie inside
     /// it, which are contracts on the caller.
-    void gatherRegion(const osg::Image& image, int x, int y, int width, int height, std::vector<std::uint8_t>& rows);
+    void gatherRegion(const osg::Image& image, const Rect& area, std::vector<std::uint8_t>& rows);
 }
 
 #endif

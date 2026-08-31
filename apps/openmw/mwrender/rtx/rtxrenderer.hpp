@@ -121,9 +121,9 @@ namespace MWRender
         /// that stands in no cell is mirrored into a scene of its own.
         std::unique_ptr<OffscreenView> createOffscreenView(const OffscreenViewSpec& spec) override;
 
-        /// **Flat black, and the loading screen puts it up as the backdrop.** What this owes is the
-        /// frame just presented, blitted into a GUI texture; what it gives is one black texel, said
-        /// on purpose rather than left to whatever the texture happened to hold.
+        /// **The frame just presented, read back into a GUI texture**, which the loading screen puts
+        /// up as its backdrop. One black texel before anything has been presented, which is the very
+        /// first load.
         MyGUI::ITexture& freezeFrame() override;
 
         void renderGui() override;

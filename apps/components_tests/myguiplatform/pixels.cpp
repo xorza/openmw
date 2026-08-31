@@ -153,7 +153,7 @@ namespace MyGUIPlatform
             const osg::ref_ptr<osg::Image> image = makeCoordinates(16, 8);
 
             std::vector<std::uint8_t> rows;
-            gatherRegion(*image, 3, 5, 4, 2, rows);
+            gatherRegion(*image, Rect{ 3, 5, 4, 2 }, rows);
 
             ASSERT_EQ(rows.size(), std::size_t{ 4 } * 2 * 4) << "two rows of four pixels and nothing else";
 
@@ -173,7 +173,7 @@ namespace MyGUIPlatform
             const osg::ref_ptr<osg::Image> image = makeCoordinates(5, 3);
 
             std::vector<std::uint8_t> rows;
-            gatherRegion(*image, 0, 0, 5, 3, rows);
+            gatherRegion(*image, Rect{ 0, 0, 5, 3 }, rows);
 
             ASSERT_EQ(rows.size(), std::size_t{ 5 } * 3 * 4);
             EXPECT_EQ(rows[0], 0) << "top left column";
@@ -184,7 +184,7 @@ namespace MyGUIPlatform
             EXPECT_EQ(last[1], 2) << "bottom right row";
 
             // And a region reused: the scratch is refilled rather than appended to.
-            gatherRegion(*image, 4, 2, 1, 1, rows);
+            gatherRegion(*image, Rect{ 4, 2, 1, 1 }, rows);
             ASSERT_EQ(rows.size(), std::size_t{ 4 });
             EXPECT_EQ(rows[0], 4);
             EXPECT_EQ(rows[1], 2);

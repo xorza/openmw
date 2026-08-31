@@ -94,7 +94,7 @@ namespace MyGUIPlatform
 
         assert(x >= 0 && y >= 0 && x + width <= mWidth && y + height <= mHeight);
 
-        gatherRegion(image, x, y, width, height, mRegionScratch);
+        gatherRegion(image, Rect{ x, y, width, height }, mRegionScratch);
         mRegion->writeRegion(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y),
             static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height), mRegionScratch);
     }

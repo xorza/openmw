@@ -71,19 +71,28 @@ namespace RtxTool
             "Tail",
         };
 
-        bool isAmmunition(int type)
+        /// What a weapon of one type means to the wardrobe: the stance it is held in, what stands
+        /// in for that stance, and what it has to be carrying to be drawn at all.
+        struct WeaponKind
         {
-            return type == ESM::Weapon::Arrow || type == ESM::Weapon::Bolt;
-        }
+            ESM::RefId mType;
 
-        /// The idle a weapon is held in, and what stands in for it where nobody animated one.
-        struct WeaponIdle
-        {
+            /// Empty for ammunition, which is carried rather than held.
             std::string_view mStance;
             std::string_view mFallback;
+
+            /// The type this one fires, or nothing where it fires nothing.
+            ESM::RefId mAmmunition;
         };
 
-        /// One entry per kind of weapon somebody can hold, in `ESM::Weapon::Type` order.
+        /// One entry per kind of weapon somebody can hold.
+        ///
+        /// **A second statement of `ESM::WeaponType`, and it has to be one.** Upstream keeps the
+        /// class and the ammunition on the record itself, but the shipped records are built by
+        /// `MWWorld::Store<ESM::WeaponType>::setUp` out of a running game's store — and the harness
+        /// links `components` and stands no game. What it can name are the ids, which are
+        /// `components/esm3/loadweap.cpp`'s, so the keys here cannot drift from the game's even
+        /// though the columns are stated twice.
         ///
         /// **A weapon is drawn into a stance and not into a hand.** "Weapon Bone" is wherever the
         /// animation being played leaves it, and the plain `idle` is the one with nothing in that
@@ -97,21 +106,47 @@ namespace RtxTool
         /// two-handed *melee* stands in the two-handed close idle and everything else in the
         /// one-handed one, so a bow, which is two-handed and ranged, goes with the swords.
         ///
-        /// Ammunition is not here: an arrow is carried, not held.
-        constexpr std::array<WeaponIdle, ESM::Weapon::MarksmanThrown + 1> sWeaponIdles{
-            WeaponIdle{ "idle1s", "idle1h" }, // ShortBladeOneHand
-            WeaponIdle{ "idle1h", "idle1h" }, // LongBladeOneHand
-            WeaponIdle{ "idle2c", "idle2c" }, // LongBladeTwoHand
-            WeaponIdle{ "idle1b", "idle1h" }, // BluntOneHand
-            WeaponIdle{ "idle2b", "idle2c" }, // BluntTwoClose
-            WeaponIdle{ "idle2w", "idle2c" }, // BluntTwoWide
-            WeaponIdle{ "idle2w", "idle2c" }, // SpearTwoWide
-            WeaponIdle{ "idle1b", "idle1h" }, // AxeOneHand
-            WeaponIdle{ "idle2b", "idle2c" }, // AxeTwoHand
-            WeaponIdle{ "idlebow", "idle1h" }, // MarksmanBow
-            WeaponIdle{ "idlecrossbow", "idle1h" }, // MarksmanCrossbow
-            WeaponIdle{ "idle1t", "idle1h" }, // MarksmanThrown
-        };
+        /// **Built on the first call and not at load.** The ids are `const` objects of another
+        /// translation unit, and the order two translation units run their dynamic initialisers in
+        /// is nobody's to say — a table at namespace scope would be copying strings that may not be
+        /// constructed yet.
+        const auto& weaponKinds()
+        {
+            static const std::array kinds{
+                WeaponKind{ ESM::WeaponType::ShortBladeOneHand, "idle1s", "idle1h", {} },
+                WeaponKind{ ESM::WeaponType::LongBladeOneHand, "idle1h", "idle1h", {} },
+                WeaponKind{ ESM::WeaponType::LongBladeTwoHand, "idle2c", "idle2c", {} },
+                WeaponKind{ ESM::WeaponType::BluntOneHand, "idle1b", "idle1h", {} },
+                WeaponKind{ ESM::WeaponType::BluntTwoClose, "idle2b", "idle2c", {} },
+                WeaponKind{ ESM::WeaponType::BluntTwoWide, "idle2w", "idle2c", {} },
+                WeaponKind{ ESM::WeaponType::SpearTwoWide, "idle2w", "idle2c", {} },
+                WeaponKind{ ESM::WeaponType::AxeOneHand, "idle1b", "idle1h", {} },
+                WeaponKind{ ESM::WeaponType::AxeTwoHand, "idle2b", "idle2c", {} },
+                WeaponKind{ ESM::WeaponType::MarksmanBow, "idlebow", "idle1h", ESM::WeaponType::Arrow },
+                WeaponKind{ ESM::WeaponType::MarksmanCrossbow, "idlecrossbow", "idle1h", ESM::WeaponType::Bolt },
+                WeaponKind{ ESM::WeaponType::MarksmanThrown, "idle1t", "idle1h", {} },
+                WeaponKind{ ESM::WeaponType::Arrow, {}, {}, {} },
+                WeaponKind{ ESM::WeaponType::Bolt, {}, {}, {} },
+            };
+
+            return kinds;
+        }
+
+        /// The row for a weapon's type, or null for one no shipped kind names.
+        const WeaponKind* weaponKind(ESM::RefId type)
+        {
+            const auto& kinds = weaponKinds();
+            const auto found
+                = std::find_if(kinds.begin(), kinds.end(), [&](const WeaponKind& kind) { return kind.mType == type; });
+
+            return found == kinds.end() ? nullptr : &*found;
+        }
+
+        /// Whether this is carried rather than held, which is what has no stance of its own.
+        bool isAmmunition(const WeaponKind* kind)
+        {
+            return kind != nullptr && kind->mStance.empty();
+        }
 
         /// The hardest single blow a weapon can land, over all three attacks.
         ///
@@ -127,17 +162,14 @@ namespace RtxTool
         /// **The game's own refusal**: a bow with no arrows and a crossbow with no bolts stay in the
         /// pack, so an archer out of ammunition is somebody standing empty-handed rather than
         /// somebody miming.
-        bool hasAmmunitionFor(const Content& content, const ESM::NPC& npc, int type)
+        bool hasAmmunitionFor(const Content& content, const ESM::NPC& npc, const WeaponKind* kind)
         {
-            const int wanted = type == ESM::Weapon::MarksmanBow ? ESM::Weapon::Arrow
-                : type == ESM::Weapon::MarksmanCrossbow         ? ESM::Weapon::Bolt
-                                                                : ESM::Weapon::None;
-            if (wanted == ESM::Weapon::None)
+            if (kind == nullptr || kind->mAmmunition.empty())
                 return true;
 
             for (const ESM::ContItem& carried : npc.mInventory.mList)
                 if (const ESM::Weapon* ammunition = content.findRecord<ESM::Weapon>(carried.mItem))
-                    if (ammunition->mData.mType == wanted)
+                    if (ammunition->mData.mType == kind->mAmmunition)
                         return true;
 
             return false;
@@ -159,10 +191,11 @@ namespace RtxTool
             for (const ESM::ContItem& carried : npc.mInventory.mList)
             {
                 const ESM::Weapon* weapon = content.findRecord<ESM::Weapon>(carried.mItem);
-                if (weapon == nullptr || isAmmunition(weapon->mData.mType) || weapon->mModel.empty())
+                if (weapon == nullptr || weapon->mModel.empty())
                     continue;
 
-                if (!hasAmmunitionFor(content, npc, weapon->mData.mType))
+                const WeaponKind* kind = weaponKind(weapon->mData.mType);
+                if (isAmmunition(kind) || !hasAmmunitionFor(content, npc, kind))
                     continue;
 
                 if (const int blow = hardestBlow(*weapon); blow > hardest)
@@ -631,9 +664,11 @@ namespace RtxTool
         if (weapon != nullptr)
         {
             outfit.claim(ESM::PRT_Weapon, 1, Misc::ResourceHelpers::correctMeshPath(weapon->mModel.getNormalized()));
-            const WeaponIdle& stance = sWeaponIdles[static_cast<std::size_t>(weapon->mData.mType)];
-            built.mIdle = stance.mStance;
-            built.mIdleFallback = stance.mFallback;
+            if (const WeaponKind* kind = weaponKind(weapon->mData.mType); kind != nullptr)
+            {
+                built.mIdle = kind->mStance;
+                built.mIdleFallback = kind->mFallback;
+            }
         }
 
         SceneUtil::NodeMap bones;

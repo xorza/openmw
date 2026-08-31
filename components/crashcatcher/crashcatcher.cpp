@@ -427,8 +427,8 @@ static void crash_catcher(int signum, siginfo_t* siginfo, void* /*context*/)
         kill(crash_info.pid, SIGKILL);
     }
 
-    // The whole crash report has gone to the standard streams by this point, so whether a box adds
-    // anything is a question about who is watching them rather than about the crash.
+    // The harness turns these off: a box is a click between a developer and the next run, and in a
+    // loop it is the loop stopping dead. The game leaves them on, which is upstream's behaviour.
     if (!Debug::wantsFatalDialog())
         exit(0);
 
