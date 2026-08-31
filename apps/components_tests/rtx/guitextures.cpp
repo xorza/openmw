@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -286,6 +287,93 @@ namespace Rtx
                 EXPECT_EQ(inTexture(one.mSlot, one.mSide, one.mSide - 1, one.mSide - 1), one.mColour)
                     << "last texel of " << one.mSide;
             }
+        }
+
+        /// A caller that produces its pixels writes them where the copy reads them, and they land.
+        ///
+        /// **What MyGUI's `lock` and `unlock` are answered with, and the copy they used to cost.** A
+        /// backend that lends a buffer of its own has to copy that buffer here afterwards, and a
+        /// video frame then crosses main memory twice on its way to a device it could have been
+        /// written into once.
+        ///
+        /// Every texel carries its own index, so a run handed out at the wrong offset is wrong at a
+        /// row boundary rather than only in the middle of one.
+        TEST_F(RtxGuiDrawTest, pixelsWrittenWhereTheDeviceReadsThemLandInTheTexture)
+        {
+            constexpr std::uint32_t side = 4;
+
+            const std::uint32_t texture = mRenderer->addGuiTexture(side, side);
+            mHeld.push_back(texture);
+
+            const std::span<std::uint8_t> into
+                = mRenderer->lendGuiTexture(texture, Renderer::GuiRegion{ 0, 0, side, side });
+            ASSERT_EQ(into.size(), std::size_t{ side } * side * 4);
+
+            for (std::uint32_t texel = 0; texel < side * side; ++texel)
+            {
+                into[texel * 4] = static_cast<std::uint8_t>(texel);
+                into[texel * 4 + 1] = 0;
+                into[texel * 4 + 2] = 0;
+                into[texel * 4 + 3] = 255;
+            }
+
+            mRenderer->sendGuiTexture(texture);
+
+            mRenderer->readGuiTexture(texture, mPixels);
+            ASSERT_EQ(mPixels.size(), std::size_t{ side } * side * 4);
+
+            for (std::uint32_t texel = 0; texel < side * side; ++texel)
+            {
+                const std::array<std::uint8_t, 4> found{ mPixels[texel * 4], mPixels[texel * 4 + 1],
+                    mPixels[texel * 4 + 2], mPixels[texel * 4 + 3] };
+                EXPECT_EQ(found, (std::array<std::uint8_t, 4>{ static_cast<std::uint8_t>(texel), 0, 0, 255 }))
+                    << "texel " << texel;
+            }
+        }
+
+        /// The staging comes round no sooner than the fence that frees it, and no later.
+        ///
+        /// **The rule stated as the addresses it hands out, because nothing else can see it.** A
+        /// write into staging is a `memcpy` through a mapped pointer rather than a Vulkan command,
+        /// so a write landing on bytes a queued copy still reads is invisible to synchronisation
+        /// validation and shows up only as a picture that is wrong on some runs — this test was
+        /// written the other way first and passed with the arenas one short.
+        ///
+        /// What is written between two interface frames is carried by the *later* one's submit, and
+        /// that submit's fence is waited on `sFrameSlots` frames after that. So the same bytes must
+        /// not come back before the third frame after the one that wrote them, and there is no
+        /// reason for them to come back any later than that.
+        TEST_F(RtxGuiDrawTest, theStagingComesRoundNoSoonerThanTheFenceThatFreesIt)
+        {
+            const std::uint32_t texture = makeTexel(sWhite);
+
+            // An arena is replaced the first time it is asked for more than it holds, and only keeps
+            // its address after that, so the first lap of them is warmed rather than measured.
+            constexpr std::uint32_t warmed = 3;
+            constexpr std::uint32_t measured = 6;
+
+            std::array<const std::uint8_t*, measured> lent{};
+            for (std::uint32_t frame = 0; frame < warmed + measured; ++frame)
+            {
+                const std::span<std::uint8_t> into
+                    = mRenderer->lendGuiTexture(texture, Renderer::GuiRegion{ 0, 0, 1, 1 });
+                std::copy(sWhite.begin(), sWhite.end(), into.begin());
+                mRenderer->sendGuiTexture(texture);
+
+                if (frame >= warmed)
+                    lent[frame - warmed] = into.data();
+
+                drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
+            }
+
+            for (std::uint32_t frame = 0; frame + 1 < measured; ++frame)
+                EXPECT_NE(lent[frame], lent[frame + 1]) << "frame " << frame << ", one apart: not even submitted";
+
+            for (std::uint32_t frame = 0; frame + 2 < measured; ++frame)
+                EXPECT_NE(lent[frame], lent[frame + 2]) << "frame " << frame << ", two apart: submitted, not waited";
+
+            for (std::uint32_t frame = 0; frame + 3 < measured; ++frame)
+                EXPECT_EQ(lent[frame], lent[frame + 3]) << "frame " << frame << ", three apart: waited, and enough";
         }
 
         /// A texture given back while a write to it is still pending is let go without complaint.

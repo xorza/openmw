@@ -201,6 +201,11 @@ namespace Rtx
 
     VulkanRenderer::~VulkanRenderer()
     {
+        // **What the interface handed over, before the pool holding it is taken apart.** A GUI
+        // texture write waits for nothing and rides the next submit this pool makes; there is no
+        // next submit here, and `Presenter`'s destructor resets the pool underneath it.
+        mGuiTextures.finish();
+
         // Every frame in flight, and the presenter's last blit, before anything they name goes.
         mDevice.waitIdle();
 
@@ -811,6 +816,10 @@ namespace Rtx
     {
         if (mPresenter != nullptr)
         {
+            // Same reason as the destructor's: remaking a swapchain resets the command pool, and a
+            // batch handed over is sitting in it waiting for a submit.
+            mGuiTextures.finish();
+
             // **What the swapchain came back with, not what was asked for.** A surface clamps to
             // what it can do, and targets sized to the request would then be blitted through a
             // scale nobody chose.
@@ -841,6 +850,16 @@ namespace Rtx
         mGuiTextures.write(texture, region, rgba);
     }
 
+    std::span<std::uint8_t> VulkanRenderer::lendGuiTexture(std::uint32_t texture, const GuiRegion& region)
+    {
+        return mGuiTextures.lend(texture, region);
+    }
+
+    void VulkanRenderer::sendGuiTexture(std::uint32_t texture)
+    {
+        mGuiTextures.send(texture);
+    }
+
     void VulkanRenderer::dropGuiTexture(std::uint32_t texture)
     {
         mGuiTextures.drop(texture);
@@ -863,10 +882,12 @@ namespace Rtx
             gui.mGuiGraveyard.clear();
         }
 
-        // **After the clear and before the submit, so the closed windows ride under this frame.**
-        // A texture given back was drawn with as recently as the interface still on the queue, and
-        // this frame's fence is the first one that says every one of those draws has finished.
-        mGuiTextures.bury(gui.mGuiGraveyard);
+        // **After the clear and before anything is handed over, which is what both halves of it
+        // want.** A texture given back was drawn with as recently as the interface still on the
+        // queue, and this frame's fence is the first one that says every one of those draws has
+        // finished; the staging turns on the same signal, for the reason `GuiTextures::mStaging`
+        // gives.
+        mGuiTextures.startFrame(gui.mGuiGraveyard);
 
         gui.mGuiGraveyard.bury(
             growTo(gui.mGuiVertices, mDevice, vertices.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));

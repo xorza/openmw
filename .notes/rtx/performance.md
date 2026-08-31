@@ -199,19 +199,28 @@ Ray Reconstruction is the right price against the alternative (measured in §2),
 nothing, and the cost scales with the 4K output, not with what we trace. Re-measure on each DLSS
 SDK update and otherwise leave it alone.
 
-### Lane D — frame hygiene (merged from `review.md`)
+### Lane D — frame hygiene (merged from `review.md`): done, ungated
 
-- **D1. A frame that wrote any GUI texture pays a submit-and-wait inside the frame.**
-  `GuiTextures::getView`/`read` call `flush()` → `CommandPool::endAndWait`, and
-  `VulkanRenderer::drawGui` calls `getView` per batch — a playing video pays the wait every
-  frame, the fog of war pays it as the player walks, a window opening pays it for its atlas.
-  `Batch::defer()` (carried by the next frame's own submit, no wait) exists and nothing on this
-  path uses it. Gate: in-game bench while a video plays / while walking with the map up.
-- **D2. A video frame crosses host memory three times under the Vulkan backend.** Decoder image →
-  `Picture::set` lock-and-copy → staging copy → device. `GuiRenderManager::shareTexture` exists
-  for exactly this caller and the backend's manager returns null
-  (`components/myguirtx/rendermanager.hpp:51`). Fixing D1 removes the stall; fixing this removes
-  two of the three copies.
+Both items were one organ — `GuiTextures`' staging — and both are closed by code.
+
+- **D1 was a full pipeline drain, not a submit.** `getView` and `read` called `flush()` →
+  `CommandPool::endAndWait`, on one queue, after the frame's own trace had been submitted on it: so
+  a frame that wrote any GUI texture waited for that whole trace. The class hands its batch to the
+  pool now, which orders the copies ahead of the reader's submit without waiting for anything. The
+  staging is three arenas turned once per interface frame — one more than there are frame slots,
+  because what is written between two frames is carried by the *later* one's submit and that fence
+  is waited two frames after that.
+- **D2 is one host crossing, down from two**, and for every GUI texture rather than only the video.
+  `lendGuiTexture`/`sendGuiTexture` hand MyGUI's `lock` and `unlock` the arena the copy will read,
+  so a video frame goes decoder image → arena → device instead of through a buffer of the backend's
+  own. `shareTexture` stays null: there is no zero-copy route from an `osg::Image` to a Vulkan
+  image, so a shared texture could only have removed the same copy this does.
+
+**The gate has not been run.** It is an in-game bench with a video playing or the map up
+(`apps/rtxtool/bench.sh`), and nothing headless writes a GUI texture on a frame that also traces.
+The picture is unchanged over all 17 `verify` views, and a test pins the arena count from both
+sides — a host write into mapped memory is not a Vulkan command, so synchronisation validation
+cannot see this class of mistake and the rule is asserted as the addresses it hands out.
 
 ### Lane E — the steady-state CPU walk (2.5–3.6 ms a frame, every frame)
 
@@ -233,8 +242,7 @@ Hidden under the GPU today; it is the 1% low and the power bill, and it grows wi
 
 B4 first — it is the only cheap trace item left, and small enough that it has to be measured before
 it is believed. Then E, starting at E0, which is where the exterior walk goes and now where the
-interior trace points too. Then B5. D1/D2 whenever touching that file. A6 and C parked, and A2
-last — §4.
+interior trace points too. Then B5. A6 and C parked, and A2 last — §4.
 
 ## 4 Deferred — the micromap classification
 

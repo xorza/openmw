@@ -68,6 +68,13 @@ namespace Rtx
         /// is the one the placement was already paying. Ends `commands`.
         void defer(VkCommandBuffer commands, std::vector<Buffer>&& staging);
 
+        /// Submits whatever was deferred and waits for it. Does nothing where nothing was deferred.
+        ///
+        /// **What a deferred batch has no other way out of.** It rides the pool's next submit, and
+        /// the two paths that take the pool apart — a resize and shutdown — are the two that have no
+        /// next submit to give it. `reset` says so as an assert.
+        void finishDeferred();
+
         /// Submits `commands` behind whatever was deferred, signalling `fence` where one is given,
         /// and does not wait. Ends `commands`. What the deferred batches read from goes to `kept`,
         /// to be let go when the caller knows the queue has passed it.

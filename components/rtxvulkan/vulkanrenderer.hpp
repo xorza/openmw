@@ -184,6 +184,8 @@ namespace Rtx
         std::uint32_t addGuiTexture(std::uint32_t width, std::uint32_t height) override;
         void writeGuiTexture(
             std::uint32_t texture, const GuiRegion& region, std::span<const std::uint8_t> rgba) override;
+        std::span<std::uint8_t> lendGuiTexture(std::uint32_t texture, const GuiRegion& region) override;
+        void sendGuiTexture(std::uint32_t texture) override;
         void dropGuiTexture(std::uint32_t texture) override;
         void drawGui(std::span<const GuiVertex> vertices, std::span<const GuiBatch> batches) override;
         void traceGuiTexture(

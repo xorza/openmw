@@ -82,6 +82,14 @@ namespace Rtx
         mDeferredStaging.clear();
     }
 
+    void CommandPool::finishDeferred()
+    {
+        if (mDeferred.empty())
+            return;
+
+        submitAndWait([](VkCommandBuffer) {});
+    }
+
     void CommandPool::submit(VkCommandBuffer commands, VkFence fence, Graveyard& kept)
     {
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");

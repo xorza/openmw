@@ -86,6 +86,8 @@ namespace Rtx::Testing
         /// The GUI is not what this counts. Slots go up and nothing is drawn.
         std::uint32_t addGuiTexture(std::uint32_t, std::uint32_t) override { return mGuiTextures++; }
         void writeGuiTexture(std::uint32_t, const Rtx::Renderer::GuiRegion&, std::span<const std::uint8_t>) override {}
+        std::span<std::uint8_t> lendGuiTexture(std::uint32_t, const Rtx::Renderer::GuiRegion&) override { return {}; }
+        void sendGuiTexture(std::uint32_t) override {}
         void dropGuiTexture(std::uint32_t) override {}
         void drawGui(std::span<const Rtx::GuiVertex>, std::span<const Rtx::GuiBatch>) override {}
         void traceGuiTexture(

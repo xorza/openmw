@@ -589,8 +589,27 @@ namespace Rtx
         /// what MyGUI's own interface can say** — it hands out a buffer to fill and takes it back
         /// filled — so most callers pass the whole rectangle; the world map is the one that does
         /// not, and it repaints eighteen pixels square instead of two megabytes.
+        ///
+        /// For a caller that already holds the pixels. One that is about to produce them wants
+        /// `lendGuiTexture` instead, which is this without the copy in front of it.
         virtual void writeGuiTexture(std::uint32_t texture, const GuiRegion& region, std::span<const std::uint8_t> rgba)
             = 0;
+
+        /// Bytes for a rectangle of a texture, to be filled and then handed back with
+        /// `sendGuiTexture`. The rows `writeGuiTexture` takes, in the backend's own memory.
+        ///
+        /// **What MyGUI's `lock` and `unlock` are, said to the backend that has to answer them.** A
+        /// backend that lends a buffer of its own instead puts a copy in front of every write, and a
+        /// video frame then crosses main memory twice on its way to a device it could have been
+        /// written into once.
+        ///
+        /// The rectangle must lie inside the texture, and only one may be lent at a time. Both are
+        /// contracts and so asserts. **Write the span and do not read it back**: a backend may lend
+        /// memory the device reads directly, where a read costs far more than the write did.
+        virtual std::span<std::uint8_t> lendGuiTexture(std::uint32_t texture, const GuiRegion& region) = 0;
+
+        /// Sends what `lendGuiTexture` handed out. The span stops being writable here.
+        virtual void sendGuiTexture(std::uint32_t texture) = 0;
 
         virtual void dropGuiTexture(std::uint32_t texture) = 0;
 

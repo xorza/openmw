@@ -1,9 +1,6 @@
 #include "texture.hpp"
 
 #include <cassert>
-#include <cstring>
-
-#include <algorithm>
 #include <stdexcept>
 
 #include <osg/Image>
@@ -76,8 +73,12 @@ namespace MyGUIRtx
         mFormat = format;
         mUsage = usage;
         mNumElemBytes = elements;
-        mPixels.assign(static_cast<std::size_t>(width) * height * elements, 0);
         mSlot = mRenderer.addGuiTexture(static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
+
+        // Nothing at four channels: `lock` hands out the renderer's own bytes there, and this is
+        // only what a narrower format is widened out of.
+        if (elements != 4)
+            mPixels.assign(static_cast<std::size_t>(width) * height * elements, 0);
     }
 
     void Texture::loadFromFile(const std::string& fname)
@@ -94,10 +95,11 @@ namespace MyGUIRtx
         createManual(image->s(), image->t(), MyGUI::TextureUsage::Static, MyGUI::PixelFormat::R8G8B8A8);
 
         // Widened by the same code the other backend widens with, which knows to `memcpy` the case
-        // that is most of them rather than read a `Vec4f` per pixel.
-        MyGUIPlatform::writeRgba(*image, mPixels.data());
+        // that is most of them rather than read a `Vec4f` per pixel — and it writes each pixel once
+        // and in order, which is what the renderer's own bytes want.
+        MyGUIPlatform::writeRgba(*image, mRenderer.lendGuiTexture(mSlot, whole()).data());
 
-        upload();
+        mRenderer.sendGuiTexture(mSlot);
     }
 
     void Texture::saveToFile(const std::string& fname)
@@ -118,7 +120,8 @@ namespace MyGUIRtx
             throw std::runtime_error("Texture already locked");
 
         mLocked = true;
-        return mPixels.data();
+
+        return mNumElemBytes == 4 ? mRenderer.lendGuiTexture(mSlot, whole()).data() : mPixels.data();
     }
 
     void Texture::unlock()
@@ -127,27 +130,25 @@ namespace MyGUIRtx
             throw std::runtime_error("Texture not locked");
 
         mLocked = false;
-        upload();
+
+        if (mNumElemBytes == 4)
+            mRenderer.sendGuiTexture(mSlot);
+        else
+            widen();
     }
 
-    void Texture::upload()
+    void Texture::widen()
     {
-        if (mNumElemBytes == 4)
-        {
-            mRenderer.writeGuiTexture(mSlot, whole(), mPixels);
-            return;
-        }
-
         // MyGUI asked for fewer channels than the table holds, so they are widened here rather than
         // by giving the table a second format to know about: a font atlas is written once and this
         // is the only place that knows what its bytes meant.
         const std::size_t count = static_cast<std::size_t>(mWidth) * mHeight;
-        mWidened.resize(count * 4);
+        std::uint8_t* const into = mRenderer.lendGuiTexture(mSlot, whole()).data();
 
         for (std::size_t i = 0; i < count; ++i)
         {
             const std::uint8_t* in = mPixels.data() + i * mNumElemBytes;
-            std::uint8_t* out = mWidened.data() + i * 4;
+            std::uint8_t* out = into + i * 4;
 
             switch (mNumElemBytes)
             {
@@ -168,7 +169,7 @@ namespace MyGUIRtx
             }
         }
 
-        mRenderer.writeGuiTexture(mSlot, whole(), mWidened);
+        mRenderer.sendGuiTexture(mSlot);
     }
 
     void Texture::writeRegion(
@@ -178,13 +179,6 @@ namespace MyGUIRtx
         assert(x + width <= static_cast<std::uint32_t>(mWidth) && y + height <= static_cast<std::uint32_t>(mHeight)
             && "a region past the edge of the texture");
         assert(rows.size() == std::size_t{ width } * height * 4 && "the region's own rows, tightly packed");
-
-        // **Kept here as well as sent**, because this side's copy is what MyGUI hands out on the next
-        // `lock`: a picture written in part and then locked whole would otherwise come back holding
-        // the region's old pixels.
-        for (std::uint32_t row = 0; row < height; ++row)
-            std::memcpy(mPixels.data() + (std::size_t{ y + row } * mWidth + x) * 4,
-                rows.data() + std::size_t{ row } * width * 4, std::size_t{ width } * 4);
 
         mRenderer.writeGuiTexture(mSlot, Rtx::Renderer::GuiRegion{ x, y, width, height }, rows);
     }

@@ -21,9 +21,15 @@ namespace MyGUIRtx
 
     /// A picture the GUI draws with, held as a slot in the renderer's own table.
     ///
-    /// **The pixels live twice on purpose.** MyGUI's interface hands out a buffer to fill and takes
-    /// it back filled, so there has to be one on this side; what goes to the device is a copy of it,
-    /// made when the buffer comes back.
+    /// **The pixels are written once.** MyGUI's interface hands out a buffer to fill and takes it
+    /// back filled, and the buffer handed out here is the renderer's own — the memory its copy to
+    /// the device reads. A buffer of this class's own instead would put a crossing of main memory in
+    /// front of every write, and a video frame arrives through here whole once a frame.
+    ///
+    /// **The exception is a format the table does not hold.** MyGUI asks for one, two or three
+    /// channels as well as four, and those are widened on the way out — so they land in `mPixels`
+    /// first, because the widening has to read them and the memory the renderer lends is written
+    /// far faster than it is read.
     class Texture final : public MyGUI::ITexture, public MyGUIPlatform::RegionTexture
     {
     public:
@@ -41,6 +47,12 @@ namespace MyGUIRtx
 
         void destroy() override;
 
+        /// The whole surface, to be filled and handed back with `unlock`.
+        ///
+        /// **What comes back holds no picture.** `TextureUsage::Write` is a promise to fill the
+        /// buffer, which every caller in this fork keeps: at four channels the bytes are the
+        /// renderer's own and hold whatever it last copied out of them. Reading them is slow as well
+        /// as wrong — see the class comment.
         void* lock(MyGUI::TextureUsage access) override;
         void unlock() override;
         bool isLocked() const override { return mLocked; }
@@ -58,9 +70,8 @@ namespace MyGUIRtx
 
         void setShader(const std::string& shaderName) override;
 
-        /// **What MyGUI's own interface cannot ask for.** The pixels are kept on this side anyway,
-        /// so writing part of them and sending that part is the whole of it — the world map paints
-        /// eighteen pixels square when a cell arrives and used to send two megabytes.
+        /// **What MyGUI's own interface cannot ask for.** The world map paints eighteen pixels
+        /// square when a cell arrives and used to send two megabytes.
         void writeRegion(std::uint32_t x, std::uint32_t y, std::uint32_t width, std::uint32_t height,
             std::span<const std::uint8_t> rows) override;
 
@@ -78,10 +89,9 @@ namespace MyGUIRtx
         /// The whole surface, which is what every write but the world map's covers.
         Rtx::Renderer::GuiRegion whole() const;
 
-        /// Sends the whole of `mPixels` to the renderer, widening it to four bytes a pixel where
-        /// MyGUI asked for fewer. The scratch it widens into is kept, because a video frame comes
-        /// through here once a frame.
-        void upload();
+        /// Widens `mPixels` into the renderer's own bytes and sends them, four channels out of
+        /// however few MyGUI asked for.
+        void widen();
 
         std::string mName;
         Rtx::Renderer& mRenderer;
@@ -94,8 +104,8 @@ namespace MyGUIRtx
         MyGUI::TextureUsage mUsage = MyGUI::TextureUsage::Default;
         std::size_t mNumElemBytes = 0;
 
+        /// What MyGUI fills at fewer than four channels, and empty at four.
         std::vector<std::uint8_t> mPixels;
-        std::vector<std::uint8_t> mWidened;
         bool mLocked = false;
     };
 
