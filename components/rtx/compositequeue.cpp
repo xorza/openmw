@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <charconv>
+#include <chrono>
 #include <exception>
 #include <utility>
 
@@ -268,9 +269,22 @@ namespace Rtx
         if (stack.empty())
             return baked;
 
+        // **The only place a bake's cost is visible.** It happens on this thread and off every
+        // frame, so no frame timer reaches it and a profile can say what share of a run it was but
+        // never what one chunk cost. Verbose, because a crossing queues dozens.
+        const auto started = std::chrono::steady_clock::now();
+
         try
         {
             baked.mComposite.emplace(stack, sCompositeExtent, sCompositeDelight);
+
+            // The first layer's mask, which for a terrain chunk is every layer's: the blend maps of
+            // one chunk are one grid, and what the number says is how finely the stack is cut.
+            Log(Debug::Verbose)
+                << "composite bake: " << stack.size() << " layers, mask " << stack.front().mMaskWidth << "x"
+                << stack.front().mMaskHeight << ", "
+                << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()
+                << " ms";
         }
         catch (const std::exception& error)
         {

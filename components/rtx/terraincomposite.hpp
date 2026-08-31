@@ -79,16 +79,18 @@ namespace Rtx
     /// divided out, is weighted by its mask and only then re-encoded — the same order the shader
     /// reaches at a hit, and the reason a half-and-half blend comes out at 188 rather than 128.
     ///
-    /// **Whole, and never on the frame.** A chunk of a four-cell region costs **28.5 ms** to
-    /// flatten, measured over the 73 of them Balmora produces at that radius — a dropped frame
-    /// however good the average is. Sliced sixteen rows a frame it was a millisecond or two on
-    /// every frame for twenty seconds after a load instead, which is the other way of being on the
-    /// frame. So `CompositeQueue` builds one on a thread of its own and hands the frame the bytes;
-    /// nothing here is shaped for stopping part way, and the spans a caller passes are read inside
-    /// the constructor and never again.
+    /// **Whole, and never on the frame.** A chunk costs **27 ms** to flatten — measured over three
+    /// runs of the island route at 280-odd chunks each, nine ground types apiece against a mask 34
+    /// across — and that is a dropped frame however good the average is. Sliced sixteen rows a
+    /// frame it was a millisecond or two on every frame for twenty seconds after a load instead,
+    /// which is the other way of being on the frame. So `CompositeQueue` builds one on a thread of
+    /// its own and hands the frame the bytes; nothing here is shaped for stopping part way, and the
+    /// spans a caller passes are read inside the constructor and never again.
     ///
-    /// It was twice that until the sampling stopped decoding a compressed block at every tap; what
-    /// is left is a quarter of a million output texels, each summing the stack.
+    /// Two changes made it that, each a measured halving: decoding every level once instead of a
+    /// compressed block at every tap, and then walking the stack a layer and a row at a time rather
+    /// than a texel at a time, which took it from 53 ms. What is left is a quarter of a million
+    /// output texels, each summing the ground types whose masks reach it.
     class TerrainComposite
     {
     public:

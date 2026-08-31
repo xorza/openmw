@@ -1,8 +1,9 @@
 # RTX performance — method, numbers, attack plan
 
 Measured 2026-08-31 at `69a19dcf7e`, on the RTX 4090 Laptop (software power cap — see §1 on
-variance). The budget from `plan.md` §5: 3840×2160 out of 1920×1080 traced at 60 fps, which is
-16.6 ms a frame with `--upscale=performance`.
+variance); the streaming rows of §2 were taken again the same day, after the bake was cheapened. The
+budget from `plan.md` §5: 3840×2160 out of 1920×1080 traced at 60 fps, which is 16.6 ms a frame with
+`--upscale=performance`.
 
 ## 1 Method
 
@@ -13,6 +14,9 @@ variance). The budget from `plan.md` §5: 3840×2160 out of 1920×1080 traced at
   `OPENMW_RTX_BENCH=10s:2s@12000` on a save is the game's own crossing measurement.
 - `apps/rtxtool/profile.sh --view=<v>` is the CPU explanation (perf, measured frames only).
   Reports land in `build-release/perf*/`.
+- **`composite bake` in the log** (verbose) is what a chunk's flattening costs, by layer count and
+  mask extent. It happens on the queue's own thread and no frame timer reaches it, so without this
+  line a profile can only say what share of a run it was.
 - `ncu` is not installed, so a pass's inside is costed by removing the term and re-running —
   `shot --repeat` for a still, `bench` for a place. The A/B below that needed no edit was run by
   hour: dusk 17:45 has the sun as low as dawn 6:30 and no moons up.
@@ -50,39 +54,49 @@ Budget configuration (3840×2160 out, performance upscale, preset d), 600 frames
   walk ~50% (MirrorTraversal + `addDrawable` 7% self + `resolveMesh` 4.5% self + ~8% in hash-table
   lookups), `RigGeometry::cull` (skinning) 10%, terrain `collect` 10%, `placeScene` 8%,
   `retire` 2.3%, `__dynamic_cast` 3.3%.
-- **CPU streaming**: the composite baker thread is 46% of on-CPU over the run —
-  `TerrainComposite::TerrainComposite` alone 27.9% self, with `bilinear`, `paintedLight`,
-  `toEncoded` and `lroundf32` behind it. On the frame thread, `QuadTreeWorld::collect` builds
-  chunks the warmer had not built yet (`ObjectPaging::createChunk` + `SceneUtil::Optimizer`), and
-  arriving meshes are canonicalised in the walk (`SheetFold::fold` 5.2%).
+- **CPU streaming** (island-crossing, re-measured 2026-08-31): the composite baker thread was
+  **53% of on-CPU** over the run and cost **52.8 ms a chunk**, over three runs of 215-odd chunks
+  each — nine ground types apiece against a mask 34 across. Walking the stack a layer and a row at a
+  time rather than a texel at a time took that to **27.1 ms and 41%**, and the worst chunk from
+  ~115 ms to ~62, with the picture bit-identical over all 17 `verify` views. Arriving meshes are
+  canonicalised in the walk (`SheetFold::fold` 4.8%).
+- **`collect` does not build chunks, and never did on this route.** `loadRenderingNode` is 9.6% of
+  on-CPU and 9.1 of that sits under `QuadTreeWorld::preload` — the warming thread
+  `Rtx::TerrainResidency` starts. What `Terrain::QuadTreeWorld::collect` spends (16% of on-CPU, and
+  most of `walk ms`) is the **mirror walking the chunk geometry it hands over**: 12.8 of its 13.3
+  points are under `MirrorTraversal`. That is Lane E's problem, not Lane A's, and it is where the
+  steady-state walk goes on an exterior.
+- **What a crossing is made of**: 19 of them, 1.8 s over the run — **1.1 s reading the cell and
+  0.7 s building from it**. The read is the harness's own synchronous ESM reader, which the game
+  does on preload threads instead, so more than half of the 220 ms worst frame is not the
+  renderer's. A5 is what settles that split.
 
 ## 3 Attack plan
 
 Ordered by what a player feels, then by milliseconds. Every step carries its own measurement gate:
 the paired-run rule of §1, at the place named. What a step trades away is written beside it.
 
-### Lane A — the crossing spike (worst 206 ms; target: no crossing frame over ~25 ms)
+### Lane A — the crossing spike (worst 220 ms; target: no crossing frame over ~25 ms)
 
-- **A1. Never build a chunk inside `collect`.** The quad tree holds coarser parents; when the
-  fine chunk is not built yet, hand the visitor the parent that is, and let the warmer deliver the
-  fine one on a later frame. Quality cost: distant ground at one LOD coarser for a few frames on a
-  fast crossing — the rasterizer's paging shows the same. Gate: island-crossing `walk` worst,
-  and the crossing worst line.
+The frame thread neither builds terrain chunks nor is outrun by the thread that does — §2 says so
+with numbers, and the two plan items that assumed otherwise are gone. What is left of a crossing is
+the cell being read and the geometry being handed to the device.
+
+- **A5. Measure the same crossing in the game** (`OPENMW_RTX_BENCH=10s:2s@12000` on an exterior
+  save). The harness reads a cell synchronously and the game preloads on threads, and the harness's
+  read is 1.1 s of the 1.8 the crossings cost — so the split between "the renderer" and "the
+  harness's own reader" has to be taken in the game before anything else here is tuned.
 - **A2. Bound what one frame places.** An arrival's BLAS builds and texture uploads ride the
-  placement submit in one burst (`place` worst 47 ms). Extend the composite queue's discipline
+  placement submit in one burst (`place` worst 48 ms). Extend the composite queue's discipline
   (2 composites a frame) to arrivals: a per-frame byte budget on the deferred batches, the rest
   waiting a frame. Quality cost: an arriving cell's pieces appear over ~2–5 frames instead of one.
   Gate: `place` p99/worst on island-crossing.
-- **A3. Scale the warmer's look-ahead with speed.** The warm thread asks for the square a fixed
-  step ahead; at 12,000 u/s it is outrun. Gate: share of chunk builds on the frame thread in the
-  profile (`collect` → `createChunk` chain).
-- **A4. Cheapen the composite bake.** 28.5 ms a composite, 46% of streaming CPU;
-  `TerrainComposite`'s inner loop rounds through `lroundf32` per channel and samples bilinearly
-  per texel. Halving it halves the window in which chunks shade from their layer stacks. Off the
-  frame path, so this is power and latency, not frame time. Gate: bake ms in the queue's own log.
-- **A5. Measure the same crossing in the game** (`OPENMW_RTX_BENCH=10s:2s@12000` on an exterior
-  save). The harness reads cells synchronously; the game preloads on threads — the split between
-  A1–A3 and "the harness's own reader" must be taken in the game before more is built here.
+- **A6. Cheapen the bake further, if the latency still shows.** 27 ms a chunk is one thread busy
+  for most of a crossing, and what is left is inherent — a quarter of a million texels each summing
+  the ground types that reach them. The two terms with a shape left to change are `paintedLight`
+  (7.0% of on-CPU, and the only tap in the loop whose V axis is still resolved per texel because
+  `contactsheet` shares the function) and `buildChain` (9.4%, an sRGB encode a million times over).
+  Gate: `composite bake` in the log.
 
 ### Lane B — the trace kernel (dawn 8.1, interior 7.7; target ~6 at both)
 
@@ -130,6 +144,10 @@ SDK update and otherwise leave it alone.
 ### Lane E — the steady-state CPU walk (2.5–3.6 ms a frame, every frame)
 
 Hidden under the GPU today; it is the 1% low and the power bill, and it grows with the world.
+- **E0. The terrain chunks are most of the walk on an exterior.** `collect` is 16% of on-CPU and
+  nearly all of it is `MirrorTraversal` over the merged chunk graphs `ObjectPaging` hands back — a
+  paged chunk is thousands of drawables that never move. Whatever E1 and E2 buy on a drawable, they
+  buy it here most of all. Gate: `collect`'s share in the profile, island-crossing.
 - **E1. The per-drawable hash lookups** (~12% self in `addDrawable`/`resolveMesh` + ~8% in
   `hashtable*`): a slot handle cached on the drawable (epoch-stamped, the placements are already
   slot-addressed) turns a map probe per drawable per frame into a pointer read.
@@ -141,6 +159,7 @@ Hidden under the GPU today; it is the 1% low and the power bill, and it grows wi
 
 ### Order of attack
 
-A1–A3 first (the only thing a player can feel today), with A5 taken before A2/A3 are tuned.
-Then B1+B2 (cheap, measured, ~1.5 ms at the budget hour), then B3 (the interior's 7.7 is the
-worst median in the table). D1/D2 whenever touching that file. E after B. C parked.
+A5 first: it is the only thing that says how much of the crossing spike this fork owns, and A2 is
+guesswork until it is answered. Then B1+B2 (cheap, measured, ~1.5 ms at the budget hour), then B3
+(the interior's 7.7 is the worst median in the table). D1/D2 whenever touching that file. E after
+B, starting at E0. A6 and C parked.

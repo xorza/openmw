@@ -4,6 +4,7 @@
 #include <bit>
 #include <cassert>
 #include <cmath>
+#include <vector>
 
 #include <osg/Vec3f>
 
@@ -15,62 +16,53 @@ namespace Rtx
 {
     namespace
     {
-        /// The lower of the two texels a bilinear tap falls between along one axis, and how far it
-        /// is towards the upper one.
+        /// A bilinear tap along one axis: the two rows or columns it falls between, and how far it
+        /// is from the first towards the second.
         ///
         /// **Texel centres sit at half-integers**, so the footprint starts half a texel back. That is
         /// the one rule the mask lookup and the diffuse fetch below have to agree on: half a texel of
         /// drift between them puts a ground type's blend somewhere its mask never said.
-        struct Between
+        struct Tap
         {
-            int mLow = 0;
+            std::uint32_t mFirst = 0;
+            std::uint32_t mSecond = 0;
             float mAcross = 0.0f;
         };
 
-        Between between(float at, std::uint32_t size)
+        /// Where `at` lands on a grid of `size`, with both neighbours held inside it.
+        ///
+        /// **Clamped at the grid's edges where every other texture in this scene repeats.** A mask
+        /// is a few dozen texels across and states the whole chunk; wrapping it would blend the far
+        /// side of the chunk into the near one, which is a ground type appearing where it is not.
+        Tap clampedTap(float at, std::uint32_t size)
         {
             const float texel = at * static_cast<float>(size) - 0.5f;
             const auto low = static_cast<int>(std::floor(texel));
 
-            return Between{ low, texel - static_cast<float>(low) };
+            const auto hold
+                = [&](int of) { return static_cast<std::uint32_t>(std::clamp(of, 0, static_cast<int>(size) - 1)); };
+
+            return Tap{ hold(low), hold(low + 1), texel - static_cast<float>(low) };
         }
 
-        /// How much of a layer shows at a point of the chunk — the shader's `maskWeight`, in C++.
-        ///
-        /// **Clamped at the grid's edges where every other texture in this scene repeats.** A mask
-        /// is ten texels across and states the whole chunk; wrapping it would blend the far side of
-        /// the chunk into the near one, which is a ground type appearing where it is not.
-        float maskWeight(const CompositeLayer& layer, float u, float v)
+        /// The same, repeating, which is what the one sampler every texture in this scene shares
+        /// does — a bake that clamped would smear the last row of a ground texture across the whole
+        /// of the chunk it runs off the edge of.
+        Tap wrappedTap(float at, std::uint32_t size)
         {
-            // A chunk of one ground type is given no mask at all: there is nothing to blend against.
-            if (layer.mMaskWidth == 0 || layer.mMaskHeight == 0)
-                return 1.0f;
+            const float texel = at * static_cast<float>(size) - 0.5f;
+            const auto low = static_cast<int>(std::floor(texel));
+            const auto side = static_cast<int>(size);
 
-            assert(layer.mMask.size() == std::size_t{ layer.mMaskWidth } * layer.mMaskHeight);
-
-            const float atU = u * layer.mMaskTransform.x() + layer.mMaskTransform.z();
-            const float atV = v * layer.mMaskTransform.y() + layer.mMaskTransform.w();
-
-            const Between across = between(atU, layer.mMaskWidth);
-            const Between down = between(atV, layer.mMaskHeight);
-
-            const auto edge = [](int at, std::uint32_t bound) {
-                return static_cast<std::uint32_t>(std::clamp(at, 0, static_cast<int>(bound) - 1));
+            // One division and a correction rather than the two `%` takes to fold a negative: these
+            // coordinates run negative wherever the half-texel step above puts them, and a division
+            // is the most expensive instruction in the loop that reaches this.
+            const auto hold = [&](int of) {
+                const int folded = of % side;
+                return static_cast<std::uint32_t>(folded < 0 ? folded + side : folded);
             };
 
-            const std::uint32_t firstX = edge(across.mLow, layer.mMaskWidth);
-            const std::uint32_t secondX = edge(across.mLow + 1, layer.mMaskWidth);
-            const std::uint32_t firstY = edge(down.mLow, layer.mMaskHeight);
-            const std::uint32_t secondY = edge(down.mLow + 1, layer.mMaskHeight);
-
-            const auto cell = [&](std::uint32_t column, std::uint32_t row) {
-                return layer.mMask[std::size_t{ row } * layer.mMaskWidth + column];
-            };
-
-            const float top = std::lerp(cell(firstX, firstY), cell(secondX, firstY), across.mAcross);
-            const float bottom = std::lerp(cell(firstX, secondY), cell(secondX, secondY), across.mAcross);
-
-            return std::lerp(top, bottom, down.mAcross);
+            return Tap{ hold(low), hold(low + 1), texel - static_cast<float>(low) };
         }
 
         /// One level of a layer's diffuse, decoded to linear once.
@@ -107,59 +99,43 @@ namespace Rtx
             return made;
         }
 
+        osg::Vec3f sampleAt(const Decoded& level, const Tap& across, const Tap& down)
+        {
+            const auto fetch = [&](std::uint32_t column, std::uint32_t row) -> const osg::Vec3f& {
+                return level.mTexels[std::size_t{ row } * level.mWidth + column];
+            };
+
+            const osg::Vec3f top = fetch(across.mFirst, down.mFirst) * (1.0f - across.mAcross)
+                + fetch(across.mSecond, down.mFirst) * across.mAcross;
+            const osg::Vec3f bottom = fetch(across.mFirst, down.mSecond) * (1.0f - across.mAcross)
+                + fetch(across.mSecond, down.mSecond) * across.mAcross;
+
+            return top * (1.0f - down.mAcross) + bottom * down.mAcross;
+        }
+
+        /// How much of a layer shows at a point of the chunk — the shader's `maskWeight`, in C++.
+        float maskWeight(const CompositeLayer& layer, const Tap& across, const Tap& down)
+        {
+            const auto cell = [&](std::uint32_t column, std::uint32_t row) {
+                return layer.mMask[std::size_t{ row } * layer.mMaskWidth + column];
+            };
+
+            const float top
+                = std::lerp(cell(across.mFirst, down.mFirst), cell(across.mSecond, down.mFirst), across.mAcross);
+            const float bottom
+                = std::lerp(cell(across.mFirst, down.mSecond), cell(across.mSecond, down.mSecond), across.mAcross);
+
+            return std::lerp(top, bottom, down.mAcross);
+        }
+
         /// One layer's diffuse, reduced to the two levels the whole bake will read and how far it
         /// sits between them.
-        struct Sampled
+        struct Ground
         {
             Decoded mFine;
             Decoded mCoarse;
             float mBetween = 0.0f;
         };
-
-        /// One decoded level at a point, bilinear and repeating.
-        ///
-        /// Repeating because the ground tiles and the one sampler every texture in this scene shares
-        /// repeats with it — a bake that clamped would smear the last row of a ground texture across
-        /// the whole of the chunk it runs off the edge of.
-        osg::Vec3f bilinear(const Decoded& level, float u, float v)
-        {
-            const Between across = between(u, level.mWidth);
-            const Between down = between(v, level.mHeight);
-
-            const auto wrap = [](int at, std::uint32_t bound) {
-                const auto side = static_cast<int>(bound);
-                return static_cast<std::uint32_t>((at % side + side) % side);
-            };
-
-            const std::uint32_t firstX = wrap(across.mLow, level.mWidth);
-            const std::uint32_t secondX = wrap(across.mLow + 1, level.mWidth);
-            const std::uint32_t firstY = wrap(down.mLow, level.mHeight);
-            const std::uint32_t secondY = wrap(down.mLow + 1, level.mHeight);
-
-            const auto fetch = [&](std::uint32_t column, std::uint32_t row) -> const osg::Vec3f& {
-                return level.mTexels[std::size_t{ row } * level.mWidth + column];
-            };
-
-            const osg::Vec3f top
-                = fetch(firstX, firstY) * (1.0f - across.mAcross) + fetch(secondX, firstY) * across.mAcross;
-            const osg::Vec3f bottom
-                = fetch(firstX, secondY) * (1.0f - across.mAcross) + fetch(secondX, secondY) * across.mAcross;
-
-            return top * (1.0f - down.mAcross) + bottom * down.mAcross;
-        }
-
-        /// A prepared layer at a point, trilinear between the two levels it kept.
-        osg::Vec3f sampleLinear(const Sampled& layer, float u, float v)
-        {
-            if (layer.mFine.isEmpty())
-                return osg::Vec3f();
-
-            if (layer.mBetween <= 0.0f || layer.mCoarse.isEmpty())
-                return bilinear(layer.mFine, u, v);
-
-            return bilinear(layer.mFine, u, v) * (1.0f - layer.mBetween)
-                + bilinear(layer.mCoarse, u, v) * layer.mBetween;
-        }
 
         /// Decodes the two levels of a layer's diffuse whose texels are the size of a composite
         /// texel, which is all of it the bake will ever read.
@@ -171,11 +147,13 @@ namespace Rtx
         ///
         /// The level is constant across the whole composite because the transform is, which is what
         /// makes decoding it once possible at all.
-        Sampled prepare(const CompositeLayer& layer, std::uint32_t extent)
+        Ground prepare(const CompositeLayer& layer, std::uint32_t extent)
         {
+            Ground made;
+
             const TextureData& texture = layer.mDiffuse;
             if (texture.mLevels.empty())
-                return Sampled{};
+                return made;
 
             const MipLevel& finest = texture.mLevels.front();
             const float texelsAcross = std::abs(layer.mDiffuseTransform.x()) * static_cast<float>(finest.mWidth);
@@ -191,7 +169,6 @@ namespace Rtx
             const auto fine = static_cast<std::uint32_t>(wanted);
             const std::uint32_t coarse = std::min(fine + 1, deepest);
 
-            Sampled made;
             made.mFine = decodeLevel(texture, texture.mLevels[fine]);
             made.mBetween = wanted - static_cast<float>(fine);
 
@@ -201,9 +178,43 @@ namespace Rtx
             return made;
         }
 
+        /// Marks in `covered` the mask columns that hold anything on either row of `down`, and says
+        /// whether any does.
+        ///
+        /// **What keeps nine ground types from costing nine mask lookups a texel.** A chunk several
+        /// cells across carries every ground type in them and each covers a corner of it, so most
+        /// of the stack is absent from most of any row of it — and a column pair that is empty is a
+        /// weight of exactly nought, which is the case the sum below already drops.
+        bool coveredColumns(const CompositeLayer& layer, const Tap& down, std::vector<std::uint8_t>& covered)
+        {
+            covered.resize(layer.mMaskWidth);
+
+            const float* first = layer.mMask.data() + std::size_t{ down.mFirst } * layer.mMaskWidth;
+            const float* second = layer.mMask.data() + std::size_t{ down.mSecond } * layer.mMaskWidth;
+
+            std::uint8_t any = 0;
+            for (std::uint32_t column = 0; column < layer.mMaskWidth; ++column)
+            {
+                const auto holds = static_cast<std::uint8_t>(first[column] != 0.0f || second[column] != 0.0f);
+                covered[column] = holds;
+                any |= holds;
+            }
+
+            return any != 0;
+        }
+
+        /// One channel of light, as the byte a backend uploads.
+        ///
+        /// **Rounded here rather than through `std::lround`**, which is a libm call no compiler
+        /// inlines and which a chain reaches a million times. `toEncoded` clamps to the unit range,
+        /// so the value is inside `[0, 255]` — where the whole part and the remainder are both
+        /// exact, and the two roundings agree bit for bit.
         std::byte encodeByte(float linear)
         {
-            return static_cast<std::byte>(std::lround(toEncoded(linear) * 255.0f));
+            const float value = toEncoded(linear) * 255.0f;
+            const auto whole = static_cast<int>(value);
+
+            return static_cast<std::byte>(value - static_cast<float>(whole) >= 0.5f ? whole + 1 : whole);
         }
     }
 
@@ -213,7 +224,7 @@ namespace Rtx
         assert(!layers.empty() && "a composite of no layers is a chunk with no ground at all");
         assert(extent > 0 && std::has_single_bit(extent) && "a composite extent the chain cannot halve to one texel");
 
-        std::vector<Sampled> grounds;
+        std::vector<Ground> grounds;
         grounds.reserve(layers.size());
         for (const CompositeLayer& layer : layers)
             grounds.push_back(prepare(layer, extent));
@@ -221,27 +232,75 @@ namespace Rtx
         // The sum, in light, one entry a texel of the finest level.
         std::vector<osg::Vec3f> light(std::size_t{ extent } * extent);
 
-        for (std::uint32_t y = 0; y < extent; ++y)
+        // Held across the whole bake, so filling it a row at a time costs no allocation.
+        std::vector<std::uint8_t> covered;
+
+        // **A layer at a time, and a row of it at a time.** Every tap down the V axis — the mask's
+        // row pair, each diffuse level's row pair — belongs to the row rather than to the texel,
+        // and a row a layer is absent from is a row of it with nothing to sum. Walking the stack
+        // outermost is what lets both be answered once instead of a quarter of a million times.
+        //
+        // **The stack has to stay in its own order**, because a float sum is the order it was added
+        // in: this reaches one texel layer by layer, exactly as a loop over the texels would.
+        for (std::size_t index = 0; index < grounds.size(); ++index)
         {
-            const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(extent);
+            const Ground& ground = grounds[index];
 
-            for (std::uint32_t x = 0; x < extent; ++x)
+            // A layer whose diffuse would not decode has nothing but black to weigh, and black at
+            // any weight leaves the sum where it was.
+            if (ground.mFine.isEmpty())
+                continue;
+
+            const CompositeLayer& layer = layers[index];
+
+            // A chunk of one ground type is given no mask at all: there is nothing to blend against.
+            const bool everywhere = layer.mMaskWidth == 0 || layer.mMaskHeight == 0;
+            assert(everywhere || layer.mMask.size() == std::size_t{ layer.mMaskWidth } * layer.mMaskHeight);
+
+            for (std::uint32_t y = 0; y < extent; ++y)
             {
-                const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(extent);
+                const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(extent);
 
-                osg::Vec3f sum;
-                for (std::size_t index = 0; index < layers.size(); ++index)
+                Tap maskDown;
+                if (!everywhere)
                 {
-                    const CompositeLayer& layer = layers[index];
-                    const float showing = maskWeight(layer, u, v);
-                    if (showing <= 0.0f)
+                    maskDown = clampedTap(v * layer.mMaskTransform.y() + layer.mMaskTransform.w(), layer.mMaskHeight);
+                    if (!coveredColumns(layer, maskDown, covered))
                         continue;
+                }
 
-                    const osg::Vec4f& transform = layer.mDiffuseTransform;
-                    const float atU = u * transform.x() + transform.z();
-                    const float atV = v * transform.y() + transform.w();
+                const float atV = v * layer.mDiffuseTransform.y() + layer.mDiffuseTransform.w();
+                const Tap fineDown = wrappedTap(atV, ground.mFine.mHeight);
+                const bool trilinear = ground.mBetween > 0.0f && !ground.mCoarse.isEmpty();
+                const Tap coarseDown = trilinear ? wrappedTap(atV, ground.mCoarse.mHeight) : Tap{};
 
-                    osg::Vec3f colour = sampleLinear(grounds[index], atU, atV);
+                osg::Vec3f* const row = light.data() + std::size_t{ y } * extent;
+
+                for (std::uint32_t x = 0; x < extent; ++x)
+                {
+                    const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(extent);
+
+                    float showing = 1.0f;
+                    if (!everywhere)
+                    {
+                        const Tap maskAcross
+                            = clampedTap(u * layer.mMaskTransform.x() + layer.mMaskTransform.z(), layer.mMaskWidth);
+
+                        if (covered[maskAcross.mFirst] == 0 && covered[maskAcross.mSecond] == 0)
+                            continue;
+
+                        showing = maskWeight(layer, maskAcross, maskDown);
+                        if (showing <= 0.0f)
+                            continue;
+                    }
+
+                    const float atU = u * layer.mDiffuseTransform.x() + layer.mDiffuseTransform.z();
+
+                    osg::Vec3f colour = sampleAt(ground.mFine, wrappedTap(atU, ground.mFine.mWidth), fineDown);
+                    if (trilinear)
+                        colour = colour * (1.0f - ground.mBetween)
+                            + sampleAt(ground.mCoarse, wrappedTap(atU, ground.mCoarse.mWidth), coarseDown)
+                                * ground.mBetween;
 
                     // **The layer's own texel, at the layer's own tiled coordinates.** The estimate
                     // repeats with the texture and this is the last point at which that tiling is
@@ -250,10 +309,8 @@ namespace Rtx
                     if (delight > 0.0f && !layer.mShading.empty())
                         colour /= std::lerp(1.0f, paintedLight(layer.mShading, atU, atV), delight);
 
-                    sum += colour * showing;
+                    row[x] += colour * showing;
                 }
-
-                light[std::size_t{ y } * extent + x] = sum;
             }
         }
 
