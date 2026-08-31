@@ -128,24 +128,11 @@ Most of this lane is closed by measurement rather than by code. The frame thread
 terrain chunks nor is outrun by the thread that does; the harness's synchronous reader is not what
 made a crossing long, since the game preloads on threads and drops the same frame; and the classifier
 that costs the frame cannot be made cheaper in place — a hierarchy over it was counted and lost, and
-neither of its constants binds. §2 carries every number. **What is left is one call — the arrival
-handed to the device. Nine tenths of what that call *builds* is classifying opacity micromaps, and
-they are worth 1.3% of the trace.**
+neither of its constants binds. §2 carries every number.
 
-- **A2. Take the micromap classification off the frame.** 105 of the 115 ms worst build is it, over
-  443 arriving meshes — and §2 prices what it buys at 1.3% of the trace. **A term worth 1.3% has no
-  business costing a fifth of a second on the frame a player crosses a cell on**, and the preamble
-  above says why no amount of making it faster settles that. What is left is when it runs. Two
-  shapes, and the second is the tree's own precedent:
-  (a) classify a bounded number a frame; (b) a thread of its own, the way `CompositeQueue` moved the
-  composite bake, with the frame collecting what is finished.
-  **Neither is free.** A bottom-level structure names its micromap when it is *built*, so a mesh
-  that arrives without one and gets it later has to be built again — 2.2 ms for 443 meshes, cheap,
-  but it is a second build and it has to be bounded too. Quality cost: none — a mesh tracing without
-  a micromap draws the same picture and only asks the alpha test more often, and §2 prices the whole
-  suite's worth of that at 1.3% of the trace. Gate: `scene build` and `place ms` worst in the game,
-  with the suite trace held. **The unit to bound is meshes, not bytes** — the texture uploads beside
-  them are 7 ms.
+**The largest term left is the micromap classification, and it is deferred** — nine tenths of what
+an arrival *builds*, and §4 says what is to be done about it and why it waits.
+
 - **A7. Do not wait out a frame to place an arrival.** `finishFrames` cost 23.0 and 18.0 ms on two
   of eighteen crossings. It is there because an arrival writes every copy of the tables; a copy the
   arrival could write into instead would cost the wait nothing. Gate: the draining figure in
@@ -218,7 +205,39 @@ Hidden under the GPU today; it is the 1% low and the power bill, and it grows wi
 
 ### Order of attack
 
-A2 first — A5 says the crossing spike is this fork's, A2 is most of it, and §2 has settled what the
-term it moves is worth. Then B1+B2 (cheap, measured, ~1.5 ms at the budget hour), then B3
+A7 first — it is what is left of the crossing that is not deferred, and 23 ms of a dropped frame
+for a wait that need not happen. Then B1+B2 (cheap, measured, ~1.5 ms at the budget hour), then B3
 (the interior's 7.7 is the worst median in the table). D1/D2 whenever touching that file. E after
-B, starting at E0. A6 and C parked.
+B, starting at E0. A6 and C parked, and A2 last — §4.
+
+## 4 Deferred — the micromap classification
+
+**A2. Take the micromap classification off the frame.** 92.5 ms of the worst crossing build is it,
+over 443 arriving meshes, against 2.4 ms for the structures beside them. §2 prices what it buys at
+1.3% of the trace over thirteen places.
+
+**Deferred deliberately, and not because it is small.** A term worth 1.3% has no business costing a
+tenth of a second on the frame a player crosses a cell on, so this is a real item — but every way of
+making the classifier itself cheaper is now closed by measurement, which leaves only moving it, and
+moving it is the most invasive change in the plan. Everything ahead of it is cheaper to do and
+cheaper to be wrong about.
+
+What it would take, and the second shape is the tree's own precedent:
+
+- classify a bounded number of arriving meshes a frame, and let the rest wait;
+- or a thread of its own, the way `CompositeQueue` moved the composite bake, with the frame
+  collecting what is finished.
+
+**Neither is free.** A bottom-level structure names its micromap when it is *built*, so a mesh that
+arrives without one and gains it later has to be built again — 2.4 ms for 443 meshes, cheap, but it
+is a second build and it has to be bounded too. Quality cost: none — a mesh tracing without a
+micromap draws the same picture and only asks the alpha test more often.
+
+**The unit to bound is meshes, not bytes**: the texture uploads beside them are 7 ms.
+
+**And settle the cut while you are here.** `Micromap::sTexelsPerMicrotriangle` is justified in its
+own comment by the claim that a finer cut resolves nothing. The tally says 94% comes back unknown
+*at* the cut it already has, so the constant is arguing from something the measurement does not
+support, and whatever A2 does to the schedule should not leave that unexamined.
+
+Gate: `scene build` and `place ms` worst in the game, with the suite trace held at what §2 records.
