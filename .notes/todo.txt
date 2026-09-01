@@ -18,3 +18,4 @@
 - micromaps
 - normal interpolation bug?
 - fog under the water surface
+- load time allocations
