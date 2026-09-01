@@ -1,5 +1,10 @@
 # Open issues
 
+- Closing an `openmw-rtxtool view` window can abort instead of exiting. `~VulkanRenderer` calls
+  `mDevice.waitIdle()` at vulkanrenderer.cpp:210, `checkVk` throws on the result, and a destructor
+  that throws reaches `std::terminate` — so whatever the device reported is replaced by signal 6 and
+  never printed. Seen once on `view --view=sadrith-mora` after a few seconds in the window.
+
 - Opacity micromaps cost a cell crossing 340 ms and return no measurable trace time. Interleaved
   `bench --suite=exteriors`, three runs each way, comparing the median trace against the same binary
   with `buildMicromaps` returning at once: seyda-neen-ship +1.0%, seyda-neen-shore +1.1%, balmora
