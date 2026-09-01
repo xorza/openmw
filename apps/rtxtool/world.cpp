@@ -7,6 +7,7 @@
 #include <components/sceneutil/shadow.hpp>
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
+#include <components/surface/material.hpp>
 #include <components/terrain/chunkmanager.hpp>
 #include <components/terrain/objectpaging.hpp>
 #include <components/terrain/quadtreeworld.hpp>
@@ -18,15 +19,16 @@ namespace RtxTool
 {
     namespace
     {
-        /// Nothing here is drawn, so caching a resource past its last use only costs memory.
-        constexpr double sExpiryDelay = 0;
-
-        /// What the shader visitor is told a GPU offers.
+        /// How long a resource outlives its last use, which is the game's own number.
         ///
-        /// It runs on every model OpenMW loads and needs a number to fit texture slots into. Without
-        /// a context there is nothing to ask, and the value only decides how many slots it is willing
-        /// to use — the roles it labels them with, which is what this tool reads, are the same.
-        constexpr int sAssumedTextureUnits = 32;
+        /// **Not nought, and the crossing line is why.** A route bench walks back into cells it has
+        /// just left, and a cache that expired on the frame a mesh stopped being named re-read from
+        /// the archive what the game would still have been holding — so the `reading` half of a
+        /// crossing was inflated by exactly what the cache was there to keep.
+        double expiryDelay()
+        {
+            return Settings::cells().mCacheExpiryDelay;
+        }
 
         /// The defines every shader template expects to have been told before it can be assembled.
         ///
@@ -53,7 +55,7 @@ namespace RtxTool
     World::World(const Content& content)
         : mContent(content)
         , mResourceSystem(std::make_unique<Resource::ResourceSystem>(
-              &content.getVfs(), sExpiryDelay, &content.getStatelessEncoder()))
+              &content.getVfs(), expiryDelay(), &content.getStatelessEncoder()))
     {
         Resource::SceneManager& sceneManager = *mResourceSystem->getSceneManager();
 
@@ -62,7 +64,7 @@ namespace RtxTool
         // the tool needs it to run — and it throws when a program will not build, which takes the
         // whole model down with it. Nothing here will ever be compiled by a driver.
         sceneManager.setShaderPath(content.getResourcePath() / "shaders");
-        sceneManager.getShaderManager().setMaxTextureUnits(sAssumedTextureUnits);
+        sceneManager.getShaderManager().setMaxTextureUnits(Surface::sAssumedTextureUnits);
         // Taken by non-const reference: the shader manager reserves the right to add to it.
         Shader::ShaderManager::DefineMap globalDefines = makeGlobalDefines(*mResourceSystem);
         sceneManager.getShaderManager().setGlobalDefines(globalDefines);
@@ -110,7 +112,7 @@ namespace RtxTool
                         mTerrainStorage.get(), ~0u, ~0u, ~0u, Settings::terrain().mCompositeMapResolution,
                         Terrain::sNoCompositeMap, Settings::terrain().mLodFactor, Settings::terrain().mVertexLodMod,
                         Settings::terrain().mMaxCompositeGeometrySize, false, ESM::Cell::sDefaultWorldspaceId,
-                        sExpiryDelay);
+                        expiryDelay());
 
                 // **The chunk managers the game registers, from the setting the game reads.** A
                 // quad tree asks every one of them for its chunk and adds what comes back, so a
@@ -142,7 +144,7 @@ namespace RtxTool
             }
             else
                 mTerrain = std::make_unique<Terrain::TerrainGrid>(mTerrainParent, mCompileRoot, mResourceSystem.get(),
-                    mTerrainStorage.get(), ~0u, ESM::Cell::sDefaultWorldspaceId, sExpiryDelay);
+                    mTerrainStorage.get(), ~0u, ESM::Cell::sDefaultWorldspaceId, expiryDelay());
 
             // `viewing distance` unless something asked for more, which is smaller than a cell and
             // so is the whole of why nothing outside the active grid exists until it is raised.

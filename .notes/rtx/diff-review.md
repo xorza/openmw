@@ -31,13 +31,6 @@ The walk itself belongs to `cpu.md` §D and is not repeated. These are the redes
   need to answer `cpu.md` §C's "narrow to actors in view" question — off-view actors become nearly
   free, and shadows and reflections keep them.
 
-- [ ] **`SceneDesc::release` leaks the layer runs and the mask runs of a freed material.** The
-  header says so itself ("a freed material leaks its run until the scene is replaced outright").
-  A terrain chunk's masks are tens of kilobytes, and a long session in one worldspace never calls
-  `clear` — a player can cross the whole continent through one `SceneDesc`. Give the two runs back
-  when the sweep frees the material that owns them, the way the material already gives back its
-  textures.
-
 ## The harness and the game measure two slightly different frames
 
 What already converges, so nobody checks it twice. Both hosts meet at `Rtx::describeWorld` /
@@ -58,24 +51,6 @@ derivation written twice.
   view. Give both spines one order (the tool's split is the readable one) and one shared
   measuring helper beside `Rtx::FrameSamples`, so the next drift cannot appear without being
   written down.
-
-- [ ] **The game retires every frame and the tool only on a crossing.** `rtxrenderer.cpp:707`
-  sweeps each frame; `stagedworld.cpp:301-304` sweeps only when cells departed. `cpu.md` B4
-  prices the per-frame sweep at 1.9% of the profile, so every tool frame under-costs the game's
-  by that much. Give the tool the game's cadence — it walks the whole world every frame already,
-  which is the precondition `retire` names.
-
-- [ ] **Three far planes for one world.** The game traces every frame at `sFar = 200000`
-  (`rtxrenderer.cpp:98`); the tool's `shot` takes eight scene radii (`shot.cpp:86`) and `bench`
-  and `view` floor that at ten thousand (`bench.cpp:254`) — `Framing::mFar` records the drift as
-  "undecided". `mFar` is not only cost: it is the sun's shadow-ray reach, the unbounded water
-  path and the depth encode. Move the game's constant into `components/rtx` beside the camera
-  builders, take it everywhere, and delete the field's "undecided" note.
-
-- [ ] **The tool's resource cache expires at nought.** `world.cpp:22` sets `sExpiryDelay = 0`
-  where the game runs `Settings::cells().mCacheExpiryDelay`. A route bench's crossings then
-  re-read meshes the game would still hold, and the `reading` half of the crossing line is
-  inflated by exactly what the cache would have kept. Use the setting.
 
 - [ ] **Active-grid statics are merged in the game and individual in the tool.** The game passes
   `Settings::terrain().mObjectPagingActiveGrid` — default on — so its near statics live in paged,
@@ -101,10 +76,6 @@ derivation written twice.
   the record-level resolution (slots, bones, part selection) as a component both feed their own
   equipment state into. Until then, a change to how the game dresses a person walks past the
   harness unnoticed.
-
-- [ ] **The texture-unit stand-in `32` is written twice.** `rtxrenderer.cpp:133` and the tool's
-  `world.cpp:29` each carry the constant with a comment pointing at the other. One name in
-  `components/rtx`, two deletions.
 
 ## One fact, two derivations
 

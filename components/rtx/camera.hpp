@@ -10,6 +10,15 @@
 
 namespace Rtx
 {
+    /// Far enough to cross any cell. A primary ray that reaches this has left the world.
+    ///
+    /// **One number for every camera in the fork, because it is not only a cost.** It is the sun's
+    /// shadow-ray reach, the distance an unbounded water path is written off at, and what the depth
+    /// buffer encodes against — so a harness that traced to a different one measured a different
+    /// frame from the game and could not be read against it. The largest exterior view in the game
+    /// is a few tens of thousands of units, which this clears by an order of magnitude.
+    constexpr float sFarPlane = 200000.0f;
+
     /// Constants for a pinhole camera at `origin` looking `along`, which need not be a unit vector.
     ///
     /// The world's up is +Z, as Morrowind has it. A camera with no direction to look along, or one

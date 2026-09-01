@@ -40,8 +40,20 @@ namespace RtxTool
         {
             Framing framing = Framing::lookingFrom(makePlacement());
             framing.mFieldOfView = 60.0f;
-            framing.mFar = 200000.0f;
             return framing;
+        }
+
+        /// Every command traces to the plane the game traces to.
+        ///
+        /// **The one number a caller must not fit to its own scene.** `shot` sized it from the scene
+        /// radius and `bench` floored that at ten thousand units, so a screenshot of an interior saw
+        /// less far than a measurement of the same room — and the far plane is the sun's shadow-ray
+        /// reach and the depth encode as well as a cost. Asserted against `Rtx::sFarPlane` rather
+        /// than against a literal, because a literal here is the second copy that started it.
+        TEST(RtxFramingTest, everyFramingTracesToTheGamesOwnFarPlane)
+        {
+            EXPECT_EQ(Framing{}.mFar, Rtx::sFarPlane);
+            EXPECT_EQ(makeFrameConstants(makeFraming(), sExtents).mFar, Rtx::sFarPlane);
         }
 
         /// Two points and their difference name the same camera.

@@ -140,7 +140,6 @@ namespace RtxTool
 
             Framing framing = Framing::lookingFrom(staged.getPlacement());
             framing.mFieldOfView = request.mFrame.mFieldOfView;
-            framing.mFar = std::max(staged.getScene().getBounds().radius() * 8.0f, 10000.0f);
             framing.mLighting = staged.getLighting();
             framing.mDelight = request.mFrame.mDelight;
 

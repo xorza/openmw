@@ -80,10 +80,6 @@ namespace RtxTool
         Framing framing = Framing::lookingFrom(placement);
         framing.mFieldOfView = request.mFrame.mFieldOfView;
 
-        // Far enough to cross any cell: the largest exterior view in the game is a few tens of
-        // thousands of units, and a primary ray that reaches this has left the world. No floor under
-        // it here, unlike `bench` and `view` — see `Framing::mFar`.
-        framing.mFar = bounds.radius() * 8.0f;
         framing.mLighting = request.mLighting;
         framing.mDelight = request.mFrame.mDelight;
         framing.mShowAlbedo = request.mShowAlbedo;

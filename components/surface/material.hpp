@@ -159,6 +159,15 @@ namespace Surface
         bool operator==(const Material& other) const = default;
     };
 
+    /// What the shader visitor is told a GPU offers, for a host that has no GL context to ask.
+    ///
+    /// **A stand-in and not a capability.** The visitor runs on every model OpenMW loads and needs a
+    /// number to fit texture slots into. The value decides only how many slots it is willing to use;
+    /// the roles it labels them with, which is the whole of what a described surface carries, are the
+    /// same for any number this large. It sits beside `describeSurfaces` because the two are set
+    /// together, by every host that reads surfaces rather than draws them.
+    constexpr int sAssumedTextureUnits = 32;
+
     /// Whether anything in this process will read what a surface is, decided once before any content
     /// is loaded.
     ///

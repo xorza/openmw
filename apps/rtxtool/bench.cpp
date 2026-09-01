@@ -251,8 +251,6 @@ namespace RtxTool
         uploader.hand(renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
         const double buildMs = std::chrono::duration<double, std::milli>(Clock::now() - buildStart).count();
 
-        const float far = std::max(staged.getScene().getBounds().radius() * 8.0f, 10000.0f);
-
         samples.clear();
 
         Crossings crossings;
@@ -366,7 +364,6 @@ namespace RtxTool
 
             Framing framing = Framing::lookingFrom(standing);
             framing.mFieldOfView = run.mRequest.mFrame.mFieldOfView;
-            framing.mFar = far;
             framing.mDelight = run.mRequest.mFrame.mDelight;
 
             framing.mLighting = staged.getLighting();

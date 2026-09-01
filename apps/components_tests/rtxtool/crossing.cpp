@@ -230,6 +230,11 @@ namespace RtxTool
         /// A walk that leaves the scene where it was is the whole property: emptied and refilled on
         /// the same cadence, so a light counted twice per walk or one nothing put back both show up
         /// as a count that moves.
+        ///
+        /// **The sweep runs on every one of those walks now, and the geometry count is what says it
+        /// takes nothing.** It used to run only where a crossing had departed cells, which under-cost
+        /// every other frame against the game's; a sweep on a still frame that freed a live mesh
+        /// would leave a hole nothing refills, because nothing arrived to fill it.
         TEST_F(RtxCrossingTest, walkingEveryFrameLeavesTheSceneWhereItWas)
         {
             const ESM::Cell* from = getContent().findCell(sFrom);
@@ -245,15 +250,28 @@ namespace RtxTool
             ASSERT_EQ(staged.getActorCount(), std::size_t{ 0 });
             ASSERT_NE(staged.getMotion(), nullptr) << "a still world is walked every frame too";
 
+            // A freed slot keeps its index and its room, so the table's own size never falls and
+            // only the entries that still describe geometry can say what the sweep took.
+            const auto liveMeshes = [&] {
+                std::size_t found = 0;
+                for (const Rtx::MeshRange& mesh : staged.getScene().getMeshes())
+                    if (mesh.mVertexCount > 0)
+                        ++found;
+                return found;
+            };
+
             const std::size_t lights = staged.getScene().getLights().size();
             const std::size_t placed = staged.getScene().getPlacedCount();
+            const std::size_t meshes = liveMeshes();
             ASSERT_GT(lights, std::size_t{ 0 }) << "nothing to notice going missing";
+            ASSERT_GT(meshes, std::size_t{ 0 }) << "nothing for a sweep to take";
 
             for (std::uint32_t frame = 1; frame <= 4; ++frame)
             {
                 EXPECT_TRUE(staged.getMotion()->step(frame)) << "a walk always has to be handed over";
                 EXPECT_EQ(staged.getScene().getLights().size(), lights) << "at frame " << frame;
                 EXPECT_EQ(staged.getScene().getPlacedCount(), placed) << "at frame " << frame;
+                EXPECT_EQ(liveMeshes(), meshes) << "the frame's own sweep took geometry at frame " << frame;
             }
         }
 

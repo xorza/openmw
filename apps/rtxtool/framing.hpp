@@ -4,6 +4,7 @@
 
 #include <osg/Vec3f>
 
+#include <components/rtx/camera.hpp>
 #include <components/rtx/shaders/visibility.h>
 
 #include "lighting.hpp"
@@ -34,13 +35,13 @@ namespace RtxTool
     ///
     /// **One struct because the three commands that trace a frame had each grown their own block of
     /// assignments, and the blocks had drifted.** `shot` and `view` honoured `--albedo` and `bench`
-    /// did not; `bench` and `view` advanced the water and `shot` did not; `shot`'s far plane had no
-    /// floor under it and the other two had one at ten thousand units. Three separate blocks, and
-    /// nothing in any of them said which differences were decisions and which were omissions.
+    /// did not; `bench` and `view` advanced the water and `shot` did not; each of the three carried
+    /// a far plane of its own. Three separate blocks, and nothing in any of them said which
+    /// differences were decisions and which were omissions.
     ///
-    /// They are all still exactly as they were — this changes no frame. What it changes is that each
-    /// disagreement is now a field somebody fills in, in one place, where the next one cannot appear
-    /// without being written down.
+    /// What is left of them is a field somebody fills in, in one place, where the next disagreement
+    /// cannot appear without being written down. The far plane is settled here rather than by a
+    /// caller — `mFar` says why.
     struct Framing
     {
         osg::Vec3f mOrigin;
@@ -55,12 +56,13 @@ namespace RtxTool
 
         float mFieldOfView = 90.0f;
 
-        /// Far enough to cross the scene. A primary ray that reaches this has left the world.
+        /// Far enough to cross the world, which is the game's own plane and not a fit to the scene.
         ///
-        /// **Undecided:** `bench` and `view` hold this at no less than ten thousand units and `shot`
-        /// takes eight times the scene's radius whatever that comes to, so a screenshot of a small
-        /// interior sees less far than a measurement of it.
-        float mFar = 0.0f;
+        /// **Every command traces to the same distance now, because the distance is not only a
+        /// cost.** It is the sun's shadow-ray reach, the unbounded water path and the depth encode,
+        /// so a `shot` fitted to eight scene radii and a `bench` floored at ten thousand units
+        /// answered different questions about the same place. `Rtx::sFarPlane` says the rest.
+        float mFar = Rtx::sFarPlane;
 
         CellLighting mLighting;
 

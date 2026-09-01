@@ -638,8 +638,10 @@ namespace Rtx
         /// sprite. Sweeping them instead meant asking on the frames a mesh or a material happened to
         /// die as well, and a texture that stopped being named on any other frame was never noticed.
         ///
-        /// Layers and masks have no keep set either: they belong to the material that owns them, and
-        /// a freed material leaks its run until the scene is replaced outright.
+        /// Layers and masks have no keep set either: they belong to the material that owns them, so
+        /// a freed material hands both runs back to their allocators on its way out. A terrain
+        /// chunk's masks are tens of kilobytes and a player can cross the whole continent through
+        /// one `SceneDesc`, so leaving them until `clear` was a session-long growth.
         ///
         /// **Placements do not go**, and they no longer have to be carried anywhere either: a slot
         /// is a name, and what it names has stopped moving.

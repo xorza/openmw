@@ -194,7 +194,19 @@ namespace RtxTool
         // and swept with everything the graph does hold.** What it follows was set when the terrain
         // was built; it is not passed here, because the actors' own stepper walks this same root and
         // an argument only one of the two remembered is what left a town standing on open sea.
-        return mExtractor.extractWorld(*mRoot, osg::Matrixf::identity(), 0, frame);
+        const Rtx::ExtractionStats found = mExtractor.extractWorld(*mRoot, osg::Matrixf::identity(), 0, frame);
+
+        // **After the walk and on every one of them, which is the game's cadence.** The walk above
+        // was the whole world, which is the precondition the sweep names, so this is sound wherever
+        // a mirror is. Swept only at a crossing, the harness under-costed every other frame by what
+        // `RtxRenderer::renderFrame` pays for the mark and the sweep on all of them —
+        // `.notes/rtx/cpu.md` B4 prices that at 1.9% of the profile.
+        //
+        // `PosedActors::advanceTo` carries the same call for the frames it walks instead of this
+        // one, so a frame is swept once whichever of the two stepped it.
+        mExtractor.retire();
+
+        return found;
     }
 
     Placement StagedWorld::frame(const ESM::Cell& cell, const StagingRequest& request) const
@@ -296,12 +308,9 @@ namespace RtxTool
         const Crossing crossed{ .mArrived = arrived.mCells,
             .mDeparted = dropCellsOutside(*mWorld, *cell, *mRoot, mLoaded) };
 
-        // Built, then walked, which is the split the game has too. The walk is also what tells the
-        // sweep below that the departed cells are no longer met.
+        // Built, then walked, which is the split the game has too. The walk is also what tells its
+        // own sweep that the departed cells are no longer met.
         mirror(0);
-
-        if (crossed.mDeparted > 0)
-            mExtractor.retire();
 
         if (mPosed == nullptr)
             return crossed;

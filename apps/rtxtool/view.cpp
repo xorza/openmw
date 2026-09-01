@@ -173,8 +173,6 @@ namespace RtxTool
         FlyCamera camera;
         camera.look(start.mOrigin, start.mTarget);
 
-        const float far = std::max(staged.getScene().getBounds().radius() * 8.0f, 10000.0f);
-
         /// How long a weather takes to become the next one, in real seconds.
         constexpr float sTransitionSeconds = 4.0f;
 
@@ -459,7 +457,6 @@ namespace RtxTool
             framing.mOrigin = camera.getOrigin();
             framing.mForward = camera.getForward();
             framing.mFieldOfView = request.mFrame.mFieldOfView;
-            framing.mFar = far;
             framing.mDelight = request.mFrame.mDelight;
             framing.mShowAlbedo = request.mShowAlbedo;
 

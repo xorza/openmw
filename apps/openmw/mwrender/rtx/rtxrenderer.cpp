@@ -94,9 +94,6 @@ namespace MWRender
 
     namespace
     {
-        /// Far enough to cross any cell. A primary ray that reaches this has left the world.
-        constexpr float sFar = 200000.0f;
-
         /// A quarter of a Morrowind foot. Nothing is clipped against it — see `mNear` — so it only
         /// has to be nearer than anything the eye can find itself inside of.
         constexpr float sNear = 1.0f;
@@ -125,12 +122,9 @@ namespace MWRender
         // every state set as it is built — so nothing else in the process pays for it.
         Surface::describeSurfaces(true);
 
-        // **What the shader visitor is told a GPU offers.** It runs on every model OpenMW loads
-        // and needs a number to fit texture slots into; without a GL context there is nothing to
-        // ask. The value only decides how many slots it is willing to use — the roles it labels
-        // them with, which is all this renderer reads, are the same either way. The harness has
-        // assumed the same number since M0.
-        mMaxTextureUnits = 32;
+        // **The stand-in, because there is no GL context to ask.** `Surface::sAssumedTextureUnits`
+        // says what it is for, and the harness reads the same name.
+        mMaxTextureUnits = Surface::sAssumedTextureUnits;
 
         mFrameStamp->setFrameNumber(0);
         mFrameStamp->setReferenceTime(0.0);
@@ -766,8 +760,8 @@ namespace MWRender
         std::optional<Rtx::Shaders::VisibilityConstants> viewpoint;
         try
         {
-            viewpoint = Rtx::makeCameraFromView(
-                camera.getViewMatrix(), world.mFieldOfView, extents.mRenderWidth, extents.mRenderHeight, sNear, sFar);
+            viewpoint = Rtx::makeCameraFromView(camera.getViewMatrix(), world.mFieldOfView, extents.mRenderWidth,
+                extents.mRenderHeight, sNear, Rtx::sFarPlane);
         }
         catch (const Rtx::Error& what)
         {
