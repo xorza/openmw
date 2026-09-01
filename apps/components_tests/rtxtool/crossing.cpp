@@ -231,10 +231,9 @@ namespace RtxTool
         /// the same cadence, so a light counted twice per walk or one nothing put back both show up
         /// as a count that moves.
         ///
-        /// **The sweep runs on every one of those walks now, and the geometry count is what says it
-        /// takes nothing.** It used to run only where a crossing had departed cells, which under-cost
-        /// every other frame against the game's; a sweep on a still frame that freed a live mesh
-        /// would leave a hole nothing refills, because nothing arrived to fill it.
+        /// **Each of those walks ends in a sweep, and the geometry count is what says it takes
+        /// nothing.** A sweep on a still frame that freed a live mesh leaves a hole nothing refills,
+        /// because nothing arrived to fill it.
         TEST_F(RtxCrossingTest, walkingEveryFrameLeavesTheSceneWhereItWas)
         {
             const ESM::Cell* from = getContent().findCell(sFrom);

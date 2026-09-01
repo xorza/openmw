@@ -79,7 +79,6 @@ namespace RtxTool
 
         Framing framing = Framing::lookingFrom(placement);
         framing.mFieldOfView = request.mFrame.mFieldOfView;
-
         framing.mLighting = request.mLighting;
         framing.mDelight = request.mFrame.mDelight;
         framing.mShowAlbedo = request.mShowAlbedo;

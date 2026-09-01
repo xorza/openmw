@@ -122,8 +122,7 @@ namespace MWRender
         // every state set as it is built — so nothing else in the process pays for it.
         Surface::describeSurfaces(true);
 
-        // **The stand-in, because there is no GL context to ask.** `Surface::sAssumedTextureUnits`
-        // says what it is for, and the harness reads the same name.
+        // **One name with the harness, because neither host has a GL context to ask.**
         mMaxTextureUnits = Surface::sAssumedTextureUnits;
 
         mFrameStamp->setFrameNumber(0);

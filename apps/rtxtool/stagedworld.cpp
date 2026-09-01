@@ -196,14 +196,14 @@ namespace RtxTool
         // an argument only one of the two remembered is what left a town standing on open sea.
         const Rtx::ExtractionStats found = mExtractor.extractWorld(*mRoot, osg::Matrixf::identity(), 0, frame);
 
-        // **After the walk and on every one of them, which is the game's cadence.** The walk above
-        // was the whole world, which is the precondition the sweep names, so this is sound wherever
-        // a mirror is. Swept only at a crossing, the harness under-costed every other frame by what
-        // `RtxRenderer::renderFrame` pays for the mark and the sweep on all of them —
-        // `.notes/rtx/cpu.md` B4 prices that at 1.9% of the profile.
+        // **After the walk and on every one of them, which is the cadence `RtxRenderer::renderFrame`
+        // runs at.** The walk above was the whole world, which is the precondition the sweep names,
+        // so this is sound wherever a mirror is — and a harness that swept only at a crossing
+        // under-costed every frame between two of them.
         //
         // `PosedActors::advanceTo` carries the same call for the frames it walks instead of this
-        // one, so a frame is swept once whichever of the two stepped it.
+        // one, so a frame is swept once whichever of the two stepped it. `settle` is not a frame and
+        // is the reason that one sits there rather than beside its own walk.
         mExtractor.retire();
 
         return found;

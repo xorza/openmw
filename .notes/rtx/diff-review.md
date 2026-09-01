@@ -55,7 +55,7 @@ derivation written twice.
 - [ ] **Active-grid statics are merged in the game and individual in the tool.** The game passes
   `Settings::terrain().mObjectPagingActiveGrid` — default on — so its near statics live in paged,
   merged chunks and `getPagedRefnums` keeps them from being placed twice. The tool pins the flag
-  false (`world.cpp:131`), because it has no `Scene` to ask. Same place, different instance
+  false (`world.cpp:133`), because it has no `Scene` to ask. Same place, different instance
   counts and different structures. Either bench with the game setting off, or record the
   difference beside every A/B that crosses the two hosts.
 
