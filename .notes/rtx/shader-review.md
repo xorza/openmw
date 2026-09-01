@@ -43,10 +43,11 @@ this number — is the wrong one.
 
 **Two costs, and neither is cell loading.** Crossings are counted separately by the bench.
 
-**A1a. The walk is 27% of Vivec's CPU, and most of it concludes that nothing moved.**
-`MirrorTraversal::apply(osg::Transform&)` carries 27.5% of the profile, with `osg::Group::traverse`
-at 7.8% self, `RigGeometry::cull` at 5.8%, `addDrawable` at 2.6% and `resolveMesh` at 2.1%. Holding
-the residents still (`--people=0`) takes the walk from 5.42 ms to 3.28.
+**A1a. The walk is a third of Vivec's frame, and most of it concludes that nothing moved.**
+`SceneExtractor::walk` carries 32.2% of the frame and `MirrorTraversal::apply(osg::Transform&)`
+30.0%. Self: `osg::Group::traverse` 7.3%, `RigGeometry::cull` 5.7%, `addDrawable` 2.8%,
+`resolveMesh` 2.6%. Holding the residents still (`--people=0`) takes the walk from 5.42 ms to 3.28,
+so the actors are two fifths of it and a subtree fast path is bidding for the other three.
 
 **The incremental design already works at the level it was built for**, which is content:
 `ExtractionStats::mMeshesReused` counts the per-drawable lookups succeeding, and nothing is
@@ -60,21 +61,22 @@ so a subtree skipped wholesale is a subtree retired wholesale. Whatever skips a 
 stamp its placements at the same time, and `mPlacementsReached` has to agree — that is the design,
 and it is what makes this a commit of its own rather than an early return.
 
-**A1b. The emitters are a sixth of Vivec's CPU on the host, and 24 of them are the whole of it.**
-Not the trace and not the walk. Self time on `build-release`, `bench --views=vivec --seconds=8`:
-`layDown` 10.79%, `SpriteTiles::rebuild` 5.40%, the sprite sort 1.01%, `readAt` 0.64% and
-`shadeToward` 0.34% — 18% of the profile, for 24 emitters holding 2,328 live particles.
+**A1b. The emitters are a third of Vivec's frame, and 24 of them are the whole of it.**
+Not the trace and not the walk: `SceneBuffers::binSprites` carries 32.1% of the frame, which is
+almost the whole of `renderFrame`'s 32.7%. Self, over `profile.sh --view=vivec --seconds=8`:
+`layDown` 17.7%, `SpriteTiles::rebuild` 8.2%, the sprite sort 1.5%, `ballPixels` 1.3% and `readAt`
+1.1% — for 24 emitters holding 2,328 live particles.
 
 `SpriteShade` splats one antialiased disc per sprite per light into a 32×32 grid — 4,656 discs a
 frame, 2,328 particles against two lights. **`layDown` is now at its exact floor and the ring is
 what is left.** The row is walked as a ramp, a run the disc covers whole and a ramp again, and only
-the ramps work a distance out. Measured interleaved against a build without it, that took the
-function from 11.65% of Vivec's profile to 10.45% — about a tenth of it — and left the run out of
-the line report altogether. What stands there instead is one line: `spriteshade.cpp:171`, the ramp's
-square root, at **5.11% and the hottest line in the frame**. A disc of radius `r` cells has `2πr`
-cells on its ramp against `π(r − ½)²` in its run, so the ramp is a third of a big disc and most of a
-small one, and there is no exact way to spend less than one square root on a cell whose coverage is
-a fraction.
+the ramps work a distance out. Two bounded profiles each side put the function at 18.5% and 18.6%
+without it against 17.4% and 17.7% with — **one point of the frame, about a twentieth of the
+function**, and the run is out of the line report altogether. What stands there instead is one line:
+the ramp's square root, at **8.4% and the hottest line in the frame**. A disc of radius `r` cells
+has `2πr` cells on its ramp against `π(r − ½)²` in its run, so the ramp is a third of a big disc and
+most of a small one, and there is no exact way to spend less than one square root on a cell whose
+coverage is a fraction.
 
 **So the two that are left both cost a picture or a commit.** A coarser `sLargestInCells` is
 straight quality and belongs in section G if anybody wants it. Asking whether a column's layer count
@@ -82,11 +84,22 @@ has to be recomputed from nothing every frame is the real answer and it is a des
 grid is thrown away and rebuilt per emitter per light, and nothing carries between frames.
 
 **`SpriteTiles::rebuild` is the scatter and not the per-tile arrays.** The offsets are 8,160 entries
-cleared, prefix-summed and written every frame, and all of that measures under one per cent
-together. What costs is filling the index table: `spritetiles.cpp:288` — one scattered write per
-sprite per tile it covers — is 2.80%, and the tile loop above it another 1.9%. `capsuleTiles` does
-not reach 0.25%, so working the rectangle out twice rather than keeping one per sprite is free and
-the comment that says so is right. `SPRITE_TILE` is the dial and it is measured: see `scene.h`.
+cleared, prefix-summed and written every frame, and none of that reaches the line report. What costs
+is filling the index table: `spritetiles.cpp:288` — one scattered write per sprite per tile it
+covers — is 4.0%, and the tile loop above it another 1.8%. `ballPixels` is 1.3%, which is the
+rectangle worked out twice: the walk over the sprites happens once to count and once to fill, and
+the second one recomputes what the first knew. Keeping a `TileRect` per sprite in a scratch the
+class already has two siblings of would take half of that back. `SPRITE_TILE` is the dial and it is
+measured: see `scene.h`.
+
+**A1c. A moved placement is written to the device one `memcpy` apiece, and it is 4% of the frame.**
+`memmove` is the third hottest symbol at Vivec, at 4.2% self, and the callers file puts 1.7 of that
+under `SceneUploader::hand` → `placeScene` → `recordPlacement`. `SlotTable::sync` pays a copy's debt
+row by row — `copy.writeAt(at * sizeof(Row), span(&mRows[at], 1))` — so every actor's instance row
+this frame is its own 64-byte call into mapped memory. The rows an actor owns are consecutive, so
+the debt list holds runs; writing a run in one call is the change, and sorting the list is what it
+costs. **Not yet measured against a gut**, which is the first step: return early from the debt loop,
+bench, and see what the whole of it is worth before writing the coalescing.
 
 **For shader work in the meantime, bench with `--people=0`.** Its own help says it is "what a
 profiling run should hold still".
@@ -207,6 +220,14 @@ Ordered by what a step is worth against what it costs to be sure of: the thing t
 frame first, then exact-equivalence cleanups, then the hardware features. Each step is one
 commit-sized change.
 
+**A profile is taken with `profile.sh` and never with a bare `perf record`.** The script bounds the
+recording to the frames the bench measured, through a control fifo. An unbounded one carries the
+process starting, a cell coming off the disk and the renderer being taken down — and the composite
+baker, which runs flat out through a load and is quiet afterwards. Measured both ways on one build
+at Vivec: `layDown` reads **17.7% bounded against 10.8% unbounded**, and `TerrainComposite` reads
+nothing bounded against 4.3%. Every share on this page was re-taken after an unbounded reading put
+a thread that never runs on a measured frame among the hottest symbols in it.
+
 **Measure the ceiling before writing the thing.** Gut the function — return a constant from the
 top of it — build, and bench. That is the most the real change could ever save, for minutes of
 work. It has already ruled out a half-float G-buffer and settled that no sky-disc work is worth
@@ -262,15 +283,19 @@ pair taken an hour apart says nothing. Keep both SPIR-V builds and alternate the
 back to back. Where a change is host-side as well, keep two executables in `build-release` itself —
 the harness reads `defaults.bin` from beside itself and will not run from anywhere else.
 
-1. **A1a** — the subtree fast path in the mirror walk, with the sweep's stamping solved alongside
-   it. 5.4 ms of Vivec's 12.4, and the largest single item on this page.
-2. **A1b's remainder** — whether a column's layer count can carry between frames. The splat itself
-   is done and at its exact floor, and `SpriteTiles` is a scatter nothing cheap reorders, so this is
-   the only part of the emitters' sixth of Vivec's CPU that is still open. A design, not a dial.
-3. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
+1. **A1b's remainder** — the emitters are a third of Vivec's frame and the splat is already at its
+   exact floor, so what is left is whether a column's layer count can carry between frames rather
+   than being rebuilt per emitter per light. A design, not a dial. `SpriteTiles`' half is smaller
+   and has one cheap piece in it: keep the `TileRect` the counting pass worked out.
+2. **A1a** — the subtree fast path in the mirror walk, with the sweep's stamping solved alongside
+   it. The same third of the frame, but the actors own two fifths of it and a fast path cannot have
+   those, so it bids for about 3.3 ms of Vivec's 12.4 against a redesign of how a placement is kept
+   alive.
+3. **A1c** — the placement debt, gut first. Cheapest of the three to find out about.
+4. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
    if the numbers say the übershader loses real occupancy, prototype the pipeline port in the
    harness. Decide on the numbers, not on the guidance alone.
-4. **B6, D3–D5, G6** — hold until a measurement names them: the atrous centre read when anything
+5. **B6, D3–D5, G6** — hold until a measurement names them: the atrous centre read when anything
    runs that pass, the shading-map texture array when the albedo path tops a profile, the
    underwater volume when a submerged `bench` hurts, lamp presampling when a scene outgrows the
    walk, and the composite crossover when the layered path shows in a profile.
