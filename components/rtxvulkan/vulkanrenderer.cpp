@@ -463,7 +463,7 @@ namespace Rtx
         const std::uint32_t slots = slot == sWorld ? sFrameSlots : 1;
 
         held.mAcceleration
-            = std::make_unique<SceneAcceleration>(mDevice, setup, scene, held.mRecords, textures, slots, graveyard);
+            = std::make_unique<SceneAcceleration>(mDevice, setup, scene, held.mRecords, slots, graveyard);
         held.mBuffers = std::make_unique<SceneBuffers>(mDevice, scene, held.mRecords, slots, graveyard);
         held.mTextures = std::make_unique<TextureArray>(
             mDevice, setup, static_cast<std::uint32_t>(scene.getTextures().size()), textures, graveyard);
@@ -495,8 +495,8 @@ namespace Rtx
             readStats(held);
     }
 
-    void VulkanRenderer::extendScene(std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived,
-        std::span<const TextureData> masks, const SeaState& sea)
+    void VulkanRenderer::extendScene(
+        std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
     {
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
@@ -547,7 +547,7 @@ namespace Rtx
         if (scene.getMeshRevision() != held.mBuiltMeshes)
         {
             held.mBuffers->extend(scene, graveyard);
-            held.mAcceleration->extend(setup, scene, masks, timer, graveyard);
+            held.mAcceleration->extend(setup, scene, timer, graveyard);
             held.mBuiltMeshes = scene.getMeshRevision();
         }
 
@@ -683,8 +683,6 @@ namespace Rtx
     {
         mStats.mInstances = held.mAcceleration->getInstanceCount();
         mStats.mCutoutInstances = held.mAcceleration->getCutoutInstanceCount();
-        mStats.mMicromappedInstances = held.mAcceleration->getMicromappedInstanceCount();
-        mStats.mMicromapTally = held.mAcceleration->getMicromapTally();
         mStats.mTableBytes = held.mBuffers->getBytes();
     }
 

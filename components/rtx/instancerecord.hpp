@@ -68,10 +68,9 @@ namespace Rtx
 
         /// Whether traversal must stop and ask the shader how much of a hit there is.
         ///
-        /// **Separate from `mCutout` because a micromap answers one and not the other.** A micromap
-        /// resolves a microtriangle as opaque from the same mask a cutout is tested against, and a
-        /// committed hit is the end of the ray — which is right for a leaf and loses a pane of glass
-        /// entirely. So a translucent instance is forced non-opaque and is given no micromap.
+        /// **Separate from `mCutout` because the question is.** A cutout is asked whether there is
+        /// anything at the hit at all and a translucent surface how much of it there is. Both reach
+        /// the shader the same way, and only the cutout's cost is counted — `placeRow` says why.
         ///
         /// **Two ways to earn it.** The material says a pane of glass is one wherever it is placed.
         /// The placement says an actor the game is fading is one for as long as it fades, whatever

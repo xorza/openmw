@@ -43,10 +43,9 @@ namespace Rtx
     class StructureStorage
     {
     public:
-        /// @param usage what a block is created with. The two things stored this way — bottom-level
-        ///        structures and opacity micromaps — differ in one usage bit and in nothing else:
-        ///        both are opaque objects the driver places at a 256-byte offset in a buffer the
-        ///        application owns.
+        /// @param usage what a block's buffer is created with, which is what says who may be placed
+        ///        in it. What is stored this way is an opaque object the driver puts at a 256-byte
+        ///        offset in a buffer the application owns.
         /// @param name what a block is called in a capture, numbered from there.
         StructureStorage(VkBufferUsageFlags usage, std::string name);
 

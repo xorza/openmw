@@ -43,7 +43,6 @@ namespace Rtx
         /// owns it through a `unique_ptr` and hands that over.
         void bury(std::unique_ptr<Image>&& image);
         void bury(VkAccelerationStructureKHR structure);
-        void bury(VkMicromapEXT micromap);
 
         /// A room in `storage`, given back once nothing can be built or traced in it.
         void bury(StructureStorage& storage, const StructureRoom& room);
@@ -70,7 +69,6 @@ namespace Rtx
         std::vector<Texture> mTextures;
         std::vector<std::unique_ptr<Image>> mImages;
         std::vector<VkAccelerationStructureKHR> mStructures;
-        std::vector<VkMicromapEXT> mMicromaps;
         std::vector<Room> mRooms;
         std::vector<VkCommandBuffer> mCommands;
     };

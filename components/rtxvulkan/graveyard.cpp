@@ -36,12 +36,6 @@ namespace Rtx
             mStructures.push_back(structure);
     }
 
-    void Graveyard::bury(VkMicromapEXT micromap)
-    {
-        if (micromap != VK_NULL_HANDLE)
-            mMicromaps.push_back(micromap);
-    }
-
     void Graveyard::bury(StructureStorage& storage, const StructureRoom& room)
     {
         if (!room.empty())
@@ -68,13 +62,10 @@ namespace Rtx
         // and one given back under a structure still standing is two of them in one place.
         for (const VkAccelerationStructureKHR structure : mStructures)
             functions.mDestroyAccelerationStructure(mDevice.getHandle(), structure, nullptr);
-        for (const VkMicromapEXT micromap : mMicromaps)
-            functions.mDestroyMicromap(mDevice.getHandle(), micromap, nullptr);
         for (const Room& room : mRooms)
             room.mStorage->give(room.mRoom);
 
         mStructures.clear();
-        mMicromaps.clear();
         mRooms.clear();
         mBuffers.clear();
         mTextures.clear();

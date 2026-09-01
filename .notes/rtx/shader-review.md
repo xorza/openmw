@@ -94,22 +94,6 @@ exteriors that dispatch one.
 
 ## D. Architecture candidates — larger, research-backed
 
-**D1. Micromap resolve rate — measure before touching.** Opacity micromaps already ship
-(`components/rtx/micromap.{hpp,cpp}`, `microtriangles.hpp`, `alphabounds.hpp`, attached in
-`sceneacceleration.cpp`), and every cutout instance carries one. What `shot` reports at Seyda
-Neen is **3.14% opaque, 3.07% transparent, 93.79% still asking** — by triangle area, so nearly
-all of the cutout surface still reaches `RTX_RESOLVE` and pays its fetch.
-
-That may be the honest answer rather than a defect. The bake caps at `sSubdivisionCeiling = 5`
-against `sTexelsPerMicrotriangle = 16`, and the header argues both: a finer cut subdivides inside
-the compressor's own gradient and resolves nothing. Morrowind's cutouts are nets, grates and
-small fronds, where the mask boundary genuinely crosses most triangles.
-
-So measure first. Report the tally per mesh on a canopy-heavy camera and ask whether the
-unresolved area concentrates in a few large-triangle meshes — where a finer cut would pay — or
-spreads evenly, where it would not. Only then consider level 6 for the meshes that earn it. This
-is host measurement work, not shader work.
-
 **D2. Shader Execution Reordering — evaluate, do not assume.** The trace is one übershader in
 compute, and NVIDIA's guidance calls that the anti-pattern for divergent shading: ray-query
 compute cannot reorder, while an RT pipeline with SER (`VK_NV/EXT_ray_tracing_invocation_reorder`)
@@ -195,8 +179,7 @@ everything else here.
   shades its whole layer stack — a mask read and a texture fetch per layer, four or five deep —
   where a distant chunk reads one baked composite. `Rtx::sCompositeFrom` is the crossover. Moving
   it nearer trades mid-ground tiling sharpness for one fetch per hit; the right first step is a
-  profile share for the layered path on a terrain-heavy camera, since D1's tally machinery already
-  reports per-mesh numbers.
+  profile share for the layered path on a terrain-heavy camera.
 
 ## E. What the research says this tree already does right
 
@@ -219,7 +202,6 @@ Sources:
 - [Tips and Tricks: Ray Tracing Best Practices](https://developer.nvidia.com/blog/rtx-best-practices/)
 - [Khronos: SER — VK_EXT_ray_tracing_invocation_reorder](https://www.khronos.org/blog/boosting-ray-tracing-performance-with-shader-execution-reordering-introducing-vk-ext-ray-tracing-invocation-reorder)
 - [NVIDIA SER whitepaper](https://d29g4g2dyqv443.cloudfront.net/sites/default/files/akamai/gameworks/ser-whitepaper.pdf)
-- [VK_EXT_opacity_micromap proposal](https://docs.vulkan.org/features/latest/features/proposals/VK_EXT_opacity_micromap.html)
 - [NVIDIA OMM SDK](https://github.com/NVIDIA-RTX/OMM)
 - [NRD — input range and FP16 pipeline](https://github.com/NVIDIA-RTX/NRD)
 - [Rendering Many Lights with Grid-Based Reservoirs (RTG II ch. 23)](https://cwyman.org/papers/rtg2-manyLightReGIR.pdf)
@@ -284,13 +266,11 @@ back to back.
 4. **G2** — water's one-shaded-path draw, judged on moving water at dusk.
 5. **G3** — the ambient rate step, one number against the measurement already in the constant's
    comment.
-6. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
-   anything. Host measurement, no shader change.
-7. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
+6. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
    if the numbers say the übershader loses real occupancy, prototype the pipeline port in the
    harness. Decide on the numbers, not on the guidance alone. Two measurements now argue for it
    rather than one — see the note under D2.
-8. **B6, D3–D5, G6** — hold until a measurement names them: the atrous centre read when anything
+7. **B6, D3–D5, G6** — hold until a measurement names them: the atrous centre read when anything
    runs that pass, the shading-map texture array when the albedo path tops a profile, the
    underwater volume when a submerged `bench` hurts, lamp presampling when a scene outgrows the
    walk, and the composite crossover when the layered path shows in a profile.

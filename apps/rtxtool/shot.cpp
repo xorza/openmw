@@ -152,12 +152,6 @@ namespace RtxTool
         renderer->readPixels(pixels);
         Rtx::writePng(request.mOutput, extents.mOutputWidth, extents.mOutputHeight, pixels);
 
-        // What one verdict covers out of everything the micromaps do, as a percentage — nought for
-        // a scene with no micromap in it rather than a division by the nothing they cover.
-        const Rtx::MicromapTally& tally = stats.mMicromapTally;
-        const double covered = tally.mOpaque + tally.mTransparent + tally.mUnknown;
-        const auto share = [covered](double part) { return covered > 0.0 ? part / covered * 100.0 : 0.0; };
-
         // **The frame a measurement is taken on**, which is not the frame a picture is looked at.
         // Raw floats and no container: what reads this is a script computing an error against
         // another one, and every image format that carries floats would have to be decoded first.
@@ -249,10 +243,7 @@ namespace RtxTool
             << "  looking at " << placement.mTarget.x() << ", " << placement.mTarget.y() << ", "
             << placement.mTarget.z() << '\n'
             << "primary rays that hit: " << fraction << "%\n"
-            << "instances:  " << stats.mInstances << ", of which " << stats.mCutoutInstances << " are cutouts ("
-            << stats.mMicromappedInstances << " micromapped)\n"
-            << "micromaps:  " << share(tally.mOpaque) << "% opaque, " << share(tally.mTransparent) << "% transparent, "
-            << share(tally.mUnknown) << "% still asking\n"
+            << "instances:  " << stats.mInstances << ", of which " << stats.mCutoutInstances << " are cutouts\n"
             << tail << "structures: " << stats.mStructureBytes / 1024 << " KiB\n"
             << "tables:     " << stats.mTableBytes / 1024 << " KiB\n"
             << "textures:   " << stats.mTextureCount << " in " << stats.mTextureBytes / 1024 << " KiB\n"

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -10,10 +9,7 @@
 #include <osg/Vec3f>
 
 #include <components/rtx/instancerecord.hpp>
-#include <components/rtx/micromap.hpp>
-#include <components/rtx/scenemasks.hpp>
 #include <components/rtx/shaders/scene.h>
-#include <components/rtx/texturedata.hpp>
 
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
@@ -37,21 +33,6 @@ namespace Rtx
     /// `toTransform3x4`, once, where a backend cannot get it wrong on its own.
     VkTransformMatrixKHR toVulkanTransform(const Transform3x4& transform);
 
-    /// One mesh's micromap usage counts, kept because two commands are given them.
-    ///
-    /// The micromap build is told how many triangles it holds at each subdivision level, and so is
-    /// the acceleration structure that then references it — and the second of those happens in a
-    /// later call, so the counts cannot be a local of the first.
-    ///
-    /// A fixed array rather than a vector because there are at most `sSubdivisionCeiling + 1` of
-    /// them and a scene is thousands of meshes: a vector apiece is an allocation apiece for
-    /// seventy-odd bytes.
-    struct MicromapUsageCounts
-    {
-        std::array<VkMicromapUsageEXT, Micromap::sSubdivisionCeiling + 1> mCounts{};
-        std::uint32_t mCount = 0;
-    };
-
     /// Every acceleration structure a scene needs, built once.
     ///
     /// One bottom-level structure per mesh, all of them inside a single buffer at offsets, and one
@@ -64,15 +45,11 @@ namespace Rtx
         /// `scene` must place at least one instance: a top-level structure over nothing has no
         /// instance buffer to be built from. `records` are `scene`'s rows, made by the caller for
         /// the reason `place` gives.
-        /// @param textures every image the scene names, which is why this needs no mask list of its
-        ///        own: a build from nothing is handed the whole table, so every cutout's mask is
-        ///        among it by construction. `extend` is handed what arrived and needs one.
         /// @param slots how many frames may be tracing this scene at once — `sFrameSlots` for the
         ///        world, one for a picture inside the interface — which is how many copies there are
         ///        of the rows and of the positions a refit reads.
         SceneAcceleration(const Device& device, Batch& batch, const SceneDesc& scene,
-            std::span<const InstanceRecord> records, std::span<const TextureData> textures, std::uint32_t slots,
-            Graveyard& graveyard);
+            std::span<const InstanceRecord> records, std::uint32_t slots, Graveyard& graveyard);
         ~SceneAcceleration();
 
         SceneAcceleration(const SceneAcceleration&) = delete;
@@ -124,13 +101,10 @@ namespace Rtx
         /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
         /// the positions, and what it replaces goes to `graveyard` all the same.
         ///
-        /// @param masks the cutout masks the arriving meshes wear, which `SceneMasks` opens and
-        ///        which are not the textures that arrived — see it for why the two differ.
         /// @param timer the frame the arrival lands in, so its builds are one zone of that frame's
         ///        report rather than device time nothing accounts for. Null for a picture inside the
         ///        interface, which is not timed — `VulkanRenderer::placeScene` says why.
-        void extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> masks, GpuTimer* timer,
-            Graveyard& graveyard);
+        void extend(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard);
 
         /// Destroys the structures of `meshes` and gives their storage back.
         ///
@@ -162,14 +136,6 @@ namespace Rtx
         /// half a cell non-opaque shows up as a number before it shows up as a frame time.
         std::uint32_t getCutoutInstanceCount() const { return mCutoutInstanceCount; }
 
-        /// How many of those a micromap answers for, so traversal asks the shader only where the
-        /// mask actually straddles the cutoff.
-        ///
-        /// **The number that says the micromaps are doing anything**, and the one that goes down
-        /// when a mesh's mask could not be classified. Counted in instances rather than meshes
-        /// because that is what traversal meets.
-        std::uint32_t getMicromappedInstanceCount() const { return mMicromappedInstanceCount; }
-
         /// How many of them the eye meets as water.
         ///
         /// **What says whether a trace needs the sea at all.** A frame's water level says where a
@@ -177,43 +143,10 @@ namespace Rtx
         /// no waves, no caustics and no underwater column in it — `HAS_SEA` is what removes them.
         std::uint32_t getWaterInstanceCount() const { return mWaterInstanceCount; }
 
-        /// How much of the micromapped geometry each verdict covers, in triangles.
-        ///
-        /// **This is what says a micromap is worth its memory, and no other number can.** A build
-        /// that resolved nothing and one that was never consulted trace the same and draw the same
-        /// frame; only the share of the surface that stopped asking tells them apart.
-        MicromapTally getMicromapTally() const;
-
         /// Bytes held by the structures themselves, not counting the geometry they were built from.
         VkDeviceSize getStructureBytes() const { return mBottomLevelStorage.getBytes() + mTopLevelBytes; }
 
     private:
-        /// Builds an opacity micromap for each of `meshes` whose cutout can be classified.
-        ///
-        /// **Before the structures, in the same recording**, because a bottom level that references
-        /// a micromap is built from it: the two are separated by a barrier and not by a submit.
-        ///
-        /// `micromapCandidates` is what decides which of `meshes` qualifies, and `masks` is what
-        /// they are classified against — the diffuse of every material they wear, whether or not it
-        /// arrived with them.
-        void buildMicromaps(Batch& batch, const SceneDesc& scene, std::span<const TextureData> masks,
-            std::span<const Index> meshes, Graveyard& graveyard);
-
-        /// Destroys `mesh`'s micromap and gives its room back. Idempotent, like `release`.
-        void releaseMicromap(Index mesh, Graveyard& graveyard);
-
-        /// Chains `mesh`'s micromap onto the geometry describing it, where it has one.
-        ///
-        /// **Both build paths run through this**, because a refit describes the same geometry the
-        /// first build did: a pose moves vertices and a micromap is about texture coordinates and a
-        /// mask, so a refit that dropped the chain would put the leaf and the hole back only while
-        /// something was animating.
-        ///
-        /// `link` is written rather than returned because the geometry keeps it by address, so it
-        /// has to outlive the call — the caller holds one per geometry for exactly that reason.
-        void attachMicromap(Index mesh, VkAccelerationStructureGeometryKHR& geometry,
-            VkAccelerationStructureTrianglesOpacityMicromapEXT& link) const;
-
         /// Reserves room for the scene's geometry and copies in the runs `meshes` names.
         ///
         /// **Per mesh and not per scene**, because that is what an arrival is: the blocks already
@@ -272,13 +205,6 @@ namespace Rtx
                 | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
             "bottom level structures" };
 
-        /// Where the built micromaps live. Their *inputs* do not: the states and the triangle table
-        /// are read once by the build and never again, so they are handed to the batch and freed
-        /// with it, the way build scratch is.
-        StructureStorage mMicromapStorage{
-            VK_BUFFER_USAGE_MICROMAP_STORAGE_BIT_EXT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "opacity micromaps"
-        };
-
         Buffer mTopLevelStorage;
 
         /// The rows the top level is built from, and one copy of them per frame in flight.
@@ -288,18 +214,6 @@ namespace Rtx
         SlotTable<VkAccelerationStructureInstanceKHR> mRowTable;
 
         std::vector<VkAccelerationStructureKHR> mBottomLevel;
-
-        /// Each mesh's opacity micromap, or nothing where its cutout could not be answered for.
-        ///
-        /// Indexed by mesh slot beside the structures, and holding `VK_NULL_HANDLE` for every mesh
-        /// that is not a cutout — which is nearly all of them.
-        std::vector<VkMicromapEXT> mMicromaps;
-        std::vector<StructureRoom> mMicromapRooms;
-        std::vector<MicromapUsageCounts> mMicromapUsage;
-
-        /// What each mesh's classification came to, kept per mesh rather than summed at build time
-        /// so that a mesh released takes its share of the total with it.
-        std::vector<MicromapTally> mMicromapTallies;
 
         /// Where each of those sits in the storage, so a released mesh can give its room back.
         std::vector<StructureRoom> mBottomLevelRooms;
@@ -338,10 +252,6 @@ namespace Rtx
         // vectors to say so.
         std::vector<VkAccelerationStructureGeometryKHR> mBuildGeometries;
 
-        /// What chains a mesh's micromap onto the geometry it describes. A geometry keeps its
-        /// `pNext` as a pointer, so these outlive the loop that filled them for the same reason the
-        /// geometries do.
-        std::vector<VkAccelerationStructureTrianglesOpacityMicromapEXT> mBuildMicromapLinks;
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mBuilds;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> mBuildRanges;
         std::vector<VkDeviceSize> mBuildSizes;
@@ -371,23 +281,16 @@ namespace Rtx
         // Refilled per refit. The build reads `pGeometries` through a pointer, so the geometries are
         // sized before any build info names one.
         std::vector<VkAccelerationStructureGeometryKHR> mRefitGeometries;
-        std::vector<VkAccelerationStructureTrianglesOpacityMicromapEXT> mRefitMicromapLinks;
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mRefitBuilds;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> mRefitRanges;
         std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> mRefitRangePointers;
 
-        /// What each row counts as — `sRowCutout`, `sRowMicromapped`, `sRowWater` — so the counts below can be
-        /// kept by the row that changed rather than recounted over every row a frame.
+        /// What each row counts as — `sRowCutout`, `sRowWater` — so the counts below can be kept by
+        /// the row that changed rather than recounted over every row a frame.
         std::vector<std::uint8_t> mRowFlags;
-
-        // Refilled per build by `micromapCandidates`: its own working, and which of the meshes it
-        // found a micromap can be built for.
-        std::vector<Index> mMaterialOfMesh;
-        std::vector<MicromapCandidate> mMicromapCandidates;
 
         std::uint32_t mInstanceCount = 0;
         std::uint32_t mCutoutInstanceCount = 0;
-        std::uint32_t mMicromappedInstanceCount = 0;
         std::uint32_t mWaterInstanceCount = 0;
 
         /// **Two totals, each assigned, because one accumulated.** The bottom levels are made once

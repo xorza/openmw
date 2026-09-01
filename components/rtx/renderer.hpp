@@ -11,7 +11,6 @@
 #include <type_traits>
 #include <vector>
 
-#include "micromap.hpp"
 #include "reconstruction.hpp"
 #include "shaders/visibility.h"
 #include "texturedata.hpp"
@@ -198,27 +197,9 @@ namespace Rtx
         /// before a frame time does.
         ///
         /// **Not every instance traversal stops for.** A translucent one is stopped for as well, and
-        /// is counted here nowhere: what it costs is a different question, since it is never
-        /// answered by a micromap and never ends the ray.
+        /// is counted here nowhere: what it costs is a different question, since it never ends the
+        /// ray.
         std::uint32_t mCutoutInstances = 0;
-
-        /// How many of those an opacity micromap answers for, so traversal stops only where the mask
-        /// actually straddles the cutoff.
-        ///
-        /// **The number that says the micromaps are doing anything.** It falls short of
-        /// `mCutoutInstances` by the meshes whose mask could not be classified — one two materials
-        /// disagree about, or one whose image was not among the descriptions the scene was handed.
-        std::uint32_t mMicromappedInstances = 0;
-
-        /// How much of the surface those micromaps cover came out each way, in triangles.
-        ///
-        /// **The number that says a micromap is worth its memory, and no other one can.** A build
-        /// that resolved nothing and a build the driver never consulted trace alike and draw the
-        /// same frame; only the share that stopped asking tells them apart.
-        ///
-        /// In triangles rather than as three fractions, because that carries both — the shares are a
-        /// division a reader can do, and the totals say how much surface the shares are *of*.
-        MicromapTally mMicromapTally;
 
         /// What the renderer holds in acceleration structures and in scene tables.
         ///
@@ -231,7 +212,7 @@ namespace Rtx
         /// answer rather than a fault in it.** What arrives when is the loading threads' to decide,
         /// not the frame clock's, so two runs of a place reach the same content by different orders
         /// and leave the allocators arranged differently. Measured over five runs of `bench` at
-        /// Balmora: the instances, the micromap tally and every texture figure agree exactly, and
+        /// Balmora: the instances and every texture figure agree exactly, and
         /// these two land on one of two values 110 KiB and 132 bytes apart — 0.05% and a millionth.
         std::uint64_t mStructureBytes = 0;
         std::uint64_t mTableBytes = 0;
@@ -466,15 +447,10 @@ namespace Rtx
         /// order and starting at the count this already holds — never the whole table, or the
         /// describing and the shading estimate are paid twice for what has not changed.
         ///
-        /// `masks` is what a cutout classifier reads and is **a different set**: the diffuse of
-        /// every material the arriving meshes wear, which Morrowind shares across cells and which is
-        /// therefore mostly already resident. `SceneMasks` says what that cost and why it is not
-        /// `arrived`. Nothing here is uploaded from it.
-        ///
         /// Only for a scene whose tables **grew**. A `retain` that closed the gaps renumbers every
         /// index, and the answer to that is still `setScene`.
-        virtual void extendScene(std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived,
-            std::span<const TextureData> masks, const SeaState& sea)
+        virtual void extendScene(
+            std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
             = 0;
 
         /// Say that the next frame has no usable past.

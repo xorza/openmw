@@ -108,12 +108,10 @@ namespace RtxTool
         /// run on another commit, and a figure it never wrote is one nobody can go back for.
         std::string asJson(const Rtx::SceneStats& scene)
         {
-            return std::format(R"({{"instances": {}, "cutoutInstances": {}, "micromappedInstances": {}, )"
-                               R"("micromapOpaque": {:.6f}, "micromapTransparent": {:.6f}, "micromapUnknown": {:.6f}, )"
+            return std::format(R"({{"instances": {}, "cutoutInstances": {}, )"
                                R"("structureBytes": {}, "tableBytes": {}, "textureCount": {}, "textureBytes": {}}})",
-                scene.mInstances, scene.mCutoutInstances, scene.mMicromappedInstances, scene.mMicromapTally.mOpaque,
-                scene.mMicromapTally.mTransparent, scene.mMicromapTally.mUnknown, scene.mStructureBytes,
-                scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes);
+                scene.mInstances, scene.mCutoutInstances, scene.mStructureBytes, scene.mTableBytes, scene.mTextureCount,
+                scene.mTextureBytes);
         }
 
         std::string asJson(const Crossings& crossings)

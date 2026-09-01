@@ -223,9 +223,7 @@ namespace Rtx
         out << "\nray tracing\n"
             << "  max geometry count:           " << as.maxGeometryCount << '\n'
             << "  max instance count:           " << as.maxInstanceCount << '\n'
-            << "  max primitive count:          " << as.maxPrimitiveCount << '\n'
-            << "  micromap subdivision levels:  " << mProperties->mOpacityMicromap.maxOpacity2StateSubdivisionLevel
-            << " (2-state), " << mProperties->mOpacityMicromap.maxOpacity4StateSubdivisionLevel << " (4-state)\n";
+            << "  max primitive count:          " << as.maxPrimitiveCount << '\n';
 
         out << "\noptional extensions present\n";
         if (mOptionalExtensions.empty())

@@ -111,7 +111,6 @@ namespace Rtx
             EXPECT_NE(functions.mCmdBuildAccelerationStructures, nullptr);
             EXPECT_NE(functions.mGetAccelerationStructureDeviceAddress, nullptr);
             EXPECT_NE(functions.mGetAccelerationStructureBuildSizes, nullptr);
-            EXPECT_NE(functions.mCmdBuildMicromaps, nullptr);
         }
 
         TEST_F(RtxDeviceTest, everyRequiredFeatureIsActuallySupported)

@@ -109,7 +109,6 @@ if (OPENMW_RTX)
     set(RTX_TEST_FILES
         rtx/allocations.cpp
         rtx/allocations.hpp
-        rtx/alphabounds.cpp
         rtx/alphaimage.cpp
         rtx/bloompass.cpp
         rtx/bluenoise.cpp
@@ -135,8 +134,6 @@ if (OPENMW_RTX)
         rtx/lightbuilder.cpp
         rtx/lightgrid.cpp
         rtx/meantexel.cpp
-        rtx/micromap.cpp
-        rtx/microtriangles.cpp
         rtx/moonbuilder.cpp
         rtx/offscreentrace.cpp
         rtx/pipelinecache.cpp
@@ -144,7 +141,6 @@ if (OPENMW_RTX)
         rtx/reconstruction.cpp
         rtx/requirements.cpp
         rtx/scenedesc.cpp
-        rtx/scenemasks.cpp
         rtx/extractor/fixture.hpp
         rtx/extractor/lights.cpp
         rtx/extractor/materials.cpp

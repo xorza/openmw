@@ -67,8 +67,7 @@ namespace Rtx
         /// Ignore it. The overwhelming majority of Morrowind's geometry.
         Opaque,
 
-        /// Test against `Material::mAlphaRef`. The case opacity micromaps exist for, and the case
-        /// that costs a candidate loop until they are built.
+        /// Test against `Material::mAlphaRef`, which costs every candidate a loop into the shader.
         Cutout,
 
         /// Blend, and read the opposite of the obvious way: **this is where the foliage is.** Barely

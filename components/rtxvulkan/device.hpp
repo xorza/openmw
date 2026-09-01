@@ -27,10 +27,6 @@ namespace Rtx
         PFN_vkCmdBuildAccelerationStructuresKHR mCmdBuildAccelerationStructures = nullptr;
         PFN_vkGetAccelerationStructureDeviceAddressKHR mGetAccelerationStructureDeviceAddress = nullptr;
 
-        PFN_vkCreateMicromapEXT mCreateMicromap = nullptr;
-        PFN_vkDestroyMicromapEXT mDestroyMicromap = nullptr;
-        PFN_vkGetMicromapBuildSizesEXT mGetMicromapBuildSizes = nullptr;
-        PFN_vkCmdBuildMicromapsEXT mCmdBuildMicromaps = nullptr;
         PFN_vkGetPipelineExecutablePropertiesKHR mGetPipelineExecutableProperties = nullptr;
         PFN_vkGetPipelineExecutableStatisticsKHR mGetPipelineExecutableStatistics = nullptr;
     };

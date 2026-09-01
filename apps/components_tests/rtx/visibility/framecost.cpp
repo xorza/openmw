@@ -47,7 +47,7 @@ namespace Rtx::Testing
             makeInstanceRecords(scene, records);
             Batch setup(pool);
             Graveyard graveyard(device, pool);
-            const SceneAcceleration acceleration(device, setup, scene, records, {}, 1, graveyard);
+            const SceneAcceleration acceleration(device, setup, scene, records, 1, graveyard);
             const SceneBuffers buffers(device, scene, records, 1, graveyard);
 
             const TextureArray textures(device, setup, 0, {}, graveyard);
