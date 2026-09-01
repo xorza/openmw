@@ -171,6 +171,12 @@ namespace RtxTool
         return mTerrainParent;
     }
 
+    void World::beginStaging()
+    {
+        SceneUtil::resetLightIds();
+        mDistantLights.restart();
+    }
+
     void World::setTerrainViewDistance(float units)
     {
         mTerrainViewDistance = units;

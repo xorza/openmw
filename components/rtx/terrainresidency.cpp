@@ -1,5 +1,7 @@
 #include "terrainresidency.hpp"
 
+#include <mutex>
+
 #include <components/loadinglistener/reporter.hpp>
 #include <components/terrain/view.hpp>
 #include <components/terrain/world.hpp>
@@ -10,7 +12,7 @@ namespace Rtx
 
     TerrainResidency::~TerrainResidency()
     {
-        mAbort = true;
+        mYield = true;
         mWorker.request_stop();
         mWake.notify_all();
     }
@@ -22,9 +24,9 @@ namespace Rtx
 
         // **The thread holds the world it warms and the view it warms into**, and reads both
         // without the lock — which is sound only because it is stopped and joined here, before
-        // either is replaced. Assigning over it requests its stop and joins it, and the abort is
+        // either is replaced. Assigning over it requests its stop and joins it, and the yield is
         // what cuts short a preload already walking a quad tree that is about to go.
-        mAbort = true;
+        mYield = true;
         mWorker = {};
 
         mTerrain = terrain;
@@ -32,7 +34,7 @@ namespace Rtx
         mWarmView = terrain == nullptr ? nullptr : terrain->createView();
         mAskedOnce = false;
 
-        mAbort = false;
+        mYield = false;
         if (mView != nullptr && mWarmView != nullptr)
             mWorker = std::jthread([this](std::stop_token stop) { warm(stop); });
     }
@@ -46,6 +48,14 @@ namespace Rtx
         // the thread has until the next frame to build it; asking afterwards would spend the frame
         // this one still has.
         ask();
+
+        // **The frame builds chunks alone, and the thread stands out of the way for it.** Both reach
+        // `QuadTreeWorld::loadRenderingNode`, whose caches neither lock nor rebuild atomically —
+        // `mBuilding` says what that costs the picture. The yield is what bounds the wait to the one
+        // chunk the thread is inside, so a frame pays a chunk and never a square.
+        mYield = true;
+        std::lock_guard<std::mutex> building(mBuilding);
+        mYield = false;
 
         mTerrain->collect(mView.get(), mViewPoint, visitor);
     }
@@ -101,11 +111,16 @@ namespace Rtx
             const osg::Vec4i grid = mWantedGrid;
             lock.unlock();
 
-            // **Nothing reports anywhere.** The reporter is what a loading screen counts chunks
-            // with, and this warms behind a frame that is already being drawn.
-            Loading::Reporter counted;
-            mWarmView->reset();
-            mTerrain->preload(mWarmView.get(), point, grid, mAbort, counted);
+            {
+                std::lock_guard<std::mutex> building(mBuilding);
+
+                // **Nothing reports anywhere.** The reporter is what a loading screen counts chunks
+                // with, and this warms behind a frame that is already being drawn.
+                Loading::Reporter counted;
+
+                mWarmView->reset();
+                mTerrain->preload(mWarmView.get(), point, grid, mYield, counted);
+            }
 
             lock.lock();
         }

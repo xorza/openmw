@@ -74,6 +74,15 @@ namespace Rtx
         /// both ways, and the reading is what this class exists to do once.
         void setOutdoors(bool outdoors) { mOutdoors = outdoors; }
 
+        /// Drops what has been read, so the next `collect` builds it again.
+        ///
+        /// **For a host that restarts `SceneUtil::resetLightIds`, and for no other reason.** A light
+        /// this built carries an id out of that counter, and `Rtx::lightPhase` turns the id into
+        /// where the flame stands in its cycle — so a cell kept across a restart flickers at a phase
+        /// from a sequence that no longer exists, and can hold an id the new sequence has since
+        /// handed to somebody else. Whoever restarts the counter calls this in the same breath.
+        void restart();
+
         void collect(osg::NodeVisitor& visitor) override;
 
     private:
@@ -100,7 +109,8 @@ namespace Rtx
         /// reason: the absence is the answer, and reading the blocks again to find it out is the
         /// cost this avoids.
         ///
-        /// **Never emptied**: a world that changed is a new `follow`, and that is what clears it.
+        /// **Emptied by `follow` and by `restart`, and by nothing else**: the first is a world that
+        /// changed, the second a scene that began again under the same world.
         std::map<osg::Vec2i, osg::ref_ptr<osg::Group>> mCells;
     };
 }

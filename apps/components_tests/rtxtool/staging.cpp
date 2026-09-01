@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -21,9 +22,98 @@ namespace RtxTool
         /// A lamp-lit interior with a flame in it, which is what makes the lights worth comparing.
         constexpr std::string_view sRoom = "Seyda Neen, Census and Excise Office";
 
+        /// Seyda Neen's own cell, and the nearest other place the corpus stands a camera.
+        ///
+        /// **Near enough that their distant reaches overlap, which is the whole fixture.** The cells
+        /// `DistantLights` reads around one of these are read around the other too, so staging
+        /// Balmora is what leaves the shore's own lights already built when the shore is staged
+        /// after it. Ald-ruhn, Sadrith Mora and Dagon Fel are all too far to share a cell, and none
+        /// of them showed the defect this covers.
+        constexpr std::string_view sShore = "-2,-9";
+        constexpr std::string_view sTown = "-3,-2";
+
         struct RtxStagingTest : InstallationTest
         {
         };
+
+        /// What a staged world came to, held past the world that described it.
+        struct Description
+        {
+            std::vector<Rtx::MeshInstance> mInstances;
+            std::vector<VFS::Path::Normalized> mTextures;
+            std::vector<Rtx::Light> mLights;
+            std::vector<Rtx::Sprite> mSprites;
+            std::size_t mMeshes = 0;
+            std::size_t mMaterials = 0;
+            std::size_t mPlaced = 0;
+        };
+
+        Description describe(const Rtx::SceneDesc& scene)
+        {
+            return Description{
+                .mInstances = { scene.getInstances().begin(), scene.getInstances().end() },
+                .mTextures = { scene.getTextures().begin(), scene.getTextures().end() },
+                .mLights = { scene.getLights().begin(), scene.getLights().end() },
+                .mSprites = { scene.getSprites().begin(), scene.getSprites().end() },
+                .mMeshes = scene.getMeshes().size(),
+                .mMaterials = scene.getMaterials().size(),
+                .mPlaced = scene.getPlacedCount(),
+            };
+        }
+
+        /// Every light, in the order the walk met them.
+        ///
+        /// **Its own function because an exterior can claim this and no more.** Two `World`s describe
+        /// one cell's materials and textures in different orders — see `.notes/ISSUES.md` — so a
+        /// comparison across two of them has to say what it is comparing.
+        void expectSameLights(const Rtx::SceneDesc& scene, const Description& was)
+        {
+            ASSERT_EQ(scene.getLights().size(), was.mLights.size());
+            for (std::size_t at = 0; at < was.mLights.size(); ++at)
+            {
+                EXPECT_EQ(scene.getLights()[at].mPosition, was.mLights[at].mPosition) << "light " << at;
+
+                // **The flicker rides here**, as the recorded colour times where the flame stands in
+                // its cycle. A phase drawn from a process counter moves this and nothing else in the
+                // record.
+                EXPECT_EQ(scene.getLights()[at].mIntensity, was.mLights[at].mIntensity) << "light " << at;
+                EXPECT_EQ(scene.getLights()[at].mReach, was.mLights[at].mReach) << "light " << at;
+            }
+        }
+
+        /// Everything one staged world came to, against everything another did.
+        ///
+        /// **The whole description and not the half that carried it.** Every defect this file covers
+        /// moved the lights or the sprites and left the geometry exactly where it was, so a
+        /// comparison of the instances alone would have passed while half of a lamp-lit room was a
+        /// different brightness.
+        void expectSame(const Rtx::SceneDesc& scene, const Description& was)
+        {
+            expectSameLights(scene, was);
+
+            EXPECT_EQ(scene.getPlacedCount(), was.mPlaced);
+            EXPECT_EQ(scene.getMeshes().size(), was.mMeshes);
+            EXPECT_EQ(scene.getMaterials().size(), was.mMaterials);
+
+            ASSERT_EQ(scene.getInstances().size(), was.mInstances.size());
+            for (std::size_t at = 0; at < was.mInstances.size(); ++at)
+            {
+                EXPECT_EQ(scene.getInstances()[at].mMesh, was.mInstances[at].mMesh) << "instance " << at;
+                EXPECT_EQ(scene.getInstances()[at].mMaterial, was.mInstances[at].mMaterial) << "instance " << at;
+                EXPECT_EQ(scene.getInstances()[at].mTransform, was.mInstances[at].mTransform) << "instance " << at;
+            }
+
+            ASSERT_EQ(scene.getTextures().size(), was.mTextures.size());
+            for (std::size_t at = 0; at < was.mTextures.size(); ++at)
+                EXPECT_EQ(scene.getTextures()[at], was.mTextures[at]) << "texture " << at;
+
+            ASSERT_EQ(scene.getSprites().size(), was.mSprites.size());
+            for (std::size_t at = 0; at < was.mSprites.size(); ++at)
+            {
+                EXPECT_EQ(scene.getSprites()[at].mPosition, was.mSprites[at].mPosition) << "sprite " << at;
+                EXPECT_EQ(scene.getSprites()[at].mAlpha, was.mSprites[at].mAlpha) << "sprite " << at;
+            }
+        }
 
         /// Staging one cell twice in one process describes the same world both times.
         ///
@@ -34,14 +124,8 @@ namespace RtxTool
         /// runs for the whole process, and `Rtx::lightPhase` turns that id into where a flame stands
         /// in its cycle. Each one made a cell rendered second look unlike the same cell rendered
         /// first, and each was found by a `verify` run disagreeing with itself rather than here.
-        /// `StagedWorld::seedDraws` and the light-id reset beside its first call are what answer
+        /// `StagedWorld::seedDraws` and `World::beginStaging` beside its first call are what answer
         /// them.
-        ///
-        /// **The whole description and not the half that carried it.** Every one of the three moved
-        /// the lights or the sprites and left the geometry exactly where it was, so a test of the
-        /// instances alone would have passed while half of a lamp-lit room was a different
-        /// brightness. What the title claims is that the world is the same, and the cheapest way to
-        /// keep that claim true of a fourth member nobody has met is to compare all of it.
         ///
         /// **One at a time, because a staged world gives its ground back when it goes.** Two of them
         /// alive at once would be two worlds sharing one `World`, which is a case nothing else in
@@ -54,70 +138,82 @@ namespace RtxTool
             const StagingRequest request;
             const ActorRequest actors;
 
-            std::vector<Rtx::MeshInstance> instances;
-            std::vector<VFS::Path::Normalized> textures;
-            std::vector<Rtx::Light> lights;
-            std::vector<Rtx::Sprite> sprites;
-            std::size_t meshes = 0;
-            std::size_t materials = 0;
-            std::size_t placed = 0;
-
+            Description first;
             {
-                StagedWorld first(getWorld(), *room, request, actors);
-                ASSERT_FALSE(first.empty());
-
-                const Rtx::SceneDesc& scene = first.getScene();
-                instances.assign(scene.getInstances().begin(), scene.getInstances().end());
-                textures.assign(scene.getTextures().begin(), scene.getTextures().end());
-                lights.assign(scene.getLights().begin(), scene.getLights().end());
-                sprites.assign(scene.getSprites().begin(), scene.getSprites().end());
-                meshes = scene.getMeshes().size();
-                materials = scene.getMaterials().size();
-                placed = scene.getPlacedCount();
+                StagedWorld staged(getWorld(), *room, request, actors);
+                ASSERT_FALSE(staged.empty());
+                first = describe(staged.getScene());
             }
 
-            ASSERT_FALSE(lights.empty()) << "the room lit itself with nothing, so this proves nothing";
-            ASSERT_FALSE(sprites.empty()) << "the room held no particle, so this proves half of nothing";
+            ASSERT_FALSE(first.mLights.empty()) << "the room lit itself with nothing, so this proves nothing";
+            ASSERT_FALSE(first.mSprites.empty()) << "the room held no particle, so this proves half of nothing";
 
             {
-                StagedWorld second(getWorld(), *room, request, actors);
-                ASSERT_FALSE(second.empty());
+                StagedWorld staged(getWorld(), *room, request, actors);
+                ASSERT_FALSE(staged.empty());
+                expectSame(staged.getScene(), first);
+            }
+        }
 
-                const Rtx::SceneDesc& scene = second.getScene();
-                EXPECT_EQ(scene.getPlacedCount(), placed);
-                EXPECT_EQ(scene.getMeshes().size(), meshes);
-                EXPECT_EQ(scene.getMaterials().size(), materials);
+        /// A distant flame stands where it stands whatever was staged before it.
+        ///
+        /// **The counterpart above cannot reach this, and the cache is why.** `DistantLights` reads a
+        /// cell once and keeps it, so a world that has read the shore's cells hands the same ones
+        /// over on every later staging and agrees with itself while the defect is there. What the
+        /// defect moves is *which* staging built them: read while another exterior was being staged,
+        /// they carry ids out of that staging's light-id sequence rather than the shore's own — and
+        /// `Rtx::lightPhase` reads the id for where a flame stands in its cycle. A cached campfire
+        /// therefore burnt at a phase from a sequence that no longer exists, and could hold an id
+        /// this staging had since handed to a lamp in the cell, which is two flames swinging as one.
+        ///
+        /// **Two worlds, because that is where the order lives.** One stages the shore alone, which
+        /// is what `verify --views=seyda-neen-shore` does; the other stages Balmora and then the
+        /// shore, which is what the same tool does over a list. Measured before
+        /// `World::beginStaging` dropped the cache, the two disagreed on 46% of the shore's pixels.
+        ///
+        /// **The lights and not the whole description**, for the reason `expectSameLights` gives.
+        TEST_F(RtxStagingTest, aDistantFlameStandsWhereItStandsWhateverWasStagedBeforeIt)
+        {
+            const ESM::Cell* shore = getContent().findCell(sShore);
+            const ESM::Cell* town = getContent().findCell(sTown);
+            ASSERT_NE(shore, nullptr);
+            ASSERT_NE(town, nullptr);
 
-                ASSERT_EQ(scene.getInstances().size(), instances.size());
-                for (std::size_t at = 0; at < instances.size(); ++at)
+            const StagingRequest request;
+            const ActorRequest actors;
+
+            // **Paged, because a gridded world stands no distant light at all.** `DistantLights` is
+            // built beside the quad tree and handed over only where there is one.
+            const auto pagedWorld = [this] {
+                std::unique_ptr<World> made = openWorld();
+                made->pageTerrain(true);
+
+                return made;
+            };
+
+            Description alone;
+            {
+                const std::unique_ptr<World> world = pagedWorld();
+                StagedWorld staged(*world, *shore, request, actors);
+                ASSERT_FALSE(staged.empty());
+                alone = describe(staged.getScene());
+            }
+
+            // The shore's own cell holds 69 lights and the reach around it another 405, so a count in
+            // the hundreds is what says the distant ones arrived and the fixture means something.
+            ASSERT_GT(alone.mLights.size(), 100u) << "no distant light was stood, so this proves nothing";
+
+            {
+                const std::unique_ptr<World> world = pagedWorld();
+
                 {
-                    EXPECT_EQ(scene.getInstances()[at].mMesh, instances[at].mMesh) << "instance " << at;
-                    EXPECT_EQ(scene.getInstances()[at].mMaterial, instances[at].mMaterial) << "instance " << at;
-                    EXPECT_EQ(scene.getInstances()[at].mTransform, instances[at].mTransform) << "instance " << at;
+                    StagedWorld staged(*world, *town, request, actors);
+                    ASSERT_FALSE(staged.empty());
                 }
 
-                ASSERT_EQ(scene.getTextures().size(), textures.size());
-                for (std::size_t at = 0; at < textures.size(); ++at)
-                    EXPECT_EQ(scene.getTextures()[at], textures[at]) << "texture " << at;
-
-                ASSERT_EQ(scene.getLights().size(), lights.size());
-                for (std::size_t at = 0; at < lights.size(); ++at)
-                {
-                    EXPECT_EQ(scene.getLights()[at].mPosition, lights[at].mPosition) << "light " << at;
-
-                    // **The flicker rides here**, as the recorded colour times where the flame
-                    // stands in its cycle. A phase drawn from a process counter moves this and
-                    // nothing else in the record.
-                    EXPECT_EQ(scene.getLights()[at].mIntensity, lights[at].mIntensity) << "light " << at;
-                    EXPECT_EQ(scene.getLights()[at].mReach, lights[at].mReach) << "light " << at;
-                }
-
-                ASSERT_EQ(scene.getSprites().size(), sprites.size());
-                for (std::size_t at = 0; at < sprites.size(); ++at)
-                {
-                    EXPECT_EQ(scene.getSprites()[at].mPosition, sprites[at].mPosition) << "sprite " << at;
-                    EXPECT_EQ(scene.getSprites()[at].mAlpha, sprites[at].mAlpha) << "sprite " << at;
-                }
+                StagedWorld staged(*world, *shore, request, actors);
+                ASSERT_FALSE(staged.empty());
+                expectSameLights(staged.getScene(), alone);
             }
         }
     }

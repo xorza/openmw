@@ -158,6 +158,7 @@ if (OPENMW_RTX)
         rtx/spriteshade.cpp
         rtx/spritetiles.cpp
         rtx/terraincomposite.cpp
+        rtx/terrainresidency.cpp
         rtx/structurestorage.cpp
         rtx/texturebuilder.cpp
         rtx/visibility/filter.cpp

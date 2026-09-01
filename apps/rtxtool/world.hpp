@@ -165,6 +165,18 @@ namespace RtxTool
         /// the paging leaves dark. Empty for a world that parents its ground.
         std::span<Rtx::Residency* const> getResidencies() const { return mResidencies; }
 
+        /// Restarts what belongs to one staged scene rather than to this world. `StagedWorld` calls
+        /// it before it reads a thing.
+        ///
+        /// **The light-id counter and the distant lights are one lifetime, and this is where that is
+        /// stated.** A `SceneUtil::LightSource` takes its id from a counter that runs for the whole
+        /// process, `Rtx::lightPhase` turns that id into where a flame stands in its cycle, and
+        /// `DistantLights` holds the sources it built for as long as it is allowed to — so
+        /// restarting the counter without dropping them leaves a distant campfire flickering at a
+        /// phase from a sequence that is gone, and lets it share an id with a lamp in the cell. One
+        /// call, so the two cannot be restarted apart.
+        void beginStaging();
+
         /// How far out a paged world produces chunks at all, in world units.
         ///
         /// **`viewing distance` is the rasterizer's fog-and-visibility knob**, and its default of

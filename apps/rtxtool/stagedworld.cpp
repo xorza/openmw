@@ -11,7 +11,6 @@
 #include <components/misc/rng.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/frameworld.hpp>
-#include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/weather/downpour.hpp>
@@ -30,14 +29,16 @@ namespace RtxTool
     {
         seedDraws();
 
-        // **The counter a light's id comes from, here and nowhere else.** A
+        // **Where a scene begins, and the counter a light's id comes from restarts with it.** A
         // `SceneUtil::LightSource` takes its id from one that runs for the whole process, and
         // `Rtx::lightPhase` derives a flame's phase from it — so a cell staged a second time stood
         // every flame somewhere else in its own cycle, and half of a lamp-lit room moved. Holding
         // the phase at a constant made two stagings of one cell render identically, which is how it
         // was found. Once, because the read below is what builds every light a region has:
         // restarting the counter after it would hand two lights one id, and with it one phase.
-        SceneUtil::resetLightIds();
+        //
+        // `World::beginStaging` says what else shares that lifetime.
+        world.beginStaging();
 
         const RegionLoad arrived = loadRegion(world, cell, *mRoot, mScene, mExtractor, mLoaded, request.mWeather,
             request.mDay, request.mHour, actors.mProps);

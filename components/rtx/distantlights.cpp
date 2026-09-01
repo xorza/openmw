@@ -29,6 +29,11 @@ namespace Rtx
         mWorldspace = worldspace;
 
         // What was read belongs to the world that was being read.
+        restart();
+    }
+
+    void DistantLights::restart()
+    {
         mCells.clear();
     }
 
@@ -107,7 +112,7 @@ namespace Rtx
 
                 // **Read here rather than on a rota, and never read twice.** What a `LIGH` says is
                 // content: it does not change with the hour, the weather or the eye, so a cell costs
-                // one reading for the life of the world and the frames after it cost a pointer. The
+                // one reading for the life of the scene and the frames after it cost a pointer. The
                 // whole reach is eighty-one cells and reading all of them measured under the
                 // run-to-run noise of a still — see `.notes/rtx/performance.md`. **A budget per
                 // frame would be worse than the spike it avoided**: what a picture holds would then

@@ -113,8 +113,31 @@ namespace Rtx
         /// the thread fills this one and `collect` fills `mView`.
         osg::ref_ptr<Terrain::View> mWarmView;
 
-        /// Cuts a preload short where the world is going away. `preload` reads it as it goes.
-        std::atomic<bool> mAbort{ false };
+        /// Held by whichever of the two is inside `QuadTreeWorld::loadRenderingNode`.
+        ///
+        /// **The chunk caches test and then fill without holding anything.**
+        /// `Terrain::ChunkManager::getChunk` and `Terrain::ObjectPaging::getChunk` each read their
+        /// cache, build on a miss and write the result back, so two threads missing one key both
+        /// build it and the later write wins — and the frame keeps whichever node its own call
+        /// returned. What that costs a rasterizer is a chunk built twice; what it costs a mirror is
+        /// a different drawable, which is a different mesh, a different material and a different
+        /// instance. Measured over five runs of `bench` at Seyda Neen's shore, it moved the placed
+        /// instance count between 15,959 and 15,964 and the mesh count by up to a hundred, and
+        /// holding the two apart made all five agree exactly.
+        ///
+        /// **`ChunkManager` makes it a picture and not only a count**: a chunk with no cache entry
+        /// of its own takes its passes and its composite map from whatever chunk of the same centre
+        /// and level the cache happens to hold, so which thread built first decides what the ground
+        /// is drawn with.
+        std::mutex mBuilding;
+
+        /// Stops a preload in flight, so the thread lets go of `mBuilding` within one chunk.
+        ///
+        /// **Two askers and one meaning.** A world going away needs the walk of a quad tree that is
+        /// about to be destroyed cut short, and a frame taking the builder for itself needs the same
+        /// thing. `preload` reads it between chunks either way, so the frame waits for one chunk
+        /// rather than for the square the thread was given.
+        std::atomic<bool> mYield{ false };
 
         /// **Last, so it is joined before anything it touches is destroyed.**
         std::jthread mWorker;
