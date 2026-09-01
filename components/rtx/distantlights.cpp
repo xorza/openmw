@@ -9,10 +9,9 @@
 
 #include <components/misc/constants.hpp>
 #include <components/sceneutil/lightcommon.hpp>
-#include <components/sceneutil/lightmanager.hpp>
-#include <components/sceneutil/lightutil.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/terrain/objectstorage.hpp>
+
+#include "lightbuilder.hpp"
 
 namespace Rtx
 {
@@ -61,25 +60,19 @@ namespace Rtx
             if (!light.has_value())
                 continue;
 
-            // **Off by default means off.** A light the game would have to be told to switch on is
-            // one nobody has told anything out here, and `MWClass::Light` reads the same flag to
-            // decide whether the object it inserts carries a light at all.
-            if (light->mOffDefault)
-                continue;
-
-            // **The game's own constructor, colours, attenuation and flicker flags and all.** This
-            // is the second place a `LIGH` becomes a light and it must not be a second reading of
-            // one: what the mirror finds here has to be what it would have found had the player
-            // walked into the cell.
-            const osg::ref_ptr<SceneUtil::LightSource> source
-                = SceneUtil::createLightSource(*light, SceneUtil::Mask_Lighting, true);
-
             // **At the reference's own origin, and not at the model's `AttachLight` node.** Finding
             // that means loading the mesh, and the mesh is what `pagedType` refuses to stand out
             // here; the offset between the two is the height of a lamp, against a cell of distance.
+            // So what `standLight` is handed carries no model, and the light lands on this.
             const osg::ref_ptr<osg::MatrixTransform> place
                 = new osg::MatrixTransform(osg::Matrix::translate(ref.mPosition));
-            place->addChild(source);
+
+            // **The one route both kinds of lamp take**, so what the mirror finds out here is what
+            // it would have found had the player walked into the cell — the off-default refusal, the
+            // colours, the attenuation and the flicker flags all included. Outdoors is not a guess:
+            // the reach is exterior cells and nothing else.
+            if (!standLight(*place, *light, /*exterior=*/true))
+                continue;
 
             if (group == nullptr)
                 group = new osg::Group;

@@ -18,24 +18,11 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/texturebuilder.hpp>
-#include <components/sceneutil/lightcommon.hpp>
-#include <components/sceneutil/lightutil.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include "content.hpp"
 
 namespace RtxTool
 {
-    void standLight(osg::Group& where, const ESM::Light& record, bool exterior)
-    {
-        if (!Rtx::castsWherePlaced(record))
-            return;
-
-        // **The mirror does not filter on the mask**, so it decides nothing here. It is what the
-        // game marks a light node with, so the two graphs look the same to anything that ever does.
-        SceneUtil::addLight(&where, SceneUtil::LightCommon(record), SceneUtil::Mask_Lighting, exterior);
-    }
-
     namespace
     {
         osg::ref_ptr<osg::Group> readObjects(
@@ -218,8 +205,8 @@ namespace RtxTool
                 bool prop = false;
 
                 // **A light with no mesh has nothing to load and nothing to instance**, and goes
-                // straight to `standLight` below. `Content::forEachObject` says why it arrives at
-                // all.
+                // straight to `Rtx::standLight` below. `Content::forEachObject` says why it arrives
+                // at all.
                 if (!object.mModel.empty())
                 {
                     osg::ref_ptr<osg::Node> node;
@@ -250,9 +237,9 @@ namespace RtxTool
                     prop = liveProps
                         && (node->getUpdateCallback() != nullptr || node->getNumChildrenRequiringUpdateTraversal() > 0);
 
-                    // The model goes in first where it is going in at all, so that `standLight`
-                    // below can find an `AttachLight` node inside it. **A prop's light goes with the
-                    // prop**, for the reason `CellProp::mLight` gives.
+                    // The model goes in first where it is going in at all, so that
+                    // `Rtx::standLight` below can find an `AttachLight` node inside it. **A prop's
+                    // light goes with the prop**, for the reason `CellProp::mLight` gives.
                     if (prop)
                         report.mProps.push_back(CellProp{
                             .mModel = object.mModel,
@@ -270,8 +257,8 @@ namespace RtxTool
                 // could ever meet — so the sweep that empties the light table on the frame a cell
                 // departs had nothing to refill it from, and every lamp went out on the first
                 // crossing.
-                if (object.mLight != nullptr && !prop)
-                    standLight(*where, *object.mLight, cell.isExterior());
+                if (object.mLight.has_value() && !prop)
+                    Rtx::standLight(*where, *object.mLight, cell.isExterior());
 
                 // A prop leaves an empty transform: its model and its light both went with it.
                 if (where->getNumChildren() > 0)

@@ -14,6 +14,7 @@
 
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 
 #include "content.hpp"
 #include "lighting.hpp"
@@ -22,7 +23,6 @@
 namespace ESM
 {
     struct Cell;
-    struct Light;
     struct NPC;
 }
 
@@ -61,33 +61,22 @@ namespace RtxTool
         /// The group this cell's references hang under. See `CellPerson::mParent`.
         osg::ref_ptr<osg::Group> mParent;
 
-        /// The `LIGH` record this reference carries, or null for the great majority that carry none.
+        /// What this reference lights the room with, or nothing for the great majority that light
+        /// nothing.
         ///
         /// **Carried to the instance rather than stood here, because the mesh went with it.**
-        /// `standLight` hangs a light on the model's `AttachLight` node where the model has one,
-        /// which is the wick of a lantern and the flame of a candle; a prop's model is not in the
-        /// graph for that search to find, so a light stood beside it sat at the reference's own
+        /// `Rtx::standLight` hangs a light on the model's `AttachLight` node where the model has
+        /// one, which is the wick of a lantern and the flame of a candle; a prop's model is not in
+        /// the graph for that search to find, so a light stood beside it sat at the reference's own
         /// origin instead — up to 48 units below the wick, on ten of one room's 26 lamps.
-        const ESM::Light* mLight = nullptr;
+        ///
+        /// The description and not the record, because that is what every rule about a light reads.
+        std::optional<SceneUtil::LightCommon> mLight;
 
-        /// Carried because the cell is gone by the time `standLight` runs, and it decides the
+        /// Carried because the cell is gone by the time `Rtx::standLight` runs, and it decides the
         /// attenuation the light is given.
         bool mExterior = false;
     };
-
-    /// Hangs a `LIGH` reference's light on `where`, exactly as the game hangs it on a reference.
-    ///
-    /// **The one place that turns a record into a light in the graph.** `MWRender::ObjectAnimation`
-    /// does it once, on the instance it has just built, and the two things it settles have to be
-    /// settled the same way wherever the harness stands a lamp: whether the record burns at all, and
-    /// whether the light sits at the model's `AttachLight` node or at the reference's origin. Both
-    /// answers are read out of what already holds them — `Rtx::castsWherePlaced` and
-    /// `SceneUtil::addLight` — and neither is worked out again here.
-    ///
-    /// A record that does not cast where it stands puts nothing in the graph, which is what the game
-    /// leaves behind for one. A `LightSource` carries no flag the mirror could read that refusal off,
-    /// so the graph is where it has to be said.
-    void standLight(osg::Group& where, const ESM::Light& record, bool exterior);
 
     /// What a cell brought: the group its references hang under.
     ///

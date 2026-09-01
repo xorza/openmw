@@ -15,6 +15,7 @@
 #include <components/esmloader/esmdata.hpp>
 #include <components/files/collections.hpp>
 #include <components/misc/strings/algorithm.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 #include <components/toutf8/toutf8.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
@@ -35,7 +36,6 @@ namespace Files
 namespace ESM
 {
     struct Position;
-    struct Light;
     struct Cell;
     struct NPC;
     struct Region;
@@ -97,12 +97,14 @@ namespace RtxTool
             VFS::Path::Normalized mModel;
             osg::Matrixf mTransform;
 
-            /// The `LIGH` record this reference stands for, or null. A candle is both things at
+            /// What this reference lights the cell with, or nothing. A candle is both things at
             /// once: a mesh to place and a light to cast, arriving by the same reference. A pulse
             /// light is only the second, and arrives with `mModel` empty.
             ///
-            /// Points into the loaded content, which outlives every call.
-            const ESM::Light* mLight = nullptr;
+            /// **The description and not the record**, because that is what every rule about a light
+            /// reads and what `Terrain::ObjectStorage::getLight` hands over for the reach around a
+            /// cell. Reduced once here rather than at each place that asks.
+            std::optional<SceneUtil::LightCommon> mLight;
 
             /// The `NPC_` record this reference stands for, or null.
             ///

@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <components/esm3/loadcell.hpp>
-#include <components/esm3/loadligh.hpp>
+#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 
@@ -52,7 +52,7 @@ namespace RtxTool
             std::size_t withMesh = 0;
             const Content::SkippedObjects skipped
                 = getContent().forEachObject(*cell, [&](const Content::Object& object) {
-                      if (object.mLight == nullptr)
+                      if (!object.mLight.has_value())
                           return;
                       (object.mModel.empty() ? meshless : withMesh) += 1;
                   });
@@ -86,6 +86,12 @@ namespace RtxTool
         /// Asserted on the `LightSource`s the walk met and not on the scene's light table: the
         /// unlit torch is `light_torch10.nif` with its flame still in it, and a glowing surface with
         /// no `LightSource` over it is given a lamp of its own — in the game's graph as in this one.
+        ///
+        /// **Counted through `Rtx::castsWherePlaced`, which is not the tautology it looks like.**
+        /// What that rule says about a flag is pinned against the flags themselves by
+        /// `RtxLightBuilderTest`; what this asks is whether the graph route obeys it, so spelling
+        /// the flag out here again would be a reading that can drift from the one the graph uses —
+        /// and a drift would fail this test in a place that had nothing to do with it.
         TEST_F(RtxLampsTest, aLightOffByDefaultIsNotPlaced)
         {
             const ESM::Cell* cell = getContent().findCell("Balmora, Drarayne Thelas' Storage");
@@ -94,9 +100,9 @@ namespace RtxTool
             std::size_t burning = 0;
             std::size_t unlit = 0;
             getContent().forEachObject(*cell, [&](const Content::Object& object) {
-                if (object.mLight == nullptr)
+                if (!object.mLight.has_value())
                     return;
-                ((object.mLight->mData.mFlags & ESM::Light::OffDefault) != 0 ? unlit : burning) += 1;
+                (Rtx::castsWherePlaced(*object.mLight) ? burning : unlit) += 1;
             });
 
             ASSERT_EQ(unlit, std::size_t{ 1 }) << "the storeroom no longer holds its unlit lamp";
@@ -172,7 +178,7 @@ namespace RtxTool
 
             std::vector<osg::Vec3f> origins;
             getContent().forEachObject(*cell, [&](const Content::Object& object) {
-                if (object.mLight != nullptr)
+                if (object.mLight.has_value())
                     origins.push_back(object.mTransform.getTrans());
             });
             ASSERT_FALSE(origins.empty()) << "the room no longer holds a lamp";

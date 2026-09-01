@@ -20,13 +20,18 @@
 
 namespace ESM
 {
-    struct Light;
     struct Region;
+}
+
+namespace osg
+{
+    class Group;
 }
 
 namespace SceneUtil
 {
     class LightSource;
+    struct LightCommon;
 }
 
 namespace Rtx
@@ -37,9 +42,31 @@ namespace Rtx
     /// `MWClass::Light::insertObjectRendering` builds no light source for a record flagged **off by
     /// default** — an unlit brazier is a mesh and nothing else — and every other record burns where
     /// it stands, a torch on a table included: *carryable* says what an inventory may do with it and
-    /// nothing about the cell it lies in. Both routes to a light read this, so a graph built here
+    /// nothing about the cell it lies in. Every route to a light reads this, so a graph built here
     /// and a record read here cannot come to place different lamps.
-    bool castsWherePlaced(const ESM::Light& record);
+    ///
+    /// **A description and not a record**, because `SceneUtil::LightCommon` is what the engine
+    /// reduces both a `LIGH` and an ESM4 `LIGH` to, and it is what `Terrain::ObjectStorage::getLight`
+    /// hands over — so the reach around a cell and the cell itself ask the one question.
+    bool castsWherePlaced(const SceneUtil::LightCommon& record);
+
+    /// Hangs a record's light under `where`, exactly as the game hangs one on a reference. False
+    /// where the record casts nothing, so a caller can drop what it built to hold one.
+    ///
+    /// **The one place a `LIGH` becomes a light in a graph this renderer walks.** There are two
+    /// routes to a lamp — the cell the eye stands in, whose references the game itself would place,
+    /// and the reach around it, whose lamps `DistantLights` reads out of the content files because
+    /// `Terrain::pagedType` stands no model for them. Everything they can share is here: whether the
+    /// record burns, which mask the node is marked with, and `SceneUtil::addLight` doing the rest.
+    /// What is left to a caller is where the light hangs, which is the only thing the two differ
+    /// about.
+    ///
+    /// **`SceneUtil::addLight` and not `createLightSource`**, so the `AttachLight` node a model may
+    /// carry is honoured — a lantern's flame sits at the wick. A caller with no model hands over a
+    /// group holding none, and the light lands on the group itself.
+    ///
+    /// @param exterior decides the attenuation. The reach around a cell is outdoors by definition.
+    bool standLight(osg::Group& where, const SceneUtil::LightCommon& record, bool exterior);
 
     /// The light a `LIGH` reference casts, or nothing where it casts none.
     ///
@@ -48,7 +75,7 @@ namespace Rtx
     /// available to a renderer accumulating into a framebuffer and meaningless to anything that
     /// traces a ray to an emitter — and this describes it as the negative colour the game's scene
     /// graph builds, so the overload below refuses both paths with one test.
-    std::optional<Light> makeLight(const ESM::Light& record, const osg::Vec3f& position);
+    std::optional<Light> makeLight(const SceneUtil::LightCommon& record, const osg::Vec3f& position);
 
     /// The same light, from a colour and a radius rather than from a record.
     ///
@@ -76,7 +103,7 @@ namespace Rtx
     /// **Decoded, because what the game hands over is not linear.** `SceneUtil::colourFromRGB`
     /// divides a record's bytes by 255 and stops, so a `SceneUtil::LightSource` carries the file's
     /// own numbers exactly as the record does — and this is the same decode
-    /// `makeLight(const ESM::Light&)` makes, which is what keeps a candle in a played frame as
+    /// `makeLight(const SceneUtil::LightCommon&)` makes, which is what keeps a candle in a played frame as
     /// bright as the same candle in a screenshot.
     ///
     /// **The recorded colours and this frame's scalars, rather than the colours the frame was

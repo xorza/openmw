@@ -116,6 +116,7 @@ if (OPENMW_RTX)
         rtx/cloudshell.cpp
         rtx/computepipeline.cpp
         rtx/device.cpp
+        rtx/distantlights.cpp
         rtx/dlss.cpp
         rtx/fogbuilder.cpp
         rtx/fognoise.cpp

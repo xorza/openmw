@@ -305,8 +305,12 @@ namespace RtxTool
                 continue;
             }
 
-            const ESM::Light* light
+            const ESM::Light* record
                 = ref.mType == ESM::REC_LIGH ? EsmLoader::find<ESM::Light>(mEsmData, ref.mRefId) : nullptr;
+
+            std::optional<SceneUtil::LightCommon> light;
+            if (record != nullptr)
+                light.emplace(*record);
 
             VFS::Path::Normalized model(EsmLoader::getModel(mEsmData, ref.mRefId, ref.mType));
             if (model.empty())
@@ -316,7 +320,7 @@ namespace RtxTool
                 // empty, so that the light is added". A propylon chamber is lit by nothing else:
                 // eight `blue_128_pulse` and `purp_01_128_pulse` records in a room whose ambient is
                 // fifteen over 255, and skipping them with the markers rendered the room black.
-                if (light == nullptr)
+                if (!light.has_value())
                 {
                     ++skipped.mNoModel;
                     continue;

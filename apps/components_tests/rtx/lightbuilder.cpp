@@ -37,13 +37,15 @@ namespace Rtx
         /// this and an assertion about the air has to name the number it is measured against.
         constexpr float sReach = 4.0f * 8192.0f;
 
-        ESM::Light makeRecord(std::int32_t radius, std::uint32_t colour, std::int32_t flags)
+        /// A `LIGH` record reduced the way the engine reduces one, which is what every rule about a
+        /// light reads. The flags are `ESM::Light`'s, because that is what the file carries.
+        SceneUtil::LightCommon describe(std::int32_t radius, std::uint32_t colour, std::int32_t flags)
         {
             ESM::Light record;
             record.mData.mRadius = radius;
             record.mData.mColor = colour;
             record.mData.mFlags = flags;
-            return record;
+            return SceneUtil::LightCommon(record);
         }
 
         osg::ref_ptr<SceneUtil::LightSource> makeGraphLight(const osg::Vec4f& diffuse, const osg::Vec4f& ambient)
@@ -264,11 +266,10 @@ namespace Rtx
         {
             // A record with the slow pulse flag, so the light is built the way the game builds one:
             // a controller carrying the record's colour, added behind the collect callback.
-            ESM::Light record = makeRecord(100, 0x00FFFFFF, 0);
-            record.mData.mFlags |= ESM::Light::PulseSlow;
+            const SceneUtil::LightCommon record = describe(100, 0x00FFFFFF, ESM::Light::PulseSlow);
 
             const osg::ref_ptr<SceneUtil::LightSource> lamp = SceneUtil::createLightSource(
-                SceneUtil::LightCommon(record), SceneUtil::Mask_Lighting, /*isExterior=*/false, osg::Vec4f(1, 1, 1, 1));
+                record, SceneUtil::Mask_Lighting, /*isExterior=*/false, osg::Vec4f(1, 1, 1, 1));
 
             // A pulse turns once in three seconds. Eight samples across it put one of them within an
             // eighth of a turn of the peak, so the deepest is at least `0.35 * cos(pi / 8)` from
@@ -361,7 +362,7 @@ namespace Rtx
             // for one record those two have to be one light, down to the last bit of the intensity.
             for (const std::uint32_t packed : { 0x00000000u, 0x00808080u, 0x000080FFu, 0x00FFFFFFu })
             {
-                const ESM::Light record = makeRecord(100, packed, 0);
+                const SceneUtil::LightCommon record = describe(100, packed, 0);
                 const std::optional<Rtx::Light> fromRecord = makeLight(record, osg::Vec3f(1, 2, 3));
 
                 const osg::ref_ptr<SceneUtil::LightSource> graph
@@ -389,7 +390,7 @@ namespace Rtx
         /// is twice as wide and its shadows are twice as soft.
         TEST(RtxLightBuilderTest, intensityScalesWithTheRecordedRadiusAndReachIsStretchedPastIt)
         {
-            const std::optional<Rtx::Light> light = makeLight(makeRecord(100, 0x00FFFFFF, 0), osg::Vec3f(1, 2, 3));
+            const std::optional<Rtx::Light> light = makeLight(describe(100, 0x00FFFFFF, 0), osg::Vec3f(1, 2, 3));
 
             ASSERT_TRUE(light.has_value());
             EXPECT_EQ(light->mPosition, osg::Vec3f(1, 2, 3));
@@ -410,7 +411,7 @@ namespace Rtx
             // Doubling the radius quadruples the brightness, doubles the flame and rather less than
             // doubles the reach: 200 * 200 * 0.25 * pi = 31415.9, 200 / 16 = 12.5, and
             // 200 * 2 + 128 = 528.
-            const std::optional<Rtx::Light> larger = makeLight(makeRecord(200, 0x00FFFFFF, 0), osg::Vec3f());
+            const std::optional<Rtx::Light> larger = makeLight(describe(200, 0x00FFFFFF, 0), osg::Vec3f());
             ASSERT_TRUE(larger.has_value());
             EXPECT_NEAR(larger->mIntensity.x(), 31415.9f, 0.1f);
             EXPECT_FLOAT_EQ(larger->mReach, 528.0f);
@@ -1045,23 +1046,23 @@ namespace Rtx
         /// table gone dark by the record route, while the graph route lit them.
         TEST(RtxLightBuilderTest, anUnlitRecordCastsNothingAndACarryableOneBurnsWhereItLies)
         {
-            EXPECT_FALSE(castsWherePlaced(makeRecord(100, 0x00FFFFFF, ESM::Light::OffDefault)));
-            EXPECT_FALSE(makeLight(makeRecord(100, 0x00FFFFFF, ESM::Light::OffDefault), osg::Vec3f()).has_value());
+            EXPECT_FALSE(castsWherePlaced(describe(100, 0x00FFFFFF, ESM::Light::OffDefault)));
+            EXPECT_FALSE(makeLight(describe(100, 0x00FFFFFF, ESM::Light::OffDefault), osg::Vec3f()).has_value());
 
-            EXPECT_FALSE(makeLight(makeRecord(100, 0x00FFFFFF, ESM::Light::Negative), osg::Vec3f()).has_value());
+            EXPECT_FALSE(makeLight(describe(100, 0x00FFFFFF, ESM::Light::Negative), osg::Vec3f()).has_value());
 
             // The flags that say what a light is or how it animates leave it burning.
             for (const std::int32_t flag :
                 { ESM::Light::Carry, ESM::Light::Dynamic, ESM::Light::Flicker, ESM::Light::Fire, ESM::Light::Pulse })
             {
-                EXPECT_TRUE(castsWherePlaced(makeRecord(100, 0x00FFFFFF, flag))) << "flag " << flag;
-                EXPECT_TRUE(makeLight(makeRecord(100, 0x00FFFFFF, flag), osg::Vec3f()).has_value()) << "flag " << flag;
+                EXPECT_TRUE(castsWherePlaced(describe(100, 0x00FFFFFF, flag))) << "flag " << flag;
+                EXPECT_TRUE(makeLight(describe(100, 0x00FFFFFF, flag), osg::Vec3f()).has_value()) << "flag " << flag;
             }
 
             // A file on disk that something else wrote, so a radius of nothing is data and not a
             // broken contract.
-            EXPECT_FALSE(makeLight(makeRecord(0, 0x00FFFFFF, 0), osg::Vec3f()).has_value());
-            EXPECT_FALSE(makeLight(makeRecord(-50, 0x00FFFFFF, 0), osg::Vec3f()).has_value());
+            EXPECT_FALSE(makeLight(describe(0, 0x00FFFFFF, 0), osg::Vec3f()).has_value());
+            EXPECT_FALSE(makeLight(describe(-50, 0x00FFFFFF, 0), osg::Vec3f()).has_value());
         }
 
         /// A light that subtracts is refused by both routes to one, and the graph was the half that
@@ -1075,10 +1076,10 @@ namespace Rtx
         /// hand, so it is the real path that is refused.
         TEST(RtxLightBuilderTest, aLightThatSubtractsIsRefusedByBothRoutesToOne)
         {
-            const ESM::Light subtracting = makeRecord(100, 0x00FFFFFF, ESM::Light::Negative);
+            const SceneUtil::LightCommon subtracting = describe(100, 0x00FFFFFF, ESM::Light::Negative);
 
-            const osg::ref_ptr<SceneUtil::LightSource> built = SceneUtil::createLightSource(
-                SceneUtil::LightCommon(subtracting), SceneUtil::Mask_Lighting, /*isExterior=*/false);
+            const osg::ref_ptr<SceneUtil::LightSource> built
+                = SceneUtil::createLightSource(subtracting, SceneUtil::Mask_Lighting, /*isExterior=*/false);
             ASSERT_NE(built, nullptr);
 
             const osg::Vec3f radiated = lightColour(*built, 0.0);
@@ -1089,9 +1090,9 @@ namespace Rtx
 
             // The same record without the flag is an ordinary white lamp by both routes, so what the
             // two agree on is the flag and not the light.
-            const ESM::Light ordinary = makeRecord(100, 0x00FFFFFF, 0);
-            const osg::ref_ptr<SceneUtil::LightSource> lit = SceneUtil::createLightSource(
-                SceneUtil::LightCommon(ordinary), SceneUtil::Mask_Lighting, /*isExterior=*/false);
+            const SceneUtil::LightCommon ordinary = describe(100, 0x00FFFFFF, 0);
+            const osg::ref_ptr<SceneUtil::LightSource> lit
+                = SceneUtil::createLightSource(ordinary, SceneUtil::Mask_Lighting, /*isExterior=*/false);
 
             EXPECT_TRUE(makeLight(lightColour(*lit, 0.0), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(ordinary, osg::Vec3f()).has_value());
@@ -1099,9 +1100,9 @@ namespace Rtx
             // **A black record subtracts nothing, so the flag on it decides nothing either.** Both
             // routes place a lamp that radiates zero, which is what they already did for a black
             // record without the flag — the record path used to drop this one and disagree.
-            const ESM::Light unlit = makeRecord(100, 0x00000000, ESM::Light::Negative);
-            const osg::ref_ptr<SceneUtil::LightSource> dark = SceneUtil::createLightSource(
-                SceneUtil::LightCommon(unlit), SceneUtil::Mask_Lighting, /*isExterior=*/false);
+            const SceneUtil::LightCommon unlit = describe(100, 0x00000000, ESM::Light::Negative);
+            const osg::ref_ptr<SceneUtil::LightSource> dark
+                = SceneUtil::createLightSource(unlit, SceneUtil::Mask_Lighting, /*isExterior=*/false);
 
             EXPECT_TRUE(makeLight(lightColour(*dark, 0.0), 100.0f, osg::Vec3f()).has_value());
             EXPECT_TRUE(makeLight(unlit, osg::Vec3f()).has_value());

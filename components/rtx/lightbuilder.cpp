@@ -6,12 +6,14 @@
 #include <string>
 
 #include <components/esm3/loadcell.hpp>
-#include <components/esm3/loadligh.hpp>
 #include <components/esm3/loadregn.hpp>
 #include <components/fallback/fallback.hpp>
 #include <components/misc/constants.hpp>
+#include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightmanager.hpp>
+#include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/util.hpp>
+#include <components/sceneutil/vismask.hpp>
 #include <components/sky/sun.hpp>
 #include <components/sky/timeofday.hpp>
 #include <components/weather/downpour.hpp>
@@ -569,7 +571,7 @@ namespace Rtx
         // **A light that subtracts is not one a ray can reach.** Negative illumination is a trick
         // for a renderer accumulating into a framebuffer, and it arrives here as a colour with a
         // negative channel — which is what `SceneUtil::createLightSource` builds out of a `Negative`
-        // record, and what `makeLight(const ESM::Light&)` builds to match. Said here, where the two
+        // record, and what `makeLight(const SceneUtil::LightCommon&)` builds to match. Said here, where the two
         // paths meet, so neither can come to a different answer about the same lamp.
         if (colour.x() < 0.0f || colour.y() < 0.0f || colour.z() < 0.0f)
             return std::nullopt;
@@ -640,12 +642,24 @@ namespace Rtx
         return decodeColour(diffuse) * (brightness * fade) + decodeColour(light.getAmbient()) * fade;
     }
 
-    bool castsWherePlaced(const ESM::Light& record)
+    bool castsWherePlaced(const SceneUtil::LightCommon& record)
     {
-        return (record.mData.mFlags & ESM::Light::OffDefault) == 0;
+        return !record.mOffDefault;
     }
 
-    std::optional<Light> makeLight(const ESM::Light& record, const osg::Vec3f& position)
+    bool standLight(osg::Group& where, const SceneUtil::LightCommon& record, bool exterior)
+    {
+        if (!castsWherePlaced(record))
+            return false;
+
+        // **The mirror does not filter on the mask**, so it decides nothing here. It is what the
+        // game marks a light node with, so the two graphs look the same to anything that ever does.
+        SceneUtil::addLight(&where, record, SceneUtil::Mask_Lighting, exterior);
+
+        return true;
+    }
+
+    std::optional<Light> makeLight(const SceneUtil::LightCommon& record, const osg::Vec3f& position)
     {
         if (!castsWherePlaced(record))
             return std::nullopt;
@@ -658,10 +672,9 @@ namespace Rtx
         //
         // The flag is read here as what it is, a property of the record, and not as a second rule
         // about what may be placed.
-        const osg::Vec3f recorded = decodeColour(record.mData.mColor);
-        const bool negative = (record.mData.mFlags & ESM::Light::Negative) != 0;
+        const osg::Vec3f recorded = decodeColour(record.mColor);
 
-        return makeLight(negative ? -recorded : recorded, static_cast<float>(record.mData.mRadius), position);
+        return makeLight(record.mNegative ? -recorded : recorded, record.mRadius, position);
     }
 
     Daylight makeRoomLight(const ESM::Cell::AMBIstruct& room, const osg::Vec3f& nightEye)

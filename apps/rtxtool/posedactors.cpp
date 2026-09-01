@@ -7,6 +7,7 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadnpc.hpp>
+#include <components/rtx/lightbuilder.hpp>
 
 #include "actor.hpp"
 #include "cellscene.hpp"
@@ -135,8 +136,8 @@ namespace RtxTool
                 // **After the instance and on the node holding it**, which is what makes the search
                 // for an `AttachLight` node find one — `CellProp::mLight` says what it cost when the
                 // light was stood beside a model that had gone to the props instead.
-                if (prop.mLight != nullptr)
-                    standLight(where, *prop.mLight, prop.mExterior);
+                if (prop.mLight.has_value())
+                    Rtx::standLight(where, *prop.mLight, prop.mExterior);
             }
             catch (const std::exception& failed)
             {
