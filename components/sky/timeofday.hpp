@@ -2,6 +2,7 @@
 
 #include <map>
 #include <string>
+#include <string_view>
 
 #include <osg/Vec4f>
 
@@ -97,4 +98,23 @@ namespace Sky
     private:
         T mSunriseValue, mDayValue, mSunsetValue, mNightValue;
     };
+
+    /// The four-point ramp a weather records for one of its coloured quantities.
+    ///
+    /// **Which four keys make a ramp, said once.** The game builds one of these per weather at
+    /// startup and `openmw-rtxtool` builds one per reading, and a second spelling of
+    /// `Weather_<name>_<quantity>_<phase>_Color` is a key one of them could get wrong on its own.
+    ///
+    /// @param weather a weather's name as the fallback settings spell it — "Clear", "Overcast" and
+    ///        the rest. A name the map does not whitelist throws out of it.
+    /// @param quantity "Sky", "Fog", "Ambient" or "Sun", which is also the window it crosses dawn
+    ///        over — `TimeOfDayInterpolator::getValue` takes the same word.
+    TimeOfDayInterpolator<osg::Vec4f> colourRamp(std::string_view weather, std::string_view quantity);
+
+    /// The land fog's own ramp, which the content records two points of rather than four.
+    ///
+    /// **The day depth serves three of the four**, so the layer holds through sunrise and the whole
+    /// day and crosses to the night depth at dusk. Asking for a sunrise depth is not a key that
+    /// reads nought: the fallback map does not know it at all and throws.
+    TimeOfDayInterpolator<float> landFogRamp(std::string_view weather);
 }

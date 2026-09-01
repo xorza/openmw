@@ -141,8 +141,6 @@ namespace Rtx
 
         Reading readWeather(std::string_view weather, const Sky::TimeOfDaySettings& times, float hour)
         {
-            const std::string name(weather);
-
             // A name that is none of the ten is left to the map, which refuses it as a key it will
             // not consider; one of the ten with nothing written for it is refused here, by name.
             if (weatherIndex(weather).has_value())
@@ -153,24 +151,12 @@ namespace Rtx
             // quantity crosses dawn over a window of its own — the sun can be up before the sky has
             // finished turning — so reading whichever phase an hour fell in got every hour inside a
             // transition wrong, which is most of sunrise and most of dusk.
-            const auto ramp = [&name, &times, hour](std::string_view field) {
-                const std::string prefix(field);
-                const auto colour = [&name, &prefix](std::string_view phase) {
-                    return Fallback::Map::getColour(
-                        "Weather_" + name + "_" + prefix + "_" + std::string(phase) + "_Color");
-                };
-
-                return Sky::TimeOfDayInterpolator<osg::Vec4f>(
-                    colour("Sunrise"), colour("Day"), colour("Sunset"), colour("Night"))
-                    .getValue(hour, times, prefix);
+            //
+            // `Sky::colourRamp` spells the four keys, and `MWWorld::Weather` builds its own out of
+            // the same call.
+            const auto ramp = [&weather, &times, hour](std::string_view quantity) {
+                return Sky::colourRamp(weather, quantity).getValue(hour, times, std::string(quantity));
             };
-
-            // **A content file records a day depth and a night one and nothing between**, so the
-            // game hands the day value to three of the ramp's four points and lets it cross to night
-            // at dusk. Asking for a sunrise depth is not a key that reads zero — the fallback map
-            // does not know it at all and throws.
-            const float day = Fallback::Map::getFloat("Weather_" + name + "_Land_Fog_Day_Depth");
-            const float night = Fallback::Map::getFloat("Weather_" + name + "_Land_Fog_Night_Depth");
 
             const osg::Vec4f ambient = ramp("Ambient");
 
@@ -179,10 +165,10 @@ namespace Rtx
                 .mSky = ramp("Sky"),
                 .mAmbient = ambient,
                 .mSun = ramp("Sun"),
-                .mSunDisc = Sky::sunDiscAt(
-                    hour, times, Fallback::Map::getColour("Weather_" + name + "_Sun_Disc_Sunset_Color"), ambient),
-                .mGlare = Fallback::Map::getFloat("Weather_" + name + "_Glare_View"),
-                .mFogDepth = Sky::TimeOfDayInterpolator<float>(day, day, day, night).getValue(hour, times, "Fog"),
+                .mSunDisc = Sky::sunDiscAt(hour, times,
+                    Fallback::Map::getColour("Weather_" + std::string(weather) + "_Sun_Disc_Sunset_Color"), ambient),
+                .mGlare = glareView(weather),
+                .mFogDepth = Sky::landFogRamp(weather).getValue(hour, times, "Fog"),
 
                 // **The recorded speed and not the gust.** What this decides is how deep the layer
                 // stands and how fast the field is carried, both of which are the weather's settled

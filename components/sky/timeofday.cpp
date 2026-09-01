@@ -136,4 +136,21 @@ namespace Sky
 
     template class TimeOfDayInterpolator<float>;
     template class TimeOfDayInterpolator<osg::Vec4f>;
+
+    TimeOfDayInterpolator<osg::Vec4f> colourRamp(std::string_view weather, std::string_view quantity)
+    {
+        const std::string stem = "Weather_" + std::string(weather) + "_" + std::string(quantity) + "_";
+
+        return TimeOfDayInterpolator<osg::Vec4f>(Fallback::Map::getColour(stem + "Sunrise_Color"),
+            Fallback::Map::getColour(stem + "Day_Color"), Fallback::Map::getColour(stem + "Sunset_Color"),
+            Fallback::Map::getColour(stem + "Night_Color"));
+    }
+
+    TimeOfDayInterpolator<float> landFogRamp(std::string_view weather)
+    {
+        const std::string stem = "Weather_" + std::string(weather) + "_Land_Fog_";
+
+        const float day = Fallback::Map::getFloat(stem + "Day_Depth");
+        return TimeOfDayInterpolator<float>(day, day, day, Fallback::Map::getFloat(stem + "Night_Depth"));
+    }
 }

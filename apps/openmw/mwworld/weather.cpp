@@ -35,14 +35,12 @@ namespace MWWorld
     {
         static const int invalidWeatherID = -1;
 
-        // Linear interpolation between x and y. Still here because the weather's own transition
-        // between two skies uses it; the time-of-day ramp that used to share them has moved to
-        // `Sky::TimeOfDayInterpolator` and carries its own.
+        // linear interpolate between x and y based on factor.
         float lerp(float x, float y, float factor)
         {
             return x * (1 - factor) + y * factor;
         }
-
+        // linear interpolate between x and y based on factor.
         osg::Vec4f lerp(const osg::Vec4f& x, const osg::Vec4f& y, float factor)
         {
             return x * (1 - factor) + y * factor;
@@ -67,26 +65,11 @@ namespace MWWorld
         , mScriptId(scriptId)
         , mName(name)
         , mCloudTexture(Fallback::Map::getString("Weather_" + name + "_Cloud_Texture"))
-        , mSkyColor(Fallback::Map::getColour("Weather_" + name + "_Sky_Sunrise_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Sky_Day_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Sky_Sunset_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Sky_Night_Color"))
-        , mFogColor(Fallback::Map::getColour("Weather_" + name + "_Fog_Sunrise_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Fog_Day_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Fog_Sunset_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Fog_Night_Color"))
-        , mAmbientColor(Fallback::Map::getColour("Weather_" + name + "_Ambient_Sunrise_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Ambient_Day_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Ambient_Sunset_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Ambient_Night_Color"))
-        , mSunColor(Fallback::Map::getColour("Weather_" + name + "_Sun_Sunrise_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Sun_Day_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Sun_Sunset_Color"),
-              Fallback::Map::getColour("Weather_" + name + "_Sun_Night_Color"))
-        , mLandFogDepth(Fallback::Map::getFloat("Weather_" + name + "_Land_Fog_Day_Depth"),
-              Fallback::Map::getFloat("Weather_" + name + "_Land_Fog_Day_Depth"),
-              Fallback::Map::getFloat("Weather_" + name + "_Land_Fog_Day_Depth"),
-              Fallback::Map::getFloat("Weather_" + name + "_Land_Fog_Night_Depth"))
+        , mSkyColor(Sky::colourRamp(name, "Sky"))
+        , mFogColor(Sky::colourRamp(name, "Fog"))
+        , mAmbientColor(Sky::colourRamp(name, "Ambient"))
+        , mSunColor(Sky::colourRamp(name, "Sun"))
+        , mLandFogDepth(Sky::landFogRamp(name))
         , mSunDiscSunsetColor(Fallback::Map::getColour("Weather_" + name + "_Sun_Disc_Sunset_Color"))
         , mCloudSpeed(Fallback::Map::getFloat("Weather_" + name + "_Cloud_Speed"))
         , mGlareView(Fallback::Map::getFloat("Weather_" + name + "_Glare_View"))
