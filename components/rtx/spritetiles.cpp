@@ -47,7 +47,7 @@ namespace Rtx
         /// The closed form rather than a projected bounding box, because a box around the sphere is
         /// three times the area at the edge of a wide frame, and every extra tile is a sprite walked
         /// by pixels that cannot see it. Only meaningful where the eye is outside the sphere, which
-        /// `depth > radius` is what guarantees.
+        /// `capsuleTiles` is what guarantees.
         struct SlopeSpan
         {
             float mLow = 0.0f;
@@ -76,9 +76,31 @@ namespace Rtx
             return static_cast<std::int32_t>(std::floor(pixel));
         }
 
-        /// The tiles a sprite of `radius` about `centre` can be met from.
-        TileRect tilesOf(const osg::Vec3f& centre, float radius, const osg::Vec3f& origin, const CameraFrame& frame,
-            const Shaders::Camera& camera, std::uint32_t across, std::uint32_t down)
+        /// Where something lands on the screen, in whole pixels, before the frame's edges are applied.
+        ///
+        /// **Off the frame and not clipped to it**, because a capsule is bounded by two of these and
+        /// a rectangle clipped to nothing carries no side to union against: a streak lying across the
+        /// view has both its ends past the edge and its middle down the centre of the frame.
+        struct PixelRect
+        {
+            std::int32_t mFromX = 0;
+            std::int32_t mFromY = 0;
+            std::int32_t mToX = 0;
+            std::int32_t mToY = 0;
+
+            void add(const PixelRect& other)
+            {
+                mFromX = std::min(mFromX, other.mFromX);
+                mFromY = std::min(mFromY, other.mFromY);
+                mToX = std::max(mToX, other.mToX);
+                mToY = std::max(mToY, other.mToY);
+            }
+        };
+
+        /// Where a ball of `radius` about `centre` lands, given that its tangent cone is bounded —
+        /// which for a perspective frame is `depth > radius`, and for an orthographic one is always.
+        PixelRect ballPixels(const osg::Vec3f& centre, float radius, const osg::Vec3f& origin, const CameraFrame& frame,
+            const Shaders::Camera& camera)
         {
             const osg::Vec3f toward = centre - origin;
 
@@ -104,18 +126,6 @@ namespace Rtx
             {
                 const float depth = toward * frame.mForward;
 
-                // Wholly behind the eye, where no ray of a frame that only looks forward can reach
-                // it. The march's own depth test says the same, so this is a tile saved rather than
-                // a sprite lost.
-                if (depth <= -radius)
-                    return TileRect{};
-
-                // **The eye is inside the sphere, or level with it.** There are no tangent lines
-                // from a point on or inside a circle, and a sprite that close covers whatever it
-                // likes — so it goes in every tile rather than being reasoned about.
-                if (depth <= radius)
-                    return TileRect{ 0, 0, across - 1, down - 1 };
-
                 const SlopeSpan sideways = tangentSlopes(toward * frame.mRight, depth, radius);
                 const SlopeSpan upright = tangentSlopes(-(toward * frame.mUp), depth, radius);
 
@@ -125,13 +135,19 @@ namespace Rtx
                 highV = upright.mHigh / frame.mHalfHeight;
             }
 
-            const std::int32_t fromX = toPixel(lowU, camera.mWidth, -1.0f);
-            const std::int32_t toX = toPixel(highU, camera.mWidth, 1.0f);
-            const std::int32_t fromY = toPixel(lowV, camera.mHeight, -1.0f);
-            const std::int32_t toY = toPixel(highV, camera.mHeight, 1.0f);
+            return PixelRect{
+                toPixel(lowU, camera.mWidth, -1.0f),
+                toPixel(lowV, camera.mHeight, -1.0f),
+                toPixel(highU, camera.mWidth, 1.0f),
+                toPixel(highV, camera.mHeight, 1.0f),
+            };
+        }
 
-            if (toX < 0 || toY < 0 || fromX >= static_cast<std::int32_t>(camera.mWidth)
-                || fromY >= static_cast<std::int32_t>(camera.mHeight))
+        /// The tiles a pixel rectangle covers, or nothing where it misses the frame.
+        TileRect tilesOf(const PixelRect& rect, const Shaders::Camera& camera)
+        {
+            if (rect.mToX < 0 || rect.mToY < 0 || rect.mFromX >= static_cast<std::int32_t>(camera.mWidth)
+                || rect.mFromY >= static_cast<std::int32_t>(camera.mHeight))
                 return TileRect{};
 
             const auto tile = [](std::int32_t pixel, std::uint32_t limit) {
@@ -139,27 +155,82 @@ namespace Rtx
             };
 
             return TileRect{
-                static_cast<std::uint32_t>(tile(fromX, camera.mWidth)),
-                static_cast<std::uint32_t>(tile(fromY, camera.mHeight)),
-                static_cast<std::uint32_t>(tile(toX, camera.mWidth)),
-                static_cast<std::uint32_t>(tile(toY, camera.mHeight)),
+                static_cast<std::uint32_t>(tile(rect.mFromX, camera.mWidth)),
+                static_cast<std::uint32_t>(tile(rect.mFromY, camera.mHeight)),
+                static_cast<std::uint32_t>(tile(rect.mToX, camera.mWidth)),
+                static_cast<std::uint32_t>(tile(rect.mToY, camera.mHeight)),
             };
         }
 
-        /// How far a sprite's own drawing reaches from its centre, in world units.
+        /// Everywhere a sprite's own drawing can reach, as a segment and a radius about it.
         ///
-        /// **A disc for a billboard and a swung quad for an oriented one**, because that is what the
-        /// march tests against: a billboard is rejected past `mRadius` of the ray, so the disc is
-        /// exact; an oriented quad's corner is its two authored axes added, each scaled by the
-        /// radius, and swinging the width about the axis cannot lengthen it.
-        float reachOf(const Shaders::GpuSprite& sprite, const Shaders::GpuEmitter& emitter)
+        /// **A ball for a billboard and a capsule for an oriented quad**, because that is the shape
+        /// the march tests against. A billboard is rejected past `mRadius` of the ray, so the ball
+        /// is exact. An oriented quad hangs on its authored axis and swings its width about that
+        /// axis to meet the ray — so over every direction the eye can look from, it sweeps a
+        /// cylinder of the width's radius about the axis segment, and the capsule is that cylinder
+        /// with its ends rounded.
+        ///
+        /// **A sphere around the corners is what this replaces, and rain is what it cost.** A drop
+        /// is a long thin streak, so the sphere is as wide as the streak is long — tens of times the
+        /// width — and a bound that wide crosses the eye plane for every drop falling anywhere near
+        /// the camera. There are no tangent lines from inside, so each of those was binned into
+        /// every tile on the screen: ninety-four drops out of two thousand six hundred, and 96% of
+        /// the whole index table. The capsule's radius is the streak's width instead of its length,
+        /// which is what takes that case back to almost never.
+        struct SpriteBound
+        {
+            osg::Vec3f mFrom;
+            osg::Vec3f mTo;
+            float mRadius = 0.0f;
+        };
+
+        SpriteBound boundOf(const Shaders::GpuSprite& sprite, const Shaders::GpuEmitter& emitter)
         {
             const float across = emitter.mAcross.length();
             const float upward = emitter.mUpward.length();
             if (across <= 0.0f || upward <= 0.0f)
-                return sprite.mRadius;
+                return SpriteBound{ sprite.mPosition, sprite.mPosition, sprite.mRadius };
 
-            return sprite.mRadius * (across + upward);
+            const osg::Vec3f half = emitter.mUpward * sprite.mRadius;
+
+            return SpriteBound{ sprite.mPosition - half, sprite.mPosition + half, sprite.mRadius * across };
+        }
+
+        /// The tiles a capsule can be met from, as the rectangle around the two balls that cap it.
+        ///
+        /// **The rectangle around both and not a ball around both**, which is the whole of what a
+        /// capsule buys: a streak lying across the frame covers a long thin rectangle, and a ball
+        /// holding the same two ends covers the square that rectangle sits in. Both caps in front of
+        /// the eye, the segment between them projects to a straight line between their two centres,
+        /// so a rectangle holding the caps holds the cylinder as well.
+        TileRect capsuleTiles(const SpriteBound& bound, const osg::Vec3f& origin, const CameraFrame& frame,
+            const Shaders::Camera& camera, std::uint32_t across, std::uint32_t down)
+        {
+            if (camera.mOrthographic == 0u)
+            {
+                const float from = (bound.mFrom - origin) * frame.mForward;
+                const float to = (bound.mTo - origin) * frame.mForward;
+
+                // Wholly behind the eye, where no ray of a frame that only looks forward can reach
+                // it. The march's own depth test says the same, so this is a tile saved rather than
+                // a sprite lost.
+                if (from <= -bound.mRadius && to <= -bound.mRadius)
+                    return TileRect{};
+
+                // **A cap the eye is inside, or level with.** There are no tangent lines from a
+                // point on or inside a circle, and neither is there a straight projected segment
+                // once the capsule reaches the plane through the eye — so it goes in every tile
+                // rather than being reasoned about.
+                if (from <= bound.mRadius || to <= bound.mRadius)
+                    return TileRect{ 0, 0, across - 1, down - 1 };
+            }
+
+            PixelRect rect = ballPixels(bound.mFrom, bound.mRadius, origin, frame, camera);
+            if (bound.mTo != bound.mFrom)
+                rect.add(ballPixels(bound.mTo, bound.mRadius, origin, frame, camera));
+
+            return tilesOf(rect, camera);
         }
     }
 
@@ -192,8 +263,7 @@ namespace Rtx
                     continue;
 
                 const Shaders::GpuEmitter& emitter = emitters[sprite.mEmitter];
-                const TileRect rect
-                    = tilesOf(sprite.mPosition, reachOf(sprite, emitter), origin, frame, camera, mAcross, mDown);
+                const TileRect rect = capsuleTiles(boundOf(sprite, emitter), origin, frame, camera, mAcross, mDown);
                 if (rect.isEmpty())
                     continue;
 

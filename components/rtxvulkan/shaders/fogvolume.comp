@@ -138,19 +138,31 @@ void main()
         // `FOG_SHADOW_RAYS` has always meant, and what makes eight probes stand for sixty-four
         // slices. Where along the stretch it leaves from turns every frame, so a shaft's edge lands
         // between two froxels as something the filter averages rather than as a staircase.
+        const float reach
+            = fogDepth(float((stretch + 1u) * FOG_VOLUME_SLICES_PER_RAY) / float(FOG_VOLUME_SLICES)) * span;
+        const vec3 probe = origin + direction * mix(behind, reach, alongJitter);
+
         float visible = 1.0;
         float lunar = 1.0;
-        if (sources.mShafts || sources.mMoonlit)
-        {
-            const float reach
-                = fogDepth(float((stretch + 1u) * FOG_VOLUME_SLICES_PER_RAY) / float(FOG_VOLUME_SLICES)) * span;
-            const vec3 probe = origin + direction * mix(behind, reach, alongJitter);
+        if (sources.mShafts)
+            visible = lightThrough(probe, frame.mSunPosition, frame.mFar);
+        if (sources.mMoonlit)
+            lunar = lightThrough(probe, sources.mMoonward, frame.mFar);
 
-            if (sources.mShafts)
-                visible = lightThrough(probe, frame.mSunPosition, frame.mFar);
-            if (sources.mMoonlit)
-                lunar = lightThrough(probe, sources.mMoonward, frame.mFar);
-        }
+        // **And the lamps answer per stretch too, on the sun's own argument.** A reservoir per slice
+        // bought a short shadow ray per slice — sixty-four of them down a column, against the sun's
+        // eight — and what it bought them for was whether a lamp is *seen*, which changes slowly
+        // along a ray where a lamp's falloff changes fast. So the seeing is asked once for the
+        // stretch, from the same probe the sun left from, and each slice below scales it by the sum
+        // every lamp delivers where that slice actually stands.
+        //
+        // **The sum and not the reservoir's own estimate**, which the per-stretch shape makes
+        // affordable: `lampsAt` is the walk this was already paying for, and reading it whole
+        // instead of holding one candidate out of it drops the estimator's variance to nothing. What
+        // is left of the draw is which lamp the one ray goes to, and `spritesAlong` makes the same
+        // trade for the same reason.
+        const Reservoir kept = lampsInMedium(lampState, probe);
+        const float lampsSeen = lampVisible(kept, vec2(randomNext(lampState), randomNext(lampState)));
 
         for (uint k = 0u; k < FOG_VOLUME_SLICES_PER_RAY; ++k)
         {
@@ -178,11 +190,7 @@ void main()
             // **Isotropic, and `INV_FOUR_PI` is what isotropic is.** A lamp arrives in the air as
             // irradiance exactly as it arrives at a surface, and what comes back toward the eye is
             // that irradiance spread over the sphere.
-            Reservoir lamps = noLamps();
-            weighLamps(lamps, lampState, position, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0);
-
-            vec3 inscatter = frame.mFogColour + moons
-                + lampsThrough(lamps, vec2(randomNext(lampState), randomNext(lampState)));
+            vec3 inscatter = frame.mFogColour + moons + lampsAt(position) * (INV_FOUR_PI * lampsSeen);
 
             // **The sun without its irradiance and without its phase**, which is the whole of what
             // the second image is for: both are functions of the direction alone, so they factor out

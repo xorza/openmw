@@ -8,7 +8,6 @@ namespace Rtx
     namespace
     {
         /// A unit vector square to `axis`: its cross with whichever world axis it lies least along.
-
         osg::Vec3f squareTo(const osg::Vec3f& axis)
         {
             const osg::Vec3f helper
@@ -30,7 +29,6 @@ namespace Rtx
         // A run that is passed over keeps the nought its sprites were built with, and a run that is
         // shaded is written whole — so nothing is cleared first.
         for (const Shaders::GpuEmitter& emitter : emitters)
-
         {
             const bool oriented = emitter.mAcross.length2() > 0.0f && emitter.mUpward.length2() > 0.0f;
             if (emitter.mAdditive != 0u || oriented || emitter.mCount < 2)
@@ -112,19 +110,49 @@ namespace Rtx
             return;
         }
 
-        const std::uint32_t fromX = clampCell(std::floor(x - radius - 1.0f));
-        const std::uint32_t untilX = clampCell(std::ceil(x + radius + 1.0f));
-        const std::uint32_t fromY = clampCell(std::floor(y - radius - 1.0f));
-        const std::uint32_t untilY = clampCell(std::ceil(y + radius + 1.0f));
+        // **A row at a time, and the inside of the disc without a square root.** The ramp is one cell
+        // wide, so a cell more than half a cell within the rim is covered in full and a cell outside
+        // it is not covered at all — exactly, by the clamp — and only the ring between those two
+        // radii needs the distance itself. Of a disc eight cells across that ring is a seventh of the
+        // cells, where the bounding box asked for the distance at every one of them and at the
+        // corners it does not reach besides. Measured at Vivec, where `layDown` was 12.4% of the whole
+        // frame's CPU and the emitters around it were a third of it.
+        const float outer = radius + 0.5f;
+        const float inner = radius - 0.5f;
+        const float outside = outer * outer;
+        const float within = inner * inner;
+
+        const std::uint32_t fromY = clampCell(std::floor(y - outer));
+        const std::uint32_t untilY = clampCell(std::ceil(y + outer));
 
         for (std::uint32_t cy = fromY; cy <= untilY; ++cy)
+        {
+            const float dy = static_cast<float>(cy) - y;
+
+            // How far the disc reaches across this row, which is one square root for the row rather
+            // than one for each of its cells. Negative where the row misses the disc — and where the
+            // clamps above pulled a row onto the grid that the disc never touched.
+            const float span = outside - dy * dy;
+            if (!(span > 0.0f))
+                continue;
+
+            const float half = std::sqrt(span);
+            const std::uint32_t fromX = clampCell(std::ceil(x - half));
+            const std::uint32_t untilX = clampCell(std::floor(x + half));
+
+            float* const row = mGrid.data() + std::size_t{ cy } * sCells;
             for (std::uint32_t cx = fromX; cx <= untilX; ++cx)
             {
                 const float dx = static_cast<float>(cx) - x;
-                const float dy = static_cast<float>(cy) - y;
-                const float inside = std::clamp(radius - std::sqrt(dx * dx + dy * dy) + 0.5f, 0.0f, 1.0f);
-                if (inside > 0.0f)
-                    mGrid[std::size_t{ cy } * sCells + cx] += weight * inside;
+                const float away = dx * dx + dy * dy;
+                if (away <= within)
+                {
+                    row[cx] += weight;
+                    continue;
+                }
+
+                row[cx] += weight * std::clamp(radius - std::sqrt(away) + 0.5f, 0.0f, 1.0f);
             }
+        }
     }
 }

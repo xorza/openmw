@@ -483,9 +483,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // layer would most notice the loss of.
             uint lampState = randomSeed(pixelKey(pixel) + SEED_LAMPS_SPRITE);
 
-            Reservoir kept = noLamps();
-            weighLamps(kept, lampState, sprite.mPosition, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0);
-
+            const Reservoir kept = lampsInMedium(lampState, sprite.mPosition);
             lampThrough = lampVisible(kept, vec2(randomNext(lampState), randomNext(lampState)));
             lampToward = kept.mTowards;
         }

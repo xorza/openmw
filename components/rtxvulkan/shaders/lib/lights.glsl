@@ -347,6 +347,22 @@ void weighLamps(
     }
 }
 
+/// The lamps reaching a point in a medium, as the one candidate a shadow ray is spent on.
+///
+/// **What "in a medium" means to `weighLamps`, in one place**: the air and a puff face nothing away,
+/// so there is no normal and no plane to take a side against, no far side to let a share through,
+/// and what comes back toward the eye is the irradiance spread over the sphere.
+///
+/// The reservoir and not the sum: both callers want the *seeing* out of this and read the falloff
+/// from `lampsAt` beside it, which is what `lampsAt` says it is for.
+Reservoir lampsInMedium(inout uint state, vec3 position)
+{
+    Reservoir kept = noLamps();
+    weighLamps(kept, state, position, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0);
+
+    return kept;
+}
+
 /// What the world leaves of the lamp a reservoir held, from none of it to all.
 ///
 /// **The one ray**, aimed somewhere on the lamp. Nothing is traced where every lamp was faced away

@@ -138,6 +138,17 @@ namespace
             for (float y : { -20.0f, 5.0f, 25.0f })
                 layer.addSprite(osg::Vec3f(x, y, 3.0f), 6.0f);
 
+        // Streaks long enough that both their ends leave the frame while their middles cross it,
+        // which is the case a bound clipped end by end loses: neither cap is on the screen and the
+        // cylinder between them runs down the centre of it.
+        for (float x : { 6.0f, 25.0f })
+            layer.addSprite(osg::Vec3f(x, 0.0f, 0.0f), 20.0f);
+
+        // And one leaning through the plane the eye stands in, where there is no projected segment
+        // to bound at all.
+        layer.addEmitter(osg::Vec3f(0.1f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, -1.0f));
+        layer.addSprite(osg::Vec3f(2.0f, 0.0f, 0.0f), 6.0f);
+
         for (const osg::Vec2f jitter : { osg::Vec2f(0.0f, 0.0f), osg::Vec2f(0.49f, -0.49f) })
         {
             Shaders::VisibilityConstants constants = lookingAlongX();
@@ -220,6 +231,39 @@ namespace
         ASSERT_EQ(tiles.getIndices().size(), tileCount);
         for (std::size_t tile = 0; tile < tileCount; ++tile)
             EXPECT_EQ(tiles.getOffsets()[tile + 1] - tiles.getOffsets()[tile], 1u) << "tile " << tile;
+    }
+
+    /// A rain streak falling past the camera reaches the strip it covers and not the whole frame.
+    ///
+    /// **The counterpart to the test above, and the reason a capsule bounds a streak.** A ball around
+    /// the quad's corners is as wide as the streak is long, so a drop this close was a ball the eye
+    /// stood inside and went into every tile on the screen — ninety-four drops out of a storm's two
+    /// thousand six hundred, and 96% of the whole index table. The capsule's radius is the streak's
+    /// width, which is a tenth of that here and a fiftieth in the content.
+    TEST(RtxSpriteTilesTest, aStreakFallingPastTheEyeReachesTheStripItCoversAndNoMore)
+    {
+        Layer layer;
+        layer.addEmitter(osg::Vec3f(0.1f, 0.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, -1.0f));
+        layer.addSprite(osg::Vec3f(6.0f, 0.0f, 0.0f), 8.0f);
+
+        const Shaders::VisibilityConstants constants = lookingAlongX();
+        SpriteTiles tiles;
+        tiles.rebuild(layer.mSprites, layer.mEmitters, constants.mOrigin, constants.mCamera);
+
+        // Eight tenths of a unit of width at six away is a tangent of 0.133, against the 0.77 the
+        // frame's own half-width is — so the streak is a sixth of the frame across, dead centre, and
+        // its own length takes it off the top and the bottom.
+        EXPECT_TRUE(binnedFor(tiles, 0, sWidth / 2, sHeight / 2));
+        for (std::uint32_t y = 0; y < sHeight; ++y)
+        {
+            EXPECT_FALSE(binnedFor(tiles, 0, 0, y)) << "the left edge held a streak down the middle";
+            EXPECT_FALSE(binnedFor(tiles, 0, sWidth - 1, y)) << "the right edge held a streak down the middle";
+        }
+
+        // Every tile is what the ball around the corners gave, and it is what this is measured
+        // against: the strip is two of the four tile columns and all three rows.
+        const std::size_t tileCount = std::size_t{ tiles.getAcross() } * tiles.getDown();
+        EXPECT_EQ(tiles.getIndices().size(), tileCount / 2);
     }
 
     /// A sprite behind the eye reaches no tile, and one off to the side reaches only its own.

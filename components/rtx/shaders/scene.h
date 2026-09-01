@@ -914,6 +914,11 @@ namespace Rtx::Shaders
     /// tile or four, and a tile's list is short. The screen's tile count is derived from this and the
     /// frame's extent on both sides — `(width + SPRITE_TILE - 1) / SPRITE_TILE` — so there is one
     /// number here and no second one to disagree with it.
+    ///
+    /// **Eight was measured and it is a loss.** Over Balmora at night in the rain, four times the
+    /// tiles take 0.32 ms off the trace and put 2.4 ms on the frame: the offsets are one array entry
+    /// per tile, rebuilt and written to the device every frame, and quartering the tile quadruples
+    /// that whatever the sprites do.
     RTX_CONST uint SPRITE_TILE = 16u;
 
     /// The most a texel of a sprite may hide of what is behind it.

@@ -395,6 +395,13 @@ const float BOUNCE_REACH = 8192.0;
 /// 30.9 ms to 26.3; a half of it measured 28.4, so this buys 2.5 ms of a 4.6 ms ceiling and no one
 /// of the seven places came back the wrong way.
 ///
+/// **A half and no further, because a third measured nothing.** Interleaved over the same seven
+/// places, a third came back within 0.01 ms at four of them and 0.09 to 0.12 ms *slower* at the
+/// other three. A rate is a per-lane skip and the ray it skips is a long one, so a warp still runs
+/// until whichever of its thirty-two lanes kept a ray is finished — and at a third, all thirty-two
+/// skipping is a chance in six hundred thousand. What the first halving bought is not on a curve
+/// this can be carried further along.
+///
 /// **Drawn and divided by the draw, so the estimate is unbiased by construction** rather than a
 /// guess at what the untraced half would have said. What that hands the filter is variance, which
 /// is what the filter is for — and it is the same trade the moon pick makes. Nothing downstream
