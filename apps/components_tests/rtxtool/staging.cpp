@@ -37,10 +37,11 @@ namespace RtxTool
         /// `StagedWorld::seedDraws` and the light-id reset beside its first call are what answer
         /// them.
         ///
-        /// **The lights and the sprites, because those are what carried it.** The geometry never
-        /// moved — the instance count, the texture count and the share of primary rays that hit were
-        /// identical throughout — so a comparison of those would have passed while half of a
-        /// lamp-lit room was a different brightness.
+        /// **The whole description and not the half that carried it.** Every one of the three moved
+        /// the lights or the sprites and left the geometry exactly where it was, so a test of the
+        /// instances alone would have passed while half of a lamp-lit room was a different
+        /// brightness. What the title claims is that the world is the same, and the cheapest way to
+        /// keep that claim true of a fourth member nobody has met is to compare all of it.
         ///
         /// **One at a time, because a staged world gives its ground back when it goes.** Two of them
         /// alive at once would be two worlds sharing one `World`, which is a case nothing else in
@@ -53,8 +54,12 @@ namespace RtxTool
             const StagingRequest request;
             const ActorRequest actors;
 
+            std::vector<Rtx::MeshInstance> instances;
+            std::vector<VFS::Path::Normalized> textures;
             std::vector<Rtx::Light> lights;
             std::vector<Rtx::Sprite> sprites;
+            std::size_t meshes = 0;
+            std::size_t materials = 0;
             std::size_t placed = 0;
 
             {
@@ -62,8 +67,12 @@ namespace RtxTool
                 ASSERT_FALSE(first.empty());
 
                 const Rtx::SceneDesc& scene = first.getScene();
+                instances.assign(scene.getInstances().begin(), scene.getInstances().end());
+                textures.assign(scene.getTextures().begin(), scene.getTextures().end());
                 lights.assign(scene.getLights().begin(), scene.getLights().end());
                 sprites.assign(scene.getSprites().begin(), scene.getSprites().end());
+                meshes = scene.getMeshes().size();
+                materials = scene.getMaterials().size();
                 placed = scene.getPlacedCount();
             }
 
@@ -76,6 +85,20 @@ namespace RtxTool
 
                 const Rtx::SceneDesc& scene = second.getScene();
                 EXPECT_EQ(scene.getPlacedCount(), placed);
+                EXPECT_EQ(scene.getMeshes().size(), meshes);
+                EXPECT_EQ(scene.getMaterials().size(), materials);
+
+                ASSERT_EQ(scene.getInstances().size(), instances.size());
+                for (std::size_t at = 0; at < instances.size(); ++at)
+                {
+                    EXPECT_EQ(scene.getInstances()[at].mMesh, instances[at].mMesh) << "instance " << at;
+                    EXPECT_EQ(scene.getInstances()[at].mMaterial, instances[at].mMaterial) << "instance " << at;
+                    EXPECT_EQ(scene.getInstances()[at].mTransform, instances[at].mTransform) << "instance " << at;
+                }
+
+                ASSERT_EQ(scene.getTextures().size(), textures.size());
+                for (std::size_t at = 0; at < textures.size(); ++at)
+                    EXPECT_EQ(scene.getTextures()[at], textures[at]) << "texture " << at;
 
                 ASSERT_EQ(scene.getLights().size(), lights.size());
                 for (std::size_t at = 0; at < lights.size(); ++at)

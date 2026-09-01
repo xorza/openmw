@@ -240,10 +240,10 @@ namespace RtxTool
         /// Puts the two sequences a staging draws at random from back where a fresh process holds
         /// them. Which they are, and what each decides, is in the definition.
         ///
-        /// **The one input to a staged picture that nothing else states, and the place a third one
-        /// found goes.** The rest of what a staging stands on is stated where it belongs: the light
-        /// ids at the top of the constructor, the clock at `setSeconds`, the sea at `mSeaSeconds`,
-        /// and the frame's own duration at `Rtx::FrameOptions::mSinceLast`.
+        /// **Where a sequence goes that has to be put back more than once.** One that is put back
+        /// only at the start of a staging is stated there instead, which the light ids are. The rest
+        /// of what a staging stands on is stated where it belongs again: the clock at `setSeconds`,
+        /// the sea at `mSeaSeconds`, and the frame's own duration at `Rtx::FrameOptions::mSinceLast`.
         ///
         /// **Taken twice, because where a staging *starts* one is not where it starts *drawing* from
         /// it.** Between the two, a region is read — and how much of a sequence that costs depends

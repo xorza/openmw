@@ -231,7 +231,7 @@ namespace SceneUtil
         size_t getLastAppliedFrame() const { return mLastAppliedFrame; }
     };
 
-    /// Restarts the sequence LightSource::getId counts along.
+    /// Restarts the sequence LightSource::getId reports along.
     /// @note Ids are unique within a run of the scene graph, not across runs. A host that builds
     ///     more than one scene per process, and that needs a light's id to mean the same thing in
     ///     each of them, calls this where a scene begins.

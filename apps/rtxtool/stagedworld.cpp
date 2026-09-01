@@ -30,7 +30,7 @@ namespace RtxTool
     {
         seedDraws();
 
-        // **And the counter a light's id comes from, here and nowhere else.** A
+        // **The counter a light's id comes from, here and nowhere else.** A
         // `SceneUtil::LightSource` takes its id from one that runs for the whole process, and
         // `Rtx::lightPhase` derives a flame's phase from it — so a cell staged a second time stood
         // every flame somewhere else in its own cycle, and half of a lamp-lit room moved. Holding
