@@ -52,13 +52,6 @@ derivation written twice.
   measuring helper beside `Rtx::FrameSamples`, so the next drift cannot appear without being
   written down.
 
-- [ ] **Active-grid statics are merged in the game and individual in the tool.** The game passes
-  `Settings::terrain().mObjectPagingActiveGrid` — default on — so its near statics live in paged,
-  merged chunks and `getPagedRefnums` keeps them from being placed twice. The tool pins the flag
-  false (`world.cpp:133`), because it has no `Scene` to ask. Same place, different instance
-  counts and different structures. Either bench with the game setting off, or record the
-  difference beside every A/B that crosses the two hosts.
-
 - [ ] **`makeDaylight` re-derives what `WeatherManager` computes, and nothing pins the two.**
   `readWeather`/`settle` (`lightbuilder.cpp:142-232`) rebuild the weather's colour ramps, fog
   depth and disc from the fallback keys; the game reaches the same numbers through
@@ -89,17 +82,7 @@ derivation written twice.
 
 ## Upstream lines that only respell a name
 
-The fork's priority order puts the clean seam first and the smallest upstream diff second. Both
-items below keep the one shared table and shrink the standing diff for future upstream merges.
-
-- [ ] **The vismask lift respelled ~130 lines across ~25 upstream files.** The lift itself is
-  right — one table in `components/sceneutil/vismask.hpp`, read by the game, the harness and the
-  extractor. But most of the churn in `mwclass/*`, `mwmechanics/actors.cpp`, `worldimp.cpp`,
-  `groundcover.cpp`, `renderingmanager.cpp` and the animation family is only
-  `MWRender::Mask_X` → `SceneUtil::Mask_X`. Option: keep `apps/openmw/mwrender/vismask.hpp` as two
-  lines — `#include <components/sceneutil/vismask.hpp>` and
-  `namespace MWRender { using enum SceneUtil::VisMask; }` — and revert the respelling hunks. The
-  table stays canonical in one place. The alias is one C++20 line, not a second copy of any bit.
+The fork's priority order puts the clean seam first and the smallest upstream diff second.
 
 - [ ] **Narrative design comments sit inside upstream files.** Examples: the rewritten `lerp`
   comment in `weather.cpp` (a comment-only hunk), the long rationale blocks in

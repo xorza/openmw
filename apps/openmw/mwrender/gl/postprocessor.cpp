@@ -20,7 +20,6 @@
 #include <components/sceneutil/color.hpp>
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/nodecallback.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
 #include <components/stereo/multiview.hpp>
@@ -30,6 +29,7 @@
 
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/windowmanager.hpp"
+#include "../vismask.hpp"
 
 #include "../../mwgui/postprocessorhud.hpp"
 
@@ -147,7 +147,7 @@ namespace MWRender
         mHUDCamera->setProjectionMatrix(osg::Matrix::ortho2D(0, 1, 0, 1));
         mHUDCamera->setAllowEventFocus(false);
         mHUDCamera->setViewport(0, 0, mWidth, mHeight);
-        mHUDCamera->setNodeMask(SceneUtil::Mask_RenderToTexture);
+        mHUDCamera->setNodeMask(Mask_RenderToTexture);
         mHUDCamera->getOrCreateStateSet()->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF);
         mHUDCamera->addChild(mCanvases[0]);
         mHUDCamera->addChild(mCanvases[1]);

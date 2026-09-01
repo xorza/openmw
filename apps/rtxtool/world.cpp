@@ -58,6 +58,11 @@ namespace RtxTool
         return Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance);
     }
 
+    bool gameMergesActiveGridStatics()
+    {
+        return Settings::terrain().mObjectPaging && Settings::terrain().mObjectPagingActiveGrid;
+    }
+
     World::World(const Content& content)
         : mContent(content)
         , mResourceSystem(std::make_unique<Resource::ResourceSystem>(

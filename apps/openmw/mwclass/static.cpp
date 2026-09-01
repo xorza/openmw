@@ -3,7 +3,6 @@
 #include <components/esm3/loadstat.hpp>
 #include <components/esm4/loadstat.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwphysics/physicssystem.hpp"
 #include "../mwworld/cellstore.hpp"
@@ -11,6 +10,7 @@
 
 #include "../mwrender/objects.hpp"
 #include "../mwrender/renderinginterface.hpp"
+#include "../mwrender/vismask.hpp"
 
 #include "classmodel.hpp"
 
@@ -27,7 +27,7 @@ namespace MWClass
         if (!model.empty())
         {
             renderingInterface.getObjects().insertModel(ptr, model);
-            ptr.getRefData().getBaseNode()->setNodeMask(SceneUtil::Mask_Static);
+            ptr.getRefData().getBaseNode()->setNodeMask(MWRender::Mask_Static);
         }
     }
 

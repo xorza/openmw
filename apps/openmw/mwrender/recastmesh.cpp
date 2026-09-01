@@ -8,9 +8,10 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/detourdebugdraw.hpp>
 #include <components/sceneutil/recastmesh.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include <osg/PositionAttitudeTransform>
+
+#include "vismask.hpp"
 
 #include "../mwbase/environment.hpp"
 
@@ -59,7 +60,7 @@ namespace MWRender
             {
                 const osg::ref_ptr<osg::Group> group
                     = SceneUtil::createRecastMeshGroup(*tile->second, settings.mRecast, mDebugDrawStateSet);
-                group->setNodeMask(SceneUtil::Mask_Debug);
+                group->setNodeMask(Mask_Debug);
                 group->setStateSet(mGroupStateSet);
 
                 MWBase::Environment::get().getResourceSystem()->getSceneManager()->recreateShaders(group, "debug");
@@ -88,7 +89,7 @@ namespace MWRender
 
             const osg::ref_ptr<osg::Group> group
                 = SceneUtil::createRecastMeshGroup(*mesh, settings.mRecast, mDebugDrawStateSet);
-            group->setNodeMask(SceneUtil::Mask_Debug);
+            group->setNodeMask(Mask_Debug);
             group->setStateSet(mGroupStateSet);
 
             MWBase::Environment::get().getResourceSystem()->getSceneManager()->recreateShaders(group, "debug");

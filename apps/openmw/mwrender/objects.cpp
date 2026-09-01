@@ -7,7 +7,6 @@
 #include <components/misc/strings/algorithm.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
 #include <components/sceneutil/unrefqueue.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwworld/class.hpp"
 #include "../mwworld/ptr.hpp"
@@ -16,6 +15,7 @@
 #include "creatureanimation.hpp"
 #include "esm4npcanimation.hpp"
 #include "npcanimation.hpp"
+#include "vismask.hpp"
 
 namespace MWRender
 {
@@ -74,7 +74,7 @@ namespace MWRender
     void Objects::insertModel(const MWWorld::Ptr& ptr, const std::string& mesh, bool allowLight)
     {
         insertBegin(ptr);
-        ptr.getRefData().getBaseNode()->setNodeMask(SceneUtil::Mask_Object);
+        ptr.getRefData().getBaseNode()->setNodeMask(Mask_Object);
         bool animated = ptr.getClass().useAnim();
         std::string animationMesh = mesh;
         if (animated && !mesh.empty())
@@ -94,7 +94,7 @@ namespace MWRender
     void Objects::insertCreature(const MWWorld::Ptr& ptr, const std::string& mesh, bool weaponsShields)
     {
         insertBegin(ptr);
-        ptr.getRefData().getBaseNode()->setNodeMask(SceneUtil::Mask_Actor);
+        ptr.getRefData().getBaseNode()->setNodeMask(Mask_Actor);
 
         bool animated = true;
         std::string animationMesh
@@ -117,7 +117,7 @@ namespace MWRender
     void Objects::insertNPC(const MWWorld::Ptr& ptr)
     {
         insertBegin(ptr);
-        ptr.getRefData().getBaseNode()->setNodeMask(SceneUtil::Mask_Actor);
+        ptr.getRefData().getBaseNode()->setNodeMask(Mask_Actor);
 
         if (ptr.getType() == ESM::REC_NPC_4)
         {

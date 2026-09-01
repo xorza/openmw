@@ -18,7 +18,6 @@
 #include <osgParticle/Particle>
 
 #include <components/misc/rng.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/stereo/multiview.hpp>
 #include <components/stereo/stereomanager.hpp>
 
@@ -34,6 +33,7 @@
 #include <components/sceneutil/statesetupdater.hpp>
 
 #include "../../mwbase/environment.hpp"
+#include "../vismask.hpp"
 
 #include "../renderbin.hpp"
 
@@ -622,7 +622,7 @@ namespace MWRender
     }
 
     Sun::Sun(osg::Group* parentNode, Resource::SceneManager& sceneManager)
-        : CelestialBody(parentNode, 1.0f, 1, SceneUtil::Mask_Sun)
+        : CelestialBody(parentNode, 1.0f, 1, Mask_Sun)
         , mUpdater(new SunUpdater)
     {
         mTransform->addUpdateCallback(mUpdater);

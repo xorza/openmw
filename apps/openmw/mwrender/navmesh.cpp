@@ -1,5 +1,7 @@
 #include "navmesh.hpp"
 
+#include "vismask.hpp"
+
 #include <components/detournavigator/guardednavmeshcacheitem.hpp>
 #include <components/detournavigator/navmeshcacheitem.hpp>
 #include <components/detournavigator/settings.hpp>
@@ -8,7 +10,6 @@
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/detourdebugdraw.hpp>
 #include <components/sceneutil/navmesh.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/sceneutil/workqueue.hpp>
 
 #include <osg/BlendFunc>
@@ -162,7 +163,7 @@ namespace MWRender
                     removedTiles.push_back(position);
                     continue;
                 }
-                group->setNodeMask(SceneUtil::Mask_Debug);
+                group->setNodeMask(Mask_Debug);
                 group->setStateSet(mGroupStateSet);
                 MWBase::Environment::get().getResourceSystem()->getSceneManager()->recreateShaders(group, "debug");
                 updatedTiles.emplace_back(position, Tile{ version, std::move(group) });

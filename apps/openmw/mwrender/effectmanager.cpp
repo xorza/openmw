@@ -6,10 +6,10 @@
 #include <components/resource/scenemanager.hpp>
 
 #include <components/sceneutil/controller.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include "animation.hpp"
 #include "util.hpp"
+#include "vismask.hpp"
 
 #include <algorithm>
 
@@ -33,7 +33,7 @@ namespace MWRender
     {
         osg::ref_ptr<osg::Node> node = mResourceSystem->getSceneManager()->getInstance(model);
 
-        node->setNodeMask(SceneUtil::Mask_Effect);
+        node->setNodeMask(Mask_Effect);
 
         Effect effect;
         effect.mAnimTime = std::make_shared<EffectAnimationTime>();

@@ -23,7 +23,6 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/rtt.hpp>
 #include <components/sceneutil/shadow.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/sceneutil/waterutil.hpp>
 
 #include <components/misc/constants.hpp>
@@ -40,6 +39,7 @@
 #include <components/settings/values.hpp>
 
 #include "../../mwworld/cellstore.hpp"
+#include "../vismask.hpp"
 
 #include "../renderbin.hpp"
 #include "../util.hpp"
@@ -262,7 +262,7 @@ namespace MWRender
             camera->getOrCreateStateSet()->setAttributeAndModes(frontFace, osg::StateAttribute::ON);
 
             camera->addChild(mClipCullNode);
-            camera->setNodeMask(SceneUtil::Mask_RenderToTexture);
+            camera->setNodeMask(Mask_RenderToTexture);
 
             SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*camera->getOrCreateStateSet());
         }
@@ -298,7 +298,7 @@ namespace MWRender
             if (show)
                 mNodeMask = calcNodeMask();
             else
-                mNodeMask = calcNodeMask() & ~SceneUtil::sToggleWorldMask;
+                mNodeMask = calcNodeMask() & ~sToggleWorldMask;
         }
 
     private:
@@ -308,16 +308,16 @@ namespace MWRender
             reflectionDetail = std::clamp(reflectionDetail, mInterior ? 2 : 0, 5);
             unsigned int extraMask = 0;
             if (reflectionDetail >= 1)
-                extraMask |= SceneUtil::Mask_Terrain;
+                extraMask |= Mask_Terrain;
             if (reflectionDetail >= 2)
-                extraMask |= SceneUtil::Mask_Static;
+                extraMask |= Mask_Static;
             if (reflectionDetail >= 3)
-                extraMask |= SceneUtil::Mask_Effect | SceneUtil::Mask_ParticleSystem | SceneUtil::Mask_Object;
+                extraMask |= Mask_Effect | Mask_ParticleSystem | Mask_Object;
             if (reflectionDetail >= 4)
-                extraMask |= SceneUtil::Mask_Player | SceneUtil::Mask_Actor;
+                extraMask |= Mask_Player | Mask_Actor;
             if (reflectionDetail >= 5)
-                extraMask |= SceneUtil::Mask_Groundcover;
-            return SceneUtil::Mask_Scene | SceneUtil::Mask_Sky | SceneUtil::Mask_Lighting | extraMask;
+                extraMask |= Mask_Groundcover;
+            return Mask_Scene | Mask_Sky | Mask_Lighting | extraMask;
         }
 
         osg::ref_ptr<ClipCullNode> mClipCullNode;
@@ -368,7 +368,7 @@ namespace MWRender
 
         mWaterGeom = SceneUtil::createWaterGeometry(Constants::CellSizeInUnits * 150, 40, 900);
         mWaterGeom->setDrawCallback(new DepthClampCallback);
-        mWaterGeom->setNodeMask(SceneUtil::Mask_Water);
+        mWaterGeom->setNodeMask(Mask_Water);
         mWaterGeom->setDataVariance(osg::Object::STATIC);
         mWaterGeom->setName("Water Geometry");
 
@@ -380,7 +380,7 @@ namespace MWRender
         // simple water fallback for the local map
         osg::ref_ptr<osg::Geometry> geom2(osg::clone(mWaterGeom.get(), osg::CopyOp::DEEP_COPY_NODES));
         createSimpleWaterStateSet(geom2, Fallback::Map::getFloat("Water_Map_Alpha"));
-        geom2->setNodeMask(SceneUtil::Mask_SimpleWater);
+        geom2->setNodeMask(Mask_SimpleWater);
         geom2->setName("Simple Water Geometry");
         mWaterNode->addChild(geom2);
 
@@ -715,9 +715,9 @@ namespace MWRender
         bool visible = mEnabled && mToggled;
         mWaterNode->setNodeMask(visible ? ~0u : 0u);
         if (mReflection)
-            mReflection->setNodeMask(visible ? SceneUtil::Mask_RenderToTexture : 0u);
+            mReflection->setNodeMask(visible ? Mask_RenderToTexture : 0u);
         if (mRipples)
-            mRipples->setNodeMask(visible ? SceneUtil::Mask_RenderToTexture : 0u);
+            mRipples->setNodeMask(visible ? Mask_RenderToTexture : 0u);
     }
 
     bool Water::toggle()

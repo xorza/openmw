@@ -509,6 +509,14 @@ namespace RtxTool
         if (judging)
             out() << "       hashing every frame, so the times below are not a benchmark\n";
 
+        // **Before the run and not after it**, for the reason the layers above give: a row that
+        // cannot be read against the game's is worth knowing about before the ten minutes are spent.
+        // `gameMergesActiveGridStatics` carries what the difference is.
+        if (gameMergesActiveGridStatics())
+            out() << "       an exterior's near statics stand one at a time here and merged in the "
+                     "game — pass\n       `object paging active grid = false` there, or read its "
+                     "instance count as another scene's\n";
+
         FrameHashes hashes;
         const FrameHashes reference = request.mAgainst.empty() ? FrameHashes{} : FrameHashes::read(request.mAgainst);
         // Cleared and refilled by every frame that is hashed, never freed.

@@ -22,7 +22,6 @@
 #include <components/sceneutil/keyframe.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/visitor.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 
 #include <components/vfs/manager.hpp>
@@ -45,6 +44,7 @@
 #include "renderbin.hpp"
 #include "renderingmanager.hpp"
 #include "rotatecontroller.hpp"
+#include "vismask.hpp"
 
 namespace
 {
@@ -541,7 +541,7 @@ namespace MWRender
 
         if (is1stPerson)
         {
-            mObjectRoot->setNodeMask(SceneUtil::Mask_FirstPerson);
+            mObjectRoot->setNodeMask(Mask_FirstPerson);
             mObjectRoot->addCullCallback(new OverrideFieldOfViewCallback(
                 mFirstPersonFieldOfView, MWBase::Environment::get().getWorld()->getRenderingManager()));
         }

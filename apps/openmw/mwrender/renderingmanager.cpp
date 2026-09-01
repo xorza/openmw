@@ -20,7 +20,6 @@
 
 #include <components/debug/debuglog.hpp>
 
-#include <components/sceneutil/vismask.hpp>
 #include <components/stereo/multiview.hpp>
 #include <components/stereo/stereomanager.hpp>
 
@@ -91,6 +90,7 @@
 #include "stage.hpp"
 #include "terrainstorage.hpp"
 #include "util.hpp"
+#include "vismask.hpp"
 #include <components/weather/precipitation.hpp>
 
 namespace
@@ -143,11 +143,11 @@ namespace
 
     unsigned int getIndoorShadowCastingMask()
     {
-        unsigned int mask = SceneUtil::Mask_Scene;
+        unsigned int mask = MWRender::Mask_Scene;
         if (Settings::shadows().mActorShadows)
-            mask |= SceneUtil::Mask_Actor;
+            mask |= MWRender::Mask_Actor;
         if (Settings::shadows().mPlayerShadows)
-            mask |= SceneUtil::Mask_Player;
+            mask |= MWRender::Mask_Player;
         return mask;
     }
 
@@ -155,9 +155,9 @@ namespace
     {
         unsigned int mask = getIndoorShadowCastingMask();
         if (Settings::shadows().mObjectShadows)
-            mask |= (SceneUtil::Mask_Object | SceneUtil::Mask_Static);
+            mask |= (MWRender::Mask_Object | MWRender::Mask_Static);
         if (Settings::shadows().mTerrainShadows)
-            mask |= SceneUtil::Mask_Terrain;
+            mask |= MWRender::Mask_Terrain;
         return mask;
     }
 }
@@ -221,7 +221,7 @@ namespace MWRender
     {
         bool reverseZ = SceneUtil::AutoDepth::isReversed();
 
-        resourceSystem->getSceneManager()->setParticleSystemMask(SceneUtil::Mask_ParticleSystem);
+        resourceSystem->getSceneManager()->setParticleSystemMask(Mask_ParticleSystem);
         resourceSystem->getSceneManager()->setAutoUseNormalMaps(Settings::shaders().mAutoUseObjectNormalMaps);
         resourceSystem->getSceneManager()->setNormalMapPattern(Settings::shaders().mNormalMapPattern);
         resourceSystem->getSceneManager()->setNormalHeightMapPattern(Settings::shaders().mNormalHeightMapPattern);
@@ -248,14 +248,14 @@ namespace MWRender
         // Sync clustered lighting setting so it's more intuitive when viewed in the in-game setting panel
         Settings::shaders().mClusteredLighting.set(sceneRoot->getClusteredLighting());
 
-        sceneRoot->setLightingMask(SceneUtil::Mask_Lighting);
+        sceneRoot->setLightingMask(Mask_Lighting);
         mSceneRoot = sceneRoot;
-        sceneRoot->setNodeMask(SceneUtil::Mask_Scene);
+        sceneRoot->setNodeMask(Mask_Scene);
         sceneRoot->setName("Scene Root");
 
         mShadowManager = std::make_unique<SceneUtil::ShadowManager>(sceneRoot, mRootNode, getOutdoorShadowCastingMask(),
-            getIndoorShadowCastingMask(), SceneUtil::Mask_Terrain | SceneUtil::Mask_Object | SceneUtil::Mask_Static,
-            Settings::shadows(), mResourceSystem->getSceneManager()->getShaderManager());
+            getIndoorShadowCastingMask(), Mask_Terrain | Mask_Object | Mask_Static, Settings::shadows(),
+            mResourceSystem->getSceneManager()->getShaderManager());
 
         Shader::ShaderManager::DefineMap globalDefines = Shader::getDefaultDefines();
         mAppliedShadowDefines = mShadowManager->getShadowDefines(Settings::shadows());
@@ -310,7 +310,7 @@ namespace MWRender
         }
 
         mDebugDraw = new Debug::DebugDrawer(mResourceSystem->getSceneManager()->getShaderManager());
-        mDebugDraw->setNodeMask(SceneUtil::Mask_Debug);
+        mDebugDraw->setNodeMask(Mask_Debug);
         sceneRoot->addChild(mDebugDraw);
 
         mResourceSystem->getSceneManager()->setIncrementalCompileOperation(mRenderer.getCompileOperation());
@@ -402,11 +402,11 @@ namespace MWRender
         mStage.getCamera().setCullingMode(cullingMode);
         mStage.getCamera().setName(Constants::SceneCamera);
 
-        auto mask = ~(SceneUtil::Mask_UpdateVisitor | SceneUtil::Mask_SimpleWater);
+        auto mask = ~(Mask_UpdateVisitor | Mask_SimpleWater);
         MWBase::Environment::get().getWindowManager()->setCullMask(mask);
         NifOsg::Loader::configure({
-            .mHiddenNodeMask = SceneUtil::Mask_UpdateVisitor,
-            .mIntersectionDisabledNodeMask = SceneUtil::Mask_Effect,
+            .mHiddenNodeMask = Mask_UpdateVisitor,
+            .mIntersectionDisabledNodeMask = Mask_Effect,
             .mSoftEffects = Settings::shaders().mSoftParticles,
         });
 
@@ -1006,7 +1006,7 @@ namespace MWRender
     {
         mWaterHeight = height;
 
-        mWater->setCullCallback(mTerrain->getHeightCullCallback(height, SceneUtil::Mask_Water));
+        mWater->setCullCallback(mTerrain->getHeightCullCallback(height, Mask_Water));
         mWater->setHeight(height);
         mSky->setWaterHeight(height);
         mStateUpdater->setWaterHeight(height);
@@ -1042,7 +1042,7 @@ namespace MWRender
     RenderingManager::RayResult getIntersectionResult(osgUtil::LineSegmentIntersector* intersector,
         const osg::ref_ptr<osgUtil::IntersectionVisitor>& visitor, std::span<const MWWorld::Ptr> ignoreList = {})
     {
-        constexpr auto nonObjectWorldMask = SceneUtil::Mask_Terrain | SceneUtil::Mask_Water;
+        constexpr auto nonObjectWorldMask = Mask_Terrain | Mask_Water;
         RenderingManager::RayResult result;
         result.mHit = false;
         result.mRatio = 0;
@@ -1204,14 +1204,14 @@ namespace MWRender
         mIntersectionVisitor->setIntersector(intersector);
 
         unsigned int mask = ~0u;
-        mask &= ~(SceneUtil::Mask_RenderToTexture | SceneUtil::Mask_Sky | SceneUtil::Mask_Debug | SceneUtil::Mask_Effect
-            | SceneUtil::Mask_Water | SceneUtil::Mask_SimpleWater | SceneUtil::Mask_Groundcover);
+        mask &= ~(Mask_RenderToTexture | Mask_Sky | Mask_Debug | Mask_Effect | Mask_Water | Mask_SimpleWater
+            | Mask_Groundcover);
         if (ignorePlayer)
-            mask &= ~(SceneUtil::Mask_Player);
+            mask &= ~(Mask_Player);
         if (ignoreActors)
-            mask &= ~(SceneUtil::Mask_Actor | SceneUtil::Mask_Player);
+            mask &= ~(Mask_Actor | Mask_Player);
         if (ignoreTerrain)
-            mask &= ~(SceneUtil::Mask_Terrain);
+            mask &= ~(Mask_Terrain);
 
         mIntersectionVisitor->setTraversalMask(mask);
         return mIntersectionVisitor;
@@ -1313,7 +1313,7 @@ namespace MWRender
         if (!mPlayerNode)
         {
             mPlayerNode = new SceneUtil::PositionAttitudeTransform;
-            mPlayerNode->setNodeMask(SceneUtil::Mask_Player);
+            mPlayerNode->setNodeMask(Mask_Player);
             mPlayerNode->setName("Player Root");
             mSceneRoot->addChild(mPlayerNode);
         }
@@ -1476,13 +1476,12 @@ namespace MWRender
             const float maxCompGeometrySize = Settings::terrain().mMaxCompositeGeometrySize;
             const bool debugChunks = Settings::terrain().mDebugChunks;
             auto quadTreeWorld = std::make_unique<Terrain::QuadTreeWorld>(mSceneRoot, mRootNode, mResourceSystem,
-                mTerrainStorage.get(), SceneUtil::Mask_Terrain, SceneUtil::Mask_PreCompile, SceneUtil::Mask_Debug,
-                compMapResolution, compMapLevel, lodFactor, vertexLodMod, maxCompGeometrySize, debugChunks, worldspace,
-                expiryDelay);
+                mTerrainStorage.get(), Mask_Terrain, Mask_PreCompile, Mask_Debug, compMapResolution, compMapLevel,
+                lodFactor, vertexLodMod, maxCompGeometrySize, debugChunks, worldspace, expiryDelay);
             if (Settings::terrain().mObjectPaging)
             {
                 newChunkMgr.mObjectPaging = std::make_unique<Terrain::ObjectPaging>(mResourceSystem->getSceneManager(),
-                    mObjectStorage, worldspace, SceneUtil::Mask_Static, Settings::terrain().mObjectPagingActiveGrid);
+                    mObjectStorage, worldspace, Mask_Static, Settings::terrain().mObjectPagingActiveGrid);
                 quadTreeWorld->addChunkManager(newChunkMgr.mObjectPaging.get());
                 mResourceSystem->addResourceManager(newChunkMgr.mObjectPaging.get());
             }
@@ -1500,8 +1499,7 @@ namespace MWRender
         }
         else
             newChunkMgr.mTerrain = std::make_unique<Terrain::TerrainGrid>(mSceneRoot, mRootNode, mResourceSystem,
-                mTerrainStorage.get(), SceneUtil::Mask_Terrain, worldspace, expiryDelay, SceneUtil::Mask_PreCompile,
-                SceneUtil::Mask_Debug);
+                mTerrainStorage.get(), Mask_Terrain, worldspace, expiryDelay, Mask_PreCompile, Mask_Debug);
 
         newChunkMgr.mTerrain->setTargetFrameRate(Settings::cells().mTargetFramerate);
         newChunkMgr.mTerrain->setViewDistance(mRenderer.getTerrainViewDistance(mViewDistance, mFieldOfView));
@@ -1714,7 +1712,7 @@ namespace MWRender
 
         osg::ref_ptr<const osg::Node> node = mResourceSystem->getSceneManager()->getTemplate(modelName);
         osg::ComputeBoundsVisitor computeBoundsVisitor;
-        computeBoundsVisitor.setTraversalMask(~(SceneUtil::Mask_ParticleSystem | SceneUtil::Mask_Effect));
+        computeBoundsVisitor.setTraversalMask(~(Mask_ParticleSystem | Mask_Effect));
         const_cast<osg::Node*>(node.get())->accept(computeBoundsVisitor);
         osg::BoundingBox bounds = computeBoundsVisitor.getBoundingBox();
 
@@ -1760,13 +1758,13 @@ namespace MWRender
 
             if (ptr.getClass().isNpc())
             {
-                rootNode->setNodeMask(SceneUtil::Mask_Actor);
+                rootNode->setNodeMask(Mask_Actor);
                 animation = new NpcAnimation(ptr, osg::ref_ptr<osg::Group>(rootNode), mResourceSystem);
             }
         }
 
         SceneUtil::CullSafeBoundsVisitor computeBounds;
-        computeBounds.setTraversalMask(~(SceneUtil::Mask_ParticleSystem | SceneUtil::Mask_Effect));
+        computeBounds.setTraversalMask(~(Mask_ParticleSystem | Mask_Effect));
         rootNode->accept(computeBounds);
 
         return computeBounds.mBoundingBox;

@@ -18,10 +18,10 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/material.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/world.hpp"
+#include "../vismask.hpp"
 
 #include "../../mwmechanics/actorutil.hpp"
 
@@ -126,7 +126,7 @@ namespace MWRender
         mParticleNode->setName("Ripple Root");
         mParticleNode->addChild(updater);
         mParticleNode->addChild(mParticleSystem);
-        mParticleNode->setNodeMask(SceneUtil::Mask_Water);
+        mParticleNode->setNodeMask(Mask_Water);
 
         createWaterRippleStateSet(resourceSystem, mParticleNode);
 

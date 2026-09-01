@@ -16,12 +16,13 @@
 #include <components/misc/convert.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/nodecallback.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/shader/shadermanager.hpp>
 #include <components/terrain/quadtreenode.hpp>
 
 #include "../mwworld/groundcoverstore.hpp"
+
+#include "vismask.hpp"
 
 namespace MWRender
 {
@@ -453,7 +454,7 @@ namespace MWRender
         group->addCullCallback(new ViewDistanceCallback(getViewDistance(), box));
 
         group->setStateSet(mStateset);
-        group->setNodeMask(SceneUtil::Mask_Groundcover);
+        group->setNodeMask(Mask_Groundcover);
         if (Settings::groundcover().mPointLighting)
             group->addCullCallback(new SceneUtil::LightListCallback);
         mSceneManager->recreateShaders(group, "groundcover", mProgramTemplate);
@@ -464,7 +465,7 @@ namespace MWRender
 
     unsigned int Groundcover::getNodeMask()
     {
-        return SceneUtil::Mask_Groundcover;
+        return Mask_Groundcover;
     }
 
     void Groundcover::reportStats(unsigned int frameNumber, osg::Stats* stats) const

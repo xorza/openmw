@@ -11,10 +11,10 @@
 #include <components/sceneutil/color.hpp>
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/glextensions.hpp>
-#include <components/sceneutil/vismask.hpp>
 #include <components/shader/shadermanager.hpp>
 
 #include "../../mwworld/ptr.hpp"
+#include "../vismask.hpp"
 
 #include "../../mwmechanics/actorutil.hpp"
 
@@ -317,7 +317,7 @@ namespace MWRender
         getOrCreateStateSet()->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF);
         setRenderOrder(osg::Camera::PRE_RENDER);
         setReferenceFrame(osg::Camera::ABSOLUTE_RF);
-        setNodeMask(SceneUtil::Mask_RenderToTexture);
+        setNodeMask(Mask_RenderToTexture);
         setClearMask(GL_NONE);
         setViewport(0, 0, RipplesSurface::sRTTSize, RipplesSurface::sRTTSize);
         addChild(mRipples);

@@ -49,6 +49,18 @@ namespace RtxTool
     /// `[RTX] distant land cells` and `[Camera] viewing distance` for itself.
     float landReach();
 
+    /// Whether the game merges the statics inside its active grid into paged chunks.
+    ///
+    /// **What this world cannot build the way the game does**, and `buildTerrain` says why it
+    /// cannot. So where this answers yes, the same exterior stands a different instance count and a
+    /// different set of acceleration structures in the two hosts, and a row taken here cannot be
+    /// read against one taken there.
+    ///
+    /// **The tool's own `--distant-terrain` and `--distant-statics` do not enter it**, because this
+    /// world merges the active grid under none of them. Neither does the game's `distant terrain`:
+    /// `RtxRenderer::wantsPagedTerrain` answers yes whatever it says, since rays go everywhere.
+    bool gameMergesActiveGridStatics();
+
     /// A Morrowind world stood up with no window and no game running.
     ///
     /// Everything OpenMW builds between the content files and a frame — the resource managers that

@@ -10,7 +10,6 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
-#include <components/sceneutil/vismask.hpp>
 
 #include "../mwworld/class.hpp"
 #include "../mwworld/inventorystore.hpp"
@@ -21,6 +20,7 @@
 #include "npcanimation.hpp"
 #include "offscreenview.hpp"
 #include "renderer.hpp"
+#include "vismask.hpp"
 
 namespace MWRender
 {
@@ -44,7 +44,7 @@ namespace MWRender
         spec.mHeight = sizeY;
         // Everything: the one bit left out is the one that tells an update traversal apart from a
         // cull, and nothing in the subtree carries it.
-        spec.mMask = ~SceneUtil::Mask_UpdateVisitor;
+        spec.mMask = ~Mask_UpdateVisitor;
         spec.mProjection = OffscreenViewSpec::Perspective{ .mFieldOfView = SceneUtil::sPreviewFieldOfView };
         spec.mNear = SceneUtil::sPreviewNear;
         spec.mFar = SceneUtil::sPreviewFar;
