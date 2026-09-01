@@ -19,3 +19,4 @@
 - gpu skin
 - micromaps
 - wrong lightsource positions
+- normal interpolation bug?
