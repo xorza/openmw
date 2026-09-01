@@ -145,6 +145,10 @@ add_component_dir (sceneutil
     offscreenframing
     )
 
+add_component_dir (bodyparts
+    slots
+    )
+
 add_component_dir (surface
     material
     )

@@ -6,12 +6,14 @@
 
 #include <osg/Group>
 
+#include <components/bodyparts/slots.hpp>
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadarmo.hpp>
 #include <components/esm3/loadbody.hpp>
 #include <components/esm3/loadclot.hpp>
 #include <components/esm3/loadnpc.hpp>
 #include <components/esm3/loadweap.hpp>
+#include <components/esm3/mappings.hpp>
 #include <components/misc/resourcehelpers.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
@@ -28,49 +30,6 @@ namespace RtxTool
 {
     namespace
     {
-        /// Which bone each of the twenty-seven part slots hangs on.
-        ///
-        /// Morrowind dresses a person as a paper doll: every garment names the slots it fills, and a
-        /// slot is one bone with one thing on it. The table is the game's own. A hairstyle is the one
-        /// entry whose filter differs from its bone — hair and skull hang on the same bone and would
-        /// take each other's triangles otherwise.
-        ///
-        /// **The weapon slot is one bone here where the game's table has two.** A bow attaches to
-        /// "Weapon Bone Left" there, because the right hand draws the string — and then the game
-        /// looks that bone up and falls back to this one when the skeleton has not got it, which
-        /// vanilla's has not: `xbase_anim.nif` carries "Weapon Bone", "Weapon", "Shield Bone" and
-        /// "Shield", and no left-hand weapon bone at all. So on the content this fork renders the
-        /// exception never fires, and a lookup that can only ever fail is not carried.
-        constexpr std::array<std::string_view, ESM::PRT_Count> sBones{
-            "Head",
-            "Head", // PRT_Hair, filtered by "hair" instead
-            "Neck",
-            "Chest",
-            "Groin",
-            "Groin", // PRT_Skirt
-            "Right Hand",
-            "Left Hand",
-            "Right Wrist",
-            "Left Wrist",
-            "Shield Bone",
-            "Right Forearm",
-            "Left Forearm",
-            "Right Upper Arm",
-            "Left Upper Arm",
-            "Right Foot",
-            "Left Foot",
-            "Right Ankle",
-            "Left Ankle",
-            "Right Knee",
-            "Left Knee",
-            "Right Upper Leg",
-            "Left Upper Leg",
-            "Right Clavicle",
-            "Left Clavicle",
-            "Weapon Bone",
-            "Tail",
-        };
-
         /// What a weapon of one type means to the wardrobe: the stance it is held in, what stands
         /// in for that stance, and what it has to be carrying to be drawn at all.
         struct WeaponKind
@@ -208,40 +167,6 @@ namespace RtxTool
             return best;
         }
 
-        /// Which part slot one kind of skin fills. A paired limb is one record and two slots.
-        struct SkinSlot
-        {
-            ESM::BodyPart::MeshPart mPart;
-            ESM::PartReferenceType mSlot;
-        };
-
-        /// What a naked person is made of, and so what a garment covers up.
-        ///
-        /// The head and the hair are not here: those two are named by the NPC record itself rather
-        /// than chosen by race, which is the whole of how one Dunmer is told from another.
-        constexpr std::array sSkin{
-            SkinSlot{ ESM::BodyPart::MP_Neck, ESM::PRT_Neck },
-            SkinSlot{ ESM::BodyPart::MP_Chest, ESM::PRT_Cuirass },
-            SkinSlot{ ESM::BodyPart::MP_Groin, ESM::PRT_Groin },
-            SkinSlot{ ESM::BodyPart::MP_Hand, ESM::PRT_RHand },
-            SkinSlot{ ESM::BodyPart::MP_Hand, ESM::PRT_LHand },
-            SkinSlot{ ESM::BodyPart::MP_Wrist, ESM::PRT_RWrist },
-            SkinSlot{ ESM::BodyPart::MP_Wrist, ESM::PRT_LWrist },
-            SkinSlot{ ESM::BodyPart::MP_Forearm, ESM::PRT_RForearm },
-            SkinSlot{ ESM::BodyPart::MP_Forearm, ESM::PRT_LForearm },
-            SkinSlot{ ESM::BodyPart::MP_Upperarm, ESM::PRT_RUpperarm },
-            SkinSlot{ ESM::BodyPart::MP_Upperarm, ESM::PRT_LUpperarm },
-            SkinSlot{ ESM::BodyPart::MP_Foot, ESM::PRT_RFoot },
-            SkinSlot{ ESM::BodyPart::MP_Foot, ESM::PRT_LFoot },
-            SkinSlot{ ESM::BodyPart::MP_Ankle, ESM::PRT_RAnkle },
-            SkinSlot{ ESM::BodyPart::MP_Ankle, ESM::PRT_LAnkle },
-            SkinSlot{ ESM::BodyPart::MP_Knee, ESM::PRT_RKnee },
-            SkinSlot{ ESM::BodyPart::MP_Knee, ESM::PRT_LKnee },
-            SkinSlot{ ESM::BodyPart::MP_Upperleg, ESM::PRT_RLeg },
-            SkinSlot{ ESM::BodyPart::MP_Upperleg, ESM::PRT_LLeg },
-            SkinSlot{ ESM::BodyPart::MP_Tail, ESM::PRT_Tail },
-        };
-
         /// A slot of the wardrobe, as distinct from a slot of the body: one garment goes in each.
         enum Wearing
         {
@@ -269,17 +194,6 @@ namespace RtxTool
         /// not zero are the game's own, and the comment beside them there admits they are a count of
         /// slots the garment reserves rather than anything derived.
         constexpr std::array<int, WornCount> sBasePriority{ 11, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-
-        /// What a robe hides whether or not it draws anything there.
-        ///
-        /// **A garment covers more of a body than it replaces.** A robe to the ankles leaves no legs
-        /// to see, and it carries no leg mesh — so the slots have to be claimed and left empty, or a
-        /// pair of bare shins walks out from under it.
-        constexpr std::array sUnderRobe{ ESM::PRT_Groin, ESM::PRT_Skirt, ESM::PRT_RLeg, ESM::PRT_LLeg,
-            ESM::PRT_RUpperarm, ESM::PRT_LUpperarm, ESM::PRT_RKnee, ESM::PRT_LKnee, ESM::PRT_RForearm,
-            ESM::PRT_LForearm, ESM::PRT_Cuirass };
-
-        constexpr std::array sUnderSkirt{ ESM::PRT_Groin, ESM::PRT_RLeg, ESM::PRT_LLeg };
 
         std::optional<Wearing> wornAsClothing(int type)
         {
@@ -631,10 +545,10 @@ namespace RtxTool
             }
 
             if (worn == WornRobe)
-                for (const ESM::PartReferenceType slot : sUnderRobe)
+                for (const ESM::PartReferenceType slot : BodyParts::sUnderRobe)
                     outfit.reserve(slot, priority);
             else if (worn == WornSkirt)
-                for (const ESM::PartReferenceType slot : sUnderSkirt)
+                for (const ESM::PartReferenceType slot : BodyParts::sUnderSkirt)
                     outfit.reserve(slot, priority);
         }
 
@@ -647,7 +561,7 @@ namespace RtxTool
                 outfit.claim(ESM::PRT_Hair, 1, Misc::ResourceHelpers::correctMeshPath(hair->mModel.getNormalized()));
 
         // And skin wherever nothing was put on, which under a full suit of armour is nowhere.
-        for (const SkinSlot& slot : sSkin)
+        for (const BodyParts::SkinSlot& slot : BodyParts::sSkin)
             if (outfit.bare(slot.mSlot))
                 if (const ESM::BodyPart* skin = findSkin(content, npc.mRace, slot.mPart, female))
                     outfit.claim(slot.mSlot, 1, Misc::ResourceHelpers::correctMeshPath(skin->mModel.getNormalized()));
@@ -660,6 +574,13 @@ namespace RtxTool
         // **Drawn, which the game would not do.** Morrowind holsters an undrawn weapon out of sight
         // and only `showWeapons` puts it in a hand; a harness that hid it would be hiding the thing
         // it exists to look at. `--clothes=false` is what takes it off along with everything else.
+        //
+        // **On `ESM::getBoneName`'s weapon bone whatever the weapon is, where the game reaches for
+        // two.** A bow attaches to "Weapon Bone Left" there, because the right hand draws the
+        // string — and the game then looks that bone up and falls back to this one when the skeleton
+        // has not got it, which vanilla's has not: `xbase_anim.nif` carries "Weapon Bone", "Weapon",
+        // "Shield Bone" and "Shield", and no left-hand weapon bone at all. So on the content this
+        // fork renders the exception never fires, and a lookup that can only ever fail is not made.
         const ESM::Weapon* weapon = dressed ? drawnWeapon(content, npc) : nullptr;
         if (weapon != nullptr)
         {
@@ -681,10 +602,7 @@ namespace RtxTool
             if (outfit.getModel(part).empty())
                 continue;
 
-            // Hair is the one slot whose filter is not its bone: it shares the skull's, and the two
-            // would take each other's triangles.
-            const std::string_view filter = part == ESM::PRT_Hair ? std::string_view("hair") : sBones[slot];
-            hang(world, *built.mRoot, bones, outfit.getModel(part), sBones[slot], filter);
+            hang(world, *built.mRoot, bones, outfit.getModel(part), ESM::getBoneName(part), ESM::getMeshFilter(part));
         }
 
         return built;

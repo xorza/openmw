@@ -7,6 +7,7 @@
 #include <osgUtil/CullVisitor>
 #include <osgUtil/RenderBin>
 
+#include <components/bodyparts/slots.hpp>
 #include <components/debug/debuglog.hpp>
 
 #include <components/misc/rng.hpp>
@@ -632,18 +633,13 @@ namespace MWRender
 
             if (slotlist[i].mSlot == MWWorld::InventoryStore::Slot_Robe)
             {
-                ESM::PartReferenceType parts[] = { ESM::PRT_Groin, ESM::PRT_Skirt, ESM::PRT_RLeg, ESM::PRT_LLeg,
-                    ESM::PRT_RUpperarm, ESM::PRT_LUpperarm, ESM::PRT_RKnee, ESM::PRT_LKnee, ESM::PRT_RForearm,
-                    ESM::PRT_LForearm, ESM::PRT_Cuirass };
-                const size_t partsSize = sizeof(parts) / sizeof(parts[0]);
-                for (size_t p = 0; p < partsSize; ++p)
-                    reserveIndividualPart(parts[p], slotlist[i].mSlot, prio);
+                for (const ESM::PartReferenceType part : BodyParts::sUnderRobe)
+                    reserveIndividualPart(part, slotlist[i].mSlot, prio);
             }
             else if (slotlist[i].mSlot == MWWorld::InventoryStore::Slot_Skirt)
             {
-                reserveIndividualPart(ESM::PRT_Groin, slotlist[i].mSlot, prio);
-                reserveIndividualPart(ESM::PRT_RLeg, slotlist[i].mSlot, prio);
-                reserveIndividualPart(ESM::PRT_LLeg, slotlist[i].mSlot, prio);
+                for (const ESM::PartReferenceType part : BodyParts::sUnderSkirt)
+                    reserveIndividualPart(part, slotlist[i].mSlot, prio);
             }
         }
 
@@ -1185,17 +1181,15 @@ namespace MWRender
             std::vector<const ESM::BodyPart*>& parts = sRaceMapping[std::make_pair(race, flags)];
 
             typedef std::multimap<ESM::BodyPart::MeshPart, ESM::PartReferenceType> BodyPartMapType;
-            static const BodyPartMapType sBodyPartMap = { { ESM::BodyPart::MP_Neck, ESM::PRT_Neck },
-                { ESM::BodyPart::MP_Chest, ESM::PRT_Cuirass }, { ESM::BodyPart::MP_Groin, ESM::PRT_Groin },
-                { ESM::BodyPart::MP_Hand, ESM::PRT_RHand }, { ESM::BodyPart::MP_Hand, ESM::PRT_LHand },
-                { ESM::BodyPart::MP_Wrist, ESM::PRT_RWrist }, { ESM::BodyPart::MP_Wrist, ESM::PRT_LWrist },
-                { ESM::BodyPart::MP_Forearm, ESM::PRT_RForearm }, { ESM::BodyPart::MP_Forearm, ESM::PRT_LForearm },
-                { ESM::BodyPart::MP_Upperarm, ESM::PRT_RUpperarm }, { ESM::BodyPart::MP_Upperarm, ESM::PRT_LUpperarm },
-                { ESM::BodyPart::MP_Foot, ESM::PRT_RFoot }, { ESM::BodyPart::MP_Foot, ESM::PRT_LFoot },
-                { ESM::BodyPart::MP_Ankle, ESM::PRT_RAnkle }, { ESM::BodyPart::MP_Ankle, ESM::PRT_LAnkle },
-                { ESM::BodyPart::MP_Knee, ESM::PRT_RKnee }, { ESM::BodyPart::MP_Knee, ESM::PRT_LKnee },
-                { ESM::BodyPart::MP_Upperleg, ESM::PRT_RLeg }, { ESM::BodyPart::MP_Upperleg, ESM::PRT_LLeg },
-                { ESM::BodyPart::MP_Tail, ESM::PRT_Tail } };
+
+            // What a naked person is made of is `BodyParts::sSkin`, which the harness reads too.
+            static const BodyPartMapType sBodyPartMap = [] {
+                BodyPartMapType map;
+                for (const BodyParts::SkinSlot& skin : BodyParts::sSkin)
+                    map.emplace(skin.mPart, skin.mSlot);
+
+                return map;
+            }();
 
             parts.resize(ESM::PRT_Count, nullptr);
 
