@@ -60,8 +60,8 @@ namespace
 
         Terrain::View* createView() override { return new EmptyView; }
 
-        void preload(Terrain::View*, const osg::Vec3f&, const osg::Vec4i&, std::atomic<bool>& abort,
-            Loading::Reporter&) override
+        void preload(
+            Terrain::View*, const osg::Vec3f&, const osg::Vec4i&, std::atomic<bool>& abort, Loading::Reporter&) override
         {
             const Inside held(*this);
             ++mPasses;

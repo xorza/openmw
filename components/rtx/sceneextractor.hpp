@@ -172,7 +172,7 @@ namespace Rtx
         unsigned int mLast = 0;
     };
 
-    /// Geometry a walk of the scene graph cannot reach, offered to the walk that asks for it.
+    /// What a walk of the scene graph cannot reach, offered to the walk that asks for it.
     ///
     /// **`Terrain::QuadTreeWorld` is the reason this exists.** With `distant terrain` on it resolves
     /// its chunks inside a cull, against a view keyed on the camera culling, and parents them to
@@ -182,8 +182,17 @@ namespace Rtx
     /// ground vanish rather than appear.
     ///
     /// So it is asked instead of walked, and this is the shape of the question. `TerrainResidency`
-    /// is the one implementation; the abstraction is here because the extractor may be handed none,
-    /// which is every world that parents its chunks like anything else.
+    /// stands the chunks. **What comes back is not only geometry**: `DistantLights` stands the lamps
+    /// of the cells the paging leaves dark, which have no node in either renderer because `LIGH` is
+    /// not a paged type. The abstraction is here because the extractor may be handed none, which is
+    /// every world that parents its chunks like anything else.
+    ///
+    /// **One method, because a host holds each of these as itself and not through this.** What a
+    /// residency has to be told differs by what it stands — a terrain wants the eye, distant lights
+    /// want the eye, the reach and the active grid — so the setters stay on the classes and only
+    /// the asking is shared. Hoisting the one setter both happen to have would leave a host
+    /// reaching the rest by name anyway, and a reader wondering why the eye arrived by a different
+    /// route than the grid.
     class Residency
     {
     public:
