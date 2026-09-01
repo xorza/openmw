@@ -18,3 +18,4 @@
 - sync distant terrain loading
 - gpu skin
 - micromaps
+- wrong lightsource positions
