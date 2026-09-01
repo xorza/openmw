@@ -390,64 +390,26 @@ namespace MWRender
         std::unique_ptr<SkyManager> mSky;
         std::unique_ptr<FogManager> mFog;
 
-        /// What was last handed to `configureFog`, before it became a ramp. `SceneFrame::mFogDepth`.
-        float mFogDepth = 0.0f;
-
-        /// What was last handed to `configureAmbient`, before the lift. `SceneFrame::mRoomAmbient`.
-        std::uint32_t mRoomAmbient = 0;
-        std::uint32_t mRoomSunlight = 0;
-        std::uint32_t mRoomFog = 0;
-
-        /// What the weather records blowing at, before the gust. `SceneFrame::mBaseWindSpeed`.
-        float mBaseWindSpeed = 0.0f;
+        /// What the world has settled on, as each part of it settles.
+        ///
+        /// **The frame's own record, written where the answer is known and read once.** Every
+        /// setter writes its fields straight in, leaving `describeWorld` only what answers per
+        /// frame. A second set of members mirroring these is the obvious alternative, and its
+        /// failure mode is a fact stored and never reported.
+        ///
+        /// **What each field is stays in `WorldState`**, which both renderers read and neither
+        /// spells twice.
+        WorldState mWorld;
 
         std::unique_ptr<EffectManager> mEffectManager;
         std::unique_ptr<SceneUtil::ShadowManager> mShadowManager;
 
-        /// Where the sun is, as the world last decided. `WorldState::mSunPosition` and
-        /// `::mSunVector` say what the two are.
-        ///
-        /// **Held rather than pushed.** Two paths set them — an exterior's orbit and an interior's
-        /// fixed nonsense angle — and `mSunLight` is a record of neither, so nothing but this
-        /// remembers.
-        osg::Vec4f mSunPosition;
-        osg::Vec4f mSunVector;
-        bool mSunAtNight = false;
-
-        float mSunVisibility = 0.f;
-
-        /// The disc's own colour and the share of the sun over the horizon, which
-        /// `WorldState::mSunDiscColour` describes. Held because `Sky::sunDiscAt` and
-        /// `Sky::sunShareAt` build them and nothing else keeps the answer.
-        osg::Vec4f mSunDiscColour{ 1.0f, 1.0f, 1.0f, 0.0f };
-
-        float mSunGlare = 1.f;
-
-        /// The deck's crossing and how far the stars have come out, as `WorldState::mCloudBlend`
-        /// and `::mNightFade` describe them.
-        float mCloudBlend = 0.f;
-        float mNightFade = 0.f;
-
-        /// What the sky and the cloud deck are coloured by, and how fast the deck runs.
+        /// How fast this weather runs its cloud deck, which is what turns `mWorld.mSkyRoll`.
         ///
         /// **Off the weather rather than out of `SkyManager`.** That manager is one renderer's and
-        /// is built lazily; a ray-traced frame reading its cached copies got whatever an unbuilt one
-        /// starts at, which for a colour is black.
-        osg::Vec4f mSkyColour;
-        osg::Vec4f mCloudFog;
+        /// is built lazily, so a frame that asked it got whatever an unbuilt one starts at.
         float mCloudSpeed = 0.f;
 
-        /// Which way each of the two decks is driven: each weather's own bearing, and not the
-        /// falling particles'. `WorldState::mCloudDirection` says why the two are read apart.
-        osg::Vec3f mCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
-        osg::Vec3f mNextCloudDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
-
-        /// How far the deck has scrolled and the stars have rolled. **One owner and two consumers**:
-        /// the sky manager is handed it and `WorldState` reports it, so both renderers turn one sky.
-        Sky::SkyRoll mSkyRoll;
-
-        bool mWaterEnabled = false;
-        float mWaterHeight = 0.f;
         osg::ref_ptr<NpcAnimation> mPlayerAnimation;
         osg::ref_ptr<SceneUtil::PositionAttitudeTransform> mPlayerNode;
         std::unique_ptr<Camera> mCamera;
@@ -469,18 +431,11 @@ namespace MWRender
         bool mUpdateProjectionMatrix = false;
         bool mNight = false;
 
-        /// Masser and Secunda, as the weather system last settled them.
-        ///
-        /// **Kept for the reason the storm's direction is:** `WorldState` has to report them and the
-        /// sky cannot be asked back. Until the weather system first speaks they are an alpha of
-        /// nothing, which is a moon nothing draws.
-        MoonState mMoonStates[2] = {};
-
         /// The last direction `MWWorld::WeatherManager` aimed its storm particles.
         ///
-        /// **Kept because `WorldState` has to report it and the sky cannot be asked.** The weather
-        /// system computes it once a frame against the player's position and hands it straight on;
-        /// the value is `Weather::defaultStormDirection` until it first does.
+        /// **Kept because the precipitation is driven from `update` and the weather is not.** The
+        /// weather system computes it once a frame against the player's position and hands it
+        /// straight on; the value is `Weather::defaultStormDirection` until it first does.
         osg::Vec3f mStormParticleDirection = osg::Vec3f(0.0f, 1.0f, 0.0f);
 
         osg::Vec2f mProjectionOffset;

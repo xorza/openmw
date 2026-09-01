@@ -534,9 +534,9 @@ namespace MWRender
     {
         // **Kept as it was recorded, beside the lift it is about to get.** A renderer that lights a
         // room itself wants the numbers the content wrote — `WorldState::mRoomAmbient`.
-        mRoomAmbient = cell.getMood().mAmbiantColor;
-        mRoomSunlight = cell.getMood().mDirectionalColor;
-        mRoomFog = cell.getMood().mFogColor;
+        mWorld.mRoomAmbient = cell.getMood().mAmbiantColor;
+        mWorld.mRoomSunlight = cell.getMood().mDirectionalColor;
+        mWorld.mRoomFog = cell.getMood().mFogColor;
 
         bool isInterior = !cell.isExterior() && !cell.isQuasiExterior();
         bool needsAdjusting = false;
@@ -573,17 +573,17 @@ namespace MWRender
         // This is total nonsense but it's what Morrowind uses
         static const osg::Vec4f interiorSunPos
             = osg::Vec4f(-1.f, osg::DegreesToRadians(45.f), osg::DegreesToRadians(45.f), 0.f);
-        mSunPosition = interiorSunPos;
-        mSunVector = -interiorSunPos;
-        mSunAtNight = false;
+        mWorld.mSunPosition = interiorSunPos;
+        mWorld.mSunVector = -interiorSunPos;
+        mWorld.mSunAtNight = false;
         mSunLight->setPosition(interiorSunPos);
 
         // **A room's sun is all there, and saying so is what stops it being the last outdoor
         // hour's.** The weather system stops running the moment the player steps inside, so nothing
         // else would write these again until they step out — and a renderer that scales its sunlight
         // by the share would light an interior with whatever fraction of a sunset it walked in on.
-        mSunDiscColour = osg::Vec4f(1.f, 1.f, 1.f, 1.f);
-        mSunGlare = 1.f;
+        mWorld.mSunDiscColour = osg::Vec4f(1.f, 1.f, 1.f, 1.f);
+        mWorld.mSunGlare = 1.f;
     }
 
     void RenderingManager::setSunColour(const osg::Vec4f& diffuse, const osg::Vec4f& specular, float sunVis)
@@ -592,7 +592,7 @@ namespace MWRender
         mSunLight->setDiffuse(diffuse);
         mSunLight->setSpecular(osg::Vec4f(specular.x(), specular.y(), specular.z(), specular.w() * sunVis));
 
-        mSunVisibility = sunVis;
+        mWorld.mSunVisibility = sunVis;
     }
 
     const osg::Vec4f& RenderingManager::getSunLightPosition() const
@@ -616,9 +616,9 @@ namespace MWRender
 
         mSky->setSunDirection(position);
 
-        mSunPosition = osg::Vec4f(position, 0.f);
-        mSunVector = osg::Vec4f(-sunlightPos, 0.f);
-        mSunAtNight = mNight;
+        mWorld.mSunPosition = osg::Vec4f(position, 0.f);
+        mWorld.mSunVector = osg::Vec4f(-sunlightPos, 0.f);
+        mWorld.mSunAtNight = mNight;
     }
 
     void RenderingManager::addCell(const MWWorld::CellStore* store)
@@ -677,21 +677,21 @@ namespace MWRender
         // world settled on, and nothing is read back out of the sky manager. It answers only when it
         // has been created, and it is created by whichever renderer is drawing — so a ray-traced
         // frame that asked it for the sky's colour got the black an unbuilt one starts at.
-        mSkyColour = weather.mSkyColor;
-        mCloudFog = weather.mFogColor;
+        mWorld.mSkyColour = weather.mSkyColor;
+        mWorld.mCloudFog = weather.mFogColor;
         mCloudSpeed = weather.mCloudSpeed;
-        mCloudDirection = weather.mStormDirection;
-        mNextCloudDirection = weather.mNextStormDirection;
-        mSunDiscColour = weather.mSunDiscColor;
-        mSunGlare = weather.mGlareView;
-        mCloudBlend = std::clamp(weather.mCloudBlendFactor, 0.f, 1.f);
-        mNightFade = weather.mNight ? weather.mNightFade : 0.f;
+        mWorld.mCloudDirection = weather.mStormDirection;
+        mWorld.mNextCloudDirection = weather.mNextStormDirection;
+        mWorld.mSunDiscColour = weather.mSunDiscColor;
+        mWorld.mSunGlare = weather.mGlareView;
+        mWorld.mCloudBlend = std::clamp(weather.mCloudBlendFactor, 0.f, 1.f);
+        mWorld.mNightFade = weather.mNight ? weather.mNightFade : 0.f;
 
         // **The record and not the gust.** What this decides is how deep the fog's layer stands and
         // how fast its field is carried, and both are the weather's settled character rather than
         // the number the engine wanders about it. `mDownpour.mWindSpeed` is the gust, and the
         // rasterizer's own uniform is what wants that one.
-        mBaseWindSpeed = weather.mDownpour.mBaseWindSpeed;
+        mWorld.mBaseWindSpeed = weather.mDownpour.mBaseWindSpeed;
     }
 
     void RenderingManager::setStormParticleDirection(const osg::Vec3f& direction)
@@ -714,8 +714,8 @@ namespace MWRender
 
     void RenderingManager::setMoonStates(const MoonState& masser, const MoonState& secunda)
     {
-        mMoonStates[0] = masser;
-        mMoonStates[1] = secunda;
+        mWorld.mMoons[0] = masser;
+        mWorld.mMoons[1] = secunda;
 
         mSky->setMasserState(masser);
         mSky->setSecundaState(secunda);
@@ -786,14 +786,14 @@ namespace MWRender
     {
         // **Kept as it was recorded, beside the ramp it is about to become.** A renderer whose fog
         // is a medium has no use for a start and an end; it wants the number the content wrote.
-        mFogDepth = cell.getMood().mFogDensity;
+        mWorld.mFogDepth = cell.getMood().mFogDensity;
         mFog->configure(mViewDistance, cell);
     }
 
     void RenderingManager::configureFog(
         float fogDepth, float underwaterFog, float dlFactor, float dlOffset, const osg::Vec4f& color)
     {
-        mFogDepth = fogDepth;
+        mWorld.mFogDepth = fogDepth;
         mFog->configure(mViewDistance, fogDepth, underwaterFog, dlFactor, dlOffset, color);
     }
 
@@ -819,9 +819,9 @@ namespace MWRender
             // That manager belongs to one of the two renderers and is built lazily, so a ray-traced
             // frame that asked it how far the clouds had scrolled was asking something that might
             // never have been created — and got a nought that never moved.
-            mSkyRoll.advance(dt, mCloudSpeed,
+            mWorld.mSkyRoll.advance(dt, mCloudSpeed,
                 MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale(), Sky::timescaleClouds());
-            mSky->setRoll(mSkyRoll);
+            mSky->setRoll(mWorld.mSkyRoll);
 
             // **The whole of driving the weather, in one call and from the one place that holds
             // all three answers.** The eye is the camera's, whether it is submerged is the water's,
@@ -877,55 +877,42 @@ namespace MWRender
 
     WorldState RenderingManager::describeWorld() const
     {
-        const MWBase::World& world = *MWBase::Environment::get().getWorld();
+        const MWBase::World& simulation = *MWBase::Environment::get().getWorld();
         const bool underwater = mWater->isUnderwater(mCamera->getPosition());
 
-        // The world's "no transition" is -1, and `WorldState` would rather say it in the type.
-        const int next = world.getNextWeatherScriptId();
+        // The simulation's "no transition" is -1, and `WorldState` would rather say it in the type.
+        const int next = simulation.getNextWeatherScriptId();
         const std::optional<int> nextWeather = next < 0 ? std::nullopt : std::optional(next);
 
-        return WorldState{
-            .mSunPosition = mSunPosition,
-            .mSunVector = mSunVector,
-            .mSunAtNight = mSunAtNight,
-            .mSunColour = mSunLight->getDiffuse(),
-            .mSunVisibility = mSunVisibility,
-            .mSunDiscColour = mSunDiscColour,
-            .mSunGlare = mSunGlare,
-            .mCloudBlend = mCloudBlend,
-            .mNightFade = mNightFade,
-            .mCloudFog = mCloudFog,
-            .mPrecipitation = mSky->getPrecipitation(),
-            .mSkyRoll = mSkyRoll,
-            .mAmbientColour = mSunLight->getAmbient(),
-            .mSkyColour = mSkyColour,
-            .mLocation = world.isCellExterior() ? Location::Exterior
-                : world.isCellQuasiExterior()   ? Location::QuasiExterior
-                                                : Location::Interior,
-            .mWaterEnabled = mWaterEnabled,
-            .mWaterHeight = mWaterHeight,
-            .mUnderwater = underwater,
-            .mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) },
-            .mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) },
-            .mFogDepth = mFogDepth,
-            .mRoomAmbient = mRoomAmbient,
-            .mRoomSunlight = mRoomSunlight,
-            .mRoomFog = mRoomFog,
-            .mNightEye = mSunLight->getAmbient() - mAmbientColor,
-            .mNearClip = mNearClip,
-            .mViewDistance = mViewDistance,
-            .mProjectionMatrix = mPerViewUniformStateUpdater->getProjectionMatrix(),
-            .mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView,
-            .mGameHour = world.getTimeStamp().getHour(),
-            .mWeatherId = world.getCurrentWeatherScriptId(),
-            .mNextWeatherId = nextWeather,
-            .mWeatherTransition = world.getWeatherTransition(),
-            .mWindSpeed = world.getWindSpeed(),
-            .mBaseWindSpeed = mBaseWindSpeed,
-            .mMoons = { mMoonStates[0], mMoonStates[1] },
-            .mCloudDirection = mCloudDirection,
-            .mNextCloudDirection = mNextCloudDirection,
-        };
+        // What the world settled on is already in `mWorld`, written where each part of it was
+        // decided. What is left answers per frame, so no setter can have written it.
+        WorldState described = mWorld;
+
+        described.mSunColour = mSunLight->getDiffuse();
+        described.mAmbientColour = mSunLight->getAmbient();
+        described.mNightEye = mSunLight->getAmbient() - mAmbientColor;
+        described.mPrecipitation = mSky->getPrecipitation();
+
+        described.mLocation = simulation.isCellExterior() ? Location::Exterior
+            : simulation.isCellQuasiExterior()            ? Location::QuasiExterior
+                                                          : Location::Interior;
+
+        described.mUnderwater = underwater;
+        described.mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) };
+        described.mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) };
+
+        described.mNearClip = mNearClip;
+        described.mViewDistance = mViewDistance;
+        described.mProjectionMatrix = mPerViewUniformStateUpdater->getProjectionMatrix();
+        described.mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView;
+
+        described.mGameHour = simulation.getTimeStamp().getHour();
+        described.mWeatherId = simulation.getCurrentWeatherScriptId();
+        described.mNextWeatherId = nextWeather;
+        described.mWeatherTransition = simulation.getWeatherTransition();
+        described.mWindSpeed = simulation.getWindSpeed();
+
+        return described;
     }
 
     void RenderingManager::renderFrame()
@@ -992,7 +979,7 @@ namespace MWRender
 
     void RenderingManager::setWaterEnabled(bool enabled)
     {
-        mWaterEnabled = enabled;
+        mWorld.mWaterEnabled = enabled;
 
         mWater->setEnabled(enabled);
         mSky->setWaterEnabled(enabled);
@@ -1004,7 +991,7 @@ namespace MWRender
 
     void RenderingManager::setWaterHeight(float height)
     {
-        mWaterHeight = height;
+        mWorld.mWaterHeight = height;
 
         mWater->setCullCallback(mTerrain->getHeightCullCallback(height, Mask_Water));
         mWater->setHeight(height);

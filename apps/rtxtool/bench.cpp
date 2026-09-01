@@ -343,7 +343,8 @@ namespace RtxTool
             // that frame out first. Waited for here, the stall is one figure and it is in
             // `wait ms`; left to the placement it is inside `place ms` as well, and that row
             // then reads as placement work — 8.3 ms at 3840x2160 against 1.8 at 1920x1080, for
-            // the same rows written.
+            // the same rows written. `RtxRenderer::traceWorld` splits it here too, so a row of
+            // this report and a row of the game's mean the same thing.
             //
             // **Before the submit below, which is what makes this the frame behind** rather than
             // the one about to be made — `Renderer::finishFrame` says why. So the rows below

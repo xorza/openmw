@@ -731,6 +731,18 @@ namespace MWRender
         if (mScene.getPlacedCount() == 0)
             return false;
 
+        // **Waited for here, ahead of the placement that would otherwise absorb it.** `placeScene`
+        // writes the copy of the tables the frame behind is still tracing, so it waits that frame
+        // out before it writes — and left to it the stall lands inside `place ms`, which then reads
+        // as placement work rather than as a device the CPU is ahead of. One figure, in `wait ms`,
+        // and `RtxTool::measurePlace` splits it the same way so the two reports can be read against
+        // each other.
+        //
+        // **Before the submit below, which is what keeps the CPU a frame ahead of the device**, and
+        // `Rtx::Renderer::finishFrame` says why that is the side of it the order decides. What comes
+        // back is the frame behind, so the bench row below carries it beside this frame's wall time.
+        const std::optional<Rtx::FrameResult> result = mRenderer->finishFrame();
+
         // Placed, appended or rebuilt — the decision, and the describing a rebuild needs, are the
         // harness's too and are written once (`Rtx::SceneUploader`).
         const std::chrono::steady_clock::time_point handing = std::chrono::steady_clock::now();
@@ -940,12 +952,6 @@ namespace MWRender
         // `Rtx::makeRoomLight` is where a room's one is said.
         const float bias = room.has_value() ? room->mExposureBias
                                             : Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient);
-
-        // **Before the submit below, which is what keeps the CPU a frame ahead of the device**, and
-        // `Rtx::Renderer::finishFrame` says why that is the side of it the order decides. What
-        // comes back is the frame behind, so the bench row below carries it beside this frame's
-        // wall time.
-        const std::optional<Rtx::FrameResult> result = mRenderer->finishFrame();
 
         const Rtx::Reconstruction reconstruction
             = mRenderer->renderFrame(constants, Rtx::FrameOptions{ .mExposureBias = bias, .mExposure = std::nullopt });

@@ -16,20 +16,6 @@ seam, `OffscreenView`, `Surface::Material`, `Picture`/`RegionTexture` and the `D
 clean seams with one answer each. `.notes/rtx/cpu.md` items B1–B5 and D own the extractor's CPU
 work, and `.notes/rtx/shader-review.md` owns the shaders. This file does not repeat their items.
 
-## The frame re-derives facts the engine can state directly (performance redesigns)
-
-The walk itself belongs to `cpu.md` §D and is not repeated. These are the redesigns beside it.
-
-- [ ] **Move skinning to the device.** The animated residents cost ~2.5 ms of CPU per frame
-  (`cpu.md` §A, §C). For every deforming drawable, the mirror re-reads the posed vertex arrays,
-  compares them against the held copy, copies them into the scene, uploads them, and refits the
-  structure (`SceneExtractor::resolveMesh` deforming path, `SceneDesc::updateMesh`). A redesign:
-  upload only the bone matrices, and run the skinning in a compute pass that feeds the refit. The
-  mirror then treats a rig as a static mesh plus a bone table. The did-it-move test becomes a
-  compare of tens of matrices instead of thousands of vertices. This removes the only per-frame
-  vertex traffic in the renderer and most of the deforming path's CPU cost. It also removes the
-  need to answer `cpu.md` §C's "narrow to actors in view" question — off-view actors become nearly
-  free, and shadows and reflections keep them.
 
 ## The harness and the game measure two slightly different frames
 
@@ -41,16 +27,6 @@ same two residencies, walks the whole graph every frame (`StagedWorld::EveryFram
 emitters, poses actors through the same `SceneUtil` skeleton machinery, and its near plane is the
 game's. The items below are what still differs, and each one either skews a bench row or is a
 derivation written twice.
-
-- [ ] **The two benches put the GPU wait in different rows.** The game's frame runs
-  `mUploader.hand` first and `finishFrame` after it (`rtxrenderer.cpp:730,941`), so when the
-  device is the wall, `placeScene`'s internal wait for the in-flight frame lands inside
-  `place ms` and `wait ms` reads low. The tool deliberately waits first and hands after
-  (`bench.cpp:354-364`), so the same stall lands in `wait ms` and `place ms` stays clean. Same
-  row names, different meanings — a tool row cannot be read against a game row on a GPU-bound
-  view. Give both spines one order (the tool's split is the readable one) and one shared
-  measuring helper beside `Rtx::FrameSamples`, so the next drift cannot appear without being
-  written down.
 
 - [ ] **`makeDaylight` re-derives what `WeatherManager` computes, and nothing pins the two.**
   `readWeather`/`settle` (`lightbuilder.cpp:142-232`) rebuild the weather's colour ramps, fog
@@ -69,16 +45,6 @@ derivation written twice.
   the record-level resolution (slots, bones, part selection) as a component both feed their own
   equipment state into. Until then, a change to how the game dresses a person walks past the
   harness unnoticed.
-
-## One fact, two derivations
-
-- [ ] **`RenderingManager` mirrors ~20 world facts into members only so `describeWorld()` can copy
-  them out again.** The header grew a parallel field list (`mSunPosition` … `mStormParticleDirection`
-  in `renderingmanager.hpp`) whose only reader is the per-frame `WorldState` assembly. Hold one
-  `WorldState` member instead. Let each setter write its fields into it directly, and let
-  `describeWorld()` patch only the per-frame facts (underwater, location, fog readings, game hour,
-  weather ids, wind). This deletes the parallel list, shrinks the upstream header diff, and removes
-  the failure mode where a new fact is stored but never reported.
 
 ## Upstream lines that only respell a name
 
