@@ -9,6 +9,7 @@
 #include "frametimes.hpp"
 #include "renderer.hpp"
 #include "scenedesc.hpp"
+#include "scenemasks.hpp"
 #include "texturebuilder.hpp"
 #include "wavespectrum.hpp"
 
@@ -127,7 +128,13 @@ namespace Rtx
             // first is where the memory is given back soonest. A reset needs none of this: the array
             // is made again from nothing and holds no image of what went.
             done.mDropped = dropFreed(renderer, slot, scene);
-            renderer.extendScene(slot, scene, textures.getDescriptions(), sea);
+
+            // **What the arriving meshes wear, which is not what arrived with them.** `SceneMasks`
+            // says why the two differ and what the difference cost.
+            const SceneMasks masks(scene, images, scene.getArrivedMeshes(), textures.getDescriptions());
+            done.mMasksOpened = masks.getOpened();
+
+            renderer.extendScene(slot, scene, textures.getDescriptions(), masks.getDescriptions(), sea);
             done.mKind = SceneUpload::Kind::Extended;
         }
 

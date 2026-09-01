@@ -16,6 +16,7 @@
 #include <components/rtx/frametimes.hpp>
 #include <components/rtx/micromap.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/scenemasks.hpp>
 #include <components/rtx/shaders/scene.h>
 
 #include "commands.hpp"
@@ -115,39 +116,6 @@ namespace Rtx
                 .pMemoryBarriers = &barrier,
             };
             vkCmdPipelineBarrier2(commands, &dependency);
-        }
-
-        /// A mesh more than one material stands on, which is a mesh no micromap can speak for.
-        ///
-        /// One below "no material at all", and no more a slot the scene can hand out than that is.
-        constexpr Index sManyMaterials = sNoIndex - 1;
-
-        /// Which material every mesh is worn by, or `sManyMaterials` where its placements disagree.
-        void materialOfEachMesh(const SceneDesc& scene, std::vector<Index>& into)
-        {
-            into.assign(scene.getMeshes().size(), sNoIndex);
-
-            for (const MeshInstance& instance : scene.getInstances())
-            {
-                if (!instance.isPlaced() || instance.mMesh >= into.size())
-                    continue;
-
-                Index& held = into[instance.mMesh];
-                if (held == sNoIndex)
-                    held = instance.mMaterial;
-                else if (held != instance.mMaterial)
-                    held = sManyMaterials;
-            }
-        }
-
-        /// One texture slot among what a scene handed over, or nothing where it did not arrive.
-        const TextureData* textureAt(std::span<const TextureData> textures, Index slot)
-        {
-            for (const TextureData& texture : textures)
-                if (texture.mSlot == slot)
-                    return &texture;
-
-            return nullptr;
         }
 
         /// One mesh's classified micromap, waiting for the room and the command that build it.
@@ -374,8 +342,8 @@ namespace Rtx
         return total;
     }
 
-    void SceneAcceleration::extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures,
-        GpuTimer* timer, Graveyard& graveyard)
+    void SceneAcceleration::extend(
+        Batch& batch, const SceneDesc& scene, std::span<const TextureData> masks, GpuTimer* timer, Graveyard& graveyard)
     {
         // **Departures first, and their rooms go to the graveyard rather than straight back**, so an
         // arrival this frame cannot be built into room a frame in flight is still tracing. The two
@@ -397,7 +365,7 @@ namespace Rtx
         // else can see it: `buildMeshes` records commands, so a device timer around the pair reports
         // the half that is not the cost.
         const auto opened = std::chrono::steady_clock::now();
-        buildMicromaps(batch, scene, textures, scene.getArrivedMeshes(), graveyard);
+        buildMicromaps(batch, scene, masks, scene.getArrivedMeshes(), graveyard);
         const auto classified = std::chrono::steady_clock::now();
         buildMeshes(batch, scene, scene.getArrivedMeshes(), graveyard);
 
@@ -408,7 +376,7 @@ namespace Rtx
         closeZone(timer, batch.getCommands());
     }
 
-    void SceneAcceleration::buildMicromaps(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures,
+    void SceneAcceleration::buildMicromaps(Batch& batch, const SceneDesc& scene, std::span<const TextureData> masks,
         std::span<const Index> meshes, Graveyard& graveyard)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
@@ -423,51 +391,38 @@ namespace Rtx
         for (const Index mesh : meshes)
             releaseMicromap(mesh, graveyard);
 
-        // **No mask, no micromap, and that is a whole answer.** An extend describes the textures
-        // that arrived with it, so a mesh appearing beside an image already resident has nothing
-        // here to classify against and goes on asking — which is exactly what it did before any of
-        // this existed, and what the next reset will settle.
-        if (textures.empty())
+        if (masks.empty())
             return;
 
         const std::uint32_t deviceLevels
             = mDevice.getPhysicalDevice().getProperties().mOpacityMicromap.maxOpacity4StateSubdivisionLevel;
 
-        materialOfEachMesh(scene, mMaterialOfMesh);
+        micromapCandidates(scene, meshes, mMaterialOfMesh, mMicromapCandidates);
 
         std::vector<PendingMicromap> pending;
-        std::vector<BoundedMask> masks;
+        std::vector<BoundedMask> bounded;
 
-        for (const Index mesh : meshes)
+        for (const MicromapCandidate& candidate : mMicromapCandidates)
         {
-            const MeshRange& range = scene.getMeshes()[mesh];
-            if (range.mIndexCount == 0)
-                continue;
+            const MeshRange& range = scene.getMeshes()[candidate.mMesh];
+            const Material& worn = scene.getMaterials()[candidate.mMaterial];
 
-            const Index material = mMaterialOfMesh[mesh];
-            if (material == sNoIndex || material == sManyMaterials)
-                continue;
-
-            const Material& worn = scene.getMaterials()[material];
-
-            // **A translucent surface is given none.** A micromap resolves a microtriangle as opaque
-            // from the same mask this is built out of, and an opaque microtriangle commits the hit —
-            // which is the end of the ray, and a pane of glass with it.
-            if (!worn.isCutout() || worn.isTranslucent())
-                continue;
-
-            const TextureData* mask = textureAt(textures, worn.mDiffuse);
+            // **No mask, no micromap, and that is a whole answer.** `SceneMasks` opens what the
+            // arriving meshes wear, so what is missing here is a slot with no file behind it — a
+            // flattened chunk, a sprite light, an image in a format this renderer does not upload.
+            // The mesh goes on asking, which is what every cutout did before there were micromaps.
+            const TextureData* mask = textureAt(masks, worn.mDiffuse);
             if (mask == nullptr)
                 continue;
 
             const float cutoff = worn.getAlphaCutoff();
-            auto held = std::find_if(masks.begin(), masks.end(), [&](const BoundedMask& bounded) {
-                return bounded.mTexture == worn.mDiffuse && bounded.mCutoff == cutoff;
+            auto held = std::find_if(bounded.begin(), bounded.end(), [&](const BoundedMask& already) {
+                return already.mTexture == worn.mDiffuse && already.mCutoff == cutoff;
             });
-            if (held == masks.end())
+            if (held == bounded.end())
             {
-                masks.push_back(BoundedMask{ worn.mDiffuse, cutoff, AlphaBounds(AlphaImage(*mask), cutoff) });
-                held = masks.end() - 1;
+                bounded.push_back(BoundedMask{ worn.mDiffuse, cutoff, AlphaBounds(AlphaImage(*mask), cutoff) });
+                held = bounded.end() - 1;
             }
 
             Micromap built(scene.getTexCoords().subspan(range.mVertexOffset, range.mVertexCount),
@@ -477,7 +432,7 @@ namespace Rtx
             // Empty is *build none*: a mask that could not be decoded says nothing about the
             // geometry wearing it, and deciding on its behalf is how a hole gets put through a wall.
             if (!built.isEmpty())
-                pending.push_back(PendingMicromap{ mesh, std::move(built) });
+                pending.push_back(PendingMicromap{ candidate.mMesh, std::move(built) });
         }
 
         if (pending.empty())

@@ -11,6 +11,7 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/micromap.hpp>
+#include <components/rtx/scenemasks.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/texturedata.hpp>
 
@@ -63,9 +64,9 @@ namespace Rtx
         /// `scene` must place at least one instance: a top-level structure over nothing has no
         /// instance buffer to be built from. `records` are `scene`'s rows, made by the caller for
         /// the reason `place` gives.
-        /// @param textures every image the scene names, which the opacity micromaps are classified
-        ///        against. A mesh whose cutout mask is not among them gets no micromap and goes on
-        ///        asking, which is what the whole cell did before there were any.
+        /// @param textures every image the scene names, which is why this needs no mask list of its
+        ///        own: a build from nothing is handed the whole table, so every cutout's mask is
+        ///        among it by construction. `extend` is handed what arrived and needs one.
         /// @param slots how many frames may be tracing this scene at once — `sFrameSlots` for the
         ///        world, one for a picture inside the interface — which is how many copies there are
         ///        of the rows and of the positions a refit reads.
@@ -123,10 +124,12 @@ namespace Rtx
         /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
         /// the positions, and what it replaces goes to `graveyard` all the same.
         ///
+        /// @param masks the cutout masks the arriving meshes wear, which `SceneMasks` opens and
+        ///        which are not the textures that arrived — see it for why the two differ.
         /// @param timer the frame the arrival lands in, so its builds are one zone of that frame's
         ///        report rather than device time nothing accounts for. Null for a picture inside the
         ///        interface, which is not timed — `VulkanRenderer::placeScene` says why.
-        void extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures, GpuTimer* timer,
+        void extend(Batch& batch, const SceneDesc& scene, std::span<const TextureData> masks, GpuTimer* timer,
             Graveyard& graveyard);
 
         /// Destroys the structures of `meshes` and gives their storage back.
@@ -190,11 +193,10 @@ namespace Rtx
         /// **Before the structures, in the same recording**, because a bottom level that references
         /// a micromap is built from it: the two are separated by a barrier and not by a submit.
         ///
-        /// A mesh qualifies only where every placement standing on it names the *same* cutout
-        /// material. A micromap belongs to the structure and so to the mesh, while a cutout belongs
-        /// to the material — so a mesh two materials disagree about has no one answer to give, and
-        /// the honest reply is none at all.
-        void buildMicromaps(Batch& batch, const SceneDesc& scene, std::span<const TextureData> textures,
+        /// `micromapCandidates` is what decides which of `meshes` qualifies, and `masks` is what
+        /// they are classified against — the diffuse of every material they wear, whether or not it
+        /// arrived with them.
+        void buildMicromaps(Batch& batch, const SceneDesc& scene, std::span<const TextureData> masks,
             std::span<const Index> meshes, Graveyard& graveyard);
 
         /// Destroys `mesh`'s micromap and gives its room back. Idempotent, like `release`.
@@ -378,8 +380,10 @@ namespace Rtx
         /// kept by the row that changed rather than recounted over every row a frame.
         std::vector<std::uint8_t> mRowFlags;
 
-        // Refilled per build: which material a mesh is worn by, or the sentinel for more than one.
+        // Refilled per build by `micromapCandidates`: its own working, and which of the meshes it
+        // found a micromap can be built for.
         std::vector<Index> mMaterialOfMesh;
+        std::vector<MicromapCandidate> mMicromapCandidates;
 
         std::uint32_t mInstanceCount = 0;
         std::uint32_t mCutoutInstanceCount = 0;

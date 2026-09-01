@@ -164,7 +164,7 @@ namespace Rtx
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, -50.0f, 0.0f),
                 .mMesh = scene.addMesh(sWallCorners, {}, {}, sQuadIndices) });
 
-            mRenderer->extendScene(Rtx::sWorld, scene, {}, SeaState{});
+            mRenderer->extendScene(Rtx::sWorld, scene, {}, {}, SeaState{});
             const Drawn arrived = draw(*mRenderer, camera);
 
             EXPECT_TRUE(reports(arrived.mGpu, "blas")) << "a mesh arrived and its structure was built unmeasured";

@@ -495,8 +495,8 @@ namespace Rtx
             readStats(held);
     }
 
-    void VulkanRenderer::extendScene(
-        std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
+    void VulkanRenderer::extendScene(std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived,
+        std::span<const TextureData> masks, const SeaState& sea)
     {
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
@@ -547,7 +547,7 @@ namespace Rtx
         if (scene.getMeshRevision() != held.mBuiltMeshes)
         {
             held.mBuffers->extend(scene, graveyard);
-            held.mAcceleration->extend(setup, scene, arrived, timer, graveyard);
+            held.mAcceleration->extend(setup, scene, masks, timer, graveyard);
             held.mBuiltMeshes = scene.getMeshRevision();
         }
 

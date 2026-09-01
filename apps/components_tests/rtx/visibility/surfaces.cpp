@@ -141,7 +141,7 @@ namespace Rtx::Testing
             // written where it belongs rather than after whatever is already there.
             const Index blueTexture = scene.getMaterials()[blue].mDiffuse;
             const TextureData second = describe(blueTexel, blueTexture);
-            mRenderer->extendScene(Rtx::sWorld, scene, std::span(&second, 1), SeaState{});
+            mRenderer->extendScene(Rtx::sWorld, scene, std::span(&second, 1), std::span(&second, 1), SeaState{});
             EXPECT_EQ(mRenderer->getTextureCount(Rtx::sWorld), 2u);
 
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });

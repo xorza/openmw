@@ -1,13 +1,34 @@
 # Open issues
 
-- A mesh gets an opacity micromap or does not according to which textures arrived with the upload
-  that carried it, rather than according to the material it wears. `SceneAcceleration::buildMicromaps`
-  returns early on an empty arrival and skips any mesh whose diffuse is not among the ones that
-  arrived, because the arrival is the only thing carrying host-side mask data. So a mesh appearing
-  beside an image the renderer already holds is left asking `RTX_RESOLVE` until the next reset. The
-  comment at that line states the behaviour. `SceneUploader::hand` describes
-  `scene.getArrivedTextures()` on an extend, and `SceneTextures` already takes an explicit list of
-  slots, so the masks an arrived mesh wears could be named there as well.
+- Opacity micromaps cost a cell crossing 340 ms and return no measurable trace time. Interleaved
+  `bench --suite=exteriors`, three runs each way, comparing the median trace against the same binary
+  with `buildMicromaps` returning at once: seyda-neen-ship +1.0%, seyda-neen-shore +1.1%, balmora
+  +0.1%, vivec -1.2%, ald-ruhn -1.5%, sadrith-mora -1.4%, dagon-fel -0.3%. Every delta straddles
+  zero.
+
+  The reason is in the tally, not in the measurement: 96% of the microtriangle area a micromap
+  covers still asks. `AlphaBounds` brackets a patch across every level of the mip chain, because
+  `candidateStops` reads the mask at whatever level the ray's cone resolves — so a patch resolves
+  only where the whole chain agrees about it, and Morrowind's masks are soft-edged. Raising
+  `Micromap::sSubdivisionCeiling` is what would resolve more, and it costs `4^level`; lowering it
+  from 5 to 3 cut classification 10.7× and halved the resolved share, with no change in trace time
+  either way.
+
+  What the crossing pays, flying the Bitter Coast at 12,000 units a second: 5.5 s of build over
+  sixteen crossings against 0.5 s, and a worst frame of 1,280 ms against 238. The classification is
+  the whole of it — 763 ms for 460 meshes on one crossing, of which the mask bounds are 24 ms.
+  Before the arrival rule was fixed most of this work was skipped, which is why it was never
+  visible.
+
+  Three ways out, and they are not the same decision: take the classification off the frame the way
+  `CompositeQueue` takes a terrain bake, and rebuild each mesh's structure when its micromap lands;
+  make the micromaps resolve enough to pay, by cutting finer and by bounding the mask over only the
+  levels the cutout test can read; or remove the path.
+
+  An exact guard was tried and removed: a triangle whose whole box holds no certainly-material and
+  no certainly-hole texel can have no piece that resolves, so its subdivision can be skipped. The
+  tally came out identical to the byte and the cost did not move — nearly every triangle's box holds
+  a certain texel of one kind or the other.
 
 - One exterior renders differently depending on which cell the process staged before it, and every
   field of the scene it was handed is equal. `verify --views=balmora,seyda-neen-shore` against

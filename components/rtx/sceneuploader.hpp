@@ -44,6 +44,10 @@ namespace Rtx
         /// where nothing arrives, and waiting for the next arrival to give the memory back is what
         /// made the island route settle at what it had visited.
         std::size_t mDropped = 0;
+
+        /// How many cutout masks an extend had to open because they did not arrive with the meshes
+        /// wearing them — the micromaps the arrival rule used to lose, as a number. See `SceneMasks`.
+        std::uint32_t mMasksOpened = 0;
     };
 
     /// Takes, once a frame, the cheapest of the three ways to hand a mirrored scene over.

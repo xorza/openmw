@@ -44,6 +44,9 @@ namespace RtxTool
         /// of them shares no cell with it.
         constexpr std::string_view sAway = "-2,-9";
 
+        /// The cell east of `sAway`, so a crossing there swaps three columns of coast for three.
+        constexpr std::string_view sNext = "-1,-9";
+
         /// Brings the ring around `centre` in, takes the ones that left off, and mirrors what is
         /// left — which is what `runWindow`'s `bring` does, in the same order and for the same
         /// reasons.
@@ -130,6 +133,53 @@ namespace RtxTool
             EXPECT_EQ(renderer.mTextures, scene.getTextures().size());
             EXPECT_FALSE(renderer.mAppendedToWrongEnd);
             EXPECT_EQ(renderer.mRebuilt, 1u) << "the crossing cost a full build after all";
+        }
+
+        /// A mesh gets its opacity micromap from the material it wears, not from the upload that
+        /// carried it.
+        ///
+        /// **The Bitter Coast rather than Balmora, because a stone town has almost no cutout in
+        /// it.** The rule under test only bites where arriving geometry is alpha-tested and its
+        /// image is already resident, which is what foliage over a shared texture set is: the three
+        /// columns that arrive bring canopies whose masks the six that stayed made resident cells
+        /// ago. While the classifier read the upload's own list, those meshes had nothing to
+        /// classify against and went on asking `RTX_RESOLVE` until the next rebuild — 18 of 566
+        /// cutout instances micromapped across this coast, against 3,626 of 3,626 on the same
+        /// content staged in one go.
+        TEST_F(RtxCrossingTest, aCrossingOpensTheMasksItsMeshesWearRatherThanTheOnesThatArrived)
+        {
+            const ESM::Cell* from = getContent().findCell(sAway);
+            const ESM::Cell* to = getContent().findCell(sNext);
+            ASSERT_NE(from, nullptr);
+            ASSERT_NE(to, nullptr);
+
+            const osg::ref_ptr<osg::Group> root = new osg::Group;
+
+            Rtx::SceneDesc scene;
+            Rtx::SceneExtractor extractor(scene);
+            Rtx::SceneUploader uploader;
+            Rtx::Testing::CountingRenderer renderer;
+            LoadedCells loaded;
+
+            crossTo(getWorld(), *from, *root, scene, loaded, extractor);
+            ASSERT_EQ(uploader.hand(renderer, Rtx::sWorld, scene, getWorld().getImageManager(), Rtx::SeaState{}).mKind,
+                Rtx::SceneUpload::Kind::Rebuilt);
+
+            ASSERT_EQ(crossTo(getWorld(), *to, *root, scene, loaded, extractor), 3u);
+
+            const Rtx::SceneUpload crossed
+                = uploader.hand(renderer, Rtx::sWorld, scene, getWorld().getImageManager(), Rtx::SeaState{});
+            ASSERT_EQ(crossed.mKind, Rtx::SceneUpload::Kind::Extended);
+
+            // **Opened here and not carried by the arrival, which is the whole of the fix.** Zero
+            // would mean every arriving cutout brought its own image, and the rule this states
+            // would be one the old code kept by accident.
+            EXPECT_GT(crossed.mMasksOpened, 0u) << "every arriving cutout brought its own mask, so this proves nothing";
+
+            // And every arriving mesh a micromap can be built for has one to build from, which
+            // `CountingRenderer` checks on the call itself because that is where the two lists meet.
+            EXPECT_TRUE(renderer.mMasksMissing.empty())
+                << renderer.mMasksMissing.size() << " arriving meshes were left with no mask to classify against";
         }
 
         /// The sea is one sheet the world owns, not a footprint per cell.

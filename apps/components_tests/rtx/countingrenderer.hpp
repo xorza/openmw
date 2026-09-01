@@ -8,6 +8,7 @@
 
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/scenemasks.hpp>
 
 namespace Rtx::Testing
 {
@@ -41,7 +42,7 @@ namespace Rtx::Testing
         }
 
         void extendScene(std::uint32_t slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> arrived,
-            const Rtx::SeaState&) override
+            std::span<const Rtx::TextureData> masks, const Rtx::SeaState&) override
         {
             ++mExtended;
             mDescribed = arrived.size();
@@ -50,6 +51,20 @@ namespace Rtx::Testing
             // The contract `extendScene` is given rather than one it checks: appending only the
             // arrivals has to leave the array exactly as long as the scene's table.
             mAppendedToWrongEnd |= countAt(slot) != scene.getTextures().size();
+
+            // **The one place the two lists meet.** `SceneMasks` chooses which slots to open and
+            // `SceneAcceleration` chooses which meshes to classify, from one filter read in two
+            // libraries — so an arriving mesh with no mask here is what the shared filter exists to
+            // stop, and nothing downstream could report it: a mesh left unclassified draws
+            // correctly. A mask with no file behind it is absent for a reason, which is why the
+            // slot is named rather than counted.
+            Rtx::micromapCandidates(scene, scene.getArrivedMeshes(), mMaterialScratch, mCandidateScratch);
+            for (const Rtx::MicromapCandidate& candidate : mCandidateScratch)
+            {
+                const Rtx::Index diffuse = scene.getMaterials()[candidate.mMaterial].mDiffuse;
+                if (Rtx::textureAt(masks, diffuse) == nullptr && scene.getBakedTextures()[diffuse].empty())
+                    mMasksMissing.push_back(diffuse);
+            }
         }
 
         void placeScene(std::uint32_t, const Rtx::SceneDesc&, const Rtx::SeaState&) override
@@ -122,6 +137,9 @@ namespace Rtx::Testing
         /// already uploaded was decoded and shading-estimated a second time.
         std::size_t mDescribed = 0;
 
+        /// Every texture slot an arriving mesh wore that no mask named, across every call.
+        std::vector<Rtx::Index> mMasksMissing;
+
         std::uint32_t mTextures = 0;
         bool mAppendedToWrongEnd = false;
 
@@ -132,5 +150,8 @@ namespace Rtx::Testing
     private:
         Rtx::SceneStats mStats;
         std::uint32_t mGuiTextures = 0;
+
+        std::vector<Rtx::Index> mMaterialScratch;
+        std::vector<Rtx::MicromapCandidate> mCandidateScratch;
     };
 }

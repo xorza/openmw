@@ -144,6 +144,7 @@ if (OPENMW_RTX)
         rtx/reconstruction.cpp
         rtx/requirements.cpp
         rtx/scenedesc.cpp
+        rtx/scenemasks.cpp
         rtx/extractor/fixture.hpp
         rtx/extractor/lights.cpp
         rtx/extractor/materials.cpp

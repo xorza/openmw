@@ -70,6 +70,8 @@ set(RTX_FILES
     scenedesc.hpp
     sceneextractor.cpp
     sceneextractor.hpp
+    scenemasks.cpp
+    scenemasks.hpp
     sceneuploader.cpp
     sceneuploader.hpp
     shadingmap.cpp

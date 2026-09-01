@@ -466,10 +466,15 @@ namespace Rtx
         /// order and starting at the count this already holds — never the whole table, or the
         /// describing and the shading estimate are paid twice for what has not changed.
         ///
+        /// `masks` is what a cutout classifier reads and is **a different set**: the diffuse of
+        /// every material the arriving meshes wear, which Morrowind shares across cells and which is
+        /// therefore mostly already resident. `SceneMasks` says what that cost and why it is not
+        /// `arrived`. Nothing here is uploaded from it.
+        ///
         /// Only for a scene whose tables **grew**. A `retain` that closed the gaps renumbers every
         /// index, and the answer to that is still `setScene`.
-        virtual void extendScene(
-            std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
+        virtual void extendScene(std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived,
+            std::span<const TextureData> masks, const SeaState& sea)
             = 0;
 
         /// Say that the next frame has no usable past.

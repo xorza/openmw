@@ -116,4 +116,18 @@ namespace Rtx
         /// in a debugger; every backend has somewhere to put it.
         std::string_view mName;
     };
+
+    /// The description of one slot among `textures`, or nothing where none of them is that slot.
+    ///
+    /// **Linear because the lists are short and unsorted.** A description carries its slot rather
+    /// than sitting at it, so there is no index to jump to — and what these lists hold is a cell's
+    /// arrivals or the cutout masks its meshes wear, tens of entries either way.
+    inline const TextureData* textureAt(std::span<const TextureData> textures, std::uint32_t slot)
+    {
+        for (const TextureData& texture : textures)
+            if (texture.mSlot == slot)
+                return &texture;
+
+        return nullptr;
+    }
 }
