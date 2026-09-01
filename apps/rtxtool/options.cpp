@@ -151,10 +151,11 @@ namespace RtxTool
             "write the albedo with no shading over it, which is what a texture problem looks like "
             "when nothing else is in the way");
 
-        addOption("weather", bpo::value<std::string>()->default_value("Clear"),
+        addOption("weather", bpo::value<std::string>()->default_value(std::string(sDefaultWeather)),
             "which weather's sun, sky and precipitation an exterior stands under, named as the "
             "content files spell it: Clear, Cloudy, Foggy, Overcast, Rain, Thunderstorm, Ashstorm, "
-            "Blight, Snow, Blizzard. The ones that drop something drop it here too");
+            "Blight, Snow, Blizzard. The ones that drop something drop it here too. Given, it beats "
+            "a weather a view fixes for itself");
 
         addOption("hour", bpo::value<float>()->default_value(sDefaultHour),
             "what time an exterior's sun is at, on a twenty-four hour clock. An interior is lit "

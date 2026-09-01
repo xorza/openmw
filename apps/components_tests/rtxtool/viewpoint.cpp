@@ -268,14 +268,16 @@ namespace RtxTool
             EXPECT_EQ(*read.front().mOrigin, spot.mOrigin);
             EXPECT_EQ(*read.front().mTarget, spot.mTarget);
 
-            // **Noon writes no hour**, so a view pasted from an ordinary window is still free to be
-            // measured at whatever hour a run names.
+            // **Clear noon writes neither condition**, so a view pasted from an ordinary window is
+            // still free to be measured under whatever a run names.
             EXPECT_FALSE(read.front().mHour.has_value()) << describeBlock(spot);
+            EXPECT_FALSE(read.front().mWeather.has_value()) << describeBlock(spot);
 
-            // **And any other hour writes one**, because the light is most of what the frame is: a
-            // block pasted from a window flown at dawn has to bring the dawn with it.
+            // **And anything else writes both**, because the light is most of what the frame is: a
+            // block pasted from a window flown at dawn in a storm has to bring both with it.
             Viewpoint dawn = spot;
             dawn.mHour = 6.5f;
+            dawn.mWeather = "Thunderstorm";
 
             const std::filesystem::path second
                 = std::filesystem::temp_directory_path() / "openmw-rtx-viewpoint-dawn.cfg";
@@ -290,6 +292,8 @@ namespace RtxTool
             ASSERT_EQ(back.size(), 1u);
             ASSERT_TRUE(back.front().mHour.has_value());
             EXPECT_EQ(*back.front().mHour, 6.5f);
+            ASSERT_TRUE(back.front().mWeather.has_value());
+            EXPECT_EQ(*back.front().mWeather, "Thunderstorm");
         }
 
         /// A window opened by `--cell` has no view to replace, so the block names one after the cell.

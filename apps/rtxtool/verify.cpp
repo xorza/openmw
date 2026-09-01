@@ -123,8 +123,7 @@ namespace RtxTool
                 return 1;
             }
 
-            StagedWorld staged(world, *cell, request.mFrame.describeStaging(view.mHour, view.mOrigin, view.mTarget),
-                request.mFrame.mActors);
+            StagedWorld staged(world, *cell, request.mFrame.describeStaging(view), request.mFrame.mActors);
 
             if (staged.empty())
             {

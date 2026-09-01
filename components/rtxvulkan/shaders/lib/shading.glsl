@@ -25,6 +25,34 @@
 const uint PATH_SEEN = 0u;
 const uint PATH_INDIRECT = 1u;
 
+/// What share of indirect hits out of doors are lit at all, the rest paying by weight.
+///
+/// **The two rays a bounce hit spends on direct light are the dimmest pair in the frame.** A sun ray
+/// and a lamp ray are traced there to light a term nothing resolves on its own — the moons are
+/// already refused that path for exactly this reason, and the ambient ray beside them is already
+/// drawn at `AMBIENT_EXTERIOR_RATE`.
+///
+/// **Drawn and divided, so the estimate is unbiased by construction** rather than a guess at what
+/// the unlit half would have said. Two frames of a thousand samples each agree exactly, which is how
+/// that was checked. What it hands the filter is variance in the channel Ray Reconstruction
+/// demodulates and filters hardest, which is why it is judged on a moving camera rather than a still.
+///
+/// **Half the rays are not half the time, and the gap is worth knowing.** Removing the pair outright
+/// takes the trace from 4.30 ms to 3.59 at the ship at Seyda Neen and from 3.03 to 2.77 over
+/// Balmora; a half rate, measured interleaved against its own baseline, takes 4.35 to 4.22 and 3.13
+/// to 3.07 — a fifth of what the gut says, where `AMBIENT_EXTERIOR_RATE` claimed half of its own.
+/// The rays here are short: a lane that skips one does not release the warp, which runs on until the
+/// lanes that kept theirs are done, and a hashed draw leaves no warp with thirty-two skipping lanes.
+/// The ambient ray runs to `mFar` and is nearly all empty traversal, so halving those halves what
+/// the device does whatever the warp is doing. **A rate is worth what the ray it drops is long.**
+///
+/// **Out of doors only, and that is not caution about the arithmetic.** A room's indirect light *is*
+/// its lamps seen once off a wall — the interior ceiling is the larger of the two, 4.21 ms to 3.58 in
+/// the Guild of Mages — so rating it there halves the samples of the term that carries the room,
+/// where outside the sun has already lit everything the bounce lands on. Every interior view renders
+/// bit-identically under this, which `verify` says.
+const float INDIRECT_LIGHT_RATE = 0.5;
+
 /// The *direct* light arriving at a point and turning back out of it, per unit albedo.
 ///
 /// **Sources that can be asked where they are, and nothing else.** The sun and the lamps are each a
@@ -44,10 +72,25 @@ const uint PATH_INDIRECT = 1u;
 ///        correlated lamps at both ends of it.
 /// @param transmission what a light on the far side of the surface is worth to this side, which
 ///        is `Surface::mTransmission`: nought for a solid, `SHEET_TRANSMISSION` for a leaf.
-/// @param path `PATH_SEEN` or `PATH_INDIRECT`, which decides whether the moons are asked at all.
+/// @param path `PATH_SEEN` or `PATH_INDIRECT`. It decides whether the moons are asked at all, and
+///        whether the rest of this is drawn at `INDIRECT_LIGHT_RATE` or spent on every hit.
 vec3 gather(vec3 position, vec3 normal, vec3 plane, float footprint, float transmission, uint seed, uint path)
 {
     vec3 radiance = vec3(0.0);
+
+    // **Drawn before anything else and out of a sequence of its own**, so that a hit which is lit
+    // draws exactly the numbers it drew before this existed — the ordering below is what keeps a
+    // lamp arriving in the next cell from moving the penumbra of the one already there, and a draw
+    // taken from that sequence would move every one of them.
+    float rated = 1.0;
+    if (path == PATH_INDIRECT && frame.mAmbientFromSky > 0.0)
+    {
+        uint lit = randomSeed(seed + SEED_INDIRECT_LIGHT);
+        if (randomNext(lit) >= INDIRECT_LIGHT_RATE)
+            return radiance;
+
+        rated = 1.0 / INDIRECT_LIGHT_RATE;
+    }
 
     uint state = randomSeed(seed);
 
@@ -168,7 +211,7 @@ vec3 gather(vec3 position, vec3 normal, vec3 plane, float footprint, float trans
 
     radiance += lampsThrough(kept, lampDraw);
 
-    return radiance;
+    return radiance * rated;
 }
 
 /// What terminates a path: the cell's own ambient, dimmed by whatever stands over the point.
@@ -313,6 +356,37 @@ const float BOUNCE_SPREAD = 1.0;
 /// rooms are small enough that anything further is a wall.
 const float ROOM_FILL_REACH = 140.0;
 
+/// How far out of doors a surface traces its own bounce, in world units.
+///
+/// **Beyond it the hemisphere is not traced and the escape is taken as though nothing stood in the
+/// way.** The far half of an exterior is thousands of pixels whose bounce ray leaves a mountainside,
+/// crosses the whole acceleration structure and mostly finds sky anyway — and whose indirect term
+/// the upscaler then averages flat, because a pixel that far away covers a hillside. What the ray
+/// was proving is that nothing was there, at the price of the longest traversal in the frame.
+///
+/// One cell, which is the distance Morrowind itself builds a world in. Nearer than that a bounce is
+/// what fills a doorway, an arch and the shaded side of a house, and every one of those is inside
+/// the cell the camera stands in.
+///
+/// **Biased, unlike the two rates beside it, and it is the bias that makes it worth having.** A draw
+/// and a divide would keep the traversal on half the pixels and the noise on all of them; this stops
+/// the traversal outright, and pays for it in ground lit slightly flatter than it would be. It is
+/// exterior-only for the reason `AMBIENT_EXTERIOR_RATE` is: a room's escape is nothing at all, so a
+/// surface far down a hall would go dark rather than flat.
+///
+/// **What it is worth depends entirely on where the camera stands, and the honest figure is the
+/// smaller one.** At eye level in a town it takes the trace from 4.35 ms to 4.26 at the ship at
+/// Seyda Neen and from 3.13 to 3.00 over Balmora — three per cent, because far ground is crowded
+/// into the few rows under the horizon and the sky above it costs no bounce at all. A camera looking
+/// at a cell from outside it is the other case: the shoreline's establishing shot goes from 2.73 ms
+/// to 1.48, because every surface in it is past the reach. A hilltop is that camera.
+///
+/// **Where the bias lands, measured on a thousand samples either side.** Ninety-seven per cent of
+/// the ship's pixels do not move at all. Of the rest, 1.4% change by more than a tenth and the worst
+/// by half again, and every one of them is far canopy or a roof behind the town — the mean frame is
+/// 0.2% brighter. Nothing in the foreground is touched, which is the shape the reach was chosen for.
+const float BOUNCE_REACH = 8192.0;
+
 /// What share of exterior points are asked whether they reach the sky, the rest paying by weight.
 ///
 /// **Out of doors the ambient ray is the expensive one, by two orders of reach.** It runs to
@@ -396,6 +470,29 @@ float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission
     return weight * lightThrough(position, towards, frame.mFar) / AMBIENT_EXTERIOR_RATE;
 }
 
+/// What a bounce brings back when it reaches nothing.
+///
+/// The glow and not the disc: the sun is already a term of its own in `gather`, and a bounce that
+/// found it in the sky would be the same light counted twice.
+///
+/// **A room has nothing outside it, so a ray that got out of one brings back nothing.** The dome a
+/// room draws is its fog colour standing in for the *picture* wherever a ray leaves the shell, and it
+/// is far brighter than the room itself: lighting with it drew a bright band along the foot of every
+/// wall. `mAmbientFromSky` is where a cell answers whether its sky is a light, and `ambientReaching`
+/// reads the same field to decide how far to look for what blocks the fill.
+///
+/// Dimmed by the column of water over the point, on `daylightReaching`'s vertical approximation and
+/// for its reason: this ray left for the sky and the sky is above, so what stands between them is the
+/// depth. Without it a flooded floor reads brighter than the same floor seen from over the surface,
+/// which is the disagreement M6 closed.
+vec3 bounceEscape(vec3 position, vec3 towards, float weight)
+{
+    if (!(frame.mAmbientFromSky > 0.0))
+        return vec3(0.0);
+
+    return weight * skyGlow(towards) * daylightReaching(position);
+}
+
 /// What reaches a surface from everything that is not a light: one diffuse bounce.
 ///
 /// **Traced only from the hit the eye found.** A shader with no recursion cannot bounce a bounce, and
@@ -403,8 +500,9 @@ float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission
 /// rest of the path. That is also what keeps `shadeSurface` from calling itself — the water's
 /// reflections already shade through it, and a bounce inside it would have no bottom.
 ///
-/// A miss returns the sky, which is what makes the sky an emitter rather than a backdrop: outdoors
-/// it is by far the largest source in the scene, and a surface facing it should be lit by it.
+/// A ray that finds nothing takes `bounceEscape`, which is what makes the sky an emitter rather than
+/// a backdrop: outdoors it is by far the largest source in the scene, and a surface facing it should
+/// be lit by it.
 vec3 bounceLight(Surface surface, uvec2 pixel)
 {
     // A sheet bounces off either face, and `SEED_SHEET_SIDE` says why the side is not drawn from
@@ -423,28 +521,18 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     if (behindTheFace(towards, surface.mGeometric, face))
         return vec3(0.0);
 
+    // **Far ground out of doors is handed the escape rather than asked whether it escaped**, which
+    // is the same answer the miss below arrives at by tracing for it. `BOUNCE_REACH` says what that
+    // costs and why the room is not in it.
+    const vec3 fromEye = surface.mPosition - frame.mOrigin;
+    if (frame.mAmbientFromSky > 0.0 && dot(fromEye, fromEye) > BOUNCE_REACH * BOUNCE_REACH)
+        return bounceEscape(surface.mPosition, towards, weight);
+
     const Surface hit
         = trace(surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, MASK_SOLID);
 
-    // The glow and not the disc: the sun is already a term of its own in `gather`, and a bounce
-    // that found it in the sky would be the same light counted twice.
-    //
-    // **A room has nothing outside it, so a ray that got out of one brings back nothing.** The dome
-    // a room draws is its fog colour standing in for the *picture* wherever a ray leaves the shell,
-    // and it is far brighter than the room itself: lighting with it drew a bright band along the
-    // foot of every wall. `mAmbientFromSky` is where a cell answers whether its sky is a light, and
-    // `ambientReaching` reads the same field to decide how far to look for what blocks the fill.
-    //
-    // Dimmed by the column of water over the point, on `daylightReaching`'s vertical approximation
-    // and for its reason: this ray left for the sky and the sky is above, so what stands between
-    // them is the depth. Without it a flooded floor reads brighter than the same floor seen from
-    // over the surface, which is the disagreement M6 closed.
     if (!hit.mHit)
-    {
-        if (!(frame.mAmbientFromSky > 0.0))
-            return vec3(0.0);
-        return weight * skyGlow(towards) * daylightReaching(surface.mPosition);
-    }
+        return bounceEscape(surface.mPosition, towards, weight);
 
     const float reaching = ambientReaching(
         hit.mPosition, hit.mNormal, hit.mGeometric, hit.mTransmission, pixelKey(pixel) + SEED_AMBIENT_REACHING);

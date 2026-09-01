@@ -8,6 +8,7 @@
 #include <utility>
 
 #include <components/files/conversion.hpp>
+#include <components/rtx/lightbuilder.hpp>
 #include <components/settings/categories.hpp>
 #include <components/settings/parser.hpp>
 
@@ -44,6 +45,19 @@ namespace RtxTool
                     + "\", which is not an hour of the day from 0 up to but not including 24");
 
             return hour;
+        }
+
+        /// One of the ten weathers the content files name, or a throw saying what was written.
+        ///
+        /// **Checked here rather than at the frame**, for the reason a mistyped view id is: a place
+        /// that quietly stood under another sky reports a number against a frame nobody asked for.
+        std::string parseWeather(const std::string& view, const std::string& text)
+        {
+            if (!Rtx::weatherIndex(text).has_value())
+                throw std::runtime_error("view \"" + view + "\" has weather \"" + text
+                    + "\", which is none of the weathers the content files name");
+
+            return text;
         }
 
         /// Fills each borrower in from the view its `like` names.
@@ -136,6 +150,11 @@ namespace RtxTool
         return given.has_value() ? *given : fixed.value_or(sDefaultHour);
     }
 
+    std::string weatherFor(const std::optional<std::string>& given, const std::optional<std::string>& fixed)
+    {
+        return given.has_value() ? *given : fixed.value_or(std::string(sDefaultWeather));
+    }
+
     std::vector<View> loadViews(const std::filesystem::path& path)
     {
         Settings::CategorySettingValueMap entries;
@@ -176,6 +195,8 @@ namespace RtxTool
                 speeds.emplace_back(views.size() - 1, parseSpeed(section, value));
             else if (field == "hour")
                 view.mHour = parseHour(section, value);
+            else if (field == "weather")
+                view.mWeather = parseWeather(section, value);
             else if (field == "like")
                 likes.emplace_back(views.size() - 1, value);
             else

@@ -46,10 +46,11 @@ namespace RtxTool
 
         /// As the fallback settings spell it, and a twenty-four hour clock.
         ///
-        /// **The same default the view file's absent `hour` means**, because `describeBlock` writes
-        /// the hour out only where it differs from it — the two disagreeing would put `hour = 12`
-        /// into every pasted block and fix at noon a place that meant to take the run's hour.
-        std::string mWeather;
+        /// **The same defaults the view file's absent `weather` and `hour` mean**, because
+        /// `describeBlock` writes each out only where it differs from one — a disagreement would put
+        /// `hour = 12` into every pasted block and fix at clear noon a place that meant to take the
+        /// run's own conditions.
+        std::string mWeather = std::string(sDefaultWeather);
         float mHour = sDefaultHour;
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.

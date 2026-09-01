@@ -51,6 +51,12 @@ namespace RtxTool
     /// trace — which is why the views the target is judged on fix `hour` themselves.
     inline constexpr float sDefaultHour = 12.0f;
 
+    /// The weather a place stands under where neither the view nor the command line names one.
+    ///
+    /// Clear, for the reason noon is the default hour: it is the sky a picture of a place is taken
+    /// under. A view whose sky is the point of it says so itself.
+    inline constexpr std::string_view sDefaultWeather = "Clear";
+
     /// A place worth looking at, by name.
     ///
     /// A view id is the unit of comparison across commits: the same name renders the same frame
@@ -76,6 +82,14 @@ namespace RtxTool
         /// field a view fixes already follows.
         std::optional<float> mHour;
 
+        /// The weather this place stands under, or absent for whatever weather the run is under.
+        ///
+        /// **A condition of the place, exactly as the hour is one.** An overcast deck and a clear
+        /// one are not one frame — the cloud shadow, the fog and the sun's own glare all differ —
+        /// and a saving that only pays under a heavy sky can be measured no other way. `--weather`
+        /// still wins, which is the rule every field a view fixes follows.
+        std::optional<std::string> mWeather;
+
         std::string mNote;
 
         /// Where a bench run flies from here, or absent for a place that stands still. A shot and a
@@ -92,6 +106,10 @@ namespace RtxTool
     /// @param given what `--hour` named, or nothing where it was left at its default.
     /// @param fixed what the view fixes, or nothing where it fixes none.
     float hourFor(const std::optional<float>& given, const std::optional<float>& fixed);
+
+    /// The weather a place stands under, from what the command line named and what the view fixes.
+    /// `hourFor`'s rule, over the other condition a place can fix.
+    std::string weatherFor(const std::optional<std::string>& given, const std::optional<std::string>& fixed);
 
     /// Reads the view file. Throws when it is missing or malformed — a mistyped view should say so
     /// rather than quietly render somewhere else.

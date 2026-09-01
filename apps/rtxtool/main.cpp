@@ -220,23 +220,39 @@ namespace RtxTool
             return variables["hour"].as<float>();
         }
 
-        /// `hourFor` over a run's whole list of places: an explicit `--hour` is every place's, and
-        /// none of them keeps its own.
-        void applyHour(const bpo::variables_map& variables, std::vector<View>& views)
+        /// What `--weather` named, or nothing where it was left at its default.
+        std::optional<std::string> weatherGiven(const bpo::variables_map& variables)
         {
-            const std::optional<float> given = hourGiven(variables);
-            if (!given.has_value())
-                return;
+            if (variables["weather"].defaulted())
+                return std::nullopt;
+
+            return variables["weather"].as<std::string>();
+        }
+
+        /// `hourFor` and `weatherFor` over a run's whole list of places: a condition named on the
+        /// command line is every place's, and none of them keeps its own.
+        void applyConditions(const bpo::variables_map& variables, std::vector<View>& views)
+        {
+            const std::optional<float> hour = hourGiven(variables);
+            const std::optional<std::string> weather = weatherGiven(variables);
 
             for (View& view : views)
-                view.mHour = *given;
+            {
+                if (hour.has_value())
+                    view.mHour = hour;
+
+                if (weather.has_value())
+                    view.mWeather = weather;
+            }
         }
 
         /// The whole of a `FrameRequest`, from the command line.
         ///
-        /// @param hour where the clock stands. `chooseView` decides it for a single place, and
-        ///        `applyHour` for a run of them — so it is passed rather than read here.
-        FrameRequest frameFrom(const bpo::variables_map& variables, const std::filesystem::path& resources, float hour)
+        /// @param hour,weather what the world stands under. `chooseView` decides them for a single
+        ///        place, and `applyConditions` for a run of them — so they are passed rather than
+        ///        read here.
+        FrameRequest frameFrom(const bpo::variables_map& variables, const std::filesystem::path& resources, float hour,
+            const std::string& weather)
         {
             const auto [width, height] = parseSize(variables["size"].as<std::string>());
 
@@ -250,7 +266,7 @@ namespace RtxTool
             request.mDelight = variables["delight"].as<float>();
             request.mFilter = variables["filter"].as<bool>();
             request.mExposure = parseExposure(variables["exposure"].as<std::string>());
-            request.mWeather = variables["weather"].as<std::string>();
+            request.mWeather = weather;
             request.mHour = hour;
             request.mDay = variables["day"].as<int>();
             request.mActors = actorsFrom(variables);
@@ -314,7 +330,7 @@ namespace RtxTool
             if (cell == nullptr)
                 return 1;
 
-            StagingRequest staging = request.mFrame.describeStaging(std::nullopt, request.mOrigin, request.mTarget);
+            StagingRequest staging = request.mFrame.describeStaging(request.mOrigin, request.mTarget);
             staging.mSeaSeconds = request.mSeaSeconds;
 
             // Held for the whole render: the extractor keys its meshes on node pointers, and actors
@@ -370,9 +386,10 @@ namespace RtxTool
             std::optional<osg::Vec3f> mOrigin;
             std::optional<osg::Vec3f> mTarget;
 
-            /// Resolved here rather than left to each command, so a view measured at dawn is drawn
-            /// at dawn by every one of them.
+            /// Resolved here rather than left to each command, so a view measured at dawn under an
+            /// overcast is drawn that way by every one of them.
             float mHour = sDefaultHour;
+            std::string mWeather = std::string(sDefaultWeather);
         };
 
         /// Where someone starts when they have said nothing about where: the ship at Seyda Neen,
@@ -428,6 +445,7 @@ namespace RtxTool
                     .mOrigin = origin,
                     .mTarget = target,
                     .mHour = hourFor(hourGiven(variables), std::nullopt),
+                    .mWeather = weatherFor(weatherGiven(variables), std::nullopt),
                 };
 
             return Chosen{
@@ -438,6 +456,7 @@ namespace RtxTool
                 .mOrigin = origin.has_value() ? origin : view->mOrigin,
                 .mTarget = target.has_value() ? target : view->mTarget,
                 .mHour = hourFor(hourGiven(variables), view->mHour),
+                .mWeather = weatherFor(weatherGiven(variables), view->mWeather),
             };
         }
 
@@ -487,10 +506,13 @@ namespace RtxTool
             {
                 out() << "  " << view.mName << "\n      " << view.mCell;
 
-                // A place that fixes its hour is a different frame from the same camera at noon, and
-                // this listing is how a view is found.
+                // A place that fixes a condition is a different frame from the same camera at noon
+                // under a clear sky, and this listing is how a view is found.
                 if (view.mHour.has_value())
                     out() << " at " << clockFace(*view.mHour);
+
+                if (view.mWeather.has_value())
+                    out() << " in " << *view.mWeather;
 
                 out() << "\n      " << view.mNote << '\n';
             }
@@ -527,7 +549,7 @@ namespace RtxTool
             if (cell == nullptr)
                 return 1;
 
-            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
+            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour, chosen.mWeather);
 
             return runTextures(world, *cell, frame.describeStaging(), frame.mActors, variables["out"].as<std::string>(),
                 frame.mDelight);
@@ -580,7 +602,7 @@ namespace RtxTool
             if (cell == nullptr)
                 return 1;
 
-            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
+            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour, chosen.mWeather);
 
             return runMap(
                 world, *cell, frame.describeStaging(), frame.mActors, validationFrom(variables, false), request);
@@ -603,7 +625,7 @@ namespace RtxTool
             if (!needle.empty())
                 return runFind(content, *cell, needle);
 
-            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
+            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour, chosen.mWeather);
 
             return runScene(world, *cell, frame.describeStaging(), frame.mActors, variables["twice"].as<bool>());
         }
@@ -613,10 +635,11 @@ namespace RtxTool
             const bpo::variables_map& variables = command.mVariables;
 
             VerifyRequest request;
-            request.mFrame = frameFrom(variables, command.mResources, variables["hour"].as<float>());
+            request.mFrame = frameFrom(
+                variables, command.mResources, variables["hour"].as<float>(), variables["weather"].as<std::string>());
             request.mViews = chooseViews(
                 loadViews(command.mResources / "rtx" / "views.cfg"), splitNames(variables["views"].as<std::string>()));
-            applyHour(variables, request.mViews);
+            applyConditions(variables, request.mViews);
             request.mOut = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
             request.mAgainst = variables["against"].as<std::string>();
 
@@ -635,9 +658,10 @@ namespace RtxTool
 
             std::string suite;
             BenchRequest request;
-            request.mFrame = frameFrom(variables, command.mResources, variables["hour"].as<float>());
+            request.mFrame = frameFrom(
+                variables, command.mResources, variables["hour"].as<float>(), variables["weather"].as<std::string>());
             request.mViews = chooseBenchViews(variables, command.mResources, suite);
-            applyHour(variables, request.mViews);
+            applyConditions(variables, request.mViews);
             request.mSuite = suite;
             request.mJson = variables["json"].as<std::string>();
             request.mHashes = variables["hashes"].as<std::string>();
@@ -667,7 +691,7 @@ namespace RtxTool
             // the one place every player of this game has stood.
             const Chosen chosen = chooseView(variables, command.mResources);
 
-            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour);
+            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour, chosen.mWeather);
             const Rtx::ValidationOptions validation = validationFrom(variables, windowed);
 
             const Content content(command.mConfig, variables, command.mResources);

@@ -101,13 +101,13 @@ look = 8292, 300, 700
                 << "a speed that is not a number";
         }
 
-        /// A place says when it is looked at, and takes where it stands from another place.
+        /// A place says what it is looked at under, and takes where it stands from another place.
         ///
         /// **The pair is the point.** A dawn row and a noon row of one camera mean something beside
         /// each other only where the camera is identical by construction — coordinates copied by
         /// hand drift the first time either is moved, and the pair then reads two cameras as a
         /// difference the hour made.
-        TEST(RtxViewsTest, aPlaceFixesItsHourAndTakesItsCameraFromWhatItIsLike)
+        TEST(RtxViewsTest, aPlaceFixesItsConditionsAndTakesItsCameraFromWhatItIsLike)
         {
             const std::vector<View> read = readViews(R"(
 [ship]
@@ -119,23 +119,41 @@ look = 100, 300, 300
 like = ship
 hour = 6.5
 
+[ship-overcast]
+like = ship
+weather = Overcast
+
 [ship-dusk-from-the-mast]
 like = ship
 pos = 100, 200, 900
 hour = 19.25
 )");
 
-            ASSERT_EQ(read.size(), std::size_t{ 3 });
+            ASSERT_EQ(read.size(), std::size_t{ 4 });
 
-            // A place that fixes nothing keeps its hour absent, which is what lets a run name one.
+            // A place that fixes nothing keeps both conditions absent, which is what lets a run name
+            // them.
             const View* noon = findView(read, "ship");
             ASSERT_NE(noon, nullptr);
             EXPECT_FALSE(noon->mHour.has_value());
+            EXPECT_FALSE(noon->mWeather.has_value());
 
             const View* dawn = findView(read, "ship-dawn");
             ASSERT_NE(dawn, nullptr);
             ASSERT_TRUE(dawn->mHour.has_value());
             EXPECT_EQ(*dawn->mHour, 6.5f);
+
+            // **The two conditions are independent**: an hour fixed leaves the sky free and a sky
+            // fixed leaves the hour free, so a place may name either alone.
+            EXPECT_FALSE(dawn->mWeather.has_value());
+
+            const View* overcast = findView(read, "ship-overcast");
+            ASSERT_NE(overcast, nullptr);
+            ASSERT_TRUE(overcast->mWeather.has_value());
+            ASSERT_TRUE(overcast->mOrigin.has_value());
+            EXPECT_EQ(*overcast->mWeather, "Overcast");
+            EXPECT_FALSE(overcast->mHour.has_value());
+            EXPECT_EQ(*overcast->mOrigin, osg::Vec3f(100.0f, 200.0f, 300.0f));
 
             // The whole camera, taken rather than restated.
             EXPECT_EQ(dawn->mCell, "-2,-9");
@@ -154,11 +172,12 @@ hour = 19.25
             EXPECT_EQ(mast->mCell, "-2,-9");
         }
 
-        /// Every way of writing an hour or a likeness wrong is a refusal.
+        /// Every way of writing a condition or a likeness wrong is a refusal.
         ///
-        /// A view that quietly stood at another hour, or in another place, would report a number
-        /// against a frame nobody asked for — which is the failure this whole file exists to stop.
-        TEST(RtxViewsTest, anHourOrALikenessThatCannotBeMeantIsRefused)
+        /// A view that quietly stood at another hour, under another sky, or in another place would
+        /// report a number against a frame nobody asked for — which is the failure this whole file
+        /// exists to stop.
+        TEST(RtxViewsTest, aConditionOrALikenessThatCannotBeMeantIsRefused)
         {
             constexpr std::string_view sShip = "[ship]\ncell = -2,-9\npos = 1, 2, 3\nlook = 1, 9, 3\n";
 
@@ -181,6 +200,18 @@ hour = 19.25
             EXPECT_NO_THROW(readViews(std::string(sShip) + "[dark]\nlike = ship\nhour = 0\n"));
             EXPECT_NO_THROW(readViews(std::string(sShip) + "[late]\nlike = ship\nhour = 23.99\n"));
 
+            // **A weather is one of the ten and spelled as the content files spell it.** Anything
+            // else reaches the fallback map as a key it refuses, which is a throw at the frame
+            // rather than at the file — and by then the run has staged a cell for it.
+            EXPECT_THROW(readViews(std::string(sShip) + "[grim]\nlike = ship\nweather = Drizzle\n"), std::runtime_error)
+                << "a weather that is none of the ten";
+
+            EXPECT_THROW(
+                readViews(std::string(sShip) + "[grim]\nlike = ship\nweather = overcast\n"), std::runtime_error)
+                << "a weather spelled in the wrong case";
+
+            EXPECT_NO_THROW(readViews(std::string(sShip) + "[grim]\nlike = ship\nweather = Thunderstorm\n"));
+
             EXPECT_THROW(readViews(std::string(sShip) + "[dawn]\nlike = nowhere\n"), std::runtime_error)
                 << "like a view that is not there";
 
@@ -191,21 +222,27 @@ hour = 19.25
                 << "a chain, which would make the order things are read in decide what a view is";
         }
 
-        /// Which hour wins, which is the one rule the three commands that draw a view all read.
-        TEST(RtxViewsTest, theHourOnTheCommandLineBeatsTheOneAPlaceFixes)
+        /// Which condition wins, which is the one rule the three commands that draw a view all read.
+        TEST(RtxViewsTest, theConditionOnTheCommandLineBeatsTheOneAPlaceFixes)
         {
-            // Neither says anything: noon, the hour a picture of a place is taken at.
+            // Neither says anything: noon under a clear sky, which is how a picture of a place is
+            // taken.
             EXPECT_EQ(hourFor(std::nullopt, std::nullopt), sDefaultHour);
+            EXPECT_EQ(weatherFor(std::nullopt, std::nullopt), sDefaultWeather);
 
             // Only the place: the place decides, which is what makes a view id one frame.
             EXPECT_EQ(hourFor(std::nullopt, 6.5f), 6.5f);
+            EXPECT_EQ(weatherFor(std::nullopt, std::string("Overcast")), "Overcast");
 
             // The command line, over a place that fixes one and over a place that does not.
             EXPECT_EQ(hourFor(9.0f, 6.5f), 9.0f);
             EXPECT_EQ(hourFor(9.0f, std::nullopt), 9.0f);
+            EXPECT_EQ(weatherFor(std::string("Rain"), std::string("Overcast")), "Rain");
+            EXPECT_EQ(weatherFor(std::string("Rain"), std::nullopt), "Rain");
 
             // And the two disagree, or none of the above says anything.
             EXPECT_NE(hourFor(std::nullopt, 6.5f), hourFor(9.0f, 6.5f));
+            EXPECT_NE(weatherFor(std::nullopt, std::string("Overcast")), weatherFor(std::string("Rain"), std::nullopt));
         }
 
         /// Where the camera stands part-way along, hand-computed and clamped at the far end.

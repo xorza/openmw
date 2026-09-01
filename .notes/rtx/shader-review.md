@@ -60,11 +60,10 @@ loop — reorders the summation and so is **not** pixel-identical.
 
 ## C. Gated or restructured work — small, needs a measurement
 
-**Neither of these can be measured by the suite as it stands**, which is the first thing to fix if
-either is taken up. `default` and `exteriors` are clear-weather noon and dawn; `interiors` have no
-fog volume dispatched at all. C1 pays only under a heavy overcast and C2 only where lamps light
-banked air, so both need a bench view that has one. Adding it is a line in `views.cfg` and a name
-in `benches.cfg`, and without it a "no change" result would say nothing.
+**Both are measured on the `skies` suite**, which is what a view fixing its own `weather` is for:
+`seyda-neen-ship-overcast` is C1's sky and `balmora-fog-night` is C2's. The suites either side of it
+say nothing about these — `default` and `exteriors` are clear-weather noon and dawn, and `interiors`
+dispatch no fog volume at all.
 
 **C1. Skip the sun shadow ray under a heavy deck.** `gather` traces the sun ray and then
 multiplies by `cloudShadow` (`shading.glsl:85-94`). Reorder: evaluate `cloudShadow` first — it is
@@ -120,6 +119,15 @@ and prototype in the harness first: measure warp occupancy and divergence with N
 shoreline camera before writing any pipeline code. A cheaper middle step, if the measurement says
 shorelines hurt: classify water pixels and shade them in a second small dispatch.
 
+**One number this file has already produced for it, and it says which rays a rate can save.**
+`AMBIENT_EXTERIOR_RATE` draws half the exterior ambient rays and claimed 2.5 ms of a 4.6 ms
+ceiling — 54%. `INDIRECT_LIGHT_RATE` draws half the bounce hits' sun and lamp rays and claims 0.13
+of 0.71 — 18%. The difference is how long the dropped ray is. The ambient ray runs to `mFar` and is
+nearly all empty traversal, so halving those halves the work the RT cores do whatever the warp is
+doing; a shadow ray to a lamp in the same room ends almost at once, and there the warp runs on until
+the lanes that kept their rays are finished. **A rate on a short ray buys a fifth of its gut, and a
+rate on a long one buys half.** That is the divergence D2 is about, measured rather than argued.
+
 **D3. Shading-map lookup as a texture array.** `paintedLight` (`texturing.glsl:68-84`) does a
 hand-rolled wrapping bilinear over an SSBO — four loads plus arithmetic on the hottest sampler
 path, per albedo fetch. A `SHADING_EXTENT²` layer per texture in one `r16f` sampler2DArray with
@@ -138,34 +146,14 @@ reference. Not worth the state until a scene asks for it.
 
 ## G. Performance bought with small, named quality drops
 
-**Where the rays go on a day exterior, so the items below have a denominator.** A solid pixel
-costs about six and a half rays: the primary, the eye hit's sun and lamp rays, the bounce ray, the
-bounce hit's own sun and lamp rays, and half an ambient ray (`AMBIENT_EXTERIOR_RATE`). The three
-spent at the *bounce hit* light the dimmest term in the frame, and they are where the room to trade
-is. A water pixel roughly doubles that. None of these items is pixel-identical — that is what they
-are — so `verify` is the wrong tool for all of them: bench interleaved, and judge each as a
-picture. Delete an item when it is applied or ruled out, like everything else here.
-
-- [ ] **G1. Rate the indirect path's light rays, the way the ambient ray already is.** The bounce
-  hit's `gather` (`shading.glsl`, `PATH_INDIRECT`) spends a sun ray and a lamp ray on an indirect
-  term nothing resolves on its own — the moons already answer that path with *nothing*, and the
-  ambient ray is already drawn at `AMBIENT_EXTERIOR_RATE` and divided, unbiased. Extend the same
-  trick: draw the whole indirect `gather` with probability `r` and divide by `r`. Measure the
-  ceiling first by gutting — return only `pathEnd` from the bounce hit and bench `--people=0` at
-  the shoreline and in the guild — then pick `r` on the picture. Two cautions. Indoors the lamp
-  ray at the bounce is load-bearing — a room's GI *is* its lamps seen once off a wall — so the rate
-  may want to be an exterior-only constant like the ambient's. And the variance lands in the
-  channel DLSS-RR filters hardest, which is the reason to expect the drop to be small and the
-  reason it has to be judged on a moving camera, not a still.
-
-- [ ] **G1b. Past a distance, do not trace the bounce at all.** The far half of an exterior is
-  thousands of pixels whose bounce ray leaves a mountainside, crosses the whole structure and
-  mostly finds sky — and whose indirect term is then averaged flat by the upscaler anyway. Beyond
-  a footprint or distance threshold, skip the hemisphere ray and terminate with the sky-ambient
-  the bounce's own miss path already computes (`skyGlow * daylightReaching`, times a rated
-  `ambientReaching`). The bias is confined to ground far enough that its GI is a low-frequency
-  wash. Gut first — return the miss term unconditionally past the threshold — and read the bench
-  before writing the real gate.
+**Where the rays go on a day exterior, so the items below have a denominator.** A near solid pixel
+costs about five and a half rays: the primary, the eye hit's sun and lamp rays, the bounce ray, half
+an ambient ray (`AMBIENT_EXTERIOR_RATE`) and half of the bounce hit's own sun and lamp pair
+(`INDIRECT_LIGHT_RATE`). Past a cell it costs two — the bounce is not traced at all
+(`BOUNCE_REACH`). A water pixel roughly doubles the near figure. None of these items is
+pixel-identical — that is what they are — so `verify` is the wrong tool for all of them: bench
+interleaved, and judge each as a picture. Delete an item when it is applied or ruled out, like
+everything else here.
 
 - [ ] **G2. Water: shade one far end per frame, drawn by Fresnel.** `shadeWater` traces a
   reflection and a refraction and *shades both* — each far hit pays a sun ray, a lamp ray and an
@@ -197,8 +185,11 @@ picture. Delete an item when it is applied or ruled out, like everything else he
   layer; the unshadowed sum is not. A rainstorm at night in a lamp-lit town is tens of walks per
   pixel. Hoist `lampsAt` into the per-emitter block (evaluate once at the ray's closest approach
   to the emitter's sphere); the drop is that a lamp's falloff stops varying across one emitter's
-  own reach, which is metres. Needs the storm-at-night bench view first — without it there is no
-  number on either side.
+  own reach, which is metres. `balmora-storm-night`, in the `skies` suite, is the frame that has a
+  number on either side, **and it is now the most expensive trace in the corpus**: 5.96 ms at
+  1920x1080 against clear Balmora's 3.13 from the same bridge, with the rain the only difference.
+  That is the largest single figure this file names, and it belongs above C1 and C2 in the order
+  once someone has confirmed the sprites are where it goes.
 
 - [ ] **G6. Bake composites nearer (host dial, named here for completeness).** A near terrain hit
   shades its whole layer stack — a mask read and a texture fetch per layer, four or five deep —
@@ -272,25 +263,21 @@ back to back.
 
 1. **A1** — profile the CPU walk at a shoreline. It is 5.7 ms of a 7.2 ms frame, and it outranks
    every GPU item here for frame time.
-2. **Bench views: a heavy overcast, lamps in banked air at night, and a storm at night in a
-   lamp-lit town** — without the first two C1 and C2 cannot be measured at all, and without the
-   third G5 has no number on either side.
-3. **G1 ceiling** — gut the indirect `gather` and the bounce past a distance (G1b), bench both,
-   and only then write the rates. The three rays at the bounce hit are the largest GPU prize this
-   file names.
-4. **C1** — cloud-shadow gate before the sun ray, only once step 2 exists.
-5. **C2** — fog-volume lamp rays per stretch, likewise, and judged as a picture rather than by
-   `verify`. Then **G4**, re-measured on what C2 left.
-6. **G2** — water's one-shaded-path draw, judged on moving water at dusk.
-7. **G3** — the ambient rate step, one number against the measurement already in the constant's
+2. **G5** — find where `balmora-storm-night`'s 5.96 ms trace goes before touching it. That is the
+   worst frame the corpus holds and nearly double the same bridge under a clear sky, so whatever
+   answers it outranks every other GPU item below.
+3. **C1** — cloud-shadow gate before the sun ray, measured on `seyda-neen-ship-overcast`.
+4. **C2** — fog-volume lamp rays per stretch, on `balmora-fog-night`, and judged as a picture
+   rather than by `verify`. Then **G4**, re-measured on what C2 left.
+5. **G2** — water's one-shaded-path draw, judged on moving water at dusk.
+6. **G3** — the ambient rate step, one number against the measurement already in the constant's
    comment.
-8. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
+7. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
    anything. Host measurement, no shader change.
-9. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
+8. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
    if the numbers say the übershader loses real occupancy, prototype the pipeline port in the
    harness. Decide on the numbers, not on the guidance alone.
-10. **B6, D3–D5, G5, G6** — hold until a measurement names them: the atrous centre read when
-    anything runs that pass, the shading-map texture array when the albedo path tops a profile,
-    the underwater volume when a submerged `bench` hurts, lamp presampling when a scene outgrows
-    the walk, the sprite lamp sum when the storm view exists, and the composite crossover when the
-    layered path shows in a profile.
+9. **B6, D3–D5, G6** — hold until a measurement names them: the atrous centre read when anything
+   runs that pass, the shading-map texture array when the albedo path tops a profile, the
+   underwater volume when a submerged `bench` hurts, lamp presampling when a scene outgrows the
+   walk, and the composite crossover when the layered path shows in a profile.

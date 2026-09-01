@@ -135,9 +135,11 @@ namespace RtxTool
         std::string mCell;
         std::string mNote;
 
-        /// The hour it stood at. Reported because it is most of what a frame costs: a low sun makes
-        /// every shadow ray long and grazing, and two rows at different hours are not comparable.
+        /// The hour and the sky it stood under. Reported because they are most of what a frame
+        /// costs: a low sun makes every shadow ray long and grazing, an overcast takes the sun out
+        /// of half the frame, and two rows under different conditions are not comparable.
         float mHour = sDefaultHour;
+        std::string mWeather = std::string(sDefaultWeather);
 
         /// What `setScene` cost: every bottom-level structure built and every texture uploaded.
         /// The same cost a cell arriving in the game pays.

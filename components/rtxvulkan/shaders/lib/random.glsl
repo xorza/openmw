@@ -59,6 +59,13 @@ const uint SEED_LAMPS_SPRITE = SEED_LAMPS_FOG + 1u;
 /// sampled as two halves of one hemisphere rather than as two hemispheres.
 const uint SEED_SHEET_SIDE = SEED_LAMPS_SPRITE + 1u;
 
+/// And one for whether an indirect hit is lit at all this frame.
+///
+/// **Offset from the reservoir's own key rather than drawn out of its sequence.** The draw is made
+/// before the reservoir opens, and taken as a step of it, it would move every lamp the bounce hit
+/// weighed — which is the ordering `gather` states at the top of itself.
+const uint SEED_INDIRECT_LIGHT = SEED_SHEET_SIDE + 1u;
+
 /// How far each stream's sequence advances between frames.
 ///
 /// **An additive recurrence with an irrational step**, which is the cheapest sequence whose every

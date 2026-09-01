@@ -55,11 +55,11 @@ namespace RtxTool
 
             out() << '\n'
                   << std::format(
-                         "  cell {} at {}   {} instances ({} cutouts)   {:.1f} MiB structures   {} textures, "
+                         "  cell {} at {} in {}   {} instances ({} cutouts)   {:.1f} MiB structures   {} textures, "
                          "{:.1f} MiB\n",
-                         place.mCell, clockFace(place.mHour), place.mScene.mInstances, place.mScene.mCutoutInstances,
-                         megabytes(place.mScene.mStructureBytes), place.mScene.mTextureCount,
-                         megabytes(place.mScene.mTextureBytes))
+                         place.mCell, clockFace(place.mHour), place.mWeather, place.mScene.mInstances,
+                         place.mScene.mCutoutInstances, megabytes(place.mScene.mStructureBytes),
+                         place.mScene.mTextureCount, megabytes(place.mScene.mTextureBytes))
                   << std::format("  build {:.0f} ms   {:.1f}% of primary rays hit\n", place.mBuildMs, place.mHitPercent)
                   << Rtx::describeHeadings() << Rtx::describeTimes("frame ms", place.mFrame)
                   << Rtx::describeTimes("wait ms", place.mWait) << Rtx::describeTimes("walk ms", place.mWalk)
@@ -155,9 +155,9 @@ namespace RtxTool
             for (std::size_t at = 0; at < places.size(); ++at)
             {
                 const BenchPlace& place = places[at];
-                file << std::format(R"(    {{"view": "{}", "cell": "{}", "hour": {}, "buildMs": {:.2f}, )", place.mView,
-                    place.mCell, place.mHour, place.mBuildMs)
-                     << R"("scene": )" << asJson(place.mScene)
+                file << std::format(R"(    {{"view": "{}", "cell": "{}", "hour": {}, "weather": "{}", )", place.mView,
+                    place.mCell, place.mHour, place.mWeather)
+                     << std::format(R"("buildMs": {:.2f}, )", place.mBuildMs) << R"("scene": )" << asJson(place.mScene)
                      << std::format(R"(, "frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
                             place.mWallSeconds, place.mHitPercent)
                      << R"("crossings": )" << asJson(place.mCrossings)
@@ -233,10 +233,13 @@ namespace RtxTool
     /// are, whether each could be staged at all, and what is done with the rows are `runBench`'s;
     /// what a place costs is this.
     ///
+    /// @param staging what `staged` was built from, so the row says what the frames stood under
+    ///        rather than deriving it a second time. `FrameRequest::describeStaging` decides that
+    ///        for both this and `verify`, and a report that worked it out again could disagree.
     /// @param samples and `pixelScratch` belong to the run and are refilled here, so that a place
     ///        does not allocate what the place before it already had.
-    std::optional<BenchPlace> measurePlace(const BenchRun& run, const View& view, StagedWorld& staged,
-        Rtx::FrameSamples& samples, std::vector<std::uint8_t>& pixelScratch, bool& stopped)
+    std::optional<BenchPlace> measurePlace(const BenchRun& run, const View& view, const StagingRequest& staging,
+        StagedWorld& staged, Rtx::FrameSamples& samples, std::vector<std::uint8_t>& pixelScratch, bool& stopped)
     {
         Rtx::Renderer& renderer = run.mRenderer;
 
@@ -442,7 +445,8 @@ namespace RtxTool
             .mView = view.mName,
             .mCell = view.mCell,
             .mNote = view.mNote,
-            .mHour = view.mHour.value_or(run.mRequest.mFrame.mHour),
+            .mHour = staging.mHour,
+            .mWeather = staging.mWeather,
             .mBuildMs = buildMs,
             .mFrames = samples.size(),
             .mWallSeconds = std::chrono::duration<double>(runEnd - runStart).count(),
@@ -555,8 +559,8 @@ namespace RtxTool
             if (window != nullptr)
                 window->setTitle("OpenMW RTX - bench - " + view.mName);
 
-            StagedWorld staged(world, *cell, request.mFrame.describeStaging(view.mHour, view.mOrigin, view.mTarget),
-                request.mFrame.mActors);
+            const StagingRequest staging = request.mFrame.describeStaging(view);
+            StagedWorld staged(world, *cell, staging, request.mFrame.mActors);
 
             if (staged.empty())
             {
@@ -564,7 +568,8 @@ namespace RtxTool
                 return 1;
             }
 
-            const std::optional<BenchPlace> place = measurePlace(run, view, staged, samples, pixelScratch, stopped);
+            const std::optional<BenchPlace> place
+                = measurePlace(run, view, staging, staged, samples, pixelScratch, stopped);
 
             if (!place.has_value())
                 break;

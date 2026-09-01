@@ -18,16 +18,25 @@ namespace RtxTool
         };
     }
 
-    StagingRequest FrameRequest::describeStaging(std::optional<float> hour, const std::optional<osg::Vec3f>& origin,
-        const std::optional<osg::Vec3f>& target) const
+    StagingRequest FrameRequest::describeStaging(
+        const std::optional<osg::Vec3f>& origin, const std::optional<osg::Vec3f>& target) const
     {
         return StagingRequest{
             .mWeather = mWeather,
-            .mHour = hour.value_or(mHour),
+            .mHour = mHour,
             .mDay = mDay,
             .mFieldOfView = mFieldOfView,
             .mOrigin = origin,
             .mTarget = target,
         };
+    }
+
+    StagingRequest FrameRequest::describeStaging(const View& view) const
+    {
+        StagingRequest request = describeStaging(view.mOrigin, view.mTarget);
+        request.mWeather = view.mWeather.value_or(mWeather);
+        request.mHour = view.mHour.value_or(mHour);
+
+        return request;
     }
 }

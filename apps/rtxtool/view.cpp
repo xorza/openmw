@@ -132,8 +132,8 @@ namespace RtxTool
         // **The same staging the shot and the bench use, streaming included.** A window's camera
         // goes somewhere, which used to make it the one caller with its own copy of loading, the
         // ring, the sweep and the actor snapshot — and the copy is what drifted.
-        StagedWorld staged(world, centre,
-            request.mFrame.describeStaging(std::nullopt, request.mOrigin, request.mTarget), request.mFrame.mActors);
+        StagedWorld staged(
+            world, centre, request.mFrame.describeStaging(request.mOrigin, request.mTarget), request.mFrame.mActors);
 
         if (staged.empty())
         {

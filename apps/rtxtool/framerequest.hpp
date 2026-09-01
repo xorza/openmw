@@ -55,10 +55,10 @@ namespace RtxTool
 
         /// When and in what weather, for the exterior that has a sky. A weather is named as the
         /// fallback settings spell it, and the hour is on a twenty-four hour clock.
-        std::string mWeather = "Clear";
-
-        /// The hour a place stands at where it fixes none of its own. `View::mHour` says which wins,
-        /// and `describeStaging` is where that rule is applied.
+        ///
+        /// Both are what a place stands under where it fixes none of its own. `View::mHour` says
+        /// which wins, and `describeStaging` is where that rule is applied.
+        std::string mWeather = std::string(sDefaultWeather);
         float mHour = sDefaultHour;
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.
@@ -76,10 +76,14 @@ namespace RtxTool
         ///
         /// Both default to nothing, which is what a report wants: it is not taken from anywhere, and
         /// the commands that read one derive the camera from the region's own bounds.
-        ///
-        /// @param hour the place's own, which wins over `mHour`, or nothing where it fixes none.
-        StagingRequest describeStaging(std::optional<float> hour = std::nullopt,
-            const std::optional<osg::Vec3f>& origin = std::nullopt,
+        StagingRequest describeStaging(const std::optional<osg::Vec3f>& origin = std::nullopt,
             const std::optional<osg::Vec3f>& target = std::nullopt) const;
+
+        /// The same for a place out of the view file, whose camera and whose conditions it takes.
+        ///
+        /// **One statement of which of the two wins, because a run measures and renders the same
+        /// frame.** `bench` and `verify` each stage a list of places, and a rule applied at one of
+        /// them and not the other would put a picture and a number under different skies.
+        StagingRequest describeStaging(const View& view) const;
     };
 }
