@@ -26,7 +26,7 @@
 ///
 /// The lamps arrive the way they arrive at the fog — as irradiance spread over the whole sphere —
 /// because a puff is the same kind of thing the fog is, only denser and in one place. So it is the
-/// same `lampsAt` and the same one multiply on the sum.
+/// same `lampsAt` sum and the same one multiply on it.
 ///
 /// **A particle has no normal and it still has an up**, which is how a sprite is occluded by the
 /// world: what a point sees of the sky is a question about the point, and the sky is above. What
@@ -35,23 +35,23 @@
 /// world's part of them is asked once for a layer rather than once for a puff.
 ///
 /// @param daylight what `daylightReaching` says of the position, asked once by the caller.
+/// @param lamps what every lamp delivers here unshadowed, out of `lampsAt` — **asked once for the
+///        emitter and not once for a puff**. `spritesAlong` says what that costs and why.
 /// @param sunLit what the world and the puff itself leave of the sun at this point.
 /// @param skyLit the same for the sky over it.
 /// @param fillLit what stands between the puff and a room's own fill, which comes from everywhere:
 ///        the puff's own thickness in every direction, and what the room has standing around it.
 /// @param lampLit the same for the lamps — **one shadow answer for every lamp and for the whole
-///        layer**, where the sum beside it is this puff's own. What a lamp delivers runs as one over
-///        the square of a distance that changes from sprite to sprite; whether it is *seen* changes
+///        layer**, where the sum beside it is the emitter's. Whether a lamp is *seen* changes
 ///        slowly, and a torch behind a wall is behind it for the whole layer.
-vec3 puffLight(vec3 position, vec3 daylight, float sunLit, float skyLit, float fillLit, float lampLit)
-
+vec3 puffLight(vec3 daylight, vec3 lamps, float sunLit, float skyLit, float fillLit, float lampLit)
 {
     // `pathEnd`, with the sky's share and the room's share of the ambient each shadowed by its own
     // answer rather than the room's by none: a fill comes from everywhere, so what a puff lets
     // through of it is the mean of every way in.
     return frame.mAmbient * (daylight * mix(fillLit, skyLit, frame.mAmbientFromSky))
         + (HAS_SUN ? frame.mSunIrradiance * (INV_PI * daylight * sunLit) : vec3(0.0))
-        + INV_FOUR_PI * lampsAt(position) * lampLit;
+        + INV_FOUR_PI * lamps * lampLit;
 }
 
 /// How a ball is lit from `toward` against its mean, on the side of it the eye sees.
@@ -204,6 +204,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     bool oriented = false;
     float width = 0.0;
     float widest = 0.0;
+    vec3 lamps = vec3(0.0);
 
     // What one layer of this emitter's texture hides on average, read from its coarsest level.
     //
@@ -267,6 +268,28 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                 // that is the mean-value point of the path, and the field costs forty hashes out of
                 // doors. Every sprite behind this sphere is within `mReach` of the same air.
                 extinction = fogExtinctionAt(origin + direction * (0.5 * along), max(along, 1.0));
+
+                // **And one walk of the cell's lamps for it, taken where the ray passes nearest.**
+                // A storm is one emitter of a couple of thousand drops, so this ran once for every
+                // drop over every pixel it covered — tens of walks of a town's four hundred lamps
+                // per pixel. Over Balmora at night in the rain it takes the trace from 6.07 ms to
+                // 4.24, which is the largest single saving in this file.
+                //
+                // The cost in the picture is that a lamp's falloff stops varying across one
+                // emitter's own reach, where its shadow answer already did not vary across the
+                // whole layer. Beside a lit lantern in the rain — the frame built to expose it —
+                // the worst pixel moves 3.7% and the 99th moves 0.15%.
+                //
+                // The closest approach and not the midpoint the air takes: what is wanted here is
+                // where the sprites are, and the air's answer is an integral along the path.
+                //
+                // **And not clamped to `limit` either, which was tried.** A sphere can reach past
+                // the surface the ray stops at, and holding the sample at that surface reads as the
+                // safer answer — but the sprites are scattered about the *centre* rather than along
+                // the ray, so the closest approach is the nearer point to them in three dimensions.
+                // Clamping doubled the pixels that disagree with a per-sprite sum in Vivec's
+                // canalworks, which is the one place in the corpus that has the case.
+                lamps = lampsAt(origin + direction * max(along, 0.0));
 
                 // **Two zero axes is a sprite that faces the eye**, which is nearly every emitter in
                 // the game; asked once for the emitter rather than once for each of its sprites.
@@ -460,11 +483,11 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // layer would most notice the loss of.
             uint lampState = randomSeed(pixelKey(pixel) + SEED_LAMPS_SPRITE);
 
-            Reservoir lamps = noLamps();
-            weighLamps(lamps, lampState, sprite.mPosition, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0);
+            Reservoir kept = noLamps();
+            weighLamps(kept, lampState, sprite.mPosition, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0);
 
-            lampThrough = lampVisible(lamps, vec2(randomNext(lampState), randomNext(lampState)));
-            lampToward = lamps.mTowards;
+            lampThrough = lampVisible(kept, vec2(randomNext(lampState), randomNext(lampState)));
+            lampToward = kept.mTowards;
         }
 
         // What this puff is lit by, over what the layer is: the ball's own side, and what its
@@ -527,7 +550,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
         const vec3 daylight = daylightReaching(sprite.mPosition);
 
-        covered += colour * puffLight(sprite.mPosition, daylight, sunLit, skyLit, fillLit, lampLit) * (alpha * reaching);
+        covered += colour * puffLight(daylight, lamps, sunLit, skyLit, fillLit, lampLit) * (alpha * reaching);
         coverage += alpha;
         layer.mTransmittance *= 1.0 - alpha;
 

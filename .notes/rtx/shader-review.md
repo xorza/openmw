@@ -44,6 +44,22 @@ are the place to hang that.
 wait goes from 0.00 to 1.75 ms — so a change to the trace shows up in frame time instead of being
 hidden behind the walk. Its own help says it is "what a profiling run should hold still".
 
+**A2. A storm frame is bounded by the sprite march, and after the emitter hoist it still is.**
+`balmora-storm-night`, 1920x1080 traced, `--people=0`: the trace is 4.24 ms, and a build whose
+`spritesAlong` returns an empty layer at the top measures 2.44. So **1.87 ms — 43% of the trace —
+is the march itself**, on the most expensive frame in the corpus.
+
+What it is marching over is one emitter of 2,556 drops binned into 16-pixel tiles, so a pixel walks
+a long tile list and pays a quad intersection, an `alpha` fold and one bindless `textureLod` for
+each entry. Everything an emitter can answer once is already hoisted — the fog's field, the
+orientation, the texture extent, and now the lamp sum.
+
+**What is left is per sprite by nature, so the next question is how many sprites reach a pixel at
+all rather than what each costs.** `SPRITE_TILE` is the only dial on that, and a coarser tile makes
+the lists longer. Note also that gutting the `textureLod` to a constant is *not* a probe of it: the
+alpha it returns is what rejects most of the list, so a constant alpha measures 6.50 ms — half again
+the real build.
+
 ## B. Cleanups that change no pixel
 
 **B6. `atrous` loads the centre texel up to three times.** `atrous.comp:104,128,137`. Read the
@@ -60,22 +76,9 @@ loop — reorders the summation and so is **not** pixel-identical.
 
 ## C. Gated or restructured work — small, needs a measurement
 
-**Both are measured on the `skies` suite**, which is what a view fixing its own `weather` is for:
-`seyda-neen-ship-overcast` is C1's sky and `balmora-fog-night` is C2's. The suites either side of it
-say nothing about these — `default` and `exteriors` are clear-weather noon and dawn, and `interiors`
-dispatch no fog volume at all.
-
-**C1. Skip the sun shadow ray under a heavy deck.** `gather` traces the sun ray and then
-multiplies by `cloudShadow` (`shading.glsl:85-94`). Reorder: evaluate `cloudShadow` first — it is
-evaluated unconditionally either way, so the reorder is free — and skip the trace when
-`sunCosine * brightest(mSunIrradiance) * cloudShadow` falls under a floor.
-
-**Expect little, and know why before spending the time.** `cloudShadow` is
-`exp(-CLOUD_SHADOW_DEPTH * max(alpha - mCover, 0) * mOpacity)`, and it is measured against the
-sheet's *own mean* — so half of every sheet returns exactly one by construction, and the floor at
-`alpha = 1` is `exp(-4)`, about 0.018 rather than something vanishing. The gate therefore fires
-only where a dense texel meets a grazing cosine. Interiors and nights are already gone: `HAS_SUN`
-specializes them out. Measure on an overcast view before writing the floor.
+**C2 is measured on `balmora-fog-night`**, in the `skies` suite, which is what a view fixing its own
+`weather` is for. The suites either side of it say nothing about it — `default` and `exteriors` are
+clear-weather noon and dawn, and `interiors` dispatch no fog volume at all.
 
 **C2. Fog volume: one lamp ray per stretch, not per slice.** `fogvolume.comp:181-185` builds a
 fresh reservoir and traces one lamp visibility ray per slice — up to 64 short rays per column.
@@ -128,6 +131,15 @@ doing; a shadow ray to a lamp in the same room ends almost at once, and there th
 the lanes that kept their rays are finished. **A rate on a short ray buys a fifth of its gut, and a
 rate on a long one buys half.** That is the divergence D2 is about, measured rather than argued.
 
+**And a second number, which says the shape of the shader costs more than the work in it.** Moving
+the sprites' lamp walk out of the per-sprite path and into the per-emitter block took
+`balmora-storm-night`'s trace from 6.07 ms to 4.24. Deleting the same walk outright — no lamp ever
+summed for a sprite, strictly less work than the hoist does — measured only 5.38. A shader that
+carries a nested walk on a hot path is slower than the same shader doing that walk somewhere colder,
+by three times what the walk itself costs. Whatever the mechanism, it is the übershader's structure
+answering, and it is the strongest argument on this page for reading D2's numbers before dismissing
+the port.
+
 **D3. Shading-map lookup as a texture array.** `paintedLight` (`texturing.glsl:68-84`) does a
 hand-rolled wrapping bilinear over an SSBO — four loads plus arithmetic on the hottest sampler
 path, per albedo fetch. A `SHADING_EXTENT²` layer per texture in one `r16f` sampler2DArray with
@@ -179,18 +191,6 @@ everything else here.
   already hides the grid. The whole pass is 0.32–0.44 ms today, so re-measure after C2 and only
   touch the dials if the pass still shows in the frame.
 
-- [ ] **G5. Sprites: amortise the lamp sum per emitter, not per sprite.** Every *covering* sprite
-  calls `puffLight`, and `puffLight` calls `lampsAt` — a full walk of the cell's lamp list per
-  sprite per pixel (`sprites.glsl:54,530`). The shadow answers are already hoisted to one set per
-  layer; the unshadowed sum is not. A rainstorm at night in a lamp-lit town is tens of walks per
-  pixel. Hoist `lampsAt` into the per-emitter block (evaluate once at the ray's closest approach
-  to the emitter's sphere); the drop is that a lamp's falloff stops varying across one emitter's
-  own reach, which is metres. `balmora-storm-night`, in the `skies` suite, is the frame that has a
-  number on either side, **and it is now the most expensive trace in the corpus**: 5.96 ms at
-  1920x1080 against clear Balmora's 3.13 from the same bridge, with the rain the only difference.
-  That is the largest single figure this file names, and it belongs above C1 and C2 in the order
-  once someone has confirmed the sprites are where it goes.
-
 - [ ] **G6. Bake composites nearer (host dial, named here for completeness).** A near terrain hit
   shades its whole layer stack — a mask read and a texture fetch per layer, four or five deep —
   where a distant chunk reads one baked composite. `Rtx::sCompositeFrom` is the crossover. Moving
@@ -236,6 +236,19 @@ top of it — build, and bench. That is the most the real change could ever save
 work. It has already ruled out a half-float G-buffer and settled that no sky-disc work is worth
 moving for speed, both of which read as obvious wins on the page.
 
+**Count how often a gate fires before believing the ceiling applies to it.** A gate on the sun's
+shadow ray under a heavy deck was written and thrown away: the whole ray is worth 0.51 ms of the
+overcast ship's 4.10, but `cloudShadow` is measured against the sheet's own mean, so half of every
+sheet returns exactly one and the floor at an opaque texel is only `exp(-4)`. The gate fired on
+**nine pixels of half a million** under the sky it was written for, measured flat, and left a branch
+on the hottest path in the tree. A gut says what a change could save. It does not say how much of
+the frame the change reaches.
+
+**And a gut is only a probe where the constant it returns cannot change what runs after it.**
+Replacing the sprite texel with a constant alpha measures the march at 6.50 ms against a real
+4.31 — because the alpha is what rejects most of a tile's list, and a constant one lets every sprite
+through.
+
 **Expect no time from stating a repeated computation once, and do it anyway.** `glslc -O` inlines
 through these small functions and removes some of the repeat itself, so a dedupe of pure maths
 measures flat — and it can still shift which contraction the optimizer picks, which shows up in
@@ -263,21 +276,21 @@ back to back.
 
 1. **A1** — profile the CPU walk at a shoreline. It is 5.7 ms of a 7.2 ms frame, and it outranks
    every GPU item here for frame time.
-2. **G5** — find where `balmora-storm-night`'s 5.96 ms trace goes before touching it. That is the
-   worst frame the corpus holds and nearly double the same bridge under a clear sky, so whatever
-   answers it outranks every other GPU item below.
-3. **C1** — cloud-shadow gate before the sun ray, measured on `seyda-neen-ship-overcast`.
-4. **C2** — fog-volume lamp rays per stretch, on `balmora-fog-night`, and judged as a picture
+2. **A2** — the sprite march is 1.87 ms of `balmora-storm-night`'s 4.24 ms trace, on the worst
+   frame the corpus holds. Everything an emitter can answer once already is, so the question left
+   is how many sprites reach a pixel rather than what each costs.
+3. **C2** — fog-volume lamp rays per stretch, on `balmora-fog-night`, and judged as a picture
    rather than by `verify`. Then **G4**, re-measured on what C2 left.
-5. **G2** — water's one-shaded-path draw, judged on moving water at dusk.
-6. **G3** — the ambient rate step, one number against the measurement already in the constant's
+4. **G2** — water's one-shaded-path draw, judged on moving water at dusk.
+5. **G3** — the ambient rate step, one number against the measurement already in the constant's
    comment.
-7. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
+6. **D1** — per-mesh micromap tally on a canopy camera, to decide whether a finer cut is worth
    anything. Host measurement, no shader change.
-8. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
+7. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
    if the numbers say the übershader loses real occupancy, prototype the pipeline port in the
-   harness. Decide on the numbers, not on the guidance alone.
-9. **B6, D3–D5, G6** — hold until a measurement names them: the atrous centre read when anything
+   harness. Decide on the numbers, not on the guidance alone. Two measurements now argue for it
+   rather than one — see the note under D2.
+8. **B6, D3–D5, G6** — hold until a measurement names them: the atrous centre read when anything
    runs that pass, the shading-map texture array when the albedo path tops a profile, the
    underwater volume when a submerged `bench` hurts, lamp presampling when a scene outgrows the
    walk, and the composite crossover when the layered path shows in a profile.
