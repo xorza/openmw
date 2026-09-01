@@ -16,3 +16,4 @@
 - precompile shaders?
 - ser ?
 - sync distant terrain loading
+- gpu skin
