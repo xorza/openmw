@@ -418,7 +418,7 @@ namespace Rtx
         /// just computed into whichever of them was not last drawn. Which of the kinds this is
         /// belongs here rather than to a caller — the visitor would only be asking the same
         /// question with less to answer it from.
-        void addDrawable(const osg::Drawable& drawable, const osg::NodePath& path, std::span<const Shading> shading,
+        void addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
             const osg::Matrixf& place, bool firstPerson, ExtractionStats& stats);
 
         /// The state set a node's controllers write, or null where it has none.
@@ -463,18 +463,6 @@ namespace Rtx
 
         void addEmitter(const osgParticle::ParticleSystem& particles, std::span<const Shading> shading,
             const osg::Matrixf& place, ExtractionStats& stats);
-
-        /// What identifies one placement from one frame to the next.
-        ///
-        /// **The anchor and the node path under it, hashed together.** Neither is enough alone: a
-        /// drawable is not an instance, because a hundred crates share one geometry, and a path is
-        /// not one either, because a hundred crates walked from a shared template node share the
-        /// path as well. What tells them apart is what the caller was placing.
-        ///
-        /// Hashed rather than kept, because a path is a vector of pointers per placement and the
-        /// map is walked every frame; at sixty-four bits over tens of thousands of placements a
-        /// collision is not a thing that happens.
-        static std::size_t identify(std::size_t anchor, const osg::NodePath& path);
 
         /// The mesh index for one drawable, adding it or re-reading it as its kind requires.
         ///
@@ -609,6 +597,16 @@ namespace Rtx
 
         /// Which sweep is current. Everything a walk resolves or places is stamped with it.
         std::uint64_t mEpoch = 0;
+
+        /// How many placements this epoch's walks stamped, against how many the map holds.
+        ///
+        /// **What lets the sweep be skipped rather than run to find nothing.** A world that stands
+        /// still reaches every placement it holds, so the two agree and there is provably nothing
+        /// stale to erase — where the sweep would iterate tens of thousands of entries, a cache miss
+        /// apiece, to reach the same conclusion. It is only ever an equality: a walk stamps an entry
+        /// once, so the count cannot pass the size, and anything short of it means something in the
+        /// map went unreached and the sweep has to run.
+        std::size_t mPlacementsReached = 0;
 
         // Refilled per sweep: the survivors, as the scene wants them.
         std::vector<Index> mLiveMeshes;

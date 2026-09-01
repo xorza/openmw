@@ -142,6 +142,31 @@ namespace Rtx
             return std::strcmp(node.libraryName(), library) == 0;
         }
 
+        /// What identifies one placement from one frame to the next: the seed a walk starts from,
+        /// and the fold each node of its path adds.
+        ///
+        /// **The anchor and the node path under it, together.** Neither is enough alone: a drawable
+        /// is not an instance, because a hundred crates share one geometry, and a path is not one
+        /// either, because a hundred crates walked from a shared template node share the path as
+        /// well. What tells them apart is what the caller was placing.
+        ///
+        /// Hashed rather than kept, because a path is a vector of pointers per placement and the map
+        /// is walked every frame; at sixty-four bits over tens of thousands of placements a collision
+        /// is not a thing that happens.
+        ///
+        /// **Folded on the way down rather than taken at the leaf**, which is the argument `mHere`
+        /// makes for the matrix: the prefix every sibling under a node shares is worked out once as
+        /// the walk enters that node, against a depth's worth per drawable.
+        std::size_t identitySeed(std::size_t anchor)
+        {
+            return (0xcbf29ce484222325ull ^ anchor) * 0x100000001b3ull;
+        }
+
+        std::size_t identityWith(std::size_t key, const osg::Node* node)
+        {
+            return (key ^ std::hash<const osg::Node*>{}(node)) * 0x100000001b3ull;
+        }
+
         /// The texture bound at `unit`, or null.
         const osg::Texture2D* getTexture(const osg::StateSet& stateSet, unsigned int unit)
         {
@@ -264,7 +289,8 @@ namespace Rtx
         explicit MirrorTraversal(SceneExtractor& extractor);
 
         /// Points the walk at a root, at where it stands, and at the frame it is mirroring.
-        void begin(const osg::Matrixf& root, std::size_t frame, unsigned int traversal, ExtractionStats& stats);
+        void begin(const osg::Matrixf& root, std::size_t frame, unsigned int traversal, std::size_t identity,
+            ExtractionStats& stats);
 
         osg::FrameStamp& getStamp() { return *mStamp; }
 
@@ -350,6 +376,10 @@ namespace Rtx
         /// The local-to-world of the node being visited, above `mRoot`.
         osg::Matrix mHere;
 
+        /// The identity of the path the walk is standing on, saved and restored around each
+        /// descent beside `mShading`. `identitySeed` says what it is made of and why it is carried.
+        std::size_t mPathHash = 0;
+
         /// The state sets in force where the walk is standing, nearest it last. Kept across walks
         /// and refilled, because a cell is tens of thousands of drawables and this is the frame
         /// path.
@@ -365,8 +395,8 @@ namespace Rtx
         mSequenceClock.setFrameStamp(mStamp);
     }
 
-    void MirrorTraversal::begin(
-        const osg::Matrixf& root, std::size_t frame, unsigned int traversal, ExtractionStats& stats)
+    void MirrorTraversal::begin(const osg::Matrixf& root, std::size_t frame, unsigned int traversal,
+        std::size_t identity, ExtractionStats& stats)
     {
         // **The whole of what a traversal number promises.** `SceneUtil::Skeleton` and both
         // deforming geometries refuse to move for a number they have already seen, so a walk that
@@ -379,6 +409,7 @@ namespace Rtx
         mFrame = frame;
         mStats = &stats;
         mHere = osg::Matrix();
+        mPathHash = identity;
         mShading.clear();
 
         // **The mirror's own sequence and never the game's.** Its actors are posed by this walk,
@@ -441,6 +472,8 @@ namespace Rtx
         }
 
         const std::size_t held = mShading.size();
+        const std::size_t above = mPathHash;
+        mPathHash = identityWith(mPathHash, &node);
 
         if (const osg::StateSet* own = node.getStateSet())
             pushShading(*own, false);
@@ -456,6 +489,7 @@ namespace Rtx
         descend(node);
 
         mFirstPerson -= arms;
+        mPathHash = above;
         mShading.resize(held);
     }
 
@@ -648,7 +682,8 @@ namespace Rtx
         if (const osg::StateSet* own = drawable.getStateSet())
             pushShading(*own, false);
 
-        mExtractor.addDrawable(drawable, getNodePath(), mShading, placed(), mFirstPerson > 0, *mStats);
+        mExtractor.addDrawable(
+            drawable, identityWith(mPathHash, &drawable), mShading, placed(), mFirstPerson > 0, *mStats);
 
         mShading.resize(held);
     }
@@ -703,7 +738,7 @@ namespace Rtx
         ExtractionStats stats;
         mAnchor = anchor;
 
-        mWalk->begin(transform, frame, mTraversals.next(), stats);
+        mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor), stats);
         mWalk->setTraversalMask(mTraversalMask);
 
         // **Non-const because the walk writes.** It poses every actor it reaches and it runs every
@@ -723,21 +758,6 @@ namespace Rtx
         flushEmitters(stats);
 
         return stats;
-    }
-
-    std::size_t SceneExtractor::identify(std::size_t anchor, const osg::NodePath& path)
-    {
-        std::size_t key = 0xcbf29ce484222325ull;
-        key ^= anchor;
-        key *= 0x100000001b3ull;
-
-        for (const osg::Node* node : path)
-        {
-            key ^= std::hash<const osg::Node*>{}(node);
-            key *= 0x100000001b3ull;
-        }
-
-        return key;
     }
 
     void SceneExtractor::advance()
@@ -786,13 +806,19 @@ namespace Rtx
         // Freed rather than compacted: a slot index is the custom index a hit reads back, so
         // closing the gap would rename every placement above it. The gap is handed to the next
         // thing placed.
-        std::erase_if(mPlacements, [this](const auto& entry) {
-            if (entry.second.mEpoch == mEpoch)
-                return false;
+        // **Not run at all where every placement was reached**, which is a world that stands still —
+        // see `mPlacementsReached`. The sweep below erases nothing then, and it costs a walk of the
+        // whole map to say so.
+        if (mPlacementsReached < mPlacements.size())
+        {
+            std::erase_if(mPlacements, [this](const auto& entry) {
+                if (entry.second.mEpoch == mEpoch)
+                    return false;
 
-            mScene.dropInstance(entry.second.mIndex);
-            return true;
-        });
+                mScene.dropInstance(entry.second.mIndex);
+                return true;
+            });
+        }
 
         went.mMeshes = sweep(mMeshes, mEpoch, mLiveMeshes);
         went.mMaterials = sweep(mMaterials, mEpoch, mLiveMaterials);
@@ -839,6 +865,7 @@ namespace Rtx
         // one this is measured against. Every entry that survived is still carrying the old stamp
         // and would be dropped on the spot otherwise.
         ++mEpoch;
+        mPlacementsReached = 0;
 
         return went;
     }
@@ -1006,14 +1033,21 @@ namespace Rtx
         }
     }
 
-    void SceneExtractor::addDrawable(const osg::Drawable& drawable, const osg::NodePath& path,
-        std::span<const Shading> shading, const osg::Matrixf& place, bool firstPerson, ExtractionStats& stats)
+    void SceneExtractor::addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
+        const osg::Matrixf& place, bool firstPerson, ExtractionStats& stats)
     {
-
         // Asked before the geometry, because a particle system is an `osg::Drawable` with no
         // triangles in it at all: its sprites *are* the drawing, and they leave here as a run of
         // discs rather than as a mesh anything could build a structure over.
-        if (const auto* particles = dynamic_cast<const osgParticle::ParticleSystem*>(&drawable))
+        //
+        // **Gated on the library before the cast**, which is what every other cast down this walk
+        // does and for the reason `apply(osg::Node&)` states: a cell's drawables are `osg`'s and
+        // `Terrain`'s, and those answer in a byte where a failed `dynamic_cast` walks the class
+        // hierarchy to say the same thing. The two libraries are the ones a system can come from —
+        // `osgParticle`'s own, and `NifOsg::ParticleSystem` over it — which is the pair
+        // `stepParticles` already names.
+        const bool couldEmit = isFrom(drawable, "osgParticle") || isFrom(drawable, "NifOsg");
+        if (const auto* particles = couldEmit ? dynamic_cast<const osgParticle::ParticleSystem*>(&drawable) : nullptr)
         {
             addEmitter(*particles, shading, place, stats);
             return;
@@ -1033,7 +1067,8 @@ namespace Rtx
 
         // Terrain keeps its material on the drawable rather than on the graph, so it is asked first
         // and the state-set walk never sees a chunk.
-        const auto* terrain = dynamic_cast<const Terrain::TerrainDrawable*>(&geometry);
+        const auto* terrain
+            = isFrom(geometry, "Terrain") ? dynamic_cast<const Terrain::TerrainDrawable*>(&geometry) : nullptr;
         // **Asked of the drawable and not of the path.** OpenMW marks the water geometry itself, and
         // the node above it is a plain transform shared with anything else hanging there.
         const bool water = isWater(drawable.getNodeMask());
@@ -1049,7 +1084,6 @@ namespace Rtx
         // **The slot this placement has held since it first appeared**, so a world that stands
         // still writes nothing: the scene already knows where everything is, and only a transform
         // that differs from the one in the slot costs anything at all.
-        const std::size_t who = identify(mAnchor, path);
         const auto held = mPlacements.find(who);
 
         // Read for every surface and not for actors alone, because nothing here knows which is
@@ -1068,9 +1102,15 @@ namespace Rtx
             });
 
             mPlacements.emplace(who, Known{ .mIndex = slot, .mEpoch = mEpoch });
+            ++mPlacementsReached;
         }
         else
         {
+            // Counted on the way to the stamp rather than by the stamp, so a placement two walks of
+            // one epoch both reach is one entry and counts once.
+            if (held->second.mEpoch != mEpoch)
+                ++mPlacementsReached;
+
             held->second.mEpoch = mEpoch;
             mScene.moveInstance(held->second.mIndex, place);
             mScene.fadeInstance(held->second.mIndex, fade);
