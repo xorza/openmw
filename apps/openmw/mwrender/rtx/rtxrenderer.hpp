@@ -40,13 +40,9 @@ namespace osgGA
     class EventQueue;
 }
 
-namespace osgUtil
-{
-    class UpdateVisitor;
-}
-
 namespace Rtx
 {
+    class PoseUpdate;
     class Renderer;
 }
 
@@ -282,7 +278,7 @@ namespace MWRender
         osg::ref_ptr<osg::Camera> mCamera;
         osg::ref_ptr<osg::FrameStamp> mFrameStamp;
         osg::ref_ptr<osgGA::EventQueue> mEvents;
-        osg::ref_ptr<osgUtil::UpdateVisitor> mUpdateVisitor;
+        osg::ref_ptr<Rtx::PoseUpdate> mUpdateVisitor;
         osg::ref_ptr<osg::Stats> mStats;
         osg::ref_ptr<osg::Group> mSceneRoot;
 

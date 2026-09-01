@@ -51,6 +51,7 @@ set(RTX_FILES
     meantexel.hpp
     moonbuilder.cpp
     moonbuilder.hpp
+    nodelibrary.hpp
     nightsky.cpp
     nightsky.hpp
     offscreentrace.cpp
@@ -58,6 +59,7 @@ set(RTX_FILES
     png.cpp
     png.hpp
     posecull.hpp
+    poseupdate.hpp
     reconstruction.hpp
     renderer.hpp
     scenedesc.cpp

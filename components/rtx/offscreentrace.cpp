@@ -7,11 +7,11 @@
 #include <osg/FrameStamp>
 #include <osgUtil/IntersectionVisitor>
 #include <osgUtil/LineSegmentIntersector>
-#include <osgUtil/UpdateVisitor>
 
 #include <components/resource/imagemanager.hpp>
 
 #include "camera.hpp"
+#include "poseupdate.hpp"
 #include "scenedesc.hpp"
 #include "sceneextractor.hpp"
 
@@ -44,7 +44,7 @@ namespace Rtx
         : mRenderer(renderer)
         , mSubject(&subject)
         , mScene(std::make_unique<SceneDesc>())
-        , mUpdate(std::make_unique<osgUtil::UpdateVisitor>())
+        , mUpdate(std::make_unique<PoseUpdate>())
         , mViewScene(renderer.addViewScene())
         , mWidth(width)
         , mHeight(height)

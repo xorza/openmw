@@ -14,16 +14,12 @@
 namespace Rtx
 {
     class PoseCull;
+    class PoseUpdate;
 }
 
 namespace osg
 {
     class FrameStamp;
-}
-
-namespace osgUtil
-{
-    class UpdateVisitor;
 }
 
 namespace RtxTool
@@ -154,7 +150,7 @@ namespace RtxTool
         /// **A real cull traversal, because that is the only kind a skinned body poses for.** See
         /// `Rtx::PoseCull`; the mirror carries one too, for the actors nothing else reached.
         std::unique_ptr<Rtx::PoseCull> mCull;
-        std::unique_ptr<osgUtil::UpdateVisitor> mUpdate;
+        std::unique_ptr<Rtx::PoseUpdate> mUpdate;
 
         /// What the update traversal tells anything that integrates rather than samples — which in
         /// Morrowind's content means the particle emitters and nothing else.

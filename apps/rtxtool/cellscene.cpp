@@ -26,6 +26,16 @@
 
 namespace RtxTool
 {
+    void standLight(osg::Group& where, const ESM::Light& record, bool exterior)
+    {
+        if (!Rtx::castsWherePlaced(record))
+            return;
+
+        // **The mirror does not filter on the mask**, so it decides nothing here. It is what the
+        // game marks a light node with, so the two graphs look the same to anything that ever does.
+        SceneUtil::addLight(&where, SceneUtil::LightCommon(record), SceneUtil::Mask_Lighting, exterior);
+    }
+
     namespace
     {
         osg::ref_ptr<osg::Group> readObjects(
@@ -205,8 +215,11 @@ namespace RtxTool
 
                 osg::ref_ptr<osg::MatrixTransform> where = new osg::MatrixTransform(osg::Matrixd(object.mTransform));
 
+                bool prop = false;
+
                 // **A light with no mesh has nothing to load and nothing to instance**, and goes
-                // straight to `addLight` below. `Content::forEachObject` says why it arrives at all.
+                // straight to `standLight` below. `Content::forEachObject` says why it arrives at
+                // all.
                 if (!object.mModel.empty())
                 {
                     osg::ref_ptr<osg::Node> node;
@@ -234,14 +247,20 @@ namespace RtxTool
                     //
                     // Reported *instead of* mirrored, because the instance somebody makes of it
                     // shares these very drawables and would place the same candle a second time.
-                    const bool prop = liveProps
+                    prop = liveProps
                         && (node->getUpdateCallback() != nullptr || node->getNumChildrenRequiringUpdateTraversal() > 0);
 
-                    // The model goes in first where it is going in at all, so that `addLight` below
-                    // can find an `AttachLight` node inside it.
+                    // The model goes in first where it is going in at all, so that `standLight`
+                    // below can find an `AttachLight` node inside it. **A prop's light goes with the
+                    // prop**, for the reason `CellProp::mLight` gives.
                     if (prop)
-                        report.mProps.push_back(
-                            CellProp{ .mModel = object.mModel, .mTransform = object.mTransform, .mParent = group });
+                        report.mProps.push_back(CellProp{
+                            .mModel = object.mModel,
+                            .mTransform = object.mTransform,
+                            .mParent = group,
+                            .mLight = object.mLight,
+                            .mExterior = cell.isExterior(),
+                        });
                     else
                         where->addChild(node);
                 }
@@ -250,25 +269,11 @@ namespace RtxTool
                 // there.** Read out of the record into a list instead, it was something no walk
                 // could ever meet — so the sweep that empties the light table on the frame a cell
                 // departs had nothing to refill it from, and every lamp went out on the first
-                // crossing. `SceneUtil::addLight` also honours the `AttachLight` node a model may
-                // carry, which is how a lantern's flame sits at the wick rather than at the origin.
-                //
-                // **And it happens whether or not the model went to the props.** A lantern whose
-                // flame has to be instanced somewhere it can run still stands where it stood and
-                // still lights the street; attaching after the prop test lost every one of them.
-                //
-                // **And not at all for a record that does not cast where it stands.** The game builds
-                // no light source for one (`Rtx::castsWherePlaced` says which), so there is none in
-                // its graph for a walk to find — and a `LightSource` carries no flag the mirror could
-                // read the refusal off, which is why the graph route decides it here.
-                if (object.mLight != nullptr && Rtx::castsWherePlaced(*object.mLight))
-                    // **The mirror does not filter on it**, so it decides nothing here. It is what
-                    // the game marks a light node with, so the two graphs look the same to anything
-                    // that ever does.
-                    SceneUtil::addLight(
-                        where, SceneUtil::LightCommon(*object.mLight), SceneUtil::Mask_Lighting, cell.isExterior());
+                // crossing.
+                if (object.mLight != nullptr && !prop)
+                    standLight(*where, *object.mLight, cell.isExterior());
 
-                // A prop with no light leaves an empty transform, which is nothing to place.
+                // A prop leaves an empty transform: its model and its light both went with it.
                 if (where->getNumChildren() > 0)
                     group->addChild(where);
             });

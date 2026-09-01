@@ -19,11 +19,6 @@ namespace osg
     class FrameStamp;
 }
 
-namespace osgUtil
-{
-    class UpdateVisitor;
-}
-
 namespace Resource
 {
     class ImageManager;
@@ -31,6 +26,7 @@ namespace Resource
 
 namespace Rtx
 {
+    class PoseUpdate;
     class SceneDesc;
     class SceneExtractor;
     class Traversals;
@@ -178,7 +174,7 @@ namespace Rtx
         /// **Its own, because the only state one carries between calls is the clock it is given.**
         /// The camera callback the game hangs on a doll's subtree is what finds the head to look at,
         /// and it runs in an update traversal — so a picture drawn between frames has to run one.
-        std::unique_ptr<osgUtil::UpdateVisitor> mUpdate;
+        std::unique_ptr<PoseUpdate> mUpdate;
 
         /// **A doll takes the same three branches a cell does.** A race-creation slider drag redraws
         /// the same subject every frame, and this is what makes that a placement rather than an

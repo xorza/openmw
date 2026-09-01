@@ -6,8 +6,6 @@
 
 #include <osg/FrameStamp>
 #include <osg/Group>
-#include <osgUtil/CullVisitor>
-#include <osgUtil/UpdateVisitor>
 
 #include <components/misc/resourcehelpers.hpp>
 #include <components/misc/strings/lower.hpp>
@@ -15,6 +13,7 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/posecull.hpp>
+#include <components/rtx/poseupdate.hpp>
 #include <components/sceneutil/controller.hpp>
 #include <components/sceneutil/keyframe.hpp>
 #include <components/sceneutil/skeleton.hpp>
@@ -127,7 +126,7 @@ namespace RtxTool
         : mClock(std::make_shared<Clock>())
         , mWorldClock(std::make_shared<Clock>())
         , mCull(std::make_unique<Rtx::PoseCull>())
-        , mUpdate(std::make_unique<osgUtil::UpdateVisitor>())
+        , mUpdate(std::make_unique<Rtx::PoseUpdate>())
         , mStamp(new osg::FrameStamp)
         , mModel(std::move(model))
         , mTransform(transform)

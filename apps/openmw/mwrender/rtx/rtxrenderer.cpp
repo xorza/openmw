@@ -24,8 +24,6 @@
 
 #include <osgGA/EventQueue>
 
-#include <osgUtil/UpdateVisitor>
-
 #include <MyGUI_ITexture.h>
 #include <MyGUI_RenderManager.h>
 
@@ -44,6 +42,7 @@
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/png.hpp>
+#include <components/rtx/poseupdate.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
@@ -122,7 +121,7 @@ namespace MWRender
         , mCamera(new osg::Camera)
         , mFrameStamp(new osg::FrameStamp)
         , mEvents(new osgGA::EventQueue)
-        , mUpdateVisitor(new osgUtil::UpdateVisitor)
+        , mUpdateVisitor(new Rtx::PoseUpdate)
         , mStats(new osg::Stats("Viewer"))
         , mStartTick(osg::Timer::instance()->tick())
         , mExtractor(std::make_unique<Rtx::SceneExtractor>(mScene, &mTraversals))

@@ -14,6 +14,11 @@
 
 #include "motion.hpp"
 
+namespace osg
+{
+    class MatrixTransform;
+}
+
 namespace RtxTool
 {
     struct ActorModel;
@@ -140,7 +145,8 @@ namespace RtxTool
         /// @param cell the group to hang it under, or null to hang it on the run's own root — which
         ///        is what an actor a request asked for gets, since no cell placed it.
         /// @param prop a candle or a fire rather than a person: posed identically, counted apart.
-        void add(ActorModel model, const osg::Matrixf& transform, osg::Group* cell, bool prop = false);
+        /// @return the transform it now stands under, which is what a prop's light hangs on.
+        osg::MatrixTransform& add(ActorModel model, const osg::Matrixf& transform, osg::Group* cell, bool prop = false);
 
         /// Drops everyone whose cell has left the graph.
         ///

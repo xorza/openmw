@@ -6,6 +6,7 @@
 
 #include "error.hpp"
 #include "lightbuilder.hpp"
+#include "nodelibrary.hpp"
 #include "posecull.hpp"
 #include "shaders/scene.h"
 #include "spritelight.hpp"
@@ -133,13 +134,6 @@ namespace Rtx
                 hidden->get(alpha);
 
             return actorFade * alpha;
-        }
-
-        /// Whether `node` comes from `library`, which is the one question cheap enough to ask of
-        /// every node before a `dynamic_cast` that nearly all of them fail.
-        bool isFrom(const osg::Node& node, const char* library)
-        {
-            return std::strcmp(node.libraryName(), library) == 0;
         }
 
         /// What identifies one placement from one frame to the next: the seed a walk starts from,

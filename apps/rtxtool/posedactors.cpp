@@ -46,7 +46,7 @@ namespace RtxTool
     // Out of line because `Actor` is only forward declared in the header.
     PosedActors::~PosedActors() = default;
 
-    void PosedActors::add(ActorModel model, const osg::Matrixf& transform, osg::Group* cell, bool prop)
+    osg::MatrixTransform& PosedActors::add(ActorModel model, const osg::Matrixf& transform, osg::Group* cell, bool prop)
     {
         auto actor = std::make_unique<Actor>(mWorld, std::move(model), transform);
 
@@ -67,6 +67,8 @@ namespace RtxTool
             .mProp = prop,
             .mCell = cell,
         });
+
+        return *where;
     }
 
     void PosedActors::forgetDeparted()
@@ -127,7 +129,14 @@ namespace RtxTool
         {
             try
             {
-                add(loadProp(mWorld, prop.mModel), prop.mTransform, prop.mParent.get(), /*prop=*/true);
+                osg::MatrixTransform& where
+                    = add(loadProp(mWorld, prop.mModel), prop.mTransform, prop.mParent.get(), /*prop=*/true);
+
+                // **After the instance and on the node holding it**, which is what makes the search
+                // for an `AttachLight` node find one — `CellProp::mLight` says what it cost when the
+                // light was stood beside a model that had gone to the props instead.
+                if (prop.mLight != nullptr)
+                    standLight(where, *prop.mLight, prop.mExterior);
             }
             catch (const std::exception& failed)
             {
