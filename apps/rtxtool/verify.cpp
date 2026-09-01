@@ -131,6 +131,12 @@ namespace RtxTool
                 return 1;
             }
 
+            // **A place staged into a shared renderer is a discontinuity**, and the exposure is what
+            // would otherwise carry across one: it adapts toward its measurement over seconds rather
+            // than taking it, so a room drawn after a noon exterior opens at the exterior's
+            // brightness. `Rtx::Renderer::resetHistory` says why only a caller can know this.
+            renderer->resetHistory();
+
             // **Staged and not streamed**: this renders the region once, so every composite has to be
             // finished here rather than drained over frames that will never come.
             Rtx::SceneUploader uploader;

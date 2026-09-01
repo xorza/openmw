@@ -1,5 +1,6 @@
 #include "stagedworld.hpp"
 
+#include <cstdlib>
 #include <span>
 #include <string>
 
@@ -26,12 +27,18 @@ namespace RtxTool
         , mWorld(&world)
         , mActors(actors)
     {
-        // **The one input to a staged picture that nothing else states.** A particle's direction,
-        // speed and lifetime, and a flickering lamp's phase, are drawn from `Misc::Rng`, which is
-        // one generator for the process — so a second staging carried on from wherever the first
-        // left it and drew a different world. The clock is stated at `setSeconds`, the sea at
-        // `mSeaSeconds` and the frame's own duration at `Rtx::FrameOptions::mSinceLast`.
+        // **The one input to a staged picture that nothing else states, and it comes from two
+        // generators rather than one.** A particle's direction, speed and lifetime, and a flickering
+        // lamp's phase, are drawn from `Misc::Rng`. Where each of the weather's drops falls in its
+        // box is drawn from the C library's `std::rand`, which is what `osgParticle::BoxPlacer` and
+        // every other `osgParticle::range` are written against, and which nothing else in this tree
+        // touches. Each is one sequence for the whole process, so a staging that began wherever the
+        // last one ended drew a different world — with only the first of the two reset, a `verify`
+        // of one view rendered a storm that a `verify` of every view did not, and the two disagreed
+        // on an eighth of the frame. The clock is stated at `setSeconds`, the sea at `mSeaSeconds`
+        // and the frame's own duration at `Rtx::FrameOptions::mSinceLast`.
         Misc::Rng::init(sSeed);
+        std::srand(sSeed);
 
         const RegionLoad arrived = loadRegion(world, cell, *mRoot, mScene, mExtractor, mLoaded, request.mWeather,
             request.mDay, request.mHour, actors.mProps);

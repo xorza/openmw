@@ -243,6 +243,11 @@ namespace RtxTool
     {
         Rtx::Renderer& renderer = run.mRenderer;
 
+        // **A place staged into a shared renderer is a discontinuity**, which `verify` says at the
+        // same call. Here it also spares a place's first frames a reconstruction from a picture of
+        // somewhere else, and the warm-up absorbs the one frame it costs.
+        renderer.resetHistory();
+
         Rtx::SceneUploader uploader;
 
         // **A hashed run takes its composites on the schedule and not off the baker's clock**,

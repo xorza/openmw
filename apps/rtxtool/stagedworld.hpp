@@ -228,12 +228,14 @@ namespace RtxTool
         /// frame is supposed to show.
         static constexpr float sWarmSeconds = 2.0f;
 
-        /// What the world's random draws start from, every time a region is staged.
+        /// What the world's random draws start from, every time a region is staged. Both generators
+        /// take it — see the constructor for which two and why.
         ///
         /// **A number, not an option**: nothing here wants a second world, and a caller that could
         /// choose would be a caller that could make a run incomparable with the one before it. One
         /// rather than nought, because `Misc::Rng::Generator` is a Lehmer generator and nought is
-        /// not a state it has.
+        /// not a state it has — and because one is what `std::rand` starts a process at, so a world
+        /// staged first and a world staged tenth draw the sequence a fresh process would.
         static constexpr unsigned int sSeed = 1;
 
         /// What this weather drives past the eye, kept because `driveWeather` aims it every frame:
