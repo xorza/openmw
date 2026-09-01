@@ -63,9 +63,14 @@ namespace RtxTool
 
         /// Every light, in the order the walk met them.
         ///
-        /// **Its own function because an exterior can claim this and no more.** Two `World`s describe
-        /// one cell's materials and textures in different orders — see `.notes/ISSUES.md` — so a
-        /// comparison across two of them has to say what it is comparing.
+        /// **Its own function because an exterior can claim this and no more.** Two `World`s number
+        /// one cell's meshes, materials and textures differently, because `SceneUtil::Optimizer`
+        /// orders a model's drawables by pointer and two `Resource::SceneManager`s in one process
+        /// hand out different addresses — `OPENMW_OPTIMIZE=OFF` makes three worlds byte-identical
+        /// and is how that was pinned down. Each world is consistent with itself and draws the same
+        /// picture, so the tables are a permutation and not a fault. A comparison across two of them
+        /// has to say what it is comparing, and the lights are keyed on nothing the optimizer
+        /// touches.
         void expectSameLights(const Rtx::SceneDesc& scene, const Description& was)
         {
             ASSERT_EQ(scene.getLights().size(), was.mLights.size());

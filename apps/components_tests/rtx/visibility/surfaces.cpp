@@ -178,6 +178,13 @@ namespace Rtx::Testing
             EXPECT_EQ(mRenderer->getTextureCount(Rtx::sWorld), 2u)
                 << "the array stopped at the last texture it was handed rather than at the table";
 
+            // **And what the report says is what is stood, not how long the table is.** The two are
+            // one number until something is freed, which is why a still never showed the difference
+            // and a route reported a hundred textures it was not holding. One texel of four bytes is
+            // the whole of what is left here.
+            EXPECT_EQ(mRenderer->getSceneStats().mTextureCount, 1u);
+            EXPECT_EQ(mRenderer->getSceneStats().mTextureBytes, redTexel.size());
+
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 

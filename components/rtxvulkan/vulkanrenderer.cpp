@@ -691,8 +691,10 @@ namespace Rtx
         readPlacedStats(held);
 
         mStats.mStructureBytes = held.mAcceleration->getStructureBytes();
-        mStats.mTextureCount = held.mTextures->getCount();
-        mStats.mTextureBytes = held.mTextures->getBytes();
+
+        const TexturesHeld textures = held.mTextures->getHeld();
+        mStats.mTextureCount = textures.mCount;
+        mStats.mTextureBytes = textures.mBytes;
     }
 
     VulkanRenderer::Frame& VulkanRenderer::beginFrame()

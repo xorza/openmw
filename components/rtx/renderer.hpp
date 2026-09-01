@@ -217,7 +217,22 @@ namespace Rtx
         std::uint64_t mStructureBytes = 0;
         std::uint64_t mTableBytes = 0;
 
-        /// Content, and so the same on two runs where the two above are not.
+        /// Every texture the renderer holds, and what those come to.
+        ///
+        /// **What it holds and not how long its table is.** A slot the scene gave back stays in the
+        /// table so that nothing above it is renumbered, and it stands nothing: a hundred of the
+        /// shoreline route's six hundred and seventy-two slots are empty by the end of it. Both
+        /// figures come from one walk of the array, so they cannot disagree about which slots they
+        /// counted. `Renderer::getTextureCount` is the length, and it is a different question.
+        ///
+        /// **A still is the same on two runs and a route is not, and the terrain's composites are
+        /// why.** `Rtx::CompositeQueue` bakes a distant chunk's layer stack on a thread of its own
+        /// and a hand-over takes two of the finished ones, so how many have landed when a run ends
+        /// is the baker's answer rather than the frame index's. Measured over six runs of the
+        /// shoreline route: the same five hundred and thirty content textures every time, and
+        /// thirty-four to thirty-six composites at 1.34 MiB apiece. `SceneUploader::setStaged`
+        /// waits them all out, which is what makes a `shot` reproducible, and
+        /// `SceneUploader::setSettled` is what a run that has to compare itself turns on.
         std::uint32_t mTextureCount = 0;
         std::uint64_t mTextureBytes = 0;
     };
@@ -468,7 +483,11 @@ namespace Rtx
         /// Costs one frame of reconstruction, so it is for discontinuities and not for changes.
         virtual void resetHistory() = 0;
 
-        /// How many textures the renderer holds, which is where `extendScene`'s `arrived` begins.
+        /// How long the renderer's texture table is, which is where `extendScene`'s `arrived` begins.
+        ///
+        /// **The length and not the tally.** A slot the scene gave back keeps its place so that
+        /// nothing above it is renumbered, and it stands nothing — `SceneStats::mTextureCount` is
+        /// how many there actually are, and the two differ by every slot a walked-away region left.
         virtual std::uint32_t getTextureCount(std::uint32_t slot) const = 0;
 
         /// Destroys the images of the texture slots a scene has given up.

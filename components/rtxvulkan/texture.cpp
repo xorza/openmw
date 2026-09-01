@@ -361,11 +361,21 @@ namespace Rtx
             vkDestroySampler(mDevice.getHandle(), mSampler, nullptr);
     }
 
-    VkDeviceSize TextureArray::getBytes() const
+    TexturesHeld TextureArray::getHeld() const
     {
-        VkDeviceSize total = 0;
+        TexturesHeld held;
+
         for (const Texture& texture : mTextures)
-            total += texture.getBytes();
-        return total;
+        {
+            // The view and not the size: a slot stands a texture or it does not, and a content file
+            // carrying an empty level is a texture that exists.
+            if (texture.getView() == VK_NULL_HANDLE)
+                continue;
+
+            ++held.mCount;
+            held.mBytes += texture.getBytes();
+        }
+
+        return held;
     }
 }

@@ -53,6 +53,17 @@ namespace Rtx
         VkDeviceSize mBytes = 0;
     };
 
+    /// What a texture array stands: how many of its slots hold a texture, and what those come to.
+    ///
+    /// **One walk for both, so the two cannot disagree about which slots they counted.** A length
+    /// and a sum over what is live are different questions, and a report answering one of each is
+    /// what `SceneStats::mTextureCount` says this replaced.
+    struct TexturesHeld
+    {
+        std::uint32_t mCount = 0;
+        VkDeviceSize mBytes = 0;
+    };
+
     /// Every texture a scene uses, in one descriptor array a shader indexes by material.
     ///
     /// A separate set from the per-frame one: this is written once and bound for the run, while the
@@ -121,8 +132,14 @@ namespace Rtx
         /// sample — and it keeps them out of the array the cone's mip selection measures, which is
         /// where interleaving them cost the reference implementation every grazing mip in the frame.
         VkBuffer getShading() const { return mShading.getHandle(); }
+
+        /// How long the array is, which is where an append begins and what an uploader compares a
+        /// scene's table against. Not how many textures there are: see `getHeld`.
         std::uint32_t getCount() const { return static_cast<std::uint32_t>(mTextures.size()); }
-        VkDeviceSize getBytes() const;
+
+        /// What the array actually stands. A slot the scene gave back holds nothing and costs
+        /// nothing, and neither is counted here.
+        TexturesHeld getHeld() const;
 
     private:
         /// Writes the descriptors for the slots `arrived` names.
@@ -140,8 +157,9 @@ namespace Rtx
 
         const Device& mDevice;
 
-        /// Indexed by slot. A slot the scene has freed keeps the image it had until something takes
-        /// it over, which is what keeps its descriptor pointing at something that exists.
+        /// Indexed by slot. A slot the scene has freed holds nothing until something takes it over —
+        /// `drop` buries the image it had, and the descriptor is left naming what has gone for the
+        /// reason `drop` gives.
         std::vector<Texture> mTextures;
 
         /// Every texture's shading map, host side, so growing the buffer does not have to ask the
