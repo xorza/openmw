@@ -263,21 +263,25 @@ Reservoir noLamps()
 ///
 /// **One statement of what "facing" means, used by the sun, the moons and every lamp.** A solid
 /// takes the near side and nothing from behind; a sheet with a mask — a leaf — takes the far side
-/// at `SHEET_TRANSMISSION` of the near, `GpuMesh::mSheet` having said so. Never both at once: a
-/// direction is on one side of a plane or the other.
+/// at `SHEET_TRANSMISSION` of the near, `MESH_SHEET` having said so. Never both at once: a
+/// direction is on one side of a surface or the other.
 ///
-/// **The plane says which side, and the shading normal only says how much.** Read off the shading
-/// normal alone, a wall panel whose vertices lean past their own triangle takes a lamp standing
-/// behind it as a lamp in front — and the sheet it is has no thickness for the shadow ray to stop
-/// in, so the lamp arrives unshadowed and the panel glows through itself. Four hits in a hundred
-/// carry a normal more than sixty degrees off its triangle, which is what the content is like.
+/// **Which side is one vector's answer and how much is another's, and the caller says which.** Four
+/// hits in a hundred carry a normal more than sixty degrees off its own triangle, so the two
+/// disagree often enough that picking wrongly is visible either way — and which of them is lying
+/// depends on what the surface is. An open shape is a plane whose normals lean off it: read off the
+/// normal, a wall panel takes a lamp standing behind it as a lamp in front, and having no far side
+/// for the shadow ray to stop in it glows through itself. A closed shape is a solid the content
+/// faceted, and its *facets* lean off the normals: read off the plane, whole triangles of a boulder
+/// go black under a light its surface plainly faces. `Surface::mClosed` is what tells them apart.
 ///
-/// @param plane `Surface::mGeometric`, turned out of the surface. Zero has no meaning here — an
-///        asker with no plane has no sides, and does not ask.
-float litCosine(vec3 normal, vec3 plane, vec3 towards, float transmission)
+/// @param side what decides which side of the surface a light has to stand on — `Surface::mNormal`
+///        for a closed shape and `Surface::mGeometric` for an open one. Zero has no meaning here:
+///        an asker with no sides does not ask.
+float litCosine(vec3 normal, vec3 side, vec3 towards, float transmission)
 {
     const float cosine = dot(normal, towards);
-    return dot(plane, towards) > 0.0 ? max(cosine, 0.0) : transmission * max(-cosine, 0.0);
+    return dot(side, towards) > 0.0 ? max(cosine, 0.0) : transmission * max(-cosine, 0.0);
 }
 
 /// Offers one candidate to `kept`, already resolved to what it delivers at `from`.
@@ -321,16 +325,16 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
 ///
 /// @param normal the surface's, or nothing at all for a point in a medium — the air and a puff have
 ///        no direction to face away from, so every lamp reaching them counts whole.
-/// @param plane the surface's `Surface::mGeometric`, beside the normal and going with it: `litCosine`
-///        says why a side is the plane's answer. Nothing at all where `normal` is.
+/// @param side what decides which side a lamp has to stand on, beside the normal and going with it:
+///        `litCosine` says why that is not always the same vector. Nothing at all where `normal` is.
 /// @param scale what this asker's own share of a lamp is worth: `INV_PI` for a Lambert surface,
 ///        `INV_FOUR_PI` times a step's weight for the air.
 /// @param transmission what the far side of a sheet is worth, out of `Surface::mTransmission`.
 ///        Nought for a solid and for a point in a medium, which has no far side.
 void weighLamps(
-    inout Reservoir kept, inout uint state, vec3 from, vec3 normal, vec3 plane, float scale, float transmission)
+    inout Reservoir kept, inout uint state, vec3 from, vec3 normal, vec3 side, float scale, float transmission)
 {
-    const bool facing = dot(normal, normal) > 0.0;
+    const bool sided = dot(normal, normal) > 0.0;
 
     const uvec2 near = lampsWithin(lampsReaching(from));
     for (uint i = near.x; i < near.y; ++i)
@@ -339,7 +343,7 @@ void weighLamps(
         if (!(lamp.mReaching > 0.0))
             continue;
 
-        const float cosine = facing ? litCosine(normal, plane, lamp.mTowards, transmission) : 1.0;
+        const float cosine = sided ? litCosine(normal, side, lamp.mTowards, transmission) : 1.0;
         if (cosine <= 0.0)
             continue;
 

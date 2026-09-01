@@ -43,7 +43,8 @@ namespace Rtx
     }
 
     Index SceneDesc::addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, bool sheet, bool deforming)
+        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape,
+        bool deforming)
     {
         assert(!positions.empty());
         assert(normals.empty() || normals.size() == positions.size());
@@ -86,7 +87,7 @@ namespace Rtx
             .mVertexCount = vertices.mCount,
             .mIndexOffset = elements.mOffset,
             .mIndexCount = elements.mCount,
-            .mSheet = sheet,
+            .mShape = shape,
             .mDeforming = deforming,
             .mBounds = boundsOf(positions),
         };

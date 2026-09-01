@@ -16,7 +16,7 @@
 
 #include "imageformat.hpp"
 #include "scenedesc.hpp"
-#include "sheetfold.hpp"
+#include "shapefold.hpp"
 
 namespace osg
 {
@@ -63,7 +63,7 @@ namespace Rtx
         std::uint32_t mMaterialsAdded = 0;
 
         /// Of those, the meshes that were nothing but reversed pairs and left here as one copy
-        /// each. `SheetFold` says what a sheet is; a cell with foliage in it has hundreds.
+        /// each. `ShapeFold` says what a sheet is; a cell with foliage in it has hundreds.
         std::uint32_t mSheets = 0;
 
         /// Ground wide enough that its layer stack is baked into one texture rather than shaded a
@@ -624,7 +624,7 @@ namespace Rtx
         // Refilled per drawable rather than reallocated, because a cell is tens of thousands of them.
         std::vector<std::uint32_t> mIndexScratch;
         std::vector<osg::Vec3f> mNormalScratch;
-        SheetFold mSheetFold;
+        ShapeFold mShapeFold;
 
         /// An overall normal spread across a drawable's vertices, for the geometry that binds one.
         std::vector<osg::Vec3f> mFlatNormalScratch;

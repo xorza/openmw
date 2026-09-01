@@ -606,7 +606,7 @@ namespace Rtx::Testing
                 }
 
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices, sheet),
+                    .mMesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices, FoldedShape{ .mSheet = sheet }),
                     .mMaterial = scene.addMaterial(material) });
 
                 if (lamp)

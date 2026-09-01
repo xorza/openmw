@@ -70,8 +70,8 @@ set(RTX_FILES
     sceneuploader.hpp
     shadingmap.cpp
     shadingmap.hpp
-    sheetfold.cpp
-    sheetfold.hpp
+    shapefold.cpp
+    shapefold.hpp
     skybuilder.cpp
     skybuilder.hpp
     spanallocator.cpp

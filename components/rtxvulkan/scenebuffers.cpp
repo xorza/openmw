@@ -198,7 +198,8 @@ namespace Rtx
             mMeshScratch.push_back(Shaders::GpuMesh{
                 .mVertexOffset = mesh.mVertexOffset,
                 .mIndexOffset = mesh.mIndexOffset,
-                .mSheet = mesh.mSheet ? 1u : 0u,
+                .mShape
+                = (mesh.mShape.mSheet ? Shaders::MESH_SHEET : 0u) | (mesh.mShape.mClosed ? Shaders::MESH_CLOSED : 0u),
             });
 
         reserve(mMeshes, mMeshScratch.size() * sizeof(Shaders::GpuMesh), graveyard);

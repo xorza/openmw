@@ -152,8 +152,8 @@ if (OPENMW_RTX)
         rtx/extractor/walk.cpp
         rtx/sceneuploader.cpp
         rtx/shadingmap.cpp
+        rtx/shapefold.cpp
         rtx/skybuilder.cpp
-        rtx/sheetfold.cpp
         rtx/spanallocator.cpp
         rtx/spritelight.cpp
         rtx/spriteshade.cpp

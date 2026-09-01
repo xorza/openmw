@@ -256,18 +256,20 @@ struct Surface
 
     /// The shading normal, turned to the side of the triangle's plane the ray arrived on.
     /// Morrowind's sheet geometry is lit from both faces, so which side that is carries no meaning
-    /// beyond where the light may come from — and the *plane* is what decides it, never the
-    /// interpolated normal, which on this content routinely points through its own triangle.
+    /// of its own — and the *plane* is what turns it, never the interpolated normal, which on this
+    /// content routinely points through its own triangle.
     vec3 mNormal;
 
     /// The triangle's own plane, turned the same way `mNormal` is.
     ///
-    /// **What every question about *sides* asks, because the interpolated normal cannot answer
-    /// one.** A shading normal on this content routinely leans past its own triangle — four hits in
-    /// a hundred by more than sixty degrees — so it says a light behind the surface is in front of
-    /// it, and it aims a bounce into the floor the bounce left. The plane says neither. It is turned
-    /// rather than left as the winding wound it so that a caller has one vector meaning "out of this
-    /// surface" and no side of its own to work out.
+    /// **What a bounce is bounded by, and what an open surface takes a light's side from.** A
+    /// shading normal on this content routinely leans past its own triangle — four hits in a hundred
+    /// by more than sixty degrees — so it aims a bounce into the floor the bounce left, and on
+    /// anything with no far side it says a light behind the surface is in front of it. The plane
+    /// says neither. `mClosed` is what decides whether a light's side is its question or the
+    /// normal's; a bounce is always its. It is turned rather than left as the winding wound it so
+    /// that a caller has one vector meaning "out of this surface" and no side of its own to work
+    /// out.
     vec3 mGeometric;
 
     vec3 mAlbedo;
@@ -293,6 +295,16 @@ struct Surface
     /// `sampledOpacity`, which is what a shadow ray asks of the same surface through
     /// `candidateStops` — so the two cannot haze one surface two ways.
     float mOpacity;
+
+    /// Whether every edge of this mesh carries a triangle each way — `MESH_CLOSED`.
+    ///
+    /// **It says which of the two normals above is lying.** A closed shape is a solid the content
+    /// faceted, so its interpolated normal describes it and its triangles do not: a light the normal
+    /// faces is one whole facets turn away from, and reading the side off the plane costs those
+    /// facets every scrap of direct light in a patch with the triangle's own edges. An open shape is
+    /// the reverse — a quad whose normals lean off it — and reading the side off the normal lights it
+    /// from behind, because there is no far side for the shadow ray to stop in.
+    bool mClosed;
 
     /// What light on the far side of this surface is worth to the side the ray met, against the
     /// same light on the near side. Nought for everything solid; `SHEET_TRANSMISSION` for a leaf.
@@ -323,6 +335,7 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     surface.mDistance = frame.mFar;
     surface.mFootprint = 0.0;
     surface.mOpacity = 1.0;
+    surface.mClosed = false;
     surface.mTransmission = 0.0;
 
     rayQueryEXT query;
@@ -390,7 +403,8 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     surface.mWater = material.mKind == KIND_WATER;
     surface.mEmissiveColour = material.mEmissiveColour;
 
-    surface.mTransmission = mesh.mSheet != 0u && hasMask(material) ? SHEET_TRANSMISSION : 0.0;
+    surface.mClosed = (mesh.mShape & MESH_CLOSED) != 0u;
+    surface.mTransmission = (mesh.mShape & MESH_SHEET) != 0u && hasMask(material) ? SHEET_TRANSMISSION : 0.0;
 
     vec2 uv[3];
     triangleUvs(corner, uv);

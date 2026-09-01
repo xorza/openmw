@@ -1451,12 +1451,12 @@ namespace Rtx
         // Before the mesh is written, so the copy the content drew for a card's back never reaches
         // a structure. Once per drawable and never for a pose: a rig moves the two copies together,
         // so the pairs found in the bind pose are the pairs.
-        const bool sheet = mSheetFold.fold(arrays.mPositions, mIndexScratch);
-        if (sheet)
+        const FoldedShape shape = mShapeFold.fold(arrays.mPositions, mIndexScratch);
+        if (shape.mSheet)
             ++stats.mSheets;
 
         const Index mesh
-            = mScene.addMesh(arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, sheet, deforming);
+            = mScene.addMesh(arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, shape, deforming);
         mMeshes.emplace(&drawable, Known{ .mIndex = mesh, .mEpoch = mEpoch });
         ++stats.mMeshesAdded;
         if (deforming)

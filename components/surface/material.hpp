@@ -114,7 +114,7 @@ namespace Surface
         /// `Both`, and a material file's two-sided flag, which can turn culling off and never on.
         /// Vanilla Morrowind has neither — none of its three archives holds a `NiStencilProperty`
         /// — and a leaf or banner meant to be seen from behind is modelled as a second copy wound
-        /// the other way, which is `Rtx::SheetFold`'s business and not this flag's.
+        /// the other way, which is `Rtx::ShapeFold`'s business and not this flag's.
         bool mTwoSided = false;
 
         /// Alpha included: `NiMaterialProperty` keeps the surface's opacity here and nowhere else.

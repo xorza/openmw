@@ -777,6 +777,15 @@ namespace Rtx::Shaders
     /// nothing at all.
     RTX_CONST uint MASK_FIRST_PERSON = 0x04u;
 
+    /// The content doubled every triangle of this mesh for its back — `Rtx::FoldedShape::mSheet`.
+    /// With a mask on its material that is a leaf, and `SHEET_TRANSMISSION` says what the light on
+    /// its far side is worth to it.
+    RTX_CONST uint MESH_SHEET = 0x01u;
+
+    /// Every edge of this mesh carries a triangle each way — `Rtx::FoldedShape::mClosed`. It says
+    /// which of a surface's two normals describes it, which `litCosine` reads.
+    RTX_CONST uint MESH_CLOSED = 0x02u;
+
     /// Where a mesh's vertices and indices begin in the shared buffers.
     ///
     /// Indices are mesh-local, so a triangle's vertex is `mVertexOffset` plus what the index says.
@@ -785,10 +794,11 @@ namespace Rtx::Shaders
         uint mVertexOffset;
         uint mIndexOffset;
 
-        /// One where the content doubled every triangle of this mesh for its back, which is
-        /// `Rtx::MeshRange::mSheet`. With a mask on its material, that is a leaf, and
-        /// `SHEET_TRANSMISSION` says what the light on its far side is worth to it.
-        uint mSheet;
+        /// What the fold found this mesh's triangles to be — `MESH_SHEET` and `MESH_CLOSED`.
+        ///
+        /// **Bits and not two words, because this row is read on every hit.** A mesh table entry is
+        /// three words and every ray that lands fetches one.
+        uint mShape;
     };
 
     struct GpuInstance

@@ -17,6 +17,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "shaders/scene.h"
+#include "shapefold.hpp"
 #include "spanallocator.hpp"
 
 namespace Rtx
@@ -38,15 +39,13 @@ namespace Rtx
         Index mIndexOffset = 0;
         Index mIndexCount = 0;
 
-        /// Whether the content doubled every triangle of this mesh with a reversed twin, which is
-        /// how Morrowind says a card is seen from either face. `SheetFold` says why the twins are
-        /// gone and this is what is left of them; a shader reads it as leave to light the mesh
-        /// through its back.
-        bool mSheet = false;
+        /// What the fold found this mesh's triangles to be. `Rtx::FoldedShape` says what each half
+        /// means; the scene keeps them and draws nothing from them.
+        FoldedShape mShape;
 
         /// Whether this mesh is re-posed by `updateMesh` — a skinned body, a morphed face — which is
         /// what tells a backend to build its structure so it can be refitted rather than built
-        /// again. The caller's finding, like `mSheet`: the scene keeps it and draws nothing from it.
+        /// again. The caller's finding, like `mShape`.
         bool mDeforming = false;
 
         /// The box this mesh's vertices fit in, in the space they are stated in. Invalid where the
@@ -461,11 +460,11 @@ namespace Rtx
         /// vertex count comes out of a content file and a run that straddled a block would be
         /// written across two device allocations that are not next to each other.
         ///
-        /// `sheet` is `MeshRange::mSheet` and `deforming` is `MeshRange::mDeforming`, and both are
+        /// `shape` is `MeshRange::mShape` and `deforming` is `MeshRange::mDeforming`, and both are
         /// the caller's findings: the scene keeps them and draws no conclusion of its own from the
         /// triangles it was handed.
         Index addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-            std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, bool sheet = false,
+            std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape = {},
             bool deforming = false);
 
         /// Replaces one mesh's positions and normals, keeping its topology and its index.

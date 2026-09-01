@@ -62,9 +62,9 @@ const float INDIRECT_LIGHT_RATE = 0.5;
 /// One shadow ray per light that could reach at all, and none for a light the surface faces away
 /// from — the two tests before it are what keep a cell's worth of lamps affordable.
 ///
-/// @param plane the surface's own triangle, out of `Surface::mGeometric`. **Which side of the
-///        surface a light stands on is its answer and never the shading normal's**, and `litCosine`
-///        says what it cost to read the normal for it.
+/// @param side what decides which side of the surface a light has to stand on, which
+///        `Surface::mClosed` picks between the plane and the shading normal. `litCosine` says why
+///        neither answers for both.
 /// @param footprint how wide the cone that found this point had grown, which is the scale the
 ///        caustics are allowed to resolve waves at.
 /// @param seed which draw sequence the lamp reservoir steps. **One per depth of the path**, because
@@ -74,7 +74,7 @@ const float INDIRECT_LIGHT_RATE = 0.5;
 ///        is `Surface::mTransmission`: nought for a solid, `SHEET_TRANSMISSION` for a leaf.
 /// @param path `PATH_SEEN` or `PATH_INDIRECT`. It decides whether the moons are asked at all, and
 ///        whether the rest of this is drawn at `INDIRECT_LIGHT_RATE` or spent on every hit.
-vec3 gather(vec3 position, vec3 normal, vec3 plane, float footprint, float transmission, uint seed, uint path)
+vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transmission, uint seed, uint path)
 {
     vec3 radiance = vec3(0.0);
 
@@ -125,7 +125,7 @@ vec3 gather(vec3 position, vec3 normal, vec3 plane, float footprint, float trans
     // none and leave the penumbra — the only part of the integral the cone is wide enough to
     // matter to — no better resolved for it.
 
-    const float sunCosine = litCosine(normal, plane, frame.mSunPosition, transmission);
+    const float sunCosine = litCosine(normal, side, frame.mSunPosition, transmission);
     if (HAS_SUN && sunCosine > 0.0 && frame.mSunIrradiance != vec3(0.0))
     {
         const float through
@@ -156,8 +156,8 @@ vec3 gather(vec3 position, vec3 normal, vec3 plane, float footprint, float trans
     {
         // The weight is what each would deliver unshadowed, which is everything about a moon that
         // can be known without tracing — the same rule the lamp reservoir picks its candidate by.
-        const float masserCosine = litCosine(normal, plane, frame.mMoons[0].mDirection, transmission);
-        const float secundaCosine = litCosine(normal, plane, frame.mMoons[1].mDirection, transmission);
+        const float masserCosine = litCosine(normal, side, frame.mMoons[0].mDirection, transmission);
+        const float secundaCosine = litCosine(normal, side, frame.mMoons[1].mDirection, transmission);
 
         const float masser
             = masserCosine > 0.0 ? masserCosine * dot(frame.mMoons[0].mIrradiance, LUMINANCE_WEIGHTS) : 0.0;
@@ -207,7 +207,7 @@ vec3 gather(vec3 position, vec3 normal, vec3 plane, float footprint, float trans
     // **With one lamp in the cell it is exactly the arithmetic that was here before**: the sum is
     // that lamp's weight, the ratio is one, and what is left is the term that was always there.
     Reservoir kept = noLamps();
-    weighLamps(kept, state, position, normal, plane, INV_PI, transmission);
+    weighLamps(kept, state, position, normal, side, INV_PI, transmission);
 
     radiance += lampsThrough(kept, lampDraw);
 
@@ -290,8 +290,8 @@ vec3 shadeSurface(Surface surface, vec3 incoming, uint seed, uint path)
     // made of rather than being tinted by it.
     return surface.mAlbedo
         * (incoming
-            + gather(surface.mPosition, surface.mNormal, surface.mGeometric, surface.mFootprint,
-                surface.mTransmission, seed, path)
+            + gather(surface.mPosition, surface.mNormal, surface.mClosed ? surface.mNormal : surface.mGeometric,
+                surface.mFootprint, surface.mTransmission, seed, path)
             + surface.mEmissiveColour * EMISSIVE_INTENSITY)
         + surface.mEmitted;
 }

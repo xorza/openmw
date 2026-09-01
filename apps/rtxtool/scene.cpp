@@ -78,7 +78,7 @@ namespace RtxTool
 
         std::uint32_t sheets = 0;
         for (const Rtx::MeshRange& mesh : scene.getMeshes())
-            sheets += mesh.mSheet ? 1 : 0;
+            sheets += mesh.mShape.mSheet ? 1 : 0;
 
         const osg::Vec3f& ambient = staged.getLighting().mDaylight.mAmbient;
         out << "  cutout materials:     " << cutouts << ", " << tested << " of them alpha-tested outright\n"

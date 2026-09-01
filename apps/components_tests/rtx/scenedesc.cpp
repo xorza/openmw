@@ -59,11 +59,11 @@ namespace Rtx
 
             // And whether the caller found it doubled for its back, which the scene keeps and
             // never works out for itself.
-            EXPECT_FALSE(scene.getMeshes()[first].mSheet);
+            EXPECT_FALSE(scene.getMeshes()[first].mShape.mSheet);
 
             // Added first and read after: the table grows under a span taken in the same expression.
-            const Index sheet = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, true);
-            EXPECT_TRUE(scene.getMeshes()[sheet].mSheet);
+            const Index sheet = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, FoldedShape{ .mSheet = true });
+            EXPECT_TRUE(scene.getMeshes()[sheet].mShape.mSheet);
         }
 
         /// A mesh without normals or texture coordinates must still leave the attribute buffers as
@@ -257,7 +257,7 @@ namespace Rtx
             // The finding the caller made about a mesh is kept beside its range, for a backend
             // that builds a deforming mesh's structure to be refitted.
             EXPECT_FALSE(scene.getMeshes()[still].mDeforming);
-            const Index rig = scene.addMesh(sQuadPositions, sNormals, {}, sQuadIndices, false, true);
+            const Index rig = scene.addMesh(sQuadPositions, sNormals, {}, sQuadIndices, {}, true);
             EXPECT_TRUE(scene.getMeshes()[rig].mDeforming);
         }
 
@@ -1210,7 +1210,7 @@ namespace Rtx
         {
             SceneDesc scene;
 
-            const Index quad = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, false, true);
+            const Index quad = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, {}, true);
             const Index material = scene.addMaterial(Material{});
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = quad, .mMaterial = material });
