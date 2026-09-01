@@ -110,13 +110,16 @@ namespace Rtx
             return;
         }
 
-        // **A row at a time, and the inside of the disc without a square root.** The ramp is one cell
-        // wide, so a cell more than half a cell within the rim is covered in full and a cell outside
-        // it is not covered at all — exactly, by the clamp — and only the ring between those two
-        // radii needs the distance itself. Of a disc eight cells across that ring is a seventh of the
-        // cells, where the bounding box asked for the distance at every one of them and at the
-        // corners it does not reach besides. Measured at Vivec, where `layDown` was 12.4% of the whole
-        // frame's CPU and the emitters around it were a third of it.
+        // **A row at a time: a ramp, the run the disc covers whole, and a ramp again.** The ramp is
+        // one cell wide, so a cell more than half a cell within the rim is covered in full and a cell
+        // outside it is not covered at all — exactly, by the clamp — and only the two ramps need a
+        // distance. Two square roots for the row buy that, against one per cell for the bounding box
+        // this replaced and for the corners it does not reach besides.
+        //
+        // **The ramp is `2πr` cells against the run's `π(r − ½)²`**, so it is a third of a disc eight
+        // cells across and most of a small one. That is where the exact form stops: a cell whose
+        // coverage is a fraction has to have its own distance. Measured at Vivec, where `layDown` is
+        // 10.8% of the whole frame's CPU and the ramp's square root is the hottest line in it.
         const float outer = radius + 0.5f;
         const float inner = radius - 0.5f;
         const float outside = outer * outer;
@@ -128,11 +131,12 @@ namespace Rtx
         for (std::uint32_t cy = fromY; cy <= untilY; ++cy)
         {
             const float dy = static_cast<float>(cy) - y;
+            const float rowAway = dy * dy;
 
             // How far the disc reaches across this row, which is one square root for the row rather
             // than one for each of its cells. Negative where the row misses the disc — and where the
             // clamps above pulled a row onto the grid that the disc never touched.
-            const float span = outside - dy * dy;
+            const float span = outside - rowAway;
             if (!(span > 0.0f))
                 continue;
 
@@ -140,19 +144,48 @@ namespace Rtx
             const std::uint32_t fromX = clampCell(std::ceil(x - half));
             const std::uint32_t untilX = clampCell(std::floor(x + half));
 
-            float* const row = mGrid.data() + std::size_t{ cy } * sCells;
-            for (std::uint32_t cx = fromX; cx <= untilX; ++cx)
+            // **Where the ramp ends, so the run between the two ends needs no arithmetic per cell.**
+            // A second square root for the row buys every cell inside it: the compare, the two
+            // multiplies and the add that worked out a distance the clamp was going to saturate
+            // anyway.
+            //
+            // **Held inside the row's own ends and not clamped to the grid**, which is what keeps a
+            // run off a row the disc passes to the side of: a clamp would read cell nought as
+            // covered. Empty unless the two ends come out in order, which a row that is all ramp
+            // never does.
+            std::uint32_t coreFrom = untilX + 1;
+            std::uint32_t coreUntil = untilX;
+
+            if (const float core = within - rowAway; core > 0.0f)
             {
-                const float dx = static_cast<float>(cx) - x;
-                const float away = dx * dx + dy * dy;
-                if (away <= within)
+                const float deep = std::sqrt(core);
+                const float first = std::max(std::ceil(x - deep), static_cast<float>(fromX));
+                const float last = std::min(std::floor(x + deep), static_cast<float>(untilX));
+
+                if (first <= last)
                 {
-                    row[cx] += weight;
-                    continue;
+                    coreFrom = static_cast<std::uint32_t>(first);
+                    coreUntil = static_cast<std::uint32_t>(last);
                 }
+            }
+
+            float* const row = mGrid.data() + std::size_t{ cy } * sCells;
+
+            const auto ramp = [&](std::uint32_t cx) {
+                const float dx = static_cast<float>(cx) - x;
+                const float away = dx * dx + rowAway;
 
                 row[cx] += weight * std::clamp(radius - std::sqrt(away) + 0.5f, 0.0f, 1.0f);
-            }
+            };
+
+            for (std::uint32_t cx = fromX; cx < coreFrom; ++cx)
+                ramp(cx);
+
+            for (std::uint32_t cx = coreFrom; cx <= coreUntil; ++cx)
+                row[cx] += weight;
+
+            for (std::uint32_t cx = coreUntil + 1; cx <= untilX; ++cx)
+                ramp(cx);
         }
     }
 }

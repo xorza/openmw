@@ -2,7 +2,8 @@
 
 Reviewed: every file under `components/rtxvulkan/shaders/` and the shared headers under
 `components/rtx/shaders/`. Date: 2026-09-01, at commit d76a6e59eb; re-reviewed in full at
-e8b073bcd2, and again after the sprite binning was fixed.
+e8b073bcd2, and again after the sprite binning was fixed and the disc splat was measured to its
+floor.
 
 The tree is in strong shape. The heavy duplications are already factored: one `RTX_RESOLVE`
 candidate loop, one `rayAt`, one lamp record, one falloff, one Henyey-Greenstein, one bloom kernel
@@ -12,6 +13,12 @@ No re-review has found a correctness item or a duplication worth a line.
 marked. Each plan step names its verification. The working rule from CLAUDE.md holds: feature
 first, numbers second. Section A is what bounds a frame today. Section B changes no pixel.
 Sections D and G need a measurement.
+
+**The GPU is not what bounds an exterior.** Measured at 1920x1080 with quality upscale: the whole
+device side of `balmora-fog-night` is about 4 ms of a 5.23 ms frame, and 2.11 of that is the
+upscaler. `trace` is 0.85, and every other pass — `tlas`, `waves`, `air`, `refit`, `bloom`, `tone`,
+`exposure`, `composite` — is a quarter of a millisecond or less. A shader item that saves a tenth of
+one of those saves nothing a player can feel, which is why section G is now one entry.
 
 ## A. What bounds a frame today
 
@@ -53,21 +60,33 @@ so a subtree skipped wholesale is a subtree retired wholesale. Whatever skips a 
 stamp its placements at the same time, and `mPlacementsReached` has to agree — that is the design,
 and it is what makes this a commit of its own rather than an early return.
 
-**A1b. The emitters cost a third of Vivec's CPU on the host, and 24 of them are the whole of it.**
-Not the trace and not the walk: `SpriteShade::shade` carries 26.4% of the profile and
-`SpriteTiles::rebuild` another 9.0% self, for 24 emitters holding 2,328 live particles.
+**A1b. The emitters are a sixth of Vivec's CPU on the host, and 24 of them are the whole of it.**
+Not the trace and not the walk. Self time on `build-release`, `bench --views=vivec --seconds=8`:
+`layDown` 10.79%, `SpriteTiles::rebuild` 5.40%, the sprite sort 1.01%, `readAt` 0.64% and
+`shadeToward` 0.34% — 18% of the profile, for 24 emitters holding 2,328 live particles.
 
 `SpriteShade` splats one antialiased disc per sprite per light into a 32×32 grid — 4,656 discs a
-frame — and `sLargestInCells = 8` puts a typical disc at about 250 cells, so the frame lays down
-over a million cells. The square root is already off the inside of the disc (`layDown` says so),
-which took Vivec's frame from 13.5 ms to 11.7 and left the scattered adds themselves as the cost.
-What is left to try, in order of how much it gives up: a coarser `sLargestInCells`, which is
-straight quality; laying a run's discs down as spans rather than cells; and asking whether a
-column's layer count has to be recomputed from nothing every frame at all.
+frame, 2,328 particles against two lights. **`layDown` is now at its exact floor and the ring is
+what is left.** The row is walked as a ramp, a run the disc covers whole and a ramp again, and only
+the ramps work a distance out. Measured interleaved against a build without it, that took the
+function from 11.65% of Vivec's profile to 10.45% — about a tenth of it — and left the run out of
+the line report altogether. What stands there instead is one line: `spriteshade.cpp:171`, the ramp's
+square root, at **5.11% and the hottest line in the frame**. A disc of radius `r` cells has `2πr`
+cells on its ramp against `π(r − ½)²` in its run, so the ramp is a third of a big disc and most of a
+small one, and there is no exact way to spend less than one square root on a cell whose coverage is
+a fraction.
 
-`SpriteTiles::rebuild` is the offsets array, which is one entry per tile whatever the sprites do —
-8,160 of them cleared, prefix-summed and written to the device every frame — plus the scatter that
-fills the runs. `SPRITE_TILE` is the dial and it is measured: see `scene.h`.
+**So the two that are left both cost a picture or a commit.** A coarser `sLargestInCells` is
+straight quality and belongs in section G if anybody wants it. Asking whether a column's layer count
+has to be recomputed from nothing every frame is the real answer and it is a design of its own: the
+grid is thrown away and rebuilt per emitter per light, and nothing carries between frames.
+
+**`SpriteTiles::rebuild` is the scatter and not the per-tile arrays.** The offsets are 8,160 entries
+cleared, prefix-summed and written every frame, and all of that measures under one per cent
+together. What costs is filling the index table: `spritetiles.cpp:288` — one scattered write per
+sprite per tile it covers — is 2.80%, and the tile loop above it another 1.9%. `capsuleTiles` does
+not reach 0.25%, so working the rectangle out twice rather than keeping one per sprite is free and
+the comment that says so is right. `SPRITE_TILE` is the dial and it is measured: see `scene.h`.
 
 **For shader work in the meantime, bench with `--people=0`.** Its own help says it is "what a
 profiling run should hold still".
@@ -150,14 +169,6 @@ everything else here.
 **Read the warp note in section F before writing one of these.** An item whose saving is a per-lane
 draw between two branches has already measured nothing twice, and neither attempt was cheap to
 undo.
-
-- [ ] **G4. The fog volume's two dials.** The lamp rays are per stretch now, which took the `air`
-  pass from 0.32 ms to 0.24 and dropped the estimator's variance to nothing. What remains is
-  `FOG_SHADOW_RAYS` — the ported renderer's own table says four rays measure 0.0087 against eight's
-  0.0048, versus a ray-per-step reference — and `FOG_VOLUME_SCALE`, where a coarser column leans
-  harder on the jitter-plus-history that already hides the grid. The whole pass is under a quarter
-  of a millisecond, so it has to show in a frame before either dial is worth turning. Both are a
-  whole-warp saving rather than a per-lane one, which is what makes them worth trying at all.
 
 - [ ] **G6. Bake composites nearer (host dial, named here for completeness).** A near terrain hit
   shades its whole layer stack — a mask read and a texture fetch per layer, four or five deep —
@@ -251,16 +262,15 @@ pair taken an hour apart says nothing. Keep both SPIR-V builds and alternate the
 back to back. Where a change is host-side as well, keep two executables in `build-release` itself —
 the harness reads `defaults.bin` from beside itself and will not run from anywhere else.
 
-1. **A1b** — the emitters' host work at Vivec, which is a third of the CPU of the only exterior in
-   the corpus that never waits on the device. The disc splat first, then `SpriteTiles`' per-tile
-   arrays.
-2. **A1a** — the subtree fast path in the mirror walk, with the sweep's stamping solved alongside
+1. **A1a** — the subtree fast path in the mirror walk, with the sweep's stamping solved alongside
    it. 5.4 ms of Vivec's 12.4, and the largest single item on this page.
-3. **G4** — the fog volume's two remaining dials, but only once the pass shows in a frame.
-4. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
+2. **A1b's remainder** — whether a column's layer count can carry between frames. The splat itself
+   is done and at its exact floor, and `SpriteTiles` is a scatter nothing cheap reorders, so this is
+   the only part of the emitters' sixth of Vivec's CPU that is still open. A design, not a dial.
+3. **D2** — SER: first an Nsight divergence measurement on shoreline and interior cameras. Only
    if the numbers say the übershader loses real occupancy, prototype the pipeline port in the
    harness. Decide on the numbers, not on the guidance alone.
-5. **B6, D3–D5, G6** — hold until a measurement names them: the atrous centre read when anything
+4. **B6, D3–D5, G6** — hold until a measurement names them: the atrous centre read when anything
    runs that pass, the shading-map texture array when the albedo path tops a profile, the
    underwater volume when a submerged `bench` hurts, lamp presampling when a scene outgrows the
    walk, and the composite crossover when the layered path shows in a profile.

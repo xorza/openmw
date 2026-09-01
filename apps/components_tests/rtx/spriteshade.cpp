@@ -1,4 +1,5 @@
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -169,6 +170,56 @@ namespace
         lone.shade(sEast);
         EXPECT_FLOAT_EQ(lone.mSprites[0].mSunLayers, 0.0f);
         EXPECT_FLOAT_EQ(lone.mSprites[0].mSkyLayers, 0.0f);
+    }
+
+    /// Every cell of a disc holds the coverage the analysis gives it.
+    ///
+    /// **The cross-check the row's three parts need.** `layDown` walks a row as a ramp, a run the
+    /// disc covers whole and a ramp again, and works the distance out only in the two ramps — so a
+    /// wrong bound between them would put a whole cell at one where it should hold a fraction, or
+    /// the other way about, and every test above reads a point deep inside a disc where both answers
+    /// are the same. This reads the rim.
+    ///
+    /// **A probe of no alpha reads and lays nothing**, so one disc's footprint is what the whole
+    /// grid holds however many points are put into it. The disc is further along the light than any
+    /// of them, so it is laid before all of them.
+    ///
+    /// Half a unit off each axis is a cell's centre, where the read is that cell and not a blend of
+    /// four — `aTinyDiscCountsItsArea` says why. A disc of six at a half of alpha is then
+    /// `0.5 * clamp(6.5 - distance, 0, 1)` at a point `distance` cells away.
+    TEST(RtxSpriteShadeTest, everyCellOfADiscHoldsTheCoverageTheAnalysisGivesIt)
+    {
+        struct Probe
+        {
+            float mAcross;
+            float mUpward;
+            float mExpected;
+        };
+
+        // Along one axis, so `distance` is the offset itself: whole out to five, the rim at six, and
+        // nothing at seven.
+        //
+        // Then the diagonal, where three across and three up is `sqrt(18) = 4.2426` — still whole —
+        // and four and four is `sqrt(32) = 5.6569`, which is `0.5 * 0.8431` on the rim.
+        constexpr std::array<Probe, 6> sProbes{ {
+            { 0.0f, 0.0f, 0.5f },
+            { 5.0f, 0.0f, 0.5f },
+            { 6.0f, 0.0f, 0.25f },
+            { 7.0f, 0.0f, 0.0f },
+            { 3.0f, 3.0f, 0.5f },
+            { 4.0f, 4.0f, 0.5f * 0.84314575f },
+        } };
+
+        Column column;
+        column.add(osg::Vec3f(6.0f, -0.5f, -0.5f), 6.0f, 0.5f);
+        for (const Probe& probe : sProbes)
+            column.add(osg::Vec3f(0.0f, -0.5f - probe.mAcross, -0.5f - probe.mUpward), 0.0f, 0.0f);
+
+        column.shade(sEast);
+
+        for (std::size_t at = 0; at < sProbes.size(); ++at)
+            EXPECT_NEAR(column.mSprites[at + 1].mSunLayers, sProbes[at].mExpected, 1.0e-5f)
+                << "probe " << sProbes[at].mAcross << ", " << sProbes[at].mUpward;
     }
 
     /// A sun off every axis still finds what stands in its way.
