@@ -1,11 +1,5 @@
 # Open issues
 
-- Closing an `openmw-rtxtool view` window can abort instead of exiting. `~VulkanRenderer` calls
-  `mDevice.waitIdle()` at vulkanrenderer.cpp:210, `checkVk` throws on the result, and a destructor
-  that throws reaches `std::terminate` — so whatever the device reported is replaced by signal 6 and
-  never printed. `view --view=sadrith-mora` does it twice out of two, and the other eight views in
-  the corpus close cleanly.
-
 - One exterior renders differently depending on which cell the process staged before it, and every
   field of the scene it was handed is equal. `verify --views=balmora,seyda-neen-shore` against
   `--views=seyda-neen-shore` reports `differs: worst 8 of 255 on 0.43% of the pixels`. The pixels sit
