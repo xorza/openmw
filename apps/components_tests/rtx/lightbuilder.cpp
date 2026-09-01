@@ -30,6 +30,13 @@ namespace Rtx
 {
     namespace
     {
+        /// How much world these daylights are built for, in units — four cells, which is the reach
+        /// a default `[RTX] distant land cells` asks for.
+        ///
+        /// **Stated here rather than read out of the settings**, because the air is measured over
+        /// this and an assertion about the air has to name the number it is measured against.
+        constexpr float sReach = 4.0f * 8192.0f;
+
         ESM::Light makeRecord(std::int32_t radius, std::uint32_t colour, std::int32_t flags)
         {
             ESM::Light record;
@@ -474,25 +481,25 @@ namespace Rtx
             });
 
             for (float hour = 0.0f; hour < 24.0f; hour += 0.25f)
-                EXPECT_NO_THROW(makeDaylight("Clear", hour)) << "at hour " << hour;
+                EXPECT_NO_THROW(makeDaylight("Clear", hour, sReach)) << "at hour " << hour;
 
             // A file records one depth for daylight and one for night, and the ramp hands the day
             // value to three of its four points. Deeper fog is thicker air, so the night value being
             // the larger of the two is what makes these comparisons say different things.
-            const float day = makeDaylight("Clear", 12.0f).mFog.mExtinction;
-            const float night = makeDaylight("Clear", 0.0f).mFog.mExtinction;
+            const float day = makeDaylight("Clear", 12.0f, sReach).mFog.mExtinction;
+            const float night = makeDaylight("Clear", 0.0f, sReach).mFog.mExtinction;
             EXPECT_GT(night, day);
-            EXPECT_EQ(makeDaylight("Clear", 6.0f).mFog.mExtinction, day) << "sunrise reads the day depth";
-            EXPECT_EQ(makeDaylight("Clear", 20.0f).mFog.mExtinction, night) << "and night begins at twenty";
+            EXPECT_EQ(makeDaylight("Clear", 6.0f, sReach).mFog.mExtinction, day) << "sunrise reads the day depth";
+            EXPECT_EQ(makeDaylight("Clear", 20.0f, sReach).mFog.mExtinction, night) << "and night begins at twenty";
 
             // And the weather reaches its air through `exteriorFog` rather than assembling one,
             // which is what keeps the extinction and the edge measured over one reach.
-            EXPECT_EQ(makeDaylight("Clear", 12.0f).mFog.mEdge, distantLandReach());
+            EXPECT_EQ(makeDaylight("Clear", 12.0f, sReach).mFog.mEdge, sReach);
 
             // **Dusk is between the two rather than one of them**, which is the whole of what the
             // engine's own ramp buys over reading whichever phase an hour falls in: the seeded
             // sunset runs from eighteen to twenty, so half past seven is halfway across it.
-            const float dusk = makeDaylight("Clear", 19.5f).mFog.mExtinction;
+            const float dusk = makeDaylight("Clear", 19.5f, sReach).mFog.mExtinction;
             EXPECT_GT(dusk, day);
             EXPECT_LT(dusk, night);
 
@@ -501,22 +508,22 @@ namespace Rtx
             // same ramp all night and turns off only the sprite — and a tracer that kept that light
             // cast hard shadows swinging back across the ground until dawn, from a disc nothing was
             // drawing. There is no second field left to say otherwise.
-            EXPECT_NE(makeDaylight("Clear", 12.0f).mSun.mIrradiance, osg::Vec3f()) << "noon";
-            EXPECT_EQ(makeDaylight("Clear", 0.0f).mSun.mIrradiance, osg::Vec3f()) << "midnight";
-            EXPECT_EQ(makeDaylight("Clear", 22.0f).mSun.mIrradiance, osg::Vec3f()) << "night begins at twenty";
-            EXPECT_NE(makeDaylight("Clear", 7.0f).mSun.mIrradiance, osg::Vec3f()) << "and it is back after six";
+            EXPECT_NE(makeDaylight("Clear", 12.0f, sReach).mSun.mIrradiance, osg::Vec3f()) << "noon";
+            EXPECT_EQ(makeDaylight("Clear", 0.0f, sReach).mSun.mIrradiance, osg::Vec3f()) << "midnight";
+            EXPECT_EQ(makeDaylight("Clear", 22.0f, sReach).mSun.mIrradiance, osg::Vec3f()) << "night begins at twenty";
+            EXPECT_NE(makeDaylight("Clear", 7.0f, sReach).mSun.mIrradiance, osg::Vec3f()) << "and it is back after six";
 
             // The disc is white for every hour the sun is up and only warms on the way down, which
             // is the one thing the light never does.
             for (const float hour : { 6.5f, 9.0f, 12.0f, 15.0f })
-                EXPECT_EQ(makeDaylight("Clear", hour).mSun.mDiscColour, osg::Vec3f(1.0f, 1.0f, 1.0f))
+                EXPECT_EQ(makeDaylight("Clear", hour, sReach).mSun.mDiscColour, osg::Vec3f(1.0f, 1.0f, 1.0f))
                     << "at hour " << hour;
 
             // Half past seven and not eighteen: the disc's colour is summed with the ambient and
             // clipped, the way the original did it, and at the start of sunset the shipped ambient
             // is still bright enough to clip all three channels to white. It warms once the
             // ambient has gone down with it.
-            const Daylight down = makeDaylight("Clear", 19.5f);
+            const Daylight down = makeDaylight("Clear", 19.5f, sReach);
             EXPECT_FLOAT_EQ(down.mSun.mDiscColour.x(), 1.0f);
             EXPECT_LT(down.mSun.mDiscColour.z(), down.mSun.mDiscColour.x()) << "warm on the way down, never blue";
 
@@ -533,7 +540,7 @@ namespace Rtx
 
             // A name that is none of the ten is not a key the map will even consider, which is why
             // `weatherIndex` is the thing to ask first.
-            EXPECT_THROW(makeDaylight("Drizzle", 12.0f), std::logic_error);
+            EXPECT_THROW(makeDaylight("Drizzle", 12.0f, sReach), std::logic_error);
         }
 
         /// A weather the configuration left out is refused by name, before it can read as nought.
@@ -915,7 +922,7 @@ namespace Rtx
         {
             for (const float hour : { 0.0f, 6.0f, 12.0f, 18.0f })
             {
-                const Daylight day = makeDaylight("Clear", hour);
+                const Daylight day = makeDaylight("Clear", hour, sReach);
                 EXPECT_FLOAT_EQ(day.mExposureBias, exposureBias(day.mSun.mIrradiance, day.mAmbient))
                     << "at hour " << hour;
             }

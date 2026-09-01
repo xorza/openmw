@@ -9,6 +9,8 @@
 #include <components/rtx/shaders/visibility.h>
 #include <components/sky/clouds.hpp>
 
+#include "world.hpp"
+
 namespace RtxTool
 {
     namespace
@@ -26,7 +28,7 @@ namespace RtxTool
         if (!lighting.mOutdoors)
             return;
 
-        settle(lighting, Rtx::makeDaylight(weather, hour), day, hour);
+        settle(lighting, Rtx::makeDaylight(weather, hour, landReach()), day, hour);
 
         // The name reached `makeDaylight` intact, so it is one of the ten.
         lighting.mWeather = Rtx::weatherIndex(weather).value();
@@ -42,7 +44,7 @@ namespace RtxTool
         if (!lighting.mOutdoors)
             return;
 
-        settle(lighting, Rtx::makeDaylight(from, to, blend, hour), day, hour);
+        settle(lighting, Rtx::makeDaylight(from, to, blend, hour, landReach()), day, hour);
 
         lighting.mWeather = Rtx::weatherIndex(from).value();
         lighting.mNextWeather = Rtx::weatherIndex(to).value();

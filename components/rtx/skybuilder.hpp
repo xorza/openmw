@@ -6,6 +6,8 @@
 
 #include <osg/Vec3f>
 
+#include <components/vfs/pathutil.hpp>
+
 #include "cloudshell.hpp"
 #include "lightbuilder.hpp"
 #include "moonbuilder.hpp"
@@ -15,6 +17,21 @@
 
 namespace Rtx
 {
+    /// Which meshes the sky's two surfaces are read off.
+    ///
+    /// **Named by the host and not read here.** `Models/skyclouds` and the two star domes are
+    /// configuration, and this library holds no settings registry — the two hosts that build a sky
+    /// each own that plumbing already, and the rasterizer reads the same three keys for itself.
+    struct SkyMeshes
+    {
+        /// The cap the cloud deck is painted on.
+        VFS::Path::Normalized mClouds;
+
+        /// The star dome, and the one to fall back to where the archives hold no `mStars`.
+        VFS::Path::Normalized mStars;
+        VFS::Path::Normalized mStarsFallback;
+    };
+
     /// Everything the sky was read from the content files: its sheets, what each of them averages,
     /// and the surfaces they are laid on.
     ///
@@ -89,7 +106,7 @@ namespace Rtx
     ///
     /// **Held for the life of the scene and never given back**, for the reason `addMoonFaces`
     /// gives: nothing a sweep can read names a sky texture.
-    SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes);
+    SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes, const SkyMeshes& meshes);
 
     /// What a cloud deck radiates from below, where its own body shadows it and where it does not.
     ///

@@ -11,6 +11,7 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/sceneutil/vismask.hpp>
+#include <components/settings/values.hpp>
 #include <components/weather/downpour.hpp>
 
 #include "cellscene.hpp"
@@ -64,7 +65,10 @@ namespace RtxTool
         // material: a moon is drawn by a ray that reached nothing, so no material can speak for its
         // texture and the sweep would take the slot on the first frame a cell died.
         mLighting.mFaces = Rtx::addMoonFaces(mScene);
-        mLighting.mSky = Rtx::addSkyContent(mScene, *world.getResourceSystem().getSceneManager());
+        mLighting.mSky = Rtx::addSkyContent(mScene, *world.getResourceSystem().getSceneManager(),
+            Rtx::SkyMeshes{ .mClouds = Settings::models().mSkyclouds,
+                .mStars = Settings::models().mSkynight02,
+                .mStarsFallback = Settings::models().mSkynight01 });
         mReport = std::move(arrived.mReport);
 
         // **Before the first walk, because the walk runs the animators.** The graph's own

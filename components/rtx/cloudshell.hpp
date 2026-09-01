@@ -3,6 +3,8 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
+#include <components/vfs/pathutil.hpp>
+
 namespace osg
 {
     class Node;
@@ -67,11 +69,11 @@ namespace Rtx
         osg::Vec3f mRings;
     };
 
-    /// Reads it off `Models/skyclouds`.
+    /// Reads it off the cloud mesh the configuration names, which the host passes in.
     ///
     /// A missing or unreadable mesh comes back with nothing in it, which draws no deck rather than
     /// failing — the same answer `readNightSky` gives, and for the same reason.
-    CloudShell readCloudShell(Resource::SceneManager& scenes);
+    CloudShell readCloudShell(Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh);
 
     /// The same reading, of a mesh already in hand.
     CloudShell readCloudShell(osg::Node& mesh);

@@ -305,7 +305,7 @@ namespace RtxTool
                 .mReport = std::move(report) };
         }
 
-        const Rtx::Daylight daylight = Rtx::makeDaylight(weather, hour);
+        const Rtx::Daylight daylight = Rtx::makeDaylight(weather, hour, landReach());
 
         // **After the daylight, and that is what makes the `value` safe.** A name that is none of
         // the ten throws out of the fallback map on the line above, so anything that reaches here

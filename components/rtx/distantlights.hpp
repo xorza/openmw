@@ -56,6 +56,12 @@ namespace Rtx
         /// Where the eye is, which decides which cells are near enough to matter.
         void setViewPoint(const osg::Vec3f& viewPoint) { mViewPoint = viewPoint; }
 
+        /// How far out to read, in units — `distantLandReach`, which is what the ground is built to.
+        ///
+        /// **Told rather than asked, so this library needs no settings registry.** Nought reads no
+        /// cell at all, which is what a host that never said leaves behind.
+        void setReach(float units) { mReach = units; }
+
         /// The cells the game has stood for itself, as `Terrain::World` states them: minimum
         /// inclusive, maximum exclusive.
         void setActiveGrid(const osg::Vec4i& grid) { mActiveGrid = grid; }
@@ -82,6 +88,7 @@ namespace Rtx
 
         osg::Vec3f mViewPoint;
         osg::Vec4i mActiveGrid;
+        float mReach = 0.0f;
         bool mOutdoors = true;
 
         /// Every cell read so far, by grid position, holding null where the cell stands no light.

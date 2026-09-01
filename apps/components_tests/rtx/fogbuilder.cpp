@@ -175,16 +175,15 @@ namespace Rtx
         /// fields itself is how the game's air came to carry no edge: the ring where its ground
         /// stops stayed visible while a screenshot of the same hour hid it.
         ///
-        /// **Moved rather than read once**, because two numbers that happen to agree at four cells
-        /// look exactly like one number until the setting moves. Doubling the reach halves the
-        /// extinction and doubles the edge, which only one number can do.
+        /// **Asked twice rather than once**, because two numbers that happen to agree at four cells
+        /// look exactly like one number until the reach moves. Doubling it halves the extinction and
+        /// doubles the edge, which only one number can do.
         TEST(RtxFogTest, theOpenAirIsMeasuredOverTheSameReachItClosesAt)
         {
             const osg::Vec3f haze(0.4f, 0.5f, 0.6f);
             constexpr float cell = 8192.0f;
 
-            Settings::rtx().mDistantLandCells.set(4.0f);
-            const Fog near = exteriorFog(haze, 0.69f, 0.0f);
+            const Fog near = exteriorFog(haze, 0.69f, 0.0f, 4.0f * cell);
             EXPECT_EQ(near.mColour, haze);
             EXPECT_EQ(near.mEdge, 4.0f * cell);
             EXPECT_FLOAT_EQ(near.mExtinction, fogExtinction(0.69f, 4.0f * cell));
@@ -193,8 +192,7 @@ namespace Rtx
             // is larger than one bank of fog.
             EXPECT_EQ(near.mUniform, 0.0f);
 
-            Settings::rtx().mDistantLandCells.set(8.0f);
-            const Fog far = exteriorFog(haze, 0.69f, 0.0f);
+            const Fog far = exteriorFog(haze, 0.69f, 0.0f, 8.0f * cell);
             EXPECT_EQ(far.mEdge, 8.0f * cell);
             EXPECT_NEAR(far.mExtinction, 0.5f * near.mExtinction, 1e-10f) << "twice the world, half the air";
 
@@ -204,7 +202,7 @@ namespace Rtx
             EXPECT_EQ(near.mWind, 0.0f);
 
             // The wind it was read with rides along, for the frame to point along the deck's bearing.
-            EXPECT_EQ(exteriorFog(haze, 0.69f, 0.3f).mWind, 0.3f);
+            EXPECT_EQ(exteriorFog(haze, 0.69f, 0.3f, 4.0f * cell).mWind, 0.3f);
 
             // A room is none of that: a fixed reach, still air, and no ring of cut ground to close
             // over however much world stands outside its walls.
@@ -213,9 +211,6 @@ namespace Rtx
             EXPECT_EQ(room.mEdge, 0.0f);
             EXPECT_EQ(room.mUniform, 1.0f);
             EXPECT_NEAR(room.mExtinction, fogExtinction(0.75f, sInteriorFogReach), 1e-10f);
-
-            Settings::rtx().mDistantLandCells.set(4.0f);
-            EXPECT_EQ(roomFog(haze, 0.75f).mExtinction, room.mExtinction) << "a cellar reading the sky's size";
         }
     }
 }

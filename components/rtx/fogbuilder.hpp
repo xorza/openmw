@@ -147,7 +147,11 @@ namespace Rtx
     /// there is: the extinction is a half-life measured over it, the edge closes at it, and only a
     /// landscape is large enough to bank. The game and the harness reach a weather by different
     /// routes, and `FrameWorld` says what assembling a shared list on each of them costs.
-    Fog exteriorFog(const osg::Vec3f& colour, float depth, float wind);
+    ///
+    /// @param reach how much world is built, in units — `distantLandReach`, which the host reads
+    ///        out of its own configuration and hands down. Air tuned to a shorter one swallows every
+    ///        bit of the ground beyond it.
+    Fog exteriorFog(const osg::Vec3f& colour, float depth, float wind, float reach);
 
     /// A room's air, from the colour and the fog depth it is at.
     ///

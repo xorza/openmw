@@ -11,7 +11,6 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
 
 #include "meantexel.hpp"
@@ -259,22 +258,21 @@ namespace Rtx
         constexpr float sTiledSpan = 1.5f;
     }
 
-    NightSky readNightSky(SceneDesc& scene, Resource::SceneManager& scenes)
+    NightSky readNightSky(SceneDesc& scene, Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh,
+        VFS::Path::NormalizedView fallback)
     {
         NightSky sky;
 
-        const VFS::Path::Normalized mesh = scenes.getVFS()->exists(Settings::models().mSkynight02.get())
-            ? Settings::models().mSkynight02.get()
-            : Settings::models().mSkynight01.get();
+        const VFS::Path::NormalizedView chosen = scenes.getVFS()->exists(mesh) ? mesh : fallback;
 
-        if (!scenes.getVFS()->exists(mesh))
+        if (!scenes.getVFS()->exists(chosen))
         {
-            Log(Debug::Warning) << "no night sky mesh at \"" << mesh << "\"; drawing none";
+            Log(Debug::Warning) << "no night sky mesh at \"" << chosen << "\"; drawing none";
             return sky;
         }
 
         LayerReader read;
-        const_cast<osg::Node&>(*scenes.getTemplate(mesh, false)).accept(read);
+        const_cast<osg::Node&>(*scenes.getTemplate(chosen, false)).accept(read);
 
         std::size_t next = 0;
         for (const Layer& layer : read.mLayers)

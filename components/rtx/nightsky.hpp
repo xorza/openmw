@@ -5,6 +5,8 @@
 
 #include <osg/Vec3f>
 
+#include <components/vfs/pathutil.hpp>
+
 #include "scenedesc.hpp"
 #include "shaders/visibility.h"
 
@@ -76,5 +78,11 @@ namespace Rtx
     ///
     /// A missing or unreadable mesh comes back with nothing in it, which draws no night sky rather
     /// than failing: the file is content and content is what a mod replaces.
-    NightSky readNightSky(SceneDesc& scene, Resource::SceneManager& scenes);
+    ///
+    /// @param mesh the star dome the configuration names.
+    /// @param fallback the dome to read where the archives hold no `mesh`. Tribunal ships the second
+    ///        one and Morrowind alone does not, which is the whole of why there are two — and the
+    ///        rasterizer picks between them by the same test.
+    NightSky readNightSky(SceneDesc& scene, Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh,
+        VFS::Path::NormalizedView fallback);
 }

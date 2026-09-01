@@ -203,6 +203,7 @@ if (OPENMW_RTX)
         sky/clouds.cpp
         sky/skyroll.cpp
         sky/sun.cpp
+        sky/timeofday.cpp
         weather/downpour.cpp
     )
     list(APPEND UNITTEST_SRC_FILES ${RTX_TEST_FILES})

@@ -79,15 +79,6 @@ derivation written twice.
 
 ## One fact, two derivations
 
-- [ ] **`Sky::TimeOfDaySettings` is built twice from the same fallback keys.**
-  `MWWorld::WeatherManager` fills its `mTimeSettings` field by field
-  (`apps/openmw/mwworld/weather.cpp:344-364`), and `Sky::TimeOfDaySettings::fromFallback()`
-  derives the identical value — same keys, same four `addSetting` calls, same "Stars" arithmetic.
-  The RT path reads `shared()` while the game's weather reads its own copy, so the two can drift
-  if either changes. Replace the block in `weather.cpp` with
-  `mTimeSettings = Sky::TimeOfDaySettings::shared()`. This also removes ~20 lines from an upstream
-  file.
-
 - [ ] **`RenderingManager` mirrors ~20 world facts into members only so `describeWorld()` can copy
   them out again.** The header grew a parallel field list (`mSunPosition` … `mStormParticleDirection`
   in `renderingmanager.hpp`) whose only reader is the per-frame `WorldState` assembly. Hold one
@@ -116,12 +107,3 @@ items below keep the one shared table and shrink the standing diff for future up
   `mapwindow.cpp` and `localmap.cpp`. The rationale is good — move it to the RTX-owned side of each
   seam (`sceneframe.hpp`, `renderer.hpp`, `components/sky`, `components/weather`) and keep the
   upstream edits mechanical. Every removed line is one fewer conflict at the next upstream merge.
-
-## The core reaches for globals
-
-- [ ] **`components/rtx` reads the game's settings registry in three files.**
-  `cloudshell.cpp:264` and `nightsky.cpp:266` read `Settings::models()`, and `distantland.cpp:10-15`
-  reads `Settings::rtx()` and `Settings::camera()`. This couples the core to the settings machinery,
-  which every host must then initialise. Pass the three values in — the mesh paths through the
-  builders' existing reading structs, the two distances through `DistantLand`'s constructor. The
-  hosts already own configuration plumbing on both sides.

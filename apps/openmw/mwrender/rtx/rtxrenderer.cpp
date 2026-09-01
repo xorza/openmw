@@ -98,6 +98,16 @@ namespace MWRender
         /// has to be nearer than anything the eye can find itself inside of.
         constexpr float sNear = 1.0f;
 
+        /// How much world this renderer builds, in units.
+        ///
+        /// **One reading for the game, because `components/rtx` holds no settings registry.** The
+        /// ground, the air and the distant lights are all measured over the same number, and a host
+        /// that answered the question twice could build ground to one reach and air to another.
+        float landReach()
+        {
+            return Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance);
+        }
+
         /// How often the trace's running average is reported. Five seconds at sixty frames.
         constexpr std::uint32_t sReportEvery = 300;
 
@@ -269,7 +279,7 @@ namespace MWRender
 
     float RtxRenderer::getTerrainViewDistance(float, float) const
     {
-        return Rtx::distantLandReach();
+        return landReach();
     }
 
     void RtxRenderer::attachWorld(RenderingManager& world, osg::Group& worldRoot)
@@ -618,7 +628,10 @@ namespace MWRender
         if (mMoonFaces.mMasser == Rtx::sNoIndex)
         {
             mMoonFaces = Rtx::addMoonFaces(mScene);
-            mSkyContent = Rtx::addSkyContent(mScene, *mResources->getSceneManager());
+            mSkyContent = Rtx::addSkyContent(mScene, *mResources->getSceneManager(),
+                Rtx::SkyMeshes{ .mClouds = Settings::models().mSkyclouds,
+                    .mStars = Settings::models().mSkynight02,
+                    .mStarsFallback = Settings::models().mSkynight01 });
         }
 
         // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror and
@@ -664,6 +677,7 @@ namespace MWRender
         // these must not stand again, and `Terrain::World` is where both renderers read that from.
         mDistantLights.follow(&frame.mObjectStorage, frame.mTerrain.getWorldspace());
         mDistantLights.setViewPoint(eye);
+        mDistantLights.setReach(landReach());
         mDistantLights.setActiveGrid(frame.mTerrain.getActiveGrid());
         mDistantLights.setOutdoors(!frame.mWorld.isInteriorCell());
 
@@ -843,8 +857,8 @@ namespace MWRender
         // that can tell one: `WorldReading::mFogFromSky` says what turns on it.
         const bool fogFromSky = world.isOutdoors() && !world.isInteriorCell();
         const Rtx::Fog air = room.has_value() ? room->mFog
-            : fogFromSky                      ? Rtx::exteriorFog(haze, world.mFogDepth, world.mBaseWindSpeed)
-                                              : Rtx::roomFog(haze, world.mFogDepth);
+            : fogFromSky ? Rtx::exteriorFog(haze, world.mFogDepth, world.mBaseWindSpeed, landReach())
+                         : Rtx::roomFog(haze, world.mFogDepth);
 
         // **Before the frame rather than into it, because the deck is lit by them.** A cloud layer
         // takes the moons' light like anything else under a night sky, and `Rtx::deckLight` is

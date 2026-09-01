@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include "distantland.hpp"
 #include "lightbuilder.hpp"
 
 namespace Rtx
@@ -29,10 +28,8 @@ namespace Rtx
         return osg::componentMultiply(skyMean, hue / brightest);
     }
 
-    Fog exteriorFog(const osg::Vec3f& colour, float depth, float wind)
+    Fog exteriorFog(const osg::Vec3f& colour, float depth, float wind, float reach)
     {
-        const float reach = distantLandReach();
-
         return Fog{
             .mColour = colour,
             .mExtinction = fogExtinction(depth, reach),

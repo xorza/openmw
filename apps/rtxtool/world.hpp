@@ -42,6 +42,13 @@ namespace RtxTool
 {
     class Content;
 
+    /// How much world the harness builds, in units.
+    ///
+    /// **One reading for the tool, the way `MWRender::RtxRenderer` keeps one for the game.**
+    /// `components/rtx` holds no settings registry, so each host answers this out of
+    /// `[RTX] distant land cells` and `[Camera] viewing distance` for itself.
+    float landReach();
+
     /// A Morrowind world stood up with no window and no game running.
     ///
     /// Everything OpenMW builds between the content files and a frame — the resource managers that

@@ -21,7 +21,6 @@
 #include <components/misc/constants.hpp>
 #include <components/platform/platform.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/rtx/distantland.hpp>
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/renderer.hpp>
@@ -178,7 +177,7 @@ namespace RtxTool
             // find the edge of a three-cell square there. Zero hands the air back to `viewing
             // distance`, which is what that square was always lit for.
             Settings::rtx().mDistantLandCells.set(paged ? cells : 0.0f);
-            world.setTerrainViewDistance(Rtx::distantLandReach());
+            world.setTerrainViewDistance(landReach());
         }
 
         /// Who stands in the region, from the command line. **One reading of it**, because a

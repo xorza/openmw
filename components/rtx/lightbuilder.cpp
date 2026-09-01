@@ -191,7 +191,7 @@ namespace Rtx
             };
         }
 
-        Daylight settle(const Reading& read, const Sky::TimeOfDaySettings& times, float hour)
+        Daylight settle(const Reading& read, const Sky::TimeOfDaySettings& times, float hour, float reach)
         {
             const Sky::SunPlacement sun = Sky::sunAt(hour, times);
             const osg::Vec3f haze = decodeColour(read.mHaze);
@@ -221,7 +221,7 @@ namespace Rtx
                 // are gone before the sun is up. Nothing but night has any of it.
                 .mStarFade = Sky::TimeOfDayInterpolator<float>(0.0f, 0.0f, 0.0f, 1.0f).getValue(hour, times, "Stars"),
                 .mExposureBias = exposureBias(sky.mSun.mIrradiance, sky.mAmbient),
-                .mFog = exteriorFog(haze, read.mFogDepth, read.mWindSpeed),
+                .mFog = exteriorFog(haze, read.mFogDepth, read.mWindSpeed, reach),
             };
         }
     }
@@ -359,13 +359,13 @@ namespace Rtx
         return std::max(Sky::sunShareAt(hour - offset, times), Sky::sunShareAt(hour + offset, times));
     }
 
-    Daylight makeDaylight(std::string_view weather, float hour)
+    Daylight makeDaylight(std::string_view weather, float hour, float reach)
     {
         const Sky::TimeOfDaySettings& times = Sky::TimeOfDaySettings::shared();
-        return settle(readWeather(weather, times, hour), times, hour);
+        return settle(readWeather(weather, times, hour), times, hour, reach);
     }
 
-    Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour)
+    Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour, float reach)
     {
         const Sky::TimeOfDaySettings& times = Sky::TimeOfDaySettings::shared();
         const Reading a = readWeather(from, times, hour);
@@ -386,7 +386,7 @@ namespace Rtx
                 .mFogDepth = mix(a.mFogDepth, b.mFogDepth),
                 .mWindSpeed = mix(a.mWindSpeed, b.mWindSpeed),
             },
-            times, hour);
+            times, hour, reach);
     }
 
     void requireWeather(std::string_view weather, const std::map<std::string, float, std::less<>>& floats,

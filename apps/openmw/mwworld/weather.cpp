@@ -341,27 +341,7 @@ namespace MWWorld
         , mRegions()
         , mResult()
     {
-        mTimeSettings.mNightStart = mSunsetTime + mSunsetDuration;
-        mTimeSettings.mNightEnd = mSunriseTime;
-        mTimeSettings.mDayStart = mSunriseTime + mSunriseDuration;
-        mTimeSettings.mDayEnd = mSunsetTime;
-
-        mTimeSettings.addSetting("Sky");
-        mTimeSettings.addSetting("Ambient");
-        mTimeSettings.addSetting("Fog");
-        mTimeSettings.addSetting("Sun");
-
-        // Morrowind handles stars settings differently for other ones
-        mTimeSettings.mStarsPostSunsetStart = Fallback::Map::getFloat("Weather_Stars_Post-Sunset_Start");
-        mTimeSettings.mStarsPreSunriseFinish = Fallback::Map::getFloat("Weather_Stars_Pre-Sunrise_Finish");
-        mTimeSettings.mStarsFadingDuration = Fallback::Map::getFloat("Weather_Stars_Fading_Duration");
-
-        Sky::WeatherSetting starSetting = { mTimeSettings.mStarsPreSunriseFinish,
-            mTimeSettings.mStarsFadingDuration - mTimeSettings.mStarsPreSunriseFinish,
-            mTimeSettings.mStarsPostSunsetStart,
-            mTimeSettings.mStarsFadingDuration - mTimeSettings.mStarsPostSunsetStart };
-
-        mTimeSettings.mSunriseTransitions["Stars"] = starSetting;
+        mTimeSettings = Sky::TimeOfDaySettings::shared();
 
         mWeatherSettings.reserve(10);
         // These distant land fog factor and offset values are the defaults MGE XE provides. Should be

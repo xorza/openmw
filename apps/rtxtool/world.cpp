@@ -3,6 +3,7 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/rtx/distantland.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/shadow.hpp>
 #include <components/settings/values.hpp>
@@ -50,6 +51,11 @@ namespace RtxTool
 
             return defines;
         }
+    }
+
+    float landReach()
+    {
+        return Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance);
     }
 
     World::World(const Content& content)
@@ -174,6 +180,11 @@ namespace RtxTool
             mResident->setViewPoint(where);
 
         mDistantLights.setViewPoint(where);
+
+        // **Told here rather than at construction**, because `--distant-cells` moves the setting
+        // after this world exists. `RtxRenderer` says it beside its own view point for the same
+        // reason.
+        mDistantLights.setReach(landReach());
     }
 
     void World::setActiveCellGrid(const Misc::CellGrid& grid)

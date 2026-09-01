@@ -373,7 +373,9 @@ namespace Rtx
     ///        "Overcast" and the rest. **A name that is none of the ten throws** `std::logic_error`
     ///        out of the fallback map, which whitelists its keys one weather at a time; whoever
     ///        takes a name from outside should put it through `weatherIndex` before this.
-    Daylight makeDaylight(std::string_view weather, float hour);
+    /// @param reach how much world is built, in units — `distantLandReach`. It is the air's and not
+    ///        the light's, and it is here because the air a weather makes is measured over it.
+    Daylight makeDaylight(std::string_view weather, float hour, float reach);
 
     /// The daylight partway between two weathers, at `blend` from the first to the second.
     ///
@@ -381,7 +383,7 @@ namespace Rtx
     /// weather's numbers are read at the hour and then mixed — the fog's recorded *depth* among them
     /// rather than the extinction it becomes, because those are two different curves and the engine
     /// converts after blending.
-    Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour);
+    Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour, float reach);
 
     /// A room's light, out of its own `AMBI` record — with `makeDaylight`, the other of the two
     /// places a `Daylight` is built, and the one the game and the harness both light a room by.

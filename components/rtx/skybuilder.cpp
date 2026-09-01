@@ -69,7 +69,7 @@ namespace Rtx
         return weather < mCloudCover.size() ? mCloudCover[weather] : 0.0f;
     }
 
-    SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes)
+    SkyContent addSkyContent(SceneDesc& scene, Resource::SceneManager& scenes, const SkyMeshes& meshes)
     {
         const VFS::Manager& vfs = *scenes.getVFS();
 
@@ -101,11 +101,11 @@ namespace Rtx
 
         // **The shape the deck hangs on is the mesh's**, both of its numbers: how high the layer is
         // in tiles of its own sheet, and how far it falls away over the ground it covers.
-        loaded.mShell = readCloudShell(scenes);
+        loaded.mShell = readCloudShell(scenes, meshes.mClouds);
 
         // **The night sky is the mesh's**, every number of it: which sheet the field wears, how much
         // sky a tile of it covers, where it fades out, and where the six patches sit.
-        loaded.mNight = readNightSky(scene, scenes);
+        loaded.mNight = readNightSky(scene, scenes, meshes.mStars, meshes.mStarsFallback);
 
         return loaded;
     }

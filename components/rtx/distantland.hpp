@@ -17,5 +17,12 @@ namespace Rtx
     /// element of the air — `Shaders::VisibilityConstants::mFogEdge` — closes at exactly this, and
     /// `QuadTreeWorld` culls a node on its distance to the eye, so the ball that is built and the
     /// ball that can be seen are the same one. Nothing is loaded past where the air has closed.
-    float distantLandReach();
+    ///
+    /// **Both numbers are handed in, because this library holds no settings registry.** A host
+    /// reads `[RTX] distant land cells` and `[Camera] viewing distance` and passes what it found.
+    ///
+    /// @param cells how many cells out to build. Nought hands the decision back to the rasterizer's
+    ///        knob, which is the escape hatch rather than the default.
+    /// @param viewingDistance what that knob says, in units.
+    float distantLandReach(float cells, float viewingDistance);
 }

@@ -16,6 +16,7 @@
 
 #include <apps/rtxtool/framing.hpp>
 #include <apps/rtxtool/placement.hpp>
+#include <apps/rtxtool/world.hpp>
 
 namespace RtxTool
 {
@@ -166,7 +167,7 @@ namespace RtxTool
             relight(outdoors, "Clear", 0, 12.0f);
             EXPECT_EQ(outdoors.mWeather, Rtx::Shaders::WEATHER_CLEAR);
             EXPECT_EQ(outdoors.mCloudBlend, 0.0f) << "a settled sky has crossed nothing";
-            EXPECT_EQ(outdoors.mDaylight.mSkyZenith, Rtx::makeDaylight("Clear", 12.0f).mSkyZenith);
+            EXPECT_EQ(outdoors.mDaylight.mSkyZenith, Rtx::makeDaylight("Clear", 12.0f, landReach()).mSkyZenith);
             EXPECT_GT(outdoors.mDaylight.mSun.mIrradiance.x(), 0.0f) << "noon has a sun";
 
             const osg::Vec3f noon = outdoors.mDaylight.mSun.mIrradiance;
@@ -176,7 +177,8 @@ namespace RtxTool
             // straight off the ramp, so a harness that switched the sun off at midnight lit its
             // nights differently from the game.
             relight(outdoors, "Clear", 0, 0.0f);
-            EXPECT_EQ(outdoors.mDaylight.mSun.mIrradiance, Rtx::makeDaylight("Clear", 0.0f).mSun.mIrradiance);
+            EXPECT_EQ(
+                outdoors.mDaylight.mSun.mIrradiance, Rtx::makeDaylight("Clear", 0.0f, landReach()).mSun.mIrradiance);
             EXPECT_NE(outdoors.mDaylight.mSun.mIrradiance, noon) << "midnight is not noon";
             EXPECT_EQ(outdoors.mWeather, Rtx::Shaders::WEATHER_CLEAR) << "the hour is not the weather";
 
@@ -185,12 +187,13 @@ namespace RtxTool
             EXPECT_EQ(outdoors.mWeather, Rtx::Shaders::WEATHER_OVERCAST);
             EXPECT_EQ(outdoors.mDay, 5);
             EXPECT_FLOAT_EQ(outdoors.mCloudSpeed, Sky::cloudSpeed("Overcast"));
-            EXPECT_EQ(outdoors.mDaylight.mSkyZenith, Rtx::makeDaylight("Overcast", 12.0f).mSkyZenith);
+            EXPECT_EQ(outdoors.mDaylight.mSkyZenith, Rtx::makeDaylight("Overcast", 12.0f, landReach()).mSkyZenith);
             EXPECT_GT(outdoors.mDaylight.mFog.mExtinction, 0.0f);
 
             // **And the two are different skies**, whichever file the numbers came out of, which is
             // what says the weather key does anything at all.
-            EXPECT_NE(Rtx::makeDaylight("Clear", 12.0f).mSkyZenith, Rtx::makeDaylight("Overcast", 12.0f).mSkyZenith);
+            EXPECT_NE(Rtx::makeDaylight("Clear", 12.0f, landReach()).mSkyZenith,
+                Rtx::makeDaylight("Overcast", 12.0f, landReach()).mSkyZenith);
 
             // The cell's own half is left where it was: nothing here reads the water.
             EXPECT_EQ(outdoors.mWaterLevel, -32.0f);
@@ -217,8 +220,8 @@ namespace RtxTool
                 return linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
             };
 
-            const osg::Vec3f clear = Rtx::makeDaylight("Clear", 12.0f).mSkyZenith;
-            const osg::Vec3f overcast = Rtx::makeDaylight("Overcast", 12.0f).mSkyZenith;
+            const osg::Vec3f clear = Rtx::makeDaylight("Clear", 12.0f, landReach()).mSkyZenith;
+            const osg::Vec3f overcast = Rtx::makeDaylight("Overcast", 12.0f, landReach()).mSkyZenith;
             for (int channel = 0; channel < 3; ++channel)
             {
                 const osg::Vec4f half(0.5f * (encode(clear[channel]) + encode(overcast[channel])), 0.0f, 0.0f, 0.0f);

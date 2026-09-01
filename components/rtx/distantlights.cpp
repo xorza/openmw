@@ -14,8 +14,6 @@
 #include <components/sceneutil/vismask.hpp>
 #include <components/terrain/objectstorage.hpp>
 
-#include "distantland.hpp"
-
 namespace Rtx
 {
     DistantLights::DistantLights() = default;
@@ -92,7 +90,7 @@ namespace Rtx
         if (mStorage == nullptr || !mOutdoors)
             return;
 
-        const int reach = static_cast<int>(std::ceil(distantLandReach() / Constants::CellSizeInUnits));
+        const int reach = static_cast<int>(std::ceil(mReach / Constants::CellSizeInUnits));
         const osg::Vec2i eye = cellOf(mViewPoint);
 
         for (int x = eye.x() - reach; x <= eye.x() + reach; ++x)

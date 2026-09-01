@@ -14,7 +14,6 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
 
 #include "shaders/scene.h"
@@ -259,9 +258,8 @@ namespace Rtx
         };
     }
 
-    CloudShell readCloudShell(Resource::SceneManager& scenes)
+    CloudShell readCloudShell(Resource::SceneManager& scenes, VFS::Path::NormalizedView mesh)
     {
-        const VFS::Path::Normalized mesh = Settings::models().mSkyclouds.get();
         if (!scenes.getVFS()->exists(mesh))
         {
             Log(Debug::Warning) << "no cloud mesh at \"" << mesh << "\"; drawing no deck";
