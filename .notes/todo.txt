@@ -19,3 +19,4 @@
 - gpu skin
 - micromaps
 - normal interpolation bug?
+- fog under the water surface
