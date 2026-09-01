@@ -194,6 +194,7 @@ if (OPENMW_RTX)
         rtxtool/props.cpp
         rtxtool/retire.cpp
         rtxtool/stability.cpp
+        rtxtool/staging.cpp
         rtxtool/terrainstorage.cpp
         rtxtool/validationchoice.cpp
         rtxtool/verify.cpp

@@ -228,8 +228,7 @@ namespace RtxTool
         /// frame is supposed to show.
         static constexpr float sWarmSeconds = 2.0f;
 
-        /// What the world's random draws start from, every time a region is staged. Both generators
-        /// take it — see the constructor for which two and why.
+        /// What the world's random draws start from, every time a region is staged.
         ///
         /// **A number, not an option**: nothing here wants a second world, and a caller that could
         /// choose would be a caller that could make a run incomparable with the one before it. One
@@ -237,6 +236,21 @@ namespace RtxTool
         /// not a state it has — and because one is what `std::rand` starts a process at, so a world
         /// staged first and a world staged tenth draw the sequence a fresh process would.
         static constexpr unsigned int sSeed = 1;
+
+        /// Puts the two sequences a staging draws at random from back where a fresh process holds
+        /// them. Which they are, and what each decides, is in the definition.
+        ///
+        /// **The one input to a staged picture that nothing else states, and the place a third one
+        /// found goes.** The rest of what a staging stands on is stated where it belongs: the light
+        /// ids at the top of the constructor, the clock at `setSeconds`, the sea at `mSeaSeconds`,
+        /// and the frame's own duration at `Rtx::FrameOptions::mSinceLast`.
+        ///
+        /// **Taken twice, because where a staging *starts* one is not where it starts *drawing* from
+        /// it.** Between the two, a region is read — and how much of a sequence that costs depends
+        /// on what the process already had cached, because a warm cache skips the loads that would
+        /// have drawn. So `warmEmitters` takes it again, and the plume over Seyda Neen stopped
+        /// depending on which towns a run had rendered first.
+        static void seedDraws();
 
         /// What this weather drives past the eye, kept because `driveWeather` aims it every frame:
         /// an ash storm blows off Red Mountain at whoever is watching, so where the camera stands

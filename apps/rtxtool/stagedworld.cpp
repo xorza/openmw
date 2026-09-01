@@ -11,6 +11,7 @@
 #include <components/misc/rng.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/frameworld.hpp>
+#include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/weather/downpour.hpp>
@@ -27,18 +28,16 @@ namespace RtxTool
         , mWorld(&world)
         , mActors(actors)
     {
-        // **The one input to a staged picture that nothing else states, and it comes from two
-        // generators rather than one.** A particle's direction, speed and lifetime, and a flickering
-        // lamp's phase, are drawn from `Misc::Rng`. Where each of the weather's drops falls in its
-        // box is drawn from the C library's `std::rand`, which is what `osgParticle::BoxPlacer` and
-        // every other `osgParticle::range` are written against, and which nothing else in this tree
-        // touches. Each is one sequence for the whole process, so a staging that began wherever the
-        // last one ended drew a different world — with only the first of the two reset, a `verify`
-        // of one view rendered a storm that a `verify` of every view did not, and the two disagreed
-        // on an eighth of the frame. The clock is stated at `setSeconds`, the sea at `mSeaSeconds`
-        // and the frame's own duration at `Rtx::FrameOptions::mSinceLast`.
-        Misc::Rng::init(sSeed);
-        std::srand(sSeed);
+        seedDraws();
+
+        // **And the counter a light's id comes from, here and nowhere else.** A
+        // `SceneUtil::LightSource` takes its id from one that runs for the whole process, and
+        // `Rtx::lightPhase` derives a flame's phase from it — so a cell staged a second time stood
+        // every flame somewhere else in its own cycle, and half of a lamp-lit room moved. Holding
+        // the phase at a constant made two stagings of one cell render identically, which is how it
+        // was found. Once, because the read below is what builds every light a region has:
+        // restarting the counter after it would hand two lights one id, and with it one phase.
+        SceneUtil::resetLightIds();
 
         const RegionLoad arrived = loadRegion(world, cell, *mRoot, mScene, mExtractor, mLoaded, request.mWeather,
             request.mDay, request.mHour, actors.mProps);
@@ -165,8 +164,25 @@ namespace RtxTool
         mWorld->clearTerrain();
     }
 
+    void StagedWorld::seedDraws()
+    {
+        // **Two generators and not one, which is how long this went half done.** A particle's
+        // direction, speed and lifetime, and a flickering lamp's phase, are drawn from `Misc::Rng`.
+        // Where each of the weather's drops falls in its box is drawn from the C library's
+        // `std::rand`, which is what `osgParticle::BoxPlacer` and every other `osgParticle::range`
+        // are written against and which nothing else in this tree touches. Each is one sequence for
+        // the whole process, so a staging that began wherever the last one ended drew a different
+        // world — with only the first reset, a `verify` of one view rendered a storm that a `verify`
+        // of every view did not, and the two disagreed on an eighth of the frame.
+        Misc::Rng::init(sSeed);
+        std::srand(sSeed);
+    }
+
     void StagedWorld::warmEmitters()
     {
+        // Taken here as well as at the top of a staging, and `seedDraws` says why.
+        seedDraws();
+
         // **A frame's worth at a time, because that is the step the emitters were authored
         // against**: a birth rate is particles per second, a collider bounces per step, and a
         // lifetime quantised to one long stride would put every particle at the same age. The

@@ -58,6 +58,11 @@ namespace SceneUtil
 {
     static int sLightId = 0;
 
+    void resetLightIds()
+    {
+        sLightId = 0;
+    }
+
     void configureStateSetSunOverride(const Light* light, osg::StateSet* stateset, int mode)
     {
         stateset->addUniform(new osg::Uniform("sun.position", light->getPosition()), mode);
