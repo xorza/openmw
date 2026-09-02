@@ -20,3 +20,4 @@
 - fog under the water surface
 - load time allocations
 - move some computations to loadtime
+- where to save shadercache
