@@ -143,6 +143,11 @@ Expected gain is bandwidth in the accumulator and the five wavelet levels; the t
 bandwidth-bound. Measure per zone with the GPU timer before and after, and keep `moments` at full
 precision — `E[l²] - E[l]²` cancels catastrophically in half floats.
 
+`.notes/rtx/gbuffer-plan.md` is this finding measured and staged. It corrects three things: the two
+radiance channels are already closed by the experiment `gbuffer.cpp` records, a world distance
+overflows a half at 65504 against a far plane of 200000, and neither the accumulator nor the cascade
+runs in the frame the budget is written against.
+
 ### 5. Vertex normals as octahedral `snorm16x2`
 
 Normals are three floats a vertex, in three copies (`SlotBlocks`), rewritten per frame for every
