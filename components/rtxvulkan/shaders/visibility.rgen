@@ -2,6 +2,8 @@
 
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_ray_query : require
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_shader_invocation_reorder : require
 #extension GL_EXT_ray_tracing_position_fetch : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_nonuniform_qualifier : require
@@ -16,6 +18,15 @@
 // A hit gives an instance, a triangle and two barycentrics; everything else is a table lookup. The
 // positions come back out of the acceleration structure through position fetch, so the only vertex
 // data bound here is what that cannot give: normals and texture coordinates.
+//
+// **A ray generation shader and still one inline ray query per ray.** Nothing here is traced by the
+// pipeline and nothing is executed off a hit object; what the launch buys is `reorderThreadEXT`,
+// which no compute dispatch may ask for. `REORDER` is what decides whether it is asked for at all,
+// and `.notes/rtx/ser-plan.md` is the argument.
+
+// **Before anything is included.** `lib/reorder.glsl` declares a hit object attribute and a call
+// only a ray generation shader may make, and it is reached from a compute shader as well.
+#define RTX_REORDERING
 
 #include "camera.h"
 #include "scene.h"
@@ -25,6 +36,7 @@
 #include "lib/fog.glsl"
 #include "lib/frame.glsl"
 #include "lib/random.glsl"
+#include "lib/reorder.glsl"
 #include "lib/reproject.glsl"
 #include "lib/shading.glsl"
 #include "lib/sky.glsl"
@@ -32,52 +44,6 @@
 #include "lib/traversal.glsl"
 #include "lib/underwater.glsl"
 #include "lib/water.glsl"
-
-layout(local_size_x = VISIBILITY_WORKGROUP, local_size_y = VISIBILITY_WORKGROUP) in;
-
-/// How many workgroups across one strip of the dispatch is, before it wraps to the next.
-///
-/// **The dispatch's own order is a row of the screen, and a row is the worst shape for this.** A
-/// workgroup's cost here is what its rays touch — the acceleration structure they walk and the
-/// textures they land on — and neighbouring rays touch the same things. Row-major hands the device
-/// groups that are adjacent across the frame and a whole screen width apart down it, so the working
-/// set of everything in flight is a band as wide as the picture. Strips make it a column instead,
-/// which is the same argument a texture's own tiling makes.
-///
-/// **Sixteen, measured.** Traced at 1280x720 the grid is 160 by 90 groups, and the trace runs at
-/// 1.80, 1.76, 1.72, 1.73, 1.77 and 1.79 ms over Seyda Neen at strips of 4, 8, 16, 32, 64 and 128
-/// against 2.00 row-major. The floor is flat between 16 and 32 and climbs either side: too narrow
-/// and a strip is back to being a band, too wide and there are barely two of them, which is the
-/// row-major shape turned on its side. Sixteen rather than thirty-two because the two measure the
-/// same here and this is 128 pixels across — still a strip at the smaller frames a performance
-/// upscale traces, where thirty-two would be most of the width.
-///
-/// The interior is unmoved at every width: a room is small enough that its rays were never far
-/// apart. What this buys is bought outdoors.
-const uint VISIBILITY_STRIP = 16u;
-
-/// Which workgroup this invocation stands in, once the dispatch has been re-ordered into strips.
-///
-/// **A permutation and nothing else**: every group still runs, once, over the pixels it always
-/// covered — what changes is only which of them the device starts near which. So the picture is the
-/// same picture, and the hit counter sums the same ones.
-///
-/// The last strip is whatever width is left over, which is what keeps this a bijection on a frame
-/// whose width is not a multiple of the strip. **That width is never nought**, which is what the
-/// divide below rests on: the largest index is `count.x * count.y - 1`, so the largest strip is
-/// under `count.x / VISIBILITY_STRIP` and the strip it names always has a column left in it.
-uvec2 stripedWorkgroup(uvec2 group, uvec2 count)
-{
-    const uint perStrip = VISIBILITY_STRIP * count.y;
-    // `flat` is what this wants to be called, and GLSL reserves it for interpolation.
-    const uint index = group.y * count.x + group.x;
-
-    const uint strip = index / perStrip;
-    const uint within = index % perStrip;
-    const uint across = min(count.x - strip * VISIBILITY_STRIP, VISIBILITY_STRIP);
-
-    return uvec2(strip * VISIBILITY_STRIP + within % across, within / across);
-}
 
 /// What a solid the eye found is: its direct light, the one bounce it gathers, and what it is in
 /// the upscaler's terms.
@@ -94,10 +60,10 @@ void shadeSolid(Surface hit, uvec2 pixel, out vec3 direct, out vec3 bounce, out 
 
 void main()
 {
-    const uvec2 pixel = stripedWorkgroup(gl_WorkGroupID.xy, gl_NumWorkGroups.xy) * VISIBILITY_WORKGROUP
-        + gl_LocalInvocationID.xy;
-    if (pixel.x >= frame.mCamera.mWidth || pixel.y >= frame.mCamera.mHeight)
-        return;
+    // **The launch is the frame, so there is no tail to test for.** A dispatch covered the picture
+    // in whole workgroups and every one of them had to ask whether it had run off the edge;
+    // `vkCmdTraceRaysKHR` is handed the width and the height themselves.
+    const uvec2 pixel = gl_LaunchIDEXT.xy;
 
     // The same rays the wavelet rebuilds, from the same `rayAt` — a filter reconstructing positions
     // from a ray that differed by half a pixel would be filtering somewhere the surface is not.
@@ -106,10 +72,38 @@ void main()
     const vec3 direction = ray.mDirection;
 
     const Cone cone = coneAt(frame.mCamera);
-    // The eye alone asks for the first-person arms; `MASK_FIRST_PERSON` says why nothing else does.
-    Surface surface
-        = trace(origin, direction, 0.0, cone.mWidth, cone.mSpread, MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON);
 
+    // The eye alone asks for the first-person arms; `MASK_FIRST_PERSON` says why nothing else does.
+    rayQueryEXT primary;
+    Hit found;
+    RTX_TRAVERSE(primary, found, origin, direction, 0.0, cone.mWidth, cone.mSpread,
+        MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON)
+
+    // **The traversal has answered and nothing has been resolved off it, which is where the sources
+    // put the call.** What is live across it is the pixel, the ray, the cone and the `Hit`; the hit
+    // object carries the rest — the kind of shading ahead as its shader-table index, and where the
+    // hit is as the hardware's own last key. A miss is recorded too, so that every invocation
+    // reaches one call with the same count of hint bits.
+    //
+    // **All three forms of the call, because they are three different trades.** The hit object sorts
+    // by kind and by place and gives up the screen neighbourhood this trace writes eleven channels
+    // through; the hint sorts by kind alone and keeps it; both is both. `--reorder` picks one.
+    //
+    // **This changes the picture in its last bits, and that was measured rather than assumed.** The
+    // call itself is value-neutral — put after every store, the frame comes back byte for byte the
+    // one the launch drew without it. Put here, it is a barrier the driver rebuilds the code around:
+    // live state is rematerialised rather than spilled, a multiply-add contracts on one side of it
+    // and not the other, and a single-sample bounce or a reservoir tie then lands somewhere else.
+    // `.notes/rtx/ser-plan.md` §9.2 carries the numbers.
+    if (REORDER == REORDER_HIT)
+        RTX_REORDER(primary, found, origin, direction, 0u, 0)
+    else if (REORDER == REORDER_BOTH)
+        RTX_REORDER(primary, found, origin, direction, reorderFlags(found), REORDER_FLAG_BITS)
+    else if (REORDER == REORDER_HINT)
+        // No hit object, so the kind the shader identifier would have carried goes in the hint.
+        reorderThreadEXT(reorderKey(found), REORDER_KIND_BITS + REORDER_FLAG_BITS);
+
+    Surface surface = resolve(found, origin, direction);
 
     // **The nearest surface the eye is looking through, peeled off and kept.** A pane of glass is
     // one, and so is an actor the game is fading — Invisibility, Chameleon, or the distance fade at
@@ -144,7 +138,6 @@ void main()
 
         surface = trace(origin, direction, surface.mDistance + SHADOW_BIAS, cone.mWidth, cone.mSpread,
             MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON);
-
     }
 
     // Three channels rather than a colour: what is finished, what a filter may still work on, and

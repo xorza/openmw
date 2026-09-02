@@ -125,6 +125,16 @@ namespace Rtx
                 return "missing features: " + names;
             }
 
+            // **A driver that takes the hint and ignores it is refused.** The whole of the reorder
+            // is what the hardware does with the key, so a device that reorders nothing runs a trace
+            // that pays for the call and buys nothing — and this tree keeps no second path for one.
+            if (properties.mInvocationReorder.rayTracingInvocationReorderReorderingHint
+                != VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_EXT)
+                return "reports reordering hint mode "
+                    + std::to_string(
+                        static_cast<int>(properties.mInvocationReorder.rayTracingInvocationReorderReorderingHint))
+                    + ", which is not REORDER";
+
             if (findQueueFamily(handle) < 0)
                 return "no queue family with graphics, compute and transfer";
 
@@ -220,10 +230,26 @@ namespace Rtx
         else
             out << bits << " bits at " << base.limits.timestampPeriod << " ns a tick\n";
 
+        const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& pipeline = mProperties->mRayTracingPipeline;
+        const VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT& reorder = mProperties->mInvocationReorder;
+
         out << "\nray tracing\n"
             << "  max geometry count:           " << as.maxGeometryCount << '\n'
             << "  max instance count:           " << as.maxInstanceCount << '\n'
-            << "  max primitive count:          " << as.maxPrimitiveCount << '\n';
+            << "  max primitive count:          " << as.maxPrimitiveCount << '\n'
+            << "  shader group handle:          " << pipeline.shaderGroupHandleSize << " bytes, aligned "
+            << pipeline.shaderGroupHandleAlignment << ", based " << pipeline.shaderGroupBaseAlignment << '\n'
+            << "  max ray dispatch:             " << pipeline.maxRayDispatchInvocationCount << '\n'
+            << "  reordering hint:              "
+            << (reorder.rayTracingInvocationReorderReorderingHint == VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_EXT
+                       ? "reorder"
+                       : "none")
+            << '\n'
+            // **What a hit object may record and never execute**, which is the whole of what Stage 1
+            // asks of the shader table. The field arrived with the extension's revision 2, so a
+            // driver at revision 1 leaves it as it found it — printed rather than asserted against
+            // for that reason.
+            << "  max record index:             " << reorder.maxShaderBindingTableRecordIndex << '\n';
 
         out << "\noptional extensions present\n";
         if (mOptionalExtensions.empty())

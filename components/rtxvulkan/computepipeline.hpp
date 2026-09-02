@@ -7,6 +7,9 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "owned.hpp"
+#include "pipelinelayout.hpp"
+
 namespace Rtx
 {
     class Device;
@@ -17,12 +20,12 @@ namespace Rtx
     /// **The three are one object because they fail as one.** A constructor that throws gets no
     /// destructor, so a pass that made these itself had to unwind them by hand or leave a layout
     /// behind for `vkDestroyDevice` to find — which the layers report and the abort policy turns
-    /// into an abort with no message. As a member, whatever finished being constructed is destroyed
-    /// when the pass's own constructor throws. The one hand-written unwind left in the renderer is
-    /// the one below, and every pass that holds one of these is free of it.
+    /// into an abort with no message. Held as members that end themselves, whatever finished being
+    /// constructed is destroyed when the pass's own constructor throws, and there is no unwind to
+    /// write.
     ///
-    /// Set zero is always a push descriptor set: nothing in this renderer wants a descriptor pool
-    /// on the frame path.
+    /// `TracePipeline` is the same object for a launch. Both address themselves through
+    /// `PipelineLayout`.
     class ComputePipeline
     {
     public:
@@ -43,22 +46,17 @@ namespace Rtx
             std::uint32_t pushConstantBytes, std::span<const VkDescriptorSetLayout> laterSets,
             const std::filesystem::path& module, std::string_view name,
             std::span<const std::uint32_t> specialization = {});
-        ~ComputePipeline();
 
         ComputePipeline(const ComputePipeline&) = delete;
         ComputePipeline& operator=(const ComputePipeline&) = delete;
 
-        VkPipeline getHandle() const { return mHandle; }
+        VkPipeline getHandle() const { return mHandle.get(); }
 
         /// What descriptors are pushed against and push constants are written through.
-        VkPipelineLayout getLayout() const { return mLayout; }
+        VkPipelineLayout getLayout() const { return mLayout.getHandle(); }
 
     private:
-        void destroy();
-
-        const Device& mDevice;
-        VkDescriptorSetLayout mSetLayout = VK_NULL_HANDLE;
-        VkPipelineLayout mLayout = VK_NULL_HANDLE;
-        VkPipeline mHandle = VK_NULL_HANDLE;
+        PipelineLayout mLayout;
+        Owned<VkPipeline, vkDestroyPipeline> mHandle;
     };
 }

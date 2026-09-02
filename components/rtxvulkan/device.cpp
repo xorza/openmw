@@ -96,6 +96,9 @@ namespace Rtx
             load(mHandle, mFunctions.mCmdBuildAccelerationStructures, "vkCmdBuildAccelerationStructuresKHR");
             load(mHandle, mFunctions.mGetAccelerationStructureDeviceAddress,
                 "vkGetAccelerationStructureDeviceAddressKHR");
+            load(mHandle, mFunctions.mCreateRayTracingPipelines, "vkCreateRayTracingPipelinesKHR");
+            load(mHandle, mFunctions.mGetRayTracingShaderGroupHandles, "vkGetRayTracingShaderGroupHandlesKHR");
+            load(mHandle, mFunctions.mCmdTraceRays, "vkCmdTraceRaysKHR");
             load(mHandle, mFunctions.mGetPipelineExecutableProperties, "vkGetPipelineExecutablePropertiesKHR");
             load(mHandle, mFunctions.mGetPipelineExecutableStatistics, "vkGetPipelineExecutableStatisticsKHR");
 
@@ -149,6 +152,18 @@ namespace Rtx
         std::uint32_t executables = 0;
         checkVk(mFunctions.mGetPipelineExecutableProperties(mHandle, &asked, &executables, nullptr),
             "vkGetPipelineExecutablePropertiesKHR");
+
+        // **Silence and "nothing to say" are different answers, and this is the second.** NVIDIA's
+        // compiler reports no executable at all for a ray tracing pipeline, where it reports one for
+        // every compute pipeline in this renderer — so the trace's register count, which is what an
+        // occupancy figure is made of, is not a number this device will give. Said once per pipeline
+        // rather than left as a missing line, because a reader otherwise cannot tell it from a call
+        // nobody made.
+        if (executables == 0)
+        {
+            Log(Debug::Verbose) << "pipeline " << name << ": the driver reports no executable";
+            return;
+        }
 
         for (std::uint32_t executable = 0; executable < executables; ++executable)
         {

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "reconstruction.hpp"
+#include "reorder.hpp"
 #include "shaders/visibility.h"
 #include "texturedata.hpp"
 #include "upscale.hpp"
@@ -115,6 +116,14 @@ namespace Rtx
         /// nought, where a writer who forgets it pays for a number nobody looks at. A wrong figure
         /// is worse than a slow one.
         bool mCountHits = true;
+
+        /// What the trace does with the threads its launch handed it.
+        ///
+        /// **Off, because off is faster.** The reorder costs this trace 7 to 17 percent at every
+        /// view of the default suite and buys nothing back — `.notes/rtx/ser-plan.md` §9 is the
+        /// measurement. It is kept switchable rather than removed because what it answers is
+        /// divergence at the primary hit, and the shape of that frame is what Stage 2 changes.
+        Reorder mReorder = Reorder::Off;
     };
 
     /// One vertex of the GUI: a position already in clip space, a colour packed a byte a channel,

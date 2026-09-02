@@ -162,6 +162,7 @@ if (OPENMW_RTX)
         rtx/terrainresidency.cpp
         rtx/structurestorage.cpp
         rtx/texturebuilder.cpp
+        rtx/tracepipeline.cpp
         rtx/visibility/filter.cpp
         rtx/visibility/fixture.hpp
         rtx/visibility/fog.cpp

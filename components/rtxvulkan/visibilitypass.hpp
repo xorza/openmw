@@ -9,10 +9,12 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/reorder.hpp>
 #include <components/rtx/shaders/visibility.h>
 
 #include "buffer.hpp"
 #include "computepipeline.hpp"
+#include "tracepipeline.hpp"
 
 namespace Rtx
 {
@@ -128,9 +130,12 @@ namespace Rtx
         ///        facility: `shot` prints it and a test asserts on it, and nothing in the game reads
         ///        it — so it is specialized away rather than branched on, and the game's module
         ///        carries no atomic at all.
+        /// @param reorder what the trace does with the threads its launch handed it. Fixed for the
+        ///        life of the pass, the way `countHits` is: it is a decision about the build and not
+        ///        about what is being looked at.
         VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
             VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-            bool countHits);
+            bool countHits, Reorder reorder);
 
         VisibilityPass(const VisibilityPass&) = delete;
         VisibilityPass& operator=(const VisibilityPass&) = delete;
@@ -176,17 +181,18 @@ namespace Rtx
         /// before it and the one after.
         void writeConstants(VkCommandBuffer commands, const Shaders::VisibilityConstants& described) const;
 
-        /// Pushes set zero — everything both dispatches read — and binds the three sets nothing
-        /// pushes.
+        /// Pushes set zero — everything both passes read — and binds the three sets nothing pushes.
         ///
-        /// **Both of them, because the two dispatches read the same world.** A volume asks the same
+        /// **Both of them, because the two passes read the same world.** A volume asks the same
         /// questions of the same tables the trace does: it traces shadow rays against the same
-        /// structure, resolves the same alpha out of the same textures, and reads the same lamps.
-        void pushInputs(VkCommandBuffer commands, const ComputePipeline& pipeline, const VisibilityInputs& inputs,
-            const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const;
+        /// structure, resolves the same alpha out of the same textures, and reads the same lamps. So
+        /// this takes a layout and a bind point rather than a pipeline: one is a launch and the
+        /// other a dispatch, and what they are handed is the same.
+        void pushInputs(VkCommandBuffer commands, VkPipelineBindPoint bindPoint, VkPipelineLayout layout,
+            const VisibilityInputs& inputs, const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const;
 
         /// The kernel for `variant`, which `compileEvery` made.
-        const ComputePipeline& pipelineFor(VisibilityVariant variant) const;
+        const TracePipeline& pipelineFor(VisibilityVariant variant) const;
 
         /// The same, for the pass that fills the fog volume. Null for an even air, which reads the
         /// closed form and dispatches no volume.
@@ -209,6 +215,9 @@ namespace Rtx
         /// what counts hits is which binary was built and not what is being looked at.
         std::uint32_t mCountHits = 0;
 
+        /// The same, for what the launch is asked to do with its threads.
+        Reorder mReorder = Reorder::Off;
+
         /// The second of the two sets bound after the pushed one, which the renderer owns for its
         /// whole life. The first is the scene's and arrives with the frame — `mTextureLayout`.
         VkDescriptorSetLayout mChannelLayout = VK_NULL_HANDLE;
@@ -218,12 +227,15 @@ namespace Rtx
         VkDescriptorSetLayout mVolumeLayout = VK_NULL_HANDLE;
 
         /// Where the compiled modules are, kept because a variant is compiled long after
-        /// construction.
-        std::filesystem::path mModule;
+        /// construction. The trace's are one launch's worth — the ray generation shader and the
+        /// records a hit object may name; `TraceShaders` says why the second kind exists.
         std::filesystem::path mVolumeModule;
+        std::filesystem::path mRaygenModule;
+        std::array<std::filesystem::path, 1> mMissModules;
+        std::array<std::filesystem::path, 3> mHitModules;
 
         /// One pipeline per tuple, every one of them made by `compileEvery`.
-        std::array<std::unique_ptr<ComputePipeline>, VisibilityVariant::sCount> mPipelines;
+        std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mPipelines;
 
         /// The same table for the volume, of which only the half with `mUniformFog` false is
         /// filled: a room reads the closed form and no volume is dispatched for it.

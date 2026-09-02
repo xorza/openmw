@@ -180,6 +180,128 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
             rayQueryConfirmIntersectionEXT(query);                                                          \
     }
 
+/// What a traversal answered, before anything at all is read off it.
+///
+/// **Geometry the query alone can give**: no instance row, no mesh, no vertex and no material. That
+/// is what makes this the record a reorder is sorted on — everything a hit *leads to* is read after
+/// the threads have been regrouped, where the lanes of a warp are asking about the same instance.
+struct Hit
+{
+    bool mHit;
+
+    /// Which row of the instance table this came off, which is the custom index the build wrote and
+    /// not the structure's own.
+    uint mInstance;
+
+    uint mPrimitive;
+    vec2 mBary;
+    float mDistance;
+
+    /// How wide the ray's cone was where it landed.
+    float mFootprint;
+
+    /// Twice the area of the triangle, as a vector along its plane's normal, in world space.
+    ///
+    /// **Made here rather than carried as three corners**, because the corners come out of the query
+    /// through position fetch and nothing past the traversal wants them: one cross product is three
+    /// floats where they are nine, and `resolve` needs only what the cross says.
+    vec3 mCrossed;
+
+    /// The vertex normal interpolated across the triangle, in world space — or nought where the
+    /// mesh carries none, which `resolve` reads as "use the plane".
+    ///
+    /// **Three floats where the transform they came through is nine.** Live state is what a reorder
+    /// costs, and the object-to-world matrix is only ever used to bring this one vector across, so
+    /// the vector is what survives the call and the matrix does not. Not unit: `resolve` normalises
+    /// it, and the uniform scale in the transform drops out there.
+    vec3 mShading;
+};
+
+/// A ray that committed nothing, as far away as anything can be.
+Hit noHit()
+{
+    Hit hit;
+    hit.mHit = false;
+    hit.mInstance = 0u;
+    hit.mPrimitive = 0u;
+    hit.mBary = vec2(0.0);
+    hit.mDistance = frame.mFar;
+    hit.mFootprint = 0.0;
+    hit.mCrossed = vec3(0.0);
+    hit.mShading = vec3(0.0);
+
+    return hit;
+}
+
+/// The committed intersection, read off the query and put into world space.
+///
+/// @param corners the triangle as position fetch gave it, in the mesh's own space.
+Hit committedHit(
+    uint instance, uint primitive, vec2 bary, float distance, float footprint, vec3 corners[3], mat4x3 toWorld)
+{
+    Hit hit;
+    hit.mHit = true;
+    hit.mInstance = instance;
+    hit.mPrimitive = primitive;
+    hit.mBary = bary;
+    hit.mDistance = distance;
+    hit.mFootprint = footprint;
+    hit.mCrossed = triangleCross(corners, toWorld);
+
+    // **The one vertex fetch a traversal does, and it is here so that the transform need not
+    // survive the call.** The test is on the mesh's own normal rather than on the transformed one,
+    // which is the decision `resolve` used to make: a mesh with no normals stores zeros, and a
+    // scale that shrank a real normal past the threshold would otherwise change which branch it
+    // took.
+    const GpuInstance placement = instances[instance];
+    const vec3 shading = triangleNormal(triangleCorners(meshes[placement.mMesh], primitive), cornerWeights(bary));
+    hit.mShading = dot(shading, shading) > 1e-8 ? mat3(toWorld) * shading : vec3(0.0);
+
+    return hit;
+}
+
+/// A traversal run to completion, with whatever it committed read into `hit`.
+///
+/// **A macro for the reason `RTX_RESOLVE` is one, and for one more.** `glslc` refuses a `rayQueryEXT`
+/// as a parameter, so a traversal cannot be handed to a function — and a ray generation shader has to
+/// reach the same query again afterwards to record its hit object out of it, which no
+/// `out hitObjectEXT` could carry back either, because that type may not be a parameter. So the body
+/// is written once here and expanded at the two places that need it.
+///
+/// @param query an uninitialised traversal, which this leaves committed so that a caller may record
+///        a hit object from it.
+/// @param hit a `Hit` this fills in.
+/// @param footprint,spread how wide the ray's cone starts and how fast it opens. See `trace`.
+#define RTX_TRAVERSE(query, hit, origin, direction, tmin, footprint, spread, mask)                          \
+    {                                                                                                       \
+        /* No blanket opaque flag: the per-instance bits the build set from each material are what   */      \
+        /* decide whether traversal stops to ask, and forcing opacity here would override them and   */      \
+        /* put every leaf back inside the card it was painted on.                                    */      \
+        rayQueryInitializeEXT(                                                                              \
+            (query), sceneTop, gl_RayFlagsNoneEXT, (mask), (origin), (tmin), (direction), frame.mFar);      \
+                                                                                                            \
+        /* An lvalue the resolve needs and nothing here reads: a ray that keeps what it passed       */      \
+        /* through cannot commit the surface it passed through, and this one commits.                */      \
+        float traversedThrough = 1.0;                                                                       \
+        RTX_RESOLVE((query), (direction),                                                                   \
+            (footprint) + (spread) * rayQueryGetIntersectionTEXT((query), false), traversedThrough, false)  \
+                                                                                                            \
+        if (rayQueryGetIntersectionTypeEXT((query), true) == gl_RayQueryCommittedIntersectionNoneEXT)       \
+            (hit) = noHit();                                                                                \
+        else                                                                                                \
+        {                                                                                                   \
+            vec3 traversedCorners[3];                                                                       \
+            rayQueryGetIntersectionTriangleVertexPositionsEXT((query), true, traversedCorners);             \
+                                                                                                            \
+            const float traversedDistance = rayQueryGetIntersectionTEXT((query), true);                     \
+            (hit) = committedHit(rayQueryGetIntersectionInstanceCustomIndexEXT((query), true),              \
+                rayQueryGetIntersectionPrimitiveIndexEXT((query), true),                                    \
+                rayQueryGetIntersectionBarycentricsEXT((query), true), traversedDistance,                   \
+                (footprint) + (spread) * traversedDistance, traversedCorners,                               \
+                rayQueryGetIntersectionObjectToWorldEXT((query), true));                                    \
+        }                                                                                                   \
+    }
+
 /// How much of a light `reach` away along `towards` reaches `from`.
 ///
 /// No cone here, so the cutout is decided at the finest mip. A shadow ray carries no footprint, and
@@ -314,12 +436,13 @@ struct Surface
     float mTransmission;
 };
 
-/// Traverses, and resolves whatever it hit.
+/// What a hit is made of, once the threads that share one have been put in the same warp.
 ///
-/// @param footprint how wide the ray's cone starts, which for a primary ray is nothing and for a
-///        reflection is whatever the pixel had already spread to at the water.
-/// @param spread how much wider that cone gets per unit travelled.
-Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float spread, uint mask)
+/// **Everything a hit leads to and nothing the traversal already answered.** Every table this reads
+/// is keyed on where the ray landed — the instance, its mesh, its material, its textures — so this
+/// is the half of the old `trace` that a reorder is there to make coherent, and `Hit` is the half
+/// that has to survive the call.
+Surface resolve(Hit hit, vec3 origin, vec3 direction)
 {
     Surface surface;
     surface.mHit = false;
@@ -336,47 +459,32 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     surface.mClosed = false;
     surface.mTransmission = 0.0;
 
-    rayQueryEXT query;
-    // No blanket opaque flag: the per-instance bits the build set from each material are what decide
-    // whether traversal stops to ask, and forcing opacity here would override them and put every
-    // leaf back inside the card it was painted on.
-    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, mask, origin, tmin, direction, frame.mFar);
-
-    // The eye keeps nothing it passed through yet, so it takes every candidate against its cutoff —
-    // which is what leaves a pane of glass drawn as the half of its mask that survives one.
-    float passed = 1.0;
-    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), passed, false)
-
-    if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT)
+    if (!hit.mHit)
         return surface;
 
     surface.mHit = true;
-    surface.mDistance = rayQueryGetIntersectionTEXT(query, true);
+    surface.mDistance = hit.mDistance;
     surface.mPosition = origin + direction * surface.mDistance;
 
-    surface.mFootprint = footprint + spread * surface.mDistance;
+    surface.mFootprint = hit.mFootprint;
 
-    surface.mInstance = rayQueryGetIntersectionInstanceCustomIndexEXT(query, true);
+    surface.mInstance = hit.mInstance;
 
     const GpuInstance instance = instances[surface.mInstance];
     const GpuMesh mesh = meshes[instance.mMesh];
-    const uvec3 corner = triangleCorners(mesh, rayQueryGetIntersectionPrimitiveIndexEXT(query, true));
-    const vec3 weight = cornerWeights(rayQueryGetIntersectionBarycentricsEXT(query, true));
+    const uvec3 corner = triangleCorners(mesh, hit.mPrimitive);
+    const vec3 weight = cornerWeights(hit.mBary);
 
-    const mat4x3 toWorld = rayQueryGetIntersectionObjectToWorldEXT(query, true);
-
-    // The plane's normal is always available; the vertices' is not, and is better where it is.
-    vec3 corners[3];
-    rayQueryGetIntersectionTriangleVertexPositionsEXT(query, true, corners);
-    const vec3 crossed = triangleCross(corners, toWorld);
+    // The plane the traversal already gave: position fetch has the corners and no buffer has to be
+    // bound for them, where the vertices' own normals are a fetch and are better where they are.
+    const vec3 crossed = hit.mCrossed;
     surface.mGeometric = dot(crossed, crossed) > 0.0 ? normalize(crossed) : vec3(0.0, 0.0, 1.0);
 
     // Every texture read below shares this hit's triangle and this ray: a chunk's whole layer stack,
     // the opacity a pane pays for, and the emissive map.
     const SurfaceCone cone = surfaceConeAt(crossed, direction);
 
-    const vec3 shading = triangleNormal(corner, weight);
-    const vec3 normal = dot(shading, shading) > 1e-8 ? normalize(mat3(toWorld) * shading) : surface.mGeometric;
+    const vec3 normal = dot(hit.mShading, hit.mShading) > 0.0 ? normalize(hit.mShading) : surface.mGeometric;
 
     // **Which side the ray met is the plane's answer, and the shading normal is not allowed to give
     // a different one.** Morrowind's vertex normals are authored coarsely enough to point clean
@@ -454,6 +562,29 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
             = EMISSIVE_INTENSITY * sampleDiffuse(material.mEmissive, point, cone, surface.mFootprint).rgb;
 
     return surface;
+}
+
+/// Traverses, and answers with what the query committed.
+///
+/// @param footprint how wide the ray's cone starts, which for a primary ray is nothing and for a
+///        reflection is whatever the pixel had already spread to at the water.
+/// @param spread how much wider that cone gets per unit travelled.
+Hit traverse(vec3 origin, vec3 direction, float tmin, float footprint, float spread, uint mask)
+{
+    rayQueryEXT query;
+    Hit hit;
+    RTX_TRAVERSE(query, hit, origin, direction, tmin, footprint, spread, mask)
+
+    return hit;
+}
+
+/// Traverses, and resolves whatever it hit.
+///
+/// **The two halves back to back, for every ray but the eye's own.** Only the primary ray has
+/// anything to put between them, and `visibility.rgen` is where it does.
+Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float spread, uint mask)
+{
+    return resolve(traverse(origin, direction, tmin, footprint, spread, mask), origin, direction);
 }
 
 #endif

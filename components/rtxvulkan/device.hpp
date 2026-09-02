@@ -27,6 +27,10 @@ namespace Rtx
         PFN_vkCmdBuildAccelerationStructuresKHR mCmdBuildAccelerationStructures = nullptr;
         PFN_vkGetAccelerationStructureDeviceAddressKHR mGetAccelerationStructureDeviceAddress = nullptr;
 
+        PFN_vkCreateRayTracingPipelinesKHR mCreateRayTracingPipelines = nullptr;
+        PFN_vkGetRayTracingShaderGroupHandlesKHR mGetRayTracingShaderGroupHandles = nullptr;
+        PFN_vkCmdTraceRaysKHR mCmdTraceRays = nullptr;
+
         PFN_vkGetPipelineExecutablePropertiesKHR mGetPipelineExecutableProperties = nullptr;
         PFN_vkGetPipelineExecutableStatisticsKHR mGetPipelineExecutableStatistics = nullptr;
     };

@@ -402,8 +402,13 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
     const float fraction = sqrt(min(distance, FOG_REACH) / FOG_REACH);
     const vec3 at = vec3(across, fraction - 0.5 / float(FOG_VOLUME_SLICES));
 
-    const vec4 air = texture(fogVolumeAir, at);
-    const vec3 sunward = texture(fogVolumeSunward, at).xyz;
+    // **The level named and not derived, which a ray generation shader has no way to derive.** An
+    // implicit fetch takes its gradient from the lanes beside this one, and after a reorder those
+    // are other pixels of the frame — so the volume came back sampled against a neighbour that is
+    // somewhere else, and the reorder that must not change the picture changed it everywhere. The
+    // volume has one level, so this is the level it always meant.
+    const vec4 air = textureLod(fogVolumeAir, at, 0.0);
+    const vec3 sunward = textureLod(fogVolumeSunward, at, 0.0).xyz;
 
     const vec3 sun = HAS_SUN ? sunward * frame.mSunIrradiance * fogPhase(dot(direction, frame.mSunPosition))
                              : vec3(0.0);

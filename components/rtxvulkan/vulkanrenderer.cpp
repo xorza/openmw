@@ -141,6 +141,7 @@ namespace Rtx
         , mFrames{ { Frame{ mDevice, mPool }, Frame{ mDevice, mPool } } }
         , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)
+        , mReorder(options.mReorder)
         , mUpscale(options.mUpscale)
         , mPreset(options.mPreset)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
@@ -483,7 +484,7 @@ namespace Rtx
         if (mPass == nullptr)
         {
             mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
-                mChannelLayout, mFogVolumeLayout, mCountHits);
+                mChannelLayout, mFogVolumeLayout, mCountHits, mReorder);
             mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
         }
 

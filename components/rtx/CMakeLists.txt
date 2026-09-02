@@ -62,6 +62,7 @@ set(RTX_FILES
     poseupdate.hpp
     reconstruction.hpp
     renderer.hpp
+    reorder.hpp
     scenedesc.cpp
     scenedesc.hpp
     sceneextractor.cpp

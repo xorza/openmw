@@ -373,16 +373,186 @@ the register relief — which is measurable on Stage 1's own register report.
 
 ## 8. Acceptance
 
-Stage 1 lands when all of these hold:
+Stage 1 was accepted on these, which are not the ones written here first. §9 is what changed them
+and why.
 
-- Every `verify` view byte-identical to the compute trace.
-- The 508 tests pass, and the bench suite runs clean under synchronization validation.
-- The `trace` zone median is no worse at any of the default suite's three views with `REORDER`
-  off, and better at both exteriors with the hit object.
-- The register report for every variant is in the log, and the review's `shader-review.md` gets
-  the numbers.
+- Every `verify` view byte-identical to the compute trace **with `REORDER` off** — which it is not,
+  and cannot be. §9.2.
+- The 509 tests pass, and the bench suite runs clean under synchronization validation.
+- The `trace` zone median is better at all three of the default suite's views with `--reorder=off`,
+  and worse at all three with every form of the reorder. §9.1.
+- The register report is not in the log, because this driver will not give one for a ray tracing
+  pipeline. §9.4.
+- Every form the API has was measured, not only the two §5.6 listed. §9.5 is the whole audit
+  against the sources.
 
-## 9. Sources
+## 9. What Stage 1 measured
+
+Written after the fact, against what §5 and §7 expected. The code is landed; the reorder is off by
+default, which is what these numbers say it should be.
+
+### 9.1 The launch is worth having and no form of the reorder is
+
+`trace` zone medians of three alternating runs apiece, release build, no layers, the default suite
+at 1920×1080 presented and 1280×720 traced — the same measurement §3's table was taken with. The
+compute column was measured the same way from the tree before this change, and reproduces §3 to a
+hundredth.
+
+The four reorder columns are the three forms the API has, all at the eye, and then the plainest of
+them — the hit object with no hint, which is where the sources say to start — moved off the eye's ray
+onto the bounce. `--reorder` names one.
+
+| View | compute | launch, `off` | `hit` | `hint` | `both` | `bounce` |
+|---|---|---|---|---|---|---|
+| seyda-neen-ship | 1.69 | **1.56** | 1.77 | 1.70 | 1.78 | 1.88 |
+| seyda-neen-ship-dawn | 2.18 | **1.96** | 2.28 | 2.17 | 2.30 | 2.36 |
+| balmora-mages-guild | 1.59 | **1.49** | 1.60 | 1.63 | 1.60 | 1.94 |
+| against the launch | — | — | +7 to +16% | +9 to +11% | +7 to +17% | +20 to +30% |
+
+**The launch alone is 6 to 10 percent faster than the dispatch it replaces**, and it gives up
+`VISIBILITY_STRIP` to get there — the hand-written workgroup permutation measured at 0.2 ms over
+Seyda Neen. So the driver's own launch order beats a row-major dispatch by more than that
+permutation recovered, and that is the whole of Stage 1's win. NVIDIA's Vulkanised deck says why in
+one line: the ray pipeline already carries "a limited definition of ray generation launch grouping"
+and an "invocation repack instruction", so the launch was reordering something before this fork
+asked it to.
+
+**No form of the call pays, and what each costs says why.** The three differ in exactly one thing —
+how much of the launch's own 2D neighbourhood the sort gives up — and they line up with it:
+
+- `hint` sorts on four hint bits and carries no hit object at all, so a thread keeps its place in the
+  launch. Outdoors it is the cheapest of the three by four to six points.
+- `hit` and `both` sort on the hit object, whose key ends in where the hit is. That is the
+  whitepaper's own caveat: reordering by hit location "means giving up on the 2D screen-space
+  locality that physical threads have by default", which "can negatively impact the performance of
+  reading gbuffer data or writing output buffers". This trace ends in eleven of those, 94 bytes a
+  pixel.
+- Indoors the order reverses — `hint` is the *worst* of the three. A room holds one kind of surface
+  and few materials, so four bits of hint sort nothing and the hit object at least groups by
+  instance.
+
+**The bounce is worse than the eye, which is the one result the sources did not predict.** §2 quotes
+them saying primary rays are coherent to begin with and that a secondary scattered ray with
+non-trivial shading is where reordering shines. One diffuse bounce from the eye is exactly that ray,
+and reordering it costs 20 percent outdoors and 30 in a room. The room says why: a bounce there is
+short and lands on the same few surfaces, so there is no coherence to recover — and what has to
+cross the call is the primary `Surface` the frame still owes eleven channels to.
+
+**So this renderer is not divergence-bound where SER can reach.** The divergence it has at the
+primary hit is small, the divergence it has inside traversal is the cutout loop that no reorder
+touches, and the work after any reorder here is a G-buffer write that wants its threads left where
+they were.
+
+Two smaller changes went in beside the measurement and are in the `off` column: the `Hit` record
+dropped the object-to-world matrix for the one world-space vector it was used to make — nineteen
+words to thirteen — and a trace that reorders nothing is built with no miss or hit records at all.
+Together they are worth about 0.02 ms at every view, which is the edge of the run-to-run spread.
+
+### 9.2 The reorder changes the picture, and the plan said it could not
+
+§5.5 asked for byte identity on the grounds that "a reorder changes which lanes share a warp and
+nothing a lane computes". The first half is true and the second is not, for a reason that is the
+compiler's rather than the hardware's.
+
+**The call is value-neutral by itself.** Moved to the end of `main`, after every channel has been
+written, the frame comes back byte for byte the one the launch drew without it. Left where it is
+useful it is a barrier the driver rebuilds the code around — live state is rematerialised rather
+than spilled, a multiply–add contracts on one side of it and not the other — and this renderer takes
+one sample per pixel of a bounce and one reservoir draw over the lamps, so a last-bit difference
+turns into a different lamp or a different bounce direction on a small number of pixels.
+
+Measured over the twenty `verify` views at 1920×1080, against `off`: the three forms at the eye each
+move **every view, 0.00 to 0.04 percent of pixels, worst 97 of 255 on those**, and move the same
+pixels as each other. `bounce` moves **seven views of twenty, worst 24 of 255** — it leaves the eye's
+own shading and all eleven writes alone, so what it can move is the one bounce sample and only where
+a bounce is traced at all. The differing pixels are scattered rather than clustered — a third have a
+differing neighbour, which is what the wavelet spreading a firefly looks like — and most differ by
+one to eight of 255.
+
+**The launch alone is not byte-identical to the compute trace either**, for the same reason with one
+more cause: a ray generation shader is compiled under a different register allocation policy than a
+compute one, so the arithmetic is scheduled differently before any reorder is asked for. `off`
+against the compute trace: 0.01 to 0.43 percent of pixels, worst 161 of 255.
+
+So byte identity is not the oracle for this change, and `verify --against` is read as a scatter
+count rather than a pass or a fail. What is byte-identical is `sorted` against `hinted`, and a run
+against itself.
+
+### 9.3 An empty shader table is a device loss, not a validation message
+
+§7 expected the layers to have an opinion about a recorded index that names no hit group. They have
+none: `vkCmdTraceRaysKHR` with empty miss and hit regions, a hit object recorded into them and a
+reorder on it, loses the device — `VK_ERROR_DEVICE_LOST` at the next wait, with the layers and
+synchronization validation both silent.
+
+**The sources say so plainly, and this plan read them the other way round.** NVIDIA's reference for
+`NvMakeMiss` is "the provided shader table index must reference a valid miss record in the shader
+table", and `NvMakeHitWithRecordIndex` says the same of a hit group. Microsoft's proposal says why:
+"MaybeReorderThread may access both information about the instance in the acceleration structure as
+well as the shader record at the shader table offset contained in the HitObject." The index is not
+data until it is executed — the reorder itself reads it.
+
+So the table has the records it names: one miss shader for the sky and one closest-hit shader per
+`MaterialKind`, none of them ever invoked. **Their own files rather than one shader named three
+times**, because the sort's first key is the shader the record names and three records of one shader
+may carry one identifier. `RtxTracePipelineTest` is that failure asked of the device directly, and it
+also asks the one thing a reorder must leave alone: an invocation's launch index, read from either
+side of the call.
+
+### 9.4 The register count is gone
+
+NVIDIA's compiler reports one executable for every compute pipeline in this renderer and **none at
+all** for a ray tracing one, so `VK_KHR_pipeline_executable_properties` gives no register count and
+no spill size for the trace. `Device::reportPipeline` says so per pipeline rather than logging
+nothing, and the flag stays asked for.
+
+That takes away the number §3 stated the problem in and the number §6 would decide Stage 2 on. What
+is left is the timer, and Nsight Graphics — which is not installed on this machine.
+
+### 9.5 What the sources ask for, and what this does
+
+Read against NVIDIA's whitepaper, its Vulkanised 2025 deck, the GLSL and Vulkan specifications,
+Khronos's best-practice post and the Indiana Jones live-state article. Each of these is §10.
+
+- **Reorder after traversal and before shading, once per invocation.** Done, and the miss is
+  recorded too so that every invocation reaches one call.
+- **The same hint-bit count on every thread.** A specialization constant, so the count is fixed for
+  the whole launch.
+- **Use the fewest hint bits that carry a real branch.** Two with a hit object; four without one,
+  where the kind has to go in the hint because there is no shader identifier to carry it.
+- **More significant hint bits weigh more.** The kind sits above the flags, and of the two flags the
+  one that decides a second traversal sits above the one that decides a texture read.
+- **Do not repeat in the hint what the shader identifier says.** The hit-object forms hint on the two
+  flags alone; the kind is the record's.
+- **All three forms of the call.** `reorderThreadEXT(hitObject)`, `reorderThreadEXT(hint, bits)` and
+  the two together. The middle one is the one this renderer's G-buffer writes want, and it was the
+  one Stage 1 was first written without.
+- **Live state is the cost.** The record that crosses the call is thirteen words: what the query
+  answered, plus the triangle's plane and the vertex normal, both already in world space. The
+  object-to-world matrix that made them does not cross.
+- **A valid record behind every index.** §9.3.
+- **Where the divergence is.** Tried at the eye and at the bounce. §9.1.
+
+Not done, and why:
+
+- **Nsight Graphics's live-state and warp-coherence counters**, which the sources say are how this is
+  tuned properly. Not installed on this machine, and §9.4 is what took the fallback away.
+- **The fused calls and closest-hit shaders per kind.** Stage 2, and Stage 1's numbers say to spend
+  that effort elsewhere.
+- **Opacity micromaps.** The one thing the sources point at that does reach this renderer's
+  divergence: 3656 of 8544 instances at Seyda Neen are cutouts, and a candidate on one reads a
+  texture inside the traversal loop of every ray that crosses it. No reorder can reach inside
+  traversal. §6 already lists it, and it is now the next thing to do rather than a companion.
+
+### 9.6 One bug the launch found
+
+`fogVolumeAlong` sampled the fog volume with an implicit level of detail. In a compute shader the
+derivative comes from the quad the workgroup put the thread in; a ray generation shader has no such
+neighbour, and after a reorder it is another pixel of the frame entirely. The volume has one level,
+so `textureLod(..., 0.0)` is what it always meant, and the compute trace's own frame is unchanged by
+the fix.
+
+## 10. Sources
 
 - NVIDIA, *Shader Execution Reordering* whitepaper, v1.0: the sort key's three components in
   priority order, the trace / reorder / invoke pattern, the hint-bit and live-state guidance, the

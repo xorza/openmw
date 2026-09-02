@@ -126,7 +126,7 @@ namespace Rtx
 
         TEST_F(RtxDeviceTest, theShaderBuildStepProducesLoadableModules)
         {
-            const std::filesystem::path visibility = Testing::getShaderDirectory() / "visibility.comp.spv";
+            const std::filesystem::path visibility = Testing::getShaderDirectory() / "visibility.rgen.spv";
             ASSERT_TRUE(std::filesystem::exists(visibility)) << visibility;
 
             const ShaderModule module(*mHarness->mDevice, visibility);

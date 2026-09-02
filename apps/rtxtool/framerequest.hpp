@@ -9,6 +9,7 @@
 
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/reorder.hpp>
 #include <components/rtx/upscale.hpp>
 
 #include "posedactors.hpp"
@@ -40,6 +41,10 @@ namespace RtxTool
         /// Which network it runs. Pinned rather than left to the library, whose own default has
         /// moved between SDK versions, so that two runs are comparable.
         Rtx::Preset mPreset = Rtx::Preset::D;
+
+        /// What the trace does with the threads its launch handed it. Off by default, because off is
+        /// what the other two are measured against.
+        Rtx::Reorder mReorder = Rtx::Reorder::Off;
 
         /// How much of the lighting painted into each texture to divide back out, from zero to one.
         /// Zero shows the textures as they were drawn, with their lighting still in them.

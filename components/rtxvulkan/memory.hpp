@@ -10,6 +10,17 @@ namespace Rtx
 {
     class Device;
 
+    /// `value` rounded up to the next multiple of `alignment`.
+    ///
+    /// **One statement of it, because every offset this renderer computes is a device offset.** An
+    /// acceleration structure placed inside a shared buffer and a record placed inside a shader
+    /// binding table are both laid out against a limit the driver states, and the arithmetic is the
+    /// same one.
+    inline VkDeviceSize alignUp(VkDeviceSize value, VkDeviceSize alignment)
+    {
+        return (value + alignment - 1) / alignment * alignment;
+    }
+
     /// One `VkDeviceMemory` allocation.
     ///
     /// Deliberately one allocation per resource. That is the wrong shape for a renderer that creates

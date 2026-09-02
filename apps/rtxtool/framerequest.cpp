@@ -15,6 +15,7 @@ namespace RtxTool
             .mPreset = mPreset,
             .mWindow = window,
             .mValidation = validation,
+            .mReorder = mReorder,
         };
     }
 

@@ -21,6 +21,11 @@ namespace Rtx
             VK_KHR_RAY_TRACING_POSITION_FETCH_EXTENSION_NAME,
             VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME,
             VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+            // The launch, and what it is for. The trace calls `traceRayEXT` nowhere and still has to
+            // be a ray tracing pipeline, because `reorderThreadEXT` is defined for the ray
+            // generation stage and for no other.
+            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+            VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME,
             // **Asking the driver what it made of a shader.** Occupancy is a register count and a
             // workgroup size, and the register count belongs to the driver's own compiler — no
             // offline tool has it. Required rather than optional because a device that will not say
@@ -76,6 +81,10 @@ namespace Rtx
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mPositionFetch.rayTracingPositionFetch; } },
             RequiredFeature{ "rayTracingMaintenance1",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mRayTracingMaintenance1.rayTracingMaintenance1; } },
+            RequiredFeature{ "rayTracingPipeline",
+                +[](DeviceFeatures& f) -> VkBool32& { return f.mRayTracingPipeline.rayTracingPipeline; } },
+            RequiredFeature{ "rayTracingInvocationReorder",
+                +[](DeviceFeatures& f) -> VkBool32& { return f.mInvocationReorder.rayTracingInvocationReorder; } },
             RequiredFeature{ "pipelineExecutableInfo",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mPipelineExecutable.pipelineExecutableInfo; } },
         };
@@ -85,6 +94,8 @@ namespace Rtx
     {
         void* next = nullptr;
         chain(next, mPipelineExecutable, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR);
+        chain(next, mInvocationReorder, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_EXT);
+        chain(next, mRayTracingPipeline, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR);
         chain(next, mRayTracingMaintenance1, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_MAINTENANCE_1_FEATURES_KHR);
         chain(next, mPositionFetch, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_POSITION_FETCH_FEATURES_KHR);
         chain(next, mRayQuery, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR);
@@ -98,6 +109,9 @@ namespace Rtx
     DeviceProperties::DeviceProperties()
     {
         void* next = nullptr;
+        chain(
+            next, mInvocationReorder, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_PROPERTIES_EXT);
+        chain(next, mRayTracingPipeline, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR);
         chain(next, mAccelerationStructure, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR);
         chain(next, mVulkan12, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES);
         chain(next, mVulkan11, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES);

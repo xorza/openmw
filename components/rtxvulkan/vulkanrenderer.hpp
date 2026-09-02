@@ -324,6 +324,11 @@ namespace Rtx
         /// game's does not.
         bool mCountHits = false;
 
+        /// What the trace this builds does with the threads its launch handed it. Fixed at
+        /// construction for the reason `mCountHits` is: it is a specialization constant, and the
+        /// pass compiles every kernel before a frame runs.
+        Reorder mReorder = Reorder::Off;
+
         /// Fixed at construction: an upscaler is brought up once, and there is nothing to switch
         /// to at runtime that would not mean rebuilding every target anyway.
         Upscale mUpscale = Upscale::Off;

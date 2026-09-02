@@ -30,11 +30,6 @@ namespace Rtx
         /// `VkAccelerationStructureCreateInfoKHR::offset` must be a multiple of this.
         constexpr VkDeviceSize sStructureAlignment = 256;
 
-        VkDeviceSize alignUp(VkDeviceSize value, VkDeviceSize alignment)
-        {
-            return (value + alignment - 1) / alignment * alignment;
-        }
-
         // Storage as well as build input, because the shader reads the indices back at a hit and
         // there is no reason for a second copy of them to exist.
         constexpr VkBufferUsageFlags sBuildInputUsage
@@ -87,8 +82,8 @@ namespace Rtx
         {
             const VkMemoryBarrier2 barrier{
                 .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-                .srcStageMask
-                = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
+                    | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
                 .srcAccessMask
                 = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
                 .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
@@ -109,8 +104,8 @@ namespace Rtx
                 .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
                 .srcStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
                 .srcAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
-                .dstStageMask
-                = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+                    | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
                 .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
             };
             const VkDependencyInfo dependency{

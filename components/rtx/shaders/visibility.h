@@ -30,12 +30,37 @@ namespace Rtx::Shaders
 
 #endif
 
-    /// Threads along each edge of a workgroup.
+    /// What the trace does with the threads its launch handed it, before it resolves what they
+    /// found. `Rtx::Reorder` is the host's side of these, and `REORDER` in `lib/variants.glsl` is
+    /// what the shader reads them as.
     ///
-    /// The shader declares its local size from this and the dispatch rounds the image up to it, so
-    /// the two cannot drift: writing the number twice is how a pass quietly stops covering its last
-    /// row of pixels.
-    RTX_CONST uint VISIBILITY_WORKGROUP = 8;
+    /// **The launch order the device chose, and nothing asked of it.** This is what the trace was
+    /// before it became a ray generation shader, minus the strip permutation a dispatch could
+    /// carry and a launch cannot.
+    RTX_CONST uint REORDER_OFF = 0u;
+
+    /// A hit object per primary ray, and one reorder on it — `reorderThreadEXT(hitObject)`. The sort
+    /// is the shader-table index the trace recorded and where the hit is, and no hint at all, which
+    /// is where the sources say to start.
+    RTX_CONST uint REORDER_HIT = 1u;
+
+    /// A hint per primary ray and no hit object at all — `reorderThreadEXT(hint, bits)`.
+    ///
+    /// **The one form that keeps the launch's own locality.** Sorting by where a hit is gives up the
+    /// screen-space neighbourhood a thread started in, which is what the eleven channels at the end
+    /// of this trace are written through. A hint carries the kind without carrying the place.
+    RTX_CONST uint REORDER_HINT = 2u;
+
+    /// Both — `reorderThreadEXT(hitObject, hint, bits)`.
+    RTX_CONST uint REORDER_BOTH = 3u;
+
+    /// The hit object at the *bounce* ray rather than at the eye's own, and nothing at the eye.
+    ///
+    /// **Where the sources say the divergence is.** A primary ray is coherent to begin with; one
+    /// diffuse bounce from it lands on a different instance per pixel and is shaded with its own
+    /// lamp reservoir and its own ambient ray, which is the "non-trivial hit shading paired with at
+    /// least moderate divergence" the whitepaper names.
+    RTX_CONST uint REORDER_BOUNCE = 4u;
 
     /// Morrowind's ten weathers, in the order `MWWorld::WeatherManager` registers them.
     ///

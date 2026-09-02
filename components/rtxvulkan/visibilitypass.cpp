@@ -28,12 +28,16 @@ namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t extent, std::uint32_t workgroup)
+        std::uint32_t groupsFor(std::uint32_t extent)
         {
-            return (extent + workgroup - 1) / workgroup;
+            return (extent + Shaders::FOG_VOLUME_WORKGROUP - 1) / Shaders::FOG_VOLUME_WORKGROUP;
         }
 
-        constexpr auto sCompute = VK_SHADER_STAGE_COMPUTE_BIT;
+        /// **Both stages on every binding, because one description of set zero serves both passes.**
+        /// The trace is a launch and the fog volume is a dispatch, and the two read the same tables
+        /// out of the same pushed set — so the layout they are addressed through has to be legal for
+        /// each of them.
+        constexpr auto sStages = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR;
         constexpr auto sStorage = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
         /// The structure, the tables a hit reads, the frame itself and the sea, in the order the
@@ -42,29 +46,35 @@ namespace Rtx
         constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> sBindings = [] {
             std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> declared{};
             declared[Shaders::BIND_SCENE] = VkDescriptorSetLayoutBinding{ Shaders::BIND_SCENE,
-                VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, sCompute };
+                VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, sStages };
 
             // One up to the frame are storage buffers: the hit count, then every table in the order
             // `record` writes them.
             for (std::uint32_t binding = Shaders::BIND_HITS; binding < Shaders::BIND_FRAME; ++binding)
-                declared[binding] = VkDescriptorSetLayoutBinding{ binding, sStorage, 1, sCompute };
+                declared[binding] = VkDescriptorSetLayoutBinding{ binding, sStorage, 1, sStages };
 
             declared[Shaders::BIND_FRAME]
-                = VkDescriptorSetLayoutBinding{ Shaders::BIND_FRAME, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sCompute };
+                = VkDescriptorSetLayoutBinding{ Shaders::BIND_FRAME, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sStages };
 
             // Then the two the sea was synthesised into, one descriptor a cascade.
             for (const std::uint32_t binding : { Shaders::BIND_WAVE_SURFACE, Shaders::BIND_WAVE_CURVATURE })
                 declared[binding] = VkDescriptorSetLayoutBinding{ binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    Shaders::WAVE_CASCADES, sCompute };
+                    Shaders::WAVE_CASCADES, sStages };
 
             // And the one the fog's field was drawn into, which is one volume rather than a cascade
             // of tiles: the air has no near band and no far one, it has a field read at three scales.
             declared[Shaders::BIND_FOG_FIELD] = VkDescriptorSetLayoutBinding{ Shaders::BIND_FOG_FIELD,
-                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, sCompute };
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, sStages };
 
             return declared;
         }();
     }
+
+    static_assert(static_cast<std::uint32_t>(Reorder::Off) == Shaders::REORDER_OFF);
+    static_assert(static_cast<std::uint32_t>(Reorder::Hit) == Shaders::REORDER_HIT);
+    static_assert(static_cast<std::uint32_t>(Reorder::Hint) == Shaders::REORDER_HINT);
+    static_assert(static_cast<std::uint32_t>(Reorder::Both) == Shaders::REORDER_BOTH);
+    static_assert(static_cast<std::uint32_t>(Reorder::Bounce) == Shaders::REORDER_BOUNCE);
 
     VisibilityVariant VisibilityVariant::resolve(const Shaders::VisibilityConstants& frame, const bool water)
     {
@@ -109,16 +119,20 @@ namespace Rtx
 
     VisibilityPass::VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
         VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-        bool countHits)
+        bool countHits, Reorder reorder)
         : mDevice(device)
         , mBlueNoise(uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         , mCountHits(countHits ? 1u : 0u)
+        , mReorder(reorder)
         , mChannelLayout(channelLayout.getHandle())
         , mVolumeLayout(volumeLayout.getHandle())
-        , mModule(shaderDirectory / "visibility.comp.spv")
         , mVolumeModule(shaderDirectory / "fogvolume.comp.spv")
+        , mRaygenModule(shaderDirectory / "visibility.rgen.spv")
+        , mMissModules{ shaderDirectory / "visibility.rmiss.spv" }
+        , mHitModules{ shaderDirectory / "visibilitysurface.rchit.spv", shaderDirectory / "visibilityterrain.rchit.spv",
+            shaderDirectory / "visibilitywater.rchit.spv" }
     {
         compileEvery(textureLayout);
     }
@@ -163,16 +177,34 @@ namespace Rtx
                     const bool volume = wanted[at].mVolume;
 
                     // One word per `constant_id`, in the order `lib/variants.glsl` declares them.
-                    // The volume traces no primary ray, so it counts none whatever the build asked
-                    // for; every other constant it takes is the tuple's own, and no even air ever
-                    // reaches the volume's table.
-                    const std::array<std::uint32_t, 5> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
-                        variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, variant.mUniformFog ? 1u : 0u };
+                    // The volume traces no primary ray and reorders nothing, so it counts none and
+                    // sorts none whatever the build asked for; every other constant it takes is the
+                    // tuple's own, and no even air ever reaches the volume's table.
+                    const std::array<std::uint32_t, 6> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
+                        variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, variant.mUniformFog ? 1u : 0u,
+                        volume ? Shaders::REORDER_OFF : static_cast<std::uint32_t>(mReorder) };
 
-                    auto& table = volume ? mVolumePipelines : mPipelines;
-                    table[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
-                        laterSets(textureLayout), volume ? mVolumeModule : mModule,
-                        variant.describe(volume ? "fog volume" : "visibility"), specialization);
+                    if (volume)
+                        mVolumePipelines[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
+                            laterSets(textureLayout), mVolumeModule, variant.describe("fog volume"), specialization);
+                    else
+                    {
+                        // **The records only where something records into them.** A trace that
+                        // reorders nothing builds no hit object, so the four stubs are four stages
+                        // compiled into the pipeline and a longer table for nothing to name — and
+                        // the driver sizes the launch's stack from the stages it was given.
+                        const bool records = mReorder != Reorder::Off;
+                        mPipelines[variant.index()]
+                            = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
+                                TraceShaders{
+                                    .mRaygen = mRaygenModule,
+                                    .mMiss = records ? std::span<const std::filesystem::path>(mMissModules)
+                                                     : std::span<const std::filesystem::path>(),
+                                    .mHit = records ? std::span<const std::filesystem::path>(mHitModules)
+                                                    : std::span<const std::filesystem::path>(),
+                                },
+                                variant.describe("visibility"), specialization);
+                    }
                 }
                 catch (...)
                 {
@@ -199,9 +231,9 @@ namespace Rtx
             std::rethrow_exception(failed);
     }
 
-    const ComputePipeline& VisibilityPass::pipelineFor(const VisibilityVariant variant) const
+    const TracePipeline& VisibilityPass::pipelineFor(const VisibilityVariant variant) const
     {
-        const std::unique_ptr<ComputePipeline>& held = mPipelines[variant.index()];
+        const std::unique_ptr<TracePipeline>& held = mPipelines[variant.index()];
         assert(held != nullptr && "a tuple `compileEvery` did not make");
 
         return *held;
@@ -229,7 +261,8 @@ namespace Rtx
         // hazard of its own, and the dispatch between them is not what orders it.
         const VkBufferMemoryBarrier2 beforeWrite{
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR
+                | VK_PIPELINE_STAGE_2_CLEAR_BIT,
             .srcAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
             .dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
             .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
@@ -256,7 +289,7 @@ namespace Rtx
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
             .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
             .dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -271,7 +304,7 @@ namespace Rtx
         vkCmdPipelineBarrier2(commands, &handOver);
     }
 
-    void VisibilityPass::pushInputs(VkCommandBuffer commands, const ComputePipeline& pipeline,
+    void VisibilityPass::pushInputs(VkCommandBuffer commands, VkPipelineBindPoint bindPoint, VkPipelineLayout layout,
         const VisibilityInputs& inputs, const GBuffer& buffer, const Buffer& hitCount, std::uint64_t frame) const
     {
         const VkWriteDescriptorSetAccelerationStructureKHR sceneWrite{
@@ -388,16 +421,15 @@ namespace Rtx
         // record that did not is the failure this counts.
         assert(filled == writes.size() && "a binding the layout declares was left unwritten");
 
-        vkCmdPushDescriptorSet(
-            commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 0, filled, writes.data());
+        vkCmdPushDescriptorSet(commands, bindPoint, layout, 0, filled, writes.data());
 
         // The three sets nothing pushes: the bindless textures a scene brought, the channels the
         // trace writes, and the air in front of the camera. Each is written when what it names is
         // made, and bound as it is.
         const std::array<VkDescriptorSet, 3> sets{ inputs.mTextures, buffer.getSet(),
             inputs.mFogVolume->getSet(frame) };
-        vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getLayout(), 1,
-            static_cast<std::uint32_t>(sets.size()), sets.data(), 0, nullptr);
+        vkCmdBindDescriptorSets(
+            commands, bindPoint, layout, 1, static_cast<std::uint32_t>(sets.size()), sets.data(), 0, nullptr);
     }
 
     void VisibilityPass::record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
@@ -457,14 +489,15 @@ namespace Rtx
             openZone(timer, commands, "air");
 
             vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, air->getHandle());
-            pushInputs(commands, *air, inputs, buffer, hitCount, constants.mFrame);
+            pushInputs(
+                commands, VK_PIPELINE_BIND_POINT_COMPUTE, air->getLayout(), inputs, buffer, hitCount, constants.mFrame);
 
             // **Every column the image has and not every column the camera needs.** A traced view is
             // drawn into a volume grown to the largest one asked for, and the pixel at its edge
             // interpolates against the column outside it — which has to hold air rather than
             // whatever was there.
-            vkCmdDispatch(commands, groupsFor(inputs.mFogVolume->getColumns(), Shaders::FOG_VOLUME_WORKGROUP),
-                groupsFor(inputs.mFogVolume->getRows(), Shaders::FOG_VOLUME_WORKGROUP), 1);
+            vkCmdDispatch(
+                commands, groupsFor(inputs.mFogVolume->getColumns()), groupsFor(inputs.mFogVolume->getRows()), 1);
 
             closeZone(timer, commands);
 
@@ -473,11 +506,14 @@ namespace Rtx
 
         openZone(timer, commands, "trace");
 
-        const ComputePipeline& pipeline = pipelineFor(variant);
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getHandle());
-        pushInputs(commands, pipeline, inputs, buffer, hitCount, constants.mFrame);
-        vkCmdDispatch(commands, groupsFor(constants.mCamera.mWidth, Shaders::VISIBILITY_WORKGROUP),
-            groupsFor(constants.mCamera.mHeight, Shaders::VISIBILITY_WORKGROUP), 1);
+        const TracePipeline& pipeline = pipelineFor(variant);
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline.getHandle());
+        pushInputs(commands, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline.getLayout(), inputs, buffer, hitCount,
+            constants.mFrame);
+
+        // **One invocation a pixel and no tail**, where the dispatch it replaces covered the picture
+        // in whole workgroups and had every one of them test whether it had run off the edge.
+        pipeline.traceRays(commands, constants.mCamera.mWidth, constants.mCamera.mHeight);
 
         closeZone(timer, commands);
     }

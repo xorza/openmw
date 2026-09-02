@@ -67,8 +67,8 @@ namespace RtxTool
             EXPECT_EQ(describeProfile(request, validation, origin, target, 2560, 1440),
                 "--cell=\"Balmora, Guild of Fighters\" --pos=-19216.5,-14896.25,160 --look=-19323,-13903,109.5"
                 " --fov=60 --size=2560x1440 --weather=Ashstorm --hour=17.25 --day=0 --exposure=auto"
-                " --upscale=off --preset=d --filter=false --validation=true"
-                " --sync-validation=true --gpu-validation=false");
+                " --upscale=off --preset=d --reorder=off --filter=false"
+                " --validation=true --sync-validation=true --gpu-validation=false");
         }
 
         /// What the line is for: the tool's own parser reading it back to the same floats.
@@ -119,6 +119,13 @@ namespace RtxTool
 
             EXPECT_NE(describeProfile(shaded, off, at, to, 8, 8), describeProfile(upscaled, off, at, to, 8, 8));
             EXPECT_NE(describeProfile(shaded, off, at, to, 8, 8), describeProfile(latest, off, at, to, 8, 8));
+
+            // **A reorder is the same omission one switch later.** It costs the trace 7 to 17
+            // percent and it moves a scattering of pixels, so a line that dropped it would name one
+            // frame and reproduce another.
+            ViewRequest sorted = makeRequest();
+            sorted.mFrame.mReorder = Rtx::Reorder::Hit;
+            EXPECT_NE(describeProfile(shaded, off, at, to, 8, 8), describeProfile(sorted, off, at, to, 8, 8));
         }
 
         /// A title whose every number is distinct, so a field printed from the wrong one shows.

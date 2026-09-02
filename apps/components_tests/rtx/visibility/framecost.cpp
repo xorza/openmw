@@ -53,8 +53,11 @@ namespace Rtx::Testing
             const TextureArray textures(device, setup, 0, {}, graveyard);
             const SetLayout channelLayout = GBuffer::describeLayout(device);
             const SetLayout volumeLayout = FogVolume::describeLayout(device);
-            VisibilityPass pass(
-                device, setup, Testing::getShaderDirectory(), textures.getLayout(), channelLayout, volumeLayout, true);
+            // Reordered, because that is the most the frame path can be asked to do: a mode that
+            // records a hit object and hints a sort reaches more of the shader than one that does
+            // neither, and what is claimed here is about every frame this renderer can record.
+            VisibilityPass pass(device, setup, Testing::getShaderDirectory(), textures.getLayout(), channelLayout,
+                volumeLayout, true, Reorder::Both);
             setup.flush();
 
             // **Built here and not inside the frame**, which is where the sea's own allocation is:

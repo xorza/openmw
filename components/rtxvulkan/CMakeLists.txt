@@ -52,7 +52,11 @@ set(RTX_SHADERS
     shaders/gui.vert
     shaders/histogram.comp
     shaders/tone.comp
-    shaders/visibility.comp
+    shaders/visibility.rgen
+    shaders/visibility.rmiss
+    shaders/visibilitysurface.rchit
+    shaders/visibilityterrain.rchit
+    shaders/visibilitywater.rchit
     shaders/wavecompose.comp
     shaders/waveform.comp
     shaders/waveline.comp
@@ -62,7 +66,7 @@ set(RTX_SHADERS
 # renderer draws reaches these: they state an assumption about the hardware so that it can fail as a
 # test rather than as a rendering mystery.
 if (BUILD_COMPONENTS_TESTS)
-    list(APPEND RTX_SHADERS shaders/probe.comp)
+    list(APPEND RTX_SHADERS shaders/probe.comp shaders/traceprobe.rgen shaders/traceprobe.rmiss)
 endif()
 
 # Compiling and validating in one custom command is deliberate: an invalid module must fail the
@@ -96,7 +100,7 @@ foreach (shader ${RTX_SHADERS})
     list(APPEND RTX_SHADER_OUTPUTS "${spv}")
 endforeach()
 
-# What `visibility.comp` is made of. Included rather than compiled — there is one entry point over
+# What `visibility.rgen` is made of. Included rather than compiled — there is one entry point over
 # all of them, and glslc's depfile is what makes editing one rebuild it. Named here so an IDE lists
 # them beside the shader they belong to, which is the only thing the build wants them for.
 set(RTX_SHADER_LIB
@@ -108,6 +112,7 @@ set(RTX_SHADER_LIB
     shaders/lib/geometry.glsl
     shaders/lib/lights.glsl
     shaders/lib/random.glsl
+    shaders/lib/reorder.glsl
     shaders/lib/reproject.glsl
     shaders/lib/sea.glsl
     shaders/lib/shading.glsl
@@ -172,6 +177,8 @@ set(RTX_VULKAN_FILES
     physicaldevice.hpp
     pipelinecache.cpp
     pipelinecache.hpp
+    pipelinelayout.cpp
+    pipelinelayout.hpp
     presenter.cpp
     presenter.hpp
     requirements.cpp
@@ -187,6 +194,7 @@ set(RTX_VULKAN_FILES
     shadermodule.cpp
     shadermodule.hpp
     slottable.hpp
+    specialization.hpp
     structurestorage.cpp
     structurestorage.hpp
     swapchain.cpp
@@ -195,6 +203,8 @@ set(RTX_VULKAN_FILES
     texture.hpp
     tonepass.cpp
     tonepass.hpp
+    tracepipeline.cpp
+    tracepipeline.hpp
     validation.cpp
     validation.hpp
     visibilitypass.cpp

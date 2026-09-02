@@ -18,6 +18,8 @@
 // `Rtx::VisibilityVariant` is the other half. It reads each of these off the frame's own constants,
 // and `VisibilityPass` keeps one pipeline per tuple.
 
+#include "visibility.h"
+
 /// Whether the trace counts the primary rays that hit something.
 ///
 /// **A harness facility, so the game's module does not carry the atomic at all.** `shot` prints the
@@ -45,5 +47,14 @@ layout(constant_id = 3) const bool HAS_SEA = true;
 /// It names the interior, where the coverage field multiplies by one — and where `fog.glsl` then has
 /// nothing left along the ray to sample and integrates it instead.
 layout(constant_id = 4) const bool FOG_UNIFORM = false;
+
+/// What the trace does with the threads its launch handed it, before it resolves what they found.
+///
+/// **Not one of the four above, because it is not a fact about the frame.** The tuple is what a
+/// dusk or a doorway moves; this is fixed for the life of the pass, the way `COUNT_HITS` is — the
+/// harness names it on the command line, so the launch and each form of the reorder are builds of
+/// one shader rather than shaders of their own. The `REORDER_*` values in `visibility.h` are what
+/// this takes, and `Rtx::Reorder` is the host's side of them.
+layout(constant_id = 5) const uint REORDER = REORDER_OFF;
 
 #endif

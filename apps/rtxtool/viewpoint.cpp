@@ -127,17 +127,22 @@ namespace RtxTool
         // window flown at another mode profiled into a command that rendered something else; and
         // the network is a picture and a cost that the installed library was free to change out
         // from under a corpus that never said which one it meant.
+        //
+        // **The reorder is named for both of those reasons as well.** It moves the trace by 7 to 17
+        // percent and it moves a scattering of pixels — `.notes/rtx/ser-plan.md` §9 — so a line
+        // without it says one thing about two frames that cost different amounts.
         const std::string exposure
             = request.mFrame.mExposure.has_value() ? std::format("{}", *request.mFrame.mExposure) : std::string("auto");
 
         return std::format(
             "--cell=\"{}\" --pos={},{},{} --look={},{},{} --fov={} --size={}x{} --weather={}"
-            " --hour={} --day={} --exposure={} --upscale={} --preset={} --filter={} --validation={}"
-            " --sync-validation={} --gpu-validation={}{}",
+            " --hour={} --day={} --exposure={} --upscale={} --preset={} --reorder={} --filter={}"
+            " --validation={} --sync-validation={} --gpu-validation={}{}",
             request.mCell, origin.x(), origin.y(), origin.z(), target.x(), target.y(), target.z(),
             request.mFrame.mFieldOfView, width, height, request.mFrame.mWeather, request.mFrame.mHour,
             request.mFrame.mDay, exposure, Rtx::upscaleName(request.mFrame.mUpscale),
-            Rtx::presetName(request.mFrame.mPreset), request.mFrame.mFilter, validation.mEnabled,
-            validation.mSynchronization, validation.mGpuAssisted, request.mShowAlbedo ? " --albedo" : "");
+            Rtx::presetName(request.mFrame.mPreset), Rtx::reorderName(request.mFrame.mReorder), request.mFrame.mFilter,
+            validation.mEnabled, validation.mSynchronization, validation.mGpuAssisted,
+            request.mShowAlbedo ? " --albedo" : "");
     }
 }

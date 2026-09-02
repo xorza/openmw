@@ -164,7 +164,8 @@ namespace Rtx
             .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            // The synthesis is a dispatch and the trace that samples what it left is a launch.
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
 
             // **Written as well as read, because the transform runs in place.** Each of the six
             // passes over a field reads it and writes it back, so what follows one is a write after

@@ -12,6 +12,7 @@
 #include "frame.glsl"
 #include "lights.glsl"
 #include "random.glsl"
+#include "reorder.glsl"
 #include "sky.glsl"
 #include "traversal.glsl"
 #include "underwater.glsl"
@@ -535,8 +536,19 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     if (skyLights() && dot(fromEye, fromEye) > BOUNCE_REACH * BOUNCE_REACH)
         return bounceEscape(surface.mPosition, towards, weight);
 
-    const Surface hit
-        = trace(surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, MASK_SOLID);
+    rayQueryEXT bounce;
+    Hit found;
+    RTX_TRAVERSE(bounce, found, surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, MASK_SOLID)
+
+    // **The one ray in this frame the sources say is worth reordering.** A primary ray is coherent
+    // to begin with; this one is cosine-distributed off whatever the eye found, so neighbouring
+    // pixels land on different instances, different materials and different lamp cells — and what
+    // follows it is a whole second shading, a reservoir walk and an ambient ray. No hint: the sort
+    // is the kind the record names and where the hit is, which is where the sources say to start.
+    if (REORDER == REORDER_BOUNCE)
+        RTX_REORDER(bounce, found, surface.mPosition, towards, 0u, 0)
+
+    const Surface hit = resolve(found, surface.mPosition, towards);
 
     if (!hit.mHit)
         return bounceEscape(surface.mPosition, towards, weight);

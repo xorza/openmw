@@ -198,7 +198,7 @@ namespace Rtx
         for (const Image* image : everyChannel())
             image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
     }
 
     void GBuffer::handOver(VkCommandBuffer commands) const
@@ -210,7 +210,7 @@ namespace Rtx
         // two writes unordered against each other.
         for (const Image* image : everyChannel())
             image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
     }
@@ -219,10 +219,14 @@ namespace Rtx
     {
         // Every channel is a storage image the trace writes, and they are bound one per number from
         // nought — which is what `gbuffer.h`'s `CHANNEL_*` are, so nothing here has to name them.
+        //
+        // **Both stages, because both kinds of pass are handed this set.** The trace is a launch and
+        // everything that reads what it left — the accumulator, the wavelet, the composite — is a
+        // dispatch.
         std::array<VkDescriptorSetLayoutBinding, sChannels> bindings{};
         for (std::uint32_t channel = 0; channel < bindings.size(); ++channel)
             bindings[channel] = VkDescriptorSetLayoutBinding{ channel, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
-                VK_SHADER_STAGE_COMPUTE_BIT, nullptr };
+                VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr };
 
         return SetLayout(device, bindings);
     }

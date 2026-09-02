@@ -51,7 +51,8 @@ namespace Rtx
         for (std::uint32_t binding = 0; binding < bindings.size(); ++binding)
             bindings[binding] = VkDescriptorSetLayoutBinding{ binding,
                 sampledAt(binding) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
-                VK_SHADER_STAGE_COMPUTE_BIT, nullptr };
+                // The volume writes these as a dispatch and the trace samples them as a launch.
+                VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr };
 
         return SetLayout(device, bindings);
     }
@@ -199,7 +200,7 @@ namespace Rtx
         for (const Image* image : { &mAir, &mAirSunward })
             image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
                 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
         // **From `GENERAL` and not from undefined**, which is the whole of what makes a history a
@@ -216,6 +217,7 @@ namespace Rtx
         for (const Image* image : { &mAir, &mAirSunward })
             image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
     }
 }

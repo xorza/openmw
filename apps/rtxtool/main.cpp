@@ -24,6 +24,7 @@
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/reorder.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/texturebuilder.hpp>
@@ -127,6 +128,15 @@ namespace RtxTool
             const std::optional<Rtx::Preset> named = Rtx::presetNamed(text);
             if (!named.has_value())
                 throw std::runtime_error("not a Ray Reconstruction preset: " + std::string(text));
+
+            return *named;
+        }
+
+        Rtx::Reorder parseReorder(std::string_view text)
+        {
+            const std::optional<Rtx::Reorder> named = Rtx::reorderNamed(text);
+            if (!named.has_value())
+                throw std::runtime_error("not a reorder mode: " + std::string(text));
 
             return *named;
         }
@@ -263,6 +273,7 @@ namespace RtxTool
             request.mFieldOfView = variables["fov"].as<float>();
             request.mUpscale = parseUpscale(variables["upscale"].as<std::string>());
             request.mPreset = parsePreset(variables["preset"].as<std::string>());
+            request.mReorder = parseReorder(variables["reorder"].as<std::string>());
             request.mDelight = variables["delight"].as<float>();
             request.mFilter = variables["filter"].as<bool>();
             request.mExposure = parseExposure(variables["exposure"].as<std::string>());

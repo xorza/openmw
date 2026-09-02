@@ -44,6 +44,14 @@ namespace Rtx
         VkPhysicalDeviceRayTracingPositionFetchFeaturesKHR mPositionFetch{};
         VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR mRayTracingMaintenance1{};
 
+        /// What lets the trace be a launch rather than a dispatch. It traces no ray through the
+        /// pipeline — every ray here is still an inline query — and a reorder may only be asked for
+        /// from a ray generation shader, which only a pipeline has.
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR mRayTracingPipeline{};
+
+        /// The reorder itself. `.notes/rtx/ser-plan.md` is what it is for.
+        VkPhysicalDeviceRayTracingInvocationReorderFeaturesEXT mInvocationReorder{};
+
         /// What lets the driver be asked how it compiled a pipeline: registers a thread, spills,
         /// waves a multiprocessor. See `ComputePipeline`, which is where the answer is read.
         VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR mPipelineExecutable{};
@@ -63,6 +71,14 @@ namespace Rtx
         VkPhysicalDeviceVulkan11Properties mVulkan11{};
         VkPhysicalDeviceVulkan12Properties mVulkan12{};
         VkPhysicalDeviceAccelerationStructurePropertiesKHR mAccelerationStructure{};
+
+        /// The shader group handle's size and the two alignments a shader binding table is laid out
+        /// against. `TracePipeline` is what reads them.
+        VkPhysicalDeviceRayTracingPipelinePropertiesKHR mRayTracingPipeline{};
+
+        /// Whether the driver reorders when it is asked to, or takes the hint and ignores it. A
+        /// device that ignores it is refused: this tree keeps no path for one.
+        VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT mInvocationReorder{};
     };
 
     /// A feature the renderer will not start without, and how to reach it in the chain.
