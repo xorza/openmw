@@ -557,23 +557,33 @@ the fix.
 Written after the fact, against what §6 expected, and then a second time after the sources were read
 back against the code. §10.5 is what that reading changed.
 
-### 10.1 The split costs about three percent and buys nothing back
+### 10.1 The split gives back most of what the launch won
 
 `trace` zone medians, release build, no layers, the default suite at 1920×1080 presented and
-1280×720 traced — the same measurement §3 and §9.1 were taken with. Five alternating runs of the
-Stage 2 column, two of them thrown away with the whole frame slower and the clock down, which is the
-board on its power cap rather than a result.
+1280×720 traced. **All three columns measured in one sitting, alternating between binaries with a
+minute of cooling between runs** — four pairs of `master` against `ser`, two of Stage 1 against
+Stage 2, each column the median of its runs. `master` and Stage 1 were built from their own commits
+into a worktree, so this is three binaries on one board rather than three tables written months
+apart. It supersedes the cross-sitting figures §3 and §9.1 recorded, and agrees with them to a
+hundredth.
 
-| View | compute (§3) | launch, one kernel (§9.1) | shader per kind | against the launch |
-|---|---|---|---|---|
-| seyda-neen-ship | 1.69 | **1.56** | 1.62 | +3.8% |
-| seyda-neen-ship-dawn | 2.18 | **1.96** | 2.02 | +3.1% |
-| balmora-mages-guild | 1.59 | **1.49** | 1.54 | +3.4% |
+| View | `master`, a dispatch | Stage 1, one launch | Stage 2, a shader per kind |
+|---|---|---|---|
+| seyda-neen-ship | 1.67 | **1.55** | 1.61 |
+| seyda-neen-ship-dawn | 2.16 | **1.95** | 2.02 |
+| balmora-mages-guild | 1.57 | **1.48** | 1.54 |
+| against `master` | — | −7 to −10% | −2 to −7% |
+| against Stage 1 | — | — | +4% |
+
+**So the branch is a win and its second commit is not.** Stage 2 is faster than the dispatch it
+replaces at every view — the launch's own win survives it — and it hands back about four percent of
+what Stage 1 had gained. Nothing here is a regression against what shipped before the branch; the
+regression is against the commit in front of it.
 
 **The register relief §6 was for did not appear, and §9.4 is why nobody can say by how much.** The
 driver reports no executable for a ray tracing pipeline, so the register count that stated the
-problem in §3 and would have settled this cannot be read for either shape. What is left is the
-timer, and the timer says the divided frame is slower than the kernel that held the union.
+problem in §3 and would have settled this cannot be read for any of the three shapes. What is left
+is the timer, and the timer says the divided frame is slower than the kernel that held the union.
 
 **What it plausibly goes on is the payload.** Stage 1 kept thirteen words live across its reorder —
 what the query answered and two world-space vectors. Stage 2 keeps twenty-six across the execute,
@@ -627,12 +637,14 @@ rest of the workload is particularly cheap." Two stages of this plan measured th
 Nothing the timer can see. What it is: the sky, the water, the layer stack and the plain surface are
 four programs rather than four branches of one, each carrying its own live state — which is the
 shape every source describes and the shape opacity micromaps and any further per-kind work would
-build on. It costs three percent to hold that shape today.
+build on. It costs four percent of Stage 1 to hold that shape today, and it is still two to seven
+percent ahead of `master`.
 
-**The decision it forces is whether three percent is worth a shape.** On this renderer's own posture
-— picture first, then performance — it is not yet, because the shape buys no picture. §9.5's next
-thing to do is unchanged: opacity micromaps, which reach the divergence inside traversal that no
-reorder and no split can.
+**The decision it forces is whether four percent is worth a shape.** On this renderer's own posture
+— picture first, then performance — it is not yet, because the shape buys no picture. Reverting the
+second commit keeps the whole of the branch's win; keeping it keeps the arrangement the sources
+describe and pays four percent for it. §9.5's next thing to do is unchanged either way: opacity
+micromaps, which reach the divergence inside traversal that no reorder and no split can.
 
 ### 10.5 What reading the sources back against the code was worth
 
