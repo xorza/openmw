@@ -177,8 +177,8 @@ namespace Rtx::Testing
             // the value under a figure the cascade had already driven to 0.0020 — so past that point
             // this is measuring a storage format and not an accumulator. Measured both ways on this
             // box: at full width the pair is 0.00201 and 0.00203, at half it is 0.00201 and 0.00210,
-            // against an unfiltered 0.042. `.notes/rtx/gbuffer-plan.md` §7 says what the width was
-            // worth and what it cost.
+            // against an unfiltered 0.042. `.notes/rtx/shader-review.md` §4 says what the width
+            // was worth and what it cost.
             EXPECT_LE(settled, after * 1.05f)
                 << "the history does not cost what the cascade gained: " << after << " becomes " << settled;
 

@@ -14,7 +14,7 @@
 // **The pass's own, and not the G-buffer's.** A channel the trace writes and a history the denoiser
 // keeps share nothing but a number of bits, and these three were built from `GBUFFER_RADIANCE` and
 // `GBUFFER_GUIDE` — so narrowing a channel for the trace's sake silently narrowed a history whose
-// evidence lies somewhere else entirely. `.notes/rtx/gbuffer-plan.md` is that evidence.
+// evidence lies somewhere else entirely. `.notes/rtx/shader-review.md` §4 is that evidence.
 //
 // **Half floats for the mean and the surface, because neither builds a reference.** What put the
 // radiance channels back to full width is an argument about rounding a term before adding it to a

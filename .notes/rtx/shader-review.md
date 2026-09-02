@@ -129,24 +129,58 @@ paths are the same load unit; this is a debugging-safety trade, not a speed one,
 address past a table would have to say so through GPU-assisted validation rather than through
 robustness.
 
-### 4. G-buffer and history precision
+### 4. G-buffer and history precision — done
 
-`GBUFFER_RADIANCE` is `rgba32f` for direct, indirect, the accumulator's colour and moments, and
-`GBUFFER_GUIDE` is `rgba32f` for a normal and a roughness. At 1920×1080 the trace writes 94 bytes a
-pixel; the accumulator reads four bilinear taps of two full-float histories and the wavelet reads
-guide, depth and source at 25 taps for five levels. The field's answer is half floats for radiance
-and history, an octahedral `rg16_snorm` normal beside a roughness, and full floats only where a
-second moment is accumulated. `MAX_SUN_RADIANCE` already caps the one value that would not fit a
-half, and DLSS Ray Reconstruction takes half-float inputs.
+**The denoiser is a third cheaper and the picture did not move.** Medians at the guild, release,
+1920×1080, against the tree before any of it:
 
-Expected gain is bandwidth in the accumulator and the five wavelet levels; the trace itself is not
-bandwidth-bound. Measure per zone with the GPU timer before and after, and keep `moments` at full
-precision — `E[l²] - E[l]²` cancels catastrophically in half floats.
+| zone | before | after |
+|---|---|---|
+| `filter` | 2.72 | 1.92, **−29%** |
+| `accumulate` | 0.685 | 0.42, **−39%** |
+| `composite` | 0.227 | 0.135, **−41%** |
 
-`.notes/rtx/gbuffer-plan.md` is this finding measured and staged. It corrects three things: the two
-radiance channels are already closed by the experiment `gbuffer.cpp` records, a world distance
-overflows a half at 65504 against a far plane of 200000, and neither the accumulator nor the cascade
-runs in the frame the budget is written against.
+What moved: `GBUFFER_GUIDE` and `ATROUS_CHANNEL` to half floats, the accumulator's colour and surface
+histories with them, and the cascade decoupled from `CHANNEL_INDIRECT` so the two formats could part.
+`gbuffer.cpp`, `accumulate.h` and `atrous.h` each carry the argument for their own width and the
+measurement behind it.
+
+**The three corrections this finding needed.**
+
+- **The two radiance channels were already closed**, by an experiment `gbuffer.cpp` records: a
+  low-discrepancy sampler makes a rounding error alias rather than cancel, so a converged mean came
+  back 0.096% low against a 0.067% tolerance. Nothing here reopened it.
+- **A world distance does not fit in a half.** `sFarPlane` is 200000 and a half stops at 65504.
+  `ACCUMULATE_DISTANCE_RANGE` puts the far plane at 2^15, which clears the overflow and the
+  denormals at the near end both.
+- **Neither pass runs in the frame the budget is written against.** `upscale = quality` is the
+  default and Ray Reconstruction suppresses the wavelet, so every millisecond above belongs to the
+  path with no DLSS on it.
+
+**And one thing the finding asked for that does not pay: the packed guide of §9.** Three encodings
+were built and benched, guild and ship, three alternations each:
+
+| what one tap holds | decode | `filter`, guild |
+|---|---|---|
+| a guide load and a depth load | none | 1.92 |
+| a half distance in the guide's `w` | one multiply | 1.565 |
+| an octahedral normal and an exact distance | fold plus `normalize` | 1.945 |
+| three ten-bit components and an exact distance | shifts plus a Newton step | 1.87 |
+
+**The cascade is not bandwidth-bound at eight bytes a tap — it is bound by the work per tap.** The
+eighteen per cent the second row buys comes from removing a *load instruction*, and every encoding
+that restores the precision costs a decode worth about as much as the load it removed. Ten
+instructions a tap and eight bytes a tap price the same here, which is the figure to reach for before
+proposing another packing.
+
+**A half float is measurably too coarse for a distance at 1920×1080**: its step is 0.46 of a pixel's
+own footprint at every range, because the two scale together. All twenty `verify` views moved, worst
+2 to 25 of 255 on up to 14.6% of their pixels. Restoring the distance exactly brought that back to
+the 1-to-19 band, and that is the encoding worth 2.6%.
+
+**The filter tests cannot decide a guide's precision.** Both render 64 rows square, where a pixel
+subtends seventeen times what it does at 1080p — so every figure they report is identical to five
+digits across all three encodings. `verify` at the render resolution is the instrument.
 
 ### 5. Vertex normals as octahedral `snorm16x2`
 
