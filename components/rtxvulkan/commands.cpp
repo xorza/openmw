@@ -73,7 +73,7 @@ namespace Rtx
 
         if (fence != VK_NULL_HANDLE)
             checkVk(vkResetFences(mDevice.getHandle(), 1, &fence), "vkResetFences");
-        checkVk(vkQueueSubmit2(mDevice.getQueue(), 1, &submit, fence), "vkQueueSubmit2");
+        checkVk(mDevice, vkQueueSubmit2(mDevice.getQueue(), 1, &submit, fence), "vkQueueSubmit2");
     }
 
     void CommandPool::forgetDeferred()
@@ -156,7 +156,7 @@ namespace Rtx
         checkVk(vkEndCommandBuffer(commands), "vkEndCommandBuffer");
 
         submitWithDeferred(commands, mFence);
-        awaitVk(mDevice.getHandle(), mFence, "a one-off submit");
+        awaitVk(mDevice, mFence, "a one-off submit");
 
         // The copies have run, so this is where a deferred batch's staging stops being read, and
         // where every buffer that carried one can go back to the pool.

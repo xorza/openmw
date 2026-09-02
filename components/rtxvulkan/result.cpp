@@ -4,6 +4,8 @@
 
 #include <components/rtx/error.hpp>
 
+#include "device.hpp"
+
 namespace Rtx
 {
     std::string_view resultName(VkResult result)
@@ -73,17 +75,37 @@ namespace Rtx
         }
     }
 
+    namespace
+    {
+        std::string describeFailure(VkResult result, const char* call)
+        {
+            std::string message(call);
+            message += " failed: ";
+            message += resultName(result);
+            message += " (";
+            message += std::to_string(static_cast<int>(result));
+            message += ')';
+            return message;
+        }
+    }
+
     void checkVk(VkResult result, const char* call)
     {
         if (result == VK_SUCCESS)
             return;
 
-        std::string message(call);
-        message += " failed: ";
-        message += resultName(result);
-        message += " (";
-        message += std::to_string(static_cast<int>(result));
-        message += ')';
+        throw Error(describeFailure(result, call));
+    }
+
+    void checkVk(const Device& device, VkResult result, const char* call)
+    {
+        if (result == VK_SUCCESS)
+            return;
+
+        std::string message = describeFailure(result, call);
+        if (result == VK_ERROR_DEVICE_LOST)
+            message += device.describeFault();
+
         throw Error(message);
     }
 
@@ -93,9 +115,9 @@ namespace Rtx
             + " ms; the device has stopped answering";
     }
 
-    void awaitVk(VkDevice device, VkFence fence, const char* what, std::uint64_t patience)
+    void awaitVk(const Device& device, VkFence fence, const char* what, std::uint64_t patience)
     {
-        const VkResult result = vkWaitForFences(device, 1, &fence, VK_TRUE, patience);
+        const VkResult result = vkWaitForFences(device.getHandle(), 1, &fence, VK_TRUE, patience);
         if (result == VK_SUCCESS)
             return;
 
@@ -104,6 +126,6 @@ namespace Rtx
         if (result == VK_TIMEOUT)
             throw Error(timedOut(what, patience));
 
-        checkVk(result, what);
+        checkVk(device, result, what);
     }
 }

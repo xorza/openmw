@@ -36,6 +36,9 @@ namespace Rtx
         /// Which of `getOptionalDeviceExtensions()` this device offers, in that order.
         const std::vector<const char*>& getAvailableOptionalExtensions() const { return mOptionalExtensions; }
 
+        /// Whether `name` is one of them.
+        bool hasOptionalExtension(const char* name) const;
+
         /// Multi-line report for `openmw-rtxtool info`.
         std::string describe() const;
 

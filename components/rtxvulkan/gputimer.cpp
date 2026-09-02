@@ -119,8 +119,9 @@ namespace Rtx
 
         // Waiting rather than polling for availability: every submit these were written into has
         // already been fenced, so the results are there and the flag costs nothing.
-        checkVk(vkGetQueryPoolResults(mDevice.getHandle(), mHandle, 0, count, count * sizeof(std::uint64_t),
-                    ticks.data(), sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
+        checkVk(mDevice,
+            vkGetQueryPoolResults(mDevice.getHandle(), mHandle, 0, count, count * sizeof(std::uint64_t), ticks.data(),
+                sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
             "vkGetQueryPoolResults");
 
         mSpans.clear();

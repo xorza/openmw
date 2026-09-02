@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cstring>
+#include <format>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <components/rtx/error.hpp>
@@ -18,6 +20,30 @@ namespace Rtx
 {
     namespace
     {
+        /// What a faulting address was being used for, as the header spells it.
+        std::string_view faultAddressTypeName(VkDeviceFaultAddressTypeEXT type)
+        {
+            switch (type)
+            {
+                case VK_DEVICE_FAULT_ADDRESS_TYPE_NONE_EXT:
+                    return "a fault at no address";
+                case VK_DEVICE_FAULT_ADDRESS_TYPE_READ_INVALID_EXT:
+                    return "an invalid read";
+                case VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_EXT:
+                    return "an invalid write";
+                case VK_DEVICE_FAULT_ADDRESS_TYPE_EXECUTE_INVALID_EXT:
+                    return "an invalid execute";
+                case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_UNKNOWN_EXT:
+                    return "an instruction pointer the driver could not place";
+                case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_INVALID_EXT:
+                    return "an instruction pointer outside any shader";
+                case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_FAULT_EXT:
+                    return "the instruction that faulted";
+                default:
+                    return "an address of unrecognised type";
+            }
+        }
+
         template <class T>
         void load(VkDevice device, T& out, const char* name)
         {
@@ -62,6 +88,24 @@ namespace Rtx
         DeviceFeatures features;
         requestRequiredFeatures(features);
 
+        // **Outside `DeviceFeatures`, because it is the one feature that is optional.** That type is
+        // what the renderer requires, asked and enabled as one list, and a feature it can do without
+        // has no place in a list a device is refused for lacking. Asked of the physical device here,
+        // because a driver may offer the extension without the feature, and chained ahead of the
+        // required ones where it has it.
+        VkPhysicalDeviceFaultFeaturesEXT fault{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT };
+        if (mPhysicalDevice.hasOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME))
+        {
+            VkPhysicalDeviceFeatures2 offered{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &fault };
+            vkGetPhysicalDeviceFeatures2(mPhysicalDevice.getHandle(), &offered);
+
+            // The vendor binary is not asked for: nothing here could read it, and a feature enabled
+            // for nothing is a feature to explain.
+            fault.deviceFaultVendorBinary = VK_FALSE;
+            fault.pNext = &features.mFeatures2;
+        }
+        const bool describesFault = fault.deviceFault == VK_TRUE;
+
         const float priority = 1.0f;
         const VkDeviceQueueCreateInfo queue{
             .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -72,7 +116,7 @@ namespace Rtx
 
         const VkDeviceCreateInfo createInfo{
             .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-            .pNext = &features.mFeatures2,
+            .pNext = describesFault ? static_cast<const void*>(&fault) : &features.mFeatures2,
             .queueCreateInfoCount = 1,
             .pQueueCreateInfos = &queue,
             .enabledExtensionCount = static_cast<std::uint32_t>(extensions.size()),
@@ -101,6 +145,9 @@ namespace Rtx
             load(mHandle, mFunctions.mCmdTraceRays, "vkCmdTraceRaysKHR");
             load(mHandle, mFunctions.mGetPipelineExecutableProperties, "vkGetPipelineExecutablePropertiesKHR");
             load(mHandle, mFunctions.mGetPipelineExecutableStatistics, "vkGetPipelineExecutableStatisticsKHR");
+
+            if (describesFault)
+                load(mHandle, mGetDeviceFaultInfo, "vkGetDeviceFaultInfoEXT");
 
             if (instance.hasDebugUtils())
             {
@@ -159,6 +206,10 @@ namespace Rtx
         // occupancy figure is made of, is not a number this device will give. Said once per pipeline
         // rather than left as a missing line, because a reader otherwise cannot tell it from a call
         // nobody made.
+        //
+        // **And no internal representation for any pipeline**, asked with the capture flag set: the
+        // driver answers with a count of nought, so which load a kernel compiled to is not a question
+        // this extension can put to it. Nsight Graphics is where that is read.
         if (executables == 0)
         {
             Log(Debug::Verbose) << "pipeline " << name << ": the driver reports no executable";
@@ -221,7 +272,49 @@ namespace Rtx
 
     void Device::waitIdle() const
     {
-        checkVk(vkDeviceWaitIdle(mHandle), "vkDeviceWaitIdle");
+        checkVk(*this, vkDeviceWaitIdle(mHandle), "vkDeviceWaitIdle");
+    }
+
+    std::string Device::describeFault() const
+    {
+        if (mGetDeviceFaultInfo == nullptr)
+            return {};
+
+        constexpr const char* sUnsaid = "\nthe driver would not say where the device faulted";
+
+        VkDeviceFaultCountsEXT counts{ .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT };
+        if (mGetDeviceFaultInfo(mHandle, &counts, nullptr) != VK_SUCCESS)
+            return sUnsaid;
+
+        std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
+        std::vector<VkDeviceFaultVendorInfoEXT> vendor(counts.vendorInfoCount);
+
+        // Nought, because the feature that provides the binary was not enabled.
+        counts.vendorBinarySize = 0;
+
+        VkDeviceFaultInfoEXT info{
+            .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT,
+            .pAddressInfos = addresses.data(),
+            .pVendorInfos = vendor.data(),
+        };
+
+        // `VK_INCOMPLETE` is the driver having more to say than the counts it gave a moment ago
+        // allowed for, and what it did say is still worth reading.
+        const VkResult result = mGetDeviceFaultInfo(mHandle, &counts, &info);
+        if (result != VK_SUCCESS && result != VK_INCOMPLETE)
+            return sUnsaid;
+
+        std::string report = "\ndevice fault: ";
+        report += info.description;
+        for (std::uint32_t at = 0; at < counts.addressInfoCount; ++at)
+            report += std::format("\n  {} at {:#x}, known to within {:#x}",
+                faultAddressTypeName(addresses[at].addressType), addresses[at].reportedAddress,
+                addresses[at].addressPrecision);
+        for (std::uint32_t at = 0; at < counts.vendorInfoCount; ++at)
+            report += std::format("\n  {} (vendor code {:#x}, data {:#x})", vendor[at].description,
+                vendor[at].vendorFaultCode, vendor[at].vendorFaultData);
+
+        return report;
     }
 
     void Device::setNameImpl(VkObjectType type, std::uint64_t handle, const char* name) const

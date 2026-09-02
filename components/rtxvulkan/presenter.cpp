@@ -196,7 +196,7 @@ namespace Rtx
         // The blit waits the semaphore the acquire signalled, so until it runs both operations are
         // still pending on that semaphore and it may not be handed to another acquire.
         if (acquisition.mBlit != VK_NULL_HANDLE)
-            awaitVk(mDevice.getHandle(), acquisition.mBlit, "the blit that last took this acquire semaphore");
+            awaitVk(mDevice, acquisition.mBlit, "the blit that last took this acquire semaphore");
         acquisition.mBlit = VK_NULL_HANDLE;
 
         std::uint32_t index = 0;
@@ -210,7 +210,7 @@ namespace Rtx
         // the moment a newer one replaces it, so an image can come back round before the present
         // that queued it has consumed its semaphore — the case a count of frames in flight does not
         // cover, because it counts frames rather than images.
-        awaitVk(mDevice.getHandle(), mPresenting[index], "the present that last used this image");
+        awaitVk(mDevice, mPresenting[index], "the present that last used this image");
         checkVk(vkResetFences(mDevice.getHandle(), 1, &mPresenting[index]), "vkResetFences");
 
         const VkCommandBuffer commands = mCommands[index];
@@ -297,7 +297,7 @@ namespace Rtx
             .signalSemaphoreInfoCount = 1,
             .pSignalSemaphoreInfos = &signal,
         };
-        checkVk(vkQueueSubmit2(mDevice.getQueue(), 1, &submit, mPresenting[index]), "vkQueueSubmit2");
+        checkVk(mDevice, vkQueueSubmit2(mDevice.getQueue(), 1, &submit, mPresenting[index]), "vkQueueSubmit2");
 
         acquisition.mBlit = mPresenting[index];
         rememberUse(frame.getHandle(), mPresenting[index]);
@@ -329,7 +329,7 @@ namespace Rtx
                 // The fence may have been reset and signalled again by a later present of another
                 // image. That is conservative and not wrong: a queue signals its fences in submission
                 // order, so the later one having finished means this one had.
-                awaitVk(mDevice.getHandle(), use.mFence, "the present that last read this frame");
+                awaitVk(mDevice, use.mFence, "the present that last read this frame");
                 return;
             }
     }

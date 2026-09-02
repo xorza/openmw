@@ -151,7 +151,7 @@ namespace Rtx::Testing
                 // through `submitAndWait`, which allocates a buffer per call. The wait is another
                 // matter: forty of them with no deadline is what turned one stalled submit into a
                 // suite that never finished and a process that had to be killed.
-                Rtx::awaitVk(device.getHandle(), finished, "a measured frame");
+                Rtx::awaitVk(device, finished, "a measured frame");
                 vkResetFences(device.getHandle(), 1, &finished);
             };
 

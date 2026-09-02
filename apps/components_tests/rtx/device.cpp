@@ -81,7 +81,7 @@ namespace Rtx
 
             try
             {
-                awaitVk(mHarness->mDevice->getHandle(), fence, "a submit nobody made", 1'000'000ull);
+                awaitVk(*mHarness->mDevice, fence, "a submit nobody made", 1'000'000ull);
                 ADD_FAILURE() << "the wait returned, so a device that never answers still looks like success";
             }
             catch (const Error& e)
@@ -111,6 +111,12 @@ namespace Rtx
             EXPECT_NE(functions.mCmdBuildAccelerationStructures, nullptr);
             EXPECT_NE(functions.mGetAccelerationStructureDeviceAddress, nullptr);
             EXPECT_NE(functions.mGetAccelerationStructureBuildSizes, nullptr);
+
+            // The one optional entry point, present exactly where the driver offers its extension.
+            // An extension enabled and never read is what this proves gone.
+            const PhysicalDevice& physical = mHarness->mDevice->getPhysicalDevice();
+            EXPECT_EQ(mHarness->mDevice->canDescribeFault(),
+                physical.hasOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME));
         }
 
         TEST_F(RtxDeviceTest, everyRequiredFeatureIsActuallySupported)

@@ -1,6 +1,7 @@
 #include "physicaldevice.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <string_view>
 
@@ -144,6 +145,12 @@ namespace Rtx
 
             return {};
         }
+    }
+
+    bool PhysicalDevice::hasOptionalExtension(const char* name) const
+    {
+        return std::any_of(mOptionalExtensions.begin(), mOptionalExtensions.end(),
+            [name](const char* const offered) { return std::strcmp(offered, name) == 0; });
     }
 
     PhysicalDevice PhysicalDevice::select(VkInstance instance)

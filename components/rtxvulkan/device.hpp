@@ -115,6 +115,22 @@ namespace Rtx
         /// for pacing a frame.
         void waitIdle() const;
 
+        /// Whether the driver offers `VK_EXT_device_fault` with its feature, and so whether
+        /// `describeFault` has anything to ask.
+        bool canDescribeFault() const
+        {
+            return mGetDeviceFaultInfo != nullptr;
+        }
+
+        /// What the device says about why it was lost, as lines for the message that reports it —
+        /// the driver's description, every address it faulted at and how precisely it knows, and
+        /// whatever the vendor adds. Nothing where the driver offers no `VK_EXT_device_fault`.
+        ///
+        /// **After a loss and never before**: the extension forbids the question of a device that is
+        /// still answering, so the `checkVk` and `awaitVk` that take a device are what ask it, and
+        /// only when the result was `VK_ERROR_DEVICE_LOST`.
+        std::string describeFault() const;
+
     private:
         void setNameImpl(VkObjectType type, std::uint64_t handle, const char* name) const;
         void beginLabelImpl(VkCommandBuffer commands, const char* name) const;
@@ -126,6 +142,10 @@ namespace Rtx
         PFN_vkSetDebugUtilsObjectNameEXT mSetObjectName = nullptr;
         PFN_vkCmdBeginDebugUtilsLabelEXT mBeginLabel = nullptr;
         PFN_vkCmdEndDebugUtilsLabelEXT mEndLabel = nullptr;
+
+        /// Null where the driver offers no `VK_EXT_device_fault`, or offers the extension without
+        /// its feature.
+        PFN_vkGetDeviceFaultInfoEXT mGetDeviceFaultInfo = nullptr;
 
         // Last, so that it is torn down first: saving it reads from the device, which the members
         // above are still holding open at that point.

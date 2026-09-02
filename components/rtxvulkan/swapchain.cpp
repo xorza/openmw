@@ -221,7 +221,7 @@ namespace Rtx
         // Suboptimal still produces a usable image; taking it and rebuilding after the present keeps
         // the semaphore that was just signalled from being left dangling.
         if (result != VK_SUBOPTIMAL_KHR)
-            checkVk(result, "vkAcquireNextImageKHR");
+            checkVk(mDevice, result, "vkAcquireNextImageKHR");
 
         return true;
     }
@@ -241,7 +241,7 @@ namespace Rtx
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
             return false;
 
-        checkVk(result, "vkQueuePresentKHR");
+        checkVk(mDevice, result, "vkQueuePresentKHR");
         return true;
     }
 }

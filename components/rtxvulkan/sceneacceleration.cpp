@@ -30,11 +30,12 @@ namespace Rtx
         /// `VkAccelerationStructureCreateInfoKHR::offset` must be a multiple of this.
         constexpr VkDeviceSize sStructureAlignment = 256;
 
-        // Storage as well as build input, because the shader reads the indices back at a hit and
-        // there is no reason for a second copy of them to exist.
+        // Addressable as well as build input, because the shader reads the indices back at a hit
+        // through the same address the build read them at, and there is no reason for a second copy
+        // of them to exist. No descriptor names any of these, so nothing else is asked for.
         constexpr VkBufferUsageFlags sBuildInputUsage
             = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
-            | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
         constexpr VkBufferUsageFlags sStorageUsage
             = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;

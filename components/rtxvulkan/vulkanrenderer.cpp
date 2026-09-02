@@ -772,7 +772,7 @@ namespace Rtx
         assert(frame.mPending && "a frame in flight that was never submitted");
 
         const auto start = std::chrono::steady_clock::now();
-        awaitVk(mDevice.getHandle(), frame.mFence, "a frame");
+        awaitVk(mDevice, frame.mFence, "a frame");
         const double waited = since(start, std::chrono::steady_clock::now());
 
         frame.mPending = false;
@@ -921,7 +921,7 @@ namespace Rtx
         Frame& gui = frameSlot(mGuiFrame);
         if (gui.mGuiPending)
         {
-            awaitVk(mDevice.getHandle(), gui.mGuiFence, "the interface drawn two frames ago");
+            awaitVk(mDevice, gui.mGuiFence, "the interface drawn two frames ago");
             gui.mGuiPending = false;
             gui.mGuiGraveyard.clear();
         }

@@ -45,6 +45,15 @@ namespace RtxTool
     /// **A magnitude and not a verdict.** "Worst 2 of 255 on 5% of the pixels" is a rounding
     /// difference and "worst 37 on 20%" is a bug, and a bare *differs* — which is all this fork had
     /// — cost a day of bisection that reached the wrong answer twice.
+    ///
+    /// **And "worst 25 on four hundredths of a per cent", the same pixels every time, in one run of
+    /// several, is the driver and not this tree.** Where two triangles tie for the closest hit —
+    /// Morrowind's caves are rock pieces pushed through one another, so their intersections are lines
+    /// of exact ties — the acceleration structure decides the order, and the driver builds one of two
+    /// trees from one scene. Addamasartus flips between two pictures nine hundred pixels apart, with
+    /// the upscaler off, the filter off, the exposure held, address randomisation off, and the albedo
+    /// alone; `scene` digests what was handed over and twelve reads gave one number. A change here
+    /// that moved the picture that way would have to move a triangle.
     struct FrameDifference
     {
         /// The two are not the same size, so there is nothing to subtract. Also what a missing or

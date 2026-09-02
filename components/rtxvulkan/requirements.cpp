@@ -35,7 +35,9 @@ namespace Rtx
         };
 
         constexpr std::array sOptionalDeviceExtensions{
-            // Turns a device loss from "the driver said no" into a list of what had not completed.
+            // Turns a device loss from "the driver said no" into where it faulted: the addresses,
+            // how precisely they are known, and what the vendor adds. `Device::describeFault` is
+            // what reads it, and `Device` enables its feature where the driver has it.
             VK_EXT_DEVICE_FAULT_EXTENSION_NAME,
         };
 

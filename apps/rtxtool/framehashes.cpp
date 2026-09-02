@@ -19,22 +19,31 @@ namespace RtxTool
         constexpr std::size_t sNamed = 6;
     }
 
+    void Digest::add(std::span<const std::byte> bytes)
+    {
+        // The seed is read whole before anything is written, but a copy costs two words and makes
+        // that true whatever the implementation does.
+        const std::array<std::uint64_t, 2> seed = mWords;
+        MurmurHash3_x64_128(bytes.data(), static_cast<int>(bytes.size()), seed.data(), mWords.data());
+    }
+
+    std::string spellHash(const std::array<std::uint64_t, 2>& words)
+    {
+        return std::format("{:016x}{:016x}", words[0], words[1]);
+    }
+
     void FrameHashes::add(const std::string_view view, const std::uint32_t frame, std::span<const std::uint8_t> pixels)
     {
-        // **A pointer and not a value**, which is this fork's signature: the seed is two words, so
-        // that a hash can be chained onto the one before it. Nothing is chained here.
-        static constexpr std::array<std::uint64_t, 2> sSeed{};
-
-        Frame held{ .mView = std::string(view), .mFrame = frame };
-        MurmurHash3_x64_128(pixels.data(), static_cast<int>(pixels.size()), sSeed.data(), held.mHash.data());
-        mFrames.push_back(std::move(held));
+        Digest digest;
+        digest.add(pixels);
+        mFrames.push_back(Frame{ .mView = std::string(view), .mFrame = frame, .mHash = digest.getWords() });
     }
 
     void FrameHashes::write(const std::filesystem::path& file) const
     {
         std::ofstream out(file);
         for (const Frame& held : mFrames)
-            out << std::format("{} {} {:016x}{:016x}\n", held.mView, held.mFrame, held.mHash[0], held.mHash[1]);
+            out << std::format("{} {} {}\n", held.mView, held.mFrame, spellHash(held.mHash));
 
         // **Thrown and not reported**, the way `shot --dump` answers the same failure: a reference
         // that did not get written and a command that still succeeded is the next run comparing

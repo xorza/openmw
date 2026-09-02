@@ -8,6 +8,8 @@
 
 namespace Rtx
 {
+    class Device;
+
     /// Name of a `VkResult` as it is spelled in the header, for messages.
     std::string_view resultName(VkResult result);
 
@@ -16,6 +18,11 @@ namespace Rtx
     /// `VK_INCOMPLETE` is a failure here. Enumeration loops that can legitimately see it handle it
     /// before calling this.
     void checkVk(VkResult result, const char* call);
+
+    /// The same, for a call that can lose the device: a submit, a wait, an acquire or a present.
+    /// `VK_ERROR_DEVICE_LOST` carries what the device says about the fault, from
+    /// `Device::describeFault`, which is the one moment that question may be asked.
+    void checkVk(const Device& device, VkResult result, const char* call);
 
     /// How long a wait on the device may take before it is called a failure.
     ///
@@ -33,7 +40,7 @@ namespace Rtx
     ///
     /// @param patience nanoseconds to allow. Defaulted so no caller has to think about it, and a
     ///        parameter so the failure can be reached in a test without waiting out the real one.
-    void awaitVk(VkDevice device, VkFence fence, const char* what, std::uint64_t patience = sPatience);
+    void awaitVk(const Device& device, VkFence fence, const char* what, std::uint64_t patience = sPatience);
 
     /// What a wait that ran out is called, so the two places that can say it say it the same way.
     std::string timedOut(const char* what, std::uint64_t patience);
