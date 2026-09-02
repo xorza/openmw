@@ -47,14 +47,18 @@ namespace Rtx
         /// depends on how many there are. The alternative is a full-frame copy to put the answer
         /// back where the caller assumed it would be, which is bandwidth spent on tidiness.
         ///
-        /// @param buffer must have been handed over, so the trace's writes are visible here. Its
-        ///        indirect channel is the input and may be written by an even-numbered level.
+        /// @param buffer must have been handed over, so the trace's writes are visible here. Only
+        ///        the guide and the depth are read from it — the light being filtered comes in
+        ///        through `blended`.
+        /// @param blended what the accumulator made of this frame's bounce, which is the first
+        ///        level's input and the scratch's partner for every level after it. Written by the
+        ///        odd-numbered levels.
         /// @param moments what the accumulator in front of this measured: the estimator's own
         ///        variance, which is what turns a difference in brightness into an edge or into
         ///        noise. A pixel with no history carries one, and one means "filter widely".
         /// @param camera the one the frame was traced with; the edge tests rebuild its rays.
-        const Image& record(
-            VkCommandBuffer commands, const GBuffer& buffer, const Image& moments, const Shaders::Camera& camera) const;
+        const Image& record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended, const Image& moments,
+            const Shaders::Camera& camera) const;
 
     private:
         const Device& mDevice;

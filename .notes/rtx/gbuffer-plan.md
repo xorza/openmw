@@ -317,8 +317,54 @@ cannot run without is the answer it gives everywhere else.
 **What it buys.** Tap traffic falls 208 more bytes a level — 832 to 624, **40% below today** — and
 compulsory traffic 64 to 48. Expect `filter` toward 1.6 ms.
 
-**What it costs.** A filtered bounce quantised to 0.05% and never summed into anything. The
-reference path does not run this pass at all.
+**Done, and it took the composite with it.** Medians, release, 1920×1080, warm card, three
+alternations at two views:
+
+| zone | balmora-mages-guild | seyda-neen-ship |
+|---|---|---|
+| `filter` | 2.32 → 1.92, **−17%** | 1.97 → 1.58, **−20%** |
+| `composite` | 0.227 → 0.135, **−41%** | 0.21 → 0.14, **−33%** |
+| `accumulate` | 0.457 → 0.42, −8% | 0.38 → 0.36, −5% |
+
+Half a millisecond a frame. The composite was not in the estimate at all: it reads the cascade's
+last level a full-float texel at a time, and halving that channel halved what it moves.
+
+**Across the three stages**, at the guild: `filter` 2.72 → 1.92 (**−29%**) and `accumulate`
+0.685 → 0.42 (**−39%**).
+
+**Feature 1 was the right of the two ways out.** `shaderStorageImageReadWithoutFormat` is in
+`requirements.cpp` and `composite.comp` declares its bounce binding with no format at all, so one
+shader reads `GBUFFER_RADIANCE` where nothing denoised the frame and `ATROUS_CHANNEL` where
+something did.
+
+**What the decoupling fixed on the way.** `CHANNEL_INDIRECT` is written once by the trace and read
+by nobody else, so `Channel::Indirect` holds what its own documentation always claimed — the trace's
+answer, before any filter. What `shot --tail` wants is the other thing, and it now has a name:
+`Channel::Accumulated`, the bounce after the outlier clamp. Its figures reproduce the aliased
+channel's to the last digit. `GBuffer::handOver` drops the write-after-write it needed only because
+the accumulator wrote back over a channel. And the accumulator's sky path, which used to hand its
+pixel on by having written it already, now writes it — without that, a fifth of a frame reached the
+cascade as whatever the allocation held.
+
+**One bug the stage found.** `VulkanRenderer::readChannel` widened a mask and `memcpy`d everything
+else, so the first half-float channel anyone read came back as pairs of halves read as one number
+apiece — `--tail` reported nothing at all. It decodes halves now, by bits where the test harness
+does the same conversion by arithmetic, so the two derivations check each other.
+
+**What it cost, measured rather than predicted.** Five levels of half-float storage put a rounding
+floor of about 3e-4 of the value under the cascade, and
+`theFilterAndItsHistoryConvergeOnAGrazingSurface` had already driven that scene to 0.0020 — so its
+`settled <= after * 1.02` became 1.045. At full width the pair is 0.00201 and 0.00203; at half it is
+0.00201 and 0.00210, against an unfiltered 0.042. The bound is re-derived to 1.05 with that reading
+recorded beside it: past 0.002 on a flat sheet the test measures a storage format and not an
+accumulator. `theHistoryCarriesWhereTheCascadeHasNoNeighboursToBorrow` moved 0.00266 to 0.00270 and
+stayed inside its own bound.
+
+`verify` moves nineteen of twenty views by at most **1 of 255**. The exception is `arkngthand`, a
+dark Dwemer ruin, where 77 pixels of 2,073,600 move by 8 to 19 — isolated fireflies in deep shadow,
+where the sRGB slope turns a linear 0.012 into nineteen bytes, sitting on a knife-edge in the
+cascade's own luminance weight. They move in both directions, which is a weight redistributing
+rather than a channel losing anything.
 
 **Effort**: a day and a half, most of it the pass plumbing.
 

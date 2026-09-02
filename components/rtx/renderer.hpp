@@ -307,11 +307,21 @@ namespace Rtx
         /// Four floats a pixel: the bounce the trace found, before any filter and before the albedo
         /// is multiplied back in.
         ///
-        /// **The channel a firefly is counted in.** The tail 4.1 tabulates is a share of pixels
-        /// whose one-sample bounce luminance passes a threshold, and by the time bytes exist the
-        /// albedo has been multiplied in and the display curve has spent the range that made the
-        /// number mean something.
+        /// The trace's answer and nothing else's, whatever ran after it.
         Indirect,
+
+        /// Four floats a pixel: the same bounce once the accumulator has averaged it over the
+        /// frames this surface has been seen for, and before the cascade blurs it.
+        ///
+        /// **The channel a firefly is counted in.** The tail `shot --tail` tabulates is a share of
+        /// pixels whose bounce luminance passes a threshold, and it is counted here rather than on
+        /// `Indirect` so that what the outlier clamp has already been over is what is counted. By
+        /// the time bytes exist the albedo has been multiplied in and the display curve has spent
+        /// the range that made the number mean something.
+        ///
+        /// **Only a frame the wavelet denoised has one.** Nothing writes this where the upscaler
+        /// denoises for itself, or where no filter ran at all.
+        Accumulated,
     };
 
     /// What a frame is asked for, beyond where the camera stands.

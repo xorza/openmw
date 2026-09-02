@@ -14,11 +14,11 @@ namespace Rtx
             return (extent + Shaders::ACCUMULATE_WORKGROUP - 1) / Shaders::ACCUMULATE_WORKGROUP;
         }
 
-        /// The channel being blended, the four the frame describes it with, and the three of each
-        /// that carry a history across. All storage images, all pushed.
-        constexpr std::size_t sBindingCount = 11;
+        /// The channel being blended, the four the frame describes it with, the three of each that
+        /// carry a history across, and the blend the cascade reads. All storage images, all pushed.
+        constexpr std::size_t sBindingCount = 12;
 
-        /// Eleven of one kind, so a loop rather than eleven lines — `AtrousPass` spells its four out
+        /// A dozen of one kind, so a loop rather than a dozen lines — `AtrousPass` spells its four out
         /// because four is not yet a list.
         constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> describeBindings()
         {
@@ -42,7 +42,7 @@ namespace Rtx
 
     void AccumulatePass::resize(std::uint32_t width, std::uint32_t height)
     {
-        if (mColour[0] != nullptr && mColour[0]->getWidth() == width && mColour[0]->getHeight() == height)
+        if (mBlended != nullptr && mBlended->getWidth() == width && mBlended->getHeight() == height)
             return;
 
         for (std::size_t i = 0; i < 2; ++i)
@@ -54,6 +54,11 @@ namespace Rtx
             mMoments[i] = std::make_unique<Image>(mDevice, width, height, ACCUMULATE_MOMENTS,
                 VK_IMAGE_USAGE_STORAGE_BIT, i == 0 ? "accumulate-moments-0" : "accumulate-moments-1");
         }
+
+        // `TRANSFER_SRC` for `Channel::Accumulated`, which is the one figure `shot --tail` counts a
+        // firefly in and the only image in the frame that holds a clamped bounce.
+        mBlended = std::make_unique<Image>(mDevice, width, height, ATROUS_CHANNEL,
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "accumulate-blended");
 
         mCurrent = 0;
         mFresh = true;
@@ -83,6 +88,15 @@ namespace Rtx
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
+        // **Waiting on both of the cascade's accesses and not only its read.** Two frames are in
+        // flight over one blend image, and the levels of the cascade write it as well as read it —
+        // so a frame arriving here has to wait for the previous frame's odd levels to finish
+        // writing, which a dependency naming the read alone would not order.
+        mBlended->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+
         const std::array<VkDescriptorImageInfo, sBindingCount> images{
             VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getIndirect().getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getMotion().getView(), VK_IMAGE_LAYOUT_GENERAL },
@@ -95,6 +109,7 @@ namespace Rtx
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mColour[mCurrent]->getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mSurface[mCurrent]->getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mMoments[mCurrent]->getView(), VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ VK_NULL_HANDLE, mBlended->getView(), VK_IMAGE_LAYOUT_GENERAL },
         };
 
         std::array<VkWriteDescriptorSet, sBindingCount> writes{};
@@ -123,5 +138,13 @@ namespace Rtx
         mFresh = false;
 
         return *mMoments[mCurrent];
+    }
+
+    const Image& AccumulatePass::getBlended() const
+    {
+        assert(mBlended != nullptr && "the blend asked for before a resize made one");
+        assert(!mFresh && "the blend asked for before any frame was accumulated into it");
+
+        return *mBlended;
     }
 }

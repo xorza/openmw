@@ -1,6 +1,7 @@
 #include "vulkanrenderer.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -35,6 +36,34 @@ namespace Rtx
 {
     namespace
     {
+        /// One half float, as the number it stands for.
+        ///
+        /// **By bits, where the test harness spells the same conversion out by arithmetic.** That is
+        /// deliberate on both sides: a test that decoded a half through the helper the renderer used
+        /// would agree with it however wrong it was, so the two derivations are kept apart and each
+        /// checks the other.
+        float fromHalf(std::uint16_t bits)
+        {
+            const std::uint32_t sign = static_cast<std::uint32_t>(bits & 0x8000u) << 16;
+            const std::uint32_t exponent = (bits >> 10) & 0x1fu;
+            const std::uint32_t mantissa = bits & 0x3ffu;
+
+            if (exponent == 31)
+                return std::bit_cast<float>(sign | 0x7f800000u | (mantissa << 13));
+
+            // A subnormal half is its mantissa times 2^-24, and the float it widens to is normal —
+            // so the shuffle below cannot make it and a multiply is what does.
+            if (exponent == 0)
+            {
+                const float magnitude = static_cast<float>(mantissa) * 0x1p-24f;
+
+                return (bits & 0x8000u) != 0 ? -magnitude : magnitude;
+            }
+
+            // Bias 15 to bias 127, and ten mantissa bits to twenty-three.
+            return std::bit_cast<float>(sign | ((exponent + 112u) << 23) | (mantissa << 13));
+        }
+
         /// The bounce resolved: the temporal mean, and then the cascade over it.
         ///
         /// **The barrier between them is the reason this is one call.** Two compute dispatches are
@@ -54,16 +83,17 @@ namespace Rtx
             // geometry.
             openZone(timer, commands, "accumulate");
             const Image& moments = accumulate.record(commands, channels, camera, far, historyLost);
+            const Image& blended = accumulate.getBlended();
             closeZone(timer, commands);
 
-            // The cascade reads what the accumulator just wrote, in both channels.
-            for (const Image* written : { &channels.getIndirect(), &moments })
+            // The cascade reads what the accumulator just wrote, in both images.
+            for (const Image* written : { &blended, &moments })
                 written->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
             openZone(timer, commands, "filter");
-            const Image& indirect = filter.record(commands, channels, moments, camera);
+            const Image& indirect = filter.record(commands, channels, blended, moments, camera);
             closeZone(timer, commands);
 
             return indirect;
@@ -1425,6 +1455,11 @@ namespace Rtx
             case Channel::Indirect:
                 image = &mChannels->getIndirect();
                 break;
+            case Channel::Accumulated:
+                // The denoiser's own, so a frame nothing denoised has no answer here — `getBlended`
+                // asserts on one rather than handing back whatever the allocation held.
+                image = &mAccumulate.getBlended();
+                break;
             case Channel::Radiance:
                 // The one channel that is not the trace's: the composite's own output, which is the
                 // frame every other channel was gathered to make.
@@ -1445,6 +1480,22 @@ namespace Rtx
             values.resize(bytes.size());
             for (std::size_t at = 0; at < bytes.size(); ++at)
                 values[at] = static_cast<float>(bytes[at]) / 255.0f;
+
+            return;
+        }
+
+        // **And the denoiser's blend is half floats**, which a `memcpy` would hand back as pairs of
+        // halves read as one number apiece. Tested on the format rather than on a macro, because
+        // four of them across three headers name this one.
+        if (image->getFormat() == VK_FORMAT_R16G16B16A16_SFLOAT)
+        {
+            values.resize(bytes.size() / sizeof(std::uint16_t));
+            for (std::size_t at = 0; at < values.size(); ++at)
+            {
+                std::uint16_t half = 0;
+                std::memcpy(&half, bytes.data() + at * sizeof(half), sizeof(half));
+                values[at] = fromHalf(half);
+            }
 
             return;
         }

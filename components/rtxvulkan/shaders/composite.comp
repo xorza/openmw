@@ -2,6 +2,7 @@
 
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_shader_image_load_formatted : require
 
 // The trace's channels back into one picture, still in linear radiance.
 //
@@ -21,7 +22,13 @@ layout(set = 0, binding = 0, GBUFFER_RADIANCE) uniform readonly image2D direct;
 
 /// One bounce with the albedo divided out, times whatever the water and the air took off it on the
 /// way to the eye — the only channel a filter is allowed to touch.
-layout(set = 0, binding = 1, GBUFFER_RADIANCE) uniform readonly image2D indirect;
+///
+/// **Declared with no format, because this is two images.** A denoised frame hands over the
+/// cascade's last level and an undenoised one hands over `CHANNEL_INDIRECT` itself, and those are
+/// `ATROUS_CHANNEL` and `GBUFFER_RADIANCE` — half floats and full ones. A `readonly` image that
+/// states no format converts from whatever the view holds, which `requirements.cpp` requires the
+/// device to be able to do.
+layout(set = 0, binding = 1) uniform readonly image2D indirect;
 
 /// What to put back: the surface's own albedo, and nothing of the path.
 layout(set = 0, binding = 2, GBUFFER_ALBEDO) uniform readonly image2D albedo;

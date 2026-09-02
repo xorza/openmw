@@ -51,8 +51,8 @@ namespace RtxTool
         ///
         /// **What a firefly is counted in, and the one thing bytes cannot say.** A bright bounce is
         /// scene-referred radiance and the display curve has spent that by the time a pixel is a
-        /// byte, so the tail is read off `Channel::Indirect` — the bounce in linear radiance, after
-        /// the accumulator has had it and before the albedo is put back on.
+        /// byte, so the tail is read off `Channel::Accumulated` — the bounce in linear radiance,
+        /// after the accumulator has had it and before the albedo is put back on.
         ///
         /// Wants `--upscale=off` so the wavelet and its accumulator run at all, and a `--accumulate`
         /// long enough for the history to pass `ACCUMULATE_SETTLED`, which is what the clamp holds

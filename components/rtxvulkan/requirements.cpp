@@ -43,6 +43,15 @@ namespace Rtx
             RequiredFeature{
                 "shaderInt64", +[](DeviceFeatures& f) -> VkBool32& { return f.mFeatures2.features.shaderInt64; } },
 
+            // **What lets `composite.comp` read one binding that is two formats.** The bounce it
+            // composites is the trace's own channel where nothing denoised the frame and the
+            // cascade's where something did, and those are `rgba32f` and `rgba16f` — so the shader
+            // states no format at all and the load converts from whatever the view holds.
+            RequiredFeature{ "shaderStorageImageReadWithoutFormat",
+                +[](DeviceFeatures& f) -> VkBool32& {
+                    return f.mFeatures2.features.shaderStorageImageReadWithoutFormat;
+                } },
+
             RequiredFeature{ "bufferDeviceAddress",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.bufferDeviceAddress; } },
             RequiredFeature{

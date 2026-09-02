@@ -8,6 +8,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/shaders/accumulate.h>
+#include <components/rtx/shaders/atrous.h>
 
 #include "computepipeline.hpp"
 #include "image.hpp"
@@ -46,12 +47,13 @@ namespace Rtx
         /// the old images.
         void resize(std::uint32_t width, std::uint32_t height);
 
-        /// Blends the buffer's indirect channel with the history in place, and leaves this frame's
-        /// moments where the cascade can read them.
+        /// Blends the buffer's indirect channel with the history, and leaves this frame's moments
+        /// and its blend where the cascade can read them.
         ///
-        /// **In place, so the cascade behind this needs to know nothing about it.** What the trace
-        /// wrote is replaced by the accumulated mean; the history the next frame reads is kept apart
-        /// from it, because the cascade overwrites its own input as it ping-pongs.
+        /// **Into an image of this pass's own, and it used to be back over the channel it read.**
+        /// The cascade overwrites its own input as it ping-pongs, so the trace's answer survived
+        /// only as long as nothing filtered the frame — which made `Channel::Indirect` two different
+        /// things and tied the two passes to one format. `getBlended` is where the blend is now.
         ///
         /// @param far the frame's far plane, which this turns into a storage scale rather than
         ///        writing a depth against. `AccumulateConstants::mDistanceScale` says why it is a
@@ -61,6 +63,12 @@ namespace Rtx
         /// @return the moments image the cascade weighs its taps by.
         const Image& record(
             VkCommandBuffer commands, const GBuffer& buffer, const Shaders::Camera& camera, float far, bool reset);
+
+        /// This frame's bounce blended with the history, which is what the cascade filters.
+        ///
+        /// **One image and not a pair**, because nothing reads it after the frame that wrote it: the
+        /// cascade consumes it immediately and the history the next frame needs is `mColour`.
+        const Image& getBlended() const;
 
     private:
         const Device& mDevice;
@@ -75,6 +83,10 @@ namespace Rtx
         std::array<std::unique_ptr<Image>, 2> mColour;
         std::array<std::unique_ptr<Image>, 2> mSurface;
         std::array<std::unique_ptr<Image>, 2> mMoments;
+
+        /// Where the blend goes, in the cascade's format because the cascade both reads and
+        /// overwrites it. Readable, so `Channel::Accumulated` can hand it back. Null until `resize`.
+        std::unique_ptr<Image> mBlended;
 
         /// Which half of each pair this frame writes. Flipped by `record`.
         std::size_t mCurrent = 0;

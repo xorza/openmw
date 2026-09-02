@@ -3,8 +3,6 @@
 #include <array>
 #include <cassert>
 
-#include <components/rtx/shaders/gbuffer.h>
-
 #include "gbuffer.hpp"
 
 namespace Rtx
@@ -44,9 +42,6 @@ namespace Rtx
         /// the centre has been measuring. SVGF's own, and for the first time there is a variance to
         /// scale it by.
         constexpr float sLuminanceSigma = 4.0f;
-
-        static_assert(ATROUS_CHANNEL == GBUFFER_RADIANCE,
-            "the cascade ping-pongs against CHANNEL_INDIRECT, so one binding takes both formats");
     }
 
     AtrousPass::AtrousPass(const Device& device, const std::filesystem::path& shaderDirectory)
@@ -65,8 +60,8 @@ namespace Rtx
             mDevice, width, height, ATROUS_CHANNEL, VK_IMAGE_USAGE_STORAGE_BIT, "atrous-scratch");
     }
 
-    const Image& AtrousPass::record(
-        VkCommandBuffer commands, const GBuffer& buffer, const Image& moments, const Shaders::Camera& camera) const
+    const Image& AtrousPass::record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended,
+        const Image& moments, const Shaders::Camera& camera) const
     {
         assert(mScratch != nullptr && "record before resize");
         assert(mScratch->getWidth() >= camera.mWidth && mScratch->getHeight() >= camera.mHeight);
@@ -90,7 +85,7 @@ namespace Rtx
             .mLuminanceSigma = sLuminanceSigma,
         };
 
-        const Image* source = &buffer.getIndirect();
+        const Image* source = &blended;
         const Image* target = mScratch.get();
 
         for (std::uint32_t pass = 0; pass < Shaders::ATROUS_LEVELS; ++pass)

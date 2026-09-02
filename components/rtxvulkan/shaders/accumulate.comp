@@ -19,16 +19,14 @@
 // carried beside the history itself.
 
 #include "accumulate.h"
+#include "atrous.h"
 #include "colour.h"
 #include "gbuffer.h"
 
 layout(local_size_x = ACCUMULATE_WORKGROUP, local_size_y = ACCUMULATE_WORKGROUP) in;
 
-/// The bounce this frame traced, and where the blend is left for the cascade to read.
-///
-/// **Read and written at the same texel, which is the one aliasing GLSL allows without a barrier.**
-/// The alternative is a fourth full-frame image for a value the cascade consumes immediately.
-layout(set = 0, binding = 0, GBUFFER_RADIANCE) uniform image2D indirect;
+/// The bounce this frame traced, one sample a pixel, exactly as the trace left it.
+layout(set = 0, binding = 0, GBUFFER_RADIANCE) uniform readonly image2D indirect;
 
 /// Where each surface stood on the previous frame's screen, less where it stands on this one.
 layout(set = 0, binding = 1, GBUFFER_MOTION) uniform readonly image2D motion;
@@ -63,6 +61,12 @@ layout(set = 0, binding = 7, ACCUMULATE_MOMENTS) uniform readonly image2D histor
 layout(set = 0, binding = 8, ACCUMULATE_COLOUR) uniform writeonly image2D colourOut;
 layout(set = 0, binding = 9, ACCUMULATE_SURFACE) uniform writeonly image2D surfaceOut;
 layout(set = 0, binding = 10, ACCUMULATE_MOMENTS) uniform writeonly image2D momentsOut;
+
+/// This frame's bounce blended with the history, which is what the cascade reads.
+///
+/// **The cascade's channel and not the trace's**, so `CHANNEL_INDIRECT` keeps what the trace put
+/// there for the whole of the frame. `AccumulatePass::record` says what that separation is worth.
+layout(set = 0, binding = 11, ATROUS_CHANNEL) uniform writeonly image2D blendedOut;
 
 layout(push_constant, scalar) uniform Push
 {
@@ -123,6 +127,11 @@ void main()
     // resolved into `direct` by the trace and never reaches here as light.
     if (dot(normal, normal) <= 0.0)
     {
+        // **The sky writes its sample on too, and it has to.** The cascade copies a pixel with no
+        // surface straight through, so one this never wrote would arrive there as whatever the
+        // allocation held — and the composite multiplies it by an albedo of nought, which turns a
+        // stray infinity into a NaN rather than into nothing.
+        imageStore(blendedOut, at, vec4(sampled, 1.0));
         imageStore(colourOut, at, vec4(sampled, 0.0));
         imageStore(surfaceOut, at, vec4(0.0));
         imageStore(momentsOut, at, vec4(0.0, 0.0, NO_HISTORY_VARIANCE, 0.0));
@@ -215,7 +224,7 @@ void main()
             variance = max(blendedMoments.y - blendedMoments.x * blendedMoments.x, 0.0);
     }
 
-    imageStore(indirect, at, vec4(blended, 1.0));
+    imageStore(blendedOut, at, vec4(blended, 1.0));
     imageStore(colourOut, at, vec4(blended, count));
     imageStore(surfaceOut, at, vec4(normal, scaled));
     imageStore(momentsOut, at, vec4(blendedMoments, variance, 0.0));

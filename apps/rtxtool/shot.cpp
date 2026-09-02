@@ -180,7 +180,7 @@ namespace RtxTool
         if (request.mTail)
         {
             std::vector<float> bounce;
-            renderer->readChannel(Rtx::Channel::Indirect, bounce);
+            renderer->readChannel(Rtx::Channel::Accumulated, bounce);
 
             // The ladder 4.1's table was taken on. One is about where the signal ends — a surface
             // seeing a full hemisphere of sky — and everything past it is the tail proper.

@@ -12,20 +12,28 @@
 
 // What a level reads and writes, said once for both sides that have to agree.
 //
-// **The cascade's own, and bound to `CHANNEL_INDIRECT` for as long as the two agree.** Level zero
-// reads what the accumulator left in the G-buffer's channel and the levels after it ping-pong
-// against a scratch of this pass's own, so one binding is handed both images — and a storage image's
-// format qualifier names one format. `AtrousPass` asserts the agreement rather than assuming it.
+// **The cascade's own, and no longer the trace's.** The levels ping-pong between the image the
+// accumulator blended into and a scratch of this pass's own, so `CHANNEL_INDIRECT` is written once
+// by the trace and read once by whatever consumes it. That is what lets the two formats part: a
+// reference is built through that channel and never through this one.
 //
-// A macro rather than a constant, for the reason `gbuffer.h` gives.
+// **Half floats, because a filtered bounce is shown and never summed.** A reference is built with
+// the denoiser switched off, so nothing here reaches one — where the argument that holds
+// `GBUFFER_RADIANCE` at full width is entirely about a term added to a thousand others.
+//
+// **What it costs is a floor, and the floor is measured.** Five levels each round what they store,
+// which puts about 3e-4 of the value under the cascade's own error — visible only where the cascade
+// had already driven that error below it, which is a flat sheet under a smooth sky.
+// `theFilterAndItsHistoryConvergeOnAGrazingSurface` is that scene and carries the pair of figures,
+// and `.notes/rtx/gbuffer-plan.md` §7 is what the width bought.
 
 #ifdef RTX_HOST
 
-#define ATROUS_CHANNEL VK_FORMAT_R32G32B32A32_SFLOAT
+#define ATROUS_CHANNEL VK_FORMAT_R16G16B16A16_SFLOAT
 
 #else
 
-#define ATROUS_CHANNEL rgba32f
+#define ATROUS_CHANNEL rgba16f
 
 #endif
 
