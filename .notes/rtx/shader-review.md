@@ -80,7 +80,8 @@ SER. What changes on the host is a ray tracing pipeline with a one-entry shader 
 the frame block stay. `VISIBILITY_STRIP` goes, since the launch order becomes the reorder's.
 
 The specialization variants that take the moons and the sea out of a room stay worthwhile; SER
-sorts divergence, it does not remove register pressure.
+sorts divergence, it does not remove register pressure. `ser-plan.md` beside this file is the
+investigation and the staged plan.
 
 Measure with `bench` over the suite, p99 and worst frame beside the median, and `shot` at the ship
 at Seyda Neen and the mages' guild first.
