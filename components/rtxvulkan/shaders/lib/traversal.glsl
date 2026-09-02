@@ -346,10 +346,12 @@ float lightThrough(vec3 from, vec3 towards, float distance)
 /// **`reach` is the answer as well as the limit**, which is what makes such a ray short: an asker
 /// that only cares whether anything stands within a band hands over the band, and reads a miss as
 /// *no nearer than that*. Nothing here runs to `mFar` unless a caller asks it to.
-float solidWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread)
+///
+/// @param mask which surfaces stop the ray. `solidWithin` asks for solids alone.
+float surfaceWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread, uint mask)
 {
     rayQueryEXT query;
-    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, MASK_SOLID, origin, tmin, direction, reach);
+    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, mask, origin, tmin, direction, reach);
 
     // An lvalue the macro needs and nothing here reads: this ray sees through nothing, so what a
     // translucent surface would have let past is never accumulated.
@@ -360,6 +362,11 @@ float solidWithin(vec3 origin, vec3 direction, float tmin, float reach, float fo
         return reach;
 
     return rayQueryGetIntersectionTEXT(query, true);
+}
+
+float solidWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread)
+{
+    return surfaceWithin(origin, direction, tmin, reach, footprint, spread, MASK_SOLID);
 }
 
 /// What a ray found, resolved down to the inputs shading needs.

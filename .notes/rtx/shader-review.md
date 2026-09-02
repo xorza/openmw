@@ -233,15 +233,12 @@ The natural home is a second bindless array beside `textures[]`, indexed by the 
 `maskWeight`, which samples a terrain mask by hand for the clamp: a small `r8_unorm` image with a
 clamping sampler does the same in one fetch.
 
-### 7. The fog volume is one thread per column
+### 7. The fog volume is one thread per column — **done**
 
-`fogvolume.comp` runs sixty-four slices serially in one thread per eight-by-eight block of pixels —
-about thirty-two thousand threads at 1080p, on a part with nearly ten thousand lanes, each thread
-doing eight shadow rays and a lamp walk. Froxel volumetrics in the field split the work: scatter per
-froxel over the whole grid (two million threads here), then integrate front to back as a short scan
-per column. The reprojection and the reservoir are per froxel already, so the split is mechanical.
-Whether it is worth it is what the `air` zone says in `bench`; if it is under a few tenths of a
-millisecond, leave it.
+Split into `fogscatter.comp` and `fogintegrate.comp`. The cost was never the reason: the `air` zone
+measured 0.25 ms, under this item's own threshold. What the split was worth was the estimator it
+allowed — one probe answering for eight slices was most of the noise in a lamp-lit night frame, and
+it could not be fixed while a column was one thread. `.notes/rtx/fog-plan.md` is the record.
 
 ### 8. Sprite binning on the host
 

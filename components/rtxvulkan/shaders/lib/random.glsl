@@ -156,6 +156,16 @@ uint pixelKey(uvec2 pixel)
     return pixel.x * 73856093u ^ pixel.y * 19349663u;
 }
 
+/// A key for one froxel of the fog volume, which a caller offsets the same way.
+///
+/// **A third multiplier and not a shift of the pair above**, for the reason that one gives: a shift
+/// would leave the depth's low bits where a column's are, and two froxels a power of two apart down
+/// one ray would then draw what two columns a power of two apart across the screen draw.
+uint froxelKey(uvec2 column, uint slice)
+{
+    return pixelKey(column) ^ slice * 83492791u;
+}
+
 float randomNext(inout uint state)
 {
     state = state * 747796405u + 2891336453u;

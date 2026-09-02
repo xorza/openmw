@@ -318,16 +318,37 @@ layout(set = 0, binding = BIND_FOG_FIELD) uniform sampler3D fogField;
 layout(set = 3, binding = 0) uniform sampler3D fogWasScatter;
 layout(set = 3, binding = 1) uniform sampler3D fogWasSunward;
 
-/// The same two, as this frame writes them.
-layout(set = 3, binding = 2, FOG_VOLUME_FORMAT) uniform writeonly image3D fogScatterTarget;
-layout(set = 3, binding = 3, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSunwardTarget;
+/// The same two as this frame's scatter pass wrote them, which is what its integrate pass reads.
+layout(set = 3, binding = 2) uniform sampler3D fogScatter;
+layout(set = 3, binding = 3) uniform sampler3D fogSunward;
+
+/// What every lamp puts into a froxel, per steradian and with nothing standing in the way — read by
+/// the integrate pass beside the seeing above it.
+layout(set = 3, binding = 4) uniform sampler3D fogLamps;
 
 /// Both accumulated front to back, which is what a pixel reads. `a` of the first is what is left of
 /// a ray at that depth.
-layout(set = 3, binding = 4, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeAirTarget;
-layout(set = 3, binding = 5, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeSunwardTarget;
+layout(set = 3, binding = 5) uniform sampler3D fogVolumeAir;
+layout(set = 3, binding = 6) uniform sampler3D fogVolumeSunward;
 
-layout(set = 3, binding = 6) uniform sampler3D fogVolumeAir;
-layout(set = 3, binding = 7) uniform sampler3D fogVolumeSunward;
+/// What each slice holds once everything that lights it is applied — `FogSlice`, as the two images
+/// it packs into — which is what a pixel steps through from the last edge it passed to where its
+/// surface stands.
+layout(set = 3, binding = 7) uniform sampler3D fogSlice;
+layout(set = 3, binding = 8) uniform sampler3D fogSliceSunward;
+
+/// The same seven, as the pass that fills each one writes it.
+layout(set = 3, binding = 9, FOG_VOLUME_FORMAT) uniform writeonly image3D fogScatterTarget;
+layout(set = 3, binding = 10, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSunwardTarget;
+layout(set = 3, binding = 11, FOG_VOLUME_FORMAT) uniform writeonly image3D fogLampsTarget;
+layout(set = 3, binding = 12, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeAirTarget;
+layout(set = 3, binding = 13, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVolumeSunwardTarget;
+layout(set = 3, binding = 14, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSliceTarget;
+layout(set = 3, binding = 15, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSliceSunwardTarget;
+
+/// How far each column's ray runs before it meets a surface, which `fogdepth.comp` writes and the
+/// scatter pass reads. **One storage binding for both**, because neither samples it: a column reads
+/// its own texel and nothing between texels.
+layout(set = 3, binding = 16, r32f) uniform image2D fogColumnDepth;
 
 #endif

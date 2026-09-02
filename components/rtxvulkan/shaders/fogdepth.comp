@@ -1,0 +1,62 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_query : require
+#extension GL_EXT_ray_tracing_position_fetch : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// Where each column's view of the air ends, which every froxel of the column is measured against.
+//
+// **A froxel does not know where the ground is, and the pixel that reads it does.** The volume is
+// filled before anything is traced, so the slice a surface stands inside was sampled on both sides
+// of it: under water there is no fog at all, and inside the ground there is whatever the field says
+// there, which has nothing to do with the air above. The pixel then reads the accumulation between
+// that slice's two edges, and what it gets is the slice's whole optical depth laid out as though
+// the surface were not there — nothing at the near edge, all of it at the far, and the wrong share
+// in between. The pattern that makes is the slices themselves: shells around the eye, drawn on
+// every surface the air stands in front of, and sweeping over the ground as the eye moves.
+//
+// **One ray per column and not per froxel**, because every froxel of a column samples the column's
+// own ray, so what that ray stops at is the column's to know once. `fogscatter.comp` reads it and
+// keeps every sample short of it.
+
+#include "camera.h"
+#include "scene.h"
+#include "visibility.h"
+
+#include "lib/bindings.glsl"
+#include "lib/fog.glsl"
+#include "lib/traversal.glsl"
+#include "lib/variants.glsl"
+
+layout(local_size_x = FOG_COLUMN_WORKGROUP, local_size_y = FOG_COLUMN_WORKGROUP) in;
+
+void main()
+{
+    const ivec2 grid = imageSize(fogColumnDepth);
+    const ivec2 column = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(column, grid)))
+        return;
+
+    // No air is no question: the scatter pass stores nothing for it and asks nothing of this.
+    if (!(frame.mFogExtinction > 0.0))
+        return;
+
+    const Ray ray = fogColumnRay(uvec2(column));
+    const vec3 origin = frame.mOrigin + ray.mOffset;
+
+    // **The eye's own cone**, so a leaf's cutout is decided at the mip the eye sees it at and the
+    // column stops where the pixel's ray would.
+    //
+    // **`mFar` on a miss and not the fog's reach**, because that is what a ray that hit nothing
+    // carries to the fog: the march clamps it to the reach, and a froxel past it is one no pixel
+    // reads.
+    const Cone cone = coneAt(frame.mCamera);
+    const float surface
+        = surfaceWithin(origin, ray.mDirection, 0.0, frame.mFar, cone.mWidth, cone.mSpread, FOG_COLUMN_MASK);
+
+    imageStore(fogColumnDepth, column, vec4(surface, 0.0, 0.0, 0.0));
+}

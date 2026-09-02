@@ -9,6 +9,31 @@ namespace Rtx::Testing
         /// the wrong colour cannot pass by matching a total.
         const osg::Vec3f sHaze(0.1f, 0.2f, 0.4f);
 
+        /// The coverage that reaches `Rtx::FogVolume` while leaving the air even enough to compute
+        /// with.
+        ///
+        /// **The volume is chosen on `mFogUniform >= 1.0` and on nothing else** —
+        /// `VisibilityVariant::resolve` — so a hair under one is the banked path. At a thousandth
+        /// the field moves the density by at most two parts in a thousand, which is below anything
+        /// asserted here. What these tests are about is the volume's own arithmetic. The banks have
+        /// their own tests, and those run at nought.
+        constexpr float sVolumeOverEvenAir = 0.999f;
+
+        /// A level rectangle standing between a ray along the y axis and a lamp above it.
+        ///
+        /// **Not `makeSheet`, because half a lid is the point.** A square about the origin is
+        /// either over the whole march or over none of it, and what these tests need is a shadow
+        /// boundary that falls where they put it rather than where the grid does.
+        std::array<osg::Vec3f, 4> makeLid(float height, float from, float to, float halfWidth)
+        {
+            return {
+                osg::Vec3f(-halfWidth, from, height),
+                osg::Vec3f(halfWidth, from, height),
+                osg::Vec3f(halfWidth, to, height),
+                osg::Vec3f(-halfWidth, to, height),
+            };
+        }
+
         /// Puts `camera` under a sky of one radiance and nothing else, with air of `extinction` in it
         /// pooling at `level`.
         void litThroughFog(Shaders::VisibilityConstants& camera, float extinction,
@@ -257,6 +282,293 @@ namespace Rtx::Testing
             EXPECT_EQ(look(true, true), look(false)) << "a lamp behind a lid still lit the air";
         }
 
+        /// Where the volume's own air stands, how thick it is, and what lights it.
+        ///
+        /// **One fixture for the two tests below, because they differ in the lid and in nothing
+        /// else.** Both stand a lamp beside a two thousand unit ray with a reach that covers eight
+        /// hundred units of it, which is less than the stretch one probe used to answer for — and
+        /// that is the whole of what they are about. A lamp reaching the whole ray asks the volume
+        /// no question the closed form has not already answered.
+        ///
+        /// **A narrow field of view, because a column is eight pixels wide.** At sixty degrees a
+        /// column of a thirty-three pixel frame spans thirteen of them, so the ray the middle pixel
+        /// reads its air along leaves the ray it was traced along by hundreds of units. Ten degrees
+        /// puts that under forty, which is small against a reach of five hundred.
+        struct LampInTheAir
+        {
+            /// How far the wall stands, and so how long the ray the middle pixel reads is.
+            static constexpr float sDistance = 2000.0f;
+
+            /// Half the ray's light, which leaves the wall and the air comparable.
+            static constexpr float sExtinction = 0.693147f / sDistance;
+
+            /// Where the lamp stands and how far it carries. Three hundred units up off the ray and
+            /// a reach of five hundred, so it lights the stretch of it between 385 and 1215.
+            static inline const osg::Vec3f sLamp{ 0.0f, -1200.0f, 300.0f };
+            static constexpr float sReach = 512.0f;
+
+            /// What it delivers where the ray passes closest, which the intensity is scaled to
+            /// rather than named — so the expectations below need no falloff in them.
+            static constexpr float sIrradiance = 12.0f;
+
+            /// How high the lid hangs. Between the ray and the lamp, so a shadow ray from a point
+            /// on the ray crosses it half way along.
+            static constexpr float sLidHeight = 150.0f;
+        };
+
+        /// A lamp behind a lid lights none of the volume's air either.
+        ///
+        /// **The same assertion as the one above and not the same test.** The closed form weighs
+        /// every lamp of the whole ray into one reservoir and buys one ray with it, so a lid over
+        /// the march takes the whole lamp with it. The volume answers a froxel at a time, and the
+        /// question here is whether the *seeing* it charges a froxel is the seeing at that froxel.
+        ///
+        /// **A short reach is what makes the question sharp.** A probe drawn anywhere along a
+        /// stretch and outside the lamp's reach finds no lamp, so it holds nothing, buys no ray,
+        /// and `lampVisible` answers one for want of anything to trace — while every slice of the
+        /// stretch still sums the lamp where it actually stands. A lantern behind a lid then lights
+        /// the air in front of it, which is what this refuses.
+        ///
+        /// **The lid stands in both frames**, so the two scenes differ in the lamp and in nothing
+        /// else: a lid also covers part of the sky the wall gathers, and a test that added one
+        /// would be measuring that as well.
+        TEST_F(RtxVisibilityTest, aLampBehindALidLightsNoneOfTheVolumesAirEither)
+        {
+            using Fixture = LampInTheAir;
+
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+
+            // What one unit of intensity delivers where the ray passes closest to the lamp, from
+            // the same windowed inverse square the shader uses.
+            constexpr float across = 300.0f;
+            constexpr float ratio = across / Fixture::sReach;
+            constexpr float window = 1.0f - ratio * ratio * ratio * ratio;
+            constexpr float delivered = window * window / (across * across + 1.0f);
+
+            const auto look = [&](bool lit, bool lidded) {
+                SceneDesc scene = makeWall();
+
+                if (lidded)
+                    scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                        .mMesh = scene.addMesh(
+                            makeLid(Fixture::sLidHeight, -4000.0f, 4000.0f, 4000.0f), {}, {}, sQuadIndices) });
+
+                if (lit)
+                    scene.addLight(Light{
+                        .mPosition = Fixture::sLamp,
+                        .mIntensity = osg::Vec3f(1.0f, 1.0f, 1.0f) * (Fixture::sIrradiance / delivered),
+                        .mReach = Fixture::sReach,
+                    });
+
+                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -Fixture::sDistance, 0.0f),
+                    osg::Vec3f(0.0f, 0.0f, 0.0f), 10.0f, size, size, 100000.0f);
+                litThroughFog(camera, Fixture::sExtinction);
+                camera.mFogUniform = sVolumeOverEvenAir;
+
+                // Black air, so the lamp is the only thing the fog has to scatter and the two
+                // frames below can be compared as they stand.
+                camera.mFogColour = osg::Vec3f();
+
+                // **Averaged, because one frame is one draw of the probe.** What is asserted is
+                // where the leak sits on average; a single frame either leaked or did not, and
+                // which is a coin.
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels, SeaState{}, 32);
+                return int{ pixels[centre] };
+            };
+
+            const int dark = look(false, true);
+            const int lidded = look(true, true);
+            const int open = look(true, false);
+
+            EXPECT_EQ(lidded, dark) << "the lid takes the whole lamp out of the air, not most of it";
+            EXPECT_GT(open, dark + 20) << "and there was a lamp in the air to take";
+        }
+
+        /// The air under a lamp settles instead of flickering block by block.
+        ///
+        /// **What a boiling image is, measured as what it is.** A froxel stands for eight pixels
+        /// squared, so an estimator that decides one thing for a whole stretch of a column paints
+        /// that decision across a block of the frame — and redecides it next frame. The complaint
+        /// is not that the mean is wrong, it is that the frames do not stand still, so what this
+        /// measures is how far a settled pixel moves from one frame to the next.
+        ///
+        /// **The step and not the spread.** The volume averages nine tenths of its history in, so
+        /// consecutive frames of a run are strongly correlated and a standard deviation over a
+        /// short run is mostly an estimate of that correlation. The mean step between neighbours is
+        /// what a viewer sees, and its own estimator settles in a run this length.
+        ///
+        /// **Half the lit stretch under a lid**, so the seeing genuinely changes along the ray:
+        /// with none of it shadowed there is nothing for a probe to be wrong about, and with all of
+        /// it shadowed the test above already asks the question.
+        ///
+        /// **And the bound is a bound and not the figure.** This settles at 0.4% of the pixel's own
+        /// value, where the estimator it replaced — one probe answering for a stretch of eight
+        /// slices — swings by about half the lamp's whole term every frame, which the history takes
+        /// to a tenth of the pixel. Three per cent stands between the two with room either side.
+        ///
+        /// The same estimator with the history switched off measures 5.9%, which is what the
+        /// temporal half of the filter is worth here and why a froxel reprojects its own middle.
+        TEST_F(RtxVisibilityTest, theVolumeSettlesTheAirUnderALampRatherThanFlickeringBlockByBlock)
+        {
+            using Fixture = LampInTheAir;
+
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = std::size_t{ size / 2 } * size + size / 2;
+
+            // Long enough that the history is settled well before the window, and that the window
+            // holds many of the ten-frame spans the history's own weight correlates over.
+            constexpr std::size_t frames = 192;
+            constexpr std::size_t settled = 64;
+
+            constexpr float across = 300.0f;
+            constexpr float ratio = across / Fixture::sReach;
+            constexpr float window = 1.0f - ratio * ratio * ratio * ratio;
+            constexpr float delivered = window * window / (across * across + 1.0f);
+
+            SceneDesc scene = makeWall();
+
+            // Over the near half of the stretch the lamp reaches and no further. A shadow ray
+            // crosses this height half way to the lamp, so what it covers is every point of the ray
+            // short of the lamp's own y and nothing beyond it.
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(makeLid(Fixture::sLidHeight, -Fixture::sDistance, Fixture::sLamp.y(), 2000.0f),
+                    {}, {}, sQuadIndices) });
+
+            scene.addLight(Light{
+                .mPosition = Fixture::sLamp,
+                .mIntensity = osg::Vec3f(1.0f, 1.0f, 1.0f) * (Fixture::sIrradiance / delivered),
+                .mReach = Fixture::sReach,
+            });
+
+            Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -Fixture::sDistance, 0.0f),
+                osg::Vec3f(0.0f, 0.0f, 0.0f), 10.0f, size, size, 100000.0f);
+            litThroughFog(camera, Fixture::sExtinction);
+            camera.mFogUniform = sVolumeOverEvenAir;
+
+            // **Nothing in the frame but the lit air**, which is what makes the figure below a
+            // figure about the air. Black fog, a black sky and no ambient leave the wall unlit and
+            // every ray that misses it black — where a lit wall would put its own bounce in the
+            // pixel, and a single sample of a bounce with no denoiser over it moves further between
+            // frames than anything this is measuring.
+            camera.mFogColour = osg::Vec3f();
+            camera.mSkyHorizon = osg::Vec3f();
+            camera.mSkyZenith = osg::Vec3f();
+            camera.mAmbientFromSky = 0.0f;
+
+            std::vector<float> radiance;
+            radianceFrameByFrame(scene, camera, size, frames, centre, radiance);
+
+            double total = 0.0;
+            double stepped = 0.0;
+            for (std::size_t frame = frames - settled; frame < frames; ++frame)
+            {
+                total += double{ radiance[frame] };
+                stepped += std::abs(double{ radiance[frame] } - double{ radiance[frame - 1] });
+            }
+
+            const double mean = total / double{ settled };
+            const double step = stepped / double{ settled };
+
+            // The lamp has to be lighting the air, or a frame that stands perfectly still is a
+            // frame with nothing in it.
+            ASSERT_GT(mean, 0.02) << "the lit air the flicker is measured against";
+
+            EXPECT_LT(step / mean, 0.03) << "how far a settled pixel of lit air moves between frames";
+        }
+
+        /// The volume lights the air up to a surface, wherever inside a slice the surface stands.
+        ///
+        /// **Two ways a froxel grid gets the last slice wrong, and one measurement for both.** The
+        /// slice a surface stands inside is sampled on both sides of it unless the sampling knows
+        /// where the surface is — `fogdepth.comp` says what that drew — and what a pixel reads
+        /// between two slices' edges is a shape the integrate pass has to have agreed to, which
+        /// `FogSlice` says. Either error is a function of where inside its slice the surface
+        /// stands, so the wall is put at four depths across three slices and the volume is held
+        /// against the closed form at each: half and nine tenths of the way through the slice from
+        /// 732 to 886 units, a tenth of the way through the next, and a quarter of the way through
+        /// the one from 1055.
+        ///
+        /// **The lamp stands in front of the wall at every one of them**, so a draw that lands
+        /// behind the wall finds the lamp hidden by it — which is the contamination a froxel
+        /// sampled on both sides of its surface carries, at its strongest where the lamp is
+        /// brightest. And not behind it: the closed form judges a whole ray by one shadow ray from
+        /// the lamp's closest approach, and a wall standing between that point and the lamp is a
+        /// question that one ray answers for none of the rest.
+        ///
+        /// **And the wall's own light is taken off both paths**, because a lamp in front of the
+        /// wall lights it, identically on either. A frame with no air in it measures what the wall
+        /// alone is worth, and what the air in front of it takes of that is the transmittance the
+        /// closed form states.
+        ///
+        /// **Five per cent, where the estimator sampled on both sides of the wall lost between
+        /// seven and eleven per cent of the lit air at the first three depths**, and the line the
+        /// sampler draws through an inverse square is a few per cent from it over a slice at the
+        /// lamp's closest approach.
+        TEST_F(RtxVisibilityTest, theVolumeLightsTheAirUpToASurfaceWhereverInASliceItStands)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = std::size_t{ size / 2 } * size + size / 2;
+            constexpr std::size_t frames = 48;
+            constexpr std::size_t settled = 16;
+
+            // The lamp stands closest to the ray eight hundred units ahead of the eye and three
+            // hundred above it, whatever the wall's distance, so the air it lights is the same air
+            // in every frame and only where the wall cuts it off moves.
+            constexpr float ahead = 800.0f;
+            constexpr float across = 300.0f;
+            constexpr float reach = 512.0f;
+            constexpr float irradiance = 12.0f;
+            constexpr float ratio = across / reach;
+            constexpr float window = 1.0f - ratio * ratio * ratio * ratio;
+            constexpr float delivered = window * window / (across * across + 1.0f);
+
+            constexpr float extinction = 0.693147f / 2000.0f;
+
+            const auto settle = [&](float distance, bool banked, bool fogged) {
+                SceneDesc scene = makeWall();
+                scene.addLight(Light{
+                    .mPosition = osg::Vec3f(0.0f, ahead - distance, across),
+                    .mIntensity = osg::Vec3f(1.0f, 1.0f, 1.0f) * (irradiance / delivered),
+                    .mReach = reach,
+                });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 10.0f, size, size, 100000.0f);
+                litThroughFog(camera, fogged ? extinction : 0.0f);
+                camera.mFogUniform = banked ? sVolumeOverEvenAir : 1.0f;
+
+                // Nothing in the frame but the lamp: black air, a black sky and no ambient, for the
+                // reason the test above gives.
+                camera.mFogColour = osg::Vec3f();
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbientFromSky = 0.0f;
+
+                std::vector<float> radiance;
+                radianceFrameByFrame(scene, camera, size, frames, centre, radiance);
+
+                double total = 0.0;
+                for (std::size_t frame = frames - settled; frame < frames; ++frame)
+                    total += double{ radiance[frame] };
+                return total / double{ settled };
+            };
+
+            for (const float distance : { 809.0f, 871.0f, 903.0f, 1101.0f })
+            {
+                const double wall = settle(distance, false, false);
+                const double through = std::exp(-double{ extinction } * double{ distance });
+
+                const double closed = settle(distance, false, true) - wall * through;
+                const double volume = settle(distance, true, true) - wall * through;
+
+                ASSERT_GT(closed, 0.01) << "the lit air the volume is measured against, at " << distance;
+                EXPECT_NEAR(volume / closed, 1.0, 0.05)
+                    << "the volume's lit air against the closed form's, at " << distance;
+            }
+        }
+
         /// The banked field holds as much air as an even one, which is what `FOG_COVERAGE` is for.
         ///
         /// **The noise redistributes the fog, it does not remove it.** The extinction the host
@@ -362,8 +674,11 @@ namespace Rtx::Testing
             EXPECT_LT(apart(still, downwind), 1e-3) << "an eye walking with the wind sees the air stand still";
 
             // The wrong sign is two different fields, and the gap between them is the banks
-            // themselves — measured at 0.03 of the frame's own mean of about 0.5.
-            EXPECT_GT(apart(still, upwind), 0.01) << "an eye walking against the wind sees another air";
+            // themselves. Measured at 0.03 of the frame's own mean of about 0.5 by the march, and at
+            // 0.0087 by the volume, whose tent over a frame eight columns wide and whose line from
+            // one slice to the next both smooth a single frame's draws — which is what they are for
+            // — against a gap of exactly nought for the right sign.
+            EXPECT_GT(apart(still, upwind), 0.005) << "an eye walking against the wind sees another air";
         }
 
         /// The fog scatters the sun forward far harder than back, which is what a Mie phase is for.

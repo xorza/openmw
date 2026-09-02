@@ -28,9 +28,10 @@ namespace Rtx
 {
     namespace
     {
-        std::uint32_t groupsFor(std::uint32_t extent)
+        /// How many workgroups cover `extent` columns at `workgroup` of them apiece.
+        std::uint32_t groupsFor(std::uint32_t extent, std::uint32_t workgroup)
         {
-            return (extent + Shaders::FOG_VOLUME_WORKGROUP - 1) / Shaders::FOG_VOLUME_WORKGROUP;
+            return (extent + workgroup - 1) / workgroup;
         }
 
         /// **Every stage on every binding, because one description of set zero serves both passes.**
@@ -139,7 +140,9 @@ namespace Rtx
         , mReorder(reorder)
         , mChannelLayout(channelLayout.getHandle())
         , mVolumeLayout(volumeLayout.getHandle())
-        , mVolumeModule(shaderDirectory / "fogvolume.comp.spv")
+        , mDepthModule(shaderDirectory / "fogdepth.comp.spv")
+        , mScatterModule(shaderDirectory / "fogscatter.comp.spv")
+        , mIntegrateModule(shaderDirectory / "fogintegrate.comp.spv")
         , mRaygenModule(shaderDirectory / "visibility.rgen.spv")
         , mAnyHitModule(shaderDirectory / "visibility.rahit.spv")
         , mMissModules{ shaderDirectory / "visibility.rmiss.spv" }
@@ -152,6 +155,14 @@ namespace Rtx
 
     void VisibilityPass::compileEvery(VkDescriptorSetLayout textureLayout)
     {
+        // **No tuple and no specialization**, because it reads what the pass before it wrote and
+        // has no opinion about the sky. Made here rather than among the table below so that the
+        // table stays one entry per tuple.
+        mDepthPipeline = std::make_unique<ComputePipeline>(
+            mDevice, sBindings, 0, laterSets(textureLayout), mDepthModule, "fog depth");
+        mIntegratePipeline = std::make_unique<ComputePipeline>(
+            mDevice, sBindings, 0, laterSets(textureLayout), mIntegrateModule, "fog integrate");
+
         /// One kernel to make: which tuple, and which of the two modules.
         struct Wanted
         {
@@ -198,8 +209,8 @@ namespace Rtx
                         volume ? Shaders::REORDER_OFF : static_cast<std::uint32_t>(mReorder) };
 
                     if (volume)
-                        mVolumePipelines[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
-                            laterSets(textureLayout), mVolumeModule, variant.describe("fog volume"), specialization);
+                        mScatterPipelines[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
+                            laterSets(textureLayout), mScatterModule, variant.describe("fog scatter"), specialization);
                     else
                         mPipelines[variant.index()]
                             = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
@@ -244,12 +255,12 @@ namespace Rtx
         return *held;
     }
 
-    const ComputePipeline* VisibilityPass::volumePipelineFor(const VisibilityVariant variant) const
+    const ComputePipeline* VisibilityPass::scatterPipelineFor(const VisibilityVariant variant) const
     {
-        assert((variant.mUniformFog || mVolumePipelines[variant.index()] != nullptr)
-            && "a banked air with no volume kernel made for it");
+        assert((variant.mUniformFog || mScatterPipelines[variant.index()] != nullptr)
+            && "a banked air with no scatter kernel made for it");
 
-        return mVolumePipelines[variant.index()].get();
+        return mScatterPipelines[variant.index()].get();
     }
 
     std::array<VkDescriptorSetLayout, 3> VisibilityPass::laterSets(VkDescriptorSetLayout textureLayout) const
@@ -489,20 +500,49 @@ namespace Rtx
         // either way and a descriptor names the layout its image is in.
         inputs.mFogVolume->begin(commands, constants.mFrame);
 
-        if (const ComputePipeline* air = volumePipelineFor(variant); air != nullptr)
+        if (const ComputePipeline* scatter = scatterPipelineFor(variant); scatter != nullptr)
         {
-            openZone(timer, commands, "air");
-
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, air->getHandle());
-            pushInputs(
-                commands, VK_PIPELINE_BIND_POINT_COMPUTE, air->getLayout(), inputs, buffer, hitCount, constants.mFrame);
-
             // **Every column the image has and not every column the camera needs.** A traced view is
             // drawn into a volume grown to the largest one asked for, and the pixel at its edge
             // interpolates against the column outside it — which has to hold air rather than
             // whatever was there.
-            vkCmdDispatch(
-                commands, groupsFor(inputs.mFogVolume->getColumns()), groupsFor(inputs.mFogVolume->getRows()), 1);
+            const std::uint32_t columns = inputs.mFogVolume->getColumns();
+            const std::uint32_t rows = inputs.mFogVolume->getRows();
+
+            openZone(timer, commands, "air");
+
+            // **Where each column's ray stops, before anything is drawn along it.** One ray a
+            // column, and the froxels of the column keep their draws short of the answer.
+            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getHandle());
+            pushInputs(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getLayout(), inputs, buffer, hitCount,
+                constants.mFrame);
+
+            vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
+                groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
+
+            inputs.mFogVolume->depthTaken(commands);
+
+            // **The set stays pushed across all three dispatches.** Every pipeline here is
+            // addressed through the same layout at the same bind point, so what was pushed for the
+            // first is still bound for the others — and pushing the whole of set zero again is
+            // twenty-three descriptor writes for a pass that reads a handful of images out of
+            // another set.
+            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, scatter->getHandle());
+
+            vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
+                groupsFor(rows, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
+                groupsFor(Shaders::FOG_VOLUME_SLICES, Shaders::FOG_FROXEL_WORKGROUP_DEEP));
+
+            closeZone(timer, commands);
+
+            inputs.mFogVolume->scattered(commands, constants.mFrame);
+
+            openZone(timer, commands, "column");
+
+            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mIntegratePipeline->getHandle());
+
+            vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
+                groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
 
             closeZone(timer, commands);
 

@@ -162,7 +162,7 @@ namespace Rtx
 
         std::string describeDevice() const override;
         bool isValidating() const override;
-        void resetHistory() override { mHistoryStale = true; }
+        void resetHistory() override { mDenoiserStale = mAirStale = true; }
 
         void setScene(std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> textures,
             const SeaState& sea) override;
@@ -336,7 +336,17 @@ namespace Rtx
 
         /// Whether the next frame has to be reconstructed without a past. Set by `resetHistory` and
         /// spent by the next frame that reconstructs from one, which is not always the one after.
-        bool mHistoryStale = false;
+        bool mDenoiserStale = false;
+
+        /// The same for the fog volume, which keeps a past of its own.
+        ///
+        /// **Two flags because two histories are spent by different frames.** The denoisers run only
+        /// where a frame reconstructs, so their signal has to survive a frame that runs none; the
+        /// air is filled by the trace, which runs on every frame — so its signal is spent by the
+        /// very next one and holding it longer would leave the volume reprojecting nothing for the
+        /// whole of a run with the filter off. One flag served both, and what it served was the
+        /// denoisers: the volume's temporal filter did not exist outside a filtered frame.
+        bool mAirStale = false;
 
         /// When the last frame was recorded, so the next can say how long ago that was.
         ///
@@ -378,7 +388,7 @@ namespace Rtx
 
         /// The running sum a reference is built out of, and null until a frame asks for one.
         ///
-        /// **Not a history, and nothing here reprojects.** The denoiser's past is `mHistoryStale`,
+        /// **Not a history, and nothing here reprojects.** The denoiser's past is `mDenoiserStale`,
         /// `mPreviousCamera` and the image pairs `AccumulatePass` keeps. This is a plain per-pixel
         /// total over however many frames the caller asked to average, so a world that moved under
         /// it is what it is a sum of rather than a reason to drop it.

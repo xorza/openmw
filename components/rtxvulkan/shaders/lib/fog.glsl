@@ -13,10 +13,12 @@
 // Both return transmittance and in-scatter apart, so a caller forms `colour * w + xyz` — which is
 // what lets fog live here, where the lights already are.
 
+#include "camera.h"
 #include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "frame.glsl"
+#include "froxel.glsl"
 #include "lights.glsl"
 #include "random.glsl"
 #include "traversal.glsl"
@@ -62,10 +64,6 @@ const uint FOG_SHADOW_RAYS = 8u;
 /// than the rounding on the sky's term — and a shaft cut out of light that faint is one nobody can
 /// see. Looking away from the sun, and in every interior, this is the whole of what shafts cost.
 const float FOG_SHAFT_FLOOR = 0.02;
-
-/// How many slices of a column one shadow ray answers for. `FOG_SHADOW_RAYS` must divide
-/// `FOG_VOLUME_SLICES`.
-const uint FOG_VOLUME_SLICES_PER_RAY = FOG_VOLUME_SLICES / FOG_SHADOW_RAYS;
 
 /// Where the fog pools when the cell has no water to gather over: sea level outdoors, and close
 /// enough to a floor to serve indoors.
@@ -200,17 +198,6 @@ float fogExtinctionAt(vec3 position, float spacing)
             frame.mFogUniform);
 
     return frame.mFogExtinction * height * coverage;
-}
-
-/// Where along the ray the step ending at `fraction` of the way through reaches.
-///
-/// **Squared, so the steps bunch where the fog has any shape to it.** Even steps over a ray that can
-/// run thirty thousand units give the first hundred a twentieth of one sample and lay the rest
-/// across ground too far off to resolve — the same reasoning that makes a froxel grid slice its
-/// frustum exponentially rather than evenly.
-float fogDepth(float fraction)
-{
-    return fraction * fraction;
 }
 
 /// The mean diameter of the fog's water droplets, in micrometres.
@@ -374,18 +361,60 @@ FogSources fogSourcesAlong(vec3 direction)
         brightest(masser) >= brightest(secunda) ? frame.mMoons[0].mDirection : frame.mMoons[1].mDirection);
 }
 
+/// Which surfaces end a column's view of the air: everything the eye's own ray stops at, because
+/// what the column measures is where the eye's view of the air ends.
+const uint FOG_COLUMN_MASK = MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON;
+
+/// The ray one column of the fog volume samples its air along this frame.
+///
+/// **Stated once, because two passes have to agree about it exactly.** `fogdepth.comp` traces it to
+/// find where the column's view of the air ends, and `fogscatter.comp` draws every froxel's sample
+/// along it — so a froxel's "short of the surface" is measured along the ray the surface was found
+/// on.
+///
+/// **Through a point drawn inside the block of pixels the column stands for, and a different point
+/// every frame**, so that over frames the column's froxels cover the block rather than one line
+/// through it. From `rayAt`, the same call the trace makes from a pixel, so the two cannot disagree
+/// about where a column points. Half a pixel back, because `rayAt` adds its own.
+Ray fogColumnRay(uvec2 column)
+{
+    const vec2 acrossJitter
+        = vec2(randomAt(column + uvec2(17u, 5u), STREAM_FOG), randomAt(column + uvec2(3u, 29u), STREAM_FOG));
+    const vec2 inside = (vec2(column) + acrossJitter) * float(FOG_VOLUME_SCALE) - 0.5;
+
+    return rayAt(frame.mCamera, inside);
+}
+
+/// What the air holds `depth` of the way through the grid, on the line from one slice's sample to
+/// the next — which is what the sampler draws between two texels, and the whole of what `FogSlice`
+/// asks of a read between two of them.
+FogSlice fogSliceAt(vec2 across, float depth)
+{
+    // **The level named and not derived, which a ray generation shader has no way to derive.** An
+    // implicit fetch takes its gradient from the lanes beside this one, and after a reorder those
+    // are other pixels of the frame — so the volume came back sampled against a neighbour that is
+    // somewhere else, and the reorder that must not change the picture changed it everywhere. The
+    // volume has one level, so this is the level it always meant.
+    const vec4 slice = textureLod(fogSlice, vec3(across, depth), 0.0);
+    const vec3 sunward = textureLod(fogSliceSunward, vec3(across, depth), 0.0).xyz;
+
+    return FogSlice(slice.xyz, slice.w, sunward);
+}
+
 /// What the weather's own air takes out of what is behind it, and what it puts in on the way.
 ///
 /// **Read out of `Rtx::FogVolume` rather than marched.** The field is the same one, the sources are
-/// the same and the arithmetic is the one `fogvolume.comp` carries — what changes is that a column
+/// the same and the arithmetic is the one `fogscatter.comp` carries — what changes is that a column
 /// of the frustum answers for `FOG_VOLUME_SCALE` squared pixels instead of each of them paying for
 /// its own twenty-four steps and its own eight sun probes.
 ///
-/// **The depth is quadratic and so is the fetch.** Slice `k` holds everything up to
-/// `fogDepth((k + 1) / FOG_VOLUME_SLICES) * FOG_REACH`, so the coordinate a distance reads at is the
-/// inverse of that curve — and the half-texel it is shifted back by is the difference between a
-/// slice's far edge, which is where its value stands, and its centre, which is where the sampler
-/// thinks it stands.
+/// **The accumulation up to the last edge passed, and then the slice the surface stands in, stepped
+/// through the way `fogintegrate.comp` stepped it.** Slice `k` holds everything up to
+/// `fogDepth((k + 1) / FOG_VOLUME_SLICES) * FOG_REACH`, and the sampler's line between two of those
+/// is the wrong shape for the rest: `FogSlice` says what shape it drew. So the read takes the edge
+/// before the surface exactly, and carries the ray from there along the same two straight pieces
+/// the integrate pass used — cut short at the surface — so that a surface standing exactly on a
+/// slice's far edge reads exactly what that slice accumulated.
 ///
 /// **The sun is put back here and not stored.** `fogVolumeSunward` holds the sun's transport with
 /// the irradiance and the phase function taken off it, both of which depend on the direction and on
@@ -399,16 +428,42 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
     // the edge interpolates against the column outside it.
     const vec2 across = (vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(textureSize(fogVolumeAir, 0).xy);
 
-    const float fraction = sqrt(min(distance, FOG_REACH) / FOG_REACH);
-    const vec3 at = vec3(across, fraction - 0.5 / float(FOG_VOLUME_SLICES));
+    const float slices = float(FOG_VOLUME_SLICES);
+    const float reach = min(distance, FOG_REACH);
+    const float along = sqrt(reach / FOG_REACH) * slices;
 
-    // **The level named and not derived, which a ray generation shader has no way to derive.** An
-    // implicit fetch takes its gradient from the lanes beside this one, and after a reorder those
-    // are other pixels of the frame — so the volume came back sampled against a neighbour that is
-    // somewhere else, and the reorder that must not change the picture changed it everywhere. The
-    // volume has one level, so this is the level it always meant.
-    const vec4 air = textureLod(fogVolumeAir, at, 0.0);
-    const vec3 sunward = textureLod(fogVolumeSunward, at, 0.0).xyz;
+    // The slice the surface stands in, and how far through it — the reach itself lands in the last
+    // slice at the whole of it.
+    const uint slice = min(uint(along), FOG_VOLUME_SLICES - 1u);
+    const float through = along - float(slice);
+
+    // What the ray had accumulated at that slice's near edge: the eye's nothing for the first, and
+    // the texel before for every other — exactly on its centre, so the sampler weighs no neighbour
+    // along the depth.
+    const float edge = (float(slice) - 0.5) / slices;
+    vec4 air = slice > 0u ? textureLod(fogVolumeAir, vec3(across, edge), 0.0) : vec4(0.0, 0.0, 0.0, 1.0);
+    vec3 sunward = slice > 0u ? textureLod(fogVolumeSunward, vec3(across, edge), 0.0).xyz : vec3(0.0);
+
+    // The near half of the slice, as far as the surface reaches into it; then the far half, likewise.
+    // A straight piece's mean is its own middle, which is what each read is taken at.
+    const float behind = froxelNear(slice);
+    const float middle = froxelMiddle(slice);
+    if (through <= 0.5)
+    {
+        fogThrough(air.w, air.xyz, sunward, fogSliceAt(across, (float(slice) + 0.5 * through) / slices), reach - behind);
+    }
+    else
+    {
+        fogThrough(air.w, air.xyz, sunward, fogSliceAt(across, (float(slice) + 0.25) / slices), middle - behind);
+
+        // **Flat where the next slice starts past the column's own surface**, which is the rule
+        // the integrate pass carried the same half by: that slice holds none of this column's air,
+        // and a line bent toward it thinned the air in the last quarter of every slice a surface
+        // stood in. A pixel that sees past the column's surface is in a later slice and bends.
+        const float surface = imageLoad(fogColumnDepth, ivec2(pixel / FOG_VOLUME_SCALE)).x;
+        const float onward = froxelNear(slice + 1u) < surface ? 0.25 + 0.5 * through : 0.5;
+        fogThrough(air.w, air.xyz, sunward, fogSliceAt(across, (float(slice) + onward) / slices), reach - middle);
+    }
 
     const vec3 sun = HAS_SUN ? sunward * frame.mSunIrradiance * fogPhase(dot(direction, frame.mSunPosition))
                              : vec3(0.0);
@@ -483,7 +538,21 @@ float fogColumn(vec3 origin, vec3 direction, float span)
     return frame.mFogExtinction * (above * mean + under * (span - above));
 }
 
-/// Weighs every lamp along a ray into `kept`, by the light it puts into the air over the whole of it.
+/// How the light a lamp puts into one stretch of a ray is weighed against what it puts into the
+/// rest.
+///
+/// **The two callers of `lampsInAir` differ here and nowhere else.** The closed form holds one
+/// reservoir for a whole ray, so what a stretch is worth is what the air actually took out of the
+/// ray over it — a difference of two transmittances, and exact. A froxel holds a reservoir for
+/// itself and hands the integrator a mean, so its stretches are worth their own lengths and the
+/// air's own weight is applied once, afterwards, by the pass that integrates the column.
+///
+/// **A froxel cannot use the other.** `fogColumn` is the closed form of an even layer, and the
+/// whole reason a froxel exists is that its air is banked.
+const uint LAMPS_BY_ABSORPTION = 0u;
+const uint LAMPS_BY_LENGTH = 1u;
+
+/// Weighs every lamp reaching a stretch of a ray into `kept`, and returns what they scatter into it.
 ///
 /// **One walk of the light grid rather than one per step**, which is the cost that made the air
 /// expensive in a room: a cell's list is the same list over the whole stretch the ray spends inside
@@ -495,21 +564,31 @@ float fogColumn(vec3 origin, vec3 direction, float span)
 /// held inside the stretch. Everything else about the lamp is integrated; these two vary over a
 /// scale height where the inverse square varies over a lamp's reach, so the point that carries
 /// nearly all of the share is the one worth reading them at.
-void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 direction, float span)
+///
+/// **The sum and the reservoir are one estimator and not two answers.** Every lamp is offered with
+/// the weight of its own share of the sum, so the one held is drawn in proportion to what it
+/// contributes — and `sum * lampVisible(kept)` then carries the expectation of the whole sum
+/// shadowed lamp by lamp, exactly. What is left of the draw is which lamp the one ray goes to.
+///
+/// Returns what those lamps scatter toward the eye *integrated over the stretch*: a radiance times
+/// a length, so a caller wanting the mean divides by `exit - entry`. `INV_FOUR_PI` is already in
+/// it, the air having no side to face a lamp away from.
+vec3 lampsInAir(
+    inout Reservoir kept, inout uint state, vec3 origin, vec3 direction, float entry, float exit, uint weighing)
 {
     const float side = 1.0 / frame.mLightGrid.mInverseCell;
     const vec3 beyond = frame.mLightGrid.mOrigin + vec3(frame.mLightGrid.mSize) * side;
 
+    vec3 scattered = vec3(0.0);
+
     // Clipped to the grid before the walk, so the budget above is spent inside it: a ray that starts
     // outside would otherwise cross empty cells until it ran out.
-    float entry = 0.0;
-    float exit = span;
     for (int axis = 0; axis < 3; ++axis)
     {
         if (abs(direction[axis]) < 1.0e-8)
         {
             if (origin[axis] < frame.mLightGrid.mOrigin[axis] || origin[axis] >= beyond[axis])
-                return;
+                return scattered;
             continue;
         }
 
@@ -520,7 +599,7 @@ void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 d
     }
 
     if (!(exit > entry))
-        return;
+        return scattered;
 
     // The cell the ray enters, and for each axis the `t` of its next boundary and the `t` between
     // boundaries after that — a digital differential analyser, so the cell is carried rather than
@@ -572,27 +651,31 @@ void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 d
             // `-sigma T` — so the one thing left approximated is that a lamp's falloff and the air's
             // own density do not correlate over the stretch, which they do not: the falloff varies
             // over a lamp's reach and the density over a scale height.
-            const float absorbed = exp(-fogColumn(origin, direction, from)) - exp(-fogColumn(origin, direction, to));
-            const float share
-                = falloffAlong(perpendicular, from - closest, to - closest, held.mReach, held.mSourceRadius)
-                / (to - from);
+            const float crossed
+                = falloffAlong(perpendicular, from - closest, to - closest, held.mReach, held.mSourceRadius);
+            const float weight = weighing == LAMPS_BY_LENGTH
+                ? to - from
+                : exp(-fogColumn(origin, direction, from)) - exp(-fogColumn(origin, direction, to));
 
             // Asked of `lampAt` rather than worked out here, so the direction the shadow ray takes
             // and the reach it stops at are the same answer every other consumer of a lamp gets.
             const vec3 place = origin + direction * clamp(closest, from, to);
             const Lamp lamp = lampAt(held, place);
 
-            considerLamp(kept, state, place, lamp.mIntensity * (INV_FOUR_PI * share * absorbed), lamp);
+            scattered += lamp.mIntensity * (INV_FOUR_PI * crossed);
+            considerLamp(kept, state, place, lamp.mIntensity * (INV_FOUR_PI * crossed * weight / (to - from)), lamp);
         }
 
         if (leave >= exit)
-            return;
+            return scattered;
 
         const int axis = next.x <= next.y ? (next.x <= next.z ? 0 : 2) : (next.y <= next.z ? 1 : 2);
         cell[axis] += onward[axis];
         next[axis] += stride[axis];
         behind = leave;
     }
+
+    return scattered;
 }
 
 /// The weather's own air where the coverage field is even, integrated instead of marched.
@@ -629,7 +712,7 @@ vec4 fogUniformAlong(vec3 origin, vec3 direction, float distance, float offset, 
 
     uint lampState = randomSeed(seed + SEED_LAMPS_FOG);
     Reservoir lamps = noLamps();
-    weighLampsAlong(lamps, lampState, origin, direction, span);
+    lampsInAir(lamps, lampState, origin, direction, 0.0, span, LAMPS_BY_ABSORPTION);
     scattered += lampsThrough(lamps, vec2(randomNext(lampState), randomNext(lampState)));
 
     const FogSources sources = fogSourcesAlong(direction);

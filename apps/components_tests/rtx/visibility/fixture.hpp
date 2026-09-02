@@ -418,6 +418,38 @@ namespace Rtx::Testing
             mRenderer->readChannel(Channel::Radiance, values);
         }
 
+        /// What one pixel read on each frame of a run, with the history let build across them.
+        ///
+        /// **The frames apart rather than averaged, which is what a test about flicker needs.**
+        /// `countHits` with an `accumulate` on it hands back the mean of a run and says nothing
+        /// about how far the frames stood from each other — and how far they stand is the whole
+        /// of what a boiling image is. So this advances `mFrame` and reads the pixel out after
+        /// every frame, leaving the composite's accumulator and the denoiser off, so what moves
+        /// between two entries moved in the trace.
+        void radianceFrameByFrame(const SceneDesc& scene, const Shaders::VisibilityConstants& camera,
+            std::uint32_t size, std::uint32_t frames, std::size_t pixel, std::vector<float>& radiance)
+        {
+            mRenderer->resize(size, size);
+            mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            mRenderer->resetHistory();
+
+            radiance.clear();
+            radiance.reserve(frames);
+
+            std::vector<float> values;
+            for (std::uint32_t frame = 0; frame < frames; ++frame)
+            {
+                Shaders::VisibilityConstants sampled = camera;
+                sampled.mFrame = frame;
+
+                mRenderer->renderFrame(sampled, FrameOptions{ .mAccumulate = 0, .mFilter = false, .mExposure = 1.0f });
+                mRenderer->finishFrame();
+                mRenderer->readChannel(Channel::Radiance, values);
+
+                radiance.push_back(values[pixel * 4]);
+            }
+        }
+
         /// A wall square to the sun with one pane held in front of it, as the byte its centre
         /// pixel comes back as.
         ///

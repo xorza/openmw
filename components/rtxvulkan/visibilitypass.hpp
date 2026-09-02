@@ -150,11 +150,14 @@ namespace Rtx
         /// @param historyLost whether the frame before this one is worth reprojecting into. Written
         ///        into the block as a basis of nothing, which is what every shader here already
         ///        reads as "there is no previous frame" — so a door, a resize and a rebuild reach
-        ///        the fog volume's own filter by the route the motion vectors already take.
-        /// @param timer where the two zones this records go, or nothing where nobody is counting.
-        ///        The fog volume and the trace are two dispatches and one of them is new, so they
+        ///        the fog volume's own filter by the route the motion vectors already take. **The
+        ///        fog volume's answer and not the denoisers'**: this pass runs every frame, so what
+        ///        it is told is spent by the frame after it. `VulkanRenderer::mAirStale` says why
+        ///        the two are separate flags.
+        /// @param timer where the three zones this records go, or nothing where nobody is counting.
+        ///        The air is three dispatches under two zones and the trace a third zone, so they
         ///        are timed apart — and the pass opens them because it is what decides whether the
-        ///        first happens at all.
+        ///        air happens at all.
         void record(VkCommandBuffer commands, const VisibilityInputs& inputs, const GBuffer& buffer,
             const Buffer& hitCount, const Shaders::VisibilityConstants& constants, bool historyLost,
             GpuTimer* timer) const;
@@ -195,9 +198,9 @@ namespace Rtx
         /// The kernel for `variant`, which `compileEvery` made.
         const TracePipeline& pipelineFor(VisibilityVariant variant) const;
 
-        /// The same, for the pass that fills the fog volume. Null for an even air, which reads the
-        /// closed form and dispatches no volume.
-        const ComputePipeline* volumePipelineFor(VisibilityVariant variant) const;
+        /// The same, for the pass that fills the fog volume's froxels. Null for an even air, which
+        /// reads the closed form and dispatches no volume.
+        const ComputePipeline* scatterPipelineFor(VisibilityVariant variant) const;
 
         const Device& mDevice;
 
@@ -231,7 +234,9 @@ namespace Rtx
         /// construction. The trace's are one launch's worth: the ray generation shader, the one
         /// any-hit shader every hit group names, the sky's miss shader, and one closest-hit shader
         /// per `MaterialKind` in that enum's own order.
-        std::filesystem::path mVolumeModule;
+        std::filesystem::path mDepthModule;
+        std::filesystem::path mScatterModule;
+        std::filesystem::path mIntegrateModule;
         std::filesystem::path mRaygenModule;
         std::filesystem::path mAnyHitModule;
         std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> mMissModules;
@@ -240,8 +245,20 @@ namespace Rtx
         /// One pipeline per tuple, every one of them made by `compileEvery`.
         std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mPipelines;
 
-        /// The same table for the volume, of which only the half with `mUniformFog` false is
-        /// filled: a room reads the closed form and no volume is dispatched for it.
-        std::array<std::unique_ptr<ComputePipeline>, VisibilityVariant::sCount> mVolumePipelines;
+        /// The same table for the pass that fills the froxels, of which only the half with
+        /// `mUniformFog` false is filled: a room reads the closed form and no volume is dispatched
+        /// for it.
+        std::array<std::unique_ptr<ComputePipeline>, VisibilityVariant::sCount> mScatterPipelines;
+
+        /// And one for the pass that finds where each column's ray stops, which no tuple changes:
+        /// it traces and shades nothing.
+        std::unique_ptr<ComputePipeline> mDepthPipeline;
+
+        /// And one for the pass that integrates the columns, which takes no tuple at all.
+        ///
+        /// **It reads five images and writes two, and knows nothing else.** Whether there is a sun,
+        /// whether there are moons, whether there is a sea — every one of those was answered by the
+        /// pass that filled the froxels, and what is left here is a scan over what that wrote.
+        std::unique_ptr<ComputePipeline> mIntegratePipeline;
     };
 }

@@ -573,8 +573,22 @@ namespace Rtx::Shaders
     /// per pixel; this spends 64 per sixty-four pixels.
     RTX_CONST uint FOG_VOLUME_SLICES = 64u;
 
-    /// How many columns one workgroup of the volume pass covers, on each axis.
-    RTX_CONST uint FOG_VOLUME_WORKGROUP = 8u;
+    /// How many froxels one workgroup of the scatter pass covers, across the screen and in depth.
+    ///
+    /// **Two hundred and fifty-six threads, laid out to keep what they read together.** Froxels
+    /// beside each other read one block of the fog field and walk the same cells of the light grid,
+    /// and froxels behind each other walk the cells of one ray — so both axes are coherent and the
+    /// only thing the shape decides is which is more so. Eight by eight keeps the screen-space
+    /// block square, which is what the field's read and the reprojection both want.
+    RTX_CONST uint FOG_FROXEL_WORKGROUP_ACROSS = 8u;
+    RTX_CONST uint FOG_FROXEL_WORKGROUP_DEEP = 4u;
+
+    /// How many columns one workgroup of the integrate pass covers, on each axis.
+    ///
+    /// **A thread to a column there, and that is not a shape to be improved.** Front to back is the
+    /// only order transmittance can be carried in, so the sixty-four slices of a column are a scan
+    /// and not a fan-out — and the scan is reads and multiply-adds, with no ray and no walk in it.
+    RTX_CONST uint FOG_COLUMN_WORKGROUP = 8u;
 
     /// What shading a hit takes. `Rtx::MaterialKind`, which these must agree with.
     RTX_CONST uint KIND_SURFACE = 0u;

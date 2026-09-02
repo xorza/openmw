@@ -1088,9 +1088,17 @@ namespace Rtx
         // **A history is worthless after a jump no motion vector can describe.** A zero basis catches
         // the frames that have no past at all — a resize, a rebuild, the first one — and nothing
         // caught the rest: walking through a door left the previous camera intact and a reprojection
-        // fetched one room onto another. `mHistoryStale` is the other half, and it is the signal the
-        // renderer was already being sent. Both denoisers ask it, so it is answered once.
-        const bool historyLost = mHistoryStale || mPreviousCamera.mCamera.mForward.length2() <= 0.0f;
+        // fetched one room onto another. The stale flags are the other half, and they are the signal
+        // the renderer was already being sent.
+        const bool basisLost = mPreviousCamera.mCamera.mForward.length2() <= 0.0f;
+
+        // **The trace's, which is the fog volume's**, and what zeroes the basis in the block it is
+        // handed. The volume is the only thing the trace reprojects, and the motion vectors the same
+        // basis produces are read by a denoiser that is told its own answer separately.
+        const bool airLost = mAirStale || basisLost;
+
+        // Both denoisers ask this one, so it is answered once.
+        const bool historyLost = mDenoiserStale || basisLost;
 
         // **Spent by the frame that answers it, not by the frame that ends.** Only a reconstruction
         // carrying a past reads `historyLost`, and a frame with neither denoiser carries none — so
@@ -1141,7 +1149,7 @@ namespace Rtx
         }
 
         mChannels->begin(commands);
-        mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled, historyLost, &timer);
+        mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled, airLost, &timer);
         mChannels->handOver(commands);
 
         // Where the bounce ended up: the filter's last level, or the channel the trace wrote
@@ -1243,8 +1251,14 @@ namespace Rtx
         // where inside a pixel this frame sampled, not where the eye was.
         mPreviousCamera = camera;
 
+        // **The air's is spent here and unconditionally, because the trace above always ran.** A
+        // frame that filled the volume was told; a frame with no volume to fill has nothing to keep
+        // a stale flag for, and holding it would zero the basis — and so every motion vector — for
+        // as long as the player stayed indoors.
+        mAirStale = false;
+
         if (historyAnswered)
-            mHistoryStale = false;
+            mDenoiserStale = false;
 
         return reconstruction;
     }
