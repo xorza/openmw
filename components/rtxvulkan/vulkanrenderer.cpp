@@ -44,7 +44,8 @@ namespace Rtx
         ///
         /// @param timer null where the run is not being timed, which a picture is not.
         const Image& recordDenoise(VkCommandBuffer commands, const GBuffer& channels, AccumulatePass& accumulate,
-            const AtrousPass& filter, const Shaders::Camera& camera, const bool historyLost, GpuTimer* const timer)
+            const AtrousPass& filter, const Shaders::Camera& camera, const float far, const bool historyLost,
+            GpuTimer* const timer)
         {
             // **The temporal half first, and the cascade is what fills in where it was rejected.**
             // The accumulator replaces the trace's single sample with the mean of the frames this
@@ -52,7 +53,7 @@ namespace Rtx
             // lets the levels below stop at an edge in the light rather than only at an edge in the
             // geometry.
             openZone(timer, commands, "accumulate");
-            const Image& moments = accumulate.record(commands, channels, camera, historyLost);
+            const Image& moments = accumulate.record(commands, channels, camera, far, historyLost);
             closeZone(timer, commands);
 
             // The cascade reads what the accumulator just wrote, in both channels.
@@ -1121,7 +1122,8 @@ namespace Rtx
         const Image* indirect = &mChannels->getIndirect();
         if (filtering)
         {
-            indirect = &recordDenoise(commands, *mChannels, mAccumulate, mFilter, sampled.mCamera, historyLost, &timer);
+            indirect = &recordDenoise(
+                commands, *mChannels, mAccumulate, mFilter, sampled.mCamera, sampled.mFar, historyLost, &timer);
             historyAnswered = true;
         }
 
@@ -1318,8 +1320,8 @@ namespace Rtx
             // A doll and a map tile are one frame with no frame before them, so the accumulator is
             // a pass-through that says so: no history, and the largest variance there is, which is
             // what tells the cascade to filter as widely as it can.
-            const Image& indirect
-                = recordDenoise(commands, *mViewChannels, mViewAccumulate, mViewFilter, camera.mCamera, true, nullptr);
+            const Image& indirect = recordDenoise(
+                commands, *mViewChannels, mViewAccumulate, mViewFilter, camera.mCamera, camera.mFar, true, nullptr);
 
             mComposite.record(commands, *mViewChannels, indirect, nullptr, *mViewColour,
                 Shaders::CompositeConstants{

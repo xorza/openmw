@@ -539,13 +539,16 @@ namespace Rtx::Testing
             const double settled = errorAgainstReference(settledPixels);
 
             // Measured on this box through `Channel::Radiance`: 0.00456 against the converged
-            // reference with the cascade alone, 0.00271 once sixteen frames are behind it — the
-            // history removes **40%** of the error the filter cannot reach. Deterministic to the last
+            // reference with the cascade alone, 0.00266 once sixteen frames are behind it — the
+            // history removes **42%** of the error the filter cannot reach. Deterministic to the last
             // digit across runs, which is what lets the bounds below sit this close to the figures.
             //
-            // **Eleven bits of normal is enough for this.** `settled` is the same to six digits
-            // with the guide at half width and at full, and `alone` moves only in its fifth — which
-            // is what a filter that compares directions rather than summing them should show.
+            // **Eleven bits is enough for a guide and for a history.** Narrowing the guide left
+            // `settled` the same to six digits, and narrowing the mean and the surface the
+            // accumulator keeps moved it from 0.00271 to 0.00266. Neither builds a reference — a
+            // normal is compared against a neighbour's, and a mean is a running value replaced every
+            // frame rather than a thousand terms added into one — which is why the argument that
+            // holds the radiance channels at full width reaches neither.
             //
             // **A third was the quantiser, and these are the figures without it.** Read back as
             // bytes instead of floats, the same pair came to 0.00406 and 0.00253 against the 0.00380

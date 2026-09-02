@@ -80,6 +80,9 @@ const float SURFACE_FACING = 0.9;
 /// **Relative, because a tolerance in world units means something different at every range.** Two
 /// per cent is well inside a wall's thickness at arm's length and well outside the step a grazing
 /// floor takes between neighbouring pixels at the far end of a view.
+///
+/// The floor under it is the one part that has to be converted, and `mDistanceScale` is one world
+/// unit in the units the distance is stored in.
 const float SURFACE_DEPTH = 0.02;
 
 /// The variance written where a pixel has no history to have measured one.
@@ -90,7 +93,10 @@ const float SURFACE_DEPTH = 0.02;
 const float NO_HISTORY_VARIANCE = 1.0;
 
 /// Whether the history at `at` belongs to the surface now in front of this pixel.
-bool sameSurface(ivec2 at, vec3 normal, float away)
+///
+/// @param scaled how far that surface is, in the units `surfaceOut` holds rather than in world
+///        ones. `AccumulateConstants::mDistanceScale` says what those are and why.
+bool sameSurface(ivec2 at, vec3 normal, float scaled)
 {
     if (at.x < 0 || at.y < 0 || at.x >= int(frame.mCamera.mWidth) || at.y >= int(frame.mCamera.mHeight))
         return false;
@@ -99,7 +105,8 @@ bool sameSurface(ivec2 at, vec3 normal, float away)
     if (dot(was.xyz, was.xyz) <= 0.0)
         return false;
 
-    return dot(was.xyz, normal) >= SURFACE_FACING && abs(was.w - away) <= SURFACE_DEPTH * max(away, 1.0);
+    return dot(was.xyz, normal) >= SURFACE_FACING
+        && abs(was.w - scaled) <= SURFACE_DEPTH * max(scaled, frame.mDistanceScale);
 }
 
 void main()
@@ -110,7 +117,7 @@ void main()
 
     const vec3 sampled = imageLoad(indirect, at).rgb;
     const vec3 normal = imageLoad(guide, at).xyz;
-    const float away = imageLoad(depth, at).g;
+    const float scaled = imageLoad(depth, at).g * frame.mDistanceScale;
 
     // A pixel with no surface under it has nothing to accumulate and nothing to hand on. The sky is
     // resolved into `direct` by the trace and never reaches here as light.
@@ -154,7 +161,7 @@ void main()
         for (int i = 0; i < 4; ++i)
         {
             const ivec2 tap = low + offsets[i];
-            if (weights[i] <= 0.0 || !sameSurface(tap, normal, away))
+            if (weights[i] <= 0.0 || !sameSurface(tap, normal, scaled))
                 continue;
 
             const vec4 held = imageLoad(historyColour, tap);
@@ -210,6 +217,6 @@ void main()
 
     imageStore(indirect, at, vec4(blended, 1.0));
     imageStore(colourOut, at, vec4(blended, count));
-    imageStore(surfaceOut, at, vec4(normal, away));
+    imageStore(surfaceOut, at, vec4(normal, scaled));
     imageStore(momentsOut, at, vec4(blendedMoments, variance, 0.0));
 }

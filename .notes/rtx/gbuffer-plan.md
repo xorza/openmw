@@ -249,11 +249,40 @@ inside the 2% the filter tests allow — but it is the number to check first if
 `theFilterAndItsHistoryConvergeOnAGrazingSurface` moves, and it is the reason the moments do not
 follow.
 
-**Verification.** The six tests in `filter.cpp`, and two of them carry figures rather than
-tolerances: `theFilterAndItsHistoryConvergeOnAGrazingSurface` asserts `alone > 0.003` and
-`settled < alone * 0.60` against measured values of 0.00380 and 0.00214. **Re-derive those, do not
-widen them.** If the settled error rises past 0.60 of the raw one, the floor above is the first
-suspect and full-float colour with half-float surface is the fallback.
+**Verification.** The six tests in `filter.cpp`, and one of them carries figures rather than
+tolerances: `theHistoryCarriesWhereTheCascadeHasNoNeighboursToBorrow` asserts `alone > 0.003` and
+`settled < alone * 0.60`. **Re-derive those, do not widen them.** If the settled error rises past
+0.60 of the raw one, the floor above is the first suspect and full-float colour with half-float
+surface is the fallback.
+
+**Done, and it is worth more than the arithmetic said.** `accumulate` medians, release, 1920×1080,
+warm card, two alternations:
+
+| view | before | after | change |
+|---|---|---|---|
+| seyda-neen-ship | 0.525 | 0.38 | **−28%** |
+| seyda-neen-ship-dawn | 0.515 | 0.38 | **−26%** |
+| balmora-mages-guild | 0.62 | 0.45 | **−27%** |
+
+The prediction was 22%. `filter` does not move, which is right — Stage 2 changes nothing the cascade
+reads.
+
+**The picture improved slightly.** `settled` went from 0.00271 to 0.00266 and the ratio the test
+bounds from 0.596 to 0.584, so the exponential average's quantisation floor — 0.4 to 0.8 per cent of
+the value, derived above — costs nothing this test can see. The range question is settled by
+measurement rather than by argument: `shot --tail` over five views, settled and unsettled, finds no
+pixel of the bounce above 32 against the 65504 a half holds.
+
+**`verify` is the wrong instrument for this stage, and says so by reporting twenty views identical.**
+It renders one frame a view, so the accumulator takes its reset path and never reads a history at
+all. The sixteen-frame test in `filter.cpp` is what sees this change.
+
+**What the distance needed.** `ACCUMULATE_DISTANCE_RANGE` puts the far plane at 2^15 rather than at
+one. A plain fraction of the far plane pushes a surface a world unit from the eye down to 5e-6,
+which is a half denormal whose step is 1.2% of the value against a 2% tolerance — so the scale that
+avoids the overflow has to avoid the denormals as well. The scale rides in `AccumulateConstants` and
+not in `Camera`: it is a storage scale, not a depth range, which is the distinction `camera.h`
+draws.
 
 **Effort**: a day.
 

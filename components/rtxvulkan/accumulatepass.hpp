@@ -53,10 +53,14 @@ namespace Rtx
         /// wrote is replaced by the accumulated mean; the history the next frame reads is kept apart
         /// from it, because the cascade overwrites its own input as it ping-pongs.
         ///
+        /// @param far the frame's far plane, which this turns into a storage scale rather than
+        ///        writing a depth against. `AccumulateConstants::mDistanceScale` says why it is a
+        ///        parameter of its own instead of a field of `Camera`.
         /// @param reset true where there is no history worth carrying — the first frame, a resize, a
         ///        door walked through. The same signal Ray Reconstruction is handed.
         /// @return the moments image the cascade weighs its taps by.
-        const Image& record(VkCommandBuffer commands, const GBuffer& buffer, const Shaders::Camera& camera, bool reset);
+        const Image& record(
+            VkCommandBuffer commands, const GBuffer& buffer, const Shaders::Camera& camera, float far, bool reset);
 
     private:
         const Device& mDevice;

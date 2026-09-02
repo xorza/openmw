@@ -60,9 +60,10 @@ namespace Rtx
     }
 
     const Image& AccumulatePass::record(
-        VkCommandBuffer commands, const GBuffer& buffer, const Shaders::Camera& camera, bool reset)
+        VkCommandBuffer commands, const GBuffer& buffer, const Shaders::Camera& camera, float far, bool reset)
     {
         assert(mColour[0] != nullptr && "record before resize");
+        assert(far > 0.0f && "a frame with no far plane to scale a stored distance by");
         assert(mColour[0]->getWidth() >= camera.mWidth && mColour[0]->getHeight() >= camera.mHeight);
 
         const std::size_t previous = mCurrent;
@@ -109,6 +110,7 @@ namespace Rtx
         const Shaders::AccumulateConstants constants{
             .mCamera = camera,
             .mReset = (reset || mFresh) ? 1u : 0u,
+            .mDistanceScale = Shaders::ACCUMULATE_DISTANCE_RANGE / far,
         };
 
         vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mPipeline.getHandle());

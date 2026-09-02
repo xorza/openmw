@@ -16,9 +16,18 @@
 // `GBUFFER_GUIDE` — so narrowing a channel for the trace's sake silently narrowed a history whose
 // evidence lies somewhere else entirely. `.notes/rtx/gbuffer-plan.md` is that evidence.
 //
-// **The surface's distance is what keeps that one full-width.** It is in world units against a far
-// plane of 200000, and a half float stops at 65504 — so every surface past that would carry an
-// infinity, and `sameSurface` would compare against a NaN and reject a history it should have kept.
+// **Half floats for the mean and the surface, because neither builds a reference.** What put the
+// radiance channels back to full width is an argument about rounding a term before adding it to a
+// thousand others. A normal is compared against a neighbour's, and a mean is a running value
+// replaced every frame rather than a thousand terms added into one. Measured across five views,
+// settled and unsettled, no pixel of the bounce reaches 32 against the 65504 a half holds.
+//
+// **What the mean pays for it is a floor on how slowly it may move.** The average is exponential
+// with `alpha = 1 / ACCUMULATE_FRAMES`, so a frame moves the stored value by a sixteenth of the
+// difference — and where that sixteenth falls under half a quantisation step it rounds back to where
+// it was. A half's step is between 2^-12 and 2^-11 of the value, so the average stalls on
+// differences under 0.4 to 0.8 per cent of it. Measured, the cascade's error against a converged
+// reference did not rise, and `filter.cpp` carries the pair.
 //
 // **And the moments stay full floats whatever the other two do.** `E[l²] - E[l]²` is a difference of
 // two numbers that are nearly equal once a pixel has settled, and a format that rounds each of them
@@ -30,14 +39,14 @@
 
 #ifdef RTX_HOST
 
-#define ACCUMULATE_COLOUR VK_FORMAT_R32G32B32A32_SFLOAT
-#define ACCUMULATE_SURFACE VK_FORMAT_R32G32B32A32_SFLOAT
+#define ACCUMULATE_COLOUR VK_FORMAT_R16G16B16A16_SFLOAT
+#define ACCUMULATE_SURFACE VK_FORMAT_R16G16B16A16_SFLOAT
 #define ACCUMULATE_MOMENTS VK_FORMAT_R32G32B32A32_SFLOAT
 
 #else
 
-#define ACCUMULATE_COLOUR rgba32f
-#define ACCUMULATE_SURFACE rgba32f
+#define ACCUMULATE_COLOUR rgba16f
+#define ACCUMULATE_SURFACE rgba16f
 #define ACCUMULATE_MOMENTS rgba32f
 
 #endif
@@ -97,6 +106,18 @@ namespace Rtx::Shaders
     /// is not one anybody should filter by.
     RTX_CONST float ACCUMULATE_SETTLED = 4.0f;
 
+    /// Where the far plane lands once a distance has been scaled for `ACCUMULATE_SURFACE`.
+    ///
+    /// **A half float is precise in proportion rather than in steps, so what a distance wants from
+    /// it is a range and not more bits.** Its normal numbers run from 6.1e-5 to 65504, which is
+    /// thirty binades, and a distance from one world unit to a far plane of 200000 needs eighteen of
+    /// them. Stored raw the far end overflows at 65504, and every surface past that carries an
+    /// infinity `sameSurface` compares against a NaN. Stored as a plain fraction of the far plane
+    /// the near end falls to 5e-6, a denormal whose step is 1.2% of the value against a tolerance of
+    /// 2%. Putting the far plane at 2^15 does neither: a surface a world unit from the eye stores
+    /// 0.164, eleven binades clear of where a half stops holding proportion.
+    RTX_CONST float ACCUMULATE_DISTANCE_RANGE = 32768.0f;
+
     /// What a level of the wavelet is handed, and what the accumulator writes for it.
     struct AccumulateConstants
     {
@@ -108,12 +129,22 @@ namespace Rtx::Shaders
         /// Non-zero where there is no history to reuse — the first frame, a resize, a door walked
         /// through. Every pixel then starts its count again.
         uint mReset;
+
+        /// What a world distance is multiplied by before `surfaceOut` holds it, which is
+        /// `ACCUMULATE_DISTANCE_RANGE` over the frame's far plane.
+        ///
+        /// **Here rather than in `Camera`, because it is a storage scale and not a depth range.**
+        /// `camera.h` keeps `mFar` out on the grounds that a filter has no use for what a depth was
+        /// written against, and that still holds — what this pass needs is a number that keeps a
+        /// stored distance inside a half's proportional range, and it is only derived from the same
+        /// value.
+        float mDistanceScale;
     };
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
 #if defined(RTX_HOST) || defined(__METAL_VERSION__)
-    static_assert(sizeof(AccumulateConstants) == 64, "AccumulateConstants must be scalar-packed on every side");
+    static_assert(sizeof(AccumulateConstants) == 68, "AccumulateConstants must be scalar-packed on every side");
 #endif
 
 #ifdef RTX_HOST
