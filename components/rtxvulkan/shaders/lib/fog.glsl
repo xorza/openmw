@@ -16,7 +16,7 @@
 #include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
-#include "variants.glsl"
+#include "frame.glsl"
 #include "lights.glsl"
 #include "random.glsl"
 #include "traversal.glsl"
@@ -173,8 +173,8 @@ float fogExtinctionAt(vec3 position, float spacing)
     // **Air only, and under a bay there is none.** The layer pools *at* the water rather than in
     // it, and a point below the surface already has the water's own absorption over it — fog there
     // would be a second medium laid on the first, putting grey between the eye and the seabed twice
-    // over. `mWaterLevel - z` is never positive for a dry cell, so this costs one nothing.
-    if (HAS_SEA && frame.mWaterLevel - position.z > 0.0)
+    // over. `waterOver` is nought for a dry cell, so this costs one nothing.
+    if (waterOver(position) > 0.0)
         return 0.0;
 
     // **How deep the layer stands is the weather's and not a constant.** `FOG_HEIGHT` is the bank
@@ -356,7 +356,7 @@ vec3 moonsInAir(float extinction, FogSources sources, float lunar, vec3 reaching
 
 FogSources fogSourcesAlong(vec3 direction)
 {
-    const bool sunlit = HAS_SUN && frame.mSunIrradiance != vec3(0.0);
+    const bool sunlit = sunUp();
     const vec3 sunward = sunlit ? frame.mSunIrradiance * fogPhase(dot(direction, frame.mSunPosition)) : vec3(0.0);
 
     const vec3 masser
@@ -492,8 +492,8 @@ float fogColumn(vec3 origin, vec3 direction, float span)
 /// nearly all of the share is the one worth reading them at.
 void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 direction, float span)
 {
-    const float side = 1.0 / grid.mInverseCell;
-    const vec3 beyond = grid.mOrigin + vec3(grid.mSize) * side;
+    const float side = 1.0 / frame.mLightGrid.mInverseCell;
+    const vec3 beyond = frame.mLightGrid.mOrigin + vec3(frame.mLightGrid.mSize) * side;
 
     // Clipped to the grid before the walk, so the budget above is spent inside it: a ray that starts
     // outside would otherwise cross empty cells until it ran out.
@@ -503,12 +503,12 @@ void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 d
     {
         if (abs(direction[axis]) < 1.0e-8)
         {
-            if (origin[axis] < grid.mOrigin[axis] || origin[axis] >= beyond[axis])
+            if (origin[axis] < frame.mLightGrid.mOrigin[axis] || origin[axis] >= beyond[axis])
                 return;
             continue;
         }
 
-        const float one = (grid.mOrigin[axis] - origin[axis]) / direction[axis];
+        const float one = (frame.mLightGrid.mOrigin[axis] - origin[axis]) / direction[axis];
         const float other = (beyond[axis] - origin[axis]) / direction[axis];
         entry = max(entry, min(one, other));
         exit = min(exit, max(one, other));
@@ -520,7 +520,7 @@ void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 d
     // The cell the ray enters, and for each axis the `t` of its next boundary and the `t` between
     // boundaries after that — a digital differential analyser, so the cell is carried rather than
     // worked out again from a position that would need nudging over each edge.
-    vec3 cell = floor((origin + direction * entry - grid.mOrigin) * grid.mInverseCell);
+    vec3 cell = floor((origin + direction * entry - frame.mLightGrid.mOrigin) * frame.mLightGrid.mInverseCell);
     vec3 next = vec3(exit);
     vec3 stride = vec3(0.0);
     const vec3 onward = sign(direction);
@@ -530,7 +530,7 @@ void weighLampsAlong(inout Reservoir kept, inout uint state, vec3 origin, vec3 d
         if (abs(direction[axis]) < 1.0e-8)
             continue;
 
-        const float boundary = grid.mOrigin[axis] + (cell[axis] + max(onward[axis], 0.0)) * side;
+        const float boundary = frame.mLightGrid.mOrigin[axis] + (cell[axis] + max(onward[axis], 0.0)) * side;
         next[axis] = (boundary - origin[axis]) / direction[axis];
         stride[axis] = side / abs(direction[axis]);
     }
@@ -706,7 +706,7 @@ vec4 fogEdgeAlong(vec3 origin, vec3 direction, float distance)
     // surface. So a ray aimed from the air into water is charged for the wet part of its path too —
     // which is worth nothing, since anything deep enough for that to matter is already behind more
     // water than this would ever take.
-    if (HAS_SEA && frame.mWaterLevel - origin.z > 0.0)
+    if (waterOver(origin) > 0.0)
         return vec4(0.0, 0.0, 0.0, 1.0);
 
     // **A climb and not a descent.** Everything above the eye is sky however far off it is, and sky

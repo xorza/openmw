@@ -32,12 +32,12 @@
 /// ray spends inside one cell is one list asked once, which is what `weighLampsAlong` is built on.
 uvec2 lampsInCell(vec3 cell)
 {
-    if (any(lessThan(cell, vec3(0.0))) || any(greaterThanEqual(cell, vec3(grid.mSize))))
+    if (any(lessThan(cell, vec3(0.0))) || any(greaterThanEqual(cell, vec3(frame.mLightGrid.mSize))))
         return uvec2(0u, 0u);
 
     const uvec3 at = uvec3(cell);
     // `flat` is what this wants to be called, and GLSL reserves it for interpolation.
-    const uint index = (at.z * grid.mSize.y + at.y) * grid.mSize.x + at.x;
+    const uint index = (at.z * frame.mLightGrid.mSize.y + at.y) * frame.mLightGrid.mSize.x + at.x;
 
     return uvec2(lightOffsets[index], lightOffsets[index + 1u]);
 }
@@ -67,7 +67,7 @@ uvec2 lampsWithin(uvec2 near)
 /// The same, for a caller holding a place instead of a cell.
 uvec2 lampsReaching(vec3 position)
 {
-    return lampsInCell(floor((position - grid.mOrigin) * grid.mInverseCell));
+    return lampsInCell(floor((position - frame.mLightGrid.mOrigin) * frame.mLightGrid.mInverseCell));
 }
 
 /// How much of a light `distance` away arrives, per unit intensity.

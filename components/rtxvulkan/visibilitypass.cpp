@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <components/rtx/bluenoise.hpp>
+#include <components/rtx/lightgrid.hpp>
 #include <components/rtx/shaders/bindings.h>
 
 #include "buffer.hpp"
@@ -295,7 +296,6 @@ namespace Rtx
         };
         const VkDescriptorBufferInfo noiseWrite{ mBlueNoise.getHandle(), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo shadingWrite{ inputs.mShading, 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo gridWrite{ inputs.mBuffers->getGrid(inputs.mSlot), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo spriteWrite{ inputs.mBuffers->getSprites(inputs.mSlot), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo emitterWrite{ inputs.mBuffers->getEmitters(inputs.mSlot), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo tileOffsetWrite{ inputs.mBuffers->getSpriteTileOffsets(inputs.mSlot), 0,
@@ -323,7 +323,7 @@ namespace Rtx
         [[maybe_unused]] const auto bound
             = [](const VkDescriptorBufferInfo& write) { return write.buffer != VK_NULL_HANDLE; };
         assert(std::all_of(buffers.begin(), buffers.end(), bound) && "a table bound as nothing");
-        assert(bound(noiseWrite) && bound(shadingWrite) && bound(gridWrite) && bound(spriteWrite) && bound(emitterWrite)
+        assert(bound(noiseWrite) && bound(shadingWrite) && bound(spriteWrite) && bound(emitterWrite)
             && bound(tileOffsetWrite) && bound(tileIndexWrite) && bound(frameWrite) && "an input bound as nothing");
 
         // **Appended rather than indexed.** Every one of these used to name its own slot — channels
@@ -368,7 +368,6 @@ namespace Rtx
 
         appendBuffer(Shaders::BIND_BLUE_NOISE, noiseWrite);
         appendBuffer(Shaders::BIND_SHADING, shadingWrite);
-        appendBuffer(Shaders::BIND_LIGHT_GRID, gridWrite);
         appendBuffer(Shaders::BIND_SPRITES, spriteWrite);
         appendBuffer(Shaders::BIND_EMITTERS, emitterWrite);
         appendBuffer(Shaders::BIND_SPRITE_TILE_OFFSETS, tileOffsetWrite);
@@ -434,6 +433,14 @@ namespace Rtx
         const WaveCurvature& curvature = inputs.mWaves->getMoments();
         described.mWaveCurvature = curvature.mWhole;
         std::copy(curvature.mResolved.begin(), curvature.mResolved.end(), std::begin(described.mWaveResolved));
+
+        // And where the lamps were binned, off the tables the placement built, for the same reason.
+        const LightGrid& lamps = inputs.mBuffers->getLightGrid();
+        described.mLightGrid = Shaders::GpuLightGrid{
+            .mOrigin = lamps.getOrigin(),
+            .mInverseCell = lamps.getInverseCell(),
+            .mSize = lamps.getSize(),
+        };
 
         writeConstants(commands, described);
 

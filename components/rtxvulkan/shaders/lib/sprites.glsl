@@ -9,8 +9,8 @@
 #include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
-#include "variants.glsl"
 #include "fog.glsl"
+#include "frame.glsl"
 #include "lights.glsl"
 #include "shading.glsl"
 
@@ -182,10 +182,11 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     float coverage = 0.0;
     vec3 addedThrough = vec3(1.0);
 
-    // The screen's own axes, for reading a sprite's texture the way the quad would have been cut.
-    // Hoisted because they are the camera's and not the sprite's.
+    // The screen's own axes, for reading a sprite's texture the way the quad would have been cut,
+    // and the cone a pixel of it covers. Hoisted because they are the camera's and not the sprite's.
     const vec3 across = normalize(frame.mCamera.mRight);
     const vec3 upward = normalize(frame.mCamera.mUp);
+    const Cone cone = coneAt(frame.mCamera);
 
     // **The tiles are derived and not carried**, from the same expression `Rtx::SpriteTiles` uses,
     // so the two cannot disagree about how many there are across.
@@ -400,10 +401,14 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             at = -vec2(dot(offset, across), dot(offset, upward)) / sprite.mRadius;
         }
 
-        // The sprite is `2 * mRadius` wide where the pixel's cone is `mSpreadAngle * seen` across,
-        // and the ratio of the two in texels is the level that resolves it. Clamped inside the
-        // logarithm rather than outside, because an eye inside the ball sees it at no distance.
-        const float lod = log2(max(widest * frame.mCamera.mSpreadAngle * seen / (2.0 * sprite.mRadius), 1.0));
+        // The sprite is `2 * mRadius` wide where the pixel's cone has spread to `mWidth + mSpread *
+        // seen`, and the ratio of the two in texels is the level that resolves it. Clamped inside
+        // the logarithm rather than outside, because an eye inside the ball sees it at no distance.
+        // `coneAt` and not `mSpreadAngle`, for the reason it gives: a map tile's cone never widens
+        // and is a pixel of the box wide from the start, where the angle alone read every sprite in
+        // it at level zero.
+        const float lod
+            = log2(max(widest * (cone.mWidth + cone.mSpread * seen) / (2.0 * sprite.mRadius), 1.0));
 
         // The quad `osgParticle` would have drawn: texture coordinate zero at `-right -up` and
         // one at `+right +up`, about a centre at half.
@@ -456,7 +461,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         {
             askedAbove = true;
 
-            if (HAS_SUN && frame.mSunIrradiance != vec3(0.0))
+            if (sunUp())
             {
                 uint state = randomSeed(pixelKey(pixel) + SEED_SPRITE_SUN);
                 const vec2 draw = vec2(randomNext(state), randomNext(state));
@@ -475,8 +480,8 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // what stood between it and the fill, so smoke under a table came out as bright as
             // smoke in the middle of the floor. `ambientReaching` reads `mAmbientFromSky` again for
             // how far to look, and in a room that is the furniture rather than the walls.
-            ambientThrough = ambientReaching(sprite.mPosition, frame.mAmbientFromSky > 0.0 ? skyward : vec3(0.0),
-                vec3(0.0), 0.0, pixelKey(pixel) + SEED_AMBIENT_REACHING);
+            ambientThrough = ambientReaching(sprite.mPosition, skyLights() ? skyward : vec3(0.0), vec3(0.0), 0.0,
+                pixelKey(pixel) + SEED_AMBIENT_REACHING);
 
             // **The lamp that matters where the layer starts, and its answer for all of them.** The
             // reservoir picks by what a lamp delivers here, so the one traced to is the one the

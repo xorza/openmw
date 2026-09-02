@@ -549,6 +549,10 @@ namespace Rtx::Shaders
         /// alpha of nothing, which costs the sky one compare each.
         MoonDisc mMoons[2];
 
+        /// Where the scene's lamps were binned. The pass folds it in from the tables it is handed,
+        /// the way it folds the sea's in — `GpuLightGrid` says why it rides here and not in a table.
+        GpuLightGrid mLightGrid;
+
         /// How much of each texture's painted-in lighting to divide back out, from zero to one.
         ///
         /// **Morrowind's textures were lit before they were saved**, and a ray tracer lights them
@@ -589,7 +593,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 952, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(sizeof(VisibilityConstants) == 980, "VisibilityConstants must be scalar-packed on every side");
 
 #endif
 

@@ -39,7 +39,8 @@ namespace Rtx
                 .mLayerOffset = material.mLayerOffset,
                 .mLayerCount = material.mLayerCount,
                 .mEmissive = material.mEmissive,
-                .mDiffuseColour = material.mDiffuseColour,
+                .mDiffuseColour
+                = osg::Vec3f(material.mDiffuseColour.r(), material.mDiffuseColour.g(), material.mDiffuseColour.b()),
                 .mEmissiveColour = material.mEmissiveColour,
                 .mTextureTransform = material.mTextureTransform,
             };
@@ -108,7 +109,7 @@ namespace Rtx
                 .mLayerOffset = 0,
                 .mLayerCount = 0,
                 .mEmissive = Shaders::NO_TEXTURE,
-                .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f),
+                .mDiffuseColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                 .mEmissiveColour = osg::Vec3f(0.0f, 0.0f, 0.0f),
                 .mTextureTransform = osg::Vec4f(1.0f, 1.0f, 0.0f, 0.0f),
             };
@@ -137,9 +138,9 @@ namespace Rtx
         {
             Tables& tables = mTables[slot];
 
-            for (Buffer* table : { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightOffsets,
-                     &tables.mGrid, &tables.mLightIndices, &tables.mSprites, &tables.mEmitters,
-                     &tables.mSpriteTileOffsets, &tables.mSpriteTileIndices })
+            for (Buffer* table :
+                { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightOffsets, &tables.mLightIndices,
+                    &tables.mSprites, &tables.mEmitters, &tables.mSpriteTileOffsets, &tables.mSpriteTileIndices })
                 graveyard.bury(growTo(*table, device, 0, sTableUsage));
         }
 
@@ -255,7 +256,7 @@ namespace Rtx
         // **Every row where the table changed length, and the rows the scene wrote otherwise.** The
         // sentinel sits one past the real materials, so a table that grew has a real material where
         // the sentinel was and the sentinel where nothing was — two rows to reason about separately,
-        // or every row written on a path only a cell arrival takes. A material is eighty bytes.
+        // or every row written on a path only a cell arrival takes. A material is sixty-eight bytes.
         const bool moved = mMaterialTable.size() != materials.size() + 1;
         mMaterialTable.resize(materials.size() + 1);
 
@@ -406,21 +407,14 @@ namespace Rtx
         const std::span<const std::uint32_t> indices = mLightGrid.getIndices();
         const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);
 
-        const Shaders::GpuLightGrid geometry{
-            .mOrigin = mLightGrid.getOrigin(),
-            .mInverseCell = mLightGrid.getInverseCell(),
-            .mSize = mLightGrid.getSize(),
-        };
         reserve(tables.mLights, lights.size_bytes(), graveyard);
         reserve(tables.mLightOffsets, mLightGrid.getOffsets().size_bytes(), graveyard);
         reserve(tables.mLightIndices, indices.size_bytes(), graveyard);
-        reserve(tables.mGrid, sizeof(geometry), graveyard);
         reserve(tables.mEmitters, emitters.size_bytes(), graveyard);
 
         tables.mLights.write(lights);
         tables.mLightOffsets.write(mLightGrid.getOffsets());
         tables.mLightIndices.write(indices);
-        tables.mGrid.write(std::span<const Shaders::GpuLightGrid>(&geometry, 1));
         tables.mEmitters.write(emitters);
 
         // **Only what changed shape, and every pose this copy missed.** A cell's normals are the
@@ -436,7 +430,7 @@ namespace Rtx
 
     VkDeviceSize SceneBuffers::Tables::getBytes() const
     {
-        return mLayers.getSize() + mMasks.getSize() + mLights.getSize() + mLightOffsets.getSize() + mGrid.getSize()
+        return mLayers.getSize() + mMasks.getSize() + mLights.getSize() + mLightOffsets.getSize()
             + mLightIndices.getSize() + mSprites.getSize() + mEmitters.getSize() + mSpriteTileOffsets.getSize()
             + mSpriteTileIndices.getSize();
     }

@@ -14,7 +14,7 @@
 #include "scene.h"
 #include "visibility.h"
 #include "bindings.glsl"
-#include "variants.glsl"
+#include "frame.glsl"
 
 /// The sky's own glow along a direction, with nothing drawn in it.
 ///
@@ -364,7 +364,7 @@ vec3 skyRadiance(vec3 origin, vec3 direction, float blur, out float shown)
     // second field saying whether to draw the disc is what once let a sun shadow out of an empty
     // sky, and there is no longer one to disagree with.
     const float edge = 2.0 * sin(0.5 * (SUN_ANGULAR_RADIUS + blur));
-    if (HAS_SUN && frame.mSunIrradiance != vec3(0.0) && length(direction - frame.mSunPosition) < edge)
+    if (sunUp() && length(direction - frame.mSunPosition) < edge)
     {
         // **The sun's radiance is five orders of magnitude above the sky's** and this does not
         // pretend otherwise, so it saturates until there is an exposure stage to bring it down.

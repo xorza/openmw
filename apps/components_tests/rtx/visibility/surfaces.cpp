@@ -53,7 +53,7 @@ namespace Rtx::Testing
             // **Every table this hands out, and not the three that were caught.** The rule was the
             // same for all of them; which ones happened to be empty on the day is not what decides
             // whether they are covered.
-            const std::array<std::pair<const char*, VkBuffer>, 15> tables{ {
+            const std::array<std::pair<const char*, VkBuffer>, 14> tables{ {
                 { "the normal blocks", buffers.getNormalBlocks(0) },
                 { "the texture coordinate blocks", buffers.getTexCoordBlocks() },
                 { "the meshes", buffers.getMeshes() },
@@ -68,7 +68,6 @@ namespace Rtx::Testing
                 { "the emitters", buffers.getEmitters(0) },
                 { "the sprite tile offsets", buffers.getSpriteTileOffsets(0) },
                 { "the sprite tile indices", buffers.getSpriteTileIndices(0) },
-                { "the light grid's geometry", buffers.getGrid(0) },
             } };
 
             for (const auto& [what, table] : tables)

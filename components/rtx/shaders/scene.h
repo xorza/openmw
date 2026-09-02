@@ -847,9 +847,12 @@ namespace Rtx::Shaders
 
     /// Where the lamps were binned, so a shader can find the few that reach a point.
     ///
-    /// **A property of the scene's lights and not of the camera.** It used to travel in the camera's
-    /// push constants, which meant copying it into every frame's block from the buffers it was
-    /// derived from — a per-frame copy of something that changes when the cell does.
+    /// **Carried in the frame's block, as `VisibilityConstants::mLightGrid`.** It had a storage
+    /// buffer of its own for a while, from when the frame's block was a push constant at the edge of
+    /// its 256 bytes; that block is a uniform buffer written once a frame now, and the pass already
+    /// folds the sea's tables into it from the passes that built them. A twenty-eight byte record in
+    /// a set of its own cost a descriptor, a buffer per frame in flight, and a storage read at every
+    /// lamp lookup where the constant bank serves.
     ///
     /// A position outside the grid is one no lamp reaches, so its cell is empty by construction
     /// rather than by clamping.
@@ -1041,7 +1044,10 @@ namespace Rtx::Shaders
         /// through it, which is where the original engine adds it.
         uint mEmissive;
 
-        vec4 mDiffuseColour;
+        /// What the texture is tinted by. **Three channels and not the material's four**: its alpha
+        /// is `mOpacity` above, already resolved against the mode, and a second copy of it here was
+        /// a number the shader never read.
+        vec3 mDiffuseColour;
 
         /// How much the surface glows regardless of what falls on it, with the material's own
         /// multiplier already folded in.
@@ -1067,7 +1073,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuLight) == 36, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
-    static_assert(sizeof(GpuMaterial) == 72, "GpuMaterial must be scalar-packed on every side");
+    static_assert(sizeof(GpuMaterial) == 68, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
 
     static_assert(sizeof(GpuEmitter) == 60, "GpuEmitter must be scalar-packed on every side");

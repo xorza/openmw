@@ -13,7 +13,7 @@
 #include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
-#include "variants.glsl"
+#include "frame.glsl"
 #include "sea.glsl"
 #include "traversal.glsl"
 
@@ -38,10 +38,7 @@ vec3 waterTransmittance(float path)
 /// White above the surface, and for a cell with no water at all.
 vec3 daylightReaching(vec3 position)
 {
-    if (!HAS_SEA)
-        return vec3(1.0);
-
-    const float depth = frame.mWaterLevel - position.z;
+    const float depth = waterOver(position);
     if (!(depth > 0.0))
         return vec3(1.0);
 
@@ -90,10 +87,7 @@ SunUnderWater sunUnderWater(vec3 toward)
 /// @param toward unit, from the point to the light.
 vec3 lightThroughWater(vec3 position, vec3 toward, float footprint)
 {
-    if (!HAS_SEA)
-        return vec3(1.0);
-
-    const float depth = frame.mWaterLevel - position.z;
+    const float depth = waterOver(position);
     if (!(depth > 0.0))
         return vec3(1.0);
 
@@ -207,7 +201,7 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
 
     // The same test `fogAlong` makes before it spends anything on shafts: an interior and a night
     // both answer no, and `mSunIrradiance` fades to nought across dusk rather than stepping.
-    if (!HAS_SUN || frame.mSunIrradiance == vec3(0.0))
+    if (!sunUp())
         return WaterColumn(transmittance, sky);
 
     const SunUnderWater sun = sunUnderWater(frame.mSunPosition);
@@ -218,7 +212,7 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
     const vec3 sunward
         = frame.mSunIrradiance * henyeyGreenstein(WATER_ASYMMETRY, -dot(direction, sun.mTravelling));
 
-    const float depth = max(frame.mWaterLevel - from.z, 0.0);
+    const float depth = waterOver(from);
     const float g = 1.0 - sun.mSlant * direction.z;
 
     // A ray running along the sun's own line has the two exponentials cancel, and the integral is
@@ -253,7 +247,7 @@ WaterColumn waterColumn(vec3 from, vec3 direction, float path, float footprint, 
         const float along = behind + offset * (ahead - behind);
 
         const vec3 at = from + direction * along;
-        const float under = max(frame.mWaterLevel - at.z, 0.0);
+        const float under = waterOver(at);
         const float reach = under * sun.mSlant;
 
         const vec3 weight = waterTransmittance(reach + along) * (ahead - behind);

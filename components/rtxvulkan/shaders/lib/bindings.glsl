@@ -6,6 +6,10 @@
 // Everything the trace is handed, and the three accessors that resolve a global vertex
 // or index id to the block it lives in.
 //
+// **The frame's own block carries what is not a table**: the camera, the sky, the sea's moments and
+// where the lamps were binned. A record that is one row belongs there rather than in a descriptor
+// of its own.
+//
 // **The declarations, and `bindings.h` next door holds the numbers** — set zero's are a fact shared
 // with `VisibilityPass`, which writes the same slots. What each channel is *for* is written here,
 // beside the thing itself.
@@ -152,19 +156,25 @@ layout(set = 0, binding = BIND_INDICES, scalar) readonly buffer IndexBlocks
     uint64_t indexBlocks[];
 };
 
-vec3 normalAt(uint vertex)
+// The block a global id lives in.
+//
+// **Resolved once for a triangle and not once for a corner.** A mesh's run never straddles a block,
+// so its three corners and its three indices share one — and the table read that finds it is the
+// half of every attribute fetch that is the same for all three. `geometry.glsl` is what takes the
+// block and reads the corners out of it.
+NormalBlock normalBlockOf(uint vertex)
 {
-    return NormalBlock(normalBlocks[vertex / VERTEX_BLOCK]).at[vertex % VERTEX_BLOCK];
+    return NormalBlock(normalBlocks[vertex / VERTEX_BLOCK]);
 }
 
-vec2 texCoordAt(uint vertex)
+TexCoordBlock texCoordBlockOf(uint vertex)
 {
-    return TexCoordBlock(texCoordBlocks[vertex / VERTEX_BLOCK]).at[vertex % VERTEX_BLOCK];
+    return TexCoordBlock(texCoordBlocks[vertex / VERTEX_BLOCK]);
 }
 
-uint indexAt(uint element)
+IndexBlock indexBlockOf(uint element)
 {
-    return IndexBlock(indexBlocks[element / INDEX_BLOCK]).at[element % INDEX_BLOCK];
+    return IndexBlock(indexBlocks[element / INDEX_BLOCK]);
 }
 
 layout(set = 0, binding = BIND_MESHES, scalar) readonly buffer Meshes
@@ -213,12 +223,6 @@ layout(set = 0, binding = BIND_LIGHT_INDICES, scalar) readonly buffer LightIndic
 layout(set = 0, binding = BIND_BLUE_NOISE, scalar) readonly buffer BlueNoiseTile
 {
     float blueNoise[];
-};
-
-/// Where the lamps were binned, which is scene geometry rather than camera geometry.
-layout(set = 0, binding = BIND_LIGHT_GRID, scalar) readonly buffer LightGridBlock
-{
-    GpuLightGrid grid;
 };
 
 /// What each texture already has painted into it, `SHADING_EXTENT` squared factors apiece and one

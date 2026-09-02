@@ -104,6 +104,7 @@ set(RTX_SHADER_LIB
     shaders/lib/bloom.glsl
     shaders/lib/fog.glsl
     shaders/lib/footprint.glsl
+    shaders/lib/frame.glsl
     shaders/lib/geometry.glsl
     shaders/lib/lights.glsl
     shaders/lib/random.glsl

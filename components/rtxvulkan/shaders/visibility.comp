@@ -22,8 +22,8 @@
 #include "visibility.h"
 
 #include "lib/bindings.glsl"
-#include "lib/variants.glsl"
 #include "lib/fog.glsl"
+#include "lib/frame.glsl"
 #include "lib/random.glsl"
 #include "lib/reproject.glsl"
 #include "lib/shading.glsl"
@@ -169,7 +169,7 @@ void main()
     // sky behind it draws none of the field either, and says so the same way.
     float skyShown = 0.0;
 
-    const bool submerged = HAS_SEA && origin.z < frame.mWaterLevel;
+    const bool submerged = waterOver(origin) > 0.0;
 
     // **A ray that goes down from under the surface and finds nothing found water, and water is not
     // the sky.** The plane has absolute sides, so below it there is water whether or not this

@@ -53,23 +53,23 @@ namespace Rtx::Shaders
     RTX_CONST uint BIND_BLUE_NOISE = 13;
     RTX_CONST uint BIND_SHADING = 14;
 
-    /// Where the lamps are binned, and the sprites the primary ray composites.
-    RTX_CONST uint BIND_LIGHT_GRID = 15;
-    RTX_CONST uint BIND_SPRITES = 16;
-    RTX_CONST uint BIND_EMITTERS = 17;
-    RTX_CONST uint BIND_SPRITE_TILE_OFFSETS = 18;
-    RTX_CONST uint BIND_SPRITE_TILE_INDICES = 19;
+    /// The sprites the primary ray composites. Where the lamps are binned travels in the frame's
+    /// own block — `VisibilityConstants::mLightGrid`.
+    RTX_CONST uint BIND_SPRITES = 15;
+    RTX_CONST uint BIND_EMITTERS = 16;
+    RTX_CONST uint BIND_SPRITE_TILE_OFFSETS = 17;
+    RTX_CONST uint BIND_SPRITE_TILE_INDICES = 18;
 
     /// The one uniform: everything the frame itself says.
-    RTX_CONST uint BIND_FRAME = 20;
+    RTX_CONST uint BIND_FRAME = 19;
 
     /// The sea's cascades and the fog's field, which are sampled rather than read.
-    RTX_CONST uint BIND_WAVE_SURFACE = 21;
-    RTX_CONST uint BIND_WAVE_CURVATURE = 22;
-    RTX_CONST uint BIND_FOG_FIELD = 23;
+    RTX_CONST uint BIND_WAVE_SURFACE = 20;
+    RTX_CONST uint BIND_WAVE_CURVATURE = 21;
+    RTX_CONST uint BIND_FOG_FIELD = 22;
 
     /// How many the set declares, which is the last of them and one more.
-    RTX_CONST uint BIND_COUNT = 24;
+    RTX_CONST uint BIND_COUNT = 23;
 
 #ifdef RTX_HOST
 }

@@ -112,11 +112,9 @@ namespace Rtx
         VkBuffer getSpriteTileOffsets(std::uint32_t slot) const { return mTables[slot].mSpriteTileOffsets.getHandle(); }
         VkBuffer getSpriteTileIndices(std::uint32_t slot) const { return mTables[slot].mSpriteTileIndices.getHandle(); }
 
-        /// Where the lamps were binned, for the constants the pass pushes.
+        /// Where the lamps were binned, for the frame's block the pass writes: its geometry rides
+        /// there, beside the sea's, and only the lists it made are tables.
         const LightGrid& getLightGrid() const { return mLightGrid; }
-
-        /// The grid's geometry, as the shader reads it.
-        VkBuffer getGrid(std::uint32_t slot) const { return mTables[slot].mGrid.getHandle(); }
 
         VkDeviceSize getBytes() const;
 
@@ -132,7 +130,6 @@ namespace Rtx
             Buffer mMasks;
             Buffer mLights;
             Buffer mLightOffsets;
-            Buffer mGrid;
             Buffer mLightIndices;
             Buffer mSprites;
             Buffer mEmitters;
@@ -214,7 +211,7 @@ namespace Rtx
         std::vector<Shaders::GpuSprite> mSpriteScratch;
         std::vector<Shaders::GpuEmitter> mEmitterScratch;
 
-        /// Kept because the pass needs its geometry, which no buffer carries.
+        /// Kept because the pass writes its geometry into the frame's block, which no table carries.
         LightGrid mLightGrid;
     };
 }

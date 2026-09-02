@@ -77,12 +77,11 @@ bool isSeenThrough(float opacity)
 /// see-through on its alpha alone, and an untextured pane is all glass and no lead.
 ///
 /// @param opacity what `surfaceOpacity` gave for this hit, made once by the caller.
-float sampledOpacity(
-    float opacity, GpuMaterial material, vec2 uv[3], vec3 weight, SurfaceCone cone, float coneWidth)
+/// @param point where the hit lands on the material's own texture, made once by the caller too.
+float sampledOpacity(float opacity, GpuMaterial material, TexturePoint point, SurfaceCone cone, float coneWidth)
 {
-    const float covered = material.mDiffuse == NO_TEXTURE
-        ? 1.0
-        : sampleDiffuse(material.mDiffuse, uv, weight, material.mTextureTransform, cone, coneWidth).a;
+    const float covered
+        = material.mDiffuse == NO_TEXTURE ? 1.0 : sampleDiffuse(material.mDiffuse, point, cone, coneWidth).a;
 
     return clamp(covered * opacity, 0.0, 1.0);
 }
@@ -131,17 +130,16 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
 
     vec2 uv[3];
     triangleUvs(triangleCorners(meshes[instance.mMesh], primitive), uv);
-    const vec3 weight = cornerWeights(bary);
+    const TexturePoint point = texturePoint(uv, cornerWeights(bary), material.mTextureTransform);
     const SurfaceCone cone = surfaceConeAt(crossed, direction);
 
     if (walkPast)
     {
-        through *= 1.0 - sampledOpacity(opacity, material, uv, weight, cone, coneWidth);
+        through *= 1.0 - sampledOpacity(opacity, material, point, cone, coneWidth);
         return false;
     }
 
-    return sampleDiffuse(material.mDiffuse, uv, weight, material.mTextureTransform, cone, coneWidth).a
-        >= material.mAlphaCutoff;
+    return sampleDiffuse(material.mDiffuse, point, cone, coneWidth).a >= material.mAlphaCutoff;
 }
 
 /// The candidate loop, run to completion. It confirms every hit that lands on the material rather
@@ -377,8 +375,7 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     // the opacity a pane pays for, and the emissive map.
     const SurfaceCone cone = surfaceConeAt(crossed, direction);
 
-    const vec3 shading
-        = normalAt(corner.x) * weight.x + normalAt(corner.y) * weight.y + normalAt(corner.z) * weight.z;
+    const vec3 shading = triangleNormal(corner, weight);
     const vec3 normal = dot(shading, shading) > 1e-8 ? normalize(mat3(toWorld) * shading) : surface.mGeometric;
 
     // **Which side the ray met is the plane's answer, and the shading normal is not allowed to give
@@ -409,6 +406,10 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     vec2 uv[3];
     triangleUvs(corner, uv);
 
+    // Where the hit lands on the material's own sheet, which the albedo, the opacity and the
+    // emissive map all read at. A terrain layer has a transform of its own and makes its own.
+    const TexturePoint point = texturePoint(uv, weight, material.mTextureTransform);
+
     vec3 albedo = NO_TEXTURE_ALBEDO;
 
     // **Ground that kept its stack**, which is every chunk near enough to be worth the sharpness.
@@ -431,15 +432,14 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
 
             albedo += showing
                 * sampleAlbedo(
-                    layer.mDiffuse, uv, weight, layer.mDiffuseTransform, cone, surface.mFootprint);
+                    layer.mDiffuse, texturePoint(uv, weight, layer.mDiffuseTransform), cone, surface.mFootprint);
         }
     }
     else if (material.mDiffuse != NO_TEXTURE)
     {
-        albedo = sampleAlbedo(
-            material.mDiffuse, uv, weight, material.mTextureTransform, cone, surface.mFootprint);
+        albedo = sampleAlbedo(material.mDiffuse, point, cone, surface.mFootprint);
     }
-    surface.mAlbedo = albedo * material.mDiffuseColour.rgb;
+    surface.mAlbedo = albedo * material.mDiffuseColour;
 
     // **Fetched again rather than kept from the albedo.** `sampleAlbedo` drops the alpha on purpose,
     // for the reason written over it: it is the hottest sampler in the shader and an out-parameter
@@ -447,13 +447,11 @@ Surface trace(vec3 origin, vec3 direction, float tmin, float footprint, float sp
     // nothing else does.
     const float opacity = surfaceOpacity(instance, material);
     if (isSeenThrough(opacity))
-        surface.mOpacity = sampledOpacity(opacity, material, uv, weight, cone, surface.mFootprint);
+        surface.mOpacity = sampledOpacity(opacity, material, point, cone, surface.mFootprint);
 
     if (material.mEmissive != NO_TEXTURE)
-        surface.mEmitted = EMISSIVE_INTENSITY
-            * sampleDiffuse(
-                material.mEmissive, uv, weight, material.mTextureTransform, cone, surface.mFootprint)
-                  .rgb;
+        surface.mEmitted
+            = EMISSIVE_INTENSITY * sampleDiffuse(material.mEmissive, point, cone, surface.mFootprint).rgb;
 
     return surface;
 }

@@ -9,7 +9,7 @@
 #include "colour.h"
 #include "scene.h"
 #include "bindings.glsl"
-#include "variants.glsl"
+#include "frame.glsl"
 #include "lights.glsl"
 #include "random.glsl"
 #include "sky.glsl"
@@ -83,7 +83,7 @@ vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transm
     // lamp arriving in the next cell from moving the penumbra of the one already there, and a draw
     // taken from that sequence would move every one of them.
     float rated = 1.0;
-    if (path == PATH_INDIRECT && frame.mAmbientFromSky > 0.0)
+    if (path == PATH_INDIRECT && skyLights())
     {
         uint lit = randomSeed(seed + SEED_INDIRECT_LIGHT);
         if (randomNext(lit) >= INDIRECT_LIGHT_RATE)
@@ -126,7 +126,7 @@ vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transm
     // matter to — no better resolved for it.
 
     const float sunCosine = litCosine(normal, side, frame.mSunPosition, transmission);
-    if (HAS_SUN && sunCosine > 0.0 && frame.mSunIrradiance != vec3(0.0))
+    if (sunUp() && sunCosine > 0.0)
     {
         const float through
             = lightThrough(position, coneDirection(frame.mSunPosition, sin(SUN_SHADOW_RADIUS), sunDraw), frame.mFar);
@@ -467,7 +467,7 @@ float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission
     // everywhere and takes the light out of every interior. What does occlude it is what stands
     // between a point and the room: the pillow over the sheet, the chest against the wall, the
     // underside of a table. A room keeps every sample too — `AMBIENT_EXTERIOR_RATE` says why.
-    if (!(frame.mAmbientFromSky > 0.0))
+    if (!skyLights())
         return weight * lightThrough(position, towards, ROOM_FILL_REACH);
 
     // Drawn last, so a solid's direction and a sheet's side are the numbers they were.
@@ -494,7 +494,7 @@ float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission
 /// which is the disagreement M6 closed.
 vec3 bounceEscape(vec3 position, vec3 towards, float weight)
 {
-    if (!(frame.mAmbientFromSky > 0.0))
+    if (!skyLights())
         return vec3(0.0);
 
     return weight * skyGlow(towards) * daylightReaching(position);
@@ -532,7 +532,7 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     // is the same answer the miss below arrives at by tracing for it. `BOUNCE_REACH` says what that
     // costs and why the room is not in it.
     const vec3 fromEye = surface.mPosition - frame.mOrigin;
-    if (frame.mAmbientFromSky > 0.0 && dot(fromEye, fromEye) > BOUNCE_REACH * BOUNCE_REACH)
+    if (skyLights() && dot(fromEye, fromEye) > BOUNCE_REACH * BOUNCE_REACH)
         return bounceEscape(surface.mPosition, towards, weight);
 
     const Surface hit

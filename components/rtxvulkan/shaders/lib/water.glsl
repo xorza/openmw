@@ -103,7 +103,7 @@ struct WaterPath
 WaterPath waterRay(vec3 origin, vec3 direction, float footprint, float lobe, uint seed)
 {
     const Surface hit
-        = trace(origin, direction, WATER_BIAS, footprint, frame.mCamera.mSpreadAngle + 2.0 * lobe, MASK_SOLID);
+        = trace(origin, direction, WATER_BIAS, footprint, coneAt(frame.mCamera).mSpread + 2.0 * lobe, MASK_SOLID);
 
     WaterPath path;
     path.mPosition = hit.mPosition;
@@ -266,7 +266,7 @@ vec3 shadeWater(
     if (!fromBelow)
         shore = smoothstep(0.0, WATER_SHORE_FADE,
             solidWithin(leaving, vec3(0.0, 0.0, -1.0), WATER_BIAS, WATER_SHORE_FADE, surface.mFootprint,
-                frame.mCamera.mSpreadAngle));
+                coneAt(frame.mCamera).mSpread));
 
     const vec3 away = reflect(incident, normal);
     const WaterPath bounced = waterRay(leaving, away, surface.mFootprint, lobe, key + SEED_LAMPS_MIRROR);
