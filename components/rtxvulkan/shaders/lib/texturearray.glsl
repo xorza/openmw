@@ -28,4 +28,13 @@
 /// validation layers say nothing.
 layout(set = 1, binding = 0) uniform sampler2D textures[];
 
+/// What each texture already has painted into it, `SHADING_EXTENT` squared, at the slot of the
+/// texture it was measured on and through the same sampler, which wraps as the texture does.
+///
+/// **A binding of its own and not slots between the textures**, because `coneLod` measures the
+/// array it reads for the level a cone resolves, and a map interleaved with the textures is one it
+/// would measure. A slot with a texture always has a map, neutral where nothing could estimate one.
+/// Stored over the range `SHADING_FLOOR` to `SHADING_CEILING`, which `paintedLight` decodes.
+layout(set = 1, binding = 1) uniform sampler2D shadingMaps[];
+
 #endif

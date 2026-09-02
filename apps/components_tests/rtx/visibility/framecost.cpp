@@ -78,7 +78,6 @@ namespace Rtx::Testing
                 .mBuffers = &buffers,
                 .mIndexBlocks = acceleration.getIndexBlocks(),
                 .mTextures = textures.getSet(),
-                .mShading = textures.getShading(),
                 .mWaves = &waves,
                 .mFog = &fog,
                 .mFogVolume = &fogVolume,

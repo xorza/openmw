@@ -113,24 +113,18 @@ vec4 sampleDiffuse(uint slot, TexturePoint point, SurfaceCone cone, float coneWi
 
 /// The light a texture already carries at `at`, bilinear across its grid and wrapping with it.
 ///
-/// Wrapping because Morrowind's textures tile and a great many of them rely on it: a map that
-/// clamped at the edges would put a seam down every wall that repeats.
+/// **One fetch through the array's own sampler, which does the wrap and the blend.** Read out of a
+/// buffer by hand this was four loads and the modulo apiece on every albedo read of every hit and
+/// every ground layer; measured, the loads cost nothing the trace can see, and the fetch is here for
+/// what it is rather than for what it saves. Wrapping because Morrowind's textures tile and a great
+/// many of them rely on it: a map that clamped at the edges would put a seam down every wall that
+/// repeats.
+///
+/// Decoded after the filter, which is exact: a blend of stored values decodes to the same blend of
+/// the values they stand for, because the decode is affine.
 float paintedLight(uint slot, vec2 at)
 {
-    const vec2 grid = fract(at) * float(SHADING_EXTENT) - 0.5;
-    const ivec2 low = ivec2(floor(grid));
-    const vec2 across = grid - vec2(low);
-
-    const ivec2 first = (low % int(SHADING_EXTENT) + int(SHADING_EXTENT)) % int(SHADING_EXTENT);
-    const ivec2 second = (first + 1) % int(SHADING_EXTENT);
-    const uint base = slot * SHADING_EXTENT * SHADING_EXTENT;
-
-    const float topLeft = shading[base + uint(first.y) * SHADING_EXTENT + uint(first.x)];
-    const float topRight = shading[base + uint(first.y) * SHADING_EXTENT + uint(second.x)];
-    const float bottomLeft = shading[base + uint(second.y) * SHADING_EXTENT + uint(first.x)];
-    const float bottomRight = shading[base + uint(second.y) * SHADING_EXTENT + uint(second.x)];
-
-    return mix(mix(topLeft, topRight, across.x), mix(bottomLeft, bottomRight, across.x), across.y);
+    return mix(SHADING_FLOOR, SHADING_CEILING, textureLod(shadingMaps[nonuniformEXT(slot)], at, 0.0).r);
 }
 
 /// The albedo a hit landed on, with the light painted into the texture divided back out.

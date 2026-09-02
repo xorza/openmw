@@ -7,6 +7,7 @@
 
 #include <components/rtx/error.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/shadingmap.hpp>
 
 #include "buffer.hpp"
 #include "commands.hpp"
@@ -52,6 +53,17 @@ namespace Rtx
             throw Error("unknown texture format");
         }
 
+        /// The two arrays the set holds: the textures, and their shading maps at the same slots.
+        constexpr std::uint32_t sTextureBinding = 0;
+        constexpr std::uint32_t sShadingBinding = 1;
+
+        /// Every stage that resolves a hit, and every dispatch. The trace reads these arrays from
+        /// its closest-hit shaders, from the any-hit shader that tests a cutout and from the miss
+        /// shader that draws the sky; the fog volume, the tone curve and the interface are
+        /// dispatches and read them too.
+        constexpr VkShaderStageFlags sStages = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR
+            | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR;
+
         /// The layout every array declares, which is the same layout whatever the scene holds.
         ///
         /// **Sized to the maximum and not to the scene, because a pipeline outlives a cell.** Two
@@ -63,45 +75,65 @@ namespace Rtx
         /// uses.
         SetLayout makeLayout(const Device& device)
         {
-            const VkDescriptorSetLayoutBinding binding{
-                .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = sMaxTextures,
-                // Every stage that resolves a hit, and every dispatch. The trace reads this array
-                // from its closest-hit shaders, from the any-hit shader that tests a cutout and from
-                // the miss shader that draws the sky; the fog volume, the tone curve and the
-                // interface are dispatches and read it too.
-                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR
-                    | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR
-                    | VK_SHADER_STAGE_MISS_BIT_KHR,
+            const std::array<VkDescriptorSetLayoutBinding, 2> bindings{
+                VkDescriptorSetLayoutBinding{
+                    sTextureBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures, sStages },
+                VkDescriptorSetLayoutBinding{
+                    sShadingBinding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures, sStages },
             };
 
             // Partially bound because a scene with fewer textures than the array can hold leaves the
             // tail unwritten, and a shader that never indexes there must not be told it is an error.
-            // Variable count is what keeps the declared maximum from being what gets allocated.
-            constexpr VkDescriptorBindingFlags flags
-                = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+            // Variable count is what keeps the declared maximum from being what gets allocated, and
+            // it is allowed on the last binding of a set alone, which is the one it is on.
+            constexpr std::array<VkDescriptorBindingFlags, 2> flags{
+                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT,
+            };
             const VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-                .bindingCount = 1,
-                .pBindingFlags = &flags,
+                .bindingCount = static_cast<std::uint32_t>(flags.size()),
+                .pBindingFlags = flags.data(),
             };
 
-            return SetLayout(device, std::span(&binding, 1), 0, &bindingFlags);
+            return SetLayout(device, bindings, 0, &bindingFlags);
+        }
+
+        /// Copies `bytes` into `image` by `regions`, and leaves it where a sampler expects it.
+        ///
+        /// **Recorded rather than submitted.** A cell brings hundreds of these and the queue is asked
+        /// once for all of them; the image is left where a sampler expects it, so nothing recorded
+        /// afterwards has to know this one happened.
+        void upload(const Device& device, Batch& batch, Image& image, std::span<const std::byte> bytes,
+            std::span<const VkBufferImageCopy> regions)
+        {
+            Buffer staging = Buffer::staging(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+            staging.write(bytes);
+
+            const VkCommandBuffer commands = batch.getCommands();
+
+            image.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+
+            vkCmdCopyBufferToImage(commands, staging.getHandle(), image.getHandle(),
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, static_cast<std::uint32_t>(regions.size()), regions.data());
+
+            image.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+
+            batch.keep(std::move(staging));
         }
     }
 
     Texture::Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name)
-        : mBytes(data.mBytes.size())
     {
         assert(!data.mLevels.empty());
 
         const auto levels = static_cast<std::uint32_t>(data.mLevels.size());
         mImage = std::make_unique<Image>(device, data.mWidth, data.mHeight, toVulkanFormat(data.mFormat),
             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, name, levels);
-
-        Buffer staging = Buffer::staging(device, data.mBytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-        staging.write(data.mBytes);
 
         // Every level in one submit: the levels are already contiguous in the source, so this is one
         // copy per level out of one buffer rather than one upload per level.
@@ -114,55 +146,24 @@ namespace Rtx
                 .imageExtent = { data.mLevels[level].mWidth, data.mLevels[level].mHeight, 1 },
             });
 
-        // **Recorded rather than submitted.** A cell brings hundreds of these and the queue is asked
-        // once for all of them; the image is left where a sampler expects it, so nothing recorded
-        // afterwards has to know this one happened.
-        const VkCommandBuffer commands = batch.getCommands();
+        upload(device, batch, *mImage, data.mBytes, regions);
 
-        mImage->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        // **The map, in the same batch and left where the same sampler expects it.** One level and
+        // no chain: the map is read at level nought whatever the cone, because it has no detail for
+        // a level to lose.
+        const std::array<std::uint16_t, ShadingMap::sCells> stored = encodeShadingMap(data.mShading);
 
-        vkCmdCopyBufferToImage(commands, staging.getHandle(), mImage->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            static_cast<std::uint32_t>(regions.size()), regions.data());
+        mShading
+            = std::make_unique<Image>(device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, VK_FORMAT_R16_UNORM,
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, std::string(name) + " shading");
 
-        mImage->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+        const VkBufferImageCopy region{
+            .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+            .imageExtent = { Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, 1 },
+        };
+        upload(device, batch, *mShading, std::as_bytes(std::span(stored)), std::span(&region, 1));
 
-        batch.keep(std::move(staging));
-    }
-
-    namespace
-    {
-        /// Every texture's shading map end to end, and a neutral one wherever there is no estimate.
-        ///
-        /// **A missing map has to be neutral rather than absent.** A material whose texture would
-        /// not load still indexes this buffer, and reading whatever happened to be at that offset is
-        /// how the reference implementation came to divide every untextured surface by two.
-        constexpr std::size_t sShadingCells = std::size_t{ Shaders::SHADING_EXTENT } * Shaders::SHADING_EXTENT;
-
-        /// Writes each description's shading map into `values` at the slot it names, a stand-in
-        /// where it has none.
-        void gatherShadingAt(std::span<const TextureData> textures, std::vector<float>& values)
-        {
-            for (const TextureData& texture : textures)
-            {
-                const std::size_t at = std::size_t{ texture.mSlot } * sShadingCells;
-                if (values.size() < at + sShadingCells)
-                    values.resize(at + sShadingCells, 1.0f);
-
-                const std::span<const float> map = texture.mShading;
-                if (map.empty())
-                {
-                    std::fill_n(values.begin() + static_cast<std::ptrdiff_t>(at), sShadingCells, 1.0f);
-                    continue;
-                }
-
-                assert(map.size() == sShadingCells);
-                std::copy(map.begin(), map.end(), values.begin() + static_cast<std::ptrdiff_t>(at));
-            }
-        }
+        mBytes = data.mBytes.size() + sizeof(stored);
     }
 
     TextureArray::TextureArray(const Device& device, Batch& batch, std::uint32_t slots,
@@ -173,11 +174,6 @@ namespace Rtx
         if (slots > sMaxTextures)
             throw Error("a scene with " + std::to_string(slots) + " textures is past the "
                 + std::to_string(sMaxTextures) + " this array holds");
-
-        // **The shading table exists from here.** An array with no textures in it is asked for none
-        // and would grow to nothing, and the descriptor the shader declares would be bound to a null
-        // handle — which is undefined at the dispatch and cost this renderer a device.
-        graveyard.bury(growTo(mShading, device, 0, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));
 
         const VkSamplerCreateInfo sampler{
             .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -201,7 +197,8 @@ namespace Rtx
         // is paid once. `extend` then only ever writes the range that is new.
         constexpr std::uint32_t count = sMaxTextures;
 
-        const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count };
+        // Two arrays of them, the textures' and the maps'.
+        const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * count };
         const VkDescriptorPoolCreateInfo describePool{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
             .maxSets = 1,
@@ -229,17 +226,11 @@ namespace Rtx
 
         // **Sized to the table before anything is written into it**, so a description lands in the
         // slot it names whatever sits either side of it. Every entry starts holding no image and no
-        // estimate, which is what a free slot goes on holding: its descriptor is never written, and
-        // the binding's `PARTIALLY_BOUND` is what makes that legal for one nothing samples.
+        // map, which is what a free slot goes on holding: its descriptors are never written, and
+        // the bindings' `PARTIALLY_BOUND` is what makes that legal for one nothing samples.
         mTextures.resize(slots);
-        mShadingValues.assign(std::size_t{ slots } * sShadingCells, 1.0f);
 
         write(batch, textures, graveyard);
-
-        // **A scene with no textures still binds the shading buffer**, and `write` has nothing to do
-        // for one — so the neutral map that stands in for an empty array is made here rather than
-        // inside a path that returns before it.
-        growShading(graveyard);
     }
 
     void TextureArray::reserveSlot(std::uint32_t slot)
@@ -269,8 +260,6 @@ namespace Rtx
                 Texture(mDevice, batch, texture, "texture " + std::to_string(texture.mSlot))));
         }
 
-        gatherShadingAt(arrived, mShadingValues);
-        reshade(arrived, graveyard);
         describe(arrived);
     }
 
@@ -294,70 +283,39 @@ namespace Rtx
         if (arrived.empty())
             return;
 
-        // One write per slot rather than one over a range: the arrivals are wherever the scene's
-        // free list put them, and a run is no longer what they are.
+        // One write per slot and per array rather than one over a range: the arrivals are wherever
+        // the scene's free list put them, and a run is no longer what they are. Reserved before
+        // any write points into it, since a write names its image by address.
         std::vector<VkDescriptorImageInfo> images;
         std::vector<VkWriteDescriptorSet> writes;
-        images.reserve(arrived.size());
-        writes.reserve(arrived.size());
+        images.reserve(2 * arrived.size());
+        writes.reserve(2 * arrived.size());
 
         for (const TextureData& texture : arrived)
-            images.push_back(VkDescriptorImageInfo{
-                .sampler = mSampler,
-                .imageView = mTextures[texture.mSlot].getView(),
-                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            });
-
-        for (std::size_t at = 0; at < arrived.size(); ++at)
-            writes.push_back(VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = mSet,
-                .dstBinding = 0,
-                .dstArrayElement = arrived[at].mSlot,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .pImageInfo = &images[at],
-            });
+        {
+            const Texture& held = mTextures[texture.mSlot];
+            for (const auto& [binding, view] :
+                { std::pair{ sTextureBinding, held.getView() }, std::pair{ sShadingBinding, held.getShadingView() } })
+            {
+                images.push_back(VkDescriptorImageInfo{
+                    .sampler = mSampler,
+                    .imageView = view,
+                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                });
+                writes.push_back(VkWriteDescriptorSet{
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = mSet,
+                    .dstBinding = binding,
+                    .dstArrayElement = texture.mSlot,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .pImageInfo = &images.back(),
+                });
+            }
+        }
 
         vkUpdateDescriptorSets(
             mDevice.getHandle(), static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
-    }
-
-    void TextureArray::reshade(std::span<const TextureData> arrived, Graveyard& graveyard)
-    {
-        if (growShading(graveyard))
-            return;
-
-        for (const TextureData& texture : arrived)
-            mShading.writeAt(std::size_t{ texture.mSlot } * sShadingCells * sizeof(float),
-                std::span<const float>(mShadingValues)
-                    .subspan(std::size_t{ texture.mSlot } * sShadingCells, sShadingCells));
-    }
-
-    bool TextureArray::growShading(Graveyard& graveyard)
-    {
-        // One texture's worth even for a scene with none: a buffer of nothing is not a legal thing
-        // to make, and the descriptor is bound either way.
-        if (mShadingValues.empty())
-            mShadingValues.assign(sShadingCells, 1.0f);
-
-        const std::span<const float> values(mShadingValues);
-
-        // **Grown in blocks, and only then rewritten whole.** A buffer sized exactly to the scene
-        // would be made again for every texture that arrives, which is the spike this exists to
-        // remove; a block of slack turns that into one write per arrival, most of the time.
-        if (mShading.getSize() >= values.size_bytes())
-            return false;
-
-        constexpr std::size_t slack = 128 * sShadingCells;
-        const std::size_t room = ((values.size() + slack - 1) / slack) * slack;
-
-        // **`growTo` and not a constructor, because an array with no textures in it still has this
-        // descriptor.** Sized to nought it was never made at all, and the null handle reached
-        // `vkCmdDispatch` — undefined, and the device this renderer lost.
-        graveyard.bury(growTo(mShading, mDevice, room * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT));
-        mShading.write(values);
-        return true;
     }
 
     TextureArray::~TextureArray()

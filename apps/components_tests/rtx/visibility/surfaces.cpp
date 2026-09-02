@@ -1,5 +1,7 @@
 #include "fixture.hpp"
 
+#include <components/rtx/shadingmap.hpp>
+
 namespace Rtx::Testing
 {
     namespace
@@ -39,16 +41,10 @@ namespace Rtx::Testing
             CommandPool& pool = getPool();
 
             const SceneDesc empty;
-            Batch setup(pool);
 
-            // No textures, so no shading maps; no sprites, so no tiles. Both tables used to come out
-            // as `VK_NULL_HANDLE`.
+            // No sprites, so no tiles, and that table used to come out as `VK_NULL_HANDLE`.
             Graveyard graveyard(device, pool);
-            const TextureArray textures(device, setup, 0, {}, graveyard);
             const SceneBuffers buffers(device, empty, {}, 1, graveyard);
-            setup.flush();
-
-            EXPECT_NE(textures.getShading(), VK_NULL_HANDLE) << "the shading maps";
 
             // **Every table this hands out, and not the three that were caught.** The rule was the
             // same for all of them; which ones happened to be empty on the day is not what decides
@@ -179,10 +175,11 @@ namespace Rtx::Testing
 
             // **And what the report says is what is stood, not how long the table is.** The two are
             // one number until something is freed, which is why a still never showed the difference
-            // and a route reported a hundred textures it was not holding. One texel of four bytes is
-            // the whole of what is left here.
+            // and a route reported a hundred textures it was not holding. One texel of four bytes and
+            // the map beside it, two bytes a cell, is the whole of what is left here.
+            constexpr std::size_t map = std::size_t{ Shaders::SHADING_EXTENT } * Shaders::SHADING_EXTENT * 2;
             EXPECT_EQ(mRenderer->getSceneStats().mTextureCount, 1u);
-            EXPECT_EQ(mRenderer->getSceneStats().mTextureBytes, redTexel.size());
+            EXPECT_EQ(mRenderer->getSceneStats().mTextureBytes, redTexel.size() + map);
 
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
@@ -388,6 +385,23 @@ namespace Rtx::Testing
                 << "the wall shaded differently once its vertices moved into the second block";
         }
 
+        /// One linear-128 texel with `shading` painted over it: a texture with nothing in it but a
+        /// map, which is what a test of the estimate's other half wants.
+        constexpr std::array<std::uint8_t, 4> sGreyTexel{ 128, 128, 128, 255 };
+        constexpr MipLevel sOneTexel{ 0, 1, 1 };
+
+        TextureData describeGrey(std::span<const float> shading)
+        {
+            return TextureData{
+                .mFormat = TextureFormat::Rgba8Unorm,
+                .mWidth = 1,
+                .mHeight = 1,
+                .mBytes = std::as_bytes(std::span(sGreyTexel)),
+                .mLevels = std::span(&sOneTexel, 1),
+                .mShading = shading,
+            };
+        }
+
         /// The other half of de-lighting: the shader dividing the estimate back out.
         ///
         /// `ShadingMap`'s own tests say the estimate is right; this says the frame uses it. A map is
@@ -401,21 +415,8 @@ namespace Rtx::Testing
         {
             constexpr std::uint32_t size = 32;
             constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
-            constexpr std::size_t cells = std::size_t{ Shaders::SHADING_EXTENT } * Shaders::SHADING_EXTENT;
-
-            constexpr std::array<std::uint8_t, 4> texel{ 128, 128, 128, 255 };
-            constexpr MipLevel one{ 0, 1, 1 };
-
-            std::array<float, cells> painted{};
-
-            const TextureData grey{
-                .mFormat = TextureFormat::Rgba8Unorm,
-                .mWidth = 1,
-                .mHeight = 1,
-                .mBytes = std::as_bytes(std::span(texel)),
-                .mLevels = std::span(&one, 1),
-                .mShading = painted,
-            };
+            std::array<float, ShadingMap::sCells> painted{};
+            const TextureData grey = describeGrey(painted);
 
             SceneDesc scene;
             const Index mesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices);
@@ -443,6 +444,65 @@ namespace Rtx::Testing
             // The strength is what makes this answerable rather than believable: the same map at no
             // strength has to leave the texture exactly as it was drawn.
             EXPECT_NEAR(shownAt(0.0f, 2.0f), 188, 1) << "at zero strength the estimate is not applied";
+        }
+
+        /// The map read where the hit lands, blended and wrapped as the host reads it.
+        ///
+        /// **The device's read against the host's, pixel by pixel.** The map is a gradient along
+        /// `u` from the floor to the ceiling, so between two cells the answer is a blend and at the
+        /// frame's first pixel it wraps: a wall scaled to fill the frame exactly puts that pixel's
+        /// `u` at a hundred and twenty-eighth, which is a quarter of a cell before the first cell's
+        /// centre, so the read leans on the last cell of the row. `Rtx::paintedLight` is the host's
+        /// spelling and the composite bake reads through it, so the two agreeing is what keeps a
+        /// flattened chunk and its live stack the same ground.
+        ///
+        /// Within a byte, which is where the map's own step and the sampler's eight-bit weights both
+        /// land: the gradient changes by a twentieth between neighbouring cells, and an eighth of a
+        /// per cent of that is nothing a byte can see.
+        TEST_F(RtxVisibilityTest, aTexturesPaintedLightIsReadWhereTheHitLandsAsTheHostReadsIt)
+        {
+            constexpr std::uint32_t size = 64;
+            constexpr std::uint32_t extent = ShadingMap::sExtent;
+
+            std::array<float, ShadingMap::sCells> painted{};
+            for (std::size_t row = 0; row < extent; ++row)
+                for (std::size_t column = 0; column < extent; ++column)
+                    painted[row * extent + column] = ShadingMap::sFloor
+                        + (ShadingMap::sCeiling - ShadingMap::sFloor) * static_cast<float>(column)
+                            / static_cast<float>(extent - 1);
+
+            const TextureData grey = describeGrey(painted);
+
+            // The wall is four hundred across and the frame sees `2 * tan(30) * 100` of it, so this
+            // scale puts the wall's edges on the frame's and `u` at `(x + 0.5) / size` at pixel `x`.
+            constexpr float fills = 115.470054f / 400.0f;
+
+            SceneDesc scene;
+            const Index mesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices);
+            const Index material
+                = scene.addMaterial(Material{ .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("grey.dds")) });
+            scene.addInstance(MeshInstance{
+                .mTransform = osg::Matrixf::scale(fills, 1.0f, fills), .mMesh = mesh, .mMaterial = material });
+
+            Shaders::VisibilityConstants camera = makeCamera(
+                osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+            camera.mShowAlbedo = 1u;
+            camera.mDelight = 1.0f;
+
+            std::vector<std::uint8_t> pixels;
+            ASSERT_EQ(countHits(scene, std::span(&grey, 1), camera, size, pixels), size * size);
+
+            constexpr std::uint32_t row = size / 2;
+            for (const std::uint32_t x : { 0u, 1u, size / 2, size - 1 })
+            {
+                const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(size);
+                const float v = (static_cast<float>(row) + 0.5f) / static_cast<float>(size);
+                const float factor = paintedLight(painted, u, v);
+
+                const int expected = encodeSrgb(128.0f / 255.0f / factor);
+                EXPECT_NEAR(int{ pixels[(std::size_t{ row } * size + x) * 4] }, expected, 1)
+                    << "at pixel " << x << ", where the host reads " << factor;
+            }
         }
 
         /// The mip chain a ray cone selects from, at a distance chosen so the answer is a whole

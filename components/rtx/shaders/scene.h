@@ -77,6 +77,16 @@ namespace Rtx::Shaders
     /// makes them and says why at length.
     RTX_CONST uint SHADING_EXTENT = 32u;
 
+    /// How far the estimate may reach either way, which is also how a map is stored.
+    ///
+    /// **A map on the device is a sixteen-bit unorm of `(value - floor) / (ceiling - floor)`**, so
+    /// the whole of the format's range is spent on the values a map can hold — a step of one part
+    /// in forty thousand — and the neutral map, one everywhere, lands on exactly a third: 21845 of
+    /// 65535, which the decode carries back to exactly one. `Rtx::ShadingMap` says why the bounds
+    /// are what they are, and `Rtx::encodeShading` is the one statement of the encode.
+    RTX_CONST float SHADING_FLOOR = 0.5f;
+    RTX_CONST float SHADING_CEILING = 2.0f;
+
     /// A whole turn, which is how a wavelength becomes a wavenumber.
     RTX_CONST float TAU = 6.2831853f;
 

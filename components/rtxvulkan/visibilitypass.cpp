@@ -344,7 +344,6 @@ namespace Rtx
             VkDescriptorBufferInfo{ inputs.mBuffers->getLightIndices(inputs.mSlot), 0, VK_WHOLE_SIZE },
         };
         const VkDescriptorBufferInfo noiseWrite{ mBlueNoise.getHandle(), 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo shadingWrite{ inputs.mShading, 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo spriteWrite{ inputs.mBuffers->getSprites(inputs.mSlot), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo emitterWrite{ inputs.mBuffers->getEmitters(inputs.mSlot), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo tileOffsetWrite{ inputs.mBuffers->getSpriteTileOffsets(inputs.mSlot), 0,
@@ -372,8 +371,8 @@ namespace Rtx
         [[maybe_unused]] const auto bound
             = [](const VkDescriptorBufferInfo& write) { return write.buffer != VK_NULL_HANDLE; };
         assert(std::all_of(buffers.begin(), buffers.end(), bound) && "a table bound as nothing");
-        assert(bound(noiseWrite) && bound(shadingWrite) && bound(spriteWrite) && bound(emitterWrite)
-            && bound(tileOffsetWrite) && bound(tileIndexWrite) && bound(frameWrite) && "an input bound as nothing");
+        assert(bound(noiseWrite) && bound(spriteWrite) && bound(emitterWrite) && bound(tileOffsetWrite)
+            && bound(tileIndexWrite) && bound(frameWrite) && "an input bound as nothing");
 
         // **Appended rather than indexed.** Every one of these used to name its own slot — channels
         // at `1 + i`, buffers at `i + 8`, then twenty-one through twenty-six by hand — so adding a
@@ -416,7 +415,6 @@ namespace Rtx
             appendBuffer(Shaders::BIND_HITS + i, buffers[i]);
 
         appendBuffer(Shaders::BIND_BLUE_NOISE, noiseWrite);
-        appendBuffer(Shaders::BIND_SHADING, shadingWrite);
         appendBuffer(Shaders::BIND_SPRITES, spriteWrite);
         appendBuffer(Shaders::BIND_EMITTERS, emitterWrite);
         appendBuffer(Shaders::BIND_SPRITE_TILE_OFFSETS, tileOffsetWrite);

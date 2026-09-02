@@ -428,7 +428,6 @@ namespace Rtx
             .mSlot = slot,
             .mIndexBlocks = held.mAcceleration->getIndexBlocks(),
             .mTextures = held.mTextures->getSet(),
-            .mShading = held.mTextures->getShading(),
             .mWaves = &mWaves,
             .mFog = &mFog,
             .mFogVolume = volume,

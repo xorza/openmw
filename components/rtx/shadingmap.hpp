@@ -38,10 +38,11 @@ namespace Rtx
         /// Cells along each edge of the grid the estimate is made on, which the shader indexes
         /// with and so declares.
         static constexpr std::uint32_t sExtent = Shaders::SHADING_EXTENT;
+        static constexpr std::size_t sCells = std::size_t{ sExtent } * sExtent;
 
         /// How far the correction may reach, either way.
-        static constexpr float sFloor = 0.5f;
-        static constexpr float sCeiling = 2.0f;
+        static inline const float sFloor = Shaders::SHADING_FLOOR;
+        static inline const float sCeiling = Shaders::SHADING_CEILING;
 
         /// A map that changes nothing, which is what a texture that would not load has to get.
         ///
@@ -57,8 +58,21 @@ namespace Rtx
         std::span<const float> getValues() const { return mValues; }
 
     private:
-        std::array<float, std::size_t{ sExtent } * sExtent> mValues;
+        std::array<float, sCells> mValues;
     };
+
+    /// One factor as the device stores it: a sixteen-bit unorm over the map's own range, so that
+    /// the neutral factor is exact and a step is a part in forty thousand. `SHADING_FLOOR` says why
+    /// the range is the map's and not the format's.
+    std::uint16_t encodeShading(float value);
+    float decodeShading(std::uint16_t stored);
+
+    /// A whole map as the device stores it, and the neutral map where `map` is empty.
+    ///
+    /// **A missing map has to be neutral rather than absent.** A material whose texture would not
+    /// load still reads a map at its slot, and a descriptor bound to nothing is undefined at the
+    /// dispatch; ones are what changes nothing, and this is where a backend gets them.
+    std::array<std::uint16_t, ShadingMap::sCells> encodeShadingMap(std::span<const float> map);
 
     /// The map at a point, bilinear across it and wrapping with it — the shader's `paintedLight`.
     ///

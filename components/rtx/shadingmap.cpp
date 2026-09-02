@@ -211,6 +211,29 @@ namespace Rtx
             value = std::clamp(value / mean, sFloor, sCeiling);
     }
 
+    std::uint16_t encodeShading(const float value)
+    {
+        const float span = Shaders::SHADING_CEILING - Shaders::SHADING_FLOOR;
+        const float unit = std::clamp((value - Shaders::SHADING_FLOOR) / span, 0.0f, 1.0f);
+        return static_cast<std::uint16_t>(std::lround(unit * 65535.0f));
+    }
+
+    float decodeShading(const std::uint16_t stored)
+    {
+        const float span = Shaders::SHADING_CEILING - Shaders::SHADING_FLOOR;
+        return Shaders::SHADING_FLOOR + span * (static_cast<float>(stored) / 65535.0f);
+    }
+
+    std::array<std::uint16_t, ShadingMap::sCells> encodeShadingMap(const std::span<const float> map)
+    {
+        assert(map.empty() || map.size() == ShadingMap::sCells);
+
+        std::array<std::uint16_t, ShadingMap::sCells> stored;
+        for (std::size_t at = 0; at < stored.size(); ++at)
+            stored[at] = encodeShading(map.empty() ? 1.0f : map[at]);
+        return stored;
+    }
+
     float paintedLight(std::span<const float> map, float u, float v)
     {
         constexpr int extent = static_cast<int>(ShadingMap::sExtent);

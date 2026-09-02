@@ -281,5 +281,41 @@ namespace Rtx
                 EXPECT_EQ(value, 1.0f);
         }
 
+        /// The map as the device stores it: sixteen bits over the map's own range.
+        ///
+        /// **One is exact, because the range is the map's and not the format's.** A unorm counts in
+        /// 65535ths and cannot write a half, so a map stored over nought to two would hold the
+        /// neutral map a hair off one. Over the floor and the ceiling it is a third exactly, which
+        /// is 21845 of 65535, and every other value comes back within half a step of one part in
+        /// forty thousand. Past the bounds the encode clamps, which is what the estimate did first.
+        TEST(RtxShadingMapTest, theStoredMapKeepsOneExactAndEveryOtherValueWithinAStep)
+        {
+            EXPECT_EQ(encodeShading(1.0f), 21845);
+            EXPECT_EQ(decodeShading(21845), 1.0f);
+
+            EXPECT_EQ(encodeShading(ShadingMap::sFloor), 0);
+            EXPECT_EQ(encodeShading(ShadingMap::sCeiling), 65535);
+            EXPECT_EQ(encodeShading(0.0f), 0);
+            EXPECT_EQ(encodeShading(3.0f), 65535);
+
+            const float span = ShadingMap::sCeiling - ShadingMap::sFloor;
+            const float step = span / 65535.0f;
+            for (int at = 0; at <= 300; ++at)
+            {
+                const float value = ShadingMap::sFloor + span * static_cast<float>(at) / 300.0f;
+                EXPECT_NEAR(decodeShading(encodeShading(value)), value, 0.5f * step + 1.0e-6f) << value;
+            }
+
+            // A whole map is each factor encoded, and no map at all is the neutral one throughout.
+            std::array<float, ShadingMap::sCells> ramp;
+            for (std::size_t at = 0; at < ramp.size(); ++at)
+                ramp[at] = ShadingMap::sFloor + span * static_cast<float>(at) / static_cast<float>(ramp.size() - 1);
+            const std::array<std::uint16_t, ShadingMap::sCells> stored = encodeShadingMap(ramp);
+            for (std::size_t at = 0; at < ramp.size(); at += 97)
+                EXPECT_EQ(stored[at], encodeShading(ramp[at])) << at;
+            const std::array<std::uint16_t, ShadingMap::sCells> neutral = encodeShadingMap({});
+            EXPECT_TRUE(
+                std::all_of(neutral.begin(), neutral.end(), [](std::uint16_t factor) { return factor == 21845; }));
+        }
     }
 }

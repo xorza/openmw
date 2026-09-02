@@ -54,9 +54,6 @@ namespace Rtx
         /// survive a scene rebuild to reach a pipeline being built.
         VkDescriptorSet mTextures = VK_NULL_HANDLE;
 
-        /// Every texture's shading map, which the array owns beside the textures themselves.
-        VkBuffer mShading = VK_NULL_HANDLE;
-
         /// The sea, as the tiles it was synthesised into this frame.
         ///
         /// **Not the scene's, because the water is not.** One sea runs under every cell and under

@@ -11,7 +11,6 @@
 
 #include <memory>
 
-#include "buffer.hpp"
 #include "image.hpp"
 #include "setlayout.hpp"
 
@@ -21,11 +20,14 @@ namespace Rtx
     class Device;
     class Graveyard;
 
-    /// A sampled image on the GPU, and the levels a content file brought for it.
+    /// A sampled image on the GPU, the levels a content file brought for it, and the light the
+    /// file already had painted into it.
     ///
-    /// **An `Image` and what was uploaded into it.** What a texture adds to an image is the upload
-    /// and the size of it; everything else — the allocation, the view, the barriers — is what an
-    /// image already is.
+    /// **Two `Image`s and what was uploaded into them.** What a texture adds to an image is the
+    /// upload and the size of it; everything else — the allocation, the view, the barriers — is what
+    /// an image already is. The second is the shading map, `SHADING_EXTENT` squared, which travels
+    /// with the texture because it is a fact about the texture: it is measured on it, it is read at
+    /// the texture's own coordinates, and it goes when the texture goes.
     class Texture
     {
     public:
@@ -42,13 +44,18 @@ namespace Rtx
         /// What a sampler reads, or nothing where the slot holds no texture.
         VkImageView getView() const { return mImage == nullptr ? VK_NULL_HANDLE : mImage->getView(); }
 
-        /// The size of the data uploaded, which for a block-compressed image is what it occupies.
+        /// The shading map beside it, likewise.
+        VkImageView getShadingView() const { return mShading == nullptr ? VK_NULL_HANDLE : mShading->getView(); }
+
+        /// The size of the data uploaded, the map's included, which for a block-compressed image is
+        /// what it occupies.
         VkDeviceSize getBytes() const { return mBytes; }
 
     private:
         /// **By pointer, because `Image` is not movable** and a texture is: the array holds them in
         /// a vector, and a slot given back is buried under the frame that may still be reading it.
         std::unique_ptr<Image> mImage;
+        std::unique_ptr<Image> mShading;
 
         VkDeviceSize mBytes = 0;
     };
@@ -64,11 +71,18 @@ namespace Rtx
         VkDeviceSize mBytes = 0;
     };
 
-    /// Every texture a scene uses, in one descriptor array a shader indexes by material.
+    /// Every texture a scene uses, in one descriptor array a shader indexes by material, and every
+    /// texture's shading map in a second array beside it at the same slot.
     ///
     /// A separate set from the per-frame one: this is written once and bound for the run, while the
     /// other is pushed every frame. A bindless array cannot be a push descriptor anyway — there is
     /// no pushing four thousand of them per frame.
+    ///
+    /// **The maps are an array and not a buffer**, because a map is a grid the texture unit filters:
+    /// one fetch where a shader reading one out of a buffer paid four loads and the wrap by hand,
+    /// half the memory, and no table to rewrite whole when it grows. Measured, the loads cost
+    /// nothing the trace can see, so this is the shape and not a saving. And an array of their own
+    /// rather than slots among the textures, for the reason `texturearray.glsl` gives.
     class TextureArray
     {
     public:
@@ -103,8 +117,7 @@ namespace Rtx
         /// there, and the image that was there goes when it is replaced and not when it was freed —
         /// so no descriptor ever names an image that has been destroyed.
         ///
-        /// What a slot held before goes to `graveyard`, and so does the shading table where it had
-        /// to be made again larger: a frame in flight may be reading either.
+        /// What a slot held before goes to `graveyard`: a frame in flight may be reading it.
         void write(Batch& batch, std::span<const TextureData> arrived, Graveyard& graveyard);
 
         /// Destroys the images of `slots`, leaving the slots themselves where they are.
@@ -125,14 +138,6 @@ namespace Rtx
         VkDescriptorSetLayout getLayout() const { return mLayout.getHandle(); }
         VkDescriptorSet getSet() const { return mSet; }
 
-        /// Every texture's shading map, back to back, `SHADING_EXTENT` squared floats apiece.
-        ///
-        /// **A buffer and not a second bindless array.** The maps are a thousand floats each and
-        /// read once per hit, so a manual bilinear out of a buffer costs four loads against one
-        /// sample — and it keeps them out of the array the cone's mip selection measures, which is
-        /// where interleaving them cost the reference implementation every grazing mip in the frame.
-        VkBuffer getShading() const { return mShading.getHandle(); }
-
         /// How long the array is, which is where an append begins and what an uploader compares a
         /// scene's table against. Not how many textures there are: see `getHeld`.
         std::uint32_t getCount() const { return static_cast<std::uint32_t>(mTextures.size()); }
@@ -142,15 +147,8 @@ namespace Rtx
         TexturesHeld getHeld() const;
 
     private:
-        /// Writes the descriptors for the slots `arrived` names.
+        /// Writes the descriptors for the slots `arrived` names, the texture's and its map's.
         void describe(std::span<const TextureData> arrived);
-
-        /// Writes the shading of the slots `arrived` names, growing the buffer first if it must.
-        void reshade(std::span<const TextureData> arrived, Graveyard& graveyard);
-
-        /// Grows the shading buffer to hold `mShadingValues`, rewriting it whole. True where it did,
-        /// which is what tells a caller its own write has already happened.
-        bool growShading(Graveyard& graveyard);
 
         /// Grows the array to reach `slot`, and refuses one past what the binding holds.
         void reserveSlot(std::uint32_t slot);
@@ -162,10 +160,6 @@ namespace Rtx
         /// reason `drop` gives.
         std::vector<Texture> mTextures;
 
-        /// Every texture's shading map, host side, so growing the buffer does not have to ask the
-        /// descriptions for maps it has already uploaded. A cell's worth is a megabyte or so.
-        std::vector<float> mShadingValues;
-        Buffer mShading;
         VkSampler mSampler = VK_NULL_HANDLE;
         SetLayout mLayout;
         VkDescriptorPool mPool = VK_NULL_HANDLE;

@@ -225,13 +225,6 @@ layout(set = 0, binding = BIND_BLUE_NOISE, scalar) readonly buffer BlueNoiseTile
     float blueNoise[];
 };
 
-/// What each texture already has painted into it, `SHADING_EXTENT` squared factors apiece and one
-/// texture after another. A texture with no estimate holds ones.
-layout(set = 0, binding = BIND_SHADING, scalar) readonly buffer ShadingMaps
-{
-    float shading[];
-};
-
 /// Every live particle in the scene, one emitter's run after another's.
 layout(set = 0, binding = BIND_SPRITES, scalar) readonly buffer Sprites
 {
