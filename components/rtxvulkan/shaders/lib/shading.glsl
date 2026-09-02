@@ -374,17 +374,24 @@ const float ROOM_FILL_REACH = 140.0;
 /// exterior-only for the reason `AMBIENT_EXTERIOR_RATE` is: a room's escape is nothing at all, so a
 /// surface far down a hall would go dark rather than flat.
 ///
-/// **What it is worth depends entirely on where the camera stands, and the honest figure is the
-/// smaller one.** At eye level in a town it takes the trace from 4.35 ms to 4.26 at the ship at
-/// Seyda Neen and from 3.13 to 3.00 over Balmora — three per cent, because far ground is crowded
-/// into the few rows under the horizon and the sky above it costs no bounce at all. A camera looking
-/// at a cell from outside it is the other case: the shoreline's establishing shot goes from 2.73 ms
-/// to 1.48, because every surface in it is past the reach. A hilltop is that camera.
+/// **Ground alone, because distance does not say ground and this was let loose on everything.** A
+/// draw about a patch of open hillside reaches the sky whatever stands nearby; the same draw about
+/// a wall spends half of itself on whatever the wall is attached to, and handing that the sky makes
+/// it too bright by the share it should have lost. Vivec is where that showed: a canton is one face
+/// hundreds of units tall running well past the reach, so the sphere cut through the middle of a
+/// building and the seam swept across it as the camera moved. Twenty-three per cent of that view
+/// differed from a frame with every bounce traced, thirteen thousand pixels of it by more than a
+/// twentieth of the display range and the worst by three quarters of it. With the escape asked only
+/// of ground the same view is byte-identical to that frame.
 ///
-/// **Where the bias lands, measured on a thousand samples either side.** Ninety-seven per cent of
-/// the ship's pixels do not move at all. Of the rest, 1.4% change by more than a tenth and the worst
-/// by half again, and every one of them is far canopy or a roof behind the town — the mean frame is
-/// 0.2% brighter. Nothing in the foreground is touched, which is the shape the reach was chosen for.
+/// **What it is worth depends entirely on where the camera stands.** Measured on the `trace` zone at
+/// 1920x1080, three alternations, against a build that traces every bounce: at eye level it is worth
+/// nothing at all — Vivec 4.09 against 4.16 and the ship at Seyda Neen 3.84 against 3.87, both
+/// inside the run-to-run spread — because far ground is crowded into the few rows under the horizon
+/// and the sky above it costs no bounce. A camera looking at a cell from outside it is the other
+/// case, and a hilltop is that camera: the island crossing runs 2.16 ms against 3.02 and the
+/// shoreline 2.66 against 2.98. Letting objects escape as well bought a further 0.58 ms there and
+/// cost the seam above, which is the trade this is the other side of.
 const float BOUNCE_REACH = 8192.0;
 
 /// What share of exterior points are asked whether they reach the sky, the rest paying by weight.
@@ -532,7 +539,7 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     // is the same answer the miss below arrives at by tracing for it. `BOUNCE_REACH` says what that
     // costs and why the room is not in it.
     const vec3 fromEye = surface.mPosition - frame.mOrigin;
-    if (skyLights() && dot(fromEye, fromEye) > BOUNCE_REACH * BOUNCE_REACH)
+    if (skyLights() && surface.mGround && dot(fromEye, fromEye) > BOUNCE_REACH * BOUNCE_REACH)
         return bounceEscape(surface.mPosition, towards, weight);
 
     // **Not reordered, and it cannot be here.** This runs inside the closest-hit shader the launch

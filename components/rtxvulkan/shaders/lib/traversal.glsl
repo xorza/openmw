@@ -372,6 +372,14 @@ struct Surface
     bool mHit;
     bool mWater;
 
+    /// Whether what the ray met is the ground itself rather than something standing on it.
+    ///
+    /// **What `BOUNCE_REACH` is allowed to hand the sky.** A draw about open ground reaches it
+    /// whatever stands nearby; the same draw about a wall spends half of itself on whatever the wall
+    /// belongs to. `layered` folds it to false in the two shaders no terrain can reach, so the
+    /// escape and the reach compile out of them entirely.
+    bool mGround;
+
     vec3 mPosition;
 
     /// The shading normal, turned to the side of the triangle's plane the ray arrived on.
@@ -453,6 +461,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     Surface surface;
     surface.mHit = false;
     surface.mWater = false;
+    surface.mGround = false;
     surface.mPosition = origin;
     surface.mNormal = vec3(0.0, 0.0, 1.0);
     surface.mGeometric = vec3(0.0, 0.0, 1.0);
@@ -512,6 +521,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
     const GpuMaterial material = materials[instance.mMaterial];
     surface.mWater = material.mKind == KIND_WATER;
+    surface.mGround = layered && material.mKind == KIND_TERRAIN;
     surface.mEmissiveColour = material.mEmissiveColour;
 
     surface.mClosed = (mesh.mShape & MESH_CLOSED) != 0u;

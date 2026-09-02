@@ -123,13 +123,13 @@ void answerWater(inout VisibilityPayload answer, Surface surface)
     if (!bed.mHit)
         return;
 
-    vec3 ground;
+    vec3 bedLight;
     SurfaceResponse lambert;
-    shadeSolid(bed, pixel, ground, answer.mBounced, lambert);
+    shadeSolid(bed, pixel, bedLight, answer.mBounced, lambert);
 
     // The direct light and the response as a blend, and the bounce whole, since the albedo it is put
     // back against carries the share.
-    answer.mRadiance = mix(ground, answer.mRadiance, shore);
+    answer.mRadiance = mix(bedLight, answer.mRadiance, shore);
     answer.mResponse = SurfaceResponse(normalize(mix(lambert.mNormal, answer.mResponse.mNormal, shore)),
         lambert.mDiffuse * (1.0 - shore), answer.mResponse.mSpecular * shore,
         mix(lambert.mRoughness, answer.mResponse.mRoughness, shore));
