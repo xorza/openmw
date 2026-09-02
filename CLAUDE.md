@@ -6,12 +6,11 @@ A fork of OpenMW 0.52 whose purpose is an **experimental ray-traced renderer**. 
 the host engine — cells, references, physics, scripts, animation, weather, GUI — and it keeps all of
 that. What it stops owning is the picture.
 
-Three documents, and they do not overlap:
+Two documents, and they do not overlap:
 
 - **`.notes/rtx/openmw.md`** — how the host engine is built and where the seams are. Read before
   touching `apps/openmw/mwrender/`, `components/sceneutil/`, `components/resource/` or the settings
   plumbing.
-- **`.notes/rtx/plan.md`** — the route: the scene-mirroring decision, the milestones, the tooling.
 - **this file** — goals and working rules. Anything the tree, `--help` or a commit already answers
   does not belong here.
 
@@ -30,7 +29,7 @@ micromaps, SER. Vanilla content, new light transport.
 Priorities, in order:
 
 1. **How it looks.** Trading image quality for simplicity or convenience is the wrong trade.
-2. **Performance.** 1920×1080 internal → 3840×2160 at 60 fps (`.notes/rtx/plan.md` §5).
+2. **Performance.** 1920×1080 internal → 3840×2160 at 60 fps.
 
 Nothing else ranks: no mod compatibility, no configurability for its own sake, no portability layer,
 no abstraction over hardware this does not target.
@@ -99,8 +98,7 @@ the world looks like comes over.
 ## Where the code lives
 
 The picture is reached twice — **Vulkan on Ada-class NVIDIA, Metal on Apple silicon** — as two
-backends behind one API-neutral core, not a portability layer over either
-(`.notes/rtx/backends.md`).
+backends behind one API-neutral core, not a portability layer over either.
 
 - `components/rtx/` — the core: the scene description, the light transport, what the scene *is*.
   Written once, and it carries no graphics API and no game headers.
@@ -181,7 +179,7 @@ Nsight Systems is installed, and this machine's driver lets a non-root user prof
 `/etc/modprobe.d/nvidia-profiling.conf` sets `NVreg_RestrictProfilingToAdminUsers=0` — so a GPU
 timeline is `nsys profile ./openmw-rtxtool bench ...` and needs no sudo. Nsight Compute (`ncu`) is
 not installed, so what a pass costs *inside* the trace kernel is still measured by removing it and
-re-running `shot`. `.notes/rtx/performance.md` §1 is the method and §2 the numbers it produced.
+re-running `shot`.
 
 ## Conventions
 

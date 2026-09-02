@@ -231,7 +231,8 @@ sampled with the array's own repeat sampler, is one bilinear fetch — and a qua
 The natural home is a second bindless array beside `textures[]`, indexed by the same slot, or one
 `sampler2DArray` of 32×32 layers grown with the texture array. The same argument covers
 `maskWeight`, which samples a terrain mask by hand for the clamp: a small `r8_unorm` image with a
-clamping sampler does the same in one fetch.
+clamping sampler does the same in one fetch. `shading-images-plan.md` is the route, with a first
+measurement: a third to a half of a millisecond of the trace at Balmora noon.
 
 ### 7. The fog volume is one thread per column — **done**
 
