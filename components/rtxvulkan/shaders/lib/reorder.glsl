@@ -3,50 +3,41 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_REORDER_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_REORDER_GLSL
 
-// What a hit is sorted on, and the one call that sorts on it.
+// What a hit is sorted on, and the calls that trace it, sort on it and run the shader it names.
 //
-// **Ray generation only, and `RTX_REORDERING` is what says so.** `reorderThreadEXT` is defined for
-// that stage and no other, and `hitObjectEXT` may only be declared in ray generation, closest-hit and
-// miss shaders — while the fog volume, which is a dispatch, reaches this file through
-// `reproject.glsl`. So the shader that can reorder defines `RTX_REORDERING` before it includes
-// anything, and the call is one piece of source either way.
+// **Ray generation only, and `RTX_REORDERING` is what says so.** The reorder and the execute are
+// defined for that stage and no other, and `hitObjectEXT` may only be declared in ray generation,
+// closest-hit and miss shaders — while the fog volume, which is a dispatch, reaches this file
+// through `reproject.glsl`. So the shader that can reorder defines `RTX_REORDERING` before it
+// includes anything, and the call is one piece of source either way.
 //
-// `.notes/rtx/ser-plan.md` is what these are for and §9 is what they measured.
+// **The kind is not in the hint, because the record already carries it.** Traversal picks the
+// closest-hit shader from the instance's own shader-table offset, which
+// `SceneAcceleration::placeRow` writes from its material kind — and the shader a record names is
+// the sort key's first component, above the hint and above where the hit is. A hint bit repeating
+// it would displace a bit of the last of those for nothing, which is the whitepaper's own rule.
+//
+// `.notes/rtx/ser-plan.md` is what these are for, §9 is what Stage 1 measured and §10 Stage 2.
 
 #include "scene.h"
 #include "traversal.glsl"
 #include "variants.glsl"
 
-/// Which of the four kinds of shading a ray leads to.
+/// Whether the eye sees through this surface.
 ///
-/// **The three a surface can be are the material kinds themselves, and so are the hit table's
-/// record indices.** That is what makes the sort's first key the kind: a hit object records one of
-/// them and the hardware reads the shader it names. Written as the material's own numbers rather
-/// than as three more, so a record and a material cannot come to be numbered apart —
-/// `VisibilityPass` lists the three closest-hit shaders in this order.
-///
-/// **The sky is the fourth and is not one of them.** A miss records into the miss table, where
-/// `RECORD_SKY` is the only record — so `SORT_SKY` is a sort key and never a record index.
-const uint SORT_SURFACE = KIND_SURFACE;
-const uint SORT_TERRAIN = KIND_TERRAIN;
-const uint SORT_WATER = KIND_WATER;
-const uint SORT_SKY = 3u;
-
-const uint RECORD_SKY = 0u;
-
-/// How many bits `reorderKind` needs, for the one form of the call that has no hit object to carry
-/// it.
-const int REORDER_KIND_BITS = 2;
-
-/// Whether the eye sees through this surface — the one branch in the trace that traverses again.
-///
-/// **The more significant of the two, because the order matters**: the sources say a more
-/// significant hint bit weighs more in the sort key, and a second traversal is a far larger branch
-/// than one more texture read.
+/// **The more significant of the two, because the order matters** — the whitepaper puts the most
+/// significant hint bit highest in the sort key after the shader itself. This is the branch the
+/// launch takes right after the call: a see-through hit is peeled and traced again, which is a
+/// second traversal and a second execute, and grouping the threads that will do that is the
+/// whitepaper's own loop-exit example in this frame's terms.
 const uint FLAG_SEEN_THROUGH = 2u;
 
-/// Whether the material carries a mask, which is what makes a hit's own resolve read a texture twice
-/// and what makes its traversal stop to ask.
+/// Whether the material carries a mask.
+///
+/// **What it predicts is a two-sided surface**, which is the branch it turns on after the call: a
+/// mesh the content doubled for its back is a sheet only where its material is masked, and a sheet
+/// gathers light from the far hemisphere as well as the near one. The mask's own test happened
+/// before this, in the any-hit shader, and no reorder reaches back to it.
 const uint FLAG_MASKED = 1u;
 
 /// How many bits `reorderFlags` is.
@@ -55,40 +46,19 @@ const uint FLAG_MASKED = 1u;
 /// sort key, so what is asked for is what a branch below actually turns on and nothing more.
 const int REORDER_FLAG_BITS = 2;
 
-/// Which shading is ahead of a hit.
-///
-/// **One instance row and one material row, which is what `resolve` reads first anyway.** What this
-/// answers is the shape of the work — a layer stack, a second traversal into the water, or a plain
-/// surface — and not any value that work produces.
-uint reorderKind(Hit hit)
-{
-    if (!hit.mHit)
-        return SORT_SKY;
-
-    const GpuMaterial material = materials[instances[hit.mInstance].mMaterial];
-
-    if (material.mKind == KIND_WATER)
-        return SORT_WATER;
-
-    // Ground that kept its stack, which is what `resolve` reads four or five masked textures for. A
-    // distant chunk was flattened into one texture and is a plain surface from here.
-    if (material.mKind == KIND_TERRAIN && material.mDiffuse == NO_TEXTURE)
-        return SORT_TERRAIN;
-
-    return SORT_SURFACE;
-}
-
-/// What the shader-table index does not already say, as the bits the sort is hinted with.
+/// What the shader-table record does not already say, as the bits the sort is hinted with.
 ///
 /// **The eye's own under-water state is not here.** It is the same answer for every pixel of a
 /// frame, so a bit carrying it would sort nothing and would cost the key two bits of where the hit
 /// is.
-uint reorderFlags(Hit hit)
+///
+/// @param instanceIndex which row the hit came off, or anything at all where `found` is false.
+uint reorderFlags(bool found, uint instanceIndex)
 {
-    if (!hit.mHit)
+    if (!found)
         return 0u;
 
-    const GpuInstance instance = instances[hit.mInstance];
+    const GpuInstance instance = instances[instanceIndex];
     const GpuMaterial material = materials[instance.mMaterial];
 
     const uint through = isSeenThrough(surfaceOpacity(instance, material)) ? FLAG_SEEN_THROUGH : 0u;
@@ -97,57 +67,59 @@ uint reorderFlags(Hit hit)
     return through | masked;
 }
 
-/// The whole key, for the form of the call that carries no hit object: the kind above the flags.
-///
-/// **Where there is no hit object there is no shader identifier**, so the kind the identifier would
-/// have carried belongs in the hint instead — which is the one case the sources' "do not repeat in
-/// the hint what the shader identifier already says" does not cover.
-uint reorderKey(Hit hit)
-{
-    return (reorderKind(hit) << REORDER_FLAG_BITS) | reorderFlags(hit);
-}
-
 #ifdef RTX_REORDERING
 
-/// The barycentrics a hit object recorded from a query carries. Nothing reads them back — the `Hit`
-/// already holds them — and the extension still wants somewhere to put them.
-layout(location = 0) hitObjectAttributeEXT vec2 recordedBarycentrics;
-
-/// Records a hit object out of a committed traversal and reorders on it.
+/// Traces one ray, sorts the threads on what it found, and runs the shader that names.
 ///
-/// **A macro for the reason `RTX_TRAVERSE` is one.** `glslc` refuses a `rayQueryEXT` as a parameter
-/// and refuses a `hitObjectEXT` as one, so neither the query this records from nor the object it
-/// records can cross a function boundary.
+/// **A macro because a `hitObjectEXT` may not cross a function boundary**, which is the same
+/// restriction `RTX_TRAVERSE` is written around for `rayQueryEXT`.
 ///
-/// @param query the traversal `RTX_TRAVERSE` left committed, which this reads and does not change.
-/// @param hit what that traversal answered, which decides the record and the hint.
-/// @param bits how many low bits of `hint` to sort on. **A literal at every call**, so the branch
-///        below folds — nought asks for the hit object alone, which is where the sources say to
-///        start.
-#define RTX_REORDER(query, hit, origin, direction, hint, bits)                                              \
+/// **The fused calls where the data allows, which is what the sources say to reach for first.**
+/// Khronos's guidance is to start with the whole of trace, reorder and execute as one call and to
+/// split it only where something has to happen in between. Here that something is the hint: it is
+/// read off the instance the traversal landed on, so every mode that carries one has to see the hit
+/// object before it can sort. `hit` is the one mode that carries none and is fully fused.
+///
+/// **Two payloads, because the two phases invoke different shaders.** Traversal reaches the any-hit
+/// shader, which tests a cutout and reads nothing; the execute reaches a closest-hit or the miss
+/// shader, which fills in the whole of what the frame's tail needs. The whitepaper names this
+/// exactly — an any-hit wants a smaller payload than a closest-hit, and giving it the larger one is
+/// register pressure paid for fields the invoked shader never touches. The one fused mode cannot
+/// have it both ways and takes the shading payload through traversal too.
+///
+/// **One call reached by every invocation, and the same hint-bit count on each.** A miss is a hit
+/// object like any other, so the sky sorts beside the solids rather than skipping the call and
+/// leaving its lanes wherever they were.
+///
+/// @param object filled in with what the ray found, and left readable: the launch takes the ray,
+///        the distance and the instance row back off it rather than keeping them live across the
+///        sort.
+#define RTX_TRACE_AND_SHADE(object, from, tmin, along, mask)                                                \
     {                                                                                                       \
-        hitObjectEXT sorted;                                                                                \
-        if ((hit).mHit)                                                                                     \
-            hitObjectRecordFromQueryEXT(sorted, (query), reorderKind(hit), 0);                              \
+        if (REORDER == REORDER_HIT)                                                                         \
+            hitObjectTraceReorderExecuteEXT(object, sceneTop, gl_RayFlagsNoneEXT, (mask), 0u, 0u,           \
+                MISS_RECORD_SKY, (from), (tmin), (along), frame.mFar, RTX_PAYLOAD);                         \
         else                                                                                                \
-            hitObjectRecordMissEXT(                                                                         \
-                sorted, gl_RayFlagsNoneEXT, RECORD_SKY, (origin), 0.0, (direction), frame.mFar);            \
+        {                                                                                                   \
+            hitObjectTraceRayEXT(object, sceneTop, gl_RayFlagsNoneEXT, (mask), 0u, 0u, MISS_RECORD_SKY,     \
+                (from), (tmin), (along), frame.mFar, RTX_TRAVERSAL_PAYLOAD);                                \
                                                                                                             \
-        if ((bits) > 0)                                                                                     \
-            reorderThreadEXT(sorted, (hint), (bits));                                                       \
-        else                                                                                                \
-            reorderThreadEXT(sorted);                                                                       \
-    }
-
-#else
-
-/// **A block that does nothing, for a stage that cannot reorder.** `reorderThreadEXT` is a ray
-/// generation instruction and `hitObjectEXT` may not even be declared outside that stage and the two
-/// beside it — and the fog volume, which is a dispatch, reaches this file through `reproject.glsl`
-/// for the sprite and water motion it needs. A block rather than nothing at all, so that an `if`
-/// whose whole body is one of these does not swallow the statement under it.
-#define RTX_REORDER(query, hit, origin, direction, hint, bits)                                              \
-    {                                                                                                       \
+            if (REORDER == REORDER_OFF)                                                                     \
+                hitObjectExecuteShaderEXT(object, RTX_PAYLOAD);                                             \
+            else                                                                                            \
+            {                                                                                               \
+                const uint sortOn                                                                           \
+                    = reorderFlags(hitObjectIsHitEXT(object), hitObjectGetInstanceCustomIndexEXT(object));  \
+                                                                                                            \
+                if (REORDER == REORDER_HINT)                                                                \
+                {                                                                                           \
+                    reorderThreadEXT(sortOn, REORDER_FLAG_BITS);                                            \
+                    hitObjectExecuteShaderEXT(object, RTX_PAYLOAD);                                         \
+                }                                                                                           \
+                else                                                                                        \
+                    hitObjectReorderExecuteEXT(object, sortOn, REORDER_FLAG_BITS, RTX_PAYLOAD);             \
+            }                                                                                               \
+        }                                                                                                   \
     }
 
 #endif

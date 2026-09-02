@@ -10,22 +10,22 @@
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-// The frame, composed. One ray per pixel against the top-level structure; everything that decides
-// what a pixel shows lives under `lib/` and this is the order those answers are put together in —
-// the sky behind the water, the water under the air, the air under the sprites, and each of the
-// G-buffer channels given what its reader was promised.
+// The frame, composed. One ray per pixel against the top-level structure; what a pixel *shows* is
+// answered by whichever shader the hit table names, and this is the order those answers are put
+// together in — the water under the air, the air under the sprites, and each of the G-buffer
+// channels given what its reader was promised.
 //
-// A hit gives an instance, a triangle and two barycentrics; everything else is a table lookup. The
-// positions come back out of the acceleration structure through position fetch, so the only vertex
-// data bound here is what that cannot give: normals and texture coordinates.
+// **The traversal and the shading are two programs now, and the reorder stands between them.** The
+// launch traces a hit object, sorts the threads on the shader that object names, and then runs it;
+// what comes back is a payload rather than a `Surface`. So this shader holds no lamp reservoir, no
+// bounce, no layer stack and no sky — each of those is in the shader that needs it, carrying its own
+// registers. `.notes/rtx/ser-plan.md` §6 is the argument and `lib/payload.glsl` is what crosses.
 //
-// **A ray generation shader and still one inline ray query per ray.** Nothing here is traced by the
-// pipeline and nothing is executed off a hit object; what the launch buys is `reorderThreadEXT`,
-// which no compute dispatch may ask for. `REORDER` is what decides whether it is asked for at all,
-// and `.notes/rtx/ser-plan.md` is the argument.
+// **What is left here is what belongs to the path rather than to the surface**: the pane the eye
+// looks through, the column of water in front of it, the air, the sprites, and the eleven channels.
 
-// **Before anything is included.** `lib/reorder.glsl` declares a hit object attribute and a call
-// only a ray generation shader may make, and it is reached from a compute shader as well.
+// **Before anything is included.** `lib/reorder.glsl` declares calls only a ray generation shader
+// may make, and it is reached from a compute shader as well.
 #define RTX_REORDERING
 
 #include "camera.h"
@@ -35,28 +35,26 @@
 #include "lib/bindings.glsl"
 #include "lib/fog.glsl"
 #include "lib/frame.glsl"
+#include "lib/payload.glsl"
 #include "lib/random.glsl"
 #include "lib/reorder.glsl"
 #include "lib/reproject.glsl"
 #include "lib/shading.glsl"
-#include "lib/sky.glsl"
 #include "lib/sprites.glsl"
 #include "lib/traversal.glsl"
 #include "lib/underwater.glsl"
 #include "lib/water.glsl"
 
-/// What a solid the eye found is: its direct light, the one bounce it gathers, and what it is in
-/// the upscaler's terms.
-///
-/// **One statement of what a ground pixel is, used twice** — for the hit itself, and for the bed
-/// under a waterline pixel, which is that ground and has to be shaded exactly as it. Written twice
-/// is how the two would come to disagree.
-void shadeSolid(Surface hit, uvec2 pixel, out vec3 direct, out vec3 bounce, out SurfaceResponse response)
-{
-    direct = shadeSurface(hit, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_EYE, PATH_SEEN);
-    bounce = bounceLight(hit, pixel);
-    response = lambertResponse(hit);
-}
+layout(location = RTX_PAYLOAD) rayPayloadEXT VisibilityPayload answer;
+
+/// What crosses traversal, which is nothing anything reads. `RTX_TRAVERSAL_PAYLOAD` says why it
+/// exists at all: the any-hit shader a traversal reaches wants a smaller payload than the shader
+/// the execute runs, and this is how small.
+layout(location = RTX_TRAVERSAL_PAYLOAD) rayPayloadEXT uint traversed;
+
+/// Which rays the eye casts. The eye alone asks for the first-person arms; `MASK_FIRST_PERSON` says
+/// why nothing else does.
+const uint EYE_MASK = MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON;
 
 void main()
 {
@@ -65,65 +63,52 @@ void main()
     // `vkCmdTraceRaysKHR` is handed the width and the height themselves.
     const uvec2 pixel = gl_LaunchIDEXT.xy;
 
-    // The same rays the wavelet rebuilds, from the same `rayAt` — a filter reconstructing positions
-    // from a ray that differed by half a pixel would be filtering somewhere the surface is not.
-    const Ray ray = rayAt(frame.mCamera, vec2(pixel));
-    const vec3 origin = frame.mOrigin + ray.mOffset;
-    const vec3 direction = ray.mDirection;
-
-    const Cone cone = coneAt(frame.mCamera);
-
-    // The eye alone asks for the first-person arms; `MASK_FIRST_PERSON` says why nothing else does.
-    rayQueryEXT primary;
-    Hit found;
-    RTX_TRAVERSE(primary, found, origin, direction, 0.0, cone.mWidth, cone.mSpread,
-        MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON)
-
-    // **The traversal has answered and nothing has been resolved off it, which is where the sources
-    // put the call.** What is live across it is the pixel, the ray, the cone and the `Hit`; the hit
-    // object carries the rest — the kind of shading ahead as its shader-table index, and where the
-    // hit is as the hardware's own last key. A miss is recorded too, so that every invocation
-    // reaches one call with the same count of hint bits.
+    // **Traversal picks the shader and this shader never asks what it hit.** The instance carries
+    // its material's kind as its shader-table offset, so the hit object comes back naming one of the
+    // three closest-hit records or the sky's miss record — and that name is the sort's first key.
     //
-    // **All three forms of the call, because they are three different trades.** The hit object sorts
-    // by kind and by place and gives up the screen neighbourhood this trace writes eleven channels
-    // through; the hint sorts by kind alone and keeps it; both is both. `--reorder` picks one.
-    //
-    // **This changes the picture in its last bits, and that was measured rather than assumed.** The
-    // call itself is value-neutral — put after every store, the frame comes back byte for byte the
-    // one the launch drew without it. Put here, it is a barrier the driver rebuilds the code around:
-    // live state is rematerialised rather than spilled, a multiply-add contracts on one side of it
-    // and not the other, and a single-sample bounce or a reservoir tie then lands somewhere else.
-    // `.notes/rtx/ser-plan.md` §9.2 carries the numbers.
-    if (REORDER == REORDER_HIT)
-        RTX_REORDER(primary, found, origin, direction, 0u, 0)
-    else if (REORDER == REORDER_BOTH)
-        RTX_REORDER(primary, found, origin, direction, reorderFlags(found), REORDER_FLAG_BITS)
-    else if (REORDER == REORDER_HINT)
-        // No hit object, so the kind the shader identifier would have carried goes in the hint.
-        reorderThreadEXT(reorderKey(found), REORDER_KIND_BITS + REORDER_FLAG_BITS);
+    // **The ray is built into the call and not kept.** Live state is what a reorder costs, and the
+    // sources say to spend it on nothing that can be had another way: the same rays the wavelet
+    // rebuilds come from the same `rayAt`, and the hit object hands them back below.
+    hitObjectEXT found;
+    answer.mAsked = 0u;
+    {
+        const Ray ray = rayAt(frame.mCamera, vec2(pixel));
+        RTX_TRACE_AND_SHADE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, EYE_MASK)
+    }
 
-    Surface surface = resolve(found, origin, direction);
+    // **Read back rather than carried across.** The hit object holds the ray it was traced with, so
+    // asking it costs nothing that was not already migrated with the sort — where six floats of the
+    // launch's own would have been spilled and restored beside it.
+    vec3 origin = hitObjectGetWorldRayOriginEXT(found);
+    vec3 direction = hitObjectGetWorldRayDirectionEXT(found);
+
+    bool hit = hitObjectIsHitEXT(found);
+    float distance = hitObjectGetRayTMaxEXT(found);
+    uint instance = hitObjectGetInstanceCustomIndexEXT(found);
+
+    vec3 shaded = answer.mRadiance;
+    vec3 bounced = answer.mBounced;
+    SurfaceResponse response = answer.mResponse;
+    WaterMirror mirror = answer.mMirror;
+    float skyShown = answer.mSkyShown;
+    bool water = answer.mWater;
 
     // **The nearest surface the eye is looking through, peeled off and kept.** A pane of glass is
     // one, and so is an actor the game is fading — Invisibility, Chameleon, or the distance fade at
-    // the edge of `actors processing range`. It is met like any other surface and lit like any
-    // other, and then the ray carries on from where it stood, so what is behind it is a real hit
+    // the edge of `actors processing range`. It was met like any other surface and lit like any
+    // other, and now the ray carries on from where it stood, so what is behind it is a real hit
     // rather than whatever its mask happened to survive a cutoff.
     //
     // **The nearest one only.** A second one behind the first is drawn as the cutout it was, which
     // is what one layer buys: no sorting, no budget, and no second traversal on a pixel that has
     // nothing see-through in it. For glass that is nearly always the whole answer — the census says
-    // a cell holds two to four translucent materials — and where it is, this is exact.
+    // a cell holds two to four translucent materials — and where it is, this is exact. `ASK_BEHIND`
+    // is how the second shader is told which of the two it is.
     //
     // **An actor is not that.** A cuirass over a skirt over a leg is three layers, so a person under
     // Chameleon shows the nearest one faded and the one behind it at full strength. That is what an
     // ordered walk would buy, and it is the reason this says *to begin with*.
-    //
-    // **Direct light only, and that is a limit rather than a saving.** `bounceLight` draws its
-    // sequence from the pixel and nothing else, so a pane and the wall behind it would bounce off
-    // the same numbers — the correlation `SEED_LAMPS_PANE` exists to keep out of the direct term,
-    // and there is no such seed to hand the bounce. Glass in a room no lamp reaches is dark here.
     //
     // **Its motion vector, its depth and the guide the upscaler demodulates by all stay the surface
     // behind it**, which is right while a pane is mostly see-through and wrong as it approaches
@@ -131,128 +116,70 @@ void main()
     // near enough to opaque to have earned one.
     vec3 paneRadiance = vec3(0.0);
     float paneThrough = 1.0;
-    if (surface.mHit && !surface.mWater && surface.mOpacity < 1.0)
+    if (hit && !water && isSeenThrough(answer.mOpacity))
     {
-        paneThrough = 1.0 - surface.mOpacity;
-        paneRadiance = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_PANE, PATH_SEEN) * surface.mOpacity;
+        paneThrough = 1.0 - answer.mOpacity;
+        paneRadiance = shaded * answer.mOpacity;
 
-        surface = trace(origin, direction, surface.mDistance + SHADOW_BIAS, cone.mWidth, cone.mSpread,
-            MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON);
+        answer.mAsked = ASK_BEHIND;
+        RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, EYE_MASK)
+
+        origin = hitObjectGetWorldRayOriginEXT(found);
+        direction = hitObjectGetWorldRayDirectionEXT(found);
+
+        hit = hitObjectIsHitEXT(found);
+        distance = hitObjectGetRayTMaxEXT(found);
+        instance = hitObjectGetInstanceCustomIndexEXT(found);
+
+        shaded = answer.mRadiance;
+        bounced = answer.mBounced;
+        response = answer.mResponse;
+        mirror = answer.mMirror;
+        skyShown = answer.mSkyShown;
+        water = answer.mWater;
     }
-
-    // Three channels rather than a colour: what is finished, what a filter may still work on, and
-    // what puts the two back together. Only an ordinary lit surface has a second of them — the sky
-    // has no albedo to divide out, and water is the far end of paths that terminate rather than
-    // bounce, so both arrive here already resolved and pass through the filter untouched.
-    vec3 shaded;
-    vec3 bounced = vec3(0.0);
 
     // **What the surface is, kept apart from what the path did to it.** These two used to be one
     // channel: the albedo was multiplied by every transmittance on the way to the eye, which is what
     // the composite wants back and is not what an upscaler demodulates by. A foggy wall reported an
     // albedo with the fog in it, so Ray Reconstruction divided the light by the wrong number
     // wherever there was weather — which outdoors is nearly everywhere.
-    SurfaceResponse response = noResponse();
     vec3 transmittance = vec3(1.0);
 
-    // Filled only by water, and only where the water reflects a surface rather than the sky.
-    WaterMirror mirror = WaterMirror(vec3(0.0), vec3(0.0), 0u, false);
-
-    // **Nought until the sky says otherwise, which is what a hit leaves it at.** A picture with no
-    // sky behind it draws none of the field either, and says so the same way.
-    float skyShown = 0.0;
+    // Made here and not before the trace: nothing above reads it, and a value defined before a
+    // reorder and used after it is exactly what the sources call live state.
+    const Cone cone = coneAt(frame.mCamera);
 
     const bool submerged = waterOver(origin) > 0.0;
-
-    // **A ray that goes down from under the surface and finds nothing found water, and water is not
-    // the sky.** The plane has absolute sides, so below it there is water whether or not this
-    // renderer was handed a bed far enough out to stop the ray. Read as sky instead, everything past
-    // the edge of the loaded terrain came back at the sky's own horizon colour — which is what
-    // `skyGradient` clamps to under the horizontal — through `mFar` of water rather than through the
-    // whole of it, and that drew the terrain's boundary across the sea as a row of dark panels.
-    // `waterRay` answers the same question the same way for a reflection and for a refraction.
-    const bool unbounded = submerged && !surface.mHit && direction.z < 0.0;
-
-    if (unbounded)
-        shaded = vec3(0.0);
-    else if (!surface.mHit)
-        shaded = frame.mTransparentBackground != 0u
-            ? vec3(0.0)
-            : skyRadiance(origin, direction, pixelBlur(frame.mCamera), skyShown);
-    else if (HAS_SEA && surface.mWater)
-    {
-        float shore;
-        shaded = shadeWater(surface, direction, response, mirror, pixel, shore);
-
-        // **A pixel of water with no water under it is the ground it stands on, shaded as the
-        // ground is.** The surface fades out over the last half metre of depth, and what it used to
-        // fade toward was the bed shaded at the far end of a path — `pathEnd`, the flat ambient —
-        // where the dry pixel beside it gathers a real bounce. In fog the two are far apart: the
-        // ambient is the recorded colour and a bounce finds the sky's, so the waterline came back
-        // as a line between blue and brown however well the surface over it had been faded. So the
-        // bed the dry pixel would have found is traced and shaded the way that pixel is, and the
-        // fade mixes the two as one pixel: the direct light and the response as a blend, and the
-        // bounce whole, since the albedo it is put back against carries the share. Only in the
-        // band, which is the shore and nothing else.
-        //
-        // **From a hair short of the surface and not a hair past it.** The waterline is where the
-        // ground crosses the plane, so along the last pixel of water the bed lies within the bias
-        // of the surface — and a trace that started past it found nothing, kept the whole water,
-        // and drew the line it was there to remove as a bright hair. Solids only: nothing solid is
-        // nearer than a surface the eye's own trace found first, so what this finds is the bed.
-        if (shore < 1.0)
-        {
-            const Surface bed = trace(origin, direction, max(surface.mDistance - SHADOW_BIAS, 0.0), cone.mWidth,
-                cone.mSpread, MASK_SOLID);
-            if (bed.mHit)
-            {
-                vec3 ground;
-                SurfaceResponse lambert;
-                shadeSolid(bed, pixel, ground, bounced, lambert);
-
-                shaded = mix(ground, shaded, shore);
-                response = SurfaceResponse(normalize(mix(lambert.mNormal, response.mNormal, shore)),
-                    lambert.mDiffuse * (1.0 - shore), response.mSpecular * shore,
-                    mix(lambert.mRoughness, response.mRoughness, shore));
-            }
-        }
-    }
-    else if (frame.mShowAlbedo != 0u)
-    {
-        // **The colour is replaced and the surface is not.** What this view changes is what a pixel
-        // is painted with; the thing under it is the same Lambert surface, and saying otherwise
-        // hands every reader of the guide a frame with no normals in it — which the wavelet reads as
-        // "no surface anywhere" and the upscaler reconstructs accordingly.
-        shaded = surface.mAlbedo;
-        response = lambertResponse(surface);
-    }
-    else
-        shadeSolid(surface, pixel, shaded, bounced, response);
+    const bool unbounded = waterUnbounded(hit, origin, direction);
 
     // **The pane over what it stands in front of, before the water and the air.** Both of those are
     // measured over the distance to the surface *behind* the glass, so the pane takes the haze of a
     // path it is only part of the way along — an over-darkening, and the same one `spritesAlong`
-    // accepts above for the same reason.
+    // accepts below for the same reason.
     shaded = shaded * paneThrough + paneRadiance;
     transmittance *= paneThrough;
 
     // A camera under the surface sees everything through the water in front of it, **the surface
-    // included**. What `shadeWater` attenuated is each of its own rays over its own stretch — the
-    // reflection back down into the water, the refraction through the air above — and the stretch
-    // from the eye up to the surface is a different one that nothing else pays. Leaving it out is
-    // what made the same column read one way from above and another from below: a ray aimed up from
-    // a hundred units down found the surface exactly as bright as one aimed up from ten.
+    // included**. What the water's own shader attenuated is each of its own rays over its own
+    // stretch — the reflection back down into the water, the refraction through the air above — and
+    // the stretch from the eye up to the surface is a different one that nothing else pays. Leaving
+    // it out is what made the same column read one way from above and another from below: a ray
+    // aimed up from a hundred units down found the surface exactly as bright as one aimed up from
+    // ten.
     //
     // Applied to the whole colour rather than to the albedo alone — what the depth took is a
     // property of the path, so it belongs to the modulation and not to the material.
     if (submerged)
     {
-        // An escaped ray carries neither of the two numbers a column is measured with: `trace`
-        // leaves its distance at `mFar` and its cone at nought. What it crossed is the whole column,
-        // read at the width a cone that far out has — which is wider than any wave, so the shaft
-        // march finds no pattern there to resolve.
-        const float path = unbounded ? WATER_UNBOUNDED_PATH : surface.mDistance;
-        const float width = unbounded ? cone.mWidth + cone.mSpread * path : surface.mFootprint;
+        // An escaped ray carries neither of the two numbers a column is measured with: it kept
+        // `mFar` for its distance and nought for its cone. What an unbounded one crossed is the
+        // whole column, read at the width a cone that far out has — which is wider than any wave, so
+        // the shaft march finds no pattern there to resolve.
+        const float footprint = hit ? cone.mWidth + cone.mSpread * distance : 0.0;
+
+        const float path = unbounded ? WATER_UNBOUNDED_PATH : distance;
+        const float width = unbounded ? cone.mWidth + cone.mSpread * path : footprint;
 
         const WaterColumn column
             = waterColumn(origin, direction, path, width, randomAt(pixel, STREAM_WATER));
@@ -265,8 +192,7 @@ void main()
     // stands between the eye and — the water's own absorption included, which is a different medium
     // over a different part of the path. A ray that hit nothing carries `mFar`, which the march
     // clamps to the distance past which air stops mattering.
-    const vec4 fog
-        = fogAlong(pixel, origin, direction, surface.mDistance, randomAt(pixel, STREAM_FOG), pixelKey(pixel));
+    const vec4 fog = fogAlong(pixel, origin, direction, distance, randomAt(pixel, STREAM_FOG), pixelKey(pixel));
     shaded = shaded * fog.w + fog.xyz;
     transmittance *= fog.w;
 
@@ -276,7 +202,7 @@ void main()
     // What a covering sprite hides is taken off the whole of `shaded`, the fog's own in-scattering
     // included. Exactly right for what is behind the sprite and an over-darkening of the haze in
     // front of it, which is the part of the ray a puff of smoke is nearly always at the end of.
-    const SpriteLayer particles = spritesAlong(pixel, origin, direction, surface.mDistance);
+    const SpriteLayer particles = spritesAlong(pixel, origin, direction, distance);
 
     // Kept because the motion vector below is decided by which of the two terms of the line under
     // this one is the larger, and that line is where the first of them stops existing.
@@ -285,14 +211,14 @@ void main()
     shaded = shaded * particles.mTransmittance + particles.mRadiance;
     transmittance *= particles.mTransmittance;
 
-    if (COUNT_HITS && surface.mHit)
+    if (COUNT_HITS && hit)
         atomicAdd(hits, 1);
 
     const ivec2 at = ivec2(pixel);
 
     // **Coverage rides in the direct channel's alpha**, which every pass after this carries
     // through untouched: it is one everywhere but in a picture that has to say where it stops.
-    const float coverage = (frame.mTransparentBackground != 0u && !surface.mHit) ? 0.0 : 1.0;
+    const float coverage = (frame.mTransparentBackground != 0u && !hit) ? 0.0 : 1.0;
     imageStore(direct, at, vec4(shaded, coverage));
 
     // **The bounce carries what the path took off it, and the albedo carries only the surface.**
@@ -335,8 +261,7 @@ void main()
 
     // **The sky moves too, and only its turn moves it.** `skyMotionOf` says why storing nothing here
     // was a smear across every camera rotation.
-    vec2 moved = surface.mHit ? motionOf(pixel, origin, direction, surface.mDistance, surface.mInstance)
-                              : skyMotionOf(pixel, direction);
+    vec2 moved = hit ? motionOf(pixel, origin, direction, distance, instance) : skyMotionOf(pixel, direction);
 
     // **A pixel a sprite mostly is moves the way that sprite did.** One motion vector is written per
     // pixel and it used to be the surface's whatever stood in front of it, so a raindrop crossing a
@@ -350,8 +275,7 @@ void main()
     // **The one surface in this frame that shows something standing somewhere else.** Water is
     // shaded where it is seen, so the vector above describes the surface and not what is in it; this
     // is the other one, and the upscaler weighs the two by the specular albedo it was already given.
-    imageStore(reflectionMotion, at,
-        vec4((HAS_SEA && surface.mWater) ? mirrorMotionOf(pixel, origin, mirror) : vec2(0.0), 0.0, 0.0));
+    imageStore(reflectionMotion, at, vec4(water ? mirrorMotionOf(pixel, origin, mirror) : vec2(0.0), 0.0, 0.0));
 
     // **What the display pass has to draw the star field through**, which is everything this frame
     // put between the field and the eye: the sky's own layers in `skyShown`, and the pane, the
@@ -359,7 +283,6 @@ void main()
     // by. `starsShown` in `bindings.glsl` says why that pass cannot work any of it out for itself.
     imageStore(starsShown, at, vec4(skyShown * transmittance, 1.0));
 
-    // A miss is as far away as anything can be, and `mDistance` already carries `mFar` for it.
-    imageStore(depth, at,
-        vec4(surface.mHit ? clipDepth(direction, surface.mDistance) : 1.0, surface.mDistance, 0.0, 0.0));
+    // A miss is as far away as anything can be, and the hit object already carries `mFar` for it.
+    imageStore(depth, at, vec4(hit ? clipDepth(direction, distance) : 1.0, distance, 0.0, 0.0));
 }

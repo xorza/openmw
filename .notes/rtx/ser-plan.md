@@ -512,7 +512,7 @@ is left is the timer, and Nsight Graphics — which is not installed on this mac
 ### 9.5 What the sources ask for, and what this does
 
 Read against NVIDIA's whitepaper, its Vulkanised 2025 deck, the GLSL and Vulkan specifications,
-Khronos's best-practice post and the Indiana Jones live-state article. Each of these is §10.
+Khronos's best-practice post and the Indiana Jones live-state article. Each of these is §11.
 
 - **Reorder after traversal and before shading, once per invocation.** Done, and the miss is
   recorded too so that every invocation reaches one call.
@@ -552,7 +552,118 @@ neighbour, and after a reorder it is another pixel of the frame entirely. The vo
 so `textureLod(..., 0.0)` is what it always meant, and the compute trace's own frame is unchanged by
 the fix.
 
-## 10. Sources
+## 10. What Stage 2 measured
+
+Written after the fact, against what §6 expected, and then a second time after the sources were read
+back against the code. §10.5 is what that reading changed.
+
+### 10.1 The split costs about three percent and buys nothing back
+
+`trace` zone medians, release build, no layers, the default suite at 1920×1080 presented and
+1280×720 traced — the same measurement §3 and §9.1 were taken with. Five alternating runs of the
+Stage 2 column, two of them thrown away with the whole frame slower and the clock down, which is the
+board on its power cap rather than a result.
+
+| View | compute (§3) | launch, one kernel (§9.1) | shader per kind | against the launch |
+|---|---|---|---|---|
+| seyda-neen-ship | 1.69 | **1.56** | 1.62 | +3.8% |
+| seyda-neen-ship-dawn | 2.18 | **1.96** | 2.02 | +3.1% |
+| balmora-mages-guild | 1.59 | **1.49** | 1.54 | +3.4% |
+
+**The register relief §6 was for did not appear, and §9.4 is why nobody can say by how much.** The
+driver reports no executable for a ray tracing pipeline, so the register count that stated the
+problem in §3 and would have settled this cannot be read for either shape. What is left is the
+timer, and the timer says the divided frame is slower than the kernel that held the union.
+
+**What it plausibly goes on is the payload.** Stage 1 kept thirteen words live across its reorder —
+what the query answered and two world-space vectors. Stage 2 keeps twenty-six across the execute,
+because the shader that ran has to hand back everything the frame's tail reads and cannot recompute:
+the radiance, the bounce, the four terms of the upscaler's response, the mirror a water pixel
+reflects, and the opacity the launch peels a pane on. That is a hundred and four bytes a lane
+through a call, against fifty-two through a sort.
+
+### 10.2 The reorder still does not pay, and now it had something to sort into
+
+This is the one measurement Stage 1 could not make. Its sort regrouped threads that all went on to
+run the same code, so §9.1 could say only that sorting cost more than it saved. Here the sort is
+followed by four different programs picked by traversal, which is the arrangement the sources
+describe — and the answer is the same.
+
+| View | off | `hit` | `hint` | `both` |
+|---|---|---|---|---|
+| seyda-neen-ship | **1.62** | 1.92 | 1.92 | 1.92 |
+| seyda-neen-ship-dawn | **2.02** | 2.53 | 2.41 | 2.43 |
+| balmora-mages-guild | **1.54** | 1.75 | 1.74 | 1.71 |
+
+**Twelve to twenty-five percent, in the shape §9.1 already found**, and the reason has not changed:
+the trace ends in eleven channel writes, 94 bytes a pixel, laid out along the launch's own
+neighbourhood — and every form of this call gives some of that neighbourhood up. The fused calls
+§10.5 brought in moved none of it, so what costs is the sort and the scatter rather than the number
+of instructions the API takes to ask for one.
+
+**The whitepaper's own "when not to use" section describes this frame exactly**: primary rays, which
+are coherent to begin with, and work after the reorder that reads and writes screen-space buffers.
+"Reordering threads with respect to their ray hit location means giving up on the 2D screen-space
+locality that physical threads have by default. This can negatively impact the performance of
+reading gbuffer data or writing output buffers, which can turn reordering into a net loss when the
+rest of the workload is particularly cheap." Two stages of this plan measured that sentence.
+
+### 10.3 What §6 asked for, and what turned out to be true
+
+- **The fused calls exist.** `hitObjectReorderExecuteEXT` and `hitObjectTraceReorderExecuteEXT` are
+  both in `GL_EXT_shader_invocation_reorder`, with and without a hint. §6 named the first and this
+  plan briefly recorded that neither did — an unverified claim from a probe that never tried them.
+  §10.5 is what using them is worth.
+- **An any-hit shader is not optional.** §6 listed it beside opacity micromaps as a choice. It is
+  neither: an inline query drives its own candidates and `hitObjectTraceRayEXT` does not, so without
+  `visibility.rahit` traversal commits the first triangle it meets and every leaf goes back inside
+  the card it was painted on.
+- **`Reorder::Bounce` is gone.** The bounce is traced inside a closest-hit shader now, and the
+  reorder is a ray generation instruction. §9.1 measured that mode worst of the five, so nothing was
+  lost.
+
+### 10.4 What Stage 2 is worth keeping for
+
+Nothing the timer can see. What it is: the sky, the water, the layer stack and the plain surface are
+four programs rather than four branches of one, each carrying its own live state — which is the
+shape every source describes and the shape opacity micromaps and any further per-kind work would
+build on. It costs three percent to hold that shape today.
+
+**The decision it forces is whether three percent is worth a shape.** On this renderer's own posture
+— picture first, then performance — it is not yet, because the shape buys no picture. §9.5's next
+thing to do is unchanged: opacity micromaps, which reach the divergence inside traversal that no
+reorder and no split can.
+
+### 10.5 What reading the sources back against the code was worth
+
+Three of the whitepaper's best practices had been missed, and applying them took the shipped path
+from 1.66 / 2.07 / 1.56 to the 1.62 / 2.02 / 1.54 in §10.1 — one to three percent, and the whole of
+the difference is on the `off` column that ships.
+
+- **Two payloads, not one.** *Tailoring payload types to invoked shaders*: "anyhit requires a
+  smaller payload than closesthit, because anyhit is only used for simple alpha testing... the
+  application should use different actual payload types". The trace was handing the any-hit shader
+  the hundred and four bytes the closest-hit shaders fill in. It now carries one word, and the
+  shading payload is named only by the execute.
+- **Live state is what is defined before the call and read after it.** The launch kept the ray's
+  origin and direction and the camera's cone across the sort. The cone is made after it now, and the
+  ray is read back off the hit object, which holds it anyway — the whitepaper's own "inspect the
+  fields of the resulting HitObject" pattern.
+- **The fused calls, where the data allows.** Khronos's guidance is to start with the whole of
+  trace, reorder and execute as one call. The hint is read off the instance the traversal landed on,
+  so only `hit`, which carries no hint, can be fully fused; `both` fuses the reorder and the execute.
+  Measured on its own this moved nothing, which §10.2 reads as the cost being the sort rather than
+  the call.
+
+One thing the sources ask for that this does not do: **read the hint off the shader table rather
+than off the instance row.** The whitepaper's coherence-hint example peeks at material flags stored
+as root constants in the shader record, which the hit object can read directly — where
+`reorderFlags` reads an instance row and a material row per pixel. This pipeline has no shader
+record data at all, so it would mean giving every hit group a local root table and writing the flags
+into it at build time. That is a change to the shader binding table's shape, and it is worth doing
+only if a reorder ever pays here.
+
+## 11. Sources
 
 - NVIDIA, *Shader Execution Reordering* whitepaper, v1.0: the sort key's three components in
   priority order, the trace / reorder / invoke pattern, the hint-bit and live-state guidance, the

@@ -640,6 +640,13 @@ namespace Rtx
             // A row's position is the custom index the shader reads back at a hit.
             .instanceCustomIndex = slot & 0xFFFFFFu,
             .mask = record.mMask,
+
+            // **The kind, so that traversal picks the shader and the trace never asks what it
+            // hit.** One closest-hit shader stands at each record of the visibility pass's hit
+            // table, in the order `MaterialKind` names them, and the reorder's first key is the
+            // shader that record names. Written here rather than read from a material row at the
+            // hit, which is the read this replaces.
+            .instanceShaderBindingTableRecordOffset = static_cast<std::uint32_t>(record.mKind),
             .flags = flags,
             .accelerationStructureReference = mBottomLevelAddresses[record.mMesh],
         };

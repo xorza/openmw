@@ -442,7 +442,13 @@ struct Surface
 /// is keyed on where the ray landed — the instance, its mesh, its material, its textures — so this
 /// is the half of the old `trace` that a reorder is there to make coherent, and `Hit` is the half
 /// that has to survive the call.
-Surface resolve(Hit hit, vec3 origin, vec3 direction)
+///
+/// @param layered whether ground that kept its layer stack can reach this hit. **A literal at every
+///        call**, so the stack's loop and the four tables it walks are compiled out of a shader no
+///        such hit can arrive at. A closest-hit shader is picked by the instance's own material
+///        kind, so the two that are not terrain's know the answer is no — which is the register
+///        relief Stage 2 is for, and `.notes/rtx/ser-plan.md` §6 is the argument.
+Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 {
     Surface surface;
     surface.mHit = false;
@@ -524,7 +530,7 @@ Surface resolve(Hit hit, vec3 origin, vec3 direction)
     // A chunk wide enough to be distant had the whole stack flattened into one texture in its own
     // coordinates instead, and falls through to the single fetch below — which is what it now is.
     // `Rtx::sCompositeFrom` is where the two swap over.
-    if (material.mKind == KIND_TERRAIN && material.mDiffuse == NO_TEXTURE)
+    if (layered && material.mKind == KIND_TERRAIN && material.mDiffuse == NO_TEXTURE)
     {
         // Each layer is a tiling texture masked by its own grid of weights, and the stack sums to
         // one where the masks were built to — the same sum the rasterizer reaches by drawing the
@@ -562,6 +568,13 @@ Surface resolve(Hit hit, vec3 origin, vec3 direction)
             = EMISSIVE_INTENSITY * sampleDiffuse(material.mEmissive, point, cone, surface.mFootprint).rgb;
 
     return surface;
+}
+
+/// The same, for a ray that could have landed on anything. Every inline query in the frame — a
+/// bounce, a reflection, the bed under a waterline pixel — is one of these.
+Surface resolve(Hit hit, vec3 origin, vec3 direction)
+{
+    return resolveFor(hit, origin, direction, true);
 }
 
 /// Traverses, and answers with what the query committed.

@@ -128,14 +128,15 @@ namespace RtxTool
             "built through a denoiser");
 
         addOption("reorder", bpo::value<std::string>()->default_value("off"),
-            "what the trace does with the threads its launch handed it: off, hit, hint, both or "
-            "bounce. Shader Execution Reordering regroups a warp so that its lanes are about to do "
-            "the same work on the same data. `hit` records a hit object per primary ray and sorts on "
-            "it, `hint` sorts on a coherence hint with no hit object and so keeps the launch's own "
-            "locality, `both` is the two together, and `bounce` moves the whole thing off the eye's "
-            "ray onto the one diffuse bounce, which is where the sources say the divergence is. Off "
-            "by default because off is faster here. .notes/rtx/ser-plan.md is the measurement, and "
-            "it also says why the picture moves on a handful of pixels rather than not at all");
+            "how the trace sorts its threads between the traversal and the shader that resolves what "
+            "it found: off, hit, hint or both. Shader Execution Reordering regroups a warp so that "
+            "its lanes are about to run the same shader on the same data. `hit` sorts on the hit "
+            "object the traversal answered, `hint` sorts on a coherence hint instead and so keeps "
+            "the launch's own locality, and `both` is the two together. The shader a hit object "
+            "names is picked by traversal either way, so the frame is split across a closest-hit "
+            "shader per material kind whatever this says. Off by default because off is faster here. "
+            ".notes/rtx/ser-plan.md is the measurement, and it also says why the picture moves on a "
+            "handful of pixels rather than not at all");
 
         addOption("preset", bpo::value<std::string>()->default_value("d"),
             "which Ray Reconstruction network to run: default, d or e. Ray Reconstruction keeps its "

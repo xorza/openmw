@@ -39,28 +39,34 @@ namespace Rtx::Shaders
     /// carry and a launch cannot.
     RTX_CONST uint REORDER_OFF = 0u;
 
-    /// A hit object per primary ray, and one reorder on it — `reorderThreadEXT(hitObject)`. The sort
-    /// is the shader-table index the trace recorded and where the hit is, and no hint at all, which
-    /// is where the sources say to start.
+    /// The hit object the traversal answered, and one reorder on it —
+    /// `reorderThreadEXT(hitObject)`. The sort is the shader that object names and where the hit is,
+    /// and no hint at all, which is where the sources say to start.
     RTX_CONST uint REORDER_HIT = 1u;
 
-    /// A hint per primary ray and no hit object at all — `reorderThreadEXT(hint, bits)`.
+    /// A hint and not the hit object — `reorderThreadEXT(hint, bits)`.
     ///
     /// **The one form that keeps the launch's own locality.** Sorting by where a hit is gives up the
     /// screen-space neighbourhood a thread started in, which is what the eleven channels at the end
-    /// of this trace are written through. A hint carries the kind without carrying the place.
+    /// of this trace are written through. A hint carries what the shader is about to branch on
+    /// without carrying the place.
     RTX_CONST uint REORDER_HINT = 2u;
 
     /// Both — `reorderThreadEXT(hitObject, hint, bits)`.
     RTX_CONST uint REORDER_BOTH = 3u;
 
-    /// The hit object at the *bounce* ray rather than at the eye's own, and nothing at the eye.
+    /// How many closest-hit records the trace's shader binding table holds: one for each
+    /// `Rtx::MaterialKind`, in the order that enum names them.
     ///
-    /// **Where the sources say the divergence is.** A primary ray is coherent to begin with; one
-    /// diffuse bounce from it lands on a different instance per pixel and is shaded with its own
-    /// lamp reservoir and its own ambient ray, which is the "non-trivial hit shading paired with at
-    /// least moderate divergence" the whitepaper names.
-    RTX_CONST uint REORDER_BOUNCE = 4u;
+    /// **The record is the kind, which is what makes the sort's first key free.**
+    /// `SceneAcceleration::placeRow` writes each instance's shader-table offset from its material's
+    /// kind, so traversal follows an index to the shader rather than the shader reading a material
+    /// row to find out what it is.
+    RTX_CONST uint HIT_RECORD_COUNT = 3u;
+
+    /// The sky, which is the only miss record the trace has.
+    RTX_CONST uint MISS_RECORD_SKY = 0u;
+    RTX_CONST uint MISS_RECORD_COUNT = 1u;
 
     /// Morrowind's ten weathers, in the order `MWWorld::WeatherManager` registers them.
     ///

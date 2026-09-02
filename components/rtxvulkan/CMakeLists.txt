@@ -52,6 +52,7 @@ set(RTX_SHADERS
     shaders/gui.vert
     shaders/histogram.comp
     shaders/tone.comp
+    shaders/visibility.rahit
     shaders/visibility.rgen
     shaders/visibility.rmiss
     shaders/visibilitysurface.rchit
@@ -100,9 +101,10 @@ foreach (shader ${RTX_SHADERS})
     list(APPEND RTX_SHADER_OUTPUTS "${spv}")
 endforeach()
 
-# What `visibility.rgen` is made of. Included rather than compiled — there is one entry point over
-# all of them, and glslc's depfile is what makes editing one rebuild it. Named here so an IDE lists
-# them beside the shader they belong to, which is the only thing the build wants them for.
+# What the trace's five shaders are made of. Included rather than compiled — each has its own entry
+# point and these have none, and glslc's depfile is what makes editing one rebuild every shader that
+# reads it. Named here so an IDE lists them beside the shaders they belong to, which is the only
+# thing the build wants them for.
 set(RTX_SHADER_LIB
     shaders/lib/bindings.glsl
     shaders/lib/bloom.glsl
@@ -110,7 +112,9 @@ set(RTX_SHADER_LIB
     shaders/lib/footprint.glsl
     shaders/lib/frame.glsl
     shaders/lib/geometry.glsl
+    shaders/lib/hitstage.glsl
     shaders/lib/lights.glsl
+    shaders/lib/payload.glsl
     shaders/lib/random.glsl
     shaders/lib/reorder.glsl
     shaders/lib/reproject.glsl

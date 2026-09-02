@@ -5,8 +5,8 @@
 
 namespace Rtx
 {
-    /// What the trace does with the threads its launch handed it, before it resolves what they
-    /// found.
+    /// How the trace sorts the threads its launch handed it, between the traversal and the shader
+    /// that resolves what they found.
     ///
     /// **One build of the shader for each of these, so that a measurement has something to be
     /// against.** The launch change and the forms of the reorder are separable only if every one of
@@ -19,21 +19,17 @@ namespace Rtx
         /// The launch order the device chose, and nothing asked of it.
         Off,
 
-        /// A hit object per primary ray and one reorder on it, sorted by the shader-table index the
-        /// trace recorded and by where the hit is. Where the sources say to start.
+        /// One reorder on the hit object the traversal answered, sorted by the shader it names and
+        /// by where the hit is. Where the sources say to start.
         Hit,
 
-        /// A coherence hint per primary ray and no hit object: the kind of shading ahead and two
-        /// flags, and nothing about where the hit is. The one form that keeps the launch's own
-        /// locality, which is what this trace's eleven channel writes are laid out along.
+        /// A coherence hint and not the hit object: two flags, and nothing about where the hit is.
+        /// The one form that keeps the launch's own locality, which is what this trace's eleven
+        /// channel writes are laid out along.
         Hint,
 
         /// Both of those as one key.
         Both,
-
-        /// The hit object at the bounce ray instead of the eye's own. A primary ray is coherent to
-        /// begin with and one diffuse bounce from it is not.
-        Bounce,
     };
 
     /// How `reorder` is spelled on a command line. The other half of `reorderNamed`, and the one a
@@ -51,8 +47,6 @@ namespace Rtx
                 return "hint";
             case Reorder::Both:
                 return "both";
-            case Reorder::Bounce:
-                return "bounce";
         }
 
         return "off";
@@ -70,8 +64,6 @@ namespace Rtx
             return Reorder::Hint;
         if (name == "both")
             return Reorder::Both;
-        if (name == "bounce")
-            return Reorder::Bounce;
 
         return std::nullopt;
     }

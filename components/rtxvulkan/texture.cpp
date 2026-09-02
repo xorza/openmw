@@ -67,9 +67,13 @@ namespace Rtx
                 .binding = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 .descriptorCount = sMaxTextures,
-                // Both stages: the trace is a launch and the fog volume, the tone curve and the
-                // interface are dispatches, and every one of them reads this array.
-                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+                // Every stage that resolves a hit, and every dispatch. The trace reads this array
+                // from its closest-hit shaders, from the any-hit shader that tests a cutout and from
+                // the miss shader that draws the sky; the fog volume, the tone curve and the
+                // interface are dispatches and read it too.
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR
+                    | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR
+                    | VK_SHADER_STAGE_MISS_BIT_KHR,
             };
 
             // Partially bound because a scene with fewer textures than the array can hold leaves the

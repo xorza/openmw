@@ -17,49 +17,64 @@ namespace Rtx
         : mDevice(device)
         , mLayout(device, bindings, 0, VK_SHADER_STAGE_RAYGEN_BIT_KHR, laterSets)
     {
-        // The ray generation stage first, then the miss records, then the hit ones — which is the
-        // order the groups below are in and so the order the handles come back in.
+        const bool anyHitWanted = !shaders.mAnyHit.empty();
+
+        // **A stage is not a group, which is what the any-hit shader makes true.** One any-hit is
+        // compiled and every hit group names it, so the stages run raygen, the miss shaders, that
+        // one, and then the closest-hit shaders — while the groups run raygen, the miss records and
+        // the hit records. The handles come back in group order, which is the order the table below
+        // is filled in.
         std::vector<ShaderModule> compiled;
-        compiled.reserve(1 + shaders.mMiss.size() + shaders.mHit.size());
-        compiled.emplace_back(device, shaders.mRaygen);
-        for (const std::filesystem::path& module : shaders.mMiss)
-            compiled.emplace_back(device, module);
-        for (const std::filesystem::path& module : shaders.mHit)
-            compiled.emplace_back(device, module);
+        compiled.reserve(1 + shaders.mMiss.size() + (anyHitWanted ? 1 : 0) + shaders.mHit.size());
 
         const Specialization constants(specialization);
 
         std::vector<VkPipelineShaderStageCreateInfo> stages;
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> groups;
-        stages.reserve(compiled.size());
-        groups.reserve(compiled.size());
+        stages.reserve(compiled.capacity());
+        groups.reserve(1 + shaders.mMiss.size() + shaders.mHit.size());
 
-        const auto append = [&](VkShaderStageFlagBits stage, VkRayTracingShaderGroupTypeKHR type) {
+        const auto addStage = [&](VkShaderStageFlagBits stage, const std::filesystem::path& module) {
             const auto at = static_cast<std::uint32_t>(stages.size());
+            compiled.emplace_back(device, module);
             stages.push_back(VkPipelineShaderStageCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = stage,
-                .module = compiled[at].getHandle(),
+                .module = compiled.back().getHandle(),
                 .pName = "main",
                 .pSpecializationInfo = constants.getInfo(),
             });
 
-            const bool general = type == VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+            return at;
+        };
+
+        const auto addGeneral = [&](std::uint32_t stage) {
             groups.push_back(VkRayTracingShaderGroupCreateInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
-                .type = type,
-                .generalShader = general ? at : VK_SHADER_UNUSED_KHR,
-                .closestHitShader = general ? VK_SHADER_UNUSED_KHR : at,
+                .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+                .generalShader = stage,
+                .closestHitShader = VK_SHADER_UNUSED_KHR,
                 .anyHitShader = VK_SHADER_UNUSED_KHR,
                 .intersectionShader = VK_SHADER_UNUSED_KHR,
             });
         };
 
-        append(VK_SHADER_STAGE_RAYGEN_BIT_KHR, VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR);
-        for (std::size_t at = 0; at < shaders.mMiss.size(); ++at)
-            append(VK_SHADER_STAGE_MISS_BIT_KHR, VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR);
-        for (std::size_t at = 0; at < shaders.mHit.size(); ++at)
-            append(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR);
+        addGeneral(addStage(VK_SHADER_STAGE_RAYGEN_BIT_KHR, shaders.mRaygen));
+        for (const std::filesystem::path& module : shaders.mMiss)
+            addGeneral(addStage(VK_SHADER_STAGE_MISS_BIT_KHR, module));
+
+        const std::uint32_t anyHit
+            = anyHitWanted ? addStage(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, shaders.mAnyHit) : VK_SHADER_UNUSED_KHR;
+
+        for (const std::filesystem::path& module : shaders.mHit)
+            groups.push_back(VkRayTracingShaderGroupCreateInfoKHR{
+                .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+                .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
+                .generalShader = VK_SHADER_UNUSED_KHR,
+                .closestHitShader = addStage(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, module),
+                .anyHitShader = anyHit,
+                .intersectionShader = VK_SHADER_UNUSED_KHR,
+            });
 
         const VkRayTracingPipelineCreateInfoKHR pipeline{
             .sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR,
@@ -73,12 +88,11 @@ namespace Rtx
             .pStages = stages.data(),
             .groupCount = static_cast<std::uint32_t>(groups.size()),
             .pGroups = groups.data(),
-            // **Nought where there is nothing to invoke.** Nothing here calls `traceRayEXT` and
-            // nothing executes a hit object, so no shader beyond the ray generation stage can ever
-            // run — and the depth is what the driver sizes the launch's own stack from. One where
-            // the records exist, because a pipeline that has a closest-hit shader has to be able to
-            // reach it.
-            .maxPipelineRayRecursionDepth = groups.size() > 1 ? 1u : 0u,
+            // **One, and one is the whole of it.** The launch traces a hit object and runs the
+            // shader it names; that shader traces again with inline ray queries, which are not
+            // recursion and cost the stack nothing. Nothing anywhere calls `traceRayEXT`, so no
+            // second level exists to be sized for.
+            .maxPipelineRayRecursionDepth = 1,
             .layout = mLayout.getHandle(),
         };
         checkVk(device.getFunctions().mCreateRayTracingPipelines(device.getHandle(), VK_NULL_HANDLE,

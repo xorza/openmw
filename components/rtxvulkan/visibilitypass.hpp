@@ -130,9 +130,10 @@ namespace Rtx
         ///        facility: `shot` prints it and a test asserts on it, and nothing in the game reads
         ///        it — so it is specialized away rather than branched on, and the game's module
         ///        carries no atomic at all.
-        /// @param reorder what the trace does with the threads its launch handed it. Fixed for the
-        ///        life of the pass, the way `countHits` is: it is a decision about the build and not
-        ///        about what is being looked at.
+        /// @param reorder how the trace sorts the threads its launch handed it, between the
+        ///        traversal and the shader that resolves what it found. Fixed for the life of the
+        ///        pass, the way `countHits` is: it is a decision about the build and not about what
+        ///        is being looked at.
         VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
             VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
             bool countHits, Reorder reorder);
@@ -227,12 +228,14 @@ namespace Rtx
         VkDescriptorSetLayout mVolumeLayout = VK_NULL_HANDLE;
 
         /// Where the compiled modules are, kept because a variant is compiled long after
-        /// construction. The trace's are one launch's worth — the ray generation shader and the
-        /// records a hit object may name; `TraceShaders` says why the second kind exists.
+        /// construction. The trace's are one launch's worth: the ray generation shader, the one
+        /// any-hit shader every hit group names, the sky's miss shader, and one closest-hit shader
+        /// per `MaterialKind` in that enum's own order.
         std::filesystem::path mVolumeModule;
         std::filesystem::path mRaygenModule;
-        std::array<std::filesystem::path, 1> mMissModules;
-        std::array<std::filesystem::path, 3> mHitModules;
+        std::filesystem::path mAnyHitModule;
+        std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> mMissModules;
+        std::array<std::filesystem::path, Shaders::HIT_RECORD_COUNT> mHitModules;
 
         /// One pipeline per tuple, every one of them made by `compileEvery`.
         std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mPipelines;

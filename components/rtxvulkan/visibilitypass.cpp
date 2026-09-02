@@ -33,11 +33,15 @@ namespace Rtx
             return (extent + Shaders::FOG_VOLUME_WORKGROUP - 1) / Shaders::FOG_VOLUME_WORKGROUP;
         }
 
-        /// **Both stages on every binding, because one description of set zero serves both passes.**
-        /// The trace is a launch and the fog volume is a dispatch, and the two read the same tables
-        /// out of the same pushed set — so the layout they are addressed through has to be legal for
-        /// each of them.
-        constexpr auto sStages = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        /// **Every stage on every binding, because one description of set zero serves both passes.**
+        /// The trace is a launch of five shaders and the fog volume is a dispatch, and all of them
+        /// read the same tables out of the same pushed set — so the layout they are addressed
+        /// through has to be legal for each of them. A hit is resolved in a closest-hit shader, a
+        /// cutout is tested in an any-hit shader and the sky is drawn in a miss shader, and each of
+        /// those reads the instances, the materials and the textures the same way the launch used
+        /// to.
+        constexpr auto sStages = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR
+            | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR;
         constexpr auto sStorage = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
         /// The structure, the tables a hit reads, the frame itself and the sea, in the order the
@@ -74,7 +78,14 @@ namespace Rtx
     static_assert(static_cast<std::uint32_t>(Reorder::Hit) == Shaders::REORDER_HIT);
     static_assert(static_cast<std::uint32_t>(Reorder::Hint) == Shaders::REORDER_HINT);
     static_assert(static_cast<std::uint32_t>(Reorder::Both) == Shaders::REORDER_BOTH);
-    static_assert(static_cast<std::uint32_t>(Reorder::Bounce) == Shaders::REORDER_BOUNCE);
+
+    // **The hit table is the material kinds, in their own order.** Traversal reads an instance's
+    // shader-table offset to pick the shader, and `SceneAcceleration::placeRow` writes that offset
+    // as the kind itself — so a record out of order would shade every chunk of ground as a pane of
+    // glass, and nothing would say so.
+    static_assert(static_cast<std::uint32_t>(MaterialKind::Surface) == 0);
+    static_assert(static_cast<std::uint32_t>(MaterialKind::Terrain) == 1);
+    static_assert(static_cast<std::uint32_t>(MaterialKind::Water) == 2);
 
     VisibilityVariant VisibilityVariant::resolve(const Shaders::VisibilityConstants& frame, const bool water)
     {
@@ -130,7 +141,9 @@ namespace Rtx
         , mVolumeLayout(volumeLayout.getHandle())
         , mVolumeModule(shaderDirectory / "fogvolume.comp.spv")
         , mRaygenModule(shaderDirectory / "visibility.rgen.spv")
+        , mAnyHitModule(shaderDirectory / "visibility.rahit.spv")
         , mMissModules{ shaderDirectory / "visibility.rmiss.spv" }
+        // In `MaterialKind` order, which is the order traversal indexes them by.
         , mHitModules{ shaderDirectory / "visibilitysurface.rchit.spv", shaderDirectory / "visibilityterrain.rchit.spv",
             shaderDirectory / "visibilitywater.rchit.spv" }
     {
@@ -188,23 +201,15 @@ namespace Rtx
                         mVolumePipelines[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,
                             laterSets(textureLayout), mVolumeModule, variant.describe("fog volume"), specialization);
                     else
-                    {
-                        // **The records only where something records into them.** A trace that
-                        // reorders nothing builds no hit object, so the four stubs are four stages
-                        // compiled into the pipeline and a longer table for nothing to name — and
-                        // the driver sizes the launch's stack from the stages it was given.
-                        const bool records = mReorder != Reorder::Off;
                         mPipelines[variant.index()]
                             = std::make_unique<TracePipeline>(mDevice, sBindings, laterSets(textureLayout),
                                 TraceShaders{
                                     .mRaygen = mRaygenModule,
-                                    .mMiss = records ? std::span<const std::filesystem::path>(mMissModules)
-                                                     : std::span<const std::filesystem::path>(),
-                                    .mHit = records ? std::span<const std::filesystem::path>(mHitModules)
-                                                    : std::span<const std::filesystem::path>(),
+                                    .mMiss = mMissModules,
+                                    .mHit = mHitModules,
+                                    .mAnyHit = mAnyHitModule,
                                 },
                                 variant.describe("visibility"), specialization);
-                    }
                 }
                 catch (...)
                 {

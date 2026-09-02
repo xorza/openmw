@@ -51,8 +51,11 @@ namespace Rtx
         for (std::uint32_t binding = 0; binding < bindings.size(); ++binding)
             bindings[binding] = VkDescriptorSetLayoutBinding{ binding,
                 sampledAt(binding) ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
-                // The volume writes these as a dispatch and the trace samples them as a launch.
-                VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr };
+                // The volume writes these as a dispatch, and the trace samples them from its ray
+                // generation shader and from the closest-hit shaders that shade what a bounce found.
+                VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
+                    | VK_SHADER_STAGE_MISS_BIT_KHR,
+                nullptr };
 
         return SetLayout(device, bindings);
     }

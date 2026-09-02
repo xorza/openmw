@@ -51,6 +51,16 @@ namespace Rtx
         /// The mesh whose bottom-level structure this places.
         Index mMesh = sNoIndex;
 
+        /// What shading a hit on this instance takes — the material's own kind, carried on the
+        /// placement so that traversal can reach it.
+        ///
+        /// **Traversal picks the shader from this, which is what makes the reorder's first key
+        /// free.** The backend writes it into the instance's shader-table record offset, so the
+        /// hardware follows an index instead of the shader reading a material row to find out what
+        /// it is. An instance places one mesh with one material, so the kind is a fact about the
+        /// placement and not about the triangle met.
+        MaterialKind mKind = MaterialKind::Surface;
+
         /// Which rays are interested: `Shaders::MASK_SOLID`; `MASK_WATER` for a surface a shadow
         /// ray must pass straight through; or `MASK_FIRST_PERSON` for the player's own arms, which
         /// only the eye may meet. Sunlight reaching a seabed has come through the surface,

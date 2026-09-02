@@ -17,27 +17,34 @@ namespace Rtx
 
     /// Which shader stands at each record of a trace's shader binding table.
     ///
-    /// **The miss and the hit records exist to be named and not to be run.** Stage 1 traces every
-    /// ray as an inline query and executes nothing off a hit object, so nothing here past the ray
-    /// generation shader is ever invoked — but a hit object records the index of a record, and an
-    /// index into a table that has no such record loses the device. `visibility.rmiss` says the rest.
-    ///
-    /// One record apiece, in the order given: a hit object recording index `i` names entry `i` of
-    /// `mHit`, and a missed one names entry `i` of `mMiss`.
+    /// One record apiece, in the order given: a hit object naming index `i` runs entry `i` of
+    /// `mHit`, and a missed one runs entry `i` of `mMiss`. Which index an instance names is the
+    /// shader-table record offset its acceleration structure carries.
     struct TraceShaders
     {
         std::filesystem::path mRaygen;
         std::span<const std::filesystem::path> mMiss;
         std::span<const std::filesystem::path> mHit;
+
+        /// The one any-hit shader every hit group names, or nothing where traversal has no
+        /// candidate to ask about.
+        ///
+        /// **One and not one per group, because the question is the same one.** Whether a candidate
+        /// landed on the material or in a hole is a fact about that surface and not about what will
+        /// shade it, so a hit group's closest-hit shader is what varies and this is what does not.
+        std::filesystem::path mAnyHit;
     };
 
-    /// A ray tracing pipeline of one ray generation stage, and the shader binding table a launch
-    /// reads it out of.
+    /// A ray tracing pipeline and the shader binding table a launch reads it out of.
     ///
-    /// **A launch and not a dispatch, for one call.** Nothing here traces a ray through the
-    /// pipeline — every ray the trace casts is still an inline query — and there is no recursion.
-    /// What the stage buys is `reorderThreadEXT`, which is defined for ray generation and for no
-    /// other stage, and `.notes/rtx/ser-plan.md` is the argument.
+    /// **A launch and not a dispatch, for two things.** `reorderThreadEXT` is defined for ray
+    /// generation and for no other stage, and a hit object executed there runs a shader picked by
+    /// traversal rather than by a branch — so the divergent half of a trace becomes one small
+    /// program per kind of hit instead of one kernel holding the union of all of them.
+    /// `.notes/rtx/ser-plan.md` §6 is the argument.
+    ///
+    /// Nothing recurses: the shaders a launch invokes trace again with inline ray queries, which
+    /// cost the pipeline's own stack nothing.
     ///
     /// `ComputePipeline` is the same object for a dispatch, and the two share `PipelineLayout`.
     class TracePipeline
@@ -46,7 +53,7 @@ namespace Rtx
         /// Nothing passed outlives the call: every span and path is read into Vulkan's own copies or
         /// into this object's table here.
         ///
-        /// @param bindings set zero, which every binding declares the ray generation stage in.
+        /// @param bindings set zero, which every binding declares every stage of this pipeline in.
         /// @param laterSets layouts bound after set zero. A pipeline layout has to name every set it
         ///        will ever be handed.
         /// @param shaders the compiled SPIR-V the build wrote, by path.

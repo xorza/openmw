@@ -65,12 +65,15 @@ namespace Rtx
                 .mAlphaMode = AlphaMode::Blend,
             });
             const Index sea = scene.addMaterial(Material{ .mKind = MaterialKind::Water });
+            const Index ground = scene.addMaterial(Material{ .mKind = MaterialKind::Terrain });
 
             const Index leaf = scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::translate(1.0f, 0.0f, 0.0f), .mMesh = mesh, .mMaterial = cutout });
             const Index pane = scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::translate(2.0f, 0.0f, 0.0f), .mMesh = mesh, .mMaterial = glass });
             const Index water = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = sea });
+            const Index chunk = scene.addInstance(MeshInstance{
+                .mTransform = osg::Matrixf::translate(3.0f, 0.0f, 0.0f), .mMesh = mesh, .mMaterial = ground });
 
             std::vector<InstanceRecord> kept;
             std::vector<Index> changed;
@@ -80,6 +83,18 @@ namespace Rtx
             EXPECT_TRUE(kept[pane].mTranslucent);
             EXPECT_EQ(kept[water].mMask, Shaders::MASK_WATER);
 
+            // **The kind, which the backend turns into a shader-table record offset.** Traversal
+            // picks the closest-hit shader from it, so a placement carrying the wrong one is shaded
+            // by the wrong program — ground as a plain surface, water as ground — and nothing in the
+            // build or the layers says so. The three are asserted apart rather than each against a
+            // constant, because what a record offset has to be is distinct.
+            EXPECT_EQ(kept[leaf].mKind, MaterialKind::Surface);
+            EXPECT_EQ(kept[pane].mKind, MaterialKind::Surface);
+            EXPECT_EQ(kept[water].mKind, MaterialKind::Water);
+            EXPECT_EQ(kept[chunk].mKind, MaterialKind::Terrain);
+            EXPECT_NE(kept[water].mKind, kept[chunk].mKind);
+            EXPECT_NE(kept[chunk].mKind, kept[leaf].mKind);
+
             const Transform3x4 still = toTransform3x4(osg::Matrixf::identity());
 
             // A move: the motion appears on the frame of the move and goes on the frame after.
@@ -88,9 +103,9 @@ namespace Rtx
             updateInstanceRecords(scene, kept, changed);
             expectSame(kept, scene, "moved");
             EXPECT_FALSE(kept[leaf].mMotion == still) << "a mover carried no motion";
-            // The three the build placed, settling for the first time, and then the leaf again for
+            // The four the build placed, settling for the first time, and then the leaf again for
             // its move: a slot in both lists is a row written twice, which costs one row twice.
-            EXPECT_EQ(changed, (std::vector<Index>{ leaf, pane, water, leaf })) << "the slots written, in order";
+            EXPECT_EQ(changed, (std::vector<Index>{ leaf, pane, water, chunk, leaf })) << "the slots written, in order";
 
             scene.advancePlacement();
             updateInstanceRecords(scene, kept, changed);

@@ -42,8 +42,8 @@ namespace RtxTool
         /// moved between SDK versions, so that two runs are comparable.
         Rtx::Preset mPreset = Rtx::Preset::D;
 
-        /// What the trace does with the threads its launch handed it. Off by default, because off is
-        /// what the other two are measured against.
+        /// How the trace sorts its threads between the traversal and the shader that resolves what
+        /// they found. Off by default, because off is what the others are measured against.
         Rtx::Reorder mReorder = Rtx::Reorder::Off;
 
         /// How much of the lighting painted into each texture to divide back out, from zero to one.

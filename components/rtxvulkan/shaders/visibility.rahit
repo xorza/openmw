@@ -1,0 +1,50 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_ray_query : require
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_ray_tracing_position_fetch : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// Whether a candidate the pipeline met lands on the material or in one of its holes.
+//
+// **The candidate loop, as a stage.** An inline query drives its own candidates and the trace did
+// that in `RTX_RESOLVE`; a pipeline traversal stops at the shader instead, and without this one it
+// would commit the first triangle it met and put every leaf back inside the card it was painted on.
+// Only instances the build marked non-opaque reach here — `SceneAcceleration::placeRow` says which
+// and why.
+//
+// **`candidateStops` and not a second copy of it.** A shadow ray asks the same question of the same
+// surface from the other side, and the two stay one number only while there is one place it is
+// worked out. `seeThrough` is false here for the reason it is false for the eye's own query: a ray
+// that keeps what it passed through cannot commit the surface it passed through, and this one
+// commits.
+
+#include "lib/bindings.glsl"
+#include "lib/geometry.glsl"
+#include "lib/traversal.glsl"
+
+hitAttributeEXT vec2 barycentrics;
+
+void main()
+{
+    vec3 corners[3];
+    corners[0] = gl_HitTriangleVertexPositionsEXT[0];
+    corners[1] = gl_HitTriangleVertexPositionsEXT[1];
+    corners[2] = gl_HitTriangleVertexPositionsEXT[2];
+
+    // The cone is the camera's, for the reason `stageHit` gives: only the eye's ray and the one
+    // behind a pane it peeled are traced by the pipeline.
+    const Cone cone = coneAt(frame.mCamera);
+
+    // An lvalue `candidateStops` writes only where it is walking past, which this never is.
+    float through = 1.0;
+
+    if (!candidateStops(uint(gl_InstanceCustomIndexEXT), uint(gl_PrimitiveID), barycentrics,
+            triangleCross(corners, gl_ObjectToWorldEXT), gl_WorldRayDirectionEXT,
+            cone.mWidth + cone.mSpread * gl_HitTEXT, false, through))
+        ignoreIntersectionEXT;
+}

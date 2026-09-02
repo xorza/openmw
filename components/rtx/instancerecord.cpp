@@ -69,6 +69,7 @@ namespace Rtx
                 .mTransform = toTransform3x4(placement),
                 .mMotion = sStillTransform,
                 .mMesh = instance.mMesh,
+                .mKind = worn.mKind,
                 .mMask = water              ? Shaders::MASK_WATER
                     : instance.mFirstPerson ? Shaders::MASK_FIRST_PERSON
                                             : Shaders::MASK_SOLID,
