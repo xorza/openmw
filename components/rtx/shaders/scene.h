@@ -912,7 +912,9 @@ namespace Rtx::Shaders
     /// **What it costs, measured on the release harness against the descriptor build**: nothing on
     /// the exteriors, and three per cent of the trace at the Balmora mages' guild — 0.04 ms — in
     /// every one of thirteen interleaved pairs. The compute pipelines compile to byte-identical
-    /// sizes either way, so that is a load path and not an instruction count. `ISSUES.md` holds it.
+    /// sizes either way, so that is a load path and not an instruction count, and the driver shows
+    /// no kernel's disassembly. Accepted as the price of six bindings and of a class of mistake
+    /// gone; the power-capped card's own drift is of the same size.
     struct GpuTables
     {
         /// The three tables of block addresses, which a global vertex or index id is resolved

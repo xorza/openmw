@@ -160,8 +160,6 @@ namespace Rtx::Testing
 
             const std::vector<float> settledPixels = renderSequence(Shaders::ACCUMULATE_FRAMES);
             const float settled = errorAgainstReference(settledPixels);
-            std::cerr << "GRAZING before=" << before << " after=" << after << " settled=" << settled
-                      << " ratio=" << settled / after << "\n";
 
             // **The accumulator may not make this worse, and on this surface that is the whole of
             // what it can be asked.** Measured here, the cascade alone already lands at 0.0020 of
@@ -545,33 +543,37 @@ namespace Rtx::Testing
             };
 
             const std::vector<float> settledPixels = renderSequence(Shaders::ACCUMULATE_FRAMES);
-            const double alone = errorAgainstReference(renderSequence(1));
             const double settled = errorAgainstReference(settledPixels);
 
-            // Measured on this box through `Channel::Radiance`: 0.00456 against the converged
-            // reference with the cascade alone, 0.00266 once sixteen frames are behind it — the
-            // history removes **42%** of the error the filter cannot reach. Deterministic to the last
-            // digit across runs, which is what lets the bounds below sit this close to the figures.
+            // **The cascade alone over the same sixteen draws the history averaged, pooled as a root
+            // mean square.** One frame's error swings by four per cent with the draw it got, so a
+            // single frame under this ratio put it at the mercy of the sampler's stream: anything that
+            // reshuffled the stream moved the figure by a fiftieth, and a bound a fiftieth above it
+            // failed on a change that touched neither the cascade nor the history. Sixteen pooled
+            // swing by one per cent.
+            double pooled = 0.0;
+            for (std::uint32_t frame = 0; frame < Shaders::ACCUMULATE_FRAMES; ++frame)
+            {
+                std::vector<float> one;
+                renderFiltered(scene, camera, size, one, 1, frame);
+                const double error = errorAgainstReference(one);
+                pooled += error * error / static_cast<double>(Shaders::ACCUMULATE_FRAMES);
+            }
+            const double alone = std::sqrt(pooled);
+
+            // Measured on this box through `Channel::Radiance`, over ten starts of the sampler's
+            // stream: the cascade alone leaves 0.00475 to 0.00486 pooled over sixteen frames, and the
+            // same sixteen accumulated leave 0.00268 to 0.00285 — the history removes two fifths of
+            // the error the filter cannot reach, and the ratio runs from 0.556 to 0.590 with a spread
+            // of 0.011 about 0.573. Deterministic to the last digit for one stream, and a different
+            // stream is what any change to the sampler or the scene hands this test, so the bound
+            // below sits seven spreads above the mean rather than one.
             //
-            // **Eleven bits is enough for a guide and for a history.** Narrowing the guide left
-            // `settled` the same to six digits, and narrowing the mean and the surface the
-            // accumulator keeps moved it from 0.00271 to 0.00266. Neither builds a reference — a
-            // normal is compared against a neighbour's, and a mean is a running value replaced every
-            // frame rather than a thousand terms added into one — which is why the argument that
-            // holds the radiance channels at full width reaches neither.
-            //
-            // **A third was the quantiser, and these are the figures without it.** Read back as
-            // bytes instead of floats, the same pair came to 0.00406 and 0.00253 against the 0.00380
-            // and 0.00214 the float readback gave at the time — because 0.00253 is two thirds of one
-            // byte at this brightness and the settled frame was sitting on the floor the output
-            // format put under it. The raw figure barely moved and the settled one moved a sixth,
-            // which is exactly the shape a quantiser's floor has: it costs the quiet number and not
-            // the noisy one.
             EXPECT_GT(alone, 0.003) << "the cascade alone leaves enough error here for the question to mean something: "
                                     << alone;
-            EXPECT_LT(settled, alone * 0.60)
-                << "and a history of " << Shaders::ACCUMULATE_FRAMES << " frames takes two fifths of what the cascade "
-                << "cannot: " << alone << " becomes " << settled;
+            EXPECT_LT(settled, alone * 0.65) << "and a history of " << Shaders::ACCUMULATE_FRAMES
+                                             << " frames takes over a third of what the cascade "
+                                             << "cannot: " << alone << " becomes " << settled;
 
             // **And it converges on the reference rather than on its own opinion.** Quieter is not
             // the claim — an average that drifted would be quieter too, and wrong.

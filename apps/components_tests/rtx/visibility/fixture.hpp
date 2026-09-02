@@ -401,8 +401,11 @@ namespace Rtx::Testing
         /// combining them is the accumulator under test. `resetHistory` first, because a
         /// one-frame baseline taken after a longer run is a baseline that already has a history
         /// in it — which reads as the accumulator doing nothing at all.
+        ///
+        /// @param first the sampler's frame the run starts at, so a run can be handed a stream of its
+        ///        own rather than the one every other run in the test consumed.
         void renderFiltered(const SceneDesc& scene, const Shaders::VisibilityConstants& camera, std::uint32_t size,
-            std::vector<float>& values, std::uint32_t frames)
+            std::vector<float>& values, std::uint32_t frames, std::uint32_t first = 0)
         {
             mRenderer->resize(size, size);
             mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
@@ -411,7 +414,7 @@ namespace Rtx::Testing
             for (std::uint32_t frame = 0; frame < frames; ++frame)
             {
                 Shaders::VisibilityConstants sampled = camera;
-                sampled.mFrame = frame;
+                sampled.mFrame = first + frame;
                 mRenderer->renderFrame(sampled, FrameOptions{ .mAccumulate = 0, .mFilter = true, .mExposure = 1.0f });
             }
 
