@@ -9,6 +9,39 @@
 // What the wavelet's temporal half needs. Included verbatim by both sides, for the reason
 // `visibility.h` is.
 
+// What each of the three histories is made of, said once for both sides that have to agree.
+//
+// **The pass's own, and not the G-buffer's.** A channel the trace writes and a history the denoiser
+// keeps share nothing but a number of bits, and these three were built from `GBUFFER_RADIANCE` and
+// `GBUFFER_GUIDE` — so narrowing a channel for the trace's sake silently narrowed a history whose
+// evidence lies somewhere else entirely. `.notes/rtx/gbuffer-plan.md` is that evidence.
+//
+// **The surface's distance is what keeps that one full-width.** It is in world units against a far
+// plane of 200000, and a half float stops at 65504 — so every surface past that would carry an
+// infinity, and `sameSurface` would compare against a NaN and reject a history it should have kept.
+//
+// **And the moments stay full floats whatever the other two do.** `E[l²] - E[l]²` is a difference of
+// two numbers that are nearly equal once a pixel has settled, and a format that rounds each of them
+// separately loses the whole of what is left.
+//
+// A macro rather than a constant, for the reason `gbuffer.h` gives: a layout qualifier is a token
+// GLSL reads before it parses anything, and `VK_FORMAT_*` is an enumerator, and the preprocessor is
+// the one thing both languages share.
+
+#ifdef RTX_HOST
+
+#define ACCUMULATE_COLOUR VK_FORMAT_R32G32B32A32_SFLOAT
+#define ACCUMULATE_SURFACE VK_FORMAT_R32G32B32A32_SFLOAT
+#define ACCUMULATE_MOMENTS VK_FORMAT_R32G32B32A32_SFLOAT
+
+#else
+
+#define ACCUMULATE_COLOUR rgba32f
+#define ACCUMULATE_SURFACE rgba32f
+#define ACCUMULATE_MOMENTS rgba32f
+
+#endif
+
 #ifdef RTX_HOST
 
 #include <cstdint>

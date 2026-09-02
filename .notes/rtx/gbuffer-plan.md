@@ -161,10 +161,18 @@ and to `atrous.h`:
 - `ATROUS_CHANNEL` — what a level reads and writes.
 
 Each a `RTX_HOST` `VkFormat` and a GLSL layout token, exactly as `gbuffer.h` does it and for the same
-reason. All four start at today's values, so this stage is a pure refactor: `verify` is
-byte-identical and every test passes unchanged.
+reason. All four start at today's values, so this stage is a pure refactor.
 
-**Effort**: an hour. **Risk**: none. It is what makes each stage below one edit in one place.
+**Done.** `ATROUS_CHANNEL` carries a `static_assert` against `GBUFFER_RADIANCE` in `atrouspass.cpp`,
+because the cascade ping-pongs against `CHANNEL_INDIRECT` and one binding cannot name two formats —
+which is §7's obstacle, now a compile error rather than a surprise.
+
+**And the proof is the SPIR-V rather than a picture.** Compiling each shader from `HEAD` and from the
+working tree with the build's own `glslc` line, less `-g`, `accumulate.comp` came out byte-identical
+and `atrous.comp` differed only in SSA numbering — every instruction matches once `%[0-9]+` is
+normalised, the two extra ids being what the added `accumulate.h` numbered and discarded. That is a
+stronger statement than a `verify` run and it costs seconds, so it is the check to reach for wherever
+a stage claims to change no arithmetic. 509 tests under `Rtx*` pass.
 
 ## 5. Stage 1: the guide to half floats
 
@@ -185,6 +193,40 @@ told it is packed.
 **Verification.** `RtxVisibility*` in full — the guide is what every filter test compares surfaces
 by. `openmw-rtxtool verify` will move on the wavelet views and must not move on the upscaled ones.
 Bench both profiles.
+
+**Done, and it is worth about what the arithmetic said.** Medians over four sessions, release,
+against a build of the same tree without the change:
+
+| zone | 1920×1080 | 1280×720 |
+|---|---|---|
+| `filter` | 2.72 → 2.26, **−17%** | 1.15 → 0.95, **−17%** |
+| `accumulate` | 0.685 → 0.62, **−9%** | 0.26 → 0.24, **−8%** |
+| `trace` | no reproducible change | 1.54 → 1.54 |
+| `upscale` | — | 2.04 → 2.04 |
+
+The three views agree: the cascade takes 15 to 17 per cent at every view and both resolutions, the
+accumulator 7 to 9. The shipping frame does not move, which is what §1.2 predicted of a pass at 9%
+of peak.
+
+**The trace zone is not an instrument at this resolution.** It measured +10% across four
+alternations in one session and flat across four in the next, and the same trace with the denoiser
+switched off measures a third of a millisecond faster than with it on — so what the zone reports at
+1080p includes work the following passes overlap into it. The driver reports no executable
+statistics for a ray tracing pipeline, so the register count cannot settle it either. A trace that
+writes eight fewer bytes a pixel and never reads the channel back has no mechanism to be slower, and
+at 1280×720 it is 1.54 either way.
+
+**And the picture cost nothing measurable.**
+`theHistoryCarriesWhereTheCascadeHasNoNeighboursToBorrow` puts the RMS error against a converged
+reference at 0.00456 with the cascade alone and 0.00271 with sixteen frames behind it. The settled
+figure is identical to six digits with the guide at half width and at full, and the raw one moves in
+its fifth. `verify` moves on all twenty views by 1 to 9 of 255 on 0.2 to 6% of their pixels, which is
+a denoiser whose weights shifted and not a channel that lost anything.
+
+**One thing the change needed that the plan did not foresee.** A unit vector rounded to eleven bits
+a component has a length just off one, so the cascade's `pow(dot, 128)` on the centre tap — its own
+normal against itself — could pass one and return a weight an eighth too heavy. `atrous.comp` clamps
+the cosine above as well as below.
 
 **Effort**: half a day, most of it the measurement.
 

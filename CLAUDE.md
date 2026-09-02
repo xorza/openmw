@@ -165,6 +165,17 @@ what only a window shows — how something moves, whether an artefact is a still
 **No benching and no frame times until the renderer draws everything the game has.** Land the
 feature, check it with `shot`, and move on.
 
+**Measure on a hot card, and never sleep between runs.** A cooldown is the wrong instrument: it
+costs more wall time than every measurement it guards, and it starts each leg of an A/B from a
+different thermal and clock state, which is the variance it was meant to remove. Warm the part
+instead — one `bench` of the same views, thrown away — then run the legs back to back and
+interleaved, so any drift left reaches both equally. The harness prints the core clock and the
+temperature beside every result, and *that* is the check: a run whose clock or temperature differs
+from its neighbour's is the run to repeat. **Buy confidence with repeats and not with waiting** — a
+repeat of `--views=<one> --seconds=10` costs thirteen seconds where a cooldown costs a minute, so
+six alternations still come in under two minutes. Half an hour of idling is never the answer to a
+noisy number.
+
 **Profiling.** `apps/rtxtool/profile.sh` records the CPU with `perf` over the measured frames only.
 Nsight Systems is installed, and this machine's driver lets a non-root user profile the device —
 `/etc/modprobe.d/nvidia-profiling.conf` sets `NVreg_RestrictProfilingToAdminUsers=0` — so a GPU

@@ -3,8 +3,6 @@
 #include <array>
 #include <cassert>
 
-#include <components/rtx/shaders/gbuffer.h>
-
 #include "gbuffer.hpp"
 
 namespace Rtx
@@ -49,12 +47,12 @@ namespace Rtx
 
         for (std::size_t i = 0; i < 2; ++i)
         {
-            mColour[i] = std::make_unique<Image>(mDevice, width, height, GBUFFER_RADIANCE, VK_IMAGE_USAGE_STORAGE_BIT,
+            mColour[i] = std::make_unique<Image>(mDevice, width, height, ACCUMULATE_COLOUR, VK_IMAGE_USAGE_STORAGE_BIT,
                 i == 0 ? "accumulate-colour-0" : "accumulate-colour-1");
-            mSurface[i] = std::make_unique<Image>(mDevice, width, height, GBUFFER_GUIDE, VK_IMAGE_USAGE_STORAGE_BIT,
-                i == 0 ? "accumulate-surface-0" : "accumulate-surface-1");
-            mMoments[i] = std::make_unique<Image>(mDevice, width, height, GBUFFER_RADIANCE, VK_IMAGE_USAGE_STORAGE_BIT,
-                i == 0 ? "accumulate-moments-0" : "accumulate-moments-1");
+            mSurface[i] = std::make_unique<Image>(mDevice, width, height, ACCUMULATE_SURFACE,
+                VK_IMAGE_USAGE_STORAGE_BIT, i == 0 ? "accumulate-surface-0" : "accumulate-surface-1");
+            mMoments[i] = std::make_unique<Image>(mDevice, width, height, ACCUMULATE_MOMENTS,
+                VK_IMAGE_USAGE_STORAGE_BIT, i == 0 ? "accumulate-moments-0" : "accumulate-moments-1");
         }
 
         mCurrent = 0;

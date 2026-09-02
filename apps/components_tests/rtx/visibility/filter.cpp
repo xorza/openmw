@@ -538,17 +538,22 @@ namespace Rtx::Testing
             const double alone = errorAgainstReference(renderSequence(1));
             const double settled = errorAgainstReference(settledPixels);
 
-            // Measured on this box through `Channel::Radiance`: 0.00380 against the converged
-            // reference with the cascade alone, 0.00214 once sixteen frames are behind it — the
-            // history removes **44%** of the error the filter cannot reach. Deterministic to the last
+            // Measured on this box through `Channel::Radiance`: 0.00456 against the converged
+            // reference with the cascade alone, 0.00271 once sixteen frames are behind it — the
+            // history removes **40%** of the error the filter cannot reach. Deterministic to the last
             // digit across runs, which is what lets the bounds below sit this close to the figures.
             //
-            // **A third was the quantiser, and this is the figure without it.** Read back as bytes
-            // the same pair came to 0.00406 and 0.00253, a ratio of 0.62 — because 0.00253 is two
-            // thirds of one byte at this brightness and the settled frame was sitting on the floor
-            // the output format put under it. The raw figure barely moved (0.00406 to 0.00380) and
-            // the settled one moved a sixth, which is exactly the shape a quantiser's floor has: it
-            // costs the quiet number and not the noisy one.
+            // **Eleven bits of normal is enough for this.** `settled` is the same to six digits
+            // with the guide at half width and at full, and `alone` moves only in its fifth — which
+            // is what a filter that compares directions rather than summing them should show.
+            //
+            // **A third was the quantiser, and these are the figures without it.** Read back as
+            // bytes instead of floats, the same pair came to 0.00406 and 0.00253 against the 0.00380
+            // and 0.00214 the float readback gave at the time — because 0.00253 is two thirds of one
+            // byte at this brightness and the settled frame was sitting on the floor the output
+            // format put under it. The raw figure barely moved and the settled one moved a sixth,
+            // which is exactly the shape a quantiser's floor has: it costs the quiet number and not
+            // the noisy one.
             EXPECT_GT(alone, 0.003) << "the cascade alone leaves enough error here for the question to mean something: "
                                     << alone;
             EXPECT_LT(settled, alone * 0.60)

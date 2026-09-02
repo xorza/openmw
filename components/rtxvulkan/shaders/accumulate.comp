@@ -44,11 +44,11 @@ layout(set = 0, binding = 3, GBUFFER_DEPTH) uniform readonly image2D depth;
 layout(set = 0, binding = 4, GBUFFER_MASK) uniform readonly image2D biasMask;
 
 /// Last frame's mean in `rgb`, and how many frames are in it in `a`.
-layout(set = 0, binding = 5, GBUFFER_RADIANCE) uniform readonly image2D historyColour;
+layout(set = 0, binding = 5, ACCUMULATE_COLOUR) uniform readonly image2D historyColour;
 
 /// The surface last frame's mean belongs to: its normal in `xyz` and its distance from the eye in
 /// `w`. Zero normal where nothing was accumulated.
-layout(set = 0, binding = 6, GBUFFER_GUIDE) uniform readonly image2D historySurface;
+layout(set = 0, binding = 6, ACCUMULATE_SURFACE) uniform readonly image2D historySurface;
 
 /// The first and second moments of that mean's luminance in `rg`, and in `b` the variance the
 /// cascade weighs a tap by.
@@ -58,11 +58,11 @@ layout(set = 0, binding = 6, GBUFFER_GUIDE) uniform readonly image2D historySurf
 /// certain" — the opposite of the truth, and it would leave the noise precisely where it is. What a
 /// pixel with no history has is no idea how noisy it is, and the honest value for that is the
 /// largest one, not the smallest.
-layout(set = 0, binding = 7, GBUFFER_RADIANCE) uniform readonly image2D historyMoments;
+layout(set = 0, binding = 7, ACCUMULATE_MOMENTS) uniform readonly image2D historyMoments;
 
-layout(set = 0, binding = 8, GBUFFER_RADIANCE) uniform writeonly image2D colourOut;
-layout(set = 0, binding = 9, GBUFFER_GUIDE) uniform writeonly image2D surfaceOut;
-layout(set = 0, binding = 10, GBUFFER_RADIANCE) uniform writeonly image2D momentsOut;
+layout(set = 0, binding = 8, ACCUMULATE_COLOUR) uniform writeonly image2D colourOut;
+layout(set = 0, binding = 9, ACCUMULATE_SURFACE) uniform writeonly image2D surfaceOut;
+layout(set = 0, binding = 10, ACCUMULATE_MOMENTS) uniform writeonly image2D momentsOut;
 
 layout(push_constant, scalar) uniform Push
 {

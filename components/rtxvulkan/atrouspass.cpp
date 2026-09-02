@@ -44,6 +44,9 @@ namespace Rtx
         /// the centre has been measuring. SVGF's own, and for the first time there is a variance to
         /// scale it by.
         constexpr float sLuminanceSigma = 4.0f;
+
+        static_assert(ATROUS_CHANNEL == GBUFFER_RADIANCE,
+            "the cascade ping-pongs against CHANNEL_INDIRECT, so one binding takes both formats");
     }
 
     AtrousPass::AtrousPass(const Device& device, const std::filesystem::path& shaderDirectory)
@@ -59,7 +62,7 @@ namespace Rtx
             return;
 
         mScratch = std::make_unique<Image>(
-            mDevice, width, height, GBUFFER_RADIANCE, VK_IMAGE_USAGE_STORAGE_BIT, "atrous-scratch");
+            mDevice, width, height, ATROUS_CHANNEL, VK_IMAGE_USAGE_STORAGE_BIT, "atrous-scratch");
     }
 
     const Image& AtrousPass::record(

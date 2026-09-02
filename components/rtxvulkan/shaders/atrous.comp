@@ -22,6 +22,7 @@
 // no rasterizer to hand it. And SVGF's luminance term is missing outright: it weighs by the
 // variance of an accumulated history, and there is no history here yet.
 
+#include "accumulate.h"
 #include "atrous.h"
 #include "camera.h"
 #include "colour.h"
@@ -30,10 +31,10 @@
 layout(local_size_x = ATROUS_WORKGROUP, local_size_y = ATROUS_WORKGROUP) in;
 
 /// One bounce, albedo divided out, as the last level left it.
-layout(set = 0, binding = 0, GBUFFER_RADIANCE) uniform readonly image2D source;
+layout(set = 0, binding = 0, ATROUS_CHANNEL) uniform readonly image2D source;
 
 /// Where this level puts what it made of it.
-layout(set = 0, binding = 1, GBUFFER_RADIANCE) uniform writeonly image2D filtered;
+layout(set = 0, binding = 1, ATROUS_CHANNEL) uniform writeonly image2D filtered;
 
 /// The shading normal in `xyz`. A ray that hit nothing left a zero normal, which no surface can
 /// match, so the sky neither contributes nor gets filtered. `w` is roughness, which this does not
@@ -47,7 +48,7 @@ layout(set = 0, binding = 3, GBUFFER_DEPTH) uniform readonly image2D depth;
 /// The estimator's own variance in `b`, written by the accumulator in front of this cascade. One
 /// where a pixel has no history to have measured a spread with, which reads as "trust the
 /// neighbours entirely" and is the honest answer for a single sample.
-layout(set = 0, binding = 4, GBUFFER_RADIANCE) uniform readonly image2D moments;
+layout(set = 0, binding = 4, ACCUMULATE_MOMENTS) uniform readonly image2D moments;
 
 layout(push_constant, scalar) uniform Push
 {
@@ -120,7 +121,11 @@ void main()
             // Two surfaces are the same surface where they face the same way and lie in the same
             // plane. Both tests are needed: a facing test alone joins two parallel walls a room
             // apart, and a plane test alone joins a floor to the wall standing on it.
-            const float facing = pow(max(dot(normal, facingThere), 0.0), level.mNormalPower);
+            // **Clamped above as well as below, because the guide holds half floats.** A unit
+            // vector rounded to eleven bits a component has a length just off one, so a dot with a
+            // normal that matches — the centre tap's with its own, above all — can pass one, and a
+            // hundred and twenty-eight powers of that is a weight an eighth too heavy.
+            const float facing = pow(clamp(dot(normal, facingThere), 0.0, 1.0), level.mNormalPower);
             const float offset = abs(dot(normal, positionAt(tap, imageLoad(depth, tap).g) - position));
             const float coplanar = exp(-offset / (level.mPlaneSigma * footprint));
 

@@ -10,6 +10,25 @@
 // What one wavelet level of the denoiser needs. Included verbatim by both sides, for the reason
 // `visibility.h` is.
 
+// What a level reads and writes, said once for both sides that have to agree.
+//
+// **The cascade's own, and bound to `CHANNEL_INDIRECT` for as long as the two agree.** Level zero
+// reads what the accumulator left in the G-buffer's channel and the levels after it ping-pong
+// against a scratch of this pass's own, so one binding is handed both images — and a storage image's
+// format qualifier names one format. `AtrousPass` asserts the agreement rather than assuming it.
+//
+// A macro rather than a constant, for the reason `gbuffer.h` gives.
+
+#ifdef RTX_HOST
+
+#define ATROUS_CHANNEL VK_FORMAT_R32G32B32A32_SFLOAT
+
+#else
+
+#define ATROUS_CHANNEL rgba32f
+
+#endif
+
 #ifdef RTX_HOST
 
 #include <cstdint>

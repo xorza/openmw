@@ -29,6 +29,17 @@
 // 1/255 steps. Fog thick enough for that step to show is fog no star is visible through. Four
 // megabytes at 1080p against the sixteen a half-float image would take for the same three numbers.
 //
+// **A normal is eleven bits a component, because everything that reads one compares directions.**
+// The guide's `xyz` is a unit vector and its `w` a fraction, and the sharpest test made of either is
+// the cascade's `pow(dot, 128)`, which cuts a tap at about six degrees of tilt — against the 0.03
+// degrees a half float rounds a direction by. Ray Reconstruction asks for this width itself: the
+// DLSS-RR integration guide §3.4.3 takes "RGB16_FLOAT or RGB32_FLOAT" with the roughness packed into
+// alpha, which is what `DlssPass` already tells it this is.
+//
+// This is the largest tap in the frame — the cascade reads it twenty-five times a pixel at each of
+// five levels — so eight bytes rather than sixteen takes a fifth off that pass's traffic, and
+// sixteen megabytes at 1080p rather than thirty-three.
+//
 // So the format is a macro rather than a constant: a layout qualifier is a token GLSL reads before
 // it parses anything, and `VK_FORMAT_*` is an enumerator. The preprocessor is the one thing both
 // languages share, which is what lets one line define both.
@@ -37,7 +48,7 @@
 
 #define GBUFFER_RADIANCE VK_FORMAT_R32G32B32A32_SFLOAT
 #define GBUFFER_ALBEDO VK_FORMAT_R16G16B16A16_SFLOAT
-#define GBUFFER_GUIDE VK_FORMAT_R32G32B32A32_SFLOAT
+#define GBUFFER_GUIDE VK_FORMAT_R16G16B16A16_SFLOAT
 #define GBUFFER_MOTION VK_FORMAT_R32G32_SFLOAT
 #define GBUFFER_DEPTH VK_FORMAT_R32G32_SFLOAT
 #define GBUFFER_MASK VK_FORMAT_R8_UNORM
@@ -47,7 +58,7 @@
 
 #define GBUFFER_RADIANCE rgba32f
 #define GBUFFER_ALBEDO rgba16f
-#define GBUFFER_GUIDE rgba32f
+#define GBUFFER_GUIDE rgba16f
 #define GBUFFER_MOTION rg32f
 #define GBUFFER_DEPTH rg32f
 #define GBUFFER_MASK r8

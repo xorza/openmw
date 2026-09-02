@@ -27,8 +27,12 @@ namespace Rtx
         /// of 0.067% that the test derives from what the format can show. Full floats put it back.
         constexpr VkFormat sRadiance = GBUFFER_RADIANCE;
 
-        /// The guide is full floats so that a normal stays a normal after three of its components
-        /// have been quantised; the roughness beside it would fit in anything.
+        /// Half floats, and `gbuffer.h` has the angles the width is derived from.
+        ///
+        /// **A normal quantised is not a normal summed**, which is the whole of why this moved and
+        /// the radiance channels did not: the error a half float puts on a direction is compared
+        /// against a neighbour's and then thrown away, where the error it puts on a radiance is
+        /// added to a thousand of its own kind.
         constexpr VkFormat sGuide = GBUFFER_GUIDE;
 
         /// **Half floats, because an albedo is a fraction and is never accumulated.** The argument
