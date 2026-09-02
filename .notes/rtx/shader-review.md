@@ -61,6 +61,35 @@ will keep flipping on edits that change nothing about the work.
 
 ## Design findings
 
+## Which unit each pass is waiting on
+
+**Measured rather than argued, and it retires most of what is below.** Nsight Systems samples the
+device's throughput counters at 20 kHz without root on this box —
+`nsys profile --gpu-metrics-devices=0 --gpu-metrics-set=ad10x-gfxt --gpu-metrics-frequency=20000` —
+and exporting the capture to SQLite gives one row per counter per sample. Bucketing those samples by
+ray-core throughput separates the trace from everything else without needing a label on either.
+
+| samples where | SM | RTCORE | L1 | L2 | VRAM |
+|---|---|---|---|---|---|
+| the ray cores are busy — the trace | 37 | **60–97** | 19 | 19 | 12 |
+| they are idle — every compute pass | 43 | 0 | 31 | 23 | 40 |
+
+**The trace is ray-core bound and nothing else.** Its VRAM throughput is twelve per cent at both
+1280×720 and 1920×1080, which is the same tenth of peak the byte arithmetic gives. No format, no
+packing and no table narrowed will move it — what will is fewer rays and cheaper traversal, which is
+finding 2 and nothing on this list.
+
+**One compute pass runs at the memory limit and it is the accumulator.** Eight thousand of the
+thirty-nine thousand compute-dominated samples sit at 80–100% VRAM with the SMs at twelve per cent,
+which is 0.44 ms a frame against a measured `accumulate` of 0.42. Finding 4 has already taken it
+from 0.685.
+
+**And the cascade is bound by the work per tap rather than by bytes**, which §4 measured directly:
+ten instructions a tap and eight bytes a tap cost the same there.
+
+So the ranking below is about the ray core first, the host second, and memory traffic last — the
+opposite of the order the findings were written in.
+
 ### 1. Shader Execution Reordering needs a ray generation shader, and the trace is a compute kernel
 
 `visibility.comp` traces with `rayQueryEXT` from a compute dispatch, and `VISIBILITY_STRIP` is a
