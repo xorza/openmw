@@ -129,7 +129,7 @@ void main()
     // across columns is what carries it from one column to the next. Integrated along the jittered
     // ray instead, it would move by however much an inverse square changes across a block, every
     // frame, with nothing averaging it: a lantern's glow that boils where the lantern is steady.
-    const Ray middle = rayAt(frame.mCamera, (vec2(column) + 0.5) * float(FOG_VOLUME_SCALE) - 0.5);
+    const Ray middle = fogColumnRayAt(uvec2(column), vec2(0.5));
     const vec3 fromMiddle = frame.mOrigin + middle.mOffset;
 
     // **The boundaries are fixed and only the sample inside them moves.** The stride is what the

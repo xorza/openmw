@@ -365,6 +365,16 @@ FogSources fogSourcesAlong(vec3 direction)
 /// what the column measures is where the eye's view of the air ends.
 const uint FOG_COLUMN_MASK = MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON;
 
+/// The ray through a point `inside` the block of pixels one column of the fog volume stands for,
+/// from nought to one across the block.
+///
+/// From `rayAt`, the same call the trace makes from a pixel, so the two cannot disagree about where
+/// a column points. Half a pixel back, because `rayAt` adds its own.
+Ray fogColumnRayAt(uvec2 column, vec2 inside)
+{
+    return rayAt(frame.mCamera, (vec2(column) + inside) * float(FOG_VOLUME_SCALE) - 0.5);
+}
+
 /// The ray one column of the fog volume samples its air along this frame.
 ///
 /// **Stated once, because two passes have to agree about it exactly.** `fogdepth.comp` traces it to
@@ -372,17 +382,12 @@ const uint FOG_COLUMN_MASK = MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON;
 /// along it — so a froxel's "short of the surface" is measured along the ray the surface was found
 /// on.
 ///
-/// **Through a point drawn inside the block of pixels the column stands for, and a different point
-/// every frame**, so that over frames the column's froxels cover the block rather than one line
-/// through it. From `rayAt`, the same call the trace makes from a pixel, so the two cannot disagree
-/// about where a column points. Half a pixel back, because `rayAt` adds its own.
+/// **Through a point drawn inside the block, and a different point every frame**, so that over
+/// frames the column's froxels cover the block rather than one line through it.
 Ray fogColumnRay(uvec2 column)
 {
-    const vec2 acrossJitter
-        = vec2(randomAt(column + uvec2(17u, 5u), STREAM_FOG), randomAt(column + uvec2(3u, 29u), STREAM_FOG));
-    const vec2 inside = (vec2(column) + acrossJitter) * float(FOG_VOLUME_SCALE) - 0.5;
-
-    return rayAt(frame.mCamera, inside);
+    return fogColumnRayAt(
+        column, vec2(randomAt(column + uvec2(17u, 5u), STREAM_FOG), randomAt(column + uvec2(3u, 29u), STREAM_FOG)));
 }
 
 /// What the air holds `depth` of the way through the grid, on the line from one slice's sample to

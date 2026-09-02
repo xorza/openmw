@@ -19,6 +19,16 @@ namespace Rtx::Testing
         /// their own tests, and those run at nought.
         constexpr float sVolumeOverEvenAir = 0.999f;
 
+        /// What one unit of a lamp's intensity delivers `span` units away, from the same windowed
+        /// inverse square the shader uses: an inverse square that reaches exactly zero at the
+        /// lamp's reach, because Morrowind's is a hard cutoff and clipping one leaves a ring.
+        constexpr float lampDelivered(float span, float reach)
+        {
+            const float ratio = span / reach;
+            const float window = 1.0f - ratio * ratio * ratio * ratio;
+            return window * window / (span * span + 1.0f);
+        }
+
         /// A level rectangle standing between a ray along the y axis and a lamp above it.
         ///
         /// **Not `makeSheet`, because half a lid is the point.** A square about the origin is
@@ -225,14 +235,8 @@ namespace Rtx::Testing
             // without also lighting what the air is in front of.
             const osg::Vec3f lamp(0.0f, 100.0f, 20000.0f);
 
-            // What one unit of intensity delivers at the middle of the ray, from the same windowed
-            // inverse square the shader uses: an inverse square that reaches exactly zero at the
-            // light's reach, because Morrowind's is a hard cutoff and clipping one leaves a ring.
             const osg::Vec3f middle(0.0f, -0.5f * distance, 0.0f);
-            const float span = (lamp - middle).length();
-            const float ratio = span / reach;
-            const float window = 1.0f - ratio * ratio * ratio * ratio;
-            const float delivered = window * window / (span * span + 1.0f);
+            const float delivered = lampDelivered((lamp - middle).length(), reach);
 
             const auto look = [&](bool lit, bool shaded = false) {
                 SceneDesc scene = makeWall();
@@ -310,6 +314,8 @@ namespace Rtx::Testing
             /// What it delivers where the ray passes closest, which the intensity is scaled to
             /// rather than named — so the expectations below need no falloff in them.
             static constexpr float sIrradiance = 12.0f;
+            static inline const osg::Vec3f sIntensity
+                = osg::Vec3f(1.0f, 1.0f, 1.0f) * (sIrradiance / lampDelivered(sLamp.z(), sReach));
 
             /// How high the lid hangs. Between the ray and the lamp, so a shadow ray from a point
             /// on the ray crosses it half way along.
@@ -339,13 +345,6 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
 
-            // What one unit of intensity delivers where the ray passes closest to the lamp, from
-            // the same windowed inverse square the shader uses.
-            constexpr float across = 300.0f;
-            constexpr float ratio = across / Fixture::sReach;
-            constexpr float window = 1.0f - ratio * ratio * ratio * ratio;
-            constexpr float delivered = window * window / (across * across + 1.0f);
-
             const auto look = [&](bool lit, bool lidded) {
                 SceneDesc scene = makeWall();
 
@@ -357,7 +356,7 @@ namespace Rtx::Testing
                 if (lit)
                     scene.addLight(Light{
                         .mPosition = Fixture::sLamp,
-                        .mIntensity = osg::Vec3f(1.0f, 1.0f, 1.0f) * (Fixture::sIrradiance / delivered),
+                        .mIntensity = Fixture::sIntensity,
                         .mReach = Fixture::sReach,
                     });
 
@@ -422,11 +421,6 @@ namespace Rtx::Testing
             constexpr std::size_t frames = 192;
             constexpr std::size_t settled = 64;
 
-            constexpr float across = 300.0f;
-            constexpr float ratio = across / Fixture::sReach;
-            constexpr float window = 1.0f - ratio * ratio * ratio * ratio;
-            constexpr float delivered = window * window / (across * across + 1.0f);
-
             SceneDesc scene = makeWall();
 
             // Over the near half of the stretch the lamp reaches and no further. A shadow ray
@@ -438,7 +432,7 @@ namespace Rtx::Testing
 
             scene.addLight(Light{
                 .mPosition = Fixture::sLamp,
-                .mIntensity = osg::Vec3f(1.0f, 1.0f, 1.0f) * (Fixture::sIrradiance / delivered),
+                .mIntensity = Fixture::sIntensity,
                 .mReach = Fixture::sReach,
             });
 
@@ -508,35 +502,29 @@ namespace Rtx::Testing
         /// lamp's closest approach.
         TEST_F(RtxVisibilityTest, theVolumeLightsTheAirUpToASurfaceWhereverInASliceItStands)
         {
+            using Fixture = LampInTheAir;
+
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = std::size_t{ size / 2 } * size + size / 2;
             constexpr std::size_t frames = 48;
             constexpr std::size_t settled = 16;
 
-            // The lamp stands closest to the ray eight hundred units ahead of the eye and three
-            // hundred above it, whatever the wall's distance, so the air it lights is the same air
-            // in every frame and only where the wall cuts it off moves.
-            constexpr float ahead = 800.0f;
-            constexpr float across = 300.0f;
-            constexpr float reach = 512.0f;
-            constexpr float irradiance = 12.0f;
-            constexpr float ratio = across / reach;
-            constexpr float window = 1.0f - ratio * ratio * ratio * ratio;
-            constexpr float delivered = window * window / (across * across + 1.0f);
-
-            constexpr float extinction = 0.693147f / 2000.0f;
+            // The lamp stands where the fixture puts it relative to the eye, whatever the wall's
+            // distance, so the air it lights is the same air in every frame and only where the wall
+            // cuts it off moves.
+            const float ahead = Fixture::sDistance + Fixture::sLamp.y();
 
             const auto settle = [&](float distance, bool banked, bool fogged) {
                 SceneDesc scene = makeWall();
                 scene.addLight(Light{
-                    .mPosition = osg::Vec3f(0.0f, ahead - distance, across),
-                    .mIntensity = osg::Vec3f(1.0f, 1.0f, 1.0f) * (irradiance / delivered),
-                    .mReach = reach,
+                    .mPosition = osg::Vec3f(0.0f, ahead - distance, Fixture::sLamp.z()),
+                    .mIntensity = Fixture::sIntensity,
+                    .mReach = Fixture::sReach,
                 });
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 10.0f, size, size, 100000.0f);
-                litThroughFog(camera, fogged ? extinction : 0.0f);
+                litThroughFog(camera, fogged ? Fixture::sExtinction : 0.0f);
                 camera.mFogUniform = banked ? sVolumeOverEvenAir : 1.0f;
 
                 // Nothing in the frame but the lamp: black air, a black sky and no ambient, for the
@@ -558,7 +546,7 @@ namespace Rtx::Testing
             for (const float distance : { 809.0f, 871.0f, 903.0f, 1101.0f })
             {
                 const double wall = settle(distance, false, false);
-                const double through = std::exp(-double{ extinction } * double{ distance });
+                const double through = std::exp(-double{ Fixture::sExtinction } * double{ distance });
 
                 const double closed = settle(distance, false, true) - wall * through;
                 const double volume = settle(distance, true, true) - wall * through;

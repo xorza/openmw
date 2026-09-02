@@ -238,7 +238,8 @@ clamping sampler does the same in one fetch.
 Split into `fogscatter.comp` and `fogintegrate.comp`. The cost was never the reason: the `air` zone
 measured 0.25 ms, under this item's own threshold. What the split was worth was the estimator it
 allowed — one probe answering for eight slices was most of the noise in a lamp-lit night frame, and
-it could not be fixed while a column was one thread. `.notes/rtx/fog-plan.md` is the record.
+it could not be fixed while a column was one thread. `fogscatter.comp`, `fogdepth.comp`, `FogSlice`
+and `Rtx::FogVolume` carry the record.
 
 ### 8. Sprite binning on the host
 

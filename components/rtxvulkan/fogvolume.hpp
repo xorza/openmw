@@ -19,7 +19,7 @@ namespace Rtx
     /// march walks `FOG_STEPS` steps down every primary ray, reads the coverage field at each of
     /// them and buys `FOG_SHADOW_RAYS` sun probes, for every pixel of every frame — and the field it
     /// integrates has no detail at a pixel's size. One column per `FOG_VOLUME_SCALE` squared pixels
-    /// answers all of them, and the trace takes one trilinear fetch.
+    /// answers all of them, and the trace reads one edge of the column and steps through one slice.
     ///
     /// **Two volumes and not one, because what filters and what a pixel reads are different
     /// quantities.** A froxel's scattering and extinction are properties of the *point* — they
