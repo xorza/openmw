@@ -15,7 +15,9 @@ namespace Rtx
 {
     namespace
     {
-        constexpr VkBufferUsageFlags sTableUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        // Addressable and never bound: the frame block carries where every table is, and no
+        // descriptor names one.
+        constexpr VkBufferUsageFlags sTableUsage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
         // A shader cannot see a C++ enum, so the two spellings of the same three values are pinned
         // here rather than trusted to stay in step.
@@ -128,19 +130,18 @@ namespace Rtx
         mMaterialTable.open(device, slots, sTableUsage, "materials");
         mNormalTable.open(device, slots, sTableUsage, "normals");
 
-        // **Every table exists from here, whether or not anything has been written to it.** A pass
-        // binds all of them and the shader declares all of them; what fills one is a later call that
-        // a frame may never make — a scene with no sprites never bins any, and the tiles were then
-        // bound as nothing at all. Growing on write cannot carry that guarantee, because the write is
-        // exactly what does not happen.
+        // **Every table exists from here, whether or not anything has been written to it.** A frame
+        // carries the address of all of them and the shader reaches all of them; what fills one is a
+        // later call that a frame may never make — a scene with no sprites never bins any, and the
+        // tiles were then bound as nothing at all. Growing on write cannot carry that guarantee,
+        // because the write is exactly what does not happen.
         graveyard.bury(growTo(mMeshes, device, 0, sTableUsage));
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
         {
             Tables& tables = mTables[slot];
 
-            for (Buffer* table :
-                { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightOffsets, &tables.mLightIndices,
-                    &tables.mSprites, &tables.mEmitters, &tables.mSpriteTileOffsets, &tables.mSpriteTileIndices })
+            for (Buffer* table : { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightList,
+                     &tables.mSprites, &tables.mEmitters, &tables.mSpriteTileList })
                 graveyard.bury(growTo(*table, device, 0, sTableUsage));
         }
 
@@ -238,13 +239,11 @@ namespace Rtx
 
         mSpriteTiles.rebuild(mSpriteScratch, mEmitterScratch, origin, camera);
 
-        // A frame with no sprites has an empty list, and the offsets are all nought — so the shader
-        // reads none of this and `growTo` is what makes sure there is something for it not to read.
-        reserve(tables.mSpriteTileOffsets, mSpriteTiles.getOffsets().size_bytes(), graveyard);
-        reserve(tables.mSpriteTileIndices, mSpriteTiles.getIndices().size_bytes(), graveyard);
-
-        tables.mSpriteTileOffsets.write(mSpriteTiles.getOffsets());
-        tables.mSpriteTileIndices.write(mSpriteTiles.getIndices());
+        // A frame with no sprites has a list that is all starts and no runs, so the shader reads none
+        // of it past the start it looks up.
+        const std::span<const std::uint32_t> tileList = mSpriteTiles.getList().getWhole();
+        reserve(tables.mSpriteTileList, tileList.size_bytes(), graveyard);
+        tables.mSpriteTileList.write(tileList);
     }
 
     void SceneBuffers::shade(const SceneDesc& scene, const std::uint32_t slot, Graveyard& graveyard)
@@ -398,23 +397,21 @@ namespace Rtx
 
         mLightGrid.rebuild(scene.getLights());
 
-        // **The tables go over as they are, empty ones included.** Something has to be bound to a
-        // descriptor the shader declares, and `growTo` is what guarantees it — each of these used to
+        // **The tables go over as they are, empty ones included.** Something has to stand at every
+        // address the frame carries, and `growTo` is what guarantees it — each of these used to
         // carry a one-element stand-in of its own to say the same thing, five of them, and the one
         // table that had none is what cost a device. What stops the shader reading an empty table is
         // its count, exactly as it always was.
         const std::span<const Shaders::GpuLight> lights(mLightScratch);
-        const std::span<const std::uint32_t> indices = mLightGrid.getIndices();
+        const std::span<const std::uint32_t> lightList = mLightGrid.getList().getWhole();
         const std::span<const Shaders::GpuEmitter> emitters(mEmitterScratch);
 
         reserve(tables.mLights, lights.size_bytes(), graveyard);
-        reserve(tables.mLightOffsets, mLightGrid.getOffsets().size_bytes(), graveyard);
-        reserve(tables.mLightIndices, indices.size_bytes(), graveyard);
+        reserve(tables.mLightList, lightList.size_bytes(), graveyard);
         reserve(tables.mEmitters, emitters.size_bytes(), graveyard);
 
         tables.mLights.write(lights);
-        tables.mLightOffsets.write(mLightGrid.getOffsets());
-        tables.mLightIndices.write(indices);
+        tables.mLightList.write(lightList);
         tables.mEmitters.write(emitters);
 
         // **Only what changed shape, and every pose this copy missed.** A cell's normals are the
@@ -428,11 +425,30 @@ namespace Rtx
         });
     }
 
+    void SceneBuffers::describeTables(const std::uint32_t slot, Shaders::GpuTables& into) const
+    {
+        assert(slot < mSlots && "a frame slot this scene has no copy of the tables for");
+
+        const Tables& tables = mTables[slot];
+
+        into.mNormalBlocks = mNormalTable.at(slot).getTableAddress();
+        into.mTexCoordBlocks = mTexCoords.getTableAddress();
+        into.mMeshes = mMeshes.getDeviceAddress();
+        into.mInstances = mInstanceTable.getDeviceAddress(slot);
+        into.mMaterials = mMaterialTable.getDeviceAddress(slot);
+        into.mLayers = tables.mLayers.getDeviceAddress();
+        into.mMasks = tables.mMasks.getDeviceAddress();
+        into.mLights = tables.mLights.getDeviceAddress();
+        into.mLightList = tables.mLightList.getDeviceAddress();
+        into.mSprites = tables.mSprites.getDeviceAddress();
+        into.mEmitters = tables.mEmitters.getDeviceAddress();
+        into.mSpriteTileList = tables.mSpriteTileList.getDeviceAddress();
+    }
+
     VkDeviceSize SceneBuffers::Tables::getBytes() const
     {
-        return mLayers.getSize() + mMasks.getSize() + mLights.getSize() + mLightOffsets.getSize()
-            + mLightIndices.getSize() + mSprites.getSize() + mEmitters.getSize() + mSpriteTileOffsets.getSize()
-            + mSpriteTileIndices.getSize();
+        return mLayers.getSize() + mMasks.getSize() + mLights.getSize() + mLightList.getSize() + mSprites.getSize()
+            + mEmitters.getSize() + mSpriteTileList.getSize();
     }
 
     VkDeviceSize SceneBuffers::getBytes() const

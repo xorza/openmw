@@ -22,7 +22,7 @@
 /// world produces no motion at all rather than a drift of rounding.
 vec3 movedBy(uint index, vec3 position)
 {
-    const vec4 rows[3] = instances[index].mMotion;
+    const vec4 rows[3] = instanceAt(index).mMotion;
     const vec3 was = vec3(dot(rows[0], vec4(position, 1.0)), dot(rows[1], vec4(position, 1.0)),
         dot(rows[2], vec4(position, 1.0)));
 

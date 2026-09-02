@@ -242,12 +242,14 @@ namespace Rtx
 
         const std::size_t tiles = std::size_t{ mAcross } * mDown;
 
-        mOffsets.assign(tiles + 1, 0);
-        mCursor.assign(tiles, 0);
-        mIndices.clear();
+        mList.start(tiles);
 
+        // Placed with nothing counted, so every tile reads an empty run.
         if (sprites.empty() || emitters.empty() || tiles == 0)
+        {
+            mList.place();
             return;
+        }
 
         const CameraFrame frame = frameOf(camera);
 
@@ -273,18 +275,11 @@ namespace Rtx
             }
         };
 
-        place([&](std::size_t tile, std::uint32_t) { ++mOffsets[tile + 1]; });
+        place([&](std::size_t tile, std::uint32_t) { mList.count(tile); });
+        mList.place();
 
-        for (std::size_t tile = 0; tile < tiles; ++tile)
-        {
-            mOffsets[tile + 1] += mOffsets[tile];
-            mCursor[tile] = mOffsets[tile];
-        }
-
-        mIndices.resize(mOffsets.back());
-
-        // Ascending, because the sprites are walked ascending and each tile's cursor only moves
+        // Ascending, because the sprites are walked ascending and each tile's run only moves
         // forward — which is the composite order the march already keeps.
-        place([&](std::size_t tile, std::uint32_t sprite) { mIndices[mCursor[tile]++] = sprite; });
+        place([&](std::size_t tile, std::uint32_t sprite) { mList.put(tile, sprite); });
     }
 }

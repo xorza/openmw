@@ -18,8 +18,11 @@
 
 #include <cstdint>
 
+#include <osg/Vec4f>
+
 namespace Rtx::Shaders
 {
+    using vec4 = osg::Vec4f;
     using uint = std::uint32_t;
     using uint64 = std::uint64_t;
 
@@ -33,16 +36,25 @@ namespace Rtx::Shaders
     RTX_CONST uint PROBE_WORKGROUP = 64;
 
     /// How many ways the probe reads one pattern, and so how many `mCount`-long runs its readings
-    /// buffer holds: through a descriptor, through a pointer the host handed over, and through a
-    /// pointer read out of a table and indexed by block.
-    RTX_CONST uint PROBE_READINGS = 3;
+    /// buffer holds: through a descriptor, through a pointer the host handed over as a push
+    /// constant, through a pointer read out of a table and indexed by block, and through a pointer
+    /// read out of a uniform block.
+    RTX_CONST uint PROBE_READINGS = 4;
+
+    /// What a reference to a row of `ProbeRow`s claims about every address it is constructed from.
+    ///
+    /// **Sixteen, because that is the largest claim the renderer's own tables make**, and a claim
+    /// larger than the truth is undefined behaviour with no message. `GpuLayer` is 48 bytes with two
+    /// `vec4` at sixteen and thirty-two, so its reference may claim sixteen and the compiler may
+    /// load a `vec4` in one instruction. This is the same shape, read the same way.
+    RTX_CONST uint PROBE_ROW_ALIGN = 16;
 
     struct ProbeConstants
     {
         /// The same buffer bound at set 0 binding 0, by device address.
         uint64 mSource;
 
-        /// How many `vec3`s to read out of it.
+        /// How many `vec3`s to read out of it, and how many rows out of `ProbeAddresses::mRows`.
         uint mCount;
 
         /// Elements per block in the address table at binding 2, which holds the same pattern cut
@@ -50,10 +62,38 @@ namespace Rtx::Shaders
         uint mBlock;
     };
 
+    /// The addresses the probe reads out of a uniform block rather than out of a push constant.
+    ///
+    /// **The construct the frame block carries the scene's tables in**, asked of the device on its
+    /// own: a `uint64_t` in a scalar-layout uniform block, converted to a reference and dereferenced.
+    struct ProbeAddresses
+    {
+        /// The same buffer `ProbeConstants::mSource` names.
+        uint64 mSource;
+
+        /// `mCount` rows of `ProbeRow`.
+        uint64 mRows;
+    };
+
+    /// A row the size and shape of `GpuLayer`, read through a reference that claims
+    /// `PROBE_ROW_ALIGN`.
+    struct ProbeRow
+    {
+        vec4 mA;
+        vec4 mB;
+        vec4 mC;
+    };
+
 #ifdef RTX_HOST
+
+    static_assert(sizeof(ProbeAddresses) == 16, "ProbeAddresses must be scalar-packed on every side");
+    static_assert(sizeof(ProbeRow) == 48, "ProbeRow must be scalar-packed on every side");
 }
+
 #else
+
 #undef uint64
+
 #endif
 
 #endif

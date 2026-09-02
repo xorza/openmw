@@ -38,7 +38,7 @@ namespace Rtx
                     return;
 
                 mGraveyard = std::make_unique<Graveyard>(getDevice(), getPool());
-                mTable.open(getDevice(), 2, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test");
+                mTable.open(getDevice(), 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
             }
 
             /// Which rows `slot` is owed, sorted and with the duplicates a repeated write leaves.
@@ -220,7 +220,7 @@ namespace Rtx
         TEST_F(RtxSlotTableTest, blocksOweEveryRunNamedSinceThatCopyWasLastFilled)
         {
             SlotBlocks blocks(64, sizeof(std::uint32_t));
-            blocks.open(*mHarness->mDevice, 2, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test blocks");
+            blocks.open(*mHarness->mDevice, 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test blocks");
             blocks.reserve(128);
 
             blocks.write(2);
@@ -242,7 +242,7 @@ namespace Rtx
         TEST_F(RtxSlotTableTest, settlingSaysACopyHoldsEverythingThereIs)
         {
             SlotBlocks blocks(64, sizeof(std::uint32_t));
-            blocks.open(*mHarness->mDevice, 2, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, "test blocks");
+            blocks.open(*mHarness->mDevice, 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test blocks");
             blocks.reserve(128);
 
             blocks.write(3);
@@ -256,11 +256,11 @@ namespace Rtx
             EXPECT_EQ(filled, (std::vector<Index>{ 3 })) << "settling one copy answered for the other";
         }
 
-        /// A table with nothing in it still has a buffer, because a descriptor has to be bound.
-        TEST_F(RtxSlotTableTest, aTableWithNoRowsStillHasABufferToBind)
+        /// A table with nothing in it still has a buffer, because the frame carries an address for it.
+        TEST_F(RtxSlotTableTest, aTableWithNoRowsStillHasABufferToAddress)
         {
             sync(0);
-            EXPECT_NE(mTable.getHandle(0), VK_NULL_HANDLE);
+            EXPECT_NE(mTable.getDeviceAddress(0), 0u);
         }
     }
 }

@@ -66,7 +66,17 @@ namespace Rtx
         /// The GPU-side address, for the acceleration structure builder and for anything that
         /// dereferences a pointer in a shader. Only valid when the buffer was created with
         /// `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`, which is asserted.
-        VkDeviceAddress getDeviceAddress() const;
+        ///
+        /// **Taken once at creation and kept**, because the frame block carries where every table is
+        /// and asking the driver for fourteen addresses a frame is fourteen calls the frame does not
+        /// owe. Nought for a slot with nothing in it yet, so a table nobody grew is named by the
+        /// assert that reads the block rather than by one here.
+        VkDeviceAddress getDeviceAddress() const
+        {
+            assert((mAddressable || mHandle.get() == VK_NULL_HANDLE) && "an address of a buffer not created for one");
+
+            return mAddress;
+        }
 
         /// The whole buffer in main memory, for a caller that reads it back.
         ///
@@ -131,6 +141,7 @@ namespace Rtx
 
         VkDeviceSize mSize = 0;
         bool mAddressable = false;
+        VkDeviceAddress mAddress = 0;
 
         /// Whether reading it back is what its memory is for. `map` is the only thing that asks.
         bool mReadable = false;
@@ -138,12 +149,13 @@ namespace Rtx
 
     /// Grows `held` so it can hold `bytes`, and never leaves it holding nothing.
     ///
-    /// **A descriptor a shader declares must have something bound to it**, and a table with nothing
-    /// in it is still declared. Written the obvious way — grow if what is wanted does not fit — a
-    /// table asked for nought bytes is never made at all, and the null handle reaches
-    /// `vkCmdDispatch`: undefined, intermittent, and a lost device with no message. Three of these
-    /// were doing it, one of them had a hand-written stand-in for it, and the rule that allowed it
-    /// was the same in all seven places. It is this one now.
+    /// **A table the frame names must be somewhere**, and a table with nothing in it is still
+    /// named. Written the obvious way — grow if what is wanted does not fit — a table asked for
+    /// nought bytes is never made at all. When the tables were descriptors that was a null handle
+    /// reaching `vkCmdDispatch`: undefined, intermittent, and a lost device with no message. Three of
+    /// these were doing it, one of them had a hand-written stand-in for it, and the rule that
+    /// allowed it was the same in all seven places. It is this one now. As addresses it is an
+    /// address of nought in the frame block, which `VisibilityPass::record` asserts on.
     ///
     /// Keeps whatever it already has where that is big enough, so a table settles at its high-water
     /// mark rather than being made again every frame.

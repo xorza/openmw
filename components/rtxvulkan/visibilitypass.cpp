@@ -34,6 +34,24 @@ namespace Rtx
             return (extent + workgroup - 1) / workgroup;
         }
 
+        /// Whether every table has an address, and each is aligned as the reference that reads it
+        /// declares. Debug-only, through the assert that calls it.
+        [[maybe_unused]] bool everyTableAddressed(const Shaders::GpuTables& tables)
+        {
+            const auto at
+                = [](std::uint64_t address, std::uint32_t align) { return address != 0 && address % align == 0; };
+
+            return at(tables.mNormalBlocks, Shaders::TABLE_ALIGN_BLOCKS)
+                && at(tables.mTexCoordBlocks, Shaders::TABLE_ALIGN_BLOCKS)
+                && at(tables.mIndexBlocks, Shaders::TABLE_ALIGN_BLOCKS) && at(tables.mMeshes, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mInstances, Shaders::TABLE_ALIGN_ROWS) && at(tables.mMaterials, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mLayers, Shaders::TABLE_ALIGN_LAYERS) && at(tables.mMasks, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mLights, Shaders::TABLE_ALIGN_ROWS) && at(tables.mLightList, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mBlueNoise, Shaders::TABLE_ALIGN_ROWS) && at(tables.mSprites, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mEmitters, Shaders::TABLE_ALIGN_ROWS)
+                && at(tables.mSpriteTileList, Shaders::TABLE_ALIGN_ROWS);
+        }
+
         /// **Every stage on every binding, because one description of set zero serves both passes.**
         /// The trace is a launch of five shaders and the fog volume is a dispatch, and all of them
         /// read the same tables out of the same pushed set — so the layout they are addressed
@@ -45,18 +63,18 @@ namespace Rtx
             | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR;
         constexpr auto sStorage = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
-        /// The structure, the tables a hit reads, the frame itself and the sea, in the order the
-        /// shader declares them. The channels the trace writes are not here: `GBuffer` says
-        /// why they have a set of their own.
+        /// The structure, the hit counter, the frame itself, the sea and the fog's field, in the
+        /// order the shader declares them. The tables a hit reads are not here: `GpuTables` in the
+        /// frame block says where they are. The channels the trace writes are not here either:
+        /// `GBuffer` says why they have a set of their own.
         constexpr std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> sBindings = [] {
             std::array<VkDescriptorSetLayoutBinding, Shaders::BIND_COUNT> declared{};
             declared[Shaders::BIND_SCENE] = VkDescriptorSetLayoutBinding{ Shaders::BIND_SCENE,
                 VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1, sStages };
 
-            // One up to the frame are storage buffers: the hit count, then every table in the order
-            // `record` writes them.
-            for (std::uint32_t binding = Shaders::BIND_HITS; binding < Shaders::BIND_FRAME; ++binding)
-                declared[binding] = VkDescriptorSetLayoutBinding{ binding, sStorage, 1, sStages };
+            // The one storage buffer left: every table the shader reads travels as an address in the
+            // frame block, and the hit counter is a harness facility with no table to ride in.
+            declared[Shaders::BIND_HITS] = VkDescriptorSetLayoutBinding{ Shaders::BIND_HITS, sStorage, 1, sStages };
 
             declared[Shaders::BIND_FRAME]
                 = VkDescriptorSetLayoutBinding{ Shaders::BIND_FRAME, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, sStages };
@@ -133,7 +151,8 @@ namespace Rtx
         VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
         bool countHits, Reorder reorder)
         : mDevice(device)
-        , mBlueNoise(uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+        , mBlueNoise(
+              uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         , mCountHits(countHits ? 1u : 0u)
@@ -328,28 +347,9 @@ namespace Rtx
             .accelerationStructureCount = 1,
             .pAccelerationStructures = &inputs.mScene,
         };
-        // Bindings one upwards are all storage buffers, in the order the shader declares them.
-        const std::array<VkDescriptorBufferInfo, 12> buffers{
-            VkDescriptorBufferInfo{ hitCount.getHandle(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getNormalBlocks(inputs.mSlot), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getTexCoordBlocks(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mIndexBlocks, 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getMeshes(), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getInstances(inputs.mSlot), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getMaterials(inputs.mSlot), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getLayers(inputs.mSlot), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getMasks(inputs.mSlot), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getLights(inputs.mSlot), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getLightOffsets(inputs.mSlot), 0, VK_WHOLE_SIZE },
-            VkDescriptorBufferInfo{ inputs.mBuffers->getLightIndices(inputs.mSlot), 0, VK_WHOLE_SIZE },
-        };
-        const VkDescriptorBufferInfo noiseWrite{ mBlueNoise.getHandle(), 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo spriteWrite{ inputs.mBuffers->getSprites(inputs.mSlot), 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo emitterWrite{ inputs.mBuffers->getEmitters(inputs.mSlot), 0, VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo tileOffsetWrite{ inputs.mBuffers->getSpriteTileOffsets(inputs.mSlot), 0,
-            VK_WHOLE_SIZE };
-        const VkDescriptorBufferInfo tileIndexWrite{ inputs.mBuffers->getSpriteTileIndices(inputs.mSlot), 0,
-            VK_WHOLE_SIZE };
+        // The two buffers still bound: the hit counter, and the frame block every table is reached
+        // through.
+        const VkDescriptorBufferInfo hitWrite{ hitCount.getHandle(), 0, VK_WHOLE_SIZE };
         const VkDescriptorBufferInfo frameWrite{ mConstants.getHandle(), 0, VK_WHOLE_SIZE };
 
         // **The tiles' widths come off the pass that built them**, so what the shader divides by is
@@ -366,13 +366,12 @@ namespace Rtx
         // **Nothing bound here may be nothing.** A descriptor the shader declares and a null handle
         // is undefined at the dispatch: the driver may fault, may not, and says nothing either way —
         // it cost this renderer a device and five seconds of a wedged process before the layers were
-        // asked. Every one of these is a table an owner promises to have opened or an input a caller
-        // promises to pass, so a null is a broken promise and not a state to handle.
+        // asked. Both of these are inputs a caller promises to pass, so a null is a broken promise
+        // and not a state to handle. The tables are asked the same question as addresses, in
+        // `record`.
         [[maybe_unused]] const auto bound
             = [](const VkDescriptorBufferInfo& write) { return write.buffer != VK_NULL_HANDLE; };
-        assert(std::all_of(buffers.begin(), buffers.end(), bound) && "a table bound as nothing");
-        assert(bound(noiseWrite) && bound(spriteWrite) && bound(emitterWrite) && bound(tileOffsetWrite)
-            && bound(tileIndexWrite) && bound(frameWrite) && "an input bound as nothing");
+        assert(bound(hitWrite) && bound(frameWrite) && "an input bound as nothing");
 
         // **Appended rather than indexed.** Every one of these used to name its own slot — channels
         // at `1 + i`, buffers at `i + 8`, then twenty-one through twenty-six by hand — so adding a
@@ -411,14 +410,7 @@ namespace Rtx
         // The one write whose payload hangs off `pNext` rather than off a pointer field.
         append(Shaders::BIND_SCENE, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, &sceneWrite, nullptr, nullptr);
 
-        for (std::uint32_t i = 0; i < buffers.size(); ++i)
-            appendBuffer(Shaders::BIND_HITS + i, buffers[i]);
-
-        appendBuffer(Shaders::BIND_BLUE_NOISE, noiseWrite);
-        appendBuffer(Shaders::BIND_SPRITES, spriteWrite);
-        appendBuffer(Shaders::BIND_EMITTERS, emitterWrite);
-        appendBuffer(Shaders::BIND_SPRITE_TILE_OFFSETS, tileOffsetWrite);
-        appendBuffer(Shaders::BIND_SPRITE_TILE_INDICES, tileIndexWrite);
+        appendBuffer(Shaders::BIND_HITS, hitWrite);
         appendUniform(Shaders::BIND_FRAME, frameWrite);
 
         // **Sampled from `GENERAL` rather than moved to a read-only layout**, for the reason
@@ -488,6 +480,22 @@ namespace Rtx
             .mSize = lamps.getSize(),
         };
 
+        // And where every table is, for the same reason. The scene names its own; the two it does
+        // not own are the pass's tile and the structure's index blocks.
+        //
+        // **Every address read here names a buffer that is alive when the trace runs**, because the
+        // placement ran before this and buried what it displaced in the graveyard, which holds it
+        // until this frame's fence. Nothing between here and the submit grows a table.
+        inputs.mBuffers->describeTables(inputs.mSlot, described.mTables);
+        described.mTables.mBlueNoise = mBlueNoise.getDeviceAddress();
+        described.mTables.mIndexBlocks = inputs.mIndexBlocks;
+
+        // **Nothing addressed here may be nothing, and every address must be what its reference
+        // claims.** A descriptor bound as a null handle cost this renderer a device with no message;
+        // an address of nought or one off its claimed alignment is the same mistake one step later,
+        // and the device says even less about it.
+        assert(everyTableAddressed(described.mTables) && "a table addressed as nothing, or not as its block declares");
+
         writeConstants(commands, described);
 
         // **Resolved from the constants this frame is about to be traced with**, and from nothing
@@ -522,9 +530,8 @@ namespace Rtx
 
             // **The set stays pushed across all three dispatches.** Every pipeline here is
             // addressed through the same layout at the same bind point, so what was pushed for the
-            // first is still bound for the others — and pushing the whole of set zero again is
-            // twenty-three descriptor writes for a pass that reads a handful of images out of
-            // another set.
+            // first is still bound for the others — and pushing set zero again would be six
+            // descriptor writes for a pass that reads a handful of images out of another set.
             vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, scatter->getHandle());
 
             vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),

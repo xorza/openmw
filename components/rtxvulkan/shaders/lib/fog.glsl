@@ -633,7 +633,7 @@ vec3 lampsInAir(
         const uvec2 near = lampsWithin(lampsInCell(cell));
         for (uint i = near.x; i < near.y; ++i)
         {
-            const GpuLight held = lights[lightIndices[i]];
+            const GpuLight held = lightAt(lightListAt(i));
 
             const vec3 offset = held.mPosition - origin;
             const float closest = dot(offset, direction);

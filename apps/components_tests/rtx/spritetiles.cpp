@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -82,11 +84,9 @@ namespace
     {
         const std::size_t tile = std::size_t{ y / Shaders::SPRITE_TILE } * tiles.getAcross() + x / Shaders::SPRITE_TILE;
 
-        for (std::uint32_t at = tiles.getOffsets()[tile]; at < tiles.getOffsets()[tile + 1]; ++at)
-            if (tiles.getIndices()[at] == sprite)
-                return true;
+        const std::span<const std::uint32_t> run = tiles.getList().getRun(tile);
 
-        return false;
+        return std::find(run.begin(), run.end(), sprite) != run.end();
     }
 
     /// A billboard emitter and an oriented one, and the sprites they hold.
@@ -200,16 +200,15 @@ namespace
         tiles.rebuild(layer.mSprites, layer.mEmitters, constants.mOrigin, constants.mCamera);
 
         std::uint32_t runs = 0;
-        for (std::size_t tile = 0; tile + 1 < tiles.getOffsets().size(); ++tile)
+        for (std::size_t tile = 0; tile < std::size_t{ tiles.getAcross() } * tiles.getDown(); ++tile)
         {
-            const std::uint32_t from = tiles.getOffsets()[tile];
-            const std::uint32_t to = tiles.getOffsets()[tile + 1];
-            if (to - from < 2)
+            const std::span<const std::uint32_t> run = tiles.getList().getRun(tile);
+            if (run.size() < 2)
                 continue;
 
             ++runs;
-            for (std::uint32_t at = from + 1; at < to; ++at)
-                EXPECT_LT(tiles.getIndices()[at - 1], tiles.getIndices()[at]) << "tile " << tile;
+            for (std::size_t at = 1; at < run.size(); ++at)
+                EXPECT_LT(run[at - 1], run[at]) << "tile " << tile;
         }
 
         EXPECT_GT(runs, 0u) << "no tile held more than one sprite, so nothing was ordered";
@@ -228,9 +227,9 @@ namespace
         tiles.rebuild(layer.mSprites, layer.mEmitters, constants.mOrigin, constants.mCamera);
 
         const std::size_t tileCount = std::size_t{ tiles.getAcross() } * tiles.getDown();
-        ASSERT_EQ(tiles.getIndices().size(), tileCount);
+        ASSERT_EQ(tiles.getList().getEntryCount(), tileCount);
         for (std::size_t tile = 0; tile < tileCount; ++tile)
-            EXPECT_EQ(tiles.getOffsets()[tile + 1] - tiles.getOffsets()[tile], 1u) << "tile " << tile;
+            EXPECT_EQ(tiles.getList().getRun(tile).size(), 1u) << "tile " << tile;
     }
 
     /// A rain streak falling past the camera reaches the strip it covers and not the whole frame.
@@ -263,7 +262,7 @@ namespace
         // Every tile is what the ball around the corners gave, and it is what this is measured
         // against: the strip is two of the four tile columns and all three rows.
         const std::size_t tileCount = std::size_t{ tiles.getAcross() } * tiles.getDown();
-        EXPECT_EQ(tiles.getIndices().size(), tileCount / 2);
+        EXPECT_EQ(tiles.getList().getEntryCount(), tileCount / 2);
     }
 
     /// A sprite behind the eye reaches no tile, and one off to the side reaches only its own.
@@ -278,13 +277,14 @@ namespace
         SpriteTiles tiles;
         tiles.rebuild(layer.mSprites, layer.mEmitters, constants.mOrigin, constants.mCamera);
 
-        for (const std::uint32_t index : tiles.getIndices())
+        const std::span<const std::uint32_t> list = tiles.getList().getWhole();
+        for (const std::uint32_t index : list.subspan(list.front()))
             EXPECT_EQ(index, 1u) << "the sprite behind the eye reached a tile";
 
         // Two units across at a hundred away is under a pixel of a sixty-degree frame, so the slack
         // the jitter needs is the whole of what it covers: four tiles at the very most.
-        EXPECT_GT(tiles.getIndices().size(), 0u);
-        EXPECT_LE(tiles.getIndices().size(), 4u);
+        EXPECT_GT(tiles.getList().getEntryCount(), 0u);
+        EXPECT_LE(tiles.getList().getEntryCount(), 4u);
     }
 
     /// The orthographic camera slides the eye instead of turning the ray, so a sprite's tiles are
@@ -324,6 +324,6 @@ namespace
                 EXPECT_TRUE(binnedFor(tiles, 0, x, y)) << "pixel " << x << ", " << y;
             }
 
-        EXPECT_GT(tiles.getIndices().size(), 0u);
+        EXPECT_GT(tiles.getList().getEntryCount(), 0u);
     }
 }

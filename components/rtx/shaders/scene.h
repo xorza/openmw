@@ -39,6 +39,11 @@ namespace Rtx::Shaders
     using vec4 = osg::Vec4f;
     using uvec3 = osg::Vec3ui;
     using uint = std::uint32_t;
+    using uint64 = std::uint64_t;
+
+#else
+
+#define uint64 uint64_t
 
 #endif
 
@@ -887,6 +892,66 @@ namespace Rtx::Shaders
         uvec3 mSize;
     };
 
+    /// Where every table a hit reads is, as one address apiece.
+    ///
+    /// **In the frame block rather than in a descriptor each**, for the reason the light grid's
+    /// geometry already is: a descriptor per table was seventeen storage-buffer bindings pushed twice
+    /// a frame, and a binding the layout declared and the pass forgot was a shader reading whatever
+    /// the slot held. An address is a 64-bit integer on both APIs, so the struct belongs to the scene
+    /// and not to a backend: the Vulkan shader constructs a `buffer_reference` from each, and Metal's
+    /// `Scene` is the same idea with the pointers typed.
+    ///
+    /// **Filled by the pass and not by `describeWorld`**, the way `mWaveExtent` and `mLightGrid`
+    /// are: where a table is lives with whatever placed it there, and the tables that alternate by
+    /// frame slot change address every frame.
+    ///
+    /// **No size beside an address.** A descriptor carried one and robust access bounded a read by
+    /// it; a pointer carries none. What stops a shader reading past a table is its count, exactly
+    /// as before, and what reports one that does is GPU-assisted validation's address table.
+    ///
+    /// **What it costs, measured on the release harness against the descriptor build**: nothing on
+    /// the exteriors, and three per cent of the trace at the Balmora mages' guild — 0.04 ms — in
+    /// every one of thirteen interleaved pairs. The compute pipelines compile to byte-identical
+    /// sizes either way, so that is a load path and not an instruction count. `ISSUES.md` holds it.
+    struct GpuTables
+    {
+        /// The three tables of block addresses, which a global vertex or index id is resolved
+        /// through. The normals are this slot's copy.
+        uint64 mNormalBlocks;
+        uint64 mTexCoordBlocks;
+        uint64 mIndexBlocks;
+
+        uint64 mMeshes;
+        uint64 mInstances;
+        uint64 mMaterials;
+        uint64 mLayers;
+        uint64 mMasks;
+        uint64 mLights;
+
+        /// The light grid's list: where each cell's run starts, then the runs. `Rtx::LightGrid`
+        /// says why the starts and the runs are one list.
+        uint64 mLightList;
+
+        uint64 mBlueNoise;
+        uint64 mSprites;
+        uint64 mEmitters;
+
+        /// The sprite tiles' list, in the same shape over the screen's tiles.
+        uint64 mSpriteTileList;
+    };
+
+    /// What a reference to each table may claim about its address, and so what the host checks.
+    ///
+    /// **The largest power of two that divides both the buffer's start and every element access.**
+    /// A claim larger than the truth is undefined behaviour with no message. A claim smaller than
+    /// the truth costs the compiler a wider load where one was possible. A buffer's start is at
+    /// least sixteen-aligned on this device and the host asserts it, so the stride decides:
+    /// `GpuLayer` is 48 bytes with two `vec4` at sixteen and thirty-two, the block tables hold
+    /// eight-byte addresses, and every other row or list is four-aligned only.
+    RTX_CONST uint TABLE_ALIGN_ROWS = 4u;
+    RTX_CONST uint TABLE_ALIGN_BLOCKS = 8u;
+    RTX_CONST uint TABLE_ALIGN_LAYERS = 16u;
+
     /// One layer of terrain: a tiling ground texture and the weights that place it.
     ///
     /// A chunk is four or five of these summed. The mask is a grid of weights in the shared mask
@@ -1101,11 +1166,14 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
 
     static_assert(sizeof(GpuEmitter) == 60, "GpuEmitter must be scalar-packed on every side");
+    static_assert(sizeof(GpuTables) == 112, "GpuTables must be scalar-packed on every side");
 
 #endif
 
 #ifdef RTX_HOST
 }
+#else
+#undef uint64
 #endif
 
 // What both shading languages read and nothing on this side calls. The split is about who calls a

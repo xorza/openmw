@@ -58,29 +58,6 @@ Cost: the bake at arrival, and micromap memory beside each BLAS. Risk: the four-
 handling must keep the mip argument `candidateStops` makes — a micromap is a level-zero answer, so
 choose the two-state format only where the cone argument is not needed, which is the shadow rays.
 
-### 2. Set 0 by device address
-
-Set 0 is 22 bindings, seventeen of them storage buffers that are pushed twice a frame (the fog volume
-and the trace) as 23 descriptor writes each. `GL_EXT_buffer_reference2` is already required and the
-vertex blocks already travel as addresses; `RtxProbeTest` proves the address path on both memory
-kinds this renderer uses.
-
-Proposal: a `GpuTables` struct of `uint64_t` addresses — meshes, instances, materials, layers,
-masks, lights, light offsets, light indices, sprites, emitters, sprite tile offsets and indices, the
-blue-noise tile, plus the three block tables — carried in the frame block (or a
-second small uniform, updated when a table is remade). `bindings.glsl` declares one
-`buffer_reference` block per table. Set 0 is then the acceleration structure, the hit counter, the
-frame block, the two wave sampler arrays and the fog field: six bindings. `pushInputs` shrinks to
-those, and the "a binding the layout declares was left unwritten" class of mistake goes with it.
-
-Pair it with merging each offsets-and-indices pair (light grid, sprite tiles) into one buffer with
-a header: `LightGrid::rebuild` and `SpriteTiles::rebuild` already rebuild both lists together.
-
-Risk: a device address has no robust-access bounds check where a descriptor does. On NVIDIA the two
-paths are the same load unit; this is a debugging-safety trade, not a speed one, and the tests that
-address past a table would have to say so through GPU-assisted validation rather than through
-robustness.
-
 ### 3. Vertex normals as octahedral `snorm16x2`
 
 Normals are three floats a vertex, in three copies (`SlotBlocks`), rewritten per frame for every
@@ -117,7 +94,7 @@ today and are read only by `SpriteShade`; a device bin is what would read them.
 - **`GpuMaterial::mKind`** is a word for two bits; with `mLayerCount` naming terrain and `KIND_WATER`
   the only other value, a flag word holding it and `MESH_SHEET`-style bits would shrink the row
   again. Not worth a change on its own.
-- **`VisibilityConstants`** is 980 bytes of which the sky patches (264) and the sea's tables (100)
+- **`VisibilityConstants`** is 1096 bytes of which the sky patches (264) and the sea's tables (100)
   change on the hour and the weather, not the frame. Splitting them into a second block updated on
   change saves a fraction of a kilobyte a frame: not worth it.
 

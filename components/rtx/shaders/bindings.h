@@ -13,6 +13,10 @@
 // in one place and forgotten in the other was a descriptor left unwritten and a dispatch reading
 // whatever the slot held.
 //
+// **The scene's tables are not here.** They travel as addresses in the frame block — `GpuTables` in
+// `scene.h` — so what is left to bind is what has no table to ride in: the structure, the hit
+// counter, the block itself, and the images the trace samples.
+//
 // Set 0 alone. The other three are a bindless texture array, the channels the trace writes and the
 // air in front of the camera, and each of those is one owner's to number.
 //
@@ -36,39 +40,16 @@ namespace Rtx::Shaders
     /// The atomic a specialized trace counts its hits into.
     RTX_CONST uint BIND_HITS = 1;
 
-    /// The scene's own tables, in the order `SceneBuffers` hands them over.
-    RTX_CONST uint BIND_NORMALS = 2;
-    RTX_CONST uint BIND_TEXCOORDS = 3;
-    RTX_CONST uint BIND_INDICES = 4;
-    RTX_CONST uint BIND_MESHES = 5;
-    RTX_CONST uint BIND_INSTANCES = 6;
-    RTX_CONST uint BIND_MATERIALS = 7;
-    RTX_CONST uint BIND_LAYERS = 8;
-    RTX_CONST uint BIND_MASKS = 9;
-    RTX_CONST uint BIND_LIGHTS = 10;
-    RTX_CONST uint BIND_LIGHT_OFFSETS = 11;
-    RTX_CONST uint BIND_LIGHT_INDICES = 12;
-
-    /// What a pixel draws its samples from.
-    RTX_CONST uint BIND_BLUE_NOISE = 13;
-
-    /// The sprites the primary ray composites. Where the lamps are binned travels in the frame's
-    /// own block — `VisibilityConstants::mLightGrid`.
-    RTX_CONST uint BIND_SPRITES = 14;
-    RTX_CONST uint BIND_EMITTERS = 15;
-    RTX_CONST uint BIND_SPRITE_TILE_OFFSETS = 16;
-    RTX_CONST uint BIND_SPRITE_TILE_INDICES = 17;
-
-    /// The one uniform: everything the frame itself says.
-    RTX_CONST uint BIND_FRAME = 18;
+    /// The one uniform: everything the frame itself says, and where every table is.
+    RTX_CONST uint BIND_FRAME = 2;
 
     /// The sea's cascades and the fog's field, which are sampled rather than read.
-    RTX_CONST uint BIND_WAVE_SURFACE = 19;
-    RTX_CONST uint BIND_WAVE_CURVATURE = 20;
-    RTX_CONST uint BIND_FOG_FIELD = 21;
+    RTX_CONST uint BIND_WAVE_SURFACE = 3;
+    RTX_CONST uint BIND_WAVE_CURVATURE = 4;
+    RTX_CONST uint BIND_FOG_FIELD = 5;
 
     /// How many the set declares, which is the last of them and one more.
-    RTX_CONST uint BIND_COUNT = 22;
+    RTX_CONST uint BIND_COUNT = 6;
 
 #ifdef RTX_HOST
 }

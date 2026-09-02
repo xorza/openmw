@@ -102,7 +102,7 @@ float randomAt(uvec2 pixel, uint stream)
     const uvec2 tile = pixel % BLUE_NOISE_EXTENT;
     const uint at = (tile.y * BLUE_NOISE_EXTENT + tile.x) * RANDOM_STREAMS + stream;
 
-    return fract(blueNoise[at] + float(frame.mFrame) * STREAM_TURN[stream]);
+    return fract(blueNoiseAt(at) + float(frame.mFrame) * STREAM_TURN[stream]);
 }
 
 /// Two numbers in `[0, 1)` for one pixel, from `stream` and the one after it.

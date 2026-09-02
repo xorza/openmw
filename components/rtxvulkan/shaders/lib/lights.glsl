@@ -16,7 +16,7 @@
 #include "random.glsl"
 #include "traversal.glsl"
 
-/// Which lamps one cell of the grid holds, as a range into `lightIndices`.
+/// Which lamps one cell of the grid holds, as a range into the light list.
 ///
 /// **A shading point should not have to ask every lamp in the cell whether it is near.** Walking
 /// them all costs the same whether one contributes or none do — and the fog made that unaffordable
@@ -39,7 +39,7 @@ uvec2 lampsInCell(vec3 cell)
     // `flat` is what this wants to be called, and GLSL reserves it for interpolation.
     const uint index = (at.z * frame.mLightGrid.mSize.y + at.y) * frame.mLightGrid.mSize.x + at.x;
 
-    return uvec2(lightOffsets[index], lightOffsets[index + 1u]);
+    return uvec2(lightListAt(index), lightListAt(index + 1u));
 }
 
 /// How many lamps one point may weigh before it stops.
@@ -214,7 +214,7 @@ vec3 lampsAt(vec3 position)
     const uvec2 near = lampsWithin(lampsReaching(position));
     for (uint i = near.x; i < near.y; ++i)
     {
-        const Lamp lamp = lampAt(lights[lightIndices[i]], position);
+        const Lamp lamp = lampAt(lightAt(lightListAt(i)), position);
         total += lamp.mIntensity * lamp.mReaching;
     }
 
@@ -339,7 +339,7 @@ void weighLamps(
     const uvec2 near = lampsWithin(lampsReaching(from));
     for (uint i = near.x; i < near.y; ++i)
     {
-        const Lamp lamp = lampAt(lights[lightIndices[i]], from);
+        const Lamp lamp = lampAt(lightAt(lightListAt(i)), from);
         if (!(lamp.mReaching > 0.0))
             continue;
 

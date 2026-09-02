@@ -146,12 +146,6 @@ namespace Rtx
             owed.settle();
         }
 
-        VkBuffer getHandle(std::uint32_t slot) const
-        {
-            assert(slot < mSlots);
-            return mCopies[slot].getHandle();
-        }
-
         VkDeviceAddress getDeviceAddress(std::uint32_t slot) const
         {
             assert(slot < mSlots);

@@ -58,8 +58,8 @@ uint reorderFlags(bool found, uint instanceIndex)
     if (!found)
         return 0u;
 
-    const GpuInstance instance = instances[instanceIndex];
-    const GpuMaterial material = materials[instance.mMaterial];
+    const GpuInstance instance = instanceAt(instanceIndex);
+    const GpuMaterial material = materialAt(instance.mMaterial);
 
     const uint through = isSeenThrough(surfaceOpacity(instance, material)) ? FLAG_SEEN_THROUGH : 0u;
     const uint masked = hasMask(material) ? FLAG_MASKED : 0u;

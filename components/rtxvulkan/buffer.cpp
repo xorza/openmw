@@ -40,6 +40,15 @@ namespace Rtx
 
         mMemory = DeviceMemory(device, requirements.size, requirements.memoryTypeBits, properties, mAddressable);
         checkVk(vkBindBufferMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), 0), "vkBindBufferMemory");
+
+        if (mAddressable)
+        {
+            const VkBufferDeviceAddressInfo info{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                .buffer = mHandle.get(),
+            };
+            mAddress = vkGetBufferDeviceAddress(device.getHandle(), &info);
+        }
     }
 
     Buffer Buffer::deviceLocal(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage)
@@ -55,17 +64,6 @@ namespace Rtx
     Buffer Buffer::staging(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage)
     {
         return Buffer(device, size, usage, sStaging, true);
-    }
-
-    VkDeviceAddress Buffer::getDeviceAddress() const
-    {
-        assert(mAddressable);
-
-        const VkBufferDeviceAddressInfo info{
-            .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-            .buffer = mHandle.get(),
-        };
-        return vkGetBufferDeviceAddress(mHandle.getDevice(), &info);
     }
 
     Buffer growTo(Buffer& held, const Device& device, VkDeviceSize bytes, VkBufferUsageFlags usage)

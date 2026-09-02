@@ -4,8 +4,11 @@ Item 2 of `shader-review.md`. Set 0 holds 22 bindings. Seventeen of them are sto
 pass pushes all of them before the fog dispatches and again before the trace. The proposal moves
 every table to a device address in the frame block. Set 0 then holds six bindings.
 
-**Not started.** This file is the route: what is there, what the field does, what to build, in
-what order, what proves each step, and what could go wrong.
+**Done.** Set 0 holds six bindings, the shader reads every table through the address the frame
+block carries, each offsets-and-indices pair is one list, and item 2 is deleted from
+`shader-review.md`. §6 holds what was measured. This file is the route that was taken: what was
+there, what the field does, what was built, in what order, what proved each step, and what could
+have gone wrong.
 
 ## 1. What is there today
 
@@ -59,7 +62,7 @@ This plan is that.
 
 The host records six descriptor writes per push instead of 22. The "a binding the layout declares
 was left unwritten" class of mistake goes with the bindings. `VisibilityInputs` stops carrying a
-`VkBuffer` handle, and `SceneBuffers` stops handing out twelve of them.
+`VkBuffer` handle, and `SceneBuffers` stops handing out fourteen of them.
 
 The trace does not get faster. The review measured the trace as ray-core bound. On this hardware a
 descriptor read and an address read reach the same load unit. The gain is the host and the
@@ -186,8 +189,8 @@ Set 0 after the change:
   more. `BlockedBuffer::reserve` makes its table with the address bit. The blue-noise upload in
   `VisibilityPass` gets the address bit. The hit counter keeps its storage bit. `DeviceMemory`
   already sets `VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT` from the buffer's usage.
-- **`SceneBuffers::describeTables(slot, GpuTables&)`** fills the thirteen fields the scene owns. The
-  twelve `VkBuffer` getters go. `SceneAcceleration::getIndexBlocks` returns the address of the
+- **`SceneBuffers::describeTables(slot, GpuTables&)`** fills the fourteen fields the scene owns. The
+  fourteen `VkBuffer` getters go. `SceneAcceleration::getIndexBlocks` returns the address of the
   index block table, and `VisibilityInputs::mIndexBlocks` becomes a `VkDeviceAddress`. Its comment
   about a table remade on growth stays true and stays.
 - **`VisibilityPass::record`** fills `described.mTables` from `describeTables`, from `mBlueNoise`
@@ -244,13 +247,14 @@ and the picture must not move: this change moves no arithmetic.
    nothing has asked the device about. One reads a 48-byte row through a reference declared with
    `buffer_reference_align = 16`, which is the `GpuLayer` shape and the one alignment claim above
    four. Both readings must equal the pattern.
-2. **Host plumbing that reads nothing new.** `Buffer` caches its address. The usage bits change.
+2. **Host plumbing that reads nothing new.** `Buffer` caches its address. Every table gains the
+   address bit and keeps its storage bit, because the descriptors still name it.
    `describeTables` exists. `GpuTables` sits in `VisibilityConstants` and `record` fills and writes
    it. The shader does not read it yet. The static asserts, `spirv-val` and the two asserts in
    `record` run on the real scene.
 3. **The shader reads the addresses.** `bindings.glsl` gains the reference blocks and the accessor
    functions. The reader sites in §3.2 change. Set 0 shrinks to six. `pushInputs`, `sBindings` and
-   `bindings.h` shrink with it. The twelve getters go. `RtxSceneTableTest` asserts on addresses.
+   `bindings.h` shrink with it. The fourteen getters go. `RtxSceneTableTest` asserts on addresses.
 4. **The two merges** of §3.4, one at a time.
 5. **The numbers** of §6, then the item is deleted from `shader-review.md`.
 
@@ -264,22 +268,54 @@ and the picture must not move: this change moves no arithmetic.
   value and `describeTables` fills an out-parameter, so nothing here reaches the heap.
 - **`verify --views=all`:** byte-identical before and after each step.
 - **`spirv-val --scalar-block-layout`** already runs on every module in the build.
-- **The RTX test binary** in full, and one visibility test under GPU-assisted validation.
+- **The RTX test binary** in full. The test harness has no GPU-assisted mode, so one `shot` under
+  `--gpu-validation` stands in for the visibility test this first asked for.
 
-## 6. What to measure
+## 6. What was measured
 
-Take each number on a warm card, legs interleaved, with the clock and temperature columns checked,
-as `CLAUDE.md` says.
+Release harness, warm card, legs interleaved, the descriptor build beside the address build.
+`verify --views=all` found nineteen views byte-identical against the descriptor build after every
+step. The storm at night is not repeatable from run to run: two renders of one build differ by one
+level on about twenty dark pixels, and one render of the finished build matched the descriptor
+build's exactly. `ISSUES.md` holds that view.
 
-- **`bench`** on Balmora, the mages' guild and Seyda Neen: median, p99 and worst frame. Expect no
-  change outside noise. The host saves 16 descriptor writes per push.
-- **`shot --repeat=32`** on the same views: the `trace` and `air` zone medians. Expect no change
-  outside noise. A change in either direction is a finding to explain, not to accept.
-- **`compileEvery`** on a cold pipeline cache, before and after. The layout is smaller. Expect no
-  change worth keeping.
-- **GPU-assisted validation:** the wall time of one `shot` with GPU-AV on, before and after, and
-  whether it completes. The instrumentation moves from seventeen storage descriptors to the pointer
-  accesses. This is the one cost that can move by an order of magnitude.
+**`bench --seconds=10`, three rounds a view.** Frame medians moved by under 0.2 ms, in both
+directions. The trace zone medians:
+
+| view | descriptor build | address build |
+|---|---:|---:|
+| balmora | 1.04, 1.05, 1.04 | 1.02, 1.03, 1.04 |
+| seyda-neen-ship | 1.67, 1.68, 1.84 | 1.67, 1.68, 1.72 |
+| balmora-mages-guild | 1.53, 1.54, 1.54 | 1.57, 1.58, 1.59 |
+
+**The guild, thirteen pairs in all**, with the order rotated: the address build's trace is 0.03 to
+0.06 ms behind in every pair. With `restrict` on every reference it sat between the two, closer to
+the descriptor build in five rounds of six, inside the noise. That build also moved two interiors
+against the step 4 build, one of them by nineteen levels on seventy-six pixels, stable from run to
+run: a lamp pick flipped where the compiled shape shifted a rounding. So `restrict` is not kept.
+The compute pipelines report byte-identical binary sizes and register counts for all three builds,
+so the difference is a load path and not an instruction count. It is open in `ISSUES.md`.
+
+**`shot --repeat=32`** is too short for the card to settle. Every zone swings together between
+rounds, the untouched upscale included, so it says nothing the bench does not.
+
+**Cold compile**, pipeline cache removed and `__GL_SHADER_DISK_CACHE=0`, two rounds each:
+
+| | descriptor build | address build |
+|---|---:|---:|
+| scene and pipelines | 8.1 s, 8.5 s | 8.4 s, 9.1 s |
+
+**GPU-assisted validation**, one shot at Balmora with no cache:
+
+| | descriptor build | address build |
+|---|---:|---:|
+| wall | 49 s | 87 s |
+| scene and pipelines | 45.5 s | 82.6 s |
+| frame median with the layers on | 12.1 ms | 29.9 ms |
+
+Robustness covered the seventeen storage descriptors and `gpuav_force_on_robustness` skipped them.
+A pointer access is not covered, so the layer instruments each one. A shot completes and reports no
+error, and the tests never run GPU-AV, so no switch is added. `Instance` says so beside the setting.
 
 ## 7. What could go wrong
 

@@ -192,7 +192,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     // so the two cannot disagree about how many there are across.
     const uint tilesAcross = (frame.mCamera.mWidth + SPRITE_TILE - 1u) / SPRITE_TILE;
     const uint tile = (pixel.y / SPRITE_TILE) * tilesAcross + pixel.x / SPRITE_TILE;
-    const uint last = spriteTileOffsets[tile + 1u];
+    const uint last = spriteTileListAt(tile + 1u);
 
     // **What the outer loop over emitters used to hold, carried across a walk that no longer has
     // one.** The tile's sprites are in ascending index, and a sprite's index is contiguous within
@@ -245,14 +245,14 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     // puff a card's worth of the sun rather than a sphere's.
     const float thrownForward = henyeyGreenstein(SMOKE_ANISOTROPY, dot(toSun, direction)) / INV_FOUR_PI;
 
-    for (uint slot = spriteTileOffsets[tile]; slot < last; ++slot)
+    for (uint slot = spriteTileListAt(tile); slot < last; ++slot)
     {
-        const GpuSprite sprite = sprites[spriteTileIndices[slot]];
+        const GpuSprite sprite = spriteAt(spriteTileListAt(slot));
 
         if (sprite.mEmitter != held)
         {
             held = sprite.mEmitter;
-            emitter = emitters[held];
+            emitter = emitterAt(held);
             layerMean = -1.0;
 
             const vec3 toCentre = emitter.mCentre - origin;

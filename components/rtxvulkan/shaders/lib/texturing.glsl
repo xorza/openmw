@@ -170,8 +170,8 @@ float maskWeight(GpuLayer layer, vec2 uv)
     const uint row0 = layer.mMaskOffset + uint(base.y) * layer.mMaskWidth;
     const uint row1 = layer.mMaskOffset + uint(high.y) * layer.mMaskWidth;
 
-    return mix(mix(masks[row0 + uint(base.x)], masks[row0 + uint(high.x)], frac.x),
-        mix(masks[row1 + uint(base.x)], masks[row1 + uint(high.x)], frac.x), frac.y);
+    return mix(mix(maskAt(row0 + uint(base.x)), maskAt(row0 + uint(high.x)), frac.x),
+        mix(maskAt(row1 + uint(base.x)), maskAt(row1 + uint(high.x)), frac.x), frac.y);
 }
 
 #endif

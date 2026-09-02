@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 
 #include <components/rtx/shaders/probe.h>
 #include <components/rtxvulkan/buffer.hpp>
@@ -22,11 +23,14 @@ namespace Rtx
 {
     namespace
     {
-        /// The pattern in, the addresses of its blocks, and every reading out.
-        constexpr std::array<VkDescriptorSetLayoutBinding, 3> sBindings{
+        /// The pattern in, every reading out, the addresses of its blocks, the two addresses a
+        /// uniform block carries, and the rows out.
+        constexpr std::array<VkDescriptorSetLayoutBinding, 5> sBindings{
             VkDescriptorSetLayoutBinding{ 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
             VkDescriptorSetLayoutBinding{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
             VkDescriptorSetLayoutBinding{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+            VkDescriptorSetLayoutBinding{ 3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
+            VkDescriptorSetLayoutBinding{ 4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT },
         };
 
         /// Enough to cross the workgroup several times and end partway through one: 300 is four
@@ -60,48 +64,80 @@ namespace Rtx
             return pattern;
         }
 
-        /// `values` in resizable-BAR video memory, which is where the normals are.
-        Buffer placeHostWritten(const Device& device, CommandPool&, std::span<const osg::Vec3f> values)
+        /// The same idea over rows: twelve channels a row, every one of them exact, no two alike.
+        std::vector<Shaders::ProbeRow> makeRows()
         {
-            Buffer held = Buffer::hostWritten(device, values.size_bytes(), sUsage);
-            held.write(values);
+            std::vector<Shaders::ProbeRow> rows;
+            rows.reserve(sCount);
+            for (std::uint32_t at = 0; at < sCount; ++at)
+            {
+                const auto index = static_cast<float>(at);
+                rows.push_back(Shaders::ProbeRow{
+                    .mA = osg::Vec4f(index * 0.5f + 1.0f, -index * 0.25f - 2.0f, index * 0.125f + 0.375f, index),
+                    .mB = osg::Vec4f(index + 1024.0f, -index * 2.0f, index * 0.0625f, -index - 0.5f),
+                    .mC = osg::Vec4f(index * 4.0f + 3.0f, index * 0.5f - 1.0f, -index * 0.125f, index + 0.75f),
+                });
+            }
+
+            return rows;
+        }
+
+        /// `bytes` in resizable-BAR video memory, which is where the normals are.
+        Buffer placeHostWritten(const Device& device, CommandPool&, std::span<const std::byte> bytes)
+        {
+            Buffer held = Buffer::hostWritten(device, bytes.size(), sUsage);
+            held.write(bytes);
             return held;
         }
 
-        /// `values` in ordinary device-local memory staged through a copy, which is where the
+        /// `bytes` in ordinary device-local memory staged through a copy, which is where the
         /// indices and the texture coordinates are.
-        Buffer placeStaged(const Device& device, CommandPool& pool, std::span<const osg::Vec3f> values)
+        Buffer placeStaged(const Device& device, CommandPool& pool, std::span<const std::byte> bytes)
         {
             Batch upload(pool);
-            Buffer held = uploadBuffer(device, upload, values, sUsage);
+            Buffer held = uploadBuffer(device, upload, bytes, sUsage);
             upload.flush();
             return held;
         }
 
         /// Which of the two a leg of the test asks about.
-        using Place = Buffer (*)(const Device&, CommandPool&, std::span<const osg::Vec3f>);
+        using Place = Buffer (*)(const Device&, CommandPool&, std::span<const std::byte>);
 
-        /// Runs the probe and gives back the three readings end to end.
-        std::vector<osg::Vec3f> runProbe(const Device& device, const ComputePipeline& pipeline, CommandPool& pool,
-            VkBuffer source, VkDeviceAddress address, const Buffer& blocks)
+        /// Everything the probe wrote: the four readings of the pattern end to end, and the rows.
+        struct Readings
+        {
+            std::vector<osg::Vec3f> mValues;
+            std::vector<Shaders::ProbeRow> mRows;
+        };
+
+        /// Runs the probe and gives back everything it read.
+        ///
+        /// @param addresses the uniform block holding the pattern's address and the rows'.
+        Readings runProbe(const Device& device, const ComputePipeline& pipeline, CommandPool& pool, VkBuffer source,
+            VkDeviceAddress address, const Buffer& blocks, const Buffer& addresses)
         {
             const Buffer readings = Buffer::staging(
                 device, sizeof(osg::Vec3f) * sCount * Shaders::PROBE_READINGS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            const Buffer rowReadings
+                = Buffer::staging(device, sizeof(Shaders::ProbeRow) * sCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
             const VkDescriptorBufferInfo from{ source, 0, VK_WHOLE_SIZE };
             const VkDescriptorBufferInfo into{ readings.getHandle(), 0, VK_WHOLE_SIZE };
             const VkDescriptorBufferInfo table{ blocks.getHandle(), 0, VK_WHOLE_SIZE };
+            const VkDescriptorBufferInfo addressed{ addresses.getHandle(), 0, VK_WHOLE_SIZE };
+            const VkDescriptorBufferInfo rowsInto{ rowReadings.getHandle(), 0, VK_WHOLE_SIZE };
 
             const auto write = [](std::uint32_t binding, const VkDescriptorBufferInfo& info) {
                 return VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                     .dstBinding = binding,
                     .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .descriptorType = sBindings[binding].descriptorType,
                     .pBufferInfo = &info,
                 };
             };
-            const std::array<VkWriteDescriptorSet, 3> writes{ write(0, from), write(1, into), write(2, table) };
+            const std::array<VkWriteDescriptorSet, sBindings.size()> writes{ write(0, from), write(1, into),
+                write(2, table), write(3, addressed), write(4, rowsInto) };
 
             const Shaders::ProbeConstants constants{ .mSource = address, .mCount = sCount, .mBlock = sBlock };
 
@@ -113,37 +149,49 @@ namespace Rtx
                     commands, pipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
                 vkCmdDispatch(commands, (sCount + Shaders::PROBE_WORKGROUP - 1) / Shaders::PROBE_WORKGROUP, 1, 1);
 
-                const VkBufferMemoryBarrier2 written{
-                    .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                    .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                    .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
-                    .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
-                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .buffer = readings.getHandle(),
-                    .size = VK_WHOLE_SIZE,
+                const auto written = [](const Buffer& buffer) {
+                    return VkBufferMemoryBarrier2{
+                        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                        .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                        .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
+                        .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .buffer = buffer.getHandle(),
+                        .size = VK_WHOLE_SIZE,
+                    };
                 };
+                const std::array<VkBufferMemoryBarrier2, 2> barriers{ written(readings), written(rowReadings) };
                 const VkDependencyInfo dependency{
                     .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                    .bufferMemoryBarrierCount = 1,
-                    .pBufferMemoryBarriers = &written,
+                    .bufferMemoryBarrierCount = static_cast<std::uint32_t>(barriers.size()),
+                    .pBufferMemoryBarriers = barriers.data(),
                 };
                 vkCmdPipelineBarrier2(commands, &dependency);
             });
 
-            std::vector<osg::Vec3f> read(sCount * Shaders::PROBE_READINGS);
-            const void* mapped = readings.map();
-            std::memcpy(read.data(), mapped, read.size() * sizeof(osg::Vec3f));
+            Readings read;
+            read.mValues.resize(sCount * Shaders::PROBE_READINGS);
+            std::memcpy(read.mValues.data(), readings.map(), read.mValues.size() * sizeof(osg::Vec3f));
+            read.mRows.resize(sCount);
+            std::memcpy(read.mRows.data(), rowReadings.map(), read.mRows.size() * sizeof(Shaders::ProbeRow));
 
             return read;
         }
 
-        /// One memory kind, all three readings, against the pattern.
-        void expectEveryReadingAgrees(const Device& device, const ComputePipeline& pipeline, CommandPool& pool,
-            const std::vector<osg::Vec3f>& pattern, Place place, const std::string& memory)
+        std::string describe(const osg::Vec4f& value)
         {
-            const Buffer whole = place(device, pool, std::span<const osg::Vec3f>(pattern));
+            return std::to_string(value.x()) + ", " + std::to_string(value.y()) + ", " + std::to_string(value.z())
+                + ", " + std::to_string(value.w());
+        }
+
+        /// One memory kind, every reading, against the patterns.
+        void expectEveryReadingAgrees(const Device& device, const ComputePipeline& pipeline, CommandPool& pool,
+            const std::vector<osg::Vec3f>& pattern, const std::vector<Shaders::ProbeRow>& rows, Place place,
+            const std::string& memory)
+        {
+            const Buffer whole = place(device, pool, std::as_bytes(std::span<const osg::Vec3f>(pattern)));
 
             // The same pattern again, cut into separate buffers at separate addresses.
             std::vector<Buffer> blocks;
@@ -152,7 +200,7 @@ namespace Rtx
             {
                 const std::span<const osg::Vec3f> part
                     = std::span<const osg::Vec3f>(pattern).subspan(start, std::min(sBlock, sCount - start));
-                blocks.push_back(place(device, pool, part));
+                blocks.push_back(place(device, pool, std::as_bytes(part)));
                 addresses.push_back(blocks.back().getDeviceAddress());
             }
 
@@ -162,31 +210,54 @@ namespace Rtx
                 device, addresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
             table.write(std::span<const VkDeviceAddress>(addresses));
 
-            const std::vector<osg::Vec3f> read
-                = runProbe(device, pipeline, pool, whole.getHandle(), whole.getDeviceAddress(), table);
+            // The rows in the same memory as the pattern, and both addresses in a uniform block.
+            const Buffer held = place(device, pool, std::as_bytes(std::span<const Shaders::ProbeRow>(rows)));
+
+            const Shaders::ProbeAddresses named{ .mSource = whole.getDeviceAddress(),
+                .mRows = held.getDeviceAddress() };
+            ASSERT_EQ(named.mRows % Shaders::PROBE_ROW_ALIGN, 0u)
+                << "the rows' reference claims an alignment the buffer does not have";
+
+            Buffer uniform = Buffer::hostWritten(device, sizeof(named), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+            uniform.write(std::span<const Shaders::ProbeAddresses>(&named, 1));
+
+            const Readings read = runProbe(device, pipeline, pool, whole.getHandle(), named.mSource, table, uniform);
 
             constexpr std::array<const char*, Shaders::PROBE_READINGS> sHow{
                 "a descriptor",
                 "a pointer the host handed over",
                 "a pointer read out of the block table",
+                "a pointer read out of a uniform block",
             };
 
             for (std::uint32_t reading = 0; reading < Shaders::PROBE_READINGS; ++reading)
                 for (std::uint32_t at = 0; at < sCount; ++at)
                 {
-                    const osg::Vec3f& got = read[reading * sCount + at];
+                    const osg::Vec3f& got = read.mValues[reading * sCount + at];
                     EXPECT_EQ(got, pattern[at])
                         << sHow[reading] << " read element " << at << " of " << memory << " memory as " << got.x()
                         << ", " << got.y() << ", " << got.z() << " rather than " << pattern[at].x() << ", "
                         << pattern[at].y() << ", " << pattern[at].z();
                 }
+
+            for (std::uint32_t at = 0; at < sCount; ++at)
+            {
+                const Shaders::ProbeRow& got = read.mRows[at];
+                const Shaders::ProbeRow& want = rows[at];
+                EXPECT_TRUE(got.mA == want.mA && got.mB == want.mB && got.mC == want.mC)
+                    << "a sixteen-aligned reference read row " << at << " of " << memory << " memory as "
+                    << describe(got.mA) << " / " << describe(got.mB) << " / " << describe(got.mC) << " rather than "
+                    << describe(want.mA) << " / " << describe(want.mB) << " / " << describe(want.mC);
+            }
         }
 
         struct RtxProbeTest : Testing::DeviceTest
         {
         };
 
-        /// A descriptor, a pointer, and a pointer out of a block table all read the same bytes.
+        /// A descriptor, a pointer, a pointer out of a block table and a pointer out of a uniform
+        /// block all read the same bytes — and a reference that claims sixteen-byte alignment reads
+        /// a `GpuLayer`-shaped row whole.
         ///
         /// **The question that stopped the geometry blocking, asked of the device directly.** Moving
         /// the normal fetch from a descriptor to a pointer changed the picture on sixteen views and
@@ -205,9 +276,10 @@ namespace Rtx
             CommandPool pool(device);
 
             const std::vector<osg::Vec3f> pattern = makePattern();
+            const std::vector<Shaders::ProbeRow> rows = makeRows();
 
-            expectEveryReadingAgrees(device, pipeline, pool, pattern, placeHostWritten, "host-visible");
-            expectEveryReadingAgrees(device, pipeline, pool, pattern, placeStaged, "device-local");
+            expectEveryReadingAgrees(device, pipeline, pool, pattern, rows, placeHostWritten, "host-visible");
+            expectEveryReadingAgrees(device, pipeline, pool, pattern, rows, placeStaged, "device-local");
         }
     }
 }

@@ -42,9 +42,10 @@ namespace Rtx
         }
 
         // Made again rather than appended to, which is what a table of a few dozen addresses is
-        // worth: the handle changes, and every descriptor naming it is pushed afresh each frame.
+        // worth: the address changes, and every frame carries it afresh. Addressable and never
+        // bound, because the frame block is how a shader reaches it.
         mTable = Buffer::hostWritten(
-            *mDevice, mAddresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            *mDevice, mAddresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
         mTable.write(std::span<const VkDeviceAddress>(mAddresses));
         mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mTable.getHandle()), mName + " blocks");
     }

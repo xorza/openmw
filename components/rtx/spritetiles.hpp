@@ -2,16 +2,16 @@
 
 #include <cstdint>
 #include <span>
-#include <vector>
 
 #include <osg/Vec3f>
 
+#include "runlist.hpp"
 #include "shaders/camera.h"
 #include "shaders/scene.h"
 
 namespace Rtx
 {
-    /// Which sprites each tile of the screen can see, as two arrays.
+    /// Which sprites each tile of the screen can see.
     ///
     /// **The emitter's sphere is the wrong granularity, and rain is what proves it.** A brazier is a
     /// point: the ray-sphere test in `spritesAlong` throws its whole system away for almost every
@@ -21,9 +21,8 @@ namespace Rtx
     /// Binning the *emitters* changes none of that because no tile rejects the rain. Binning the
     /// sprites does, because a raindrop is small on the screen wherever it is in the world.
     ///
-    /// Tile `i` owns `getIndices()[o[i] .. o[i + 1]]` with `o` the offsets: a prefix sum with a
-    /// trailing sentinel, so the whole structure is two arrays and a lookup is two reads — the shape
-    /// `LightGrid` has, over a different thing.
+    /// Each tile's sprites are a run of the `RunList`, keyed by the tile's row-major index — the
+    /// shape `LightGrid` has, over a different thing.
     ///
     /// **Ascending sprite index within a tile, and that is load-bearing.** Sprites composite in the
     /// order they are walked and the current loop walks emitters in order and indices within one; a
@@ -38,7 +37,7 @@ namespace Rtx
     class SpriteTiles
     {
     public:
-        /// Bins `sprites` into the buffers this already has.
+        /// Bins `sprites` into the list this already has.
         ///
         /// Conservative by construction: a tile's list holds every sprite any ray through it could
         /// meet, so the shader's own ray-quad test stays a refinement and never a correction.
@@ -51,22 +50,12 @@ namespace Rtx
         std::uint32_t getAcross() const { return mAcross; }
         std::uint32_t getDown() const { return mDown; }
 
-        /// `getAcross() * getDown() + 1`: every tile's start, and a sentinel so the last tile's end
-        /// needs no special case.
-        std::span<const std::uint32_t> getOffsets() const { return mOffsets; }
-
-        /// Every tile's sprites, run together in tile order and ascending inside each run.
-        std::span<const std::uint32_t> getIndices() const { return mIndices; }
+        /// Every tile's sprites, keyed by `y * getAcross() + x` and ascending inside each run.
+        const RunList& getList() const { return mList; }
 
     private:
         std::uint32_t mAcross = 0;
         std::uint32_t mDown = 0;
-        std::vector<std::uint32_t> mOffsets;
-        std::vector<std::uint32_t> mIndices;
-
-        /// Where each tile's next entry goes while the runs are being filled. A member for the
-        /// reason the two above are refilled rather than replaced: a frame must not go back to the
-        /// allocator for a table it already has.
-        std::vector<std::uint32_t> mCursor;
+        RunList mList;
     };
 }

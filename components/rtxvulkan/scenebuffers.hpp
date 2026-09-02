@@ -83,24 +83,6 @@ namespace Rtx
         SceneBuffers(const SceneBuffers&) = delete;
         SceneBuffers& operator=(const SceneBuffers&) = delete;
 
-        /// Where each blocked table's blocks are, as a shader reads them.
-        ///
-        /// **Tables of addresses and not the data.** The vertex attributes are lists of blocks, so
-        /// what a shader binds is where the blocks are; it resolves a global id to one of them
-        /// itself. See `BlockedBuffer`.
-        VkBuffer getNormalBlocks(std::uint32_t slot) const { return mNormalTable.at(slot).getTable(); }
-        VkBuffer getTexCoordBlocks() const { return mTexCoords.getTable(); }
-        VkBuffer getMeshes() const { return mMeshes.getHandle(); }
-        VkBuffer getInstances(std::uint32_t slot) const { return mInstanceTable.getHandle(slot); }
-        VkBuffer getMaterials(std::uint32_t slot) const { return mMaterialTable.getHandle(slot); }
-        VkBuffer getLayers(std::uint32_t slot) const { return mTables[slot].mLayers.getHandle(); }
-        VkBuffer getMasks(std::uint32_t slot) const { return mTables[slot].mMasks.getHandle(); }
-        VkBuffer getLights(std::uint32_t slot) const { return mTables[slot].mLights.getHandle(); }
-        VkBuffer getLightOffsets(std::uint32_t slot) const { return mTables[slot].mLightOffsets.getHandle(); }
-        VkBuffer getLightIndices(std::uint32_t slot) const { return mTables[slot].mLightIndices.getHandle(); }
-        VkBuffer getSprites(std::uint32_t slot) const { return mTables[slot].mSprites.getHandle(); }
-        VkBuffer getEmitters(std::uint32_t slot) const { return mTables[slot].mEmitters.getHandle(); }
-
         /// Bins this scene's sprites into the screen tiles of the camera about to trace them.
         ///
         /// **From the frame and not from the placement**, because the binning is in screen space and
@@ -109,12 +91,21 @@ namespace Rtx
         void binSprites(const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun,
             std::uint32_t slot, Graveyard& graveyard);
 
-        VkBuffer getSpriteTileOffsets(std::uint32_t slot) const { return mTables[slot].mSpriteTileOffsets.getHandle(); }
-        VkBuffer getSpriteTileIndices(std::uint32_t slot) const { return mTables[slot].mSpriteTileIndices.getHandle(); }
-
         /// Where the lamps were binned, for the frame's block the pass writes: its geometry rides
         /// there, beside the sea's, and only the lists it made are tables.
         const LightGrid& getLightGrid() const { return mLightGrid; }
+
+        /// Where every table this owns is, for the frame's block: the twelve of `GpuTables` that are
+        /// the scene's, with `slot`'s copy wherever a table has one per frame in flight.
+        ///
+        /// **Addresses and never handles**, because nothing binds a table: a shader constructs a
+        /// reference from the block and reads. For the vertex attributes the address is a table of
+        /// addresses, one per block, and the shader resolves a global id to one of them itself. See
+        /// `BlockedBuffer`.
+        ///
+        /// **The two it leaves alone are not the scene's.** The blue-noise tile is the pass's and
+        /// the index blocks are the acceleration structure's, and each of those writes its own.
+        void describeTables(std::uint32_t slot, Shaders::GpuTables& into) const;
 
         VkDeviceSize getBytes() const;
 
@@ -129,12 +120,10 @@ namespace Rtx
             Buffer mLayers;
             Buffer mMasks;
             Buffer mLights;
-            Buffer mLightOffsets;
-            Buffer mLightIndices;
+            Buffer mLightList;
             Buffer mSprites;
             Buffer mEmitters;
-            Buffer mSpriteTileOffsets;
-            Buffer mSpriteTileIndices;
+            Buffer mSpriteTileList;
 
             /// What one copy of them occupies.
             ///

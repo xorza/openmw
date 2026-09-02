@@ -124,9 +124,10 @@ namespace Rtx
         /// They are here rather than in `SceneBuffers` because the build had to have them first, and
         /// uploading a cell's worth of them twice is a megabyte for nothing.
         ///
-        /// **A table of addresses and not the data**, because the indices are a list of blocks: what
-        /// a shader binds is where the blocks are, and it resolves `block[id / INDEX_BLOCK]` itself.
-        VkBuffer getIndexBlocks() const { return mIndices.getTable(); }
+        /// **The address of a table of addresses, and not the data**, because the indices are a list
+        /// of blocks: what the frame carries is where the blocks are, and a shader resolves
+        /// `block[id / INDEX_BLOCK]` itself.
+        VkDeviceAddress getIndexBlocks() const { return mIndices.getTableAddress(); }
         std::uint32_t getInstanceCount() const { return mInstanceCount; }
 
         /// How many of those instances traversal has to stop and ask about.

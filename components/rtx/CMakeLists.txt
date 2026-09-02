@@ -63,6 +63,7 @@ set(RTX_FILES
     reconstruction.hpp
     renderer.hpp
     reorder.hpp
+    runlist.hpp
     scenedesc.cpp
     scenedesc.hpp
     sceneextractor.cpp

@@ -96,8 +96,9 @@ namespace Rtx
             return mAddresses[blockOf(element)] + offsetOf(element);
         }
 
-        /// Where every block starts, as a shader reads it so it can resolve a global id itself.
-        VkBuffer getTable() const { return mTable.getHandle(); }
+        /// Where every block starts, as a shader reads it so it can resolve a global id itself: the
+        /// address of the table of addresses, which the frame block carries.
+        VkDeviceAddress getTableAddress() const { return mTable.getDeviceAddress(); }
 
         VkDeviceSize getBytes() const { return getBlockBytes() * mBlocks.size(); }
 
@@ -111,8 +112,8 @@ namespace Rtx
 
         std::vector<Buffer> mBlocks;
 
-        /// Kept beside the blocks rather than asked for, because a device address is a driver call
-        /// and a table of them goes to the device on every growth.
+        /// Kept beside the blocks as one run, because a table of them goes to the device on every
+        /// growth.
         std::vector<VkDeviceAddress> mAddresses;
         Buffer mTable;
     };

@@ -110,24 +110,17 @@ namespace Rtx
 
         const std::size_t cells = std::size_t{ mSize.x() } * mSize.y() * mSize.z();
 
-        // A counting sort: how many lamps each cell holds, then where each cell's run starts, then
-        // the runs themselves. The offsets carry a trailing sentinel, so the last cell's end is read
-        // the same way every other cell's is.
-        mOffsets.assign(cells + 1, 0);
+        mList.start(cells);
         for (const Light& light : lights)
             forEachCell(boxAround(light.mPosition, light.mReach, mOrigin, mInverseCell, mSize), mSize,
-                [&](std::size_t cell) { ++mOffsets[cell + 1]; });
+                [&](std::size_t cell) { mList.count(cell); });
 
-        for (std::size_t cell = 0; cell < cells; ++cell)
-            mOffsets[cell + 1] += mOffsets[cell];
-
-        mIndices.resize(mOffsets.back());
-        mCursor.assign(mOffsets.begin(), mOffsets.end() - 1);
+        mList.place();
         for (std::size_t index = 0; index < lights.size(); ++index)
         {
             const Light& light = lights[index];
             forEachCell(boxAround(light.mPosition, light.mReach, mOrigin, mInverseCell, mSize), mSize,
-                [&](std::size_t cell) { mIndices[mCursor[cell]++] = static_cast<std::uint32_t>(index); });
+                [&](std::size_t cell) { mList.put(cell, static_cast<std::uint32_t>(index)); });
         }
     }
 }

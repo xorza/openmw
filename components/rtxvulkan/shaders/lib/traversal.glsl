@@ -112,8 +112,8 @@ float sampledOpacity(float opacity, GpuMaterial material, TexturePoint point, Su
 bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed, vec3 direction, float coneWidth,
     bool seeThrough, inout float through)
 {
-    const GpuInstance instance = instances[instanceIndex];
-    const GpuMaterial material = materials[instance.mMaterial];
+    const GpuInstance instance = instanceAt(instanceIndex);
+    const GpuMaterial material = materialAt(instance.mMaterial);
 
     const float opacity = surfaceOpacity(instance, material);
     const bool walkPast = seeThrough && isSeenThrough(opacity);
@@ -129,7 +129,7 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
         return true;
 
     vec2 uv[3];
-    triangleUvs(triangleCorners(meshes[instance.mMesh], primitive), uv);
+    triangleUvs(triangleCorners(meshAt(instance.mMesh), primitive), uv);
     const TexturePoint point = texturePoint(uv, cornerWeights(bary), material.mTextureTransform);
     const SurfaceCone cone = surfaceConeAt(crossed, direction);
 
@@ -253,8 +253,8 @@ Hit committedHit(
     // which is the decision `resolve` used to make: a mesh with no normals stores zeros, and a
     // scale that shrank a real normal past the threshold would otherwise change which branch it
     // took.
-    const GpuInstance placement = instances[instance];
-    const vec3 shading = triangleNormal(triangleCorners(meshes[placement.mMesh], primitive), cornerWeights(bary));
+    const GpuInstance placement = instanceAt(instance);
+    const vec3 shading = triangleNormal(triangleCorners(meshAt(placement.mMesh), primitive), cornerWeights(bary));
     hit.mShading = dot(shading, shading) > 1e-8 ? mat3(toWorld) * shading : vec3(0.0);
 
     return hit;
@@ -492,8 +492,8 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 
     surface.mInstance = hit.mInstance;
 
-    const GpuInstance instance = instances[surface.mInstance];
-    const GpuMesh mesh = meshes[instance.mMesh];
+    const GpuInstance instance = instanceAt(surface.mInstance);
+    const GpuMesh mesh = meshAt(instance.mMesh);
     const uvec3 corner = triangleCorners(mesh, hit.mPrimitive);
     const vec3 weight = cornerWeights(hit.mBary);
 
@@ -526,7 +526,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
     surface.mGeometric = faceforward(surface.mGeometric, direction, surface.mGeometric);
     surface.mNormal = dot(normal, surface.mGeometric) < 0.0 ? -normal : normal;
 
-    const GpuMaterial material = materials[instance.mMaterial];
+    const GpuMaterial material = materialAt(instance.mMaterial);
     surface.mWater = material.mKind == KIND_WATER;
     surface.mGround = layered && material.mKind == KIND_TERRAIN;
     surface.mEmissiveColour = material.mEmissiveColour;
@@ -556,7 +556,7 @@ Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
         const vec2 chunkUv = interpolate(uv, weight);
         for (uint i = 0u; i < material.mLayerCount; ++i)
         {
-            const GpuLayer layer = layers[material.mLayerOffset + i];
+            const GpuLayer layer = layerAt(material.mLayerOffset + i);
             const float showing = maskWeight(layer, chunkUv);
             if (showing <= 0.0)
                 continue;

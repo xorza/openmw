@@ -15,6 +15,7 @@
 
 #ifdef RTX_HOST
 
+#include <cstddef>
 #include <cstdint>
 
 #include <osg/Vec2f>
@@ -615,6 +616,13 @@ namespace Rtx::Shaders
         /// direction — so it is what makes two renders of one camera differ. Zero is a repeatable
         /// frame, which is what a test wants; a window passes its own count.
         uint mFrame;
+
+        /// Where every table a hit reads is. `GpuTables` says why it rides here.
+        ///
+        /// **Last, because it is eight-aligned and nothing before it is.** Both languages pad four
+        /// bytes in front of it; anywhere else it would pad the middle of a struct two languages have
+        /// to agree on, and the offset asserted below pins where it landed.
+        GpuTables mTables;
     };
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
@@ -624,7 +632,8 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(sizeof(VisibilityConstants) == 980, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 984, "GpuTables must land after four bytes of padding");
+    static_assert(sizeof(VisibilityConstants) == 1096, "VisibilityConstants must be scalar-packed on every side");
 
 #endif
 

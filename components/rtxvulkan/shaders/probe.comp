@@ -5,13 +5,18 @@
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-// One pattern of `vec3`s, read three ways, with all three readings written out so the host can say
-// which of them is wrong rather than only that they disagree:
+// One pattern of `vec3`s, read four ways, with every reading written out so the host can say which
+// of them is wrong rather than only that they disagree:
 //
 //   1. through a storage-buffer descriptor, which is what the renderer does today;
-//   2. through a pointer the host handed over whole;
+//   2. through a pointer the host handed over whole, as a push constant;
 //   3. through a pointer read out of a table and indexed by block, which is what a scene made of
-//      blocks would do — `Block(blockAddresses[id / BLOCK]).values[id % BLOCK]`.
+//      blocks would do — `Block(blockAddresses[id / BLOCK]).values[id % BLOCK]`;
+//   4. through a pointer read out of a uniform block, which is how the frame block carries where
+//      every table is.
+//
+// And beside them one pattern of rows the shape of `GpuLayer`, read through a reference that claims
+// sixteen-byte alignment, which is the one claim above four the renderer's tables make.
 //
 // **This is the question that stopped the geometry blocking.** Swapping the normal fetch from a
 // descriptor to a `buffer_reference` changed the picture and nothing else did, and with no way to
@@ -39,11 +44,27 @@ layout(set = 0, binding = 2, scalar) readonly buffer Blocks
     uint64_t blockAddresses[];
 };
 
+// The same two addresses again, out of a uniform block: the shape `Frame` carries `GpuTables` in.
+layout(set = 0, binding = 3, scalar) uniform Addresses
+{
+    ProbeAddresses addressed;
+};
+
+layout(set = 0, binding = 4, scalar) writeonly buffer RowReadings
+{
+    ProbeRow rowReadings[];
+};
+
 // The alignment the packed `vec3` tables in `SceneBuffers` would be reached at: four, because a
 // twelve-byte element at an arbitrary index is only ever float-aligned.
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Block
 {
     vec3 values[];
+};
+
+layout(buffer_reference, buffer_reference_align = PROBE_ROW_ALIGN, scalar) readonly buffer Rows
+{
+    ProbeRow rows[];
 };
 
 layout(push_constant, scalar) uniform Push
@@ -60,4 +81,7 @@ void main()
     readings[at] = sourceValues[at];
     readings[probe.mCount + at] = Block(probe.mSource).values[at];
     readings[2u * probe.mCount + at] = Block(blockAddresses[at / probe.mBlock]).values[at % probe.mBlock];
+    readings[3u * probe.mCount + at] = Block(addressed.mSource).values[at];
+
+    rowReadings[at] = Rows(addressed.mRows).rows[at];
 }

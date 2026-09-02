@@ -42,9 +42,9 @@ namespace Rtx
         /// indices first, and a shader needs the same ones at a hit.
         ///
         /// **Taken fresh every frame and never cached**, because the table is made again whenever a
-        /// block is added to it. A handle copied once is a handle to a buffer a later arrival
+        /// block is added to it. An address copied once is the address of a buffer a later arrival
         /// destroyed, and what that costs is the device.
-        VkBuffer mIndexBlocks = VK_NULL_HANDLE;
+        VkDeviceAddress mIndexBlocks = 0;
 
         /// The bindless texture array's set, bound once and not pushed.
         ///

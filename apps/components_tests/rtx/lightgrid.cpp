@@ -9,16 +9,15 @@ namespace Rtx
 {
     namespace
     {
-        /// What one cell's range holds, read the way the shader reads it — including the flat index,
-        /// which is written out here rather than borrowed so that a change to it has to be made
-        /// twice and noticed once.
+        /// What one cell's run holds, keyed the way the shader keys it — the flat index is written
+        /// out here rather than borrowed so that a change to it has to be made twice and noticed
+        /// once.
         std::vector<std::uint32_t> lampsIn(const LightGrid& grid, std::uint32_t x, std::uint32_t y, std::uint32_t z)
         {
             const std::uint32_t flat = (z * grid.getSize().y() + y) * grid.getSize().x() + x;
-            const std::span<const std::uint32_t> offsets = grid.getOffsets();
+            const std::span<const std::uint32_t> run = grid.getList().getRun(flat);
 
-            return std::vector<std::uint32_t>(
-                grid.getIndices().begin() + offsets[flat], grid.getIndices().begin() + offsets[flat + 1]);
+            return std::vector<std::uint32_t>(run.begin(), run.end());
         }
 
         Light lampAt(float x, float reach)
@@ -50,13 +49,14 @@ namespace Rtx
             EXPECT_TRUE(lampsIn(grid, 3, 0, 0).empty());
             EXPECT_EQ(lampsIn(grid, 4, 0, 0), std::vector<std::uint32_t>{ 1u });
 
-            // A prefix sum with a trailing sentinel: it starts at nothing, never goes backwards, and
-            // ends at exactly what the runs hold, so the last cell needs no special case.
-            const std::span<const std::uint32_t> offsets = grid.getOffsets();
-            ASSERT_EQ(offsets.size(), 6u) << "one per cell, and one more";
-            EXPECT_EQ(offsets[0], 0u);
-            EXPECT_TRUE(std::is_sorted(offsets.begin(), offsets.end()));
-            EXPECT_EQ(offsets.back(), grid.getIndices().size());
+            // A prefix sum with a trailing sentinel: the first run starts where the head ends, the
+            // starts never go backwards, and the last one is where the list ends, so the last cell
+            // needs no special case. Read as the device reads it, whole.
+            const std::span<const std::uint32_t> list = grid.getList().getWhole();
+            ASSERT_EQ(list.size(), 6u + 2u) << "one start per cell and one more, then the two entries";
+            EXPECT_EQ(list[0], 6u);
+            EXPECT_TRUE(std::is_sorted(list.begin(), list.begin() + 6));
+            EXPECT_EQ(list[5], list.size());
         }
 
         /// Every lamp that reaches a cell is in it, in the order they were given.
@@ -77,12 +77,12 @@ namespace Rtx
             const LightGrid grid{ std::span<const Light>{} };
 
             EXPECT_EQ(grid.getSize(), osg::Vec3ui(1u, 1u, 1u));
-            EXPECT_TRUE(grid.getIndices().empty());
+            EXPECT_EQ(grid.getList().getEntryCount(), 0u);
 
-            const std::span<const std::uint32_t> offsets = grid.getOffsets();
-            ASSERT_EQ(offsets.size(), 2u) << "the one cell, and the sentinel";
-            EXPECT_EQ(offsets[0], 0u);
-            EXPECT_EQ(offsets[1], 0u);
+            const std::span<const std::uint32_t> list = grid.getList().getWhole();
+            ASSERT_EQ(list.size(), 2u) << "the one cell's start and the sentinel, and no run";
+            EXPECT_EQ(list[0], 2u);
+            EXPECT_EQ(list[1], 2u);
         }
 
         /// The cell doubles until the grid fits, and there are two budgets to fit.
@@ -112,7 +112,7 @@ namespace Rtx
             const LightGrid crowded(greedy);
             EXPECT_FLOAT_EQ(crowded.getInverseCell(), 1.0f / 2048.0f) << "the entry count, at a legal cell count";
             EXPECT_EQ(crowded.getSize(), osg::Vec3ui(20u, 20u, 20u));
-            EXPECT_EQ(crowded.getIndices().size(), 5u * 20u * 20u * 20u);
+            EXPECT_EQ(crowded.getList().getEntryCount(), 5u * 20u * 20u * 20u);
         }
     }
 }

@@ -3,18 +3,26 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_BINDINGS_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_BINDINGS_GLSL
 
-// Everything the trace is handed, and the three accessors that resolve a global vertex
-// or index id to the block it lives in.
+// Everything the trace is handed: six bindings, and every table the scene owns reached through an
+// address the frame block carries.
 //
-// **The frame's own block carries what is not a table**: the camera, the sky, the sea's moments and
-// where the lamps were binned. A record that is one row belongs there rather than in a descriptor
-// of its own.
+// **The frame's own block carries what is not a table, and where every table is.** The camera, the
+// sky, the sea's moments and where the lamps were binned ride there because a record that is one
+// row belongs in the block rather than in a descriptor of its own. The tables ride there as
+// `GpuTables`, one address apiece, because seventeen storage-buffer bindings pushed twice a frame
+// were seventeen places a layout and a write could disagree; `scene.h` says the rest.
+//
+// **A table is read through a function and never through its reference.** `instanceAt`, `lightAt`
+// and their siblings construct the reference from the block and index it, so the alignment each
+// reference claims is stated once, beside the table it is for. None of them takes `nonuniformEXT`:
+// that decoration is for an index into a descriptor array, and a reference is not one, however the
+// index into the table was reached.
 //
 // **The declarations, and `bindings.h` next door holds the numbers** — set zero's are a fact shared
 // with `VisibilityPass`, which writes the same slots. What each channel is *for* is written here,
 // beside the thing itself.
 //
-// **Four sets, by who made what they name.** Set zero is the frame and the scene's tables, pushed;
+// **Four sets, by who made what they name.** Set zero is the frame and what it points at, pushed;
 // set one is the bindless textures a scene owns; set two is the channels a `GBuffer` owns, numbered
 // by `gbuffer.h`, which `GBuffer` reads too; set three is the air a `FogVolume` holds. The split is
 // not tidiness — the device allows 32 push descriptors and this had reached exactly 32, so every
@@ -116,44 +124,63 @@ layout(set = 0, binding = BIND_HITS) buffer HitCount
     uint hits;
 };
 
+// **A buffer and not a push constant.** The frame's description passed 256 bytes, which is every
+// byte `maxPushConstantsSize` promises on this hardware; `VisibilityPass` writes it into a buffer of
+// its own instead. The name and the fields are the ones the push block had, so nothing that reads
+// `camera` knows the difference.
+//
+// **Uniform and not storage**, which is worth 0.14 ms of the trace at Balmora: every pixel reads
+// half of these fields several times over, and a uniform block is promoted to a constant bank the
+// way the push constants it replaces were, where a storage buffer is a memory read like any other.
+//
+// **Declared before the tables, because the tables are reached through it.**
+layout(set = 0, binding = BIND_FRAME, scalar) uniform Frame
+{
+    VisibilityConstants frame;
+};
+
+// The scene's tables, each a reference constructed from the address `frame.mTables` carries.
+//
+// **The alignment each reference claims is `scene.h`'s to state**, beside the rows it is about:
+// `TABLE_ALIGN_LAYERS` where a 48-byte row puts two `vec4` on sixteen, `TABLE_ALIGN_BLOCKS` for a
+// table of eight-byte addresses, and `TABLE_ALIGN_ROWS` everywhere a row or an element is only
+// four-aligned. The host asserts every address against the same three numbers before it writes the
+// block, so a claim here is a claim something checks.
+//
+// **Not `restrict`, though it would be true.** Tried on every reference: it gave back a hundredth
+// or two of the four the address path costs the guild's trace, inside the noise, and it moved two
+// interiors — one by nineteen levels on seventy-six pixels — where the compiled shape shifted a lamp
+// pick. `GpuTables` carries the cost it did not recover.
+
 // The vertex attributes and the indices, as lists of blocks.
 //
 // **A block is allocated once at its full size and never moved**, so a scene that grows keeps every
 // address already handed out and every acceleration structure built from one stays valid — which is
-// what lets a cell arriving append rather than rebuild the world. What is bound here is *where* the
-// blocks are; a global id resolves to one of them and an offset inside it. `Rtx::SceneDesc` never
+// what lets a cell arriving append rather than rebuild the world. What the frame carries is *where*
+// the blocks are; a global id resolves to one of them and an offset inside it. `Rtx::SceneDesc` never
 // lets a mesh's run straddle a block, and both sizes are powers of two, so that is a shift and a
 // mask.
 //
 // The alignment is four: a twelve-byte element at an arbitrary index is only ever float-aligned.
-layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer NormalBlock
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer NormalBlock
 {
     vec3 at[];
 };
 
-layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer TexCoordBlock
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer TexCoordBlock
 {
     vec2 at[];
 };
 
-layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer IndexBlock
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer IndexBlock
 {
     uint at[];
 };
 
-layout(set = 0, binding = BIND_NORMALS, scalar) readonly buffer NormalBlocks
+/// Where a blocked table's blocks start: a table of addresses, one per block.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_BLOCKS) readonly buffer BlockTable
 {
-    uint64_t normalBlocks[];
-};
-
-layout(set = 0, binding = BIND_TEXCOORDS, scalar) readonly buffer TexCoordBlocks
-{
-    uint64_t texCoordBlocks[];
-};
-
-layout(set = 0, binding = BIND_INDICES, scalar) readonly buffer IndexBlocks
-{
-    uint64_t indexBlocks[];
+    uint64_t at[];
 };
 
 // The block a global id lives in.
@@ -164,110 +191,140 @@ layout(set = 0, binding = BIND_INDICES, scalar) readonly buffer IndexBlocks
 // block and reads the corners out of it.
 NormalBlock normalBlockOf(uint vertex)
 {
-    return NormalBlock(normalBlocks[vertex / VERTEX_BLOCK]);
+    return NormalBlock(BlockTable(frame.mTables.mNormalBlocks).at[vertex / VERTEX_BLOCK]);
 }
 
 TexCoordBlock texCoordBlockOf(uint vertex)
 {
-    return TexCoordBlock(texCoordBlocks[vertex / VERTEX_BLOCK]);
+    return TexCoordBlock(BlockTable(frame.mTables.mTexCoordBlocks).at[vertex / VERTEX_BLOCK]);
 }
 
 IndexBlock indexBlockOf(uint element)
 {
-    return IndexBlock(indexBlocks[element / INDEX_BLOCK]);
+    return IndexBlock(BlockTable(frame.mTables.mIndexBlocks).at[element / INDEX_BLOCK]);
 }
 
-layout(set = 0, binding = BIND_MESHES, scalar) readonly buffer Meshes
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer MeshTable
 {
-    GpuMesh meshes[];
+    GpuMesh at[];
 };
 
-layout(set = 0, binding = BIND_INSTANCES, scalar) readonly buffer Instances
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer InstanceTable
 {
-    GpuInstance instances[];
+    GpuInstance at[];
 };
 
-layout(set = 0, binding = BIND_MATERIALS, scalar) readonly buffer Materials
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer MaterialTable
 {
-    GpuMaterial materials[];
+    GpuMaterial at[];
 };
 
-layout(set = 0, binding = BIND_LAYERS, scalar) readonly buffer Layers
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_LAYERS) readonly buffer LayerTable
 {
-    GpuLayer layers[];
+    GpuLayer at[];
 };
 
-layout(set = 0, binding = BIND_MASKS, scalar) readonly buffer Masks
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer MaskTable
 {
-    float masks[];
+    float at[];
 };
 
-layout(set = 0, binding = BIND_LIGHTS, scalar) readonly buffer Lights
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer LightTable
 {
-    GpuLight lights[];
+    GpuLight at[];
 };
 
-/// Where each cell's lamps start, with a sentinel so the last cell's end needs no special case.
-layout(set = 0, binding = BIND_LIGHT_OFFSETS, scalar) readonly buffer LightOffsets
+/// A list of `uint`: the light grid's, and the sprite tiles'.
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer IndexList
 {
-    uint lightOffsets[];
+    uint at[];
 };
 
-/// Every cell's lamps, run together in cell order.
-layout(set = 0, binding = BIND_LIGHT_INDICES, scalar) readonly buffer LightIndices
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer BlueNoiseTable
 {
-    uint lightIndices[];
+    float at[];
 };
+
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer SpriteTable
+{
+    GpuSprite at[];
+};
+
+layout(buffer_reference, scalar, buffer_reference_align = TABLE_ALIGN_ROWS) readonly buffer EmitterTable
+{
+    GpuEmitter at[];
+};
+
+GpuMesh meshAt(uint index)
+{
+    return MeshTable(frame.mTables.mMeshes).at[index];
+}
+
+GpuInstance instanceAt(uint index)
+{
+    return InstanceTable(frame.mTables.mInstances).at[index];
+}
+
+GpuMaterial materialAt(uint index)
+{
+    return MaterialTable(frame.mTables.mMaterials).at[index];
+}
+
+GpuLayer layerAt(uint index)
+{
+    return LayerTable(frame.mTables.mLayers).at[index];
+}
+
+float maskAt(uint index)
+{
+    return MaskTable(frame.mTables.mMasks).at[index];
+}
+
+GpuLight lightAt(uint index)
+{
+    return LightTable(frame.mTables.mLights).at[index];
+}
+
+/// The light grid's list: where each cell's run starts, counted from the front of the list, with a
+/// sentinel so the last cell's end needs no special case — and after those starts, every cell's
+/// lamps run together in cell order. Cell `c`'s lamps are `at[at[c]] .. at[at[c + 1]]`.
+/// `Rtx::LightGrid` says why one list and not two.
+uint lightListAt(uint slot)
+{
+    return IndexList(frame.mTables.mLightList).at[slot];
+}
 
 /// The blue-noise tile, `RANDOM_STREAMS` channels interleaved per pixel. See `Rtx::BlueNoise`.
-layout(set = 0, binding = BIND_BLUE_NOISE, scalar) readonly buffer BlueNoiseTile
+float blueNoiseAt(uint index)
 {
-    float blueNoise[];
-};
+    return BlueNoiseTable(frame.mTables.mBlueNoise).at[index];
+}
 
 /// Every live particle in the scene, one emitter's run after another's.
-layout(set = 0, binding = BIND_SPRITES, scalar) readonly buffer Sprites
+GpuSprite spriteAt(uint index)
 {
-    GpuSprite sprites[];
-};
+    return SpriteTable(frame.mTables.mSprites).at[index];
+}
 
 /// One sphere and one run of sprites per particle system, indexed by `GpuSprite::mEmitter`.
 ///
 /// **No count beside it, because nothing walks these.** The buffer never shrinks, so its length
 /// outlives the cell that filled it — and since the sprite tiles replaced the loop over emitters,
 /// the only way in is from a sprite the tile named, which can only name one that is real.
-layout(set = 0, binding = BIND_EMITTERS, scalar) readonly buffer Emitters
+GpuEmitter emitterAt(uint index)
 {
-    GpuEmitter emitters[];
-};
+    return EmitterTable(frame.mTables.mEmitters).at[index];
+}
 
-/// Where each screen tile's sprites begin, with a sentinel so the last tile needs no special case.
+/// The sprite tiles' list, in the light grid's shape over the screen's tiles: where each tile's run
+/// starts, then every tile's sprites run together in tile order and ascending inside each run —
+/// which is the order the march used to walk them in, and so the order they still composite in.
 ///
 /// `Rtx::SpriteTiles` says why the layer is binned per tile and the emitters are not.
-layout(set = 0, binding = BIND_SPRITE_TILE_OFFSETS, scalar) readonly buffer SpriteTileOffsets
+uint spriteTileListAt(uint slot)
 {
-    uint spriteTileOffsets[];
-};
-
-/// Every tile's sprites, run together in tile order and ascending inside each run — which is the
-/// order the march used to walk them in, and so the order they still composite in.
-layout(set = 0, binding = BIND_SPRITE_TILE_INDICES, scalar) readonly buffer SpriteTileIndices
-{
-    uint spriteTileIndices[];
-};
-
-// **A buffer and not a push constant.** The frame's description passed 256 bytes, which is every
-// byte `maxPushConstantsSize` promises on this hardware; `VisibilityPass` writes it into a buffer of
-// its own instead. The name and the fields are the ones the push block had, so nothing that reads
-// `camera` knows the difference.
-//
-// **Uniform and not storage**, which is worth 0.14 ms of the trace at Balmora: every pixel reads
-// half of these fields several times over, and a uniform block is promoted to a constant bank the
-// way the push constants it replaces were, where a storage buffer is a memory read like any other.
-layout(set = 0, binding = BIND_FRAME, scalar) uniform Frame
-{
-    VisibilityConstants frame;
-};
+    return IndexList(frame.mTables.mSpriteTileList).at[slot];
+}
 
 // The sea, as the tiles `WavePass` synthesised it into. One texture apiece per cascade, sampled
 // rather than loaded, because the level a ray cone reaches is what a water pixel asks for.

@@ -19,14 +19,15 @@ namespace Rtx::Testing
         /// units at that distance rather than two hundred, so the sheet covers an eighth of each
         /// axis: `p` in 28..35, **64 hits**. That the two differ is the point — a parallel ray that
         /// quietly fanned out would still fill a plausible-looking image.
-        /// A scene with nothing in it still binds a buffer for everything the shader declares.
+        /// A scene with nothing in it still has a table at every address the frame carries.
         ///
         /// **A null handle at a descriptor is undefined at the dispatch**, and undefined here meant a
         /// lost device five seconds in, intermittently, with no message — the loop waited forever on
         /// a fence that would never signal. Three tables were doing it: a scene with no textures
         /// asked for no shading maps and a frame with no sprites asked for no tiles, and the rule
         /// every table was grown by read "grow if what is wanted does not fit", which never makes one
-        /// at all when nothing is wanted.
+        /// at all when nothing is wanted. An address of nought in the frame block is the same
+        /// mistake one step later, and the device says even less about it.
         ///
         /// The fix is that the owner opens every table when it is built rather than when something
         /// writes to one, because the write is exactly what does not happen. This is the assertion
@@ -35,7 +36,7 @@ namespace Rtx::Testing
         {
         };
 
-        TEST_F(RtxSceneTableTest, aSceneWithNothingInItStillBindsATableForEverythingDeclared)
+        TEST_F(RtxSceneTableTest, aSceneWithNothingInItStillAddressesATableForEverythingDeclared)
         {
             Device& device = getDevice();
             CommandPool& pool = getPool();
@@ -48,26 +49,38 @@ namespace Rtx::Testing
 
             // **Every table this hands out, and not the three that were caught.** The rule was the
             // same for all of them; which ones happened to be empty on the day is not what decides
-            // whether they are covered.
-            const std::array<std::pair<const char*, VkBuffer>, 14> tables{ {
-                { "the normal blocks", buffers.getNormalBlocks(0) },
-                { "the texture coordinate blocks", buffers.getTexCoordBlocks() },
-                { "the meshes", buffers.getMeshes() },
-                { "the instance rows", buffers.getInstances(0) },
-                { "the materials", buffers.getMaterials(0) },
-                { "the terrain layers", buffers.getLayers(0) },
-                { "the blend masks", buffers.getMasks(0) },
-                { "the lights", buffers.getLights(0) },
-                { "the light grid's offsets", buffers.getLightOffsets(0) },
-                { "the light grid's indices", buffers.getLightIndices(0) },
-                { "the sprites", buffers.getSprites(0) },
-                { "the emitters", buffers.getEmitters(0) },
-                { "the sprite tile offsets", buffers.getSpriteTileOffsets(0) },
-                { "the sprite tile indices", buffers.getSpriteTileIndices(0) },
+            // whether they are covered. An address of nought is a table bound as nothing, and an
+            // address off what its reference claims is a load the device may split or fault on, with
+            // no message either.
+            Shaders::GpuTables addressed{};
+            buffers.describeTables(0, addressed);
+
+            struct Named
+            {
+                const char* mWhat;
+                std::uint64_t mAddress;
+                std::uint32_t mAlign;
+            };
+            const std::array<Named, 12> named{ {
+                { "the normal blocks", addressed.mNormalBlocks, Shaders::TABLE_ALIGN_BLOCKS },
+                { "the texture coordinate blocks", addressed.mTexCoordBlocks, Shaders::TABLE_ALIGN_BLOCKS },
+                { "the meshes", addressed.mMeshes, Shaders::TABLE_ALIGN_ROWS },
+                { "the instance rows", addressed.mInstances, Shaders::TABLE_ALIGN_ROWS },
+                { "the materials", addressed.mMaterials, Shaders::TABLE_ALIGN_ROWS },
+                { "the terrain layers", addressed.mLayers, Shaders::TABLE_ALIGN_LAYERS },
+                { "the blend masks", addressed.mMasks, Shaders::TABLE_ALIGN_ROWS },
+                { "the lights", addressed.mLights, Shaders::TABLE_ALIGN_ROWS },
+                { "the light grid's list", addressed.mLightList, Shaders::TABLE_ALIGN_ROWS },
+                { "the sprites", addressed.mSprites, Shaders::TABLE_ALIGN_ROWS },
+                { "the emitters", addressed.mEmitters, Shaders::TABLE_ALIGN_ROWS },
+                { "the sprite tiles' list", addressed.mSpriteTileList, Shaders::TABLE_ALIGN_ROWS },
             } };
 
-            for (const auto& [what, table] : tables)
-                EXPECT_NE(table, VK_NULL_HANDLE) << what;
+            for (const Named& table : named)
+            {
+                EXPECT_NE(table.mAddress, 0u) << table.mWhat;
+                EXPECT_EQ(table.mAddress % table.mAlign, 0u) << table.mWhat << " at " << table.mAddress;
+            }
         }
 
         /// One renderer, three scenes, and the number of textures changing under it.

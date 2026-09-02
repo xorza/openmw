@@ -168,6 +168,13 @@ namespace Rtx
                 // catch it. What is given up is the *report*; what is kept is everything else GPU-AV
                 // checks, including what a ray query does with its own arguments — which is what it
                 // caught here first.
+                //
+                // **The scene's tables are pointers now, and robustness does not reach a pointer**,
+                // so the layer instruments each of those reads whatever this says. Measured at
+                // Balmora on the release harness with no cache: a shot's pipelines and scene took
+                // 45 s with the tables as descriptors and 83 s as pointers, and a frame under the
+                // layers 12 ms against 30. A shot completes and reports nothing, so that is the price
+                // of GPU-AV here and not a reason for a switch.
                 turnOn("gpuav_force_on_robustness");
             }
 
