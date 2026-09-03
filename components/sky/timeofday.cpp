@@ -1,5 +1,7 @@
 #include "timeofday.hpp"
 
+#include <stdexcept>
+
 #include <components/fallback/fallback.hpp>
 
 namespace Sky
@@ -58,7 +60,24 @@ namespace Sky
 
     const TimeOfDaySettings& TimeOfDaySettings::shared()
     {
-        static const TimeOfDaySettings settings = fromFallback();
+        // **Refuses a day that never begins rather than holding one.** `Fallback::Map` answers an
+        // allowed key nobody planted with a silent nought, and this reading is held for the life of
+        // the process — so settings read before they were loaded would put every hour of every day
+        // after midnight, with nothing to say why the sun had gone out.
+        //
+        // `std::logic_error` and not this fork's own: nothing below `components/rtx` may reach up for
+        // it, and an ordering fault is the kind `Fallback::Map` already throws that for.
+        static const TimeOfDaySettings settings = [] {
+            TimeOfDaySettings read = fromFallback();
+            if (!(read.mDayEnd > read.mNightEnd))
+                throw std::logic_error(
+                    "the sky was asked about an hour before Weather_Sunrise_Time and "
+                    "Weather_Sunset_Time were read: a day that ends before it starts is "
+                    "not one this renderer can light");
+
+            return read;
+        }();
+
         return settings;
     }
 

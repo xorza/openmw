@@ -10,6 +10,7 @@
 #include <components/sky/moonmodel.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "error.hpp"
 #include "lightbuilder.hpp"
 #include "shaders/colour.h"
 #include "shaders/scene.h"
@@ -28,6 +29,22 @@ namespace Rtx
             return Fallback::Map::getFloat("Moons_" + std::string(nameOf(moon)) + "_" + std::string(field));
         }
 
+        /// The same, refusing a reading of nought.
+        ///
+        /// **`Fallback::Map` answers an allowed key nobody planted with a silent zero**, and both
+        /// readings below are held for the life of the process — so a moon asked for before the
+        /// settings were read would leave every sky after it wrong, with nothing to say why. None of
+        /// the quantities this guards is one a moon can have at nought.
+        float requireSetting(Moon moon, std::string_view field)
+        {
+            const float value = setting(moon, field);
+            if (!(value > 0.0f))
+                throw Error("Moons_" + std::string(nameOf(moon)) + "_" + std::string(field)
+                    + " is nought: the moons were asked for before the settings that describe them were read");
+
+            return value;
+        }
+
         /// The mean opaque texel of `tx_masser_full.dds` and `tx_secunda_full.dds`, linear.
         ///
         /// Measured off the shipped portraits rather than chosen: one red, one grey, and the ratio
@@ -44,7 +61,7 @@ namespace Rtx
         /// units away.
         float subtendedBy(Moon moon)
         {
-            const float halfWidth = 0.5f * 450.0f * setting(moon, "Size") / 125.0f;
+            const float halfWidth = 0.5f * 450.0f * requireSetting(moon, "Size") / 125.0f;
             return std::atan(halfWidth / 1000.0f);
         }
 
@@ -60,6 +77,18 @@ namespace Rtx
             return moon == Moon::Masser ? sMasser : sSecunda;
         }
 
+        /// This moon's clock, read out of its ten `Moons_*` settings.
+        ///
+        /// **The speed is asked for first, and `requireSetting` says why.** A `MoonModel` reads all
+        /// ten without judging any of them, so nothing else here would notice a clock built out of
+        /// nothing — and `clockOf` holds it for the run.
+        Sky::MoonModel readClock(Moon moon)
+        {
+            requireSetting(moon, "Speed");
+
+            return Sky::MoonModel(nameOf(moon));
+        }
+
         /// This moon's clock, built once.
         ///
         /// **`MoonModel`'s constructor reads ten `Moons_*` settings by name**, each of them a key
@@ -67,8 +96,8 @@ namespace Rtx
         /// the run: `at` is given the day and the hour and reads nothing else.
         const Sky::MoonModel& clockOf(Moon moon)
         {
-            static const Sky::MoonModel sMasser{ nameOf(Moon::Masser) };
-            static const Sky::MoonModel sSecunda{ nameOf(Moon::Secunda) };
+            static const Sky::MoonModel sMasser = readClock(Moon::Masser);
+            static const Sky::MoonModel sSecunda = readClock(Moon::Secunda);
 
             return moon == Moon::Masser ? sMasser : sSecunda;
         }

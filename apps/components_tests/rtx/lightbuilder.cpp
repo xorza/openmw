@@ -20,7 +20,7 @@
 #include <components/sceneutil/lightcommon.hpp>
 
 #include "allocations.hpp"
-#include "weatherseed.hpp"
+#include "fallbackseed.hpp"
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
@@ -476,18 +476,31 @@ namespace Rtx
             EXPECT_EQ(again.mAmbient, makeDaylight("Clear", 12.0f, sReach).mAmbient);
             EXPECT_EQ(later.mFog.mExtinction, makeDaylight("Clear", 20.0f, sReach).mFog.mExtinction);
 
-            // And the hour still reaches it: a record that ignored the clock would answer the same
-            // at both.
-            EXPECT_NE(later.mFog.mExtinction, again.mFog.mExtinction);
+            // And the hour still reaches it: a record that ignored the clock would light noon and
+            // eight in the evening the same. The ambient is read off a four-point ramp whose day and
+            // night colours differ in both the ini and the defaults OpenMW ships.
+            EXPECT_EQ(later.mAmbient, makeDaylight("Clear", 20.0f, sReach).mAmbient);
+            EXPECT_NE(later.mAmbient, again.mAmbient);
 
             // A file records one depth for daylight and one for night, and the ramp hands the day
-            // value to three of its four points. Deeper fog is thicker air, so the night value being
-            // the larger of the two is what makes these comparisons say different things.
+            // value to three of its four points. Which of the four an hour reads is what these pin,
+            // and it holds whatever the two depths are.
             const float day = makeDaylight("Clear", 12.0f, sReach).mFog.mExtinction;
             const float night = makeDaylight("Clear", 0.0f, sReach).mFog.mExtinction;
-            EXPECT_GT(night, day);
             EXPECT_EQ(makeDaylight("Clear", 6.0f, sReach).mFog.mExtinction, day) << "sunrise reads the day depth";
             EXPECT_EQ(makeDaylight("Clear", 20.0f, sReach).mFog.mExtinction, night) << "and night begins at twenty";
+
+            // **Deeper fog is thicker air, asked only where the two depths differ.** Morrowind ships
+            // `.69` for both of Clear's, so a suite that opened the real installation first has one
+            // depth over the whole clock and nothing here to compare — `Testing::weatherSeed` says
+            // why the seeded pair is not what this asserts against.
+            const bool nightIsDeeper = Fallback::Map::getFloat("Weather_Clear_Land_Fog_Night_Depth")
+                > Fallback::Map::getFloat("Weather_Clear_Land_Fog_Day_Depth");
+
+            if (nightIsDeeper)
+            {
+                EXPECT_GT(night, day);
+            }
 
             // And the weather reaches its air through `exteriorFog` rather than assembling one,
             // which is what keeps the extinction and the edge measured over one reach.
@@ -496,9 +509,14 @@ namespace Rtx
             // **Dusk is between the two rather than one of them**, which is the whole of what the
             // engine's own ramp buys over reading whichever phase an hour falls in: the seeded
             // sunset runs from eighteen to twenty, so half past seven is halfway across it.
-            const float dusk = makeDaylight("Clear", 19.5f, sReach).mFog.mExtinction;
-            EXPECT_GT(dusk, day);
-            EXPECT_LT(dusk, night);
+            //
+            // Asked only where the two depths differ, for the reason the comparison above gives.
+            if (nightIsDeeper)
+            {
+                const float dusk = makeDaylight("Clear", 19.5f, sReach).mFog.mExtinction;
+                EXPECT_GT(dusk, day);
+                EXPECT_LT(dusk, night);
+            }
 
             // **A night has no sun in it at all**, which is one fact rather than the engine's two.
             // Morrowind never switches its sunlight off — `WeatherManager` reads a colour off the

@@ -1,5 +1,5 @@
 # Open issues
 
-- `RtxMoonBuilderTest` fails under `--gtest_shuffle` on some seeds. Its `seed()` plants `Moons_*`
-  through `Fallback::Map::init`, which keeps whichever value arrives first, so a test that reads
-  those keys before it wins.
+- `RtxSceneExtractorTest.spritesAreReadAfterTheWalkRatherThanAsItPassesThem` fails under
+  `--gtest_shuffle` on some seeds. Two sprite positions differ by one ulp, so the order the suite
+  ran in reaches the emitter's clock.

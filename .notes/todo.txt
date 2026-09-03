@@ -16,3 +16,4 @@
 - load time allocations
 - move some computations to loadtime
 - where to save shadercache
+- consildate seed init

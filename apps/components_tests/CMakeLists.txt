@@ -118,6 +118,7 @@ if (OPENMW_RTX)
         rtx/device.cpp
         rtx/distantlights.cpp
         rtx/dlss.cpp
+        rtx/fallbackseed.hpp
         rtx/fogbuilder.cpp
         rtx/fognoise.cpp
         rtx/frameimage.cpp
@@ -183,7 +184,6 @@ if (OPENMW_RTX)
         rtx/wavemoments.hpp
         rtx/wavepass.cpp
         rtx/wavespectrum.cpp
-        rtx/weatherseed.hpp
         rtxtool/actor.cpp
         rtxtool/benchsuite.cpp
         rtxtool/contactsheet.cpp

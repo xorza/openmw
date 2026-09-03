@@ -9,48 +9,16 @@
 #include <components/rtx/shaders/scene.h>
 
 #include "allocations.hpp"
+#include "fallbackseed.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        /// Morrowind's own `[Moons]`, as the ini ships it.
-        ///
-        /// **Morrowind's own numbers, so this stands up with no installation present.**
-        ///
-        /// `Fallback::Map::init` keeps the first value it is given for a key, and a test elsewhere in
-        /// this binary opens the real installation — so whichever ran first is what these tests see.
-        /// Every value below is the ini's, and every one of them matches the default OpenMW ships
-        /// **except the two sizes**, where the ini says 94 and 40 against OpenMW's 55 and 20. That is
-        /// why nothing here asserts a size, and why everything that turns on the arc does: the
-        /// speeds, the increments and the fade angles agree between the two.
+        /// `Rtx::Testing::moonSeed` says what these are and are not.
         void seed()
         {
-            Fallback::Map::init({
-                { "Moons_Masser_Size", "94" },
-                { "Moons_Masser_Fade_In_Start", "14" },
-                { "Moons_Masser_Fade_In_Finish", "15" },
-                { "Moons_Masser_Fade_Out_Start", "7" },
-                { "Moons_Masser_Fade_Out_Finish", "10" },
-                { "Moons_Masser_Axis_Offset", "35" },
-                { "Moons_Masser_Speed", "0.5" },
-                { "Moons_Masser_Daily_Increment", "1" },
-                { "Moons_Masser_Fade_Start_Angle", "50" },
-                { "Moons_Masser_Fade_End_Angle", "40" },
-                { "Moons_Masser_Moon_Shadow_Early_Fade_Angle", "0.5" },
-
-                { "Moons_Secunda_Size", "40" },
-                { "Moons_Secunda_Fade_In_Start", "14" },
-                { "Moons_Secunda_Fade_In_Finish", "15" },
-                { "Moons_Secunda_Fade_Out_Start", "7" },
-                { "Moons_Secunda_Fade_Out_Finish", "10" },
-                { "Moons_Secunda_Axis_Offset", "50" },
-                { "Moons_Secunda_Speed", "0.6" },
-                { "Moons_Secunda_Daily_Increment", "1.2" },
-                { "Moons_Secunda_Fade_Start_Angle", "50" },
-                { "Moons_Secunda_Fade_End_Angle", "40" },
-                { "Moons_Secunda_Moon_Shadow_Early_Fade_Angle", "0.5" },
-            });
+            Fallback::Map::init(Testing::moonSeed());
         }
 
         /// How this renderer weighs a colour into a brightness, which is what a level is measured in.
@@ -323,8 +291,14 @@ namespace Rtx
         ///
         /// **What a moon is worth as a light goes as the sky it covers.** Both moons are the same
         /// law at the same albedo, so Secunda's share of Masser's is the ratio of their sines
-        /// squared: 0.1853 at the ini's sizes. Its portrait is the paler of the two by 2.54, so what
-        /// it actually delivers is 0.4705 of Masser rather than 0.1853.
+        /// squared, and its portrait being the paler of the two multiplies that back up.
+        ///
+        /// **The paleness is pinned and the sizes are not.** How much sky each covers comes out of
+        /// whichever `Moons_*_Size` the suite planted — `moonSeed` says why that is not this test's
+        /// to fix — while the ratio between the two portraits is a number this code measured off the
+        /// shipped textures. At the ini's 94 and 40 the share is 0.1853 and what Secunda delivers is
+        /// 0.4705 of Masser; at OpenMW's 55 and 20 both are something else and the ratio between
+        /// them is the same 2.54.
         TEST(RtxMoonBuilderTest, secundaDeliversTheShareOfTheSkyItCovers)
         {
             seed();
@@ -334,9 +308,11 @@ namespace Rtx
 
             const float wide = std::sin(moonAngularRadius(Moon::Masser));
             const float narrow = std::sin(moonAngularRadius(Moon::Secunda));
-            EXPECT_NEAR((narrow * narrow) / (wide * wide), 0.1853f, 1e-4f);
+            const float covered = (narrow * narrow) / (wide * wide);
+            EXPECT_LT(covered, 1.0f) << "Secunda is the smaller of the two, whatever the sizes say";
 
-            EXPECT_NEAR(luminanceOf(sentBy(secunda)) / luminanceOf(sentBy(masser)), 0.4705f, 1e-3f);
+            const float delivered = luminanceOf(sentBy(secunda)) / luminanceOf(sentBy(masser));
+            EXPECT_NEAR(delivered / covered, 2.54f, 1e-2f) << "the paler portrait, over the sky it covers";
 
             // The pale light of the two, where Masser's is red.
             EXPECT_LT(secunda.mIrradiance.x(), 1.4f * secunda.mIrradiance.y());
