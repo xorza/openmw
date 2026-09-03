@@ -17,18 +17,9 @@ says so.
 ## 1. Structures that allocate
 
 **Measured.** The whole heap costs about 0.4% of the main process's cycles, on a still cell and on a
-streaming crossing alike. Nothing left in this section moves a frame time. Both items below are work
-against the stated frame-path rule.
+streaming crossing alike. Nothing in this section moves a frame time.
 
-### 1.1 `Weather::WrapAroundOperator::operateParticles` allocates per system per frame
-
-`components/weather/precipitation.cpp:98`. `getWorldMatrices()` returns a fresh vector. Both
-renderers run this, because it is lifted upstream code.
-
-Direction: cache the world and local matrices when the parent chain changes. A change here touches
-shared code and needs a go-ahead.
-
-### 1.2 `RtxRenderer::eventTraversal` builds an event list per frame
+### 1.1 `RtxRenderer::eventTraversal` builds an event list per frame
 
 `apps/openmw/mwrender/rtx/rtxrenderer.cpp:330`. `osgGA::EventQueue::Events` is a `std::list`, so each
 event drained costs a node.

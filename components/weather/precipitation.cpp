@@ -6,6 +6,7 @@
 #include <osg/Group>
 #include <osg/PositionAttitudeTransform>
 #include <osg/Texture2D>
+#include <osg/Transform>
 
 #include <osgParticle/BoxPlacer>
 #include <osgParticle/ConstantRateCounter>
@@ -68,6 +69,17 @@ namespace Weather
 
     namespace
     {
+        /// Root first, because a transform lower down multiplies onto what its parents already
+        /// carried — which is the order `osg::computeLocalToWorld` walks a path in.
+        void accumulateLocalToWorld(const osg::Node& node, osg::Matrix& into)
+        {
+            if (node.getNumParents() > 0)
+                accumulateLocalToWorld(*node.getParent(0), into);
+
+            if (const osg::Transform* transform = node.asTransform())
+                transform->computeLocalToWorldMatrix(into, nullptr);
+        }
+
         /// Carries a particle that has left the box back in at the far side, and slides the whole
         /// box along with the eye — which is what makes a finite handful of drops a whole rainstorm.
         class WrapAroundOperator : public osgParticle::Operator
@@ -93,27 +105,20 @@ namespace Weather
                 osg::Vec3 position = getCameraPosition();
                 osg::Vec3 positionDifference = position - mPreviousCameraPosition;
 
-                osg::Matrix toWorld, toLocal;
+                // **The box travels with the eye, so where the eye stands is not part of the frame
+                // the box is defined in.** The placer fills `±range/2` about the origin of whatever
+                // the particles hang under, and the wrap below is about that origin too — so a
+                // parent carrying a translation would have every drop wrapped about the middle of
+                // the world instead. Upstream never had to say this: its only parent is
+                // `CameraRelativeTransform`, which zeroes its own translation for exactly this
+                // reason. This fork hangs the same systems under a plain transform at the eye as
+                // well, and there the drops drifted out of the box towards the origin until only the
+                // newest were anywhere near the camera.
+                osg::Matrix toWorld = localToWorldOf(*ps);
+                toWorld.setTrans(osg::Vec3f(0.f, 0.f, 0.f));
 
-                std::vector<osg::Matrix> worldMatrices = ps->getWorldMatrices();
-
-                if (!worldMatrices.empty())
-                {
-                    toWorld = worldMatrices[0];
-
-                    // **The box travels with the eye, so where the eye stands is not part of the
-                    // frame the box is defined in.** The placer fills `±range/2` about the origin of
-                    // whatever the particles hang under, and the wrap below is about that origin
-                    // too — so a parent carrying a translation would have every drop wrapped about
-                    // the middle of the world instead. Upstream never had to say this: its only
-                    // parent is `CameraRelativeTransform`, which zeroes its own translation for
-                    // exactly this reason. This fork hangs the same systems under a plain transform
-                    // at the eye as well, and there the drops drifted out of the box towards the
-                    // origin until only the newest were anywhere near the camera.
-                    toWorld.setTrans(osg::Vec3f(0.f, 0.f, 0.f));
-
-                    toLocal.invert(toWorld);
-                }
+                osg::Matrix toLocal;
+                toLocal.invert(toWorld);
 
                 for (int i = 0; i < ps->numParticles(); ++i)
                 {
@@ -251,6 +256,13 @@ namespace Weather
 
         /// How far a driven effect's particles run before the wrap carries them back.
         const osg::Vec3f sEffectWrapRange(1024, 1024, 800);
+    }
+
+    osg::Matrix localToWorldOf(const osg::Node& node)
+    {
+        osg::Matrix matrix;
+        accumulateLocalToWorld(node, matrix);
+        return matrix;
     }
 
     Precipitation::Precipitation(osg::Group* parent, Resource::SceneManager& scenes, osg::Node::NodeMask mask)

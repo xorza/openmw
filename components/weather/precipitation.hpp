@@ -1,5 +1,6 @@
 #pragma once
 
+#include <osg/Matrix>
 #include <osg/Node>
 #include <osg/Vec3f>
 #include <osg/ref_ptr>
@@ -28,6 +29,18 @@ namespace Resource
 
 namespace Weather
 {
+    /// The frame `node`'s own coordinates sit in, accumulated down the first parent at each level.
+    ///
+    /// **The answer `osg::Node::getWorldMatrices` gives for its first path, without the vectors.**
+    /// That call collects every parental node path into a vector of vectors and returns a vector of
+    /// matrices, and the wrap-around operator asks it of every particle system on every frame — for
+    /// a matrix that fits in a caller's own storage. A test asserts the two agree over every shape
+    /// the chain can take: rotations, scales, several parents and an absolute reference frame.
+    ///
+    /// Here rather than in the operator because a thing that has to be checked against OSG has to be
+    /// reachable to check.
+    osg::Matrix localToWorldOf(const osg::Node& node);
+
     class RainCounter;
     class RainShooter;
 
