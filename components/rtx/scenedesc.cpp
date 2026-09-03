@@ -159,15 +159,9 @@ namespace Rtx
     {
         // Grown here rather than beside every push, so the two stay parallel in one place. A resize
         // to the size it already is does not allocate, which is what the frame path pays.
-        mMeshNews.resize(mMeshes.size(), SlotNews::None);
+        mMeshChanges.grow(mMeshes.size());
         mDeformedFlags.resize(mMeshes.size(), 0);
-        note(slot, what, mMeshNews, mArrivedMeshes, mFreedMeshes);
-    }
-
-    void SceneDesc::noteTexture(Index slot, SlotNews what)
-    {
-        mTextureNews.resize(mTextures.size(), SlotNews::None);
-        note(slot, what, mTextureNews, mArrivedTextures, mFreedTextures);
+        mMeshChanges.note(slot, what);
     }
 
     void SceneDesc::noteMaterial(Index slot)
@@ -180,25 +174,6 @@ namespace Rtx
 
         mMaterialWritten[slot] = 1;
         mWrittenMaterials.push_back(slot);
-    }
-
-    void SceneDesc::note(
-        Index slot, SlotNews what, std::vector<SlotNews>& news, std::vector<Index>& arrived, std::vector<Index>& freed)
-    {
-        assert(what != SlotNews::None);
-        assert(slot < news.size());
-
-        SlotNews& standing = news[slot];
-        if (standing == what)
-            return;
-
-        if (standing == SlotNews::Arrived)
-            std::erase(arrived, slot);
-        else if (standing == SlotNews::Freed)
-            std::erase(freed, slot);
-
-        standing = what;
-        (what == SlotNews::Arrived ? arrived : freed).push_back(slot);
     }
 
     void SceneDesc::writeMesh(const MeshRange& range, std::span<const osg::Vec3f> positions,
@@ -439,48 +414,22 @@ namespace Rtx
         // Linear over the placements on the frame a surface crosses opaque, which a fade does twice
         // in its life; the flipbooks and the scrolls that animate every frame never come here.
         if (reclassed)
-            for (Index slot = 0; slot < mInstances.size(); ++slot)
-                if (mInstances[slot].isPlaced() && mInstances[slot].mMaterial == material)
-                    mMoved.push_back(slot);
+        {
+            const std::span<const MeshInstance> placed = mPlacements.getAll();
+            for (Index slot = 0; slot < placed.size(); ++slot)
+                if (placed[slot].isPlaced() && placed[slot].mMaterial == material)
+                    mPlacements.rewrite(slot);
+        }
     }
 
     void SceneDesc::holdTexture(Index texture)
     {
-        if (texture == sNoIndex)
-            return;
-
-        assert(texture < mTextureRefs.size());
-        ++mTextureRefs[texture];
+        mTextures.hold(texture);
     }
 
     void SceneDesc::dropTexture(Index texture)
     {
-        if (texture == sNoIndex)
-            return;
-
-        assert(texture < mTextureRefs.size());
-        assert(mTextureRefs[texture] > 0 && "a texture given back more often than it was taken");
-
-        if (--mTextureRefs[texture] > 0)
-            return;
-
-        // The name leaves the lookup with the slot, or the next reference to it resolves to a slot
-        // nothing is standing in. Whichever of the two named it, and never both: a slot is a file or
-        // it is something this renderer made.
-        if (!mTextures[texture].empty())
-        {
-            mTextureIndex.erase(mTextures[texture]);
-            mTextures[texture] = VFS::Path::Normalized();
-        }
-        else
-        {
-            assert(!mBaked[texture].empty() && "a slot with a reference to give back that nothing ever named");
-            mBakedIndex.erase(mBaked[texture]);
-            mBaked[texture].clear();
-        }
-
-        mFreeTextures.push_back(texture);
-        noteTexture(texture, SlotNews::Freed);
+        mTextures.drop(texture);
     }
 
     void SceneDesc::holdMaterialTextures(const Material& material)
@@ -584,55 +533,14 @@ namespace Rtx
         mSprites.insert(mSprites.end(), sprites.begin(), sprites.end());
     }
 
-    Index SceneDesc::takeTextureSlot()
-    {
-        ++mStructureRevision;
-
-        // One size, so any freed slot will do — the array element it names is written over wherever
-        // it sits, which is what the arrivals list is for.
-        if (mFreeTextures.empty())
-        {
-            mTextures.emplace_back();
-            mBaked.emplace_back();
-            mTextureRefs.push_back(0);
-            return static_cast<Index>(mTextures.size() - 1);
-        }
-
-        const Index index = mFreeTextures.back();
-        mFreeTextures.pop_back();
-        assert(mTextureRefs[index] == 0 && "a free slot something still names");
-
-        return index;
-    }
-
     Index SceneDesc::addTexture(VFS::Path::NormalizedView path)
     {
-        const auto known = mTextureIndex.find(path);
-        if (known != mTextureIndex.end())
-            return known->second;
-
-        const Index index = takeTextureSlot();
-        mTextures[index] = path;
-
-        mTextureIndex.emplace(path, index);
-        noteTexture(index, SlotNews::Arrived);
-        return index;
+        return mTextures.add(path);
     }
 
     Index SceneDesc::addBakedTexture(std::string_view key)
     {
-        assert(!key.empty() && "a baked texture with no key is one nothing can find again");
-
-        const auto known = mBakedIndex.find(key);
-        if (known != mBakedIndex.end())
-            return known->second;
-
-        const Index index = takeTextureSlot();
-        mBaked[index] = key;
-
-        mBakedIndex.emplace(key, index);
-        noteTexture(index, SlotNews::Arrived);
-        return index;
+        return mTextures.addBaked(key);
     }
 
     Index SceneDesc::addInstance(const MeshInstance& instance)
@@ -640,65 +548,22 @@ namespace Rtx
         assert(instance.mMesh < mMeshes.size());
         assert(instance.mMaterial == sNoIndex || instance.mMaterial < mMaterials.size());
 
-        Index slot;
-        if (mFreeSlots.empty())
-        {
-            slot = static_cast<Index>(mInstances.size());
-            mInstances.emplace_back();
-            mPrevious.emplace_back();
-        }
-        else
-        {
-            slot = mFreeSlots.back();
-            mFreeSlots.pop_back();
-        }
-
-        mInstances[slot] = instance;
-
-        // **Standing where it is, not arriving from wherever the last tenant left.** A reused slot
-        // would otherwise inherit a previous transform from something else entirely, and a motion
-        // vector built from that points across the frame.
-        mPrevious[slot] = instance.mTransform;
-
-        mMoved.push_back(slot);
-        ++mPlacedCount;
-        return slot;
+        return mPlacements.add(instance);
     }
 
     void SceneDesc::fadeInstance(Index slot, float opacity)
     {
-        assert(slot < mInstances.size());
-        assert(mInstances[slot].isPlaced() && "a slot nothing stands in");
-
-        if (mInstances[slot].mOpacity == opacity)
-            return;
-
-        mInstances[slot].mOpacity = opacity;
-        mMoved.push_back(slot);
+        mPlacements.fade(slot, opacity);
     }
 
     bool SceneDesc::moveInstance(Index slot, const osg::Matrixf& transform)
     {
-        assert(slot < mInstances.size());
-        assert(mInstances[slot].isPlaced() && "a slot nothing stands in");
-
-        if (mInstances[slot].mTransform == transform)
-            return false;
-
-        mInstances[slot].mTransform = transform;
-        mMoved.push_back(slot);
-        return true;
+        return mPlacements.move(slot, transform);
     }
 
     void SceneDesc::dropInstance(Index slot)
     {
-        assert(slot < mInstances.size());
-        assert(mInstances[slot].isPlaced() && "a slot dropped twice, or one nothing stood in");
-
-        mInstances[slot] = MeshInstance{};
-        mFreeSlots.push_back(slot);
-        mMoved.push_back(slot);
-        --mPlacedCount;
+        mPlacements.drop(slot);
     }
 
     void SceneDesc::orderLights()
@@ -716,12 +581,7 @@ namespace Rtx
 
     void SceneDesc::advancePlacement()
     {
-        for (const Index slot : mMoved)
-            mPrevious[slot] = mInstances[slot].mTransform;
-
-        // Swapped and not copied: the two lists trade buffers, and neither allocates on the frame.
-        mSettled.swap(mMoved);
-        mMoved.clear();
+        mPlacements.advance();
     }
 
     void SceneDesc::clearPlacement()
@@ -897,12 +757,7 @@ namespace Rtx
         mRigRuns.clear();
         mInfluenceRuns.clear();
         mMorphRuns.clear();
-        mInstances.clear();
-        mPrevious.clear();
-        mMoved.clear();
-        mSettled.clear();
-        mFreeSlots.clear();
-        mPlacedCount = 0;
+        mPlacements.clear();
         mMaterials.clear();
         mLayers.clear();
         mMasks.clear();
@@ -910,23 +765,13 @@ namespace Rtx
         mSprites.clear();
         mEmitters.clear();
         mTextures.clear();
-        mBaked.clear();
-        mTextureRefs.clear();
-        mTextureIndex.clear();
-        mBakedIndex.clear();
         mFreeMeshes.clear();
         mFreeMaterials.clear();
-        mFreeTextures.clear();
         mVertexRuns.clear();
         mIndexRuns.clear();
         mLayerRuns.clear();
         mMaskRuns.clear();
-        mArrivedTextures.clear();
-        mArrivedMeshes.clear();
-        mFreedTextures.clear();
-        mFreedMeshes.clear();
-        mTextureNews.clear();
-        mMeshNews.clear();
+        mMeshChanges.clear();
         mWrittenMaterials.clear();
         mMaterialWritten.clear();
         mArrivedLayers.clear();
@@ -935,23 +780,11 @@ namespace Rtx
 
     void SceneDesc::clearArrivals()
     {
-        // Only the slots that have news are reset, rather than the whole of both tables: a
-        // worldspace is thousands of meshes and what a frame changes is tens.
-        for (const Index slot : mArrivedMeshes)
-            mMeshNews[slot] = SlotNews::None;
-        for (const Index slot : mFreedMeshes)
-            mMeshNews[slot] = SlotNews::None;
-        for (const Index slot : mArrivedTextures)
-            mTextureNews[slot] = SlotNews::None;
-        for (const Index slot : mFreedTextures)
-            mTextureNews[slot] = SlotNews::None;
         for (const Index slot : mWrittenMaterials)
             mMaterialWritten[slot] = 0;
 
-        mArrivedMeshes.clear();
-        mFreedMeshes.clear();
-        mArrivedTextures.clear();
-        mFreedTextures.clear();
+        mMeshChanges.clearArrivals();
+        mTextures.clearArrivals();
         mWrittenMaterials.clear();
         mArrivedLayers.clear();
         mArrivedMasks.clear();
@@ -981,7 +814,7 @@ namespace Rtx
     template <class Visit>
     void SceneDesc::forEachPlacement(Visit&& visit) const
     {
-        for (const MeshInstance& instance : mInstances)
+        for (const MeshInstance& instance : mPlacements.getAll())
         {
             if (!instance.isPlaced())
                 continue;

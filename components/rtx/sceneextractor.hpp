@@ -1,8 +1,6 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -11,16 +9,14 @@
 
 #include <osg/Matrixf>
 #include <osg/Node>
-#include <osg/Vec2f>
 #include <osg/Vec3f>
 
-// For `RigGeometry::InfluenceData`, which is what a rig is keyed on: a nested type cannot be
-// forward-declared. It brings `osg::Vec3Array`, which a morph is keyed on, with it.
-#include <components/sceneutil/riggeometry.hpp>
-
-#include "imageformat.hpp"
+#include "emitterresolver.hpp"
+#include "extractionstats.hpp"
+#include "materialresolver.hpp"
+#include "meshresolver.hpp"
 #include "scenedesc.hpp"
-#include "shapefold.hpp"
+#include "shading.hpp"
 
 namespace osg
 {
@@ -49,126 +45,6 @@ namespace Terrain
 
 namespace Rtx
 {
-    /// How many textures of one format a walk met, and how many of those brought mips.
-    struct FormatCount
-    {
-        std::uint32_t mMet = 0;
-        std::uint32_t mMipped = 0;
-    };
-
-    /// What one extraction pass did.
-    ///
-    /// The reused counts are the interesting half: a mirror that adds nothing on a second pass over
-    /// an unchanged graph is the property the whole incremental design rests on, and it is only
-    /// visible as a number.
-    struct ExtractionStats
-    {
-        /// Distinct geometry met for the first time, so one new entry in the scene each.
-        std::uint32_t mMeshesAdded = 0;
-        std::uint32_t mMaterialsAdded = 0;
-
-        /// Of those, the meshes that were nothing but reversed pairs and left here as one copy
-        /// each. `ShapeFold` says what a sheet is; a cell with foliage in it has hundreds.
-        std::uint32_t mSheets = 0;
-
-        /// Ground wide enough that its layer stack is baked into one texture rather than shaded a
-        /// layer at a time. Distant chunks and nothing else — see `sCompositeFrom`.
-        std::uint32_t mComposites = 0;
-
-        /// Drawables that resolved to something already known. A count of lookups, not of meshes:
-        /// a hundred crates sharing one model contribute a hundred here and one above.
-        std::uint32_t mMeshesReused = 0;
-        std::uint32_t mMaterialsReused = 0;
-        std::uint32_t mInstances = 0;
-
-        /// Drawables whose vertices are recomputed every frame and so were posed rather than read
-        /// from the cache: skinned bodies and morphed faces. Each one already met is a dispatch and
-        /// a bottom-level structure a backend has to refit, which is what makes this the cost of an
-        /// actor rather than a count of them.
-        std::uint32_t mDeformed = 0;
-
-        /// Skinned drawables mirrored as they stand, because no update traversal has resolved their
-        /// skeleton: `SceneUtil::RigGeometry::getBones` answered nothing. The rasterizer draws such a
-        /// rig in its bind pose too, so this is what it shows and not a loss — but a walk that
-        /// reaches a rig before the update that should have found its skeleton is a walk out of
-        /// order, and this is the number that says so.
-        std::uint32_t mUnskinned = 0;
-
-        /// Particle systems met, and the live particles they were holding.
-        ///
-        /// **Sprites and not triangles**, so neither number is a mesh or an instance: an emitter is
-        /// a sphere and a run of discs the primary ray composites, and nothing about it reaches an
-        /// acceleration structure. An emitter whose particles have all died places nothing and is
-        /// not counted.
-        std::uint32_t mEmitters = 0;
-        std::uint32_t mSprites = 0;
-
-        /// Drawables this cannot read at all — neither an `osg::Geometry`, nor either of the two
-        /// deforming kinds, nor a particle system.
-        ///
-        /// What is left is OpenMW's own debug drawing, which a ray tracer answers differently
-        /// rather than misses. A canary and not a deficit: what it would catch is a new kind of
-        /// drawable arriving unnoticed.
-        std::uint32_t mSkippedUnknown = 0;
-
-        /// Surfaces the content pipeline never described, which are drawn as whatever a default
-        /// `Material` is — untextured, opaque and one-sided.
-        ///
-        /// **A canary, and it should be zero.** `NifOsg` and `Terrain` author a `Surface::Material`
-        /// for everything they build; a drawable arriving without one means a state set was made
-        /// somewhere else, or remade by something that copied the pipeline state and dropped the
-        /// description with it.
-        std::uint32_t mUndescribedMaterials = 0;
-
-        /// What the textures a scene reached for turned out to be, one entry per `ImageFormat`.
-        ///
-        /// Kept because the answer decides how they are uploaded, and guessing it from what the
-        /// content files ought to contain is how a renderer ends up with a path nothing takes.
-        ///
-        /// **Counted by enumerator and named at the end.** A walk meets every texture of every
-        /// material it reads, and animated ones again on each frame; naming one where it is met
-        /// builds a `std::string` on the frame path to key a map by.
-        std::array<FormatCount, sImageFormatCount> mTextureFormats{};
-
-        /// The pixel format the `Unnamed` count last stood for, or zero.
-        ///
-        /// The number is the whole of what makes that count worth printing: a format nothing names
-        /// is a canary, and the reader's next step is to look this one up.
-        std::uint32_t mUnnamedFormat = 0;
-
-        /// Geometry with no vertices or no triangles. Morrowind ships some.
-        std::uint32_t mSkippedEmpty = 0;
-
-        /// `LightSource`s taken off the graph, which is every lamp the scene has: a `LIGH` record is
-        /// what Morrowind lights with, and a glowing texture lights nothing.
-        std::uint32_t mLights = 0;
-
-        /// Placements of a mesh whose material is a cutout that a controller rewrites every frame,
-        /// which is a mask no backend can bake a micromap against — a scrolling banner, a flipbook
-        /// of leaves. Each is an instance traversal still has to stop and ask about.
-        std::uint32_t mUnbakeable = 0;
-
-        /// Placements wearing a material other than the one their mesh arrived with, where that one
-        /// is not animated.
-        ///
-        /// **A canary, and it should be zero.** `MeshRange::mMaterial` says why a static mesh wears
-        /// one material by construction; a backend bakes against that one, and a placement wearing
-        /// another would be traced against a mask it does not carry. The loader says it cannot
-        /// happen, and this is the number that says so every frame.
-        std::uint32_t mWornOtherwise = 0;
-
-        ExtractionStats& operator+=(const ExtractionStats& other);
-    };
-
-    /// What one sweep dropped.
-    struct Retirement
-    {
-        std::uint32_t mMeshes = 0;
-        std::uint32_t mMaterials = 0;
-
-        bool empty() const { return mMeshes == 0 && mMaterials == 0; }
-    };
-
     class MirrorTraversal;
 
     /// The numbers mirror walks run at, and the rule that they only ever go up.
@@ -226,55 +102,6 @@ namespace Rtx
 
         /// Hands `visitor` everything held that the graph does not parent.
         virtual void collect(osg::NodeVisitor& visitor) = 0;
-    };
-
-    /// Hashes and compares an owning key by the address it holds.
-    ///
-    /// **What lets an identity map hold its subject alive without paying for that on a lookup.** A
-    /// map keyed on a raw `osg` pointer can be fooled: the engine frees a body part and the
-    /// allocator puts the replacement exactly where it was, so the walk that meets the new one finds
-    /// the old one's entry and mirrors geometry it has nothing to do with. A `ref_ptr` key makes the
-    /// address *true* — nothing else can hold it while the entry does — and being transparent is
-    /// what keeps every lookup from a raw pointer out of the reference count.
-    template <class T>
-    struct ByAddress
-    {
-        using is_transparent = void;
-
-        std::size_t operator()(const osg::ref_ptr<T>& value) const { return std::hash<const T*>{}(value.get()); }
-        std::size_t operator()(const T* value) const { return std::hash<const T*>{}(value); }
-
-        bool operator()(const osg::ref_ptr<T>& left, const osg::ref_ptr<T>& right) const
-        {
-            return left.get() == right.get();
-        }
-        bool operator()(const osg::ref_ptr<T>& left, const T* right) const { return left.get() == right; }
-        bool operator()(const T* left, const osg::ref_ptr<T>& right) const { return left == right.get(); }
-    };
-
-    /// One state set in the chain that shades a drawable, nearest it last.
-    ///
-    /// **Not simply a node's own state set.** OpenMW animates shading by handing a
-    /// `SceneUtil::StateSetUpdater` a state set that belongs to the traversal rather than to the
-    /// graph — that is how a fire flips through its frames and how lava scrolls — so the state set
-    /// in force at a drawable is something a walk builds and not something a node holds.
-    struct Shading
-    {
-        const osg::StateSet* mStateSet = nullptr;
-
-        /// How much of an actor there is at this point of the chain: the pair of uniforms the game
-        /// fades one with, read off the nearest state set that carries them, or the value the chain
-        /// already had where this one does not.
-        ///
-        /// **Resolved as the chain is built and not per drawable.** Every drawable used to walk its
-        /// chain asking each state set for two uniforms by a `std::string` made on the spot; a
-        /// state set is asked once now, when it is pushed, and a drawable reads the answer.
-        float mFade = 1.0f;
-
-        /// Whether a controller rewrote this since the last frame, so the material read from it is
-        /// not the material it will be next frame. What tells `resolveMaterial` to read a known
-        /// state set again instead of handing back the slot it already has.
-        bool mAnimated = false;
     };
 
     /// Mirrors an OpenSceneGraph subtree into a `SceneDesc`.
@@ -431,7 +258,7 @@ namespace Rtx
         /// that never sweeps holds every drawable it has ever walked.
         ///
         /// Anything a caller kept across this — a snapshot of placements, an index of its own — is
-        /// stale afterwards, and `SceneDesc::getRevision` is what says so.
+        /// stale afterwards, and `SceneDesc::getStructureRevision` is what says so.
         Retirement retire();
 
         /// Places one light. **The graph and not the content files**, because that is where a light
@@ -470,118 +297,18 @@ namespace Rtx
         const osg::StateSet* animate(osg::Node& node);
 
     private:
-        /// Places one particle system's live particles as a run of camera-facing discs.
-        ///
-        /// **The engine's own simulation, read where it stands.** OpenMW runs `osgParticle` under
-        /// the update traversal — emitters, colliders, gravity, colour and size ramps, the lot —
-        /// so by the time the mirror walks the graph a flame is a list of positions, sizes and
-        /// colours. Re-deriving that from the `NiParticleSystemController` would be a second
-        /// implementation of the same content, free to disagree with the one the game is running.
-        /// An emitter the walk met, waiting for the walk to finish before its particles are read.
-        struct PendingEmitter
-        {
-            const osgParticle::ParticleSystem* mParticles;
-            osg::Matrixf mPlace;
-            Index mTexture;
-            Index mLighting;
-            bool mLight;
-
-            /// Kept only to name the texture's format in the stats, which is read once per emitter.
-            const osg::Image* mSprite;
-        };
-
-        /// Reads every emitter the walk collected, now that everything in it has been stepped.
-        void flushEmitters(ExtractionStats& stats);
-
-        /// Reads one of them into the scene.
-        void placeSprites(const PendingEmitter& pending, ExtractionStats& stats);
-
-        void addEmitter(const osgParticle::ParticleSystem& particles, std::span<const Shading> shading,
-            const osg::Matrixf& place, ExtractionStats& stats);
-
-        /// What of a drawable there is to mirror: the geometry its triangles and attributes are
-        /// read from, and what poses it, where something does.
-        ///
-        /// A skinned body's geometry is its **source** — the bind pose, which is what a pose is
-        /// computed from on the device — and a morphed face's is its source too, with the base
-        /// target standing in for its positions. Neither is the double-buffered copy a cull writes,
-        /// which nothing here runs any more.
-        struct Read
-        {
-            const osg::Geometry* mGeometry = nullptr;
-            Deform mDeform = Deform::None;
-            const SceneUtil::RigGeometry* mRig = nullptr;
-            const SceneUtil::MorphGeometry* mMorph = nullptr;
-        };
-
-        /// Reads what a drawable is, in one virtual call for nearly everything in a cell.
-        static Read readDrawable(const osg::Drawable& drawable);
-
-        /// The mesh index for one drawable, adding it or posing it as its kind requires.
-        ///
-        /// **Keyed on the drawable and not on the geometry.** A crate met again is the crate already
-        /// uploaded; a body met again is the same mesh posed again, and the pose is bone rows and
-        /// never vertices.
-        ///
-        /// @param material what the drawable wears, resolved first, which a mesh records as it
-        ///        arrives — `MeshRange::mMaterial`.
-        Index resolveMesh(const osg::Drawable& drawable, const Read& read, Index material, ExtractionStats& stats);
-
-        /// The scene's rig for a skin, added the first time the skin is met. Shared by every copy of
-        /// the drawable, because the skin is.
-        Index resolveRig(const SceneUtil::RigGeometry& rig);
-
-        /// The same for a morph's targets, keyed on the base target every copy shares.
-        Index resolveMorph(const SceneUtil::MorphGeometry& morph);
-
-        /// Hands the scene this frame's bone rows for `mesh`: `RigGeometry::cull`'s own composition
-        /// of each bone's inverse bind, its skeleton-space matrix and the skin transform, from the
-        /// matrices the update traversal left.
-        void poseRig(Index mesh, const SceneUtil::RigGeometry& rig);
-
-        /// The same with the morph's weights, which its controller wrote under the update traversal.
-        void poseMorph(Index mesh, const SceneUtil::MorphGeometry& morph);
         /// Whether a drawable carrying `mask` is the world's water.
         bool isWater(osg::Node::NodeMask mask) const;
 
         /// Whether `mask` carries no bit outside `named`, which is what both questions above ask.
         static bool carriesOnly(osg::Node::NodeMask mask, osg::Node::NodeMask named);
 
-        /// The one material every water drawable wears, made on demand.
-        Index resolveWaterMaterial(ExtractionStats& stats);
-
-        Index resolveMaterial(std::span<const Shading> shading, ExtractionStats& stats);
-
-        /// Adds a described texture to the scene, or nothing where the role is unfilled.
-        Index takeTexture(const osg::Image* image, ExtractionStats& stats);
-
-        /// Reads a material off the description in force, without asking whether one is known.
-        Material readMaterial(std::span<const Shading> shading, ExtractionStats& stats);
-
-        /// The layered material of a terrain chunk, whose shading is not on the graph at all.
-        ///
-        /// `Terrain::TerrainDrawable` carries one pass per ground texture, each alpha-blended over
-        /// the last across the same triangles, because that is how a rasterizer draws a blend it
-        /// cannot sample in one go. A ray tracer hits the ground once and shades it once, so the
-        /// passes are read back into layers and summed there instead.
         /// What both `extract` and `extractWorld` are, differing only in whether the world's hidden
         /// geometry is asked for.
         ExtractionStats walk(const osg::Node& node, const osg::Matrixf& transform, std::size_t anchor,
             std::size_t frame, std::span<Residency* const> hidden);
 
-        Index resolveTerrainMaterial(const Terrain::TerrainDrawable& terrain, ExtractionStats& stats);
-
         SceneDesc& mScene;
-
-        /// An entry in one of the identity maps, and when it was last met.
-        ///
-        /// The epoch is what `retire` sweeps on: a walk stamps everything it resolves, so anything
-        /// still carrying an older stamp is something the graph no longer has.
-        struct Known
-        {
-            Index mIndex = sNoIndex;
-            std::uint64_t mEpoch = 0;
-        };
 
         /// Which slot each placement holds, and when it was last met.
         ///
@@ -590,71 +317,6 @@ namespace Rtx
         /// carry a transform from one frame to the next that the scene can simply keep. What
         /// remains is one lookup, and Phase 2 is about not making that either.
         std::unordered_map<std::size_t, Known> mPlacements;
-
-        /// What the scene knows one `osg` object as, keyed so the object cannot go while the entry
-        /// stands. See `ByAddress`.
-        template <class T, class Held = Known>
-        using Identity = std::unordered_map<osg::ref_ptr<T>, Held, ByAddress<T>, ByAddress<T>>;
-
-        // Keyed on pointer identity, which OpenMW's resource cache and its optimizer's
-        // SHARE_DUPLICATE_STATE pass together make meaningful: the same model loaded twice is the
-        // same object, and equivalent state sets are collapsed into one.
-        //
-        // **Owning, which is what makes that identity sound.** What these hold outlives the graph
-        // by one sweep, and a sweep is what lets go.
-        Identity<const osg::Drawable> mMeshes;
-        Identity<const osg::StateSet> mMaterials;
-
-        /// What the scene knows each skin and each set of morph targets as. A skin is one
-        /// `InfluenceData` however many rigs share it, and a face's targets are one base array
-        /// however many heads carry them — so a hundred people in one shirt are one rig here.
-        /// Swept with the meshes: a rig no mesh named this epoch is a rig the scene has let go of.
-        Identity<const SceneUtil::RigGeometry::InfluenceData> mRigs;
-        Identity<const osg::Vec3Array> mMorphs;
-
-        /// What one particle system draws with: its sprite texture in `mIndex`, and the bake of that
-        /// texture's alpha its sprites are lit by.
-        struct HeldSprite : Known
-        {
-            Index mLighting = sNoIndex;
-        };
-
-        /// Which textures each particle system draws with.
-        ///
-        /// **This entry is the reference**, and not a note about one: a sprite's texture hangs off
-        /// no material, so the scene is told to hold it when the emitter is first met and to let go
-        /// when the sweep loses it. It saves a path hash per emitter per frame as well.
-        Identity<const osg::Drawable, HeldSprite> mEmitterTextures;
-
-        /// Which slot each image the walk has met stands in.
-        ///
-        /// **What stops a texture's name being built again every frame.** A material a controller
-        /// rewrites is read again on every frame it is met — `resolveMaterial` — and reading one
-        /// asks for up to four textures. Asking by path builds a `VFS::Path::Normalized` that dies
-        /// at the end of the call, because `SceneDesc::addTexture` takes a view: four strings off
-        /// the heap per animated material per frame, and `Material::mTextureTransform` counts 432
-        /// such surfaces in Vivec.
-        ///
-        /// **This entry is a reference, like `mEmitterTextures`.** A slot whose last material stops
-        /// naming it drops to nought and is handed out again at once, so an entry that only
-        /// remembered the number would answer with a slot another texture had taken over. The hold
-        /// keeps the slot alive for exactly as long as this map names it, and the sweep gives it
-        /// back.
-        Identity<const osg::Image> mTextureOf;
-
-        /// A node's controllers and the state set they write into, kept so the address is the same
-        /// one next frame. See `animate`.
-        struct Animated
-        {
-            osg::ref_ptr<osg::StateSet> mStateSet;
-            std::uint64_t mEpoch = 0;
-        };
-
-        /// Owning for the same reason the identity maps are: a node freed and replaced at the same
-        /// address would otherwise be handed the state set the first one's controllers were writing.
-        std::unordered_map<osg::ref_ptr<const osg::Node>, Animated, ByAddress<const osg::Node>,
-            ByAddress<const osg::Node>>
-            mAnimated;
 
         /// The walk itself, made once rather than per call.
         ///
@@ -679,16 +341,23 @@ namespace Rtx
         /// Refilled by `follow` every frame and never freed: two of them at most, so far.
         std::vector<Residency*> mResidents;
 
-        /// The sea's material and when it was last met. Not in `mMaterials`, because what identifies
-        /// it is the node mask rather than any state set — see `resolveWaterMaterial`.
-        Index mWaterMaterial = sNoIndex;
-        std::uint64_t mWaterEpoch = 0;
-
         /// What the walk in progress was told it is placing. See `extract`.
         std::size_t mAnchor = 0;
 
         /// Which sweep is current. Everything a walk resolves or places is stamped with it.
+        ///
+        /// **Declared before everything that borrows it**, which is every resolver below: each reads
+        /// the mirror's stamp rather than keeping a copy that could fall behind it.
         std::uint64_t mEpoch = 0;
+
+        /// The drawables the walk met, and what poses the ones that deform.
+        MeshResolver mMeshes{ mScene, mEpoch };
+
+        /// What the content says each surface is, and the textures those name.
+        MaterialResolver mMaterials{ mScene, mEpoch };
+
+        /// The particle systems the walk met, and the sprite textures they hold.
+        EmitterResolver mEmitters{ mScene, mEpoch };
 
         /// How many placements this epoch's walks stamped, against how many the map holds.
         ///
@@ -703,36 +372,5 @@ namespace Rtx
         // Refilled per sweep: the survivors, as the scene wants them.
         std::vector<Index> mLiveMeshes;
         std::vector<Index> mLiveMaterials;
-
-        // Refilled per drawable rather than reallocated, because a cell is tens of thousands of them.
-        std::vector<std::uint32_t> mIndexScratch;
-        std::vector<osg::Vec3f> mNormalScratch;
-        ShapeFold mShapeFold;
-
-        /// An overall normal spread across a drawable's vertices, for the geometry that binds one.
-        std::vector<osg::Vec3f> mFlatNormalScratch;
-        std::vector<osg::Vec2f> mTexCoordScratch;
-        std::vector<float> mMaskScratch;
-
-        /// One skin's runs and influences, refilled per skin met for the first time; one rig's rows
-        /// and one morph's weights, refilled per body per frame. The frame path holds the last two
-        /// and a crowd is tens of them.
-        std::vector<std::uint32_t> mRunScratch;
-        std::vector<Shaders::GpuInfluence> mInfluenceScratch;
-        std::vector<osg::Vec3f> mOffsetScratch;
-        std::vector<Shaders::GpuBone> mBoneScratch;
-        std::vector<float> mWeightScratch;
-
-        /// One terrain material's layers, refilled per chunk: a run is allocated by length and the
-        /// length is only known once the passes with no texture on them have been passed over.
-        std::vector<MaterialLayer> mLayerScratch;
-
-        /// One emitter's sprites, refilled per particle system: the count is only known once the
-        /// dead ones have been passed over, and a cell holds tens of these every frame.
-        std::vector<Sprite> mSpriteScratch;
-
-        /// The emitters this walk has met so far. Kept across walks and refilled, because this is
-        /// the frame path and a cell holds tens of them.
-        std::vector<PendingEmitter> mPending;
     };
 }

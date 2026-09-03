@@ -10,18 +10,13 @@
 #include <osg/ref_ptr>
 
 #include <components/myguiplatform/picture.hpp>
-#include <components/rtx/distantlights.hpp>
 #include <components/rtx/frameimage.hpp>
-#include <components/rtx/moonbuilder.hpp>
-#include <components/rtx/scenedesc.hpp>
-#include <components/rtx/sceneextractor.hpp>
-#include <components/rtx/sceneuploader.hpp>
-#include <components/rtx/skybuilder.hpp>
-#include <components/rtx/terrainresidency.hpp>
 
 #include "../renderer.hpp"
 
 #include "bench.hpp"
+#include "framecapture.hpp"
+#include "worldmirror.hpp"
 
 namespace Resource
 {
@@ -179,7 +174,7 @@ namespace MWRender
         /// **Shared rather than each keeping its own**, because a subtree both can reach would
         /// otherwise be posed by whichever counter got there first and frozen for the other.
         /// See `Rtx::Traversals`.
-        Rtx::Traversals& getTraversals() { return mTraversals; }
+        Rtx::Traversals& getTraversals() { return mMirror.getTraversals(); }
 
         /// The game's frame number, which is which of a `SceneUtil::LightSource`'s two buffers
         /// update has just written. Not a pose number; see `getTraversals`.
@@ -217,15 +212,6 @@ namespace MWRender
         ///
         /// @return whether anything was written into the target.
         bool traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs);
-
-        /// Writes the traced frame to a numbered PNG, where `OPENMW_RTX_SHOT` asked for it.
-        void keep();
-
-        /// The frame that was last presented, read back into `mPixels`.
-        ///
-        /// **Off the device and so asked for rather than kept.** Zero-sized before anything has been
-        /// presented, which `Rtx::frameImage` answers with null.
-        Rtx::TracedFrame readFrame();
 
         /// Hands MyGUI's triangles to the renderer, where there is a GUI up at all.
         void drawGui();
@@ -267,9 +253,11 @@ namespace MWRender
 
         MyGUIPlatform::Picture mFrozenFrame{ "frozen frame" };
 
-        /// Where a screenshot goes, and the same one the OpenGL renderer uses: the two write the
-        /// same files to the same place with the same names.
-        osg::ref_ptr<SceneUtil::AsyncScreenCaptureOperation> mScreenshotWriter;
+        /// Screenshots, savegame thumbnails and the frames `OPENMW_RTX_SHOT` writes.
+        ///
+        /// The screenshot writer inside it is the same one the OpenGL renderer uses, so the two
+        /// write the same file the same way.
+        FrameCapture mCapture;
 
         SDL_Window* mWindow = nullptr;
 
@@ -295,34 +283,9 @@ namespace MWRender
         ///
         /// **Before the extractors, because they hold a reference to it.** Shared with every
         /// `TracedView`, which is the whole point: a subtree the world and a doll can both reach must
-        /// not be posed by two counters that can each be behind the other. See `Rtx::Traversals`.
-        Rtx::Traversals mTraversals;
-
-        /// Kept across frames, which is the whole of what makes a re-walk cheap: the identity maps
-        /// inside the extractor are what resolve a mesh met again to the one already uploaded.
-        Rtx::SceneDesc mScene;
-
-        /// Where the two moons' portraits sit in `mScene`'s texture table, added on the first frame
-        /// that has a scene at all.
-        Rtx::MoonFaces mMoonFaces;
-
-        /// The cloud decks and the star sheet on the same terms as the moons' faces, and beside them
-        /// what was measured off the two sky meshes.
-        Rtx::SkyContent mSkyContent;
-        std::unique_ptr<Rtx::SceneExtractor> mExtractor;
-
-        /// Where the terrain's own chunks are, for a walk that no cull precedes. Held beside the
-        /// extractor that asks it, and costs a `Terrain::View` and nothing else — the world that
-        /// parents its chunks hands out no view and this then does nothing.
-        Rtx::TerrainResidency mResident;
-
-        /// The lights of the cells the paging leaves dark, beside the chunks it stands. Held here
-        /// for `mResident`'s reason: the extractor is handed both every frame and neither is on the
-        /// graph.
-        Rtx::DistantLights mDistantLights;
-
-        /// Which of place, extend and rebuild a frame is, and what a rebuild has to describe.
-        Rtx::SceneUploader mUploader;
+        /// The engine's scene graph mirrored into what a ray can meet, and the hand-over that
+        /// puts it on the device.
+        WorldMirror mMirror;
 
         /// A running average of what the trace costs, reported every `sReportEvery` frames.
         ///
@@ -345,19 +308,9 @@ namespace MWRender
         /// jitters and what the sampler walks are the same sequence the world is counting.
         std::size_t mFrame = 0;
 
-        /// What the world's clock last read, so the emitters can be handed the gap since.
-        double mLastSimulationTime = 0.0;
-
         /// Whether a camera the builder refused has already been reported. `traceWorld` says why
         /// once is the whole of it.
         bool mComplained = false;
-
-        /// Where `OPENMW_RTX_SHOT` says to write traced frames, and how many are left to write.
-        std::filesystem::path mKeepAt;
-        std::uint32_t mKeepLeft = 0;
-
-        /// Reused rather than allocated per frame, because this is a debug path and not an excuse.
-        std::vector<std::uint8_t> mPixels;
     };
 }
 

@@ -165,6 +165,8 @@ set(RTX_VULKAN_FILES
     fogtile.hpp
     fogvolume.cpp
     fogvolume.hpp
+    framering.cpp
+    framering.hpp
     frameslots.hpp
     gbuffer.cpp
     gbuffer.hpp

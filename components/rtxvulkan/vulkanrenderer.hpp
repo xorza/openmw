@@ -23,6 +23,7 @@
 #include "exposurepass.hpp"
 #include "fogtile.hpp"
 #include "fogvolume.hpp"
+#include "framering.hpp"
 #include "frameslots.hpp"
 #include "gbuffer.hpp"
 #include "gputimer.hpp"
@@ -109,64 +110,6 @@ namespace Rtx
             /// Counted rather than sized, because a freed slot taken over by something else is a
             /// mesh arriving at a table that did not grow.
             std::uint64_t mBuiltMeshes = 0;
-        };
-
-        /// Everything one frame in flight owns: what it records into, what says it is done, what it
-        /// measured, and what it may still be reading.
-        ///
-        /// **Two of these, and the CPU works one ahead of the GPU.** Frame N+1 is walked and placed
-        /// while frame N is traced; what N+1 writes is this frame's copy of every table, and what N
-        /// may still read is the other's. The frame after next takes this one's place, and waits
-        /// its fence first.
-        struct Frame
-        {
-            Frame(const Device& device, CommandPool& pool);
-
-            /// The placements' commands and the trace's, submitted apart because a picture inside
-            /// the interface is traced between the two and needs the first to have reached the
-            /// queue. Only the trace carries the fence: it is later on the queue, so its signal
-            /// covers every placement before it.
-            ///
-            /// **One buffer per placement, because a frame may be placed more than once.** A cell
-            /// crossing hands the scene over twice — once for what arrived and once for the walk
-            /// that follows — and the game walks its precipitation beside its world. Two placements
-            /// sharing a buffer is a recording over a submit already in flight, so each takes its
-            /// own and the frame stays one frame: what the ring counts is what the caller drew.
-            ///
-            /// Grown to the busiest frame so far and never freed. The pool is never reset, so what
-            /// it handed out stays good for the life of the renderer.
-            std::vector<VkCommandBuffer> mPlaceCommands;
-            std::size_t mPlacements = 0;
-
-            VkCommandBuffer mCommands = VK_NULL_HANDLE;
-            VkFence mFence = VK_NULL_HANDLE;
-
-            /// Begun by a placement or a trace and not yet submitted with its fence.
-            bool mBegun = false;
-
-            /// Submitted with its fence and not yet waited for.
-            bool mPending = false;
-
-            /// Its own timer and its own count, because both are read after the fence, when the
-            /// next frame is already writing its own.
-            GpuTimer mTimer;
-            Buffer mHitCount;
-
-            /// What this frame may still be reading, destroyed when its fence says it is not.
-            Graveyard mGraveyard;
-            Reconstruction mReconstruction;
-
-            /// The interface's own ring beside the frame's: it is drawn after the frame is submitted
-            /// and fenced on its own, so its vertices are guarded by its own fence.
-            VkCommandBuffer mGuiCommands = VK_NULL_HANDLE;
-            VkFence mGuiFence = VK_NULL_HANDLE;
-            bool mGuiPending = false;
-
-            /// What the GUI is drawn out of, rewritten every frame it has anything in it and grown
-            /// to the busiest frame so far. Host-visible device memory, so writing it is a memcpy
-            /// and there is no staging copy and no transfer to record.
-            Buffer mGuiVertices;
-            Graveyard mGuiGraveyard;
         };
 
     public:
@@ -256,36 +199,6 @@ namespace Rtx
         /// it already reached on either axis.
         void growViewTargets(std::uint32_t width, std::uint32_t height);
 
-        Frame& frameSlot(std::uint64_t frame) { return mFrames[frame % sFrameSlots]; }
-
-        /// The frame being recorded, begun if it was not: the frame that last used its slot is
-        /// waited for, its fence reset, its timer and hit count cleared.
-        Frame& beginFrame();
-
-        /// A command buffer for one placement of `frame`, made on the frame that first needs it.
-        VkCommandBuffer takePlaceCommands(Frame& frame);
-
-        /// Submits what a frame recorded, under its own fence, and counts it as in flight.
-        void submitFrame(Frame& frame);
-
-        /// Waits the oldest frame in flight out and puts what it came to in `mReports`.
-        void finishOldest();
-
-        /// Waits until `frame` is finished, where it was ever submitted.
-        void finishThrough(std::uint64_t frame);
-
-        /// Waits for every frame in flight. What an arrival, a rebuild, a resize and a picture
-        /// inside the interface do first.
-        void finishFrames();
-
-        /// Destroys what every frame is holding, whether or not its slot ever comes round again.
-        ///
-        /// **After `waitIdle`, and only where something buried is about to lose its owner.** A room
-        /// is a pointer into a scene's structure storage and a structure stands in that storage, so
-        /// a frame that placed a scene and was never traced would give both back to a scene that no
-        /// longer exists. `finishFrames` cannot reach that frame: it was never submitted.
-        void emptyGraveyards();
-
         // Declaration order is destruction order reversed, and everything below the device is built
         // on it.
         Instance mInstance;
@@ -296,27 +209,6 @@ namespace Rtx
 
         Device mDevice;
         CommandPool mPool;
-
-        std::array<Frame, sFrameSlots> mFrames;
-
-        /// The next frame to record and the next to finish. Everything from `mFinished` to `mFrame`
-        /// is in flight, and there are never more of those than there are slots.
-        std::uint64_t mFrame = 0;
-        std::uint64_t mFinished = 0;
-
-        /// What frames have come to and nothing has asked for yet, oldest first.
-        ///
-        /// **A frame's report belongs to the frame and not to whichever call did the waiting.**
-        /// `beginFrame` waits a slot out when the ring is full, and the report of the frame it
-        /// waited used to go on the floor — so a caller asking once a frame was answered for fewer
-        /// than half of them, and a run's figures were a sample of whichever frames it reached.
-        ///
-        /// **Never longer than `sFrameSlots`, because that is how long a report stays true.**
-        /// `FrameResult::mGpu` is a span into the frame's own timer and the slot resolves again
-        /// when it comes round, so a report held past that would carry another frame's zones.
-        /// `finishOldest` drops the oldest rather than let that happen, and a caller asking once a
-        /// frame never gets near it. A new world drops what is left, and `setScene` says why.
-        std::vector<FrameResult> mReports;
 
         /// The interface's ring runs on its own count: a menu is drawn on frames with no world.
         std::uint64_t mGuiFrame = 0;
@@ -338,6 +230,13 @@ namespace Rtx
         /// Whether the trace this builds counts its hits. `RendererOptions::mCountHits` says why the
         /// game's does not.
         bool mCountHits = false;
+
+        /// The frames in flight, their fences and what each may still be reading.
+        ///
+        /// **After `mCountHits`, which it borrows.** Declaration order is construction order, and a
+        /// reference bound to a member that has not been given its value yet is a trap even where
+        /// nothing reads it until later.
+        FrameRing mRing{ mDevice, mPool, mCountHits };
 
         /// What the trace this builds does with the threads its launch handed it. Fixed at
         /// construction for the reason `mCountHits` is: it is a specialization constant, and the

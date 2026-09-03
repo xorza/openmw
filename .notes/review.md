@@ -14,146 +14,87 @@ calls over a steady frame and over a texture arrival. Beside it, the extractor, 
 the weather builder each pin their own steady call at nought. An item below that no test can fail on
 says so.
 
-## 1. Structures that allocate
+## Closed
 
-**Measured.** The whole heap costs about 0.4% of the main process's cycles, on a still cell and on a
-streaming crossing alike. Nothing in this section moves a frame time.
+Sections 1 to 3 are settled. What survives of them is here: the reason a thing was not done, so that
+nobody does it again.
 
-### 1.1 `RtxRenderer::eventTraversal` builds an event list per frame
+**1. Structures that allocate.** The whole heap costs about 0.4% of the main process's cycles, on a
+still cell and on a streaming crossing alike. Nothing in that section moved a frame time. Its one
+remaining item — `osgGA::EventQueue::Events` is a `std::list`, so `RtxRenderer::eventTraversal` pays
+a node per event drained — cannot be fixed inside the RTX places, and it is one node per function key
+pressed.
 
-`apps/openmw/mwrender/rtx/rtxrenderer.cpp:330`. `osgGA::EventQueue::Events` is a `std::list`, so each
-event drained costs a node.
+**2. Per-frame computations.** About 8% of the main process at Vivec, half of it work that has to
+happen. `SpriteShade::layDown` alone is 24% of a still frame and `TerrainComposite`'s constructor is
+18% of a crossing, both outside it. Three items were built, measured against the build without them
+over three interleaved A/B pairs, and taken back out:
 
-**This one cannot be fixed inside the RTX places.** A `std::list` node is not recycled by `clear()`,
-and the queue that hands the list out is `osgGA`'s. It is one node per function key pressed, and
-nothing presses one on a steady frame.
+- **The light grid's boxes are slower kept than recomputed.** 1.69% before against 1.90% after, every
+  run of the second leg above every run of the first. `boxAround` is twenty floating-point operations
+  in registers; the scratch is 24 bytes a lamp stored once and read twice, which for Vivec's 614
+  lamps is 15 KB through the cache.
+- **Caching the state-set updater never engages on the population that pays for it.** Most
+  callback-bearing nodes carry a keyframe controller and no `StateSetUpdater`, so they paid a failed
+  hash lookup on top of the chain walk they already paid.
+- **Working the placement out per transform buys nothing measurable.** Vivec enters 36,931 transforms
+  and reaches 99,299 drawables, so it is under two fifths of the multiplies — and `osg::Matrixf::mult`
+  and `addDrawable` were both flat. It keeps a 64-byte matrix saved and restored around every
+  transform to get there.
 
-## 2. Per-frame computations that can be precomputed
+**On this frame, at this size, storing an answer to avoid recomputing it lost every time it was
+tried.** What stands from that section does less work rather than remembering more: one deformer
+lookup instead of two, `osg::Array::getType()` instead of RTTI, the game's blend maps read along the
+row, and a flag instead of a linear search per pose.
 
-**Investigated, measured and settled.** Every item below was read again in the code and profiled;
-three were built and then taken back out because an interleaved A/B said they bought nothing or cost
-something. Method: `build-release`, `profile.sh --view=vivec --seconds=10`, three A/B pairs with a
-binary of each build swapped into place between runs. **A single pair says nothing here** — the first
-one taken made two symbols look 0.3 to 0.8 points cheaper, and three pairs put both inside the
-spread.
+**3. Single responsibility.** Five of seven built — `WorldMirror`, `readWorld` and `FrameCapture` out
+of `RtxRenderer`; `MeshResolver`, `MaterialResolver` and `EmitterResolver` out of `SceneExtractor`;
+`TextureTable` and `PlacementTable` out of `SceneDesc`; `FrameRing` out of `VulkanRenderer`;
+`ShadingCache` out of `CompositeQueue`. Three were refused:
 
-| item | outcome |
-| --- | --- |
-| 2.1 `animate` finds the updater every frame | built, measured at nothing, reverted |
-| 2.2 `placed()` multiplies per drawable | built, measured at nothing, reverted |
-| 2.3 `resolveMesh` re-validates a deforming drawable | **done**, in the part the review got right |
-| 2.4 `notePosed` searches per pose | **done** |
-| 2.5 `LightGrid::rebuild` computes each box three times | built, measured *worse*, reverted |
-| 2.6 `orderLights` sorts on a nine-field tuple | open, 0.12%: shape work when `Light` is next touched |
-| 2.7 `SceneBuffers::place` converts everything each frame | open: needs a per-frame identity for a light |
-| 2.8 `traceWorld` rebuilds the sky each frame | closed: absent from the profile, and `landReach` is not a settings read |
-| 2.9 `DistantLights::collect` does map lookups | open at 0.01%, and it belongs with 5.7 |
-| 2.10 `readMask` reads one texel at a time | **done** |
+- **`SceneUploader::hand`.** Where the gather, the collect and the describe sit relative to the
+  upload *is* the decision the type exists to make. Moving the queue and the loader out puts that
+  ordering in every caller — the game, the harness, the doll and the map.
+- **`StagedWorld`.** `moveTo` already delegates both halves to free functions in `cellscene`; what is
+  left is the order it does them in, and a `Streaming` type would be six references bundled to
+  reproduce one method.
+- **`ReadbackQueue`.** There is no queue — three forwarding calls into `Image::read` and
+  `GuiTextures::read`, with no pending list and no staging ring.
 
-Why the three failed, so that nobody builds them again:
+## Still open from section 2
 
-- **2.5, the light grid's boxes, is slower.** 1.69% before against 1.90% after, and every run of the
-  second leg above every run of the first. `boxAround` is about twenty floating-point operations that
-  stay in registers; the scratch is 24 bytes a lamp stored once and read twice, which for Vivec's 614
-  lamps is 15 KB pushed through the cache. The arithmetic was cheaper than the memory.
-- **2.1's cache never engages on the population that pays for it.** Most callback-bearing nodes in a
-  cell carry a keyframe controller and no `StateSetUpdater` at all, so they paid a failed hash lookup
-  on top of the chain walk they already paid. What the cache saved on the nodes that do carry one, it
-  spent on the nodes that do not.
-- **2.2 is the right direction and still buys nothing.** A tally says Vivec enters 36,931 transforms
-  and reaches 99,299 drawables, so the product per transform is under two fifths of the multiplies —
-  and `osg::Matrixf::mult`, `addDrawable` and `MirrorTraversal::apply` were all flat. It kept a
-  64-byte matrix saved and restored around every transform to get there, which is 2.5's shape.
+Measured shares are from `profile.sh --view=vivec`, three runs a leg.
 
-Two things the section as a whole taught, which are worth more than any of its items:
-
-- **Section 2 is about 8% of the main process at Vivec, and half of that is work that has to
-  happen.** Where the time actually is, from the same profiles: `SpriteShade::layDown` 24% of a
-  still frame and `osg::Group::traverse` 9%; `TerrainComposite`'s constructor 18% of a crossing,
-  `ShapeFold` 10% and `paintedLight` 6%. All of it outside this section.
-- **On this frame, at this size, storing an answer to avoid recomputing it lost every time it was
-  tried.** Three of three caches measured at nothing or worse against the arithmetic they replaced.
-  The three changes that stand all do *less work* rather than *remember more*.
-
-## 3. Single responsibility
-
-### 3.1 `RtxRenderer`
-
-`apps/openmw/mwrender/rtx/rtxrenderer.hpp`. Owns the SDL window and events, the stage, the mirror
-(scene, extractor, residents, uploader, sky content, moon faces), the frame-world description
-(`rtxrenderer.cpp:724-988`), the bench, screenshot capture, `OPENMW_RTX_SHOT` keeping, and the
-deferred `TracedView` list.
-
-Direction: three types. A `WorldMirror` owns scene, extractor, residents and uploader and answers
-`mirror(frame)`. A `readWorld(const WorldState&)` in its own file returns a `Rtx::WorldReading`, so
-the game and the harness `CellLighting` path share one builder. A capture type owns screenshot and
-keep.
-
-### 3.2 `SceneExtractor`
-
-`components/rtx/sceneextractor.cpp`, 1871 lines. Walks the graph, resolves meshes, rigs and morphs,
-reads surface, terrain and water materials, takes textures, steps emitters, places sprites, adds
-lights, animates state sets and sweeps.
-
-Direction: split by what is resolved. `MeshResolver` (meshes, rigs, morphs, shape fold),
-`MaterialResolver` (surface, terrain, water, textures, animation), `EmitterResolver` (emitters,
-sprites). The walk and the sweep stay.
-
-### 3.3 `SceneDesc`
-
-`components/rtx/scenedesc.hpp`, 1198 lines. Geometry tables, deformers, placements, materials and
-layers, textures, per-frame lights and sprites, change lists and revisions.
-
-Direction: `TextureTable` and `PlacementTable` as members with their own files. Each change list
-lives with the table it describes.
-
-### 3.4 `VulkanRenderer`
-
-`components/rtxvulkan/vulkanrenderer.cpp`, 1605 lines. The frame ring, the GUI ring, the view
-scenes, the targets, the upscaler, the readbacks and the stats.
-
-Direction: `FrameRing` (slots, fences, graveyards) and `ReadbackQueue` as members.
-
-### 3.5 `SceneUploader::hand`
-
-Decides Placed, Extended or Rebuilt, owns the composite queue, owns the texture loader and logs
-timing.
-
-Direction: the decision is the one thing here nothing else can make. The queue and the loader are
-things it holds, and each could belong to whatever holds the uploader instead.
-
-### 3.6 `StagedWorld` (harness)
-
-`apps/rtxtool/stagedworld.cpp`. Staging, streaming, weather, warm-up, relight, motion and framing.
-
-Direction: `Streaming` (`moveTo`, `dropCellsOutside`) and `Lighting` (`relight`) as members.
-
-### 3.7 `CompositeQueue`
-
-A queue, a thread, a shading cache and a collector.
-
-Direction: `mPainted` becomes a `ShadingCache` type.
+- **`SceneDesc::orderLights` sorts on a nine-field tuple.** 0.12%. A `std::uint64_t` folded from the
+  position and the intensity as the light is added would sort in one compare, and would make the
+  order a fact about a light rather than a rule spread across a comparator. Do it when `Light` is
+  next touched.
+- **`SceneBuffers::place` converts every light, sprite and emitter each frame.** 1.57%. Making it
+  incremental needs a per-frame identity for a light, which the walk does not carry. That is a change
+  to what a light *is*: not before the renderer draws everything.
+- **`DistantLights::collect` does (2r+1)² map lookups a frame.** 0.01%, and the finding is the
+  container rather than the cost — see 5.7.
 
 ## 4. Ownership and arguments
 
 ### 4.1 `SceneExtractor::addLight` has an unused parameter
 
-`components/rtx/sceneextractor.cpp:926`. `path` is never read. The caller (`:444`) computes
-`getNodePath()` for it.
+`SceneExtractor::addLight`. `path` is never read, and the caller computes `getNodePath()` for it.
 
 Direction: remove the parameter.
 
 ### 4.2 `ExtractionStats&` threads through eleven methods
 
-`components/rtx/sceneextractor.cpp:926, 1041, 1184, 1242, 1250, 1328, 1448, 1766, 1790, 1822,
-1848`. `MirrorTraversal` already holds `mStats` (`:360`).
+Eleven, and the split spread them over four files: `sceneextractor`, `meshresolver`,
+`materialresolver` and `emitterresolver` all take one by reference. `MirrorTraversal` already holds
+`mStats`.
 
-Direction: the extractor holds `ExtractionStats* mStats` for the walk. `extract` sets it and clears
-it after.
+Direction: each resolver holds `ExtractionStats* mStats` for the walk, set where the walk begins and
+cleared after — the same shape the traversal already has.
 
 ### 4.3 The Vulkan frame context travels as four loose arguments
 
-`recordPlacement` (`vulkanrenderer.hpp:238`) takes seven arguments, `SceneAcceleration::place`
+`recordPlacement` (`vulkanrenderer.hpp:181`) takes seven arguments, `SceneAcceleration::place`
 (`sceneacceleration.hpp:83`) eight, `SceneMicromaps::bake` (`scenemicromaps.hpp:74`) nine,
 `SceneBuffers::binSprites` (`scenebuffers.hpp:102`) eight. Commands, slot, timer and graveyard
 always travel together.
@@ -172,16 +113,17 @@ measure's inputs.
 
 ### 4.5 `CellLighting` duplicates `Rtx::WorldReading`
 
-`apps/rtxtool/lighting.hpp:18`. The fields mirror `WorldReading`, and `applyLighting` (`:98`) copies
-them across one by one.
+`apps/rtxtool/lighting.hpp`. The fields mirror `WorldReading`, and `applyLighting` copies them
+across one by one. The game now has `MWRender::readWorld`, which does the same translation from
+`WorldState` — but that is a game-side type, so the two still cannot share a builder.
 
-Direction: `CellLighting` holds a `WorldReading` plus the harness-only fields (seconds, water level,
-rain).
+Direction: move `WorldState` into `components/` so `readWorld` serves both, or failing that, have
+`CellLighting` hold a `WorldReading` plus the harness-only fields.
 
 ### 4.6 Optional ownership of `Traversals` in two places
 
-`SceneExtractor` (`sceneextractor.hpp:667-668`) and `OffscreenTrace` (`offscreentrace.hpp:195-196`)
-both keep `mOwnTraversals` and `mTraversals&`.
+`SceneExtractor` and `OffscreenTrace` both keep an `mOwnTraversals` beside an `mTraversals&`.
+`WorldMirror` now owns the game's, so the game side has one caller that could pass it.
 
 Direction: the caller always owns `Traversals`, and both types take a reference. The one caller
 that has none makes one.
@@ -196,45 +138,44 @@ Direction: the view holds the owner only and asks it for the renderer. The owner
 
 ### 4.8 Residents receive per-cell facts every frame
 
-`apps/openmw/mwrender/rtx/rtxrenderer.cpp:677-681`. Five setters on `DistantLights` and two on
-`TerrainResidency` per frame. `follow(span)` (`sceneextractor.hpp:406`) reassigns per frame. The
-values change per cell, not per frame.
+`WorldMirror::mirror`. Five setters on `DistantLights` and two on `TerrainResidency` per frame, and
+`SceneExtractor::follow` reassigns per frame. The values change per cell, not per frame.
 
 Direction: one `Viewpoint { eye, grid, outdoors }` set per frame. `follow` and `setReach` run when
 the world changes.
 
 ### 4.9 `RendererOptions::mWindow` is a raw `SDL_Window*`
 
-`components/rtx/renderer.hpp:107`. Documented as deliberate. Leave.
+`components/rtx/renderer.hpp`. Documented as deliberate. Leave.
 
 ## 5. Non-canonical data structures
 
-### 5.1 Texture slots are six parallel structures
+### 5.1 Texture slots are seven parallel structures
 
-`components/rtx/scenedesc.hpp`: `mTextures` (`:1046`), `mBaked` (`:1050`), `mFreeTextures`
-(`:1072`), `mTextureRefs` (`:1144`), `mTextureNews` (`:1168`), `mTextureIndex` (`:1184`) and
-`mBakedIndex` (`:1196`). Two of them own a string per slot. The two maps own a second copy of each
-string as their key.
+`components/rtx/texturetable.hpp`. They are one type now, with the invariant stated in one place —
+but they are still seven parallel structures inside it: `mPaths`, `mBaked`, `mRefs`, `mFree`,
+`mChanges`, `mPathIndex` and `mBakedIndex`. Two own a string per slot, and the two maps own a second
+copy of each string as their key.
 
-Direction: one `TextureSlot` row (kind, name offset into one string arena, refs, news) and one map
-keyed on a view into the arena.
+Direction: one `TextureSlot` row (kind, name offset into one string arena, refs) and one map keyed on
+a view into the arena.
 
-### 5.2 A per-slot flag has three spellings
+### 5.2 A per-slot flag has two spellings left
 
-`std::vector<char>` (`scenedesc.hpp:1080-1081`), `std::vector<std::uint8_t>` (`:1175`),
-`std::vector<SlotNews>` (`:1168-1169`).
+Two left. `SlotChanges` took the third: the mesh table and the texture table share one
+`std::vector<SlotNews>` through it. What remains is `std::vector<char>` (`mKeptMeshes`,
+`mKeptMaterials`, `mDeformedFlags`) beside `std::vector<std::uint8_t>` (`mMaterialWritten`), all in
+`scenedesc.hpp`.
 
-Direction: one type for a per-slot flag.
-
-### 5.3 `mDeformed` is a vector used as a set
-
-`components/rtx/scenedesc.hpp:1004`. See 2.4.
+Direction: one type for a per-slot flag. `mMaterialWritten` is the odd one — it is a list kept
+duplicate-free, which is `SlotChanges` restricted to arrivals, except that a material row is
+*written* rather than arriving or going.
 
 ### 5.4 `mPlacements` is keyed on a derived hash
 
-`components/rtx/sceneextractor.hpp:592`. An `unordered_map<std::size_t, Known>` keyed on a hash of
-the path and the drawable address. The sweep (`sceneextractor.cpp:793`) is an `erase_if` over the
-map. A collision silently merges two placements.
+`SceneExtractor::mPlacements`, an `unordered_map<std::size_t, Known>` keyed on a hash of the path
+and the drawable address. The sweep is an `erase_if` over the map. A collision silently merges two
+placements.
 
 Direction: key on the placement identity itself, or keep the row in the instance table and let the
 sweep read the epoch there.
@@ -247,15 +188,17 @@ Direction: one `vector<double>` with a stride. Names as `string_view` into the p
 
 ### 5.6 `CompositeQueue` keeps node containers
 
-`components/rtx/compositequeue.hpp:186-187` (`std::deque`), `:194` (`unordered_map<Index,
-TerrainComposite>`), `:220` (`unordered_map<std::string, ShadingMap>`).
+`components/rtx/compositequeue.hpp:178-179` (`std::deque`), `:186` (`unordered_map<Index,
+TerrainComposite>`). The third — the estimate keyed by file — is now `ShadingCache`'s, and it is
+node-based on purpose: a `CompositeLayer` spans into it while the bake reads.
 
 Direction: `mPending` and `mDone` as ring buffers over the request pool the queue already keeps.
 `mFinished` as a vector indexed by material slot.
 
 ### 5.7 `DistantLights::mCells` is a `std::map`
 
-`components/rtx/distantlights.hpp:114`. See 2.9.
+`components/rtx/distantlights.hpp:114`. A flat grid indexed by cell offset. The lookups cost 0.01%,
+so this is the container and not the cost.
 
 ### 5.8 `TimeOfDaySettings::mSunriseTransitions` is a string-keyed map of five constants
 

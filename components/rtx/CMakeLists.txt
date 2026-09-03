@@ -28,7 +28,11 @@ set(RTX_FILES
     distantland.hpp
     distantlights.cpp
     distantlights.hpp
+    emitterresolver.cpp
+    emitterresolver.hpp
     error.hpp
+    extractionstats.cpp
+    extractionstats.hpp
     fogbuilder.cpp
     fogbuilder.hpp
     fognoise.cpp
@@ -41,6 +45,7 @@ set(RTX_FILES
     frameworld.hpp
     imageformat.cpp
     imageformat.hpp
+    index.hpp
     instancerecord.cpp
     instancerecord.hpp
     lightbuilder.cpp
@@ -49,6 +54,12 @@ set(RTX_FILES
     lightgrid.hpp
     meantexel.cpp
     meantexel.hpp
+    meshinstance.hpp
+    materialresolver.cpp
+    materialresolver.hpp
+    meshresolver.cpp
+    meshresolver.hpp
+    mirroridentity.hpp
     moonbuilder.cpp
     moonbuilder.hpp
     nodelibrary.hpp
@@ -56,6 +67,8 @@ set(RTX_FILES
     nightsky.hpp
     offscreentrace.cpp
     offscreentrace.hpp
+    placementtable.cpp
+    placementtable.hpp
     png.cpp
     png.hpp
     posecull.hpp
@@ -70,12 +83,17 @@ set(RTX_FILES
     sceneextractor.hpp
     sceneuploader.cpp
     sceneuploader.hpp
+    shading.cpp
+    shading.hpp
+    shadingcache.hpp
     shadingmap.cpp
     shadingmap.hpp
     shapefold.cpp
     shapefold.hpp
     skybuilder.cpp
     skybuilder.hpp
+    slotchanges.cpp
+    slotchanges.hpp
     spanallocator.cpp
     spanallocator.hpp
     spritelight.cpp
@@ -93,6 +111,8 @@ set(RTX_FILES
     texturebuilder.cpp
     texturebuilder.hpp
     texturedata.hpp
+    texturetable.cpp
+    texturetable.hpp
     wavecascade.cpp
     wavecascade.hpp
     wavespectrum.cpp

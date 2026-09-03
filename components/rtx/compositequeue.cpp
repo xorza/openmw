@@ -292,7 +292,7 @@ namespace Rtx
 
             stack.push_back(CompositeLayer{
                 .mDiffuse = *described,
-                .mShading = estimate(*described, image->getFileName()).getValues(),
+                .mShading = mPainted.estimate(*described, image->getFileName()).getValues(),
                 .mDiffuseTransform = layer.mDiffuseTransform,
                 .mMask = std::span<const float>(asked.mMasks).subspan(mask.mOffset, mask.mCount),
                 .mMaskWidth = layer.mMaskWidth,
@@ -331,16 +331,5 @@ namespace Rtx
         }
 
         return baked;
-    }
-
-    const ShadingMap& CompositeQueue::estimate(const TextureData& texture, const std::string& file)
-    {
-        if (file.empty())
-        {
-            mUnnamed = ShadingMap(texture);
-            return mUnnamed;
-        }
-
-        return mPainted.try_emplace(file, texture).first->second;
     }
 }

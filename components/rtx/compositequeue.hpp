@@ -16,7 +16,7 @@
 #include <osg/ref_ptr>
 
 #include "scenedesc.hpp"
-#include "shadingmap.hpp"
+#include "shadingcache.hpp"
 #include "spanallocator.hpp"
 #include "terraincomposite.hpp"
 
@@ -165,14 +165,6 @@ namespace Rtx
         /// Describes, estimates and flattens one stack. On the baker's thread.
         Baked bake(Request&& request);
 
-        /// The painted light of a ground texture, estimated once per file for the life of the queue.
-        ///
-        /// **Node-based and keyed by the file, because the stack spans these and the same handful of
-        /// ground textures make every chunk of a region.** Estimating one reads every texel of a
-        /// texture's largest level, which is the 5% of a crossing's CPU `texturebuilder.hpp` names.
-        /// On the baker's thread only.
-        const ShadingMap& estimate(const TextureData& texture, const std::string& file);
-
         /// Guards `mPending`, `mDone` and `mBaking` — everything the two threads share.
         std::mutex mMutex;
 
@@ -217,10 +209,9 @@ namespace Rtx
 
         std::string mKey;
 
-        std::unordered_map<std::string, ShadingMap> mPainted;
-
-        /// The estimate of a texture with no file to key it by, held only until the next one.
-        ShadingMap mUnnamed;
+        /// **The baker's thread and no other**, because that is where a stack is described and the
+        /// cache is not guarded. The estimate is node-based, which is what lets the stack span it.
+        ShadingCache mPainted;
 
         /// **Last, so it is joined first.** A member declared above it would be destroyed while
         /// the baker was still reading it; the stop the join begins with is what wakes the wait.

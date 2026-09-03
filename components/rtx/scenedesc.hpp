@@ -16,18 +16,18 @@
 
 #include <components/vfs/pathutil.hpp>
 
+#include "index.hpp"
+#include "meshinstance.hpp"
+#include "placementtable.hpp"
 #include "shaders/scene.h"
 #include "shaders/skinning.h"
 #include "shapefold.hpp"
+#include "slotchanges.hpp"
 #include "spanallocator.hpp"
+#include "texturetable.hpp"
 
 namespace Rtx
 {
-    /// An index into one of `SceneDesc`'s tables, or `sNoIndex` for "none".
-    using Index = std::uint32_t;
-
-    inline constexpr Index sNoIndex = ~Index{ 0 };
-
     /// How a mesh's vertices are re-posed every frame, where they are.
     ///
     /// **The kind names the kernel and the pose it takes.** A skinned body is posed by bone rows
@@ -410,37 +410,6 @@ namespace Rtx
 
     /// One mesh placed in the world: a row of the top-level acceleration structure.
     ///
-    /// Not `Instance`, which in this namespace is the `VkInstance` a device comes from.
-    struct MeshInstance
-    {
-        /// Object space to world space.
-        osg::Matrixf mTransform;
-
-        Index mMesh = sNoIndex;
-        Index mMaterial = sNoIndex;
-
-        /// How much of this placement is there — the fade the game is applying to one actor.
-        ///
-        /// **On the placement and never on the material, because a material is shared.**
-        /// `SceneUtil::CopyOp` does not deep-copy state sets, so every actor built from one body
-        /// part reads one material, and only the one walking out of `actors processing range` is
-        /// fading. `MWRender::TransparencyUpdater` writes the number on a state set above the whole
-        /// actor for that same reason, and this is where it lands — with Invisibility and Chameleon,
-        /// which ride the same pair of uniforms.
-        ///
-        /// One for everything the game is not hiding, which is nearly everything.
-        float mOpacity = 1.0f;
-
-        /// Whether this is the player's own arms in first person, which only the eye's ray may
-        /// meet. `Shaders::MASK_FIRST_PERSON` says why.
-        bool mFirstPerson = false;
-
-        /// Whether this slot holds anything. A dropped placement leaves its slot behind rather than
-
-        /// closing the gap, because the slot index is what a hit reads back.
-        bool isPlaced() const { return mMesh != sNoIndex; }
-    };
-
     /// One live particle, drawn as a disc facing the eye.
     ///
     /// **A particle system carries no triangles at all** — the sprites are the whole of the drawing —
@@ -680,7 +649,7 @@ namespace Rtx
         /// **The name and not the reference count**, which is the same answer except for the window
         /// between a slot being handed out and whatever is about to name it doing so. A reader that
         /// asked the count would find a texture it was in the middle of building.
-        bool isTextureFree(Index texture) const { return mTextures[texture].empty() && mBaked[texture].empty(); }
+        bool isTextureFree(Index texture) const { return mTextures.isFree(texture); }
 
         /// Places `instance` in a slot and returns it.
         ///
@@ -827,13 +796,13 @@ namespace Rtx
         std::span<const Index> getArrivedRigs() const { return mArrivedRigs; }
         std::span<const Index> getArrivedMorphs() const { return mArrivedMorphs; }
         /// Every slot, standing or empty, in slot order. `MeshInstance::isPlaced` tells them apart.
-        std::span<const MeshInstance> getInstances() const { return mInstances; }
+        std::span<const MeshInstance> getInstances() const { return mPlacements.getAll(); }
 
         /// How many slots hold a placement, which is what reaches an acceleration structure.
-        std::uint32_t getPlacedCount() const { return mPlacedCount; }
+        std::uint32_t getPlacedCount() const { return mPlacements.getPlacedCount(); }
 
         /// Where each slot stood before the last `advancePlacement`, indexed alongside the slots.
-        std::span<const osg::Matrixf> getPrevious() const { return mPrevious; }
+        std::span<const osg::Matrixf> getPrevious() const { return mPlacements.getPrevious(); }
 
         /// The slots whose row changed since the last `advancePlacement`: placed, moved, faded,
         /// dropped, or wearing a material that changed what traversal is told.
@@ -842,7 +811,7 @@ namespace Rtx
         /// placements and a frame changes hundreds; a row table written whole every frame was a
         /// millisecond of the game's CPU to change nothing. A slot can appear more than once where
         /// two facts about it changed in one frame, which costs one row written twice.
-        std::span<const Index> getMoved() const { return mMoved; }
+        std::span<const Index> getMoved() const { return mPlacements.getMoved(); }
 
         /// The slots the last `advancePlacement` caught up, whose motion is now still.
         ///
@@ -850,7 +819,7 @@ namespace Rtx
         /// placement stood and where it stands, and that motion goes back to nothing on the frame
         /// after the move — which is a frame on which the slot did not move. Without this list a
         /// backend writing only `getMoved` would leave last frame's motion in the row for ever.
-        std::span<const Index> getSettled() const { return mSettled; }
+        std::span<const Index> getSettled() const { return mPlacements.getSettled(); }
         std::span<const Material> getMaterials() const { return mMaterials; }
         std::span<const MaterialLayer> getLayers() const { return mLayers; }
         std::span<const Light> getLights() const { return mLights; }
@@ -879,7 +848,7 @@ namespace Rtx
         /// slot taken over by something else entirely, which is what one does now. Bumped by a mesh
         /// or a texture appearing, whether at the end of the table or into a slot something else
         /// left, and by `clear`; never by a placement, which is rewritten every frame anyway.
-        std::uint64_t getStructureRevision() const { return mStructureRevision; }
+        std::uint64_t getStructureRevision() const { return mStructureRevision + mTextures.getRevision(); }
 
         /// Forgets what has arrived and what has gone, for a caller that has applied both.
         ///
@@ -894,24 +863,24 @@ namespace Rtx
         /// to be handed the tail of the table and told to append; reclaiming a slot means an arrival
         /// can be anywhere, so the arrivals say where each one goes and the backend writes those and
         /// nothing else.
-        std::span<const Index> getArrivedTextures() const { return mArrivedTextures; }
+        std::span<const Index> getArrivedTextures() const { return mTextures.getArrived(); }
 
         /// Which mesh slots have been written since the last `clearArrivals`.
         ///
         /// The same list for the expensive half. `getMeshRevision` says *that* a mesh arrived and a
         /// backend hearing it had nothing to do but build the scene again; this says *which*, which
         /// is what lets it build those structures and leave the rest standing.
-        std::span<const Index> getArrivedMeshes() const { return mArrivedMeshes; }
+        std::span<const Index> getArrivedMeshes() const { return mMeshChanges.getArrived(); }
 
         /// Which mesh slots `release` has given up since the last `clearArrivals`.
-        std::span<const Index> getFreedMeshes() const { return mFreedMeshes; }
+        std::span<const Index> getFreedMeshes() const { return mMeshChanges.getFreed(); }
 
         /// Which texture slots `release` has given up since the last `clearArrivals`.
         ///
         /// **What lets a backend stop holding a departed cell's images.** An array that is never
         /// told a slot went keeps whatever was in it until something takes the slot over, so a
         /// region walked away from goes on costing its texture memory.
-        std::span<const Index> getFreedTextures() const { return mFreedTextures; }
+        std::span<const Index> getFreedTextures() const { return mTextures.getFreed(); }
 
         /// How many times a **mesh** has appeared, which is the expensive half of the above.
         ///
@@ -950,14 +919,14 @@ namespace Rtx
         std::span<const SpriteEmitter> getEmitters() const { return mEmitters; }
         std::span<const float> getMasks() const { return mMasks; }
         /// The file each slot was read from, empty where it was not read from one.
-        std::span<const VFS::Path::Normalized> getTextures() const { return mTextures; }
+        std::span<const VFS::Path::Normalized> getTextures() const { return mTextures.getPaths(); }
 
         /// What made each slot, for the ones nothing opened — empty for every slot that is a file.
         ///
         /// **Parallel to `getTextures` and not instead of it**, because the two are different facts
         /// about a slot and nearly every reader wants only the first. A slot with neither is one
         /// nothing stands in, which is what `isTextureFree` answers.
-        std::span<const std::string> getBakedTextures() const { return mBaked; }
+        std::span<const std::string> getBakedTextures() const { return mTextures.getBaked(); }
 
         /// The vertices of one mesh, for a test or a build that wants to read back what it appended.
         std::span<const osg::Vec3f> getMeshPositions(Index mesh) const;
@@ -1038,12 +1007,9 @@ namespace Rtx
         // Slot-addressed and parallel: the placement, and where it stood before the last advance.
         // Two flat arrays rather than one struct, because the previous transform is read only for
         // what moved and a frame walks the placements for other reasons.
-        std::vector<MeshInstance> mInstances;
-        std::vector<osg::Matrixf> mPrevious;
-        std::vector<Index> mMoved;
-        std::vector<Index> mSettled;
-        std::vector<Index> mFreeSlots;
-        std::uint32_t mPlacedCount = 0;
+        /// Where everything stands and which rows a backend has to write again. Its own type,
+        /// because slots that are never moved, a free list and two change lists are one invariant.
+        PlacementTable mPlacements;
 
         std::vector<Material> mMaterials;
         std::vector<MaterialLayer> mLayers;
@@ -1051,12 +1017,15 @@ namespace Rtx
         std::vector<Sprite> mSprites;
         std::vector<SpriteEmitter> mEmitters;
         std::vector<float> mMasks;
-        std::vector<VFS::Path::Normalized> mTextures;
 
-        /// What made each slot, parallel to `mTextures`. Exactly one of the two is set for a slot
-        /// that is standing, and neither for one that is free.
-        std::vector<std::string> mBaked;
+        /// Every texture the scene names, and what still names each. Its own type, because a
+        /// reference-counted table with a free list and two lookups into it is a thing with an
+        /// invariant rather than a set of parallel vectors.
+        TextureTable mTextures;
 
+        /// **The share of the structure revision this counts, and not the whole of it.** The rest
+        /// belongs to `TextureTable`, which takes its own slots — `getStructureRevision` adds the
+        /// two.
         std::uint64_t mStructureRevision = 0;
         std::uint64_t mMeshRevision = 0;
         std::uint64_t mResetRevision = 0;
@@ -1077,7 +1046,6 @@ namespace Rtx
         /// keeps its index and every placement standing on it stays where it is.
         std::vector<Index> mFreeMeshes;
         std::vector<Index> mFreeMaterials;
-        std::vector<Index> mFreeTextures;
 
         /// Which slots a sweep was told to keep, one flag per row of the table beside it.
         ///
@@ -1113,28 +1081,15 @@ namespace Rtx
         SpanAllocator mInfluenceRuns;
         SpanAllocator mMorphRuns;
 
-        /// What has become of a slot since the last `clearArrivals`.
-        enum class SlotNews : std::uint8_t
-        {
-            None,
-            Arrived,
-            Freed,
-        };
-
         /// Calls `visit(instance, worldBox)` for every placement, which is what both extents walk.
         template <class Visit>
         void forEachPlacement(Visit&& visit) const;
 
-        /// Records `slot` as having arrived or gone, in the lists for its table.
+        /// Records `slot` as having arrived or gone, and grows the list to reach it.
         void noteMesh(Index slot, SlotNews what);
-        void noteTexture(Index slot, SlotNews what);
 
         /// Records that `slot`'s row was written, once however many times it is.
         void noteMaterial(Index slot);
-
-        /// Takes a slot for a texture of either kind — a free one where there is one, a new row
-        /// otherwise. The caller names it; this only finds it somewhere to stand.
-        Index takeTextureSlot();
 
         /// Takes and gives back the textures a material names — its three roles and every layer's.
         ///
@@ -1142,39 +1097,8 @@ namespace Rtx
         void holdMaterialTextures(const Material& material);
         void dropMaterialTextures(const Material& material);
 
-        /// How many things name each texture, parallel to `mTextures`.
-        ///
-        /// **The materials and the holds, and nothing else counts.** A slot reaches zero exactly
-        /// when the last of them lets go, which is where its path is emptied and its index goes on
-        /// the free list — so `mTextures[slot].empty()` and this being zero say the same thing,
-        /// except in the window between `addTexture` and whatever is about to name what it returned.
-        /// The path is what a reader should ask, because that window is real.
-        std::vector<std::uint32_t> mTextureRefs;
-
-        /// **Disjoint, and each slot named once**, which is what lets a backend apply the two lists
-        /// in either order. A slot the sweep gave up and a later walk took back is an arrival and
-        /// not a departure; one that arrived and then went is a departure and not an arrival.
-        /// Without that, a backend applying departures last destroys a structure it has just built,
-        /// and one applying them first leaves a slot it has just freed holding a live mesh.
-        ///
-        /// The linear erase is the price of changing sides, and it is only paid when a slot does —
-        /// which needs a window that was never handed over, because a walk adds before the sweep
-        /// that follows it frees.
-        static void note(Index slot, SlotNews what, std::vector<SlotNews>& news, std::vector<Index>& arrived,
-            std::vector<Index>& freed);
-
-        /// Slots written since the last `clearArrivals`, which is what a backend uploads or builds.
-        std::vector<Index> mArrivedTextures;
-        std::vector<Index> mArrivedMeshes;
-
-        /// Slots `release` gave up since the last `clearArrivals`, which is what a backend drops.
-        std::vector<Index> mFreedTextures;
-        std::vector<Index> mFreedMeshes;
-
-        /// Which list each slot is in, parallel to its table. What keeps the lists disjoint and
-        /// duplicate-free without either being searched.
-        std::vector<SlotNews> mTextureNews;
-        std::vector<SlotNews> mMeshNews;
+        /// Which mesh slots arrived and which were freed, since a backend last read them.
+        SlotChanges mMeshChanges;
 
         /// Material rows written since the last `clearArrivals`, and a flag per slot that keeps the
         /// list free of duplicates — a flipbook that is added and then rewritten on one frame is one
@@ -1185,22 +1109,5 @@ namespace Rtx
         /// Runs placed in the layer and mask tables since the last `clearArrivals`.
         std::vector<Span> mArrivedLayers;
         std::vector<Span> mArrivedMasks;
-
-        // The scan this replaces was O(materials x textures). A cell is a hundred of each and would
-        // never have noticed; a worldspace is thousands of both, and load time is not the place to
-        // find that out. `VFS::Path::Hash` is transparent, so a lookup by view costs no string.
-        std::unordered_map<VFS::Path::Normalized, Index, VFS::Path::Hash, std::equal_to<>> mTextureIndex;
-
-        /// Hashes a key by its characters however it is spelled, so a lookup costs no string of its
-        /// own. `VFS::Path::Hash` is the same idea for the map above.
-        struct BakedHash
-        {
-            using is_transparent = void;
-
-            std::size_t operator()(std::string_view key) const { return std::hash<std::string_view>{}(key); }
-        };
-
-        /// The same for the slots nothing opened, keyed by what made them.
-        std::unordered_map<std::string, Index, BakedHash, std::equal_to<>> mBakedIndex;
     };
 }

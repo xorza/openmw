@@ -1,5 +1,8 @@
 #include "rtxrenderer.hpp"
 
+#include "readworld.hpp"
+#include "worldmirror.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -19,9 +22,6 @@
 #include <osg/Stats>
 #include <osg/Timer>
 
-#include <osgDB/ReaderWriter>
-#include <osgDB/Registry>
-
 #include <osgGA/EventQueue>
 
 #include <MyGUI_ITexture.h>
@@ -31,21 +31,15 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguirtx/rendermanager.hpp>
-#include <components/nifosg/nifloader.hpp>
 #include <components/rtx/camera.hpp>
-#include <components/rtx/distantland.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/frametimes.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
-#include <components/rtx/png.hpp>
 #include <components/rtx/poseupdate.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/scenedesc.hpp>
-#include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/upscale.hpp>
@@ -61,7 +55,6 @@
 #include "../stage.hpp"
 #include "../windowsetup.hpp"
 #include <components/resource/resourcesystem.hpp>
-#include <components/weather/precipitation.hpp>
 
 #include "../renderingmanager.hpp"
 #include "../screenshotwriter.hpp"
@@ -72,40 +65,9 @@ namespace MWRender
 {
     namespace
     {
-        /// What every walk this renderer makes takes.
-        ///
-        /// **An exclusion of what the ray tracer draws itself**, and never a selection of what a
-        /// walk is interested in. A node mask is AND-ed at every node on the way down, so the bits
-        /// have to be read as "which categories may be seen at all" — which is a different question
-        /// from "which subtree am I walking", and that one is answered by where the walk starts.
-        ///
-        /// Conflating the two is a silent, total failure: naming `SceneUtil::Mask_WeatherParticles` here to
-        /// mean "the weather subtree" extracted every storm in the game with all of its particles
-        /// missing, because `Resource::SceneManager` marks a `ParticleSystem` drawable
-        /// `SceneUtil::Mask_ParticleSystem` and a blizzard's own particles are not categorised as weather.
-        ///
-        /// The sky, the sun and the simple water are what this renderer draws for itself. What the
-        /// content says is not there is a second exclusion, and it is asked of the loader that
-        /// stamped it rather than named again here — see where this is installed.
-        constexpr osg::Node::NodeMask sWorldTraversal = ~static_cast<osg::Node::NodeMask>(
-            SceneUtil::Mask_Sky | SceneUtil::Mask_Sun | SceneUtil::Mask_SimpleWater);
-    }
-
-    namespace
-    {
         /// A quarter of a Morrowind foot. Nothing is clipped against it — see `mNear` — so it only
         /// has to be nearer than anything the eye can find itself inside of.
         constexpr float sNear = 1.0f;
-
-        /// How much world this renderer builds, in units.
-        ///
-        /// **One reading for the game, because `components/rtx` holds no settings registry.** The
-        /// ground, the air and the distant lights are all measured over the same number, and a host
-        /// that answered the question twice could build ground to one reach and air to another.
-        float landReach()
-        {
-            return Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance);
-        }
 
         /// How often the trace's running average is reported. Five seconds at sixty frames.
         constexpr std::uint32_t sReportEvery = 300;
@@ -118,13 +80,13 @@ namespace MWRender
 
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
         : mStage(spec.mStage)
+        , mCapture(makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath))
         , mCamera(new osg::Camera)
         , mFrameStamp(new osg::FrameStamp)
         , mEvents(new osgGA::EventQueue)
         , mUpdateVisitor(new Rtx::PoseUpdate)
         , mStats(new osg::Stats("Viewer"))
         , mStartTick(osg::Timer::instance()->tick())
-        , mExtractor(std::make_unique<Rtx::SceneExtractor>(mScene, &mTraversals))
     {
         // **Before any content is read, because it decides what reading one records.** This is the
         // only renderer that asks what the content says a surface is, and the answer is stored on
@@ -138,8 +100,6 @@ namespace MWRender
         mFrameStamp->setReferenceTime(0.0);
         mFrameStamp->setSimulationTime(0.0);
         mUpdateVisitor->setFrameStamp(mFrameStamp);
-
-        mScreenshotWriter = makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath);
 
         createWindow(spec.mResourceDir);
 
@@ -198,29 +158,6 @@ namespace MWRender
         // Everything above reads the viewport, so it has to be told what was actually built.
         fitToWindow();
 
-        // **The sky is not mirrored.** It is the one subtree the engine rebuilds every frame —
-        // state sets and all — so walking it churns the identity maps, and a sweep that drops four
-        // materials a frame bumps the revision and makes every frame a full rebuild. Nothing is
-        // lost by leaving it out: a ray that reaches the sky has missed everything, and what it
-        // gets then is this renderer's own sky rather than the dome the rasterizer draws.
-        //
-        // **And `SceneUtil::Mask_SimpleWater` with them, which is a duplicate rather than a subtree to skip.**
-        // `MWRender::Water` hangs two coplanar quads under one node — the world's water under
-        // `SceneUtil::Mask_Water`, and a deep copy of it under `SceneUtil::Mask_SimpleWater` that exists for the local
-        // map — and the rasterizer picks between them with the drawing camera's traversal mask.
-        // A mirror that walks both places the sea twice, at the same height, as two meshes.
-        //
-        // **And what the content hides, which the loader is asked for rather than named twice.**
-        // `RenderingManager` installs `SceneUtil::Mask_UpdateVisitor` as the hidden node mask, and a
-        // `NifOsg::VisController` animating visibility swaps a node between it and every bit. It is
-        // one bit rather than no bits at all so that the update traversal still reaches a hidden
-        // bone to animate it — which is why a walk that ignores it traces what nothing draws.
-        mExtractor->setTraversalMask(sWorldTraversal & ~NifOsg::Loader::getHiddenNodeMask());
-
-        // What is left of the two is the world's own water, and it is the sea.
-        mExtractor->setWaterMask(SceneUtil::Mask_Water);
-        mExtractor->setFirstPersonMask(SceneUtil::Mask_FirstPerson);
-
         // **The negative test, and it is the whole claim of this path in one line.** Nothing above
         // here may have made a GL context: not the window, not a realize operation, not an
         // `osgViewer` that slipped back in. A context that exists is one something is paying for.
@@ -228,12 +165,7 @@ namespace MWRender
             throw std::runtime_error("something initialised OpenGL under the ray tracing renderer");
 
         if (const char* where = std::getenv("OPENMW_RTX_SHOT"); where != nullptr && *where != '\0')
-        {
-            mKeepAt = where;
-            mKeepLeft = sKeepAtMost;
-            Log(Debug::Info) << "Ray tracing will write its first " << mKeepLeft << " frames to " << mKeepAt
-                             << "-0000.png and on";
-        }
+            mCapture.keepFrames(where);
     }
 
     // Out of line because the members it destroys are only forward declared in the header.
@@ -241,8 +173,7 @@ namespace MWRender
     {
         // Before the renderer, because a write still on the queue holds an image of a frame this
         // owns the memory for.
-        if (mScreenshotWriter != nullptr)
-            mScreenshotWriter->stop();
+        mCapture.stop();
 
         mRenderer.reset();
 
@@ -287,6 +218,7 @@ namespace MWRender
         // where they come from. Nothing about the frame needs it — the mirror is handed an image
         // manager by whoever drives it.
         mResources = world.getResourceSystem();
+        mMirror.attach(*mResources);
 
         // Nothing goes between the world and the screen: what the trace writes is the picture.
         setSceneRoot(worldRoot);
@@ -439,64 +371,14 @@ namespace MWRender
             fitToWindow();
     }
 
-    Rtx::TracedFrame RtxRenderer::readFrame()
-    {
-        const Rtx::FrameExtents extents = mRenderer->getExtents();
-        if (extents.mOutputWidth == 0 || extents.mOutputHeight == 0)
-            return {};
-
-        mRenderer->readPixels(mPixels);
-
-        return Rtx::TracedFrame{
-            .mWidth = extents.mOutputWidth,
-            .mHeight = extents.mOutputHeight,
-            .mPixels = mPixels,
-        };
-    }
-
     void RtxRenderer::capture(osg::Image& image, int width, int height)
     {
-        // An out-parameter because the caller owns the image, so the shared conversion's result is
-        // moved into it rather than handed back.
-        const osg::ref_ptr<osg::Image> taken = Rtx::frameImage(readFrame(), width, height, Rtx::RowOrder::BottomFirst);
-        if (taken == nullptr)
-            return;
-
-        // **Three channels and not four.** The one caller writes a savegame thumbnail as a JPEG,
-        // which has no alpha to carry and whose writer refuses a four-channel image outright — an
-        // `ERROR_IN_WRITING_FILE` and a save with no picture in it, which is what the rasterizer
-        // avoids by reading its own screenshots back as `GL_RGB`.
-        image.allocateImage(width, height, 1, GL_RGB, GL_UNSIGNED_BYTE);
-
-        // Row by row, because three bytes a pixel is not a multiple of the packing: a thumbnail 518
-        // across is 1,554 bytes of picture in a 1,556-byte row.
-        for (int y = 0; y < height; ++y)
-        {
-            const std::uint8_t* from = taken->data(0, y);
-            std::uint8_t* to = image.data(0, y);
-            for (int x = 0; x < width; ++x)
-                std::memcpy(to + x * 3, from + x * 4, 3);
-        }
+        mCapture.thumbnail(*mRenderer, image, width, height);
     }
 
     void RtxRenderer::saveScreenshot()
     {
-        const Rtx::TracedFrame frame = readFrame();
-
-        // Bottom row first, because what writes the file is `osgDB` through the same operation the
-        // rasterizer hands `osgViewer`'s captures to, and that is the convention it reads.
-        const osg::ref_ptr<osg::Image> taken = Rtx::frameImage(
-            frame, static_cast<int>(frame.mWidth), static_cast<int>(frame.mHeight), Rtx::RowOrder::BottomFirst);
-
-        if (taken == nullptr)
-        {
-            Log(Debug::Warning) << "Ray tracing has no frame to write a screenshot from";
-            return;
-        }
-
-        // Straight to the writer rather than through a capture handler: the handler's job is to get
-        // a frame off the graphics context, and this frame is already off it.
-        (*mScreenshotWriter)(*taken, 0);
+        mCapture.screenshot(*mRenderer);
     }
 
     std::unique_ptr<OffscreenView> RtxRenderer::createOffscreenView(const OffscreenViewSpec& spec)
@@ -511,7 +393,7 @@ namespace MWRender
 
     MyGUI::ITexture& RtxRenderer::freezeFrame()
     {
-        const Rtx::TracedFrame frame = readFrame();
+        const Rtx::TracedFrame frame = mCapture.read(*mRenderer);
 
         // The trace's own row order, kept: `MyGUIPlatform::Picture` copies an image straight into a
         // locked texture and the interface draws it from the top down, so flipping here would stand
@@ -549,29 +431,6 @@ namespace MWRender
         return std::make_unique<MyGUIPlatform::Platform>(std::move(manager), &vfs, resourcePath, logPath);
     }
 
-    void RtxRenderer::keep()
-    {
-        if (mKeepLeft == 0)
-            return;
-
-        --mKeepLeft;
-
-        const Rtx::FrameExtents extents = mRenderer->getExtents();
-        mRenderer->readPixels(mPixels);
-
-        const std::filesystem::path file = mKeepAt.string() + std::format("-{:04}.png", sKeepAtMost - mKeepLeft - 1);
-
-        try
-        {
-            Rtx::writePng(file, extents.mOutputWidth, extents.mOutputHeight, mPixels);
-        }
-        catch (const std::exception& failed)
-        {
-            mKeepLeft = 0;
-            Log(Debug::Error) << "Ray tracing could not write " << file << ": " << failed.what();
-        }
-    }
-
     void RtxRenderer::notifyWorldSpaceChanged()
     {
         // **Told rather than worked out.** The mirror grows and recycles its slots and is never
@@ -600,125 +459,27 @@ namespace MWRender
             return;
         }
 
-        // **The world's clock and not this renderer's.** Everything the graph animates under its own
-        // controller reads it off the walk's frame stamp, and the sea off the frame's constants; a
-        // clock of our own would run both while the game was paused and neither in step with the
-        // time of day.
-        mExtractor->setSimulationTime(when.getSimulationTime());
-
-        // **The emitters on their own clock, by the gap and not to the time.** They are the one
-        // thing here that integrates the difference between two frames rather than reading the
-        // hour, so what a pause or a loading screen leaves in that difference is a jump they would
-        // take literally. The extractor clamps it; this only has to hand over the gap.
-        mExtractor->advanceEmitters(when.getSimulationTime() - mLastSimulationTime);
-        mLastSimulationTime = when.getSimulationTime();
-
-        // **Every frame, and the placements are the one thing it does not throw away.** What goes
-        // is the lists a walk refills wholesale — lights, deformed meshes, sprites, emitters. The
-        // meshes, materials and texture paths stay because the acceleration structures and the
-        // texture array were built from them, and the placements stay because they are addressed by
-        // slot: a re-walk over an unchanged graph finds every one of them where it left it.
-        mScene.clearPlacement();
-
-        // **The moons' portraits, once, into the table the trace reads.** Held rather than named by
-        // a material: a moon is drawn by a ray that reached nothing, so nothing else can speak for
-        // the slot and the sweep would take it on the first frame a cell died. The scene outlives
-        // every cell here, so this is asked once and never again.
-        if (mMoonFaces.mMasser == Rtx::sNoIndex)
-        {
-            mMoonFaces = Rtx::addMoonFaces(mScene);
-            mSkyContent = Rtx::addSkyContent(mScene, *mResources->getSceneManager(),
-                Rtx::SkyMeshes{ .mClouds = Settings::models().mSkyclouds,
-                    .mStars = Settings::models().mSkynight02,
-                    .mStarsFallback = Settings::models().mSkynight01 });
-        }
-
-        // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror and
-        // the precipitation subtree below is part of it. The harness times the same stretch, which
-        // is what lets the two rows be read against each other.
+        // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror. The
+        // harness times the same stretch, which is what lets the two rows be read against each
+        // other.
         const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
-
-        // **What the weather drops, walked as a second root.** Those nodes hang under the sky's
-        // camera-relative transform, which strips the translation — so their particles are placed
-        // about the origin and the eye is what puts them back. And the sky's own mask keeps the
-        // first walk out of that subtree entirely, which is right: a cloud deck is a texture on a
-        // ray that reached nothing, and rain is geometry standing in front of one.
-        //
-        // The same systems the rasterizer draws, not a second set of them. `MWRender::Precipitation`
-        // owns them and neither renderer does.
-        // Nothing falls where the eye is under water. The rasterizer answers this by not culling
-        // the subtree; this renderer answers it by not walking it — off the frame's own answer,
-        // which `RenderingManager` already worked out from the water it owns.
-        if (frame.mWorld.mPrecipitation != nullptr && !frame.mWorld.mUnderwater)
-        {
-            osg::Vec3d at;
-            osg::Vec3d ahead;
-            osg::Vec3d skyward;
-            frame.mCamera.getViewMatrixAsLookAt(at, ahead, skyward);
-
-            // **The same mask as everything else, because there is nothing here to select.** The
-            // walk starts at the precipitation node, so the subtree is already chosen; the mask is
-            // only ever excluding what this renderer draws for itself, and none of that is under
-            // here. A set-and-restore around one walk was the shape the mistake came in.
-            mExtractor->extract(
-                *frame.mWorld.mPrecipitation->getNode(), osg::Matrixf::translate(osg::Vec3f(at)), 0, mFrame);
-        }
-
-        // **The eye, which is what a cull would have used.** The detail a chunk is built at has to
-        // be the detail the primary rays hit, and asking from anywhere else would put the ground a
-        // reflection sees at a different level from the ground beside it.
-        const osg::Vec3f eye = frame.mCamera.getInverseViewMatrix().getTrans();
-
-        mResident.follow(&frame.mTerrain);
-        mResident.setViewPoint(eye);
-
-        // **The same eye and the world's own grid.** What the game has stood for itself is what
-        // these must not stand again, and `Terrain::World` is where both renderers read that from.
-        mDistantLights.follow(&frame.mObjectStorage, frame.mTerrain.getWorldspace());
-        mDistantLights.setViewPoint(eye);
-        mDistantLights.setReach(landReach());
-        mDistantLights.setActiveGrid(frame.mTerrain.getActiveGrid());
-        mDistantLights.setOutdoors(!frame.mWorld.isInteriorCell());
-
-        // Told once a frame, because what a paged world hides is the frame's to say. Every world
-        // walk asks it from here, and the precipitation walk above cannot: it is a subtree.
-        std::array<Rtx::Residency*, 2> hidden{ &mResident, &mDistantLights };
-        mExtractor->follow(hidden);
-
-        const Rtx::ExtractionStats found
-            // One walk over the whole graph, where every path is already distinct.
-            = mExtractor->extractWorld(frame.mScene, osg::Matrixf::identity(), 0, mFrame);
-
+        const Rtx::ExtractionStats found = mMirror.mirror(frame, mFrame);
         const double walkMs = Rtx::since(walked, std::chrono::steady_clock::now());
 
         const bool traced = traceWorld(frame, found, walkMs);
 
         renderGui();
 
-        // **After the frame and not before the walk.** Where everything stood this frame is what
-        // the next one measures its motion against, and saying so any earlier would have this frame
-        // comparing itself with itself.
-        //
-        // On the frames the trace refused as well: the walk still ran, so its epoch is still the
-        // one the next walk has to be measured against.
-        mExtractor->advance();
-
-        // **What the walk did not find has gone, and this is where the scene is told.** The graph
-        // above is the whole world every frame, which is what makes mark and sweep sound here — and
-        // it is also the only thing that lets go: the identity maps hold their keys alive, so
-        // geometry the engine has dropped outlives it until a sweep takes the entry naming it.
-        //
-        // Last, because it bumps the epoch the next walk is measured against: everything that
-        // survived is still carrying the old stamp until it does.
-        if (const Rtx::Retirement went = mExtractor->retire(); !went.empty())
-            Log(Debug::Info) << "Ray tracing dropped " << went.mMeshes << " meshes and " << went.mMaterials
-                             << " materials the world no longer has";
+        // **After the frame and not before the walk**, and on the frames the trace refused as well:
+        // the walk still ran, so its epoch is still the one the next walk has to be measured
+        // against. `WorldMirror::settle` says what each half of it is for.
+        mMirror.settle();
 
         // Only what a trace wrote, because the cap is a count of pictures and not of frames: a run
         // that spent its first sixteen at the main menu would write the same black texel sixteen
         // times and have nothing left for the world.
         if (traced)
-            keep();
+            mCapture.keep(*mRenderer);
     }
 
     bool RtxRenderer::traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs)
@@ -727,7 +488,7 @@ namespace MWRender
         const osg::Camera& camera = frame.mCamera;
         const WorldState& world = frame.mWorld;
 
-        if (mScene.getPlacedCount() == 0)
+        if (mMirror.getScene().getPlacedCount() == 0)
             return false;
 
         // **Waited for here, ahead of the placement that would otherwise absorb it.** `placeScene`
@@ -745,15 +506,16 @@ namespace MWRender
         // Placed, appended or rebuilt — the decision, and the describing a rebuild needs, are the
         // harness's too and are written once (`Rtx::SceneUploader`).
         const std::chrono::steady_clock::time_point handing = std::chrono::steady_clock::now();
-        const Rtx::SceneUpload handed = mUploader.hand(*mRenderer, Rtx::sWorld, mScene, frame.mImages, Rtx::SeaState{});
+        const Rtx::SceneUpload handed = mMirror.hand(*mRenderer, frame.mImages);
         const double placeMs = Rtx::since(handing, std::chrono::steady_clock::now());
 
         mHasScene = true;
 
         if (handed.mKind == Rtx::SceneUpload::Kind::Rebuilt)
-            Log(Debug::Info) << "Ray tracing built " << mScene.getMeshes().size() << " meshes into " << found.mInstances
-                             << " instances with " << found.mLights << " lights, " << found.mDeformed
-                             << " of them deforming, and skipped " << found.mSkippedUnknown << " it cannot read";
+            Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().getMeshes().size() << " meshes into "
+                             << found.mInstances << " instances with " << found.mLights << " lights, "
+                             << found.mDeformed << " of them deforming, and skipped " << found.mSkippedUnknown
+                             << " it cannot read";
 
         if (handed.mUnreadable > 0)
             Log(Debug::Warning) << "Ray tracing could not read " << handed.mUnreadable << " of " << handed.mDescribed
@@ -802,135 +564,10 @@ namespace MWRender
         }
 
         Rtx::Shaders::VisibilityConstants constants = *viewpoint;
-        // **Decoded here, because the world does not know what a transport is.** Every colour on
-        // the frame is a content file's three bytes over 255 and no transfer function; the
-        // rasterizer samples them as they are and this light transport is linear, so the conversion
-        // belongs to whichever renderer needs it.
-        // **Where the sun *is*, and the light comes back along it.** The world also reports
-        // `mSunVector`, which is where the rasterizer's light travels and is not the negation of
-        // this — `Sky::sunAt` says why, and why nothing that traces can hold both.
-        osg::Vec3f discAt(world.mSunPosition.x(), world.mSunPosition.y(), world.mSunPosition.z());
-        if (discAt.length2() > 0.0f)
-            discAt.normalize();
 
-        // The horizon is the fog and the zenith is the sky's own, which is the pair Morrowind
-        // records: one colour for the air, and one for the dome it fades into overhead.
-        // **A room's light is built once, out of the record the cell wrote** — `Rtx::makeRoomLight`,
-        // which is what `openmw-rtxtool` reads out of the content files — and not out of the
-        // rasterizer's reading of it. `mAmbientColour` carries the lift `configureAmbient` gives an
-        // interior for its own falloff curve and `mSunPosition` where it points a directional
-        // light, and neither is a fact about the room. What the game adds for Night-Eye comes over
-        // as itself.
-        const std::optional<Rtx::Daylight> room = world.isOutdoors()
-            ? std::nullopt
-            : std::optional(Rtx::makeRoomLight(ESM::Cell::AMBIstruct{ .mAmbient = world.mRoomAmbient,
-                                                   .mSunlight = world.mRoomSunlight,
-                                                   .mFog = world.mRoomFog,
-                                                   .mFogDensity = world.mFogDepth },
-                osg::Vec3f(world.mNightEye.x(), world.mNightEye.y(), world.mNightEye.z())));
-
-        const osg::Vec3f haze = room.has_value() ? room->mSkyHorizon : Rtx::decodeColour(world.mAir.mColour);
-
-        // **The sky's own colour, and an interior has none.** The weather system stops writing it
-        // the moment the player steps inside, so what the sky is still holding belongs to wherever
-        // they were last outdoors — and the air's own colour stands in, which is what a room's sky
-        // is anyway. A quasi-exterior is on the outdoor side of that: it has weather.
-        const osg::Vec3f zenith = room.has_value() ? room->mSkyZenith : Rtx::decodeColour(world.mSkyColour);
-
-        // **The sun is not assembled here.** Everything the world says about it goes to the one
-        // builder that decides what a sun may be — which is what keeps the game and the harness
-        // under the same sky, and what makes a sun that lights an empty night impossible to write.
-        // A room has none, and `Rtx::makeRoomLight` is where that is said for both hosts.
-        const Rtx::Skylight sky = room.has_value()
-            ? Rtx::Skylight{ .mSun = room->mSun, .mSunAloft = room->mSunAloft, .mAmbient = room->mAmbient }
-            : Rtx::makeSkylight(Rtx::SkyReading{
-                .mSunPosition = discAt,
-                .mSunShare = world.mSunDiscColour.a(),
-
-                // **The deck keeps the sun after the ground has lost it**, and the hour is what says how
-                // much of it is left — `Rtx::sunShareAloft`. The ground's own share arrives from the
-                // weather system, which reads the same `Sky::sunShareAt` at the same hour.
-                .mSunShareAloft = Rtx::sunShareAloft(world.mGameHour, Sky::TimeOfDaySettings::shared()),
-                .mSunColour = Rtx::decodeColour(world.mSunColour),
-                .mAmbient = Rtx::decodeColour(world.mAmbientColour),
-                .mDiscColour = Rtx::decodeColour(world.mSunDiscColour),
-                .mGlare = world.mSunGlare,
-            });
-
-        // **The recorded depth, and not the ramp `MWRender::FogManager` made of it.** That ramp
-        // exists to hide a far clip plane and this renderer has no far clip to hide, so per the
-        // fork's own rule it does not come across. What is read instead is the number the content
-        // wrote, handed to the one builder that knows what a cell's air may be — which is what
-        // `openmw-rtxtool` calls out of the same records, so a screenshot and a played frame stand
-        // in one air.
-        //
-        // **A quasi-exterior takes a room's air under an outdoor sky**, and this is the one place
-        // that can tell one: `WorldReading::mFogFromSky` says what turns on it.
-        const bool fogFromSky = world.isOutdoors() && !world.isInteriorCell();
-        const Rtx::Fog air = room.has_value() ? room->mFog
-            : fogFromSky ? Rtx::exteriorFog(haze, world.mFogDepth, world.mBaseWindSpeed, landReach())
-                         : Rtx::roomFog(haze, world.mFogDepth);
-
-        // **Before the frame rather than into it, because the deck is lit by them.** A cloud layer
-        // takes the moons' light like anything else under a night sky, and `Rtx::deckLight` is
-        // handed the pair.
-        std::array<Rtx::MoonPlacement, 2> moons{};
-        for (std::size_t moon = 0; moon < moons.size(); ++moon)
-        {
-            const MoonState& state = world.mMoons[moon];
-
-            // `Unspecified` is a ninth value and not a phase; the weather system uses it to mean it
-            // has not spoken, and a moon it has not spoken about is one with no alpha anyway.
-            const int phase = state.mPhase == MoonState::Phase::Unspecified ? 0 : static_cast<int>(state.mPhase);
-
-            // **The glare is applied here and not by the weather system**, which is where the
-            // rasterizer applies it too: `SkyManager::setWeather` calls `Moon::adjustTransparency`
-            // with it after the state has been handed over. A thunderstorm hides its moons the same
-            // way it hides its stars.
-            moons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
-                state.mRotationFromNorth, phase, state.mDaylightFade * world.mSunGlare);
-            moons[moon].mFace = mMoonFaces.of(static_cast<Rtx::Moon>(moon));
-        }
-
-        const auto weatherId = static_cast<std::uint32_t>(world.mWeatherId);
-
-        const Rtx::FrameWorld described = Rtx::describeWorld(Rtx::WorldReading{
-            .mDaylight = Rtx::Daylight{
-                .mSun = sky.mSun,
-                .mSunAloft = sky.mSunAloft,
-                .mSkyHorizon = haze,
-                .mSkyZenith = zenith,
-                .mAmbient = sky.mAmbient,
-                .mStarFade = world.mNightFade,
-                .mFog = air,
-            },
-            .mOutdoors = world.isOutdoors(),
-            .mFogFromSky = fogFromSky,
-            .mGlare = world.mSunGlare,
-            .mStarRoll = world.mSkyRoll.mStars,
-            .mCloudRoll = world.mSkyRoll.mClouds,
-            .mSky = mSkyContent,
-            .mMoons = moons,
-            .mWeather = weatherId,
-
-            // **The current weather twice where nothing is arriving**, since the deck crosses
-            // unconditionally: naming it on both sides at a blend of nothing is what lets it.
-            .mNextWeather = world.mNextWeatherId.has_value() ? static_cast<std::uint32_t>(*world.mNextWeatherId)
-                                                             : weatherId,
-            .mCloudBlend = world.mCloudBlend,
-            .mCloudDirection = world.mCloudDirection,
-            .mNextCloudDirection = world.mNextCloudDirection,
-
-            // Negative infinity and not zero: zero is sea level, and a cell with no water has to
-            // answer "how deep is this point" with never.
-            .mWaterLevel = world.mWaterEnabled ? world.mWaterHeight : -std::numeric_limits<float>::infinity(),
-
-            // **What the sea is animated by, and leaving it at zero is a frozen ocean.** Real
-            // elapsed seconds rather than the frame count: a sea that ran at the frame rate would
-            // slow down whenever the frame did.
-            .mSeconds = static_cast<float>(when.getSimulationTime()),
-            .mRainOnWater = Rtx::rainOnWater(frame.mWorld.mPrecipitation),
-        });
+        const WorldRead read = readWorld(
+            world, mMirror.getSky(), mMirror.getMoonFaces(), landReach(), static_cast<float>(when.getSimulationTime()));
+        const Rtx::FrameWorld described = Rtx::describeWorld(read.mReading);
 
         Rtx::applyWorld(described, constants);
 
@@ -949,8 +586,8 @@ namespace MWRender
         // no hour.** A cell's `AMBI` is dark by the same measure a midnight is, and holding a room
         // back by two stops is not what an eye walking into one does — it adapts to the room.
         // `Rtx::makeRoomLight` is where a room's one is said.
-        const float bias = room.has_value() ? room->mExposureBias
-                                            : Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient);
+        const float bias
+            = read.mExposureBias.value_or(Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient));
 
         const Rtx::Reconstruction reconstruction
             = mRenderer->renderFrame(constants, Rtx::FrameOptions{ .mExposureBias = bias, .mExposure = std::nullopt });
@@ -975,9 +612,10 @@ namespace MWRender
             // brazier and raindrop had stopped read exactly like one whose emitters were running.
             Log(Debug::Info) << "Ray tracing: waited " << mSpentMs / mTimed
                              << " ms a frame for the device over the last " << mTimed << ", tracing "
-                             << mScene.getPlacedCount() << " instances and " << mScene.getEmitters().size()
-                             << " emitters holding " << mScene.getSprites().size() << " sprites at "
-                             << extents.mRenderWidth << "x" << extents.mRenderHeight << ", reconstructed by "
+                             << mMirror.getScene().getPlacedCount() << " instances and "
+                             << mMirror.getScene().getEmitters().size() << " emitters holding "
+                             << mMirror.getScene().getSprites().size() << " sprites at " << extents.mRenderWidth << "x"
+                             << extents.mRenderHeight << ", reconstructed by "
                              << Rtx::denoiserName(reconstruction.mDenoiser) << " to " << extents.mOutputWidth << "x"
                              << extents.mOutputHeight;
             mSpentMs = 0.0;
