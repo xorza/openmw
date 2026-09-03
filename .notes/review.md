@@ -9,79 +9,18 @@ Scope: the full diff against merge base `97c3f81abae4350d7265005ef37249154ac5a3b
 Order inside each section: the game frame path first, then the arrival frame, then load time and
 the harness. Each item gives the place, the cost, and a direction.
 
-**What the allocation test sees.** `apps/components_tests/rtx/visibility/framecost.cpp` counts heap
-calls over placement, skin, sprite bin, trace and composite of one test scene. It does not run the
-extractor walk or the uploader. Its scene has no sprites and no animated material. An item marked
-*escapes the test* is on the game frame path, and no test can fail on it.
+**What the allocation tests see.** `apps/components_tests/rtx/visibility/framecost.cpp` counts heap
+calls over a steady frame and over a texture arrival. Beside it, the extractor, the sprite shade and
+the weather builder each pin their own steady call at nought. An item below that no test can fail on
+says so.
 
 ## 1. Structures that allocate
 
-**Measured after this review was written. See `.notes/allocations.md`.** The whole heap costs about
-0.4% of the main process's cycles, on a still cell and on a streaming crossing alike. Every item
-below is work against the stated frame-path rule, not work that moves a frame time. The one
-exception is 1.2, whose sort is 2.4% at Vivec. The ranking inside this section is the rule's, not the
-clock's.
+**Measured.** The whole heap costs about 0.4% of the main process's cycles, on a still cell and on a
+streaming crossing alike. Nothing left in this section moves a frame time. Both items below are work
+against the stated frame-path rule.
 
-### 1.1 `SceneExtractor::takeTexture` builds a string per texture role per frame
-
-`components/rtx/sceneextractor.cpp:1813`. The call constructs a `VFS::Path::Normalized` from the
-image file name. `SceneDesc::addTexture` (`scenedesc.hpp:661`) takes a view, so the string lives for
-the call only. `resolveMaterial` (`:1797`) reads every animated material again each frame, and
-`readMaterial` calls this once per texture role. Each scrolled or flipbook surface in view pays up to
-four heap strings per frame. *Escapes the test.*
-
-Direction: keep a map from `const osg::Image*` to `Index` on the extractor. Stamp the entry with the
-epoch so the sweep removes it with its material.
-
-### 1.2 `SpriteShade::shadeToward` sorts with a temporary buffer
-
-`components/rtx/spriteshade.cpp:67`. `std::stable_sort` takes its buffer from the heap on every
-call. The call runs twice per emitter per frame (`:38-39`). *Escapes the test.*
-
-Direction: sort on a key that carries the index as its tie-break. `std::sort` then gives the same
-order with no buffer.
-
-### 1.3 `SceneTextures` is built and destroyed on each arrival
-
-`components/rtx/sceneuploader.cpp:109`. The object owns five vectors (`texturebuilder.hpp:99-115`).
-Its constructors build `everything`, `kept` and `lightOf` (`texturebuilder.cpp:141, 159, 165`) and
-one `levels` vector per sprite light (`:199`). All of this is built on the frame a cell arrives and
-freed on the same frame. This is the loader the request names.
-
-Direction: `SceneUploader` owns one `SceneTextures`. A `describe(...)` clears and refills its
-vectors. `describeImage(image, levels)` (`:108`) already writes into a caller's vector, so the shape
-exists.
-
-### 1.4 `CompositeQueue` builds a `Request` per chunk
-
-`components/rtx/compositequeue.hpp:123-138`. A request owns four vectors. `gather` builds one per
-chunk on the game thread (`compositequeue.cpp:90`) and pushes it into a `std::deque` (`:113`).
-`bake` (`:218`) and the `TerrainComposite` constructor allocate `grounds`, one decoded buffer per
-level, `light`, `covered` and `coarser` per bake on the baker thread.
-
-Direction: a pool of `Request` objects that cycle between `mPending` and `mDone`. The bake scratch
-becomes a member of the queue's thread state.
-
-### 1.5 Texture and geometry arrival allocates on the frame a cell arrives
-
-- `components/rtxvulkan/texture.cpp:301-302` and `:323-324` build `images` and `writes` per call.
-- `texture.cpp:177` builds `regions` per texture, and `:272` builds a name string per texture.
-- `components/rtxvulkan/sceneacceleration.cpp:291` builds `scratchOffsets` per build, and `:388`
-  makes a device scratch buffer per build.
-- `SceneMicromaps::bake` makes `data`, `triangleArray` and `scratch` buffers per bake.
-
-The arrival frame has the least room, and this is where all of it lands.
-
-Direction: scratch vectors on the owner. A persistent staging ring for the device buffers is a
-larger change, and the arrival frame is where it pays.
-
-### 1.6 Withdrawn
-
-`SceneUploader::hand` was recorded here as building a log stream on every arrival frame. It does not.
-`Log::Log` reads the level and returns at once when it is off, and every `operator<<` is guarded by
-the same flag.
-
-### 1.7 `Weather::WrapAroundOperator::operateParticles` allocates per system per frame
+### 1.1 `Weather::WrapAroundOperator::operateParticles` allocates per system per frame
 
 `components/weather/precipitation.cpp:98`. `getWorldMatrices()` returns a fresh vector. Both
 renderers run this, because it is lifted upstream code.
@@ -89,26 +28,21 @@ renderers run this, because it is lifted upstream code.
 Direction: cache the world and local matrices when the parent chain changes. A change here touches
 shared code and needs a go-ahead.
 
-### 1.8 `RtxRenderer::eventTraversal` builds an event list per frame
+### 1.2 `RtxRenderer::eventTraversal` builds an event list per frame
 
-`apps/openmw/mwrender/rtx/rtxrenderer.cpp:330`. `osgGA::EventQueue::Events` is a list, so each event
-costs a node. Small.
+`apps/openmw/mwrender/rtx/rtxrenderer.cpp:330`. `osgGA::EventQueue::Events` is a `std::list`, so each
+event drained costs a node.
 
-### 1.9 The harness relights with about thirty strings per frame
-
-`apps/rtxtool/lighting.cpp:31, 47` call `Rtx::makeDaylight`. `readWeather`
-(`components/rtx/lightbuilder.cpp:144-215`) builds a key string per quantity through
-`Fallback::Map` and `Sky::colourRamp`. `view` runs this every frame when the clock runs. Harness
-only.
-
-Direction: read each weather's ramps once at staging into a table indexed by weather id.
+**This one cannot be fixed inside the RTX places.** A `std::list` node is not recycled by `clear()`,
+and the queue that hands the list out is `osgGA`'s. It is one node per function key pressed, and
+nothing presses one on a steady frame.
 
 ## 2. Per-frame computations that can be precomputed
 
 ### 2.1 `SceneExtractor::animate` finds the updater with `dynamic_cast` every frame
 
-`components/rtx/sceneextractor.cpp:866-870, 877-884`. `findUpdater` walks both callback chains and
-casts each callback, per animated node per frame. `Animated` (`sceneextractor.hpp:631`) keeps only
+`components/rtx/sceneextractor.cpp:880-887, 891-898`. `findUpdater` walks both callback chains and
+casts each callback, per animated node per frame. `Animated` (`sceneextractor.hpp:647`) keeps only
 the state set and the epoch.
 
 Direction: store the updater pointer in `Animated` on arrival. The node owns the callback, so the
@@ -123,7 +57,7 @@ Direction: compute the product once per transform push and keep it beside `mHere
 
 ### 2.3 `resolveMesh` validates a deforming drawable again every frame
 
-`components/rtx/sceneextractor.cpp:1464, 1473, 1478, 1495, 1501`. Per posed body part per frame the
+`components/rtx/sceneextractor.cpp:1478, 1487, 1492, 1509, 1515`. Per posed body part per frame the
 code runs `vertexCountOf` (a `dynamic_cast`), `baseOf`, two `mRigs.find` and two `mMorphs.find`.
 
 Direction: `Known` (`sceneextractor.hpp:580`) keeps the vertex count and the deformer index. The
@@ -222,10 +156,11 @@ Direction: `FrameRing` (slots, fences, graveyards) and `ReadbackQueue` as member
 
 ### 3.5 `SceneUploader::hand`
 
-Decides Placed, Extended or Rebuilt, owns the composite queue, builds `SceneTextures` and logs
+Decides Placed, Extended or Rebuilt, owns the composite queue, owns the texture loader and logs
 timing.
 
-Direction: with 1.3 done, the uploader owns the loader and the decision only.
+Direction: the decision is the one thing here nothing else can make. The queue and the loader are
+things it holds, and each could belong to whatever holds the uploader instead.
 
 ### 3.6 `StagedWorld` (harness)
 
@@ -243,15 +178,15 @@ Direction: `mPainted` becomes a `ShadingCache` type.
 
 ### 4.1 `SceneExtractor::addLight` has an unused parameter
 
-`components/rtx/sceneextractor.cpp:912`. `path` is never read. The caller (`:444`) computes
+`components/rtx/sceneextractor.cpp:926`. `path` is never read. The caller (`:444`) computes
 `getNodePath()` for it.
 
 Direction: remove the parameter.
 
 ### 4.2 `ExtractionStats&` threads through eleven methods
 
-`components/rtx/sceneextractor.cpp:912, 1027, 1170, 1228, 1236, 1314, 1434, 1752, 1776, 1808,
-1817`. `MirrorTraversal` already holds `mStats` (`:360`).
+`components/rtx/sceneextractor.cpp:926, 1041, 1184, 1242, 1250, 1328, 1448, 1766, 1790, 1822,
+1848`. `MirrorTraversal` already holds `mStats` (`:360`).
 
 Direction: the extractor holds `ExtractionStats* mStats` for the walk. `extract` sets it and clears
 it after.
@@ -285,7 +220,7 @@ rain).
 
 ### 4.6 Optional ownership of `Traversals` in two places
 
-`SceneExtractor` (`sceneextractor.hpp:651-652`) and `OffscreenTrace` (`offscreentrace.hpp:195-196`)
+`SceneExtractor` (`sceneextractor.hpp:667-668`) and `OffscreenTrace` (`offscreentrace.hpp:195-196`)
 both keep `mOwnTraversals` and `mTraversals&`.
 
 Direction: the caller always owns `Traversals`, and both types take a reference. The one caller
@@ -352,10 +287,11 @@ Direction: one `vector<double>` with a stride. Names as `string_view` into the p
 
 ### 5.6 `CompositeQueue` keeps node containers
 
-`components/rtx/compositequeue.hpp:173-174` (`std::deque`), `:181` (`unordered_map<Index,
-TerrainComposite>`), `:191` (`unordered_map<std::string, ShadingMap>`).
+`components/rtx/compositequeue.hpp:186-187` (`std::deque`), `:194` (`unordered_map<Index,
+TerrainComposite>`), `:220` (`unordered_map<std::string, ShadingMap>`).
 
-Direction: a ring of pooled requests. `mFinished` as a vector indexed by material slot.
+Direction: `mPending` and `mDone` as ring buffers over the request pool the queue already keeps.
+`mFinished` as a vector indexed by material slot.
 
 ### 5.7 `DistantLights::mCells` is a `std::map`
 
