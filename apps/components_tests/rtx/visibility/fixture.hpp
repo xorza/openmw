@@ -369,7 +369,23 @@ namespace Rtx::Testing
                     = static_cast<std::uint8_t>(std::lround(std::clamp(mRadiance[at + 3], 0.0f, 1.0f) * 255.0f));
             }
 
+            requireFrame(pixels, size);
+
             return hits;
+        }
+
+        /// What a probe read back, against the frame it asked for.
+        ///
+        /// **A check and not an assert.** Every caller indexes the buffer by a number it worked out
+        /// from `size`, and an assert says nothing in the build a figure is taken in — so a short
+        /// read-back would be a read past the end that nobody reported. It is also what lets the
+        /// optimiser see the buffer is not null, which `-O3` refuses a caller's index without.
+        static void requireFrame(const std::vector<std::uint8_t>& pixels, std::uint32_t size)
+        {
+            const std::size_t wanted = std::size_t{ size } * size * 4;
+            if (pixels.size() != wanted)
+                throw Error("a probe read back " + std::to_string(pixels.size()) + " bytes where a "
+                    + std::to_string(size) + " by " + std::to_string(size) + " frame is " + std::to_string(wanted));
         }
 
         /// The mean of one channel of the last render, in linear radiance.
@@ -400,6 +416,8 @@ namespace Rtx::Testing
             mRenderer->setScene(Rtx::sWorld, scene, inSceneOrder(textures), SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = std::nullopt });
             mRenderer->readPixels(pixels);
+
+            requireFrame(pixels, size);
         }
 
         /// The same render as `countHits`, read back in linear radiance rather than as bytes.

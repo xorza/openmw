@@ -15,6 +15,7 @@
 #include <components/sky/clouds.hpp>
 
 #include "../rtx/allocations.hpp"
+#include "../rtx/weatherseed.hpp"
 
 #include <apps/rtxtool/framing.hpp>
 #include <apps/rtxtool/placement.hpp>
@@ -139,30 +140,17 @@ namespace RtxTool
         /// skies or the keys are decoration, and an interior has to come back untouched: its ambient
         /// and its air are its own `AMBI` record, which no hour has a say in.
         ///
-        /// The settings below are planted so this stands up on its own — an allowed key the map
-        /// never received answers middle grey, and two weathers left unseeded would agree, which
-        /// would pass for the wrong reason.
+        /// **The seed is what makes this stand up on its own**, and `weatherSeed` says why it plants
+        /// every key rather than the handful an assertion reads.
         ///
-        /// **But they are not what is asserted against.** `Fallback::Map::init` keeps whichever
-        /// value arrives first, and a test elsewhere in this binary opens the real installation and
-        /// plants Morrowind's own — so which of the two a key holds depends on the order the suite
-        /// ran in. Every expectation here is therefore against what `makeDaylight` says the same
-        /// weather is, which is `relight`'s actual contract and true of either source.
+        /// **But it is not what is asserted against.** `Fallback::Map::init` keeps whichever value
+        /// arrives first, and a test elsewhere in this binary opens the real installation and plants
+        /// Morrowind's own — so which of the two a key holds depends on the order the suite ran in.
+        /// Every expectation here is therefore against what `makeDaylight` says the same weather is,
+        /// which is `relight`'s actual contract and true of either source.
         TEST(RtxFramingTest, theClockAndTheWeatherMoveTheSkyAndLeaveTheCellAlone)
         {
-            Fallback::Map::init({
-                { "Weather_Sunrise_Time", "6" },
-                { "Weather_Sunset_Time", "18" },
-                { "Weather_Sunset_Duration", "2" },
-                { "Weather_Clear_Land_Fog_Day_Depth", "0.4" },
-                { "Weather_Clear_Land_Fog_Night_Depth", "0.8" },
-                { "Weather_Clear_Sky_Day_Color", "100,150,200" },
-                { "Weather_Clear_Sun_Day_Color", "255,255,255" },
-                { "Weather_Overcast_Land_Fog_Day_Depth", "0.9" },
-                { "Weather_Overcast_Land_Fog_Night_Depth", "0.9" },
-                { "Weather_Overcast_Sky_Day_Color", "80,80,80" },
-                { "Weather_Overcast_Sun_Day_Color", "120,120,120" },
-            });
+            Fallback::Map::init(Rtx::Testing::weatherSeed({ "Clear", "Overcast" }));
 
             CellLighting outdoors{ .mWaterLevel = -32.0f, .mOutdoors = true };
 

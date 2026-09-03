@@ -20,6 +20,7 @@
 #include <components/sceneutil/lightcommon.hpp>
 
 #include "allocations.hpp"
+#include "weatherseed.hpp"
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
@@ -438,50 +439,18 @@ namespace Rtx
         /// depth is recorded for day and night alone, and every hour inside sunrise or sunset asked
         /// for a third that was never written, which took the whole tool down.
         ///
-        /// The times are seeded here because the phase boundaries come out of the same map, and an
-        /// unseeded one puts sunrise and sunset on top of each other at midnight. `Fallback::Map`
-        /// keeps the first value it is given for a key and a test elsewhere in this binary opens the
-        /// real installation, so which values these reads got depends on the order the suite ran in
-        /// — which is why what is pinned below is what is true of either.
+        /// `weatherSeed` says what the numbers below are and are not. `Fallback::Map` keeps the
+        /// first value it is given for a key and a test elsewhere in this binary opens the real
+        /// installation, so which values these reads got depends on the order the suite ran in —
+        /// which is why what is pinned below is what is true of either.
         TEST(RtxLightBuilderTest, everyHourAsksOnlyForSettingsTheGameDefines)
         {
-            Fallback::Map::init({
-                { "Weather_Sunrise_Time", "6" },
-                { "Weather_Sunset_Time", "18" },
-                { "Weather_Sunset_Duration", "2" },
-                { "Weather_Clear_Land_Fog_Day_Depth", "0.4" },
-                { "Weather_Clear_Land_Fog_Night_Depth", "0.8" },
-                { "Weather_Clear_Wind_Speed", "0.3" },
-                { "Weather_Ashstorm_Wind_Speed", "0.8" },
-                { "Weather_Clear_Sun_Disc_Sunset_Color", "255,189,157" },
-                { "Weather_Clear_Glare_View", "1" },
+            // A second weather's wind beside the first, for the assertion that the two do not read
+            // one number.
+            std::map<std::string, std::string> settings = Testing::weatherSeed({ "Clear" });
+            settings.emplace("Weather_Ashstorm_Wind_Speed", "0.8");
 
-                // The rest of what `requireWeather` asks a weather for, with the shipped numbers,
-                // so a Clear the game defines is a Clear this test defines.
-                { "Weather_Clear_Sky_Sunrise_Color", "117,141,164" },
-                { "Weather_Clear_Sky_Day_Color", "095,135,203" },
-                { "Weather_Clear_Sky_Sunset_Color", "056,089,129" },
-                { "Weather_Clear_Sky_Night_Color", "009,010,011" },
-                { "Weather_Clear_Fog_Sunrise_Color", "255,189,157" },
-                { "Weather_Clear_Fog_Day_Color", "206,227,255" },
-                { "Weather_Clear_Fog_Sunset_Color", "255,189,157" },
-                { "Weather_Clear_Fog_Night_Color", "009,010,011" },
-                { "Weather_Clear_Ambient_Sunrise_Color", "047,066,096" },
-                { "Weather_Clear_Ambient_Day_Color", "137,140,160" },
-                { "Weather_Clear_Ambient_Sunset_Color", "068,075,096" },
-                { "Weather_Clear_Ambient_Night_Color", "032,035,042" },
-                { "Weather_Clear_Cloud_Texture", "Tx_Sky_Clear.dds" },
-                { "Weather_Clear_Cloud_Speed", "1.25" },
-                { "Weather_Clear_Clouds_Maximum_Percent", "1.0" },
-
-                // The sun's own ramp, seeded with the shipped numbers so that the two ways this
-                // test can be run — against these or against a real installation — agree. The night
-                // value being the blue one is what the disc is here to not be painted with.
-                { "Weather_Clear_Sun_Sunrise_Color", "242,159,119" },
-                { "Weather_Clear_Sun_Day_Color", "255,252,238" },
-                { "Weather_Clear_Sun_Sunset_Color", "255,114,079" },
-                { "Weather_Clear_Sun_Night_Color", "059,097,176" },
-            });
+            Fallback::Map::init(settings);
 
             for (float hour = 0.0f; hour < 24.0f; hour += 0.25f)
                 EXPECT_NO_THROW(makeDaylight("Clear", hour, sReach)) << "at hour " << hour;
@@ -948,6 +917,8 @@ namespace Rtx
         /// standing.
         TEST(RtxLightBuilderTest, aDaylightCarriesTheHoursOwnBias)
         {
+            Fallback::Map::init(Testing::weatherSeed({ "Clear" }));
+
             for (const float hour : { 0.0f, 6.0f, 12.0f, 18.0f })
             {
                 const Daylight day = makeDaylight("Clear", hour, sReach);

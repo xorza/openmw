@@ -183,6 +183,7 @@ if (OPENMW_RTX)
         rtx/wavemoments.hpp
         rtx/wavepass.cpp
         rtx/wavespectrum.cpp
+        rtx/weatherseed.hpp
         rtxtool/actor.cpp
         rtxtool/benchsuite.cpp
         rtxtool/contactsheet.cpp

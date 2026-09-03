@@ -124,7 +124,8 @@ struct Ray
 /// are added here — added to *one* number, so which way is down cannot be disagreed about.
 RTX_SHADER Ray rayAt(Camera camera, vec2 pixel)
 {
-    RTX_PRECISE vec2 uv = (pixel + 0.5 + camera.mJitter) / vec2(float(camera.mWidth), float(camera.mHeight)) * 2.0 - 1.0;
+    RTX_PRECISE vec2 uv
+        = (pixel + 0.5 + camera.mJitter) / vec2(float(camera.mWidth), float(camera.mHeight)) * 2.0 - 1.0;
 
     Ray ray;
     if (camera.mOrthographic != 0u)
