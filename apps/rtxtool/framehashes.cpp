@@ -39,6 +39,13 @@ namespace RtxTool
         mFrames.push_back(Frame{ .mView = std::string(view), .mFrame = frame, .mHash = digest.getWords() });
     }
 
+    void FrameHashes::noteBuild(const std::string_view view, const std::uint32_t frame)
+    {
+        const auto [built, added] = mBuilds.try_emplace(std::string(view), frame);
+        if (!added)
+            built->second = std::min(built->second, frame);
+    }
+
     void FrameHashes::write(const std::filesystem::path& file) const
     {
         std::ofstream out(file);
@@ -95,7 +102,12 @@ namespace RtxTool
         for (const Frame& held : mFrames)
         {
             if (differences.empty() || differences.back().mView != held.mView)
+            {
                 differences.push_back(ViewDifference{ .mView = held.mView });
+
+                if (const auto built = mBuilds.find(held.mView); built != mBuilds.end())
+                    differences.back().mBuiltAt = built->second;
+            }
 
             ViewDifference& difference = differences.back();
             ++difference.mFrames;
@@ -137,6 +149,17 @@ namespace RtxTool
 
             if (difference.mDiffering.size() > sNamed)
                 report += std::format(" and {} more", difference.mDiffering.size() - sNamed);
+
+            if (difference.mBuiltAt.has_value())
+            {
+                const auto before
+                    = static_cast<std::size_t>(std::count_if(difference.mDiffering.begin(), difference.mDiffering.end(),
+                        [&](const std::uint32_t frame) { return frame < *difference.mBuiltAt; }));
+                report += before == 0
+                    ? std::format(", every one after the build at frame {}, which the driver's settling can do",
+                        *difference.mBuiltAt)
+                    : std::format(", {} of them before the build at frame {}", before, *difference.mBuiltAt);
+            }
         }
 
         if (difference.mUnmatched > 0)

@@ -187,6 +187,7 @@ if (OPENMW_RTX)
         rtxtool/benchsuite.cpp
         rtxtool/contactsheet.cpp
         rtxtool/crossing.cpp
+        rtxtool/framehashes.cpp
         rtxtool/framing.cpp
         rtxtool/gpuclock.cpp
         rtxtool/installation.cpp

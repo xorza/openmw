@@ -9,6 +9,7 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <SDL.h>
@@ -289,27 +290,45 @@ namespace RtxTool
         };
 
         // **A hashed run waits for the driver to settle before a frame of it counts**, and
-        // `watchSettling` says what it waits for. Every frame after the settling is drawn on the
-        // far side of it, so a run hashed from the near side differs from one that settled
-        // earlier on every frame between the two settlings. The view's first frame is drawn again
-        // until it changes, and the history that leaves is reset behind it. A cell arriving
-        // mid-run builds structures that settle later still, and nothing here waits for those.
-        if (run.mJudging)
-        {
+        // `watchSettling` says what it waits for. Once where the place was built, which is quick
+        // where the settling comes soon and the whole cap where it came already; and once more
+        // where the warm-up ends, only where the warm-up handed a build over — the composites an
+        // exterior takes in its first frames build structures of their own, and a watch at the
+        // start was over before them. Every measured frame is then drawn on the far side of what
+        // was built before it, so two runs differ only where a cell arriving mid-run builds more,
+        // which `noteBuild` says and the report names. The history a watch leaves is reset behind
+        // it, and the frame after absorbs that the same way in every run.
+        const auto watchSettled = [&](const std::uint32_t frame, const std::string_view when) {
             std::vector<std::uint8_t> early;
             std::vector<std::uint8_t> settled;
             const auto draw = [&](std::vector<std::uint8_t>& pixels) {
                 renderer.resetHistory();
-                drawFrame(0, staged.getPlacement());
+                drawFrame(frame, staged.getPlacement());
                 renderer.readPixels(pixels);
             };
 
             draw(early);
             const std::optional<double> settledAt = watchSettling(draw, early, settled);
-            out() << std::format("       {} {}\n", view.mName, describeSettling(settledAt));
+            out() << std::format("       {} {}{}\n", view.mName, when, describeSettling(settledAt));
 
             renderer.resetHistory();
-        }
+        };
+
+        if (run.mJudging)
+            watchSettled(0, "");
+
+        // What a hand that built means to the judgement: a build in the warm-up is watched out at
+        // its end, and a build among the measured frames bounds what they are held to.
+        bool builtWarmingUp = false;
+        const auto noteBuilt = [&](const Rtx::SceneUpload& handed, const std::uint32_t frame) {
+            if (!run.mJudging || handed.mKind == Rtx::SceneUpload::Kind::Placed)
+                return;
+
+            if (frame < run.mWarmup)
+                builtWarmingUp = true;
+            else
+                run.mHashes.noteBuild(view.mName, frame);
+        };
 
         samples.clear();
 
@@ -349,6 +368,9 @@ namespace RtxTool
                 // no frame's time.
                 clock.add(readGpuClock());
 
+                if (run.mJudging && builtWarmingUp)
+                    watchSettled(frame, "after what the warm-up built, ");
+
                 runStart = Clock::now();
                 run.mProfiling.enable();
             }
@@ -379,6 +401,8 @@ namespace RtxTool
                 const Rtx::SceneUpload handed = uploader.hand(
                     renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
                 const Clock::time_point built = Clock::now();
+
+                noteBuilt(handed, frame);
 
                 crossings.add(handed.mKind == Rtx::SceneUpload::Kind::Rebuilt,
                     std::chrono::duration<double, std::milli>(read - frameStart).count(),
@@ -419,8 +443,11 @@ namespace RtxTool
             if (moved)
             {
                 const Clock::time_point placeStart = Clock::now();
-                uploader.hand(renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
+                const Rtx::SceneUpload handed = uploader.hand(
+                    renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
                 placeMs = std::chrono::duration<double, std::milli>(Clock::now() - placeStart).count();
+
+                noteBuilt(handed, frame);
             }
 
             drawFrame(frame, standing);
@@ -428,7 +455,9 @@ namespace RtxTool
             if (run.mWindow != nullptr && !renderer.presentFrame())
                 renderer.resize(run.mWindow->getWidth(), run.mWindow->getHeight());
 
-            if (run.mJudging)
+            // The measured frames and not the warm-up: what the warm-up draws may stand on
+            // structures still to settle, which no two runs share.
+            if (run.mJudging && frame >= run.mWarmup)
             {
                 renderer.readPixels(pixelScratch);
                 run.mHashes.add(view.mName, frame, pixelScratch);
@@ -634,7 +663,7 @@ namespace RtxTool
             for (const FrameHashes::ViewDifference& difference : hashes.against(reference))
             {
                 out() << std::format("  {:<28} {}\n", difference.mView, describe(difference));
-                if (!difference.same())
+                if (!difference.holds())
                     judgement = 1;
             }
         }

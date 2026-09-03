@@ -254,7 +254,8 @@ namespace RtxTool
         addOption("against", bpo::value<std::string>()->default_value(""),
             "with `verify`, a directory a previous `verify` wrote, to subtract this run from; with "
             "`bench`, a file a previous `--hashes` wrote, to say which frames of the run now draw "
-            "something else. The reference is always a run of the previous build on this machine "
+            "something else — the frames after a cell arrives mid-run are named and not judged, "
+            "for the reason `watchSettling` gives. The reference is always a run of the previous build on this machine "
             "and never a corpus in the tree: the picture is a function of the driver and the card "
             "as much as of the code");
 
