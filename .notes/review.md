@@ -77,6 +77,12 @@ Measured shares are from `profile.sh --view=vivec`, three runs a leg.
 
 ## 4. Ownership and arguments
 
+**Investigated. `.notes/ownership.md` is the design proposal and the plan.** It corrects three of the
+directions below: 4.3's four arguments do not always travel together, 4.6's costs 79 edits to save
+twelve bytes, and half of 4.7 already exists. It also finds 4.5 buildable with no upstream edit,
+which this section doubted.
+
+
 ### 4.1 `SceneExtractor::addLight` has an unused parameter
 
 `SceneExtractor::addLight`. `path` is never read, and the caller computes `getNodePath()` for it.
