@@ -61,7 +61,7 @@ namespace Rtx
     }
 
     const Image& AtrousPass::record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended,
-        const Image& moments, const Shaders::Camera& camera) const
+        const Image& moments, const Image& history, const Shaders::Camera& camera) const
     {
         assert(mScratch != nullptr && "record before resize");
         assert(mScratch->getWidth() >= camera.mWidth && mScratch->getHeight() >= camera.mHeight);
@@ -85,8 +85,13 @@ namespace Rtx
             .mLuminanceSigma = sLuminanceSigma,
         };
 
+        // **Three images take turns and not two, because the first level's answer is kept.** What
+        // it writes is the mean the accumulator reads next frame — SVGF's feedback — so the level
+        // after it reads that image and the levels after that leave it alone, ping-ponging between
+        // the blend and the scratch. Nothing is copied and nothing is written twice: the history is
+        // where one level's output and the next one's input already meet.
         const Image* source = &blended;
-        const Image* target = mScratch.get();
+        const Image* target = &history;
 
         for (std::uint32_t pass = 0; pass < Shaders::ATROUS_LEVELS; ++pass)
         {
@@ -129,7 +134,11 @@ namespace Rtx
             vkCmdPushConstants(commands, mPipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(level), &level);
             vkCmdDispatch(commands, groupsFor(camera.mWidth), groupsFor(camera.mHeight), 1);
 
-            std::swap(source, target);
+            // The next level reads what this one wrote, and writes whichever of the other two it is
+            // not reading — the blend after the first level, and the scratch and the blend by turns
+            // after that.
+            source = target;
+            target = pass == 0 ? &blended : (source == &blended ? mScratch.get() : &blended);
         }
 
         // **The cascade hands over what it wrote, because nothing after it does.** The levels order

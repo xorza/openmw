@@ -5,6 +5,13 @@
 
 // One level of an edge-stopping à-trous wavelet, over the indirect channel alone.
 //
+// **The first level writes where the accumulator will look for its history**, which is SVGF's
+// feedback: what a pixel carries into the next frame is the filtered light rather than the single
+// sample that went into it. It costs nothing to do — the level had to write somewhere, and the
+// level after it reads that image as its own input — and it takes eight bytes a pixel off the
+// accumulator, which is the one compute pass in the frame that runs at the memory limit.
+// `AtrousPass::record` is where the three images take their turns.
+//
 // **It filters light and never a surface.** The trace divided the albedo out, so what is here is
 // what varies slowly across a wall — the part a blur can average without destroying anything — and
 // the composite multiplies the texture back in afterwards at full sharpness. Filtering a finished
@@ -19,8 +26,8 @@
 // gradient along the tap, `exp(-|z(p) - z(q)| / (sigma_z * |grad z . (p - q)| + eps))`; what is
 // below is a plane-distance test, which is what the denoisers written since — NRD's among them —
 // settled on, and which handles a grazing floor without needing a derivative that a ray tracer has
-// no rasterizer to hand it. And SVGF's luminance term is missing outright: it weighs by the
-// variance of an accumulated history, and there is no history here yet.
+// no rasterizer to hand it. SVGF's luminance term weighs by the variance of an accumulated
+// history, which is what the accumulator in front of this cascade keeps for it.
 
 #include "accumulate.h"
 #include "atrous.h"

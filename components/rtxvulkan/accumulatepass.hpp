@@ -70,6 +70,15 @@ namespace Rtx
         /// cascade consumes it immediately and the history the next frame needs is `mColour`.
         const Image& getBlended() const;
 
+        /// Where the cascade's first level writes the mean this pass will read next frame.
+        ///
+        /// **Handed out rather than written here.** SVGF feeds the first wavelet level's output back
+        /// as the history, so what carries forward is the filtered light and not the one sample this
+        /// pass blended into it — and the write lands on the cascade, which is bound by the work per
+        /// tap, instead of on this pass, which is bound by its bytes. Only valid after `record`,
+        /// which is what picks the half of the pair the next frame will read.
+        const Image& getHistory() const;
+
     private:
         const Device& mDevice;
         ComputePipeline mPipeline;
@@ -77,9 +86,10 @@ namespace Rtx
         /// **Two of each, because this frame reads what the last one wrote and writes what the next
         /// one will read.** A single set would be a pixel averaging with itself.
         ///
-        /// The mean and how many frames are in it; the surface that mean belongs to, so a
-        /// reprojection can ask whether it is still looking at the same thing; and the two moments
-        /// of its luminance, which is where the variance comes from. Null until `resize`.
+        /// The mean, written by the cascade rather than here; the surface that mean belongs to, so
+        /// a reprojection can ask whether it is still looking at the same thing; and the two moments
+        /// of its luminance, which is where the variance comes from and where the frame count sits.
+        /// Null until `resize`.
         std::array<std::unique_ptr<Image>, 2> mColour;
         std::array<std::unique_ptr<Image>, 2> mSurface;
         std::array<std::unique_ptr<Image>, 2> mMoments;

@@ -56,9 +56,12 @@ namespace Rtx
         /// @param moments what the accumulator in front of this measured: the estimator's own
         ///        variance, which is what turns a difference in brightness into an edge or into
         ///        noise. A pixel with no history carries one, and one means "filter widely".
+        /// @param history what the first level writes and the second reads, and so what the
+        ///        accumulator finds as its mean next frame. `AccumulatePass::getHistory` says why
+        ///        the feedback belongs here.
         /// @param camera the one the frame was traced with; the edge tests rebuild its rays.
         const Image& record(VkCommandBuffer commands, const GBuffer& buffer, const Image& blended, const Image& moments,
-            const Shaders::Camera& camera) const;
+            const Image& history, const Shaders::Camera& camera) const;
 
     private:
         const Device& mDevice;

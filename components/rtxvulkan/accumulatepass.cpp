@@ -14,12 +14,17 @@ namespace Rtx
             return (extent + Shaders::ACCUMULATE_WORKGROUP - 1) / Shaders::ACCUMULATE_WORKGROUP;
         }
 
-        /// The channel being blended, the four the frame describes it with, the three of each that
-        /// carry a history across, and the blend the cascade reads. All storage images, all pushed.
-        constexpr std::size_t sBindingCount = 12;
+        /// The channel being blended, the four the frame describes it with, the three a history
+        /// arrives in, the two of those this pass writes back, and the blend the cascade reads. All
+        /// storage images, all pushed.
+        ///
+        /// **Eleven and not twelve, because the mean goes out through the cascade.** The first
+        /// wavelet level writes the history this reads next frame — SVGF's feedback, and
+        /// `atrous.comp` says what it is worth.
+        constexpr std::size_t sBindingCount = 11;
 
-        /// A dozen of one kind, so a loop rather than a dozen lines — `AtrousPass` spells its four out
-        /// because four is not yet a list.
+        /// Eleven of one kind, so a loop rather than eleven lines — `AtrousPass` spells its five out
+        /// because five is not yet a list.
         constexpr std::array<VkDescriptorSetLayoutBinding, sBindingCount> describeBindings()
         {
             std::array<VkDescriptorSetLayoutBinding, sBindingCount> bindings{};
@@ -106,7 +111,6 @@ namespace Rtx
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mColour[previous]->getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mSurface[previous]->getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mMoments[previous]->getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, mColour[mCurrent]->getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mSurface[mCurrent]->getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mMoments[mCurrent]->getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mBlended->getView(), VK_IMAGE_LAYOUT_GENERAL },
@@ -146,5 +150,13 @@ namespace Rtx
         assert(!mFresh && "the blend asked for before any frame was accumulated into it");
 
         return *mBlended;
+    }
+
+    const Image& AccumulatePass::getHistory() const
+    {
+        assert(mColour[mCurrent] != nullptr && "the history asked for before a resize made one");
+        assert(!mFresh && "the history asked for before the frame that hands it over");
+
+        return *mColour[mCurrent];
     }
 }

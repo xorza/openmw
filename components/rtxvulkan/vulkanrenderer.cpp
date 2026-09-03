@@ -89,14 +89,17 @@ namespace Rtx
             const Image& blended = accumulate.getBlended();
             closeZone(timer, commands);
 
-            // The cascade reads what the accumulator just wrote, in both images.
+            // The cascade reads what the accumulator just wrote, in both images. The history it
+            // writes for the next frame is ordered by the discard `AccumulatePass::record` made of
+            // it, which named a compute write as what would come next.
             for (const Image* written : { &blended, &moments })
                 written->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                     VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
             openZone(timer, commands, "filter");
-            const Image& indirect = filter.record(commands, channels, blended, moments, camera);
+            const Image& indirect
+                = filter.record(commands, channels, blended, moments, accumulate.getHistory(), camera);
             closeZone(timer, commands);
 
             return indirect;

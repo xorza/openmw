@@ -41,15 +41,20 @@ layout(set = 0, binding = 3, GBUFFER_DEPTH) uniform readonly image2D depth;
 /// did not win its motion vector, so what the vector describes is not what the pixel shows.
 layout(set = 0, binding = 4, GBUFFER_MASK) uniform readonly image2D biasMask;
 
-/// Last frame's mean in `rgb`, and how many frames are in it in `a`.
+/// Last frame's mean in `rgb`.
+///
+/// **Written by the cascade's first level and not by this pass**, which is SVGF's feedback: what a
+/// pixel carries forward is the filtered light rather than the single sample it blended, so the
+/// history it draws on is as quiet as the picture the frame showed. How many frames are in it is
+/// the fourth channel of `historyMoments`.
 layout(set = 0, binding = 5, ACCUMULATE_COLOUR) uniform readonly image2D historyColour;
 
 /// The surface last frame's mean belongs to: its normal in `xyz` and its distance from the eye in
 /// `w`. Zero normal where nothing was accumulated.
 layout(set = 0, binding = 6, ACCUMULATE_SURFACE) uniform readonly image2D historySurface;
 
-/// The first and second moments of that mean's luminance in `rg`, and in `b` the variance the
-/// cascade weighs a tap by.
+/// The first and second moments of that mean's luminance in `rg`, in `b` the variance the cascade
+/// weighs a tap by, and in `a` how many frames the mean holds.
 ///
 /// **The variance is written rather than left to be derived, and the single-sample case is why.**
 /// `E[l²] - E[l]²` over one sample is exactly nought, which a filter reads as "this pixel is
@@ -58,15 +63,14 @@ layout(set = 0, binding = 6, ACCUMULATE_SURFACE) uniform readonly image2D histor
 /// largest one, not the smallest.
 layout(set = 0, binding = 7, ACCUMULATE_MOMENTS) uniform readonly image2D historyMoments;
 
-layout(set = 0, binding = 8, ACCUMULATE_COLOUR) uniform writeonly image2D colourOut;
-layout(set = 0, binding = 9, ACCUMULATE_SURFACE) uniform writeonly image2D surfaceOut;
-layout(set = 0, binding = 10, ACCUMULATE_MOMENTS) uniform writeonly image2D momentsOut;
+layout(set = 0, binding = 8, ACCUMULATE_SURFACE) uniform writeonly image2D surfaceOut;
+layout(set = 0, binding = 9, ACCUMULATE_MOMENTS) uniform writeonly image2D momentsOut;
 
 /// This frame's bounce blended with the history, which is what the cascade reads.
 ///
 /// **The cascade's channel and not the trace's**, so `CHANNEL_INDIRECT` keeps what the trace put
 /// there for the whole of the frame. `AccumulatePass::record` says what that separation is worth.
-layout(set = 0, binding = 11, ATROUS_CHANNEL) uniform writeonly image2D blendedOut;
+layout(set = 0, binding = 10, ATROUS_CHANNEL) uniform writeonly image2D blendedOut;
 
 layout(push_constant, scalar) uniform Push
 {
@@ -132,7 +136,6 @@ void main()
         // allocation held — and the composite multiplies it by an albedo of nought, which turns a
         // stray infinity into a NaN rather than into nothing.
         imageStore(blendedOut, at, vec4(sampled, 1.0));
-        imageStore(colourOut, at, vec4(sampled, 0.0));
         imageStore(surfaceOut, at, vec4(0.0));
         imageStore(momentsOut, at, vec4(0.0, 0.0, NO_HISTORY_VARIANCE, 0.0));
 
@@ -173,10 +176,10 @@ void main()
             if (weights[i] <= 0.0 || !sameSurface(tap, normal, scaled))
                 continue;
 
-            const vec4 held = imageLoad(historyColour, tap);
-            mean += held.rgb * weights[i];
-            moments += imageLoad(historyMoments, tap).rg * weights[i];
-            frames += held.a * weights[i];
+            const vec4 heldMoments = imageLoad(historyMoments, tap);
+            mean += imageLoad(historyColour, tap).rgb * weights[i];
+            moments += heldMoments.rg * weights[i];
+            frames += heldMoments.a * weights[i];
             weight += weights[i];
         }
     }
@@ -225,7 +228,6 @@ void main()
     }
 
     imageStore(blendedOut, at, vec4(blended, 1.0));
-    imageStore(colourOut, at, vec4(blended, count));
     imageStore(surfaceOut, at, vec4(normal, scaled));
-    imageStore(momentsOut, at, vec4(blendedMoments, variance, 0.0));
+    imageStore(momentsOut, at, vec4(blendedMoments, variance, count));
 }
