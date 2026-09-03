@@ -2,6 +2,7 @@ include_directories(SYSTEM ${GTEST_INCLUDE_DIRS})
 include_directories(SYSTEM ${GMOCK_INCLUDE_DIRS})
 
 file(GLOB UNITTEST_SRC_FILES
+    fallbackseed.hpp
     main.cpp
 
     esm/testfixedstring.cpp
@@ -118,7 +119,6 @@ if (OPENMW_RTX)
         rtx/device.cpp
         rtx/distantlights.cpp
         rtx/dlss.cpp
-        rtx/fallbackseed.hpp
         rtx/fogbuilder.cpp
         rtx/fognoise.cpp
         rtx/frameimage.cpp

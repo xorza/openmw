@@ -6,7 +6,6 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
-#include <components/fallback/fallback.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
@@ -15,7 +14,6 @@
 #include <components/sky/clouds.hpp>
 
 #include "../rtx/allocations.hpp"
-#include "../rtx/fallbackseed.hpp"
 
 #include <apps/rtxtool/framing.hpp>
 #include <apps/rtxtool/placement.hpp>
@@ -47,18 +45,6 @@ namespace RtxTool
             return framing;
         }
 
-        /// `makeFrameConstants` over the framing above, with the settings it reads planted first.
-        ///
-        /// **Building a frame's constants places both moons**, and a moon with no size or no speed
-        /// is refused — `Rtx::Testing::moonSeed` says why. Here rather than in `makeFraming`, which
-        /// reads none of them.
-        Rtx::Shaders::VisibilityConstants makeConstants(const Framing& framing, const Rtx::FrameExtents& extents)
-        {
-            Fallback::Map::init(Rtx::Testing::moonSeed());
-
-            return makeFrameConstants(framing, extents);
-        }
-
         /// Every command traces to the plane the game traces to.
         ///
         /// **The one number a caller must not fit to its own scene.** The far plane is the sun's
@@ -83,7 +69,7 @@ namespace RtxTool
 
             const Rtx::Shaders::VisibilityConstants aimed = Rtx::makeCamera(placement.mOrigin, placement.mTarget, 60.0f,
                 sExtents.mRenderWidth, sExtents.mRenderHeight, Rtx::sFarPlane);
-            const Rtx::Shaders::VisibilityConstants framed = makeConstants(makeFraming(), sExtents);
+            const Rtx::Shaders::VisibilityConstants framed = makeFrameConstants(makeFraming(), sExtents);
 
             EXPECT_EQ(framed.mOrigin, aimed.mOrigin);
             EXPECT_EQ(framed.mCamera.mForward, aimed.mCamera.mForward);
@@ -98,8 +84,8 @@ namespace RtxTool
         /// per-pixel ray spread, which reads as a stretched image rather than as an error.
         TEST(RtxFramingTest, theCameraIsBuiltForWhatTheTraceRunsAtRatherThanWhatIsPresented)
         {
-            const Rtx::Shaders::VisibilityConstants framed = makeConstants(makeFraming(), sExtents);
-            const Rtx::Shaders::VisibilityConstants square = makeConstants(makeFraming(),
+            const Rtx::Shaders::VisibilityConstants framed = makeFrameConstants(makeFraming(), sExtents);
+            const Rtx::Shaders::VisibilityConstants square = makeFrameConstants(makeFraming(),
                 Rtx::FrameExtents{
                     .mRenderWidth = 720, .mRenderHeight = 720, .mOutputWidth = 1920, .mOutputHeight = 1080 });
 
@@ -114,36 +100,36 @@ namespace RtxTool
         /// made `bench` the only one of the three not honouring `--albedo`.
         TEST(RtxFramingTest, eachSwitchReachesTheConstantsAndChangesThem)
         {
-            const Rtx::Shaders::VisibilityConstants plain = makeConstants(makeFraming(), sExtents);
+            const Rtx::Shaders::VisibilityConstants plain = makeFrameConstants(makeFraming(), sExtents);
             EXPECT_EQ(plain.mShowAlbedo, 0u);
 
             Framing shown = makeFraming();
             shown.mShowAlbedo = true;
-            EXPECT_EQ(makeConstants(shown, sExtents).mShowAlbedo, 1u);
+            EXPECT_EQ(makeFrameConstants(shown, sExtents).mShowAlbedo, 1u);
 
             Framing lit = makeFraming();
             lit.mDelight = 0.25f;
-            EXPECT_EQ(makeConstants(lit, sExtents).mDelight, 0.25f);
-            EXPECT_NE(makeConstants(lit, sExtents).mDelight, plain.mDelight);
+            EXPECT_EQ(makeFrameConstants(lit, sExtents).mDelight, 0.25f);
+            EXPECT_NE(makeFrameConstants(lit, sExtents).mDelight, plain.mDelight);
 
             Framing sequenced = makeFraming();
             sequenced.mFrame = 42;
-            EXPECT_EQ(makeConstants(sequenced, sExtents).mFrame, 42u);
+            EXPECT_EQ(makeFrameConstants(sequenced, sExtents).mFrame, 42u);
 
             Framing distant = makeFraming();
             distant.mFar = 10000.0f;
-            EXPECT_EQ(makeConstants(distant, sExtents).mFar, 10000.0f);
-            EXPECT_NE(makeConstants(distant, sExtents).mFar, plain.mFar);
+            EXPECT_EQ(makeFrameConstants(distant, sExtents).mFar, 10000.0f);
+            EXPECT_NE(makeFrameConstants(distant, sExtents).mFar, plain.mFar);
 
             // The lighting goes through `applyLighting`, so one field of it is enough to say the
             // call is made at all.
             Framing moving = makeFraming();
             moving.mLighting.mSeconds = 3.5f;
             moving.mLighting.mWaterLevel = -12.0f;
-            EXPECT_EQ(makeConstants(moving, sExtents).mTime, 3.5f);
-            EXPECT_EQ(makeConstants(moving, sExtents).mWaterLevel, -12.0f - Rtx::Shaders::WATER_TIE_BREAK)
+            EXPECT_EQ(makeFrameConstants(moving, sExtents).mTime, 3.5f);
+            EXPECT_EQ(makeFrameConstants(moving, sExtents).mWaterLevel, -12.0f - Rtx::Shaders::WATER_TIE_BREAK)
                 << "the level the shader is given is where the surface is, which is a hair under the nominal one";
-            EXPECT_NE(makeConstants(moving, sExtents).mTime, plain.mTime);
+            EXPECT_NE(makeFrameConstants(moving, sExtents).mTime, plain.mTime);
         }
 
         /// The clock and the weather move the sky and leave the cell alone.
@@ -152,18 +138,11 @@ namespace RtxTool
         /// skies or the keys are decoration, and an interior has to come back untouched: its ambient
         /// and its air are its own `AMBI` record, which no hour has a say in.
         ///
-        /// **The seed is what makes this stand up on its own**, and `weatherSeed` says why it plants
-        /// every key rather than the handful an assertion reads.
-        ///
-        /// **But it is not what is asserted against.** `Fallback::Map::init` keeps whichever value
-        /// arrives first, and a test elsewhere in this binary opens the real installation and plants
-        /// Morrowind's own — so which of the two a key holds depends on the order the suite ran in.
-        /// Every expectation here is therefore against what `makeDaylight` says the same weather is,
-        /// which is `relight`'s actual contract and true of either source.
+        /// **The two weathers are planted by `TestingOpenMW::fallbackSeed`, and it is not what is
+        /// asserted against.** Every expectation here is against what `makeDaylight` says the same
+        /// weather is, which is `relight`'s actual contract and true of whatever the keys hold.
         TEST(RtxFramingTest, theClockAndTheWeatherMoveTheSkyAndLeaveTheCellAlone)
         {
-            Fallback::Map::init(Rtx::Testing::weatherSeed({ "Clear", "Overcast" }));
-
             CellLighting outdoors{ .mWaterLevel = -32.0f, .mOutdoors = true };
 
             // One for the whole test, as a window keeps one for its whole run.
@@ -283,15 +262,15 @@ namespace RtxTool
         {
             Framing nowhere = makeFraming();
             nowhere.mForward = osg::Vec3f(0.0f, 0.0f, 0.0f);
-            EXPECT_THROW(makeConstants(nowhere, sExtents), Rtx::Error) << "no direction to look along";
+            EXPECT_THROW(makeFrameConstants(nowhere, sExtents), Rtx::Error) << "no direction to look along";
 
             Framing upward = makeFraming();
             upward.mForward = osg::Vec3f(0.0f, 0.0f, 1.0f);
-            EXPECT_THROW(makeConstants(upward, sExtents), Rtx::Error) << "straight up has no roll";
+            EXPECT_THROW(makeFrameConstants(upward, sExtents), Rtx::Error) << "straight up has no roll";
 
             // A viewpoint whose `pos` and `look` are the same point reaches the first of those.
             const Placement still{ .mOrigin = { 1.0f, 2.0f, 3.0f }, .mTarget = { 1.0f, 2.0f, 3.0f } };
-            EXPECT_THROW(makeConstants(Framing::lookingFrom(still), sExtents), Rtx::Error);
+            EXPECT_THROW(makeFrameConstants(Framing::lookingFrom(still), sExtents), Rtx::Error);
         }
     }
 }

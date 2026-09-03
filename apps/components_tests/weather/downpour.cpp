@@ -2,7 +2,6 @@
 
 #include <osg/Vec3f>
 
-#include <components/fallback/fallback.hpp>
 #include <components/settings/values.hpp>
 #include <components/weather/downpour.hpp>
 
@@ -14,23 +13,6 @@ namespace Weather
         constexpr float sStormWind = 50.0f;
         constexpr float sGravity = 500.0f;
 
-        /// Seeds the handful of keys these tests read.
-        ///
-        /// **`Fallback::Map` keeps the first value a key is given**, and a test elsewhere in this
-        /// binary opens the real installation — so which of the two any read below gets depends on
-        /// the order the suite ran in, and what is asserted has to be true of either. These seeds
-        /// are the shipped values for exactly that reason.
-        void seed()
-        {
-            Fallback::Map::init({
-                { "Weather_Clear_Using_Precip", "0" },
-                { "Weather_Rain_Using_Precip", "1" },
-                { "Weather_Thunderstorm_Using_Precip", "1" },
-                { "Weather_Clear_Wind_Speed", "0.3" },
-                { "Weather_Ashstorm_Wind_Speed", "0.8" },
-            });
-        }
-
         /// Which weathers drop rain is a fact about the content files, not about this code.
         ///
         /// **`Weather_<name>_Using_Precip` is the whole of the question** — Morrowind hard-codes the
@@ -39,8 +21,6 @@ namespace Weather
         /// them the other way round would render a clear sky full of drops.
         TEST(WeatherDownpourTest, onlyTheWetWeathersCarryRain)
         {
-            seed();
-
             EXPECT_TRUE(downpourAt("Clear", sStormWind, sGravity).mRainEffect.empty());
             EXPECT_FALSE(downpourAt("Rain", sStormWind, sGravity).mRainEffect.empty());
             EXPECT_FALSE(downpourAt("Thunderstorm", sStormWind, sGravity).mRainEffect.empty());
@@ -52,8 +32,6 @@ namespace Weather
         /// storm under one threshold and not under another, so the number reached the comparison.
         TEST(WeatherDownpourTest, aStormIsWhateverBlowsHarderThanTheThreshold)
         {
-            seed();
-
             // Read rather than pinned, so the two thresholds below straddle whichever value won.
             const float ash = windSpeed("Ashstorm");
             ASSERT_GT(ash, 0.0f);
@@ -99,8 +77,6 @@ namespace Weather
         /// answering either with the other is a visible mistake in one direction or the other.
         TEST(WeatherDownpourTest, aDownpourCarriesTheGustAndTheRecordedWindApart)
         {
-            seed();
-
             const float recorded = windSpeed("Ashstorm");
             ASSERT_GT(recorded, 0.0f);
 

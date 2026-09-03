@@ -311,6 +311,8 @@ namespace Rtx::Testing
         TEST(RtxSceneExtractorTest, spritesAreReadAfterTheWalkRatherThanAsItPassesThem)
         {
             const auto run = [](bool updaterAbove) {
+                resetRandom();
+
                 Plume plume = makePlume(osg::Matrix::identity(), /*additive=*/true);
                 drive(plume, 100.0, updaterAbove);
 

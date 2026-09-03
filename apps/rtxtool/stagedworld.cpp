@@ -171,7 +171,7 @@ namespace RtxTool
         // direction, speed and lifetime, and a flickering lamp's phase, are drawn from `Misc::Rng`.
         // Where each of the weather's drops falls in its box is drawn from the C library's
         // `std::rand`, which is what `osgParticle::BoxPlacer` and every other `osgParticle::range`
-        // are written against and which nothing else in this tree touches. Each is one sequence for
+        // are written against and which nothing else this binary runs touches. Each is one sequence for
         // the whole process, so a staging that began wherever the last one ended drew a different
         // world — with only the first reset, a `verify` of one view rendered a storm that a `verify`
         // of every view did not, and the two disagreed on an eighth of the frame.

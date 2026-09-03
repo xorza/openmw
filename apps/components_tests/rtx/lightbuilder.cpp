@@ -20,7 +20,6 @@
 #include <components/sceneutil/lightcommon.hpp>
 
 #include "allocations.hpp"
-#include "fallbackseed.hpp"
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
@@ -439,19 +438,11 @@ namespace Rtx
         /// depth is recorded for day and night alone, and every hour inside sunrise or sunset asked
         /// for a third that was never written, which took the whole tool down.
         ///
-        /// `weatherSeed` says what the numbers below are and are not. `Fallback::Map` keeps the
-        /// first value it is given for a key and a test elsewhere in this binary opens the real
-        /// installation, so which values these reads got depends on the order the suite ran in —
-        /// which is why what is pinned below is what is true of either.
+        /// `TestingOpenMW::fallbackSeed` plants Clear before any test runs and says what the numbers
+        /// are and are not: an expectation here is written against what `makeDaylight` says rather
+        /// than against a value the seed happens to carry.
         TEST(RtxLightBuilderTest, everyHourAsksOnlyForSettingsTheGameDefines)
         {
-            // A second weather's wind beside the first, for the assertion that the two do not read
-            // one number.
-            std::map<std::string, std::string> settings = Testing::weatherSeed({ "Clear" });
-            settings.emplace("Weather_Ashstorm_Wind_Speed", "0.8");
-
-            Fallback::Map::init(settings);
-
             for (float hour = 0.0f; hour < 24.0f; hour += 0.25f)
                 EXPECT_NO_THROW(makeDaylight("Clear", hour, sReach)) << "at hour " << hour;
 
@@ -483,24 +474,23 @@ namespace Rtx
             EXPECT_NE(later.mAmbient, again.mAmbient);
 
             // A file records one depth for daylight and one for night, and the ramp hands the day
-            // value to three of its four points. Which of the four an hour reads is what these pin,
-            // and it holds whatever the two depths are.
+            // value to three of its four points — sunrise, day and sunset all carry it.
+            //
+            // **The hours are the schedule's own.** Morrowind crosses each boundary over a window per
+            // quantity, so an hour has to be picked past one to read a phase outright: the fog's
+            // sunrise runs from 5.5 to 9 and its sunset from 16 to 21, which puts noon and ten in the
+            // evening clear of both. The middle of a window is the one point inside it that is not a
+            // blend, and 7.25 is the middle of that sunrise — where the ramp's own sunrise value is
+            // what comes back, and for this ramp that is the day's.
             const float day = makeDaylight("Clear", 12.0f, sReach).mFog.mExtinction;
             const float night = makeDaylight("Clear", 0.0f, sReach).mFog.mExtinction;
-            EXPECT_EQ(makeDaylight("Clear", 6.0f, sReach).mFog.mExtinction, day) << "sunrise reads the day depth";
-            EXPECT_EQ(makeDaylight("Clear", 20.0f, sReach).mFog.mExtinction, night) << "and night begins at twenty";
+            EXPECT_FLOAT_EQ(makeDaylight("Clear", 7.25f, sReach).mFog.mExtinction, day)
+                << "sunrise reads the day depth";
+            EXPECT_EQ(makeDaylight("Clear", 22.0f, sReach).mFog.mExtinction, night) << "and night has begun by ten";
 
-            // **Deeper fog is thicker air, asked only where the two depths differ.** Morrowind ships
-            // `.69` for both of Clear's, so a suite that opened the real installation first has one
-            // depth over the whole clock and nothing here to compare — `Testing::weatherSeed` says
-            // why the seeded pair is not what this asserts against.
-            const bool nightIsDeeper = Fallback::Map::getFloat("Weather_Clear_Land_Fog_Night_Depth")
-                > Fallback::Map::getFloat("Weather_Clear_Land_Fog_Day_Depth");
-
-            if (nightIsDeeper)
-            {
-                EXPECT_GT(night, day);
-            }
+            // Deeper fog is thicker air. Morrowind ships `.69` for both of Clear's depths, and
+            // `TestingOpenMW::fallbackSeed` pins them apart for exactly this comparison.
+            EXPECT_GT(night, day);
 
             // And the weather reaches its air through `exteriorFog` rather than assembling one,
             // which is what keeps the extinction and the edge measured over one reach.
@@ -510,13 +500,9 @@ namespace Rtx
             // engine's own ramp buys over reading whichever phase an hour falls in: the seeded
             // sunset runs from eighteen to twenty, so half past seven is halfway across it.
             //
-            // Asked only where the two depths differ, for the reason the comparison above gives.
-            if (nightIsDeeper)
-            {
-                const float dusk = makeDaylight("Clear", 19.5f, sReach).mFog.mExtinction;
-                EXPECT_GT(dusk, day);
-                EXPECT_LT(dusk, night);
-            }
+            const float dusk = makeDaylight("Clear", 19.5f, sReach).mFog.mExtinction;
+            EXPECT_GT(dusk, day);
+            EXPECT_LT(dusk, night);
 
             // **A night has no sun in it at all**, which is one fact rather than the engine's two.
             // Morrowind never switches its sunlight off — `WeatherManager` reads a colour off the
@@ -546,10 +532,8 @@ namespace Rtx
             // than fair weather is what says the name reached the lookup rather than a constant
             // being handed back.
             //
-            // **Compared rather than pinned.** The seeds above are 0.3 and 0.8, but a test elsewhere
-            // in this binary opens the real installation and `Fallback::Map::init` keeps whichever
-            // value landed first — so which pair this reads depends on the order the suite ran in,
-            // and only the inequality is true of both.
+            // **Compared rather than pinned**, because what this is about is that the name reaches
+            // the lookup. The two numbers themselves belong to `TestingOpenMW::fallbackSeed`.
             EXPECT_GT(Weather::windSpeed("Ashstorm"), Weather::windSpeed("Clear"));
             EXPECT_GT(Weather::windSpeed("Clear"), 0.0f);
 
@@ -562,9 +546,9 @@ namespace Rtx
         ///
         /// **Every key the picture reads of a weather, removed one at a time**: each refusal names
         /// the weather and the key, and with all of them present nothing is refused. Over tables of
-        /// the test's own rather than `Fallback::Map`'s, because that map keeps the first value it
-        /// is given and another test in this binary may already have given it the real ones — which
-        /// after the harness's configuration gained its two missing weathers is every one of the ten.
+        /// the test's own rather than `Fallback::Map`'s, because that map is already planted by the
+        /// time any test runs — and a harness configuration that gained its two missing weathers
+        /// carries every one of the ten.
         TEST(RtxLightBuilderTest, aWeatherTheConfigurationLeftOutIsRefusedByName)
         {
             constexpr std::array<std::string_view, 18> colours = { "Sky_Sunrise_Color", "Sky_Day_Color",
@@ -935,8 +919,6 @@ namespace Rtx
         /// standing.
         TEST(RtxLightBuilderTest, aDaylightCarriesTheHoursOwnBias)
         {
-            Fallback::Map::init(Testing::weatherSeed({ "Clear" }));
-
             for (const float hour : { 0.0f, 6.0f, 12.0f, 18.0f })
             {
                 const Daylight day = makeDaylight("Clear", hour, sReach);

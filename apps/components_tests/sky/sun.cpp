@@ -11,10 +11,10 @@ namespace Sky
     {
         /// Morrowind's own hours, built rather than read.
         ///
-        /// **Nothing here touches `Fallback::Map`.** It is one global map for the whole binary that
-        /// keeps the first value written to a key, so a test that seeded it would decide what every
-        /// later test in the file read — and would itself read whatever an earlier one had already
-        /// put there. These four boundaries and one window are the whole of what the disc needs.
+        /// **Nothing here touches `Fallback::Map`.** It is one global map for the whole binary,
+        /// planted before any test runs and added to by whichever of them opens the real
+        /// installation — so a test reading it is reading a configuration rather than its own
+        /// premise. These four boundaries and one window are the whole of what the disc needs.
         TimeOfDaySettings vanillaHours()
         {
             TimeOfDaySettings times{};

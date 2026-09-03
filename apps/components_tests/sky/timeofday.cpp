@@ -6,8 +6,6 @@
 #include <components/fallback/fallback.hpp>
 #include <components/sky/timeofday.hpp>
 
-#include "../rtx/fallbackseed.hpp"
-
 namespace Sky
 {
     namespace
@@ -39,12 +37,10 @@ namespace Sky
         /// nothing would fail, so the presence of each name is what this asserts.
         ///
         /// **Each is asked of the cache as well as of a fresh reading, and the two are not compared.**
-        /// `shared()` is filled on first use, and tests in this binary seed the fallback map after
-        /// that — so the two can hold different numbers here while both being right.
+        /// `shared()` is filled on first use, and a test in this binary opens the real installation
+        /// after that — so the two can hold different numbers here while both being right.
         TEST(SkyTimeOfDayTest, everyQuantityTheRampReadsCarriesAWindowOfItsOwn)
         {
-            Fallback::Map::init(Rtx::Testing::clockSeed());
-
             for (const TimeOfDaySettings& times : { TimeOfDaySettings::fromFallback(), TimeOfDaySettings::shared() })
                 for (const std::string& quantity : { std::string("Sky"), std::string("Ambient"), std::string("Fog"),
                          std::string("Sun"), std::string("Stars") })
@@ -58,8 +54,6 @@ namespace Sky
         /// and how long each fade lasts — so what is left of the fade is the other half of each pair.
         TEST(SkyTimeOfDayTest, theStarsWindowIsWhatIsLeftOfTheirFade)
         {
-            Fallback::Map::init(Rtx::Testing::clockSeed());
-
             for (const TimeOfDaySettings& times : { TimeOfDaySettings::fromFallback(), TimeOfDaySettings::shared() })
             {
                 const WeatherSetting stars = times.getSetting("Stars");

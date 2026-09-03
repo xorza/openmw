@@ -9,18 +9,11 @@
 #include <components/rtx/shaders/scene.h>
 
 #include "allocations.hpp"
-#include "fallbackseed.hpp"
 
 namespace Rtx
 {
     namespace
     {
-        /// `Rtx::Testing::moonSeed` says what these are and are not.
-        void seed()
-        {
-            Fallback::Map::init(Testing::moonSeed());
-        }
-
         /// How this renderer weighs a colour into a brightness, which is what a level is measured in.
         float luminanceOf(const osg::Vec3f& linear)
         {
@@ -52,14 +45,11 @@ namespace Rtx
         /// 1000)` — the closed form this checks the code against.
         ///
         /// **The size itself is not pinned here, and deliberately.** Morrowind's own ini says 94 and
-        /// 40, OpenMW ships defaults of 55 and 20, and which pair a run sees depends on the order
-        /// the suite planted its fallback keys. The conversion is what this owns; the number is
-        /// whatever the installation is configured with, and both give a moon far larger than the
-        /// real one — 9.6 degrees of radius or 5.7, against the quarter of a degree ours has.
+        /// 40 and OpenMW ships defaults of 55 and 20. The conversion is what this owns; the number is
+        /// whatever the run is configured with, and both give a moon far larger than the real one —
+        /// 9.6 degrees of radius or 5.7, against the quarter of a degree ours has.
         TEST(RtxMoonBuilderTest, aMoonIsAsWideAsTheGameDrawsIt)
         {
-            seed();
-
             const float masser = Fallback::Map::getFloat("Moons_Masser_Size");
             const float secunda = Fallback::Map::getFloat("Moons_Secunda_Size");
 
@@ -87,8 +77,6 @@ namespace Rtx
         /// moons climb as high as the sun does and only their rising points differ.
         TEST(RtxMoonBuilderTest, masserRisesAtSixteenHundredOnTheDayTheGameBegins)
         {
-            seed();
-
             const MoonPlacement rising = makeMoon(Moon::Masser, 0, 16.0f, 1.0f);
             EXPECT_NEAR(rising.mDirection.z(), 0.0f, 1e-6f) << "on the horizon at the moment it rises";
 
@@ -108,8 +96,6 @@ namespace Rtx
         /// The face is a frame, not a billboard: three unit vectors at right angles to each other.
         TEST(RtxMoonBuilderTest, theFaceStandsSquareToWhereTheMoonIs)
         {
-            seed();
-
             for (const float hour : { 17.0f, 20.0f, 23.0f })
             {
                 const MoonPlacement at = makeMoon(Moon::Masser, 0, hour, 1.0f);
@@ -137,8 +123,6 @@ namespace Rtx
         /// `aMoonRisesOutOfTheHorizonRatherThanArrivingAboveIt`.
         TEST(RtxMoonBuilderTest, aMoonIsFadedByTheHourAndByTheWeather)
         {
-            seed();
-
             // Day nine is where Masser rises at one in the morning — `1 + (9 - 1 + 16) mod 24` — so
             // half past two in the afternoon finds it a hundred and six degrees along and inside the
             // hour-long fade in that runs from fourteen to fifteen. Half an hour of one hour is half
@@ -166,8 +150,6 @@ namespace Rtx
         /// seventeen hundred is eight degrees up — inside the arc the engine draws nothing over.
         TEST(RtxMoonBuilderTest, aMoonRisesOutOfTheHorizonRatherThanArrivingAboveIt)
         {
-            seed();
-
             const MoonPlacement low = makeMoon(Moon::Masser, 0, 17.0f, 1.0f);
             EXPECT_NEAR(osg::RadiansToDegrees(std::asin(low.mDirection.z())), 7.826f, 0.01f);
 
@@ -205,8 +187,6 @@ namespace Rtx
         /// the eight — at days twelve to fourteen.
         TEST(RtxMoonBuilderTest, theGameBeginsFullAndWanesOnAThreeDayCycle)
         {
-            seed();
-
             EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 0, 22.0f, 1.0f).mPhaseAngle, 0.0f) << "16 Last Seed";
             EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 1, 22.0f, 1.0f).mPhaseAngle, 0.0f);
 
@@ -245,8 +225,6 @@ namespace Rtx
         /// speak for one moon, and this is the one it speaks for.
         TEST(RtxMoonBuilderTest, aFullMasserDeliversWhatALitDiscOfItsSizeDoes)
         {
-            seed();
-
             const float radiance = Shaders::DAYLIGHT * Shaders::MOON_ALBEDO * Shaders::INV_PI;
             const float sine = std::sin(moonAngularRadius(Moon::Masser));
             const float facing = radiance * osg::PIf * sine * sine;
@@ -280,7 +258,6 @@ namespace Rtx
 
             EXPECT_NEAR(share(osg::DegreesToRadians(0.2593f)), 1.0f / 407000.0f, 1e-8f);
 
-            seed();
             const float masser = share(moonAngularRadius(Moon::Masser));
             EXPECT_LT(masser, 1.0f / 250.0f) << "a moon brighter than a sunrise";
             EXPECT_GT(masser, 1.0f / 1000.0f) << "a moon that lights nothing";
@@ -293,16 +270,13 @@ namespace Rtx
         /// law at the same albedo, so Secunda's share of Masser's is the ratio of their sines
         /// squared, and its portrait being the paler of the two multiplies that back up.
         ///
-        /// **The paleness is pinned and the sizes are not.** How much sky each covers comes out of
-        /// whichever `Moons_*_Size` the suite planted — `moonSeed` says why that is not this test's
-        /// to fix — while the ratio between the two portraits is a number this code measured off the
-        /// shipped textures. At the ini's 94 and 40 the share is 0.1853 and what Secunda delivers is
-        /// 0.4705 of Masser; at OpenMW's 55 and 20 both are something else and the ratio between
-        /// them is the same 2.54.
+        /// **The paleness is what this code owns and the sizes are not.** How much sky each covers
+        /// comes out of whichever `Moons_*_Size` the run is configured with, while the ratio between
+        /// the two portraits is a number measured off the shipped textures. At the ini's 94 and 40
+        /// the share is 0.1853 and what Secunda delivers is 0.4705 of Masser; at OpenMW's 55 and 20
+        /// both are something else and the ratio between them is the same 2.54.
         TEST(RtxMoonBuilderTest, secundaDeliversTheShareOfTheSkyItCovers)
         {
-            seed();
-
             const MoonPlacement masser = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
             const MoonPlacement secunda = placeMoon(Moon::Secunda, 90.0f, -50.0f, /*phase=*/0, /*alpha=*/1.0f);
 
@@ -327,8 +301,6 @@ namespace Rtx
         /// magnitudes, which is `10^-1.041` of full.
         TEST(RtxMoonBuilderTest, aQuarterMoonLightsATenthOfWhatAFullOneDoes)
         {
-            seed();
-
             const auto lightAt = [](int phase) {
                 return luminanceOf(placeMoon(Moon::Masser, 90.0f, 35.0f, phase, /*alpha=*/1.0f).mIrradiance);
             };
@@ -351,8 +323,6 @@ namespace Rtx
         /// whether a moon is worth a ray is this being nothing.
         TEST(RtxMoonBuilderTest, aFadedMoonLightsNothing)
         {
-            seed();
-
             EXPECT_EQ(placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.0f).mIrradiance, osg::Vec3f());
 
             // The fade is a plain multiplier on it, so half hidden is half lit.
@@ -368,8 +338,6 @@ namespace Rtx
         /// spot — twenty-two allocations a frame, for numbers that are fixed for the run.
         TEST(RtxMoonBuilderTest, placingAMoonReadsNothingItHasAlreadyRead)
         {
-            seed();
-
             const MoonPlacement first = makeMoon(Moon::Masser, 3, 21.0f, 1.0f);
 
             const std::size_t before = Testing::getAllocationCount();
