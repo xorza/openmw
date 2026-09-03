@@ -82,8 +82,6 @@ set(RTX_FILES
     spritelight.hpp
     spriteshade.cpp
     spriteshade.hpp
-    spritetiles.cpp
-    spritetiles.hpp
     srgb.cpp
     srgb.hpp
     terraincomposite.cpp
@@ -113,6 +111,7 @@ set(RTX_SHADER_HEADERS
     shaders/portable.h
     shaders/scene.h
     shaders/skinning.h
+    shaders/spritebin.h
     shaders/visibility.h
     shaders/wave.h
 )

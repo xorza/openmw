@@ -15,12 +15,12 @@ namespace Rtx
     /// counted from the front of the list, and the runs follow them. A prefix sum with a trailing
     /// sentinel, so a lookup is two reads and no search however many keys there are, the last run's
     /// end needs no special case, and the device is handed one address rather than two that have to
-    /// be kept in step. `LightGrid` bins lamps into cells this way and `SpriteTiles` bins sprites
-    /// into screen tiles; `lib/bindings.glsl` reads both by the same rule.
+    /// be kept in step. `LightGrid` bins lamps into cells this way, and the sprite tiles are made
+    /// in the same shape on the device by `spritestarts.comp`; `lib/bindings.glsl` reads both by
+    /// the same rule.
     ///
     /// **Filled by a counting sort in two passes over the same visits**: `count` each pair once,
-    /// `place`, then `put` each pair once in the same order. Runs come out in visiting order, which
-    /// is what lets `SpriteTiles` promise ascending sprite indices within a tile.
+    /// `place`, then `put` each pair once in the same order. Runs come out in visiting order.
     ///
     /// **Refilled and never replaced**, because a frame must not go back to the allocator for a list
     /// it already has: both vectors settle at their high-water mark.

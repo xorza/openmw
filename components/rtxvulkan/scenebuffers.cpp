@@ -10,6 +10,7 @@
 
 #include "device.hpp"
 #include "graveyard.hpp"
+#include "spritebinpass.hpp"
 
 namespace Rtx
 {
@@ -18,6 +19,26 @@ namespace Rtx
         // Addressable and never bound: the frame block carries where every table is, and no
         // descriptor names one.
         constexpr VkBufferUsageFlags sTableUsage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+        // The sprite tiles' list is the one table the device fills, and its head is zeroed by a
+        // fill before every bin.
+        constexpr VkBufferUsageFlags sSpriteListUsage
+            = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+        /// What share of the frame's tiles a sprite is given room for before any bin has said
+        /// what it needs: one tile in this many.
+        ///
+        /// **A floor, under a policy that otherwise follows what the last bin reported.** A frame's
+        /// entries are what the last one's were, near enough — a storm gains its drops over
+        /// seconds and a puff rises over the same — so twice the last report covers the drift, and
+        /// the floor covers the frame nothing came before, which is a cell arriving with a storm
+        /// already in it. **As a share of the tiles and not a count**, because a sprite's rectangle
+        /// grows with the tile count: rain over Balmora measured thirty-five entries a drop over
+        /// three thousand six hundred tiles — a streak near the eye is a column of them — and a
+        /// count of thirty-two a sprite was outgrown on the first frame. One in sixty-four is
+        /// fifty-six there and a hundred and twenty-seven over the game's own frame. A frame this
+        /// still misjudges is drawn right and slow, and the next is sized to it.
+        constexpr std::uint32_t sSpriteFloorShare = 64;
 
         Shaders::GpuMaterial toGpu(const Material& material)
         {
@@ -133,8 +154,15 @@ namespace Rtx
             Tables& tables = mTables[slot];
 
             for (Buffer* table : { &tables.mLayers, &tables.mMasks, &tables.mLights, &tables.mLightList,
-                     &tables.mSprites, &tables.mEmitters, &tables.mSpriteTileList })
+                     &tables.mSprites, &tables.mEmitters, &tables.mSpriteRects })
                 graveyard.bury(growTo(*table, device, 0, sTableUsage));
+
+            graveyard.bury(growTo(tables.mSpriteTileList, device, 0, sSpriteListUsage));
+
+            // Read before it is first written, so it has to say that nothing was needed yet.
+            tables.mSpriteBinReport
+                = Buffer::staging(device, sizeof(std::uint32_t), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+            *static_cast<std::uint32_t*>(tables.mSpriteBinReport.map()) = 0;
         }
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
@@ -206,9 +234,12 @@ namespace Rtx
         graveyard.bury(growTo(held, *mDevice, bytes, sTableUsage));
     }
 
-    void SceneBuffers::binSprites(const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun,
-        const std::uint32_t slot, Graveyard& graveyard)
+    void SceneBuffers::binSprites(VkCommandBuffer commands, const SpriteBinPass& pass, const osg::Vec3f& origin,
+        const Shaders::Camera& camera, const osg::Vec3f& toSun, const std::uint32_t slot, Graveyard& graveyard,
+        GpuTimer* const timer)
     {
+        assert(slot < mSlots && "a frame slot this scene has no copy of the tables for");
+
         Tables& tables = mTables[slot];
 
         // **The sprites go over from here and not from `place`**, because what each is shaded by is
@@ -220,13 +251,37 @@ namespace Rtx
         reserve(tables.mSprites, sprites.size_bytes(), graveyard);
         tables.mSprites.write(sprites);
 
-        mSpriteTiles.rebuild(mSpriteScratch, mEmitterScratch, origin, camera);
+        const auto count = static_cast<std::uint32_t>(sprites.size());
+        const std::uint32_t tiles = Shaders::spriteTilesOver(camera.mWidth) * Shaders::spriteTilesOver(camera.mHeight);
 
-        // A frame with no sprites has a list that is all starts and no runs, so the shader reads none
-        // of it past the start it looks up.
-        const std::span<const std::uint32_t> tileList = mSpriteTiles.getList().getWhole();
-        reserve(tables.mSpriteTileList, tileList.size_bytes(), graveyard);
-        tables.mSpriteTileList.write(tileList);
+        // **Sized from what this copy's last bin said it needed, with room over it**, because the
+        // need is only known once the tiles are counted and that happens on the device. The fence
+        // this copy's last frame signalled is what makes the report readable here.
+        // `sSpriteFloorShare` says the rest of the policy.
+        const std::uint32_t reported = *static_cast<const std::uint32_t*>(tables.mSpriteBinReport.map());
+
+        // Sixty-four bits for the product alone: a million sprites over a hundred thousand tiles is
+        // a share that still fits the entry count, and the product does not.
+        const auto floor = static_cast<std::uint32_t>(std::uint64_t{ count } * tiles / sSpriteFloorShare);
+        tables.mSpriteEntries = std::max({ tables.mSpriteEntries, floor, 2 * reported });
+
+        graveyard.bury(growTo(tables.mSpriteTileList, *mDevice,
+            VkDeviceSize{ tiles + 1 + tables.mSpriteEntries } * sizeof(std::uint32_t), sSpriteListUsage));
+        reserve(tables.mSpriteRects, VkDeviceSize{ count } * sizeof(std::uint64_t), graveyard);
+
+        pass.record(commands,
+            Shaders::SpriteBinConstants{
+                .mSprites = tables.mSprites.getDeviceAddress(),
+                .mEmitters = tables.mEmitters.getDeviceAddress(),
+                .mRects = tables.mSpriteRects.getDeviceAddress(),
+                .mList = tables.mSpriteTileList.getDeviceAddress(),
+                .mReport = tables.mSpriteBinReport.getDeviceAddress(),
+                .mOrigin = origin,
+                .mCamera = camera,
+                .mCount = count,
+                .mCapacity = tables.mSpriteEntries,
+            },
+            tables.mSpriteTileList.getHandle(), timer);
     }
 
     void SceneBuffers::shade(const SceneDesc& scene, const std::uint32_t slot, Graveyard& graveyard)
@@ -426,7 +481,7 @@ namespace Rtx
     VkDeviceSize SceneBuffers::Tables::getBytes() const
     {
         return mLayers.getSize() + mMasks.getSize() + mLights.getSize() + mLightList.getSize() + mSprites.getSize()
-            + mEmitters.getSize() + mSpriteTileList.getSize();
+            + mEmitters.getSize() + mSpriteTileList.getSize() + mSpriteRects.getSize() + mSpriteBinReport.getSize();
     }
 
     VkDeviceSize SceneBuffers::getBytes() const

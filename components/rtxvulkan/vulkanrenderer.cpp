@@ -193,6 +193,7 @@ namespace Rtx
         , mFog(mDevice, mPool)
         , mExposure(mDevice, options.mShaderDirectory)
         , mSkinPass(mDevice, options.mShaderDirectory)
+        , mSpriteBin(mDevice, options.mShaderDirectory)
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
     {
@@ -1124,12 +1125,6 @@ namespace Rtx
         sampled.mPreviousRight = mPreviousCamera.mCamera.mRight;
         sampled.mPreviousUp = mPreviousCamera.mCamera.mUp;
 
-        // **The sprite tiles are screen space, so they belong to the frame and not to the scene.**
-        // Written before the recording below, which is what makes them visible to it without a
-        // barrier — the same thing that lets the instance rows be written where the builder reads.
-        // Into the copy this frame traces, which the frame before last is done with.
-        mWorld.mBuffers->binSprites(camera.mOrigin, camera.mCamera, camera.mSunPosition, mWorldSlot, frame.mGraveyard);
-
         const VisibilityInputs inputs = describeInputs(mWorld, mWorldSlot, mFogVolume.get());
 
         // Made by the first frame that averages, and that frame is the one that fills it.
@@ -1200,6 +1195,12 @@ namespace Rtx
             mWaves.record(commands, sampled.mTime);
             timer.close(commands);
         }
+
+        // **The sprite tiles are screen space, so they belong to the frame and not to the scene.**
+        // Binned on the device, into the copy this frame traces — which the frame before last is
+        // done with — and ahead of the trace that reads them, in its own zone.
+        mWorld.mBuffers->binSprites(commands, mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
+            mWorldSlot, frame.mGraveyard, &timer);
 
         mChannels->begin(commands);
         mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled, airLost, &timer);
@@ -1392,8 +1393,6 @@ namespace Rtx
         // A doll and a map trace the same shader, so they need the same list — against their own
         // camera, which is not the frame's.
         const std::uint32_t slot = options.mScene == sWorld ? mWorldSlot : 0;
-        traced.mBuffers->binSprites(
-            camera.mOrigin, camera.mCamera, camera.mSunPosition, slot, frameSlot(mFrame).mGraveyard);
 
         const VisibilityInputs inputs = describeInputs(traced, slot, mViewFogVolume.get());
 
@@ -1409,6 +1408,9 @@ namespace Rtx
 
             if (hasSea(camera))
                 mWaves.record(commands, camera.mTime);
+
+            traced.mBuffers->binSprites(commands, mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition, slot,
+                frameSlot(mFrame).mGraveyard, nullptr);
 
             mViewChannels->begin(commands);
             mPass->record(commands, inputs, *mViewChannels, frameSlot(mFrame).mHitCount, camera, true, nullptr);

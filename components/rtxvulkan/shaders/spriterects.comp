@@ -1,0 +1,304 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// Which tiles of the screen each sprite can be met from, and how many sprites each tile holds.
+//
+// **Conservative by construction, and the trace's own test is what refines it.** A tile's list
+// has to hold every sprite any ray through the tile could meet, because `spritesAlong` tests a
+// sprite it is handed and never looks for one it was not — a sprite the binning drops is a raindrop
+// that stops being drawn. So what is bounded here is exactly what the march tests against: a ball
+// for a sprite that faces the eye, and for a quad hanging on an authored axis the capsule that
+// swinging its width about that axis sweeps. `Rtx::SceneDesc::addEmitter` says why the emitter's
+// own sphere is the wrong granularity for this, and rain is what proved it.
+//
+// **A sphere around a quad's corners is what the capsule replaced, and rain is what it cost.** A
+// drop is a long thin streak, so that sphere was as wide as the streak is long — tens of times the
+// width — and a bound that wide crosses the eye plane for every drop falling anywhere near the
+// camera. There are no tangent lines from inside a sphere, so each of those went into every tile
+// on the screen: ninety-four drops of two thousand six hundred, and 96% of the whole list. The
+// capsule's radius is the streak's width instead of its length.
+
+#include "spritebin.h"
+
+layout(local_size_x = SPRITE_BIN_WORKGROUP) in;
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Sprites
+{
+    GpuSprite at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Emitters
+{
+    GpuEmitter at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 8, scalar) writeonly buffer Rects
+{
+    uvec2 at[];
+};
+
+/// The list's head, where each tile's count is gathered ahead of the scan that turns it into a
+/// start. Tile `t`'s count sits at `1 + t`, which is where its start will sit — the shape
+/// `Rtx::RunList::count` fills on the host.
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer Counts
+{
+    uint at[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    SpriteBinConstants bin;
+};
+
+/// The camera's axes, unit, beside the half-extents they were scaled by.
+///
+/// `makeCameraFromView` builds `mForward` unit and scales `mRight` and `mUp` by the image plane's
+/// half-width and half-height, so the three are mutually orthogonal and the two lengths are the
+/// only thing separating a direction from a screen coordinate.
+struct Frame
+{
+    vec3 mForward;
+    vec3 mRight;
+    vec3 mUp;
+    float mHalfWidth;
+    float mHalfHeight;
+};
+
+Frame frameOf(Camera camera)
+{
+    Frame frame;
+    frame.mForward = normalize(camera.mForward);
+    frame.mHalfWidth = length(camera.mRight);
+    frame.mHalfHeight = length(camera.mUp);
+    frame.mRight = camera.mRight / frame.mHalfWidth;
+    frame.mUp = camera.mUp / frame.mHalfHeight;
+
+    return frame;
+}
+
+/// The two extreme slopes of the tangent lines from the eye to a circle at `(along, depth)`.
+///
+/// The closed form rather than a projected bounding box, because a box around the sphere is three
+/// times the area at the edge of a wide frame, and every extra tile is a sprite walked by pixels
+/// that cannot see it. Only meaningful where the eye is outside the sphere, which `capsuleTiles`
+/// is what guarantees.
+vec2 tangentSlopes(float along, float depth, float radius)
+{
+    const float behind = depth * depth - radius * radius;
+    const float reach = sqrt(max(along * along + behind, 0.0));
+    const float middle = along * depth;
+
+    return vec2((middle - radius * reach) / behind, (middle + radius * reach) / behind);
+}
+
+/// Where a screen coordinate in minus-one-to-one lands, in whole pixels and generously.
+///
+/// **A pixel of slack at each end, which is what covers the jitter.** `rayAt` adds half a pixel and
+/// the frame's jitter to the index before scaling, and the jitter is a Halton offset inside the
+/// pixel — so a coordinate is worth a pixel either way and the binning has to hold every ray the
+/// tile can produce, not the one through its centre.
+int toPixel(float coordinate, uint extent, float slack)
+{
+    return int(floor((coordinate + 1.0) * 0.5 * float(extent) + slack));
+}
+
+/// Where a ball of `radius` about `centre` lands, in whole pixels, before the frame's edges are
+/// applied: its first column and row in `xy`, its last in `zw`.
+///
+/// **Off the frame and not clipped to it**, because a capsule is bounded by two of these and a
+/// rectangle clipped to nothing carries no side to union against: a streak lying across the view
+/// has both its ends past the edge and its middle down the centre of the frame. Given that the
+/// ball's tangent cone is bounded — which for a perspective frame is `depth > radius`, and for an
+/// orthographic one is always.
+ivec4 ballPixels(vec3 centre, float radius, Frame frame)
+{
+    const vec3 toward = centre - bin.mOrigin;
+
+    float lowU;
+    float highU;
+    float lowV;
+    float highV;
+
+    if (bin.mCamera.mOrthographic != 0u)
+    {
+        // Every ray runs the same way and the eye slides across the plane instead, so the sphere
+        // covers the coordinates whose ray passes within its radius. Behind the plane is still
+        // binned: the march's own depth test is what rejects it, and this only has to be no
+        // tighter than that.
+        lowU = (dot(toward, frame.mRight) - radius) / frame.mHalfWidth;
+        highU = (dot(toward, frame.mRight) + radius) / frame.mHalfWidth;
+
+        // `rayAt` subtracts the up axis, so a sprite above the eye is at a smaller `v`.
+        lowV = (-dot(toward, frame.mUp) - radius) / frame.mHalfHeight;
+        highV = (-dot(toward, frame.mUp) + radius) / frame.mHalfHeight;
+    }
+    else
+    {
+        const float depth = dot(toward, frame.mForward);
+
+        const vec2 sideways = tangentSlopes(dot(toward, frame.mRight), depth, radius);
+        const vec2 upright = tangentSlopes(-dot(toward, frame.mUp), depth, radius);
+
+        lowU = sideways.x / frame.mHalfWidth;
+        highU = sideways.y / frame.mHalfWidth;
+        lowV = upright.x / frame.mHalfHeight;
+        highV = upright.y / frame.mHalfHeight;
+    }
+
+    return ivec4(toPixel(lowU, bin.mCamera.mWidth, -1.0), toPixel(lowV, bin.mCamera.mHeight, -1.0),
+        toPixel(highU, bin.mCamera.mWidth, 1.0), toPixel(highV, bin.mCamera.mHeight, 1.0));
+}
+
+/// The tiles one sprite reaches, as an inclusive rectangle, or nothing where it reaches none.
+struct TileRect
+{
+    uvec2 mFrom;
+    uvec2 mTo;
+};
+
+bool isEmpty(TileRect rect)
+{
+    return rect.mTo.x < rect.mFrom.x || rect.mTo.y < rect.mFrom.y;
+}
+
+/// A first past every last, which is what the table carries for it too: no tile count reaches
+/// sixteen bits, so the pass over tiles tests it like any other rectangle and never matches.
+TileRect noTiles()
+{
+    return TileRect(uvec2(0xFFFFu), uvec2(0u));
+}
+
+/// The tiles a pixel rectangle covers, or nothing where it misses the frame.
+TileRect tilesOf(ivec4 rect)
+{
+    const int width = int(bin.mCamera.mWidth);
+    const int height = int(bin.mCamera.mHeight);
+
+    if (rect.z < 0 || rect.w < 0 || rect.x >= width || rect.y >= height)
+        return noTiles();
+
+    const ivec4 held = clamp(rect, ivec4(0), ivec4(width - 1, height - 1, width - 1, height - 1));
+
+    return TileRect(uvec2(held.xy) / SPRITE_TILE, uvec2(held.zw) / SPRITE_TILE);
+}
+
+/// Everywhere a sprite's own drawing can reach, as a segment and a radius about it.
+///
+/// **A ball for a billboard and a capsule for an oriented quad**, because that is the shape the
+/// march tests against. A billboard is rejected past `mRadius` of the ray, so the ball is exact. An
+/// oriented quad hangs on its authored axis and swings its width about that axis to meet the ray —
+/// so over every direction the eye can look from, it sweeps a cylinder of the width's radius about
+/// the axis segment, and the capsule is that cylinder with its ends rounded.
+struct Bound
+{
+    vec3 mFrom;
+    vec3 mTo;
+    float mRadius;
+    bool mOriented;
+};
+
+Bound boundOf(GpuSprite sprite, GpuEmitter emitter)
+{
+    const float across = length(emitter.mAcross);
+    const float upward = length(emitter.mUpward);
+
+    Bound bound;
+    bound.mOriented = across > 0.0 && upward > 0.0;
+    if (!bound.mOriented)
+    {
+        bound.mFrom = sprite.mPosition;
+        bound.mTo = sprite.mPosition;
+        bound.mRadius = sprite.mRadius;
+
+        return bound;
+    }
+
+    const vec3 reach = emitter.mUpward * sprite.mRadius;
+    bound.mFrom = sprite.mPosition - reach;
+    bound.mTo = sprite.mPosition + reach;
+    bound.mRadius = sprite.mRadius * across;
+
+    return bound;
+}
+
+/// The tiles a capsule can be met from, as the rectangle around the two balls that cap it.
+///
+/// **The rectangle around both and not a ball around both**, which is the whole of what a capsule
+/// buys: a streak lying across the frame covers a long thin rectangle, and a ball holding the same
+/// two ends covers the square that rectangle sits in. Both caps in front of the eye, the segment
+/// between them projects to a straight line between their two centres, so a rectangle holding the
+/// caps holds the cylinder as well.
+TileRect capsuleTiles(Bound bound, Frame frame, uint across, uint down)
+{
+    if (bin.mCamera.mOrthographic == 0u)
+    {
+        const float from = dot(bound.mFrom - bin.mOrigin, frame.mForward);
+        const float to = dot(bound.mTo - bin.mOrigin, frame.mForward);
+
+        // Wholly behind the eye, where no ray of a frame that only looks forward can reach it. The
+        // march's own depth test says the same, so this is a tile saved rather than a sprite lost.
+        if (from <= -bound.mRadius && to <= -bound.mRadius)
+            return noTiles();
+
+        // **A cap the eye is inside, or level with.** There are no tangent lines from a point on or
+        // inside a circle, and neither is there a straight projected segment once the capsule
+        // reaches the plane through the eye — so it goes in every tile rather than being reasoned
+        // about.
+        if (from <= bound.mRadius || to <= bound.mRadius)
+            return TileRect(uvec2(0u), uvec2(across - 1u, down - 1u));
+    }
+
+    ivec4 rect = ballPixels(bound.mFrom, bound.mRadius, frame);
+    if (bound.mOriented)
+    {
+        const ivec4 other = ballPixels(bound.mTo, bound.mRadius, frame);
+        rect = ivec4(min(rect.xy, other.xy), max(rect.zw, other.zw));
+    }
+
+    return tilesOf(rect);
+}
+
+/// A rectangle as the pass over tiles reads it.
+uvec2 pack(TileRect rect)
+{
+    return uvec2(rect.mFrom.x | (rect.mFrom.y << 16u), rect.mTo.x | (rect.mTo.y << 16u));
+}
+
+void main()
+{
+    const uint sprite = gl_GlobalInvocationID.x / SPRITE_BIN_LANES;
+    const uint lane = gl_LocalInvocationID.x % SPRITE_BIN_LANES;
+    if (sprite >= bin.mCount)
+        return;
+
+    const GpuSprite held = Sprites(bin.mSprites).at[sprite];
+    const GpuEmitter emitter = Emitters(bin.mEmitters).at[held.mEmitter];
+
+    const uint across = spriteTilesOver(bin.mCamera.mWidth);
+    const uint down = spriteTilesOver(bin.mCamera.mHeight);
+
+    // Every lane of the sprite works its rectangle out for itself: a dozen operations against a
+    // shared-memory exchange and the barrier that would order it.
+    const TileRect rect = capsuleTiles(boundOf(held, emitter), frameOf(bin.mCamera), across, down);
+
+    if (lane == 0u)
+        Rects(bin.mRects).at[sprite] = pack(rect);
+
+    if (isEmpty(rect))
+        return;
+
+    const uint wide = rect.mTo.x - rect.mFrom.x + 1u;
+    const uint area = wide * (rect.mTo.y - rect.mFrom.y + 1u);
+
+    for (uint cell = lane; cell < area; cell += SPRITE_BIN_LANES)
+    {
+        const uint x = rect.mFrom.x + cell % wide;
+        const uint y = rect.mFrom.y + cell / wide;
+
+        atomicAdd(Counts(bin.mList).at[1u + y * across + x], 1u);
+    }
+}

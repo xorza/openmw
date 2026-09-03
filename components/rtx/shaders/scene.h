@@ -1011,14 +1011,36 @@ namespace Rtx::Shaders
     /// **Sixteen, and the trade is the usual one.** Finer tiles reject more sprites per pixel and
     /// cost more of them to bin: a raindrop is a few pixels across, so at sixteen it lands in one
     /// tile or four, and a tile's list is short. The screen's tile count is derived from this and the
-    /// frame's extent on both sides — `(width + SPRITE_TILE - 1) / SPRITE_TILE` — so there is one
-    /// number here and no second one to disagree with it.
+    /// frame's extent on both sides — `spriteTilesOver` — so there is one number here and no second
+    /// one to disagree with it.
     ///
-    /// **Eight was measured and it is a loss.** Over Balmora at night in the rain, four times the
-    /// tiles take 0.32 ms off the trace and put 2.4 ms on the frame: the offsets are one array entry
-    /// per tile, rebuilt and written to the device every frame, and quartering the tile quadruples
-    /// that whatever the sprites do.
+    /// **Eight was measured twice and it is a loss both times.** Against the host bin, over Balmora
+    /// at night in the rain, four times the tiles took 0.32 ms off the trace and put 2.4 ms on the
+    /// frame, because the offsets were one entry per tile written across the bus every frame.
+    /// Against the device bin the offsets cost nothing and the trace gained nothing at all — 1.10
+    /// ms at either size, since a drop's own test is cheap once the lamps are walked per emitter —
+    /// while the fill, which walks every sprite for every tile, went from 0.05 ms to 0.17.
     RTX_CONST uint SPRITE_TILE = 16u;
+
+    /// How many tiles cover `pixels` along one axis of the frame. The last one may be part of a tile.
+    ///
+    /// **Derived on every side from `SPRITE_TILE` and the frame's own extent**, so the trace, the
+    /// bin and the host reference cannot disagree about how many tiles there are across.
+    RTX_SHADER uint spriteTilesOver(uint pixels)
+    {
+        return (pixels + SPRITE_TILE - 1u) / SPRITE_TILE;
+    }
+
+    /// What the sprite tiles' list holds in its first entry where its runs did not fit.
+    ///
+    /// **The list carries its own degenerate form, so the trace needs no second signal.** Where
+    /// the runs are binned, entry nought is where the runs begin — `tiles + 1`, never nought. Where
+    /// a frame's entries outgrew the buffer, `spritestarts.comp` writes nought there and the sprite
+    /// count in entry one, and the trace walks every sprite over every pixel for that frame: the
+    /// march as it was before the tiles, slow and right. The host reads what the frame needed,
+    /// grows the buffer and the next frame is binned. `SceneBuffers::binSprites` says how the list
+    /// is sized so that this is a rare frame and never a wrong one.
+    RTX_CONST uint SPRITE_LIST_UNBINNED = 0u;
 
     /// The most a texel of a sprite may hide of what is behind it.
     ///

@@ -1,6 +1,7 @@
 #include "fixture.hpp"
 
 #include <components/rtxvulkan/scenemicromaps.hpp>
+#include <components/rtxvulkan/spritebinpass.hpp>
 
 namespace Rtx::Testing
 {
@@ -66,6 +67,10 @@ namespace Rtx::Testing
             SceneBuffers buffers(device, scene, records, 1, graveyard);
             SkinTables skinTables(device, scene, 1, graveyard);
             const SkinPass skin(device, Testing::getShaderDirectory());
+
+            // Nothing here is a sprite either, and the bin still runs every frame: the list a
+            // frame with no sprites reads is one the pass writes.
+            const SpriteBinPass spriteBin(device, Testing::getShaderDirectory());
 
             // Nothing here is a cutout, so nothing is baked; what a placement asks of this every
             // frame is the refit's description, which must not allocate either.
@@ -168,6 +173,8 @@ namespace Rtx::Testing
                 scene.advancePlacement();
 
                 waves.record(commands, camera.mTime);
+                buffers.binSprites(
+                    commands, spriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition, 0, graveyard, nullptr);
                 channels.begin(commands);
                 pass.record(commands, inputs, channels, hits, camera, true, nullptr);
                 channels.handOver(commands);

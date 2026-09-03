@@ -188,11 +188,16 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     const vec3 upward = normalize(frame.mCamera.mUp);
     const Cone cone = coneAt(frame.mCamera);
 
-    // **The tiles are derived and not carried**, from the same expression `Rtx::SpriteTiles` uses,
-    // so the two cannot disagree about how many there are across.
-    const uint tilesAcross = (frame.mCamera.mWidth + SPRITE_TILE - 1u) / SPRITE_TILE;
-    const uint tile = (pixel.y / SPRITE_TILE) * tilesAcross + pixel.x / SPRITE_TILE;
-    const uint last = spriteTileListAt(tile + 1u);
+    // **The tiles are derived and not carried**, from the same function the bin uses, so the two
+    // cannot disagree about how many there are across.
+    const uint tile = (pixel.y / SPRITE_TILE) * spriteTilesOver(frame.mCamera.mWidth) + pixel.x / SPRITE_TILE;
+
+    // **Every sprite where the runs did not fit**, which is the list's own degenerate form and the
+    // march as it was before the tiles: `SPRITE_LIST_UNBINNED` says when a frame is handed it. The
+    // run is then every index in turn, so a slot names its sprite directly.
+    const bool unbinned = spriteTileListAt(0u) == SPRITE_LIST_UNBINNED;
+    uint slot = unbinned ? 0u : spriteTileListAt(tile);
+    const uint last = unbinned ? spriteTileListAt(1u) : spriteTileListAt(tile + 1u);
 
     // **What the outer loop over emitters used to hold, carried across a walk that no longer has
     // one.** The tile's sprites are in ascending index, and a sprite's index is contiguous within
@@ -245,9 +250,9 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     // puff a card's worth of the sun rather than a sphere's.
     const float thrownForward = henyeyGreenstein(SMOKE_ANISOTROPY, dot(toSun, direction)) / INV_FOUR_PI;
 
-    for (uint slot = spriteTileListAt(tile); slot < last; ++slot)
+    for (; slot < last; ++slot)
     {
-        const GpuSprite sprite = spriteAt(spriteTileListAt(slot));
+        const GpuSprite sprite = spriteAt(unbinned ? slot : spriteTileListAt(slot));
 
         if (sprite.mEmitter != held)
         {

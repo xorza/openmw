@@ -320,7 +320,9 @@ GpuEmitter emitterAt(uint index)
 /// starts, then every tile's sprites run together in tile order and ascending inside each run —
 /// which is the order the march used to walk them in, and so the order they still composite in.
 ///
-/// `Rtx::SpriteTiles` says why the layer is binned per tile and the emitters are not.
+/// **Made on the device, by `SpriteBinPass`, ahead of the trace.** `spriterects.comp` says why the
+/// layer is binned per tile and the emitters are not, and `SPRITE_LIST_UNBINNED` what entry nought
+/// holds on the frame whose runs did not fit.
 uint spriteTileListAt(uint slot)
 {
     return IndexList(frame.mTables.mSpriteTileList).at[slot];

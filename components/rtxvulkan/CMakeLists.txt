@@ -56,6 +56,9 @@ set(RTX_SHADERS
     shaders/micromap.comp
     shaders/morph.comp
     shaders/skin.comp
+    shaders/spriterects.comp
+    shaders/spriteruns.comp
+    shaders/spritestarts.comp
     shaders/tone.comp
     shaders/visibility.rahit
     shaders/visibility.rgen
@@ -208,6 +211,8 @@ set(RTX_VULKAN_FILES
     shadermodule.hpp
     skinpass.cpp
     skinpass.hpp
+    spritebinpass.cpp
+    spritebinpass.hpp
     skintables.cpp
     skintables.hpp
     slottable.hpp

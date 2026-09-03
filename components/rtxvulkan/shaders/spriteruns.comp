@@ -1,0 +1,144 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// Each tile's run, filled in ascending sprite order.
+//
+// **From the tile's side, walking every sprite's rectangle, and that shape is the point.** A
+// scatter from the sprites' side — each sprite taking a slot in every tile it reaches by an atomic
+// — would be cheaper to write and would land the entries in whatever order the atomics resolved,
+// which is a composite order that changes from frame to frame and a fog evaluation per sprite
+// instead of per emitter's run: `spritesAlong` says why both matter. Sorting the runs afterwards
+// is what that would then cost. Walking the sprites in order from the tile's side gives the order
+// for nothing and needs no global atomic at all, and what it costs is tiles times sprites of an
+// eight-byte load and four compares.
+//
+// **Thirty-two lanes to a tile, thirty-two sprites at a time.** The lanes of a tile test one
+// stride of sprites each — one coalesced load for the stride — and then have to agree on the
+// order of what matched: each lane that matched sets its bit in the tile's word of shared memory,
+// and after a barrier every lane reads the word, counts the bits below its own for its place in
+// the run, and the stride's count is how far the run moved. A subgroup ballot is the same thing
+// with a device requirement attached; the shared word costs an atomic per match and a barrier per
+// stride and asks nothing of the hardware.
+//
+// **Three words a tile and one barrier a stride.** The word a stride reads after its barrier must
+// not be cleared until every lane has read it, and the word the next stride sets must be clear
+// before any lane sets it — two barriers a stride, or three words cycled: after the barrier of
+// stride `i` the word for stride `i + 2` is cleared, which every lane last read before the
+// barrier of stride `i - 1` and will next set only after the barrier of stride `i + 1`.
+//
+// **Ascending sprite index within a tile, and that is load-bearing.** Sprites composite in the
+// order they are walked, and a sprite's index is contiguous per emitter, so ascending index keeps
+// an emitter's sprites consecutive — which is what lets the march evaluate the fog and walk the
+// lamps once for a run rather than once for a sprite.
+
+#include "spritebin.h"
+
+layout(local_size_x = SPRITE_RUNS_WORKGROUP) in;
+
+layout(buffer_reference, buffer_reference_align = 8, scalar) readonly buffer Rects
+{
+    uvec2 at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer List
+{
+    uint at[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    SpriteBinConstants bin;
+};
+
+/// Which lanes of each tile matched the stride being walked, cycled three ways.
+shared uint matched[3][SPRITE_RUNS_WORKGROUP / SPRITE_RUNS_LANES];
+
+void main()
+{
+    const uint across = spriteTilesOver(bin.mCamera.mWidth);
+    const uint tiles = across * spriteTilesOver(bin.mCamera.mHeight);
+
+    const uint group = gl_LocalInvocationID.x / SPRITE_RUNS_LANES;
+    const uint lane = gl_LocalInvocationID.x % SPRITE_RUNS_LANES;
+    const uint tile = gl_GlobalInvocationID.x / SPRITE_RUNS_LANES;
+
+    List list = List(bin.mList);
+
+    // Nothing to fill where the runs did not fit: the trace walks every sprite instead. Uniform
+    // over the dispatch, so a workgroup leaves whole and no barrier below waits for it.
+    if (list.at[0] == SPRITE_LIST_UNBINNED)
+        return;
+
+    // **A lane past the last tile stays for the barriers**, which every lane of the workgroup has
+    // to reach; it tests nothing and writes nothing.
+    const bool present = tile < tiles;
+
+    uint x = 0u;
+    uint y = 0u;
+    uint slot = 0u;
+    uint end = 0u;
+    if (present)
+    {
+        x = tile % across;
+        y = tile / across;
+        slot = list.at[tile];
+        end = list.at[tile + 1u];
+    }
+
+    if (lane == 0u)
+    {
+        matched[0][group] = 0u;
+        matched[1][group] = 0u;
+        matched[2][group] = 0u;
+    }
+
+    const uint below = (1u << lane) - 1u;
+    Rects rects = Rects(bin.mRects);
+
+    barrier();
+
+    uint stride = 0u;
+    for (uint base = 0u; base < bin.mCount; base += SPRITE_RUNS_LANES, ++stride)
+    {
+        const uint sprite = base + lane;
+
+        bool hit = false;
+        if (present && sprite < bin.mCount)
+        {
+            const uvec2 packed = rects.at[sprite];
+
+            const uvec2 from = uvec2(packed.x & 0xFFFFu, packed.x >> 16u);
+            const uvec2 to = uvec2(packed.y & 0xFFFFu, packed.y >> 16u);
+
+            hit = x >= from.x && x <= to.x && y >= from.y && y <= to.y;
+        }
+
+        const uint current = stride % 3u;
+        if (hit)
+            atomicOr(matched[current][group], 1u << lane);
+
+        barrier();
+
+        const uint word = matched[current][group];
+
+        // **Held inside the run's own end, which the count pass sized from the same rectangles.**
+        // The two agree by construction, so the bound is never met — and a pass that ever
+        // disagreed with its own count would overrun a neighbour's run rather than say so, which
+        // the compare is cheaper than.
+        if (hit)
+        {
+            const uint at = slot + bitCount(word & below);
+            if (at < end)
+                list.at[at] = sprite;
+        }
+
+        slot += bitCount(word);
+
+        if (lane == 0u)
+            matched[(stride + 2u) % 3u][group] = 0u;
+    }
+}

@@ -12,9 +12,9 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/lightgrid.hpp>
+#include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/spriteshade.hpp>
-#include <components/rtx/spritetiles.hpp>
 
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
@@ -24,8 +24,10 @@
 namespace Rtx
 {
     class Device;
+    class GpuTimer;
     class Graveyard;
     class SceneDesc;
+    class SpriteBinPass;
 
     /// The tables a shader reads at a hit: what the triangle was, and how it is shaded.
     ///
@@ -84,13 +86,22 @@ namespace Rtx
         SceneBuffers(const SceneBuffers&) = delete;
         SceneBuffers& operator=(const SceneBuffers&) = delete;
 
-        /// Bins this scene's sprites into the screen tiles of the camera about to trace them.
+        /// Shades this scene's sprites against the frame's sun, writes them, and records the bin
+        /// of them into the screen tiles of the camera about to trace them.
         ///
         /// **From the frame and not from the placement**, because the binning is in screen space and
-        /// the camera does not exist until the frame does. `place` wrote the sprites; this reads the
-        /// copy of them kept beside the buffer.
-        void binSprites(const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun,
-            std::uint32_t slot, Graveyard& graveyard);
+        /// the camera does not exist until the frame does. `place` converted the sprites; this
+        /// writes the copy of them kept beside the buffer and hands `pass` the tables to bin them
+        /// into.
+        ///
+        /// **Recorded into `commands` ahead of the trace that reads the tiles**, and after this
+        /// slot's copy of them is nothing's to read — which for a frame is the fence the frame
+        /// before last signalled, and for a picture inside the interface every frame's. Grows the
+        /// list first, from what this copy's last bin reported it needed, so nothing between this
+        /// and the trace moves a table.
+        void binSprites(VkCommandBuffer commands, const SpriteBinPass& pass, const osg::Vec3f& origin,
+            const Shaders::Camera& camera, const osg::Vec3f& toSun, std::uint32_t slot, Graveyard& graveyard,
+            GpuTimer* timer);
 
         /// Where the lamps were binned, for the frame's block the pass writes: its geometry rides
         /// there, beside the sea's, and only the lists it made are tables.
@@ -133,7 +144,22 @@ namespace Rtx
             Buffer mLightList;
             Buffer mSprites;
             Buffer mEmitters;
+
+            /// The sprite tiles' list, made on the device by `SpriteBinPass` and never written by
+            /// the host: `tiles + 1` starts, then the runs, in `RunList`'s shape.
             Buffer mSpriteTileList;
+
+            /// One rectangle of tiles per sprite, the pass's own scratch between its dispatches.
+            Buffer mSpriteRects;
+
+            /// How many entries the last bin into this copy came to, written by the pass and read
+            /// back here before the next bin. Staging, because it is the one table the host reads.
+            Buffer mSpriteBinReport;
+
+            /// How many entries `mSpriteTileList` has room for after its starts. Grown from the
+            /// report and never shrunk, so the list settles at its high-water mark like every
+            /// other table.
+            std::uint32_t mSpriteEntries = 0;
 
             /// What one copy of them occupies.
             ///
@@ -200,7 +226,6 @@ namespace Rtx
         // the frame path.
         std::vector<Shaders::GpuLight> mLightScratch;
 
-        SpriteTiles mSpriteTiles;
         SpriteShade mSpriteShade;
 
         std::vector<Shaders::GpuSprite> mSpriteScratch;

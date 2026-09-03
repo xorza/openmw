@@ -31,6 +31,7 @@
 #include "guitextures.hpp"
 #include "instance.hpp"
 #include "skinpass.hpp"
+#include "spritebinpass.hpp"
 #include "tonepass.hpp"
 #include "visibilitypass.hpp"
 #include "wavepass.hpp"
@@ -469,6 +470,11 @@ namespace Rtx
         /// **One pass for everything posed**, the doll included: what differs per scene is the
         /// tables, which each `ViewScene` holds.
         SkinPass mSkinPass;
+
+        /// **One pass for everything binned**, for the same reason: what differs per scene is the
+        /// tables, and the camera arrives with the frame.
+        SpriteBinPass mSpriteBin;
+
         /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
         /// layout that only a scene brings, and the layout every scene brings is the same one.
         std::unique_ptr<TonePass> mTone;

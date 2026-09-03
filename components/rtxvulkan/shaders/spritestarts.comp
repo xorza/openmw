@@ -1,0 +1,96 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// Where each tile's run starts, from how many sprites `spriterects.comp` counted into it.
+//
+// **`Rtx::RunList::place`, on the device and in place.** Entry `1 + t` holds tile `t`'s count on
+// the way in and its run's end on the way out, which is tile `t + 1`'s start; entry nought is where
+// the runs begin. One workgroup: each lane sums a contiguous chunk of the counts, the chunk totals
+// are scanned in shared memory, and each lane then walks its chunk again turning counts into
+// starts from where its chunk begins.
+//
+// **The one place that knows whether the runs fit**, so it is where the list's degenerate form is
+// written and where the frame's need is reported. `SPRITE_LIST_UNBINNED` says what the trace does
+// with the first and `SceneBuffers::binSprites` what the host does with the second.
+
+#include "spritebin.h"
+
+layout(local_size_x = SPRITE_SCAN_WORKGROUP) in;
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer List
+{
+    uint at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) writeonly buffer Report
+{
+    uint at[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    SpriteBinConstants bin;
+};
+
+/// Each lane's chunk total, scanned into where its chunk's runs begin.
+shared uint chunkEnds[SPRITE_SCAN_WORKGROUP];
+
+void main()
+{
+    const uint tiles = spriteTilesOver(bin.mCamera.mWidth) * spriteTilesOver(bin.mCamera.mHeight);
+    const uint lane = gl_LocalInvocationID.x;
+
+    const uint per = (tiles + SPRITE_SCAN_WORKGROUP - 1u) / SPRITE_SCAN_WORKGROUP;
+    const uint first = lane * per;
+    const uint last = min(first + per, tiles);
+
+    List list = List(bin.mList);
+
+    uint own = 0u;
+    for (uint tile = first; tile < last; ++tile)
+        own += list.at[1u + tile];
+
+    chunkEnds[lane] = own;
+    barrier();
+
+    // Two barriers a round of the scan, because a lane reads a neighbour's value the same round
+    // the neighbour rewrites its own.
+    for (uint stride = 1u; stride < SPRITE_SCAN_WORKGROUP; stride <<= 1u)
+    {
+        const uint before = lane >= stride ? chunkEnds[lane - stride] : 0u;
+        barrier();
+        chunkEnds[lane] += before;
+        barrier();
+    }
+
+    const uint head = tiles + 1u;
+    const uint total = chunkEnds[SPRITE_SCAN_WORKGROUP - 1u];
+
+    // Where this chunk's first run starts: the runs' beginning, plus every chunk before this one.
+    uint running = head + chunkEnds[lane] - own;
+    for (uint tile = first; tile < last; ++tile)
+    {
+        running += list.at[1u + tile];
+        list.at[1u + tile] = running;
+    }
+
+    if (lane != 0u)
+        return;
+
+    Report(bin.mReport).at[0] = total;
+
+    if (total <= bin.mCapacity)
+    {
+        list.at[0] = head;
+        return;
+    }
+
+    // **After this lane's own chunk was written and not before**, because entry one is tile
+    // nought's end and this lane just wrote it: the degenerate form has to be the last word.
+    list.at[0] = SPRITE_LIST_UNBINNED;
+    list.at[1] = bin.mCount;
+}

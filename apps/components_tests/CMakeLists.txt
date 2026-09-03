@@ -159,7 +159,7 @@ if (OPENMW_RTX)
         rtx/spanallocator.cpp
         rtx/spritelight.cpp
         rtx/spriteshade.cpp
-        rtx/spritetiles.cpp
+        rtx/spritebinpass.cpp
         rtx/terraincomposite.cpp
         rtx/terrainresidency.cpp
         rtx/structurestorage.cpp
