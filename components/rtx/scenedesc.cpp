@@ -25,6 +25,27 @@ namespace Rtx
 
             return bounds;
         }
+
+        /// Puts `row` in a slot of `table` nothing stands in, or on the end where there is none, and
+        /// says which.
+        ///
+        /// **Any free slot will do.** A slot is one row of a table and every row is the same size;
+        /// what varies in length — the geometry, the layers, the runs — the allocators have already
+        /// placed. Taken from the back, because there is no fit to find.
+        template <class Row>
+        Index takeSlot(std::vector<Row>& table, std::vector<Index>& free, const Row& row)
+        {
+            if (!free.empty())
+            {
+                const Index index = free.back();
+                free.pop_back();
+                table[index] = row;
+                return index;
+            }
+
+            table.push_back(row);
+            return static_cast<Index>(table.size() - 1);
+        }
     }
 
     float Material::getAlphaCutoff() const
@@ -127,20 +148,7 @@ namespace Rtx
 
         writeMesh(range, positions, normals, texCoords, indices);
 
-        // **Any free slot will do.** What had to fit is the geometry, and the allocators have already
-        // placed it; a slot is one row of a table and every row is the same size.
-        if (!mFreeMeshes.empty())
-        {
-            const Index index = mFreeMeshes.back();
-            mFreeMeshes.pop_back();
-            mMeshes[index] = range;
-            noteMesh(index, SlotNews::Arrived);
-            return index;
-        }
-
-        mMeshes.push_back(range);
-
-        const Index index = static_cast<Index>(mMeshes.size() - 1);
+        const Index index = takeSlot(mMeshes, mFreeMeshes, range);
         noteMesh(index, SlotNews::Arrived);
         return index;
     }
@@ -239,26 +247,14 @@ namespace Rtx
         std::copy(runs.begin(), runs.end(), mRuns.begin() + words.mOffset);
         std::copy(influences.begin(), influences.end(), mInfluences.begin() + shares.mOffset);
 
-        const Rig rig{
-            .mRunOffset = words.mOffset,
-            .mInfluenceOffset = shares.mOffset,
-            .mInfluenceCount = static_cast<Index>(influences.size()),
-            .mBoneCount = boneCount,
-            .mVertexCount = static_cast<Index>(runs.size()),
-        };
-
-        Index index;
-        if (!mFreeRigs.empty())
-        {
-            index = mFreeRigs.back();
-            mFreeRigs.pop_back();
-            mRigs[index] = rig;
-        }
-        else
-        {
-            mRigs.push_back(rig);
-            index = static_cast<Index>(mRigs.size() - 1);
-        }
+        const Index index = takeSlot(mRigs, mFreeRigs,
+            Rig{
+                .mRunOffset = words.mOffset,
+                .mInfluenceOffset = shares.mOffset,
+                .mInfluenceCount = static_cast<Index>(influences.size()),
+                .mBoneCount = boneCount,
+                .mVertexCount = static_cast<Index>(runs.size()),
+            });
 
         mArrivedRigs.push_back(index);
         return index;
@@ -274,24 +270,12 @@ namespace Rtx
 
         std::copy(offsets.begin(), offsets.end(), mMorphOffsets.begin() + run.mOffset);
 
-        const Morph morph{
-            .mOffsetsAt = run.mOffset,
-            .mTargetCount = targets,
-            .mVertexCount = static_cast<Index>(offsets.size() / targets),
-        };
-
-        Index index;
-        if (!mFreeMorphs.empty())
-        {
-            index = mFreeMorphs.back();
-            mFreeMorphs.pop_back();
-            mMorphs[index] = morph;
-        }
-        else
-        {
-            mMorphs.push_back(morph);
-            index = static_cast<Index>(mMorphs.size() - 1);
-        }
+        const Index index = takeSlot(mMorphs, mFreeMorphs,
+            Morph{
+                .mOffsetsAt = run.mOffset,
+                .mTargetCount = targets,
+                .mVertexCount = static_cast<Index>(offsets.size() / targets),
+            });
 
         mArrivedMorphs.push_back(index);
         return index;
@@ -322,21 +306,8 @@ namespace Rtx
         assert(range.mDeform == Deform::Rig && "a pose of rows for a mesh no rig skins");
         assert(bones.size() == mRigs[range.mDeformer].mBoneCount && "one row per bone of the rig, and no other count");
 
-        if (!takePose(bones, mBones.data() + range.mPoseOffset, range.mPosed))
-            return;
-
-        range.mPosed = true;
-
-        // **A pose the size of the last one still reaches somewhere else.** An arm that came down is
-        // the same count of vertices in a different place, and a box left where the bind pose put it
-        // is what a camera would then be framed from.
-        range.mBounds = bounds;
-
-        // Named once however many callers reach it, because a backend builds one structure per mesh
-        // and building it twice in a frame is the same answer for twice the cost. Linear over a list
-        // that is the frame's moving meshes — a crowd, not a cell.
-        if (std::find(mDeformed.begin(), mDeformed.end(), mesh) == mDeformed.end())
-            mDeformed.push_back(mesh);
+        if (takePose(bones, mBones.data() + range.mPoseOffset, range.mPosed))
+            notePosed(mesh, bounds);
     }
 
     void SceneDesc::poseMorph(Index mesh, std::span<const float> weights, const osg::BoundingBoxf& bounds)
@@ -347,12 +318,23 @@ namespace Rtx
         assert(weights.size() == mMorphs[range.mDeformer].mTargetCount
             && "one weight per target of the morph, and no other count");
 
-        if (!takePose(weights, mWeights.data() + range.mPoseOffset, range.mPosed))
-            return;
+        if (takePose(weights, mWeights.data() + range.mPoseOffset, range.mPosed))
+            notePosed(mesh, bounds);
+    }
 
+    void SceneDesc::notePosed(Index mesh, const osg::BoundingBoxf& bounds)
+    {
+        MeshRange& range = mMeshes[mesh];
         range.mPosed = true;
+
+        // **A pose the size of the last one still reaches somewhere else.** An arm that came down is
+        // the same count of vertices in a different place, and a box left where the bind pose put it
+        // is what a camera would then be framed from.
         range.mBounds = bounds;
 
+        // Named once however many callers reach it, because a backend builds one structure per mesh
+        // and building it twice in a frame is the same answer for twice the cost. Linear over a list
+        // that is the frame's moving meshes — a crowd, not a cell.
         if (std::find(mDeformed.begin(), mDeformed.end(), mesh) == mDeformed.end())
             mDeformed.push_back(mesh);
     }
@@ -424,19 +406,7 @@ namespace Rtx
     {
         holdMaterialTextures(material);
 
-        // One size, so any freed slot will do and the back of the list is as good as any of them.
-        if (!mFreeMaterials.empty())
-        {
-            const Index index = mFreeMaterials.back();
-            mFreeMaterials.pop_back();
-            mMaterials[index] = material;
-            noteMaterial(index);
-            return index;
-        }
-
-        mMaterials.push_back(material);
-
-        const Index index = static_cast<Index>(mMaterials.size() - 1);
+        const Index index = takeSlot(mMaterials, mFreeMaterials, material);
         noteMaterial(index);
         return index;
     }

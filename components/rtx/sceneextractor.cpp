@@ -1013,6 +1013,15 @@ namespace Rtx
             arrays.mNormals = std::span(flat);
             return arrays;
         }
+
+        /// How many vertices a geometry has, or nought where it holds none it can be read for.
+        /// Asked on its own where the count is the whole question, so a body met again does not
+        /// spread its normals to find out.
+        std::size_t vertexCountOf(const osg::Geometry& geometry)
+        {
+            const auto* positions = dynamic_cast<const osg::Vec3Array*>(geometry.getVertexArray());
+            return positions != nullptr ? positions->size() : 0;
+        }
     }
 
     void SceneExtractor::addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
@@ -1432,9 +1441,8 @@ namespace Rtx
             // Where the source, the kind or the skin differs the entry is wrong rather than stale,
             // so it goes and the geometry is mirrored afresh. The slot it abandons keeps the epoch
             // it had and the next sweep takes it.
-            const std::size_t vertices = read.mDeform == Deform::Morph
-                ? baseOf(*read.mMorph).size()
-                : readVertices(geometry, mFlatNormalScratch).mPositions.size();
+            const std::size_t vertices
+                = read.mDeform == Deform::Morph ? baseOf(*read.mMorph).size() : vertexCountOf(geometry);
 
             // What the drawable's skin or targets resolve to, where the mirror has met them, and
             // `sNoIndex` where it has not or where the drawable stands — which is what a slot that
@@ -1571,8 +1579,7 @@ namespace Rtx
         const SceneUtil::RigGeometry::InfluenceData* skin = rig.getInfluenceData();
         assert(skin != nullptr);
 
-        const auto* positions = dynamic_cast<const osg::Vec3Array*>(rig.getSourceGeometry()->getVertexArray());
-        const std::size_t vertices = positions != nullptr ? positions->size() : 0;
+        const std::size_t vertices = vertexCountOf(*rig.getSourceGeometry());
 
         // **A skin rewritten in place under the same address is a new skin.** `setInfluences` on a
         // rig the mirror has met writes into the `InfluenceData` every copy shares, so what the map

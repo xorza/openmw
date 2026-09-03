@@ -999,6 +999,10 @@ namespace Rtx
         /// where this was the last mesh standing on it.
         void releaseDeformer(MeshRange& range);
 
+        /// What a pose that changed does beside its rows: the reach, and the mesh named for the
+        /// frame, once.
+        void notePosed(Index mesh, const osg::BoundingBoxf& bounds);
+
         // Slot-addressed and parallel: the placement, and where it stood before the last advance.
         // Two flat arrays rather than one struct, because the previous transform is read only for
         // what moved and a frame walks the placements for other reasons.
