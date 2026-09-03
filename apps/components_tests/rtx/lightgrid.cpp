@@ -5,6 +5,8 @@
 #include <components/rtx/lightgrid.hpp>
 #include <components/rtx/scenedesc.hpp>
 
+#include "allocations.hpp"
+
 namespace Rtx
 {
     namespace
@@ -113,6 +115,63 @@ namespace Rtx
             EXPECT_FLOAT_EQ(crowded.getInverseCell(), 1.0f / 2048.0f) << "the entry count, at a legal cell count";
             EXPECT_EQ(crowded.getSize(), osg::Vec3ui(20u, 20u, 20u));
             EXPECT_EQ(crowded.getList().getEntryCount(), 5u * 20u * 20u * 20u);
+        }
+
+        /// Three reaches at once: one lamp inside a corner of the grid, one against its far edge and
+        /// one that covers the whole of it.
+        ///
+        /// **The three the binning has to get right at the same time.** `boxAround` runs once for
+        /// the sizing, once for the count and once for the put, so a box the three do not agree on
+        /// is a lamp in the wrong cells — and the case that would show it is a lamp whose box is
+        /// clamped at one end and not the other.
+        ///
+        /// The grid, by hand. A reaches x[-512, 512] and B x[3584, 4608], both y and z [-512, 512];
+        /// C reaches x[0, 4096] and y and z [-2048, 2048]. So the corner is (-512, -2048, -2048) and
+        /// the far edge is (4608, 2048, 2048): an extent of 5120 by 4096 by 4096, which is 5 cells
+        /// by 4 by 4 of 1024. Eighty cells and ninety-two entries, both inside the first cell size's
+        /// budgets, so nothing doubles.
+        TEST(RtxLightGridTest, lampsSpanningOneCellSeveralAndTheWholeGridAreEachBinnedRight)
+        {
+            const std::array lights{ lampAt(0.0f, 512.0f), lampAt(4096.0f, 512.0f), lampAt(2048.0f, 2048.0f) };
+            const LightGrid grid(lights);
+
+            ASSERT_EQ(grid.getOrigin(), osg::Vec3f(-512.0f, -2048.0f, -2048.0f));
+            ASSERT_EQ(grid.getSize(), osg::Vec3ui(5u, 4u, 4u));
+            EXPECT_FLOAT_EQ(grid.getInverseCell(), 1.0f / 1024.0f);
+
+            // A spans x cells [0, 2) and y and z cells [1, 3), which is eight cells. B spans x cell
+            // 4 alone — its box reaches 5 and the grid is five across, so the clamp is what keeps it
+            // inside — and the same four in y and z. C covers all eighty.
+            EXPECT_EQ(grid.getList().getEntryCount(), 8u + 4u + 80u);
+
+            EXPECT_EQ(lampsIn(grid, 0, 1, 1), (std::vector<std::uint32_t>{ 0u, 2u }))
+                << "the near lamp and the wide one";
+            EXPECT_EQ(lampsIn(grid, 1, 2, 2), (std::vector<std::uint32_t>{ 0u, 2u })) << "the far corner of A's box";
+            EXPECT_EQ(lampsIn(grid, 4, 1, 1), (std::vector<std::uint32_t>{ 1u, 2u })) << "the clamped edge cell";
+            EXPECT_EQ(lampsIn(grid, 2, 2, 2), std::vector<std::uint32_t>{ 2u }) << "the air between the two small ones";
+            EXPECT_EQ(lampsIn(grid, 0, 0, 0), std::vector<std::uint32_t>{ 2u }) << "below A, which reaches only to y 1";
+            EXPECT_EQ(lampsIn(grid, 3, 3, 3), std::vector<std::uint32_t>{ 2u });
+        }
+
+        /// A rebind of the same lamps goes nowhere near the allocator.
+        ///
+        /// **What a frame that moves does**, and the claim `rebuild` is written against: assigning a
+        /// freshly built grid over this one threw the run list's vectors away and made them again,
+        /// on every frame that moved.
+        TEST(RtxLightGridTest, rebindingTheSameLampsDoesNotTouchTheHeap)
+        {
+            const std::array lights{ lampAt(0.0f, 512.0f), lampAt(4096.0f, 512.0f), lampAt(2048.0f, 2048.0f) };
+
+            LightGrid grid;
+            grid.rebuild(lights);
+            grid.rebuild(lights);
+
+            const std::size_t before = Testing::getAllocationCount();
+            grid.rebuild(lights);
+            const std::size_t spent = Testing::getAllocationCount() - before;
+
+            EXPECT_EQ(spent, 0u) << spent << " allocations to bin the lamps a frame already held";
+            EXPECT_EQ(grid.getList().getEntryCount(), 8u + 4u + 80u) << "and it binned them all the same";
         }
     }
 }

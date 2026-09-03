@@ -30,81 +30,50 @@ nothing presses one on a steady frame.
 
 ## 2. Per-frame computations that can be precomputed
 
-### 2.1 `SceneExtractor::animate` finds the updater with `dynamic_cast` every frame
+**Investigated, measured and settled.** Every item below was read again in the code and profiled;
+three were built and then taken back out because an interleaved A/B said they bought nothing or cost
+something. Method: `build-release`, `profile.sh --view=vivec --seconds=10`, three A/B pairs with a
+binary of each build swapped into place between runs. **A single pair says nothing here** — the first
+one taken made two symbols look 0.3 to 0.8 points cheaper, and three pairs put both inside the
+spread.
 
-`components/rtx/sceneextractor.cpp:880-887, 891-898`. `findUpdater` walks both callback chains and
-casts each callback, per animated node per frame. `Animated` (`sceneextractor.hpp:647`) keeps only
-the state set and the epoch.
+| item | outcome |
+| --- | --- |
+| 2.1 `animate` finds the updater every frame | built, measured at nothing, reverted |
+| 2.2 `placed()` multiplies per drawable | built, measured at nothing, reverted |
+| 2.3 `resolveMesh` re-validates a deforming drawable | **done**, in the part the review got right |
+| 2.4 `notePosed` searches per pose | **done** |
+| 2.5 `LightGrid::rebuild` computes each box three times | built, measured *worse*, reverted |
+| 2.6 `orderLights` sorts on a nine-field tuple | open, 0.12%: shape work when `Light` is next touched |
+| 2.7 `SceneBuffers::place` converts everything each frame | open: needs a per-frame identity for a light |
+| 2.8 `traceWorld` rebuilds the sky each frame | closed: absent from the profile, and `landReach` is not a settings read |
+| 2.9 `DistantLights::collect` does map lookups | open at 0.01%, and it belongs with 5.7 |
+| 2.10 `readMask` reads one texel at a time | **done** |
 
-Direction: store the updater pointer in `Animated` on arrival. The node owns the callback, so the
-pointer lives as long as the entry.
+Why the three failed, so that nobody builds them again:
 
-### 2.2 `MirrorTraversal::placed()` multiplies per drawable and per light
+- **2.5, the light grid's boxes, is slower.** 1.69% before against 1.90% after, and every run of the
+  second leg above every run of the first. `boxAround` is about twenty floating-point operations that
+  stay in registers; the scratch is 24 bytes a lamp stored once and read twice, which for Vivec's 614
+  lamps is 15 KB pushed through the cache. The arithmetic was cheaper than the memory.
+- **2.1's cache never engages on the population that pays for it.** Most callback-bearing nodes in a
+  cell carry a keyframe controller and no `StateSetUpdater` at all, so they paid a failed hash lookup
+  on top of the chain walk they already paid. What the cache saved on the nodes that do carry one, it
+  spent on the nodes that do not.
+- **2.2 is the right direction and still buys nothing.** A tally says Vivec enters 36,931 transforms
+  and reaches 99,299 drawables, so the product per transform is under two fifths of the multiplies —
+  and `osg::Matrixf::mult`, `addDrawable` and `MirrorTraversal::apply` were all flat. It kept a
+  64-byte matrix saved and restored around every transform to get there, which is 2.5's shape.
 
-`components/rtx/sceneextractor.cpp:318`, called at `:665` and `:444`. One 4x4 multiply per
-placement per frame.
+Two things the section as a whole taught, which are worth more than any of its items:
 
-Direction: compute the product once per transform push and keep it beside `mHere`.
-
-### 2.3 `resolveMesh` validates a deforming drawable again every frame
-
-`components/rtx/sceneextractor.cpp:1478, 1487, 1492, 1509, 1515`. Per posed body part per frame the
-code runs `vertexCountOf` (a `dynamic_cast`), `baseOf`, two `mRigs.find` and two `mMorphs.find`.
-
-Direction: `Known` (`sceneextractor.hpp:580`) keeps the vertex count and the deformer index. The
-walk stamps the deformer's epoch through that index.
-
-### 2.4 `SceneDesc::notePosed` does a linear search per pose
-
-`components/rtx/scenedesc.cpp:340`. `std::find` over `mDeformed` per posed mesh. With N posed
-meshes a frame does N²/2 comparisons. `release` (`:799`) erases from the same vector.
-
-Direction: a per-mesh flag beside `mKeptMeshes`, cleared with the frame.
-
-### 2.5 `LightGrid::rebuild` computes each light's box three times
-
-`components/rtx/lightgrid.cpp:105, 115, 122`. `boxAround` runs in the sizing loop, the count pass
-and the put pass.
-
-Direction: one pass into a scratch of `CellBox`. The count and the put read the scratch.
-
-### 2.6 `SceneDesc::orderLights` sorts on a nine-field tuple every frame
-
-`components/rtx/scenedesc.cpp:700-708`. Called from `sceneuploader.cpp:50` each frame.
-
-Direction: one 64-bit key per light, computed as the light is added. Sort on the key.
-
-### 2.7 `SceneBuffers::place` converts every light, sprite and emitter every frame
-
-`components/rtxvulkan/scenebuffers.cpp:413-438`, then `mLightGrid.rebuild`. The walk refills the
-lists each frame, so nothing carries identity between frames. The cost is linear and by design. A
-light that did not move still pays its conversion, its sort key and its grid cells each frame.
-
-Direction: a per-frame identity for lights is the change that makes any of this incremental. Not
-worth it before the renderer draws everything.
-
-### 2.8 `RtxRenderer::traceWorld` rebuilds the sky every frame
-
-`apps/openmw/mwrender/rtx/rtxrenderer.cpp:818-935`. Every frame builds the room light, the
-skylight, the fog, both moons and `FrameWorld` from `WorldState`. `sunShareAloft` reaches
-`getSetting("Sun")` (`components/sky/sun.cpp:114`), a string-keyed map. `landReach()` (`:105`)
-reads two settings and runs at `:281`, `:679` and `:871`. The inputs change per weather tick, per
-hour and per cell.
-
-Direction: keep the previous `WorldState` and rebuild when a field differs. `landReach` is a
-constant for the run and belongs in a member.
-
-### 2.9 `DistantLights::collect` does (2r+1)² map lookups per frame
-
-`components/rtx/distantlights.cpp:94-104`. Each cell in reach is a `std::map::find`.
-
-Direction: a flat grid indexed by cell offset.
-
-### 2.10 `SceneExtractor::readMask` reads one texel at a time
-
-`components/rtx/sceneextractor.cpp:238`. `getColor` per texel. Load path, not the frame.
-
-Direction: read the alpha channel through a row pointer.
+- **Section 2 is about 8% of the main process at Vivec, and half of that is work that has to
+  happen.** Where the time actually is, from the same profiles: `SpriteShade::layDown` 24% of a
+  still frame and `osg::Group::traverse` 9%; `TerrainComposite`'s constructor 18% of a crossing,
+  `ShapeFold` 10% and `paintedLight` 6%. All of it outside this section.
+- **On this frame, at this size, storing an answer to avoid recomputing it lost every time it was
+  tried.** Three of three caches measured at nothing or worse against the arithmetic they replaced.
+  The three changes that stand all do *less work* rather than *remember more*.
 
 ## 3. Single responsibility
 

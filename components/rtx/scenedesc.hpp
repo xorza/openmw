@@ -1003,6 +1003,14 @@ namespace Rtx
         std::vector<MeshRange> mMeshes;
         std::vector<Index> mDeformed;
 
+        /// A byte per mesh slot, set for exactly the slots `mDeformed` names.
+        ///
+        /// **What stops the list being searched once per pose.** A mesh is named once however many
+        /// callers pose it, and asking a vector made that N²/2 comparisons for the N movers of a
+        /// crowded cell — 55,000 of them at Vivec, on every frame, for a count the cell decides
+        /// rather than one this code sets. Grown with `mMeshNews` and emptied with the placement.
+        std::vector<char> mDeformedFlags;
+
         /// What poses the deforming meshes, and the poses themselves. `Rig` and `Morph` say what
         /// each table holds; the runs behind them are handed out by the allocators below and given
         /// back when the last mesh on a rig or a morph goes.

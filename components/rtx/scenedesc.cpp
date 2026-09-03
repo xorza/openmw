@@ -160,6 +160,7 @@ namespace Rtx
         // Grown here rather than beside every push, so the two stay parallel in one place. A resize
         // to the size it already is does not allocate, which is what the frame path pays.
         mMeshNews.resize(mMeshes.size(), SlotNews::None);
+        mDeformedFlags.resize(mMeshes.size(), 0);
         note(slot, what, mMeshNews, mArrivedMeshes, mFreedMeshes);
     }
 
@@ -335,10 +336,13 @@ namespace Rtx
         range.mBounds = bounds;
 
         // Named once however many callers reach it, because a backend builds one structure per mesh
-        // and building it twice in a frame is the same answer for twice the cost. Linear over a list
-        // that is the frame's moving meshes — a crowd, not a cell.
-        if (std::find(mDeformed.begin(), mDeformed.end(), mesh) == mDeformed.end())
+        // and building it twice in a frame is the same answer for twice the cost.
+        assert(mesh < mDeformedFlags.size());
+        if (mDeformedFlags[mesh] == 0)
+        {
+            mDeformedFlags[mesh] = 1;
             mDeformed.push_back(mesh);
+        }
     }
 
     std::span<const Shaders::GpuBone> SceneDesc::getMeshBones(Index mesh) const
@@ -723,6 +727,12 @@ namespace Rtx
     void SceneDesc::clearPlacement()
     {
         mLights.clear();
+
+        // The flags and the list say one thing between them, so they are emptied together — over
+        // the frame's movers, and never over every mesh slot the scene holds.
+        for (const Index mesh : mDeformed)
+            mDeformedFlags[mesh] = 0;
+
         mDeformed.clear();
         mSprites.clear();
         mEmitters.clear();
@@ -795,13 +805,19 @@ namespace Rtx
             range.mBounds = osg::BoundingBoxf();
 
             // A slot given back names no structure to refit, however it was posed this frame: the
-            // structure has gone with it. Linear over the frame's movers, on the frame a cell leaves.
-            std::erase(mDeformed, index);
+            // structure has gone with it. The list is compacted once below rather than searched
+            // once per slot freed.
+            mDeformedFlags[index] = 0;
 
             mFreeMeshes.push_back(index);
             noteMesh(index, SlotNews::Freed);
             ++freedMeshes;
         }
+
+        // One pass over the frame's movers, on the frame a cell leaves, rather than one per slot
+        // freed: a cell can give back thousands of slots and a crowd can be posing hundreds.
+        if (freedMeshes > 0)
+            std::erase_if(mDeformed, [this](const Index mesh) { return mDeformedFlags[mesh] == 0; });
 
         std::size_t freedMaterials = 0;
         for (Index index = 0; index < mMaterials.size(); ++index)
@@ -863,6 +879,7 @@ namespace Rtx
         mIndices.clear();
         mMeshes.clear();
         mDeformed.clear();
+        mDeformedFlags.clear();
         mRigs.clear();
         mRuns.clear();
         mInfluences.clear();

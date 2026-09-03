@@ -1,5 +1,7 @@
 #include "fixture.hpp"
 
+#include "../allocations.hpp"
+
 namespace Rtx::Testing
 {
     namespace
@@ -98,12 +100,22 @@ namespace Rtx::Testing
 
             // **A frame the bone stood still on costs nothing.** The walk poses every rig it meets
             // and the scene compares the rows against the ones it holds.
+            //
+            // Nothing off the heap either, which is the second half of "costs nothing". A rig met
+            // again is found in the skin map once and stamped through the same entry, and the count
+            // that says the slot still fits is read from the arrays as they stand.
             rigged.update(3);
             scene.clearPlacement();
-            const ExtractionStats still = extractor.extract(*rigged.mSkeleton, osg::Matrixf::identity(), 0, 2);
 
+            const std::size_t before = Testing::getAllocationCount();
+            const ExtractionStats still = extractor.extract(*rigged.mSkeleton, osg::Matrixf::identity(), 0, 2);
+            const std::size_t spent = Testing::getAllocationCount() - before;
+
+            EXPECT_EQ(spent, 0u) << spent << " allocations to pose a body the walk already held";
             EXPECT_EQ(still.mDeformed, 1u) << "posed, which is what the count says";
             EXPECT_TRUE(scene.getDeformed().empty()) << "and unchanged, which is what the list says";
+            EXPECT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 0.0f)) << "and it is the same bind pose";
+            EXPECT_EQ(boneRow(scene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, 7.0f)) << "held where the bone left it";
 
             // **And no traversal number gates it.** A walk on the same frame after the bone moved
             // again reads the matrices the update left, whatever number the walk runs at — where a
@@ -394,6 +406,21 @@ namespace Rtx::Testing
             EXPECT_EQ(scene.getDeformed()[0], sFace) << "the still quad's structure is not refitted";
             EXPECT_EQ(scene.getMeshWeights(sFace)[1], 3.0f);
             EXPECT_EQ(scene.getMeshPositions(sStill)[2], osg::Vec3f(1.0f, 1.0f, 0.0f)) << "and the neighbour is intact";
+
+            // **A third walk, which is the one that must reach the heap not at all.** A morphed face
+            // is found in the target map once and stamped through that same entry, and the base it
+            // is measured against is read from the targets as they stand.
+            scene.clearPlacement();
+
+            const std::size_t before = Testing::getAllocationCount();
+            const ExtractionStats third = extractor.extract(*root, osg::Matrixf::identity(), 0);
+            const std::size_t spent = Testing::getAllocationCount() - before;
+
+            EXPECT_EQ(spent, 0u) << spent << " allocations to pose a face the walk already held";
+            EXPECT_EQ(third.mMeshesReused, 2u);
+            EXPECT_EQ(scene.getMeshWeights(sFace)[1], 3.0f) << "at the same weight";
+            EXPECT_EQ(scene.getMeshPositions(sFace)[2], osg::Vec3f(1.0f, 1.0f, 0.0f)) << "off the same base";
+            EXPECT_TRUE(scene.getDeformed().empty()) << "a pose that stood still named a structure to refit";
         }
 
         /// Shading that exists only inside a cull traversal is applied by the walk and read from it.

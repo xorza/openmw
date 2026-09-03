@@ -229,10 +229,35 @@ namespace Rtx
         /// `ESMTerrain` builds these as one byte per texel in `GL_ALPHA`, which is a hundred bytes
         /// for a chunk; widening them costs a few kilobytes a cell and saves requiring 8-bit storage
         /// of the device for the sake of it.
+        ///
+        /// **That one format is read along the row, and everything else asks `getColor`.**
+        /// `getColor` decides on the pixel format and the data type per texel and builds a `Vec4` to
+        /// hand back one component of it, which is 0.44% of a crossing — spent on the frame a chunk
+        /// arrives, which is the frame with the least room. A blend map in any other format is a
+        /// mod's or a test's, and the slow path is both what serves it and what the fast path is
+        /// checked against.
         void readMask(const osg::Image& image, std::vector<float>& weights)
         {
             weights.clear();
             weights.reserve(static_cast<std::size_t>(image.s()) * image.t());
+
+            if (image.getPixelFormat() == GL_ALPHA && image.getDataType() == GL_UNSIGNED_BYTE)
+            {
+                // **The reciprocal and not a divide, because that is `getColor`'s own arithmetic.**
+                // The two disagree in the last place for 126 of the 256 byte values, and a weight is
+                // what a chunk's ground is blended by and what its composite is baked from — so a
+                // divide here would move the picture by a bit and the scene digests with it.
+                constexpr float perByte = 1.0f / 255.0f;
+
+                for (int row = 0; row < image.t(); ++row)
+                {
+                    const unsigned char* along = image.data(0, row);
+                    for (int column = 0; column < image.s(); ++column)
+                        weights.push_back(along[column] * perByte);
+                }
+                return;
+            }
+
             for (int row = 0; row < image.t(); ++row)
                 for (int column = 0; column < image.s(); ++column)
                     weights.push_back(image.getColor(column, row).a());
@@ -993,19 +1018,33 @@ namespace Rtx
             std::span<const osg::Vec3f> mNormals;
         };
 
+        /// The array as a `Vec3Array`, or null where it is anything else.
+        ///
+        /// **`osg::Array` states its own type in a byte**, which is what a `dynamic_cast` walks the
+        /// class hierarchy to work out — the same shape as the library-name test the walk already
+        /// makes of a drawable and of a terrain chunk before it casts either. `vertexCountOf` asks
+        /// it of every posed part every frame; the two in `readVertices` are on the arrival path.
+        const osg::Vec3Array* asVec3Array(const osg::Array* array)
+        {
+            if (array == nullptr || array->getType() != osg::Array::Vec3ArrayType)
+                return nullptr;
+
+            return static_cast<const osg::Vec3Array*>(array);
+        }
+
         /// @param flat scratch for an overall normal spread across the vertices. Refilled here and
         ///        borrowed by the returned span, so it has to outlive the read.
         VertexArrays readVertices(const osg::Geometry& geometry, std::vector<osg::Vec3f>& flat)
         {
             VertexArrays arrays;
 
-            const auto* positions = dynamic_cast<const osg::Vec3Array*>(geometry.getVertexArray());
+            const osg::Vec3Array* positions = asVec3Array(geometry.getVertexArray());
             if (positions == nullptr)
                 return arrays;
 
             arrays.mPositions = std::span(positions->asVector());
 
-            const auto* normals = dynamic_cast<const osg::Vec3Array*>(geometry.getNormalArray());
+            const osg::Vec3Array* normals = asVec3Array(geometry.getNormalArray());
             if (normals == nullptr || normals->empty())
                 return arrays;
 
@@ -1033,7 +1072,7 @@ namespace Rtx
         /// spread its normals to find out.
         std::size_t vertexCountOf(const osg::Geometry& geometry)
         {
-            const auto* positions = dynamic_cast<const osg::Vec3Array*>(geometry.getVertexArray());
+            const osg::Vec3Array* positions = asVec3Array(geometry.getVertexArray());
             return positions != nullptr ? positions->size() : 0;
         }
     }
@@ -1481,15 +1520,22 @@ namespace Rtx
             // `sNoIndex` where it has not or where the drawable stands — which is what a slot that
             // stands holds too. A morph whose targets changed count under the same base is another
             // morph, so the count is asked beside the identity.
+            //
+            // The entry each is found in is kept, because the stamp below wants the same one: a
+            // second `find` per posed part per frame is a hash of a pointer and a bucket walk for a
+            // question already answered, and Vivec poses 332.
             Index deformer = sNoIndex;
+            auto rig = mRigs.end();
+            auto morph = mMorphs.end();
             if (read.mDeform == Deform::Rig)
             {
-                if (const auto rig = mRigs.find(read.mRig->getInfluenceData()); rig != mRigs.end())
+                rig = mRigs.find(read.mRig->getInfluenceData());
+                if (rig != mRigs.end())
                     deformer = rig->second.mIndex;
             }
             else if (read.mDeform == Deform::Morph)
             {
-                const auto morph = mMorphs.find(read.mMorph->getMorphTarget(0).getOffsets());
+                morph = mMorphs.find(read.mMorph->getMorphTarget(0).getOffsets());
                 if (morph != mMorphs.end()
                     && mScene.getMorphs()[morph->second.mIndex].mTargetCount
                         == read.mMorph->getMorphTargetList().size())
@@ -1504,15 +1550,22 @@ namespace Rtx
                 // A pose is rows and not vertices, which is why the mirror pays a few dozen
                 // matrices for what is actually moving. The skin is stamped with the mesh, which is
                 // what keeps the sweep's two answers one answer.
+                //
+                // The entry found above is what stamps it, and it is there: the slot agrees with
+                // this drawable's deformer, and neither `resolveRig` nor `resolveMorph` ever hands
+                // back `sNoIndex` — so a deformer the sweep took would have failed the test above
+                // rather than reach here.
                 if (read.mDeform == Deform::Rig)
                 {
-                    mRigs.find(read.mRig->getInfluenceData())->second.mEpoch = mEpoch;
+                    assert(rig != mRigs.end() && "a rigged mesh reused on a skin the mirror has lost");
+                    rig->second.mEpoch = mEpoch;
                     poseRig(mesh, *read.mRig);
                     ++stats.mDeformed;
                 }
                 else if (read.mDeform == Deform::Morph)
                 {
-                    mMorphs.find(read.mMorph->getMorphTarget(0).getOffsets())->second.mEpoch = mEpoch;
+                    assert(morph != mMorphs.end() && "a morphed mesh reused on targets the mirror has lost");
+                    morph->second.mEpoch = mEpoch;
                     poseMorph(mesh, *read.mMorph);
                     ++stats.mDeformed;
                 }
