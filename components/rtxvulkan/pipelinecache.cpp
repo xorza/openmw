@@ -58,7 +58,7 @@ namespace Rtx
             return directory / name;
         }
 
-        /// The file's contents, if there is a file and this driver wrote it.
+        /// The file's contents, where there is a file and `PipelineCache::accepts` takes it.
         std::vector<std::uint8_t> readCache(
             const std::filesystem::path& path, const VkPhysicalDeviceProperties& properties)
         {
@@ -69,8 +69,12 @@ namespace Rtx
             if (!file)
                 return {};
 
+            // **Both bounds before the read and not only after it**, because the file this refuses
+            // for its size is the one it would be most expensive to read: `PipelineCache::sMostBytes`
+            // says what has been seen in a temporary directory.
             const std::streamoff bytes = file.tellg();
-            if (bytes < static_cast<std::streamoff>(sHeaderBytes))
+            if (bytes < static_cast<std::streamoff>(sHeaderBytes)
+                || bytes > static_cast<std::streamoff>(PipelineCache::sMostBytes))
                 return {};
 
             std::vector<std::uint8_t> data(static_cast<std::size_t>(bytes));
@@ -87,7 +91,7 @@ namespace Rtx
 
     bool PipelineCache::accepts(std::span<const std::uint8_t> blob, const VkPhysicalDeviceProperties& properties)
     {
-        if (blob.size() < sHeaderBytes)
+        if (blob.size() < sHeaderBytes || blob.size() > sMostBytes)
             return false;
 
         return readWord(blob, 0) == sHeaderBytes && readWord(blob, sVersionAt) == VK_PIPELINE_CACHE_HEADER_VERSION_ONE

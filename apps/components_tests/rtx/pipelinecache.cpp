@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -17,6 +18,26 @@ namespace Rtx
     {
         struct RtxPipelineCacheTest : Testing::DeviceTest
         {
+            /// The blob the driver would save, which every leg below is built from.
+            std::vector<std::uint8_t> deviceBlob()
+            {
+                const Device& device = getDevice();
+
+                std::size_t bytes = 0;
+                EXPECT_EQ(
+                    vkGetPipelineCacheData(device.getHandle(), device.getPipelineCache(), &bytes, nullptr), VK_SUCCESS);
+
+                std::vector<std::uint8_t> blob(bytes);
+                EXPECT_EQ(vkGetPipelineCacheData(device.getHandle(), device.getPipelineCache(), &bytes, blob.data()),
+                    VK_SUCCESS);
+
+                return blob;
+            }
+
+            const VkPhysicalDeviceProperties& deviceProperties()
+            {
+                return getDevice().getPhysicalDevice().getProperties().mProperties2.properties;
+            }
         };
 
         /// The device has a cache, and what it writes is what the loader will take back.
@@ -31,29 +52,21 @@ namespace Rtx
         /// would come back in.
         TEST_F(RtxPipelineCacheTest, whatTheDriverWritesIsWhatTheLoaderTakesBack)
         {
-            const Device& device = *mHarness->mDevice;
-            ASSERT_NE(device.getPipelineCache(), VK_NULL_HANDLE) << "the device made a pipeline cache";
+            ASSERT_NE(getDevice().getPipelineCache(), VK_NULL_HANDLE) << "the device made a pipeline cache";
 
-            std::size_t bytes = 0;
-            ASSERT_EQ(
-                vkGetPipelineCacheData(device.getHandle(), device.getPipelineCache(), &bytes, nullptr), VK_SUCCESS);
+            const std::vector<std::uint8_t> blob = deviceBlob();
 
             // Even a cache nothing was compiled into carries its header, which is all this reads.
-            ASSERT_GE(bytes, std::size_t{ 32 }) << "a blob is at least a header";
+            ASSERT_GE(blob.size(), std::size_t{ 32 }) << "a blob is at least a header";
 
-            std::vector<std::uint8_t> blob(bytes);
-            ASSERT_EQ(
-                vkGetPipelineCacheData(device.getHandle(), device.getPipelineCache(), &bytes, blob.data()), VK_SUCCESS);
-
-            const VkPhysicalDeviceProperties& properties
-                = device.getPhysicalDevice().getProperties().mProperties2.properties;
-            EXPECT_TRUE(PipelineCache::accepts(blob, properties)) << "this driver's own blob";
+            EXPECT_TRUE(PipelineCache::accepts(blob, deviceProperties())) << "this driver's own blob";
         }
 
-        /// And it refuses what another machine wrote, or what a dead process left half written.
+        /// And it refuses what another machine wrote, what a dead process left half written, and
+        /// what has grown past keeping.
         ///
         /// **The negative leg, because a check that accepted everything would pass the one above.**
-        /// Each of these is a real file that could turn up in a shared temporary directory: a blob
+        /// The first three are real files that could turn up in a shared temporary directory: a blob
         /// from the other card in a two-card machine, one from before a driver update, and the tail
         /// end of a write that never finished.
         ///
@@ -62,18 +75,15 @@ namespace Rtx
         /// test goes green. These are the numbers the specification gives for
         /// `VkPipelineCacheHeaderVersionOne`: the vendor at eight, the UUID at sixteen, and
         /// thirty-two bytes of header in all.
-        TEST_F(RtxPipelineCacheTest, aBlobFromSomewhereElseIsRefused)
+        ///
+        /// **The last one is the leg the driver has no opinion about.** A blob this driver wrote is
+        /// one it will read back however large it has grown, and it grows by a build's worth of
+        /// pipelines at every shader edit — so that header is the device's own, and the size is the
+        /// only thing left to refuse it for.
+        TEST_F(RtxPipelineCacheTest, aBlobThisRunWillNotSeedFromIsRefused)
         {
-            const Device& device = *mHarness->mDevice;
-            const VkPhysicalDeviceProperties& properties
-                = device.getPhysicalDevice().getProperties().mProperties2.properties;
-
-            std::size_t bytes = 0;
-            ASSERT_EQ(
-                vkGetPipelineCacheData(device.getHandle(), device.getPipelineCache(), &bytes, nullptr), VK_SUCCESS);
-            std::vector<std::uint8_t> blob(bytes);
-            ASSERT_EQ(
-                vkGetPipelineCacheData(device.getHandle(), device.getPipelineCache(), &bytes, blob.data()), VK_SUCCESS);
+            const std::vector<std::uint8_t> blob = deviceBlob();
+            const VkPhysicalDeviceProperties& properties = deviceProperties();
             ASSERT_TRUE(PipelineCache::accepts(blob, properties));
 
             // Another vendor's, at byte eight of the header.
@@ -89,6 +99,13 @@ namespace Rtx
             // And a write that stopped part way through the header itself.
             EXPECT_FALSE(PipelineCache::accepts(std::span(blob).first(31), properties)) << "a torn header";
             EXPECT_FALSE(PipelineCache::accepts({}, properties)) << "nothing at all";
+
+            std::vector<std::uint8_t> grown(PipelineCache::sMostBytes + 1, 0);
+            std::copy(blob.begin(), blob.end(), grown.begin());
+            EXPECT_FALSE(PipelineCache::accepts(grown, properties)) << "one byte past what is kept";
+
+            grown.resize(PipelineCache::sMostBytes);
+            EXPECT_TRUE(PipelineCache::accepts(grown, properties)) << "exactly what is kept";
         }
     }
 }

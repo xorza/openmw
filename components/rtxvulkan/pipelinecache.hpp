@@ -43,13 +43,23 @@ namespace Rtx
         /// "no cache" — so a caller passes this without asking whether it worked.
         VkPipelineCache getHandle() const { return mHandle; }
 
-        /// Whether a stored blob is one this driver wrote and can therefore read back.
+        /// The most a blob may hold before a run leaves it behind and starts one again.
+        ///
+        /// **The driver evicts nothing, so a kept file is every pipeline this machine ever
+        /// compiled.** One build's own set is about twenty megabytes here, and every shader edit
+        /// adds another set to what the next run loads and writes back — which reached 3.9 GiB, in
+        /// a temporary directory that is RAM. Starting again costs the one cold compile measured
+        /// above, four seconds against two, about once a dozen edits.
+        static constexpr std::size_t sMostBytes = std::size_t{ 256 } << 20;
+
+        /// Whether a stored blob is one this driver wrote, and one small enough to go on keeping.
         ///
         /// **Checked here as well as by the driver.** Handing a blob to `vkCreatePipelineCache` is
         /// handing it untrusted data — the file sits in a world-writable directory and may be a
         /// truncated write from a process that died — and while the specification requires the
         /// implementation to validate the header, four comparisons are cheaper than relying on every
-        /// driver to have got that right.
+        /// driver to have got that right. The driver has no opinion at all about the second half:
+        /// a blob past `sMostBytes` is refused here and nowhere else.
         ///
         /// Public because it is the one part of this worth testing without a file: an offset off by
         /// four would reject every blob the driver ever wrote, and the only symptom would be a cache
