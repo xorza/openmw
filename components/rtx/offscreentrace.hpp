@@ -13,6 +13,7 @@
 #include "frameimage.hpp"
 #include "renderer.hpp"
 #include "sceneuploader.hpp"
+#include "traversals.hpp"
 
 namespace osg
 {
@@ -30,7 +31,6 @@ namespace Rtx
     class PoseUpdate;
     class SceneDesc;
     class SceneExtractor;
-    class Traversals;
 
     /// One picture traced from somewhere other than the eye: an inventory doll, a map tile.
     ///
@@ -192,7 +192,7 @@ namespace Rtx
         osg::ref_ptr<osg::FrameStamp> mPoseStamp;
 
         /// Where the pick's traversal numbers come from. Used only where the caller named none.
-        std::unique_ptr<Traversals> mOwnTraversals;
+        Traversals mOwnTraversals;
         Traversals& mTraversals;
 
         /// **A doll takes the same three branches a cell does.** A race-creation slider drag redraws

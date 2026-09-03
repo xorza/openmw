@@ -636,15 +636,15 @@ namespace Rtx
         held.mTextures->drop(textures, mRing.recording().mGraveyard);
     }
 
-    bool VulkanRenderer::recordPlacement(const SkinPass& skin, ViewScene& held, const SceneDesc& scene,
-        VkCommandBuffer commands, const std::uint32_t slot, GpuTimer* const timer, Graveyard& graveyard)
+    bool VulkanRenderer::recordPlacement(
+        const SkinPass& skin, ViewScene& held, const SceneDesc& scene, const Placing& placing)
     {
         // **What the scene let go of, given back here.** Walking away from a ring frees its meshes
         // and nothing arrives to take them over until the walk reaches the far side of the next one,
         // so a frame that only places is the one that must not hold their structures. Already done
         // where `extendScene` came through, and asking twice costs two comparisons a slot.
-        held.mAcceleration->release(scene.getFreedMeshes(), graveyard);
-        held.mMicromaps->release(scene.getFreedMeshes(), graveyard);
+        held.mAcceleration->release(scene.getFreedMeshes(), placing.mGraveyard);
+        held.mMicromaps->release(scene.getFreedMeshes(), placing.mGraveyard);
 
         // A material rewritten under the micromap baked against it is the one thing a placement
         // cannot carry, and `SceneMicromaps::check` says why it is a throw and not a rebuild.
@@ -659,11 +659,11 @@ namespace Rtx
         // **The pose first, because the refit reads it.** Every skinned body and morphed face this
         // copy owes is computed into it here, and the barrier the pass ends in is what the refit
         // and the trace wait on.
-        const bool posed = skin.record(commands, scene, slot, *held.mSkinTables, held.mAcceleration->getPositions(),
-            held.mBuffers->getNormals(), timer);
+        const bool posed = skin.record(placing.mCommands, scene, placing.mSlot, *held.mSkinTables,
+            held.mAcceleration->getPositions(), held.mBuffers->getNormals(), placing.mTimer);
 
-        const bool built = held.mAcceleration->place(
-            commands, scene, held.mRecords, held.mChangedRecords, slot, *held.mMicromaps, timer, graveyard);
+        const bool built
+            = held.mAcceleration->place(scene, held.mRecords, held.mChangedRecords, *held.mMicromaps, placing);
 
         // **Nothing to report, because nothing here is recorded.** The tables are host-visible and
         // this writes them; what the trace reads of them is made visible by the submit that follows,
@@ -672,7 +672,7 @@ namespace Rtx
         // **Only what a moving world changed**, which is the instance rows and the lights.
         // Rebuilding all of it was measured at twenty to twenty-seven milliseconds on a nine-by-nine
         // region and was the largest single cost in the frame.
-        held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, slot, graveyard);
+        held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, placing.mSlot, placing.mGraveyard);
 
         return posed || built;
     }
@@ -689,7 +689,7 @@ namespace Rtx
         {
             Graveyard& graveyard = mRing.recording().mGraveyard;
             mPool.submitAndWait([&](VkCommandBuffer commands) {
-                recordPlacement(mSkinPass, held, scene, commands, 0, nullptr, graveyard);
+                recordPlacement(mSkinPass, held, scene, Placing{ .mCommands = commands, .mGraveyard = graveyard });
             });
             return;
         }
@@ -720,7 +720,13 @@ namespace Rtx
         const VkCommandBuffer placement = mRing.takePlaceCommands(frame);
         mPool.begin(placement);
 
-        if (recordPlacement(mSkinPass, held, scene, placement, into, &frame.mTimer, frame.mGraveyard))
+        if (recordPlacement(mSkinPass, held, scene,
+                Placing{
+                    .mCommands = placement,
+                    .mSlot = into,
+                    .mTimer = &frame.mTimer,
+                    .mGraveyard = frame.mGraveyard,
+                }))
             mPool.submit(placement, VK_NULL_HANDLE, frame.mGraveyard);
         else
             checkVk(vkEndCommandBuffer(placement), "vkEndCommandBuffer");
@@ -1057,8 +1063,13 @@ namespace Rtx
         // **The sprite tiles are screen space, so they belong to the frame and not to the scene.**
         // Binned on the device, into the copy this frame traces — which the frame before last is
         // done with — and ahead of the trace that reads them, in its own zone.
-        mWorld.mBuffers->binSprites(commands, mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
-            mWorldSlot, frame.mGraveyard, &timer);
+        mWorld.mBuffers->binSprites(mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
+            Placing{
+                .mCommands = commands,
+                .mSlot = mWorldSlot,
+                .mTimer = &timer,
+                .mGraveyard = frame.mGraveyard,
+            });
 
         mChannels->begin(commands);
         mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled, airLost, &timer);
@@ -1267,8 +1278,8 @@ namespace Rtx
             if (hasSea(camera))
                 mWaves.record(commands, camera.mTime);
 
-            traced.mBuffers->binSprites(commands, mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition, slot,
-                mRing.recording().mGraveyard, nullptr);
+            traced.mBuffers->binSprites(mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
+                Placing{ .mCommands = commands, .mSlot = slot, .mGraveyard = mRing.recording().mGraveyard });
 
             mViewChannels->begin(commands);
             mPass->record(commands, inputs, *mViewChannels, mRing.recording().mHitCount, camera, true, nullptr);

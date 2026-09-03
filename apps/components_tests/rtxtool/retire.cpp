@@ -47,7 +47,7 @@ namespace RtxTool
             kept.push_back(root);
 
             LoadedCells loaded;
-            readRegion(world, cell, *root, loaded, /*liveProps=*/false);
+            readRegion(RegionRequest{ world, cell, *root, loaded, /*liveProps=*/false });
             return extractor.extract(*root, osg::Matrixf::identity(), 0);
         }
 
@@ -72,8 +72,9 @@ namespace RtxTool
             const osg::ref_ptr<osg::Group> root = keepRoot(kept);
 
             LoadedCells loaded;
-            const CellLighting lit
-                = loadRegion(world, cell, *root, scene, extractor, loaded, "Clear", 0, 12.0f, false).mLighting;
+            const CellLighting lit = loadRegion(
+                RegionRequest{ world, cell, *root, loaded, false }, scene, extractor, SkyMoment{ "Clear", 0, 12.0f })
+                                         .mLighting;
             extractor.extract(*root, osg::Matrixf::identity(), 0);
 
             return Room{ .mRoot = root, .mLighting = lit };

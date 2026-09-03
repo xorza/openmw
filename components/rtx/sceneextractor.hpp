@@ -15,8 +15,10 @@
 #include "extractionstats.hpp"
 #include "materialresolver.hpp"
 #include "meshresolver.hpp"
+#include "mirrorpass.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
+#include "traversals.hpp"
 
 namespace osg
 {
@@ -46,33 +48,6 @@ namespace Terrain
 namespace Rtx
 {
     class MirrorTraversal;
-
-    /// The numbers mirror walks run at, and the rule that they only ever go up.
-    ///
-    /// **A state-set controller, an `osg::Sequence`, and — under the pick's own cull — both deforming
-    /// drawables refuse to run for a traversal number they have already seen.** So a walk's number
-    /// is not a label but a claim: this frame is newer than the last.
-    ///
-    /// This fork has two things that walk — the world, once a frame, and a traced view whenever its
-    /// subject changes — and they must not be two sequences. A subtree reached by both would be run
-    /// by whichever got there first and frozen for the other, and nothing states that no subtree is
-    /// shared: `NpcAnimation` merely happens to clone a `RigGeometry` per instance. One counter, and
-    /// the hazard cannot arise.
-    ///
-    /// **Not the frame number**, which a walk also carries and which means something else — which of
-    /// a `SceneUtil::LightSource`'s two buffers update has just written. A doll redrawn twice in one
-    /// frame needs two traversal numbers and one light buffer.
-    class Traversals
-    {
-    public:
-        /// The next number, greater than every number handed out before it.
-        unsigned int next() { return ++mLast; }
-
-    private:
-        /// **From one and not from zero.** Everything OSG poses starts at a traversal number of
-        /// zero, so a first walk saying zero is a walk that poses nothing.
-        unsigned int mLast = 0;
-    };
 
     /// What a walk of the scene graph cannot reach, offered to the walk that asks for it.
     ///
@@ -264,8 +239,7 @@ namespace Rtx
         /// Places one light. **The graph and not the content files**, because that is where a light
         /// that moves with the thing carrying it exists: a torch in an NPC's hand is no cell
         /// record, and neither is a lamp something picked up and put down.
-        void addLight(const SceneUtil::LightSource& source, const osg::NodePath& path, const osg::Matrixf& place,
-            double simulationTime, ExtractionStats& stats);
+        void addLight(const SceneUtil::LightSource& source, const osg::Matrixf& place, double simulationTime);
 
         /// Resolves one drawable and places it. The visitor's whole contract with this class.
         ///
@@ -281,7 +255,7 @@ namespace Rtx
         /// than to a caller — the visitor would only be asking the same question with less to
         /// answer it from.
         void addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
-            const osg::Matrixf& place, bool firstPerson, ExtractionStats& stats);
+            const osg::Matrixf& place, bool firstPerson);
 
         /// The state set a node's controllers write, or null where it has none.
         ///
@@ -344,20 +318,20 @@ namespace Rtx
         /// What the walk in progress was told it is placing. See `extract`.
         std::size_t mAnchor = 0;
 
-        /// Which sweep is current. Everything a walk resolves or places is stamped with it.
+        /// Which sweep is current, and where the walk in progress puts its counts.
         ///
-        /// **Declared before everything that borrows it**, which is every resolver below: each reads
-        /// the mirror's stamp rather than keeping a copy that could fall behind it.
-        std::uint64_t mEpoch = 0;
+        /// **Declared before everything that borrows it**, which is the walk and every resolver
+        /// below: each reads the mirror's own rather than keeping a copy that could fall behind it.
+        MirrorPass mPass;
 
         /// The drawables the walk met, and what poses the ones that deform.
-        MeshResolver mMeshes{ mScene, mEpoch };
+        MeshResolver mMeshes{ mScene, mPass };
 
         /// What the content says each surface is, and the textures those name.
-        MaterialResolver mMaterials{ mScene, mEpoch };
+        MaterialResolver mMaterials{ mScene, mPass };
 
         /// The particle systems the walk met, and the sprite textures they hold.
-        EmitterResolver mEmitters{ mScene, mEpoch };
+        EmitterResolver mEmitters{ mScene, mPass };
 
         /// How many placements this epoch's walks stamped, against how many the map holds.
         ///

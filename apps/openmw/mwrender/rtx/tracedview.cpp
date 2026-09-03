@@ -30,10 +30,11 @@ namespace MWRender
         /// **By value, and `Rtx::OffscreenTrace` neither copies nor moves.** Both returns are
         /// prvalues and so is the call, so guaranteed elision constructs it straight into the member
         /// — which is what lets the two constructors be the two kinds instead of a boolean.
-        Rtx::OffscreenTrace makeTrace(const OffscreenViewSpec& spec, RtxRenderer& owner, Rtx::Renderer& renderer)
+        Rtx::OffscreenTrace makeTrace(const OffscreenViewSpec& spec, RtxRenderer& owner)
         {
             const std::uint32_t width = static_cast<std::uint32_t>(spec.mWidth);
             const std::uint32_t height = static_cast<std::uint32_t>(spec.mHeight);
+            Rtx::Renderer& renderer = owner.getBackend();
 
             if (spec.mFromWorld)
                 return Rtx::OffscreenTrace(renderer, width, height);
@@ -42,10 +43,9 @@ namespace MWRender
         }
     }
 
-    TracedView::TracedView(const OffscreenViewSpec& spec, RtxRenderer& owner, Rtx::Renderer& renderer)
+    TracedView::TracedView(const OffscreenViewSpec& spec, RtxRenderer& owner)
         : mOwner(owner)
-        , mRenderer(renderer)
-        , mTrace(makeTrace(spec, owner, renderer))
+        , mTrace(makeTrace(spec, owner))
         , mWidth(spec.mWidth)
         , mHeight(spec.mHeight)
     {
@@ -137,7 +137,7 @@ namespace MWRender
         // **The whole texture and not the extent**, because the copy is what the global map paints
         // a cell from and a cell is the whole tile. The read is the only time a picture inside the
         // interface comes back to main memory, which is why it is asked for rather than always done.
-        mRenderer.readGuiTexture(mSlot, mPixels);
+        mOwner.getBackend().readGuiTexture(mSlot, mPixels);
         std::memcpy(mCopy->data(), mPixels.data(), std::min<std::size_t>(mPixels.size(), mCopy->getTotalSizeInBytes()));
 
         mCopyIsCurrent = true;

@@ -60,6 +60,7 @@ set(RTX_FILES
     meshresolver.cpp
     meshresolver.hpp
     mirroridentity.hpp
+    mirrorpass.hpp
     moonbuilder.cpp
     moonbuilder.hpp
     nodelibrary.hpp
@@ -113,6 +114,7 @@ set(RTX_FILES
     texturedata.hpp
     texturetable.cpp
     texturetable.hpp
+    traversals.hpp
     wavecascade.cpp
     wavecascade.hpp
     wavespectrum.cpp

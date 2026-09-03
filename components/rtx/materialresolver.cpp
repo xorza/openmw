@@ -140,13 +140,15 @@ namespace Rtx
             updater->setDefaults(entry->second.mStateSet);
         }
 
-        entry->second.mEpoch = mEpoch;
+        entry->second.mEpoch = mPass.mEpoch;
         updater->apply(entry->second.mStateSet, visitor);
         return entry->second.mStateSet;
     }
 
-    Index MaterialResolver::resolveTerrain(const Terrain::TerrainDrawable& terrain, ExtractionStats& stats)
+    Index MaterialResolver::resolveTerrain(const Terrain::TerrainDrawable& terrain)
     {
+        ExtractionStats& stats = mPass.getStats();
+
         const Terrain::TerrainDrawable::PassVector& passes = terrain.getPasses();
         if (passes.empty())
             return sNoIndex;
@@ -158,7 +160,7 @@ namespace Rtx
         if (known != mMaterials.end())
         {
             ++stats.mMaterialsReused;
-            known->second.mEpoch = mEpoch;
+            known->second.mEpoch = mPass.mEpoch;
             return known->second.mIndex;
         }
 
@@ -177,7 +179,7 @@ namespace Rtx
             }
 
             MaterialLayer layer;
-            layer.mDiffuse = takeTexture(described->getTexture(Surface::TextureRole::Diffuse), stats);
+            layer.mDiffuse = takeTexture(described->getTexture(Surface::TextureRole::Diffuse));
             if (layer.mDiffuse == sNoIndex)
                 continue;
 
@@ -228,13 +230,15 @@ namespace Rtx
         }
 
         const Index index = mScene.addMaterial(material);
-        mMaterials.emplace(identity, Known{ .mIndex = index, .mEpoch = mEpoch });
+        mMaterials.emplace(identity, Known{ .mIndex = index, .mEpoch = mPass.mEpoch });
         ++stats.mMaterialsAdded;
         return index;
     }
 
-    Index MaterialResolver::resolveWater(ExtractionStats& stats)
+    Index MaterialResolver::resolveWater()
     {
+        ExtractionStats& stats = mPass.getStats();
+
         // **One material for the sea, and it is keyed on nothing.** Water has no albedo — what it
         // looks like is what is behind and above it, worked out from the world position — so there
         // is nothing on a state set worth reading, and reading one is actively wrong twice over.
@@ -247,18 +251,20 @@ namespace Rtx
         if (mWater != sNoIndex)
         {
             ++stats.mMaterialsReused;
-            mWaterEpoch = mEpoch;
+            mWaterEpoch = mPass.mEpoch;
             return mWater;
         }
 
         mWater = mScene.addMaterial(Material{ .mKind = MaterialKind::Water });
-        mWaterEpoch = mEpoch;
+        mWaterEpoch = mPass.mEpoch;
         ++stats.mMaterialsAdded;
         return mWater;
     }
 
-    Index MaterialResolver::resolve(std::span<const Shading> shading, ExtractionStats& stats)
+    Index MaterialResolver::resolve(std::span<const Shading> shading)
     {
+        ExtractionStats& stats = mPass.getStats();
+
         if (shading.empty())
             return sNoIndex;
 
@@ -272,25 +278,27 @@ namespace Rtx
         if (known != mMaterials.end())
         {
             ++stats.mMaterialsReused;
-            known->second.mEpoch = mEpoch;
+            known->second.mEpoch = mPass.mEpoch;
 
             // **Read again, because a controller rewrote it since the last frame.** The state set
             // is the same object — that is what lets the material keep its slot and every placement
             // standing on it stay where it is — and everything inside it is this frame's.
             if (own.mAnimated)
-                mScene.setMaterial(known->second.mIndex, readMaterial(shading, stats));
+                mScene.setMaterial(known->second.mIndex, readMaterial(shading));
 
             return known->second.mIndex;
         }
 
-        const Index index = mScene.addMaterial(readMaterial(shading, stats));
-        mMaterials.emplace(own.mStateSet, Known{ .mIndex = index, .mEpoch = mEpoch });
+        const Index index = mScene.addMaterial(readMaterial(shading));
+        mMaterials.emplace(own.mStateSet, Known{ .mIndex = index, .mEpoch = mPass.mEpoch });
         ++stats.mMaterialsAdded;
         return index;
     }
 
-    Index MaterialResolver::takeTexture(const osg::Image* image, ExtractionStats& stats)
+    Index MaterialResolver::takeTexture(const osg::Image* image)
     {
+        ExtractionStats& stats = mPass.getStats();
+
         if (image == nullptr || image->getFileName().empty())
             return sNoIndex;
 
@@ -301,7 +309,7 @@ namespace Rtx
 
         if (const auto known = mTextureOf.find(image); known != mTextureOf.end())
         {
-            known->second.mEpoch = mEpoch;
+            known->second.mEpoch = mPass.mEpoch;
             return known->second.mIndex;
         }
 
@@ -310,13 +318,15 @@ namespace Rtx
         // **Held, because this entry is the reference.** `mTextureOf` says why a slot the map names
         // has to be one nothing else can hand out.
         mScene.holdTexture(index);
-        mTextureOf.emplace(image, Known{ .mIndex = index, .mEpoch = mEpoch });
+        mTextureOf.emplace(image, Known{ .mIndex = index, .mEpoch = mPass.mEpoch });
 
         return index;
     }
 
-    Material MaterialResolver::readMaterial(std::span<const Shading> shading, ExtractionStats& stats)
+    Material MaterialResolver::readMaterial(std::span<const Shading> shading)
     {
+        ExtractionStats& stats = mPass.getStats();
+
         Material material;
 
         // Before the description, because a surface nothing described is still one a controller
@@ -330,14 +340,14 @@ namespace Rtx
             return material;
         }
 
-        material.mDiffuse = takeTexture(described->getTexture(Surface::TextureRole::Diffuse), stats);
-        material.mEmissive = takeTexture(described->getTexture(Surface::TextureRole::Emissive), stats);
+        material.mDiffuse = takeTexture(described->getTexture(Surface::TextureRole::Diffuse));
+        material.mEmissive = takeTexture(described->getTexture(Surface::TextureRole::Emissive));
 
         // The two normal roles differ in what the alpha channel holds, and parallax is a rasterizer
         // feature this renderer does not have: to a ray tracer they are the same texture.
-        material.mNormal = takeTexture(described->getTexture(Surface::TextureRole::Normal), stats);
+        material.mNormal = takeTexture(described->getTexture(Surface::TextureRole::Normal));
         if (material.mNormal == sNoIndex)
-            material.mNormal = takeTexture(described->getTexture(Surface::TextureRole::NormalHeight), stats);
+            material.mNormal = takeTexture(described->getTexture(Surface::TextureRole::NormalHeight));
 
         material.mAlphaRef = described->mAlphaRef;
         switch (described->mAlphaMode)
@@ -372,13 +382,13 @@ namespace Rtx
 
     std::uint32_t MaterialResolver::retire(std::vector<Index>& live)
     {
-        std::uint32_t went = sweep(mMaterials, mEpoch, live);
+        std::uint32_t went = sweep(mMaterials, mPass.mEpoch, live);
 
         // The sea's own, which is in no identity map because it is keyed on nothing. It survives a
         // frame that met water and goes with the last cell that had any.
         if (mWater != sNoIndex)
         {
-            if (mWaterEpoch == mEpoch)
+            if (mWaterEpoch == mPass.mEpoch)
                 live.push_back(mWater);
             else
             {
@@ -394,7 +404,7 @@ namespace Rtx
         // they arrived — and the material's own reference is what keeps their slots. What settles
         // here is the animated materials, which are the ones the map exists for.
         std::erase_if(mTextureOf, [this](const auto& entry) {
-            if (entry.second.mEpoch == mEpoch)
+            if (entry.second.mEpoch == mPass.mEpoch)
                 return false;
 
             mScene.dropTexture(entry.second.mIndex);
@@ -403,7 +413,7 @@ namespace Rtx
 
         // What `animate` keeps. Swept with everything else because it is keyed on a node the graph
         // can drop, and because a state set held past its node holds the textures in it alive too.
-        std::erase_if(mAnimated, [this](const auto& entry) { return entry.second.mEpoch != mEpoch; });
+        std::erase_if(mAnimated, [this](const auto& entry) { return entry.second.mEpoch != mPass.mEpoch; });
 
         return went;
     }

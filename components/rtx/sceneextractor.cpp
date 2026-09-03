@@ -104,8 +104,7 @@ namespace Rtx
         explicit MirrorTraversal(SceneExtractor& extractor);
 
         /// Points the walk at a root, at where it stands, and at the frame it is mirroring.
-        void begin(const osg::Matrixf& root, std::size_t frame, unsigned int traversal, std::size_t identity,
-            ExtractionStats& stats);
+        void begin(const osg::Matrixf& root, std::size_t frame, unsigned int traversal, std::size_t identity);
 
         osg::FrameStamp& getStamp() { return *mStamp; }
 
@@ -177,7 +176,6 @@ namespace Rtx
 
         /// The last number this walk posed at, so a caller handing back a stale one is caught.
         unsigned int mTraversal = 0;
-        ExtractionStats* mStats = nullptr;
 
         /// The local-to-world of the node being visited, above `mRoot`.
         osg::Matrix mHere;
@@ -200,8 +198,8 @@ namespace Rtx
         mSequenceClock.setFrameStamp(mStamp);
     }
 
-    void MirrorTraversal::begin(const osg::Matrixf& root, std::size_t frame, unsigned int traversal,
-        std::size_t identity, ExtractionStats& stats)
+    void MirrorTraversal::begin(
+        const osg::Matrixf& root, std::size_t frame, unsigned int traversal, std::size_t identity)
     {
         // **The whole of what a traversal number promises.** A state-set controller and an
         // `osg::Sequence` each keep the last number they ran at and do nothing for one they have
@@ -212,7 +210,6 @@ namespace Rtx
 
         mRoot = root;
         mFrame = frame;
-        mStats = &stats;
         mHere = osg::Matrix();
         mPathHash = identity;
         mShading.clear();
@@ -261,7 +258,7 @@ namespace Rtx
         }
         else if (auto* source = isFrom(node, "SceneUtil") ? dynamic_cast<SceneUtil::LightSource*>(&node) : nullptr)
         {
-            mExtractor.addLight(*source, getNodePath(), placed(), mStamp->getSimulationTime(), *mStats);
+            mExtractor.addLight(*source, placed(), mStamp->getSimulationTime());
         }
         else if (stepParticles(node))
         {
@@ -481,8 +478,7 @@ namespace Rtx
         if (const osg::StateSet* own = drawable.getStateSet())
             pushShading(*own, false);
 
-        mExtractor.addDrawable(
-            drawable, identityWith(mPathHash, &drawable), mShading, placed(), mFirstPerson > 0, *mStats);
+        mExtractor.addDrawable(drawable, identityWith(mPathHash, &drawable), mShading, placed(), mFirstPerson > 0);
 
         mShading.resize(held);
     }
@@ -536,8 +532,9 @@ namespace Rtx
     {
         ExtractionStats stats;
         mAnchor = anchor;
+        mPass.mStats = &stats;
 
-        mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor), stats);
+        mWalk->begin(transform, frame, mTraversals.next(), identitySeed(anchor));
         mWalk->setTraversalMask(mTraversalMask);
 
         // **Non-const because the walk writes.** It poses every actor it reaches and it runs every
@@ -554,7 +551,11 @@ namespace Rtx
         // **After the whole walk, including whatever the residency brought in.** Everything under it
         // has been stepped by now, so what the sprites are read from is a settled world rather than
         // one that depends on where an updater happened to sit among its siblings.
-        mEmitters.flush(stats);
+        mEmitters.flush();
+
+        // So that a resolver reached outside a walk fails where it is, rather than counting into a
+        // report that has gone.
+        mPass.mStats = nullptr;
 
         return stats;
     }
@@ -582,7 +583,7 @@ namespace Rtx
         if (mPlacementsReached < mPlacements.size())
         {
             std::erase_if(mPlacements, [this](const auto& entry) {
-                if (entry.second.mEpoch == mEpoch)
+                if (entry.second.mEpoch == mPass.mEpoch)
                     return false;
 
                 mScene.dropInstance(entry.second.mIndex);
@@ -610,7 +611,7 @@ namespace Rtx
         // **After the sweep and not before it**, so that the walk which fills the next epoch is the
         // one this is measured against. Every entry that survived is still carrying the old stamp
         // and would be dropped on the spot otherwise.
-        ++mEpoch;
+        ++mPass.mEpoch;
         mPlacementsReached = 0;
 
         return went;
@@ -621,8 +622,8 @@ namespace Rtx
         return mMaterials.animate(node, mWalk.get());
     }
 
-    void SceneExtractor::addLight(const SceneUtil::LightSource& source, const osg::NodePath& path,
-        const osg::Matrixf& place, double simulationTime, ExtractionStats& stats)
+    void SceneExtractor::addLight(
+        const SceneUtil::LightSource& source, const osg::Matrixf& place, double simulationTime)
     {
         // **The recorded colours and this frame's scalars, and never the colours the rasterizer
         // draws from.** `lightColour` says why the two are not the same light: a scale of a
@@ -639,12 +640,14 @@ namespace Rtx
             return;
 
         mScene.addLight(*made);
-        ++stats.mLights;
+        ++mPass.getStats().mLights;
     }
 
     void SceneExtractor::addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
-        const osg::Matrixf& place, bool firstPerson, ExtractionStats& stats)
+        const osg::Matrixf& place, bool firstPerson)
     {
+        ExtractionStats& stats = mPass.getStats();
+
         // Asked before the geometry, because a particle system is an `osg::Drawable` with no
         // triangles in it at all: its sprites *are* the drawing, and they leave here as a run of
         // discs rather than as a mesh anything could build a structure over.
@@ -658,7 +661,7 @@ namespace Rtx
         const bool couldEmit = isFrom(drawable, "osgParticle") || isFrom(drawable, "NifOsg");
         if (const auto* particles = couldEmit ? dynamic_cast<const osgParticle::ParticleSystem*>(&drawable) : nullptr)
         {
-            mEmitters.add(*particles, shading, place, stats);
+            mEmitters.add(*particles, shading, place);
             return;
         }
 
@@ -684,13 +687,13 @@ namespace Rtx
         // against that one, and the two counts past the mesh are what say the loader keeps it so.
         Index material;
         if (water)
-            material = mMaterials.resolveWater(stats);
+            material = mMaterials.resolveWater();
         else if (terrain != nullptr)
-            material = mMaterials.resolveTerrain(*terrain, stats);
+            material = mMaterials.resolveTerrain(*terrain);
         else
-            material = mMaterials.resolve(shading, stats);
+            material = mMaterials.resolve(shading);
 
-        const Index mesh = mMeshes.resolve(drawable, read, material, stats);
+        const Index mesh = mMeshes.resolve(drawable, read, material);
         if (mesh == sNoIndex)
             return;
 
@@ -728,17 +731,17 @@ namespace Rtx
                 .mFirstPerson = firstPerson,
             });
 
-            mPlacements.emplace(who, Known{ .mIndex = slot, .mEpoch = mEpoch });
+            mPlacements.emplace(who, Known{ .mIndex = slot, .mEpoch = mPass.mEpoch });
             ++mPlacementsReached;
         }
         else
         {
             // Counted on the way to the stamp rather than by the stamp, so a placement two walks of
             // one epoch both reach is one entry and counts once.
-            if (held->second.mEpoch != mEpoch)
+            if (held->second.mEpoch != mPass.mEpoch)
                 ++mPlacementsReached;
 
-            held->second.mEpoch = mEpoch;
+            held->second.mEpoch = mPass.mEpoch;
             mScene.moveInstance(held->second.mIndex, place);
             mScene.fadeInstance(held->second.mIndex, fade);
         }

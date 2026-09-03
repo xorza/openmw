@@ -10,6 +10,7 @@
 
 #include "index.hpp"
 #include "mirroridentity.hpp"
+#include "mirrorpass.hpp"
 #include "scenedesc.hpp"
 
 namespace osg
@@ -31,7 +32,6 @@ namespace Terrain
 
 namespace Rtx
 {
-    struct ExtractionStats;
     struct Shading;
 
     /// Turns what the content says a surface is into the scene's materials, and keeps the textures
@@ -49,22 +49,23 @@ namespace Rtx
     class MaterialResolver
     {
     public:
-        /// @param epoch the mirror's sweep stamp, read at every call. Borrowed, so that the mirror
-        ///        and everything resolving into it cannot come to hold two answers.
-        MaterialResolver(SceneDesc& scene, const std::uint64_t& epoch)
+        /// @param pass the walk in progress: its sweep stamp and its counts, read at every call.
+        ///        Borrowed, so that the mirror and everything resolving into it cannot come to hold
+        ///        two answers.
+        MaterialResolver(SceneDesc& scene, const MirrorPass& pass)
             : mScene(scene)
-            , mEpoch(epoch)
+            , mPass(pass)
         {
         }
 
         /// The material slot for the chain of state sets in force at a drawable.
-        Index resolve(std::span<const Shading> shading, ExtractionStats& stats);
+        Index resolve(std::span<const Shading> shading);
 
         /// The same for a terrain chunk, whose material is on the drawable rather than on the graph.
-        Index resolveTerrain(const Terrain::TerrainDrawable& terrain, ExtractionStats& stats);
+        Index resolveTerrain(const Terrain::TerrainDrawable& terrain);
 
         /// The sea's own, which is keyed on nothing because a node mask is what identifies it.
-        Index resolveWater(ExtractionStats& stats);
+        Index resolveWater();
 
         /// Runs the state-set controller on `node`, if it carries one, and hands back what it wrote.
         ///
@@ -80,10 +81,10 @@ namespace Rtx
 
     private:
         /// Reads a whole material off the chain, which is what an arrival and a rewrite both want.
-        Material readMaterial(std::span<const Shading> shading, ExtractionStats& stats);
+        Material readMaterial(std::span<const Shading> shading);
 
         /// The scene's slot for one image, held for as long as this names it.
-        Index takeTexture(const osg::Image* image, ExtractionStats& stats);
+        Index takeTexture(const osg::Image* image);
 
         /// A node's controllers and the state set they write into, kept so the address is the same
         /// one next frame. See `animate`.
@@ -94,7 +95,7 @@ namespace Rtx
         };
 
         SceneDesc& mScene;
-        const std::uint64_t& mEpoch;
+        const MirrorPass& mPass;
 
         /// Which state set each material came from. Owning, so that a state set cannot go while the
         /// entry stands: see `ByAddress`.

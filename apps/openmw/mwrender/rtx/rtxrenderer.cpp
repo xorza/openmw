@@ -383,7 +383,7 @@ namespace MWRender
 
     std::unique_ptr<OffscreenView> RtxRenderer::createOffscreenView(const OffscreenViewSpec& spec)
     {
-        return std::make_unique<TracedView>(spec, *this, *mRenderer);
+        return std::make_unique<TracedView>(spec, *this);
     }
 
     void RtxRenderer::setVSync(SDLUtil::VSyncMode mode)

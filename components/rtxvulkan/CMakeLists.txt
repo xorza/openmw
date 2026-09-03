@@ -191,6 +191,7 @@ set(RTX_VULKAN_FILES
     owned.hpp
     physicaldevice.cpp
     physicaldevice.hpp
+    placing.hpp
     pipelinecache.cpp
     pipelinecache.hpp
     pipelinelayout.cpp

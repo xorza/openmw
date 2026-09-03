@@ -535,13 +535,12 @@ namespace Rtx
         closeZone(timer, commands);
     }
 
-    bool SceneAcceleration::place(VkCommandBuffer commands, const SceneDesc& scene,
-        std::span<const InstanceRecord> records, std::span<const Index> changed, const std::uint32_t slot,
-        const SceneMicromaps& micromaps, GpuTimer* timer, Graveyard& graveyard)
+    bool SceneAcceleration::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
+        std::span<const Index> changed, const SceneMicromaps& micromaps, const Placing& placing)
     {
-        assert(slot < mSlots && "a frame slot this scene has no copy of the rows for");
+        assert(placing.mSlot < mSlots && "a frame slot this scene has no copy of the rows for");
 
-        prepareRefit(scene, slot, micromaps, graveyard);
+        prepareRefit(scene, placing.mSlot, micromaps, placing.mGraveyard);
 
         // **What this copy owes, and not what the scene moved.** The top level is built from this
         // copy of the rows, so what decides whether it has to be built again is whether those rows
@@ -551,19 +550,19 @@ namespace Rtx
         // fence on every frame of a standing camera. A refit alone still rebuilds it, because a top
         // level caches the bounds of what it names.
         writeRows(records, changed);
-        if (!mRowTable.owes(slot) && mRefitBuilds.empty())
+        if (!mRowTable.owes(placing.mSlot) && mRefitBuilds.empty())
             return false;
 
-        prepareTopLevel(scene, slot, graveyard);
+        prepareTopLevel(scene, placing.mSlot, placing.mGraveyard);
 
         // The barrier between the refit and the top level is what the fence used to be: the top
         // level is built over structures the refit has just rewritten, which is a dependency inside
         // a command buffer rather than a reason to go round the driver twice.
-        barrierBeforeBuild(commands);
+        barrierBeforeBuild(placing.mCommands);
         if (!mRefitBuilds.empty())
-            recordRefit(commands, timer);
+            recordRefit(placing.mCommands, placing.mTimer);
 
-        recordTopLevel(commands, timer);
+        recordTopLevel(placing.mCommands, placing.mTimer);
         return true;
     }
 

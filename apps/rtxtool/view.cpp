@@ -191,9 +191,10 @@ namespace RtxTool
         /// run the sun round the clock without a frame being dropped.
         const auto moveSky = [&] {
             if (turningInto.has_value())
-                staged.setSky(request.mFrame.mWeather, *turningInto, turned, clock.getDay(), clock.getHour());
+                staged.setSky(
+                    SkyMoment{ request.mFrame.mWeather, clock.getDay(), clock.getHour() }, *turningInto, turned);
             else
-                staged.setSky(request.mFrame.mWeather, clock.getDay(), clock.getHour());
+                staged.setSky(SkyMoment{ request.mFrame.mWeather, clock.getDay(), clock.getHour() });
 
             request.mLighting = staged.getLighting();
         };

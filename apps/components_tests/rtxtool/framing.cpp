@@ -148,7 +148,7 @@ namespace RtxTool
             // One for the whole test, as a window keeps one for its whole run.
             HeldWeathers held;
 
-            relight(outdoors, held, "Clear", 0, 12.0f);
+            relight(outdoors, held, SkyMoment{ "Clear", 0, 12.0f });
             EXPECT_EQ(outdoors.mWeather, Rtx::Shaders::WEATHER_CLEAR);
             EXPECT_EQ(outdoors.mCloudBlend, 0.0f) << "a settled sky has crossed nothing";
             EXPECT_EQ(outdoors.mDaylight.mSkyZenith, Rtx::makeDaylight("Clear", 12.0f, landReach()).mSkyZenith);
@@ -160,14 +160,14 @@ namespace RtxTool
             // absent.** A content file records a night colour for the sun and the engine reads it
             // straight off the ramp, so a harness that switched the sun off at midnight lit its
             // nights differently from the game.
-            relight(outdoors, held, "Clear", 0, 0.0f);
+            relight(outdoors, held, SkyMoment{ "Clear", 0, 0.0f });
             EXPECT_EQ(
                 outdoors.mDaylight.mSun.mIrradiance, Rtx::makeDaylight("Clear", 0.0f, landReach()).mSun.mIrradiance);
             EXPECT_NE(outdoors.mDaylight.mSun.mIrradiance, noon) << "midnight is not noon";
             EXPECT_EQ(outdoors.mWeather, Rtx::Shaders::WEATHER_CLEAR) << "the hour is not the weather";
 
             // And another weather is another sky, at the same hour.
-            relight(outdoors, held, "Overcast", 5, 12.0f);
+            relight(outdoors, held, SkyMoment{ "Overcast", 5, 12.0f });
             EXPECT_EQ(outdoors.mWeather, Rtx::Shaders::WEATHER_OVERCAST);
             EXPECT_EQ(outdoors.mDay, 5);
             EXPECT_FLOAT_EQ(outdoors.mCloudSpeed, Sky::cloudSpeed("Overcast"));
@@ -187,7 +187,7 @@ namespace RtxTool
             // glare, the deck's speed and its share of a transition — is read into `HeldWeathers`
             // once. What is left per call is arithmetic over the hour.
             const std::size_t before = Rtx::Testing::getAllocationCount();
-            relight(outdoors, held, "Overcast", 5, 13.0f);
+            relight(outdoors, held, SkyMoment{ "Overcast", 5, 13.0f });
             const std::size_t after = Rtx::Testing::getAllocationCount();
 
             EXPECT_EQ(after, before) << after - before << " allocations to move the clock an hour";
@@ -198,7 +198,7 @@ namespace RtxTool
             // game. The engine mixes the results — every colour, and the fog's recorded depth before
             // it becomes an extinction — so halfway is halfway on each of them.
             CellLighting turning{ .mWaterLevel = -32.0f, .mOutdoors = true };
-            relight(turning, held, "Clear", "Overcast", 0.5f, 0, 12.0f);
+            relight(turning, held, SkyMoment{ "Clear", 0, 12.0f }, "Overcast", 0.5f);
 
             EXPECT_EQ(turning.mWeather, Rtx::Shaders::WEATHER_CLEAR);
             EXPECT_EQ(turning.mNextWeather, Rtx::Shaders::WEATHER_OVERCAST);
@@ -232,9 +232,9 @@ namespace RtxTool
 
             // Either end of the mix is the weather at that end, exactly.
             CellLighting ends{ .mWaterLevel = -32.0f, .mOutdoors = true };
-            relight(ends, held, "Clear", "Overcast", 0.0f, 0, 12.0f);
+            relight(ends, held, SkyMoment{ "Clear", 0, 12.0f }, "Overcast", 0.0f);
             EXPECT_EQ(ends.mDaylight.mSkyZenith, clear);
-            relight(ends, held, "Clear", "Overcast", 1.0f, 0, 12.0f);
+            relight(ends, held, SkyMoment{ "Clear", 0, 12.0f }, "Overcast", 1.0f);
             EXPECT_EQ(ends.mDaylight.mSkyZenith, overcast);
 
             // **And the deck crosses on a curve of its own, which is what the harness used to skip.**
@@ -249,7 +249,7 @@ namespace RtxTool
             const CellLighting room{ .mWaterLevel = -8.0f,
                 .mDaylight = Rtx::Daylight{ .mAmbient = osg::Vec3f(0.1f, 0.2f, 0.3f) } };
             CellLighting moved = room;
-            relight(moved, held, "Overcast", 5, 3.0f);
+            relight(moved, held, SkyMoment{ "Overcast", 5, 3.0f });
             EXPECT_EQ(moved.mDaylight.mAmbient, room.mDaylight.mAmbient);
             EXPECT_EQ(moved.mWaterLevel, room.mWaterLevel);
             EXPECT_EQ(moved.mWeather, room.mWeather);

@@ -13,6 +13,7 @@
 
 #include "index.hpp"
 #include "mirroridentity.hpp"
+#include "mirrorpass.hpp"
 #include "scenedesc.hpp"
 #include "shaders/skinning.h"
 #include "shapefold.hpp"
@@ -30,8 +31,6 @@ namespace SceneUtil
 
 namespace Rtx
 {
-    struct ExtractionStats;
-
     /// Turns the drawables a walk met into the scene's meshes, and poses the ones that deform.
     ///
     /// **Keyed on the drawable and not on the geometry.** A crate met again is the crate already
@@ -46,11 +45,12 @@ namespace Rtx
     class MeshResolver
     {
     public:
-        /// @param epoch the mirror's sweep stamp, read at every call. Borrowed, so that the mirror
-        ///        and everything resolving into it cannot come to hold two answers.
-        MeshResolver(SceneDesc& scene, const std::uint64_t& epoch)
+        /// @param pass the walk in progress: its sweep stamp and its counts, read at every call.
+        ///        Borrowed, so that the mirror and everything resolving into it cannot come to hold
+        ///        two answers.
+        MeshResolver(SceneDesc& scene, const MirrorPass& pass)
             : mScene(scene)
-            , mEpoch(epoch)
+            , mPass(pass)
         {
         }
 
@@ -76,7 +76,7 @@ namespace Rtx
         ///
         /// @param material what the drawable wears, resolved first, which a mesh records as it
         ///        arrives — `MeshRange::mMaterial`.
-        Index resolve(const osg::Drawable& drawable, const Read& read, Index material, ExtractionStats& stats);
+        Index resolve(const osg::Drawable& drawable, const Read& read, Index material);
 
         /// Drops every mesh this epoch did not meet, and collects the survivors into `live`.
         ///
@@ -100,7 +100,7 @@ namespace Rtx
         void poseMorph(Index mesh, const SceneUtil::MorphGeometry& morph);
 
         SceneDesc& mScene;
-        const std::uint64_t& mEpoch;
+        const MirrorPass& mPass;
 
         // Keyed on pointer identity, which OpenMW's resource cache and its optimizer's
         // SHARE_DUPLICATE_STATE pass together make meaningful: the same model loaded twice is the

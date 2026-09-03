@@ -68,7 +68,7 @@ namespace RtxTool
             Rtx::SceneDesc scene;
             Rtx::SceneExtractor extractor(scene);
             LoadedCells loaded;
-            readRegion(getWorld(), *cell, *root, loaded, /*liveProps=*/false);
+            readRegion(RegionRequest{ getWorld(), *cell, *root, loaded, /*liveProps=*/false });
             const Rtx::ExtractionStats stats = extractor.extract(*root, osg::Matrixf::identity(), 0);
 
             EXPECT_EQ(stats.mLights, sLamps);
@@ -112,7 +112,7 @@ namespace RtxTool
             Rtx::SceneDesc scene;
             Rtx::SceneExtractor extractor(scene);
             LoadedCells loaded;
-            readRegion(getWorld(), *cell, *root, loaded, /*liveProps=*/false);
+            readRegion(RegionRequest{ getWorld(), *cell, *root, loaded, /*liveProps=*/false });
             const Rtx::ExtractionStats stats = extractor.extract(*root, osg::Matrixf::identity(), 0);
 
             EXPECT_EQ(stats.mLights, burning) << "the unlit lamp was placed";

@@ -5,7 +5,6 @@
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <osg/Group>
@@ -120,7 +119,37 @@ namespace RtxTool
         std::uint32_t mCells = 0;
     };
 
-    /// Builds a region's graph under `root`, and reports what it holds that a walk will not find.
+    /// Which region to read, and into what.
+    ///
+    /// **Named once because `loadRegion` is `readRegion` and a sky**, so the five are exactly what
+    /// the two share.
+    struct RegionRequest
+    {
+        World& mWorld;
+
+        /// The cell asked for, and the middle of the square of exterior cells read around it. An
+        /// interior has no neighbours and is read alone. Cells the content files do not define are
+        /// open sea and are skipped rather than missing.
+        const ESM::Cell& mCentre;
+
+        osg::Group& mRoot;
+
+        /// Which cells are already in the graph. Cells named here are left alone and every cell a
+        /// read places is added to it, so a caller that keeps one across calls walks into a region
+        /// rather than reloading it.
+        LoadedCells& mLoaded;
+
+        /// Whether a reference whose model carries an update callback is *left out* of the graph
+        /// and reported in `mProps` instead. **Because it has to be one or the other.** A prop that
+        /// is going to be instanced and stepped brings its own copy of the same geometry — the
+        /// clone shares the drawables — so mirroring the template as well would stand two candles
+        /// in one place. A caller with nowhere to keep an instance passes false and gets the still
+        /// template, which is a candle with an authored spark on it.
+        bool mLiveProps = false;
+    };
+
+    /// Builds a region's graph under the request's root, and reports what it holds that a walk will
+    /// not find.
     ///
     /// **The graph and not the scene.** What puts a region into a `Rtx::SceneDesc` is the walk a
     /// caller makes afterwards, so this reads content and parents nodes and nothing else.
@@ -128,20 +157,7 @@ namespace RtxTool
     /// **The lamps go into the graph and not into the report**, exactly as the game places them:
     /// `NifOsg` never reads `NiLight`, so a `LIGH` reference's light is a `SceneUtil::LightSource`
     /// hung beside its mesh, where every walk that mirrors the graph meets it again.
-    ///
-    /// @param centre the cell asked for, and the middle of the square of exterior cells read
-    ///        around it. An interior has no neighbours and is read alone. Cells the content files
-    ///        do not define are open sea and are skipped rather than missing.
-    /// @param loaded which cells are already in the graph. Cells named here are left alone and
-    ///        every cell this places is added to it, so a caller that keeps one across calls walks
-    ///        into a region rather than reloading it.
-    /// @param liveProps whether a reference whose model carries an update callback is *left out* of
-    ///        the graph and reported in `mProps` instead. **Because it has to be one or the other.**
-    ///        A prop that is going to be instanced and stepped brings its own copy of the same
-    ///        geometry — the clone shares the drawables — so mirroring the template as well would
-    ///        stand two candles in one place. A caller with nowhere to keep an instance passes false
-    ///        and gets the still template, which is a candle with an authored spark on it.
-    CellReport readRegion(World& world, const ESM::Cell& centre, osg::Group& root, LoadedCells& loaded, bool liveProps);
+    CellReport readRegion(const RegionRequest& request);
 
     /// Which exterior square a point stands in.
     ///
@@ -185,7 +201,6 @@ namespace RtxTool
     /// Geometry and lights through `extractor` and `scene`, and the sky, water and air as the
     /// return. **In the library rather than beside `main` because it has three callers now** — the
     /// screenshot, the window, and the test that needs a frame of real content to measure.
-    RegionLoad loadRegion(World& world, const ESM::Cell& centre, osg::Group& root, Rtx::SceneDesc& scene,
-        Rtx::SceneExtractor& extractor, LoadedCells& loaded, std::string_view weather, int day, float hour,
-        bool liveProps);
+    RegionLoad loadRegion(
+        const RegionRequest& request, Rtx::SceneDesc& scene, Rtx::SceneExtractor& extractor, const SkyMoment& moment);
 }

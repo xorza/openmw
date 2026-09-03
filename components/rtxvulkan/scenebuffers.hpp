@@ -19,6 +19,7 @@
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
 #include "frameslots.hpp"
+#include "placing.hpp"
 #include "slottable.hpp"
 
 namespace Rtx
@@ -94,14 +95,13 @@ namespace Rtx
         /// writes the copy of them kept beside the buffer and hands `pass` the tables to bin them
         /// into.
         ///
-        /// **Recorded into `commands` ahead of the trace that reads the tiles**, and after this
-        /// slot's copy of them is nothing's to read — which for a frame is the fence the frame
-        /// before last signalled, and for a picture inside the interface every frame's. Grows the
-        /// list first, from what this copy's last bin reported it needed, so nothing between this
-        /// and the trace moves a table.
-        void binSprites(VkCommandBuffer commands, const SpriteBinPass& pass, const osg::Vec3f& origin,
-            const Shaders::Camera& camera, const osg::Vec3f& toSun, std::uint32_t slot, Graveyard& graveyard,
-            GpuTimer* timer);
+        /// **Recorded into `placing.mCommands` ahead of the trace that reads the tiles**, and after
+        /// that placement's copy of them is nothing's to read — which for a frame is the fence the
+        /// frame before last signalled, and for a picture inside the interface every frame's. Grows
+        /// the list first, from what this copy's last bin reported it needed, so nothing between
+        /// this and the trace moves a table.
+        void binSprites(const SpriteBinPass& pass, const osg::Vec3f& origin, const Shaders::Camera& camera,
+            const osg::Vec3f& toSun, const Placing& placing);
 
         /// Where the lamps were binned, for the frame's block the pass writes: its geometry rides
         /// there, beside the sea's, and only the lists it made are tables.

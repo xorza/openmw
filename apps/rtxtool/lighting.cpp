@@ -38,16 +38,16 @@ namespace RtxTool
         return *mHeld[slot];
     }
 
-    void relight(CellLighting& lighting, HeldWeathers& held, std::string_view weather, int day, float hour)
+    void relight(CellLighting& lighting, HeldWeathers& held, const SkyMoment& moment)
     {
         if (!lighting.mOutdoors)
             return;
 
-        const Rtx::WeatherRamps& ramps = held.of(weather);
-        settle(lighting, Rtx::makeDaylight(ramps, hour, landReach()), day, hour);
+        const Rtx::WeatherRamps& ramps = held.of(moment.mWeather);
+        settle(lighting, Rtx::makeDaylight(ramps, moment.mHour, landReach()), moment.mDay, moment.mHour);
 
         // The name reached `readWeatherRamps` intact, so it is one of the ten.
-        lighting.mWeather = Rtx::weatherIndex(weather).value();
+        lighting.mWeather = Rtx::weatherIndex(moment.mWeather).value();
         lighting.mNextWeather = lighting.mWeather;
         lighting.mWeatherBlend = 0.0f;
         lighting.mCloudBlend = 0.0f;
@@ -55,19 +55,19 @@ namespace RtxTool
         lighting.mCloudSpeed = ramps.mCloudSpeed;
     }
 
-    void relight(CellLighting& lighting, HeldWeathers& held, std::string_view from, std::string_view to, float blend,
-        int day, float hour)
+    void relight(
+        CellLighting& lighting, HeldWeathers& held, const SkyMoment& moment, std::string_view into, float blend)
     {
         if (!lighting.mOutdoors)
             return;
 
-        const Rtx::WeatherRamps& before = held.of(from);
-        const Rtx::WeatherRamps& after = held.of(to);
+        const Rtx::WeatherRamps& before = held.of(moment.mWeather);
+        const Rtx::WeatherRamps& after = held.of(into);
 
-        settle(lighting, Rtx::makeDaylight(before, after, blend, hour, landReach()), day, hour);
+        settle(lighting, Rtx::makeDaylight(before, after, blend, moment.mHour, landReach()), moment.mDay, moment.mHour);
 
-        lighting.mWeather = Rtx::weatherIndex(from).value();
-        lighting.mNextWeather = Rtx::weatherIndex(to).value();
+        lighting.mWeather = Rtx::weatherIndex(moment.mWeather).value();
+        lighting.mNextWeather = Rtx::weatherIndex(into).value();
         lighting.mWeatherBlend = blend;
 
         // The glare and the deck's speed are two of the quantities the engine mixes across a

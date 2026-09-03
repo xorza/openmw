@@ -234,13 +234,12 @@ namespace Rtx
         graveyard.bury(growTo(held, *mDevice, bytes, sTableUsage));
     }
 
-    void SceneBuffers::binSprites(VkCommandBuffer commands, const SpriteBinPass& pass, const osg::Vec3f& origin,
-        const Shaders::Camera& camera, const osg::Vec3f& toSun, const std::uint32_t slot, Graveyard& graveyard,
-        GpuTimer* const timer)
+    void SceneBuffers::binSprites(const SpriteBinPass& pass, const osg::Vec3f& origin, const Shaders::Camera& camera,
+        const osg::Vec3f& toSun, const Placing& placing)
     {
-        assert(slot < mSlots && "a frame slot this scene has no copy of the tables for");
+        assert(placing.mSlot < mSlots && "a frame slot this scene has no copy of the tables for");
 
-        Tables& tables = mTables[slot];
+        Tables& tables = mTables[placing.mSlot];
 
         // **The sprites go over from here and not from `place`**, because what each is shaded by is
         // the frame's sun, which a placement does not know — and a doll or a map bins against a
@@ -248,7 +247,7 @@ namespace Rtx
         mSpriteShade.shade(mSpriteScratch, mEmitterScratch, toSun);
 
         const std::span<const Shaders::GpuSprite> sprites(mSpriteScratch);
-        reserve(tables.mSprites, sprites.size_bytes(), graveyard);
+        reserve(tables.mSprites, sprites.size_bytes(), placing.mGraveyard);
         tables.mSprites.write(sprites);
 
         const auto count = static_cast<std::uint32_t>(sprites.size());
@@ -265,11 +264,11 @@ namespace Rtx
         const auto floor = static_cast<std::uint32_t>(std::uint64_t{ count } * tiles / sSpriteFloorShare);
         tables.mSpriteEntries = std::max({ tables.mSpriteEntries, floor, 2 * reported });
 
-        graveyard.bury(growTo(tables.mSpriteTileList, *mDevice,
+        placing.mGraveyard.bury(growTo(tables.mSpriteTileList, *mDevice,
             VkDeviceSize{ tiles + 1 + tables.mSpriteEntries } * sizeof(std::uint32_t), sSpriteListUsage));
-        reserve(tables.mSpriteRects, VkDeviceSize{ count } * sizeof(std::uint64_t), graveyard);
+        reserve(tables.mSpriteRects, VkDeviceSize{ count } * sizeof(std::uint64_t), placing.mGraveyard);
 
-        pass.record(commands,
+        pass.record(placing.mCommands,
             Shaders::SpriteBinConstants{
                 .mSprites = tables.mSprites.getDeviceAddress(),
                 .mEmitters = tables.mEmitters.getDeviceAddress(),
@@ -281,7 +280,7 @@ namespace Rtx
                 .mCount = count,
                 .mCapacity = tables.mSpriteEntries,
             },
-            tables.mSpriteTileList.getHandle(), timer);
+            tables.mSpriteTileList.getHandle(), placing.mTimer);
     }
 
     void SceneBuffers::shade(const SceneDesc& scene, const std::uint32_t slot, Graveyard& graveyard)

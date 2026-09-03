@@ -176,9 +176,10 @@ namespace Rtx
         return Read{};
     }
 
-    Index MeshResolver::resolve(
-        const osg::Drawable& drawable, const Read& read, const Index material, ExtractionStats& stats)
+    Index MeshResolver::resolve(const osg::Drawable& drawable, const Read& read, const Index material)
     {
+        ExtractionStats& stats = mPass.getStats();
+
         const osg::Geometry& geometry = *read.mGeometry;
 
         if (const auto known = mMeshes.find(&drawable); known != mMeshes.end())
@@ -191,7 +192,7 @@ namespace Rtx
             if (read.mDeform == Deform::None && range.mDeform == Deform::None)
             {
                 ++stats.mMeshesReused;
-                known->second.mEpoch = mEpoch;
+                known->second.mEpoch = mPass.mEpoch;
                 return mesh;
             }
 
@@ -237,7 +238,7 @@ namespace Rtx
             if (vertices == range.mVertexCount && read.mDeform == range.mDeform && deformer == range.mDeformer)
             {
                 ++stats.mMeshesReused;
-                known->second.mEpoch = mEpoch;
+                known->second.mEpoch = mPass.mEpoch;
 
                 // A pose is rows and not vertices, which is why the mirror pays a few dozen
                 // matrices for what is actually moving. The skin is stamped with the mesh, which is
@@ -250,14 +251,14 @@ namespace Rtx
                 if (read.mDeform == Deform::Rig)
                 {
                     assert(rig != mRigs.end() && "a rigged mesh reused on a skin the mirror has lost");
-                    rig->second.mEpoch = mEpoch;
+                    rig->second.mEpoch = mPass.mEpoch;
                     poseRig(mesh, *read.mRig);
                     ++stats.mDeformed;
                 }
                 else if (read.mDeform == Deform::Morph)
                 {
                     assert(morph != mMorphs.end() && "a morphed mesh reused on targets the mirror has lost");
-                    morph->second.mEpoch = mEpoch;
+                    morph->second.mEpoch = mPass.mEpoch;
                     poseMorph(mesh, *read.mMorph);
                     ++stats.mDeformed;
                 }
@@ -333,7 +334,7 @@ namespace Rtx
 
         const Index mesh = mScene.addMesh(
             arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, shape, read.mDeform, deformer, material);
-        mMeshes.emplace(&drawable, Known{ .mIndex = mesh, .mEpoch = mEpoch });
+        mMeshes.emplace(&drawable, Known{ .mIndex = mesh, .mEpoch = mPass.mEpoch });
         ++stats.mMeshesAdded;
 
         // Posed on arrival as on every frame after: the bind pose the mesh holds is what a pose is
@@ -364,7 +365,7 @@ namespace Rtx
         // holds describes a mesh of another length; the rig it named stays for the meshes still on
         // it and goes with the last of them, and this drawable gets one of its own.
         auto [known, arrived] = mRigs.try_emplace(skin);
-        known->second.mEpoch = mEpoch;
+        known->second.mEpoch = mPass.mEpoch;
         if (!arrived && mScene.getRigs()[known->second.mIndex].mVertexCount == vertices)
             return known->second.mIndex;
 
@@ -413,7 +414,7 @@ namespace Rtx
         // A set of targets grown or shrunk under the same base is a new set, for the reason a
         // rewritten skin is a new skin.
         auto [known, arrived] = mMorphs.try_emplace(targets[0].getOffsets());
-        known->second.mEpoch = mEpoch;
+        known->second.mEpoch = mPass.mEpoch;
         if (!arrived)
         {
             const Morph& held = mScene.getMorphs()[known->second.mIndex];
@@ -491,15 +492,15 @@ namespace Rtx
 
     std::uint32_t MeshResolver::retire(std::vector<Index>& live)
     {
-        const std::uint32_t went = sweep(mMeshes, mEpoch, live);
+        const std::uint32_t went = sweep(mMeshes, mPass.mEpoch, live);
 
         // **A rig and a morph are swept beside the meshes and not by their own count.** Each is
         // shared by every drawable that carries it, so what says one is gone is that no mesh named
         // it this epoch — which the scene decides for itself by counting uses. What is swept here is
         // only this mirror's hold on the data, and the two agree because a rig is stamped exactly
         // where a mesh on it is met.
-        std::erase_if(mRigs, [this](const auto& entry) { return entry.second.mEpoch != mEpoch; });
-        std::erase_if(mMorphs, [this](const auto& entry) { return entry.second.mEpoch != mEpoch; });
+        std::erase_if(mRigs, [this](const auto& entry) { return entry.second.mEpoch != mPass.mEpoch; });
+        std::erase_if(mMorphs, [this](const auto& entry) { return entry.second.mEpoch != mPass.mEpoch; });
 
         return went;
     }

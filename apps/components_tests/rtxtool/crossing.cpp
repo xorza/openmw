@@ -50,7 +50,7 @@ namespace RtxTool
         std::uint32_t crossTo(World& world, const ESM::Cell& centre, osg::Group& root, Rtx::SceneDesc& scene,
             LoadedCells& loaded, Rtx::SceneExtractor& extractor)
         {
-            readRegion(world, centre, root, loaded, /*liveProps=*/false);
+            readRegion(RegionRequest{ world, centre, root, loaded, /*liveProps=*/false });
             const std::uint32_t went = dropCellsOutside(world, centre, root, loaded);
 
             extractor.extractWorld(root, osg::Matrixf::identity(), 0);

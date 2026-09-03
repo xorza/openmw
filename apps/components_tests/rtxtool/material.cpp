@@ -258,7 +258,7 @@ namespace RtxTool
             osg::ref_ptr<osg::Group> root = new osg::Group;
             LoadedCells loaded;
 
-            readRegion(world, *cell, *root, loaded, /*liveProps=*/false);
+            readRegion(RegionRequest{ world, *cell, *root, loaded, /*liveProps=*/false });
 
             Audit audit;
             root->accept(audit);

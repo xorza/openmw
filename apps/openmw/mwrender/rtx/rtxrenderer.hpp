@@ -183,6 +183,14 @@ namespace MWRender
         /// Where a picture of its own subject gets its textures from. Null before there is a world.
         Resource::ResourceSystem* getResources() const { return mResources; }
 
+        /// The backend this owns, for the one thing a view asks of it that its trace does not do:
+        /// reading a picture back into main memory.
+        ///
+        /// **Asked for rather than held**, because a view's lifetime and the backend's are this
+        /// class's, and a view holding a second reference to something its owner already has is two
+        /// ways for the pair to disagree.
+        Rtx::Renderer& getBackend() { return *mRenderer; }
+
         /// The clock an update traversal runs on: this renderer's own, which advances once per
         /// drawn frame whether or not the world's does.
         ///

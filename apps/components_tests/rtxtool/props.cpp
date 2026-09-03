@@ -81,7 +81,7 @@ namespace RtxTool
                 osg::ref_ptr<osg::Group> root = new osg::Group;
                 Rtx::SceneExtractor extractor(seeded);
                 LoadedCells loaded;
-                readRegion(getWorld(), *cell, *root, loaded, /*liveProps=*/false);
+                readRegion(RegionRequest{ getWorld(), *cell, *root, loaded, /*liveProps=*/false });
                 seedStats = extractor.extract(*root, osg::Matrixf::identity(), 0);
             }
 
@@ -91,7 +91,7 @@ namespace RtxTool
             osg::ref_ptr<osg::Group> root = new osg::Group;
             Rtx::SceneExtractor extractor(live);
             LoadedCells loaded;
-            const CellReport report = readRegion(getWorld(), *cell, *root, loaded, /*liveProps=*/true);
+            const CellReport report = readRegion(RegionRequest{ getWorld(), *cell, *root, loaded, /*liveProps=*/true });
             const Rtx::ExtractionStats mirrored = extractor.extract(*root, osg::Matrixf::identity(), 0);
 
             EXPECT_EQ(mirrored.mEmitters, 0u) << "a reference that is going to be instanced is not mirrored too";
@@ -137,7 +137,7 @@ namespace RtxTool
                 osg::ref_ptr<osg::Group> twiceRoot = new osg::Group;
                 Rtx::SceneExtractor twice(again);
                 LoadedCells once;
-                readRegion(getWorld(), *cell, *twiceRoot, once, /*liveProps=*/false);
+                readRegion(RegionRequest{ getWorld(), *cell, *twiceRoot, once, /*liveProps=*/false });
                 twice.extract(*twiceRoot, osg::Matrixf::identity(), 0);
             }
 

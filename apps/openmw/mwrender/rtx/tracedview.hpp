@@ -36,7 +36,7 @@ namespace MWRender
     class TracedView final : public OffscreenView
     {
     public:
-        TracedView(const OffscreenViewSpec& spec, RtxRenderer& owner, Rtx::Renderer& renderer);
+        TracedView(const OffscreenViewSpec& spec, RtxRenderer& owner);
         ~TracedView() override;
 
         void setView(const osg::Matrixf& view) override { mTrace.setView(view); }
@@ -50,7 +50,6 @@ namespace MWRender
 
     private:
         RtxRenderer& mOwner;
-        Rtx::Renderer& mRenderer;
         Rtx::OffscreenTrace mTrace;
 
         /// Made through MyGUI's own factory, so which backend is behind it is not this class's

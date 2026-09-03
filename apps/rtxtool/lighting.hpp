@@ -128,6 +128,18 @@ namespace RtxTool
         std::size_t mNext = 0;
     };
 
+    /// When a sky stands: which weather it is under, and the date and the hour it is read at.
+    ///
+    /// **The three travel together everywhere.** A region is loaded at one, a clock key turns to
+    /// another, and a transition is a moment with somewhere it is going — so this is the moment
+    /// itself and what it is turning into stays beside it rather than in it.
+    struct SkyMoment
+    {
+        std::string_view mWeather;
+        int mDay = 0;
+        float mHour = 12.0f;
+    };
+
     /// Moves a cell's sky to another moment, leaving everything the sky does not decide.
     ///
     /// **What the window's clock keys turn, and it reloads nothing.** Where the sun and the moons
@@ -140,9 +152,15 @@ namespace RtxTool
     /// **`held` is the caller's, and there is no overload that does without one.** A weather read
     /// per call is what this exists to stop, so an easier signature beside it would be a slower path
     /// with nothing on it to mark it as one.
-    void relight(CellLighting& lighting, HeldWeathers& held, std::string_view weather, int day, float hour);
+    void relight(CellLighting& lighting, HeldWeathers& held, const SkyMoment& moment);
 
-    /// The same, partway between two weathers — which is what a window running a transition wants.
-    void relight(CellLighting& lighting, HeldWeathers& held, std::string_view from, std::string_view to, float blend,
-        int day, float hour);
+    /// The same, partway to `into` — which is what a window running a transition wants.
+    ///
+    /// **Two functions and not one moment carrying its own blend**, because a settled sky and a
+    /// transition of no length are different states rather than one with an argument at nought.
+    /// `Sky::cloudBlend` answers a full crossing for a weather the content gives no maximum percent
+    /// — ash and blight — so a settled sky asked as a blend of nothing would report a deck that had
+    /// crossed, where the game reports one that has not.
+    void relight(
+        CellLighting& lighting, HeldWeathers& held, const SkyMoment& moment, std::string_view into, float blend);
 }

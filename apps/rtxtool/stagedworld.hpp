@@ -124,21 +124,21 @@ namespace RtxTool
         /// **What the window's clock and weather keys turn.** The cells, their lamps and their
         /// water are the same either side of it; what changes is where the sun and the moons stand
         /// and what the air is doing, which `relight` works out from the settings alone.
-        void setSky(std::string_view weather, int day, float hour)
+        void setSky(const SkyMoment& moment)
         {
-            relight(mLighting, mHeldWeathers, weather, day, hour);
-            setFalling(weather);
+            relight(mLighting, mHeldWeathers, moment);
+            setFalling(moment.mWeather);
         }
 
-        /// The same, partway between two weathers.
-        void setSky(std::string_view from, std::string_view to, float blend, int day, float hour)
+        /// The same, partway to `into`.
+        void setSky(const SkyMoment& moment, std::string_view into, float blend)
         {
-            relight(mLighting, mHeldWeathers, from, to, blend, day, hour);
+            relight(mLighting, mHeldWeathers, moment, into, blend);
 
             // **What it is turning into, and not a blend of the two.** A transition's precipitation
             // fades in rather than crossing, and a harness that has to pick one instant is better
             // showing the weather that is arriving than half of each.
-            setFalling(blend < 0.5f ? from : to);
+            setFalling(blend < 0.5f ? moment.mWeather : into);
         }
         const Placement& getPlacement() const { return mPlacement; }
 

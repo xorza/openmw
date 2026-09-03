@@ -169,13 +169,14 @@ namespace Rtx::Testing
                 // The placement, as `VulkanRenderer::recordPlacement` records it: the pose, the
                 // refit and the top level, then the tables.
                 skin.record(commands, scene, 0, skinTables, acceleration.getPositions(), buffers.getNormals(), nullptr);
-                acceleration.place(commands, scene, records, changed, 0, micromaps, nullptr, graveyard);
+                acceleration.place(
+                    scene, records, changed, micromaps, Rtx::Placing{ .mCommands = commands, .mGraveyard = graveyard });
                 buffers.place(scene, records, changed, 0, graveyard);
                 scene.advancePlacement();
 
                 waves.record(commands, camera.mTime);
-                buffers.binSprites(
-                    commands, spriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition, 0, graveyard, nullptr);
+                buffers.binSprites(spriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
+                    Rtx::Placing{ .mCommands = commands, .mGraveyard = graveyard });
                 channels.begin(commands);
                 pass.record(commands, inputs, channels, hits, camera, true, nullptr);
                 channels.handOver(commands);

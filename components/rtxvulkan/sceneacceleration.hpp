@@ -14,6 +14,7 @@
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
 #include "frameslots.hpp"
+#include "placing.hpp"
 #include "slottable.hpp"
 #include "structurestorage.hpp"
 
@@ -102,18 +103,17 @@ namespace Rtx
         /// the same answer. `scene` must name the same meshes in the same order — the instances
         /// index into the structures this already holds.
         ///
-        /// **Recorded into `commands` and not submitted**, so the caller decides whether the queue
-        /// is asked now or with the frame. Into `slot`'s copy of the rows, which the caller has made
-        /// sure no frame is still reading. True where anything was recorded; a frame in which
-        /// nothing moved and nothing deformed records nothing and needs no submit.
+        /// **Recorded into `placing.mCommands` and not submitted**, so the caller decides whether
+        /// the queue is asked now or with the frame. Into that placement's copy of the rows, which
+        /// the caller has made sure no frame is still reading. True where anything was recorded; a
+        /// frame in which nothing moved and nothing deformed records nothing and needs no submit.
         ///
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list any of
         ///        this is driven by. Whether a copy is then behind is `mRowTable`'s to know.
         /// @param micromaps what each refitted mesh's structure was built over, which an update has
         ///        to describe again.
-        bool place(VkCommandBuffer commands, const SceneDesc& scene, std::span<const InstanceRecord> records,
-            std::span<const Index> changed, std::uint32_t slot, const SceneMicromaps& micromaps, GpuTimer* timer,
-            Graveyard& graveyard);
+        bool place(const SceneDesc& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
+            const SceneMicromaps& micromaps, const Placing& placing);
 
         /// Takes in the geometry of the meshes the scene says arrived and lets go of the ones it says
         /// went. `buildArrived` builds their structures, once the pass has posed them.

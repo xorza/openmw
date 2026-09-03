@@ -61,6 +61,25 @@ of `RtxRenderer`; `MeshResolver`, `MaterialResolver` and `EmitterResolver` out o
 - **`ReadbackQueue`.** There is no queue — three forwarding calls into `Image::read` and
   `GuiTextures::read`, with no pending list and no staging ring.
 
+**4. Ownership and arguments.** Nothing here was ever cycles: every item was an argument that
+travelled, a reference held twice, or a fact told more often than it changed. Six landed and removed
+24 parameters — `Rtx::MirrorPass` for the walk's stamp and counts, `Rtx::Placing` for a placement's
+four, `RtxTool::RegionRequest` and `RtxTool::SkyMoment` for the harness's, `Traversals` held by value
+in `OffscreenTrace`, and `TracedView` asking its owner for the backend. Four directions were wrong:
+
+- **The Vulkan four do not always travel together.** Five pass records carry commands and a timer
+  with no slot and no graveyard; three placements carry all four; two batched builds carry `Batch&`,
+  a timer and a graveyard and record through the `Batch`. `Placing` is given to the placements alone
+  — one context over all ten would hand seven signatures two fields they never read.
+- **Always-owned `Traversals` would cost 79 edits to save twelve bytes.** It is one `unsigned int`,
+  and 79 of the 81 places that construct a `SceneExtractor` pass none.
+- **A settled sky is not a transition of no length**, so the two `relight` overloads stay two.
+  `Sky::cloudBlend` answers a *full* crossing for a weather the content gives no
+  `Clouds_Maximum_Percent` — ash and blight — so a settled sky asked as a blend of nothing reports a
+  deck that has crossed. `clouds.cpp` pins `cloudBlend(0, 0) == 1`, which is the assertion that
+  records it.
+- **`WorldState` does not want lifting**, which is 4.5 below.
+
 ## Still open from section 2
 
 Measured shares are from `profile.sh --view=vivec`, three runs a leg.
@@ -75,80 +94,31 @@ Measured shares are from `profile.sh --view=vivec`, three runs a leg.
 - **`DistantLights::collect` does (2r+1)² map lookups a frame.** 0.01%, and the finding is the
   container rather than the cost — see 5.7.
 
-## 4. Ownership and arguments
+## Still open from section 4
 
-**Investigated. `.notes/ownership.md` is the design proposal and the plan.** It corrects three of the
-directions below: 4.3's four arguments do not always travel together, 4.6's costs 79 edits to save
-twelve bytes, and half of 4.7 already exists. It also finds 4.5 buildable with no upstream edit,
-which this section doubted.
+### 4.5 `CellLighting` and `Rtx::WorldReading` — refused
 
-
-### 4.1 `SceneExtractor::addLight` has an unused parameter
-
-`SceneExtractor::addLight`. `path` is never read, and the caller computes `getNodePath()` for it.
-
-Direction: remove the parameter.
-
-### 4.2 `ExtractionStats&` threads through eleven methods
-
-Eleven, and the split spread them over four files: `sceneextractor`, `meshresolver`,
-`materialresolver` and `emitterresolver` all take one by reference. `MirrorTraversal` already holds
-`mStats`.
-
-Direction: each resolver holds `ExtractionStats* mStats` for the walk, set where the walk begins and
-cleared after — the same shape the traversal already has.
-
-### 4.3 The Vulkan frame context travels as four loose arguments
-
-`recordPlacement` (`vulkanrenderer.hpp:181`) takes seven arguments, `SceneAcceleration::place`
-(`sceneacceleration.hpp:83`) eight, `SceneMicromaps::bake` (`scenemicromaps.hpp:74`) nine,
-`SceneBuffers::binSprites` (`scenebuffers.hpp:102`) eight. Commands, slot, timer and graveyard
-always travel together.
-
-Direction: a `FrameContext { VkCommandBuffer, std::uint32_t slot, GpuTimer*, Graveyard& }` passed
-by reference.
-
-### 4.4 Harness loaders take long argument lists
-
-`loadRegion` (`apps/rtxtool/cellscene.hpp:188`) takes ten arguments. `measurePlace`
-(`apps/rtxtool/bench.cpp:242`) takes seven with out-parameters. `readRegion` (`cellscene.hpp:144`)
-takes five.
-
-Direction: a `RegionRequest` struct for the load. `BenchRun` already exists and can carry the
-measure's inputs.
-
-### 4.5 `CellLighting` duplicates `Rtx::WorldReading`
-
-`apps/rtxtool/lighting.hpp`. The fields mirror `WorldReading`, and `applyLighting` copies them
-across one by one. The game now has `MWRender::readWorld`, which does the same translation from
-`WorldState` — but that is a game-side type, so the two still cannot share a builder.
-
-Direction: move `WorldState` into `components/` so `readWorld` serves both, or failing that, have
-`CellLighting` hold a `WorldReading` plus the harness-only fields.
-
-### 4.6 Optional ownership of `Traversals` in two places
-
-`SceneExtractor` and `OffscreenTrace` both keep an `mOwnTraversals` beside an `mTraversals&`.
-`WorldMirror` now owns the game's, so the game side has one caller that could pass it.
-
-Direction: the caller always owns `Traversals`, and both types take a reference. The one caller
-that has none makes one.
-
-### 4.7 `TracedView` holds two owners
-
-`apps/openmw/mwrender/rtx/tracedview.hpp:52-53`. The view holds `RtxRenderer&` and `Rtx::Renderer&`.
-The owner keeps raw pointers and a `forgetView` protocol.
-
-Direction: the view holds the owner only and asks it for the renderer. The owner hands out a
-`std::unique_ptr<TracedView>` and prunes its list when a destructor reports.
+Not a duplication. `Rtx::WorldReading` is already the shared answer, both hosts build one, and
+`frameworld.hpp` says so: the game reports what a live weather system settled and the harness derives
+it from content files at an hour it was told. Every piece of arithmetic under them is already in
+`components/rtx/`. What differs is the assembly, because the inputs do — `readWorld` reads forty
+fields a weather system, a `FogManager` and `configureAmbient` settled, and the harness has an hour
+and a weather name. Lifting `WorldState` would hand the harness a type it still could not fill, in
+exchange for moving a header the rasterizer reads.
 
 ### 4.8 Residents receive per-cell facts every frame
 
 `WorldMirror::mirror`. Five setters on `DistantLights` and two on `TerrainResidency` per frame, and
 `SceneExtractor::follow` reassigns per frame. The values change per cell, not per frame.
 
-Direction: one `Viewpoint { eye, grid, outdoors }` set per frame. `follow` and `setReach` run when
-the world changes.
+**Measured at nothing** — all seven are inline assignments and `DistantLights::follow` compares two
+members and returns — so this is shape and not cost. Direction, when something else touches the
+residency: one `Viewpoint { eye, grid, outdoors }` set per frame, with `follow` and `setReach` run
+when the world changes.
+
+### 4.4 `measurePlace` still takes seven arguments with three out-parameters
+
+`apps/rtxtool/bench.cpp`. `BenchRun` already exists and can carry `samples` and `pixelScratch`.
 
 ### 4.9 `RendererOptions::mWindow` is a raw `SDL_Window*`
 

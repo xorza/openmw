@@ -132,8 +132,13 @@ namespace RtxTool
         return went;
     }
 
-    CellReport readRegion(World& world, const ESM::Cell& centre, osg::Group& root, LoadedCells& loaded, bool liveProps)
+    CellReport readRegion(const RegionRequest& request)
     {
+        World& world = request.mWorld;
+        const ESM::Cell& centre = request.mCentre;
+        osg::Group& root = request.mRoot;
+        LoadedCells& loaded = request.mLoaded;
+
         CellReport report;
 
         // **The cells this call actually brought, and only those.** The grid walk is what decides
@@ -174,7 +179,7 @@ namespace RtxTool
         for (const ESM::Cell* cell : arrived)
         {
             LoadedCell& entry = loaded[keyOf(*cell)];
-            entry.mNode = readObjects(world, *cell, root, report, liveProps);
+            entry.mNode = readObjects(world, *cell, root, report, request.mLiveProps);
         }
 
         return report;
@@ -274,11 +279,10 @@ namespace RtxTool
         }
     }
 
-    RegionLoad loadRegion(World& world, const ESM::Cell& centre, osg::Group& root, Rtx::SceneDesc& scene,
-        Rtx::SceneExtractor& extractor, LoadedCells& loaded, std::string_view weather, int day, float hour,
-        bool liveProps)
+    RegionLoad loadRegion(
+        const RegionRequest& request, Rtx::SceneDesc& scene, Rtx::SceneExtractor& extractor, const SkyMoment& moment)
     {
-        CellReport report = readRegion(world, centre, root, loaded, liveProps);
+        CellReport report = readRegion(request);
 
         // **The sheet is the world's and not the region's**, so whoever owns it says where it is.
         // Left at never here, and `StagedWorld` writes what its own plane answers.
@@ -290,25 +294,25 @@ namespace RtxTool
         //
         // `mAmbi` and not a check of `mHasAmbi`: the game copies the record into its mood whether
         // or not the cell wrote one, so a cell that never did is a black room in both.
-        if (!centre.isExterior())
+        if (!request.mCentre.isExterior())
         {
-            const Rtx::Daylight room = Rtx::makeRoomLight(centre.mAmbi);
+            const Rtx::Daylight room = Rtx::makeRoomLight(request.mCentre.mAmbi);
             return RegionLoad{ .mLighting = CellLighting{ .mWaterLevel = level, .mDaylight = room },
                 .mReport = std::move(report) };
         }
 
-        const Rtx::Daylight daylight = Rtx::makeDaylight(weather, hour, landReach());
+        const Rtx::Daylight daylight = Rtx::makeDaylight(moment.mWeather, moment.mHour, landReach());
 
         // **After the daylight, and that is what makes the `value` safe.** A name that is none of
         // the ten throws out of the fallback map on the line above, so anything that reaches here
         // is a weather the table knows.
-        const std::uint32_t identity = Rtx::weatherIndex(weather).value();
+        const std::uint32_t identity = Rtx::weatherIndex(moment.mWeather).value();
 
         return RegionLoad{ .mLighting = CellLighting{ .mWaterLevel = level,
                                .mDaylight = daylight,
                                .mOutdoors = true,
-                               .mDay = day,
-                               .mHour = hour,
+                               .mDay = moment.mDay,
+                               .mHour = moment.mHour,
                                .mWeather = identity },
             .mReport = std::move(report) };
     }

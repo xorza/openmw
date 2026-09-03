@@ -26,9 +26,11 @@ namespace Rtx
         }
     }
 
-    void EmitterResolver::add(const osgParticle::ParticleSystem& particles, std::span<const Shading> shading,
-        const osg::Matrixf& place, ExtractionStats& stats)
+    void EmitterResolver::add(
+        const osgParticle::ParticleSystem& particles, std::span<const Shading> shading, const osg::Matrixf& place)
     {
+        ExtractionStats& stats = mPass.getStats();
+
         // A particle's whole silhouette is its texture's alpha, so an emitter with no texture has
         // nothing to draw — not a white disc, which is what sampling nothing would give it.
         const Surface::Material* described = findDescription(shading);
@@ -66,7 +68,7 @@ namespace Rtx
             mScene.holdTexture(known->second.mLighting);
         }
 
-        known->second.mEpoch = mEpoch;
+        known->second.mEpoch = mPass.mEpoch;
 
         // **Noted now and read when the walk is over.** Whether this system has been integrated
         // this frame depends on where its `ParticleSystemUpdater` sits among its siblings — above
@@ -84,16 +86,18 @@ namespace Rtx
         });
     }
 
-    void EmitterResolver::flush(ExtractionStats& stats)
+    void EmitterResolver::flush()
     {
         for (const Pending& pending : mPending)
-            placeSprites(pending, stats);
+            placeSprites(pending);
 
         mPending.clear();
     }
 
-    void EmitterResolver::placeSprites(const Pending& pending, ExtractionStats& stats)
+    void EmitterResolver::placeSprites(const Pending& pending)
     {
+        ExtractionStats& stats = mPass.getStats();
+
         const osgParticle::ParticleSystem& particles = *pending.mParticles;
         const osg::Matrixf& place = pending.mPlace;
 
@@ -176,7 +180,7 @@ namespace Rtx
         // an emitter leaving enough to free its textures — a frame where no mesh and no material
         // died is exactly the frame the mirror's sweep returns from without looking.
         std::erase_if(mHeld, [this](const auto& entry) {
-            if (entry.second.mEpoch == mEpoch)
+            if (entry.second.mEpoch == mPass.mEpoch)
                 return false;
 
             mScene.dropTexture(entry.second.mIndex);

@@ -31,6 +31,7 @@
 #include "guipass.hpp"
 #include "guitextures.hpp"
 #include "instance.hpp"
+#include "placing.hpp"
 #include "skinpass.hpp"
 #include "spritebinpass.hpp"
 #include "tonepass.hpp"
@@ -172,14 +173,14 @@ namespace Rtx
         /// else — so a field added for one of them reached the other only if somebody remembered.
         VisibilityInputs describeInputs(const ViewScene& held, std::uint32_t slot, const FogVolume* volume) const;
 
-        /// Everything a placement of `held` is, recorded into `commands` and written into copy
-        /// `slot`. True where anything was recorded, which is what says whether `commands` is worth
+        /// Everything a placement of `held` is, recorded and written where `placing` says. True
+        /// where anything was recorded, which is what says whether its command buffer is worth
         /// submitting.
         ///
         /// **What differs between the world's placement and a picture's is around this and not in
         /// it**: which copy, whether a frame is opened and timed, and whether the submit waits.
-        static bool recordPlacement(const SkinPass& skin, ViewScene& held, const SceneDesc& scene,
-            VkCommandBuffer commands, std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard);
+        static bool recordPlacement(
+            const SkinPass& skin, ViewScene& held, const SceneDesc& scene, const Placing& placing);
 
         /// Reads into `mStats` what a placement can have moved, which is every figure but the three
         /// a build settles.

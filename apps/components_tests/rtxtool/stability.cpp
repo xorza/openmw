@@ -114,8 +114,9 @@ namespace RtxTool
             // the temporal resolve, and the bounds were calibrated against exactly this much content;
             // forty-nine cells would be a different fixture wearing the same number.
             LoadedCells loaded;
-            held.mLighting
-                = loadRegion(world, *cell, *root, held.mScene, extractor, loaded, "Clear", 0, 12.0f, false).mLighting;
+            held.mLighting = loadRegion(RegionRequest{ world, *cell, *root, loaded, false }, held.mScene, extractor,
+                SkyMoment{ "Clear", 0, 12.0f })
+                                 .mLighting;
 
             // **The walk is what places anything at all.** `loadRegion` builds the graph and nothing
             // more, so without this the scene held whatever had been put into it directly — which

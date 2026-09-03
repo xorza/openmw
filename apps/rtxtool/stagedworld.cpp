@@ -40,8 +40,8 @@ namespace RtxTool
         // `World::beginStaging` says what else shares that lifetime.
         world.beginStaging();
 
-        const RegionLoad arrived = loadRegion(world, cell, *mRoot, mScene, mExtractor, mLoaded, request.mWeather,
-            request.mDay, request.mHour, actors.mProps);
+        const RegionLoad arrived = loadRegion(RegionRequest{ world, cell, *mRoot, mLoaded, actors.mProps }, mScene,
+            mExtractor, SkyMoment{ request.mWeather, request.mDay, request.mHour });
 
         mLighting = arrived.mLighting;
         mLighting.mSeconds = request.mSeaSeconds;
@@ -328,7 +328,7 @@ namespace RtxTool
         if (mPosed != nullptr)
             mPosed->unplace();
 
-        const CellReport arrived = readRegion(*mWorld, *cell, *mRoot, mLoaded, mActors.mProps);
+        const CellReport arrived = readRegion(RegionRequest{ *mWorld, *cell, *mRoot, mLoaded, mActors.mProps });
 
         // **The ring that arrived and the ones that left.** The working set is a square that follows
         // the camera, not everything ever visited; without the second half this grows for as long as

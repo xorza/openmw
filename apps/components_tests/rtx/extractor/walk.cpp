@@ -342,13 +342,20 @@ namespace Rtx::Testing
 
             Rtx::SceneDesc scene;
             SceneExtractor extractor(scene);
-            extractor.extract(*root, osg::Matrixf::identity(), 0);
+            const ExtractionStats first = extractor.extract(*root, osg::Matrixf::identity(), 0);
 
             const ExtractionStats second = extractor.extract(*root, osg::Matrixf::identity(), 0);
 
             EXPECT_EQ(second.mMeshesAdded, 0u);
             EXPECT_EQ(second.mMeshesReused, 2u);
             EXPECT_EQ(scene.getMeshes().size(), 2u);
+
+            // **Each walk counts into its own report and never into the walk before it.** What a
+            // resolver counts through is `MirrorPass`, which is the mirror's own member and outlives
+            // the call — so a walk that left it pointed where the last one did would report the sum
+            // here and leave the first standing at a number it never met.
+            EXPECT_EQ(first.mMeshesAdded, 2u);
+            EXPECT_EQ(first.mMeshesReused, 0u);
 
             // **The property the incremental mirror rests on, in its strongest form.** The same mesh
             // at two places is still two rows of the acceleration structure — placements are not

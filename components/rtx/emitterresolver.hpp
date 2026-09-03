@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <span>
 #include <vector>
 
@@ -8,6 +7,7 @@
 
 #include "index.hpp"
 #include "mirroridentity.hpp"
+#include "mirrorpass.hpp"
 #include "scenedesc.hpp"
 
 namespace osg
@@ -23,7 +23,6 @@ namespace osgParticle
 
 namespace Rtx
 {
-    struct ExtractionStats;
     struct Shading;
 
     /// Turns the particle systems a walk met into the scene's sprites.
@@ -40,20 +39,21 @@ namespace Rtx
     class EmitterResolver
     {
     public:
-        /// @param epoch the mirror's sweep stamp, read at every call. Borrowed, so that the mirror
-        ///        and everything resolving into it cannot come to hold two answers.
-        EmitterResolver(SceneDesc& scene, const std::uint64_t& epoch)
+        /// @param pass the walk in progress: its sweep stamp and its counts, read at every call.
+        ///        Borrowed, so that the mirror and everything resolving into it cannot come to hold
+        ///        two answers.
+        EmitterResolver(SceneDesc& scene, const MirrorPass& pass)
             : mScene(scene)
-            , mEpoch(epoch)
+            , mPass(pass)
         {
         }
 
         /// Notes one system the walk met, to be read when the walk is over.
-        void add(const osgParticle::ParticleSystem& particles, std::span<const Shading> shading,
-            const osg::Matrixf& place, ExtractionStats& stats);
+        void add(
+            const osgParticle::ParticleSystem& particles, std::span<const Shading> shading, const osg::Matrixf& place);
 
         /// Reads every system noted, now that everything in the graph has been stepped.
-        void flush(ExtractionStats& stats);
+        void flush();
 
         /// Lets go of the textures of every system this epoch did not meet.
         void retire();
@@ -80,10 +80,10 @@ namespace Rtx
         };
 
         /// Reads one noted system into the scene.
-        void placeSprites(const Pending& pending, ExtractionStats& stats);
+        void placeSprites(const Pending& pending);
 
         SceneDesc& mScene;
-        const std::uint64_t& mEpoch;
+        const MirrorPass& mPass;
 
         /// Which textures each particle system draws with.
         ///

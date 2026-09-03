@@ -31,6 +31,12 @@ namespace Sky
             EXPECT_FLOAT_EQ(cloudBlend(0.5f, 0.0f), 1.0f);
             EXPECT_FLOAT_EQ(cloudBlend(0.5f, -1.0f), 1.0f) << "and neither is a negative share";
             EXPECT_FLOAT_EQ(cloudBlend(0.5f, std::numeric_limits<float>::quiet_NaN()), 1.0f);
+
+            // **And at once means at once, which is why a settled sky is not a transition of no
+            // length.** For such a weather a crossing that has not begun already reports a deck
+            // that has arrived, where a sky standing still reports one that has not — so the two
+            // states cannot be one call with its blend at nought.
+            EXPECT_FLOAT_EQ(cloudBlend(0.0f, 0.0f), 1.0f);
         }
     }
 }

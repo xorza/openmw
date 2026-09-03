@@ -28,8 +28,7 @@ namespace Rtx
 
     OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height)
         : mRenderer(renderer)
-        , mOwnTraversals(std::make_unique<Traversals>())
-        , mTraversals(*mOwnTraversals)
+        , mTraversals(mOwnTraversals)
         , mWidth(width)
         , mHeight(height)
     {
@@ -50,8 +49,7 @@ namespace Rtx
         , mUpdate(std::make_unique<PoseUpdate>())
         , mPose(std::make_unique<PoseCull>())
         , mPoseStamp(new osg::FrameStamp)
-        , mOwnTraversals(traversals == nullptr ? std::make_unique<Traversals>() : nullptr)
-        , mTraversals(traversals == nullptr ? *mOwnTraversals : *traversals)
+        , mTraversals(traversals == nullptr ? mOwnTraversals : *traversals)
         , mViewScene(renderer.addViewScene())
         , mWidth(width)
         , mHeight(height)
