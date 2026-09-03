@@ -481,5 +481,122 @@ namespace Rtx::Testing
             EXPECT_EQ(records[2].mMask, Rtx::Shaders::MASK_SOLID);
             EXPECT_NE(records[0].mMask, records[1].mMask);
         }
+
+        /// A controller of the shape `NifOsg` builds out of a `NiUVController`: it moves the
+        /// description's texture offset every time it is applied, and keeps everything else the
+        /// state set already says.
+        class ScrollController : public SceneUtil::StateSetUpdater
+        {
+        public:
+            void setDefaults(osg::StateSet*) override {}
+
+            void apply(osg::StateSet* stateset, osg::NodeVisitor*) override
+            {
+                Surface::getWritableMaterial(*stateset)->mTextureOffset += osg::Vec2f(0.01f, 0.0f);
+            }
+        };
+
+        /// A mesh records the material it arrived wearing, and a hundred crates wear it once.
+        ///
+        /// One drawable under two transforms is the shape `SceneUtil::CopyOp` makes of a model
+        /// placed twice: nodes copied, the drawable and its state set shared. Both placements
+        /// resolve to one material, and it is the mesh's.
+        TEST(RtxSceneExtractorTest, aMeshRecordsTheMaterialItArrivedWearingAndACopyWearsTheSame)
+        {
+            osg::ref_ptr<osg::Geometry> quad = makeQuad();
+            osg::StateSet& state = *quad->getOrCreateStateSet();
+            paint(state, "textures/tx_leaves.dds");
+            state.setAttributeAndModes(new osg::BlendFunc, osg::StateAttribute::ON);
+            describe(state).mAlphaMode = Surface::AlphaMode::Blend;
+
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            for (const float x : { 0.0f, 10.0f })
+            {
+                osg::ref_ptr<osg::MatrixTransform> placed
+                    = new osg::MatrixTransform(osg::Matrix::translate(x, 0.0, 0.0));
+                placed->addChild(quad);
+                root->addChild(placed);
+            }
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+            const ExtractionStats stats = extractor.extract(*root, osg::Matrixf::identity(), 0);
+
+            ASSERT_EQ(scene.getMeshes().size(), 1u);
+            ASSERT_EQ(scene.getMaterials().size(), 1u);
+            EXPECT_EQ(scene.getMeshes()[0].mMaterial, 0u);
+            EXPECT_FALSE(scene.getMaterials()[0].mAnimated);
+            EXPECT_TRUE(scene.getMaterials()[0].isCutout());
+            EXPECT_EQ(stats.mInstances, 2u);
+            EXPECT_EQ(stats.mWornOtherwise, 0u);
+            EXPECT_EQ(stats.mUnbakeable, 0u);
+        }
+
+        /// A cutout under a controller is an animated material, and every placement of it is one
+        /// no bake can answer for.
+        TEST(RtxSceneExtractorTest, aCutoutUnderAControllerIsAnimatedAndUnbakeable)
+        {
+            osg::ref_ptr<osg::Group> node = new osg::Group;
+            node->addChild(makeQuad());
+            node->addUpdateCallback(new ScrollController);
+
+            osg::StateSet& state = *node->getOrCreateStateSet();
+            paint(state, "textures/tx_banner.dds");
+            state.setAttributeAndModes(new osg::BlendFunc, osg::StateAttribute::ON);
+            describe(state).mAlphaMode = Surface::AlphaMode::Blend;
+
+            osgUtil::UpdateVisitor update;
+            update.setTraversalNumber(1);
+            node->accept(update);
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+            const ExtractionStats stats = extractor.extract(*node, osg::Matrixf::identity(), 0, 1);
+
+            ASSERT_EQ(scene.getMaterials().size(), 1u);
+            EXPECT_TRUE(scene.getMaterials()[0].mAnimated);
+            EXPECT_TRUE(scene.getMaterials()[0].isCutout());
+            ASSERT_EQ(scene.getMeshes().size(), 1u);
+            EXPECT_EQ(scene.getMeshes()[0].mMaterial, 0u);
+            EXPECT_EQ(stats.mUnbakeable, 1u);
+            EXPECT_EQ(stats.mWornOtherwise, 0u);
+
+            // And it stays animated on the frame after, when the material is read again: the flag
+            // is a fact about the state set and not about what the controller wrote this time.
+            update.setTraversalNumber(2);
+            node->accept(update);
+            scene.clearPlacement();
+            extractor.extract(*node, osg::Matrixf::identity(), 0, 2);
+            EXPECT_TRUE(scene.getMaterials()[0].mAnimated);
+        }
+
+        /// A placement wearing a material other than the one its mesh arrived with is counted.
+        ///
+        /// **The case the loader cannot produce, built by hand**: one drawable with no state set
+        /// of its own, under two parents describing two surfaces. The mesh records the first, and
+        /// the second placement is the canary.
+        TEST(RtxSceneExtractorTest, aPlacementWearingAnotherMaterialThanItsMeshIsCounted)
+        {
+            osg::ref_ptr<osg::Geometry> quad = makeQuad();
+
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            for (const char* const file : { "textures/tx_first.dds", "textures/tx_second.dds" })
+            {
+                osg::ref_ptr<osg::Group> parent = new osg::Group;
+                paint(*parent->getOrCreateStateSet(), file);
+                parent->addChild(quad);
+                root->addChild(parent);
+            }
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+            const ExtractionStats stats = extractor.extract(*root, osg::Matrixf::identity(), 0);
+
+            ASSERT_EQ(scene.getMeshes().size(), 1u);
+            ASSERT_EQ(scene.getMaterials().size(), 2u);
+            EXPECT_EQ(scene.getMeshes()[0].mMaterial, 0u) << "the material it arrived wearing";
+            EXPECT_EQ(stats.mInstances, 2u);
+            EXPECT_EQ(stats.mWornOtherwise, 1u);
+        }
     }
 }

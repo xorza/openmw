@@ -156,6 +156,7 @@ namespace RtxTool
             << "  lights:               " << staged.getScene().getLights().size() << " casting, ambient " << ambient.x()
             << ", " << ambient.y() << ", " << ambient.z() << '\n'
             << "  deforming drawables:  " << stats.mDeformed << '\n'
+            << "  unbakeable cutouts:   " << stats.mUnbakeable << " placements of a mask a controller moves\n"
             << "  flattened ground:     " << flattened << " chunks past a cell\n"
             << "  emitters:             " << stats.mEmitters << " holding " << stats.mSprites << " live particles\n"
             << "  residents:            " << staged.getActorCount() << " posed, " << staged.getPropCount()
@@ -169,6 +170,8 @@ namespace RtxTool
             << "  unskinned rigs:       " << stats.mUnskinned << " met before an update found their skeleton\n"
             << "  empty geometry:       " << stats.mSkippedEmpty << '\n'
             << "  undescribed surfaces: " << stats.mUndescribedMaterials << '\n'
+            << "  worn otherwise:       " << stats.mWornOtherwise
+            << " placements wearing another material than their mesh arrived with\n"
             << "  sheets:               " << sheets << " of the meshes, doubled for their backs\n";
 
         if (twice)

@@ -11,13 +11,10 @@ namespace Rtx
 {
     namespace
     {
-        /// What an acceleration structure's offset in its buffer has to be a multiple of, and so the
-        /// unit the allocator hands out. Vulkan fixes it at 256.
-        constexpr VkDeviceSize sAlignment = 256;
-
         std::uint32_t unitsFor(VkDeviceSize bytes)
         {
-            return static_cast<std::uint32_t>((bytes + sAlignment - 1) / sAlignment);
+            return static_cast<std::uint32_t>(
+                (bytes + StructureStorage::sAlignment - 1) / StructureStorage::sAlignment);
         }
     }
 

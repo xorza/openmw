@@ -109,6 +109,7 @@ set(RTX_SHADER_HEADERS
     shaders/atrous.h
     shaders/composite.h
     shaders/gbuffer.h
+    shaders/micromap.h
     shaders/portable.h
     shaders/scene.h
     shaders/skinning.h

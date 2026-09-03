@@ -32,6 +32,10 @@ namespace Rtx
             // is a device this fork cannot answer 4.6 on, and a renderer that quietly reported
             // nothing would be the fallback path this tree does not keep.
             VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME,
+            // The mask of a cutout, resolved per microtriangle inside traversal. Required as
+            // everything here is: a device without it would trace every leaf through the any-hit,
+            // and this tree keeps no second path for that.
+            VK_EXT_OPACITY_MICROMAP_EXTENSION_NAME,
         };
 
         constexpr std::array sOptionalDeviceExtensions{
@@ -98,12 +102,14 @@ namespace Rtx
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mInvocationReorder.rayTracingInvocationReorder; } },
             RequiredFeature{ "pipelineExecutableInfo",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mPipelineExecutable.pipelineExecutableInfo; } },
+            RequiredFeature{ "micromap", +[](DeviceFeatures& f) -> VkBool32& { return f.mOpacityMicromap.micromap; } },
         };
     }
 
     DeviceFeatures::DeviceFeatures()
     {
         void* next = nullptr;
+        chain(next, mOpacityMicromap, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPACITY_MICROMAP_FEATURES_EXT);
         chain(next, mPipelineExecutable, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR);
         chain(next, mInvocationReorder, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_FEATURES_EXT);
         chain(next, mRayTracingPipeline, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR);
@@ -120,6 +126,7 @@ namespace Rtx
     DeviceProperties::DeviceProperties()
     {
         void* next = nullptr;
+        chain(next, mOpacityMicromap, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPACITY_MICROMAP_PROPERTIES_EXT);
         chain(
             next, mInvocationReorder, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_PROPERTIES_EXT);
         chain(next, mRayTracingPipeline, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR);

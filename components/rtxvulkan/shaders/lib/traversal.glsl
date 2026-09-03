@@ -14,6 +14,11 @@
 #include "geometry.glsl"
 #include "texturing.glsl"
 
+// **The extension travels with the ray flag that needs it**, as `texturearray.glsl` says of its
+// own. Every structure's micromaps are resolved for a query whether or not it asks; what asks is
+// `lightThroughCoarse`, and the flag it names is this extension's.
+#extension GL_EXT_opacity_micromap : require
+
 /// Untextured surfaces are mid-grey rather than black, so a missing texture reads as missing rather
 /// than as shadow.
 const vec3 NO_TEXTURE_ALBEDO = vec3(0.5);
@@ -318,7 +323,10 @@ Hit committedHit(
 ///
 /// **`TerminateOnFirstHit` stays.** A translucent candidate is never confirmed, so traversal walks
 /// past it and keeps the early out for the first thing that does stop the ray.
-float lightThrough(vec3 from, vec3 towards, float distance)
+///
+/// @param flags what the query is asked with beside that: nothing, or the two-state fold
+///        `lightThroughCoarse` says what is for.
+float lightThroughAs(vec3 from, vec3 towards, float distance, uint flags)
 {
     if (distance <= SHADOW_BIAS)
         return 1.0;
@@ -326,14 +334,32 @@ float lightThrough(vec3 from, vec3 towards, float distance)
     float through = 1.0;
 
     rayQueryEXT query;
-    rayQueryInitializeEXT(
-        query, sceneTop, gl_RayFlagsTerminateOnFirstHitEXT, MASK_SOLID, from, SHADOW_BIAS, towards, distance);
+    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsTerminateOnFirstHitEXT | flags, MASK_SOLID, from, SHADOW_BIAS,
+        towards, distance);
     RTX_RESOLVE(query, towards, 0.0, through, true)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) != gl_RayQueryCommittedIntersectionNoneEXT)
         return 0.0;
 
     return through;
+}
+
+float lightThrough(vec3 from, vec3 towards, float distance)
+{
+    return lightThroughAs(from, towards, distance, gl_RayFlagsNoneEXT);
+}
+
+/// The same for a ray whose aliasing nobody can see: the fog volume's probes and the ambient rays.
+///
+/// **Every unknown microtriangle folded to its half, so the any-hit never runs for one.** A
+/// micromap decides a leaf to within a texel or two of its edge and leaves the texels it could not
+/// decide to the any-hit; a probe of the air, or one of the draws an ambient sample is averaged
+/// from, cannot show a texel either way, and what the fold saves is the texture fetch every one of
+/// them stopped for. The sun's and the lamps' shadow rays keep the four states, until a picture
+/// says the two-state edge is invisible there too.
+float lightThroughCoarse(vec3 from, vec3 towards, float distance)
+{
+    return lightThroughAs(from, towards, distance, gl_RayFlagsForceOpacityMicromap2StateEXT);
 }
 
 /// How far the nearest solid surface is along a ray, at most `reach` away.

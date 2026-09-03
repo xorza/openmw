@@ -99,6 +99,43 @@ namespace Rtx
             return SetLayout(device, bindings, 0, &bindingFlags);
         }
 
+        /// A set of `layout` from a pool of its own: the texture binding at the maximum the layout
+        /// declares, and the shading binding — the variable one — at `shadingCount`.
+        ///
+        /// What the layout left open: the arrays are declared at their maximum, and the count an
+        /// allocation names is what says how many of the last binding's descriptors this set pays
+        /// for.
+        SetApart allocateSet(const Device& device, VkDescriptorSetLayout layout, std::uint32_t shadingCount)
+        {
+            SetApart set;
+
+            const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures + shadingCount };
+            const VkDescriptorPoolCreateInfo describePool{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                .maxSets = 1,
+                .poolSizeCount = 1,
+                .pPoolSizes = &size,
+            };
+            checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, &set.mPool),
+                "vkCreateDescriptorPool");
+
+            const VkDescriptorSetVariableDescriptorCountAllocateInfo variable{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
+                .descriptorSetCount = 1,
+                .pDescriptorCounts = &shadingCount,
+            };
+            const VkDescriptorSetAllocateInfo allocate{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .pNext = &variable,
+                .descriptorPool = set.mPool,
+                .descriptorSetCount = 1,
+                .pSetLayouts = &layout,
+            };
+            checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, &set.mSet), "vkAllocateDescriptorSets");
+
+            return set;
+        }
+
         /// Copies `bytes` into `image` by `regions`, and leaves it where a sampler expects it.
         ///
         /// **Recorded rather than submitted.** A cell brings hundreds of these and the queue is asked
@@ -195,34 +232,9 @@ namespace Rtx
         // the set to the cell is what made a texture arriving mean a new set, a new pool and every
         // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
         // is paid once. `extend` then only ever writes the range that is new.
-        constexpr std::uint32_t count = sMaxTextures;
-
-        // Two arrays of them, the textures' and the maps'.
-        const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * count };
-        const VkDescriptorPoolCreateInfo describePool{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-            .maxSets = 1,
-            .poolSizeCount = 1,
-            .pPoolSizes = &size,
-        };
-        checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, &mPool), "vkCreateDescriptorPool");
-
-        // What the layout left open: the array is declared at its maximum and allocated at the
-        // scene's, so the descriptors paid for are the ones a cell put in it.
-        const VkDescriptorSetVariableDescriptorCountAllocateInfo variable{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
-            .descriptorSetCount = 1,
-            .pDescriptorCounts = &count,
-        };
-        const VkDescriptorSetLayout named = mLayout.getHandle();
-        const VkDescriptorSetAllocateInfo allocate{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .pNext = &variable,
-            .descriptorPool = mPool,
-            .descriptorSetCount = 1,
-            .pSetLayouts = &named,
-        };
-        checkVk(vkAllocateDescriptorSets(device.getHandle(), &allocate, &mSet), "vkAllocateDescriptorSets");
+        const SetApart own = allocateSet(device, mLayout.getHandle(), sMaxTextures);
+        mPool = own.mPool;
+        mSet = own.mSet;
 
         // **Sized to the table before anything is written into it**, so a description lands in the
         // slot it names whatever sits either side of it. Every entry starts holding no image and no
@@ -294,28 +306,56 @@ namespace Rtx
         for (const TextureData& texture : arrived)
         {
             const Texture& held = mTextures[texture.mSlot];
-            for (const auto& [binding, view] :
-                { std::pair{ sTextureBinding, held.getView() }, std::pair{ sShadingBinding, held.getShadingView() } })
-            {
-                images.push_back(VkDescriptorImageInfo{
-                    .sampler = mSampler,
-                    .imageView = view,
-                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                });
-                writes.push_back(VkWriteDescriptorSet{
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = mSet,
-                    .dstBinding = binding,
-                    .dstArrayElement = texture.mSlot,
-                    .descriptorCount = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .pImageInfo = &images.back(),
-                });
-            }
+            queueWrite(mSet, sTextureBinding, texture.mSlot, held.getView(), images, writes);
+            queueWrite(mSet, sShadingBinding, texture.mSlot, held.getShadingView(), images, writes);
         }
 
         vkUpdateDescriptorSets(
             mDevice.getHandle(), static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+    }
+
+    SetApart TextureArray::describeApart(std::span<const std::uint32_t> slots) const
+    {
+        // The shading binding is the variable one, and nothing reads a map through this set.
+        const SetApart apart = allocateSet(mDevice, mLayout.getHandle(), 1);
+
+        // Reserved before any write points into it, for the reason `describe` gives.
+        std::vector<VkDescriptorImageInfo> images;
+        std::vector<VkWriteDescriptorSet> writes;
+        images.reserve(slots.size());
+        writes.reserve(slots.size());
+
+        for (const std::uint32_t slot : slots)
+        {
+            assert(slot < mTextures.size() && mTextures[slot].getView() != VK_NULL_HANDLE
+                && "a set described over a slot holding no texture");
+            queueWrite(apart.mSet, sTextureBinding, slot, mTextures[slot].getView(), images, writes);
+        }
+
+        vkUpdateDescriptorSets(
+            mDevice.getHandle(), static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+
+        return apart;
+    }
+
+    void TextureArray::queueWrite(const VkDescriptorSet set, const std::uint32_t binding, const std::uint32_t slot,
+        const VkImageView view, std::vector<VkDescriptorImageInfo>& images,
+        std::vector<VkWriteDescriptorSet>& writes) const
+    {
+        images.push_back(VkDescriptorImageInfo{
+            .sampler = mSampler,
+            .imageView = view,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        });
+        writes.push_back(VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = set,
+            .dstBinding = binding,
+            .dstArrayElement = slot,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &images.back(),
+        });
     }
 
     TextureArray::~TextureArray()

@@ -66,6 +66,17 @@ namespace Rtx
         /// that stands.
         Index mDeformer = sNoIndex;
 
+        /// The material this mesh arrived wearing, or `sNoIndex` for one that arrived with none.
+        ///
+        /// **A mesh's, and not a placement's, because a static mesh wears one material by
+        /// construction.** `SceneUtil::CopyOp` copies nodes and shares drawables and state sets, so
+        /// a hundred crates are a hundred nodes over one drawable and one state set — the material
+        /// the extractor keys on is the same object under every placement. What a backend bakes
+        /// against the mask a mesh is worn with, it bakes against this; a placement wearing
+        /// another is `ExtractionStats::mWornOtherwise`, and the loader says there is none. The
+        /// caller's finding, like `mShape`.
+        Index mMaterial = sNoIndex;
+
         /// Where this mesh's bind pose sits among the deforming meshes' vertices, which is what a
         /// backend's bind table is indexed by. **A run of `mVertexCount` beside the mesh's own**,
         /// allocated only for a mesh that deforms: the shared vertex buffers hold every mesh, and a
@@ -214,6 +225,17 @@ namespace Rtx
         /// unset and the chunk shades from the stack below — the branch the shader already takes for
         /// every near chunk — so the picture is right throughout and only the cost per hit differs.
         bool mFlatten = false;
+
+        /// Whether a controller rewrites this material's state set every frame, so what it says
+        /// now is not what it will say next frame.
+        ///
+        /// **Constant for the material's whole life**, because it is a fact about the state set the
+        /// material is keyed on: `SceneExtractor::animate` gives a node with a controller a state
+        /// set of its own, and every material read off that state set is read off it again each
+        /// frame. A backend bakes nothing against a mask that scrolls — the bake is against what
+        /// the texture coordinates land on, and a `UVController` moves that every frame — so this
+        /// is what refuses one. `MeshRange::mMaterial` says why a mesh has one material to ask.
+        bool mAnimated = false;
 
         /// Two materials are the same when every field is.
         ///
@@ -534,9 +556,11 @@ namespace Rtx
         /// triangles it was handed. A mesh that deforms names the rig or the morph that poses it,
         /// whose vertex count must be this mesh's, and hands over its **bind pose**: the vertices a
         /// pose is computed from, which stay in the shared buffers for as long as the mesh does.
+        /// `material` is `MeshRange::mMaterial`, the caller's finding likewise, and must be a
+        /// material the scene holds or `sNoIndex`.
         Index addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
             std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape = {},
-            Deform deform = Deform::None, Index deformer = sNoIndex);
+            Deform deform = Deform::None, Index deformer = sNoIndex, Index material = sNoIndex);
 
         /// Copies a skin's runs and influences into the shared tables and returns the rig's index.
         ///

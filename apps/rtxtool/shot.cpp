@@ -243,8 +243,14 @@ namespace RtxTool
             << "  looking at " << placement.mTarget.x() << ", " << placement.mTarget.y() << ", "
             << placement.mTarget.z() << '\n'
             << "primary rays that hit: " << fraction << "%\n"
-            << "instances:  " << stats.mInstances << ", of which " << stats.mCutoutInstances << " are cutouts\n"
+            << "instances:  " << stats.mInstances << ", of which " << stats.mCutoutInstances << " are cutouts, "
+            << stats.mMicromappedInstances << " of them micromapped\n"
             << tail << "structures: " << stats.mStructureBytes / 1024 << " KiB\n"
+            << "micromaps:  " << stats.mMicromapBytes / 1024 << " KiB"
+            << (stats.mMicromapsUntextured > 0
+                       ? ", " + std::to_string(stats.mMicromapsUntextured) + " cutout meshes built without their mask"
+                       : std::string())
+            << '\n'
             << "tables:     " << stats.mTableBytes / 1024 << " KiB\n"
             << "textures:   " << stats.mTextureCount << " in " << stats.mTextureBytes / 1024 << " KiB\n"
             << "device up:  " << deviceMs << " ms\n"

@@ -55,10 +55,11 @@ namespace RtxTool
 
             out() << '\n'
                   << std::format(
-                         "  cell {} at {} in {}   {} instances ({} cutouts)   {:.1f} MiB structures   {} textures, "
-                         "{:.1f} MiB\n",
+                         "  cell {} at {} in {}   {} instances ({} cutouts, {} micromapped)   {:.1f} MiB structures, "
+                         "{:.1f} MiB micromaps   {} textures, {:.1f} MiB\n",
                          place.mCell, clockFace(place.mHour), place.mWeather, place.mScene.mInstances,
-                         place.mScene.mCutoutInstances, megabytes(place.mScene.mStructureBytes),
+                         place.mScene.mCutoutInstances, place.mScene.mMicromappedInstances,
+                         megabytes(place.mScene.mStructureBytes), megabytes(place.mScene.mMicromapBytes),
                          place.mScene.mTextureCount, megabytes(place.mScene.mTextureBytes))
                   << std::format("  build {:.0f} ms   {:.1f}% of primary rays hit\n", place.mBuildMs, place.mHitPercent)
                   << Rtx::describeHeadings() << Rtx::describeTimes("frame ms", place.mFrame)
@@ -108,10 +109,11 @@ namespace RtxTool
         /// run on another commit, and a figure it never wrote is one nobody can go back for.
         std::string asJson(const Rtx::SceneStats& scene)
         {
-            return std::format(R"({{"instances": {}, "cutoutInstances": {}, )"
-                               R"("structureBytes": {}, "tableBytes": {}, "textureCount": {}, "textureBytes": {}}})",
-                scene.mInstances, scene.mCutoutInstances, scene.mStructureBytes, scene.mTableBytes, scene.mTextureCount,
-                scene.mTextureBytes);
+            return std::format(R"({{"instances": {}, "cutoutInstances": {}, "micromappedInstances": {}, )"
+                               R"("structureBytes": {}, "micromapBytes": {}, "tableBytes": {}, "textureCount": {}, )"
+                               R"("textureBytes": {}}})",
+                scene.mInstances, scene.mCutoutInstances, scene.mMicromappedInstances, scene.mStructureBytes,
+                scene.mMicromapBytes, scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes);
         }
 
         std::string asJson(const Crossings& crossings)

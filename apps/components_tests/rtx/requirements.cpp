@@ -29,7 +29,7 @@ namespace Rtx
                  next != nullptr; next = next->pNext)
                 linked.insert(next);
 
-            EXPECT_EQ(linked.size(), 11u) << "a member was added to DeviceFeatures without chaining it";
+            EXPECT_EQ(linked.size(), 12u) << "a member was added to DeviceFeatures without chaining it";
             EXPECT_TRUE(linked.contains(&features.mFeatures2));
             EXPECT_TRUE(linked.contains(&features.mVulkan12));
             EXPECT_TRUE(linked.contains(&features.mVulkan13));
@@ -41,6 +41,7 @@ namespace Rtx
             EXPECT_TRUE(linked.contains(&features.mRayTracingPipeline));
             EXPECT_TRUE(linked.contains(&features.mInvocationReorder));
             EXPECT_TRUE(linked.contains(&features.mPipelineExecutable));
+            EXPECT_TRUE(linked.contains(&features.mOpacityMicromap));
         }
 
         TEST(RtxRequirementsTest, everyPropertyStructIsInTheChain)
@@ -52,12 +53,13 @@ namespace Rtx
                  next != nullptr; next = next->pNext)
                 linked.insert(next);
 
-            EXPECT_EQ(linked.size(), 6u) << "a member was added to DeviceProperties without chaining it";
+            EXPECT_EQ(linked.size(), 7u) << "a member was added to DeviceProperties without chaining it";
             EXPECT_TRUE(linked.contains(&properties.mVulkan11));
             EXPECT_TRUE(linked.contains(&properties.mVulkan12));
             EXPECT_TRUE(linked.contains(&properties.mAccelerationStructure));
             EXPECT_TRUE(linked.contains(&properties.mRayTracingPipeline));
             EXPECT_TRUE(linked.contains(&properties.mInvocationReorder));
+            EXPECT_TRUE(linked.contains(&properties.mOpacityMicromap));
         }
 
         /// A hand-written table of two dozen accessors is where a copy-paste sends two entries at the

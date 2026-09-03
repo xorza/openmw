@@ -366,15 +366,28 @@ namespace Rtx
 
         /// The finding the caller made about a mesh is kept beside its range, for a backend that
         /// builds a deforming mesh's structure to be refitted.
-        TEST(RtxSceneDescTest, aMeshCarriesWhetherItDeforms)
+        TEST(RtxSceneDescTest, aMeshCarriesWhetherItDeformsAndWhatItArrivedWearing)
         {
             SceneDesc scene;
             const Index still = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices);
             EXPECT_EQ(scene.getMeshes()[still].mDeform, Deform::None);
+            EXPECT_EQ(scene.getMeshes()[still].mMaterial, sNoIndex);
 
             const Index rig
                 = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, {}, Deform::Rig, addOneBoneRig(scene));
             EXPECT_EQ(scene.getMeshes()[rig].mDeform, Deform::Rig);
+
+            // The material a mesh arrives wearing is kept as it was handed over, and a slot given
+            // back forgets it with the rest of what stood there.
+            const Index worn = scene.addMaterial(Material{});
+            const Index dressed = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, {}, Deform::None, sNoIndex, worn);
+            EXPECT_EQ(scene.getMeshes()[dressed].mMaterial, worn);
+
+            const std::array<Index, 2> keptMeshes{ still, rig };
+            const std::array<Index, 1> keptMaterials{ worn };
+            ASSERT_TRUE(scene.release(keptMeshes, keptMaterials));
+            EXPECT_EQ(scene.getMeshes()[dressed].mMaterial, sNoIndex);
+            EXPECT_EQ(scene.getMeshes()[dressed].mVertexCount, 0u);
         }
 
         /// Every change to a placement's row is reported, and nothing else is.

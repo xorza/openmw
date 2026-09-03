@@ -191,7 +191,7 @@ namespace Rtx
         {
             auto& [meshesAdded, materialsAdded, sheets, composites, meshesReused, materialsReused, instances, deformed,
                 unskinned, emitters, sprites, skippedUnknown, undescribedMaterials, formats, unnamedFormat,
-                skippedEmpty, lights]
+                skippedEmpty, lights, unbakeable, wornOtherwise]
                 = stats;
 
             // The two the sum owes something other than addition, and so the two left out of it.
@@ -200,7 +200,7 @@ namespace Rtx
 
             return std::array{ &meshesAdded, &materialsAdded, &sheets, &composites, &meshesReused, &materialsReused,
                 &instances, &deformed, &unskinned, &emitters, &sprites, &skippedUnknown, &undescribedMaterials,
-                &skippedEmpty, &lights };
+                &skippedEmpty, &lights, &unbakeable, &wornOtherwise };
         }
 
         /// A pass's texture matrix for `unit`, as the `uv * xy + zw` the shader wants.
@@ -1052,9 +1052,6 @@ namespace Rtx
         }
 
         const osg::Geometry& geometry = *read.mGeometry;
-        const Index mesh = resolveMesh(drawable, read, stats);
-        if (mesh == sNoIndex)
-            return;
 
         // Terrain keeps its material on the drawable rather than on the graph, so it is asked first
         // and the state-set walk never sees a chunk.
@@ -1064,6 +1061,9 @@ namespace Rtx
         // the node above it is a plain transform shared with anything else hanging there.
         const bool water = isWater(drawable.getNodeMask());
 
+        // **The material before the mesh, because a mesh records the material it arrives wearing.**
+        // `MeshRange::mMaterial` says why a static mesh has one to record; a backend bakes its mask
+        // against that one, and the two counts past the mesh are what say the loader keeps it so.
         Index material;
         if (water)
             material = resolveWaterMaterial(stats);
@@ -1071,6 +1071,24 @@ namespace Rtx
             material = resolveTerrainMaterial(*terrain, stats);
         else
             material = resolveMaterial(shading, stats);
+
+        const Index mesh = resolveMesh(drawable, read, material, stats);
+        if (mesh == sNoIndex)
+            return;
+
+        // A mesh worn with an animated cutout is one no bake can answer for, and traversal stops for
+        // every placement of it; a placement wearing anything but the material its mesh arrived
+        // with is the canary — `SceneUtil::CopyOp` shares the state set under every copy, so the
+        // only material a mesh can be seen in two of is one a controller made per node.
+        const Index arrivedWearing = mScene.getMeshes()[mesh].mMaterial;
+        if (arrivedWearing != sNoIndex)
+        {
+            const Material& worn = mScene.getMaterials()[arrivedWearing];
+            if (worn.mAnimated)
+                stats.mUnbakeable += worn.isCutout() ? 1 : 0;
+            else if (material != arrivedWearing)
+                ++stats.mWornOtherwise;
+        }
 
         // **The slot this placement has held since it first appeared**, so a world that stands
         // still writes nothing: the scene already knows where everything is, and only a transform
@@ -1413,7 +1431,8 @@ namespace Rtx
         }
     }
 
-    Index SceneExtractor::resolveMesh(const osg::Drawable& drawable, const Read& read, ExtractionStats& stats)
+    Index SceneExtractor::resolveMesh(
+        const osg::Drawable& drawable, const Read& read, const Index material, ExtractionStats& stats)
     {
         const osg::Geometry& geometry = *read.mGeometry;
 
@@ -1554,7 +1573,7 @@ namespace Rtx
         }
 
         const Index mesh = mScene.addMesh(
-            arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, shape, read.mDeform, deformer);
+            arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, shape, read.mDeform, deformer, material);
         mMeshes.emplace(&drawable, Known{ .mIndex = mesh, .mEpoch = mEpoch });
         ++stats.mMeshesAdded;
 
@@ -1798,6 +1817,10 @@ namespace Rtx
     Material SceneExtractor::readMaterial(std::span<const Shading> shading, ExtractionStats& stats)
     {
         Material material;
+
+        // Before the description, because a surface nothing described is still one a controller
+        // rewrites: what the flag states is a fact about the state set and not about what is in it.
+        material.mAnimated = !shading.empty() && shading.back().mAnimated;
 
         const Surface::Material* described = findDescription(shading);
         if (described == nullptr)

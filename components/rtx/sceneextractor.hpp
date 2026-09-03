@@ -143,6 +143,20 @@ namespace Rtx
         /// what Morrowind lights with, and a glowing texture lights nothing.
         std::uint32_t mLights = 0;
 
+        /// Placements of a mesh whose material is a cutout that a controller rewrites every frame,
+        /// which is a mask no backend can bake a micromap against — a scrolling banner, a flipbook
+        /// of leaves. Each is an instance traversal still has to stop and ask about.
+        std::uint32_t mUnbakeable = 0;
+
+        /// Placements wearing a material other than the one their mesh arrived with, where that one
+        /// is not animated.
+        ///
+        /// **A canary, and it should be zero.** `MeshRange::mMaterial` says why a static mesh wears
+        /// one material by construction; a backend bakes against that one, and a placement wearing
+        /// another would be traced against a mask it does not carry. The loader says it cannot
+        /// happen, and this is the number that says so every frame.
+        std::uint32_t mWornOtherwise = 0;
+
         ExtractionStats& operator+=(const ExtractionStats& other);
     };
 
@@ -508,7 +522,10 @@ namespace Rtx
         /// **Keyed on the drawable and not on the geometry.** A crate met again is the crate already
         /// uploaded; a body met again is the same mesh posed again, and the pose is bone rows and
         /// never vertices.
-        Index resolveMesh(const osg::Drawable& drawable, const Read& read, ExtractionStats& stats);
+        ///
+        /// @param material what the drawable wears, resolved first, which a mesh records as it
+        ///        arrives — `MeshRange::mMaterial`.
+        Index resolveMesh(const osg::Drawable& drawable, const Read& read, Index material, ExtractionStats& stats);
 
         /// The scene's rig for a skin, added the first time the skin is met. Shared by every copy of
         /// the drawable, because the skin is.

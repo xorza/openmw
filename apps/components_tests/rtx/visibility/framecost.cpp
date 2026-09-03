@@ -1,5 +1,7 @@
 #include "fixture.hpp"
 
+#include <components/rtxvulkan/scenemicromaps.hpp>
+
 namespace Rtx::Testing
 {
     namespace
@@ -65,10 +67,14 @@ namespace Rtx::Testing
             SkinTables skinTables(device, scene, 1, graveyard);
             const SkinPass skin(device, Testing::getShaderDirectory());
 
+            // Nothing here is a cutout, so nothing is baked; what a placement asks of this every
+            // frame is the refit's description, which must not allocate either.
+            const SceneMicromaps micromaps(device);
+
             // Posed and then built, as the renderer builds a scene.
             skin.record(
                 setup.getCommands(), scene, 0, skinTables, acceleration.getPositions(), buffers.getNormals(), nullptr);
-            acceleration.build(setup, scene, records, graveyard);
+            acceleration.build(setup, scene, records, micromaps, graveyard);
 
             const TextureArray textures(device, setup, 0, {}, graveyard);
             const SetLayout channelLayout = GBuffer::describeLayout(device);
@@ -157,7 +163,7 @@ namespace Rtx::Testing
                 // The placement, as `VulkanRenderer::recordPlacement` records it: the pose, the
                 // refit and the top level, then the tables.
                 skin.record(commands, scene, 0, skinTables, acceleration.getPositions(), buffers.getNormals(), nullptr);
-                acceleration.place(commands, scene, records, changed, 0, nullptr, graveyard);
+                acceleration.place(commands, scene, records, changed, 0, micromaps, nullptr, graveyard);
                 buffers.place(scene, records, changed, 0, graveyard);
                 scene.advancePlacement();
 

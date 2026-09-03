@@ -1,0 +1,191 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// Decides every microtriangle of one mesh's cutout mask, ahead of the micromap build over it.
+//
+// **One lane per triangle.** A lane walks its microtriangles in curve order — `microtriangleAt` is
+// the curve's inverse — decides each as `microtriangleState` says, packs sixteen states to a word
+// and stores words. No atomics and no clear: a lane owns its triangle's run of the data, and the
+// level and the offset it reads off the triangle array are the ones the host wrote for the build.
+//
+// **What a microtriangle is decided against is level zero of the mask, read as the trace reads it.**
+// Its corners land on the sheet through the material's transform exactly as `texturePoint` lands a
+// hit, and the texels are fetched through the array's own sampler, so BC1's punch-through bit and
+// BC2's nibble decode as they do at a hit. A footprint that wraps reads the texels the sampler's
+// repeat would, and one at least a texture wide reads every texel once.
+
+#include "micromap.h"
+
+#include "lib/texturearray.glsl"
+
+layout(local_size_x = MICROMAP_WORKGROUP) in;
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Indices
+{
+    uint at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer TexCoords
+{
+    vec2 at[];
+};
+
+/// `VkMicromapTriangleEXT` as two words: the data offset, then the level in the low half.
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Triangles
+{
+    uint at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) writeonly buffer Data
+{
+    uint at[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    MicromapConstants bake;
+};
+
+/// Where a corner of the grid lands on the sheet: the triangle's corners weighted as `cornerWeights`
+/// weights a hit, with vertex zero at `u = v = 0`.
+vec2 onSheet(vec2 corner[3], uint u, uint v, float step)
+{
+    const float fu = float(u) * step;
+    const float fv = float(v) * step;
+
+    return corner[0] * (1.0 - fu - fv) + corner[1] * fu + corner[2] * fv;
+}
+
+/// A texel coordinate brought back inside the texture, as the sampler's repeat brings it: a
+/// footprint whose least corner is inside the first repeat reaches at most one texture past
+/// either edge.
+int wrapped(int at, int size)
+{
+    return at < 0 ? at + size : (at >= size ? at - size : at);
+}
+
+/// One microtriangle's state, from every texel whose bilinear support its footprint touches — or,
+/// past `MICROMAP_TEXEL_BUDGET`, unknown by a sparse mean.
+uint stateOf(vec2 corner[3], Microtriangle micro, float step, ivec2 size)
+{
+    vec2 q0 = onSheet(corner, micro.mU0, micro.mV0, step);
+    vec2 q1 = onSheet(corner, micro.mU1, micro.mV1, step);
+    vec2 q2 = onSheet(corner, micro.mU2, micro.mV2, step);
+
+    // **Brought to the first repeat before it is scaled**, so that the wrap below is one
+    // subtraction and no division: the sampler repeats, so a footprint at `uv + 3` reads the texels
+    // `uv` does, and a footprint whose least corner is inside `[0, 1)` reaches at most one texture
+    // past either edge before it is as wide as the texture.
+    const vec2 base = floor(min(min(q0, q1), q2));
+    q0 -= base;
+    q1 -= base;
+    q2 -= base;
+
+    // **A corner that is not a number is nothing the bake can place on the sheet**, and content
+    // carries such coordinates on vertices nothing draws. An infinite one has become one by now,
+    // taken from itself. Either is the any-hit's question, which is what unknown means.
+    if (any(isnan(q0)) || any(isnan(q1)) || any(isnan(q2)))
+        return MICROMAP_UNKNOWN_OPAQUE;
+
+    // **And a footprint of thousands of repeats is a footprint of two**, because two already
+    // reach every texel: a corner past that would turn into a texel coordinate no `int` holds,
+    // and a loop bound nothing ends.
+    q0 = min(q0, vec2(2.0));
+    q1 = min(q1, vec2(2.0));
+    q2 = min(q2, vec2(2.0));
+
+    // A sample at `p` blends the texels either side of `p - 0.5`, so the support of the whole
+    // footprint runs from the floor of its least corner to one past the floor of its greatest.
+    const vec2 extent = vec2(size);
+    const vec2 p0 = q0 * extent - 0.5;
+    const vec2 p1 = q1 * extent - 0.5;
+    const vec2 p2 = q2 * extent - 0.5;
+
+    ivec2 first = ivec2(floor(min(min(p0, p1), p2)));
+    ivec2 last = ivec2(floor(max(max(p0, p1), p2))) + 1;
+
+    if (last.x - first.x + 1 >= size.x)
+    {
+        first.x = 0;
+        last.x = size.x - 1;
+    }
+    if (last.y - first.y + 1 >= size.y)
+    {
+        first.y = 0;
+        last.y = size.y - 1;
+    }
+
+    const ivec2 span = last - first + 1;
+
+    // The slot is a push constant and so uniform across the dispatch, which is the one case
+    // `texturearray.glsl`'s rule about qualifying an index does not reach.
+    if (uint(span.x * span.y) > MICROMAP_TEXEL_BUDGET)
+    {
+        float sampled = 0.0;
+        for (uint j = 0u; j < MICROMAP_SPARSE_SAMPLES; ++j)
+            for (uint i = 0u; i < MICROMAP_SPARSE_SAMPLES; ++i)
+            {
+                const int x = first.x + (span.x * int(2u * i + 1u)) / int(2u * MICROMAP_SPARSE_SAMPLES);
+                const int y = first.y + (span.y * int(2u * j + 1u)) / int(2u * MICROMAP_SPARSE_SAMPLES);
+                sampled += texelFetch(textures[bake.mTexture], ivec2(wrapped(x, size.x), wrapped(y, size.y)), 0).a;
+            }
+
+        const float samples = float(MICROMAP_SPARSE_SAMPLES * MICROMAP_SPARSE_SAMPLES);
+        return sampled >= bake.mCutoff * samples ? MICROMAP_UNKNOWN_OPAQUE : MICROMAP_UNKNOWN_TRANSPARENT;
+    }
+
+    float least = 1.0;
+    float most = 0.0;
+    float sum = 0.0;
+    for (int y = first.y; y <= last.y; ++y)
+    {
+        const int ty = wrapped(y, size.y);
+        for (int x = first.x; x <= last.x; ++x)
+        {
+            const float alpha = texelFetch(textures[bake.mTexture], ivec2(wrapped(x, size.x), ty), 0).a;
+            least = min(least, alpha);
+            most = max(most, alpha);
+            sum += alpha;
+        }
+    }
+
+    return microtriangleState(least, most, sum, float(span.x * span.y), bake.mCutoff);
+}
+
+void main()
+{
+    const uint triangle = gl_GlobalInvocationID.x;
+    if (triangle >= bake.mCount)
+        return;
+
+    const uint dataOffset = Triangles(bake.mTriangles).at[2u * triangle];
+    const uint level = Triangles(bake.mTriangles).at[2u * triangle + 1u] & 0xFFFFu;
+
+    vec2 corner[3];
+    for (uint k = 0u; k < 3u; ++k)
+    {
+        const uint vertex = Indices(bake.mIndices).at[3u * triangle + k];
+        corner[k] = TexCoords(bake.mTexCoords).at[vertex] * bake.mTransform.xy + bake.mTransform.zw;
+    }
+
+    const ivec2 size = textureSize(textures[bake.mTexture], 0);
+    const float step = 1.0 / float(1u << level);
+    const uint words = microtriangleWords(level);
+
+    Data data = Data(bake.mData + uint64_t(dataOffset));
+    for (uint word = 0u; word < words; ++word)
+    {
+        uint packed = 0u;
+        for (uint slot = 0u; slot < MICROMAP_STATES_PER_WORD; ++slot)
+        {
+            const Microtriangle micro = microtriangleAt(level, word * MICROMAP_STATES_PER_WORD + slot);
+            packed |= stateOf(corner, micro, step, size) << (MICROMAP_STATE_BITS * slot);
+        }
+
+        data.at[word] = packed;
+    }
+}

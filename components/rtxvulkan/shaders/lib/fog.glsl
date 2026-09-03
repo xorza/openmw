@@ -747,13 +747,14 @@ vec4 fogUniformAlong(vec3 origin, vec3 direction, float distance, float offset, 
 
             if (sources.mSunlit)
             {
-                const float visible = sources.mShafts ? lightThrough(probe, frame.mSunPosition, frame.mFar) : 1.0;
+                const float visible
+                    = sources.mShafts ? lightThroughCoarse(probe, frame.mSunPosition, frame.mFar) : 1.0;
                 scattered += sources.mSunward * absorbed * sunInAir(extinction, visible, reaching);
             }
 
             if (sources.mMoonlit)
             {
-                const float lunar = lightThrough(probe, sources.mMoonward, frame.mFar);
+                const float lunar = lightThroughCoarse(probe, sources.mMoonward, frame.mFar);
                 scattered += absorbed * moonsInAir(extinction, sources, lunar, reaching);
             }
         }

@@ -53,6 +53,7 @@ set(RTX_SHADERS
     shaders/gui.frag
     shaders/gui.vert
     shaders/histogram.comp
+    shaders/micromap.comp
     shaders/morph.comp
     shaders/skin.comp
     shaders/tone.comp
@@ -180,6 +181,8 @@ set(RTX_VULKAN_FILES
     instance.hpp
     memory.cpp
     memory.hpp
+    micromappass.cpp
+    micromappass.hpp
     owned.hpp
     physicaldevice.cpp
     physicaldevice.hpp
@@ -197,6 +200,8 @@ set(RTX_VULKAN_FILES
     sceneacceleration.hpp
     scenebuffers.cpp
     scenebuffers.hpp
+    scenemicromaps.cpp
+    scenemicromaps.hpp
     setlayout.cpp
     setlayout.hpp
     shadermodule.cpp

@@ -38,26 +38,6 @@ ten instructions a tap and eight bytes a tap cost the same there.
 So the ranking below is about the ray core first, the host second, and memory traffic last — the
 opposite of the order the findings were written in.
 
-### 1. Opacity micromaps for every cutout, baked at load
-
-`candidateStops` reads a texture for every candidate on every non-opaque instance, for every ray —
-the eye's, the bounce, the ambient ray, the sun and lamp shadow rays, the water's two, and the fog
-volume's eight probes per column. A canopy over a shadow ray is a texture fetch per leaf card the
-ray crosses. This is the largest "preprocess once at load" item in the tree.
-
-`VK_EXT_opacity_micromap` is exactly this: the alpha mask of each triangle, resolved against the
-material's cutoff, baked into a micromap when the mesh arrives and attached to the bottom-level
-build. Traversal then resolves fully opaque and fully transparent microtriangles in hardware, and
-only the *unknown* state reaches the candidate loop — which keeps `candidateStops` for panes, fades
-and the unknown microtriangles and removes it everywhere else. The bake is a per-mesh pass over
-`(uv, texture, cutoff)` and can run on the host at arrival beside `ShapeFold`. `Rtx::Material::
-isCutout` already decides which instances are non-opaque, so the set that needs a micromap is
-already named.
-
-Cost: the bake at arrival, and micromap memory beside each BLAS. Risk: the four-state (`unknown`)
-handling must keep the mip argument `candidateStops` makes — a micromap is a level-zero answer, so
-choose the two-state format only where the cone argument is not needed, which is the shadow rays.
-
 ### 3. Vertex normals as octahedral `snorm16x2`
 
 Normals are three floats a vertex, in three copies (`SlotBlocks`), written by the skinning pass for

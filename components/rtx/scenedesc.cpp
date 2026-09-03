@@ -65,9 +65,10 @@ namespace Rtx
 
     Index SceneDesc::addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
         std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape, Deform deform,
-        Index deformer)
+        Index deformer, Index material)
     {
         assert(!positions.empty());
+        assert((material == sNoIndex || material < mMaterials.size()) && "a mesh wearing a material the scene lacks");
         assert(normals.empty() || normals.size() == positions.size());
         assert(texCoords.empty() || texCoords.size() == positions.size());
         assert(indices.size() % 3 == 0);
@@ -118,6 +119,7 @@ namespace Rtx
             .mShape = shape,
             .mDeform = deform,
             .mDeformer = deformer,
+            .mMaterial = material,
             .mBounds = boundsOf(positions),
         };
 
@@ -789,6 +791,7 @@ namespace Rtx
 
             range.mVertexCount = 0;
             range.mIndexCount = 0;
+            range.mMaterial = sNoIndex;
             range.mBounds = osg::BoundingBoxf();
 
             // A slot given back names no structure to refit, however it was posed this frame: the

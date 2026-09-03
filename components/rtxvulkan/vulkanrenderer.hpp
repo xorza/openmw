@@ -44,9 +44,11 @@ namespace Rtx
     class GBuffer;
     class Image;
 
+    class MicromapPass;
     class Presenter;
     class SceneAcceleration;
     class SceneBuffers;
+    class SceneMicromaps;
     class SkinTables;
     class TextureArray;
 
@@ -63,11 +65,18 @@ namespace Rtx
         /// inventory doll be handed over by `Rtx::SceneUploader` exactly as a cell is: a slider
         /// drag places what it already built instead of building it again.
         ///
-        /// **Four objects and not six.** `VisibilityPass` and `SkinPass` are shared, because
-        /// nothing about either depends on which scene it works — every texture array declares the
-        /// same bindless layout, and identically defined layouts are compatible.
+        /// **Five objects and not eight.** `VisibilityPass`, `SkinPass` and `MicromapPass` are
+        /// shared, because nothing about any of them depends on which scene it works — every
+        /// texture array declares the same bindless layout, and identically defined layouts are
+        /// compatible.
         struct ViewScene
         {
+            /// The cutout meshes' opacity micromaps, which their structures are built over.
+            ///
+            /// **Declared first, so it is destroyed last**: a structure references the micromap it
+            /// was built with, and the rule everywhere is the structures before the micromaps.
+            std::unique_ptr<SceneMicromaps> mMicromaps;
+
             std::unique_ptr<SceneAcceleration> mAcceleration;
             std::unique_ptr<SceneBuffers> mBuffers;
             std::unique_ptr<TextureArray> mTextures;
@@ -463,6 +472,10 @@ namespace Rtx
         /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
         /// layout that only a scene brings, and the layout every scene brings is the same one.
         std::unique_ptr<TonePass> mTone;
+
+        /// The same again for the bake that decides a cutout's mask per microtriangle, which reads
+        /// the mask out of the same array.
+        std::unique_ptr<MicromapPass> mMicromapPass;
         GuiPass mGuiPass;
         GuiTextures mGuiTextures;
 

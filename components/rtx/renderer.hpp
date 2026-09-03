@@ -212,6 +212,13 @@ namespace Rtx
         /// ray.
         std::uint32_t mCutoutInstances = 0;
 
+        /// How many of those place a mesh whose structure carries an opacity micromap, so traversal
+        /// resolves every known microtriangle without stopping and asks only about the unknown
+        /// ones. A cutout that is not among them is a mask nothing could bake — an animated one —
+        /// or a placement the game is fading, which reads its leaves through the any-hit for as
+        /// long as it fades. `Rtx::SceneMicromaps` says which meshes get one.
+        std::uint32_t mMicromappedInstances = 0;
+
         /// What the renderer holds in acceleration structures and in scene tables.
         ///
         /// **What it holds and not what the scene needs**, which is the figure a video memory budget
@@ -227,6 +234,18 @@ namespace Rtx
         /// these two land on one of two values 110 KiB and 132 bytes apart — 0.05% and a millionth.
         std::uint64_t mStructureBytes = 0;
         std::uint64_t mTableBytes = 0;
+
+        /// What the opacity micromaps hold, apart from the structures they are attached to. The
+        /// figure the level cap is measured against.
+        std::uint64_t mMicromapBytes = 0;
+
+        /// Cutout meshes built without a micromap because the slot their mask lives in held no
+        /// texture when they were built.
+        ///
+        /// **A canary, and it should be zero.** An uploader describes every slot a material names
+        /// before the structures are built, and a file it cannot read gets a stand-in — so a slot
+        /// holding nothing is an arrival that reached the structures ahead of its texture.
+        std::uint32_t mMicromapsUntextured = 0;
 
         /// Every texture the renderer holds, and what those come to.
         ///

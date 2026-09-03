@@ -25,6 +25,7 @@ namespace Rtx
     class Device;
     class Graveyard;
     class SceneDesc;
+    class SceneMicromaps;
 
     /// The neutral transform in Vulkan's storage.
     ///
@@ -66,8 +67,11 @@ namespace Rtx
         ///
         /// `scene` must place at least one instance: a top-level structure over nothing has no
         /// instance buffer to be built from. `records` are `scene`'s rows, made by the caller for
-        /// the reason `place` gives.
-        void build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records, Graveyard& graveyard);
+        /// the reason `place` gives. `micromaps` has baked whatever the scene's cutouts take, and
+        /// each structure is built over its mesh's — `SceneMicromaps::describe` says what a build
+        /// chains and why a refit chains the same.
+        void build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records,
+            const SceneMicromaps& micromaps, Graveyard& graveyard);
 
         SceneAcceleration(const SceneAcceleration&) = delete;
         SceneAcceleration& operator=(const SceneAcceleration&) = delete;
@@ -105,8 +109,11 @@ namespace Rtx
         ///
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list any of
         ///        this is driven by. Whether a copy is then behind is `mRowTable`'s to know.
+        /// @param micromaps what each refitted mesh's structure was built over, which an update has
+        ///        to describe again.
         bool place(VkCommandBuffer commands, const SceneDesc& scene, std::span<const InstanceRecord> records,
-            std::span<const Index> changed, std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard);
+            std::span<const Index> changed, std::uint32_t slot, const SceneMicromaps& micromaps, GpuTimer* timer,
+            Graveyard& graveyard);
 
         /// Takes in the geometry of the meshes the scene says arrived and lets go of the ones it says
         /// went. `buildArrived` builds their structures, once the pass has posed them.
@@ -127,7 +134,8 @@ namespace Rtx
         /// @param timer the frame the arrival lands in, so its builds are one zone of that frame's
         ///        report rather than device time nothing accounts for. Null for a picture inside the
         ///        interface, which is not timed — `VulkanRenderer::placeScene` says why.
-        void buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard);
+        void buildArrived(Batch& batch, const SceneDesc& scene, const SceneMicromaps& micromaps, GpuTimer* timer,
+            Graveyard& graveyard);
 
         /// Destroys the structures of `meshes` and gives their storage back.
         ///
@@ -152,6 +160,14 @@ namespace Rtx
         /// `block[id / INDEX_BLOCK]` itself.
         VkDeviceAddress getIndexBlocks() const { return mIndices.getTableAddress(); }
 
+        /// Where `mesh`'s indices start, for the bake that reads a cutout's triangles through
+        /// them. One address covers the run: a mesh never straddles a block.
+        VkDeviceAddress getIndices(const MeshRange& mesh) const { return mIndices.addressOf(mesh.mIndexOffset); }
+
+        /// Every mesh slot the constructor was handed, which is what a whole-scene bake and build
+        /// walk.
+        std::span<const Index> getEveryMesh() const { return mEveryMesh; }
+
         /// The positions, for the pass that writes a deforming mesh's pose into a slot's copy of
         /// them — and their account, which is what tells that pass which meshes each copy owes.
         SlotBlocks& getPositions() { return mPositions; }
@@ -164,6 +180,10 @@ namespace Rtx
         /// fetch where an opaque instance is a hit. Reported so that a material change that marks
         /// half a cell non-opaque shows up as a number before it shows up as a frame time.
         std::uint32_t getCutoutInstanceCount() const { return mCutoutInstanceCount; }
+
+        /// How many of the cutouts place a mesh whose structure carries an opacity micromap, and
+        /// are not being faded — `placeRow` says why a fade reads its leaves through the any-hit.
+        std::uint32_t getMicromappedInstanceCount() const { return mMicromappedInstanceCount; }
 
         /// How many of them the eye meets as water.
         ///
@@ -186,14 +206,16 @@ namespace Rtx
         ///
         /// A slot that already holds one has it destroyed and its room given back first: a slot the
         /// scene took back and handed out again arrives carrying different geometry.
-        void buildMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard);
+        void buildMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes,
+            const SceneMicromaps& micromaps, Graveyard& graveyard);
 
         /// Fills the refit build infos and sizes the scratch.
         ///
         /// Leaves `mRefitBuilds` holding exactly this frame's rebuilds and nothing else, which is
         /// what both the caller and `recordRefit` read: a count returned beside a vector that still
         /// held the last frame's entries would be two answers to one question.
-        void prepareRefit(const SceneDesc& scene, std::uint32_t slot);
+        void prepareRefit(
+            const SceneDesc& scene, std::uint32_t slot, const SceneMicromaps& micromaps, Graveyard& graveyard);
 
         /// Brings the host rows up to what `changed` names, and to whatever the table grew by.
         void writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed);
@@ -273,6 +295,10 @@ namespace Rtx
         /// it arrives, so this is also whether the mesh can ever be in `getDeformed`.
         std::vector<std::uint8_t> mUpdatable;
 
+        /// Whether each mesh's structure was built over a micromap, which is what a row placing it
+        /// counts by and what a refit of it has to describe again.
+        std::vector<std::uint8_t> mMicromapped;
+
         /// Every mesh slot, for the whole-scene build the constructor does through the same path an
         /// arrival takes. Kept so that path allocates nothing per scene.
         std::vector<Index> mEveryMesh;
@@ -283,6 +309,10 @@ namespace Rtx
         // vectors to say so.
         std::vector<VkAccelerationStructureGeometryKHR> mBuildGeometries;
 
+        /// What each geometry chains for its micromap, where it has one. Beside the geometries
+        /// because the geometry keeps a pointer to it.
+        std::vector<VkAccelerationStructureTrianglesOpacityMicromapEXT> mBuildMicromaps;
+
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mBuilds;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> mBuildRanges;
         std::vector<VkDeviceSize> mBuildSizes;
@@ -292,6 +322,12 @@ namespace Rtx
         /// Kept across frames rather than made per refit: a device allocation on the frame path is a
         /// stall, and this settles at the high-water mark of whatever the world is showing. It never
         /// shrinks, which is what makes it settle at all.
+        ///
+        /// **Grown through the graveyard and never destroyed outright.** A placement's submit
+        /// carries no fence of its own, and a frame places twice at a crossing: the second
+        /// placement's refits can want more scratch while the first's are still on the queue, and
+        /// a buffer freed under a build in flight was a device lost on every crossing — measured,
+        /// once an arrival's bake left the first placement on the queue long enough to be caught.
         Buffer mRefitScratch;
 
         /// The top level's build scratch, which was made and freed on every frame that moved.
@@ -312,6 +348,7 @@ namespace Rtx
         // Refilled per refit. The build reads `pGeometries` through a pointer, so the geometries are
         // sized before any build info names one.
         std::vector<VkAccelerationStructureGeometryKHR> mRefitGeometries;
+        std::vector<VkAccelerationStructureTrianglesOpacityMicromapEXT> mRefitMicromaps;
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mRefitBuilds;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> mRefitRanges;
         std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> mRefitRangePointers;
@@ -322,6 +359,7 @@ namespace Rtx
 
         std::uint32_t mInstanceCount = 0;
         std::uint32_t mCutoutInstanceCount = 0;
+        std::uint32_t mMicromappedInstanceCount = 0;
         std::uint32_t mWaterInstanceCount = 0;
 
         /// **Two totals, each assigned, because one accumulated.** The bottom levels are made once

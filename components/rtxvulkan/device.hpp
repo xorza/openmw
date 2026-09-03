@@ -33,6 +33,11 @@ namespace Rtx
 
         PFN_vkGetPipelineExecutablePropertiesKHR mGetPipelineExecutableProperties = nullptr;
         PFN_vkGetPipelineExecutableStatisticsKHR mGetPipelineExecutableStatistics = nullptr;
+
+        PFN_vkGetMicromapBuildSizesEXT mGetMicromapBuildSizes = nullptr;
+        PFN_vkCreateMicromapEXT mCreateMicromap = nullptr;
+        PFN_vkDestroyMicromapEXT mDestroyMicromap = nullptr;
+        PFN_vkCmdBuildMicromapsEXT mCmdBuildMicromaps = nullptr;
     };
 
     /// A logical device, its single queue, and the extension entry points.

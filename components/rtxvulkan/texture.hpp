@@ -47,6 +47,12 @@ namespace Rtx
         /// The shading map beside it, likewise.
         VkImageView getShadingView() const { return mShading == nullptr ? VK_NULL_HANDLE : mShading->getView(); }
 
+        /// The largest level's extent, or nothing where the slot holds no texture.
+        VkExtent2D getExtent() const
+        {
+            return mImage == nullptr ? VkExtent2D{} : VkExtent2D{ mImage->getWidth(), mImage->getHeight() };
+        }
+
         /// The size of the data uploaded, the map's included, which for a block-compressed image is
         /// what it occupies.
         VkDeviceSize getBytes() const { return mBytes; }
@@ -83,6 +89,14 @@ namespace Rtx
     /// half the memory, and no table to rewrite whole when it grows. Measured, the loads cost
     /// nothing the trace can see, so this is the shape and not a saving. And an array of their own
     /// rather than slots among the textures, for the reason `texturearray.glsl` gives.
+    /// A set of the array's layout that someone other than the array binds: the pool it came
+    /// from, which is what frees it, and the set itself.
+    struct SetApart
+    {
+        VkDescriptorPool mPool = VK_NULL_HANDLE;
+        VkDescriptorSet mSet = VK_NULL_HANDLE;
+    };
+
     class TextureArray
     {
     public:
@@ -146,9 +160,31 @@ namespace Rtx
         /// nothing, and neither is counted here.
         TexturesHeld getHeld() const;
 
+        /// The extent of the texture in `slot`, or nothing where the slot holds none — a slot past
+        /// the array included, which is one a scene named and nothing has described yet.
+        VkExtent2D getExtent(std::uint32_t slot) const
+        {
+            return slot < mTextures.size() ? mTextures[slot].getExtent() : VkExtent2D{};
+        }
+
+        /// A set of the array's layout holding the textures in `slots` and nothing else, from a
+        /// pool of its own, for a dispatch recorded ahead of a write to the array's set.
+        ///
+        /// **Filled once, here, and never written again.** A set a pending dispatch is bound to may
+        /// be written only under update-after-bind, which the array does not declare; a dispatch
+        /// that has to outlast the array's next write reads through one of these instead. The
+        /// caller buries the pool with the work that binds the set. Every slot must hold a texture,
+        /// which `getExtent` says.
+        SetApart describeApart(std::span<const std::uint32_t> slots) const;
+
     private:
         /// Writes the descriptors for the slots `arrived` names, the texture's and its map's.
         void describe(std::span<const TextureData> arrived);
+
+        /// Queues a write of `view` into `set` at `binding[slot]`, behind the image info the write
+        /// names by address.
+        void queueWrite(VkDescriptorSet set, std::uint32_t binding, std::uint32_t slot, VkImageView view,
+            std::vector<VkDescriptorImageInfo>& images, std::vector<VkWriteDescriptorSet>& writes) const;
 
         /// Grows the array to reach `slot`, and refuses one past what the binding holds.
         void reserveSlot(std::uint32_t slot);

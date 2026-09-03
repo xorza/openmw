@@ -43,6 +43,12 @@ namespace Rtx
     class StructureStorage
     {
     public:
+        /// What an offset in a block has to be a multiple of, and so the unit a room is handed out
+        /// in. Vulkan fixes it at 256 for a structure and for a micromap alike. Public because a
+        /// caller summing what its rooms will come to — the `least` it asks a new block for — sums
+        /// them in this unit.
+        static constexpr VkDeviceSize sAlignment = 256;
+
         /// @param usage what a block's buffer is created with, which is what says who may be placed
         ///        in it. What is stored this way is an opaque object the driver puts at a 256-byte
         ///        offset in a buffer the application owns.

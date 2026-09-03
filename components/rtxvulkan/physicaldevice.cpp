@@ -239,6 +239,7 @@ namespace Rtx
 
         const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& pipeline = mProperties->mRayTracingPipeline;
         const VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT& reorder = mProperties->mInvocationReorder;
+        const VkPhysicalDeviceOpacityMicromapPropertiesEXT& micromap = mProperties->mOpacityMicromap;
 
         out << "\nray tracing\n"
             << "  max geometry count:           " << as.maxGeometryCount << '\n'
@@ -256,7 +257,9 @@ namespace Rtx
             // asks of the shader table. The field arrived with the extension's revision 2, so a
             // driver at revision 1 leaves it as it found it — printed rather than asserted against
             // for that reason.
-            << "  max record index:             " << reorder.maxShaderBindingTableRecordIndex << '\n';
+            << "  max record index:             " << reorder.maxShaderBindingTableRecordIndex << '\n'
+            << "  micromap levels:              " << micromap.maxOpacity2StateSubdivisionLevel << " two-state, "
+            << micromap.maxOpacity4StateSubdivisionLevel << " four-state\n";
 
         out << "\noptional extensions present\n";
         if (mOptionalExtensions.empty())

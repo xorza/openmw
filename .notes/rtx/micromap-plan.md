@@ -369,3 +369,49 @@ fifth of the trace and the win is some part of it.
 - NVIDIA, dxvk-remix, `documentation/OpacityMicromap.md`
   (https://github.com/NVIDIAGameWorks/dxvk-remix/blob/main/documentation/OpacityMicromap.md)
 - Microsoft, *D3D12 Opacity Micromaps* (https://devblogs.microsoft.com/directx/omm/)
+
+## 9. Measured
+
+Release harness, `shot --repeat=32`, medians of three interleaved rounds against the build before
+this one, on a warm card. The `trace` and `air` zones in milliseconds:
+
+| view | trace before | trace after | air before | air after |
+|---|---:|---:|---:|---:|
+| balmora | 1.08 | 1.05 | 0.104 | 0.098 |
+| vivec | 2.00 | 2.07 | 0.128 | 0.108 |
+| seyda-neen-ship | 1.73 | 1.60 | 0.161 | 0.150 |
+
+Memory, `mMicromapBytes` against the structures: Balmora 25.6 MiB of 197, Vivec 25.8 of 170, the
+ship 26.3 of 139. Every cutout row is micromapped at Balmora and the ship; Vivec's 5082 hold 56
+placements of masks a controller moves. Both canaries of §3.4 read zero at Balmora and Vivec.
+
+**Where the rest of the ceiling went, measured by folding every unknown microtriangle to two states
+on every micromapped row** — a diagnostic leg, not shipped: trace 0.98 at Balmora, 1.98 at Vivec,
+1.41 at the ship. The ship reaches §1.3's ceiling that way and Balmora most of it, so what the
+four-state build gives back there is the any-hit on the unknown microtriangles, and the bake's
+conservative rule is what makes them — a bilinear support two texels wider than the microtriangle
+leaves every leaf edge unknown at the level the cap allows. Vivec gains nothing even folded: its
+cutouts are large banners and lattices whose micromap lookups cost what their any-hits cost, and
+the four-state build pays both. The next step is the unknown fraction as a number, per texture,
+before the level scale or the cap is moved.
+
+**The crossing.** `bench --views=island-crossing --seconds=10`, two rounds apiece: frame medians
+7.0–7.8 ms before against 7.0–7.1 after, worst 210–232 against 205–223, the `blas` zone unchanged
+at 0.18 and the bake's own `micromap` zone at 7.4–7.6 ms on the frames an arrival lands in. Two
+things the crossing found that a load could not:
+
+- **A placement's refit scratch was destroyed outright when it grew**, while the previous
+  placement of the same frame — a crossing places twice, and neither submit carries a fence — was
+  still refitting in it. The bake's few milliseconds on the queue ahead of the first placement were
+  what let the second catch it: a device lost on every crossing, faulting at the old scratch's
+  address. `SceneAcceleration::mRefitScratch` now goes through the graveyard like every other table.
+- **The instance's forced non-opaque bit is applied after the micromap lookup, not before it**, so
+  a cutout row forced non-opaque sent every leaf to the any-hit and culled only the holes. A
+  micromapped row is left to the micromap; a fading placement keeps the forced bit, which is what a
+  fade wants. `aMicromapAnswersAtTheFinestLevelWhereTheConeWouldReadACoarserOne` is the test that
+  tells the two apart, and §2's reading of the specification was wrong on this point.
+
+`verify --views=all` against the build before: the views without a cutout are byte-identical, and
+the sixteen with one differ where §3.2 says — Vivec on a tenth of its pixels, the shore on a
+twentieth, an interior with a grate on a hundredth — with no difference a look at the pair shows
+at full size. The frames are in `build-release/verify-before` and `verify-after`.

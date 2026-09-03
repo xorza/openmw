@@ -18,6 +18,7 @@
 #include "gputimer.hpp"
 #include "graveyard.hpp"
 #include "result.hpp"
+#include "scenemicromaps.hpp"
 
 namespace Rtx
 {
@@ -26,9 +27,7 @@ namespace Rtx
         /// What a row counts as, kept beside it so the counts move with the row.
         constexpr std::uint8_t sRowCutout = 1;
         constexpr std::uint8_t sRowWater = 2;
-
-        /// `VkAccelerationStructureCreateInfoKHR::offset` must be a multiple of this.
-        constexpr VkDeviceSize sStructureAlignment = 256;
+        constexpr std::uint8_t sRowMicromapped = 4;
 
         // Addressable as well as build input, because the shader reads the indices back at a hit
         // through the same address the build read them at, and there is no reason for a second copy
@@ -52,14 +51,19 @@ namespace Rtx
         /// **Opaque as built**, and overridden per instance where a material says otherwise: opacity
         /// is a property of the material and a mesh does not carry one, so the top-level flags are
         /// the only place the question can be answered exactly.
-        VkAccelerationStructureGeometryKHR describeTriangles(
-            const MeshRange& mesh, VkDeviceAddress positions, VkDeviceAddress indices)
+        ///
+        /// @param micromap what the mesh's cutout mask baked to, chained so that traversal resolves
+        ///        each microtriangle the bake decided without the any-hit — or null for a mesh with
+        ///        none, whose forced non-opaque rows reach the any-hit for every candidate.
+        VkAccelerationStructureGeometryKHR describeTriangles(const MeshRange& mesh, VkDeviceAddress positions,
+            VkDeviceAddress indices, const VkAccelerationStructureTrianglesOpacityMicromapEXT* micromap)
         {
             return VkAccelerationStructureGeometryKHR{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
                 .geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
                 .geometry = { .triangles = {
                                   .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
+                                  .pNext = micromap,
                                   .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
                                   .vertexData = { .deviceAddress = positions },
                                   .vertexStride = sizeof(osg::Vec3f),
@@ -151,13 +155,13 @@ namespace Rtx
             mPositions.settle(slot);
     }
 
-    void SceneAcceleration::build(
-        Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records, Graveyard& graveyard)
+    void SceneAcceleration::build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records,
+        const SceneMicromaps& micromaps, Graveyard& graveyard)
     {
         assert(mBottomLevel.empty() && mTopLevel == VK_NULL_HANDLE && "a scene built twice");
 
         // The rows after the structures, because a row names the address of the structure it places.
-        buildMeshes(batch, scene, mEveryMesh, graveyard);
+        buildMeshes(batch, scene, mEveryMesh, micromaps, graveyard);
         writeRows(records, {});
         prepareTopLevel(scene, 0, graveyard);
         recordTopLevel(batch.getCommands(), nullptr);
@@ -218,6 +222,7 @@ namespace Rtx
             mBottomLevel[mesh] = VK_NULL_HANDLE;
             mBottomLevelAddresses[mesh] = 0;
             mBottomLevelRooms[mesh] = StructureRoom{};
+            mMicromapped[mesh] = 0;
         }
     }
 
@@ -232,7 +237,8 @@ namespace Rtx
         writeGeometry(scene, scene.getArrivedMeshes());
     }
 
-    void SceneAcceleration::buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard)
+    void SceneAcceleration::buildArrived(
+        Batch& batch, const SceneDesc& scene, const SceneMicromaps& micromaps, GpuTimer* timer, Graveyard& graveyard)
     {
         // **The builds a crossing brings, bracketed as one zone.** Without it they are device time
         // the frame's fence carries and no zone accounts for, so the frame a player feels is the one
@@ -240,7 +246,7 @@ namespace Rtx
         openZone(timer, batch.getCommands(), "blas");
 
         const auto opened = std::chrono::steady_clock::now();
-        buildMeshes(batch, scene, scene.getArrivedMeshes(), graveyard);
+        buildMeshes(batch, scene, scene.getArrivedMeshes(), micromaps, graveyard);
 
         Log(Debug::Verbose) << "  scene build: " << since(opened, std::chrono::steady_clock::now())
                             << " ms recording structures for " << scene.getArrivedMeshes().size() << " meshes";
@@ -248,8 +254,8 @@ namespace Rtx
         closeZone(timer, batch.getCommands());
     }
 
-    void SceneAcceleration::buildMeshes(
-        Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard)
+    void SceneAcceleration::buildMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes,
+        const SceneMicromaps& micromaps, Graveyard& graveyard)
     {
         const DeviceFunctions& functions = mDevice.getFunctions();
         const std::size_t slots = scene.getMeshes().size();
@@ -261,10 +267,12 @@ namespace Rtx
         mBottomLevelRooms.resize(slots);
         mUpdateScratch.resize(slots, 0);
         mUpdatable.resize(slots, 0);
+        mMicromapped.resize(slots, 0);
 
         // The build reads these through pointers it keeps until the command is recorded, so they
         // live across the whole function rather than inside the loop.
         mBuildGeometries.assign(meshes.size(), VkAccelerationStructureGeometryKHR{});
+        mBuildMicromaps.assign(meshes.size(), VkAccelerationStructureTrianglesOpacityMicromapEXT{});
         mBuilds.assign(meshes.size(), VkAccelerationStructureBuildGeometryInfoKHR{});
         mBuildRanges.assign(meshes.size(), VkAccelerationStructureBuildRangeInfoKHR{});
         mBuildRangePointers.clear();
@@ -300,13 +308,21 @@ namespace Rtx
                 mBottomLevelRooms[slot] = StructureRoom{};
             }
 
+            // **Over its micromap, where the bake gave it one.** The structure is what carries the
+            // micromap from here on: a refit has to describe the same one, and a row placing the
+            // mesh counts by it.
+            mMicromapped[slot] = micromaps.has(slot) ? 1 : 0;
+            if (mMicromapped[slot] != 0)
+                mBuildMicromaps[at] = micromaps.describe(slot);
+
             // Indices are mesh-local, so each structure is handed the slice of the shared buffers
             // that belongs to it and addresses vertex zero as its own first vertex. The addresses
             // are guarded here as well: a freed slot's run is nothing, and `addressOf` would name
             // where it used to be.
             mBuildGeometries[at]
                 = describeTriangles(mesh, mesh.mVertexCount > 0 ? mPositions.at(0).addressOf(mesh.mVertexOffset) : 0,
-                    mesh.mIndexCount > 0 ? mIndices.addressOf(mesh.mIndexOffset) : 0);
+                    mesh.mIndexCount > 0 ? mIndices.addressOf(mesh.mIndexOffset) : 0,
+                    mMicromapped[slot] != 0 ? &mBuildMicromaps[at] : nullptr);
 
             // **Only a mesh that deforms is built to be refitted.** The flag costs a structure its
             // tightness and the trace that reads it a little; a few dozen actors pay it and the
@@ -351,7 +367,7 @@ namespace Rtx
 
             mBuildSizes.resize(meshes.size());
             mBuildSizes[at] = sizes.accelerationStructureSize;
-            wanted = alignUp(wanted + sizes.accelerationStructureSize, sStructureAlignment);
+            wanted = alignUp(wanted + sizes.accelerationStructureSize, StructureStorage::sAlignment);
 
             scratchOffsets[at] = scratchTotal;
             scratchTotal = alignUp(scratchTotal + sizes.buildScratchSize, scratchAlignment);
@@ -416,7 +432,8 @@ namespace Rtx
         batch.keep(std::move(scratch));
     }
 
-    void SceneAcceleration::prepareRefit(const SceneDesc& scene, const std::uint32_t slot)
+    void SceneAcceleration::prepareRefit(
+        const SceneDesc& scene, const std::uint32_t slot, const SceneMicromaps& micromaps, Graveyard& graveyard)
     {
         const std::span<const Index> deformed = scene.getDeformed();
 
@@ -451,11 +468,12 @@ namespace Rtx
         }
 
         if (mRefitScratch.getSize() < scratchTotal)
-            mRefitScratch = Buffer::deviceLocal(mDevice, scratchTotal, sScratchUsage);
+            graveyard.bury(std::exchange(mRefitScratch, Buffer::deviceLocal(mDevice, scratchTotal, sScratchUsage)));
 
         const VkDeviceAddress scratchAddress = mRefitScratch.getDeviceAddress();
 
         mRefitGeometries.resize(count);
+        mRefitMicromaps.resize(count);
         mRefitBuilds.resize(count);
         mRefitRanges.resize(count);
         mRefitRangePointers.resize(count);
@@ -465,10 +483,14 @@ namespace Rtx
             const Index index = deformed[i];
             const MeshRange& mesh = scene.getMeshes()[index];
 
-            // The same description the first build was given, which is what makes the structure it
-            // produces the same size as the one already sitting at this mesh's offset.
-            mRefitGeometries[i] = describeTriangles(
-                mesh, positions.addressOf(mesh.mVertexOffset), mIndices.addressOf(mesh.mIndexOffset));
+            // The same description the first build was given, micromap included, which is what
+            // makes the structure it produces the same size as the one already sitting at this
+            // mesh's offset — and what an update over a micromap requires.
+            if (mMicromapped[index] != 0)
+                mRefitMicromaps[i] = micromaps.describe(index);
+
+            mRefitGeometries[i] = describeTriangles(mesh, positions.addressOf(mesh.mVertexOffset),
+                mIndices.addressOf(mesh.mIndexOffset), mMicromapped[index] != 0 ? &mRefitMicromaps[i] : nullptr);
 
             mRefitRanges[i] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = mesh.getTriangleCount() };
             mRefitRangePointers[i] = &mRefitRanges[i];
@@ -513,11 +535,11 @@ namespace Rtx
 
     bool SceneAcceleration::place(VkCommandBuffer commands, const SceneDesc& scene,
         std::span<const InstanceRecord> records, std::span<const Index> changed, const std::uint32_t slot,
-        GpuTimer* timer, Graveyard& graveyard)
+        const SceneMicromaps& micromaps, GpuTimer* timer, Graveyard& graveyard)
     {
         assert(slot < mSlots && "a frame slot this scene has no copy of the rows for");
 
-        prepareRefit(scene, slot);
+        prepareRefit(scene, slot, micromaps, graveyard);
 
         // **What this copy owes, and not what the scene moved.** The top level is built from this
         // copy of the rows, so what decides whether it has to be built again is whether those rows
@@ -589,6 +611,8 @@ namespace Rtx
         std::uint8_t& counted = mRowFlags[slot];
         if ((counted & sRowCutout) != 0)
             --mCutoutInstanceCount;
+        if ((counted & sRowMicromapped) != 0)
+            --mMicromappedInstanceCount;
         if ((counted & sRowWater) != 0)
             --mWaterInstanceCount;
         counted = 0;
@@ -611,10 +635,27 @@ namespace Rtx
         // Morrowind's sheet geometry is lit and hit from both faces, so nothing is culled.
         VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 
+        assert(record.mMesh < mMicromapped.size() && "a row placing a mesh nothing built");
+        const bool micromapped = record.mCutout && !record.mTranslucent && mMicromapped[record.mMesh] != 0;
+
         // **The geometry is built opaque, so forcing is the whole of how either candidate reaches
         // the shader at all** — a cutout to be asked whether there is anything at the hit, a
         // translucent surface to be asked how much of it there is.
-        if (record.mCutout || record.mTranslucent)
+        //
+        // **Except over a micromap, whose answer the forced bit would override.** The lookup
+        // replaces the geometry's own opaque bit and the instance's flags are applied after it, so
+        // a row forced non-opaque sends every leaf to the any-hit and culls only the holes —
+        // measured, and `aMicromapAnswersAtTheFinestLevel...` is what says so. Left alone, the
+        // micromap decides: a hole is ignored, a leaf commits, and only an unknown microtriangle
+        // reaches the shader.
+        //
+        // **And that override is exactly what a placement the game is fading wants.** A leaf that
+        // committed without asking would stop a shadow ray that dims by the fade and walks on
+        // today, so its row is forced non-opaque like any translucent one: every leaf reaches the
+        // any-hit, a hole is still a hole, and the micromap stays on the structure for the frame
+        // the fade ends. Not `DISABLE_OPACITY_MICROMAPS`, which asks a structure built to allow
+        // it and lost the device on a crossing over one that was not.
+        if ((record.mCutout && !micromapped) || record.mTranslucent)
             flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
 
         // A translucent instance is never asked the cutout's question, so it is not counted against
@@ -623,6 +664,12 @@ namespace Rtx
         {
             counted |= sRowCutout;
             ++mCutoutInstanceCount;
+        }
+
+        if (micromapped)
+        {
+            counted |= sRowMicromapped;
+            ++mMicromappedInstanceCount;
         }
 
         mRowTable.write(slot) = VkAccelerationStructureInstanceKHR{

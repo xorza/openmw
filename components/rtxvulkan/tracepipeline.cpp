@@ -83,7 +83,13 @@ namespace Rtx
             // register count the trace was read at as a dispatch is a number this device no longer
             // gives — `Device::reportPipeline` is where that shows. The flag stays because it costs
             // the frame nothing and is what makes the report appear the day a driver answers.
-            .flags = VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR,
+            //
+            // **And what a launch against a structure carrying an opacity micromap has to say.** The
+            // any-hit is skipped for every microtriangle the bake decided, which is a decision the
+            // pipeline is told about here and not one the structure can make for it. Ray queries
+            // need no such flag, so the compute pipelines say nothing.
+            .flags
+            = VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR | VK_PIPELINE_CREATE_RAY_TRACING_OPACITY_MICROMAP_BIT_EXT,
             .stageCount = static_cast<std::uint32_t>(stages.size()),
             .pStages = stages.data(),
             .groupCount = static_cast<std::uint32_t>(groups.size()),

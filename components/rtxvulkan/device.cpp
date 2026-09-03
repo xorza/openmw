@@ -145,6 +145,10 @@ namespace Rtx
             load(mHandle, mFunctions.mCmdTraceRays, "vkCmdTraceRaysKHR");
             load(mHandle, mFunctions.mGetPipelineExecutableProperties, "vkGetPipelineExecutablePropertiesKHR");
             load(mHandle, mFunctions.mGetPipelineExecutableStatistics, "vkGetPipelineExecutableStatisticsKHR");
+            load(mHandle, mFunctions.mGetMicromapBuildSizes, "vkGetMicromapBuildSizesEXT");
+            load(mHandle, mFunctions.mCreateMicromap, "vkCreateMicromapEXT");
+            load(mHandle, mFunctions.mDestroyMicromap, "vkDestroyMicromapEXT");
+            load(mHandle, mFunctions.mCmdBuildMicromaps, "vkCmdBuildMicromapsEXT");
 
             if (describesFault)
                 load(mHandle, mGetDeviceFaultInfo, "vkGetDeviceFaultInfoEXT");

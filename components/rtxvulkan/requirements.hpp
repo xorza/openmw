@@ -55,6 +55,11 @@ namespace Rtx
         /// What lets the driver be asked how it compiled a pipeline: registers a thread, spills,
         /// waves a multiprocessor. See `ComputePipeline`, which is where the answer is read.
         VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR mPipelineExecutable{};
+
+        /// What resolves a cutout's mask inside traversal, one state per microtriangle baked when
+        /// the mesh arrives, so a ray walks through the holes and commits the leaves without an
+        /// any-hit. `SceneMicromaps` is what bakes them and `.notes/rtx/micromap-plan.md` the case.
+        VkPhysicalDeviceOpacityMicromapFeaturesEXT mOpacityMicromap{};
     };
 
     /// The properties worth reporting or budgeting against, read in one chained query.
@@ -79,6 +84,10 @@ namespace Rtx
         /// Whether the driver reorders when it is asked to, or takes the hint and ignores it. A
         /// device that ignores it is refused: this tree keeps no path for one.
         VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT mInvocationReorder{};
+
+        /// How finely a triangle may be cut, per format. `SceneMicromaps` checks its own cap
+        /// against the four-state limit and refuses a device under it.
+        VkPhysicalDeviceOpacityMicromapPropertiesEXT mOpacityMicromap{};
     };
 
     /// A feature the renderer will not start without, and how to reach it in the chain.
