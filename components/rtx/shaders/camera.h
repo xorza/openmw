@@ -124,12 +124,14 @@ struct Ray
 /// are added here — added to *one* number, so which way is down cannot be disagreed about.
 RTX_SHADER Ray rayAt(Camera camera, vec2 pixel)
 {
-    const vec2 uv = (pixel + 0.5 + camera.mJitter) / vec2(float(camera.mWidth), float(camera.mHeight)) * 2.0 - 1.0;
+    RTX_PRECISE vec2 uv = (pixel + 0.5 + camera.mJitter) / vec2(float(camera.mWidth), float(camera.mHeight)) * 2.0 - 1.0;
 
     Ray ray;
     if (camera.mOrthographic != 0u)
     {
-        ray.mOffset = camera.mRight * uv.x - camera.mUp * uv.y;
+        // The same pair of multiply-adds the perspective branch pins below, for the same reason.
+        RTX_PRECISE vec3 offset = camera.mRight * uv.x - camera.mUp * uv.y;
+        ray.mOffset = offset;
         ray.mDirection = normalize(camera.mForward);
 
         return ray;
@@ -144,7 +146,16 @@ RTX_SHADER Ray rayAt(Camera camera, vec2 pixel)
     // already drifted that way — the trace summed left to right and the wavelet hoisted, so the
     // positions the filter reconstructed were never quite the ones that were shaded. This is the
     // trace's association, because the trace is what everything else is judged against.
-    ray.mDirection = normalize(camera.mForward + camera.mRight * uv.x - camera.mUp * uv.y);
+    //
+    // **And `precise`, because the driver compiles the trace twice.** Once when the pipeline is
+    // made, and again on a thread of its own seconds later, swapping the code in when it is done —
+    // and the second compile fused these multiplies and adds into different multiply-adds from the
+    // first. A direction an ulp away on some pixels is a hit distance an ulp away on the surfaces
+    // they reach, and a path tracer turns that into another sample on a few hundred pixels: the
+    // same scene drew two pictures, before and after the swap, in every process. `precise` forbids
+    // the fusion, so both compiles agree — on the direction, and on everything downstream of it.
+    RTX_PRECISE vec3 summed = camera.mForward + camera.mRight * uv.x - camera.mUp * uv.y;
+    ray.mDirection = normalize(summed);
 
     return ray;
 }

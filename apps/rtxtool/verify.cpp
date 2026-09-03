@@ -1,11 +1,9 @@
 #include "verify.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cstdlib>
 #include <format>
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -20,7 +18,6 @@
 
 #include "content.hpp"
 #include "framing.hpp"
-#include "settling.hpp"
 #include "stagedworld.hpp"
 #include "world.hpp"
 
@@ -37,12 +34,6 @@ namespace RtxTool
         std::filesystem::path frameFile(const std::filesystem::path& directory, const std::string& view)
         {
             return directory / (view + ".png");
-        }
-
-        /// Where the picture a view drew before it settled goes, when it is not the one after.
-        std::filesystem::path earlyFile(const std::filesystem::path& directory, const std::string& view)
-        {
-            return directory / (view + ".early.png");
         }
 
         /// How a difference reads on one line.
@@ -62,22 +53,6 @@ namespace RtxTool
     double FrameDifference::getPercent() const
     {
         return mTotal == 0 ? 0.0 : static_cast<double>(mDiffering) / static_cast<double>(mTotal) * 100.0;
-    }
-
-    FrameDifference closestDifference(const Rtx::PngImage& taken, std::span<const Rtx::PngImage> references)
-    {
-        FrameDifference closest{ .mMismatched = true };
-        for (const Rtx::PngImage& reference : references)
-        {
-            const FrameDifference difference = compareFrames(reference, taken);
-            if (difference.same())
-                return difference;
-
-            if (!difference.mMismatched && (closest.mMismatched || difference.mDiffering < closest.mDiffering))
-                closest = difference;
-        }
-
-        return closest;
     }
 
     FrameDifference compareFrames(const Rtx::PngImage& before, const Rtx::PngImage& after)
@@ -156,6 +131,12 @@ namespace RtxTool
                 return 1;
             }
 
+            // **A place staged into a shared renderer is a discontinuity**, and the exposure is what
+            // would otherwise carry across one: it adapts toward its measurement over seconds rather
+            // than taking it, so a room drawn after a noon exterior opens at the exterior's
+            // brightness. `Rtx::Renderer::resetHistory` says why only a caller can know this.
+            renderer->resetHistory();
+
             // **Staged and not streamed**: this renders the region once, so every composite has to be
             // finished here rather than drained over frames that will never come.
             Rtx::SceneUploader uploader;
@@ -170,68 +151,30 @@ namespace RtxTool
 
             // **One frame at seed zero.** Everything a repeat buys is a timing figure, and this
             // command measures nothing; a second frame would only give the sampler somewhere else
-            // to be. The one frame is drawn again where `watchSettling` says so.
+            // to be.
             framing.mFrame = 0;
 
-            // **Each drawing is a first frame of a place staged into a shared renderer, which is a
-            // discontinuity**, and the exposure is what would otherwise carry across one: it adapts
-            // toward its measurement over seconds rather than taking it, so a room drawn after a
-            // noon exterior opens at the exterior's brightness, and a view drawn twice would open
-            // the second time on its own first. `Rtx::Renderer::resetHistory` says why only a caller
-            // can know this.
-            const auto draw = [&](std::vector<std::uint8_t>& pixels) {
-                renderer->resetHistory();
-                renderer->renderFrame(makeFrameConstants(framing, extents),
-                    Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
-                        .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                        .mFilter = request.mFrame.mFilter,
-                        .mExposure = request.mFrame.mExposure });
-                renderer->readPixels(pixels);
-            };
+            renderer->renderFrame(makeFrameConstants(framing, extents),
+                Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
+                    .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                    .mFilter = request.mFrame.mFilter,
+                    .mExposure = request.mFrame.mExposure });
 
-            Rtx::PngImage early{ extents.mOutputWidth, extents.mOutputHeight, {} };
-            draw(early.mPixels);
-
-            // The settled picture a previous run kept, and the early one where its two differed;
-            // `readPng` is empty for whichever was never written, and empty is passed over.
-            std::array<Rtx::PngImage, 2> references;
-            if (!request.mAgainst.empty())
-                references = { Rtx::readPng(frameFile(request.mAgainst, view.mName)),
-                    Rtx::readPng(earlyFile(request.mAgainst, view.mName)) };
-
-            FrameDifference difference = closestDifference(early, references);
-
-            // **A reference keeps both pictures, so a run is compared with whichever it drew.** A
-            // reference watches every view for the settling `watchSettling` describes; a run
-            // watches only a view whose first picture matched nothing the reference holds, which is
-            // what keeps the wait off every run that lands on a side the reference knows.
-            Rtx::PngImage settled{ extents.mOutputWidth, extents.mOutputHeight, {} };
-            std::optional<double> settledAt;
-            const bool watched = request.mAgainst.empty() || !difference.same();
-            if (watched)
-            {
-                settledAt = watchSettling(draw, early.mPixels, settled.mPixels);
-                if (!request.mAgainst.empty())
-                    difference = closestDifference(settled, references);
-            }
-
-            const Rtx::PngImage& last = watched ? settled : early;
-            Rtx::writePng(frameFile(request.mOut, view.mName), last.mWidth, last.mHeight, last.mPixels);
-            if (settledAt.has_value())
-                Rtx::writePng(earlyFile(request.mOut, view.mName), early.mWidth, early.mHeight, early.mPixels);
-
-            const std::string settling = watched ? describeSettling(settledAt) : std::string();
+            std::vector<std::uint8_t> pixels;
+            renderer->readPixels(pixels);
+            Rtx::writePng(frameFile(request.mOut, view.mName), extents.mOutputWidth, extents.mOutputHeight, pixels);
 
             if (request.mAgainst.empty())
-            {
-                out() << std::format("  {:<28} {}\n", view.mName, settling);
                 continue;
-            }
+
+            const Rtx::PngImage reference = Rtx::readPng(frameFile(request.mAgainst, view.mName));
+            const Rtx::PngImage taken{ extents.mOutputWidth, extents.mOutputHeight, std::move(pixels) };
+            const FrameDifference difference = compareFrames(reference, taken);
 
             unmatched += difference.mMismatched ? 1u : 0u;
             differing += !difference.mMismatched && !difference.same() ? 1u : 0u;
 
-            out() << std::format("  {:<28} {}{}{}\n", view.mName, describe(difference), watched ? ", " : "", settling);
+            out() << std::format("  {:<28} {}\n", view.mName, describe(difference));
         }
 
         out() << std::format("wrote {} to {}\n", request.mViews.size() == 1 ? "1 frame" : "frames",

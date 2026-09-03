@@ -1,13 +1,9 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <limits>
-#include <map>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -63,13 +59,6 @@ namespace RtxTool
     /// megabytes and the sixteen stills are kilobytes. What this answers is "did the run draw the
     /// same frames", and it names the ones that changed; what it cannot answer is by how much, and
     /// a frame it names is then rendered on its own for a look.
-    ///
-    /// **And a run is held to the frames before its first mid-run build only.** `watchSettling`
-    /// says what the driver does to a structure some time after building it, and `bench` waits
-    /// that out for what a place built before its measured frames; a cell arriving mid-run builds
-    /// structures that settle at a frame no two runs share, so the frames from then on are named
-    /// in the report and not counted against the run. What a run can promise is exactly what it
-    /// drew on settled ground.
     class FrameHashes
     {
     public:
@@ -80,10 +69,6 @@ namespace RtxTool
         /// **The pixels as the tool would write them to a PNG**, so a hash names the picture a
         /// person would look at rather than an internal channel that may not survive a rebuild.
         void add(std::string_view view, std::uint32_t frame, std::span<const std::uint8_t> pixels);
-
-        /// Says that `frame` of `view` is the first drawn on structures a mid-run build made.
-        /// The earliest is what a view is held to; a later one adds nothing.
-        void noteBuild(std::string_view view, std::uint32_t frame);
 
         void write(const std::filesystem::path& file) const;
 
@@ -101,19 +86,7 @@ namespace RtxTool
             /// Frames this run drew that the reference has no hash for, and the other way about.
             std::uint32_t mUnmatched = 0;
 
-            /// The first frame drawn on structures a mid-run build made, where there was one.
-            std::optional<std::uint32_t> mBuiltAt;
-
             bool same() const { return mDiffering.empty() && mUnmatched == 0; }
-
-            /// Whether the run matched on every frame it is held to: all of them without a mid-run
-            /// build, and the ones before it otherwise. `same` is the whole run.
-            bool holds() const
-            {
-                const std::uint32_t heldTo = mBuiltAt.value_or(std::numeric_limits<std::uint32_t>::max());
-                return mUnmatched == 0
-                    && std::ranges::none_of(mDiffering, [&](const std::uint32_t frame) { return frame < heldTo; });
-            }
         };
 
         /// One entry per view this run drew, in the order it drew them.
@@ -128,9 +101,6 @@ namespace RtxTool
         };
 
         std::vector<Frame> mFrames;
-
-        /// The first frame each view drew on structures a mid-run build made.
-        std::map<std::string, std::uint32_t, std::less<>> mBuilds;
     };
 
     /// The differing frames of one view, as a line for the report — or empty where it matched.

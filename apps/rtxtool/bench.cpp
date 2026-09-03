@@ -9,7 +9,6 @@
 #include <optional>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <SDL.h>
@@ -27,7 +26,6 @@
 #include "framehashes.hpp"
 #include "framing.hpp"
 #include "perfcontrol.hpp"
-#include "settling.hpp"
 #include "stagedworld.hpp"
 #include "viewpoint.hpp"
 #include "window.hpp"
@@ -262,74 +260,6 @@ namespace RtxTool
         uploader.hand(renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
         const double buildMs = std::chrono::duration<double, std::milli>(Clock::now() - buildStart).count();
 
-        // The view at `frame`, seen from `standing`, drawn and not read back.
-        const auto drawFrame = [&](const std::uint32_t frame, const Placement& standing) {
-            Framing framing = Framing::lookingFrom(standing);
-            framing.mFieldOfView = run.mRequest.mFrame.mFieldOfView;
-            framing.mDelight = run.mRequest.mFrame.mDelight;
-            framing.mShowAlbedo = run.mRequest.mFrame.mShowAlbedo;
-
-            framing.mLighting = staged.getLighting();
-            framing.mLighting.mSeconds = static_cast<float>(frame) / sStepRate;
-
-            // **Off the frame index, like everything else a measured run animates.** The hour
-            // does not move here, so no game time passes for the star sphere to turn on, and
-            // the deck scrolls on the player's clock — which is the one this index counts.
-            framing.mLighting.mRoll = Sky::SkyRoll::after(
-                framing.mLighting.mSeconds, framing.mLighting.mCloudSpeed, 0.0f, Sky::timescaleClouds());
-
-            // What the upscaler's sample sequence and every random draw in the shader are walked
-            // by. Held to the frame index so the same run draws the same samples twice over.
-            framing.mFrame = frame;
-
-            renderer.renderFrame(makeFrameConstants(framing, renderer.getExtents()),
-                Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
-                    .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                    .mFilter = run.mRequest.mFrame.mFilter,
-                    .mExposure = run.mRequest.mFrame.mExposure });
-        };
-
-        // **A hashed run waits for the driver to settle before a frame of it counts**, and
-        // `watchSettling` says what it waits for. Once where the place was built, which is quick
-        // where the settling comes soon and the whole cap where it came already; and once more
-        // where the warm-up ends, only where the warm-up handed a build over — the composites an
-        // exterior takes in its first frames build structures of their own, and a watch at the
-        // start was over before them. Every measured frame is then drawn on the far side of what
-        // was built before it, so two runs differ only where a cell arriving mid-run builds more,
-        // which `noteBuild` says and the report names. The history a watch leaves is reset behind
-        // it, and the frame after absorbs that the same way in every run.
-        const auto watchSettled = [&](const std::uint32_t frame, const std::string_view when) {
-            std::vector<std::uint8_t> early;
-            std::vector<std::uint8_t> settled;
-            const auto draw = [&](std::vector<std::uint8_t>& pixels) {
-                renderer.resetHistory();
-                drawFrame(frame, staged.getPlacement());
-                renderer.readPixels(pixels);
-            };
-
-            draw(early);
-            const std::optional<double> settledAt = watchSettling(draw, early, settled);
-            out() << std::format("       {} {}{}\n", view.mName, when, describeSettling(settledAt));
-
-            renderer.resetHistory();
-        };
-
-        if (run.mJudging)
-            watchSettled(0, "");
-
-        // What a hand that built means to the judgement: a build in the warm-up is watched out at
-        // its end, and a build among the measured frames bounds what they are held to.
-        bool builtWarmingUp = false;
-        const auto noteBuilt = [&](const Rtx::SceneUpload& handed, const std::uint32_t frame) {
-            if (!run.mJudging || handed.mKind == Rtx::SceneUpload::Kind::Placed)
-                return;
-
-            if (frame < run.mWarmup)
-                builtWarmingUp = true;
-            else
-                run.mHashes.noteBuild(view.mName, frame);
-        };
-
         samples.clear();
 
         Crossings crossings;
@@ -368,9 +298,6 @@ namespace RtxTool
                 // no frame's time.
                 clock.add(readGpuClock());
 
-                if (run.mJudging && builtWarmingUp)
-                    watchSettled(frame, "after what the warm-up built, ");
-
                 runStart = Clock::now();
                 run.mProfiling.enable();
             }
@@ -401,8 +328,6 @@ namespace RtxTool
                 const Rtx::SceneUpload handed = uploader.hand(
                     renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
                 const Clock::time_point built = Clock::now();
-
-                noteBuilt(handed, frame);
 
                 crossings.add(handed.mKind == Rtx::SceneUpload::Kind::Rebuilt,
                     std::chrono::duration<double, std::milli>(read - frameStart).count(),
@@ -443,21 +368,38 @@ namespace RtxTool
             if (moved)
             {
                 const Clock::time_point placeStart = Clock::now();
-                const Rtx::SceneUpload handed = uploader.hand(
-                    renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
+                uploader.hand(renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
                 placeMs = std::chrono::duration<double, std::milli>(Clock::now() - placeStart).count();
-
-                noteBuilt(handed, frame);
             }
 
-            drawFrame(frame, standing);
+            Framing framing = Framing::lookingFrom(standing);
+            framing.mFieldOfView = run.mRequest.mFrame.mFieldOfView;
+            framing.mDelight = run.mRequest.mFrame.mDelight;
+            framing.mShowAlbedo = run.mRequest.mFrame.mShowAlbedo;
+
+            framing.mLighting = staged.getLighting();
+            framing.mLighting.mSeconds = static_cast<float>(frame) / sStepRate;
+
+            // **Off the frame index, like everything else a measured run animates.** The hour
+            // does not move here, so no game time passes for the star sphere to turn on, and
+            // the deck scrolls on the player's clock — which is the one this index counts.
+            framing.mLighting.mRoll = Sky::SkyRoll::after(
+                framing.mLighting.mSeconds, framing.mLighting.mCloudSpeed, 0.0f, Sky::timescaleClouds());
+
+            // What the upscaler's sample sequence and every random draw in the shader are walked
+            // by. Held to the frame index so the same run draws the same samples twice over.
+            framing.mFrame = frame;
+
+            renderer.renderFrame(makeFrameConstants(framing, renderer.getExtents()),
+                Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
+                    .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                    .mFilter = run.mRequest.mFrame.mFilter,
+                    .mExposure = run.mRequest.mFrame.mExposure });
 
             if (run.mWindow != nullptr && !renderer.presentFrame())
                 renderer.resize(run.mWindow->getWidth(), run.mWindow->getHeight());
 
-            // The measured frames and not the warm-up: what the warm-up draws may stand on
-            // structures still to settle, which no two runs share.
-            if (run.mJudging && frame >= run.mWarmup)
+            if (run.mJudging)
             {
                 renderer.readPixels(pixelScratch);
                 run.mHashes.add(view.mName, frame, pixelScratch);
@@ -663,7 +605,7 @@ namespace RtxTool
             for (const FrameHashes::ViewDifference& difference : hashes.against(reference))
             {
                 out() << std::format("  {:<28} {}\n", difference.mView, describe(difference));
-                if (!difference.holds())
+                if (!difference.same())
                     judgement = 1;
             }
         }

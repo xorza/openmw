@@ -187,7 +187,6 @@ if (OPENMW_RTX)
         rtxtool/benchsuite.cpp
         rtxtool/contactsheet.cpp
         rtxtool/crossing.cpp
-        rtxtool/framehashes.cpp
         rtxtool/framing.cpp
         rtxtool/gpuclock.cpp
         rtxtool/installation.cpp
@@ -197,7 +196,6 @@ if (OPENMW_RTX)
         rtxtool/perfcontrol.cpp
         rtxtool/props.cpp
         rtxtool/retire.cpp
-        rtxtool/settling.cpp
         rtxtool/stability.cpp
         rtxtool/staging.cpp
         rtxtool/terrainstorage.cpp

@@ -64,38 +64,6 @@ namespace RtxTool
             EXPECT_TRUE(compareFrames(before, after).same());
         }
 
-        /// **The nearest of several references is the one compared, and the same as any is same.**
-        /// A view has two pictures, and a run is judged against whichever it drew.
-        TEST(RtxVerifyTest, theNearestReferenceIsTheOneCompared)
-        {
-            const Rtx::PngImage taken = flat(10, 10, 100);
-
-            // One reference three pixels away, another one pixel away: the report is the one pixel.
-            Rtx::PngImage farther = taken;
-            channelAt(farther, 1, 1, 0) = 90;
-            channelAt(farther, 2, 2, 1) = 90;
-            channelAt(farther, 3, 3, 2) = 90;
-            Rtx::PngImage nearer = taken;
-            channelAt(nearer, 5, 5, 0) = 120;
-
-            const std::vector<Rtx::PngImage> two{ farther, nearer };
-            const FrameDifference closest = closestDifference(taken, two);
-            EXPECT_FALSE(closest.same());
-            EXPECT_EQ(closest.mDiffering, 1u);
-            EXPECT_EQ(closest.mWorst, 20u);
-
-            // The same picture among them, in any position, is same whatever the others say.
-            const std::vector<Rtx::PngImage> withSame{ farther, taken, nearer };
-            EXPECT_TRUE(closestDifference(taken, withSame).same());
-
-            // A reference of the wrong size is passed over for one that can be subtracted, and
-            // nothing at all is a mismatch rather than a difference of nought.
-            const std::vector<Rtx::PngImage> oneWrongSize{ flat(10, 9, 100), nearer };
-            EXPECT_EQ(closestDifference(taken, oneWrongSize).mDiffering, 1u);
-            EXPECT_TRUE(closestDifference(taken, {}).mMismatched);
-            EXPECT_FALSE(closestDifference(taken, {}).same());
-        }
-
         /// Two sizes are not a delta, and neither is a reference that was never written.
         TEST(RtxVerifyTest, nothingToSubtractIsSaidRatherThanCountedAsZero)
         {

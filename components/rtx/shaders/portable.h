@@ -50,4 +50,13 @@ using uvec3 = packed_uint3;
 #define RTX_SHADER
 #endif
 
+// A value whose rounding is load-bearing: GLSL's `precise` forbids fusing its multiplies and
+// adds, so every compile of the shader agrees on it. `rayAt` says what that is for. Nothing on the
+// host or in Metal, where the arithmetic is written as it is read.
+#if defined(__METAL_VERSION__) || defined(RTX_HOST)
+#define RTX_PRECISE
+#else
+#define RTX_PRECISE precise
+#endif
+
 #endif
