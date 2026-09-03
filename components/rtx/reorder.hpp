@@ -10,8 +10,8 @@ namespace Rtx
     ///
     /// **One build of the shader for each of these, so that a measurement has something to be
     /// against.** The launch change and the forms of the reorder are separable only if every one of
-    /// them can be run, and `.notes/rtx/ser-plan.md` §9 is what that run found: the launch is worth 6
-    /// to 10 percent and the reorder costs 7 to 17 back, so `Off` is what the renderer takes. The
+    /// them can be run, and running them found the launch worth 6 to 10 percent against the dispatch
+    /// it replaced and every form of the reorder 7 to 17 back, so `Off` is what the renderer takes. The
     /// `REORDER_*` values in `shaders/visibility.h` are the shader's side of these, and
     /// `VisibilityPass` is where the two are asserted to agree.
     enum class Reorder

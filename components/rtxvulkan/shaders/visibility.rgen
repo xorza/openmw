@@ -19,7 +19,7 @@
 // launch traces a hit object, sorts the threads on the shader that object names, and then runs it;
 // what comes back is a payload rather than a `Surface`. So this shader holds no lamp reservoir, no
 // bounce, no layer stack and no sky — each of those is in the shader that needs it, carrying its own
-// registers. `.notes/rtx/ser-plan.md` §6 is the argument and `lib/payload.glsl` is what crosses.
+// registers. `lib/payload.glsl` is what crosses.
 //
 // **What is left here is what belongs to the path rather than to the surface**: the pane the eye
 // looks through, the column of water in front of it, the air, the sprites, and the eleven channels.

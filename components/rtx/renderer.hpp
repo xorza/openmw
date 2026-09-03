@@ -121,8 +121,8 @@ namespace Rtx
         /// they found.
         ///
         /// **Off, because off is faster.** The reorder costs this trace 7 to 17 percent at every
-        /// view of the default suite and buys nothing back — `.notes/rtx/ser-plan.md` §9 is the
-        /// measurement. It is kept switchable because the sort is the one half of Stage 2 that can
+        /// view of the default suite and buys nothing back, measured against the same launch with
+        /// the sort off. It is kept switchable because the sort is the one half of Stage 2 that can
         /// be turned off: the split into a shader per material kind is what traversal does, and
         /// nothing here decides it.
         Reorder mReorder = Reorder::Off;

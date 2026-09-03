@@ -17,7 +17,11 @@
 // the sort key's first component, above the hint and above where the hit is. A hint bit repeating
 // it would displace a bit of the last of those for nothing, which is the whitepaper's own rule.
 //
-// `.notes/rtx/ser-plan.md` is what these are for, §9 is what Stage 1 measured and §10 Stage 2.
+// **Both stages measured a loss, and `Rtx::Reorder` is where off-by-default is stated.** One sort in
+// front of a kernel holding every kind cost 7 to 17 percent, and the same sort in front of a shader
+// per kind — the arrangement the sources describe — cost 12 to 25. What the trace does after any of
+// them is eleven channel writes along the launch's own neighbourhood, which is the whitepaper's own
+// "when not to use" case.
 
 #include "scene.h"
 #include "traversal.glsl"

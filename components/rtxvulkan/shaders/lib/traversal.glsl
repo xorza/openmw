@@ -467,7 +467,7 @@ struct Surface
 ///        call**, so the stack's loop and the four tables it walks are compiled out of a shader no
 ///        such hit can arrive at. A closest-hit shader is picked by the instance's own material
 ///        kind, so the two that are not terrain's know the answer is no — which is the register
-///        relief Stage 2 is for, and `.notes/rtx/ser-plan.md` §6 is the argument.
+///        relief Stage 2 is for, and which no driver here will report a number for.
 Surface resolveFor(Hit hit, vec3 origin, vec3 direction, bool layered)
 {
     Surface surface;

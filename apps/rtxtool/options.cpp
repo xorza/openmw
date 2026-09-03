@@ -134,9 +134,13 @@ namespace RtxTool
             "object the traversal answered, `hint` sorts on a coherence hint instead and so keeps "
             "the launch's own locality, and `both` is the two together. The shader a hit object "
             "names is picked by traversal either way, so the frame is split across a closest-hit "
-            "shader per material kind whatever this says. Off by default because off is faster here. "
-            ".notes/rtx/ser-plan.md is the measurement, and it also says why the picture moves on a "
-            "handful of pixels rather than not at all");
+            "shader per material kind whatever this says. Off by default because off is faster here: "
+            "every form of the call costs 7 to 17 percent at each view of the default suite and buys "
+            "nothing back, since the trace ends in eleven channel writes laid out along the launch's "
+            "own neighbourhood and a sort is what gives that neighbourhood up. It also moves the "
+            "picture on a handful of pixels rather than on none: the call is a barrier the driver "
+            "rebuilds the code around, and one bounce sample and one lamp draw a pixel turn a "
+            "last-bit difference into a different lamp");
 
         addOption("preset", bpo::value<std::string>()->default_value("d"),
             "which Ray Reconstruction network to run: default, d or e. Ray Reconstruction keeps its "

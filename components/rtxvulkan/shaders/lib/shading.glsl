@@ -545,8 +545,8 @@ vec3 bounceLight(Surface surface, uvec2 pixel)
     // **Not reordered, and it cannot be here.** This runs inside the closest-hit shader the launch
     // invoked, and `reorderThreadEXT` is a ray generation instruction — so the one ray the sources
     // point at is the one Stage 2 puts out of reach. Stage 1 measured what a reorder here was worth
-    // before it moved: 20 percent slower out of doors and 30 in a room. `.notes/rtx/ser-plan.md`
-    // §9.1.
+    // before it moved: 20 percent slower out of doors and 30 in a room, because a bounce indoors is
+    // short and lands on the same few surfaces, so there is no coherence left to recover.
     const Surface hit
         = trace(surface.mPosition, towards, SHADOW_BIAS, surface.mFootprint, BOUNCE_SPREAD, MASK_SOLID);
 

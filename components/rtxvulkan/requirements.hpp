@@ -49,7 +49,9 @@ namespace Rtx
         /// from a ray generation shader, which only a pipeline has.
         VkPhysicalDeviceRayTracingPipelineFeaturesKHR mRayTracingPipeline{};
 
-        /// The reorder itself. `.notes/rtx/ser-plan.md` is what it is for.
+        /// The reorder itself: what lets a ray generation shader sort its threads on the hit object
+        /// traversal answered, before the shader that object names is run. `Rtx::Reorder` is what
+        /// asks for one, and it asks for none by default because every form of it measured slower.
         VkPhysicalDeviceRayTracingInvocationReorderFeaturesEXT mInvocationReorder{};
 
         /// What lets the driver be asked how it compiled a pipeline: registers a thread, spills,

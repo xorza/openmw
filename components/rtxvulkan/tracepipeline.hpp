@@ -40,8 +40,8 @@ namespace Rtx
     /// **A launch and not a dispatch, for two things.** `reorderThreadEXT` is defined for ray
     /// generation and for no other stage, and a hit object executed there runs a shader picked by
     /// traversal rather than by a branch — so the divergent half of a trace becomes one small
-    /// program per kind of hit instead of one kernel holding the union of all of them.
-    /// `.notes/rtx/ser-plan.md` §6 is the argument.
+    /// program per kind of hit instead of one kernel holding the union of all of them, each carrying
+    /// only its own live state.
     ///
     /// Nothing recurses: the shaders a launch invokes trace again with inline ray queries, which
     /// cost the pipeline's own stack nothing.

@@ -129,8 +129,8 @@ namespace RtxTool
         // from under a corpus that never said which one it meant.
         //
         // **The reorder is named for both of those reasons as well.** It moves the trace by 7 to 17
-        // percent and it moves a scattering of pixels — `.notes/rtx/ser-plan.md` §9 — so a line
-        // without it says one thing about two frames that cost different amounts.
+        // percent and it moves a scattering of pixels, so a line without it says one thing about two
+        // frames that cost different amounts.
         const std::string exposure
             = request.mFrame.mExposure.has_value() ? std::format("{}", *request.mFrame.mExposure) : std::string("auto");
 
