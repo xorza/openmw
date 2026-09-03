@@ -4,85 +4,18 @@
 
 #include <cstdint>
 #include <ostream>
-#include <span>
-#include <string>
 
 #include <components/debug/debugging.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 
 #include "cellchoice.hpp"
-#include "framehashes.hpp"
+#include "scenedigest.hpp"
 #include "stagedworld.hpp"
 #include "world.hpp"
 
 namespace RtxTool
 {
-    namespace
-    {
-        /// One hash for the geometry, the placements, the surfaces, the lamps and the sprites, in the
-        /// order the renderer receives them, so two runs can be said to have been handed the same
-        /// scene without a picture between them.
-        ///
-        /// **Fields and not records, wherever a record has padding.** The bytes between fields are
-        /// whatever the allocator left, and a hash that read them would call two identical scenes
-        /// different.
-        std::string digestOf(const Rtx::SceneDesc& scene)
-        {
-            Digest digest;
-            digest.add(scene.getPositions());
-            digest.add(scene.getNormals());
-            digest.add(scene.getTexCoords());
-            digest.add(scene.getIndices());
-
-            for (const Rtx::MeshRange& mesh : scene.getMeshes())
-            {
-                digest.add(mesh.mVertexOffset);
-                digest.add(mesh.mVertexCount);
-                digest.add(mesh.mIndexOffset);
-                digest.add(mesh.mIndexCount);
-            }
-
-            for (const Rtx::MeshInstance& instance : scene.getInstances())
-            {
-                digest.add(std::span<const float>(instance.mTransform.ptr(), 16));
-                digest.add(instance.mMesh);
-                digest.add(instance.mMaterial);
-            }
-
-            for (const Rtx::Material& material : scene.getMaterials())
-            {
-                digest.add(material.mDiffuse);
-                digest.add(material.mEmissive);
-                digest.add(material.mLayerOffset);
-                digest.add(material.mLayerCount);
-                digest.add(material.mDiffuseColour);
-                digest.add(material.mTextureTransform);
-            }
-
-            for (const Rtx::Light& light : scene.getLights())
-            {
-                digest.add(light.mPosition);
-                digest.add(light.mIntensity);
-            }
-
-            for (const Rtx::Sprite& sprite : scene.getSprites())
-            {
-                digest.add(sprite.mPosition);
-                digest.add(sprite.mRadius);
-            }
-
-            for (const Rtx::SpriteEmitter& emitter : scene.getEmitters())
-            {
-                digest.add(emitter.mCentre);
-                digest.add(emitter.mFirst);
-                digest.add(emitter.mCount);
-            }
-
-            return spellHash(digest.getWords());
-        }
-    }
-
     int runScene(
         World& world, const ESM::Cell& cell, const StagingRequest& request, const ActorRequest& actors, bool twice)
     {
@@ -107,7 +40,7 @@ namespace RtxTool
             << "  textures:             " << scene.getTextures().size() << '\n'
             << "  triangles:            " << scene.getTriangleCount() << '\n'
             << "  vertex+index bytes:   " << scene.getGeometryBytes() / 1024 << " KiB\n"
-            << "  handed over:          " << digestOf(scene) << '\n';
+            << "  handed over:          " << digestScene(scene) << '\n';
 
         for (std::size_t at = 0; at < stats.mTextureFormats.size(); ++at)
         {

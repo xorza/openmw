@@ -46,6 +46,8 @@ set(RTXTOOL_FILES
     posedactors.hpp
     scene.cpp
     scene.hpp
+    scenedigest.cpp
+    scenedigest.hpp
     shot.cpp
     shot.hpp
     stagedworld.cpp

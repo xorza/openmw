@@ -196,6 +196,7 @@ if (OPENMW_RTX)
         rtxtool/perfcontrol.cpp
         rtxtool/props.cpp
         rtxtool/retire.cpp
+        rtxtool/scenedigest.cpp
         rtxtool/stability.cpp
         rtxtool/staging.cpp
         rtxtool/terrainstorage.cpp
