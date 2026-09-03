@@ -1120,11 +1120,10 @@ namespace Rtx::Shaders
         /// Where this material's terrain layers are, or a count of zero for a single-textured
         /// surface — which is everything but the ground.
         ///
-        /// **The count is what says a hit is ground, and the row states the kind nowhere else.**
-        /// Only terrain is given layers and terrain without one is never made, so a count is the
-        /// same fact a `mKind` word used to carry. What sorts a material otherwise is the
-        /// instance's shader-table offset, which reaches the shader as the closest-hit shader that
-        /// ran.
+        /// **The count is also what says a hit is ground.** Only terrain is given layers, and
+        /// terrain without one is never made, so nothing else in the row has to state the kind —
+        /// what sorts a material otherwise is the instance's shader-table offset, which reaches the
+        /// shader as the closest-hit shader that ran.
         uint mLayerOffset;
         uint mLayerCount;
 

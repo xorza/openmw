@@ -11,9 +11,9 @@
 // so not one word here is spent on them.
 //
 // **Live state is what a reorder costs**, and this is the live state: twenty-six words, a hundred
-// and four bytes, against the sixty-four this split was planned for. The two fields that put it
-// over — the mirror a water pixel reflects and the response an upscaler demodulates by — are each
-// read by the tail and neither can be worked out again from what is left.
+// and four bytes. The two fields that weigh most — the mirror a water pixel reflects and the
+// response an upscaler demodulates by — are each read by the tail and neither can be worked out
+// again from what is left.
 
 #include "shading.glsl"
 #include "traversal.glsl"
