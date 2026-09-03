@@ -16,6 +16,12 @@ extractor walk or the uploader. Its scene has no sprites and no animated materia
 
 ## 1. Structures that allocate
 
+**Measured after this review was written. See `.notes/allocations.md`.** The whole heap costs about
+0.4% of the main process's cycles, on a still cell and on a streaming crossing alike. Every item
+below is work against the stated frame-path rule, not work that moves a frame time. The one
+exception is 1.2, whose sort is 2.4% at Vivec. The ranking inside this section is the rule's, not the
+clock's.
+
 ### 1.1 `SceneExtractor::takeTexture` builds a string per texture role per frame
 
 `components/rtx/sceneextractor.cpp:1813`. The call constructs a `VFS::Path::Normalized` from the
@@ -69,12 +75,11 @@ The arrival frame has the least room, and this is where all of it lands.
 Direction: scratch vectors on the owner. A persistent staging ring for the device buffers is a
 larger change, and the arrival frame is where it pays.
 
-### 1.6 `SceneUploader::hand` builds a log stream on the arrival frame
+### 1.6 Withdrawn
 
-`components/rtx/sceneuploader.cpp:138`. The `Log(Debug::Verbose)` stream is built whether or not
-the level is enabled.
-
-Direction: compile it out, or gate it before the stream exists.
+`SceneUploader::hand` was recorded here as building a log stream on every arrival frame. It does not.
+`Log::Log` reads the level and returns at once when it is off, and every `operator<<` is guarded by
+the same flag.
 
 ### 1.7 `Weather::WrapAroundOperator::operateParticles` allocates per system per frame
 
