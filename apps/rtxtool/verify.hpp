@@ -54,6 +54,14 @@ namespace RtxTool
     /// the upscaler off, the filter off, the exposure held, address randomisation off, and the albedo
     /// alone; `scene` digests what was handed over and twelve reads gave one number. A change here
     /// that moved the picture that way would have to move a triangle.
+    ///
+    /// **A magnitude is not the test, though — Arkngthand moves 13% of its albedo.** A cave ties
+    /// along the lines where two rocks cross, and a Dwemer ruin is a kit of flat panels laid over
+    /// one another, so its ties are whole faces of one material against another's. They come out as
+    /// 277000 pixels of 2073600 differing by one of 255 and nine at worst, and 609 of the finished
+    /// frame by up to 19. What says it is the tree and not the change is the shape rather than the
+    /// share: the same pixels every run, two pictures and never a third, and everything handed over
+    /// hashing the same — the tables, the geometry, the textures and the frame block alike.
     struct FrameDifference
     {
         /// The two are not the same size, so there is nothing to subtract. Also what a missing or
