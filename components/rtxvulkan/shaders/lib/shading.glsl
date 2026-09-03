@@ -475,13 +475,13 @@ float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission
     // between a point and the room: the pillow over the sheet, the chest against the wall, the
     // underside of a table. A room keeps every sample too — `AMBIENT_EXTERIOR_RATE` says why.
     if (!skyLights())
-        return weight * lightThroughCoarse(position, towards, ROOM_FILL_REACH);
+        return weight * lightThrough(position, towards, ROOM_FILL_REACH);
 
     // Drawn last, so a solid's direction and a sheet's side are the numbers they were.
     if (randomNext(state) >= AMBIENT_EXTERIOR_RATE)
         return 0.0;
 
-    return weight * lightThroughCoarse(position, towards, frame.mFar) / AMBIENT_EXTERIOR_RATE;
+    return weight * lightThrough(position, towards, frame.mFar) / AMBIENT_EXTERIOR_RATE;
 }
 
 /// What a bounce brings back when it reaches nothing.

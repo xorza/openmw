@@ -46,8 +46,9 @@ namespace Rtx::Shaders
     /// answers for a quarter as many microtriangles. So the floor is the level whose data is one
     /// word, and every triangle's run is a whole number of them.
     ///
-    /// **Six at the top is the SDK's cap**, which the memory arithmetic in `.notes/rtx/micromap-plan.md`
-    /// makes necessary: four to the level in states per triangle.
+    /// **Six at the top is the SDK's cap**, which the memory arithmetic makes necessary: four to
+    /// the level in states per triangle, so each level costs four times the one under it, and at
+    /// six a town's micromaps measured an eighth to a fifth of its structures' own size.
     RTX_CONST uint MICROMAP_LEVEL_MIN = 2;
     RTX_CONST uint MICROMAP_LEVEL_MAX = 6;
 

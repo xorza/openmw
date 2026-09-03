@@ -14,6 +14,7 @@
 - screen upside down for loading terrains
 - precompile shaders?
 - normal interpolation bug?
+- micromap unknown fraction per texture, before moving the level scale or the cap
 - fog under the water surface
 - load time allocations
 - move some computations to loadtime

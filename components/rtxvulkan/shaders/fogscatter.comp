@@ -221,9 +221,9 @@ void main()
     float visible = 1.0;
     float lunar = 1.0;
     if (sources.mShafts)
-        visible = lightThroughCoarse(position, frame.mSunPosition, frame.mFar);
+        visible = lightThrough(position, frame.mSunPosition, frame.mFar);
     if (sources.mMoonlit)
-        lunar = lightThroughCoarse(position, sources.mMoonward, frame.mFar);
+        lunar = lightThrough(position, sources.mMoonward, frame.mFar);
 
     const vec3 moons = sources.mMoonlit ? moonsInAir(extinction, sources, lunar, reaching) : vec3(0.0);
 

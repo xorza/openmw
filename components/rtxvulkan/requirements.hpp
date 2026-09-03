@@ -58,7 +58,7 @@ namespace Rtx
 
         /// What resolves a cutout's mask inside traversal, one state per microtriangle baked when
         /// the mesh arrives, so a ray walks through the holes and commits the leaves without an
-        /// any-hit. `SceneMicromaps` is what bakes them and `.notes/rtx/micromap-plan.md` the case.
+        /// any-hit. `SceneMicromaps` is what bakes them.
         VkPhysicalDeviceOpacityMicromapFeaturesEXT mOpacityMicromap{};
     };
 
