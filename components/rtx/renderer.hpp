@@ -364,7 +364,7 @@ namespace Rtx
         /// then adapt by different amounts and draw different pictures, which is a run that cannot
         /// be compared with itself — and everything else a run animates already steps by the frame
         /// index for exactly that reason. A caller with a schedule states it here.
-        std::optional<float> mSinceLast;
+        std::optional<float> mSinceLast = std::nullopt;
 
         /// What to multiply the exposure this frame measures for itself by. One leaves it alone, and
         /// a fixed `mExposure` is not touched by it at all.
