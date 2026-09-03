@@ -93,7 +93,7 @@ namespace RtxTool
         {
             ViewRequest shaded = makeRequest();
             ViewRequest albedo = makeRequest();
-            albedo.mShowAlbedo = true;
+            albedo.mFrame.mShowAlbedo = true;
 
             const osg::Vec3f at(0.0f, 0.0f, 0.0f);
             const osg::Vec3f to(0.0f, 1.0f, 0.0f);

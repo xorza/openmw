@@ -54,6 +54,9 @@ namespace RtxTool
         /// is meant to remove can be looked at.
         bool mFilter = true;
 
+        /// Write the albedo with no shading over it.
+        bool mShowAlbedo = false;
+
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame. A picture wants it measured; a reference wants it held still.
         std::optional<float> mExposure;

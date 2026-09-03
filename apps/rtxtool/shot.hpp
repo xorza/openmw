@@ -43,9 +43,6 @@ namespace RtxTool
         /// reconstructs detail from.
         bool mJitter = false;
 
-        /// Write the albedo with no shading over it.
-        bool mShowAlbedo = false;
-
         /// Report the share of pixels whose accumulated bounce luminance passes each of a ladder of
         /// thresholds, beside the frame's other figures.
         ///

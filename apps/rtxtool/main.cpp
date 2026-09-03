@@ -276,6 +276,7 @@ namespace RtxTool
             request.mReorder = parseReorder(variables["reorder"].as<std::string>());
             request.mDelight = variables["delight"].as<float>();
             request.mFilter = variables["filter"].as<bool>();
+            request.mShowAlbedo = variables["albedo"].as<bool>();
             request.mExposure = parseExposure(variables["exposure"].as<std::string>());
             request.mWeather = weather;
             request.mHour = hour;
@@ -721,7 +722,6 @@ namespace RtxTool
                 request.mOrigin = chosen.mOrigin;
                 request.mTarget = chosen.mTarget;
                 request.mFrames = variables["frames"].as<std::uint32_t>();
-                request.mShowAlbedo = variables["albedo"].as<bool>();
 
                 return runView(world, chosen.mCell, validation, request);
             }
@@ -732,7 +732,6 @@ namespace RtxTool
             request.mSeaSeconds = variables["sea-time"].as<float>();
             request.mOrigin = chosen.mOrigin;
             request.mTarget = chosen.mTarget;
-            request.mShowAlbedo = variables["albedo"].as<bool>();
             request.mTail = variables["tail"].as<bool>();
             request.mDump = variables["dump"].as<std::string>();
             request.mJitter = variables["jitter"].as<bool>();

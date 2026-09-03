@@ -26,6 +26,7 @@
 #include "framehashes.hpp"
 #include "framing.hpp"
 #include "perfcontrol.hpp"
+#include "settling.hpp"
 #include "stagedworld.hpp"
 #include "viewpoint.hpp"
 #include "window.hpp"
@@ -260,6 +261,56 @@ namespace RtxTool
         uploader.hand(renderer, Rtx::sWorld, staged.getScene(), run.mWorld.getImageManager(), Rtx::SeaState{});
         const double buildMs = std::chrono::duration<double, std::milli>(Clock::now() - buildStart).count();
 
+        // The view at `frame`, seen from `standing`, drawn and not read back.
+        const auto drawFrame = [&](const std::uint32_t frame, const Placement& standing) {
+            Framing framing = Framing::lookingFrom(standing);
+            framing.mFieldOfView = run.mRequest.mFrame.mFieldOfView;
+            framing.mDelight = run.mRequest.mFrame.mDelight;
+            framing.mShowAlbedo = run.mRequest.mFrame.mShowAlbedo;
+
+            framing.mLighting = staged.getLighting();
+            framing.mLighting.mSeconds = static_cast<float>(frame) / sStepRate;
+
+            // **Off the frame index, like everything else a measured run animates.** The hour
+            // does not move here, so no game time passes for the star sphere to turn on, and
+            // the deck scrolls on the player's clock — which is the one this index counts.
+            framing.mLighting.mRoll = Sky::SkyRoll::after(
+                framing.mLighting.mSeconds, framing.mLighting.mCloudSpeed, 0.0f, Sky::timescaleClouds());
+
+            // What the upscaler's sample sequence and every random draw in the shader are walked
+            // by. Held to the frame index so the same run draws the same samples twice over.
+            framing.mFrame = frame;
+
+            renderer.renderFrame(makeFrameConstants(framing, renderer.getExtents()),
+                Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
+                    .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                    .mFilter = run.mRequest.mFrame.mFilter,
+                    .mExposure = run.mRequest.mFrame.mExposure });
+        };
+
+        // **A hashed run waits for the driver to settle before a frame of it counts**, and
+        // `watchSettling` says what it waits for. Every frame after the settling is drawn on the
+        // far side of it, so a run hashed from the near side differs from one that settled
+        // earlier on every frame between the two settlings. The view's first frame is drawn again
+        // until it changes, and the history that leaves is reset behind it. A cell arriving
+        // mid-run builds structures that settle later still, and nothing here waits for those.
+        if (run.mJudging)
+        {
+            std::vector<std::uint8_t> early;
+            std::vector<std::uint8_t> settled;
+            const auto draw = [&](std::vector<std::uint8_t>& pixels) {
+                renderer.resetHistory();
+                drawFrame(0, staged.getPlacement());
+                renderer.readPixels(pixels);
+            };
+
+            draw(early);
+            const std::optional<double> settledAt = watchSettling(draw, early, settled);
+            out() << std::format("       {} {}\n", view.mName, describeSettling(settledAt));
+
+            renderer.resetHistory();
+        }
+
         samples.clear();
 
         Crossings crossings;
@@ -372,28 +423,7 @@ namespace RtxTool
                 placeMs = std::chrono::duration<double, std::milli>(Clock::now() - placeStart).count();
             }
 
-            Framing framing = Framing::lookingFrom(standing);
-            framing.mFieldOfView = run.mRequest.mFrame.mFieldOfView;
-            framing.mDelight = run.mRequest.mFrame.mDelight;
-
-            framing.mLighting = staged.getLighting();
-            framing.mLighting.mSeconds = static_cast<float>(frame) / sStepRate;
-
-            // **Off the frame index, like everything else a measured run animates.** The hour
-            // does not move here, so no game time passes for the star sphere to turn on, and
-            // the deck scrolls on the player's clock — which is the one this index counts.
-            framing.mLighting.mRoll = Sky::SkyRoll::after(
-                framing.mLighting.mSeconds, framing.mLighting.mCloudSpeed, 0.0f, Sky::timescaleClouds());
-
-            // What the upscaler's sample sequence and every random draw in the shader are walked
-            // by. Held to the frame index so the same run draws the same samples twice over.
-            framing.mFrame = frame;
-
-            renderer.renderFrame(makeFrameConstants(framing, renderer.getExtents()),
-                Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
-                    .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                    .mFilter = run.mRequest.mFrame.mFilter,
-                    .mExposure = run.mRequest.mFrame.mExposure });
+            drawFrame(frame, standing);
 
             if (run.mWindow != nullptr && !renderer.presentFrame())
                 renderer.resize(run.mWindow->getWidth(), run.mWindow->getHeight());

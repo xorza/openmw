@@ -56,7 +56,8 @@ namespace RtxTool
     /// pictures nine hundred pixels apart, with the upscaler off, the filter off, the exposure held,
     /// address randomisation off, and the albedo alone; `scene` digests what was handed over and
     /// twelve reads gave one number. A change here that moved the picture that way would have to
-    /// move a triangle. `runVerify` says how a run tells the two pictures from a change.
+    /// move a triangle. `watchSettling` says how the harness waits for it, and `runVerify` how a run
+    /// tells the two pictures from a change.
     ///
     /// **A magnitude is not the test, though — Arkngthand moves 13% of its albedo.** A cave ties
     /// along the lines where two rocks cross, and a Dwemer ruin is a kit of flat panels laid over
@@ -95,9 +96,9 @@ namespace RtxTool
     /// as any of them, otherwise the difference against the one it differs from on the fewest
     /// pixels. Mismatched where there is no reference to subtract.
     ///
-    /// **A view has two pictures, and a reference keeps both.** `runVerify` says why the driver
-    /// draws one scene two ways and which of the two a run is likely to get; a run is compared with
-    /// whichever it got, so that the other is never reported as something this tree changed.
+    /// **A view has two pictures, and a reference keeps both.** `watchSettling` says why the driver
+    /// draws one scene two ways; a run is compared with whichever it got, so that the other is
+    /// never reported as something this tree changed.
     FrameDifference closestDifference(const Rtx::PngImage& taken, std::span<const Rtx::PngImage> references);
 
     /// Renders every view and, where `mAgainst` names a previous run, reports what moved.

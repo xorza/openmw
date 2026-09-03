@@ -47,9 +47,6 @@ namespace RtxTool
         std::string mCell;
         std::filesystem::path mScreenshotDirectory;
 
-        /// Write the albedo with no shading over it.
-        bool mShowAlbedo = false;
-
         /// Filled in from the cell once it has been read, which is why both commands take their
         /// request by value.
         CellLighting mLighting;

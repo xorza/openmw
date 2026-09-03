@@ -458,7 +458,7 @@ namespace RtxTool
             framing.mForward = camera.getForward();
             framing.mFieldOfView = request.mFrame.mFieldOfView;
             framing.mDelight = request.mFrame.mDelight;
-            framing.mShowAlbedo = request.mShowAlbedo;
+            framing.mShowAlbedo = request.mFrame.mShowAlbedo;
 
             // **A screenshot is the path with no clock at all.** The seconds carry the sea and the
             // fog and the roll carries the sky, and a `shot` leaves both standing — which is what

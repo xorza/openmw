@@ -143,6 +143,6 @@ namespace RtxTool
             request.mFrame.mDay, exposure, Rtx::upscaleName(request.mFrame.mUpscale),
             Rtx::presetName(request.mFrame.mPreset), Rtx::reorderName(request.mFrame.mReorder), request.mFrame.mFilter,
             validation.mEnabled, validation.mSynchronization, validation.mGpuAssisted,
-            request.mShowAlbedo ? " --albedo" : "");
+            request.mFrame.mShowAlbedo ? " --albedo" : "");
     }
 }

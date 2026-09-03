@@ -81,7 +81,7 @@ namespace RtxTool
         framing.mFieldOfView = request.mFrame.mFieldOfView;
         framing.mLighting = request.mLighting;
         framing.mDelight = request.mFrame.mDelight;
-        framing.mShowAlbedo = request.mShowAlbedo;
+        framing.mShowAlbedo = request.mFrame.mShowAlbedo;
 
         // **Accumulating replaces repeating rather than joining it.** A run of `--accumulate=4` that
         // also honoured the repeat default would quietly average eight frames and report four — and
