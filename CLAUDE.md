@@ -138,6 +138,14 @@ are the gates. What those do not tell you:
   translation files, thousands of human translations — as byproducts of the `translations` target,
   so cleaning deletes them and the rebuild marks every translation `type="unfinished"`.
   `git checkout -- files/lang/` puts them back. Delete the build directory instead.
+- **A pacman upgrade leaves stale objects that ninja cannot see.** Arch keeps each packaged file's
+  own build mtime, so an upgraded header under `/usr/include` is usually *older* than the object
+  that included the version before it — ninja compares mtimes, finds nothing to do, and links
+  objects compiled against headers that no longer exist. gtest 1.17 to 1.18 did this to
+  `build-debug-asan/`, and it surfaced as `mold: error: undefined symbol:
+  testing::internal::GetWithoutMatchers()`; a symbol that stayed but changed meaning would have
+  linked and run instead. `/var/log/pacman.log` says when the package landed, and
+  `find <dir> -name '*.o' ! -newermt '<that time>' -delete` is the repair.
 - **CI pins clang-format 14**; this box has 22 and they disagree, so run
   `CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh`.
 - **Tests are gtest binaries run directly**, with `--gtest_filter`; there is no ctest registration.
