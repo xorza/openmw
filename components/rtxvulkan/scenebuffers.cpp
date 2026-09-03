@@ -19,19 +19,12 @@ namespace Rtx
         // descriptor names one.
         constexpr VkBufferUsageFlags sTableUsage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
-        // A shader cannot see a C++ enum, so the two spellings of the same three values are pinned
-        // here rather than trusted to stay in step.
-        static_assert(static_cast<std::uint32_t>(MaterialKind::Surface) == Shaders::KIND_SURFACE);
-        static_assert(static_cast<std::uint32_t>(MaterialKind::Terrain) == Shaders::KIND_TERRAIN);
-        static_assert(static_cast<std::uint32_t>(MaterialKind::Water) == Shaders::KIND_WATER);
-
         Shaders::GpuMaterial toGpu(const Material& material)
         {
             // Zero where the material has no texture to read a mask out of, so that the shader's
             // comparison agrees with `Material::isCutout`, which is what decided whether traversal
             // would ever make it.
             return Shaders::GpuMaterial{
-                .mKind = static_cast<std::uint32_t>(material.mKind),
                 .mDiffuse = material.mDiffuse,
                 .mAlphaCutoff = material.isCutout() ? material.getAlphaCutoff() : 0.0f,
 
@@ -104,7 +97,6 @@ namespace Rtx
         Shaders::GpuMaterial sentinelMaterial()
         {
             return Shaders::GpuMaterial{
-                .mKind = Shaders::KIND_SURFACE,
                 .mDiffuse = Shaders::NO_TEXTURE,
                 .mAlphaCutoff = 0.0f,
                 .mOpacity = 1.0f,

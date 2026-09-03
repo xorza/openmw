@@ -61,22 +61,19 @@ today and are read only by `SpriteShade`; a device bin is what would read them.
 
 ### 5. Smaller things, in order of value
 
+Taken back to the code and, where a number settled it, to a `bench` of `seyda-neen-ship`: 5.98 ms a
+frame under Ray Reconstruction, and 7.81 ms with `--filter --upscale=off`. What the numbers struck
+off is gone from this list, and one thing is left.
+
 - **SVGF's feedback variant** — level one's output as next frame's history — is a free stability
-  gain the accumulator's shape already allows. A packed guide beside it was measured and does not
-  pay: the cascade is bound by the work per tap, and every encoding that keeps the distance exact
-  costs a decode worth the load it removes.
-- **The blue-noise draw** is up to four scalar loads a pixel from a `float` buffer. Read the tile as
-  one `vec4` per pixel in `main` and hand the four streams down, or store it as a `rgba16_unorm`
-  image.
-- **FFT twiddles** are a `sin` and a `cos` per butterfly per stage; a shared-memory table of
-  `WAVE_GRID / 2` entries is the standard form. The passes are a fraction of a millisecond, so this
-  is tidiness.
-- **`GpuMaterial::mKind`** is a word for two bits; with `mLayerCount` naming terrain and `KIND_WATER`
-  the only other value, a flag word holding it and `MESH_SHEET`-style bits would shrink the row
-  again. Not worth a change on its own.
-- **`VisibilityConstants`** is 1096 bytes of which the sky patches (264) and the sea's tables (100)
-  change on the hour and the weather, not the frame. Splitting them into a second block updated on
-  change saves a fraction of a kilobyte a frame: not worth it.
+  gain the accumulator's shape already allows, and it is a shade better than free. The frame count
+  moves to `momentsOut.a`, which is written as nought today, and the accumulator then stops writing
+  `colourOut` at all: eight bytes a pixel leave the one compute pass at the memory limit and land on
+  the one bound by work per tap. **It reaches the wavelet path alone**, which is the fallback a
+  machine without DLSS takes — `recordDenoise` is not called at all under Ray Reconstruction, and
+  neither zone is recorded. Unupscaled, `filter` is 1.57 ms over five levels against `accumulate` at
+  0.36. A packed guide beside it was measured and does not pay: the cascade is bound by the work per
+  tap, and every encoding that keeps the distance exact costs a decode worth the load it removes.
 
 ## Reviewed and sound
 

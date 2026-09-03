@@ -605,11 +605,6 @@ namespace Rtx::Shaders
     /// and not a fan-out — and the scan is reads and multiply-adds, with no ray and no walk in it.
     RTX_CONST uint FOG_COLUMN_WORKGROUP = 8u;
 
-    /// What shading a hit takes. `Rtx::MaterialKind`, which these must agree with.
-    RTX_CONST uint KIND_SURFACE = 0u;
-    RTX_CONST uint KIND_TERRAIN = 1u;
-    RTX_CONST uint KIND_WATER = 2u;
-
     /// Water's index of refraction, and the reflectance it gives head-on.
     ///
     /// `((1.333 - 1) / (1.333 + 1))^2`, which is why water is a window seen from above and a mirror
@@ -1100,11 +1095,7 @@ namespace Rtx::Shaders
     };
 
     struct GpuMaterial
-
     {
-        /// One of the `KIND_` values.
-        uint mKind;
-
         uint mDiffuse;
 
         /// The alpha below which a texel is a hole, or zero where the surface has none.
@@ -1128,6 +1119,12 @@ namespace Rtx::Shaders
 
         /// Where this material's terrain layers are, or a count of zero for a single-textured
         /// surface — which is everything but the ground.
+        ///
+        /// **The count is what says a hit is ground, and the row states the kind nowhere else.**
+        /// Only terrain is given layers and terrain without one is never made, so a count is the
+        /// same fact a `mKind` word used to carry. What sorts a material otherwise is the
+        /// instance's shader-table offset, which reaches the shader as the closest-hit shader that
+        /// ran.
         uint mLayerOffset;
         uint mLayerCount;
 
@@ -1164,7 +1161,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuLight) == 36, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
-    static_assert(sizeof(GpuMaterial) == 68, "GpuMaterial must be scalar-packed on every side");
+    static_assert(sizeof(GpuMaterial) == 64, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
 
     static_assert(sizeof(GpuEmitter) == 60, "GpuEmitter must be scalar-packed on every side");
