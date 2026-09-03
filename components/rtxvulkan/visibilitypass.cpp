@@ -566,5 +566,26 @@ namespace Rtx
         pipeline.traceRays(commands, constants.mCamera.mWidth, constants.mCamera.mHeight);
 
         closeZone(timer, commands);
+
+        // **The count is read on the host after the frame's fence, and a fence makes nothing
+        // visible to the host.** The specification's note under fence signalling says so outright —
+        // the access scope of the dependency a fence defines holds device access only — and points
+        // at the host access types for the barrier that does. So the host's read is named here,
+        // where the write is, the way `SpriteBinPass` names the read of its report. A picture inside
+        // the interface traces through this too and nobody reads its count; what that costs is a
+        // barrier nothing waits behind.
+        const VkMemoryBarrier2 counted{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
+            .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
+        };
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .memoryBarrierCount = 1,
+            .pMemoryBarriers = &counted,
+        };
+        vkCmdPipelineBarrier2(commands, &dependency);
     }
 }

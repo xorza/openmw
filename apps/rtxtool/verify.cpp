@@ -1,11 +1,15 @@
 #include "verify.hpp"
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cstdlib>
 #include <format>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <components/debug/debugging.hpp>
@@ -36,6 +40,36 @@ namespace RtxTool
             return directory / (view + ".png");
         }
 
+        /// Where the picture a view drew before the pause goes, when it is not the one after it.
+        std::filesystem::path earlyFile(const std::filesystem::path& directory, const std::string& view)
+        {
+            return directory / (view + ".early.png");
+        }
+
+        /// How long a view is watched for the driver's crossing, and how often it is drawn meanwhile.
+        ///
+        /// **The driver finishes an acceleration structure after the build that made it, and the
+        /// picture moves when it does.** Some time after `setScene` — on a thread of the driver's
+        /// own, and on no signal this side can wait for — a structure starts answering the same
+        /// rays with hit distances an ulp or four from before, over whole faces of a mesh, and a
+        /// path tracer turns that into a different sample on a few hundred pixels. There are two
+        /// pictures and never a third: before and after, and after is for good. Nothing handed to
+        /// the device differs between the two — the tables, the textures, the frame block and the
+        /// serialized structures were compared byte for byte. Eighty-odd processes drew the frame
+        /// straight after the build, a quarter of them already across; the same scene drawn again
+        /// every second crossed after one second in some processes and after four in others, in
+        /// the same minute on the same card, so no pause is a bound.
+        ///
+        /// So the view is drawn again every step until its picture changes, and the picture after
+        /// the change is the one kept; a reference keeps the one before it too. A view that holds
+        /// for the whole cap is taken as already across, which is what a process that started on
+        /// the far side looks like — and the one thing a crossing slower than the cap can be
+        /// mistaken for, so the report says which was seen. The cap is twice the slowest crossing
+        /// seen. A reference pays it for every view that starts across; a run pays it only where
+        /// its first picture matched nothing the reference holds.
+        constexpr std::chrono::milliseconds sSettleStep{ 500 };
+        constexpr std::chrono::seconds sSettleCap{ 10 };
+
         /// How a difference reads on one line.
         std::string describe(const FrameDifference& difference)
         {
@@ -53,6 +87,22 @@ namespace RtxTool
     double FrameDifference::getPercent() const
     {
         return mTotal == 0 ? 0.0 : static_cast<double>(mDiffering) / static_cast<double>(mTotal) * 100.0;
+    }
+
+    FrameDifference closestDifference(const Rtx::PngImage& taken, std::span<const Rtx::PngImage> references)
+    {
+        FrameDifference closest{ .mMismatched = true };
+        for (const Rtx::PngImage& reference : references)
+        {
+            const FrameDifference difference = compareFrames(reference, taken);
+            if (difference.same())
+                return difference;
+
+            if (!difference.mMismatched && (closest.mMismatched || difference.mDiffering < closest.mDiffering))
+                closest = difference;
+        }
+
+        return closest;
     }
 
     FrameDifference compareFrames(const Rtx::PngImage& before, const Rtx::PngImage& after)
@@ -131,12 +181,6 @@ namespace RtxTool
                 return 1;
             }
 
-            // **A place staged into a shared renderer is a discontinuity**, and the exposure is what
-            // would otherwise carry across one: it adapts toward its measurement over seconds rather
-            // than taking it, so a room drawn after a noon exterior opens at the exterior's
-            // brightness. `Rtx::Renderer::resetHistory` says why only a caller can know this.
-            renderer->resetHistory();
-
             // **Staged and not streamed**: this renders the region once, so every composite has to be
             // finished here rather than drained over frames that will never come.
             Rtx::SceneUploader uploader;
@@ -150,30 +194,89 @@ namespace RtxTool
 
             // **One frame at seed zero.** Everything a repeat buys is a timing figure, and this
             // command measures nothing; a second frame would only give the sampler somewhere else
-            // to be.
+            // to be. The one frame is drawn again where `sSettleCap` says so.
             framing.mFrame = 0;
 
-            renderer->renderFrame(makeFrameConstants(framing, extents),
-                Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
-                    .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                    .mFilter = request.mFrame.mFilter,
-                    .mExposure = request.mFrame.mExposure });
+            // **Each drawing is a first frame of a place staged into a shared renderer, which is a
+            // discontinuity**, and the exposure is what would otherwise carry across one: it adapts
+            // toward its measurement over seconds rather than taking it, so a room drawn after a
+            // noon exterior opens at the exterior's brightness, and a view drawn twice would open
+            // the second time on its own first. `Rtx::Renderer::resetHistory` says why only a caller
+            // can know this.
+            const auto draw = [&](Rtx::PngImage& picture) {
+                renderer->resetHistory();
+                renderer->renderFrame(makeFrameConstants(framing, extents),
+                    Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
+                        .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
+                        .mFilter = request.mFrame.mFilter,
+                        .mExposure = request.mFrame.mExposure });
 
-            std::vector<std::uint8_t> pixels;
-            renderer->readPixels(pixels);
-            Rtx::writePng(frameFile(request.mOut, view.mName), extents.mOutputWidth, extents.mOutputHeight, pixels);
+                picture.mWidth = extents.mOutputWidth;
+                picture.mHeight = extents.mOutputHeight;
+                renderer->readPixels(picture.mPixels);
+            };
+
+            Rtx::PngImage early;
+            draw(early);
+
+            // The settled picture a previous run kept, and the early one where its two differed;
+            // `readPng` is empty for whichever was never written, and empty is passed over.
+            std::array<Rtx::PngImage, 2> references;
+            if (!request.mAgainst.empty())
+                references = { Rtx::readPng(frameFile(request.mAgainst, view.mName)),
+                    Rtx::readPng(earlyFile(request.mAgainst, view.mName)) };
+
+            FrameDifference difference = closestDifference(early, references);
+
+            // A reference watches every view. A run watches only one whose first picture matched
+            // nothing — the crossing `sSettleCap` describes.
+            Rtx::PngImage settled;
+            std::optional<double> crossedAt;
+            const bool watched = request.mAgainst.empty() || !difference.same();
+            if (watched)
+            {
+                const auto began = std::chrono::steady_clock::now();
+                for (;;)
+                {
+                    std::this_thread::sleep_for(sSettleStep);
+                    draw(settled);
+
+                    const auto waited = std::chrono::steady_clock::now() - began;
+                    if (settled.mPixels != early.mPixels)
+                    {
+                        crossedAt = std::chrono::duration<double>(waited).count();
+                        break;
+                    }
+
+                    if (waited >= sSettleCap)
+                        break;
+                }
+
+                if (!request.mAgainst.empty())
+                    difference = closestDifference(settled, references);
+            }
+
+            const Rtx::PngImage& last = watched ? settled : early;
+            Rtx::writePng(frameFile(request.mOut, view.mName), last.mWidth, last.mHeight, last.mPixels);
+            if (crossedAt.has_value())
+                Rtx::writePng(earlyFile(request.mOut, view.mName), early.mWidth, early.mHeight, early.mPixels);
+
+            std::string crossing;
+            if (crossedAt.has_value())
+                crossing = std::format("crossed at {:.1f} s", *crossedAt);
+            else if (watched)
+                crossing = std::format("no crossing in {} s", sSettleCap.count());
 
             if (request.mAgainst.empty())
+            {
+                out() << std::format("  {:<28} {}\n", view.mName, crossing);
                 continue;
-
-            const Rtx::PngImage reference = Rtx::readPng(frameFile(request.mAgainst, view.mName));
-            const Rtx::PngImage taken{ extents.mOutputWidth, extents.mOutputHeight, std::move(pixels) };
-            const FrameDifference difference = compareFrames(reference, taken);
+            }
 
             unmatched += difference.mMismatched ? 1u : 0u;
             differing += !difference.mMismatched && !difference.same() ? 1u : 0u;
 
-            out() << std::format("  {:<28} {}\n", view.mName, describe(difference));
+            out() << std::format("  {:<28} {}{}{}\n", view.mName, describe(difference), watched ? ", " : "", crossing);
         }
 
         out() << std::format("wrote {} to {}\n", request.mViews.size() == 1 ? "1 frame" : "frames",

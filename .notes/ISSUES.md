@@ -1,11 +1,16 @@
 # Open issues
 
-- `VulkanRenderer::finishFrame` reads `mHitCount` on the host after the frame's fence with no
-  barrier naming the host read (`VK_ACCESS_2_HOST_READ_BIT`); the specification says a fence signal
-  alone does not make a device write visible to the host.
+- `bench --hashes` and `--against` compare exact frame hashes across processes, and the driver
+  finishes an acceleration structure some time after the build that made it: a structure starts
+  answering the same rays with hit distances a few ulps away, which the trace turns into a different
+  sample on a few hundred pixels. The frames a run traces before that lands hash differently from a
+  run where it landed earlier. `verify` watches a view for the crossing, keeps the picture from
+  both sides of it and compares a run with whichever it drew; `bench` has no such step.
 
-- The same source draws `balmora-mages-guild` as one of two pictures, differing by up to 21 of 255
-  on 1166 pixels that lie in the candles' smoke columns. Seven processes of one build all drew the
-  same one, and each of three rebuilds that changed no shader the trace runs — a compute shader, then
-  one barrier on the host side — moved every process after it to the other, so `verify --against`
-  reports a difference no change to the picture made.
+- `verify` accepts `--albedo` and ignores it: the picture it draws is the shaded one whether or not
+  the flag is given, where `shot --albedo` draws the albedo.
+
+- The staged scene's vertex order is not stable across processes: in one of twenty-four stagings of
+  `balmora-mages-guild`, two eight-vertex meshes came out with their vertex runs swapped — the
+  positions and texture coordinates were a permutation of every other staging's, and the instances
+  were identical.

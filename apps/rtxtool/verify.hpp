@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <vector>
 
 #include <components/rtx/png.hpp>
@@ -47,13 +48,15 @@ namespace RtxTool
     /// — cost a day of bisection that reached the wrong answer twice.
     ///
     /// **And "worst 25 on four hundredths of a per cent", the same pixels every time, in one run of
-    /// several, is the driver and not this tree.** Where two triangles tie for the closest hit —
-    /// Morrowind's caves are rock pieces pushed through one another, so their intersections are lines
-    /// of exact ties — the acceleration structure decides the order, and the driver builds one of two
-    /// trees from one scene. Addamasartus flips between two pictures nine hundred pixels apart, with
-    /// the upscaler off, the filter off, the exposure held, address randomisation off, and the albedo
-    /// alone; `scene` digests what was handed over and twelve reads gave one number. A change here
-    /// that moved the picture that way would have to move a triangle.
+    /// several, is the driver and not this tree.** The driver finishes an acceleration structure
+    /// some time after the build that made it, and from then on the structure answers the same rays
+    /// with hit distances an ulp or four away — over whole faces, and where two triangles tie for
+    /// the closest hit, which Morrowind's caves are made of, on the order of the two. A frame drawn
+    /// straight after the build lands on either side of that. Addamasartus flips between two
+    /// pictures nine hundred pixels apart, with the upscaler off, the filter off, the exposure held,
+    /// address randomisation off, and the albedo alone; `scene` digests what was handed over and
+    /// twelve reads gave one number. A change here that moved the picture that way would have to
+    /// move a triangle. `runVerify` says how a run tells the two pictures from a change.
     ///
     /// **A magnitude is not the test, though — Arkngthand moves 13% of its albedo.** A cave ties
     /// along the lines where two rocks cross, and a Dwemer ruin is a kit of flat panels laid over
@@ -87,6 +90,15 @@ namespace RtxTool
     /// Subtracts one picture from another. Mismatched where either is empty or they disagree on
     /// their extents.
     FrameDifference compareFrames(const Rtx::PngImage& before, const Rtx::PngImage& after);
+
+    /// What `taken` came to against the nearest of several references: `same` where it is the same
+    /// as any of them, otherwise the difference against the one it differs from on the fewest
+    /// pixels. Mismatched where there is no reference to subtract.
+    ///
+    /// **A view has two pictures, and a reference keeps both.** `runVerify` says why the driver
+    /// draws one scene two ways and which of the two a run is likely to get; a run is compared with
+    /// whichever it got, so that the other is never reported as something this tree changed.
+    FrameDifference closestDifference(const Rtx::PngImage& taken, std::span<const Rtx::PngImage> references);
 
     /// Renders every view and, where `mAgainst` names a previous run, reports what moved.
     ///
