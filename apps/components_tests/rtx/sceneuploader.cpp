@@ -137,6 +137,12 @@ namespace Rtx
             EXPECT_EQ(renderer.mTextures, 1u);
             EXPECT_EQ(travelled.mDropped, std::size_t{ 0 }) << "a scene made again has no image of what went";
 
+            // **The loader is the uploader's own and outlives the scene it last described**, so
+            // what it answers here has to be this scene's table and nothing carried over from the
+            // one before it. Four hand-overs stand behind this one.
+            EXPECT_EQ(renderer.mDescribedSlots, (std::vector<std::uint32_t>{ fourth.mTexture }))
+                << "the loader answered with what it held from the scene that went";
+
             // And back to the ordinary frame, so the rebuild above left the uploader agreeing with
             // the scene rather than one revision behind it.
             EXPECT_EQ(

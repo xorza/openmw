@@ -153,7 +153,8 @@ namespace Rtx
             Texture makeTexture(const TextureData& data, std::string_view name)
             {
                 Batch upload(getPool());
-                Texture texture(getDevice(), upload, data, name);
+                std::vector<VkBufferImageCopy> regions;
+                Texture texture(getDevice(), upload, data, name, regions);
                 upload.flush();
                 return texture;
             }

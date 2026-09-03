@@ -34,7 +34,13 @@ namespace Rtx
         /// A slot with nothing in it yet, which is what the array holds while it is being filled.
         Texture() = default;
 
-        Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name);
+        /// @param name what a capture calls it. Empty where the build names no objects — see
+        ///        `Device::wantsNames`.
+        /// @param regions the caller's scratch, cleared and refilled here with one copy per level.
+        ///        Passed in rather than owned because a texture is made per arrival and thrown at
+        ///        once into an array, and the array is what outlives them all.
+        Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name,
+            std::vector<VkBufferImageCopy>& regions);
 
         Texture(const Texture&) = delete;
         Texture& operator=(const Texture&) = delete;
@@ -190,6 +196,16 @@ namespace Rtx
         void reserveSlot(std::uint32_t slot);
 
         const Device& mDevice;
+
+        // Cleared and refilled by every describe and every write, never freed. Each settles at the
+        // busiest arrival so far, and an arrival is the frame with the least room to grow one.
+        //
+        // **`mutable` because `describeApart` is a question and not a change.** The array's state is
+        // the same before and after it; these are workings, and nothing else describes while one is
+        // running.
+        mutable std::vector<VkDescriptorImageInfo> mImageScratch;
+        mutable std::vector<VkWriteDescriptorSet> mWriteScratch;
+        std::vector<VkBufferImageCopy> mRegionScratch;
 
         /// Indexed by slot. A slot the scene has freed holds nothing until something takes it over —
         /// `drop` buries the image it had, and the descriptor is left naming what has gone for the

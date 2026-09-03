@@ -46,11 +46,22 @@ namespace Rtx
     /// reads them; this is that, and it knows no graphics API. Which of them becomes a `VkImage` or
     /// an `MTLTexture` is the backend's business and none of this one's.
     ///
-    /// Non-copyable because the descriptions point into its own vectors. Moving is fine: a moved
-    /// vector keeps the buffer they point at.
+    /// Non-copyable and non-movable because the descriptions point into its own vectors, and because
+    /// it is a member of whatever hands scenes over rather than a value passed about.
+    ///
+    /// **Held for the life of its owner, and cleared and refilled per arrival.** Every buffer here
+    /// settles at the busiest cell so far. Built and thrown away instead, it would spend seven
+    /// vectors on the frame a cell arrives — which is the frame with the least room for them.
     class SceneTextures
     {
     public:
+        SceneTextures() = default;
+
+        SceneTextures(const SceneTextures&) = delete;
+        SceneTextures& operator=(const SceneTextures&) = delete;
+        SceneTextures(SceneTextures&&) = delete;
+        SceneTextures& operator=(SceneTextures&&) = delete;
+
         /// Resolves and describes every texture `scene` still names, in table order.
         ///
         /// For a backend building an array from nothing. The free slots are not among them, so the
@@ -59,7 +70,7 @@ namespace Rtx
         ///        that bakes none. A terrain slot the queue has no composite for is one whose bake
         ///        has not finished, and it is passed over rather than described — nothing points at
         ///        it until it has bytes.
-        SceneTextures(
+        void describeAll(
             const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites = nullptr);
 
         /// The same, for `slots` and nothing else.
@@ -72,15 +83,10 @@ namespace Rtx
         /// **A list and not an offset**, because a slot a departing cell freed is taken over
         /// wherever it sits: what arrived is no longer the end of the table. Each description
         /// carries the slot it belongs to, and a slot that has since been given back is skipped.
-        SceneTextures(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
+        void describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
             const CompositeQueue* composites = nullptr);
 
-        SceneTextures(const SceneTextures&) = delete;
-        SceneTextures& operator=(const SceneTextures&) = delete;
-        SceneTextures(SceneTextures&&) = default;
-        SceneTextures& operator=(SceneTextures&&) = default;
-
-        /// What was described, each carrying the slot it goes to in `TextureData::mSlot`.
+        /// What the last `describe` found, each carrying the slot it goes to in `TextureData::mSlot`.
         std::span<const TextureData> getDescriptions() const { return mDescriptions; }
 
         /// How many named a file that could not be read, each logged with its path where it was
@@ -93,8 +99,8 @@ namespace Rtx
         std::uint32_t getUnreadable() const { return mUnreadable; }
 
     private:
-        void describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
-            const CompositeQueue* composites);
+        // Refilled by every `describe` and never freed, so each settles at the busiest arrival so
+        // far — which is where the room to grow one is least.
 
         std::vector<osg::ref_ptr<const osg::Image>> mImages;
 
@@ -113,6 +119,22 @@ namespace Rtx
         /// The bakes of the sprite textures the scene's emitters draw with, each made here from the
         /// alpha of the file its key names. `SpriteLightMap` says what one is.
         std::vector<SpriteLightMap> mSpriteLights;
+
+        /// Which slots `describe` kept, because a free one is passed over and the descriptions are
+        /// no longer one per entry of what it was asked for.
+        std::vector<Index> mKept;
+
+        /// Which of `mSpriteLights` each kept slot is, or `sNoIndex` for a slot that is not a bake
+        /// of that kind. Parallel to `mKept` for the same reason `mImages` is.
+        std::vector<Index> mLightOf;
+
+        /// Every slot of the scene's table, which is what a rebuild asks about. Held rather than
+        /// built, because a rebuild is a fifth of a second and none of it should be this.
+        std::vector<Index> mEverything;
+
+        /// One image's levels while its bake is read, and nothing after: a sprite light's source is
+        /// described only to reach its alpha, and no description outlives the call.
+        std::vector<MipLevel> mSourceLevels;
 
         std::uint32_t mUnreadable = 0;
     };

@@ -626,6 +626,22 @@ namespace Rtx
         /// when the sweep loses it. It saves a path hash per emitter per frame as well.
         Identity<const osg::Drawable, HeldSprite> mEmitterTextures;
 
+        /// Which slot each image the walk has met stands in.
+        ///
+        /// **What stops a texture's name being built again every frame.** A material a controller
+        /// rewrites is read again on every frame it is met — `resolveMaterial` — and reading one
+        /// asks for up to four textures. Asking by path builds a `VFS::Path::Normalized` that dies
+        /// at the end of the call, because `SceneDesc::addTexture` takes a view: four strings off
+        /// the heap per animated material per frame, and `Material::mTextureTransform` counts 432
+        /// such surfaces in Vivec.
+        ///
+        /// **This entry is a reference, like `mEmitterTextures`.** A slot whose last material stops
+        /// naming it drops to nought and is handed out again at once, so an entry that only
+        /// remembered the number would answer with a slot another texture had taken over. The hold
+        /// keeps the slot alive for exactly as long as this map names it, and the sweep gives it
+        /// back.
+        Identity<const osg::Image> mTextureOf;
+
         /// A node's controllers and the state set they write into, kept so the address is the same
         /// one next frame. See `animate`.
         struct Animated

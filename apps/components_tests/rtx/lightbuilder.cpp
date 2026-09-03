@@ -18,6 +18,8 @@
 
 #include <components/rtx/shaders/visibility.h>
 #include <components/sceneutil/lightcommon.hpp>
+
+#include "allocations.hpp"
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
@@ -483,6 +485,31 @@ namespace Rtx
 
             for (float hour = 0.0f; hour < 24.0f; hour += 0.25f)
                 EXPECT_NO_THROW(makeDaylight("Clear", hour, sReach)) << "at hour " << hour;
+
+            // **A record read once answers every hour, and reaches the heap for none of them.** A
+            // window turning its clock asks for the same weather sixty times a second; reading the
+            // name each time built about a hundred strings out of the fallback settings for numbers
+            // that cannot have changed between two frames. What is left is arithmetic.
+            const WeatherRamps clear = readWeatherRamps("Clear");
+
+            // Warmed up, because the first of anything may legitimately allocate.
+            const Daylight first = makeDaylight(clear, 12.0f, sReach);
+
+            const std::size_t before = Testing::getAllocationCount();
+            const Daylight again = makeDaylight(clear, 12.0f, sReach);
+            const Daylight later = makeDaylight(clear, 20.0f, sReach);
+            const std::size_t after = Testing::getAllocationCount();
+
+            EXPECT_EQ(after, before) << after - before << " allocations to light two hours";
+
+            // The same answer as the name took, so holding the record is not a second reading of it.
+            EXPECT_EQ(again.mSun.mIrradiance, first.mSun.mIrradiance);
+            EXPECT_EQ(again.mAmbient, makeDaylight("Clear", 12.0f, sReach).mAmbient);
+            EXPECT_EQ(later.mFog.mExtinction, makeDaylight("Clear", 20.0f, sReach).mFog.mExtinction);
+
+            // And the hour still reaches it: a record that ignored the clock would answer the same
+            // at both.
+            EXPECT_NE(later.mFog.mExtinction, again.mFog.mExtinction);
 
             // A file records one depth for daylight and one for night, and the ramp hands the day
             // value to three of its four points. Deeper fog is thicker air, so the night value being

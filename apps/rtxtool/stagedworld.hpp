@@ -126,14 +126,14 @@ namespace RtxTool
         /// and what the air is doing, which `relight` works out from the settings alone.
         void setSky(std::string_view weather, int day, float hour)
         {
-            relight(mLighting, weather, day, hour);
+            relight(mLighting, mHeldWeathers, weather, day, hour);
             setFalling(weather);
         }
 
         /// The same, partway between two weathers.
         void setSky(std::string_view from, std::string_view to, float blend, int day, float hour)
         {
-            relight(mLighting, from, to, blend, day, hour);
+            relight(mLighting, mHeldWeathers, from, to, blend, day, hour);
 
             // **What it is turning into, and not a blend of the two.** A transition's precipitation
             // fades in rather than crossing, and a harness that has to pick one instant is better
@@ -297,6 +297,9 @@ namespace RtxTool
         };
 
         CellLighting mLighting;
+
+        /// The weather records the clock reads through, so turning it does not read them again.
+        HeldWeathers mHeldWeathers;
         EveryFrame mEveryFrame{ *this };
 
         /// The world's water, one sheet the way the game has it. Declared after the root it hangs

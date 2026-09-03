@@ -193,8 +193,15 @@ namespace Rtx
             };
 
             const std::array<Rtx::Index, 2> both{ going.mTexture, staying.mTexture };
-            check(SceneTextures(scene, images, both), "described by arrival");
-            check(SceneTextures(scene, images), "described from the whole table");
+
+            // One loader for both, which is how the uploader holds it: the second call clears what
+            // the first left and answers on its own.
+            SceneTextures described;
+            described.describe(scene, images, both);
+            check(described, "described by arrival");
+
+            described.describeAll(scene, images);
+            check(described, "described from the whole table");
         }
 
         /// A sprite's lighting bake is a slot of the same table, made from the file its key names —
@@ -209,7 +216,8 @@ namespace Rtx
             const Rtx::Index bake
                 = scene.addBakedTexture(SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_smoke.dds")));
 
-            const SceneTextures described(scene, images);
+            SceneTextures described;
+            described.describeAll(scene, images);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mSlot, bake);
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");

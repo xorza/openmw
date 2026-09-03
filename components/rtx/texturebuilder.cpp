@@ -135,35 +135,30 @@ namespace Rtx
         };
     }
 
-    SceneTextures::SceneTextures(
+    void SceneTextures::describeAll(
         const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites)
     {
-        std::vector<Index> everything(scene.getTextures().size());
-        for (Index slot = 0; slot < everything.size(); ++slot)
-            everything[slot] = slot;
+        mEverything.resize(scene.getTextures().size());
+        for (Index slot = 0; slot < mEverything.size(); ++slot)
+            mEverything[slot] = slot;
 
-        describe(scene, images, everything, composites);
-    }
-
-    SceneTextures::SceneTextures(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
-        const CompositeQueue* composites)
-    {
-        describe(scene, images, slots, composites);
+        describe(scene, images, mEverything, composites);
     }
 
     void SceneTextures::describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
         const CompositeQueue* composites)
     {
-        // Which slots the loop below kept, because a free one is passed over and the descriptions
-        // are no longer one per entry of `slots`.
-        std::vector<Index> kept;
-        kept.reserve(slots.size());
-        mImages.reserve(slots.size());
+        mImages.clear();
+        mLevels.clear();
+        mDescriptions.clear();
+        mSpriteLights.clear();
+        mKept.clear();
+        mLightOf.clear();
+        mUnreadable = 0;
 
-        // Which of `mSpriteLights` each kept slot is, or `sNoIndex` for a slot that is not a bake of
-        // that kind — parallel to `kept` for the same reason `mImages` is.
-        std::vector<Index> lightOf;
-        lightOf.reserve(slots.size());
+        mKept.reserve(slots.size());
+        mImages.reserve(slots.size());
+        mLightOf.reserve(slots.size());
 
         for (const Index slot : slots)
         {
@@ -196,10 +191,10 @@ namespace Rtx
                 // slot; the emitter names the source by a slot of its own.
                 if (const osg::ref_ptr<const osg::Image> sprite = openImage(images, *source))
                 {
-                    std::vector<MipLevel> levels;
+                    mSourceLevels.clear();
                     try
                     {
-                        const AlphaImage alpha(describeImage(*sprite, levels));
+                        const AlphaImage alpha(describeImage(*sprite, mSourceLevels));
                         if (!alpha.isEmpty())
                         {
                             mSpriteLights.emplace_back(alpha);
@@ -214,14 +209,15 @@ namespace Rtx
                 }
             }
 
-            kept.push_back(slot);
-            lightOf.push_back(light);
+            mKept.push_back(slot);
+            mLightOf.push_back(light);
             mImages.push_back(std::move(image));
         }
 
-        // **Reserved exactly, and that is what makes the spans safe.** Every description points into
-        // this one table, so it must not reallocate while they are being taken — and every level
-        // count is known before the first description is built.
+        // **Reserved before anything points into it, and that is what makes the spans safe.** Every
+        // description spans this one table, so it must not grow while they are being taken — and
+        // every level count is known before the first description is built. A table kept from the
+        // last arrival is usually large enough already, and then this asks for nothing.
         std::size_t levels = 0;
         for (const osg::ref_ptr<const osg::Image>& image : mImages)
             levels += image != nullptr ? image->getNumMipmapLevels() : 1u;
@@ -244,12 +240,11 @@ namespace Rtx
                     described.reset();
                 }
             }
-            else if (lightOf[at] != sNoIndex)
-
+            else if (mLightOf[at] != sNoIndex)
             {
-                described = mSpriteLights[lightOf[at]].describe();
+                described = mSpriteLights[mLightOf[at]].describe();
             }
-            else if (const TerrainComposite* baked = composites != nullptr ? composites->find(kept[at]) : nullptr)
+            else if (const TerrainComposite* baked = composites != nullptr ? composites->find(mKept[at]) : nullptr)
             {
                 described = baked->describe();
             }
@@ -264,14 +259,14 @@ namespace Rtx
                 // **Whichever of the two named the slot**, or a composite that could not be
                 // flattened reports itself as a file with no name — the one thing that would not
                 // help in finding it.
-                const std::string_view baked = scene.getBakedTextures()[kept[at]];
-                Log(Debug::Warning) << "Texture \"" << (baked.empty() ? scene.getTextures()[kept[at]].value() : baked)
+                const std::string_view baked = scene.getBakedTextures()[mKept[at]];
+                Log(Debug::Warning) << "Texture \"" << (baked.empty() ? scene.getTextures()[mKept[at]].value() : baked)
                                     << "\" could not be read; drawing the stand-in";
 
                 described = standIn(mLevels);
             }
 
-            described->mSlot = kept[at];
+            described->mSlot = mKept[at];
             mDescriptions.push_back(*described);
         }
 

@@ -139,7 +139,8 @@ namespace RtxTool
                 return held;
             }
 
-            const Rtx::SceneTextures described(held.mScene, world.getImageManager());
+            Rtx::SceneTextures described;
+            described.describeAll(held.mScene, world.getImageManager());
             held.mRenderer->setScene(Rtx::sWorld, held.mScene, described.getDescriptions(), Rtx::SeaState{});
 
             return held;

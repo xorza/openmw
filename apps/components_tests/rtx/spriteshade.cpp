@@ -10,6 +10,8 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/spriteshade.hpp>
 
+#include "allocations.hpp"
+
 namespace
 {
     using namespace Rtx;
@@ -43,6 +45,12 @@ namespace
         void shade(const osg::Vec3f& toSun)
         {
             SpriteShade shade;
+            shadeWith(shade, toSun);
+        }
+
+        /// The same, through a shade the caller owns, so a test can run one twice.
+        void shadeWith(SpriteShade& shade, const osg::Vec3f& toSun)
+        {
             shade.shade(mSprites, std::span(&mEmitter, 1), toSun);
         }
     };
@@ -238,5 +246,54 @@ namespace
 
         EXPECT_FLOAT_EQ(column.mSprites[0].mSunLayers, 0.0f);
         EXPECT_FLOAT_EQ(column.mSprites[1].mSunLayers, 0.75f);
+    }
+
+    /// Two sprites at one depth shade in index order, and only one order is allowed.
+    ///
+    /// **What holds the sort's answer down, since the sort itself is not a stable one.** The order is made
+    /// total by breaking a tie on the index, and a total order has one answer — so an unstable sort
+    /// gives the stable one. Nothing above reaches a tie, and a sort that left equal depths in
+    /// whichever order it found them would pass every one of them.
+    ///
+    /// Both sprites stand at one point, so both depths are equal along the sun and along the sky.
+    /// The first lays half a layer where the second then reads it, and the second lays a whole one
+    /// where nothing reads. Half a unit off each axis is a cell's centre, which is what makes the
+    /// read the cell itself — `aTinyDiscCountsItsArea` says why.
+    TEST(RtxSpriteShadeTest, twoSpritesAtOneDepthShadeInIndexOrder)
+    {
+        Column column;
+        column.add(osg::Vec3f(0.5f, -0.5f, -0.5f), 6.0f, 0.5f);
+        column.add(osg::Vec3f(0.5f, -0.5f, -0.5f), 6.0f, 1.0f);
+        column.shade(sEast);
+
+        EXPECT_FLOAT_EQ(column.mSprites[0].mSunLayers, 0.0f) << "the lower index lays down first";
+        EXPECT_FLOAT_EQ(column.mSprites[1].mSunLayers, 0.5f) << "and the higher one reads it";
+        EXPECT_FLOAT_EQ(column.mSprites[0].mSkyLayers, 0.0f);
+        EXPECT_FLOAT_EQ(column.mSprites[1].mSkyLayers, 0.5f);
+    }
+
+    /// Shading a run a second time goes to the heap not at all.
+    ///
+    /// **This runs on every frame, twice for every emitter that covers.** The scratch is kept and
+    /// refilled, and the sort is the one thing that could break that: `std::stable_sort` takes a
+    /// buffer off the heap however often it is called and however small the run is.
+    ///
+    /// Two sprites, because one is a run the shade passes over. Warmed up first, because the first
+    /// of anything legitimately allocates: the scratch has to reach its size once.
+    TEST(RtxSpriteShadeTest, shadingARunAgainDoesNotTouchTheHeap)
+    {
+        Column column;
+        column.add(osg::Vec3f(6.0f, 0.0f, -1.0f), 8.0f, 0.75f);
+        column.add(osg::Vec3f(0.0f, 0.0f, 0.0f), 4.0f, 1.0f);
+
+        SpriteShade shade;
+        column.shadeWith(shade, sEast);
+
+        const std::size_t before = Testing::getAllocationCount();
+        column.shadeWith(shade, sEast);
+        const std::size_t after = Testing::getAllocationCount();
+
+        EXPECT_EQ(after, before) << after - before << " allocations to shade a run";
+        EXPECT_FLOAT_EQ(column.mSprites[1].mSunLayers, 0.75f) << "and the same answer as the first";
     }
 }

@@ -575,7 +575,8 @@ namespace RtxTool
             const std::vector<Rtx::Index> flattened = flattenedSlots();
             ASSERT_EQ(flattened.size(), asked) << "the queue finished without flattening what it took on";
 
-            const Rtx::SceneTextures described(scene, getWorld().getImageManager(), &queue);
+            Rtx::SceneTextures described;
+            described.describeAll(scene, getWorld().getImageManager(), &queue);
             EXPECT_EQ(described.getUnreadable(), 0u) << "a composite the uploader would draw grey";
 
             // The whole chunk in one texel, per composite. Different ground averages to a different
@@ -616,6 +617,44 @@ namespace RtxTool
                 = [&](std::uint32_t colour) { return averages.empty() || colour == averages.front(); };
             EXPECT_FALSE(std::all_of(averages.begin(), averages.end(), sameAsFirst))
                 << "every chunk in the region averages to one colour, so nothing was read from the masks";
+
+            // **The same queue over a second region, which is what a route across the island is.**
+            // A request is four vectors and `gather` takes one off the spare list that `collect`
+            // returned; a buffer that came back holding the last chunk's layers, images or weights
+            // would bake this region's ground out of the one that has gone. The colours below are
+            // the same region's, so a stale buffer is a wrong composite and not merely a slow one.
+            Rtx::SceneDesc again;
+            placeOutdoors(getWorld(), *cell, again, true);
+
+            queue.gather(again, getWorld().getImageManager());
+            ASSERT_EQ(queue.getWaitingCount(), asked) << "the reused queue took on a different count";
+
+            queue.finish();
+            EXPECT_EQ(queue.collect(again, std::numeric_limits<std::size_t>::max()), asked);
+
+            Rtx::SceneTextures rebuilt;
+            rebuilt.describeAll(again, getWorld().getImageManager(), &queue);
+
+            std::vector<Rtx::Index> flattenedAgain;
+            for (const Rtx::Material& material : again.getMaterials())
+                if (material.mKind == Rtx::MaterialKind::Terrain && material.mDiffuse != Rtx::sNoIndex)
+                    flattenedAgain.push_back(material.mDiffuse);
+
+            std::vector<std::uint32_t> secondAverages;
+            for (const Rtx::TextureData& data : rebuilt.getDescriptions())
+            {
+                if (std::find(flattenedAgain.begin(), flattenedAgain.end(), data.mSlot) == flattenedAgain.end())
+                    continue;
+
+                const Rtx::MipLevel& last = data.mLevels.back();
+                secondAverages.push_back(std::to_integer<std::uint32_t>(data.mBytes[last.mOffset]) << 16
+                    | std::to_integer<std::uint32_t>(data.mBytes[last.mOffset + 1]) << 8
+                    | std::to_integer<std::uint32_t>(data.mBytes[last.mOffset + 2]));
+            }
+
+            std::sort(averages.begin(), averages.end());
+            std::sort(secondAverages.begin(), secondAverages.end());
+            EXPECT_EQ(secondAverages, averages) << "the second pass over one region baked different ground";
 
             // **Last, because it empties the scene.** `SceneDesc::clear` renumbers the material
             // table and a bake outlives the frame, so a worldspace change with one in flight leaves

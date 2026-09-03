@@ -379,10 +379,6 @@ namespace Rtx
     /// a region whose chances are all zero, since the alternative is a step that goes nowhere.
     std::uint32_t nextRegionWeather(const ESM::Region* region, std::uint32_t weather, bool forward);
 
-    /// How much of the sun that weather lets through — `Weather_<name>_Glare_View`, which dims a sun
-    /// disc under an overcast and keeps the stars in behind one.
-    float glareView(std::string_view weather);
-
     /// Where a storm drives what it carries, for an observer standing at `observer`.
     ///
     /// **Ash and blight blow off Red Mountain.** `apps/openmw/mwworld/weather.cpp:47` aims the
@@ -394,7 +390,64 @@ namespace Rtx
     /// this is the same rule for a harness that has only a camera.
     osg::Vec3f stormDirection(std::uint32_t weather, const osg::Vec3f& observer);
 
+    /// Everything one weather's own record says, read out of the fallback settings once.
+    ///
+    /// **The record is fixed and the hour is not.** Reading a weather builds about a hundred strings
+    /// — the four colour ramps' sixteen keys, the fog's two, the disc's, the wind's, the glare's, and
+    /// the two dozen `requireWeather` asks behind them — and none of them can answer differently
+    /// between two frames of one run. A caller that turns the clock holds one of these and evaluates
+    /// it, which is arithmetic on numbers already in hand.
+    ///
+    /// **Held by the caller and not cached here.** `Fallback::Map::init` merges rather than replaces,
+    /// so the settings a process reads can gain keys after something has already read a weather; a
+    /// table inside this component would answer from whenever it happened to be built first.
+    struct WeatherRamps
+    {
+        Sky::TimeOfDayInterpolator<osg::Vec4f> mHaze;
+        Sky::TimeOfDayInterpolator<osg::Vec4f> mSky;
+        Sky::TimeOfDayInterpolator<osg::Vec4f> mAmbient;
+        Sky::TimeOfDayInterpolator<osg::Vec4f> mSun;
+        Sky::TimeOfDayInterpolator<float> mFogDepth;
+
+        /// The disc's own colour at sunset, which the ramp for it is built from at the hour.
+        osg::Vec4f mDiscSunset;
+
+        float mGlare = 1.0f;
+        float mWindSpeed = 0.0f;
+
+        /// What the deck does: how fast it scrolls, and what share of a transition this weather
+        /// spreads its arrival over — `Sky::cloudSpeed` and `Sky::cloudsMaximumPercent`.
+        ///
+        /// **Here because they are the weather's record too**, and a caller turning a clock reads
+        /// them on the same frames it reads the light. Nothing in this file uses them; what does is
+        /// whatever draws the sky.
+        float mCloudSpeed = 0.0f;
+        float mCloudsMaximumPercent = 0.0f;
+    };
+
+    /// Reads one weather's record. Throws where the settings are short of a key it needs, naming it.
+    ///
+    /// @param weather a weather's name as the fallback settings spell it. One of the ten is checked
+    ///        by name; anything else is left to the map, which refuses a key it will not consider.
+    WeatherRamps readWeatherRamps(std::string_view weather);
+
+    /// The daylight `ramps` casts at `hour`, on a twenty-four hour clock.
+    ///
+    /// For a caller that turns a clock over one weather. `reach` is what `makeDaylight` takes.
+    Daylight makeDaylight(const WeatherRamps& ramps, float hour, float reach);
+
+    /// The daylight partway between two records, at `blend` from the first to the second.
+    ///
+    /// **What `WeatherManager::calculateTransitionResult` does, and it blends the same things.** Each
+    /// weather's numbers are read at the hour and then mixed — the fog's recorded *depth* among them
+    /// rather than the extinction it becomes, because those are two different curves and the engine
+    /// converts after blending.
+    Daylight makeDaylight(const WeatherRamps& from, const WeatherRamps& to, float blend, float hour, float reach);
+
     /// The daylight a named weather casts at `hour`, on a twenty-four hour clock.
+    ///
+    /// Reads the record every time it is called. A caller on a frame path holds a `WeatherRamps` and
+    /// takes the overload above.
     ///
     /// @param weather a weather's name as the fallback settings spell it — "Clear", "Cloudy",
     ///        "Overcast" and the rest. **A name that is none of the ten throws** `std::logic_error`
@@ -403,14 +456,6 @@ namespace Rtx
     /// @param reach how much world is built, in units — `distantLandReach`. It is the air's and not
     ///        the light's, and it is here because the air a weather makes is measured over it.
     Daylight makeDaylight(std::string_view weather, float hour, float reach);
-
-    /// The daylight partway between two weathers, at `blend` from the first to the second.
-    ///
-    /// **What `WeatherManager::calculateTransitionResult` does, and it blends the same things.** Each
-    /// weather's numbers are read at the hour and then mixed — the fog's recorded *depth* among them
-    /// rather than the extinction it becomes, because those are two different curves and the engine
-    /// converts after blending.
-    Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour, float reach);
 
     /// A room's light, out of its own `AMBI` record — with `makeDaylight`, the other of the two
     /// places a `Daylight` is built, and the one the game and the harness both light a room by.

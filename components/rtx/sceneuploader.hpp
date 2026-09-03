@@ -5,6 +5,7 @@
 
 #include "compositequeue.hpp"
 #include "renderer.hpp"
+#include "texturebuilder.hpp"
 #include "wavespectrum.hpp"
 
 namespace Resource
@@ -126,9 +127,16 @@ namespace Rtx
         /// them.
         ///
         /// **Here because this is the once-a-frame call**, and because a bake outlives the frame
-        /// that asked for it. `SceneTextures` is built and thrown away inside `hand`; what is
-        /// waiting cannot be.
+        /// that asked for it.
         CompositeQueue mComposites;
+
+        /// What an arrival is described into, and the storage the descriptions point at.
+        ///
+        /// **Held, so an arrival frame does not pay for the buffers.** Every vector inside settles
+        /// at the busiest cell the run has met, and each arrival clears and refills them. Nothing
+        /// reads them between calls: `setScene` and `extendScene` are done with the spans when they
+        /// return.
+        SceneTextures mTextures;
 
         const Renderer* mRenderer = nullptr;
         const SceneDesc* mScene = nullptr;

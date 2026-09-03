@@ -23,28 +23,48 @@ namespace RtxTool
         }
     }
 
-    void relight(CellLighting& lighting, std::string_view weather, int day, float hour)
+    const Rtx::WeatherRamps& HeldWeathers::of(std::string_view weather)
+    {
+        for (std::size_t at = 0; at < sSlots; ++at)
+            if (mHeld[at].has_value() && mNames[at] == weather)
+                return *mHeld[at];
+
+        const std::size_t slot = mNext;
+        mNext = (mNext + 1) % sSlots;
+
+        mNames[slot] = weather;
+        mHeld[slot] = Rtx::readWeatherRamps(weather);
+
+        return *mHeld[slot];
+    }
+
+    void relight(CellLighting& lighting, HeldWeathers& held, std::string_view weather, int day, float hour)
     {
         if (!lighting.mOutdoors)
             return;
 
-        settle(lighting, Rtx::makeDaylight(weather, hour, landReach()), day, hour);
+        const Rtx::WeatherRamps& ramps = held.of(weather);
+        settle(lighting, Rtx::makeDaylight(ramps, hour, landReach()), day, hour);
 
-        // The name reached `makeDaylight` intact, so it is one of the ten.
+        // The name reached `readWeatherRamps` intact, so it is one of the ten.
         lighting.mWeather = Rtx::weatherIndex(weather).value();
         lighting.mNextWeather = lighting.mWeather;
         lighting.mWeatherBlend = 0.0f;
         lighting.mCloudBlend = 0.0f;
-        lighting.mGlare = Rtx::glareView(weather);
-        lighting.mCloudSpeed = Sky::cloudSpeed(weather);
+        lighting.mGlare = ramps.mGlare;
+        lighting.mCloudSpeed = ramps.mCloudSpeed;
     }
 
-    void relight(CellLighting& lighting, std::string_view from, std::string_view to, float blend, int day, float hour)
+    void relight(CellLighting& lighting, HeldWeathers& held, std::string_view from, std::string_view to, float blend,
+        int day, float hour)
     {
         if (!lighting.mOutdoors)
             return;
 
-        settle(lighting, Rtx::makeDaylight(from, to, blend, hour, landReach()), day, hour);
+        const Rtx::WeatherRamps& before = held.of(from);
+        const Rtx::WeatherRamps& after = held.of(to);
+
+        settle(lighting, Rtx::makeDaylight(before, after, blend, hour, landReach()), day, hour);
 
         lighting.mWeather = Rtx::weatherIndex(from).value();
         lighting.mNextWeather = Rtx::weatherIndex(to).value();
@@ -53,14 +73,14 @@ namespace RtxTool
         // The glare and the deck's speed are two of the quantities the engine mixes across a
         // transition.
         const auto mix = [blend](float x, float y) { return x * (1.0f - blend) + y * blend; };
-        lighting.mGlare = mix(Rtx::glareView(from), Rtx::glareView(to));
-        lighting.mCloudSpeed = mix(Sky::cloudSpeed(from), Sky::cloudSpeed(to));
+        lighting.mGlare = mix(before.mGlare, after.mGlare);
+        lighting.mCloudSpeed = mix(before.mCloudSpeed, after.mCloudSpeed);
 
         // **The deck's own crossing, which is not the weather's.** Each weather spreads its arrival
         // over a share of the transition, so a storm's sky rolls in ahead of its light —
         // `Sky::cloudBlend` is the curve the game runs and `WeatherResult::mCloudBlendFactor` is
         // where it reaches the deck there.
-        lighting.mCloudBlend = Sky::cloudBlend(blend, Sky::cloudsMaximumPercent(to));
+        lighting.mCloudBlend = Sky::cloudBlend(blend, after.mCloudsMaximumPercent);
     }
 
     void applyLighting(const CellLighting& lighting, Rtx::Shaders::VisibilityConstants& constants)

@@ -100,14 +100,19 @@ namespace Rtx
             return left;
         }
 
-        // Held only across the call: `TextureData` carries spans into this, and both `extendScene`
-        // and `setScene` have finished reading them when they return.
+        // Read only across the call below: `TextureData` carries spans into `mTextures`, and both
+        // `extendScene` and `setScene` have finished reading them when they return. What the loader
+        // holds after that is capacity for the next arrival.
         //
         // **Everything on a reset and the arrivals otherwise.** A reset builds the array from
         // nothing, so what it wants is the table in its own order; a frame that grew wants the slots
         // that were written and no others, wherever in the table they sit.
-        const SceneTextures textures = reset ? SceneTextures(scene, images, &mComposites)
-                                             : SceneTextures(scene, images, scene.getArrivedTextures(), &mComposites);
+        if (reset)
+            mTextures.describeAll(scene, images, &mComposites);
+        else
+            mTextures.describe(scene, images, scene.getArrivedTextures(), &mComposites);
+
+        const SceneTextures& textures = mTextures;
 
         const auto described = std::chrono::steady_clock::now();
 

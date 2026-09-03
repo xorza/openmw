@@ -136,6 +136,19 @@ namespace Rtx
             /// of nought for a layer that covers the chunk.
             std::vector<float> mMasks;
             std::vector<Span> mMaskRuns;
+
+            /// Empties the four without giving their room back, so a request taken off `mSpare`
+            /// starts empty and keeps the buffers the last chunk grew.
+            ///
+            /// The images go: a reference held in a spare buffer keeps a picture alive for a chunk
+            /// that has already been baked and collected.
+            void reuse()
+            {
+                mLayers.clear();
+                mImages.clear();
+                mMasks.clear();
+                mMaskRuns.clear();
+            }
         };
 
         /// What came back: the request, and the composite — or none, where every layer was
@@ -186,6 +199,22 @@ namespace Rtx
         /// Refilled per collect rather than built afresh: the frame a composite lands on is not
         /// one to spend an allocation on.
         std::vector<Baked> mTaken;
+
+        /// Requests that have been through the queue and are waiting to carry another chunk.
+        ///
+        /// **A chunk costs four vectors, and a crossing gathers dozens.** Without this, `gather`
+        /// builds them on the frame the chunk arrives and `collect` frees them on the frame its
+        /// ground comes back — a route across the island paying for every one of them twice over.
+        /// What comes back here keeps the room it grew.
+        ///
+        /// The game thread's own, at both ends: `gather` takes from it and `collect` returns to it,
+        /// and the baker sees neither.
+        ///
+        /// **Everything here has been through `reuse`**, which is what putting one back means — so
+        /// one taken off is empty and holds no image, and `gather` fills it without clearing it
+        /// first.
+        std::vector<Request> mSpare;
+
         std::string mKey;
 
         std::unordered_map<std::string, ShadingMap> mPainted;

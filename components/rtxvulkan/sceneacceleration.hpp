@@ -316,6 +316,10 @@ namespace Rtx
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mBuilds;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> mBuildRanges;
         std::vector<VkDeviceSize> mBuildSizes;
+
+        /// Where each mesh's build takes its working room in the one scratch buffer they share.
+        /// Beside the sizes because it is filled in the same pass and read in the next.
+        std::vector<VkDeviceSize> mBuildScratchOffsets;
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mLiveBuilds;
         std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> mBuildRangePointers;
 

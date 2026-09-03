@@ -179,10 +179,18 @@ namespace Rtx::Testing
     public:
         float mRed = 0.0f;
 
+        /// A texture the controlled surface wears, for the tests that care what an animated
+        /// material is read from. Null leaves the surface untextured, which is what most of them
+        /// want.
+        osg::ref_ptr<osg::Image> mDiffuse;
+
         void setDefaults(osg::StateSet* stateset) override
         {
             stateset->setAttribute(new osg::Material, osg::StateAttribute::ON);
             Surface::setMaterial(*stateset, Surface::Material{});
+
+            if (mDiffuse != nullptr)
+                paint(*stateset, *mDiffuse);
         }
 
         void apply(osg::StateSet* stateset, osg::NodeVisitor*) override

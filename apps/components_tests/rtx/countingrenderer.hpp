@@ -34,6 +34,7 @@ namespace Rtx::Testing
         {
             ++mRebuilt;
             mDescribed = textures.size();
+            recordSlots(textures);
 
             // What the backend does: the array is made again and ends where the scene's table
             // does, whatever it held before.
@@ -45,6 +46,7 @@ namespace Rtx::Testing
         {
             ++mExtended;
             mDescribed = arrived.size();
+            recordSlots(arrived);
             countAt(slot) += static_cast<std::uint32_t>(arrived.size());
 
             // The contract `extendScene` is given rather than one it checks: appending only the
@@ -62,6 +64,13 @@ namespace Rtx::Testing
         {
             return const_cast<CountingRenderer*>(this)->countAt(slot);
         }
+
+        /// Which slots the last hand-over described, in the order it described them.
+        ///
+        /// **What says the loader answered about this scene and not the last one.** `SceneTextures`
+        /// is held by the uploader and cleared per arrival, so a buffer left unclear would show up
+        /// here as a slot belonging to a scene that has gone.
+        std::vector<std::uint32_t> mDescribedSlots;
 
         /// The slots the scene gave back, in the order it named them, across every call.
         ///
@@ -105,6 +114,13 @@ namespace Rtx::Testing
         /// with a doll's would begin one scene's descriptions inside the other's table, which is the
         /// overrun `aSecondSceneOnOneRendererIsBuiltRatherThanAppendedTo` exists for.
         std::uint32_t& countAt(std::uint32_t slot) { return slot == Rtx::sWorld ? mTextures : mViewTextures[slot]; }
+
+        void recordSlots(std::span<const Rtx::TextureData> described)
+        {
+            mDescribedSlots.clear();
+            for (const Rtx::TextureData& texture : described)
+                mDescribedSlots.push_back(texture.mSlot);
+        }
 
         std::vector<std::uint32_t> mViewTextures;
         void dropViewScene(std::uint32_t) override {}

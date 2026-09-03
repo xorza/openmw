@@ -828,6 +828,20 @@ namespace Rtx
             return true;
         });
 
+        // The walk's own hold on every image a material is read from, given back the same way.
+        //
+        // **Most of these are met once.** A material a controller does not rewrite is resolved from
+        // its cached entry and never read again, so the images behind it go stale on the frame after
+        // they arrived — and the material's own reference is what keeps their slots. What settles
+        // here is the animated materials, which are the ones the map exists for.
+        std::erase_if(mTextureOf, [this](const auto& entry) {
+            if (entry.second.mEpoch == mEpoch)
+                return false;
+
+            mScene.dropTexture(entry.second.mIndex);
+            return true;
+        });
+
         // What `animate` keeps. Swept with everything else because it is keyed on a node the graph
         // can drop, and because a state set held past its node holds the textures in it alive too.
         std::erase_if(mAnimated, [this](const auto& entry) { return entry.second.mEpoch != mEpoch; });
@@ -1810,8 +1824,25 @@ namespace Rtx
         if (image == nullptr || image->getFileName().empty())
             return sNoIndex;
 
+        // **Outside the cache, because what this counts is what the walk met and not what it
+        // added.** `openmw-rtxtool scene --twice` reads these off a second walk of one graph, and a
+        // count that only rose on an arrival would report nothing there.
         countFormat(*image, stats);
-        return mScene.addTexture(VFS::Path::Normalized(image->getFileName()));
+
+        if (const auto known = mTextureOf.find(image); known != mTextureOf.end())
+        {
+            known->second.mEpoch = mEpoch;
+            return known->second.mIndex;
+        }
+
+        const Index index = mScene.addTexture(VFS::Path::Normalized(image->getFileName()));
+
+        // **Held, because this entry is the reference.** `mTextureOf` says why a slot the map names
+        // has to be one nothing else can hand out.
+        mScene.holdTexture(index);
+        mTextureOf.emplace(image, Known{ .mIndex = index, .mEpoch = mEpoch });
+
+        return index;
     }
 
     Material SceneExtractor::readMaterial(std::span<const Shading> shading, ExtractionStats& stats)

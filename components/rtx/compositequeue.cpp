@@ -50,6 +50,15 @@ namespace Rtx
             mFinished.clear();
 
             const std::lock_guard<std::mutex> lock(mMutex);
+
+            // **Taken back rather than dropped**, for the reason `mSpare` gives: a scene replaced
+            // outright is exactly when a route is about to gather a region's worth again.
+            for (Request& dropped : mPending)
+            {
+                dropped.reuse();
+                mSpare.push_back(std::move(dropped));
+            }
+
             mPending.clear();
             mDone.clear();
         }
@@ -81,13 +90,32 @@ namespace Rtx
                 mAsked.erase(asked);
 
                 const std::lock_guard<std::mutex> lock(mMutex);
-                std::erase_if(mPending, [&](const Request& one) { return one.mAsked.mMaterial == at; });
+                std::erase_if(mPending, [&](Request& one) {
+                    if (one.mAsked.mMaterial != at)
+                        return false;
+
+                    one.reuse();
+                    mSpare.push_back(std::move(one));
+                    return true;
+                });
             }
 
             const std::span<const MaterialLayer> layers
                 = scene.getLayers().subspan(material.mLayerOffset, material.mLayerCount);
 
-            Request request{ .mAsked = wanted, .mReset = mReset };
+            // **Off the spare list where one has come back.** A request is four vectors and a
+            // crossing gathers dozens, so building each here and freeing it in `collect` is a
+            // region's worth of allocation twice over. Whatever comes off the list is already
+            // empty: `mSpare` says that is what putting one back means.
+            Request request;
+            if (!mSpare.empty())
+            {
+                request = std::move(mSpare.back());
+                mSpare.pop_back();
+            }
+
+            request.mAsked = wanted;
+            request.mReset = mReset;
             request.mLayers.assign(layers.begin(), layers.end());
             request.mImages.reserve(layers.size());
             request.mMaskRuns.reserve(layers.size());
@@ -182,7 +210,15 @@ namespace Rtx
             ++finished;
         }
 
-        // The requests go with the pass, and the images they held with them.
+        // **The images go and the buffers stay.** What a request held is a picture of ground already
+        // baked, and holding it past here would be a second copy of every layer a region uses; the
+        // vectors themselves are room the next chunk would otherwise ask the allocator for.
+        for (Baked& baked : mTaken)
+        {
+            baked.mRequest.reuse();
+            mSpare.push_back(std::move(baked.mRequest));
+        }
+
         mTaken.clear();
         return finished;
     }

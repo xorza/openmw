@@ -288,8 +288,10 @@ namespace Rtx
         // Sized before anything is created, so a load's structures land in one storage block rather
         // than one per mesh. An arrival asks for nothing and gets a block big enough for itself.
         VkDeviceSize wanted = 0;
-        std::vector<VkDeviceSize> scratchOffsets(meshes.size());
         VkDeviceSize scratchTotal = 0;
+
+        mBuildScratchOffsets.clear();
+        mBuildScratchOffsets.resize(meshes.size());
 
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
@@ -369,7 +371,7 @@ namespace Rtx
             mBuildSizes[at] = sizes.accelerationStructureSize;
             wanted = alignUp(wanted + sizes.accelerationStructureSize, StructureStorage::sAlignment);
 
-            scratchOffsets[at] = scratchTotal;
+            mBuildScratchOffsets[at] = scratchTotal;
             scratchTotal = alignUp(scratchTotal + sizes.buildScratchSize, scratchAlignment);
 
             // Kept so a refit of this one mesh does not have to ask the driver its size again. The
@@ -407,7 +409,7 @@ namespace Rtx
                 "vkCreateAccelerationStructureKHR");
 
             mBuilds[at].dstAccelerationStructure = mBottomLevel[slot];
-            mBuilds[at].scratchData.deviceAddress = scratchAddress + scratchOffsets[at];
+            mBuilds[at].scratchData.deviceAddress = scratchAddress + mBuildScratchOffsets[at];
 
             // **Asked once each, here, and never again.** A handle lasts until the mesh is released
             // and its address with it, so the alternative is the same question per instance per

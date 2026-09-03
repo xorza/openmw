@@ -62,10 +62,17 @@ namespace Rtx
         if (!(cell > 0.0f))
             return;
 
-        // Nearest the light first, so what a sprite reads is what the ones before it laid down. Stable,
-        // so two at one depth are ordered by index and a frame cannot flicker between the two answers.
-        std::stable_sort(mOrder.begin(), mOrder.end(),
-            [this](std::uint32_t a, std::uint32_t b) { return mProjected[a].mDepth > mProjected[b].mDepth; });
+        // Nearest the light first, so what a sprite reads is what the ones before it laid down.
+        //
+        // **The index breaks a tie, which is what makes the order total** — and a total order has one
+        // answer, so an unstable sort gives the stable one and a frame cannot flicker between the
+        // two. `std::stable_sort` would take a buffer off the heap on every emitter and every light.
+        std::sort(mOrder.begin(), mOrder.end(), [this](std::uint32_t a, std::uint32_t b) {
+            if (mProjected[a].mDepth != mProjected[b].mDepth)
+                return mProjected[a].mDepth > mProjected[b].mDepth;
+
+            return a < b;
+        });
 
         mGrid.assign(std::size_t{ sCells } * sCells, 0.0f);
 

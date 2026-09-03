@@ -80,6 +80,21 @@ namespace Rtx
         /// would be two places for the format switch to fall behind a driver.
         void reportPipeline(VkPipeline pipeline, std::string_view name) const;
 
+        /// Whether a name handed to `setName` or `beginLabel` reaches anything at all.
+        ///
+        /// **What a caller asks before it builds one.** `setName` compiles to nothing in release,
+        /// but the string a caller concatenates out of a slot number or a path does not — so a
+        /// release run that builds one spends a heap allocation per texture on a name nothing can
+        /// read. Constant and not a device query, because the naming is decided at compile time.
+        static constexpr bool wantsNames()
+        {
+#ifdef OPENMW_RTX_DEBUG_NAMES
+            return true;
+#else
+            return false;
+#endif
+        }
+
         /// Attaches a name to a Vulkan object so captures and validation messages name it.
         ///
         /// Compiled to nothing in release: an unreadable capture is a debugging session that does

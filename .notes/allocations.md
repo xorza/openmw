@@ -1,5 +1,32 @@
 # Section 1 of the review, investigated
 
+## Done
+
+All six steps below are implemented. `openmw-rtxtool verify` renders all twenty views identically to
+the tree before them, and `openmw-rtxtool scene --view=vivec` hands over the same digest,
+`bc47d6c4a900a1a71763e604046c470e`. The full `components-tests` suite passes, 2022 tests.
+
+What moved, measured at Vivec on the performance cores over the last 60% of a six-second run:
+
+| symbol | before | after |
+| --- | --- | --- |
+| `std::stable_sort` buffer inside `SpriteShade::shadeToward` | 2.43% | gone |
+| `std::sort` that replaced it | absent | 1.76% |
+| `operator new` | 0.06% | below 0.01% |
+| `malloc` | 0.09% | 0.07% |
+| `cfree` | 0.26% | 0.21% |
+
+**No frame time moved, and none was expected to.** Vivec's median frame sits at 9.19 to 9.74 ms
+across four runs against a baseline of 9.10, and `place ms` at 1.52 against 1.47. The spread between
+repeats is larger than the difference. The plan said this, and it holds.
+
+What is enforced now rather than only written down: a steady extractor walk over an animated textured
+material allocates nothing, a sprite run shaded twice allocates nothing, a weather lit at two hours
+out of one record allocates nothing, and a texture arrival is bounded at six allocations.
+
+Step 5 was built differently from the plan. See the note under its heading.
+
+
 What follows revisits every item in "Structures that allocate" in `.notes/review.md`. Each one was
 read again in the code and measured with `perf`. One item is withdrawn. The ranking in the review
 was wrong, and the correction is the first section here.
@@ -277,6 +304,13 @@ One `readWeather` builds, at least:
   (`components/weather/downpour.cpp:32`), one key. `Rtx::glareView`, one key.
 
 `makeDaylight(from, to, ...)` calls it twice.
+
+**Built differently from what follows.** `Fallback::Map::init` merges rather than replaces, and the
+test binary calls it more than once — so a table inside `components/rtx` would answer from whenever it
+happened to be built first, and `makeDaylight` would depend on the order a suite ran in. What landed
+instead is `Rtx::WeatherRamps` and `Rtx::readWeatherRamps`, which the caller holds. `RtxTool::HeldWeathers`
+keeps the two a window is between, and `StagedWorld` owns it. The naming overloads of `makeDaylight`
+still read a record every call, so nothing outside the harness changed.
 
 **Proposal, two parts.**
 

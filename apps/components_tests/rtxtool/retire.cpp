@@ -335,7 +335,8 @@ namespace RtxTool
             const Placement placement = placeCamera(alone.getBounds(), 60.0f, std::nullopt, std::nullopt);
 
             const auto draw = [&](const Rtx::SceneDesc& drawn, std::vector<std::uint8_t>& out) {
-                const Rtx::SceneTextures described(drawn, getWorld().getImageManager());
+                Rtx::SceneTextures described;
+                described.describeAll(drawn, getWorld().getImageManager());
                 renderer->setScene(Rtx::sWorld, drawn, described.getDescriptions(), Rtx::SeaState{});
 
                 Rtx::Shaders::VisibilityConstants camera = Rtx::makeCamera(placement.mOrigin, placement.mTarget, 60.0f,

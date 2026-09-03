@@ -1,5 +1,7 @@
 #include "fixture.hpp"
 
+#include "../allocations.hpp"
+
 namespace Rtx::Testing
 {
     namespace
@@ -597,6 +599,72 @@ namespace Rtx::Testing
             EXPECT_EQ(scene.getMeshes()[0].mMaterial, 0u) << "the material it arrived wearing";
             EXPECT_EQ(stats.mInstances, 2u);
             EXPECT_EQ(stats.mWornOtherwise, 1u);
+        }
+
+        /// A material a controller rewrites resolves its texture out of the image, not its name.
+        ///
+        /// **Every frame it is met, because that is what an animated material costs.** The state set
+        /// is the same object and keeps its slot, and what is inside it is read again — so the
+        /// texture is asked for again as well. Asking by path built a `VFS::Path::Normalized` off
+        /// the heap each time, and Morrowind scrolls 432 surfaces in one Vivec cell.
+        ///
+        /// Three walks, because the entry has to survive a sweep and not only a frame: the second
+        /// walk is where a cache would answer and the third is where a sweep that took the entry
+        /// with it would show.
+        TEST(RtxSceneExtractorTest, anAnimatedMaterialFindsOneTextureSlotEveryFrame)
+        {
+            osg::ref_ptr<osg::Image> banner = new osg::Image;
+            banner->setFileName("textures/tx_banner.dds");
+
+            osg::ref_ptr<ColourController> controller = new ColourController;
+            controller->mDiffuse = banner;
+
+            osg::ref_ptr<osg::Geometry> quad = makeQuad();
+            osg::ref_ptr<osg::Group> node = new osg::Group;
+            node->addChild(quad);
+            node->addUpdateCallback(controller);
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+
+            osgUtil::UpdateVisitor update;
+            for (unsigned int frame = 1; frame <= 3; ++frame)
+            {
+                update.setTraversalNumber(frame);
+                node->accept(update);
+
+                scene.clearPlacement();
+
+                const std::size_t before = Testing::getAllocationCount();
+                extractor.extract(*node, osg::Matrixf::identity(), 0, frame);
+                const std::size_t spent = Testing::getAllocationCount() - before;
+
+                // **What the first frame legitimately spends, and every frame after it must not.**
+                // The first walk builds the scene: the tables, the identity entries and the one
+                // string this texture's path is ever read from. A steady frame reads the same graph
+                // and must reach the heap not at all.
+                if (frame > 1)
+                {
+                    EXPECT_EQ(spent, 0u) << spent << " allocations on frame " << frame;
+                }
+
+                ASSERT_EQ(scene.getMaterials().size(), 1u) << "on frame " << frame;
+                EXPECT_TRUE(scene.getMaterials()[0].mAnimated);
+                EXPECT_EQ(scene.getMaterials()[0].mDiffuse, 0u) << "the same slot, on frame " << frame;
+                EXPECT_EQ(scene.getTextures().size(), 1u) << "a second slot arrived on frame " << frame;
+
+                extractor.retire();
+            }
+
+            // **And the slot goes when the surface does.** The walk holds a reference of its own so
+            // that a slot it names cannot be handed out under it, and a hold nothing gives back is a
+            // texture the scene keeps for the rest of the run.
+            node->removeChild(quad);
+            scene.clearPlacement();
+            extractor.extract(*node, osg::Matrixf::identity(), 0, 4);
+            extractor.retire();
+
+            EXPECT_TRUE(scene.isTextureFree(0)) << "the walk's own hold outlived the surface";
         }
     }
 }

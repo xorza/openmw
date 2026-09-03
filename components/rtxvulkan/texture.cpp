@@ -164,7 +164,8 @@ namespace Rtx
         }
     }
 
-    Texture::Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name)
+    Texture::Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name,
+        std::vector<VkBufferImageCopy>& regions)
     {
         assert(!data.mLevels.empty());
 
@@ -174,7 +175,7 @@ namespace Rtx
 
         // Every level in one submit: the levels are already contiguous in the source, so this is one
         // copy per level out of one buffer rather than one upload per level.
-        std::vector<VkBufferImageCopy> regions;
+        regions.clear();
         regions.reserve(levels);
         for (std::uint32_t level = 0; level < levels; ++level)
             regions.push_back(VkBufferImageCopy{
@@ -190,9 +191,15 @@ namespace Rtx
         // a level to lose.
         const std::array<std::uint16_t, ShadingMap::sCells> stored = encodeShadingMap(data.mShading);
 
-        mShading
-            = std::make_unique<Image>(device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, VK_FORMAT_R16_UNORM,
-                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, std::string(name) + " shading");
+        // Built only where something reads it. A release build names no object, and the
+        // concatenation is past what a short string holds — so building it anyway is one trip to the
+        // heap per texture, for a name that goes nowhere.
+        std::string shadingName;
+        if constexpr (Device::wantsNames())
+            shadingName = std::string(name) + " shading";
+
+        mShading = std::make_unique<Image>(device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT,
+            VK_FORMAT_R16_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadingName);
 
         const VkBufferImageCopy region{
             .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
@@ -266,10 +273,17 @@ namespace Rtx
         {
             reserveSlot(texture.mSlot);
 
+            // Named only where a capture or a validation message could read it back. A local,
+            // because a slot number is short enough that this never reaches the heap; the one that
+            // does is the map's, inside `Texture`.
+            std::string name;
+            if constexpr (Device::wantsNames())
+                name = "texture " + std::to_string(texture.mSlot);
+
             // What the slot held is buried and not destroyed: its descriptor is the one a frame in
             // flight bound, and it stays valid until that frame's fence says nothing reads it.
-            graveyard.bury(std::exchange(mTextures[texture.mSlot],
-                Texture(mDevice, batch, texture, "texture " + std::to_string(texture.mSlot))));
+            graveyard.bury(
+                std::exchange(mTextures[texture.mSlot], Texture(mDevice, batch, texture, name, mRegionScratch)));
         }
 
         describe(arrived);
@@ -298,20 +312,20 @@ namespace Rtx
         // One write per slot and per array rather than one over a range: the arrivals are wherever
         // the scene's free list put them, and a run is no longer what they are. Reserved before
         // any write points into it, since a write names its image by address.
-        std::vector<VkDescriptorImageInfo> images;
-        std::vector<VkWriteDescriptorSet> writes;
-        images.reserve(2 * arrived.size());
-        writes.reserve(2 * arrived.size());
+        mImageScratch.clear();
+        mWriteScratch.clear();
+        mImageScratch.reserve(2 * arrived.size());
+        mWriteScratch.reserve(2 * arrived.size());
 
         for (const TextureData& texture : arrived)
         {
             const Texture& held = mTextures[texture.mSlot];
-            queueWrite(mSet, sTextureBinding, texture.mSlot, held.getView(), images, writes);
-            queueWrite(mSet, sShadingBinding, texture.mSlot, held.getShadingView(), images, writes);
+            queueWrite(mSet, sTextureBinding, texture.mSlot, held.getView(), mImageScratch, mWriteScratch);
+            queueWrite(mSet, sShadingBinding, texture.mSlot, held.getShadingView(), mImageScratch, mWriteScratch);
         }
 
         vkUpdateDescriptorSets(
-            mDevice.getHandle(), static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+            mDevice.getHandle(), static_cast<std::uint32_t>(mWriteScratch.size()), mWriteScratch.data(), 0, nullptr);
     }
 
     SetApart TextureArray::describeApart(std::span<const std::uint32_t> slots) const
@@ -319,21 +333,22 @@ namespace Rtx
         // The shading binding is the variable one, and nothing reads a map through this set.
         const SetApart apart = allocateSet(mDevice, mLayout.getHandle(), 1);
 
-        // Reserved before any write points into it, for the reason `describe` gives.
-        std::vector<VkDescriptorImageInfo> images;
-        std::vector<VkWriteDescriptorSet> writes;
-        images.reserve(slots.size());
-        writes.reserve(slots.size());
+        // Reserved before any write points into it, for the reason `describe` gives. The array's own
+        // scratch, because this is the array's answer and nothing else is describing while it runs.
+        mImageScratch.clear();
+        mWriteScratch.clear();
+        mImageScratch.reserve(slots.size());
+        mWriteScratch.reserve(slots.size());
 
         for (const std::uint32_t slot : slots)
         {
             assert(slot < mTextures.size() && mTextures[slot].getView() != VK_NULL_HANDLE
                 && "a set described over a slot holding no texture");
-            queueWrite(apart.mSet, sTextureBinding, slot, mTextures[slot].getView(), images, writes);
+            queueWrite(apart.mSet, sTextureBinding, slot, mTextures[slot].getView(), mImageScratch, mWriteScratch);
         }
 
         vkUpdateDescriptorSets(
-            mDevice.getHandle(), static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+            mDevice.getHandle(), static_cast<std::uint32_t>(mWriteScratch.size()), mWriteScratch.data(), 0, nullptr);
 
         return apart;
     }

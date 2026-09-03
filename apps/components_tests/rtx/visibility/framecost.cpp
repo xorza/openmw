@@ -1,5 +1,6 @@
 #include "fixture.hpp"
 
+#include <components/rtx/shadingmap.hpp>
 #include <components/rtxvulkan/scenemicromaps.hpp>
 #include <components/rtxvulkan/spritebinpass.hpp>
 
@@ -216,6 +217,88 @@ namespace Rtx::Testing
 
             EXPECT_LE(after - before, budgetPerFrame * measuredFrames)
                 << (after - before) << " allocations across " << measuredFrames << " frames";
+        }
+
+        /// A texture arriving costs the device objects it is and nothing besides.
+        ///
+        /// **The arrival frame is the frame with the least room, which is why this is bounded at
+        /// all.** A cell crossing writes a couple of hundred textures into the array on one frame,
+        /// and a vector the write grows for itself is growth on top of the upload. What this leaves
+        /// is what a texture *is*: two images and the staging buffer their bytes travel in, each of
+        /// which is a device allocation the host has to hold a handle for.
+        ///
+        /// Warmed up with one texture first, so the array's own scratch and its descriptor pool have
+        /// reached their size and what is measured is the arrival and not the array.
+        TEST_F(RtxFrameCostTest, aTextureArrivingCostsWhatATextureIs)
+        {
+            constexpr std::uint32_t extent = 4;
+            constexpr std::uint32_t slots = 64;
+            constexpr std::uint32_t measured = 32;
+
+            // What one texture is allowed, and what it is spent on. Two images, each a `unique_ptr`
+            // the host holds for a device object; the staging buffer its bytes travel in; and the
+            // names those carry, which a build that names objects makes strings for and a release
+            // build does not — `Device::wantsNames`. Measured at five apiece with names on.
+            //
+            // The sixth is the batch's own list of what it is keeping alive and the graveyard's, both
+            // of which grow as any vector does. Nothing here may grow per texture: that is what the
+            // number is for, and a seventh is a buffer somebody made per arrival.
+            constexpr std::size_t budgetPerTexture = 6;
+
+            Device& device = *mHarness->mDevice;
+            CommandPool pool(device);
+            Graveyard graveyard(device, pool);
+
+            // Flat and uncompressed, so the description is exact arithmetic rather than a file.
+            const std::vector<std::uint8_t> texels(std::size_t{ extent } * extent * 4, 0xFF);
+            const std::array<MipLevel, 1> levels{ MipLevel{ 0, extent, extent } };
+            const std::array<float, ShadingMap::sCells> shading{};
+
+            const auto describe = [&](std::uint32_t slot) {
+                return TextureData{
+                    .mSlot = slot,
+                    .mFormat = TextureFormat::Rgba8Unorm,
+                    .mWidth = extent,
+                    .mHeight = extent,
+                    .mBytes = std::as_bytes(std::span(texels)),
+                    .mLevels = levels,
+                    .mShading = shading,
+                    .mName = "arrival",
+                };
+            };
+
+            Batch setup(pool);
+            TextureArray array(device, setup, slots, {}, graveyard);
+            setup.flush();
+
+            const auto arrive = [&](Batch& batch, std::uint32_t slot) {
+                const TextureData described = describe(slot);
+                array.write(batch, std::span(&described, 1), graveyard);
+            };
+
+            {
+                Batch warm(pool);
+                arrive(warm, 0);
+                warm.flush();
+            }
+
+            // **One batch for all of them, which is how a cell arrives**: the renderer records every
+            // texture of a crossing into one and flushes once. A batch apiece would be measuring the
+            // command pool rather than the array.
+            Batch batch(pool);
+
+            const std::size_t before = Testing::getAllocationCount();
+            for (std::uint32_t slot = 1; slot <= measured; ++slot)
+                arrive(batch, slot);
+            const std::size_t after = Testing::getAllocationCount();
+
+            batch.flush();
+
+            EXPECT_LE(after - before, budgetPerTexture * measured)
+                << (after - before) << " allocations across " << measured << " arrivals, "
+                << static_cast<double>(after - before) / measured << " apiece";
+
+            EXPECT_EQ(array.getHeld().mCount, measured + 1);
         }
     }
 }

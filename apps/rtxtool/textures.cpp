@@ -23,7 +23,8 @@ namespace RtxTool
         StagedWorld staged(world, cell, request, actors);
         const Rtx::SceneDesc& scene = staged.getScene();
 
-        const Rtx::SceneTextures described(scene, world.getImageManager());
+        Rtx::SceneTextures described;
+        described.describeAll(scene, world.getImageManager());
         const ContactSheet sheet = writeContactSheet(described.getDescriptions(), output, strength);
         if (sheet.mCount == 0)
         {

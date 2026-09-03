@@ -14,6 +14,7 @@
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/sceneutil/vismask.hpp>
+#include <components/sky/clouds.hpp>
 #include <components/sky/sun.hpp>
 #include <components/sky/timeofday.hpp>
 #include <components/weather/downpour.hpp>
@@ -141,41 +142,32 @@ namespace Rtx
             float mWindSpeed = 0.0f;
         };
 
-        Reading readWeather(std::string_view weather, const Sky::TimeOfDaySettings& times, float hour)
+        /// How much of the sun a weather lets through — `Weather_<name>_Glare_View`, which dims a
+        /// sun disc under an overcast and keeps the stars in behind one.
+        float glareView(std::string_view weather)
         {
-            // A name that is none of the ten is left to the map, which refuses it as a key it will
-            // not consider; one of the ten with nothing written for it is refused here, by name.
-            if (weatherIndex(weather).has_value())
-                requireWeather(
-                    weather, Fallback::Map::getFloatFallbackMap(), Fallback::Map::getNonNumericFallbackMap());
+            return Fallback::Map::getFloat("Weather_" + std::string(weather) + "_Glare_View");
+        }
 
-            // **The game's own four-point ramp rather than a step between four phases.** Each
-            // quantity crosses dawn over a window of its own — the sun can be up before the sky has
-            // finished turning — so reading whichever phase an hour fell in got every hour inside a
-            // transition wrong, which is most of sunrise and most of dusk.
-            //
-            // `Sky::colourRamp` spells the four keys, and `MWWorld::Weather` builds its own out of
-            // the same call.
-            const auto ramp = [&weather, &times, hour](std::string_view quantity) {
-                return Sky::colourRamp(weather, quantity).getValue(hour, times, std::string(quantity));
-            };
-
-            const osg::Vec4f ambient = ramp("Ambient");
+        /// One weather's numbers at `hour`, out of a record already read.
+        ///
+        /// **The game's own four-point ramp rather than a step between four phases.** Each quantity
+        /// crosses dawn over a window of its own — the sun can be up before the sky has finished
+        /// turning — so reading whichever phase an hour fell in got every hour inside a transition
+        /// wrong, which is most of sunrise and most of dusk.
+        Reading readHour(const WeatherRamps& ramps, const Sky::TimeOfDaySettings& times, float hour)
+        {
+            const osg::Vec4f ambient = ramps.mAmbient.getValue(hour, times, "Ambient");
 
             return Reading{
-                .mHaze = ramp("Fog"),
-                .mSky = ramp("Sky"),
+                .mHaze = ramps.mHaze.getValue(hour, times, "Fog"),
+                .mSky = ramps.mSky.getValue(hour, times, "Sky"),
                 .mAmbient = ambient,
-                .mSun = ramp("Sun"),
-                .mSunDisc = Sky::sunDiscAt(hour, times,
-                    Fallback::Map::getColour("Weather_" + std::string(weather) + "_Sun_Disc_Sunset_Color"), ambient),
-                .mGlare = glareView(weather),
-                .mFogDepth = Sky::landFogRamp(weather).getValue(hour, times, "Fog"),
-
-                // **The recorded speed and not the gust.** What this decides is how deep the layer
-                // stands and how fast the field is carried, both of which are the weather's settled
-                // character rather than the number the engine wanders about it.
-                .mWindSpeed = Weather::windSpeed(weather),
+                .mSun = ramps.mSun.getValue(hour, times, "Sun"),
+                .mSunDisc = Sky::sunDiscAt(hour, times, ramps.mDiscSunset, ambient),
+                .mGlare = ramps.mGlare,
+                .mFogDepth = ramps.mFogDepth.getValue(hour, times, "Fog"),
+                .mWindSpeed = ramps.mWindSpeed,
             };
         }
 
@@ -347,17 +339,50 @@ namespace Rtx
         return std::max(Sky::sunShareAt(hour - offset, times), Sky::sunShareAt(hour + offset, times));
     }
 
-    Daylight makeDaylight(std::string_view weather, float hour, float reach)
+    WeatherRamps readWeatherRamps(std::string_view weather)
     {
-        const Sky::TimeOfDaySettings& times = Sky::TimeOfDaySettings::shared();
-        return settle(readWeather(weather, times, hour), times, hour, reach);
+        // A name that is none of the ten is left to the map, which refuses it as a key it will
+        // not consider; one of the ten with nothing written for it is refused here, by name.
+        if (weatherIndex(weather).has_value())
+            requireWeather(weather, Fallback::Map::getFloatFallbackMap(), Fallback::Map::getNonNumericFallbackMap());
+
+        // `Sky::colourRamp` spells the four keys, and `MWWorld::Weather` builds its own out of the
+        // same call.
+        return WeatherRamps{
+            .mHaze = Sky::colourRamp(weather, "Fog"),
+            .mSky = Sky::colourRamp(weather, "Sky"),
+            .mAmbient = Sky::colourRamp(weather, "Ambient"),
+            .mSun = Sky::colourRamp(weather, "Sun"),
+            .mFogDepth = Sky::landFogRamp(weather),
+            .mDiscSunset = Fallback::Map::getColour("Weather_" + std::string(weather) + "_Sun_Disc_Sunset_Color"),
+            .mGlare = glareView(weather),
+
+            // **The recorded speed and not the gust.** What this decides is how deep the layer
+            // stands and how fast the field is carried, both of which are the weather's settled
+            // character rather than the number the engine wanders about it.
+            .mWindSpeed = Weather::windSpeed(weather),
+
+            .mCloudSpeed = Sky::cloudSpeed(weather),
+            .mCloudsMaximumPercent = Sky::cloudsMaximumPercent(weather),
+        };
     }
 
-    Daylight makeDaylight(std::string_view from, std::string_view to, float blend, float hour, float reach)
+    Daylight makeDaylight(const WeatherRamps& ramps, float hour, float reach)
     {
         const Sky::TimeOfDaySettings& times = Sky::TimeOfDaySettings::shared();
-        const Reading a = readWeather(from, times, hour);
-        const Reading b = readWeather(to, times, hour);
+        return settle(readHour(ramps, times, hour), times, hour, reach);
+    }
+
+    Daylight makeDaylight(std::string_view weather, float hour, float reach)
+    {
+        return makeDaylight(readWeatherRamps(weather), hour, reach);
+    }
+
+    Daylight makeDaylight(const WeatherRamps& from, const WeatherRamps& to, float blend, float hour, float reach)
+    {
+        const Sky::TimeOfDaySettings& times = Sky::TimeOfDaySettings::shared();
+        const Reading a = readHour(from, times, hour);
+        const Reading b = readHour(to, times, hour);
 
         const auto mix = [blend](const auto& x, const auto& y) { return x * (1.0f - blend) + y * blend; };
 
@@ -419,11 +444,6 @@ namespace Rtx
             return std::nullopt;
 
         return static_cast<std::uint32_t>(found - sWeathers.begin());
-    }
-
-    float glareView(std::string_view weather)
-    {
-        return Fallback::Map::getFloat("Weather_" + std::string(weather) + "_Glare_View");
     }
 
     std::uint32_t nextRegionWeather(const ESM::Region* region, std::uint32_t weather, bool forward)

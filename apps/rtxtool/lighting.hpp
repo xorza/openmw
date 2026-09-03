@@ -1,6 +1,11 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <limits>
+#include <optional>
+#include <string>
+#include <string_view>
 
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/lightbuilder.hpp>
@@ -97,6 +102,32 @@ namespace RtxTool
     /// grid `SceneBuffers` binned them into rather than through a count anyone has to remember.
     void applyLighting(const CellLighting& lighting, Rtx::Shaders::VisibilityConstants& constants);
 
+    /// The weather records this window has already read.
+    ///
+    /// **Held here because a clock turns the hour and never the record.** `Rtx::readWeatherRamps`
+    /// builds about a hundred strings out of the fallback settings, and a window running its clock
+    /// asks for the same weather on every frame — so reading it again is a hundred trips to the heap
+    /// for numbers that cannot have changed. `Rtx::WeatherRamps` says why the component does not
+    /// hold this itself.
+    ///
+    /// **Two slots, because a transition names two weathers and nothing names three.** A third
+    /// takes over the older of them, which is what a window that keeps changing its mind does.
+    class HeldWeathers
+    {
+    public:
+        /// The record for `weather`, read only where it is not one of the two already here.
+        const Rtx::WeatherRamps& of(std::string_view weather);
+
+    private:
+        static constexpr std::size_t sSlots = 2;
+
+        std::array<std::string, sSlots> mNames;
+        std::array<std::optional<Rtx::WeatherRamps>, sSlots> mHeld;
+
+        /// Which slot the next weather this has not read takes over.
+        std::size_t mNext = 0;
+    };
+
     /// Moves a cell's sky to another moment, leaving everything the sky does not decide.
     ///
     /// **What the window's clock keys turn, and it reloads nothing.** Where the sun and the moons
@@ -105,8 +136,13 @@ namespace RtxTool
     /// floating-point operations rather than a region being read again.
     ///
     /// An interior is left untouched: it has no sky for a clock to move.
-    void relight(CellLighting& lighting, std::string_view weather, int day, float hour);
+    ///
+    /// **`held` is the caller's, and there is no overload that does without one.** A weather read
+    /// per call is what this exists to stop, so an easier signature beside it would be a slower path
+    /// with nothing on it to mark it as one.
+    void relight(CellLighting& lighting, HeldWeathers& held, std::string_view weather, int day, float hour);
 
     /// The same, partway between two weathers — which is what a window running a transition wants.
-    void relight(CellLighting& lighting, std::string_view from, std::string_view to, float blend, int day, float hour);
+    void relight(CellLighting& lighting, HeldWeathers& held, std::string_view from, std::string_view to, float blend,
+        int day, float hour);
 }
