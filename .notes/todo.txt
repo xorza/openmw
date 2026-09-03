@@ -14,7 +14,6 @@
 - screen upside down for loading terrains
 - precompile shaders?
 - ser ?
-- gpu skin
 - micromaps
 - normal interpolation bug?
 - fog under the water surface

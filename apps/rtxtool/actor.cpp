@@ -12,7 +12,6 @@
 #include <components/resource/keyframemanager.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/rtx/posecull.hpp>
 #include <components/rtx/poseupdate.hpp>
 #include <components/sceneutil/controller.hpp>
 #include <components/sceneutil/keyframe.hpp>
@@ -125,18 +124,15 @@ namespace RtxTool
     Actor::Actor(World& world, ActorModel model, const osg::Matrixf& transform)
         : mClock(std::make_shared<Clock>())
         , mWorldClock(std::make_shared<Clock>())
-        , mCull(std::make_unique<Rtx::PoseCull>())
         , mUpdate(std::make_unique<Rtx::PoseUpdate>())
         , mStamp(new osg::FrameStamp)
         , mModel(std::move(model))
         , mTransform(transform)
     {
-        // **Both traversals, because a controller can hang off either.** A keyframe or an emitter
-        // is driven under update; `NifOsg`'s state-set controllers — a scrolling texture, a
-        // flicker — are applied under cull, and `SceneUtil::FrameTimeSource` reads the visitor's
-        // frame stamp without checking that it has one.
+        // A keyframe or an emitter is driven under update, and `SceneUtil::FrameTimeSource` reads
+        // the visitor's frame stamp without checking that it has one. `NifOsg`'s state-set
+        // controllers hang off cull callbacks, and the mirror applies those itself as it walks.
         mUpdate->setFrameStamp(mStamp);
-        mCull->setFrameStamp(mStamp);
 
         // **Before the keyframes go on, and it never overwrites one.** The game does this through
         // `MWRender::Animation`; without it every controller `NifOsg` left sourceless does nothing,
@@ -239,17 +235,14 @@ namespace RtxTool
         mStamp->setReferenceTime(mIntegrated);
         mWorldClock->mSeconds = static_cast<float>(mIntegrated);
 
-        // **Update then cull, and never the same number twice.** The bones move under the update
-        // traversal and the skin follows them under the cull; both keep the last number they saw and
-        // return early on a repeat, which in the game stops a second camera skinning the same actor
-        // again and here would silently stop a pose from happening at all.
+        // **Never the same number twice.** The bones move under the update traversal, and a skeleton
+        // keeps the last number it saw and returns early on a repeat — which in the game stops a
+        // second camera moving the same actor again and here would silently stop a pose from
+        // happening at all. The skin follows on the device, from the matrices this leaves.
         ++mTraversal;
         mStamp->setFrameNumber(mTraversal);
 
         mUpdate->setTraversalNumber(mTraversal);
         mModel.mRoot->accept(*mUpdate);
-
-        mCull->setTraversalNumber(mTraversal);
-        mModel.mRoot->accept(*mCull);
     }
 }

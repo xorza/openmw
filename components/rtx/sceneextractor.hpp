@@ -14,6 +14,10 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
+// For `RigGeometry::InfluenceData`, which is what a rig is keyed on: a nested type cannot be
+// forward-declared. It brings `osg::Vec3Array`, which a morph is keyed on, with it.
+#include <components/sceneutil/riggeometry.hpp>
+
 #include "imageformat.hpp"
 #include "scenedesc.hpp"
 #include "shapefold.hpp"
@@ -34,6 +38,7 @@ namespace osgParticle
 namespace SceneUtil
 {
     class LightSource;
+    class MorphGeometry;
     class StateSetUpdater;
 }
 
@@ -76,11 +81,18 @@ namespace Rtx
         std::uint32_t mMaterialsReused = 0;
         std::uint32_t mInstances = 0;
 
-        /// Drawables whose vertices are recomputed every frame and so were read from the pose
-        /// rather than from the cache: skinned bodies and morphed faces. Each one already met is a
-        /// bottom-level structure a backend has to build again, which is what makes this the cost
-        /// of an actor rather than a count of them.
+        /// Drawables whose vertices are recomputed every frame and so were posed rather than read
+        /// from the cache: skinned bodies and morphed faces. Each one already met is a dispatch and
+        /// a bottom-level structure a backend has to refit, which is what makes this the cost of an
+        /// actor rather than a count of them.
         std::uint32_t mDeformed = 0;
+
+        /// Skinned drawables mirrored as they stand, because no update traversal has resolved their
+        /// skeleton: `SceneUtil::RigGeometry::getBones` answered nothing. The rasterizer draws such a
+        /// rig in its bind pose too, so this is what it shows and not a loss — but a walk that
+        /// reaches a rig before the update that should have found its skeleton is a walk out of
+        /// order, and this is the number that says so.
+        std::uint32_t mUnskinned = 0;
 
         /// Particle systems met, and the live particles they were holding.
         ///
@@ -145,21 +157,21 @@ namespace Rtx
 
     class MirrorTraversal;
 
-    /// The numbers mirror walks pose at, and the rule that they only ever go up.
+    /// The numbers mirror walks run at, and the rule that they only ever go up.
     ///
-    /// **`SceneUtil::Skeleton` and both deforming drawables refuse to move for a traversal number
-    /// they have already seen.** That is what stops one actor being skinned twice in a frame, and it
-    /// means a walk's number is not a label but a claim: this pose is newer than the last.
+    /// **A state-set controller, an `osg::Sequence`, and — under the pick's own cull — both deforming
+    /// drawables refuse to run for a traversal number they have already seen.** So a walk's number
+    /// is not a label but a claim: this frame is newer than the last.
     ///
     /// This fork has two things that walk — the world, once a frame, and a traced view whenever its
-    /// subject changes — and they must not be two sequences. A subtree reached by both would be posed
+    /// subject changes — and they must not be two sequences. A subtree reached by both would be run
     /// by whichever got there first and frozen for the other, and nothing states that no subtree is
     /// shared: `NpcAnimation` merely happens to clone a `RigGeometry` per instance. One counter, and
     /// the hazard cannot arise.
     ///
     /// **Not the frame number**, which a walk also carries and which means something else — which of
     /// a `SceneUtil::LightSource`'s two buffers update has just written. A doll redrawn twice in one
-    /// frame needs two pose numbers and one light buffer.
+    /// frame needs two traversal numbers and one light buffer.
     class Traversals
     {
     public:
@@ -260,10 +272,10 @@ namespace Rtx
     class SceneExtractor
     {
     public:
-        /// @param traversals where this walk's pose numbers come from. **Shared by everything that
-        ///        can reach one graph** — the game hands the same counter to the world's walk and to
-        ///        every traced view. Left out, the extractor keeps a sequence of its own, which is
-        ///        right for a harness where nothing else walks the same nodes.
+        /// @param traversals where this walk's traversal numbers come from. **Shared by everything
+        ///        that can reach one graph** — the game hands the same counter to the world's walk
+        ///        and to every traced view. Left out, the extractor keeps a sequence of its own,
+        ///        which is right for a harness where nothing else walks the same nodes.
         explicit SceneExtractor(SceneDesc& scene, Traversals* traversals = nullptr);
 
         /// Out of line because `MirrorTraversal` and the identity maps' key types are only forward
@@ -423,10 +435,10 @@ namespace Rtx
         /// drawable and the visitor already holds the part they share.
         ///
         /// **A drawable and not an `osg::Geometry`**, because a skinned body is neither: it is an
-        /// `osg::Drawable` holding two internal geometries and writing the pose the cull traversal
-        /// just computed into whichever of them was not last drawn. Which of the kinds this is
-        /// belongs here rather than to a caller — the visitor would only be asking the same
-        /// question with less to answer it from.
+        /// `osg::Drawable` over a source geometry, and what the mirror reads is that source — the
+        /// bind pose — beside the rig that poses it. Which of the kinds this is belongs here rather
+        /// than to a caller — the visitor would only be asking the same question with less to
+        /// answer it from.
         void addDrawable(const osg::Drawable& drawable, std::size_t who, std::span<const Shading> shading,
             const osg::Matrixf& place, bool firstPerson, ExtractionStats& stats);
 
@@ -473,13 +485,45 @@ namespace Rtx
         void addEmitter(const osgParticle::ParticleSystem& particles, std::span<const Shading> shading,
             const osg::Matrixf& place, ExtractionStats& stats);
 
-        /// The mesh index for one drawable, adding it or re-reading it as its kind requires.
+        /// What of a drawable there is to mirror: the geometry its triangles and attributes are
+        /// read from, and what poses it, where something does.
         ///
-        /// **Keyed on the drawable and not on the geometry**, because a deforming drawable's
-        /// geometry pointer alternates between its two buffers: keying on that would put two frozen
-        /// poses of every actor in the scene and flicker between them.
-        Index resolveMesh(
-            const osg::Drawable& drawable, const osg::Geometry& geometry, bool deforming, ExtractionStats& stats);
+        /// A skinned body's geometry is its **source** — the bind pose, which is what a pose is
+        /// computed from on the device — and a morphed face's is its source too, with the base
+        /// target standing in for its positions. Neither is the double-buffered copy a cull writes,
+        /// which nothing here runs any more.
+        struct Read
+        {
+            const osg::Geometry* mGeometry = nullptr;
+            Deform mDeform = Deform::None;
+            const SceneUtil::RigGeometry* mRig = nullptr;
+            const SceneUtil::MorphGeometry* mMorph = nullptr;
+        };
+
+        /// Reads what a drawable is, in one virtual call for nearly everything in a cell.
+        static Read readDrawable(const osg::Drawable& drawable);
+
+        /// The mesh index for one drawable, adding it or posing it as its kind requires.
+        ///
+        /// **Keyed on the drawable and not on the geometry.** A crate met again is the crate already
+        /// uploaded; a body met again is the same mesh posed again, and the pose is bone rows and
+        /// never vertices.
+        Index resolveMesh(const osg::Drawable& drawable, const Read& read, ExtractionStats& stats);
+
+        /// The scene's rig for a skin, added the first time the skin is met. Shared by every copy of
+        /// the drawable, because the skin is.
+        Index resolveRig(const SceneUtil::RigGeometry& rig);
+
+        /// The same for a morph's targets, keyed on the base target every copy shares.
+        Index resolveMorph(const SceneUtil::MorphGeometry& morph);
+
+        /// Hands the scene this frame's bone rows for `mesh`: `RigGeometry::cull`'s own composition
+        /// of each bone's inverse bind, its skeleton-space matrix and the skin transform, from the
+        /// matrices the update traversal left.
+        void poseRig(Index mesh, const SceneUtil::RigGeometry& rig);
+
+        /// The same with the morph's weights, which its controller wrote under the update traversal.
+        void poseMorph(Index mesh, const SceneUtil::MorphGeometry& morph);
         /// Whether a drawable carrying `mask` is the world's water.
         bool isWater(osg::Node::NodeMask mask) const;
 
@@ -544,6 +588,13 @@ namespace Rtx
         Identity<const osg::Drawable> mMeshes;
         Identity<const osg::StateSet> mMaterials;
 
+        /// What the scene knows each skin and each set of morph targets as. A skin is one
+        /// `InfluenceData` however many rigs share it, and a face's targets are one base array
+        /// however many heads carry them — so a hundred people in one shirt are one rig here.
+        /// Swept with the meshes: a rig no mesh named this epoch is a rig the scene has let go of.
+        Identity<const SceneUtil::RigGeometry::InfluenceData> mRigs;
+        Identity<const osg::Vec3Array> mMorphs;
+
         /// What one particle system draws with: its sprite texture in `mIndex`, and the bake of that
         /// texture's alpha its sprites are lit by.
         struct HeldSprite : Known
@@ -574,10 +625,9 @@ namespace Rtx
 
         /// The walk itself, made once rather than per call.
         ///
-        /// It carries the pose traversal, whose state graph, render stage, viewport and matrices are
-        /// set up in its constructor, and the chain of state sets it refills as it descends. Both
-        /// are per-frame allocations if the walk is a local, and a cell is tens of thousands of
-        /// drawables deep.
+        /// It carries the sequence clock, the emitter clock and the chain of state sets it refills
+        /// as it descends, and each is a per-frame allocation if the walk is a local — a cell is
+        /// tens of thousands of drawables deep.
         std::unique_ptr<MirrorTraversal> mWalk;
 
         /// Used only where the caller named none.
@@ -630,6 +680,15 @@ namespace Rtx
         std::vector<osg::Vec3f> mFlatNormalScratch;
         std::vector<osg::Vec2f> mTexCoordScratch;
         std::vector<float> mMaskScratch;
+
+        /// One skin's runs and influences, refilled per skin met for the first time; one rig's rows
+        /// and one morph's weights, refilled per body per frame. The frame path holds the last two
+        /// and a crowd is tens of them.
+        std::vector<std::uint32_t> mRunScratch;
+        std::vector<Shaders::GpuInfluence> mInfluenceScratch;
+        std::vector<osg::Vec3f> mOffsetScratch;
+        std::vector<Shaders::GpuBone> mBoneScratch;
+        std::vector<float> mWeightScratch;
 
         /// One terrain material's layers, refilled per chunk: a run is allocated by length and the
         /// length is only known once the passes with no texture on them have been passed over.

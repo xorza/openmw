@@ -12,12 +12,12 @@ namespace Rtx
 {
     /// A cull traversal that culls nothing and draws nothing.
     ///
-    /// **For the things that answer only to an `osgUtil::CullVisitor`.** `SceneUtil::RigGeometry`
-    /// and `SceneUtil::MorphGeometry` skin inside `accept`, by casting the visitor to one and
-    /// handing it the pose they have just written; under anything else they hand back whatever the
-    /// *rasterizer's* cull last computed, which for anyone off screen is the pose they had when
-    /// last visible — wrong in every reflection they appear in and every shadow they cast. State
-    /// sets that `SceneUtil::StateSetUpdater` only produces during cull are the other.
+    /// **For the one thing left that answers only to an `osgUtil::CullVisitor`.**
+    /// `SceneUtil::RigGeometry` and `SceneUtil::MorphGeometry` skin inside `accept`, by casting the
+    /// visitor to one and writing the pose into a copy of their own — and an intersection test reads
+    /// that copy. The frame poses nothing this way any more: the mirror hands bone rows to the device
+    /// and the device computes the vertices. What still needs the drawable's own copy posed is
+    /// `OffscreenTrace::pick`, once per click, and this is what it poses with.
     ///
     /// **What it is not is a rendering cull.** Culling is off, because a ray tracer decides what
     /// exists and the answer is everything; the drawables it reaches are dropped rather than binned.

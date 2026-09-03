@@ -153,6 +153,7 @@ if (OPENMW_RTX)
         rtx/sceneuploader.cpp
         rtx/shadingmap.cpp
         rtx/shapefold.cpp
+        rtx/skinpass.cpp
         rtx/skybuilder.cpp
         rtx/spanallocator.cpp
         rtx/spritelight.cpp

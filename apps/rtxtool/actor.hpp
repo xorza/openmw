@@ -13,7 +13,6 @@
 
 namespace Rtx
 {
-    class PoseCull;
     class PoseUpdate;
 }
 
@@ -147,9 +146,8 @@ namespace RtxTool
         /// autoplay, and a sourceless `ParticleSystemController` freezes its own emitter.
         std::shared_ptr<Clock> mWorldClock;
 
-        /// **A real cull traversal, because that is the only kind a skinned body poses for.** See
-        /// `Rtx::PoseCull`; the mirror carries one too, for the actors nothing else reached.
-        std::unique_ptr<Rtx::PoseCull> mCull;
+        /// The update traversal, which is where the keyframes move the bones and where a rig finds
+        /// its skeleton. The skin follows on the device, from the matrices this leaves.
         std::unique_ptr<Rtx::PoseUpdate> mUpdate;
 
         /// What the update traversal tells anything that integrates rather than samples — which in
@@ -169,9 +167,9 @@ namespace RtxTool
         float mStop = 0.0f;
         std::size_t mPosedBones = 0;
 
-        /// Both traversals are keyed on this and both refuse to run twice on the same number, which
-        /// is how OpenMW keeps a frame from skinning an actor once per camera. A pose is a frame as
-        /// far as they are concerned, so it counts.
+        /// The update traversal is keyed on this and a skeleton refuses to move its bones twice on
+        /// the same number, which is how OpenMW keeps a frame from posing an actor once per camera.
+        /// A pose is a frame as far as it is concerned, so it counts.
         unsigned int mTraversal = 0;
 
         /// The particle clock: only ever forwards, whatever the animation's does.

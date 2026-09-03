@@ -53,6 +53,8 @@ set(RTX_SHADERS
     shaders/gui.frag
     shaders/gui.vert
     shaders/histogram.comp
+    shaders/morph.comp
+    shaders/skin.comp
     shaders/tone.comp
     shaders/visibility.rahit
     shaders/visibility.rgen
@@ -199,6 +201,10 @@ set(RTX_VULKAN_FILES
     setlayout.hpp
     shadermodule.cpp
     shadermodule.hpp
+    skinpass.cpp
+    skinpass.hpp
+    skintables.cpp
+    skintables.hpp
     slottable.hpp
     specialization.hpp
     structurestorage.cpp

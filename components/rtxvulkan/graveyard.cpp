@@ -1,5 +1,6 @@
 #include "graveyard.hpp"
 
+#include <algorithm>
 #include <utility>
 
 #include "commands.hpp"
@@ -7,6 +8,16 @@
 
 namespace Rtx
 {
+    bool outgrow(Buffer& held, const Device& device, const VkDeviceSize bytes, const VkBufferUsageFlags usage,
+        Graveyard& graveyard)
+    {
+        if (held.getSize() >= bytes)
+            return false;
+
+        graveyard.bury(growTo(held, device, std::max(bytes, held.getSize() * 2), usage));
+        return true;
+    }
+
     Graveyard::Graveyard(const Device& device, CommandPool& pool)
         : mDevice(device)
         , mPool(pool)

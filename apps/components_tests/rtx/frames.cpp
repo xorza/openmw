@@ -9,6 +9,7 @@
 #include <components/rtx/scenedesc.hpp>
 
 #include "harness.hpp"
+#include "visibility/fixture.hpp"
 
 namespace Rtx
 {
@@ -52,8 +53,13 @@ namespace Rtx
                     return;
 
                 mRenderer->resize(sSize, sSize);
-                mWall = mScene.addMesh(wallAt(200.0f), {}, {}, sQuadIndices);
+
+                // On a skin of one bone, so the same wall can be moved two ways: by its instance
+                // and by its pose. Its bind pose is at two hundred.
+                mWall = mScene.addMesh(
+                    wallAt(200.0f), {}, {}, sQuadIndices, {}, Deform::Rig, Testing::addOneBoneRig(mScene, 4));
                 mInstance = mScene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mWall });
+                Testing::poseByOneBone(mScene, mWall, osg::Matrixf::identity());
                 mRenderer->setScene(Rtx::sWorld, mScene, {}, SeaState{});
             }
 
@@ -65,12 +71,12 @@ namespace Rtx
                 mRenderer->placeScene(Rtx::sWorld, mScene, SeaState{});
             }
 
-            /// Moves the wall by its vertices instead, which is what a skinned body does and goes
-            /// through the refit's positions.
+            /// Moves the wall by its pose instead, which is what a skinned body does and goes
+            /// through the skinning pass and the refit's positions.
             void deformTo(float away)
             {
                 mScene.clearPlacement();
-                mScene.updateMesh(mWall, wallAt(away), {});
+                Testing::poseByOneBone(mScene, mWall, osg::Matrixf::translate(0.0f, away - 200.0f, 0.0f));
                 mRenderer->placeScene(Rtx::sWorld, mScene, SeaState{});
             }
 

@@ -26,6 +26,7 @@ namespace Resource
 
 namespace Rtx
 {
+    class PoseCull;
     class PoseUpdate;
     class SceneDesc;
     class SceneExtractor;
@@ -61,11 +62,12 @@ namespace Rtx
         ///
         /// @param mask which nodes the walk may descend into. **An inclusion mask**, AND-ed at every
         ///        node, so a category left out of it is dropped wherever it appears below.
-        /// @param traversals where the pose numbers come from. **Shared with everything else that
-        ///        can reach the same nodes** — the game hands the same counter to the world's walk
-        ///        and to every picture — because a subtree two walks reach would otherwise be posed
-        ///        by whichever got there first and frozen for the other. Left out, this keeps a
-        ///        sequence of its own, which is right where nothing else walks the subject.
+        /// @param traversals where the walk's and the pick's traversal numbers come from. **Shared
+        ///        with everything else that can reach the same nodes** — the game hands the same
+        ///        counter to the world's walk and to every picture — because a subtree two walks
+        ///        reach would otherwise be run by whichever got there first and frozen for the
+        ///        other. Left out, this keeps a sequence of its own, which is right where nothing
+        ///        else walks the subject.
         OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, osg::Node& subject,
             osg::Node::NodeMask mask, Traversals* traversals = nullptr);
 
@@ -129,10 +131,11 @@ namespace Rtx
         ///
         /// **Two clocks, because they are two different questions.**
         ///
-        /// @param posing what the update traversal runs on, and where the pose number comes from.
-        ///        A picture is redrawn when its subject changes rather than when the world moves, so
-        ///        this is the caller's own drawing clock — one that stands still would skin the doll
-        ///        the first time and never again.
+        /// @param posing what the update traversal runs on, and where its number comes from. A
+        ///        picture is redrawn when its subject changes rather than when the world moves, so
+        ///        this is the caller's own drawing clock — one that stands still would move the
+        ///        doll's bones the first time and never again, because a skeleton keeps the last
+        ///        number it saw.
         /// @param worldFrame which of a `SceneUtil::LightSource`'s two buffers update has just
         ///        written, which is a property of the frame the *world* is in. It stops with the
         ///        world when the game is paused; `posing` does not.
@@ -150,6 +153,12 @@ namespace Rtx
         /// gives an instance index in a mirror, which is the wrong side of the question. The ray is
         /// the one the trace would have sent through that point, built from the same basis, so what
         /// a click finds is what the picture shows.
+        ///
+        /// **And the one place a skinned body is still posed on the processor.** The picture is
+        /// traced from a pose the device computed, so the drawable's own copy holds whatever the
+        /// last cull traversal left — the bind pose, where nothing has ever culled it. A click is
+        /// rare where a frame is not, so the subject is put through a cull of its own here, once
+        /// per pick, and the intersection reads the copy that cull wrote.
         bool pick(float x, float y, osg::NodePath& hit) const;
 
     private:
@@ -176,6 +185,16 @@ namespace Rtx
         /// and it runs in an update traversal — so a picture drawn between frames has to run one.
         std::unique_ptr<PoseUpdate> mUpdate;
 
+        /// The cull traversal `pick` poses the subject with, and the clock it reads. Made once,
+        /// because a cull carries a state graph and a render stage; the stamp is a copy of the last
+        /// `rebuildSubject`'s, so a pick poses at the time the picture was taken.
+        std::unique_ptr<PoseCull> mPose;
+        osg::ref_ptr<osg::FrameStamp> mPoseStamp;
+
+        /// Where the pick's traversal numbers come from. Used only where the caller named none.
+        std::unique_ptr<Traversals> mOwnTraversals;
+        Traversals& mTraversals;
+
         /// **A doll takes the same three branches a cell does.** A race-creation slider drag redraws
         /// the same subject every frame, and this is what makes that a placement rather than an
         /// acceleration structure and a texture array built from nothing sixty times a second.
@@ -183,8 +202,8 @@ namespace Rtx
 
         std::uint32_t mViewScene = 0;
 
-        /// The traversal number the subject was last posed at. What an intersection test has to be
-        /// told, because a skinned mesh keeps two poses and picks between them by frame.
+        /// The traversal number the subject's update last ran at. What `rebuildSubject` hands the
+        /// update traversal, and what a pick's own cull is dated after.
         unsigned int mPosedFrame = 0;
 
         GuiTraceOptions mOptions;

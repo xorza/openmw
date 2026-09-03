@@ -794,14 +794,16 @@ namespace Rtx::Testing
             }
         }
 
-        /// A mesh whose vertices changed is traced against the new ones, without a scene rebuild.
+        /// A mesh whose pose changed is traced against the vertices the device computed from it,
+        /// without a scene rebuild.
         ///
         /// **What a skinned body needs and moving an instance cannot give.** A crate that moves says
         /// so with its transform; an arm that swings does not — the actor's transform is where the
         /// actor stands, and the pose lives in vertices underneath it. So this wall stays at the
-        /// identity throughout and only its four corners are written again: a `placeScene` that
-        /// rebuilt the top level over an untouched bottom level would trace the first wall every
-        /// time and read the first distance.
+        /// identity throughout and only its one bone is written again: the skinning pass has to
+        /// compute the corners from the bind pose and the refit has to follow them, and a
+        /// `placeScene` that rebuilt the top level over an untouched bottom level would trace the
+        /// first wall every time and read the first distance.
         ///
         /// The distance is the assertion rather than the hit count, because it names *where* the
         /// new triangles are and not merely that something changed. Its 1.0000814 is the centre
@@ -826,8 +828,10 @@ namespace Rtx::Testing
                 = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, size, size, far);
 
             SceneDesc scene;
-            const Index wall = scene.addMesh(wallAt(200.0f), {}, {}, sQuadIndices);
+            const Index wall
+                = scene.addMesh(wallAt(200.0f), {}, {}, sQuadIndices, {}, Deform::Rig, addOneBoneRig(scene, 4));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = wall });
+            poseByOneBone(scene, wall, osg::Matrixf::identity());
 
             std::vector<std::uint8_t> pixels;
             ASSERT_EQ(countHits(scene, {}, camera, size, pixels), size * size);
@@ -836,11 +840,11 @@ namespace Rtx::Testing
             mRenderer->readChannel(Channel::Depth, depth);
             ASSERT_NEAR(depth[centre], 200.0f * centreCosine, 0.2f) << "where it was built";
 
-            /// Writes the wall's corners again `away` units off and replaces the scene's placement,
-            /// exactly as a frame of the game does: clear, re-walk, hand it back.
+            /// Moves the wall's bone `away` units off its bind pose and replaces the scene's
+            /// placement, exactly as a frame of the game does: clear, re-walk, hand it back.
             const auto deformTo = [&](float away) {
                 scene.clearPlacement();
-                scene.updateMesh(wall, wallAt(away), {});
+                poseByOneBone(scene, wall, osg::Matrixf::translate(0.0f, away - 200.0f, 0.0f));
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = wall });
                 mRenderer->placeScene(Rtx::sWorld, scene, SeaState{});
             };

@@ -31,19 +31,31 @@ namespace RtxTool
         /// pose apart in space by an amount nothing has to be careful about measuring.
         constexpr VFS::Path::NormalizedView sCreature("meshes/r/cliffracer.nif");
 
-        /// How far apart the two furthest vertices of `mesh` are between two scenes.
+        /// How far the furthest bone of `mesh` moved between two scenes, where the mesh is skinned,
+        /// and nought where it stands.
         ///
-        /// A maximum rather than a mean, because most of a wing is near its root and barely moves;
-        /// averaging a beat over the whole body is how a real animation comes out looking still.
+        /// **The rows and not the vertices, because the vertices are computed on the device.** What
+        /// the mirror holds of a pose is one row set per bone — each bone's inverse bind, its
+        /// skeleton-space matrix and the skin transform composed — and a bone that swung carries a
+        /// different translation in the last column of its rows. A maximum rather than a mean,
+        /// because most of a wing is near its root and barely moves; averaging a beat over the
+        /// whole body is how a real animation comes out looking still.
         float travelled(const Rtx::SceneDesc& before, const Rtx::SceneDesc& after, Rtx::Index mesh)
         {
-            const std::span<const osg::Vec3f> was = before.getMeshPositions(mesh);
-            const std::span<const osg::Vec3f> is = after.getMeshPositions(mesh);
-            EXPECT_EQ(was.size(), is.size()) << "a pose does not change how many vertices there are";
+            if (before.getMeshes()[mesh].mDeform != Rtx::Deform::Rig)
+                return 0.0f;
+
+            const std::span<const Rtx::Shaders::GpuBone> was = before.getMeshBones(mesh);
+            const std::span<const Rtx::Shaders::GpuBone> is = after.getMeshBones(mesh);
+            EXPECT_EQ(was.size(), is.size()) << "a pose does not change how many bones there are";
 
             float furthest = 0.0f;
             for (std::size_t at = 0; at < std::min(was.size(), is.size()); ++at)
-                furthest = std::max(furthest, (is[at] - was[at]).length());
+            {
+                const osg::Vec3f moved(is[at].mRows[0].w() - was[at].mRows[0].w(),
+                    is[at].mRows[1].w() - was[at].mRows[1].w(), is[at].mRows[2].w() - was[at].mRows[2].w());
+                furthest = std::max(furthest, moved.length());
+            }
 
             return furthest;
         }

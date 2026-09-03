@@ -11,6 +11,7 @@
 #include <components/resource/imagemanager.hpp>
 
 #include "camera.hpp"
+#include "posecull.hpp"
 #include "poseupdate.hpp"
 #include "scenedesc.hpp"
 #include "sceneextractor.hpp"
@@ -27,6 +28,8 @@ namespace Rtx
 
     OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height)
         : mRenderer(renderer)
+        , mOwnTraversals(std::make_unique<Traversals>())
+        , mTraversals(*mOwnTraversals)
         , mWidth(width)
         , mHeight(height)
     {
@@ -45,12 +48,17 @@ namespace Rtx
         , mSubject(&subject)
         , mScene(std::make_unique<SceneDesc>())
         , mUpdate(std::make_unique<PoseUpdate>())
+        , mPose(std::make_unique<PoseCull>())
+        , mPoseStamp(new osg::FrameStamp)
+        , mOwnTraversals(traversals == nullptr ? std::make_unique<Traversals>() : nullptr)
+        , mTraversals(traversals == nullptr ? *mOwnTraversals : *traversals)
         , mViewScene(renderer.addViewScene())
         , mWidth(width)
         , mHeight(height)
     {
-        mExtractor = std::make_unique<SceneExtractor>(*mScene, traversals);
+        mExtractor = std::make_unique<SceneExtractor>(*mScene, &mTraversals);
         mExtractor->setTraversalMask(mask);
+        mPose->setFrameStamp(mPoseStamp);
 
         mOptions.mWidth = width;
         mOptions.mHeight = height;
@@ -145,6 +153,10 @@ namespace Rtx
         mUpdate->setTraversalNumber(mPosedFrame);
         mSubject->accept(*mUpdate);
 
+        // Kept for `pick`, whose cull reads a clock of its own: the caller's stamp is the caller's
+        // to reuse the moment this returns.
+        *mPoseStamp = posing;
+
         // **Re-walked and not rebuilt**, which the identity maps owning their keys is what makes
         // sound. Between one redraw and the next this subject is taken apart —
         // `NpcAnimation::updateParts` frees the body parts that changed and builds their
@@ -158,14 +170,10 @@ namespace Rtx
         // walk is trying not to read again.
         mScene->clearPlacement();
 
-        // **A clock that reads differently every time.** The walk poses the subject by running a
-        // cull traversal over it, and `SceneUtil::Skeleton` and both deforming geometries refuse to
-        // move for a traversal number they have already seen. A walk that said zero every time
-        // skinned the doll when the inventory first opened and never again.
-        //
         // **The world's frame and not a redraw count.** The number handed to `extract` picks which
         // of a `SceneUtil::LightSource`'s two buffers to read, which is a property of the frame the
-        // world is in; what says "pose again" is the traversal number above.
+        // world is in. The pose the walk reads is what the update above left in the bones, and it
+        // is handed to the device as rows: no cull runs here and no traversal number gates it.
         mExtractor->extract(*mSubject, osg::Matrixf::identity(), 0, worldFrame);
 
         // **No `advance` between them**, unlike the world's frame: a picture drawn when the subject
@@ -200,12 +208,22 @@ namespace Rtx
             osgUtil::Intersector::MODEL, camera.mOrigin + direction * mNear, camera.mOrigin + direction * mFar);
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
+        // **Posed here, on the processor, because the intersection reads the drawable's own copy.**
+        // `SceneUtil::RigGeometry` and `MorphGeometry` skin inside a cull traversal and answer an
+        // intersection with whatever the last cull wrote; the picture was traced from a pose the
+        // device computed, so without this the click would land on the bind pose. A number from the
+        // shared sequence, because both deforming geometries refuse to move for one they have seen.
+        const unsigned int posed = mTraversals.next();
+        mPose->setTraversalNumber(posed);
+        mPoseStamp->setFrameNumber(posed);
+        mSubject->accept(*mPose);
+
         osgUtil::IntersectionVisitor visitor(intersector);
         visitor.setTraversalMode(osg::NodeVisitor::TRAVERSE_ACTIVE_CHILDREN);
 
-        // The frame the pose was written for, so a skinned mesh hands over the buffer the picture was
-        // made from rather than the one it will be posed into next.
-        visitor.setTraversalNumber(mPosedFrame);
+        // The number the pose was written at, so a skinned mesh hands over the buffer that cull
+        // wrote rather than the one it will be posed into next.
+        visitor.setTraversalNumber(posed);
 
         mSubject->accept(visitor);
 

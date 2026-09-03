@@ -83,6 +83,7 @@ namespace Rtx::Testing
             stats.mLights = from + 14;
             stats.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc3)]
                 = FormatCount{ .mMet = from + 15, .mMipped = from + 16 };
+            stats.mUnskinned = from + 17;
             return stats;
         }
 
@@ -110,6 +111,7 @@ namespace Rtx::Testing
             EXPECT_EQ(sum.mUndescribedMaterials, 124u);
             EXPECT_EQ(sum.mSkippedEmpty, 126u);
             EXPECT_EQ(sum.mLights, 128u);
+            EXPECT_EQ(sum.mUnskinned, 134u);
 
             const FormatCount& blocks = sum.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc3)];
             EXPECT_EQ(blocks.mMet, 130u);

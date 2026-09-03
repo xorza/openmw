@@ -42,15 +42,32 @@ namespace Rtx
     class SceneAcceleration
     {
     public:
-        /// `scene` must place at least one instance: a top-level structure over nothing has no
-        /// instance buffer to be built from. `records` are `scene`'s rows, made by the caller for
-        /// the reason `place` gives.
+        /// Writes every mesh's geometry and every row, and builds nothing yet.
+        ///
+        /// **The build is a second step, because a pose comes between.** A skinned body's structure
+        /// is built over the vertices in the first copy of the positions, and what is there after
+        /// this constructor is the bind pose the mesh arrived with — a body in skin space, which is
+        /// not where the body is. `SkinPass` writes the pose into that copy, and `build` then builds
+        /// over what the frame will trace; a structure built over the bind and refitted into the
+        /// pose would keep the bind's shape for the life of the mesh.
+        ///
         /// @param slots how many frames may be tracing this scene at once — `sFrameSlots` for the
         ///        world, one for a picture inside the interface — which is how many copies there are
         ///        of the rows and of the positions a refit reads.
-        SceneAcceleration(const Device& device, Batch& batch, const SceneDesc& scene,
-            std::span<const InstanceRecord> records, std::uint32_t slots, Graveyard& graveyard);
+        SceneAcceleration(const Device& device, const SceneDesc& scene, std::uint32_t slots);
         ~SceneAcceleration();
+
+        /// Builds every mesh's structure, writes every row, and builds the top level. Once, after
+        /// the constructor.
+        ///
+        /// **The geometry, every bottom level and the top level in one submit.** Each was its own
+        /// round trip; the host writes are visible to the submit without a barrier, and each stage
+        /// ends in the barrier the next one needs.
+        ///
+        /// `scene` must place at least one instance: a top-level structure over nothing has no
+        /// instance buffer to be built from. `records` are `scene`'s rows, made by the caller for
+        /// the reason `place` gives.
+        void build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records, Graveyard& graveyard);
 
         SceneAcceleration(const SceneAcceleration&) = delete;
         SceneAcceleration& operator=(const SceneAcceleration&) = delete;
@@ -66,10 +83,11 @@ namespace Rtx
         /// The deformed half is what a skinned body is: its triangles never change and its vertices
         /// change every frame, so the mesh keeps its slice of the shared position buffer and only
         /// the contents of that slice — and the structure over it — are made again. **Refitted, not
-        /// rebuilt**, for a mesh the scene marked deforming: its structure was built with
+        /// rebuilt**: a deforming mesh's structure was built with
         /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR`, which costs that mesh alone a
-        /// larger structure, and every static mesh in the cell keeps the tight one. A mesh that was
-        /// not marked and deforms anyway is built again, as it always was.
+        /// larger structure, and every static mesh in the cell keeps the tight one. The vertices the
+        /// refit reads are what `SkinPass` wrote into `slot`'s copy ahead of this, in the same
+        /// command buffer.
         ///
         /// **And the whole of it is skipped where nothing moved and nothing deformed**, which is
         /// every frame of a standing camera in a place with no actor: the top level is the same top
@@ -81,16 +99,17 @@ namespace Rtx
         /// index into the structures this already holds.
         ///
         /// **Recorded into `commands` and not submitted**, so the caller decides whether the queue
-        /// is asked now or with the frame. Into `slot`'s copy of the rows and the positions, which
-        /// the caller has made sure no frame is still reading. True where anything was recorded;
-        /// a frame in which nothing moved and nothing deformed records nothing and needs no submit.
+        /// is asked now or with the frame. Into `slot`'s copy of the rows, which the caller has made
+        /// sure no frame is still reading. True where anything was recorded; a frame in which
+        /// nothing moved and nothing deformed records nothing and needs no submit.
         ///
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list any of
         ///        this is driven by. Whether a copy is then behind is `mRowTable`'s to know.
         bool place(VkCommandBuffer commands, const SceneDesc& scene, std::span<const InstanceRecord> records,
             std::span<const Index> changed, std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard);
 
-        /// Takes in the meshes the scene says arrived and lets go of the ones it says went.
+        /// Takes in the geometry of the meshes the scene says arrived and lets go of the ones it says
+        /// went. `buildArrived` builds their structures, once the pass has posed them.
         ///
         /// **What a cell crossing costs, instead of the world.** Every structure already built stays
         /// where it is: the geometry blocks are appended to rather than replaced, so the addresses
@@ -100,11 +119,15 @@ namespace Rtx
         ///
         /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
         /// the positions, and what it replaces goes to `graveyard` all the same.
+        void extend(const SceneDesc& scene, Graveyard& graveyard);
+
+        /// Builds the structures of the meshes that arrived, over the first copy of the positions
+        /// as `extend` and the pass left it.
         ///
         /// @param timer the frame the arrival lands in, so its builds are one zone of that frame's
         ///        report rather than device time nothing accounts for. Null for a picture inside the
         ///        interface, which is not timed — `VulkanRenderer::placeScene` says why.
-        void extend(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard);
+        void buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard);
 
         /// Destroys the structures of `meshes` and gives their storage back.
         ///
@@ -128,6 +151,11 @@ namespace Rtx
         /// of blocks: what the frame carries is where the blocks are, and a shader resolves
         /// `block[id / INDEX_BLOCK]` itself.
         VkDeviceAddress getIndexBlocks() const { return mIndices.getTableAddress(); }
+
+        /// The positions, for the pass that writes a deforming mesh's pose into a slot's copy of
+        /// them — and their account, which is what tells that pass which meshes each copy owes.
+        SlotBlocks& getPositions() { return mPositions; }
+
         std::uint32_t getInstanceCount() const { return mInstanceCount; }
 
         /// How many of those instances traversal has to stop and ask about.
@@ -186,17 +214,19 @@ namespace Rtx
 
         const Device& mDevice;
 
-        /// Host-written, because a skinned body rewrites its own slice every frame and the build
-        /// that reads it runs in the same submit — a host write before a submit needs no barrier.
+        /// Host-written on arrival, and written by `SkinPass` for a skinned body every frame it
+        /// moves — into the copy the refit reads, in the same command buffer, with a barrier
+        /// between.
         ///
         /// **Blocked, so a scene that grows keeps every address it has already handed out.** Nothing
-        /// reads these in a shader: a hit gets its vertices back out of the structure through
-        /// position fetch, so they are a build input and a write target and nothing else — which is
+        /// reads these at a hit: a hit gets its vertices back out of the structure through position
+        /// fetch, so they are a build input and a pose's destination and nothing else — which is
         /// why there is no table of their addresses beside them.
         ///
         /// **A mesh that never deforms is written into the first copy alone**: its structure is
         /// built from there once and never refitted, so the copies past it would hold a pose nothing
-        /// ever reads.
+        /// ever reads. A mesh that deforms is written into every copy on arrival, holding its bind
+        /// pose until the pass writes over it.
         SlotBlocks mPositions{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
         std::uint32_t mSlots = 1;
 
@@ -234,13 +264,13 @@ namespace Rtx
         /// How many rows the top level was made for, which is what its build ranges over.
         std::uint32_t mTopLevelSlots = 0;
 
-        /// What each mesh's build asked for, so a rebuild does not have to ask the driver again;
-        /// and what a refit asks for, for a mesh that was built to be refitted.
-        std::vector<VkDeviceSize> mBuildScratch;
+        /// What a refit of each mesh asks for, so a frame does not have to ask the driver again.
+        /// Nought for a mesh that was not built to be refitted.
         std::vector<VkDeviceSize> mUpdateScratch;
 
-        /// Whether each mesh's structure was built with `ALLOW_UPDATE`, which is the scene's
-        /// `MeshRange::mDeforming` at the time it was built.
+        /// Whether each mesh's structure was built with `ALLOW_UPDATE`, which is whether the scene's
+        /// `MeshRange::mDeform` named a kind at the time it was built. A mesh's kind is fixed when
+        /// it arrives, so this is also whether the mesh can ever be in `getDeformed`.
         std::vector<std::uint8_t> mUpdatable;
 
         /// Every mesh slot, for the whole-scene build the constructor does through the same path an

@@ -19,12 +19,17 @@ namespace Rtx::Testing
             Testing::Harness* mHarness = nullptr;
         };
 
-        /// A frame that changes nothing must not go to the heap.
+        /// A frame that changes nothing but a body's pose must not go to the heap.
         ///
         /// The concern is jitter rather than throughput: at sixty frames a second a single
         /// allocator stall is a dropped frame, and an average hides it. What this forbids on the
         /// frame path is a `std::string` built, an unreserved vector grown, a `std::function`
         /// captured, a `make_unique` reached for, or logging that did not compile out.
+        ///
+        /// **A body moving every frame, because that is the one thing the frame path computes
+        /// rather than copies.** A skinned mesh is posed by rows the host writes and a dispatch the
+        /// device runs, then refitted, then traced — and each of those is a place a vector could
+        /// grow. A wall alone would pin the trace and leave the pose unmeasured.
         ///
         /// Warmed up first, because the first of anything legitimately allocates: descriptor pools
         /// grow, the driver caches its first call, and a command buffer finds its size.
@@ -39,16 +44,31 @@ namespace Rtx::Testing
             // number and the reason written down beside it.
             constexpr std::size_t budgetPerFrame = 0;
 
-            const SceneDesc scene = makeWall();
+            SceneDesc scene = makeWall();
+
+            // A second wall behind the first, skinned to one bone, so that every frame has a body
+            // to pose: the wall's own bind pose stands a hundred units behind the camera's wall and
+            // the bone walks it one unit further every frame.
+            const Index body = scene.addMesh(sWallQuad, {}, {}, sQuadIndices, {}, Deform::Rig, addOneBoneRig(scene, 4));
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, 100.0f, 0.0f), .mMesh = body });
+            poseByOneBone(scene, body, osg::Matrixf::identity());
 
             Device& device = *mHarness->mDevice;
             CommandPool pool(device);
             std::vector<InstanceRecord> records;
+            std::vector<Index> changed;
             makeInstanceRecords(scene, records);
             Batch setup(pool);
             Graveyard graveyard(device, pool);
-            const SceneAcceleration acceleration(device, setup, scene, records, 1, graveyard);
-            const SceneBuffers buffers(device, scene, records, 1, graveyard);
+            SceneAcceleration acceleration(device, scene, 1);
+            SceneBuffers buffers(device, scene, records, 1, graveyard);
+            SkinTables skinTables(device, scene, 1, graveyard);
+            const SkinPass skin(device, Testing::getShaderDirectory());
+
+            // Posed and then built, as the renderer builds a scene.
+            skin.record(
+                setup.getCommands(), scene, 0, skinTables, acceleration.getPositions(), buffers.getNormals(), nullptr);
+            acceleration.build(setup, scene, records, graveyard);
 
             const TextureArray textures(device, setup, 0, {}, graveyard);
             const SetLayout channelLayout = GBuffer::describeLayout(device);
@@ -111,13 +131,21 @@ namespace Rtx::Testing
             VkFence finished = VK_NULL_HANDLE;
             ASSERT_EQ(vkCreateFence(device.getHandle(), &describeFence, nullptr, &finished), VK_SUCCESS);
 
-            // Everything a still frame does — the sea synthesised, the trace and the composite
+            // Everything a frame with a body in it does — the body posed, the sea synthesised, the
+            // pose dispatched, the structures refitted and rebuilt, the trace and the composite
             // recorded, the work submitted and waited on.
             // The camera is the same every time, which is what "steady" means — a moving one would
             // still allocate nothing, but then nothing would be pinned.
+            float walked = 0.0f;
             const auto frame = [&] {
                 const Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
+
+                // What the game's walk does to a body every frame: a new pose, compared and taken.
+                walked += 1.0f;
+                scene.clearPlacement();
+                poseByOneBone(scene, body, osg::Matrixf::translate(0.0f, walked, 0.0f));
+                updateInstanceRecords(scene, records, changed);
 
                 vkResetCommandBuffer(commands, 0);
                 const VkCommandBufferBeginInfo begin{
@@ -125,6 +153,14 @@ namespace Rtx::Testing
                     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
                 };
                 vkBeginCommandBuffer(commands, &begin);
+
+                // The placement, as `VulkanRenderer::recordPlacement` records it: the pose, the
+                // refit and the top level, then the tables.
+                skin.record(commands, scene, 0, skinTables, acceleration.getPositions(), buffers.getNormals(), nullptr);
+                acceleration.place(commands, scene, records, changed, 0, nullptr, graveyard);
+                buffers.place(scene, records, changed, 0, graveyard);
+                scene.advancePlacement();
+
                 waves.record(commands, camera.mTime);
                 channels.begin(commands);
                 pass.record(commands, inputs, channels, hits, camera, true, nullptr);

@@ -60,9 +60,10 @@ namespace Rtx
         /// arrival can alter them, and the materials, the layers and the masks change by the row
         /// and the run, which is what the scene reports and what `shade` writes.
         ///
-        /// What does change is where things are, what is lit, and the vertices of anything skinned.
-        /// Those live in memory the host writes straight into, so this is a `memcpy` and not a
-        /// staging buffer, a copy command, a submit and a wait on the queue.
+        /// What does change is where things are and what is lit. Those live in memory the host
+        /// writes straight into, so this is a `memcpy` and not a staging buffer, a copy command, a
+        /// submit and a wait on the queue. The vertices of anything skinned change too, and those
+        /// `SkinPass` writes on the device.
         ///
         /// **Into `slot`'s copy of every table a frame writes**, which the frame after next reads
         /// again and no frame in between: the caller has waited that frame's fence. Every table
@@ -94,6 +95,11 @@ namespace Rtx
         /// Where the lamps were binned, for the frame's block the pass writes: its geometry rides
         /// there, beside the sea's, and only the lists it made are tables.
         const LightGrid& getLightGrid() const { return mLightGrid; }
+
+        /// The normals, for the pass that writes a deforming mesh's pose into a slot's copy of them.
+        /// Their account is not what drives that pass — the positions' is, and one dispatch writes
+        /// both — so nothing here is owed by a pose.
+        SlotBlocks& getNormals() { return mNormalTable; }
 
         /// Where every table this owns is, for the frame's block: the twelve of `GpuTables` that are
         /// the scene's, with `slot`'s copy wherever a table has one per frame in flight.
@@ -137,11 +143,6 @@ namespace Rtx
         /// A thin name over `growTo` — the rule that a table is never nothing lives there, and this
         /// only saves every call site from repeating what is the same for all of them.
         void reserve(Buffer& held, VkDeviceSize bytes, Graveyard& graveyard);
-
-        /// Makes `held` able to hold `bytes`, doubling so that a table that keeps growing is made
-        /// again a logarithmic number of times rather than once per arrival. True where it was made
-        /// again, which is a table holding nothing that the caller has to fill whole.
-        bool outgrow(Buffer& held, VkDeviceSize bytes, Graveyard& graveyard);
 
         /// Reserves room for the scene's attributes, copies in the runs `meshes` names — into every
         /// copy of the normals — and rewrites the per-mesh row table.
@@ -187,7 +188,8 @@ namespace Rtx
 
         /// **Blocked like the geometry they belong to**, so a scene that grows keeps the blocks it
         /// already has and adds one. One copy per frame in flight because a skinned body's normals
-        /// are recomputed every frame; the rest of a cell's are written once into every copy.
+        /// are recomputed every frame — by `SkinPass`, into the copy the frame traces; the rest of a
+        /// cell's are written once into every copy.
         SlotBlocks mNormalTable{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
 
         // Refilled per placement rather than reallocated: a scene is thousands of these and this is

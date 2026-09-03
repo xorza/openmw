@@ -30,6 +30,7 @@
 #include "guipass.hpp"
 #include "guitextures.hpp"
 #include "instance.hpp"
+#include "skinpass.hpp"
 #include "tonepass.hpp"
 #include "visibilitypass.hpp"
 #include "wavepass.hpp"
@@ -46,6 +47,7 @@ namespace Rtx
     class Presenter;
     class SceneAcceleration;
     class SceneBuffers;
+    class SkinTables;
     class TextureArray;
 
     /// `Renderer` over Vulkan.
@@ -61,14 +63,17 @@ namespace Rtx
         /// inventory doll be handed over by `Rtx::SceneUploader` exactly as a cell is: a slider
         /// drag places what it already built instead of building it again.
         ///
-        /// **Three objects and not four.** `VisibilityPass` is shared, because nothing about it
-        /// depends on which scene it traces — every texture array declares the same bindless layout,
-        /// and identically defined layouts are compatible.
+        /// **Four objects and not six.** `VisibilityPass` and `SkinPass` are shared, because
+        /// nothing about either depends on which scene it works — every texture array declares the
+        /// same bindless layout, and identically defined layouts are compatible.
         struct ViewScene
         {
             std::unique_ptr<SceneAcceleration> mAcceleration;
             std::unique_ptr<SceneBuffers> mBuffers;
             std::unique_ptr<TextureArray> mTextures;
+
+            /// What this scene's skinned bodies and morphed faces are posed from.
+            std::unique_ptr<SkinTables> mSkinTables;
 
             /// One row per placement slot, made whole when the scene is built and kept across
             /// frames, with the rows the scene says changed rewritten by each placement.
@@ -220,8 +225,8 @@ namespace Rtx
         ///
         /// **What differs between the world's placement and a picture's is around this and not in
         /// it**: which copy, whether a frame is opened and timed, and whether the submit waits.
-        static bool recordPlacement(ViewScene& held, const SceneDesc& scene, VkCommandBuffer commands,
-            std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard);
+        static bool recordPlacement(const SkinPass& skin, ViewScene& held, const SceneDesc& scene,
+            VkCommandBuffer commands, std::uint32_t slot, GpuTimer* timer, Graveyard& graveyard);
 
         /// Reads into `mStats` what a placement can have moved, which is every figure but the three
         /// a build settles.
@@ -451,6 +456,10 @@ namespace Rtx
         /// which are numbers the shader already has.
         FogTile mFog;
         ExposurePass mExposure;
+
+        /// **One pass for everything posed**, the doll included: what differs per scene is the
+        /// tables, which each `ViewScene` holds.
+        SkinPass mSkinPass;
         /// **Held like `mPass` and for its reason**: it samples the scene's textures, so it needs a
         /// layout that only a scene brings, and the layout every scene brings is the same one.
         std::unique_ptr<TonePass> mTone;

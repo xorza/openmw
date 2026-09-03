@@ -36,6 +36,8 @@
 #include <components/rtxvulkan/result.hpp>
 #include <components/rtxvulkan/sceneacceleration.hpp>
 #include <components/rtxvulkan/scenebuffers.hpp>
+#include <components/rtxvulkan/skinpass.hpp>
+#include <components/rtxvulkan/skintables.hpp>
 #include <components/rtxvulkan/texture.hpp>
 #include <components/rtxvulkan/visibilitypass.hpp>
 #include <components/rtxvulkan/wavepass.hpp>
@@ -154,6 +156,30 @@ namespace Rtx::Testing
         const Index mesh = scene.addMesh(sWallQuad, {}, {}, sQuadIndices);
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::scale(scale, 1.0f, scale), .mMesh = mesh });
         return scene;
+    }
+
+    /// A skin of one bone over `vertices` vertices, every weight one, so a pose is the bone's own
+    /// transform and nothing else — what a test expects is what it moved the bone by.
+    ///
+    /// A run word is `first << RUN_COUNT_BITS | count`, and every vertex here names the one
+    /// influence at nought: a word of one.
+    inline Index addOneBoneRig(SceneDesc& scene, std::uint32_t vertices)
+    {
+        const std::vector<std::uint32_t> runs(vertices, 1u);
+        const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
+        return scene.addRig(runs, influences, 1);
+    }
+
+    /// Poses `mesh`, a mesh on a one-bone rig, by `bone`, with the box its bind pose reaches
+    /// carried through the same transform.
+    inline void poseByOneBone(SceneDesc& scene, Index mesh, const osg::Matrixf& bone)
+    {
+        osg::BoundingBoxf reach;
+        for (const osg::Vec3f& vertex : scene.getMeshPositions(mesh))
+            reach.expandBy(vertex * bone);
+
+        const std::array rows{ toGpuBone(bone) };
+        scene.poseRig(mesh, rows, reach);
     }
 
     /// A linear value as the display curve writes it, so a test can name the byte it expects.

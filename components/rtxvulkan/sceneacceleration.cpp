@@ -128,8 +128,7 @@ namespace Rtx
         return result;
     }
 
-    SceneAcceleration::SceneAcceleration(const Device& device, Batch& batch, const SceneDesc& scene,
-        std::span<const InstanceRecord> records, const std::uint32_t slots, Graveyard& graveyard)
+    SceneAcceleration::SceneAcceleration(const Device& device, const SceneDesc& scene, const std::uint32_t slots)
         : mDevice(device)
         , mSlots(slots)
     {
@@ -150,10 +149,14 @@ namespace Rtx
         // from now on is the poses it missed.
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
             mPositions.settle(slot);
+    }
 
-        // **The geometry, every bottom level and the top level in one submit.** Each was its own
-        // round trip; the host writes above are visible to the submit without a barrier, and each
-        // stage ends in the barrier the next one needs.
+    void SceneAcceleration::build(
+        Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records, Graveyard& graveyard)
+    {
+        assert(mBottomLevel.empty() && mTopLevel == VK_NULL_HANDLE && "a scene built twice");
+
+        // The rows after the structures, because a row names the address of the structure it places.
         buildMeshes(batch, scene, mEveryMesh, graveyard);
         writeRows(records, {});
         prepareTopLevel(scene, 0, graveyard);
@@ -187,11 +190,12 @@ namespace Rtx
                 continue;
 
             // The first copy is what a structure is built from; a mesh that deforms is refitted from
-            // whichever copy its frame owns, so it goes into every one.
+            // whichever copy its frame owns, so its bind pose goes into every one until the pass
+            // writes a pose over it.
             const std::span<const osg::Vec3f> positions
                 = scene.getPositions().subspan(range.mVertexOffset, range.mVertexCount);
             mPositions.at(0).writeAt(range.mVertexOffset, positions);
-            if (range.mDeforming)
+            if (range.mDeform != Deform::None)
                 for (std::uint32_t slot = 1; slot < mSlots; ++slot)
                     mPositions.at(slot).writeAt(range.mVertexOffset, positions);
 
@@ -217,7 +221,7 @@ namespace Rtx
         }
     }
 
-    void SceneAcceleration::extend(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard)
+    void SceneAcceleration::extend(const SceneDesc& scene, Graveyard& graveyard)
     {
         // **Departures first, and their rooms go to the graveyard rather than straight back**, so an
         // arrival this frame cannot be built into room a frame in flight is still tracing. The two
@@ -226,7 +230,10 @@ namespace Rtx
         release(scene.getFreedMeshes(), graveyard);
 
         writeGeometry(scene, scene.getArrivedMeshes());
+    }
 
+    void SceneAcceleration::buildArrived(Batch& batch, const SceneDesc& scene, GpuTimer* timer, Graveyard& graveyard)
+    {
         // **The builds a crossing brings, bracketed as one zone.** Without it they are device time
         // the frame's fence carries and no zone accounts for, so the frame a player feels is the one
         // frame whose report says nothing about what made it slow.
@@ -252,7 +259,6 @@ namespace Rtx
         mBottomLevel.resize(slots, VK_NULL_HANDLE);
         mBottomLevelAddresses.resize(slots, 0);
         mBottomLevelRooms.resize(slots);
-        mBuildScratch.resize(slots, 0);
         mUpdateScratch.resize(slots, 0);
         mUpdatable.resize(slots, 0);
 
@@ -305,13 +311,13 @@ namespace Rtx
             // **Only a mesh that deforms is built to be refitted.** The flag costs a structure its
             // tightness and the trace that reads it a little; a few dozen actors pay it and the
             // thousands of static meshes around them do not.
-            mUpdatable[slot] = mesh.mDeforming ? 1 : 0;
+            mUpdatable[slot] = mesh.mDeform != Deform::None ? 1 : 0;
 
             // ALLOW_DATA_ACCESS is what lets a shader read a hit triangle's vertices back out of
             // the structure, which is the whole reason nothing here binds a vertex buffer.
             VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
                 | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR;
-            if (mesh.mDeforming)
+            if (mesh.mDeform != Deform::None)
                 flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
 
             mBuilds[at] = VkAccelerationStructureBuildGeometryInfoKHR{
@@ -331,7 +337,6 @@ namespace Rtx
             // acceleration structure can be created at.
             if (triangles == 0)
             {
-                mBuildScratch[slot] = 0;
                 mUpdateScratch[slot] = 0;
                 mBuildSizes.resize(meshes.size());
                 mBuildSizes[at] = 0;
@@ -351,9 +356,8 @@ namespace Rtx
             scratchOffsets[at] = scratchTotal;
             scratchTotal = alignUp(scratchTotal + sizes.buildScratchSize, scratchAlignment);
 
-            // Kept so a rebuild of this one mesh does not have to ask the driver its size again.
-            // The same geometry describes it, so the answer cannot have changed.
-            mBuildScratch[slot] = sizes.buildScratchSize;
+            // Kept so a refit of this one mesh does not have to ask the driver its size again. The
+            // same geometry describes it, so the answer cannot have changed.
             mUpdateScratch[slot] = sizes.updateScratchSize;
 
             mBuildRanges[at] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = triangles };
@@ -416,17 +420,10 @@ namespace Rtx
     {
         const std::span<const Index> deformed = scene.getDeformed();
 
-        // **Straight into the memory the builder reads**, with no staging buffer between and no
-        // copy to record; the submit that follows carries an implicit dependency on host writes
-        // made before it, which is what a barrier would otherwise have been for. Into this frame's
-        // copy, which owes every pose since it was last written: the frame before last's as well as
-        // this one's, or a mesh that stood still this frame would be refitted from a pose two
-        // frames old the next time it moved.
-        mPositions.write(deformed);
-        mPositions.sync(slot, [&](const Index mesh, BlockedBuffer& into) {
-            into.writeAt(scene.getMeshes()[mesh].mVertexOffset, scene.getMeshPositions(mesh));
-        });
-
+        // **This frame's copy, which the pass has already posed into.** `SkinPass::record` runs
+        // ahead of this in the same command buffer and pays the positions' account — every pose this
+        // copy owed, this frame's and the ones it missed — so what the refit reads is the pose and
+        // not the bind.
         BlockedBuffer& positions = mPositions.at(slot);
 
         if (deformed.empty())
@@ -449,8 +446,8 @@ namespace Rtx
         for (const Index mesh : deformed)
         {
             assert(mesh < mBottomLevel.size() && "a mesh this holds no structure for");
-            scratchTotal = alignUp(
-                scratchTotal + (mUpdatable[mesh] != 0 ? mUpdateScratch[mesh] : mBuildScratch[mesh]), scratchAlignment);
+            assert(mUpdatable[mesh] != 0 && "a mesh posed that was not built to be refitted");
+            scratchTotal = alignUp(scratchTotal + mUpdateScratch[mesh], scratchAlignment);
         }
 
         if (mRefitScratch.getSize() < scratchTotal)
@@ -483,33 +480,25 @@ namespace Rtx
         for (std::uint32_t i = 0; i < count; ++i)
         {
             const Index index = deformed[i];
-            const bool updatable = mUpdatable[index] != 0;
 
             // **Into the structure that is already there**, rather than into a new one beside it:
-            // its handle is what every top-level row already points at. An update where the build
-            // allowed one, with the same flags as that build, which the update requires — and a
-            // build in place for a mesh that was built without the flag, which overwrites its
-            // destination outright and needs no more room for the same shape.
-            VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-                | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR;
-            if (updatable)
-                flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
-
+            // its handle is what every top-level row already points at. An update, with the same
+            // flags as the build that allowed one, which the update requires.
             mRefitBuilds[i] = VkAccelerationStructureBuildGeometryInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
-                .flags = flags,
-                .mode = updatable ? VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR
-                                  : VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
-                .srcAccelerationStructure = updatable ? mBottomLevel[index] : VK_NULL_HANDLE,
+                .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+                    | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR
+                    | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR,
+                .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR,
+                .srcAccelerationStructure = mBottomLevel[index],
                 .dstAccelerationStructure = mBottomLevel[index],
                 .geometryCount = 1,
                 .pGeometries = &mRefitGeometries[i],
                 .scratchData = { .deviceAddress = scratchAddress + scratchAt },
             };
 
-            scratchAt
-                = alignUp(scratchAt + (updatable ? mUpdateScratch[index] : mBuildScratch[index]), scratchAlignment);
+            scratchAt = alignUp(scratchAt + mUpdateScratch[index], scratchAlignment);
         }
     }
 

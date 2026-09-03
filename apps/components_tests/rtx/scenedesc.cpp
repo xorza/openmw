@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <components/rtx/error.hpp>
+#include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/spritelight.hpp>
 
@@ -185,12 +186,30 @@ namespace Rtx
             EXPECT_FALSE(tested.isTranslucent()) << "a mask the content asked to test is a mask";
         }
 
-        /// A deformed mesh keeps its slot and its topology, and says so.
+        /// A skin of one bone over the quad, every weight one: a run word of one — first nought,
+        /// count one — per vertex, and one influence.
+        Index addOneBoneRig(SceneDesc& scene)
+        {
+            const std::array<std::uint32_t, 4> runs{ 1u, 1u, 1u, 1u };
+            const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
+            return scene.addRig(runs, influences, 1);
+        }
+
+        /// The row a bone standing `z` up carries: the identity's three rows with the translation
+        /// in the last column of the third.
+        Shaders::GpuBone boneUp(float z)
+        {
+            return Shaders::GpuBone{ .mRows = { osg::Vec4f(1.0f, 0.0f, 0.0f, 0.0f), osg::Vec4f(0.0f, 1.0f, 0.0f, 0.0f),
+                                         osg::Vec4f(0.0f, 0.0f, 1.0f, z) } };
+        }
+
+        /// A skinned mesh keeps its slot and its bind pose, holds its rows beside its rig, and names
+        /// itself once per frame it moves.
         ///
-        /// The second mesh is what makes the test worth running: an update that wrote at the wrong
-        /// offset would land in a neighbour, and with one mesh in the scene there is no neighbour to
-        /// land in.
-        TEST(RtxSceneDescTest, aDeformedMeshKeepsItsSlotAndNamesItselfOnce)
+        /// The still mesh beside it is what makes the test worth running: rows written at the wrong
+        /// offset would land in a neighbour's, and the bind run of a deforming mesh is a table of
+        /// its own that a static neighbour must not be in.
+        TEST(RtxSceneDescTest, aSkinnedMeshKeepsItsBindPoseAndNamesItselfOncePerPose)
         {
             const std::array sNormals{
                 osg::Vec3f(0.0f, 0.0f, 1.0f),
@@ -200,65 +219,162 @@ namespace Rtx
             };
 
             SceneDesc scene;
+            const Index rig = addOneBoneRig(scene);
             const Index still = scene.addMesh(sQuadPositions, sNormals, {}, sQuadIndices);
-            const Index moving = scene.addMesh(sQuadPositions, sNormals, {}, sQuadIndices);
+            const Index moving = scene.addMesh(sQuadPositions, sNormals, {}, sQuadIndices, {}, Deform::Rig, rig);
+            const Index other = scene.addMesh(sQuadPositions, sNormals, {}, sQuadIndices, {}, Deform::Rig, rig);
 
-            EXPECT_TRUE(scene.getDeformed().empty()) << "nothing has deformed yet";
+            EXPECT_TRUE(scene.getDeformed().empty()) << "nothing has been posed yet";
 
-            // The same quad a unit further along z, facing the other way.
-            std::array<osg::Vec3f, 4> posed = sQuadPositions;
-            for (osg::Vec3f& vertex : posed)
-                vertex.z() += 1.0f;
+            // The rig's tables: four run words and one influence, and one bone per mesh on it.
+            ASSERT_EQ(scene.getRigs().size(), 1u);
+            EXPECT_EQ(scene.getRigs()[rig].mVertexCount, 4u);
+            EXPECT_EQ(scene.getRigs()[rig].mBoneCount, 1u);
+            EXPECT_EQ(scene.getRigs()[rig].mUses, 2u);
+            EXPECT_EQ(scene.getRuns().size(), 4u);
+            EXPECT_EQ(scene.getInfluences().size(), 1u);
+            EXPECT_EQ(scene.getArrivedRigs().size(), 1u);
 
-            const std::array sPosedNormals{
-                osg::Vec3f(0.0f, 0.0f, -1.0f),
-                osg::Vec3f(0.0f, 0.0f, -1.0f),
-                osg::Vec3f(0.0f, 0.0f, -1.0f),
-                osg::Vec3f(0.0f, 0.0f, -1.0f),
-            };
+            // The still mesh has no bind run and no rows; the two skinned ones have one apiece,
+            // laid end to end.
+            EXPECT_EQ(scene.getMeshes()[still].mDeform, Deform::None);
+            EXPECT_EQ(scene.getMeshes()[still].mDeformer, sNoIndex);
+            EXPECT_EQ(scene.getMeshes()[moving].mDeform, Deform::Rig);
+            EXPECT_EQ(scene.getMeshes()[moving].mDeformer, rig);
+            EXPECT_EQ(scene.getMeshes()[moving].mBindOffset, 0u);
+            EXPECT_EQ(scene.getMeshes()[other].mBindOffset, 4u);
+            EXPECT_EQ(scene.getBindVertexCount(), 8u) << "the bind table holds the skinned meshes alone";
+            EXPECT_EQ(scene.getMeshes()[moving].mPoseOffset, 0u);
+            EXPECT_EQ(scene.getMeshes()[other].mPoseOffset, 1u);
+            EXPECT_EQ(scene.getBones().size(), 2u);
 
-            scene.updateMesh(moving, posed, sPosedNormals);
-            scene.updateMesh(moving, posed, sPosedNormals);
+            // **The first pose names the mesh whatever it is**, and a second in the same frame is
+            // the same structure to refit.
+            const std::array atFive{ boneUp(5.0f) };
+            osg::BoundingBoxf reach(osg::Vec3f(0.0f, 0.0f, 5.0f), osg::Vec3f(1.0f, 1.0f, 5.0f));
+            scene.poseRig(moving, atFive, reach);
+            scene.poseRig(moving, atFive, reach);
 
-            ASSERT_EQ(scene.getDeformed().size(), 1u) << "twice in a frame is one structure to build";
+            ASSERT_EQ(scene.getDeformed().size(), 1u) << "twice in a frame is one structure to refit";
             EXPECT_EQ(scene.getDeformed()[0], moving);
+            EXPECT_EQ(scene.getMeshBones(moving)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
+            EXPECT_EQ(scene.getMeshes()[moving].mBounds, reach) << "the reach is the caller's and not the bind's";
 
-            // Eight vertices still, at the same offsets: an update is not an append.
-            EXPECT_EQ(scene.getPositions().size(), 8u);
-            EXPECT_EQ(scene.getIndices().size(), 12u);
+            // The bind pose stays where it arrived, and so does everything beside it: a pose is rows
+            // and never vertices.
+            EXPECT_EQ(scene.getPositions().size(), 12u);
             EXPECT_EQ(scene.getMeshes()[moving].mVertexOffset, 4u);
-
-            EXPECT_EQ(scene.getMeshPositions(moving)[2], osg::Vec3f(1.0f, 1.0f, 1.0f));
-            EXPECT_EQ(scene.getNormals()[scene.getMeshes()[moving].mVertexOffset], osg::Vec3f(0.0f, 0.0f, -1.0f));
-            EXPECT_EQ(scene.getMeshIndices(moving)[5], 3u) << "topology is what does not change";
-
-            // And the mesh beside it is untouched, which is the offset arithmetic being right rather
-            // than merely being applied.
+            EXPECT_EQ(scene.getMeshPositions(moving)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
             EXPECT_EQ(scene.getMeshPositions(still)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
-            EXPECT_EQ(scene.getNormals()[scene.getMeshes()[still].mVertexOffset], osg::Vec3f(0.0f, 0.0f, 1.0f));
+            EXPECT_EQ(scene.getMeshBones(other)[0], Shaders::GpuBone{}) << "the neighbour's rows are untouched";
 
             // The list is a frame's worth, so it goes when the frame's placements do.
             scene.clearPlacement();
             EXPECT_TRUE(scene.getDeformed().empty());
-            EXPECT_EQ(scene.getMeshes().size(), 2u) << "clearing where things are keeps what they are";
+            EXPECT_EQ(scene.getMeshes().size(), 3u) << "clearing where things are keeps what they are";
 
             // **A pose that did not change names nothing.** The walk poses every rig it meets and
-            // cannot tell which of them the engine animated; the scene can, by looking. A pose that
-            // differs by one normal is a change like any other.
-            scene.updateMesh(moving, posed, sPosedNormals);
-            EXPECT_TRUE(scene.getDeformed().empty()) << "an unchanged pose named a structure to build";
+            // cannot tell which of them the engine animated; the scene can, by looking.
+            scene.poseRig(moving, atFive, reach);
+            EXPECT_TRUE(scene.getDeformed().empty()) << "an unchanged pose named a structure to refit";
 
-            std::array<osg::Vec3f, 4> turned = sPosedNormals;
-            turned[3] = osg::Vec3f(0.0f, 1.0f, 0.0f);
-            scene.updateMesh(moving, posed, turned);
-            EXPECT_EQ(sorted(scene.getDeformed()), (std::vector<Index>{ moving }));
-            EXPECT_EQ(scene.getNormals()[scene.getMeshes()[moving].mVertexOffset + 3], osg::Vec3f(0.0f, 1.0f, 0.0f));
+            const std::array atSeven{ boneUp(7.0f) };
+            scene.poseRig(moving, atSeven, reach);
+            scene.poseRig(other, atFive, reach);
+            EXPECT_EQ(sorted(scene.getDeformed()), (std::vector<Index>{ moving, other }));
+            EXPECT_EQ(scene.getMeshBones(moving)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 7.0f));
+            EXPECT_EQ(scene.getMeshBones(other)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
 
-            // The finding the caller made about a mesh is kept beside its range, for a backend
-            // that builds a deforming mesh's structure to be refitted.
-            EXPECT_FALSE(scene.getMeshes()[still].mDeforming);
-            const Index rig = scene.addMesh(sQuadPositions, sNormals, {}, sQuadIndices, {}, true);
-            EXPECT_TRUE(scene.getMeshes()[rig].mDeforming);
+            // **The rig goes with the last mesh on it, and not before.** Freeing one of the two
+            // gives its bind run and its rows back and leaves the rig standing; freeing the other
+            // frees the rig, and the next skin to arrive takes its slot and its runs.
+            scene.clearArrivals();
+            const std::array keepTwo{ still, other };
+            ASSERT_TRUE(scene.release(keepTwo, {}));
+            EXPECT_EQ(scene.getRigs()[rig].mUses, 1u);
+            EXPECT_EQ(scene.getRigs()[rig].mVertexCount, 4u) << "a rig with a mesh on it stays";
+
+            const std::array keepOne{ still };
+            ASSERT_TRUE(scene.release(keepOne, {}));
+            EXPECT_EQ(scene.getRigs()[rig].mUses, 0u);
+            EXPECT_EQ(scene.getRigs()[rig].mVertexCount, 0u) << "a rig nothing stands on is free";
+            EXPECT_TRUE(scene.getArrivedRigs().empty());
+            EXPECT_TRUE(scene.getDeformed().empty()) << "a slot given back still named a structure to refit";
+
+            EXPECT_EQ(addOneBoneRig(scene), rig) << "the freed slot is the one handed out";
+            EXPECT_EQ(scene.getRuns().size(), 4u) << "the freed run is the one handed out";
+            EXPECT_EQ(sorted(scene.getArrivedRigs()), (std::vector<Index>{ rig }));
+
+            const Index back = scene.addMesh(sQuadPositions, sNormals, {}, sQuadIndices, {}, Deform::Rig, rig);
+            EXPECT_EQ(back, other) << "the freed mesh slot is the one handed out";
+            EXPECT_EQ(scene.getMeshes()[back].mBindOffset, 0u) << "the freed bind run is the one handed out";
+            EXPECT_EQ(scene.getBindVertexCount(), 4u) << "both runs went, so the table reaches only as far as this one";
+            EXPECT_EQ(scene.getMeshBones(back)[0], Shaders::GpuBone{}) << "a reused pose run holds no old pose";
+
+            scene.poseRig(back, atFive, reach);
+            EXPECT_EQ(sorted(scene.getDeformed()), (std::vector<Index>{ back }))
+                << "a reused slot's first pose names it";
+        }
+
+        /// A morphed mesh holds its base as its bind pose and its weights as its pose, and the
+        /// offsets of every target laid end to end beside it.
+        ///
+        /// Hand-counted: two targets over four vertices is eight offsets, the base's four zeroes
+        /// first; a pose is two weights, of which the base's is carried and never read.
+        TEST(RtxSceneDescTest, aMorphedMeshHoldsItsTargetsAndNamesItselfOncePerPose)
+        {
+            SceneDesc scene;
+
+            std::array<osg::Vec3f, 8> offsets{};
+            for (std::size_t vertex = 4; vertex < 8; ++vertex)
+                offsets[vertex] = osg::Vec3f(0.0f, 0.0f, 1.0f);
+
+            const Index morph = scene.addMorph(offsets, 2);
+            ASSERT_EQ(scene.getMorphs().size(), 1u);
+            EXPECT_EQ(scene.getMorphs()[morph].mTargetCount, 2u);
+            EXPECT_EQ(scene.getMorphs()[morph].mVertexCount, 4u);
+            EXPECT_EQ(scene.getMorphOffsets().size(), 8u);
+            EXPECT_EQ(scene.getMorphOffsets()[6], osg::Vec3f(0.0f, 0.0f, 1.0f));
+            EXPECT_EQ(sorted(scene.getArrivedMorphs()), (std::vector<Index>{ morph }));
+
+            const Index face = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, {}, Deform::Morph, morph);
+            EXPECT_EQ(scene.getMeshes()[face].mDeform, Deform::Morph);
+            EXPECT_EQ(scene.getMorphs()[morph].mUses, 1u);
+            EXPECT_EQ(scene.getWeights().size(), 2u);
+            EXPECT_EQ(scene.getBindVertexCount(), 4u);
+
+            const std::array smiling{ 1.0f, 0.5f };
+            const osg::BoundingBoxf reach(osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(1.0f, 1.0f, 0.5f));
+            scene.poseMorph(face, smiling, reach);
+            scene.poseMorph(face, smiling, reach);
+            EXPECT_EQ(sorted(scene.getDeformed()), (std::vector<Index>{ face }));
+            EXPECT_EQ(scene.getMeshWeights(face)[1], 0.5f);
+            EXPECT_EQ(scene.getMeshes()[face].mBounds, reach);
+
+            scene.clearPlacement();
+            scene.poseMorph(face, smiling, reach);
+            EXPECT_TRUE(scene.getDeformed().empty()) << "an unchanged pose named a structure to refit";
+
+            // The morph goes with its mesh and its offsets with it: the next set of the same shape
+            // lands where they were.
+            ASSERT_TRUE(scene.release({}, {}));
+            EXPECT_EQ(scene.getMorphs()[morph].mUses, 0u);
+            EXPECT_EQ(scene.getMorphs()[morph].mVertexCount, 0u);
+            EXPECT_EQ(scene.addMorph(offsets, 2), morph);
+            EXPECT_EQ(scene.getMorphOffsets().size(), 8u);
+        }
+
+        /// The finding the caller made about a mesh is kept beside its range, for a backend that
+        /// builds a deforming mesh's structure to be refitted.
+        TEST(RtxSceneDescTest, aMeshCarriesWhetherItDeforms)
+        {
+            SceneDesc scene;
+            const Index still = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices);
+            EXPECT_EQ(scene.getMeshes()[still].mDeform, Deform::None);
+
+            const Index rig
+                = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, {}, Deform::Rig, addOneBoneRig(scene));
+            EXPECT_EQ(scene.getMeshes()[rig].mDeform, Deform::Rig);
         }
 
         /// Every change to a placement's row is reported, and nothing else is.
@@ -1123,7 +1239,9 @@ namespace Rtx
             scene.addBakedTexture("composite/0,0/1");
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
-            scene.updateMesh(mesh, sQuadPositions, {});
+            const Index body
+                = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, {}, Deform::Rig, addOneBoneRig(scene));
+            scene.poseRig(body, std::array{ boneUp(1.0f) }, osg::BoundingBoxf());
             scene.addEmitter(std::array{ Sprite{ .mRadius = 1.0f } }, 0, true);
 
             scene.clear();
@@ -1135,6 +1253,12 @@ namespace Rtx
             EXPECT_TRUE(scene.getBakedTextures().empty());
             EXPECT_TRUE(scene.getPositions().empty());
             EXPECT_TRUE(scene.getDeformed().empty());
+            EXPECT_TRUE(scene.getRigs().empty());
+            EXPECT_TRUE(scene.getRuns().empty());
+            EXPECT_TRUE(scene.getInfluences().empty());
+            EXPECT_TRUE(scene.getBones().empty());
+            EXPECT_TRUE(scene.getArrivedRigs().empty());
+            EXPECT_EQ(scene.getBindVertexCount(), 0u);
             EXPECT_TRUE(scene.getSprites().empty());
             EXPECT_TRUE(scene.getEmitters().empty());
             EXPECT_EQ(scene.getTriangleCount(), 0u);
@@ -1205,12 +1329,14 @@ namespace Rtx
         ///
         /// **The box is kept where the positions are, and not measured where it is asked for** — so
         /// both writers owe it an answer. A skinned body reaches somewhere else on every frame it is
-        /// posed, and a slot that was given back reaches nowhere at all.
+        /// posed, and its vertices are on the device, so the reach comes in with the pose; a slot
+        /// that was given back reaches nowhere at all.
         TEST(RtxSceneDescTest, aMeshesExtentFollowsWhateverWasWrittenIntoIt)
         {
             SceneDesc scene;
 
-            const Index quad = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, {}, true);
+            const Index quad
+                = scene.addMesh(sQuadPositions, {}, {}, sQuadIndices, {}, Deform::Rig, addOneBoneRig(scene));
             const Index material = scene.addMaterial(Material{});
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = quad, .mMaterial = material });
@@ -1219,13 +1345,10 @@ namespace Rtx
             EXPECT_FLOAT_EQ(scene.getBounds().xMin(), 0.0f);
             EXPECT_FLOAT_EQ(scene.getBounds().xMax(), 1.0f);
 
-            // The same four vertices three units along x, which is what a pose is: the count a
-            // deforming mesh keeps and the places it keeps none of.
-            std::array<osg::Vec3f, sQuadPositions.size()> posed{};
-            for (std::size_t at = 0; at < posed.size(); ++at)
-                posed[at] = sQuadPositions[at] + osg::Vec3f(3.0f, 0.0f, 0.0f);
-
-            scene.updateMesh(quad, posed, {});
+            // The same square three units along x, which is what a pose is: the count a deforming
+            // mesh keeps and the places it keeps none of, with the reach the caller read.
+            const std::array along{ toGpuBone(osg::Matrixf::translate(3.0f, 0.0f, 0.0f)) };
+            scene.poseRig(quad, along, osg::BoundingBoxf(osg::Vec3f(3.0f, 0.0f, 0.0f), osg::Vec3f(4.0f, 1.0f, 0.0f)));
 
             EXPECT_FLOAT_EQ(scene.getBounds().xMin(), 3.0f) << "the extent stayed where the first pose put it";
             EXPECT_FLOAT_EQ(scene.getBounds().xMax(), 4.0f);

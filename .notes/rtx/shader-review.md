@@ -60,9 +60,9 @@ choose the two-state format only where the cone argument is not needed, which is
 
 ### 3. Vertex normals as octahedral `snorm16x2`
 
-Normals are three floats a vertex, in three copies (`SlotBlocks`), rewritten per frame for every
-skinned body. An octahedral encoding is four bytes a vertex: a third of the fetch at every hit and a
-third of every skinned rewrite. The decode is a dozen ALU per corner. `TexCoord` stays float —
+Normals are three floats a vertex, in three copies (`SlotBlocks`), written by the skinning pass for
+every posed body. An octahedral encoding is four bytes a vertex: a third of the fetch at every hit and
+a third of what the pass writes. The decode is a dozen ALU per corner. `TexCoord` stays float —
 Morrowind's tiling UVs run to hundreds of repeats and a half loses the texel.
 
 Beside it: `GpuInstance::mMotion` is forty-eight bytes of a sixty-byte row, the identity for nearly

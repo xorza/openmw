@@ -1,0 +1,55 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// Poses one morphed mesh from its base, ahead of the refit over it.
+//
+// **`SceneUtil::MorphGeometry::cull`'s arithmetic and nothing else**: the base, plus every target's
+// offset at its weight, positions only — a morph moves no normal there and moves none here. Target
+// nought is the base and its weight is never read, which is how the drawable numbers them.
+
+#include "skinning.h"
+
+layout(local_size_x = SKIN_WORKGROUP) in;
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Vectors
+{
+    vec3 at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) writeonly buffer Written
+{
+    vec3 at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Weights
+{
+    float at[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    MorphConstants morph;
+};
+
+void main()
+{
+    const uint vertex = gl_GlobalInvocationID.x;
+    if (vertex >= morph.mCount)
+        return;
+
+    vec3 position = Vectors(morph.mBase).at[vertex];
+    for (uint target = 1u; target < morph.mTargets; ++target)
+    {
+        const float weight = Weights(morph.mWeights).at[target];
+        if (weight == 0.0)
+            continue;
+
+        position += weight * Vectors(morph.mOffsets).at[target * morph.mCount + vertex];
+    }
+
+    Written(morph.mPositions).at[vertex] = position;
+}

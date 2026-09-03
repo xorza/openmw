@@ -228,8 +228,11 @@ namespace Rtx::Testing
             const auto standing = std::find_if(
                 instances.begin(), instances.end(), [](const MeshInstance& slot) { return slot.isPlaced(); });
             ASSERT_NE(standing, instances.end());
-            EXPECT_EQ(scene.getMeshPositions(standing->mMesh)[2], osg::Vec3f(1.0f, 1.0f, 11.0f))
+            EXPECT_EQ(scene.getMeshBones(standing->mMesh)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 11.0f))
                 << "the sweep kept the actor from the cell that unloaded";
+            EXPECT_EQ(scene.getRigs().size(), 2u) << "a rig is a slot and keeps its index";
+            EXPECT_EQ(scene.getRigs()[scene.getMeshes()[standing->mMesh].mDeformer].mUses, 1u)
+                << "the rig of the one that left went with it and the survivor's stayed";
         }
 
         /// The sea is named by a node mask, and only the drawables that carry it become water.

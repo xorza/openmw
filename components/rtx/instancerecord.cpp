@@ -38,6 +38,18 @@ namespace Rtx
         return result;
     }
 
+    Shaders::GpuBone toGpuBone(const osg::Matrixf& matrix)
+    {
+        const Transform3x4 rows = toTransform3x4(matrix);
+
+        Shaders::GpuBone bone;
+        for (int row = 0; row < 3; ++row)
+            bone.mRows[row]
+                = osg::Vec4f(rows.mRows[row][0], rows.mRows[row][1], rows.mRows[row][2], rows.mRows[row][3]);
+
+        return bone;
+    }
+
     namespace
     {
         /// The row for `slot` as it stands, still: the motion is the frame's question and is asked

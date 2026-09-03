@@ -4,34 +4,22 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// Runs a deforming drawable's own cull path, which is where its vertices are computed.
-        ///
-        /// An `osgUtil::CullVisitor` proper would need a render stage and a state graph behind it.
-        /// What `MorphGeometry` actually reads of the visitor is its traversal number and the node
-        /// path, so one that merely says it is a cull drives the real deformation — which is the
-        /// point: this test asserts against vertices the production code computed, not against a
-        /// stand-in for them.
-        struct DeformingCull : osg::NodeVisitor
+        /// The third row of the one bone of the quad's rig, as the scene holds it: the identity's
+        /// last row with the bone's height in its last column. `RiggedQuad` binds with the identity
+        /// and no skin transform, so a translated bone is exactly what the walk has to hand over.
+        osg::Vec4f boneRow(const Rtx::SceneDesc& scene, Rtx::Index mesh)
         {
-            DeformingCull()
-                : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
-            {
-                setVisitorType(CULL_VISITOR);
-            }
-        };
+            return scene.getMeshBones(mesh)[0].mRows[2];
+        }
 
-        /// A skinned body is mirrored from the pose the walk itself computed.
+        /// A skinned body is mirrored as its bind pose and its bone rows, and not as vertices.
         ///
-        /// **Nothing else culls this graph**, which is the whole assertion: the pose exists only
-        /// because the mirror's own traversal is a cull traversal and skinned it. Under a plain
-        /// visitor `RigGeometry::accept` skins nothing and hands back whatever the last cull left,
-        /// so an actor nobody had drawn yet would arrive in its bind pose and one who had walked
-        /// off screen would stay in the pose they were last seen in.
-        ///
-        /// The bone is moved off the origin so that the two possible answers are two different
-        /// numbers: an unskinned buffer holds the bind pose the quad was authored at, and the pose
-        /// holds it moved by five.
-        TEST(RtxSceneExtractorTest, aSkinnedBodyIsMirroredFromThePoseTheWalkSkinned)
+        /// **Nothing else poses this graph**, which is the whole assertion: the rows exist only
+        /// because the walk read the matrices the update traversal left in the skeleton and
+        /// composed them the way `RigGeometry::cull` does. The bone is moved off the origin so that
+        /// the two possible answers are two different numbers: a rig read without its skeleton
+        /// carries the identity, and the pose carries it moved by five.
+        TEST(RtxSceneExtractorTest, aSkinnedBodyIsMirroredAsItsBindPoseAndItsBoneRows)
         {
             RiggedQuad rigged;
             rigged.mBone->setMatrix(osg::Matrix::translate(0.0, 0.0, 5.0));
@@ -44,18 +32,45 @@ namespace Rtx::Testing
             EXPECT_EQ(stats.mSkippedUnknown, 0u) << "a drawable that is not an osg::Geometry is still geometry";
             EXPECT_EQ(stats.mMeshesAdded, 1u);
             EXPECT_EQ(stats.mDeformed, 1u);
+            EXPECT_EQ(stats.mUnskinned, 0u) << "the update found the skeleton, so the rig is skinned";
             EXPECT_EQ(stats.mInstances, 1u);
             EXPECT_EQ(scene.getTriangleCount(), 2u);
 
-            EXPECT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 5.0f))
-                << "the bind pose moved by the bone, and not an unskinned buffer";
+            // The mesh holds the bind pose, and the rig beside it is the quad's four one-bone runs.
+            ASSERT_EQ(scene.getMeshes().size(), 1u);
+            EXPECT_EQ(scene.getMeshes()[0].mDeform, Rtx::Deform::Rig);
+            EXPECT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 0.0f))
+                << "the bind pose, never a vertex posed";
+            ASSERT_EQ(scene.getRigs().size(), 1u);
+            EXPECT_EQ(scene.getRigs()[0].mBoneCount, 1u);
+            EXPECT_EQ(scene.getRigs()[0].mVertexCount, 4u);
+            EXPECT_EQ(scene.getRuns().size(), 4u);
+            EXPECT_EQ(scene.getRuns()[3], 1u) << "first nought, count one";
+            ASSERT_EQ(scene.getInfluences().size(), 1u);
+            EXPECT_EQ(scene.getInfluences()[0].mBone, 0u);
+            EXPECT_EQ(scene.getInfluences()[0].mWeight, 1.0f);
+
+            // And the pose: `invBind · bone · transform` with the identity for both ends is the
+            // bone itself, whose translation lands in the last column of the last row.
+            ASSERT_EQ(scene.getDeformed().size(), 1u);
+            EXPECT_EQ(scene.getDeformed()[0], 0u);
+            EXPECT_EQ(scene.getMeshBones(0)[0].mRows[0], osg::Vec4f(1.0f, 0.0f, 0.0f, 0.0f));
+            EXPECT_EQ(scene.getMeshBones(0)[0].mRows[1], osg::Vec4f(0.0f, 1.0f, 0.0f, 0.0f));
+            EXPECT_EQ(boneRow(scene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f)) << "the bind pose moved by the bone";
+
+            // The reach is the drawable's own bound, which `updateBounds` made from the bone's
+            // sphere — a sphere, and so a box wider than the quad, but one that stands at five.
+            const osg::BoundingBoxf& reach = scene.getMeshes()[0].mBounds;
+            EXPECT_TRUE(reach.valid());
+            EXPECT_LE(reach.zMin(), 5.0f);
+            EXPECT_GE(reach.zMax(), 5.0f);
         }
 
-        /// A bone that moves between frames moves the body, and it is the same body.
+        /// A bone that moves between frames moves the rows, and it is the same body.
         ///
-        /// The mesh is keyed on the drawable and not on the geometry, so the pose landing in the
-        /// other half of the double buffer must not read as a second mesh.
-        TEST(RtxSceneExtractorTest, aBoneThatMovesMovesTheMirroredPoseWithoutAddingAMesh)
+        /// The mesh is keyed on the drawable, so a second frame must not read as a second mesh —
+        /// and a frame the bone stood still on must name no structure to refit.
+        TEST(RtxSceneExtractorTest, aBoneThatMovesMovesTheRowsWithoutAddingAMesh)
         {
             RiggedQuad rigged;
             rigged.update(1);
@@ -64,7 +79,7 @@ namespace Rtx::Testing
             SceneExtractor extractor(scene);
 
             extractor.extract(*rigged.mSkeleton, osg::Matrixf::identity(), 0);
-            EXPECT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
+            EXPECT_EQ(boneRow(scene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, 0.0f));
 
             rigged.mBone->setMatrix(osg::Matrix::translate(0.0, 0.0, 7.0));
             rigged.update(2);
@@ -75,35 +90,43 @@ namespace Rtx::Testing
             EXPECT_EQ(again.mMeshesAdded, 0u);
             EXPECT_EQ(again.mMeshesReused, 1u);
             EXPECT_EQ(again.mDeformed, 1u);
-            EXPECT_EQ(scene.getMeshes().size(), 1u) << "the other half of the double buffer is the same mesh";
-            EXPECT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 7.0f));
+            EXPECT_EQ(scene.getMeshes().size(), 1u) << "a second pose is the same mesh";
+            EXPECT_EQ(scene.getRigs().size(), 1u) << "and the same rig";
+            EXPECT_EQ(boneRow(scene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, 7.0f));
+            ASSERT_EQ(scene.getDeformed().size(), 1u);
+            EXPECT_EQ(scene.getDeformed()[0], 0u);
 
-            // **And the frame number cannot hold it back, which is what `Traversals` is for.** A
-            // deforming drawable skins once per traversal number and hands back what it already has
-            // for one it has seen, so a walk that reused a number got the pose it got the first
-            // time however far the bones had moved since. The number is the extractor's own now and
-            // only ever goes up, so the same frame twice — which is a doll redrawn twice while the
-            // game stands on one frame — still poses twice.
-            rigged.mBone->setMatrix(osg::Matrix::translate(0.0, 0.0, 99.0));
+            // **A frame the bone stood still on costs nothing.** The walk poses every rig it meets
+            // and the scene compares the rows against the ones it holds.
             rigged.update(3);
+            scene.clearPlacement();
+            const ExtractionStats still = extractor.extract(*rigged.mSkeleton, osg::Matrixf::identity(), 0, 2);
+
+            EXPECT_EQ(still.mDeformed, 1u) << "posed, which is what the count says";
+            EXPECT_TRUE(scene.getDeformed().empty()) << "and unchanged, which is what the list says";
+
+            // **And no traversal number gates it.** A walk on the same frame after the bone moved
+            // again reads the matrices the update left, whatever number the walk runs at — where a
+            // pose read off a cull traversal's own copy was frozen at the number it last saw.
+            rigged.mBone->setMatrix(osg::Matrix::translate(0.0, 0.0, 99.0));
+            rigged.update(4);
 
             scene.clearPlacement();
-            extractor.extract(*rigged.mSkeleton, osg::Matrixf::identity(), 0, 1);
-
-            EXPECT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 99.0f))
-                << "a second walk on the same frame posed at a number it had already used";
+            extractor.extract(*rigged.mSkeleton, osg::Matrixf::identity(), 0, 2);
+            EXPECT_EQ(boneRow(scene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, 99.0f));
         }
 
         /// A drawable whose geometry is not the geometry the mirror met under that address is
-        /// mirrored again rather than written over the slot the first one took.
+        /// mirrored again rather than posed into the slot the first one took.
         ///
         /// **Because the map is keyed on an address and the engine reuses them.** A body part taken
         /// off and another put on lands where the first was, so the walk that meets it finds an
-        /// entry describing something else. The slot is a run inside one shared vertex buffer:
-        /// writing a longer mesh into it runs over the meshes that follow, which is not a wrong
-        /// pose but a torn model — and in a release build the count is not asserted, so nothing
-        /// says so. Changing the source geometry under one rig is the same fact without needing the
-        /// allocator to hand back an address.
+        /// entry describing something else. The slot is a run inside one shared vertex buffer, and
+        /// the kernel writes `mVertexCount` vertices from it: a longer mesh would run over the
+        /// meshes that follow, which is not a wrong pose but a torn model — and in a release build
+        /// the count is not asserted, so nothing says so. Changing the source geometry under one
+        /// rig is the same fact without needing the allocator to hand back an address, and the
+        /// skin rewritten in place under the same address is the same fact again for the rig.
         TEST(RtxSceneExtractorTest, aDeformingDrawableThatChangedShapeIsMirroredAgainRatherThanWrittenOver)
         {
             RiggedQuad rigged;
@@ -120,11 +143,12 @@ namespace Rtx::Testing
             extractor.extract(*root, osg::Matrixf::identity(), 0);
             ASSERT_EQ(scene.getMeshes().size(), 2u);
             ASSERT_EQ(scene.getMeshPositions(0).size(), 4u);
+            ASSERT_EQ(scene.getRigs().size(), 1u);
 
             // The quad standing next to the rig, whose vertices the overrun would land in.
             const std::vector<osg::Vec3f> before(scene.getMeshPositions(1).begin(), scene.getMeshPositions(1).end());
 
-            // Six vertices where the slot holds four, under the same drawable.
+            // Six vertices where the slot holds four, under the same drawable and the same skin.
             osg::ref_ptr<osg::Geometry> longer = new osg::Geometry;
             longer->setVertexArray(makePositions({
                 osg::Vec3f(0.0f, 0.0f, 0.0f),
@@ -146,6 +170,9 @@ namespace Rtx::Testing
 
             EXPECT_EQ(again.mMeshesAdded, 1u) << "the rig is met as something the mirror has not seen";
             EXPECT_EQ(scene.getMeshes().size(), 3u) << "and takes a slot of its own rather than the old one";
+            EXPECT_EQ(scene.getRigs().size(), 2u) << "on a rig of its own, because the skin is six vertices now";
+            EXPECT_EQ(scene.getRigs()[1].mVertexCount, 6u);
+            EXPECT_EQ(scene.getMeshes()[2].mDeformer, 1u);
 
             const std::vector<osg::Vec3f> after(scene.getMeshPositions(1).begin(), scene.getMeshPositions(1).end());
             EXPECT_EQ(after, before) << "the mesh after the rig's old slot is untouched";
@@ -192,7 +219,7 @@ namespace Rtx::Testing
                 scene.clearPlacement();
                 extractor.extract(*rigged.mSkeleton, osg::Matrixf::identity(), 0, frame - 1);
 
-                EXPECT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, static_cast<float>(frame)))
+                EXPECT_EQ(boneRow(scene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, static_cast<float>(frame)))
                     << "the bone moved to " << frame << " and the mirrored pose did not follow";
             }
         }
@@ -203,8 +230,8 @@ namespace Rtx::Testing
         /// rasterizer decision the mirror inherited — `MWMechanics::Actors` sets it for actors
         /// outside the processing range — and the fear was that the mirror would go on reaching such
         /// an actor and find a skeleton refusing to move. It would: `SceneUtil::Skeleton::traverse`
-        /// turns back only an **update** visitor, so the bones stop being animated while the mirror
-        /// goes on skinning them, and what it places is the pose the last update left.
+        /// turns back an **update** visitor, so the bones stop being animated while the mirror goes
+        /// on posing them, and what it hands over is the pose the last update left.
         ///
         /// What makes that harmless is the base node mask, which the same code zeroes in the same
         /// breath — so the mirror never reaches the actor at all. That is an invariant of
@@ -240,10 +267,11 @@ namespace Rtx::Testing
             // One update while the actor is in range, so the skeleton has a pose to be frozen at.
             rigged.update(1);
             extractor.extract(*world, osg::Matrixf::identity(), 0, 0);
-            ASSERT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 1.0f));
+            ASSERT_EQ(boneRow(scene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, 1.0f));
 
             // Out of range. The update traversal is turned back from here on, so the bone stops at
-            // one however far the clock runs — and the mirror goes on placing the actor there.
+            // one however far the clock runs — and the mirror goes on placing the actor there, and
+            // names no structure to refit while it does.
             rigged.mSkeleton->setActive(SceneUtil::Skeleton::Inactive);
 
             for (unsigned int traversal = 2; traversal <= 4; ++traversal)
@@ -254,8 +282,9 @@ namespace Rtx::Testing
                 const ExtractionStats found = extractor.extract(*world, osg::Matrixf::identity(), 0, traversal - 1);
 
                 ASSERT_EQ(found.mInstances, 1u) << "the mirror stopped reaching an Inactive actor on its own";
-                EXPECT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 1.0f))
+                EXPECT_EQ(boneRow(scene, 0), osg::Vec4f(0.0f, 0.0f, 1.0f, 1.0f))
                     << "an Inactive skeleton animated at traversal " << traversal;
+                EXPECT_TRUE(scene.getDeformed().empty()) << "a pose that stood still named a structure to refit";
             }
 
             // And what the game does in the same breath as setting the flag, which is the half that
@@ -274,22 +303,42 @@ namespace Rtx::Testing
             EXPECT_EQ(missed.mDeformed, 0u) << "and its pose was computed on the way past";
         }
 
-        /// A pose is the one thing the mesh cache does not answer: met again, it is read again — and
+        /// A rig no update traversal has resolved is mirrored as it stands, and counted.
+        ///
+        /// **The rasterizer draws such a rig in its bind pose too**: `RigGeometry::cull` finds no
+        /// skeleton and returns before it skins. So this is what the game shows and not a loss — and
+        /// the count is what says a walk ran before the update it depends on.
+        TEST(RtxSceneExtractorTest, aRigWhoseSkeletonNoUpdateFoundIsMirroredAsItStands)
+        {
+            RiggedQuad rigged;
+            rigged.mBone->setMatrix(osg::Matrix::translate(0.0, 0.0, 5.0));
+
+            Rtx::SceneDesc scene;
+            SceneExtractor extractor(scene);
+            const ExtractionStats stats = extractor.extract(*rigged.mSkeleton, osg::Matrixf::identity(), 0);
+
+            EXPECT_EQ(stats.mMeshesAdded, 1u);
+            EXPECT_EQ(stats.mDeformed, 0u);
+            EXPECT_EQ(stats.mUnskinned, 1u);
+            ASSERT_EQ(scene.getMeshes().size(), 1u);
+            EXPECT_EQ(scene.getMeshes()[0].mDeform, Rtx::Deform::None);
+            EXPECT_TRUE(scene.getRigs().empty());
+            EXPECT_EQ(scene.getMeshPositions(0)[2], osg::Vec3f(1.0f, 1.0f, 0.0f)) << "the bind pose, where it stands";
+        }
+
+        /// A morphed face is mirrored as its base and its weights, and posed again each pass — and
         /// a static drawable met again is not.
         ///
         /// The two kinds stand side by side in one graph and one pass, so the same run produces both
         /// answers and the difference cannot be a difference in how they were set up.
-        ///
-        /// The two culls also land in different halves of the double buffer, which is the case that
-        /// keying the mesh cache on the geometry pointer would break: it would put two frozen poses
-        /// of the same face in the scene and alternate between them.
-        TEST(RtxSceneExtractorTest, aMorphedFaceIsReadAgainEachPassAndAStaticDrawableIsNot)
+        TEST(RtxSceneExtractorTest, aMorphedFaceIsPosedAgainEachPassAndAStaticDrawableIsNot)
         {
             osg::ref_ptr<SceneUtil::MorphGeometry> morph = new SceneUtil::MorphGeometry;
             morph->setSourceGeometry(makeQuad());
 
             // The base target is what the pose starts from; the second is added at its weight. One
-            // unit of z per unit of weight, so the expected value is arithmetic rather than a fit.
+            // unit of z per unit of weight, so what the device would compute is arithmetic rather
+            // than a fit.
             morph->addMorphTarget(makePositions({
                 osg::Vec3f(0.0f, 0.0f, 0.0f),
                 osg::Vec3f(1.0f, 0.0f, 0.0f),
@@ -313,32 +362,37 @@ namespace Rtx::Testing
             Rtx::SceneDesc scene;
             SceneExtractor extractor(scene);
 
-            DeformingCull cull;
-            cull.setTraversalNumber(1);
-            root->accept(cull);
-
             const ExtractionStats first = extractor.extract(*root, osg::Matrixf::identity(), 0);
             EXPECT_EQ(first.mMeshesAdded, 2u);
             EXPECT_EQ(first.mDeformed, 1u);
-            EXPECT_EQ(scene.getMeshPositions(sFace)[2], osg::Vec3f(1.0f, 1.0f, 1.0f)) << "base plus one of the target";
+            EXPECT_EQ(scene.getMeshes()[sFace].mDeform, Rtx::Deform::Morph);
+            EXPECT_EQ(scene.getMeshPositions(sFace)[2], osg::Vec3f(1.0f, 1.0f, 0.0f)) << "the base, and never a pose";
+
+            // The offsets, target by target: the base's four zeroes and then the unit lift.
+            ASSERT_EQ(scene.getMorphs().size(), 1u);
+            EXPECT_EQ(scene.getMorphs()[0].mTargetCount, 2u);
+            ASSERT_EQ(scene.getMorphOffsets().size(), 8u);
+            EXPECT_EQ(scene.getMorphOffsets()[2], osg::Vec3f());
+            EXPECT_EQ(scene.getMorphOffsets()[6], osg::Vec3f(0.0f, 0.0f, 1.0f));
+
+            // The weights as the drawable numbers them, the base's carried and never read.
+            ASSERT_EQ(scene.getMeshWeights(sFace).size(), 2u);
+            EXPECT_EQ(scene.getMeshWeights(sFace)[1], 1.0f);
 
             scene.clearPlacement();
             morph->getMorphTarget(1).setWeight(3.0f);
             morph->dirty();
-            cull.setTraversalNumber(2);
-            root->accept(cull);
 
             const ExtractionStats second = extractor.extract(*root, osg::Matrixf::identity(), 0);
 
             EXPECT_EQ(second.mMeshesAdded, 0u);
             EXPECT_EQ(second.mMeshesReused, 2u);
             EXPECT_EQ(second.mDeformed, 1u) << "the face, and only the face";
-            EXPECT_EQ(scene.getMeshes().size(), 2u) << "the other half of the double buffer is the same mesh";
+            EXPECT_EQ(scene.getMeshes().size(), 2u);
 
             ASSERT_EQ(scene.getDeformed().size(), 1u);
-            EXPECT_EQ(scene.getDeformed()[0], sFace) << "the still quad's structure is not built again";
-
-            EXPECT_EQ(scene.getMeshPositions(sFace)[2], osg::Vec3f(1.0f, 1.0f, 3.0f)) << "base plus three";
+            EXPECT_EQ(scene.getDeformed()[0], sFace) << "the still quad's structure is not refitted";
+            EXPECT_EQ(scene.getMeshWeights(sFace)[1], 3.0f);
             EXPECT_EQ(scene.getMeshPositions(sStill)[2], osg::Vec3f(1.0f, 1.0f, 0.0f)) << "and the neighbour is intact";
         }
 

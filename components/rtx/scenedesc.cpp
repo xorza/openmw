@@ -43,14 +43,21 @@ namespace Rtx
     }
 
     Index SceneDesc::addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
-        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape,
-        bool deforming)
+        std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape, Deform deform,
+        Index deformer)
     {
         assert(!positions.empty());
         assert(normals.empty() || normals.size() == positions.size());
         assert(texCoords.empty() || texCoords.size() == positions.size());
         assert(indices.size() % 3 == 0);
         assert(std::all_of(indices.begin(), indices.end(), [&](std::uint32_t i) { return i < positions.size(); }));
+        assert((deform == Deform::None) == (deformer == sNoIndex) && "a deforming mesh names what poses it");
+        assert(deform != Deform::Rig
+            || (deformer < mRigs.size() && mRigs[deformer].mVertexCount == positions.size()
+                && "a rig skins exactly the vertices of the mesh on it"));
+        assert(deform != Deform::Morph
+            || (deformer < mMorphs.size() && mMorphs[deformer].mVertexCount == positions.size()
+                && "a morph moves exactly the vertices of the mesh on it"));
 
         if (positions.size() > sVertexBlock || indices.size() > sIndexBlock)
             throw Error("a mesh of " + std::to_string(positions.size()) + " vertices and "
@@ -82,15 +89,41 @@ namespace Rtx
         if (mIndices.size() < mIndexRuns.getEnd())
             mIndices.resize(mIndexRuns.getEnd());
 
-        const MeshRange range{
+        MeshRange range{
             .mVertexOffset = vertices.mOffset,
             .mVertexCount = vertices.mCount,
             .mIndexOffset = elements.mOffset,
             .mIndexCount = elements.mCount,
             .mShape = shape,
-            .mDeforming = deforming,
+            .mDeform = deform,
+            .mDeformer = deformer,
             .mBounds = boundsOf(positions),
         };
+
+        // **A run in the bind table and a run of rows or weights, for a mesh that deforms.** The
+        // rows are zeroed, which is a pose nothing can equal, and `mPosed` is what says the first
+        // pose names the mesh regardless. Grown like the vertex buffers: to what the allocator
+        // reaches, never shrunk.
+        if (deform == Deform::Rig)
+        {
+            Rig& rig = mRigs[deformer];
+            ++rig.mUses;
+            range.mBindOffset = mBindRuns.allocate(vertices.mCount).mOffset;
+            range.mPoseOffset = mBoneRuns.allocate(rig.mBoneCount).mOffset;
+            if (mBones.size() < mBoneRuns.getEnd())
+                mBones.resize(mBoneRuns.getEnd());
+            std::fill_n(mBones.begin() + range.mPoseOffset, rig.mBoneCount, Shaders::GpuBone{});
+        }
+        else if (deform == Deform::Morph)
+        {
+            Morph& morph = mMorphs[deformer];
+            ++morph.mUses;
+            range.mBindOffset = mBindRuns.allocate(vertices.mCount).mOffset;
+            range.mPoseOffset = mWeightRuns.allocate(morph.mTargetCount).mOffset;
+            if (mWeights.size() < mWeightRuns.getEnd())
+                mWeights.resize(mWeightRuns.getEnd());
+            std::fill_n(mWeights.begin() + range.mPoseOffset, morph.mTargetCount, 0.0f);
+        }
 
         writeMesh(range, positions, normals, texCoords, indices);
 
@@ -178,34 +211,213 @@ namespace Rtx
             std::copy(texCoords.begin(), texCoords.end(), mTexCoords.begin() + range.mVertexOffset);
     }
 
-    void SceneDesc::updateMesh(Index mesh, std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals)
+    Index SceneDesc::addRig(
+        std::span<const std::uint32_t> runs, std::span<const Shaders::GpuInfluence> influences, Index boneCount)
+    {
+        assert(!runs.empty());
+        assert(boneCount > 0);
+        assert(std::all_of(runs.begin(), runs.end(), [&](std::uint32_t run) {
+            const std::uint32_t first = run >> Shaders::RUN_COUNT_BITS;
+            const std::uint32_t count = run & Shaders::RUN_COUNT_MASK;
+            return first + count <= influences.size();
+        }) && "a run past the influences it was handed");
+        assert(std::all_of(influences.begin(), influences.end(), [&](const Shaders::GpuInfluence& influence) {
+            return influence.mBone < boneCount;
+        }) && "an influence naming a bone the rig has not got");
+
+        // **A rig with no influence at all still takes a run of one**, because an allocator hands
+        // out no run of nothing and a backend addresses the run whether or not it is read: a mesh
+        // whose every vertex follows no bone is the zero matrix everywhere, as the rasterizer has it.
+        const Span words = mRigRuns.allocate(static_cast<Index>(runs.size()));
+        const Span shares = mInfluenceRuns.allocate(std::max<Index>(1, static_cast<Index>(influences.size())));
+
+        if (mRuns.size() < mRigRuns.getEnd())
+            mRuns.resize(mRigRuns.getEnd());
+        if (mInfluences.size() < mInfluenceRuns.getEnd())
+            mInfluences.resize(mInfluenceRuns.getEnd());
+
+        std::copy(runs.begin(), runs.end(), mRuns.begin() + words.mOffset);
+        std::copy(influences.begin(), influences.end(), mInfluences.begin() + shares.mOffset);
+
+        const Rig rig{
+            .mRunOffset = words.mOffset,
+            .mInfluenceOffset = shares.mOffset,
+            .mInfluenceCount = static_cast<Index>(influences.size()),
+            .mBoneCount = boneCount,
+            .mVertexCount = static_cast<Index>(runs.size()),
+        };
+
+        Index index;
+        if (!mFreeRigs.empty())
+        {
+            index = mFreeRigs.back();
+            mFreeRigs.pop_back();
+            mRigs[index] = rig;
+        }
+        else
+        {
+            mRigs.push_back(rig);
+            index = static_cast<Index>(mRigs.size() - 1);
+        }
+
+        mArrivedRigs.push_back(index);
+        return index;
+    }
+
+    Index SceneDesc::addMorph(std::span<const osg::Vec3f> offsets, Index targets)
+    {
+        assert(targets > 0 && offsets.size() % targets == 0 && !offsets.empty());
+
+        const Span run = mMorphRuns.allocate(static_cast<Index>(offsets.size()));
+        if (mMorphOffsets.size() < mMorphRuns.getEnd())
+            mMorphOffsets.resize(mMorphRuns.getEnd());
+
+        std::copy(offsets.begin(), offsets.end(), mMorphOffsets.begin() + run.mOffset);
+
+        const Morph morph{
+            .mOffsetsAt = run.mOffset,
+            .mTargetCount = targets,
+            .mVertexCount = static_cast<Index>(offsets.size() / targets),
+        };
+
+        Index index;
+        if (!mFreeMorphs.empty())
+        {
+            index = mFreeMorphs.back();
+            mFreeMorphs.pop_back();
+            mMorphs[index] = morph;
+        }
+        else
+        {
+            mMorphs.push_back(morph);
+            index = static_cast<Index>(mMorphs.size() - 1);
+        }
+
+        mArrivedMorphs.push_back(index);
+        return index;
+    }
+
+    namespace
+    {
+        /// Writes `pose` over `held` where the two differ, and says whether they did.
+        ///
+        /// **Compared rather than trusted**, because the walk poses every rig it meets and cannot
+        /// know which of them the engine animated. A first pose always counts: what the slot held
+        /// before it is nothing a pose can equal.
+        template <class T>
+        bool takePose(std::span<const T> pose, T* held, bool posed)
+        {
+            if (posed && std::equal(pose.begin(), pose.end(), held))
+                return false;
+
+            std::copy(pose.begin(), pose.end(), held);
+            return true;
+        }
+    }
+
+    void SceneDesc::poseRig(Index mesh, std::span<const Shaders::GpuBone> bones, const osg::BoundingBoxf& bounds)
     {
         assert(mesh < mMeshes.size());
+        MeshRange& range = mMeshes[mesh];
+        assert(range.mDeform == Deform::Rig && "a pose of rows for a mesh no rig skins");
+        assert(bones.size() == mRigs[range.mDeformer].mBoneCount && "one row per bone of the rig, and no other count");
 
-        const MeshRange& range = mMeshes[mesh];
-        assert(positions.size() == range.mVertexCount);
-        assert(normals.empty() || normals.size() == range.mVertexCount);
-
-        const auto heldPositions = mPositions.begin() + range.mVertexOffset;
-        const auto heldNormals = mNormals.begin() + range.mVertexOffset;
-        if (std::equal(positions.begin(), positions.end(), heldPositions)
-            && (normals.empty() || std::equal(normals.begin(), normals.end(), heldNormals)))
+        if (!takePose(bones, mBones.data() + range.mPoseOffset, range.mPosed))
             return;
 
-        std::copy(positions.begin(), positions.end(), heldPositions);
-        if (!normals.empty())
-            std::copy(normals.begin(), normals.end(), heldNormals);
+        range.mPosed = true;
 
         // **A pose the size of the last one still reaches somewhere else.** An arm that came down is
         // the same count of vertices in a different place, and a box left where the bind pose put it
         // is what a camera would then be framed from.
-        mMeshes[mesh].mBounds = boundsOf(positions);
+        range.mBounds = bounds;
 
         // Named once however many callers reach it, because a backend builds one structure per mesh
         // and building it twice in a frame is the same answer for twice the cost. Linear over a list
         // that is the frame's moving meshes — a crowd, not a cell.
         if (std::find(mDeformed.begin(), mDeformed.end(), mesh) == mDeformed.end())
             mDeformed.push_back(mesh);
+    }
+
+    void SceneDesc::poseMorph(Index mesh, std::span<const float> weights, const osg::BoundingBoxf& bounds)
+    {
+        assert(mesh < mMeshes.size());
+        MeshRange& range = mMeshes[mesh];
+        assert(range.mDeform == Deform::Morph && "a pose of weights for a mesh no morph moves");
+        assert(weights.size() == mMorphs[range.mDeformer].mTargetCount
+            && "one weight per target of the morph, and no other count");
+
+        if (!takePose(weights, mWeights.data() + range.mPoseOffset, range.mPosed))
+            return;
+
+        range.mPosed = true;
+        range.mBounds = bounds;
+
+        if (std::find(mDeformed.begin(), mDeformed.end(), mesh) == mDeformed.end())
+            mDeformed.push_back(mesh);
+    }
+
+    std::span<const Shaders::GpuBone> SceneDesc::getMeshBones(Index mesh) const
+    {
+        assert(mesh < mMeshes.size());
+        const MeshRange& range = mMeshes[mesh];
+        assert(range.mDeform == Deform::Rig);
+        return std::span(mBones).subspan(range.mPoseOffset, mRigs[range.mDeformer].mBoneCount);
+    }
+
+    std::span<const float> SceneDesc::getMeshWeights(Index mesh) const
+    {
+        assert(mesh < mMeshes.size());
+        const MeshRange& range = mMeshes[mesh];
+        assert(range.mDeform == Deform::Morph);
+        return std::span(mWeights).subspan(range.mPoseOffset, mMorphs[range.mDeformer].mTargetCount);
+    }
+
+    void SceneDesc::releaseDeformer(MeshRange& range)
+    {
+        if (range.mDeform == Deform::None)
+            return;
+
+        mBindRuns.release(Span{ .mOffset = range.mBindOffset, .mCount = range.mVertexCount });
+
+        // **The rig or the morph goes with its last mesh**, and its runs with it. Nothing downstream
+        // is told: what a backend holds of a rig is data at an offset, read by no frame once no mesh
+        // names it, and the next rig to land in the run is what names it again.
+        if (range.mDeform == Deform::Rig)
+        {
+            Rig& rig = mRigs[range.mDeformer];
+            mBoneRuns.release(Span{ .mOffset = range.mPoseOffset, .mCount = rig.mBoneCount });
+
+            assert(rig.mUses > 0 && "a rig given back more often than it was stood on");
+            if (--rig.mUses == 0)
+            {
+                mRigRuns.release(Span{ .mOffset = rig.mRunOffset, .mCount = rig.mVertexCount });
+                mInfluenceRuns.release(
+                    Span{ .mOffset = rig.mInfluenceOffset, .mCount = std::max<Index>(1, rig.mInfluenceCount) });
+                rig = Rig{};
+                mFreeRigs.push_back(range.mDeformer);
+                std::erase(mArrivedRigs, range.mDeformer);
+            }
+        }
+        else
+        {
+            Morph& morph = mMorphs[range.mDeformer];
+            mWeightRuns.release(Span{ .mOffset = range.mPoseOffset, .mCount = morph.mTargetCount });
+
+            assert(morph.mUses > 0 && "a morph given back more often than it was stood on");
+            if (--morph.mUses == 0)
+            {
+                mMorphRuns.release(
+                    Span{ .mOffset = morph.mOffsetsAt, .mCount = morph.mTargetCount * morph.mVertexCount });
+                morph = Morph{};
+                mFreeMorphs.push_back(range.mDeformer);
+                std::erase(mArrivedMorphs, range.mDeformer);
+            }
+        }
+
+        range.mDeform = Deform::None;
+        range.mDeformer = sNoIndex;
+        range.mPosed = false;
     }
 
     Index SceneDesc::addMaterial(const Material& material)
@@ -603,10 +815,15 @@ namespace Rtx
             MeshRange& range = mMeshes[index];
             mVertexRuns.release(Span{ .mOffset = range.mVertexOffset, .mCount = range.mVertexCount });
             mIndexRuns.release(Span{ .mOffset = range.mIndexOffset, .mCount = range.mIndexCount });
+            releaseDeformer(range);
 
             range.mVertexCount = 0;
             range.mIndexCount = 0;
             range.mBounds = osg::BoundingBoxf();
+
+            // A slot given back names no structure to refit, however it was posed this frame: the
+            // structure has gone with it. Linear over the frame's movers, on the frame a cell leaves.
+            std::erase(mDeformed, index);
 
             mFreeMeshes.push_back(index);
             noteMesh(index, SlotNews::Freed);
@@ -673,6 +890,23 @@ namespace Rtx
         mIndices.clear();
         mMeshes.clear();
         mDeformed.clear();
+        mRigs.clear();
+        mRuns.clear();
+        mInfluences.clear();
+        mMorphs.clear();
+        mMorphOffsets.clear();
+        mBones.clear();
+        mWeights.clear();
+        mFreeRigs.clear();
+        mFreeMorphs.clear();
+        mArrivedRigs.clear();
+        mArrivedMorphs.clear();
+        mBindRuns.clear();
+        mBoneRuns.clear();
+        mWeightRuns.clear();
+        mRigRuns.clear();
+        mInfluenceRuns.clear();
+        mMorphRuns.clear();
         mInstances.clear();
         mPrevious.clear();
         mMoved.clear();
@@ -731,6 +965,8 @@ namespace Rtx
         mWrittenMaterials.clear();
         mArrivedLayers.clear();
         mArrivedMasks.clear();
+        mArrivedRigs.clear();
+        mArrivedMorphs.clear();
     }
 
     std::span<const osg::Vec3f> SceneDesc::getMeshPositions(Index mesh) const

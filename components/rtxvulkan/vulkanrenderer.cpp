@@ -29,6 +29,7 @@
 #include "result.hpp"
 #include "sceneacceleration.hpp"
 #include "scenebuffers.hpp"
+#include "skintables.hpp"
 #include "texture.hpp"
 #include "visibilitypass.hpp"
 
@@ -186,6 +187,7 @@ namespace Rtx
         , mWaves(mDevice, mPool, options.mShaderDirectory)
         , mFog(mDevice, mPool)
         , mExposure(mDevice, options.mShaderDirectory)
+        , mSkinPass(mDevice, options.mShaderDirectory)
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
     {
@@ -451,6 +453,7 @@ namespace Rtx
         // once — a cell's structures and textures are most of what this renderer occupies. The pass
         // is not among them; see below.
         held.mTextures.reset();
+        held.mSkinTables.reset();
         held.mBuffers.reset();
         held.mAcceleration.reset();
 
@@ -493,9 +496,18 @@ namespace Rtx
         Graveyard& graveyard = frameSlot(mFrame).mGraveyard;
         const std::uint32_t slots = slot == sWorld ? sFrameSlots : 1;
 
-        held.mAcceleration
-            = std::make_unique<SceneAcceleration>(mDevice, setup, scene, held.mRecords, slots, graveyard);
+        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, scene, slots);
         held.mBuffers = std::make_unique<SceneBuffers>(mDevice, scene, held.mRecords, slots, graveyard);
+        held.mSkinTables = std::make_unique<SkinTables>(mDevice, scene, slots, graveyard);
+
+        // **Posed before it is built.** The structures are built over the first copy of the
+        // positions, and a skinned body's bind pose is not where the body is; the pass writes the
+        // pose into that copy and the build then reads it. The other copy is owed the same pose and
+        // takes it on the first placement that writes it.
+        mSkinPass.record(setup.getCommands(), scene, 0, *held.mSkinTables, held.mAcceleration->getPositions(),
+            held.mBuffers->getNormals(), nullptr);
+        held.mAcceleration->build(setup, scene, held.mRecords, graveyard);
+
         held.mTextures = std::make_unique<TextureArray>(
             mDevice, setup, static_cast<std::uint32_t>(scene.getTextures().size()), textures, graveyard);
         held.mBuiltMeshes = scene.getMeshRevision();
@@ -578,7 +590,16 @@ namespace Rtx
         if (scene.getMeshRevision() != held.mBuiltMeshes)
         {
             held.mBuffers->extend(scene, graveyard);
-            held.mAcceleration->extend(setup, scene, timer, graveyard);
+            held.mSkinTables->extend(scene, graveyard);
+            held.mAcceleration->extend(scene, graveyard);
+
+            // **Posed before it is built**, as `setScene` does: an actor walking in is built over
+            // its pose and not over its bind. Into the first copy, which is what the build reads;
+            // the placement below poses the copy the frame traces. Untimed, so the frame's report
+            // carries one `skin` zone and it is the placement's.
+            mSkinPass.record(setup.getCommands(), scene, 0, *held.mSkinTables, held.mAcceleration->getPositions(),
+                held.mBuffers->getNormals(), nullptr);
+            held.mAcceleration->buildArrived(setup, scene, timer, graveyard);
             held.mBuiltMeshes = scene.getMeshRevision();
         }
 
@@ -628,8 +649,8 @@ namespace Rtx
         held.mTextures->drop(textures, frameSlot(mFrame).mGraveyard);
     }
 
-    bool VulkanRenderer::recordPlacement(ViewScene& held, const SceneDesc& scene, VkCommandBuffer commands,
-        const std::uint32_t slot, GpuTimer* const timer, Graveyard& graveyard)
+    bool VulkanRenderer::recordPlacement(const SkinPass& skin, ViewScene& held, const SceneDesc& scene,
+        VkCommandBuffer commands, const std::uint32_t slot, GpuTimer* const timer, Graveyard& graveyard)
     {
         // **What the scene let go of, given back here.** Walking away from a ring frees its meshes
         // and nothing arrives to take them over until the walk reaches the far side of the next one,
@@ -643,19 +664,25 @@ namespace Rtx
         // frame, to change a hundred of them.
         updateInstanceRecords(scene, held.mRecords, held.mChangedRecords);
 
+        // **The pose first, because the refit reads it.** Every skinned body and morphed face this
+        // copy owes is computed into it here, and the barrier the pass ends in is what the refit
+        // and the trace wait on.
+        const bool posed = skin.record(commands, scene, slot, *held.mSkinTables, held.mAcceleration->getPositions(),
+            held.mBuffers->getNormals(), timer);
+
         const bool built
             = held.mAcceleration->place(commands, scene, held.mRecords, held.mChangedRecords, slot, timer, graveyard);
 
         // **Nothing to report, because nothing here is recorded.** The tables are host-visible and
         // this writes them; what the trace reads of them is made visible by the submit that follows,
-        // which is why only the half above has a command buffer and an answer about it.
+        // which is why only the halves above have a command buffer and an answer about it.
         //
-        // **Only what a moving world changed**, which is the instance rows, the lights and the
-        // vertices of anything skinned. Rebuilding all of it was measured at twenty to twenty-seven
-        // milliseconds on a nine-by-nine region and was the largest single cost in the frame.
+        // **Only what a moving world changed**, which is the instance rows and the lights.
+        // Rebuilding all of it was measured at twenty to twenty-seven milliseconds on a nine-by-nine
+        // region and was the largest single cost in the frame.
         held.mBuffers->place(scene, held.mRecords, held.mChangedRecords, slot, graveyard);
 
-        return built;
+        return posed || built;
     }
 
     void VulkanRenderer::placeScene(std::uint32_t slot, const SceneDesc& scene, const SeaState& sea)
@@ -669,8 +696,9 @@ namespace Rtx
         if (slot != sWorld)
         {
             Graveyard& graveyard = frameSlot(mFrame).mGraveyard;
-            mPool.submitAndWait(
-                [&](VkCommandBuffer commands) { recordPlacement(held, scene, commands, 0, nullptr, graveyard); });
+            mPool.submitAndWait([&](VkCommandBuffer commands) {
+                recordPlacement(mSkinPass, held, scene, commands, 0, nullptr, graveyard);
+            });
             return;
         }
 
@@ -700,7 +728,7 @@ namespace Rtx
         const VkCommandBuffer placement = takePlaceCommands(frame);
         mPool.begin(placement);
 
-        if (recordPlacement(held, scene, placement, into, &frame.mTimer, frame.mGraveyard))
+        if (recordPlacement(mSkinPass, held, scene, placement, into, &frame.mTimer, frame.mGraveyard))
             mPool.submit(placement, VK_NULL_HANDLE, frame.mGraveyard);
         else
             checkVk(vkEndCommandBuffer(placement), "vkEndCommandBuffer");
@@ -714,7 +742,7 @@ namespace Rtx
     {
         mStats.mInstances = held.mAcceleration->getInstanceCount();
         mStats.mCutoutInstances = held.mAcceleration->getCutoutInstanceCount();
-        mStats.mTableBytes = held.mBuffers->getBytes();
+        mStats.mTableBytes = held.mBuffers->getBytes() + held.mSkinTables->getBytes();
     }
 
     void VulkanRenderer::readStats(const ViewScene& held)

@@ -17,6 +17,7 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "shaders/scene.h"
+#include "shaders/skinning.h"
 #include "shapefold.hpp"
 #include "spanallocator.hpp"
 
@@ -26,6 +27,19 @@ namespace Rtx
     using Index = std::uint32_t;
 
     inline constexpr Index sNoIndex = ~Index{ 0 };
+
+    /// How a mesh's vertices are re-posed every frame, where they are.
+    ///
+    /// **The kind names the kernel and the pose it takes.** A skinned body is posed by bone rows
+    /// through a rig, a morphed face by target weights through a morph, and a mesh that stands is
+    /// neither. The loader never makes a geometry both: `NifOsg` skips the morpher where a skin
+    /// exists.
+    enum class Deform : std::uint8_t
+    {
+        None,
+        Rig,
+        Morph,
+    };
 
     /// Where one mesh's vertices and indices sit in the scene's shared buffers.
     ///
@@ -43,21 +57,76 @@ namespace Rtx
         /// means; the scene keeps them and draws nothing from them.
         FoldedShape mShape;
 
-        /// Whether this mesh is re-posed by `updateMesh` — a skinned body, a morphed face — which is
-        /// what tells a backend to build its structure so it can be refitted rather than built
-        /// again. The caller's finding, like `mShape`.
-        bool mDeforming = false;
+        /// Whether this mesh is re-posed by `poseRig` or `poseMorph` — a skinned body, a morphed
+        /// face — which is what tells a backend to build its structure so it can be refitted rather
+        /// than built again, and which kernel poses it. The caller's finding, like `mShape`.
+        Deform mDeform = Deform::None;
+
+        /// The rig or the morph that poses it, into `getRigs` or `getMorphs`. `sNoIndex` for a mesh
+        /// that stands.
+        Index mDeformer = sNoIndex;
+
+        /// Where this mesh's bind pose sits among the deforming meshes' vertices, which is what a
+        /// backend's bind table is indexed by. **A run of `mVertexCount` beside the mesh's own**,
+        /// allocated only for a mesh that deforms: the shared vertex buffers hold every mesh, and a
+        /// bind table that mirrored them would hold megabytes of the cell for a few bodies.
+        Index mBindOffset = 0;
+
+        /// Where this mesh's bone rows or morph weights start in `getBones` or `getWeights`. The
+        /// count is the rig's or the morph's.
+        Index mPoseOffset = 0;
+
+        /// Whether a pose has been written since the mesh arrived. The first pose names the mesh
+        /// whatever it is, so a body whose first pose happens to equal the zeroed rows still
+        /// reaches the device.
+        bool mPosed = false;
 
         /// The box this mesh's vertices fit in, in the space they are stated in. Invalid where the
         /// slot is free.
         ///
         /// **Written where the vertices are, and nowhere else.** A mesh's own extent is a fact about
-        /// its positions, so it is taken once as they arrive and taken again only where `updateMesh`
-        /// replaces them — which is what lets a question about where a scene reaches be eight
-        /// transforms per instance rather than a walk over every vertex in the table.
+        /// its positions, so it is taken once as they arrive — and for a mesh that deforms, taken
+        /// again from what the caller says the pose reaches, because the posed vertices are on the
+        /// device and nowhere else. That is what lets a question about where a scene reaches be
+        /// eight transforms per instance rather than a walk over every vertex in the table.
         osg::BoundingBoxf mBounds;
 
         Index getTriangleCount() const { return mIndexCount / 3; }
+    };
+
+    /// What skins one bind pose: a run word per vertex and the influences the runs name, laid in the
+    /// scene's shared tables. `Shaders::GpuInfluence` says what a run is.
+    ///
+    /// **Shared by every mesh built from one skin**, because that is what the content shares:
+    /// `SceneUtil::RigGeometry` copies keep one `InfluenceData` between them, and a body part worn by
+    /// a hundred people is one rig here and a hundred meshes. A rig outlives its last mesh by one
+    /// sweep and goes with it.
+    struct Rig
+    {
+        Index mRunOffset = 0;
+        Index mInfluenceOffset = 0;
+        Index mInfluenceCount = 0;
+
+        /// Rows one pose of this rig takes, which is what every mesh on it is given.
+        Index mBoneCount = 0;
+
+        /// Vertices this rig skins, which every mesh on it must have exactly.
+        Index mVertexCount = 0;
+
+        /// How many meshes stand on it. Nought is a free slot.
+        Index mUses = 0;
+    };
+
+    /// What morphs one base: every target's offsets laid end to end, target by target, in the
+    /// scene's shared table. A pose is one weight per target.
+    struct Morph
+    {
+        Index mOffsetsAt = 0;
+        Index mTargetCount = 0;
+        Index mVertexCount = 0;
+
+        /// How many meshes stand on it. Nought is a free slot.
+        Index mUses = 0;
     };
 
     /// How the alpha channel of a surface's diffuse texture is meant to be read.
@@ -460,29 +529,49 @@ namespace Rtx
         /// vertex count comes out of a content file and a run that straddled a block would be
         /// written across two device allocations that are not next to each other.
         ///
-        /// `shape` is `MeshRange::mShape` and `deforming` is `MeshRange::mDeforming`, and both are
-        /// the caller's findings: the scene keeps them and draws no conclusion of its own from the
-        /// triangles it was handed.
+        /// `shape` is `MeshRange::mShape` and `deform` is `MeshRange::mDeform`, and both are the
+        /// caller's findings: the scene keeps them and draws no conclusion of its own from the
+        /// triangles it was handed. A mesh that deforms names the rig or the morph that poses it,
+        /// whose vertex count must be this mesh's, and hands over its **bind pose**: the vertices a
+        /// pose is computed from, which stay in the shared buffers for as long as the mesh does.
         Index addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
             std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape = {},
-            bool deforming = false);
+            Deform deform = Deform::None, Index deformer = sNoIndex);
 
-        /// Replaces one mesh's positions and normals, keeping its topology and its index.
+        /// Copies a skin's runs and influences into the shared tables and returns the rig's index.
         ///
-        /// **What a skinned body or a morphed face is.** Its vertices are recomputed every frame
-        /// and its triangles are not, so it keeps the slot in the shared buffers that every
-        /// instance already names — a mesh appended afresh each frame would grow the scene without
-        /// bound and invalidate every index beside it.
+        /// `runs` is one word per vertex, `Shaders::RUN_COUNT_BITS` says how it is packed, and every
+        /// run it names must lie inside `influences`; every `GpuInfluence::mBone` must be under
+        /// `boneCount`. Contracts on the caller, asserted.
+        Index addRig(
+            std::span<const std::uint32_t> runs, std::span<const Shaders::GpuInfluence> influences, Index boneCount);
+
+        /// Copies a morph's offsets — `targets` targets of `offsets.size() / targets` vertices each,
+        /// laid end to end — into the shared table and returns the morph's index. `targets` must be
+        /// at least one and divide `offsets.size()`.
+        Index addMorph(std::span<const osg::Vec3f> offsets, Index targets);
+
+        /// Poses one skinned mesh: its bone rows, and the box the pose reaches.
         ///
-        /// The counts must match what `addMesh` was given, which deformation never changes;
-        /// `normals` may be empty where the mesh has none. Both are contracts on the caller.
+        /// **What a skinned body is, and the whole of what the host says about one per frame.** Its
+        /// triangles never change and its vertices are computed on the device from the bind pose it
+        /// arrived with, so what a frame hands over is one row per bone — a few dozen — and the
+        /// mesh keeps the slot in the shared buffers every instance already names.
         ///
-        /// The mesh joins `getDeformed` for the frame, which is what tells a backend whose
-        /// acceleration structure to build again — unless nothing moved: a pose equal to the one
-        /// already held writes nothing and names nothing, so an actor standing still two cells away
-        /// costs no copy and no refit. Compared rather than trusted, because the walk poses every
-        /// rig it meets and cannot know which of them the engine animated.
-        void updateMesh(Index mesh, std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals);
+        /// `bones.size()` must be the rig's `mBoneCount`, a contract on the caller. `bounds` is the
+        /// box the pose reaches in the mesh's own space, which the caller reads off the drawable
+        /// rather than this walking vertices it does not have.
+        ///
+        /// The mesh joins `getDeformed` for the frame, which is what tells a backend whose vertices
+        /// to pose and whose structure to refit — unless nothing moved: rows equal to the ones
+        /// already held write nothing and name nothing, so an actor standing still two cells away
+        /// costs no dispatch and no refit. Compared rather than trusted, because the walk poses
+        /// every rig it meets and cannot know which of them the engine animated.
+        void poseRig(Index mesh, std::span<const Shaders::GpuBone> bones, const osg::BoundingBoxf& bounds);
+
+        /// The same for a morphed mesh: one weight per target of its morph, the base's included and
+        /// ignored, which is how `SceneUtil::MorphGeometry` numbers them.
+        void poseMorph(Index mesh, std::span<const float> weights, const osg::BoundingBoxf& bounds);
 
         Index addMaterial(const Material& material);
 
@@ -684,6 +773,35 @@ namespace Rtx
         /// Which meshes changed shape since the last `clearPlacement`, each named once and in no
         /// particular order. Empty for a world that only moves.
         std::span<const Index> getDeformed() const { return mDeformed; }
+
+        /// Every rig slot, live or free — `Rig::mUses` tells them apart — and the two tables the rigs
+        /// index.
+        std::span<const Rig> getRigs() const { return mRigs; }
+        std::span<const std::uint32_t> getRuns() const { return mRuns; }
+        std::span<const Shaders::GpuInfluence> getInfluences() const { return mInfluences; }
+
+        /// The same for the morphs.
+        std::span<const Morph> getMorphs() const { return mMorphs; }
+        std::span<const osg::Vec3f> getMorphOffsets() const { return mMorphOffsets; }
+
+        /// Every deforming mesh's pose, laid end to end: a run of rows per skinned mesh, and a run
+        /// of weights per morphed one. `MeshRange::mPoseOffset` says where each starts.
+        std::span<const Shaders::GpuBone> getBones() const { return mBones; }
+        std::span<const float> getWeights() const { return mWeights; }
+
+        /// One mesh's pose, for a backend writing that mesh's rows or a test reading them back.
+        std::span<const Shaders::GpuBone> getMeshBones(Index mesh) const;
+        std::span<const float> getMeshWeights(Index mesh) const;
+
+        /// How many vertices the deforming meshes' bind poses take between them, which is how long
+        /// a backend's bind table has to be. `MeshRange::mBindOffset` says where each mesh's run is.
+        Index getBindVertexCount() const { return mBindRuns.getEnd(); }
+
+        /// Which rig and morph slots have been written since the last `clearArrivals`, for a
+        /// backend to upload. A freed slot is named by nothing: nothing reads it until the next
+        /// arrival lands in it, and that arrival names it.
+        std::span<const Index> getArrivedRigs() const { return mArrivedRigs; }
+        std::span<const Index> getArrivedMorphs() const { return mArrivedMorphs; }
         /// Every slot, standing or empty, in slot order. `MeshInstance::isPlaced` tells them apart.
         std::span<const MeshInstance> getInstances() const { return mInstances; }
 
@@ -861,6 +979,26 @@ namespace Rtx
         std::vector<MeshRange> mMeshes;
         std::vector<Index> mDeformed;
 
+        /// What poses the deforming meshes, and the poses themselves. `Rig` and `Morph` say what
+        /// each table holds; the runs behind them are handed out by the allocators below and given
+        /// back when the last mesh on a rig or a morph goes.
+        std::vector<Rig> mRigs;
+        std::vector<std::uint32_t> mRuns;
+        std::vector<Shaders::GpuInfluence> mInfluences;
+        std::vector<Morph> mMorphs;
+        std::vector<osg::Vec3f> mMorphOffsets;
+        std::vector<Shaders::GpuBone> mBones;
+        std::vector<float> mWeights;
+
+        std::vector<Index> mFreeRigs;
+        std::vector<Index> mFreeMorphs;
+        std::vector<Index> mArrivedRigs;
+        std::vector<Index> mArrivedMorphs;
+
+        /// Gives a deforming mesh's runs back: its bind run, its pose run, and its rig's or morph's
+        /// where this was the last mesh standing on it.
+        void releaseDeformer(MeshRange& range);
+
         // Slot-addressed and parallel: the placement, and where it stood before the last advance.
         // Two flat arrays rather than one struct, because the previous transform is read only for
         // what moved and a frame walks the placements for other reasons.
@@ -928,6 +1066,16 @@ namespace Rtx
         SpanAllocator mIndexRuns{ sIndexBlock };
         SpanAllocator mLayerRuns;
         SpanAllocator mMaskRuns;
+
+        /// The deforming meshes' bind poses and their bone rows and weights, and the rigs' and the
+        /// morphs' own runs. Unblocked: a backend reaches each run by an address it is handed per
+        /// dispatch, so nothing here has to keep an address across a growth.
+        SpanAllocator mBindRuns;
+        SpanAllocator mBoneRuns;
+        SpanAllocator mWeightRuns;
+        SpanAllocator mRigRuns;
+        SpanAllocator mInfluenceRuns;
+        SpanAllocator mMorphRuns;
 
         /// What has become of a slot since the last `clearArrivals`.
         enum class SlotNews : std::uint8_t

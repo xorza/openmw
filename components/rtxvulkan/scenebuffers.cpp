@@ -214,15 +214,6 @@ namespace Rtx
         graveyard.bury(growTo(held, *mDevice, bytes, sTableUsage));
     }
 
-    bool SceneBuffers::outgrow(Buffer& held, const VkDeviceSize bytes, Graveyard& graveyard)
-    {
-        if (held.getSize() >= bytes)
-            return false;
-
-        graveyard.bury(growTo(held, *mDevice, std::max(bytes, held.getSize() * 2), sTableUsage));
-        return true;
-    }
-
     void SceneBuffers::binSprites(const osg::Vec3f& origin, const Shaders::Camera& camera, const osg::Vec3f& toSun,
         const std::uint32_t slot, Graveyard& graveyard)
     {
@@ -289,7 +280,8 @@ namespace Rtx
         {
             Tables& copy = mTables[each];
 
-            if (outgrow(copy.mLayers, std::max<std::size_t>(layers.size(), 1) * sizeof(Shaders::GpuLayer), graveyard))
+            if (outgrow(copy.mLayers, *mDevice, std::max<std::size_t>(layers.size(), 1) * sizeof(Shaders::GpuLayer),
+                    sTableUsage, graveyard))
             {
                 mLayerScratch.clear();
                 mLayerScratch.reserve(layers.size());
@@ -315,7 +307,8 @@ namespace Rtx
                 }
             }
 
-            if (outgrow(copy.mMasks, std::max<std::size_t>(masks.size(), 1) * sizeof(float), graveyard))
+            if (outgrow(copy.mMasks, *mDevice, std::max<std::size_t>(masks.size(), 1) * sizeof(float), sTableUsage,
+                    graveyard))
                 copy.mMasks.write(masks.empty() ? std::span<const float>(&noMask, 1) : masks);
             else
                 for (const Span run : scene.getArrivedMasks())
@@ -414,15 +407,8 @@ namespace Rtx
         tables.mLightList.write(lightList);
         tables.mEmitters.write(emitters);
 
-        // **Only what changed shape, and every pose this copy missed.** A cell's normals are the
-        // same normals from one frame to the next; a skinned body's are new every frame, and
-        // `getDeformed` is the list of exactly those — owed to every copy, because the copy the
-        // frame after next reads was not written for this frame's pose.
-        mNormalTable.write(scene.getDeformed());
-        mNormalTable.sync(slot, [&](const Index mesh, BlockedBuffer& into) {
-            const MeshRange& range = scene.getMeshes()[mesh];
-            into.writeAt(range.mVertexOffset, scene.getNormals().subspan(range.mVertexOffset, range.mVertexCount));
-        });
+        // The normals of anything skinned are not written here: a cell's are the same from one
+        // frame to the next, and a body's are what `SkinPass` computed into this copy ahead of this.
     }
 
     void SceneBuffers::describeTables(const std::uint32_t slot, Shaders::GpuTables& into) const

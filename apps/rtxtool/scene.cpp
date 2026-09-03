@@ -166,6 +166,7 @@ namespace RtxTool
             << "  record has no model:  " << report.mSkipped.mNoModel << '\n'
             << "  model would not load: " << report.mUnreadable << '\n'
             << "  unreadable drawables: " << stats.mSkippedUnknown << '\n'
+            << "  unskinned rigs:       " << stats.mUnskinned << " met before an update found their skeleton\n"
             << "  empty geometry:       " << stats.mSkippedEmpty << '\n'
             << "  undescribed surfaces: " << stats.mUndescribedMaterials << '\n'
             << "  sheets:               " << sheets << " of the meshes, doubled for their backs\n";

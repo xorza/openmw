@@ -5,9 +5,9 @@
 #include <unordered_map>
 
 #include "error.hpp"
+#include "instancerecord.hpp"
 #include "lightbuilder.hpp"
 #include "nodelibrary.hpp"
-#include "posecull.hpp"
 #include "shaders/scene.h"
 #include "spritelight.hpp"
 #include "terraincomposite.hpp"
@@ -190,7 +190,8 @@ namespace Rtx
         auto countersOf(auto& stats)
         {
             auto& [meshesAdded, materialsAdded, sheets, composites, meshesReused, materialsReused, instances, deformed,
-                emitters, sprites, skippedUnknown, undescribedMaterials, formats, unnamedFormat, skippedEmpty, lights]
+                unskinned, emitters, sprites, skippedUnknown, undescribedMaterials, formats, unnamedFormat,
+                skippedEmpty, lights]
                 = stats;
 
             // The two the sum owes something other than addition, and so the two left out of it.
@@ -198,8 +199,8 @@ namespace Rtx
             (void)unnamedFormat;
 
             return std::array{ &meshesAdded, &materialsAdded, &sheets, &composites, &meshesReused, &materialsReused,
-                &instances, &deformed, &emitters, &sprites, &skippedUnknown, &undescribedMaterials, &skippedEmpty,
-                &lights };
+                &instances, &deformed, &unskinned, &emitters, &sprites, &skippedUnknown, &undescribedMaterials,
+                &skippedEmpty, &lights };
         }
 
         /// A pass's texture matrix for `unit`, as the `uv * xy + zw` the shader wants.
@@ -288,10 +289,6 @@ namespace Rtx
 
         osg::FrameStamp& getStamp() { return *mStamp; }
 
-        /// The traversal that poses a deforming drawable, handed one at a time. **Narrowed to what
-        /// `accept` takes**, so nothing outside this file has to know what kind of visitor it is.
-        osg::NodeVisitor& getPose() { return mPose; }
-
         /// Moves the emitter clock on by one frame. See `mEmitterStamp`.
         void advanceEmitters(double elapsed);
 
@@ -326,12 +323,7 @@ namespace Rtx
         /// its frame number is the walk's own, for the reason `begin` gives.
         osg::ref_ptr<osg::FrameStamp> mStamp = new osg::FrameStamp;
 
-        /// Set up once and never rebuilt, which is most of why the walk is a member rather than a
-        /// local: a state graph, a render stage, a viewport and two matrices per frame is an
-        /// allocation apiece for a traversal that is the same one every time. `mSequenceClock` is a
-        /// member for the same reason.
-        PoseCull mPose;
-
+        /// A member for the reason the walk is: made once, and a frame allocates none of it.
         SequenceClock mSequenceClock;
 
         /// **The emitters' own clock, and it is not the world's.**
@@ -385,18 +377,17 @@ namespace Rtx
         , mExtractor(extractor)
     {
         setFrameStamp(mStamp);
-        mPose.setFrameStamp(mStamp);
         mSequenceClock.setFrameStamp(mStamp);
     }
 
     void MirrorTraversal::begin(const osg::Matrixf& root, std::size_t frame, unsigned int traversal,
         std::size_t identity, ExtractionStats& stats)
     {
-        // **The whole of what a traversal number promises.** `SceneUtil::Skeleton` and both
-        // deforming geometries refuse to move for a number they have already seen, so a walk that
-        // handed back a number is a walk whose actors keep the pose somebody else gave them — and it
-        // fails as a frozen figure nobody can explain rather than as anything a log would carry.
-        assert(traversal > mTraversal && "a mirror walk asked to pose at a number it has already used");
+        // **The whole of what a traversal number promises.** A state-set controller and an
+        // `osg::Sequence` each keep the last number they ran at and do nothing for one they have
+        // already seen, so a walk that handed back a number is a walk whose fires stand still — and
+        // it fails as a frozen picture nobody can explain rather than as anything a log would carry.
+        assert(traversal > mTraversal && "a mirror walk asked to run at a number it has already used");
         mTraversal = traversal;
 
         mRoot = root;
@@ -406,17 +397,11 @@ namespace Rtx
         mPathHash = identity;
         mShading.clear();
 
-        // **The mirror's own sequence and never the game's.** Its actors are posed by this walk,
-        // wherever the eye is; a number taken from the game's frame would make the mirror read back
-        // whatever pose the rasterizer's cull happened to choose. `Traversals` is where
-        // that sequence lives and why there is one of it.
-        //
-        // It is also why the two must not both be running: they alternate the buffer a deforming
-        // drawable writes, and the draw thread of the frame before is reading one of them. The frame that
-        // comes of it is discarded, and the answer is to stop drawing it at all rather than to
-        // interleave the numbers.
+        // **The mirror's own sequence and never the game's.** What this walk runs — the controllers
+        // and the sequences — is keyed on it, and a number taken from the game's frame would be a
+        // second clock over the same nodes. `Traversals` is where that sequence lives and why there
+        // is one of it.
         setTraversalNumber(traversal);
-        mPose.setTraversalNumber(traversal);
         mStamp->setFrameNumber(traversal);
     }
 
@@ -566,8 +551,8 @@ namespace Rtx
     /// whose `traverse` is empty, so the claim cannot reach a child — and that is what keeps it
     /// away from the three that would take it badly.
     ///
-    /// It is this walk and not `mPose` for the same reason it is here at all: a processor reads its
-    /// world transform off the visitor's node path, and this is the walk standing on one.
+    /// This walk and not a cull of its own, for the same reason it is here at all: a processor reads
+    /// its world transform off the visitor's node path, and this is the walk standing on one.
     bool MirrorTraversal::stepParticles(osg::Node& node)
     {
         // The two libraries a processor or an updater can come from: `osgParticle`'s own, and
@@ -847,6 +832,12 @@ namespace Rtx
         // can drop, and because a state set held past its node holds the textures in it alive too.
         std::erase_if(mAnimated, [this](const auto& entry) { return entry.second.mEpoch != mEpoch; });
 
+        // **A skin and a set of targets go with the last mesh standing on them**, which the scene
+        // decides for itself by counting: what is swept here is only this map's hold on the data.
+        // The two agree because a rig is stamped exactly where a mesh on it is met.
+        std::erase_if(mRigs, [this](const auto& entry) { return entry.second.mEpoch != mEpoch; });
+        std::erase_if(mMorphs, [this](const auto& entry) { return entry.second.mEpoch != mEpoch; });
+
         // **Freed, not compacted, and that is what makes a cell boundary cheap.** Closing the gaps
         // renumbered every mesh and every material, so everything built from an index — which is
         // every bottom-level acceleration structure in the world — had to be built again: nineteen
@@ -939,47 +930,44 @@ namespace Rtx
         ++stats.mLights;
     }
 
-    namespace
+    /// Nearly everything in a cell is an `osg::Geometry` and answers in one virtual call. A skinned
+    /// body and a morphed face are not: each is an `osg::Drawable` over a source geometry, and the
+    /// source is what this reads — the bind pose a skin is computed from, the base a morph starts
+    /// from. **Not the double-buffered copy a cull traversal writes**, which no walk of this
+    /// renderer runs any more: the pose is bone rows and weights handed to the device, and the
+    /// device computes the vertices where the structure is refitted from them.
+    ///
+    /// **A rig no update traversal has resolved is read as it stands.** Its bones are what
+    /// `RigGeometry::updateBounds` finds under the update traversal, and a rig with none has nothing
+    /// to be posed against; the rasterizer draws that rig in its bind pose, and so does this. A morph
+    /// with no target past its base has nothing to move either, and is a static mesh whose
+    /// positions are the base.
+    SceneExtractor::Read SceneExtractor::readDrawable(const osg::Drawable& drawable)
     {
-        /// The geometry a drawable holds, and whether its vertices are recomputed every frame.
-        struct DrawableGeometry
+        if (const osg::Geometry* geometry = drawable.asGeometry())
+            return Read{ .mGeometry = geometry };
+
+        if (const auto* rig = dynamic_cast<const SceneUtil::RigGeometry*>(&drawable))
         {
-            const osg::Geometry* mGeometry = nullptr;
-            bool mDeforming = false;
-        };
-
-        /// What of a drawable there is to mirror.
-        ///
-        /// Nearly everything in a cell is an `osg::Geometry` and answers in one virtual call. A
-        /// skinned body and a morphed face are not: each is an `osg::Drawable` keeping two internal
-        /// geometries and writing the pose the last cull traversal computed into whichever of them
-        /// was not being drawn. So the geometry to read is behind an accessor, it is one frame
-        /// behind anything running before cull, and it is a different object every other frame.
-        /// @param pose the traversal that skins and morphs. **Run here rather than relied upon**:
-        ///        the pose a deforming drawable hands back is the one some cull traversal computed,
-        ///        and the only one that had run before this was the rasterizer's — which reaches
-        ///        what a camera can see and leaves everyone else in the pose they walked out of
-        ///        shot in.
-        DrawableGeometry readDrawable(const osg::Drawable& drawable, osg::NodeVisitor& pose)
-        {
-            if (const osg::Geometry* geometry = drawable.asGeometry())
-                return DrawableGeometry{ .mGeometry = geometry, .mDeforming = false };
-
-            if (const auto* rig = dynamic_cast<const SceneUtil::RigGeometry*>(&drawable))
-            {
-                const_cast<SceneUtil::RigGeometry&>(*rig).accept(pose);
-                return DrawableGeometry{ .mGeometry = rig->getDeformedGeometry(), .mDeforming = true };
-            }
-
-            if (const auto* morph = dynamic_cast<const SceneUtil::MorphGeometry*>(&drawable))
-            {
-                const_cast<SceneUtil::MorphGeometry&>(*morph).accept(pose);
-                return DrawableGeometry{ .mGeometry = morph->getDeformedGeometry(), .mDeforming = true };
-            }
-
-            return DrawableGeometry{};
+            const bool skinned = rig->getInfluenceData() != nullptr && !rig->getBones().empty();
+            return Read{ .mGeometry = rig->getSourceGeometry().get(),
+                .mDeform = skinned ? Deform::Rig : Deform::None,
+                .mRig = rig };
         }
 
+        if (const auto* morph = dynamic_cast<const SceneUtil::MorphGeometry*>(&drawable))
+        {
+            const bool moving = morph->getMorphTargetList().size() > 1;
+            return Read{ .mGeometry = morph->getSourceGeometry().get(),
+                .mDeform = moving ? Deform::Morph : Deform::None,
+                .mMorph = morph };
+        }
+
+        return Read{};
+    }
+
+    namespace
+    {
         /// A geometry's per-vertex positions and normals.
         struct VertexArrays
         {
@@ -1047,7 +1035,7 @@ namespace Rtx
             return;
         }
 
-        const DrawableGeometry read = readDrawable(drawable, mWalk->getPose());
+        const Read read = readDrawable(drawable);
         if (read.mGeometry == nullptr)
         {
             ++stats.mSkippedUnknown;
@@ -1055,7 +1043,7 @@ namespace Rtx
         }
 
         const osg::Geometry& geometry = *read.mGeometry;
-        const Index mesh = resolveMesh(drawable, geometry, read.mDeforming, stats);
+        const Index mesh = resolveMesh(drawable, read, stats);
         if (mesh == sNoIndex)
             return;
 
@@ -1384,53 +1372,138 @@ namespace Rtx
         return index;
     }
 
-    Index SceneExtractor::resolveMesh(
-        const osg::Drawable& drawable, const osg::Geometry& geometry, bool deforming, ExtractionStats& stats)
+    namespace
     {
+        /// The box a drawable's own bound reaches, in its own space.
+        ///
+        /// **The sphere and not the box, because that is the one a rig keeps.** `RigGeometry::
+        /// updateBounds` writes its sphere straight into the drawable and marks it computed, and
+        /// leaves the box to be recomputed from a callback that answers nothing — so asking for the
+        /// box would overwrite what the update worked out from the bone spheres. A sphere is a
+        /// looser box than the vertices would give, and it is the game's own number: the pose is on
+        /// the device and there are no vertices here to walk.
+        osg::BoundingBoxf reachOf(const osg::Drawable& drawable)
+        {
+            const osg::BoundingSphere& sphere = drawable.getBound();
+            if (!sphere.valid())
+                return osg::BoundingBoxf();
+
+            const osg::Vec3f centre(sphere.center());
+            const osg::Vec3f reach(sphere.radius(), sphere.radius(), sphere.radius());
+            return osg::BoundingBoxf(centre - reach, centre + reach);
+        }
+
+        /// A morph's base target, which `MorphGeometry::cull` reads its positions from. The source
+        /// geometry's own array is what `NifOsg` built the drawable from and the two agree in every
+        /// file it builds, so the length is asserted and the base is what is read.
+        std::span<const osg::Vec3f> baseOf(const SceneUtil::MorphGeometry& morph)
+        {
+            const osg::Vec3Array* base = morph.getMorphTarget(0).getOffsets();
+            assert(base != nullptr && "a morph whose base is no array");
+            return std::span(base->asVector());
+        }
+    }
+
+    Index SceneExtractor::resolveMesh(const osg::Drawable& drawable, const Read& read, ExtractionStats& stats)
+    {
+        const osg::Geometry& geometry = *read.mGeometry;
+
         if (const auto known = mMeshes.find(&drawable); known != mMeshes.end())
         {
+            const Index mesh = known->second.mIndex;
+            const MeshRange& range = mScene.getMeshes()[mesh];
+
             // Nothing else in the map is re-read: the whole point of it is that a crate met again is
-            // the crate already uploaded. A pose is not, so this is the one path that goes back to
-            // the vertex arrays on a hit — and it is why the mirror stays cheap for a cell and pays
-            // only for what is actually moving.
-            if (!deforming)
+            // the crate already uploaded, and a cell is tens of thousands of these a frame.
+            if (read.mDeform == Deform::None && range.mDeform == Deform::None)
             {
                 ++stats.mMeshesReused;
                 known->second.mEpoch = mEpoch;
-                return known->second.mIndex;
+                return mesh;
             }
 
-            const VertexArrays fresh = readVertices(geometry, mFlatNormalScratch);
-
-            // **The vertex count is what says the slot still fits, and it has to be asked.** The
-            // drawable is the same object — the map owns its key, so it cannot be a different one
-            // wearing the same address — but a deforming drawable is a shell over a source geometry
-            // the engine may replace, and a rig re-pointed at a longer mesh is the same rig. Writing
-            // that pose into the old slot is not a wrong pose: the slot is a run inside one shared
-            // vertex buffer, so a longer mesh runs off the end of it and over the meshes that
-            // follow, which is a model torn into triangles reaching across itself.
+            // **What says the slot still fits, and it has to be asked.** The drawable is the same
+            // object — the map owns its key, so it cannot be a different one wearing the same
+            // address — but a deforming drawable is a shell over a source geometry the engine may
+            // replace, and a rig re-pointed at a longer mesh is the same rig. Posing that into the
+            // old slot is not a wrong pose: the slot is a run inside one shared vertex buffer, and
+            // the kernel would write past it over the meshes that follow.
             //
-            // Where the count differs the entry is wrong rather than stale, so it goes and the
-            // geometry is mirrored afresh. The slot it abandons keeps the epoch it had and the
-            // next sweep takes it.
-            if (fresh.mPositions.size() == mScene.getMeshes()[known->second.mIndex].mVertexCount)
+            // Where the source, the kind or the skin differs the entry is wrong rather than stale,
+            // so it goes and the geometry is mirrored afresh. The slot it abandons keeps the epoch
+            // it had and the next sweep takes it.
+            const std::size_t vertices = read.mDeform == Deform::Morph
+                ? baseOf(*read.mMorph).size()
+                : readVertices(geometry, mFlatNormalScratch).mPositions.size();
+
+            // What the drawable's skin or targets resolve to, where the mirror has met them, and
+            // `sNoIndex` where it has not or where the drawable stands — which is what a slot that
+            // stands holds too. A morph whose targets changed count under the same base is another
+            // morph, so the count is asked beside the identity.
+            Index deformer = sNoIndex;
+            if (read.mDeform == Deform::Rig)
+            {
+                if (const auto rig = mRigs.find(read.mRig->getInfluenceData()); rig != mRigs.end())
+                    deformer = rig->second.mIndex;
+            }
+            else if (read.mDeform == Deform::Morph)
+            {
+                const auto morph = mMorphs.find(read.mMorph->getMorphTarget(0).getOffsets());
+                if (morph != mMorphs.end()
+                    && mScene.getMorphs()[morph->second.mIndex].mTargetCount
+                        == read.mMorph->getMorphTargetList().size())
+                    deformer = morph->second.mIndex;
+            }
+
+            if (vertices == range.mVertexCount && read.mDeform == range.mDeform && deformer == range.mDeformer)
             {
                 ++stats.mMeshesReused;
                 known->second.mEpoch = mEpoch;
-                mScene.updateMesh(known->second.mIndex, fresh.mPositions, fresh.mNormals);
-                ++stats.mDeformed;
-                return known->second.mIndex;
+
+                // A pose is rows and not vertices, which is why the mirror pays a few dozen
+                // matrices for what is actually moving. The skin is stamped with the mesh, which is
+                // what keeps the sweep's two answers one answer.
+                if (read.mDeform == Deform::Rig)
+                {
+                    mRigs.find(read.mRig->getInfluenceData())->second.mEpoch = mEpoch;
+                    poseRig(mesh, *read.mRig);
+                    ++stats.mDeformed;
+                }
+                else if (read.mDeform == Deform::Morph)
+                {
+                    mMorphs.find(read.mMorph->getMorphTarget(0).getOffsets())->second.mEpoch = mEpoch;
+                    poseMorph(mesh, *read.mMorph);
+                    ++stats.mDeformed;
+                }
+
+                return mesh;
             }
 
             mMeshes.erase(known);
         }
 
-        const VertexArrays arrays = readVertices(geometry, mFlatNormalScratch);
+        VertexArrays arrays = readVertices(geometry, mFlatNormalScratch);
+
+        // A morph starts from its base target and not from the source's array, because that is
+        // what `MorphGeometry::cull` starts from. The normals and everything else are the source's.
+        if (read.mDeform == Deform::Morph)
+        {
+            const std::span<const osg::Vec3f> base = baseOf(*read.mMorph);
+            if (base.size() != arrays.mPositions.size())
+                throw Error("a morphed face of " + std::to_string(arrays.mPositions.size())
+                    + " vertices whose base target has " + std::to_string(base.size()));
+
+            arrays.mPositions = base;
+        }
+
         if (arrays.mPositions.empty())
         {
             ++stats.mSkippedEmpty;
             return sNoIndex;
         }
+
+        if (read.mRig != nullptr && read.mDeform == Deform::None)
+            ++stats.mUnskinned;
 
         mIndexScratch.clear();
         osg::TriangleIndexFunctor<TriangleCollector> collector;
@@ -1455,14 +1528,180 @@ namespace Rtx
         if (shape.mSheet)
             ++stats.mSheets;
 
-        const Index mesh
-            = mScene.addMesh(arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, shape, deforming);
+        // What poses it, added once per skin and once per set of targets however many drawables
+        // share them, and stamped here so the sweep keeps it for as long as a mesh stands on it.
+        Index deformer = sNoIndex;
+        if (read.mDeform == Deform::Rig)
+            deformer = resolveRig(*read.mRig);
+        else if (read.mDeform == Deform::Morph)
+            deformer = resolveMorph(*read.mMorph);
+
+        if (deformer != sNoIndex)
+        {
+            const Index skinned = read.mDeform == Deform::Rig ? mScene.getRigs()[deformer].mVertexCount
+                                                              : mScene.getMorphs()[deformer].mVertexCount;
+            if (skinned != arrays.mPositions.size())
+                throw Error("a deforming mesh of " + std::to_string(arrays.mPositions.size())
+                    + " vertices on a rig or morph of " + std::to_string(skinned));
+        }
+
+        const Index mesh = mScene.addMesh(
+            arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, shape, read.mDeform, deformer);
         mMeshes.emplace(&drawable, Known{ .mIndex = mesh, .mEpoch = mEpoch });
         ++stats.mMeshesAdded;
-        if (deforming)
+
+        // Posed on arrival as on every frame after: the bind pose the mesh holds is what a pose is
+        // computed from, and never what is traced.
+        if (read.mDeform == Deform::Rig)
+        {
+            poseRig(mesh, *read.mRig);
             ++stats.mDeformed;
+        }
+        else if (read.mDeform == Deform::Morph)
+        {
+            poseMorph(mesh, *read.mMorph);
+            ++stats.mDeformed;
+        }
 
         return mesh;
+    }
+
+    Index SceneExtractor::resolveRig(const SceneUtil::RigGeometry& rig)
+    {
+        const SceneUtil::RigGeometry::InfluenceData* skin = rig.getInfluenceData();
+        assert(skin != nullptr);
+
+        const auto* positions = dynamic_cast<const osg::Vec3Array*>(rig.getSourceGeometry()->getVertexArray());
+        const std::size_t vertices = positions != nullptr ? positions->size() : 0;
+
+        // **A skin rewritten in place under the same address is a new skin.** `setInfluences` on a
+        // rig the mirror has met writes into the `InfluenceData` every copy shares, so what the map
+        // holds describes a mesh of another length; the rig it named stays for the meshes still on
+        // it and goes with the last of them, and this drawable gets one of its own.
+        auto [known, arrived] = mRigs.try_emplace(skin);
+        known->second.mEpoch = mEpoch;
+        if (!arrived && mScene.getRigs()[known->second.mIndex].mVertexCount == vertices)
+            return known->second.mIndex;
+
+        // **The groups flattened into a run per vertex.** `RigGeometry::setInfluences` gathers the
+        // vertices that share one weight list so the rasterizer blends each list once; a kernel
+        // blends per lane and wants to find its list from its vertex, which is what the run word
+        // is. A vertex in no group is a run of nothing, as the rasterizer leaves it at the origin.
+
+        mRunScratch.assign(vertices, 0);
+        mInfluenceScratch.clear();
+        for (const auto& [weights, group] : skin->mInfluences)
+        {
+            if (weights.size() > Shaders::RUN_COUNT_MASK)
+                throw Error("a vertex skinned by " + std::to_string(weights.size()) + " bones, past the "
+                    + std::to_string(Shaders::RUN_COUNT_MASK) + " a run word holds");
+
+            const auto first = static_cast<std::uint32_t>(mInfluenceScratch.size());
+            for (const auto& [bone, weight] : weights)
+                mInfluenceScratch.push_back(Shaders::GpuInfluence{
+                    .mBone = static_cast<std::uint32_t>(bone),
+                    .mWeight = weight,
+                });
+
+            const std::uint32_t run = (first << Shaders::RUN_COUNT_BITS) | static_cast<std::uint32_t>(weights.size());
+            for (const unsigned short vertex : group)
+            {
+                if (vertex >= vertices)
+                    throw Error("a skin naming vertex " + std::to_string(vertex) + " of a mesh with "
+                        + std::to_string(vertices));
+
+                mRunScratch[vertex] = run;
+            }
+        }
+
+        known->second.mIndex = mScene.addRig(mRunScratch, mInfluenceScratch, static_cast<Index>(skin->mBones.size()));
+        return known->second.mIndex;
+    }
+
+    Index SceneExtractor::resolveMorph(const SceneUtil::MorphGeometry& morph)
+    {
+        const SceneUtil::MorphGeometry::MorphTargetList& targets = morph.getMorphTargetList();
+        assert(targets.size() > 1);
+
+        const std::size_t vertices = baseOf(morph).size();
+
+        // A set of targets grown or shrunk under the same base is a new set, for the reason a
+        // rewritten skin is a new skin.
+        auto [known, arrived] = mMorphs.try_emplace(targets[0].getOffsets());
+        known->second.mEpoch = mEpoch;
+        if (!arrived)
+        {
+            const Morph& held = mScene.getMorphs()[known->second.mIndex];
+            if (held.mTargetCount == targets.size() && held.mVertexCount == vertices)
+                return known->second.mIndex;
+        }
+
+        // Every target's offsets laid end to end, the base's included as a run of zeroes so the
+        // table's target `k` is the drawable's target `k` and a weight indexes both the same way.
+        // `MorphGeometry::cull` reads target `k` as `offsets[k][vertex]` for every `k` past the
+        // base; a target shorter than the base is read as far as it goes and the rest left alone,
+        // which a zero past its end is.
+        mOffsetScratch.assign(vertices * targets.size(), osg::Vec3f());
+        for (std::size_t target = 1; target < targets.size(); ++target)
+        {
+            const osg::Vec3Array* offsets = targets[target].getOffsets();
+            if (offsets == nullptr)
+                continue;
+
+            const std::size_t count = std::min<std::size_t>(offsets->size(), vertices);
+            std::copy_n(offsets->begin(), count, mOffsetScratch.begin() + target * vertices);
+        }
+
+        known->second.mIndex = mScene.addMorph(mOffsetScratch, static_cast<Index>(targets.size()));
+        return known->second.mIndex;
+    }
+
+    void SceneExtractor::poseRig(Index mesh, const SceneUtil::RigGeometry& rig)
+    {
+        const SceneUtil::RigGeometry::InfluenceData& skin = *rig.getInfluenceData();
+        const std::span<SceneUtil::Bone* const> bones = rig.getBones();
+        assert(bones.size() == skin.mBones.size());
+
+        // `RigGeometry::cull`'s arithmetic, row for row: each bone's inverse bind by its
+        // skeleton-space matrix, and the skin's transform after the blend — composed into every
+        // bone here, which is the same product because the blend is linear and the transform is
+        // affine. A bone the skeleton has not got contributes nothing, as it does there.
+        //
+        // **From the matrices the update traversal left.** `RigGeometry::updateBounds` runs
+        // `Skeleton::updateBoneMatrices` under it for every active skeleton and on the first frame
+        // regardless, and a skeleton it skipped is one whose bones did not move — so what is here
+        // is this frame's pose or the last one, and either is what the rasterizer would show.
+        osg::Matrixf transform = skin.mTransform;
+        if (const osg::RefMatrix* skinToSkel = rig.getSkinToSkelMatrix())
+            transform = (*skinToSkel) * skin.mTransform;
+
+        mBoneScratch.clear();
+        mBoneScratch.reserve(bones.size());
+        for (std::size_t at = 0; at < bones.size(); ++at)
+        {
+            if (bones[at] == nullptr)
+            {
+                mBoneScratch.push_back(Shaders::GpuBone{});
+                continue;
+            }
+
+            mBoneScratch.push_back(
+                toGpuBone(skin.mBones[at].mInvBindMatrix * bones[at]->mMatrixInSkeletonSpace * transform));
+        }
+
+        mScene.poseRig(mesh, mBoneScratch, reachOf(rig));
+    }
+
+    void SceneExtractor::poseMorph(Index mesh, const SceneUtil::MorphGeometry& morph)
+    {
+        const SceneUtil::MorphGeometry::MorphTargetList& targets = morph.getMorphTargetList();
+
+        mWeightScratch.clear();
+        mWeightScratch.reserve(targets.size());
+        for (const SceneUtil::MorphGeometry::MorphTarget& target : targets)
+            mWeightScratch.push_back(target.getWeight());
+
+        mScene.poseMorph(mesh, mWeightScratch, reachOf(morph));
     }
 
     bool SceneExtractor::isWater(osg::Node::NodeMask mask) const

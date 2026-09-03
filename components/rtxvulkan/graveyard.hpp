@@ -72,4 +72,11 @@ namespace Rtx
         std::vector<Room> mRooms;
         std::vector<VkCommandBuffer> mCommands;
     };
+
+    /// `growTo` for a table that keeps growing: makes `held` able to hold `bytes`, at twice what it
+    /// holds where that is more, so the table is made again a logarithmic number of times rather
+    /// than once per arrival — and buries what that displaced. True where it was made again, which
+    /// is a table holding nothing that the caller has to fill whole.
+    bool outgrow(
+        Buffer& held, const Device& device, VkDeviceSize bytes, VkBufferUsageFlags usage, Graveyard& graveyard);
 }

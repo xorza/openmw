@@ -27,6 +27,10 @@ namespace Rtx
 
     Transform3x4 toTransform3x4(const osg::Matrixf& matrix);
 
+    /// A bone's pose as the skinning kernel reads it: the same three rows, packed once here so a bone
+    /// and an instance's motion cannot disagree about which way round a matrix goes.
+    Shaders::GpuBone toGpuBone(const osg::Matrixf& matrix);
+
     /// One row of the top-level acceleration structure, with every decision already taken.
     ///
     /// **This is where the material policy lives, and it lives here once.** Which rays may see a

@@ -100,6 +100,13 @@ namespace Rtx
         /// address of the table of addresses, which the frame block carries.
         VkDeviceAddress getTableAddress() const { return mTable.getDeviceAddress(); }
 
+        /// One block by number, for a test that copies what a kernel wrote into it back out.
+        const Buffer& getBlock(std::uint32_t block) const
+        {
+            assert(block < mBlocks.size());
+            return mBlocks[block];
+        }
+
         VkDeviceSize getBytes() const { return getBlockBytes() * mBlocks.size(); }
 
     private:

@@ -1,0 +1,88 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// Poses one skinned mesh from its bind pose, ahead of the refit over it.
+//
+// **`SceneUtil::RigGeometry::cull`'s arithmetic and nothing else.** Each vertex's run names the
+// bones that move it and by how much; the rows of those bones are blended at their weights, and the
+// blend is of the matrices and not of the results — the same thing for a position and not for a
+// normal, and one matrix at the end is three dot products against a normal instead of many. The
+// bones already carry the skin transform, composed on the host, so the blend is the whole pose.
+//
+// The normal takes the linear part and is not normalised, because the rasterizer does not: what
+// a hit reads is what it would have read. Morrowind scales uniformly, so the plain matrix stands in
+// for the inverse transpose there as well.
+//
+// Source and destination are different tables: the bind pose stays where it arrived and the pose
+// lands in the slot's copy of the positions and the normals, at the mesh's own run — which is what
+// the structure is refitted from and what a hit reads its shading normal out of.
+
+#include "skinning.h"
+
+layout(local_size_x = SKIN_WORKGROUP) in;
+
+// Four, because a twelve-byte element at an arbitrary index is only ever float-aligned.
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Vectors
+{
+    vec3 at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) writeonly buffer Written
+{
+    vec3 at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Runs
+{
+    uint at[];
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Influences
+{
+    GpuInfluence at[];
+};
+
+// Sixteen: a row is forty-eight bytes and the host asserts the run it hands over sits on sixteen.
+layout(buffer_reference, buffer_reference_align = 16, scalar) readonly buffer Bones
+{
+    GpuBone at[];
+};
+
+layout(push_constant, scalar) uniform Push
+{
+    SkinConstants skin;
+};
+
+void main()
+{
+    const uint vertex = gl_GlobalInvocationID.x;
+    if (vertex >= skin.mCount)
+        return;
+
+    const uint run = Runs(skin.mRuns).at[vertex];
+    const uint first = run >> RUN_COUNT_BITS;
+    const uint count = run & RUN_COUNT_MASK;
+
+    // A vertex no bone moves sums to the zero matrix and lands at the origin, which is where the
+    // rasterizer puts it too.
+    vec4 rows[3] = vec4[3](vec4(0.0), vec4(0.0), vec4(0.0));
+    for (uint at = 0u; at < count; ++at)
+    {
+        const GpuInfluence share = Influences(skin.mInfluences).at[first + at];
+        const GpuBone bone = Bones(skin.mBones).at[share.mBone];
+        rows[0] += share.mWeight * bone.mRows[0];
+        rows[1] += share.mWeight * bone.mRows[1];
+        rows[2] += share.mWeight * bone.mRows[2];
+    }
+
+    const vec4 point = vec4(Vectors(skin.mBindPositions).at[vertex], 1.0);
+    const vec3 normal = Vectors(skin.mBindNormals).at[vertex];
+
+    Written(skin.mPositions).at[vertex] = vec3(dot(rows[0], point), dot(rows[1], point), dot(rows[2], point));
+    Written(skin.mNormals).at[vertex]
+        = vec3(dot(rows[0].xyz, normal), dot(rows[1].xyz, normal), dot(rows[2].xyz, normal));
+}

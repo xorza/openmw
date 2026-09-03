@@ -111,6 +111,7 @@ set(RTX_SHADER_HEADERS
     shaders/gbuffer.h
     shaders/portable.h
     shaders/scene.h
+    shaders/skinning.h
     shaders/visibility.h
     shaders/wave.h
 )
