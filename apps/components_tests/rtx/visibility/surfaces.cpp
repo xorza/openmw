@@ -12,6 +12,12 @@ namespace Rtx::Testing
 {
     namespace
     {
+        /// The one test in this file that asks the tables rather than the picture, so it wants a
+        /// device where the others want a renderer.
+        struct RtxSceneTableTest : DeviceTest
+        {
+        };
+
         /// A scene with nothing in it still has a table at every address the frame carries.
         ///
         /// **A null handle at a descriptor is undefined at the dispatch**, and undefined here meant a
@@ -25,10 +31,6 @@ namespace Rtx::Testing
         /// The fix is that the owner opens every table when it is built rather than when something
         /// writes to one, because the write is exactly what does not happen. This is the assertion
         /// that says so, and it is the one that would have caught it.
-        struct RtxSceneTableTest : Testing::DeviceTest
-        {
-        };
-
         TEST_F(RtxSceneTableTest, aSceneWithNothingInItStillAddressesATableForEverythingDeclared)
         {
             Device& device = getDevice();

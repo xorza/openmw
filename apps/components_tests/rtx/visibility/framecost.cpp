@@ -2,7 +2,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <string>
 #include <vector>
 
 #include <components/rtx/shadingmap.hpp>
@@ -15,19 +14,13 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// Its own device, because the validation layers allocate and this test counts allocations.
-        class RtxFrameCostTest : public ::testing::Test
+        /// Its own device, because the validation layers allocate and these tests count allocations.
+        struct RtxFrameCostTest : DeviceTest
         {
-        protected:
-            void SetUp() override
+            RtxFrameCostTest()
+                : DeviceTest(false)
             {
-                std::string reason;
-                mHarness = Testing::getUnvalidatedHarness(reason);
-                if (mHarness == nullptr)
-                    GTEST_SKIP() << reason;
             }
-
-            Testing::Harness* mHarness = nullptr;
         };
 
         /// A frame that changes nothing but a body's pose must not go to the heap.
@@ -64,8 +57,8 @@ namespace Rtx::Testing
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, 100.0f, 0.0f), .mMesh = body });
             poseByOneBone(scene, body, osg::Matrixf::identity());
 
-            Device& device = *mHarness->mDevice;
-            CommandPool pool(device);
+            Device& device = getDevice();
+            CommandPool& pool = getPool();
             std::vector<InstanceRecord> records;
             std::vector<Index> changed;
             makeInstanceRecords(scene, records);
@@ -253,8 +246,8 @@ namespace Rtx::Testing
             // number is for, and a seventh is a buffer somebody made per arrival.
             constexpr std::size_t budgetPerTexture = 6;
 
-            Device& device = *mHarness->mDevice;
-            CommandPool pool(device);
+            Device& device = getDevice();
+            CommandPool& pool = getPool();
             Graveyard graveyard(device, pool);
 
             // Flat and uncompressed, so the description is exact arithmetic rather than a file.

@@ -1,11 +1,7 @@
 #pragma once
 
-#include <cmath>
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <filesystem>
-#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -13,14 +9,11 @@
 
 #include <gtest/gtest.h>
 
-#include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/instance.hpp>
-#include <components/rtxvulkan/physicaldevice.hpp>
-#include <components/rtxvulkan/requirements.hpp>
 
 namespace Rtx::Testing
 {
@@ -45,23 +38,7 @@ namespace Rtx::Testing
     /// Shared with the tests that build an instance of their own so the two cannot come to disagree
     /// about which failure is honest and which is a finding. Whether a device that *does* exist
     /// qualifies is a different question, and `PhysicalDevice::select` still throws it.
-    inline std::string findInstanceObstacle()
-    {
-        std::uint32_t version = 0;
-        if (vkEnumerateInstanceVersion(&version) != VK_SUCCESS || version < sApiVersion)
-            return "the Vulkan loader is absent or older than this renderer requires";
-
-        try
-        {
-            const Instance probe{ InstanceOptions{} };
-        }
-        catch (const Error& error)
-        {
-            return std::string("no Vulkan driver is installed: ") + error.what();
-        }
-
-        return {};
-    }
+    std::string findInstanceObstacle();
 
     /// Something built once for the whole binary, and the reason where it could not be.
     ///
@@ -98,62 +75,12 @@ namespace Rtx::Testing
         }
     };
 
-    namespace Details
-    {
-        /// Keyed on validation, which is the only axis any of these vary along.
-        inline Once<Harness>& harnessCache(bool validation)
-        {
-            static Once<Harness> sValidated;
-            static Once<Harness> sPlain;
-            return validation ? sValidated : sPlain;
-        }
-
-        inline Once<Renderer>& rendererCache()
-        {
-            static Once<Renderer> sRenderer;
-            return sRenderer;
-        }
-
-        inline std::unique_ptr<Harness> build(bool validation, std::string& reason)
-        {
-            if (std::string obstacle = findInstanceObstacle(); !obstacle.empty())
-            {
-                reason = std::move(obstacle);
-                return nullptr;
-            }
-
-            InstanceOptions options;
-            options.mValidation = validation;
-            // Tests provoke errors deliberately and assert on them; aborting would take the suite
-            // down with the first one.
-            options.mPolicy = ValidationPolicy::Log;
-
-            auto harness = std::make_unique<Harness>();
-            harness->mInstance = std::make_unique<Instance>(options);
-
-            std::uint32_t count = 0;
-            if (vkEnumeratePhysicalDevices(harness->mInstance->getHandle(), &count, nullptr) != VK_SUCCESS
-                || count == 0)
-            {
-                reason = "no Vulkan device is installed";
-                return nullptr;
-            }
-
-            harness->mDevice = std::make_unique<Device>(
-                *harness->mInstance, PhysicalDevice::select(harness->mInstance->getHandle()));
-            return harness;
-        }
-    }
-
     /// Null when this machine has no Vulkan device at all, with `reason` saying so.
     ///
     /// A machine without a GPU legitimately cannot run these, and skipping is honest. A machine
     /// *with* one that does not meet the requirements is a finding, so that throws out of
     /// `PhysicalDevice::select` and fails the suite rather than skipping.
-    inline Harness* getHarness(std::string& reason)
-    {
-        return Details::harnessCache(true).get(reason, [](std::string& why) { return Details::build(true, why); });
-    }
+    Harness* getHarness(std::string& reason);
 
     /// The same, with no validation layers loaded.
     ///
@@ -163,50 +90,17 @@ namespace Rtx::Testing
     /// 28,448 allocations over its 32 frames — 889 a frame against a budget of nought. That is not
     /// a stricter test but a deleted one. Everything else is validated, so this second device is
     /// only built if something asks for it.
-    inline Harness* getUnvalidatedHarness(std::string& reason)
-    {
-        return Details::harnessCache(false).get(reason, [](std::string& why) { return Details::build(false, why); });
-    }
+    Harness* getUnvalidatedHarness(std::string& reason);
 
     /// Where the build wrote the compiled shaders.
-    inline std::filesystem::path getShaderDirectory()
-    {
-        return std::filesystem::path(OPENMW_RTX_SHADER_DIR);
-    }
+    std::filesystem::path getShaderDirectory();
 
     /// How every renderer in this suite is built, apart from the extent and the upscaler a caller
     /// sets for itself.
     ///
     /// **One place, so that a test standing up its own renderer cannot end up validated less than
     /// the shared one.**
-    inline RendererOptions describeRenderer(std::uint32_t width, std::uint32_t height)
-    {
-        RendererOptions options;
-        options.mShaderDirectory = getShaderDirectory();
-        options.mWidth = width;
-        options.mHeight = height;
-        options.mValidation.mEnabled = true;
-        // Tests provoke errors deliberately and assert on them; aborting would take the suite down
-        // with the first one.
-        options.mValidation.mAbortOnError = false;
-        // **On, because a missing barrier is what this suite is worst at seeing.** Every test here
-        // submits and waits, so the ordering a frame relies on is supplied by the harness rather
-        // than by the code under test, and a hazard shows as nothing at all — a traced view wrote
-        // its picture with no dependency on the write before it for as long as there have been
-        // traced views. It costs no measurable time in this suite.
-        options.mValidation.mSynchronization = true;
-
-        return options;
-    }
-
-    namespace Details
-    {
-        inline std::unique_ptr<Renderer> buildRenderer(std::string& reason)
-        {
-            // Every test resizes to what it needs; one texel is only what the first target costs.
-            return createRenderer(describeRenderer(1, 1), reason);
-        }
-    }
+    RendererOptions describeRenderer(std::uint32_t width, std::uint32_t height);
 
     /// The renderer the pixel tests trace through, built once for the binary.
     ///
@@ -224,10 +118,7 @@ namespace Rtx::Testing
     /// after that costs between one and fifteen. So a test that traces through this one is free and
     /// a test that stands up its own costs the suite two seconds. Only an upscaler needs its own,
     /// because the mode is fixed when the renderer is built.
-    inline Renderer* getRenderer(std::string& reason)
-    {
-        return Details::rendererCache().get(reason, Details::buildRenderer);
-    }
+    Renderer* getRenderer(std::string& reason);
 
     /// The base of a test that drives Vulkan directly.
     ///
@@ -237,28 +128,21 @@ namespace Rtx::Testing
     class DeviceTest : public ::testing::Test
     {
     protected:
-        void SetUp() override
-        {
-            std::string reason;
-            mHarness = getHarness(reason);
-            if (mHarness == nullptr)
-                GTEST_SKIP() << reason;
-        }
+        /// **Validated unless a derived fixture says otherwise**, which only a test that counts
+        /// allocations wants: `getUnvalidatedHarness` says what the layers cost such a test.
+        explicit DeviceTest(bool validation = true);
+
+        void SetUp() override;
 
         Device& getDevice() const { return *mHarness->mDevice; }
 
         /// A pool on that device, opened on the first ask and closed with the test.
-        CommandPool& getPool()
-        {
-            if (mPool == nullptr)
-                mPool = std::make_unique<CommandPool>(getDevice());
-
-            return *mPool;
-        }
+        CommandPool& getPool();
 
         Harness* mHarness = nullptr;
 
     private:
+        const bool mValidation;
         std::unique_ptr<CommandPool> mPool;
     };
 
@@ -271,25 +155,9 @@ namespace Rtx::Testing
     class RendererTest : public ::testing::Test
     {
     protected:
-        void SetUp() override
-        {
-            std::string reason;
-            mRenderer = getRenderer(reason);
-            if (mRenderer == nullptr)
-                GTEST_SKIP() << reason;
+        void SetUp() override;
 
-            mRenderer->takeValidationErrors(mErrors);
-        }
-
-        void TearDown() override
-        {
-            if (mRenderer == nullptr)
-                return;
-
-            mRenderer->takeValidationErrors(mErrors);
-            for (const std::string& error : mErrors)
-                ADD_FAILURE() << "validation error: " << error;
-        }
+        void TearDown() override;
 
         Renderer* mRenderer = nullptr;
 
@@ -297,47 +165,10 @@ namespace Rtx::Testing
         std::vector<std::string> mErrors;
     };
 
-    /// One half float, as the number it stands for.
-    ///
-    /// **Spelled out rather than shared with the renderer, and by arithmetic rather than by bits.**
-    /// Several passes keep their output in halves, so a test that read them through the same helper
-    /// the shader used would pass however wrong that helper was — and one written in shifts and
-    /// masks is a second place for the subnormal case to be wrong.
-    inline float fromHalf(std::uint16_t bits)
-    {
-        const float sign = (bits & 0x8000u) != 0 ? -1.0f : 1.0f;
-        const int exponent = (bits >> 10) & 0x1f;
-        const int mantissa = bits & 0x3ff;
-
-        if (exponent == 0)
-            return sign * std::ldexp(static_cast<float>(mantissa), -24);
-
-        if (exponent == 31)
-            return sign
-                * (mantissa == 0 ? std::numeric_limits<float>::infinity() : std::numeric_limits<float>::quiet_NaN());
-
-        return sign * std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f, exponent - 15);
-    }
-
     /// Every channel of one level of a half-float image, decoded, row major.
     ///
     /// **Left in the layout it was found in**, which `Image::read` promises: reading an image is not
     /// a change to it. Several passes keep their output in halves, so this is the read-back beside
     /// the decoder rather than one copy of it per suite.
-    inline std::vector<float> readHalves(CommandPool& pool, const Image& image, std::uint32_t level = 0)
-    {
-        std::vector<std::uint8_t> bytes;
-        image.read(pool, VK_IMAGE_LAYOUT_GENERAL, bytes, level);
-
-        std::vector<float> values(bytes.size() / sizeof(std::uint16_t));
-        for (std::size_t at = 0; at < values.size(); ++at)
-        {
-            std::uint16_t bits = 0;
-            std::memcpy(&bits, bytes.data() + at * sizeof(bits), sizeof(bits));
-            values[at] = fromHalf(bits);
-        }
-
-        return values;
-    }
-
+    std::vector<float> readHalves(CommandPool& pool, const Image& image, std::uint32_t level = 0);
 }

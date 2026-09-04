@@ -7,20 +7,6 @@ duplication, asymmetry and the accuracy of the comments. It does not question wh
 
 ---
 
-## `DeviceTest` is worked around rather than extended
-
-The fixture at `harness.hpp:238` exists to hold a device and a command pool.
-
-- [ ] `visibility/framecost.cpp:19` writes out `DeviceTest`'s skip by hand because it wants the
-      unvalidated harness. Give `DeviceTest` a validation flag instead.
-- [ ] `visibility/micromap.cpp:69` `RtxMicromapPictureTest` and `visibility/surfaces.cpp:41`
-      `RtxSceneTableTest` are the only per-file fixtures over the visibility suite. `RtxSceneTableTest`
-      is an empty struct that adds nothing over `DeviceTest`.
-- [ ] `harness.hpp` holds every definition inline, including `Once<T>` and the two caches, so all 70
-      translation units compile them. Move the bodies to `harness.cpp` and leave the declarations.
-
----
-
 ## Helpers assert and throw on behalf of their callers
 
 A failure raised inside a helper reports at the helper's line, not the caller's, and a helper that
