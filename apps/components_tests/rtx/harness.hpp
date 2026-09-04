@@ -88,9 +88,9 @@ namespace Rtx::Testing
     /// **The one thing in this suite that runs unvalidated, and it is measured rather than
     /// asserted.** `getAllocationCount` replaces the global `operator new`, so it cannot tell a
     /// layer's allocation from the renderer's; with the layers loaded, `RtxFrameCostTest` measures
-    /// 28,448 allocations over its 32 frames — 889 a frame against a budget of nought. That is not
-    /// a stricter test but a deleted one. Everything else is validated, so this second device is
-    /// only built if something asks for it.
+    /// between 32,352 and 49,152 allocations over its 32 frames — a thousand to fifteen hundred a
+    /// frame against a budget of nought. That is not a stricter test but a deleted one. Everything
+    /// else is validated, so this second device is only built if something asks for it.
     Harness* getUnvalidatedHarness(std::string& reason);
 
     /// Where the build wrote the compiled shaders.
@@ -109,8 +109,12 @@ namespace Rtx::Testing
     /// sets for itself.
     ///
     /// **One place, so that a test standing up its own renderer cannot end up validated less than
-    /// the shared one.**
-    RendererOptions describeRenderer(std::uint32_t width, std::uint32_t height);
+    /// the shared one.** The one that legitimately is says so here rather than by clearing fields
+    /// afterwards: the layers are two switches and a caller that remembered one of them would have a
+    /// renderer half validated and no way to tell.
+    ///
+    /// @param validation off only for `getUnvalidatedRenderer`, which says why.
+    RendererOptions describeRenderer(std::uint32_t width, std::uint32_t height, bool validation = true);
 
     /// The renderer the pixel tests trace through, built once for the binary.
     ///
@@ -129,6 +133,14 @@ namespace Rtx::Testing
     /// a test that stands up its own costs the suite two seconds. Only an upscaler needs its own,
     /// because the mode is fixed when the renderer is built.
     Renderer* getRenderer(std::string& reason);
+
+    /// The same, with no validation layers loaded, for the one test that counts allocations.
+    ///
+    /// **A second renderer, for the reason `getUnvalidatedHarness` gives.** The layers allocate and
+    /// `getAllocationCount` replaces the global `operator new`, so it cannot tell one of theirs from
+    /// the renderer's — a frame measured through the shared renderer reports hundreds of allocations
+    /// that no change to this code could remove. Built only if something asks, and asked by one test.
+    Renderer* getUnvalidatedRenderer(std::string& reason);
 
     /// The base of a test that drives Vulkan directly.
     ///
