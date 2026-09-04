@@ -126,6 +126,12 @@ when the world changes.
 
 ## 5. Non-canonical data structures
 
+**Investigated. `.notes/structures.md` is the design proposal and the plan.** It measures the whole
+section and finds the list ranked wrong: three `std::unordered_map`s cost 4.4% of the harness's CPU
+at Vivec and two of them are not named here, while eight of the nine items below cost 0.02% between
+them. It also corrects 5.4's and 5.5's directions, and finds 5.8 needs no go-ahead.
+
+
 ### 5.1 Texture slots are seven parallel structures
 
 `components/rtx/texturetable.hpp`. They are one type now, with the invariant stated in one place —
