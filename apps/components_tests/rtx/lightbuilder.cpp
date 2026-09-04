@@ -414,29 +414,13 @@ namespace Rtx
                 (larger->mSourceRadius / light->mSourceRadius) * (larger->mSourceRadius / light->mSourceRadius), 1e-4f);
         }
 
-        /// The sun's arc, which is the engine's own and not an approximation of it.
+        /// A record read once answers every hour, and reaches the heap for none of them.
         ///
-        /// `(-400 * orbit, 75, -100)` with `orbit` running from one at sunrise to minus one at
-        /// nightfall — so the vector is where the light *goes*, west at dawn and east at dusk, and
-        /// Every quarter hour of the day, asked for.
-        ///
-        /// **A fallback key the game does not define throws rather than reading zero**, so this is a
-        /// test that `makeDaylight` asks only for settings that exist. It did not: the land fog
-        /// depth is recorded for day and night alone, and every hour inside sunrise or sunset asked
-        /// for a third that was never written, which took the whole tool down.
-        ///
-        /// `TestingOpenMW::fallbackSeed` plants Clear before any test runs and says what the numbers
-        /// are and are not: an expectation here is written against what `makeDaylight` says rather
-        /// than against a value the seed happens to carry.
-        TEST(RtxLightBuilderTest, everyHourAsksOnlyForSettingsTheGameDefines)
+        /// **A window turning its clock asks for the same weather sixty times a second.** Reading
+        /// the name each time built about a hundred strings out of the fallback settings, for
+        /// numbers that cannot have changed between two frames. What is left is arithmetic.
+        TEST(RtxLightBuilderTest, aWeatherRecordLightsAnHourWithoutReachingTheHeap)
         {
-            for (float hour = 0.0f; hour < 24.0f; hour += 0.25f)
-                EXPECT_NO_THROW(makeDaylight("Clear", hour, sReach)) << "at hour " << hour;
-
-            // **A record read once answers every hour, and reaches the heap for none of them.** A
-            // window turning its clock asks for the same weather sixty times a second; reading the
-            // name each time built about a hundred strings out of the fallback settings for numbers
-            // that cannot have changed between two frames. What is left is arithmetic.
             const WeatherRamps clear = readWeatherRamps("Clear");
 
             // Warmed up, because the first of anything may legitimately allocate.
@@ -459,6 +443,26 @@ namespace Rtx
             // night colours differ in both the ini and the defaults OpenMW ships.
             EXPECT_EQ(later.mAmbient, makeDaylight("Clear", 20.0f, sReach).mAmbient);
             EXPECT_NE(later.mAmbient, again.mAmbient);
+        }
+
+        /// The sun's arc, which is the engine's own and not an approximation of it.
+        ///
+        /// `(-400 * orbit, 75, -100)` with `orbit` running from one at sunrise to minus one at
+        /// nightfall — so the vector is where the light *goes*, west at dawn and east at dusk, and
+        /// Every quarter hour of the day, asked for.
+        ///
+        /// **A fallback key the game does not define throws rather than reading zero**, so this is a
+        /// test that `makeDaylight` asks only for settings that exist. It did not: the land fog
+        /// depth is recorded for day and night alone, and every hour inside sunrise or sunset asked
+        /// for a third that was never written, which took the whole tool down.
+        ///
+        /// `TestingOpenMW::fallbackSeed` plants Clear before any test runs and says what the numbers
+        /// are and are not: an expectation here is written against what `makeDaylight` says rather
+        /// than against a value the seed happens to carry.
+        TEST(RtxLightBuilderTest, everyHourAsksOnlyForSettingsTheGameDefines)
+        {
+            for (float hour = 0.0f; hour < 24.0f; hour += 0.25f)
+                EXPECT_NO_THROW(makeDaylight("Clear", hour, sReach)) << "at hour " << hour;
 
             // A file records one depth for daylight and one for night, and the ramp hands the day
             // value to three of its four points — sunrise, day and sunset all carry it.

@@ -103,7 +103,7 @@ namespace Rtx
         bool owes(std::uint32_t slot) const
         {
             assert(slot < mSlots);
-            return mOwed[slot].mEverything || !mOwed[slot].mRows.empty();
+            return mOwed[slot].owesAnything();
         }
 
         /// Writes what `slot`'s copy owes and clears the debt.
@@ -135,13 +135,13 @@ namespace Rtx
             {
                 graveyard.bury(growTo(copy, *mDevice, std::max(least, copy.getSize() * 2), mUsage));
                 mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(copy.getHandle()), mName);
-                owed.mEverything = true;
+                owed.oweEverything();
             }
 
-            if (owed.mEverything)
+            if (owed.owesEverything())
                 copy.write(std::span<const Row>(mRows));
             else
-                for (const Index at : owed.mRows)
+                for (const Index at : owed.getRows())
                     copy.writeAt(at * sizeof(Row), std::span<const Row>(&mRows[at], 1));
 
             owed.settle();
@@ -174,13 +174,13 @@ namespace Rtx
         std::span<const Index> getOwed(std::uint32_t slot) const
         {
             assert(slot < mSlots);
-            return mOwed[slot].mRows;
+            return mOwed[slot].getRows();
         }
 
         bool owesEverything(std::uint32_t slot) const
         {
             assert(slot < mSlots);
-            return mOwed[slot].mEverything;
+            return mOwed[slot].owesEverything();
         }
 
     private:

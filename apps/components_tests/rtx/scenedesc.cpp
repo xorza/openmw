@@ -778,91 +778,137 @@ namespace Rtx
         /// layer table and a four-long one in the masks, and the next chunk of the same shape lands
         /// in both — which is the difference between travelling and accumulating a blend map per
         /// chunk walked past.
+        /// Three materials over four textures, with the first released — the state both tests below
+        /// are each about one part of.
+        ///
+        /// **A struct rather than a fixture**, because `RtxSceneDescTest` is a suite of plain tests
+        /// and one shared setup does not earn converting the other fifty.
+        struct ReleasedTerrain
+        {
+            static constexpr std::array sGroundWeights{ 0.25f, 0.25f, 0.25f, 0.25f };
+            static constexpr std::array sSandWeights{ 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f };
+
+            SceneDesc mScene;
+
+            Index mGround = mScene.addTexture(VFS::Path::NormalizedView("textures/tx_ground.dds"));
+            Index mStone = mScene.addTexture(VFS::Path::NormalizedView("textures/tx_stone.dds"));
+            Index mSand = mScene.addTexture(VFS::Path::NormalizedView("textures/tx_sand.dds"));
+            Index mMoss = mScene.addTexture(VFS::Path::NormalizedView("textures/tx_moss.dds"));
+
+            Index mDropped = sNoIndex;
+            Index mPlain = sNoIndex;
+            Index mKept = sNoIndex;
+
+            /// True where the scene arrived at the state the tests describe, which a caller asserts
+            /// on rather than trusting.
+            bool mReleased = false;
+
+            /// What the two tables held before the release, which is what "they never shrink" is
+            /// measured against.
+            std::size_t mLayersBefore = 0;
+            std::size_t mMasksBefore = 0;
+
+            ReleasedTerrain()
+            {
+                const std::array droppedLayers{ MaterialLayer{ .mDiffuse = mGround,
+                    .mMaskOffset = mScene.addMask(sGroundWeights),
+                    .mMaskWidth = 2,
+                    .mMaskHeight = 2 } };
+                const Span droppedRun = mScene.addLayers(droppedLayers);
+                mDropped = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain,
+                    .mLayerOffset = droppedRun.mOffset,
+                    .mLayerCount = droppedRun.mCount });
+
+                mPlain = mScene.addMaterial(Material{ .mDiffuse = mStone });
+
+                const std::array keptLayers{ MaterialLayer{ .mDiffuse = mSand,
+                                                 .mMaskOffset = mScene.addMask(sSandWeights),
+                                                 .mMaskWidth = 3,
+                                                 .mMaskHeight = 3 },
+                    MaterialLayer{ .mDiffuse = mMoss } };
+                const Span keptRun = mScene.addLayers(keptLayers);
+                mKept = mScene.addMaterial(Material{
+                    .mKind = MaterialKind::Terrain, .mLayerOffset = keptRun.mOffset, .mLayerCount = keptRun.mCount });
+
+                mLayersBefore = mScene.getLayers().size();
+                mMasksBefore = mScene.getMasks().size();
+
+                const std::array<Index, 0> noMeshes{};
+                const std::array materials{ mPlain, mKept };
+                mReleased = mScene.release(noMeshes, materials);
+            }
+        };
+
         TEST(RtxSceneDescTest, releasingAMaterialGivesBackItsLayersAndMasks)
         {
-            SceneDesc scene;
-            const Index ground = scene.addTexture(VFS::Path::NormalizedView("textures/tx_ground.dds"));
-            const Index stone = scene.addTexture(VFS::Path::NormalizedView("textures/tx_stone.dds"));
-            const Index sand = scene.addTexture(VFS::Path::NormalizedView("textures/tx_sand.dds"));
-            const Index moss = scene.addTexture(VFS::Path::NormalizedView("textures/tx_moss.dds"));
-            ASSERT_EQ(moss, 3u);
-
-            const std::array sGroundWeights{ 0.25f, 0.25f, 0.25f, 0.25f };
-            const std::array sSandWeights{ 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f };
-
-            const std::array droppedLayers{ MaterialLayer{
-                .mDiffuse = ground, .mMaskOffset = scene.addMask(sGroundWeights), .mMaskWidth = 2, .mMaskHeight = 2 } };
-            const Span droppedRun = scene.addLayers(droppedLayers);
-            const Index dropped = scene.addMaterial(Material{
-                .mKind = MaterialKind::Terrain, .mLayerOffset = droppedRun.mOffset, .mLayerCount = droppedRun.mCount });
-
-            const Index plain = scene.addMaterial(Material{ .mDiffuse = stone });
-
-            const std::array keptLayers{
-                MaterialLayer{
-                    .mDiffuse = sand, .mMaskOffset = scene.addMask(sSandWeights), .mMaskWidth = 3, .mMaskHeight = 3 },
-                MaterialLayer{ .mDiffuse = moss }
-            };
-            const Span keptRun = scene.addLayers(keptLayers);
-            const Index kept = scene.addMaterial(Material{
-                .mKind = MaterialKind::Terrain, .mLayerOffset = keptRun.mOffset, .mLayerCount = keptRun.mCount });
-
-            ASSERT_EQ(scene.getLayers().size(), 3u);
-            ASSERT_EQ(scene.getMasks().size(), 13u);
-
-            const std::array<Index, 0> noMeshes{};
-            const std::array materials{ plain, kept };
-            ASSERT_TRUE(scene.release(noMeshes, materials));
-
-            // One texture went with the material that wore it, and it stopped being an arrival.
-            EXPECT_EQ(sorted(scene.getFreedTextures()), (std::vector<Index>{ ground }));
-            EXPECT_EQ(sorted(scene.getArrivedTextures()), (std::vector<Index>{ stone, sand, moss }));
+            ReleasedTerrain terrain;
+            SceneDesc& scene = terrain.mScene;
+            ASSERT_TRUE(terrain.mReleased);
+            ASSERT_EQ(terrain.mMoss, 3u);
+            ASSERT_EQ(terrain.mLayersBefore, 3u);
+            ASSERT_EQ(terrain.mMasksBefore, 13u);
 
             // Every survivor is at the index it was given, which is what nothing moving means.
             EXPECT_EQ(scene.getMaterials().size(), 3u);
-            EXPECT_EQ(scene.getMaterials()[plain].mDiffuse, stone);
-            EXPECT_EQ(scene.getMaterials()[kept].mLayerOffset, 1u);
-            EXPECT_EQ(scene.getMaterials()[kept].mLayerCount, 2u);
+            EXPECT_EQ(scene.getMaterials()[terrain.mPlain].mDiffuse, terrain.mStone);
+            EXPECT_EQ(scene.getMaterials()[terrain.mKept].mLayerOffset, 1u);
+            EXPECT_EQ(scene.getMaterials()[terrain.mKept].mLayerCount, 2u);
 
-            EXPECT_EQ(scene.getLayers().size(), 3u) << "the tables never shrink, they are reused in place";
-            EXPECT_EQ(scene.getMasks().size(), 13u);
-            EXPECT_EQ(scene.getLayers()[1].mDiffuse, sand);
-            EXPECT_EQ(scene.getLayers()[2].mDiffuse, moss);
+            EXPECT_EQ(scene.getLayers().size(), terrain.mLayersBefore)
+                << "the tables never shrink, they are reused in place";
+            EXPECT_EQ(scene.getMasks().size(), terrain.mMasksBefore);
+            EXPECT_EQ(scene.getLayers()[1].mDiffuse, terrain.mSand);
+            EXPECT_EQ(scene.getLayers()[2].mDiffuse, terrain.mMoss);
 
             // **The next chunk of the same shape lands in the hole the first one left.** One layer
             // and four weights, which is exactly what went: both come back at zero and neither table
             // is any longer than it was.
-            const std::array arrivingLayers{ MaterialLayer{
-                .mDiffuse = moss, .mMaskOffset = scene.addMask(sGroundWeights), .mMaskWidth = 2, .mMaskHeight = 2 } };
+            const std::array arrivingLayers{ MaterialLayer{ .mDiffuse = terrain.mMoss,
+                .mMaskOffset = scene.addMask(ReleasedTerrain::sGroundWeights),
+                .mMaskWidth = 2,
+                .mMaskHeight = 2 } };
             const Span arrivingRun = scene.addLayers(arrivingLayers);
 
             EXPECT_EQ(arrivingLayers[0].mMaskOffset, 0u) << "the freed mask run";
             EXPECT_EQ(arrivingRun, (Span{ .mOffset = 0, .mCount = 1 })) << "the freed layer run";
-            EXPECT_EQ(scene.getLayers().size(), 3u) << "the layer table grew past a hole that fitted";
-            EXPECT_EQ(scene.getMasks().size(), 13u) << "the mask table grew past a hole that fitted";
+            EXPECT_EQ(scene.getLayers().size(), terrain.mLayersBefore)
+                << "the layer table grew past a hole that fitted";
+            EXPECT_EQ(scene.getMasks().size(), terrain.mMasksBefore) << "the mask table grew past a hole that fitted";
 
             // The freed slot goes to the next material asked for, whatever size it is: a material is
             // one size, so there is no fit to find.
-            const Index reused = scene.addMaterial(Material{ .mDiffuse = moss });
-            EXPECT_EQ(reused, dropped);
+            EXPECT_EQ(scene.addMaterial(Material{ .mDiffuse = terrain.mMoss }), terrain.mDropped);
             EXPECT_EQ(scene.getMaterials().size(), 3u);
+        }
 
-            // **`tx_ground` goes with the layer that named it, and its slot comes back.** Only the
-            // dead material's run wore it, and an orphaned run is deliberately not allowed to speak
-            // for a texture — or the image would leak alongside the layers.
+        /// **`tx_ground` goes with the layer that named it, and its slot comes back.** Only the dead
+        /// material's run wore it, and an orphaned run is deliberately not allowed to speak for a
+        /// texture — or the image would leak alongside the layers.
+        TEST(RtxSceneDescTest, releasingAMaterialGivesBackTheTextureOnlyItWore)
+        {
+            ReleasedTerrain terrain;
+            SceneDesc& scene = terrain.mScene;
+            ASSERT_TRUE(terrain.mReleased);
+
+            // One texture went with the material that wore it, and it stopped being an arrival.
+            EXPECT_EQ(sorted(scene.getFreedTextures()), (std::vector<Index>{ terrain.mGround }));
+            EXPECT_EQ(sorted(scene.getArrivedTextures()),
+                (std::vector<Index>{ terrain.mStone, terrain.mSand, terrain.mMoss }));
+
             ASSERT_EQ(scene.getTextures().size(), 4u) << "the table shrank, so something was renumbered";
-            EXPECT_TRUE(scene.getTextures()[ground].value().empty()) << "a texture nothing wears was kept";
+            EXPECT_TRUE(scene.getTextures()[terrain.mGround].value().empty()) << "a texture nothing wears was kept";
 
             // The three the survivors wear are untouched, at the indices they were given.
-            EXPECT_EQ(scene.getTextures()[stone], VFS::Path::NormalizedView("textures/tx_stone.dds"));
-            EXPECT_EQ(scene.getTextures()[sand], VFS::Path::NormalizedView("textures/tx_sand.dds"));
-            EXPECT_EQ(scene.getTextures()[moss], VFS::Path::NormalizedView("textures/tx_moss.dds"));
+            EXPECT_EQ(scene.getTextures()[terrain.mStone], VFS::Path::NormalizedView("textures/tx_stone.dds"));
+            EXPECT_EQ(scene.getTextures()[terrain.mSand], VFS::Path::NormalizedView("textures/tx_sand.dds"));
+            EXPECT_EQ(scene.getTextures()[terrain.mMoss], VFS::Path::NormalizedView("textures/tx_moss.dds"));
 
             // The freed slot is what the next texture takes, and the path lookup went with it: asking
             // for `tx_ground` again is a new arrival rather than a hit on a slot nothing stands in.
-            EXPECT_EQ(scene.addTexture(VFS::Path::NormalizedView("textures/tx_ground.dds")), ground);
+            EXPECT_EQ(scene.addTexture(VFS::Path::NormalizedView("textures/tx_ground.dds")), terrain.mGround);
             EXPECT_EQ(scene.getTextures().size(), 4u) << "the table grew past a free slot";
-            EXPECT_EQ(scene.getArrivedTextures().back(), ground) << "a slot taken over was not reported as arriving";
+            EXPECT_EQ(scene.getArrivedTextures().back(), terrain.mGround)
+                << "a slot taken over was not reported as arriving";
             EXPECT_TRUE(scene.getFreedTextures().empty()) << "a slot taken back was still reported as gone";
         }
 

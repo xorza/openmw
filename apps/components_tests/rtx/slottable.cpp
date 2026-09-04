@@ -45,14 +45,16 @@ namespace Rtx
                 mTable.open(getDevice(), 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
             }
 
-            /// Which rows `slot` is owed, sorted and with the duplicates taken out, so that two
-            /// debts naming the same rows compare equal whatever order they arrived in.
+            /// Which rows `slot` is owed, sorted so that a debt compares equal whatever order it
+            /// arrived in.
+            ///
+            /// **Not deduplicated**, because whether a row is named twice is one of the things these
+            /// tests are asking about.
             std::vector<Index> owedBy(std::uint32_t slot)
             {
                 const std::span<const Index> owed = mTable.getOwed(slot);
                 std::vector<Index> sorted(owed.begin(), owed.end());
                 std::sort(sorted.begin(), sorted.end());
-                sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
                 return sorted;
             }
 

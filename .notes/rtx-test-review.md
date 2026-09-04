@@ -7,14 +7,6 @@ duplication, asymmetry and the accuracy of the comments. It does not question wh
 
 ---
 
-## A claim its own helper guarantees
-
-- [ ] `slottable.cpp:173` asserts `owedBy(1) == { 1 }` under "one row named twice is one row to
-      write". `RowDebt::owe` appends without deduplicating, so the table owes `{ 1, 1 }` and it is
-      `owedBy`'s own `std::unique` that makes the assertion hold.
-
----
-
 ## One test asserts many independent claims
 
 The first failure hides the rest, and the name cannot say what broke. Several of the names admit it.
@@ -25,11 +17,6 @@ The first failure hides the rest, and the name cannot say what broke. Several of
 - [ ] `frameworld.cpp:90` `everyNumberTheWorldDecidesReachesTheFrame` carries 46 assertions.
 - [ ] `sceneuploader.cpp:61` `aSceneIsRebuiltThenPlacedThenAppendedToThenRebuiltAgain` carries 38
       assertions and names four separate branches in its own title.
-- [ ] `lightbuilder.cpp:447` `everyHourAsksOnlyForSettingsTheGameDefines` asserts the hour sweep, the
-      allocation count, the fog ramp, the sun irradiance, the disc colour, the wind speed and a
-      throw on an unknown weather. The allocation claim in particular belongs on its own.
-- [ ] `scenedesc.cpp:789` `releasingAMaterialGivesBackItsLayersAndMasks` carries 29 assertions and
-      ends by testing texture slot reuse, which its name does not cover.
 - [ ] `visibility/light.cpp:693` `aMeasuredSourceCastsAPenumbraAndAnUnmeasuredOneCastsAnEdge` renders
       the lamp, the point source and the sun in one body over 128 lines. Three fixtures' worth.
 - [ ] `dlss.cpp:76` `rayReconstructionBuildsAndResolvesAFlatFrame` asserts the second-instance
