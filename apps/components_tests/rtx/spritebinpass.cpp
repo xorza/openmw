@@ -234,7 +234,7 @@ namespace Rtx
                             .mCount = count,
                             .mCapacity = capacity,
                         },
-                        list.getHandle(), nullptr);
+                        list, nullptr);
                 });
 
                 result.mList.resize(words);

@@ -41,7 +41,7 @@ shared uint chunkEnds[SPRITE_SCAN_WORKGROUP];
 
 void main()
 {
-    const uint tiles = spriteTilesOver(bin.mCamera.mWidth) * spriteTilesOver(bin.mCamera.mHeight);
+    const uint tiles = spriteTilesIn(bin.mCamera.mWidth, bin.mCamera.mHeight);
     const uint lane = gl_LocalInvocationID.x;
 
     const uint per = (tiles + SPRITE_SCAN_WORKGROUP - 1u) / SPRITE_SCAN_WORKGROUP;

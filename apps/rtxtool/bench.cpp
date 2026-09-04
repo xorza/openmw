@@ -14,10 +14,12 @@
 #include <vector>
 
 #include <SDL.h>
+#include <osg/Vec3f>
 
 #include <components/debug/debugging.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/files/conversion.hpp>
+#include <components/rtx/offscreentrace.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/wavespectrum.hpp>
@@ -28,6 +30,7 @@
 #include "framehashes.hpp"
 #include "framing.hpp"
 #include "perfcontrol.hpp"
+#include "picture.hpp"
 #include "stagedworld.hpp"
 #include "viewpoint.hpp"
 #include "window.hpp"
@@ -43,6 +46,92 @@ namespace RtxTool
         {
             return Debug::getRawStdout();
         }
+
+        /// How wide a map tile the bench draws. The game's is 512 and the size is not what this is
+        /// for, so it is the game's.
+        constexpr std::uint32_t sMapTileSide = 512;
+
+        /// Turns a run's sky from one weather to the next and round again.
+        ///
+        /// **A transition and not a switch**, because that is what the game does and what the
+        /// renderer has to survive: the sky is blended for four seconds, and the precipitation of
+        /// the weather arriving replaces the one leaving halfway through — a whole emitter's
+        /// meshes and textures freed on an ordinary frame, with no cell boundary anywhere near it.
+        class WeatherTurn
+        {
+        public:
+            /// Whether a list turns at all. One weather is a sky that stands still, which is what a
+            /// run being measured wants and what a row of it says.
+            static bool turns(std::span<const std::string> through) { return through.size() >= 2; }
+
+            /// Puts the sky on the first of `through`, so a run of several places turns the same
+            /// cycle at each rather than starting from whatever it was staged under. Nothing is read
+            /// again: `setSky` is arithmetic over the settings and the precipitation the sky drops.
+            WeatherTurn(std::span<const std::string> through, StagedWorld& staged, int day, float hour)
+                : mThrough(through)
+                , mStaged(staged)
+                , mDay(day)
+                , mHour(hour)
+            {
+                if (turns(mThrough))
+                    mStaged.setSky(SkyMoment{ mThrough.front(), mDay, mHour });
+            }
+
+            /// Moves the sky one frame on, and answers whether it moved. False where the run holds
+            /// one weather, which is every run that is being measured.
+            bool step()
+            {
+                if (!turns(mThrough))
+                    return false;
+
+                mTurned += sStepSeconds / StagedWorld::sTransitionSeconds;
+                if (mTurned >= 1.0f)
+                {
+                    mAt = (mAt + 1) % mThrough.size();
+                    mTurned = 0.0f;
+                }
+
+                mStaged.setSky(SkyMoment{ mThrough[mAt], mDay, mHour }, mThrough[(mAt + 1) % mThrough.size()], mTurned);
+                return true;
+            }
+
+        private:
+            std::span<const std::string> mThrough;
+            StagedWorld& mStaged;
+            int mDay = 0;
+            float mHour = 0.0f;
+            std::size_t mAt = 0;
+            float mTurned = 0.0f;
+        };
+
+        /// A local-map tile of wherever the camera stands, retraced every frame.
+        ///
+        /// **The game's compass, as the one thing a bench could not draw.** `runMap` traces one of
+        /// these and writes it to a file; this keeps the trace and the slot for the life of a place
+        /// and aims it again per frame, which is where it stops being a picture and starts being
+        /// the path `RtxRenderer::drawDeferredViews` takes between every placement and every frame.
+        ///
+        /// The framing is `frameMapTile`'s, so the tile a bench draws is the tile `map` writes.
+        class MapTile
+        {
+        public:
+            MapTile(Rtx::Renderer& renderer, std::uint32_t width, std::uint32_t height)
+                : mSlot(renderer.addGuiTexture(width, height))
+                , mTrace(renderer, width, height)
+            {
+                frameMapTile(mTrace);
+            }
+
+            void draw(const osg::Vec3f& over)
+            {
+                aimMapTile(mTrace, over);
+                mTrace.traceInto(mSlot);
+            }
+
+        private:
+            std::uint32_t mSlot = 0;
+            Rtx::OffscreenTrace mTrace;
+        };
 
         double megabytes(std::uint64_t bytes)
         {
@@ -267,6 +356,14 @@ namespace RtxTool
         Crossings crossings;
         float part = 0.0f;
 
+        WeatherTurn turn(run.mRequest.mTurnWeather, staged, run.mRequest.mFrame.mDay, run.mRequest.mFrame.mHour);
+
+        // **After the first hand-over**, because a picture of the world is a picture of whatever
+        // the renderer holds, and before that it holds nothing.
+        std::optional<MapTile> tile;
+        if (run.mRequest.mMapTile)
+            tile.emplace(renderer, sMapTileSide, sMapTileSide);
+
         // Per place, because the zones a place has are the zones its content asked for: an
         // interior with nothing moving in it never places and never reports one.
         Rtx::GpuBreakdown gpu;
@@ -336,16 +433,23 @@ namespace RtxTool
                     std::chrono::duration<double, std::milli>(built - read).count());
             }
 
+            // **Before the walk, because the walk is what carries it over.** Turning the sky puts
+            // one weather's precipitation on the graph in place of another's; what the renderer is
+            // handed is whatever the walk after it found, and a frame that skipped the walk would
+            // place an emitter the graph no longer holds.
+            const bool turned = turn.step();
+
             // **After the first, which is the frame the build above already made**, and by
             // frame index rather than by the clock: a world stepped by how long the last frame
             // took would render a different sequence on every machine and on every build.
             double walkMs = 0.0;
-            bool moved = false;
+            bool moved = turned;
             if (frame > 0 && staged.getMotion() != nullptr)
             {
                 const Clock::time_point walkStart = Clock::now();
-                moved = staged.getMotion()->step(frame);
+                const bool walked = staged.getMotion()->step(frame);
                 walkMs = std::chrono::duration<double, std::milli>(Clock::now() - walkStart).count();
+                moved = moved || walked;
             }
 
             // **Between the walk and the placement, which is where the wait belongs.** The walk
@@ -391,6 +495,13 @@ namespace RtxTool
             // What the upscaler's sample sequence and every random draw in the shader are walked
             // by. Held to the frame index so the same run draws the same samples twice over.
             framing.mFrame = frame;
+
+            // **Between the placement and the frame, which is where the game draws it.** The
+            // picture traces the scene the hand-over above has just written, against the copy of
+            // the tables it wrote and with no fence between the two — `traceGuiTexture` says what
+            // it waits for and `RtxRenderer::drawDeferredViews` is the call this stands in for.
+            if (tile.has_value())
+                tile->draw(standing.mOrigin);
 
             renderer.renderFrame(makeFrameConstants(framing, renderer.getExtents()),
                 Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
@@ -522,6 +633,20 @@ namespace RtxTool
         const bool judging = !request.mHashes.empty() || !request.mAgainst.empty();
         if (judging)
             out() << "       hashing every frame, so the times below are not a benchmark\n";
+
+        // Said here for the same reason and in the same words: a run whose sky is turning stands
+        // under a different scene at every place, and no row of it is comparable with anything.
+        if (WeatherTurn::turns(request.mTurnWeather))
+        {
+            out() << "       turning the sky through";
+            for (const std::string& weather : request.mTurnWeather)
+                out() << ' ' << weather;
+
+            out() << ", so the times below are not a benchmark\n";
+        }
+
+        if (request.mMapTile)
+            out() << "       tracing a map tile every frame, so the times below are not a benchmark\n";
 
         // **Before the run and not after it**, for the reason the layers above give: a row that
         // cannot be read against the game's is worth knowing about before the ten minutes are spent.

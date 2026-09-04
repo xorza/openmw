@@ -99,8 +99,20 @@ namespace Rtx
         FrameRing(const FrameRing&) = delete;
         FrameRing& operator=(const FrameRing&) = delete;
 
-        /// The slot of the frame being recorded, whether or not anything has begun it yet.
-        FrameSlot& recording() { return slotOf(mFrame); }
+        /// The slot of the frame being recorded, with whatever last used it finished.
+        ///
+        /// **It drains, and that is the whole of what makes its graveyard safe to bury in.** There
+        /// are two slots and two frames may be in flight, so `slotOf(mFrame)` is `slotOf(mFinished)`
+        /// — the slot of the *oldest frame still on the queue*. Anything buried in that slot's
+        /// graveyard is destroyed by the next `finishOldest`, and that call waits for the oldest
+        /// frame alone: the newer one is still tracing. `VulkanRenderer::dropTextures` buries a
+        /// texture the scene let go, before any of the calls that drain, and the image went under a
+        /// trace whose descriptor set still named it — a device lost with an invalid read and no
+        /// other sign. Every other caller happened to have drained already, and none of them said so.
+        ///
+        /// **It does not open the frame, which `begin` is for.** A picture inside the interface
+        /// takes a graveyard and must not start the frame's timer.
+        FrameSlot& recording();
 
         /// The slot `frame` used, for a caller counting on a ring of its own — the interface's.
         FrameSlot& slotOf(std::uint64_t frame) { return mSlots[frame % sFrameSlots]; }

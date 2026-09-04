@@ -687,6 +687,8 @@ namespace RtxTool
             request.mWarmup = variables["warmup"].as<float>();
             request.mFrames = variables["frames"].as<std::uint32_t>();
             request.mWindow = variables["window"].as<bool>();
+            request.mTurnWeather = splitNames(variables["turn-weather"].as<std::string>());
+            request.mMapTile = variables["map-tile"].as<bool>();
 
             const Rtx::ValidationOptions validation = validationForMeasuring(variables, request.mWindow);
 

@@ -26,21 +26,6 @@ namespace Rtx
         constexpr VkBufferUsageFlags sSpriteListUsage
             = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-        /// What share of the frame's tiles a sprite is given room for before any bin has said
-        /// what it needs: one tile in this many.
-        ///
-        /// **A floor, under a policy that otherwise follows what the last bin reported.** A frame's
-        /// entries are what the last one's were, near enough — a storm gains its drops over
-        /// seconds and a puff rises over the same — so twice the last report covers the drift, and
-        /// the floor covers the frame nothing came before, which is a cell arriving with a storm
-        /// already in it. **As a share of the tiles and not a count**, because a sprite's rectangle
-        /// grows with the tile count: rain over Balmora measured thirty-five entries a drop over
-        /// three thousand six hundred tiles — a streak near the eye is a column of them — and a
-        /// count of thirty-two a sprite was outgrown on the first frame. One in sixty-four is
-        /// fifty-six there and a hundred and twenty-seven over the game's own frame. A frame this
-        /// still misjudges is drawn right and slow, and the next is sized to it.
-        constexpr std::uint32_t sSpriteFloorShare = 64;
-
         Shaders::GpuMaterial toGpu(const Material& material)
         {
             // Zero where the material has no texture to read a mask out of, so that the shader's
@@ -252,21 +237,16 @@ namespace Rtx
         tables.mSprites.write(sprites);
 
         const auto count = static_cast<std::uint32_t>(sprites.size());
-        const std::uint32_t tiles = Shaders::spriteTilesOver(camera.mWidth) * Shaders::spriteTilesOver(camera.mHeight);
 
         // **Sized from what this copy's last bin said it needed, with room over it**, because the
         // need is only known once the tiles are counted and that happens on the device. The fence
         // this copy's last frame signalled is what makes the report readable here.
-        // `sSpriteFloorShare` says the rest of the policy.
+        // `SpriteListSize` says the rest of the policy and why one object holds it.
         const std::uint32_t reported = *static_cast<const std::uint32_t*>(tables.mSpriteBinReport.map());
+        tables.mSpriteListSize.sizeFor(Shaders::spriteTilesIn(camera.mWidth, camera.mHeight), count, reported);
 
-        // Sixty-four bits for the product alone: a million sprites over a hundred thousand tiles is
-        // a share that still fits the entry count, and the product does not.
-        const auto floor = static_cast<std::uint32_t>(std::uint64_t{ count } * tiles / sSpriteFloorShare);
-        tables.mSpriteEntries = std::max({ tables.mSpriteEntries, floor, 2 * reported });
-
-        placing.mGraveyard.bury(growTo(tables.mSpriteTileList, *mDevice,
-            VkDeviceSize{ tiles + 1 + tables.mSpriteEntries } * sizeof(std::uint32_t), sSpriteListUsage));
+        placing.mGraveyard.bury(
+            growTo(tables.mSpriteTileList, *mDevice, tables.mSpriteListSize.getBytes(), sSpriteListUsage));
         reserve(tables.mSpriteRects, VkDeviceSize{ count } * sizeof(std::uint64_t), placing.mGraveyard);
 
         pass.record(placing.mCommands,
@@ -279,9 +259,9 @@ namespace Rtx
                 .mOrigin = origin,
                 .mCamera = camera,
                 .mCount = count,
-                .mCapacity = tables.mSpriteEntries,
+                .mCapacity = tables.mSpriteListSize.getCapacity(),
             },
-            tables.mSpriteTileList.getHandle(), placing.mTimer);
+            tables.mSpriteTileList, placing.mTimer);
     }
 
     void SceneBuffers::shade(const SceneDesc& scene, const std::uint32_t slot, Graveyard& graveyard)

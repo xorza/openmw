@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <exception>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <vulkan/vulkan_core.h>
 
@@ -44,4 +46,45 @@ namespace Rtx
 
     /// What a wait that ran out is called, so the two places that can say it say it the same way.
     std::string timedOut(const char* what, std::uint64_t patience);
+
+    /// Logs `failure` and what was raised. `tearDown` calls this and nothing else should.
+    void reportTornDown(std::string_view failure, const char* raised);
+
+    /// Runs `work` and reports whatever it raises rather than letting it out.
+    ///
+    /// **What every teardown in this backend goes through, because teardown cannot fail.** A
+    /// destructor is `noexcept`, so an exception leaving one is `std::terminate`; a `catch (...)`
+    /// tidying up after a failed constructor is the same, since a throw there replaces the failure
+    /// it was tidying up after. And what fails in a teardown here is nearly always one thing — a
+    /// device that has been lost — which is the moment the report matters most and the moment the
+    /// process must not abort over it. `~VulkanRenderer` waited on a lost device and took the
+    /// process down on top of the fault description it had just built.
+    ///
+    /// **One call rather than a rule written in comments.** Four teardowns answered it four ways:
+    /// two with a `try` of their own, one with nothing, and `Presenter::destroy` by reaching past
+    /// `Device::waitIdle` to the raw entry point — which dodges the throw and the fault report with
+    /// it. The one that answered with nothing is the one that aborted.
+    ///
+    /// **Named so that misusing it reads wrong.** Wherever a caller can act on a failure, this is
+    /// the wrong call and `checkVk` is the right one.
+    ///
+    /// @param failure the whole clause the log states, which the raised message is appended to.
+    template <class Work>
+    void tearDown(std::string_view failure, Work&& work)
+    {
+        try
+        {
+            std::forward<Work>(work)();
+        }
+        catch (const std::exception& raised)
+        {
+            reportTornDown(failure, raised.what());
+        }
+        catch (...)
+        {
+            // **The promise is that nothing leaves, so it may not depend on what was thrown.**
+            // Nothing in this tree raises anything else, and a promise with a hole in it is not one.
+            reportTornDown(failure, "something that is not an exception");
+        }
+    }
 }

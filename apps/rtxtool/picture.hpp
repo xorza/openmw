@@ -5,6 +5,7 @@
 #include <optional>
 
 #include <osg/Vec3f>
+#include <osg/Vec4f>
 
 #include <components/rtx/renderer.hpp>
 
@@ -12,6 +13,11 @@ namespace ESM
 {
     struct Cell;
     struct NPC;
+}
+
+namespace Rtx
+{
+    class OffscreenTrace;
 }
 
 namespace RtxTool
@@ -74,4 +80,20 @@ namespace RtxTool
     /// units up, with a flat light that makes no shadows because a chart is read for what is where.
     int runMap(World& world, const ESM::Cell& cell, const StagingRequest& staging, const ActorRequest& actors,
         const Rtx::ValidationOptions& validation, const PictureRequest& request);
+
+    /// What a tile is left as where nothing was hit, which its writer needs as well as its trace.
+    ///
+    /// A function and not a constant, because `osg::Vec4f` has no constexpr constructor —
+    /// `SceneUtil::mapLight` is the same shape for the same reason.
+    osg::Vec4f mapClear();
+
+    /// Frames `trace` as a local-map tile: one cell across, straight down, under a flat light.
+    ///
+    /// **Two callers and one framing.** `runMap` writes one of these to a file and `bench` redraws
+    /// one every frame, which is what the game's compass does; a projection, a light and a clear
+    /// colour stated twice is a bench drawing a tile the harness's own `map` command does not.
+    void frameMapTile(Rtx::OffscreenTrace& trace);
+
+    /// Aims a tile framed by `frameMapTile` at whatever stands under `over`. Its height is ignored.
+    void aimMapTile(Rtx::OffscreenTrace& trace, const osg::Vec3f& over);
 }

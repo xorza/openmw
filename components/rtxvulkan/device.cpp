@@ -178,7 +178,9 @@ namespace Rtx
     {
         if (mHandle != VK_NULL_HANDLE)
         {
-            vkDeviceWaitIdle(mHandle);
+            // Through the wrapper and so through `tearDown`, which is what keeps the fault
+            // description a lost device carries: the raw call answered with a number nobody read.
+            tearDown("the device would not finish before it was destroyed", [&] { waitIdle(); });
 
             // Before the device it was made on, and explicitly rather than by member order: saving
             // it calls into the device, so it cannot outlive one this destructor is about to close.

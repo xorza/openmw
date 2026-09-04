@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdint>
 
+#include "buffer.hpp"
 #include "device.hpp"
 #include "gputimer.hpp"
 
@@ -53,15 +54,22 @@ namespace Rtx
     {
     }
 
-    void SpriteBinPass::record(VkCommandBuffer commands, const Shaders::SpriteBinConstants& bin, const VkBuffer list,
+    void SpriteBinPass::record(VkCommandBuffer commands, const Shaders::SpriteBinConstants& bin, const Buffer& list,
         GpuTimer* const timer) const
     {
         assert(bin.mCamera.mWidth > 0 && bin.mCamera.mHeight > 0 && "a bin over a frame with no pixels");
         assert(bin.mSprites != 0 && bin.mEmitters != 0 && bin.mRects != 0 && bin.mList != 0 && bin.mReport != 0
             && "a bin over a table addressed as nothing");
 
-        const std::uint32_t tiles
-            = Shaders::spriteTilesOver(bin.mCamera.mWidth) * Shaders::spriteTilesOver(bin.mCamera.mHeight);
+        const std::uint32_t tiles = Shaders::spriteTilesIn(bin.mCamera.mWidth, bin.mCamera.mHeight);
+
+        // **The one place the list's length and the capacity the shader is told meet.** The starts
+        // are `tiles + 1` entries and the runs are `mCapacity` more, and a buffer shorter than their
+        // sum is three dispatches writing past the end of it — where a capacity honestly smaller
+        // than the runs need is only a slow frame. `Rtx::SpriteListSize` makes both numbers out of
+        // one, and a caller that took them from two would be caught here.
+        assert(list.getSize() >= (VkDeviceSize{ tiles } + 1 + bin.mCapacity) * sizeof(std::uint32_t)
+            && "a sprite list shorter than its starts and its capacity together");
 
         openZone(timer, commands, "sprites");
 
@@ -80,7 +88,7 @@ namespace Rtx
         // device's rather than a memset of the host's: it is the one cost that scales with the
         // tile count whatever the sprites do, and taking it off the host is what let the tile be
         // chosen for the trace.
-        vkCmdFillBuffer(commands, list, 0, VkDeviceSize{ tiles + 1 } * sizeof(std::uint32_t), 0);
+        vkCmdFillBuffer(commands, list.getHandle(), 0, (VkDeviceSize{ tiles } + 1) * sizeof(std::uint32_t), 0);
         handOver(commands, VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
             VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);

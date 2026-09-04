@@ -164,6 +164,27 @@ namespace RtxTool
         return writePicture(*renderer, slot, request, clear, out);
     }
 
+    osg::Vec4f mapClear()
+    {
+        return osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f);
+    }
+
+    void frameMapTile(Rtx::OffscreenTrace& trace)
+    {
+        // One cell across, which is what a tile is: the game divides a cell's bounds into this and
+        // draws one of these per square.
+        const float side = static_cast<float>(ESM::getCellSize(ESM::Cell::sDefaultWorldspaceId));
+        trace.setOrthographic(side, side, SceneUtil::sMapNear, sMapFar);
+        trace.setClearColour(mapClear());
+        lightAs(trace, SceneUtil::mapLight());
+    }
+
+    void aimMapTile(Rtx::OffscreenTrace& trace, const osg::Vec3f& over)
+    {
+        trace.setView(osg::Matrixf::lookAt(osg::Vec3f(over.x(), over.y(), sMapEyeHeight),
+            osg::Vec3f(over.x(), over.y(), sMapEyeHeight - 1.0f), osg::Vec3f(0.0f, 1.0f, 0.0f)));
+    }
+
     int runMap(World& world, const ESM::Cell& cell, const StagingRequest& staging, const ActorRequest& actors,
         const Rtx::ValidationOptions& validation, const PictureRequest& request)
     {
@@ -188,31 +209,21 @@ namespace RtxTool
         uploader.setStaged(true);
         uploader.hand(*renderer, Rtx::sWorld, scene, world.getImageManager(), Rtx::SeaState{});
 
-        const osg::Vec4f clear(0.0f, 0.0f, 0.0f, 1.0f);
-
         const std::uint32_t slot = renderer->addGuiTexture(request.mWidth, request.mHeight);
 
         Rtx::OffscreenTrace trace(*renderer, request.mWidth, request.mHeight);
-
-        // One cell across, which is what a tile is: the game divides a cell's bounds into this and
-        // draws one of these per square.
-        const float side = static_cast<float>(ESM::getCellSize(ESM::Cell::sDefaultWorldspaceId));
-        trace.setOrthographic(side, side, SceneUtil::sMapNear, sMapFar);
-        trace.setClearColour(clear);
-        lightAs(trace, SceneUtil::mapLight());
+        frameMapTile(trace);
 
         // The middle of the cell for an exterior, whose square is known before anything is read;
         // the middle of what was staged for an interior, whose extent is whatever the room is.
+        const float side = static_cast<float>(ESM::getCellSize(ESM::Cell::sDefaultWorldspaceId));
         const osg::BoundingBoxf bounds = scene.getBounds();
-        const osg::Vec3f middle = cell.isExterior()
-            ? osg::Vec3f((cell.getGridX() + 0.5f) * side, (cell.getGridY() + 0.5f) * side, 0.0f)
-            : osg::Vec3f(bounds.center().x(), bounds.center().y(), 0.0f);
-
-        trace.setView(osg::Matrixf::lookAt(osg::Vec3f(middle.x(), middle.y(), sMapEyeHeight),
-            osg::Vec3f(middle.x(), middle.y(), sMapEyeHeight - 1.0f), osg::Vec3f(0.0f, 1.0f, 0.0f)));
+        aimMapTile(trace,
+            cell.isExterior() ? osg::Vec3f((cell.getGridX() + 0.5f) * side, (cell.getGridY() + 0.5f) * side, 0.0f)
+                              : osg::Vec3f(bounds.center().x(), bounds.center().y(), 0.0f));
 
         trace.traceInto(slot);
 
-        return writePicture(*renderer, slot, request, clear, out);
+        return writePicture(*renderer, slot, request, mapClear(), out);
     }
 }

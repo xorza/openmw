@@ -55,17 +55,22 @@ namespace Rtx
         }
     }
 
-    FrameSlot& FrameRing::begin()
+    FrameSlot& FrameRing::recording()
     {
-        FrameSlot& frame = slotOf(mFrame);
-        if (frame.mBegun)
-            return frame;
-
         // **The frame that last used this slot has to be out of the way** — its fence waited, its
         // graveyard emptied, its results read or dropped — which is what caps the frames in flight
-        // at the number of slots.
+        // at the number of slots and what makes the slot this hands back the caller's own.
         while (mFrame - mFinished >= sFrameSlots)
             finishOldest();
+
+        return slotOf(mFrame);
+    }
+
+    FrameSlot& FrameRing::begin()
+    {
+        FrameSlot& frame = recording();
+        if (frame.mBegun)
+            return frame;
 
         frame.mTimer.beginFrame();
         frame.mBegun = true;

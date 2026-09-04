@@ -172,6 +172,22 @@ namespace RtxTool
             "Blight, Snow, Blizzard. The ones that drop something drop it here too. Given, it beats "
             "a weather a view fixes for itself");
 
+        addOption("turn-weather", bpo::value<std::string>()->default_value(""),
+            "with `bench`, turn the sky through these weathers while each place runs, comma "
+            "separated and round again — --turn-weather=Rain,Foggy. Each transition takes four "
+            "seconds of world, as a window's weather keys do, and the precipitation of the one "
+            "arriving replaces the one leaving halfway through. **A run under it is not a "
+            "benchmark**: no two places stand under the same sky. It is here because a weather "
+            "turning frees a whole emitter's meshes and textures on an ordinary frame, which is "
+            "the one thing the game does constantly that no other path in this tool could do");
+
+        addOption("map-tile", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "with `bench`, trace a local-map tile of the camera's cell on every frame, the way the "
+            "game's compass does. A picture of the world is traced between the placement and the "
+            "frame, off the same scene and the same copy of the tables — the one half of the "
+            "renderer no bench has ever reached. A run under it is not a benchmark: a second trace "
+            "a frame is most of a second frame");
+
         addOption("hour", bpo::value<float>()->default_value(sDefaultHour),
             "what time an exterior's sun is at, on a twenty-four hour clock. An interior is lit "
             "by its own lamps and does not care. Given, it beats an hour a view fixes for itself");

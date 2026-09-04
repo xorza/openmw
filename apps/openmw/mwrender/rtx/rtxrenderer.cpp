@@ -72,6 +72,12 @@ namespace MWRender
         /// because the alternative to a cap is filling a disk with a run somebody forgot about.
         constexpr std::uint32_t sKeepAtMost = 16;
 
+        /// Whether an environment variable is set to anything other than nothing or `0`.
+        bool askedFor(const char* name)
+        {
+            const char* const value = std::getenv(name);
+            return value != nullptr && *value != '\0' && std::strcmp(value, "0") != 0;
+        }
     }
 
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
@@ -129,6 +135,29 @@ namespace MWRender
         options.mPreset = *preset;
         options.mWindow = mWindow;
         options.mValidation.mEnabled = Rtx::sValidationByDefault;
+
+        // **The two finer layers, asked for by name and never on by themselves.** The build decides
+        // whether the layers load; these decide what they check, and each costs far more than the
+        // core checks do — synchronization validation tracks every access of every resource, and
+        // the GPU-assisted layer instruments every shader. They are here because the harness could
+        // ask for both and the game could ask for neither, and `Rtx::sValidationByDefault` says why
+        // two hosts of one renderer must not disagree about the layers. What they answer is the
+        // fault a core-clean run still ends in: a device lost with an address and nothing else.
+        //
+        // **A window under the GPU-assisted layer loses the device on its own**, which is why the
+        // two are separate switches: `vkWaitForFences` comes back `VK_ERROR_DEVICE_LOST` on three
+        // runs of four, somewhere inside a minute, with nothing wrong in the frame —
+        // `RtxTool::chooseValidation` measured it and leaves the layer off over a window for the
+        // same reason. So `OPENMW_RTX_SYNC_VALIDATION` is the one to reach for in the game, and
+        // `OPENMW_RTX_GPU_VALIDATION` is there for a session willing to tell the two losses apart.
+        options.mValidation.mSynchronization = askedFor("OPENMW_RTX_SYNC_VALIDATION");
+        options.mValidation.mGpuAssisted = askedFor("OPENMW_RTX_GPU_VALIDATION");
+
+        // Either of them is a kind of validation, so either loads the layer that carries it whatever
+        // the build said — which is what lets a Release build be asked one question without being
+        // rebuilt.
+        options.mValidation.mEnabled
+            = options.mValidation.mEnabled || options.mValidation.mSynchronization || options.mValidation.mGpuAssisted;
 
         // **The one place that clears it.** The hit count is a harness figure — `shot` prints it,
         // `bench` reports it, tests assert on it — and nothing in the game ever reads it, so the

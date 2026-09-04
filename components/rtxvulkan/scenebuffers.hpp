@@ -13,6 +13,7 @@
 #include <components/rtx/lightgrid.hpp>
 #include <components/rtx/shaders/camera.h>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/spritelistsize.hpp>
 #include <components/rtx/spriteshade.hpp>
 
 #include "blockedbuffer.hpp"
@@ -155,10 +156,10 @@ namespace Rtx
             /// back here before the next bin. Staging, because it is the one table the host reads.
             Buffer mSpriteBinReport;
 
-            /// How many entries `mSpriteTileList` has room for after its starts. Grown from the
+            /// How long `mSpriteTileList` is and how much of it a bin may fill. Grown from the
             /// report and never shrunk, so the list settles at its high-water mark like every
-            /// other table.
-            std::uint32_t mSpriteEntries = 0;
+            /// other table. `SpriteListSize` says why the two numbers are one object.
+            SpriteListSize mSpriteListSize;
 
             /// What one copy of them occupies.
             ///

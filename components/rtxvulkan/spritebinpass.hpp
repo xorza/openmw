@@ -10,6 +10,7 @@
 
 namespace Rtx
 {
+    class Buffer;
     class Device;
     class GpuTimer;
 
@@ -36,9 +37,11 @@ namespace Rtx
         /// the list, which the frame before last has finished with. The report `bin` names is
         /// written for the host to read after this submit's fence.
         ///
-        /// @param list the buffer `bin.mList` addresses, for the fill that zeroes its head.
-        void record(
-            VkCommandBuffer commands, const Shaders::SpriteBinConstants& bin, VkBuffer list, GpuTimer* timer) const;
+        /// @param list the buffer `bin.mList` addresses. The fill that zeroes the head needs its
+        ///        handle, and the assert that the list is as long as `bin` says needs its size —
+        ///        which is why this takes the buffer and not the handle alone.
+        void record(VkCommandBuffer commands, const Shaders::SpriteBinConstants& bin, const Buffer& list,
+            GpuTimer* timer) const;
 
     private:
         ComputePipeline mRects;

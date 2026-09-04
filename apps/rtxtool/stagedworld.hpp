@@ -132,6 +132,13 @@ namespace RtxTool
             setFalling(moment.mWeather);
         }
 
+        /// How long a weather takes to become the next one, in seconds.
+        ///
+        /// **Beside `setSky` because both callers of the blend read it.** A window turns the sky on
+        /// a key and a bench turns it on a list, and a transition that was four seconds in one and
+        /// something else in the other would be two different scenes described as one.
+        static constexpr float sTransitionSeconds = 4.0f;
+
         /// The same, partway to `into`.
         void setSky(const SkyMoment& moment, std::string_view into, float blend)
         {

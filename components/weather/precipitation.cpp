@@ -5,6 +5,7 @@
 #include <memory>
 
 #include <osg/Group>
+#include <osg/NodeVisitor>
 #include <osg/PositionAttitudeTransform>
 #include <osg/Texture2D>
 #include <osg/Transform>
@@ -71,13 +72,19 @@ namespace Weather
     {
         /// Root first, because a transform lower down multiplies onto what its parents already
         /// carried — which is the order `osg::computeLocalToWorld` walks a path in.
-        void accumulateLocalToWorld(const osg::Node& node, osg::Matrix& into)
+        ///
+        /// **`asking` is handed over and is never null, because one transform in this tree reads
+        /// it.** `MWRender::CameraRelativeTransform::computeLocalToWorldMatrix` asks the visitor its
+        /// type before it answers anything, and the game hangs its precipitation under exactly that
+        /// node — so a null one took the process down inside the sky. `osg::computeLocalToWorld`
+        /// passes null as well, which is why nothing upstream ever reached this on that path.
+        void accumulateLocalToWorld(const osg::Node& node, osg::Matrix& into, osg::NodeVisitor& asking)
         {
             if (node.getNumParents() > 0)
-                accumulateLocalToWorld(*node.getParent(0), into);
+                accumulateLocalToWorld(*node.getParent(0), into, asking);
 
             if (const osg::Transform* transform = node.asTransform())
-                transform->computeLocalToWorldMatrix(into, nullptr);
+                transform->computeLocalToWorldMatrix(into, &asking);
         }
 
         /// Carries a particle that has left the box back in at the far side, and slides the whole
@@ -260,8 +267,18 @@ namespace Weather
 
     osg::Matrix localToWorldOf(const osg::Node& node)
     {
+        // **A plain visitor, and the caller's own would be the wrong one.** What this walk must not
+        // say is that it is a cull: `CameraRelativeTransform` casts a visitor of that type to
+        // `osgUtil::CullVisitor` and reads a view point off it, and the ray tracer's mirror calls
+        // itself a cull visitor for as long as it steps a particle system. A default one is a
+        // `NODE_VISITOR`, which every transform here answers with the transform alone.
+        //
+        // On the stack and not kept: it holds nothing and allocates nothing, and one is made per
+        // step of a particle system rather than per particle.
+        osg::NodeVisitor asking;
+
         osg::Matrix matrix;
-        accumulateLocalToWorld(node, matrix);
+        accumulateLocalToWorld(node, matrix, asking);
         return matrix;
     }
 

@@ -16,6 +16,8 @@
 #include <components/debug/debuglog.hpp>
 #include <components/files/hash.hpp>
 
+#include "result.hpp"
+
 namespace Rtx
 {
     namespace
@@ -213,15 +215,8 @@ namespace Rtx
             return;
 
         // A destructor, so nothing here may throw: allocating the blob can, and a cache that failed
-        // to save is not worth taking the process down over.
-        try
-        {
-            write();
-        }
-        catch (const std::exception& error)
-        {
-            Log(Debug::Warning) << "Rtx: the pipeline cache was not saved: " << error.what();
-        }
+        // to save is not worth taking the process down over. `tearDown` is where that rule lives.
+        tearDown("the pipeline cache was not saved", [&] { write(); });
 
         vkDestroyPipelineCache(mDevice, mHandle, nullptr);
     }

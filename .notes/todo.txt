@@ -2,6 +2,7 @@
 - audit #pragmas
 - load time allocations
 - move some computations to loadtime
+- dedupe rtxtool, bench and game
 
 - rtx-tool travel
 - tracy

@@ -87,10 +87,11 @@ namespace Rtx
 
     void Presenter::destroy()
     {
-        // **`vkDeviceWaitIdle` and not `Device::waitIdle`.** The wrapper reports a failure by
-        // throwing, and this runs from a destructor where throwing is a call to `std::terminate`.
-        // Nothing here could be done about a device that will not go idle anyway.
-        vkDeviceWaitIdle(mDevice.getHandle());
+        // **Through `tearDown`, because this runs from a destructor and from the `catch` that tidies
+        // up after a constructor that failed.** Throwing out of either is `std::terminate`. This
+        // called `vkDeviceWaitIdle` itself to dodge that, which also threw away what the device said
+        // about the fault — and left the rule as a comment for the next teardown to remember.
+        tearDown("the device would not finish before the presenter was taken apart", [&] { mDevice.waitIdle(); });
 
         releaseImageSync();
         mPool.reset();

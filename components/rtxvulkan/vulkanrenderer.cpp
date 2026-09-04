@@ -221,10 +221,10 @@ namespace Rtx
         // **What the interface handed over, before the pool holding it is taken apart.** A GUI
         // texture write waits for nothing and rides the next submit this pool makes; there is no
         // next submit here, and `Presenter`'s destructor resets the pool underneath it.
-        mGuiTextures.finish();
+        tearDown("the interface's last writes were not submitted", [&] { mGuiTextures.finish(); });
 
         // Every frame in flight, and the presenter's last blit, before anything they name goes.
-        mDevice.waitIdle();
+        tearDown("the device would not finish before the renderer was taken apart", [&] { mDevice.waitIdle(); });
 
         // Before the scenes below it, which own the storage the buried rooms are rooms in.
         mRing.emptyGraveyards();

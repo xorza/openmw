@@ -120,6 +120,33 @@ namespace RtxTool
         /// is the only way to see that a place is being profiled facing a wall.
         bool mWindow = true;
 
+        /// Weathers to turn the sky through while a place runs, in order and round again.
+        ///
+        /// **The one thing the game does constantly that nothing here could do.** A transition is
+        /// not two weathers taken in turn: the sky is blended between them, and the precipitation
+        /// of the one arriving replaces the one leaving partway through — so every mesh and
+        /// texture an emitter brought goes while the camera is moving and cells are landing.
+        /// `view`'s weather keys were the only path to it, and a window nobody is typing at cannot
+        /// be driven.
+        ///
+        /// **Asking for it stops the run being a benchmark**, for the reason the hashes give: no
+        /// two places stand under the same sky, so the rows are comparable with nothing. Empty
+        /// holds one weather, which is what a measurement wants.
+        std::vector<std::string> mTurnWeather;
+
+        /// Whether a local-map tile of the camera's own cell is traced on every frame.
+        ///
+        /// **What the game's compass does and no other path here ever has.** A picture of the world
+        /// is traced between the placement and the frame, against the scene the placement has just
+        /// written and the copy of the tables it wrote — `Rtx::Renderer::traceGuiTexture`, on the
+        /// world's slot. Every bench before this drew the frame and nothing else, so that whole
+        /// half of the renderer was reached only by `map` and `doll`, one still picture at a time,
+        /// with no cell arriving and no weather turning under it.
+        ///
+        /// **Asking for it stops the run being a benchmark**: a second trace a frame is most of a
+        /// second frame.
+        bool mMapTile = false;
+
         /// How many frames each place is measured over, which is `mFrames` or what `mSeconds` comes
         /// to at the rate the world steps.
         std::uint32_t getMeasured() const;

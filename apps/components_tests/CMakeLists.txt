@@ -122,6 +122,7 @@ if (OPENMW_RTX)
         rtx/fogbuilder.cpp
         rtx/fognoise.cpp
         rtx/frameimage.cpp
+        rtx/framering.cpp
         rtx/frames.cpp
         rtx/frametimes.cpp
         rtx/frameworld.cpp
@@ -162,6 +163,7 @@ if (OPENMW_RTX)
         rtx/spanallocator.cpp
         rtx/spritebinpass.cpp
         rtx/spritelight.cpp
+        rtx/spritelistsize.cpp
         rtx/spriteshade.cpp
         rtx/statistics.hpp
         rtx/structurestorage.cpp

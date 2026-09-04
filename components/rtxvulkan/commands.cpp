@@ -2,11 +2,8 @@
 
 #include <cassert>
 #include <cstdint>
-#include <exception>
 #include <iterator>
 #include <utility>
-
-#include <components/debug/debuglog.hpp>
 
 #include "device.hpp"
 #include "graveyard.hpp"
@@ -169,16 +166,9 @@ namespace Rtx
 
     Batch::~Batch()
     {
-        try
-        {
-            flush();
-        }
-        catch (const std::exception& e)
-        {
-            // A submit fails when the device is lost, and terminating out of a destructor tells
-            // nobody which one it was.
-            Log(Debug::Error) << "a command batch could not be submitted: " << e.what();
-        }
+        // A submit fails when the device is lost, and terminating out of a destructor tells nobody
+        // which one it was. `tearDown` is where that rule lives.
+        tearDown("a command batch could not be submitted", [&] { flush(); });
     }
 
     VkCommandBuffer Batch::getCommands()

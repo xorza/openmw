@@ -60,7 +60,7 @@ shared uint matched[3][SPRITE_RUNS_WORKGROUP / SPRITE_RUNS_LANES];
 void main()
 {
     const uint across = spriteTilesOver(bin.mCamera.mWidth);
-    const uint tiles = across * spriteTilesOver(bin.mCamera.mHeight);
+    const uint tiles = spriteTilesIn(bin.mCamera.mWidth, bin.mCamera.mHeight);
 
     const uint group = gl_LocalInvocationID.x / SPRITE_RUNS_LANES;
     const uint lane = gl_LocalInvocationID.x % SPRITE_RUNS_LANES;

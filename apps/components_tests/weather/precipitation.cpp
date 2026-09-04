@@ -4,7 +4,9 @@
 
 #include <osg/Group>
 #include <osg/MatrixTransform>
+#include <osg/NodeVisitor>
 #include <osg/PositionAttitudeTransform>
+#include <osg/Transform>
 
 #include <components/weather/precipitation.hpp>
 
@@ -14,6 +16,34 @@ namespace Weather
 {
     namespace
     {
+        /// A transform that answers about the visitor it was handed rather than about a frame.
+        ///
+        /// **What `MWRender::CameraRelativeTransform` does, restated where this file can reach it.**
+        /// That one reads the visitor's type as its first statement and casts it to
+        /// `osgUtil::CullVisitor` where the type says cull. It lives in the rasterizer, so a test
+        /// cannot include it, and what is asserted here is the half of its contract the walk owes.
+        class RecordsTheVisitor : public osg::Transform
+        {
+        public:
+            bool computeLocalToWorldMatrix(osg::Matrix&, osg::NodeVisitor* nv) const override
+            {
+                ++mAsked;
+                mHandedNull = mHandedNull || nv == nullptr;
+                if (nv != nullptr)
+                    mType = nv->getVisitorType();
+
+                return true;
+            }
+
+            /// Mutable because the method is const, which is OSG's signature and not a choice here.
+            mutable std::size_t mAsked = 0;
+            mutable bool mHandedNull = false;
+
+            /// A cull to begin with, so a transform nothing asked fails the same case a wrong answer
+            /// does.
+            mutable osg::NodeVisitor::VisitorType mType = osg::NodeVisitor::CULL_VISITOR;
+        };
+
         /// Both answers for the same node, so a case can assert they agree without naming either.
         struct Frames
         {
@@ -115,6 +145,33 @@ namespace Weather
                 const Frames frames = framesOf(*underAbsolute);
                 EXPECT_EQ(frames.mWalked, frames.mOsg) << "an absolute reference frame above";
                 EXPECT_EQ(frames.mWalked, osg::Matrix::translate(7.0, 8.0, 9.0)) << "which keeps nothing above it";
+            }
+        }
+
+        /// Every transform in the chain is handed a visitor, and none is told it is a cull.
+        ///
+        /// **Both halves are a crash in the sky.** The game hangs its precipitation under
+        /// `MWRender::CameraRelativeTransform`: a null visitor there is a read through address
+        /// nought, which is where a rainstorm walked by the ray tracer's mirror took the process
+        /// down, and a cull visitor is a cast to `osgUtil::CullVisitor` of something that is not
+        /// one. Neither is hypothetical — the mirror calls itself a cull visitor for as long as it
+        /// steps a particle system, and this walk runs from inside that step.
+        TEST(WeatherPrecipitationTest, theWalkHandsEveryTransformAVisitorAndNeverACullOne)
+        {
+            osg::ref_ptr<RecordsTheVisitor> above = new RecordsTheVisitor;
+            osg::ref_ptr<RecordsTheVisitor> below = new RecordsTheVisitor;
+            osg::ref_ptr<osg::Node> leaf = new osg::Node;
+
+            above->addChild(below);
+            below->addChild(leaf);
+
+            localToWorldOf(*leaf);
+
+            for (const RecordsTheVisitor* transform : { above.get(), below.get() })
+            {
+                EXPECT_EQ(transform->mAsked, std::size_t{ 1 }) << "asked once, and it was not";
+                EXPECT_FALSE(transform->mHandedNull) << "a null visitor reached a transform";
+                EXPECT_NE(transform->mType, osg::NodeVisitor::CULL_VISITOR) << "the walk claimed a cull";
             }
         }
 

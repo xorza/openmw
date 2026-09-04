@@ -584,6 +584,17 @@ namespace Rtx::Shaders
         return (pixels + SPRITE_TILE - 1u) / SPRITE_TILE;
     }
 
+    /// How many tiles a frame of `width` by `height` covers, which is the list's head less one.
+    ///
+    /// **The product, in one place, because four sides take it.** The scan, the fill, the pass's own
+    /// zeroing fill and the host's sizing each need how many tiles a frame has, and each multiplied
+    /// the two axes for itself — four chances for the head to be one length here and another there,
+    /// over a list every one of them then indexes.
+    RTX_SHADER uint spriteTilesIn(uint width, uint height)
+    {
+        return spriteTilesOver(width) * spriteTilesOver(height);
+    }
+
     /// What the sprite tiles' list holds in its first entry where its runs did not fit.
     ///
     /// **The list carries its own degenerate form, so the trace needs no second signal.** Where

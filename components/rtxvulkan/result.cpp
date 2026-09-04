@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include <components/debug/debuglog.hpp>
 #include <components/rtx/error.hpp>
 
 #include "device.hpp"
@@ -127,5 +128,10 @@ namespace Rtx
             throw Error(timedOut(what, patience));
 
         checkVk(device, result, what);
+    }
+
+    void reportTornDown(const std::string_view failure, const char* const raised)
+    {
+        Log(Debug::Error) << "Rtx: " << failure << ": " << raised;
     }
 }

@@ -101,6 +101,8 @@ set(RTX_FILES
     spanallocator.hpp
     spritelight.cpp
     spritelight.hpp
+    spritelistsize.cpp
+    spritelistsize.hpp
     spriteshade.cpp
     spriteshade.hpp
     srgb.cpp

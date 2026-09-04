@@ -95,6 +95,23 @@ namespace Rtx
             vkDestroyFence(mHarness->mDevice->getHandle(), fence, nullptr);
         }
 
+        /// A teardown lets nothing out, whatever it was handed.
+        ///
+        /// **The one promise the idiom rests on.** Every destructor in this backend does work that
+        /// fails when the device is lost, and an exception leaving one is `std::terminate` — which
+        /// is how a lost device came to abort the process on top of the fault description it had
+        /// just built. A promise with a hole in it would put that back, so this asks about the kind
+        /// of throw this tree does not make as well as the kind it does.
+        TEST(RtxResultTest, aTearDownLetsNothingOutWhateverItWasHanded)
+        {
+            EXPECT_NO_THROW(tearDown("a teardown raised", [] { throw Error("the device was lost"); }));
+            EXPECT_NO_THROW(tearDown("a teardown raised", [] { throw 7; }));
+
+            bool ran = false;
+            EXPECT_NO_THROW(tearDown("a teardown that could not raise", [&] { ran = true; }));
+            EXPECT_TRUE(ran) << "the work never ran";
+        }
+
         TEST_F(RtxDeviceTest, theValidationLayerIsLoaded)
         {
             // Without this every other test's clean bill of health means nothing.

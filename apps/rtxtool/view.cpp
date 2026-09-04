@@ -174,9 +174,6 @@ namespace RtxTool
         FlyCamera camera;
         camera.look(start.mOrigin, start.mTarget);
 
-        /// How long a weather takes to become the next one, in real seconds.
-        constexpr float sTransitionSeconds = 4.0f;
-
         /// The one clock the hour, the sea and the fog run on. `WorldClock` says which reading each
         /// thing takes and why.
         WorldClock clock(request.mFrame.mDay, request.mFrame.mHour);
@@ -439,7 +436,7 @@ namespace RtxTool
             {
                 if (turningInto.has_value())
                 {
-                    turned += clock.getStep() / sTransitionSeconds;
+                    turned += clock.getStep() / StagedWorld::sTransitionSeconds;
                     if (turned >= 1.0f)
                     {
                         // Arrived: the sky it was turning into is simply the sky now.
