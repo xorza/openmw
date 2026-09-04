@@ -282,9 +282,108 @@ namespace Rtx::Testing
         };
     }
 
+    /// Everything a render over this fixture decides beyond the scene, the camera and the extent.
+    ///
+    /// **Named rather than positional, because a tail of defaulted arguments says nothing.** Five
+    /// of these read at a call site as `SeaState{}, 16, false, true`, which no reader can tell from
+    /// `SeaState{}, 16, true, false` — and the two are a jittered run and a filtered one.
+    struct Shot
+    {
+        /// What the water is doing. A state with no height in it is a flat sea, which is what a
+        /// test asserting an exact transmittance through one needs.
+        SeaState mSea;
+
+        /// How many frames the run draws, each at its own sampler index counting from
+        /// `mFirstFrame`, so the frames are different draws rather than one draw repeated.
+        ///
+        /// Zero draws one frame at the camera's own index and leaves it there, which is what a test
+        /// that sets `mFrame` for itself needs.
+        std::uint32_t mFrames = 0;
+
+        /// Whether the composite averages the run into one picture, rather than leaving each frame
+        /// to stand on its own.
+        ///
+        /// **Off is what a test of the accumulator wants.** Averaged, a run arrives as its mean and
+        /// nothing is left of how far the frames stood from each other; unaveraged, the only thing
+        /// combining them is the accumulator under test. Nothing either way where `mFrames` is
+        /// zero, since one frame is not a run.
+        bool mAverage = true;
+
+        /// The sampler's frame the run starts at, so a run can be handed a stream of its own rather
+        /// than the one every other run in the test consumed.
+        std::uint32_t mFirstFrame = 0;
+
+        /// Whether the denoiser runs, and off by default on purpose. Almost every test over this
+        /// fixture asserts a radiance a particular pixel must have, and a filter mixes its
+        /// neighbours into it — a test that let one run would be measuring the denoiser rather than
+        /// the thing it was written to measure. The tests that are about the filter ask for it.
+        bool mFilter = false;
+
+        /// Whether the sample point moves inside its pixel, which buys nothing on a single frame
+        /// and is what several of them cover between them.
+        bool mJitter = false;
+
+        /// Throws the denoiser's history away before the run.
+        ///
+        /// **A one-frame baseline taken after a longer run is a baseline that already has a history
+        /// in it**, which reads as the accumulator doing nothing at all.
+        bool mResetHistory = false;
+
+        /// The exposure the composite is held at. `std::nullopt` is the exposure the frame measures
+        /// for itself, which is what a test about the exposure pass wants — and what every figure
+        /// derived through `countHits` must not have, since those are about what the trace computed.
+        std::optional<float> mExposure = 1.0f;
+    };
+
     class RtxVisibilityTest : public Testing::RendererTest
     {
     protected:
+        /// Draws `scene` at `size` square, and returns how many primary rays hit.
+        ///
+        /// **The one render loop over this fixture.** Every helper below reaches the device through
+        /// here, so what a shot means is said once rather than once per way of reading the answer.
+        ///
+        /// The frame is left on the device, where `readRadiance` and `readPixels` can ask for it.
+        ///
+        /// @param afterEach run once each frame is finished, for a caller measuring what moves
+        ///        between two frames rather than what a run of them averages to.
+        std::uint32_t renderShot(const SceneDesc& scene, std::span<const TextureData> textures,
+            const Shaders::VisibilityConstants& camera, std::uint32_t size, const Shot& shot = {},
+            const std::function<void()>& afterEach = {})
+        {
+            mRenderer->resize(size, size);
+            mRenderer->setScene(Rtx::sWorld, scene, inSceneOrder(textures), shot.mSea);
+
+            if (shot.mResetHistory)
+                mRenderer->resetHistory();
+
+            // One frame per sample, each waited out before the next, which orders them — and the
+            // renderer's own history barrier is what makes each sum visible to the next.
+            const std::uint32_t drawn = std::max(shot.mFrames, 1u);
+            std::uint32_t hits = 0;
+            for (std::uint32_t frame = 0; frame < drawn; ++frame)
+            {
+                Shaders::VisibilityConstants sampled = camera;
+                if (shot.mFrames > 0)
+                    sampled.mFrame = shot.mFirstFrame + frame;
+
+                mRenderer->renderFrame(sampled,
+                    FrameOptions{ .mAccumulate = shot.mFrames > 0 && shot.mAverage ? frame + 1 : 0,
+                        .mJitter = shot.mJitter,
+                        .mFilter = shot.mFilter,
+                        .mExposure = shot.mExposure });
+
+                // Every frame hits the same primary geometry, so the last one's count is the answer
+                // rather than a sum to be divided back down.
+                hits = mRenderer->finishFrame().value().mHits;
+
+                if (afterEach)
+                    afterEach();
+            }
+
+            return hits;
+        }
+
         /// The luminance of every pixel of a frame that holds nothing but air, from a camera
         /// standing in white fog of one thickness.
         ///
@@ -309,68 +408,22 @@ namespace Rtx::Testing
                 luminance[i] = decodeSrgb(pixels[i * 4]);
         }
 
-        /// Renders `scene` at `size` square and returns how many primary rays hit.
-        /// @param sea what the water is doing. A state with no height in it is a flat sea, which
-        ///        is what a test asserting an exact transmittance through one needs.
-        /// @param accumulate how many differently-seeded frames to average, overriding the
-        ///        camera's own frame index with 0, 1, ... Zero renders the camera's frame alone.
-        /// @param filter whether the denoiser runs, and off by default on purpose. Almost
-        ///        every test over this fixture asserts a radiance a particular pixel must have, and a
-        ///        filter mixes its neighbours into it — a test that let one run would be measuring the
-        ///        denoiser rather than the thing it was written to measure. The tests that are
-        ///        about the filter ask for it.
+        /// Renders `scene` at `size` square and encodes what the trace computed, returning how many
+        /// primary rays hit.
+        ///
+        /// **The radiance encoded here rather than the picture read back.** `tone.comp` puts
+        /// `toneMap` between the two, and that curve is a display transform: it takes 0.04 off a
+        /// shadow and rolls a highlight away from one, neither of which a test about what the trace
+        /// computed has an opinion on. Every figure over this fixture was derived against the
+        /// radiance through the display curve, which is this.
         std::uint32_t countHits(const SceneDesc& scene, std::span<const TextureData> textures,
             const Shaders::VisibilityConstants& camera, std::uint32_t size, std::vector<std::uint8_t>& pixels,
-            const SeaState& sea = SeaState{}, std::uint32_t accumulate = 0, bool filter = false, bool jitter = false,
-            std::optional<float> exposure = 1.0f)
+            const Shot& shot = {})
         {
-            mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::sWorld, scene, inSceneOrder(textures), sea);
+            const std::uint32_t hits = renderShot(scene, textures, camera, size, shot);
 
-            // One frame per sample, where this used to record several dispatches into a single
-            // submit. Each is waited out before the next, which orders them, and the renderer's
-            // own history barrier is what makes each sum visible to the next.
-            const std::uint32_t frames = std::max(accumulate, 1u);
-            std::uint32_t hits = 0;
-            for (std::uint32_t frame = 0; frame < frames; ++frame)
-            {
-                Shaders::VisibilityConstants sampled = camera;
-                if (accumulate > 0)
-                    sampled.mFrame = frame;
-
-                mRenderer->renderFrame(sampled,
-                    FrameOptions{ .mAccumulate = accumulate > 0 ? frame + 1 : 0,
-                        .mJitter = jitter,
-                        .mFilter = filter,
-                        .mExposure = exposure });
-
-                // Every frame hits the same primary geometry, so the last one's count is the
-                // answer rather than a sum to be divided back down.
-                hits = mRenderer->finishFrame().value().mHits;
-            }
-
-            // **The radiance encoded here rather than the picture read back.** `tone.comp` puts
-            // `toneMap` between the two, and that curve is a display transform: it takes 0.04
-            // off a shadow and rolls a highlight away from one, neither of which a test about
-            // what the trace computed has an opinion on. Every figure over this fixture was
-            // derived against the radiance through the display curve, which is this.
-            //
-            // `mExposure` is one for every caller of this, so there is no measured exposure to
-            // fold in — see the `std::optional` default above.
-            mRenderer->readChannel(Channel::Radiance, mRadiance);
-
-            pixels.resize(mRadiance.size());
-            for (std::size_t at = 0; at < mRadiance.size(); at += 4)
-            {
-                for (std::size_t channel = 0; channel < 3; ++channel)
-                    pixels[at + channel] = encodeSrgb(mRadiance[at + channel]);
-
-                // Coverage rather than radiance, which the curve does not touch either.
-                pixels[at + 3]
-                    = static_cast<std::uint8_t>(std::lround(std::clamp(mRadiance[at + 3], 0.0f, 1.0f) * 255.0f));
-            }
-
-            requireFrame(pixels, size);
+            readRadiance(size, mRadiance);
+            encodeRadiance(pixels);
 
             return hits;
         }
@@ -381,11 +434,12 @@ namespace Rtx::Testing
         /// from `size`, and an assert says nothing in the build a figure is taken in — so a short
         /// read-back would be a read past the end that nobody reported. It is also what lets the
         /// optimiser see the buffer is not null, which `-O3` refuses a caller's index without.
-        static void requireFrame(const std::vector<std::uint8_t>& pixels, std::uint32_t size)
+        template <class T>
+        static void requireFrame(const std::vector<T>& read, std::uint32_t size)
         {
             const std::size_t wanted = std::size_t{ size } * size * 4;
-            if (pixels.size() != wanted)
-                throw Error("a probe read back " + std::to_string(pixels.size()) + " bytes where a "
+            if (read.size() != wanted)
+                throw Error("a probe read back " + std::to_string(read.size()) + " values where a "
                     + std::to_string(size) + " by " + std::to_string(size) + " frame is " + std::to_string(wanted));
         }
 
@@ -410,12 +464,10 @@ namespace Rtx::Testing
         /// **The one thing here that wants the picture rather than the radiance**, because what
         /// it measures is the exposure pass. Every other test over this fixture is about what the
         /// trace computed, which `countHits` gives without a display transform over it.
-        void renderPicture(const SceneDesc& scene, const Shaders::VisibilityConstants& camera, std::uint32_t size,
-            std::vector<std::uint8_t>& pixels, std::span<const TextureData> textures = {})
+        void renderPicture(const SceneDesc& scene, std::span<const TextureData> textures,
+            const Shaders::VisibilityConstants& camera, std::uint32_t size, std::vector<std::uint8_t>& pixels)
         {
-            mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::sWorld, scene, inSceneOrder(textures), SeaState{});
-            mRenderer->renderFrame(camera, FrameOptions{ .mExposure = std::nullopt });
+            renderShot(scene, textures, camera, size, Shot{ .mExposure = std::nullopt });
             mRenderer->readPixels(pixels);
 
             requireFrame(pixels, size);
@@ -428,74 +480,46 @@ namespace Rtx::Testing
         /// figures had reached the point where that was the quantiser talking: two thirds
         /// of a byte at the brightness they sit at. This is the same frame before either.
         void renderRadiance(const SceneDesc& scene, const Shaders::VisibilityConstants& camera, std::uint32_t size,
-            std::vector<float>& values, std::uint32_t accumulate = 0, bool filter = false)
+            std::vector<float>& values, const Shot& shot = {})
         {
-            // The bytes are made and thrown away: they are what sharing `countHits`'s render
-            // loop costs, and encoding one image against a sixty-four frame render is not a
-            // trade worth a second copy of that loop.
-            std::vector<std::uint8_t> pixels;
-            countHits(scene, {}, camera, size, pixels, SeaState{}, accumulate, filter);
-            mRenderer->readChannel(Channel::Radiance, values);
+            renderShot(scene, {}, camera, size, shot);
+            readRadiance(size, values);
         }
 
         /// A run of filtered frames with the history let build, read back in linear radiance.
-        ///
-        /// **Not `countHits` with a count on it, and the difference is the whole point.**
-        /// `mAccumulate` averages finished frames in the composite; this leaves that at nought
-        /// and advances `mFrame` instead, so each frame is a different draw and the only thing
-        /// combining them is the accumulator under test. `resetHistory` first, because a
-        /// one-frame baseline taken after a longer run is a baseline that already has a history
-        /// in it — which reads as the accumulator doing nothing at all.
         ///
         /// @param first the sampler's frame the run starts at, so a run can be handed a stream of its
         ///        own rather than the one every other run in the test consumed.
         void renderFiltered(const SceneDesc& scene, const Shaders::VisibilityConstants& camera, std::uint32_t size,
             std::vector<float>& values, std::uint32_t frames, std::uint32_t first = 0)
         {
-            mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
-            mRenderer->resetHistory();
-
-            for (std::uint32_t frame = 0; frame < frames; ++frame)
-            {
-                Shaders::VisibilityConstants sampled = camera;
-                sampled.mFrame = first + frame;
-                mRenderer->renderFrame(sampled, FrameOptions{ .mAccumulate = 0, .mFilter = true, .mExposure = 1.0f });
-            }
-
-            mRenderer->readChannel(Channel::Radiance, values);
+            renderRadiance(scene, camera, size, values,
+                Shot{ .mFrames = frames,
+                    .mAverage = false,
+                    .mFirstFrame = first,
+                    .mFilter = true,
+                    .mResetHistory = true });
         }
 
         /// What one pixel read on each frame of a run, with the history let build across them.
         ///
-        /// **The frames apart rather than averaged, which is what a test about flicker needs.**
-        /// `countHits` with an `accumulate` on it hands back the mean of a run and says nothing
-        /// about how far the frames stood from each other — and how far they stand is the whole
-        /// of what a boiling image is. So this advances `mFrame` and reads the pixel out after
-        /// every frame, leaving the composite's accumulator and the denoiser off, so what moves
-        /// between two entries moved in the trace.
+        /// **The frames apart rather than averaged, which is what a test about flicker needs.** How
+        /// far two frames stand from each other is the whole of what a boiling image is, and a mean
+        /// over them says nothing about it. So this reads the pixel out after every frame, with the
+        /// composite's accumulator and the denoiser both off, so what moves between two entries
+        /// moved in the trace.
         void radianceFrameByFrame(const SceneDesc& scene, const Shaders::VisibilityConstants& camera,
             std::uint32_t size, std::uint32_t frames, std::size_t pixel, std::vector<float>& radiance)
         {
-            mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
-            mRenderer->resetHistory();
-
             radiance.clear();
             radiance.reserve(frames);
 
             std::vector<float> values;
-            for (std::uint32_t frame = 0; frame < frames; ++frame)
-            {
-                Shaders::VisibilityConstants sampled = camera;
-                sampled.mFrame = frame;
-
-                mRenderer->renderFrame(sampled, FrameOptions{ .mAccumulate = 0, .mFilter = false, .mExposure = 1.0f });
-                mRenderer->finishFrame();
-                mRenderer->readChannel(Channel::Radiance, values);
-
-                radiance.push_back(values[pixel * 4]);
-            }
+            renderShot(
+                scene, {}, camera, size, Shot{ .mFrames = frames, .mAverage = false, .mResetHistory = true }, [&] {
+                    readRadiance(size, values);
+                    radiance.push_back(values[pixel * 4]);
+                });
         }
 
         /// A wall square to the sun with one pane held in front of it, as the byte its centre
@@ -580,12 +604,46 @@ namespace Rtx::Testing
             return { pixels[centre], pixels[centre + 1], pixels[centre + 2] };
         }
 
+        /// What the last `countHits` traced, in linear radiance, for a test that wants the figure
+        /// rather than the byte.
+        ///
+        /// **Filled by `countHits` and by nothing else**, because that is the helper whose bytes a
+        /// test then holds this against. `renderRadiance` reads into the caller's own vector, so a
+        /// read of this after one of those is a read of the frame before it.
+        std::vector<float> mRadiance;
+
+    private:
+        /// The last frame's radiance, checked against the extent it was drawn at.
+        void readRadiance(std::uint32_t size, std::vector<float>& values)
+        {
+            mRenderer->readChannel(Channel::Radiance, values);
+            requireFrame(values, size);
+        }
+
+        /// The last frame's radiance, as the bytes a test names.
+        void encodeRadiance(std::vector<std::uint8_t>& pixels) const
+        {
+            pixels.resize(mRadiance.size());
+            for (std::size_t at = 0; at < mRadiance.size(); at += 4)
+            {
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                    pixels[at + channel] = encodeSrgb(mRadiance[at + channel]);
+
+                // Coverage rather than radiance, which the curve does not touch either.
+                pixels[at + 3]
+                    = static_cast<std::uint8_t>(std::lround(std::clamp(mRadiance[at + 3], 0.0f, 1.0f) * 255.0f));
+            }
+        }
+
         /// The fixture's textures, numbered the way its scene added them.
         ///
         /// **A convention of these tests and not of the renderer.** Every test here builds its
         /// descriptions in the order its scene calls `addTexture`, so position is slot. The
         /// array used to assume that of every caller, which is a trap for the one whose scene
         /// has given a slot back: its table has a hole in it and its descriptions do not.
+        ///
+        /// **The span reaches into `mNumbered` and the next render overwrites it**, which is safe
+        /// because `renderShot` is the one caller and hands it straight to `setScene`.
         std::span<const TextureData> inSceneOrder(std::span<const TextureData> textures)
         {
             mNumbered.assign(textures.begin(), textures.end());
@@ -595,7 +653,6 @@ namespace Rtx::Testing
             return mNumbered;
         }
 
-        std::vector<float> mRadiance;
         std::vector<TextureData> mNumbered;
     };
 }

@@ -131,7 +131,7 @@ namespace Rtx::Testing
                 // also what makes the caustic exactly one — a flat surface has no curvature to
                 // gather anything with, so the Jacobian is the identity.
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
                 return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
 
@@ -210,7 +210,7 @@ namespace Rtx::Testing
             const auto look = [&](const SceneDesc& scene) {
                 // No height at all, which is a flat sea: a table whose amplitudes are zero.
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
                 return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
 
@@ -259,7 +259,7 @@ namespace Rtx::Testing
                 litThroughWater(camera);
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
                 return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
 
@@ -316,7 +316,7 @@ namespace Rtx::Testing
 
                 std::vector<std::uint8_t> pixels;
                 const SceneDesc scene = makeFlooded(4000.0f, eye + stretch);
-                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
                 return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
 
@@ -469,9 +469,9 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = 1.0f;
 
                 std::vector<std::uint8_t> withWater;
-                countHits(wet, {}, camera, size, withWater, SeaState{ .mSignificantHeight = 0.0f });
+                countHits(wet, {}, camera, size, withWater, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
                 std::vector<std::uint8_t> without;
-                countHits(dry, {}, camera, size, without, SeaState{ .mSignificantHeight = 0.0f });
+                countHits(dry, {}, camera, size, without, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
 
                 // How far each row is from the ground beside it, as the mean over its columns.
                 std::vector<double> apart(size, 0.0);
@@ -567,7 +567,7 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = 1.0f;
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
                 return static_cast<int>(pixels[centre]);
             };
 
@@ -615,7 +615,7 @@ namespace Rtx::Testing
                 camera.mSunIrradiance = osg::Vec3f(blazing, blazing, blazing);
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
 
                 return double{ decodeSrgb(pixels[centre + 1]) };
             };
@@ -680,7 +680,7 @@ namespace Rtx::Testing
 
             // Flat, so the surface the bounce passes through neither bends it nor gathers it.
             std::vector<std::uint8_t> pixels;
-            countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+            countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
 
             for (std::size_t channel = 0; channel < 3; ++channel)
             {
@@ -736,7 +736,7 @@ namespace Rtx::Testing
             constexpr SeaState still{ .mSignificantHeight = 0.0f };
 
             std::vector<std::uint8_t> pixels;
-            countHits(scene, {}, look(0.0f), size, pixels, still);
+            countHits(scene, {}, look(0.0f), size, pixels, { .mSea = still });
 
             std::vector<float> mirrored;
             std::vector<float> moved;
@@ -773,7 +773,7 @@ namespace Rtx::Testing
                 return camera;
             };
 
-            countHits(bare, {}, turn(0.0f), size, pixels, still);
+            countHits(bare, {}, turn(0.0f), size, pixels, { .mSea = still });
             mRenderer->renderFrame(turn(40.0f), FrameOptions{});
             mRenderer->readChannel(Channel::ReflectionMotion, mirrored);
 

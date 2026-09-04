@@ -95,7 +95,7 @@ namespace Rtx::Testing
                 camera.mAmbient = source == Source::Sky ? osg::Vec3f(0.5f, 0.5f, 0.5f) : osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, puff, camera, size, pixels, SeaState{});
+                countHits(scene, puff, camera, size, pixels);
 
                 return mRadiance[centre];
             };
@@ -162,7 +162,7 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = 0.0f;
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, puff, camera, size, pixels, SeaState{}, 128);
+                countHits(scene, puff, camera, size, pixels, { .mFrames = 128 });
 
                 // The middle row, whose rays leave the eye level and stay level.
                 float sum = 0.0f;
@@ -227,7 +227,7 @@ namespace Rtx::Testing
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, sprited ? std::span<const TextureData>(puff) : std::span<const TextureData>(), camera,
-                    size, pixels, SeaState{});
+                    size, pixels);
 
                 return mRadiance[centre];
             };
@@ -273,7 +273,7 @@ namespace Rtx::Testing
                 camera.mSunIrradiance = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, flame, camera, size, pixels, SeaState{});
+                countHits(scene, flame, camera, size, pixels);
 
                 return mRadiance[centre];
             };
@@ -333,7 +333,7 @@ namespace Rtx::Testing
                 camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, textures, camera, size, pixels, SeaState{});
+                countHits(scene, textures, camera, size, pixels);
 
                 return mRadiance[centre];
             };
@@ -396,7 +396,7 @@ namespace Rtx::Testing
                 camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, puff, camera, size, pixels, SeaState{});
+                countHits(scene, puff, camera, size, pixels);
 
                 return mRadiance[centre];
             };
@@ -439,7 +439,7 @@ namespace Rtx::Testing
             camera.mWaterLevel = 0.0f;
 
             std::vector<std::uint8_t> pixels;
-            countHits(scene, textures, camera, size, pixels, SeaState{});
+            countHits(scene, textures, camera, size, pixels);
 
             std::vector<float> particles;
             std::vector<float> bias;
@@ -500,7 +500,7 @@ namespace Rtx::Testing
             // **Twice, with the camera held still.** The first frame has no past to reproject
             // against, so what the second one writes is the sprite's travel and nothing else.
             std::vector<std::uint8_t> pixels;
-            countHits(scene, textures, camera, size, pixels, SeaState{});
+            countHits(scene, textures, camera, size, pixels);
             mRenderer->renderFrame(camera, FrameOptions{});
 
             std::vector<float> covered;
@@ -528,7 +528,7 @@ namespace Rtx::Testing
                 .mPosition = osg::Vec3f(0.0f, 0.0f, 200.0f), .mRadius = 40.0f, .mAlpha = 1.0f } };
             still.addEmitter(stopped, cutAgain, false);
 
-            countHits(still, textures, camera, size, pixels, SeaState{});
+            countHits(still, textures, camera, size, pixels);
             mRenderer->renderFrame(camera, FrameOptions{});
             mRenderer->readChannel(Channel::Motion, moved);
 
@@ -546,7 +546,7 @@ namespace Rtx::Testing
                 .mMoved = osg::Vec3f(travel, 0.0f, 0.0f) } };
             flame.addEmitter(burning, cutFlame, true);
 
-            countHits(flame, textures, camera, size, pixels, SeaState{});
+            countHits(flame, textures, camera, size, pixels);
             mRenderer->renderFrame(camera, FrameOptions{});
 
             std::vector<float> lit;

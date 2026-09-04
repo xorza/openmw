@@ -380,7 +380,7 @@ namespace Rtx::Testing
                 // where the leak sits on average; a single frame either leaked or did not, and
                 // which is a coin.
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{}, 32);
+                countHits(scene, {}, camera, size, pixels, { .mFrames = 32 });
                 return int{ pixels[centre] };
             };
 

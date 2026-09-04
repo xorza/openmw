@@ -97,7 +97,7 @@ namespace Rtx::Testing
                 litThroughWater(camera);
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, sea);
+                countHits(scene, {}, camera, size, pixels, { .mSea = sea });
 
                 std::vector<float> field;
                 field.reserve(count);
@@ -313,7 +313,7 @@ namespace Rtx::Testing
                 camera.mTime = seconds;
 
                 std::vector<std::uint8_t> image;
-                countHits(scene, {}, camera, size, image, sea);
+                countHits(scene, {}, camera, size, image, { .mSea = sea });
 
                 // **The radiance and not the byte, which is what a ratio of two dark pixels needs.**
                 // Twenty metres of water leaves green at a fiftieth of the scale, where one step of
@@ -574,7 +574,7 @@ namespace Rtx::Testing
 
                 const SceneDesc scene = makeOpenWater(20000.0f);
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, sea);
+                countHits(scene, {}, camera, size, pixels, { .mSea = sea });
 
                 Road found{ .mPeak = 0, .mLit = 0 };
                 for (std::size_t i = 0; i < std::size_t{ size } * size; ++i)
@@ -633,7 +633,7 @@ namespace Rtx::Testing
                 camera.mSeaHeading = heading;
 
                 const SceneDesc scene = makeOpenWater(20000.0f);
-                countHits(scene, {}, camera, size, pixels, SeaState{}, 8);
+                countHits(scene, {}, camera, size, pixels, { .mFrames = 8 });
             };
 
             std::vector<std::uint8_t> east;
@@ -714,7 +714,7 @@ namespace Rtx::Testing
                 camera.mTime = time;
 
                 const SceneDesc scene = makeOpenWater(20000.0f);
-                countHits(scene, {}, camera, size, pixels, SeaState{ .mSignificantHeight = 0.0f });
+                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
             };
 
             const auto differing = [](const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b) {
@@ -817,7 +817,7 @@ namespace Rtx::Testing
                     MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = bed, .mMaterial = glow });
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, textures, camera, size, pixels, sea);
+                countHits(scene, textures, camera, size, pixels, { .mSea = sea });
 
                 // Back out everything between the texture and the radiance: the emissive scale, the
                 // water the glow crossed on its way up, and the two per cent the surface reflected.

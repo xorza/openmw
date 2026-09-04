@@ -367,7 +367,7 @@ namespace Rtx::Testing
                                       : noStars();
 
                 std::vector<std::uint8_t> pixels;
-                renderPicture(scene, camera, size, pixels, sheet);
+                renderPicture(scene, sheet, camera, size, pixels);
 
                 std::array<std::uint8_t, 2> halves{ 0, 0 };
                 for (std::uint32_t row = 0; row < size; ++row)

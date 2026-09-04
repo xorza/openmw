@@ -284,7 +284,7 @@ namespace Rtx::Testing
             // the whole 0.04 comes off — and leaves the rest alone, being far under the compression
             // point. `1.055 * 0.199134^(1/2.4) - 0.055 = 0.483578`, or 123 of 255.
             std::vector<std::uint8_t> measured;
-            renderPicture(makeWall(), camera, size, measured);
+            renderPicture(makeWall(), {}, camera, size, measured);
 
             ASSERT_EQ(measured.size(), pixels.size());
             for (std::size_t i = 0; i < measured.size(); i += 4)
@@ -452,10 +452,10 @@ namespace Rtx::Testing
             };
 
             std::vector<std::uint8_t> hard;
-            countHits(scene, {}, camera, size, hard, SeaState{}, 16, false, false);
+            countHits(scene, {}, camera, size, hard, { .mFrames = 16 });
 
             std::vector<std::uint8_t> soft;
-            countHits(scene, {}, camera, size, soft, SeaState{}, 16, false, true);
+            countHits(scene, {}, camera, size, soft, { .mFrames = 16, .mJitter = true });
 
             // Unjittered, every one of the sixteen samples the same point, so the two columns are
             // the wall's byte and the sky's with nothing between them.

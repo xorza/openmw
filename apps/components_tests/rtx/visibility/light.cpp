@@ -732,7 +732,7 @@ namespace Rtx::Testing
             const auto visible = [&](const SceneDesc& scene, const std::vector<float>& open,
                                      const Shaders::VisibilityConstants& camera, std::uint32_t frames) {
                 std::vector<float> shadowed;
-                renderRadiance(scene, camera, size, shadowed, frames, false);
+                renderRadiance(scene, camera, size, shadowed, { .mFrames = frames });
 
                 double total = 0.0;
                 for (std::uint32_t row = 0; row < size; ++row)
@@ -761,7 +761,7 @@ namespace Rtx::Testing
             lampCamera.mSkyZenith = osg::Vec3f();
 
             std::vector<float> lampOpen;
-            renderRadiance(sceneWith(lamp, lampDepth, std::nullopt), lampCamera, size, lampOpen, 1, false);
+            renderRadiance(sceneWith(lamp, lampDepth, std::nullopt), lampCamera, size, lampOpen, { .mFrames = 1 });
             ASSERT_GT(lampOpen[(std::size_t{ column } * size + column) * 4], 0.0f) << "the lamp lights the wall";
 
             EXPECT_FLOAT_EQ(visible(sceneWith(lamp, lampDepth, -12.0f), lampOpen, lampCamera, 1), 1.0f)
@@ -784,7 +784,7 @@ namespace Rtx::Testing
             point.mClearance = 0.0f;
 
             std::vector<float> pointOpen;
-            renderRadiance(sceneWith(point, lampDepth, std::nullopt), lampCamera, size, pointOpen, 1, false);
+            renderRadiance(sceneWith(point, lampDepth, std::nullopt), lampCamera, size, pointOpen, { .mFrames = 1 });
 
             EXPECT_FLOAT_EQ(visible(sceneWith(point, lampDepth, -1.0f), pointOpen, lampCamera, 1), 1.0f)
                 << "an unmeasured source is lit right up to its shadow";
@@ -804,7 +804,7 @@ namespace Rtx::Testing
             sunCamera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
 
             std::vector<float> sunOpen;
-            renderRadiance(sceneWith(std::nullopt, sunDepth, std::nullopt), sunCamera, size, sunOpen, 1, false);
+            renderRadiance(sceneWith(std::nullopt, sunDepth, std::nullopt), sunCamera, size, sunOpen, { .mFrames = 1 });
             ASSERT_GT(sunOpen[(std::size_t{ column } * size + column) * 4], 0.0f) << "the sun lights the wall";
 
             EXPECT_FLOAT_EQ(visible(sceneWith(std::nullopt, sunDepth, -72.0f), sunOpen, sunCamera, 1), 1.0f)
@@ -868,7 +868,7 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = fromSky;
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{}, 48);
+                countHits(scene, {}, camera, size, pixels, { .mFrames = 48 });
 
                 return meanRadiance();
             };
@@ -925,7 +925,7 @@ namespace Rtx::Testing
                 camera.mSunIrradiance = osg::Vec3f(sunlight, sunlight, sunlight);
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{}, 16);
+                countHits(scene, {}, camera, size, pixels, { .mFrames = 16 });
 
                 return meanRadiance();
             };
@@ -984,7 +984,7 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = 1.0f;
 
                 std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels, SeaState{}, 64);
+                countHits(scene, {}, camera, size, pixels, { .mFrames = 64 });
 
                 return meanRadiance();
             };
@@ -1042,7 +1042,7 @@ namespace Rtx::Testing
                 camera.mFrame = frame;
 
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, {}, camera, size, pixels, SeaState{}, accumulate), size * size);
+                EXPECT_EQ(countHits(scene, {}, camera, size, pixels, { .mFrames = accumulate }), size * size);
                 return pixels;
             };
 

@@ -37,7 +37,7 @@ namespace Rtx::Testing
 
             const auto shade = [&](bool filter) {
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, {}, camera, size, pixels, SeaState{}, 0, filter), size * size);
+                EXPECT_EQ(countHits(scene, {}, camera, size, pixels, { .mFilter = filter }), size * size);
                 return pixels;
             };
 
@@ -111,7 +111,7 @@ namespace Rtx::Testing
 
             const auto render = [&](std::uint32_t accumulate, bool filter) {
                 std::vector<float> values;
-                renderRadiance(scene, camera, size, values, accumulate, filter);
+                renderRadiance(scene, camera, size, values, { .mFrames = accumulate, .mFilter = filter });
                 return values;
             };
 
@@ -267,7 +267,8 @@ namespace Rtx::Testing
             // that is left cannot be mistaken for a step.
             const auto rowMeans = [&](std::uint32_t accumulate, bool filter) {
                 std::vector<std::uint8_t> pixels;
-                EXPECT_EQ(countHits(scene, {}, camera, size, pixels, SeaState{}, accumulate, filter), size * size);
+                EXPECT_EQ(countHits(scene, {}, camera, size, pixels, { .mFrames = accumulate, .mFilter = filter }),
+                    size * size);
 
                 std::array<float, size> rows{};
                 for (std::uint32_t y = 0; y < size; ++y)
@@ -536,7 +537,7 @@ namespace Rtx::Testing
             // Unfiltered, because a converged reference has to be the answer and not the filter's
             // opinion of it.
             std::vector<float> reference;
-            renderRadiance(scene, camera, size, reference, 128, false);
+            renderRadiance(scene, camera, size, reference, { .mFrames = 128 });
 
             const auto errorAgainstReference = [&](const std::vector<float>& values) {
                 double squares = 0.0;
