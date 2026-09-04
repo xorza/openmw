@@ -10,3 +10,4 @@
 - precompile shaders?
 - dlss off?
 - use appropriate wather for regions
+- rain too strong
