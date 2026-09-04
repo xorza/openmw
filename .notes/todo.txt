@@ -7,7 +7,6 @@
 - async terrain loader
 - screen upside down for loading terrains
 - precompile shaders?
-- fog under the water surface
 - load time allocations
 - move some computations to loadtime
 - where to save shadercache

@@ -217,6 +217,51 @@ namespace Rtx::Testing
                 EXPECT_EQ(down[channel], up[channel]) << "channel " << channel << ", the same heights descending";
         }
 
+        /// An eye under the surface has no air in front of it, and the volume must say so too.
+        ///
+        /// **The one path that could not tell on its own.** `fogExtinctionAt` gives nothing under the
+        /// surface and `fogColumn` integrates nothing there, so the field and the closed form were
+        /// right already. The volume is an accumulation along a *column's* ray rather than a field
+        /// read along the pixel's, and a froxel the surface stands inside draws its sample from the
+        /// air the column found — which for a column aimed up out of the water is the air above it.
+        /// A pixel under the water then paid for that air, in a band along the waterline where the
+        /// columns first begin to leave the water: 135 pixels of this frame, the worst of them 61 of
+        /// 255 out.
+        ///
+        /// **Asserted as the whole frame against the same frame with no weather in the cell**, which
+        /// is the only exact form the claim has: nothing else differs between the two, so a submerged
+        /// eye owes the fog literally nothing and every byte has to match.
+        TEST_F(RtxVisibilityTest, theVolumesAirIsNotOverAnEyeUnderTheSurface)
+        {
+            constexpr std::uint32_t size = 65;
+
+            // Level at fifty units down, so the frame holds the surface overhead, the bed below and
+            // the waterline between them — which is where the band was.
+            const SceneDesc scene = makeFlooded(8000.0f, 400.0f);
+
+            const auto look = [&](float extinction) {
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -1000.0f, -50.0f), osg::Vec3f(0.0f, 0.0f, -50.0f), 60.0f, size, size, 100000.0f);
+                litThroughFog(camera, extinction, 0.0f);
+                camera.mFogUniform = sVolumeOverEvenAir;
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels, { .mSea = SeaState{ .mSignificantHeight = 0.0f } });
+                return pixels;
+            };
+
+            const std::vector<std::uint8_t> foggy = look(3.5e-4f);
+            const std::vector<std::uint8_t> clear = look(0.0f);
+
+            ASSERT_EQ(foggy.size(), clear.size());
+            for (std::uint32_t row = 0; row < size; ++row)
+                for (std::uint32_t column = 0; column < size; ++column)
+                {
+                    const std::size_t at = (std::size_t{ row } * size + column) * 4;
+                    ASSERT_EQ(foggy[at], clear[at]) << "row " << row << ", column " << column;
+                }
+        }
+
         /// A lamp lights the air it stands in, and by the isotropic share of what it delivers.
         ///
         /// **`INV_FOUR_PI` is what this is really about.** A lamp reaches a point in the fog as

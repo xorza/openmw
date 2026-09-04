@@ -791,17 +791,6 @@ vec4 fogEdgeAlong(vec3 origin, vec3 direction, float distance)
     if (!(frame.mFogEdge > 0.0))
         return vec4(0.0, 0.0, 0.0, 1.0);
 
-    // **Air only, the same test `fogExtinctionAt` makes.** Under a bay the water's own absorption
-    // has already closed everything this would, and a second medium over it puts the sky's colour
-    // between the eye and the seabed.
-    //
-    // **The eye alone, where the march tests every step**, because a closed form cannot stop at the
-    // surface. So a ray aimed from the air into water is charged for the wet part of its path too —
-    // which is worth nothing, since anything deep enough for that to matter is already behind more
-    // water than this would ever take.
-    if (waterOver(origin) > 0.0)
-        return vec4(0.0, 0.0, 0.0, 1.0);
-
     // **A climb and not a descent.** Everything above the eye is sky however far off it is, and sky
     // needs no hiding; everything below it is ground, and the ring where that ground stops is the
     // whole reason this is here. An eye on a mountain looks *down* at that ring, so a mask that read
@@ -840,6 +829,22 @@ vec4 fogEdgeAlong(vec3 origin, vec3 direction, float distance)
 /// whole of the weather's air in front of it and arrives dimmed by exactly that.
 vec4 fogAlong(uvec2 pixel, vec3 origin, vec3 direction, float distance, float offset, uint seed)
 {
+    // **Air only, and an eye under the surface has none of it in front of it.** Every ray from a
+    // submerged eye ends at the water or short of it — `MASK_WATER` stops the trace and stops
+    // `fogdepth.comp`'s column alike — so none of the path is in air, and `waterColumn` has already
+    // charged the whole of it for the water.
+    //
+    // **Here rather than in each element, because only one of the three could tell.**
+    // `fogExtinctionAt` gives nothing under the surface and `fogColumn` integrates nothing there, so
+    // the field and the closed form were already right. The volume is not a field read along the
+    // pixel's ray but an accumulation along its column's, and the slices past where that column met
+    // the surface hold whatever they held when the eye was above it — `fogintegrate.comp` says why
+    // it keeps them. A pixel reaching past its own column's surface read those: along the waterline,
+    // where one column looks up at the surface and the pixel beside it looks away down the seabed,
+    // that drew a band of weather under the water.
+    if (waterOver(origin) > 0.0)
+        return vec4(0.0, 0.0, 0.0, 1.0);
+
     // **The closed form where the field along the ray is even**, which is a room. The volume is what
     // a coverage field costs, and `fogUniformAlong` is what is left when there is none — so an
     // interior reads no volume at all, and none is dispatched for it.
