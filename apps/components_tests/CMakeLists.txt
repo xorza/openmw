@@ -123,7 +123,6 @@ if (OPENMW_RTX)
         rtx/fognoise.cpp
         rtx/frameimage.cpp
         rtx/frames.cpp
-        rtx/slottable.cpp
         rtx/frametimes.cpp
         rtx/frameworld.cpp
         rtx/geometry.hpp
@@ -159,15 +158,16 @@ if (OPENMW_RTX)
         rtx/shapefold.cpp
         rtx/skinpass.cpp
         rtx/skybuilder.cpp
+        rtx/slottable.cpp
         rtx/spanallocator.cpp
+        rtx/spritebinpass.cpp
         rtx/spritelight.cpp
         rtx/spriteshade.cpp
-        rtx/spritebinpass.cpp
         rtx/statistics.hpp
+        rtx/structurestorage.cpp
         rtx/terraincomposite.cpp
         rtx/terrainresidency.cpp
         rtx/testtexture.hpp
-        rtx/structurestorage.cpp
         rtx/texturebuilder.cpp
         rtx/tracepipeline.cpp
         rtx/visibility/filter.cpp

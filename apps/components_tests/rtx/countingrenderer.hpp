@@ -59,10 +59,7 @@ namespace Rtx::Testing
             mDescribed = 0;
         }
 
-        std::uint32_t getTextureCount(std::uint32_t slot) const override
-        {
-            return const_cast<CountingRenderer*>(this)->countAt(slot);
-        }
+        std::uint32_t getTextureCount(std::uint32_t slot) const override { return countAt(slot); }
 
         /// **The texture array does not shrink**, which is what `mTextures` staying put records: a
         /// slot goes on being where an append begins from whether or not it holds an image.
@@ -104,6 +101,12 @@ namespace Rtx::Testing
         /// with a doll's would begin one scene's descriptions inside the other's table, which is the
         /// overrun `aSecondSceneOnOneRendererIsBuiltRatherThanAppendedTo` exists for.
         std::uint32_t& countAt(std::uint32_t slot) { return slot == Rtx::sWorld ? mTextures : mViewTextures[slot]; }
+
+        /// The same for a caller that only reads, so that `getTextureCount` needs no cast.
+        std::uint32_t countAt(std::uint32_t slot) const
+        {
+            return slot == Rtx::sWorld ? mTextures : mViewTextures[slot];
+        }
 
         void recordSlots(std::span<const Rtx::TextureData> described)
         {

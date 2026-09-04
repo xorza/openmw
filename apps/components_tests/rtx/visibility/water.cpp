@@ -459,7 +459,15 @@ namespace Rtx::Testing
             const osg::Vec3f eye(centre - 500.0f * std::tan(tilt), 0.0f, 500.0f);
             const osg::Matrixf grazing = osg::Matrixf::lookAt(eye, eye + forward, osg::Vec3f(0.0f, 0.0f, 1.0f));
 
-            const auto middleOf = [&](const osg::Matrixf& view, float worldHeight, const char* which) {
+            // Where the fade first reaches half of its deep value, against the waterline it belongs
+            // at. Two rows either side, which is twenty-five units of x and two and a half of depth.
+            //
+            // **The comparison is made here rather than by the caller**, so that a run which never
+            // reaches half reports that and nothing else: a lambda returning a figure it could not
+            // find has to answer with something, and whatever it answers fails the caller's
+            // comparison a second time for a reason that is not the fault.
+            const auto expectTheMiddleAtTheWaterline = [&](const osg::Matrixf& view, float worldHeight,
+                                                           const char* which) {
                 Shaders::VisibilityConstants camera
                     = makeOrthographicCameraFromView(view, span, worldHeight, size, size, 5.0f, 20000.0f);
                 camera.mWaterLevel = 0.0f;
@@ -514,15 +522,16 @@ namespace Rtx::Testing
                 // From the waterline toward deep water, where the difference first reaches half.
                 for (std::uint32_t row = size; row-- > 0;)
                     if (xAt(row) > 0.0f && apart[row] >= 0.5 * deep)
-                        return xAt(row);
+                    {
+                        EXPECT_NEAR(xAt(row), 175.0f, 2.0f * rowUnits) << which;
+                        return;
+                    }
 
                 ADD_FAILURE() << which << ": the water never reached half of its depth";
-                return 0.0f;
             };
 
-            // Two rows either side, which is twenty-five units of x and two and a half of depth.
-            EXPECT_NEAR(middleOf(above, span, "from above"), 175.0f, 2.0f * rowUnits);
-            EXPECT_NEAR(middleOf(grazing, span * 0.5f, "at sixty degrees"), 175.0f, 2.0f * rowUnits);
+            expectTheMiddleAtTheWaterline(above, span, "from above");
+            expectTheMiddleAtTheWaterline(grazing, span * 0.5f, "at sixty degrees");
         }
 
         /// The water between an eye and the surface over it is water like any other.

@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <random>
+#include <source_location>
 #include <span>
 #include <string>
 #include <vector>
@@ -20,6 +21,7 @@
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
+#include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/accumulate.h>
 #include <components/rtx/spritelight.hpp>
@@ -53,7 +55,6 @@ namespace Rtx::Testing
     /// A level sheet of water `extent` across at z = 0, with nothing under it.
     inline SceneDesc makeOpenWater(float extent)
     {
-
         SceneDesc scene;
         Material water;
         water.mKind = MaterialKind::Water;
@@ -70,7 +71,6 @@ namespace Rtx::Testing
     /// water to see it through.
     inline SceneDesc makeFlooded(float extent, float depth)
     {
-
         SceneDesc scene = makeOpenWater(extent);
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
             .mMesh = scene.addMesh(sheetAt(extent, -depth), {}, {}, sQuadIndices) });
@@ -310,7 +310,11 @@ namespace Rtx::Testing
 
                 // Every frame hits the same primary geometry, so the last one's count is the answer
                 // rather than a sum to be divided back down.
-                hits = mRenderer->finishFrame().value().mHits;
+                const std::optional<FrameResult> finished = mRenderer->finishFrame();
+                if (!finished.has_value())
+                    throw Error("the renderer drew a frame and gave none back");
+
+                hits = finished->mHits;
 
                 if (afterEach)
                     afterEach();
@@ -365,10 +369,12 @@ namespace Rtx::Testing
 
         /// What a probe read back, against the frame it asked for.
         ///
-        /// **A check and not an assert.** Every caller indexes the buffer by a number it worked out
-        /// from `size`, and an assert says nothing in the build a figure is taken in — so a short
-        /// read-back would be a read past the end that nobody reported. It is also what lets the
-        /// optimiser see the buffer is not null, which `-O3` refuses a caller's index without.
+        /// **A throw and not an assertion of either kind.** Every caller indexes the buffer by a
+        /// number it worked out from `size`, so a short read-back has to stop the test rather than
+        /// mark it: `<cassert>` is compiled out of the build a figure is taken in, and an
+        /// `ASSERT_EQ` here would return from this function and leave the caller indexing past the
+        /// end of what it was handed. The message names both sizes, which is what a located failure
+        /// would have had to say anyway.
         template <class T>
         static void requireFrame(const std::vector<T>& read, std::uint32_t size)
         {
@@ -472,9 +478,15 @@ namespace Rtx::Testing
         ///        the wall on its own.
         /// @param fade how much of the pane the game is showing, which is the other of the two
         ///        numbers a surface's opacity is made of.
+        /// @param where the caller's own line, never passed. **One test holds five panes up, and
+        ///        every failure would otherwise report at this helper's own line**, which says which
+        ///        helper broke and not which pane.
         std::uint8_t litThroughPane(std::span<const osg::Vec3f> pane, std::optional<osg::Vec4f> colour,
-            const osg::Vec3f& irradiance, float fade = 1.0f)
+            const osg::Vec3f& irradiance, float fade = 1.0f,
+            std::source_location where = std::source_location::current())
         {
+            const ::testing::ScopedTrace trace(where.file_name(), static_cast<int>(where.line()), "litThroughPane");
+
             constexpr std::uint32_t size = 33;
 
             SceneDesc scene = makeWall();
@@ -510,9 +522,13 @@ namespace Rtx::Testing
         /// lands on the patch of wall the pane shadows without the camera's own ray having to
         /// cross the pane — it passes y = -50 at x = 50, and the pane reaches 20 — or straight
         /// at the pane, to see it at all.
+        /// @param where the caller's own line, never passed, for the reason `litThroughPane` gives.
         std::array<std::uint8_t, 3> paneOverWall(
-            const std::function<void(SceneDesc&, std::span<const osg::Vec3f>)>& place, bool lookAtIt)
+            const std::function<void(SceneDesc&, std::span<const osg::Vec3f>)>& place, bool lookAtIt,
+            std::source_location where = std::source_location::current())
         {
+            const ::testing::ScopedTrace trace(where.file_name(), static_cast<int>(where.line()), "paneOverWall");
+
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
 
