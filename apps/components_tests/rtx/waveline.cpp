@@ -116,7 +116,7 @@ namespace Rtx
         TEST_F(RtxWaveLineTest, oneWavevectorTransformsIntoThePlaneWaveItStandsFor)
         {
             const Device& device = getDevice();
-            CommandPool pool(device);
+            CommandPool& pool = getPool();
             const ComputePipeline pipeline(device, sBindings, sizeof(Shaders::WaveConstants), {},
                 Testing::getShaderDirectory() / "waveline.comp.spv", "test-waveline");
 
@@ -157,7 +157,7 @@ namespace Rtx
         TEST_F(RtxWaveLineTest, aConjugateSymmetricGridTransformsIntoSomethingReal)
         {
             const Device& device = getDevice();
-            CommandPool pool(device);
+            CommandPool& pool = getPool();
             const ComputePipeline pipeline(device, sBindings, sizeof(Shaders::WaveConstants), {},
                 Testing::getShaderDirectory() / "waveline.comp.spv", "test-waveline");
 

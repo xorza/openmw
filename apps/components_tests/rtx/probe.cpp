@@ -274,7 +274,7 @@ namespace Rtx
             const Device& device = getDevice();
             const ComputePipeline pipeline(device, sBindings, sizeof(Shaders::ProbeConstants), {},
                 Testing::getShaderDirectory() / "probe.comp.spv", "probe");
-            CommandPool pool(device);
+            CommandPool& pool = getPool();
 
             const std::vector<osg::Vec3f> pattern = makePattern();
             const std::vector<Shaders::ProbeRow> rows = makeRows();

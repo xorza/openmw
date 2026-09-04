@@ -64,74 +64,130 @@ namespace Rtx
             });
         }
 
-        /// NGX brought up, asked what it wants, built, and run once over a frame whose answer is
-        /// known.
+        /// NGX brought up on the shared device for the length of this suite.
         ///
-        /// **One test rather than five, because NGX is global to the process and keyed by device.**
-        /// Two of these alive at once is not something the SDK promises to survive, and the five
-        /// questions share the one expensive setup.
-        struct RtxDlssTest : Testing::DeviceTest
+        /// **One runtime, because there can only be one and it costs a quarter of a second.** NGX
+        /// keeps a single runtime per process, its shutdown is unconditional, and it belongs to the
+        /// device it was started on — so the tests below share this one rather than each standing up
+        /// its own.
+        ///
+        /// **Down with the suite and not with the binary.** A renderer asked to upscale builds a
+        /// runtime of its own, and a second is a throw — so `RtxUpscaledFrameTest` could not run
+        /// while this one was still up.
+        class RtxDlssTest : public Testing::DeviceTest
         {
+        protected:
+            static void SetUpTestSuite()
+            {
+                std::string reason;
+                const Testing::Harness* harness = Testing::getHarness(reason);
+                if (harness == nullptr)
+                    return;
+
+                sNgx = std::make_unique<Dlss>(*harness->mDevice, harness->mInstance->getHandle());
+            }
+
+            static void TearDownTestSuite() { sNgx.reset(); }
+
+            void SetUp() override
+            {
+                Testing::DeviceTest::SetUp();
+                if (mHarness == nullptr)
+                    return;
+
+                if (!sNgx->isAvailable())
+                    GTEST_SKIP() << sNgx->getObstacle();
+            }
+
+            VkInstance getInstance() const { return mHarness->mInstance->getHandle(); }
+
+            /// The extent every size question here is asked about, which is the one the frame budget
+            /// is written against.
+            static constexpr VkExtent2D sOutput{ 3840, 2160 };
+
+            static inline std::unique_ptr<Dlss> sNgx;
         };
 
-        TEST_F(RtxDlssTest, rayReconstructionBuildsAndResolvesAFlatFrame)
+        /// **A second one is refused rather than made.** It would not stand beside the first: NGX
+        /// keeps one runtime per process and its shutdown is unconditional, so the second to be
+        /// destroyed would leave the first holding a feature that answers `FAIL_NotInitialized` —
+        /// which nothing else here would notice.
+        TEST_F(RtxDlssTest, aSecondRuntimeIsRefusedRatherThanMade)
         {
-            const Device& device = getDevice();
-            const Dlss ngx(device, mHarness->mInstance->getHandle());
-            if (!ngx.isAvailable())
-                GTEST_SKIP() << ngx.getObstacle();
+            EXPECT_THROW(Dlss(getDevice(), getInstance()), Error);
+        }
 
-            // **A second one is refused rather than made.** It would not stand beside this one: NGX
-            // keeps one runtime per process and its shutdown is unconditional, so the second to be
-            // destroyed would leave the first holding a feature that answers `FAIL_NotInitialized`
-            // — which nothing else here would notice.
-            EXPECT_THROW(Dlss(device, mHarness->mInstance->getHandle()), Error);
+        /// Asking whether Ray Reconstruction is available must not decide anything about who owns
+        /// NGX, which is the whole of why `probe` is not the constructor.
+        TEST_F(RtxDlssTest, theCapabilityQuestionLeavesTheRuntimeItWasAskedOf)
+        {
+            EXPECT_TRUE(Dlss::probe(getDevice(), getInstance()).mAvailable);
 
-            // And asking the capability question does not disturb it, which is what `probe` is for.
-            EXPECT_TRUE(Dlss::probe(device, mHarness->mInstance->getHandle()).mAvailable);
+            // **The half of it the answer cannot carry.** `probe` stands a runtime up where none is
+            // up and takes it down again, so one that failed to notice this one would end it — and
+            // only a question asked afterwards can tell.
+            EXPECT_NO_THROW(sNgx->getRenderSize(sOutput, Upscale::Performance));
+        }
 
-            // **The frame budget's own numbers, asked of DLSS rather than assumed.** `plan.md` §5.3
-            // settles on 1920×1080 internal to 3840×2160, and Performance is the mode that ratio
-            // comes from — so if DLSS asks for something else, every figure the project is measured
-            // against was measured at the wrong resolution.
-            constexpr VkExtent2D sOutput{ 3840, 2160 };
-            const VkExtent2D render = ngx.getRenderSize(sOutput, Upscale::Performance);
+        /// **The frame budget's own numbers, asked of DLSS rather than assumed.** `plan.md` §5.3
+        /// settles on 1920×1080 internal to 3840×2160, and Performance is the mode that ratio comes
+        /// from — so if DLSS asks for something else, every figure the project is measured against
+        /// was measured at the wrong resolution.
+        TEST_F(RtxDlssTest, performanceRendersTheResolutionTheFrameBudgetAssumes)
+        {
+            const VkExtent2D render = sNgx->getRenderSize(sOutput, Upscale::Performance);
             EXPECT_EQ(render.width, 1920u);
             EXPECT_EQ(render.height, 1080u);
+        }
 
-            // The other modes have to differ, and in the direction their names claim: a query that
-            // ignored the quality value would answer the same size for all four and look plausible.
-            const VkExtent2D balanced = ngx.getRenderSize(sOutput, Upscale::Balanced);
-            const VkExtent2D quality = ngx.getRenderSize(sOutput, Upscale::Quality);
-            const VkExtent2D dlaa = ngx.getRenderSize(sOutput, Upscale::Dlaa);
-            EXPECT_LT(render.width, balanced.width);
+        /// The modes have to differ, and in the direction their names claim: a query that ignored
+        /// the quality value would answer the same size for all four and look plausible.
+        TEST_F(RtxDlssTest, eachModeRendersMoreThanTheModeBelowIt)
+        {
+            const VkExtent2D performance = sNgx->getRenderSize(sOutput, Upscale::Performance);
+            const VkExtent2D balanced = sNgx->getRenderSize(sOutput, Upscale::Balanced);
+            const VkExtent2D quality = sNgx->getRenderSize(sOutput, Upscale::Quality);
+            const VkExtent2D dlaa = sNgx->getRenderSize(sOutput, Upscale::Dlaa);
+
+            EXPECT_LT(performance.width, balanced.width);
             EXPECT_LT(balanced.width, quality.width);
             EXPECT_LT(quality.width, dlaa.width);
+
             // DLAA is one to one by definition, which is what makes it the control for "how much of
             // the softness is the upscale".
             EXPECT_EQ(dlaa.width, sOutput.width);
             EXPECT_EQ(dlaa.height, sOutput.height);
+        }
 
-            // **And the mode that is not one is refused rather than answered.** `Off` used to share
-            // a `switch` arm with `Performance` so the switch was total, which made "build a feature
-            // for the setting that means build no feature" answer with the fastest and softest mode
-            // this renderer has — silently, on the path a frame budget is measured against.
-            EXPECT_THROW(ngx.getRenderSize(sOutput, Upscale::Off), Error)
-                << "the absence of an upscaler names no size to render at";
+        /// **The mode that is not one is refused rather than answered.** `Off` used to share a
+        /// `switch` arm with `Performance` so the switch was total, which made "build a feature for
+        /// the setting that means build no feature" answer with the fastest and softest mode this
+        /// renderer has — silently, on the path a frame budget is measured against.
+        TEST_F(RtxDlssTest, theAbsenceOfAnUpscalerNamesNoSizeToRenderAt)
+        {
+            EXPECT_THROW(sNgx->getRenderSize(sOutput, Upscale::Off), Error);
+        }
 
-            CommandPool pool(device);
+        /// **A flat frame is the one input whose correct output is arithmetic** rather than a
+        /// reimplementation of the network: upscaling a constant field can only produce that field.
+        ///
+        /// The build is what this shares with nothing else here — it uploads the network's weights,
+        /// so it is the first call that does real work on the device rather than answering from a
+        /// table, and the first place a wrong parameter map shows up as anything but a query result.
+        TEST_F(RtxDlssTest, aFlatFrameResolvesToItself)
+        {
+            const Device& device = getDevice();
+            CommandPool& pool = getPool();
+            const VkExtent2D render = sNgx->getRenderSize(sOutput, Upscale::Performance);
 
-            // Building uploads the network's weights, so this is the first call that does real work
-            // on the device rather than answering from a table — and the first place a wrong
-            // parameter map shows up as anything other than a query result.
-            // **Built for a named preset, which is the first thing a wrong parameter map would refuse.**
-            // A hint set under the wrong name is not an error to NGX — it reverts to whatever the
-            // installed library defaults to and says nothing — so what this proves is only that the
-            // build accepts one. That the network actually changes with it is a picture question and
-            // is measured with `shot --preset`.
+            // **Built for a named preset, which is the first thing a wrong parameter map would
+            // refuse.** A hint set under the wrong name is not an error to NGX — it reverts to
+            // whatever the installed library defaults to and says nothing — so what this proves is
+            // only that the build accepts one. That the network actually changes with it is a
+            // picture question and is measured with `shot --preset`.
             std::unique_ptr<DlssPass> pass;
             pool.submitAndWait([&](VkCommandBuffer commands) {
-                pass = std::make_unique<DlssPass>(ngx, commands, render, sOutput, Upscale::Performance, Preset::D);
+                pass = std::make_unique<DlssPass>(*sNgx, commands, render, sOutput, Upscale::Performance, Preset::D);
             });
 
             const std::unique_ptr<Image> colour
@@ -199,10 +255,8 @@ namespace Rtx
             // Away from the border, where the network has no neighbourhood and rolls off.
             const std::size_t centre = (std::size_t{ sOutput.height / 2 } * sOutput.width + sOutput.width / 2) * 4;
 
-            // **A flat frame is the one input whose correct output is arithmetic** rather than a
-            // reimplementation of the network: upscaling a constant field can only produce that
-            // field. Three different values rather than one grey, because a single channel read
-            // twice would pass a grey check while proving nothing about which channel was read.
+            // Three different values rather than one grey, because a single channel read twice would
+            // pass a grey check while proving nothing about which channel was read.
             constexpr std::array<float, 3> sExpected{ 0.25f, 0.5f, 0.75f };
             for (std::size_t channel = 0; channel < sExpected.size(); ++channel)
                 EXPECT_NEAR(pixels[centre + channel], sExpected[channel], sExpected[channel] * 0.05f)
@@ -221,10 +275,6 @@ namespace Rtx
             // have an opinion about the resources it then touched.
             for (const ValidationMessage& message : mHarness->mInstance->getValidationLog()->getErrorsOnThisThread())
                 ADD_FAILURE() << "validation error from the evaluation: " << message.mText;
-
-            // Released here rather than at the end of the scope, so a failure to release is this
-            // test's and not the next one's: NGX keeps its state per device.
-            pass.reset();
         }
 
         /// The mean of one channel over a frame `readPixels` gave back.
@@ -236,6 +286,13 @@ namespace Rtx
 
             return total / (static_cast<double>(pixels.size()) / 4.0);
         }
+
+        /// **A fixture of its own because it must not inherit the one above.** A renderer asked to
+        /// upscale brings up an NGX runtime of its own, and `RtxDlssTest` holds one for the length
+        /// of its suite.
+        struct RtxUpscaledFrameTest : Testing::RendererTest
+        {
+        };
 
         /// The whole frame through the renderer, against the same frame with nothing upscaling it.
         ///
@@ -249,16 +306,12 @@ namespace Rtx
         /// one. It is a weak claim about sharpness and a strong one about everything that goes wrong
         /// here, since a frame that lost an input, read the wrong image, or skipped the curve is not
         /// off by five per cent but by all of it.
-        TEST_F(RtxDlssTest, anUpscaledFrameIsTheSameFrameLarger)
+        TEST_F(RtxUpscaledFrameTest, anUpscaledFrameIsTheSameFrameLarger)
         {
-            std::string reason;
-            Renderer* plain = Testing::getRenderer(reason);
-            if (plain == nullptr)
-                GTEST_SKIP() << reason;
-
             RendererOptions options = Testing::describeRenderer(1280, 720);
             options.mUpscale = Upscale::Performance;
 
+            std::string reason;
             const std::unique_ptr<Renderer> upscaling = createRenderer(options, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
@@ -285,10 +338,10 @@ namespace Rtx
             camera.mSkyZenith = osg::Vec3f();
 
             std::vector<std::uint8_t> reference;
-            plain->resize(extents.mRenderWidth, extents.mRenderHeight);
-            plain->setScene(Rtx::sWorld, scene, {}, SeaState{});
-            plain->renderFrame(camera, FrameOptions{ .mFilter = false });
-            plain->readPixels(reference);
+            mRenderer->resize(extents.mRenderWidth, extents.mRenderHeight);
+            mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            mRenderer->renderFrame(camera, FrameOptions{ .mFilter = false });
+            mRenderer->readPixels(reference);
 
             // **Several frames, because a temporal upscaler has nothing on the first.** The camera
             // does not move, so what the run buys is history rather than a different picture.
@@ -320,7 +373,6 @@ namespace Rtx
             for (const std::string& error : errors)
                 ADD_FAILURE() << "validation error from the upscaled frame: " << error;
         }
-
     }
 }
 
@@ -328,18 +380,17 @@ namespace Rtx
 
 namespace
 {
-    /// **Skipped rather than absent**, so a build with no DLSS says so once per test that needs it
-    /// instead of quietly running fewer.
-    TEST(RtxDlssTest, rayReconstructionBuildsAndResolvesAFlatFrame)
+    /// **Skipped rather than absent**, so a build with no DLSS says so instead of quietly running
+    /// fewer tests.
+    ///
+    /// One test for the file rather than a stub per test above, because a stub written per name is
+    /// a list that stops matching the moment a test is added on the other side of the `#ifdef`. Its
+    /// own suite name for the same reason it is a bare `TEST`: the suite above is `TEST_F`, and one
+    /// suite cannot hold both forms.
+    TEST(RtxDlss, thisBuildHasNoRayReconstruction)
     {
         GTEST_SKIP() << "this build has no DLSS; configure with -DOPENMW_RTX_DLSS=ON";
     }
-
-    TEST(RtxDlssTest, anUpscaledFrameIsTheSameFrameLarger)
-    {
-        GTEST_SKIP() << "this build has no DLSS; configure with -DOPENMW_RTX_DLSS=ON";
-    }
-
 }
 
 #endif

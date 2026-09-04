@@ -42,7 +42,7 @@ namespace Rtx
         TEST_F(RtxWavePassTest, theLastLevelOfEachChainIsTheSeaStateItself)
         {
             const Device& device = getDevice();
-            CommandPool pool(device);
+            CommandPool& pool = getPool();
             const WavePass waves(device, pool, Testing::getShaderDirectory());
 
             synthesise(waves, pool, 0.0f);
@@ -111,7 +111,7 @@ namespace Rtx
         TEST_F(RtxWavePassTest, aLevelOfTheChainIsTheMeanOfWhatItCovers)
         {
             const Device& device = getDevice();
-            CommandPool pool(device);
+            CommandPool& pool = getPool();
             const WavePass waves(device, pool, Testing::getShaderDirectory());
 
             synthesise(waves, pool, 0.0f);
@@ -192,7 +192,7 @@ namespace Rtx
         TEST_F(RtxWavePassTest, theResolvedCurvatureTableIsWhatASamplerFinds)
         {
             const Device& device = getDevice();
-            CommandPool pool(device);
+            CommandPool& pool = getPool();
             const WavePass waves(device, pool, Testing::getShaderDirectory());
 
             synthesise(waves, pool, 0.0f);
@@ -252,7 +252,7 @@ namespace Rtx
         TEST_F(RtxWavePassTest, theSurfaceAtAnotherMomentIsAnotherSurface)
         {
             const Device& device = getDevice();
-            CommandPool pool(device);
+            CommandPool& pool = getPool();
             const WavePass waves(device, pool, Testing::getShaderDirectory());
 
             const Image& surface = waves.getSurface(0);

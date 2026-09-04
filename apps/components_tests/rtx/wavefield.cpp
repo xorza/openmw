@@ -224,7 +224,7 @@ namespace Rtx
         TEST_F(RtxWaveFieldTest, oneAmplitudeBecomesTheWaveItStandsForAndItsDerivatives)
         {
             const Device& device = getDevice();
-            CommandPool pool(device);
+            CommandPool& pool = getPool();
             const Passes passes(device);
 
             constexpr float amplitude = 0.5f;
