@@ -28,7 +28,7 @@
 // stands inside a slice steps through the same line from the slice's near edge, and lands on the
 // same number at its far edge.
 //
-// Nothing here traces, walks or samples a field. It reads four images and a depth, and does
+// Nothing here traces, walks or samples a field. It reads three images and a depth, and does
 // multiply-adds.
 
 #include "scene.h"
@@ -108,7 +108,7 @@ FogSlice sliceAt(ivec2 column, uint slice, ivec2 grid, float surfaces[9])
 
     const vec3 lamps = texelFetch(fogLamps, ivec3(column, int(slice)), 0).xyz;
 
-    return FogSlice(point.xyz + lamps * seeing.w, point.w, seeing.xyz);
+    return FogSlice(point.xyz + lamps * seeing.y, point.w, seeing.x);
 }
 
 void main()
@@ -127,7 +127,7 @@ void main()
 
     float transmittance = 1.0;
     vec3 scattered = vec3(0.0);
-    vec3 sunward = vec3(0.0);
+    float sunward = 0.0;
     float behind = 0.0;
 
     // The slice before the first is the first, and the one after the last is the last — the clamp
@@ -165,9 +165,9 @@ void main()
         // a distance to, and the slice's own sample beside it, which is what that read steps
         // through from the edge before.
         imageStore(fogVolumeAirTarget, froxel, vec4(scattered, transmittance));
-        imageStore(fogVolumeSunwardTarget, froxel, vec4(sunward, 0.0));
+        imageStore(fogVolumeSunwardTarget, froxel, vec4(sunward));
         imageStore(fogSliceTarget, froxel, vec4(here.mInscatter, here.mExtinction));
-        imageStore(fogSliceSunwardTarget, froxel, vec4(here.mSunward, 0.0));
+        imageStore(fogSliceSunwardTarget, froxel, vec4(here.mSunward));
 
         behind = ahead;
         before = here;

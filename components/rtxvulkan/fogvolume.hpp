@@ -17,10 +17,15 @@ namespace Rtx
     /// The air in front of the eye, integrated once for a block of pixels rather than once per pixel.
     ///
     /// **A frustum-aligned grid, and everything about it follows from the march it replaces.** That
-    /// march walks `FOG_STEPS` steps down every primary ray, reads the coverage field at each of
-    /// them and buys `FOG_SHADOW_RAYS` sun probes, for every pixel of every frame — and the field it
+    /// march walked `FOG_STEPS` steps down every primary ray, read the coverage field at each of
+    /// them and bought eight sun probes, for every pixel of every frame — and the field it
     /// integrates has no detail at a pixel's size. One column per `FOG_VOLUME_SCALE` squared pixels
     /// answers all of them, and the trace reads one edge of the column and steps through one slice.
+    ///
+    /// **A room's air is drawn here too**, although its field is even and integrates in closed form.
+    /// What that form still could not do without was a lamp reservoir and a shadow ray per pixel,
+    /// and those are exactly what a froxel does once for a column — so an interior's trace lost 0.15
+    /// to 0.35 ms and this pass cost it 0.12 to 0.16. One kind of air, one place it is answered.
     ///
     /// **Two volumes and not one, because what filters and what a pixel reads are different
     /// quantities.** A froxel's scattering and extinction are properties of the *point* — they
@@ -85,18 +90,22 @@ namespace Rtx
         /// the frame before.
         ///
         /// **The point pair is not discarded**, because the frame about to be drawn reads what the
-        /// frame before left in it. Only the half being written this frame comes from undefined, and
-        /// only the integrated pair does so unconditionally — and that pair is taken for sampling as
-        /// well as for writing, because an interior binds it without dispatching any air into it.
+        /// frame before left in it. Only the half being written this frame comes from undefined,
+        /// with everything that is written whole before it is read: the lamps, the column depth and
+        /// the integrated pair.
         void begin(VkCommandBuffer commands, std::uint64_t frame) const;
 
         /// Orders the pass that finds each column's surface against the pass that fills the froxels.
         void depthTaken(VkCommandBuffer commands) const;
 
-        /// Orders the pass that fills the froxels against the pass that integrates the columns.
+        /// Orders the pass that fills the froxels against the pass that integrates the columns, and
+        /// against the trace.
         ///
-        /// **Three images and not the pair**, because what the second pass reads is what the first
-        /// wrote at a point: the scattering, the seeing beside the sun's transport, and the lamps.
+        /// **Three images and not the pairs**, because what is read next is what the first pass wrote
+        /// at a point: the scattering, the three seeings, and the lamps. **And the trace reads two of
+        /// them as well as the integrate pass**, because a puff of smoke is lit by the froxel it
+        /// stands in — `puffLight` — and reads the seeings and the lamps at a point rather than
+        /// integrated down a column.
         void scattered(VkCommandBuffer commands, std::uint64_t frame) const;
 
         /// Orders the dispatch that wrote the accumulation and the slices against the trace that
@@ -120,10 +129,21 @@ namespace Rtx
         /// is the pair a frame reprojects and averages.
         std::array<Image, 2> mScatter;
 
-        /// The sun's transport to that point — what the shadow rays and the fog's own column left of
-        /// it — with the irradiance and the phase function divided out. `a` is what the lamp ray
-        /// from that froxel found, which is filtered beside it because it is the same kind of
-        /// quantity: a shadow ray's answer, nought or one at an edge the grid cannot resolve.
+        /// The sun's transport to that point — what the shadow ray and the fog's own column left of
+        /// it, with the irradiance and the phase function divided out — in `r`; and beside it what
+        /// the lamp ray from that froxel found in `g` and what the ambient's found in `b`. Three
+        /// answers of one ray each, filtered together because they are one kind of quantity: nought
+        /// or one at an edge the grid cannot resolve, and only averaging over frames turns that into
+        /// a shade.
+        ///
+        /// **The air reads the first two and a puff of smoke reads all three.** The air's own colour
+        /// is the weather's fog colour and is scattered unshadowed, which is Morrowind's convention
+        /// for it; a puff is lit by the frame's ambient the way a surface is, and what it sees of
+        /// that is the third — `puffLight`.
+        ///
+        /// **One channel for the sun and not three.** Its transport is a product of transmittances
+        /// and carries no colour: what water over the point would take off the daylight is asked by
+        /// the one reader that stands at a point, and `sunInAir` says why the volume does not.
         std::array<Image, 2> mSunward;
 
         /// What every lamp reaching a froxel delivers into it, per steradian, with nothing standing
@@ -138,7 +158,7 @@ namespace Rtx
         Image mLamps;
 
         /// The same two quantities accumulated front to back, which is what a pixel reads. `a` of
-        /// the first is what is left of a ray at that depth.
+        /// the first is what is left of a ray at that depth; the second is one channel, the sun's.
         Image mAir;
         Image mAirSunward;
 

@@ -198,9 +198,13 @@ namespace Rtx
         /// The kernel for `variant`, which `compileEvery` made.
         const TracePipeline& pipelineFor(VisibilityVariant variant) const;
 
-        /// The same, for the pass that fills the fog volume's froxels. Null for an even air, which
-        /// reads the closed form and dispatches no volume.
-        const ComputePipeline* scatterPipelineFor(VisibilityVariant variant) const;
+        /// The same, for the pass that fills the fog volume's froxels.
+        ///
+        /// **Every tuple has one, a room's included.** The closed form a room used to read instead
+        /// was a lamp reservoir and a shadow ray *per pixel*, where the volume walks the lamps once
+        /// per froxel and hands the pixel two fetches — measured at 0.15 to 0.35 ms off the trace of
+        /// every interior, against 0.12 to 0.16 for the volume itself.
+        const ComputePipeline& scatterPipelineFor(VisibilityVariant variant) const;
 
         const Device& mDevice;
 

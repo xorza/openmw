@@ -5,9 +5,9 @@
 
 // Which lamps could reach a point, and what one delivers at a distance.
 //
-// **The two halves every consumer of a lamp must agree on.** Three places accumulate lamps —
-// a surface, the air, and a puff of smoke — and they differ in the cosine, the shadow ray
-// and the phase function. What they may not differ in is the reach and the falloff.
+// **The two halves every consumer of a lamp must agree on.** Two places accumulate lamps — a
+// surface and the air — and they differ in the cosine, the shadow ray and the phase function. What
+// they may not differ in is the reach and the falloff. A puff of smoke reads the air's answer.
 
 #include "colour.h"
 #include "scene.h"
@@ -93,10 +93,9 @@ float falloff(float distance, float reach, float source)
 
 /// The integral of `falloff` along a ray, over the stretch of it between `from` and `to`.
 ///
-/// **The same window and the same inverse square, integrated instead of sampled.** Where there is
-/// nothing else along the ray to sample — an even haze with no sun in it — a lamp's whole share of
-/// the air is this, and it is the sum a march of that ray converges to rather than an estimate of
-/// one. `fogUniformAlong` is the caller.
+/// **The same window and the same inverse square, integrated instead of sampled.** A froxel's whole
+/// share of a lamp is this over its own stretch, and it is the sum a march of that stretch converges
+/// to rather than an estimate of one. `lampsInAir` is the caller.
 ///
 /// Exact, and it is exact because the integrand is a rational function of one quantity. With `s`
 /// measured from the ray's closest approach to the lamp and `r^2 = h^2 + s^2`, `falloff` is
@@ -154,10 +153,10 @@ float falloffAlong(float perpendicular, float from, float to, float reach, float
 
 /// One lamp as it arrives at a point.
 ///
-/// **The reach test and the falloff, which is the whole of what a lamp is at a distance.** Three
-/// places accumulate lamps — a surface, the air and a puff of smoke — and they differ in the cosine,
-/// the shadow ray and the phase function. This is the part they may not differ in, so it is written
-/// once and each of them weighs it its own way.
+/// **The reach test and the falloff, which is the whole of what a lamp is at a distance.** Two
+/// places accumulate lamps — a surface and the air — and they differ in the cosine, the shadow ray
+/// and the phase function. This is the part they may not differ in, so it is written once and each
+/// of them weighs it its own way.
 struct Lamp
 {
     /// Unit, from the point toward the lamp. Zero where the lamp does not reach.
@@ -175,9 +174,9 @@ struct Lamp
     /// How big the glowing part is, and how far short of it a ray stops.
     ///
     /// **The first is read twice and the second once.** `falloff` above softens its singularity by
-    /// the size, so every asker gets it and all three still agree about what arrives — which is the
-    /// whole point of the record. The clearance is the tracer's alone: the air and a puff of smoke
-    /// trace nothing and read past it.
+    /// the size, so every asker gets it and both still agree about what arrives — which is the
+    /// whole point of the record. The clearance is the tracer's alone: the air traces nothing and
+    /// reads past it.
     float mSourceRadius;
     float mClearance;
 };
@@ -198,29 +197,6 @@ Lamp lampAt(GpuLight lamp, vec3 position)
         lamp.mSourceRadius, lamp.mClearance);
 }
 
-/// What every lamp reaching a point delivers there, as irradiance and with nothing in the way.
-///
-/// **What a puff of smoke wants for its own falloff**, which no estimator over a layer can answer:
-/// a lamp's intensity runs as one over the square of a distance that changes from sprite to sprite,
-/// where whether it is *seen* changes slowly. So the sum is taken here and the seeing is asked once
-/// — `spritesAlong` says why.
-///
-/// The isotropic factor is the caller's. It is one multiply on the sum rather than one per lamp,
-/// which is one rounding rather than as many as the cell has lamps.
-vec3 lampsAt(vec3 position)
-{
-    vec3 total = vec3(0.0);
-
-    const uvec2 near = lampsWithin(lampsReaching(position));
-    for (uint i = near.x; i < near.y; ++i)
-    {
-        const Lamp lamp = lampAt(lightAt(lightListAt(i)), position);
-        total += lamp.mIntensity * lamp.mReaching;
-    }
-
-    return total;
-}
-
 /// One lamp held out of all the ones that could reach a point, and what it stands for.
 ///
 /// **A reservoir is one candidate and the weight of everything it beat.** That second number is what
@@ -235,7 +211,7 @@ vec3 lampsAt(vec3 position)
 /// and 0.32% at Wolverine Hall, and perfect selection cannot beat that.
 struct Reservoir
 {
-    /// Where the ray this buys leaves from — a shading point, a step of a fog march, or a sprite.
+    /// Where the ray this buys leaves from — a shading point, or a froxel of the air.
     vec3 mFrom;
 
     /// What the lamp held would deliver there with nothing in the way.
@@ -287,8 +263,8 @@ float litCosine(vec3 normal, vec3 side, vec3 towards, float transmission)
 /// Offers one candidate to `kept`, already resolved to what it delivers at `from`.
 ///
 /// **The reservoir's own rule, written once**, because two walks feed it: the point one below, and
-/// the walk along a ray that `fogUniformAlong` takes. A second copy of this is a second chance for
-/// the two to disagree about what unbiased means.
+/// the walk along a ray that `lampsInAir` takes. A second copy of this is a second chance for the
+/// two to disagree about what unbiased means.
 void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshadowed, Lamp lamp)
 {
     // A scalar to weigh a colour by, which is what a target function has to be. The luminance,
@@ -315,16 +291,12 @@ void considerLamp(inout Reservoir kept, inout uint state, vec3 from, vec3 unshad
 
 /// Weighs every lamp reaching `from` into `kept`.
 ///
-/// **One walk and three askers**, which is what stopped the fog and the sprites going unshadowed:
-/// a surface, a step of a fog march and a layer of particles all want the same question — which of
-/// these lamps is worth the one ray — and each used to answer it its own way or not at all.
+/// **The surface's walk of the grid, about a point.** The air's — `lampsInAir` — walks the same grid
+/// along a ray, and the two feed one rule, `considerLamp`, so what unbiased means cannot come apart
+/// between them.
 ///
-/// **Called more than once builds one reservoir over all of it.** The fog weighs every step of a
-/// march into the same one, so a single ray stands for the whole march rather than for one place in
-/// it, and the estimator is unbiased over the sum it was accumulated from.
-///
-/// @param normal the surface's, or nothing at all for a point in a medium — the air and a puff have
-///        no direction to face away from, so every lamp reaching them counts whole.
+/// @param normal the surface's, or nothing at all for a point in the air, which has no direction to
+///        face away from, so every lamp reaching it counts whole.
 /// @param side what decides which side a lamp has to stand on, beside the normal and going with it:
 ///        `litCosine` says why that is not always the same vector. Nothing at all where `normal` is.
 /// @param scale what this asker's own share of a lamp is worth: `INV_PI` for a Lambert surface,
@@ -349,22 +321,6 @@ void weighLamps(
 
         considerLamp(kept, state, from, lamp.mIntensity * (cosine * lamp.mReaching * scale), lamp);
     }
-}
-
-/// The lamps reaching a point in a medium, as the one candidate a shadow ray is spent on.
-///
-/// **What "in a medium" means to `weighLamps`, in one place**: the air and a puff face nothing away,
-/// so there is no normal and no plane to take a side against, no far side to let a share through,
-/// and what comes back toward the eye is the irradiance spread over the sphere.
-///
-/// The reservoir and not the sum: both callers want the *seeing* out of this and read the falloff
-/// from `lampsAt` beside it, which is what `lampsAt` says it is for.
-Reservoir lampsInMedium(inout uint state, vec3 position)
-{
-    Reservoir kept = noLamps();
-    weighLamps(kept, state, position, vec3(0.0), vec3(0.0), INV_FOUR_PI, 0.0);
-
-    return kept;
 }
 
 /// What the world leaves of the lamp a reservoir held, from none of it to all.

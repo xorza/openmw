@@ -332,10 +332,10 @@ bool behindTheFace(vec3 towards, vec3 plane, float face)
 /// **A direction behind the surface's own triangle reaches nothing**, by `behindTheFace`: there is
 /// no ambient inside a wall.
 ///
-/// @param normal the hemisphere's axis — a surface's shading normal, or nothing at all for a point
-///        in a medium, which is `weighLamps`' contract and means the same thing here: a puff of
-///        smoke has no side to face away from, so what stands over it is asked over the whole
-///        sphere rather than over a hemisphere.
+/// @param normal the hemisphere's axis — a surface's shading normal, or nothing at all for a froxel
+///        of the air, which is `weighLamps`' contract and means the same thing here: the air has no
+///        side to face away from, so what stands over it is asked over the whole sphere rather than
+///        over a hemisphere.
 /// @param plane the surface's own triangle, as `behindTheFace` takes it.
 float ambientReaching(vec3 position, vec3 normal, vec3 plane, float transmission, uint seed)
 {

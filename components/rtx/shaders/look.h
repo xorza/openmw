@@ -412,10 +412,10 @@ namespace Rtx::Shaders
     /// is what the filter is for — and it is the same trade the moon pick makes. Nothing downstream
     /// clamps it: `pathEnd` and a sprite's fill both multiply, so a doubled sample stays worth double.
     ///
-    /// **Hashed rather than blue noise, because three callers must not agree.** The bounce, a water
-    /// reflection and a puff of smoke each ask this, and the water's two rays already take separate
-    /// seeds so that a reflection and a refraction do not keep one answer between them. A screen-space
-    /// tile has one arrangement per channel and would hand every caller the same one.
+    /// **Hashed rather than blue noise, because two callers must not agree.** The bounce and a water
+    /// reflection each ask this, and the water's two rays already take separate seeds so that a
+    /// reflection and a refraction do not keep one answer between them. A screen-space tile has one
+    /// arrangement per channel and would hand every caller the same one.
     ///
     /// The interior ray keeps every point: it is short, and a room is where this term does its
     /// visible work.
@@ -550,33 +550,23 @@ namespace Rtx::Shaders
     /// a thick coastal fog.
     const float FOG_DROPLET = 8.0f;
 
-    /// Below this share of what the sky puts into the air, the sun does not get a shadow ray.
+    /// Below this share of what the sky puts into the air, the moons do not get their shadow ray.
     ///
-    /// **What makes the cost fall only where the shafts are.** Ninety degrees off the sun the phase
-    /// function is two thousandths of its forward value, so the sun puts less light into the air there
-    /// than the rounding on the sky's term — and a shaft cut out of light that faint is one nobody can
-    /// see. Looking away from the sun, and in every interior, this is the whole of what shafts cost.
+    /// **What makes the cost fall only where the halos are.** Ninety degrees off a moon the phase
+    /// function is two thousandths of its forward value, so the moon puts less light into the air
+    /// there than the rounding on the sky's term — and a shaft cut out of light that faint is one
+    /// nobody can see.
+    ///
+    /// **The sun's ray is not gated by this**, although the same argument holds for the air: a puff
+    /// of smoke in the same froxel reads the sun's shadow whichever way the eye looks, and
+    /// `FogSources::mSunward` says so.
     const float FOG_SHAFT_FLOOR = 0.02f;
-
-    /// How many shadow rays the sun gets in the fog, and so how many stretches the march is cut into.
-    ///
-    /// **Not one per step.** A ray costs about four march steps here, so shadowing all twenty-four would
-    /// cost more than the whole fog does. One ray answers for a stretch, which is what a froxel does
-    /// too — and the jitter is what keeps that from being a decision always taken in the same place: over
-    /// frames the probe walks its stretch, so a shaft's edge lands between two neighbours as noise
-    /// rather than as a step.
-    ///
-    /// Eight rather than four because they are perfectly coherent — every one of them points at the same
-    /// sun — so the eighth costs almost nothing. Against a ray-per-step reference the renderer this is
-    /// ported from measured errors of 0.0155, 0.0134, 0.0087 and 0.0048 for one, two, four and eight.
-    const uint FOG_SHADOW_RAYS = 8u;
 
     /// How many cells of the light grid one ray may walk before it gives up.
     ///
-    /// **A budget and not a limit anything reaches.** The closed form runs where the air is even, which
-    /// is a room; the grid starts at a cell of one terrain tile, so an interior is a handful of cells
-    /// across and a ray crosses two or three of them. What this stops is a fine grid under a long ray
-    /// turning the walk back into the march it replaced.
+    /// **A budget and not a limit anything reaches.** A froxel's ray is one slice long, and the grid
+    /// starts at a cell of one terrain tile, so a ray crosses a handful of cells at most. What this
+    /// stops is a fine grid under a long ray turning the walk back into the march it replaced.
     const uint FOG_CELLS_ALONG = 32u;
 
     /// What is left of a ray at the world's edge, once the second element of the air has had it.

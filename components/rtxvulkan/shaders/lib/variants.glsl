@@ -44,8 +44,10 @@ layout(constant_id = 3) const bool HAS_SEA = true;
 /// Whether the air is an even haze rather than a banked one.
 ///
 /// **The one constant that is false in the general case**, because an exterior is the general case.
-/// It names the interior, where the coverage field multiplies by one — and where `fog.glsl` then has
-/// nothing left along the ray to sample and integrates it instead.
+/// It names the interior, where the coverage field multiplies by one — so `fogExtinctionAt` skips
+/// the forty hashes a sample of that field costs, in every froxel the scatter pass fills. A room's
+/// air is drawn into the same volume an exterior's is; what differs is only how much a sample of it
+/// costs.
 layout(constant_id = 4) const bool FOG_UNIFORM = false;
 
 /// How the trace sorts its threads between the traversal and the shader that resolves what they

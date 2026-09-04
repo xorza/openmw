@@ -29,10 +29,10 @@ namespace Rtx
         /// Everything a pass reads, and then everything a pass writes. `lib/bindings.glsl` names
         /// them in this order.
         ///
-        /// **Eight images and sixteen of these are seven of them named twice**, because Vulkan has
-        /// no descriptor a shader may both sample and store through — and every one of them but the
-        /// history is written by one pass and read by the next. The column depth is the eighth,
-        /// named once: both passes reach it through the one storage binding.
+        /// **Ten images and seventeen bindings, seven of the images named twice**, because Vulkan
+        /// has no descriptor a shader may both sample and store through — and every one of them but
+        /// a pair's history is written by one pass and read by the next. The column depth is named
+        /// once: both passes reach it through the one storage binding.
         constexpr std::uint32_t sBindings = 17;
 
         /// Whether a binding is read or written, which the layout and the writes must not disagree
@@ -78,9 +78,11 @@ namespace Rtx
             Image(device, mColumns, mRows, sFormat, sUsage, "fog sunward 1", 1, Shaders::FOG_VOLUME_SLICES) }
         , mLamps(device, mColumns, mRows, sFormat, sUsage, "fog lamps", 1, Shaders::FOG_VOLUME_SLICES)
         , mAir(device, mColumns, mRows, sFormat, sUsage, "fog air", 1, Shaders::FOG_VOLUME_SLICES)
-        , mAirSunward(device, mColumns, mRows, sFormat, sUsage, "fog air sunward", 1, Shaders::FOG_VOLUME_SLICES)
+        , mAirSunward(
+              device, mColumns, mRows, VK_FORMAT_R16_SFLOAT, sUsage, "fog air sunward", 1, Shaders::FOG_VOLUME_SLICES)
         , mSlice(device, mColumns, mRows, sFormat, sUsage, "fog slice", 1, Shaders::FOG_VOLUME_SLICES)
-        , mSliceSunward(device, mColumns, mRows, sFormat, sUsage, "fog slice sunward", 1, Shaders::FOG_VOLUME_SLICES)
+        , mSliceSunward(
+              device, mColumns, mRows, VK_FORMAT_R16_SFLOAT, sUsage, "fog slice sunward", 1, Shaders::FOG_VOLUME_SLICES)
         , mColumnDepth(device, mColumns, mRows, VK_FORMAT_R32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "fog column depth")
     {
         try
@@ -202,31 +204,14 @@ namespace Rtx
 
         // **Discarded, because every texel of it is written before any is read.** Keeping what the
         // frame before last left here would cost a decompress and buy nothing. The other half of the
-        // pair is this frame's history and survives, three loops down.
-        for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps })
+        // pair is this frame's history and survives, one loop down. The first thing that touches any
+        // of these is a compute pass writing it — `depthTaken`, `scattered` and `handOver` order
+        // every read after that, the trace's included.
+        for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps, &mAir, &mAirSunward, &mSlice,
+                 &mSliceSunward, &mColumnDepth })
             image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-
-        // **Discarded like the three above, and read by the trace like the four below**: the pass
-        // that finds it writes it, the two that fill and integrate the froxels read it, and the
-        // trace reads it too, to carry a pixel's last slice the way the integrate pass did. Read
-        // as storage everywhere, because nothing samples between two columns' depths.
-        mColumnDepth.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-
-        // **Sampled as well as written, because a frame that dispatches no air still binds these.**
-        // An interior integrates its own even haze and runs no volume pass, so what follows this
-        // barrier is the trace with the pair bound — `VisibilityPass::record` says why it is bound
-        // either way. Named for the write alone, this covered only the frames with an air pass to
-        // hand over.
-        for (const Image* image : { &mAir, &mAirSunward, &mSlice, &mSliceSunward })
-            image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
         // **From `GENERAL` and not from undefined**, which is the whole of what makes a history a
         // history: the frame that wrote it two frames ago left it here, and discarding it would hand
@@ -248,14 +233,16 @@ namespace Rtx
     {
         const std::size_t written = writtenAt(frame);
 
-        // **`GENERAL` to `GENERAL`, which is what a barrier between two compute passes over one
-        // image is**: the layout is right for both accesses already — `BloomPass` says why these are
-        // never moved to a read-only one — so what this orders is the writes against the reads and
-        // nothing else.
+        // **`GENERAL` to `GENERAL`, which is what a barrier between two passes over one image is**:
+        // the layout is right for both accesses already — `BloomPass` says why these are never moved
+        // to a read-only one — so what this orders is the writes against the reads and nothing
+        // else. **Against the trace as well as the integrate pass**, because a puff of smoke reads
+        // two of these at a point: `puffLight` says which and why.
         for (const Image* image : { &mScatter[written], &mSunward[written], &mLamps })
             image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
     }
 
     void FogVolume::handOver(VkCommandBuffer commands) const

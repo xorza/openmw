@@ -90,7 +90,7 @@ struct FogSlice
 {
     vec3 mInscatter;
     float mExtinction;
-    vec3 mSunward;
+    float mSunward;
 };
 
 FogSlice fogSliceBetween(FogSlice from, FogSlice to, float fraction)
@@ -109,7 +109,7 @@ FogSlice fogSliceBetween(FogSlice from, FogSlice to, float fraction)
 /// **Exact for a stretch the line does not bend in**, which is why both callers cut a slice at its
 /// middle: the line from one slice's sample to the next bends only at the samples, so each half of
 /// a slice is one straight piece and its mean is its own middle.
-void fogThrough(inout float transmittance, inout vec3 scattered, inout vec3 sunward, FogSlice slice, float length)
+void fogThrough(inout float transmittance, inout vec3 scattered, inout float sunward, FogSlice slice, float length)
 {
     const float weight = transmittance * (1.0 - exp(-slice.mExtinction * length));
 

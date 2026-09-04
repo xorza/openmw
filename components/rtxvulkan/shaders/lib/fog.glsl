@@ -233,9 +233,6 @@ float fogBeamDepth(float extinction, vec3 towards)
 /// **Hoisted because a directional source holds its angle to the ray**, so its phase function is one
 /// evaluation for the whole of it — which is what makes a function of `fogPhase`'s shape affordable
 /// at all. A lamp's angle changes at every point, which is why lamps are estimated the other way.
-///
-/// **Read by the march and by the closed form both**, so what a shaft is cannot come apart between
-/// a valley and a room.
 struct FogSources
 {
     /// Whether there is a sun at all, which an interior and a night both answer no to.
@@ -245,15 +242,12 @@ struct FogSources
     bool mSunlit;
 
     /// What it puts into the air along this ray.
-    vec3 mSunward;
-
-    /// Whether that is worth a shadow ray.
     ///
-    /// **The gate is what keeps the rays off every interior and off everything but the sunward part
-    /// of an exterior**, which is most of a frame. And there is no beam without a sun, which is the
-    /// same test: a shaft with nothing at the end of it lights up the sky around a sun that is not
-    /// there.
-    bool mShafts;
+    /// **Its shadow ray is cast wherever there is a sun**, and not only where this is worth one: the
+    /// air throws the sun forward so hard that looking away from it there is nothing to shadow, but a
+    /// puff of smoke in the same froxel is lit by the sun at a card's worth whichever way the eye
+    /// looks — `puffLight` — and reads the froxel's answer.
+    vec3 mSunward;
 
     /// **The moons light the air too, and nothing was saying so.** At night the only thing lighting
     /// this haze was `mFogColour`, the dome's own colour — so the air around a moon came back
@@ -286,12 +280,16 @@ struct FogSources
 /// **Nothing here asks the hour.** At night `mSunPosition` points below the horizon, the floor in
 /// `fogBeamDepth` pins it, and the beam comes back as nothing at all.
 ///
-/// @param visible what a shadow ray found between the point and the sun, or one where none was cast.
-/// @param reaching what any water overhead leaves of the daylight — `daylightReaching`, asked once
-///        by the caller because the moons below want the same answer.
-vec3 sunInAir(float extinction, float visible, vec3 reaching)
+/// **And nothing here asks what water stands over the point**, which is what keeps this one channel
+/// rather than three. No pixel reads the volume from under water — `fogAlong` answers nothing there,
+/// and a ray from above ends at the surface — so a froxel under it is filled for the tent and the
+/// history and for nothing else. The one reader that stands at a point rather than integrating a
+/// column is a puff of smoke, and `puffLight` asks `daylightReaching` where the puff is.
+///
+/// @param visible what a shadow ray found between the point and the sun.
+float sunInAir(float extinction, float visible)
 {
-    return visible * exp(-fogBeamDepth(extinction, frame.mSunPosition)) * reaching;
+    return visible * exp(-fogBeamDepth(extinction, frame.mSunPosition));
 }
 
 /// What the two moons put into one point of the air.
@@ -300,12 +298,11 @@ vec3 sunInAir(float extinction, float visible, vec3 reaching)
 /// standing high crosses far less air than one on the rim.
 ///
 /// @param lunar what a shadow ray found between the point and the pair, which share one.
-vec3 moonsInAir(float extinction, FogSources sources, float lunar, vec3 reaching)
+vec3 moonsInAir(float extinction, FogSources sources, float lunar)
 {
     return lunar
         * (sources.mMasser * exp(-fogBeamDepth(extinction, frame.mMoons[0].mDirection))
-            + sources.mSecunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection)))
-        * reaching;
+            + sources.mSecunda * exp(-fogBeamDepth(extinction, frame.mMoons[1].mDirection)));
 }
 
 FogSources fogSourcesAlong(vec3 direction)
@@ -323,8 +320,7 @@ FogSources fogSourcesAlong(vec3 direction)
     // **Each flag carries its own constant and not only the terms behind it.** A moon's share folds
     // to nothing without one, but the comparison against a uniform does not fold with it — so the
     // block it guards stays in the kernel, which is the whole of what the constant is for.
-    return FogSources(sunlit, sunward, sunlit && brightest(sunward) > worthARay, masser, secunda,
-        HAS_MOONS && brightest(masser + secunda) > worthARay,
+    return FogSources(sunlit, sunward, masser, secunda, HAS_MOONS && brightest(masser + secunda) > worthARay,
         brightest(masser) >= brightest(secunda) ? frame.mMoons[0].mDirection : frame.mMoons[1].mDirection);
 }
 
@@ -368,7 +364,7 @@ FogSlice fogSliceAt(vec2 across, float depth)
     // somewhere else, and the reorder that must not change the picture changed it everywhere. The
     // volume has one level, so this is the level it always meant.
     const vec4 slice = textureLod(fogSlice, vec3(across, depth), 0.0);
-    const vec3 sunward = textureLod(fogSliceSunward, vec3(across, depth), 0.0).xyz;
+    const float sunward = textureLod(fogSliceSunward, vec3(across, depth), 0.0).x;
 
     return FogSlice(slice.xyz, slice.w, sunward);
 }
@@ -414,7 +410,7 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
     // along the depth.
     const float edge = (float(slice) - 0.5) / slices;
     vec4 air = slice > 0u ? textureLod(fogVolumeAir, vec3(across, edge), 0.0) : vec4(0.0, 0.0, 0.0, 1.0);
-    vec3 sunward = slice > 0u ? textureLod(fogVolumeSunward, vec3(across, edge), 0.0).xyz : vec3(0.0);
+    float sunward = slice > 0u ? textureLod(fogVolumeSunward, vec3(across, edge), 0.0).x : 0.0;
 
     // The near half of the slice, as far as the surface reaches into it; then the far half, likewise.
     // A straight piece's mean is its own middle, which is what each read is taken at.
@@ -437,8 +433,8 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
         fogThrough(air.w, air.xyz, sunward, fogSliceAt(across, (float(slice) + onward) / slices), reach - middle);
     }
 
-    const vec3 sun = HAS_SUN ? sunward * frame.mSunIrradiance * fogPhase(dot(direction, frame.mSunPosition))
-                             : vec3(0.0);
+    const vec3 sun
+        = HAS_SUN ? frame.mSunIrradiance * (sunward * fogPhase(dot(direction, frame.mSunPosition))) : vec3(0.0);
 
     return vec4(air.xyz + sun, air.w);
 }
@@ -502,20 +498,6 @@ float fogColumn(vec3 origin, vec3 direction, float span)
     return frame.mFogExtinction * (above * mean + under * (span - above));
 }
 
-/// How the light a lamp puts into one stretch of a ray is weighed against what it puts into the
-/// rest.
-///
-/// **The two callers of `lampsInAir` differ here and nowhere else.** The closed form holds one
-/// reservoir for a whole ray, so what a stretch is worth is what the air actually took out of the
-/// ray over it — a difference of two transmittances, and exact. A froxel holds a reservoir for
-/// itself and hands the integrator a mean, so its stretches are worth their own lengths and the
-/// air's own weight is applied once, afterwards, by the pass that integrates the column.
-///
-/// **A froxel cannot use the other.** `fogColumn` is the closed form of an even layer, and the
-/// whole reason a froxel exists is that its air is banked.
-const uint LAMPS_BY_ABSORPTION = 0u;
-const uint LAMPS_BY_LENGTH = 1u;
-
 /// Weighs every lamp reaching a stretch of a ray into `kept`, and returns what they scatter into it.
 ///
 /// **One walk of the light grid rather than one per step**, which is the cost that made the air
@@ -537,8 +519,7 @@ const uint LAMPS_BY_LENGTH = 1u;
 /// Returns what those lamps scatter toward the eye *integrated over the stretch*: a radiance times
 /// a length, so a caller wanting the mean divides by `exit - entry`. `INV_FOUR_PI` is already in
 /// it, the air having no side to face a lamp away from.
-vec3 lampsInAir(
-    inout Reservoir kept, inout uint state, vec3 origin, vec3 direction, float entry, float exit, uint weighing)
+vec3 lampsInAir(inout Reservoir kept, inout uint state, vec3 origin, vec3 direction, float entry, float exit)
 {
     const float side = 1.0 / frame.mLightGrid.mInverseCell;
     const vec3 beyond = frame.mLightGrid.mOrigin + vec3(frame.mLightGrid.mSize) * side;
@@ -610,24 +591,23 @@ vec3 lampsInAir(
             if (!(to > from))
                 continue;
 
-            // **What the air took is exact, and the falloff is what stands in for a mean.** The
-            // light a stretch absorbs is `T(from) - T(to)` and nothing else, because `dT/dt` is
-            // `-sigma T` — so the one thing left approximated is that a lamp's falloff and the air's
-            // own density do not correlate over the stretch, which they do not: the falloff varies
-            // over a lamp's reach and the density over a scale height.
+            // **The falloff is what stands in for a mean**, and it is the one thing approximated: a
+            // lamp's falloff and the air's own density do not correlate over the stretch, the one
+            // varying over a lamp's reach and the other over a scale height. What the air itself
+            // takes out of the stretch is not weighed here at all — a froxel hands the integrator a
+            // mean over its own length, and the pass that integrates the column applies the air's
+            // weight once, afterwards.
             const float crossed
                 = falloffAlong(perpendicular, from - closest, to - closest, held.mReach, held.mSourceRadius);
-            const float weight = weighing == LAMPS_BY_LENGTH
-                ? to - from
-                : exp(-fogColumn(origin, direction, from)) - exp(-fogColumn(origin, direction, to));
 
             // Asked of `lampAt` rather than worked out here, so the direction the shadow ray takes
             // and the reach it stops at are the same answer every other consumer of a lamp gets.
             const vec3 place = origin + direction * clamp(closest, from, to);
             const Lamp lamp = lampAt(held, place);
 
-            scattered += lamp.mIntensity * (INV_FOUR_PI * crossed);
-            considerLamp(kept, state, place, lamp.mIntensity * (INV_FOUR_PI * crossed * weight / (to - from)), lamp);
+            const vec3 share = lamp.mIntensity * (INV_FOUR_PI * crossed);
+            scattered += share;
+            considerLamp(kept, state, place, share, lamp);
         }
 
         if (leave >= exit)
@@ -640,85 +620,6 @@ vec3 lampsInAir(
     }
 
     return scattered;
-}
-
-/// The weather's own air where the coverage field is even, integrated instead of marched.
-///
-/// **The march exists to sample two things that vary along the ray, and one of them is gone.** With
-/// `mFogUniform` at one the field multiplies by one everywhere, so what is left varying is the
-/// height falloff — which has a closed form — and what stands between a point and a light, which
-/// does not. So the transmittance is `exp` of the column, the ambient it scatters is
-/// `colour * (1 - T)` exactly, every lamp is integrated along the ray in one walk of the grid, and
-/// the only loop left is the one the shadow rays were always the whole cost of.
-///
-/// **A room has a sun and this is what that costs.** Morrowind lights every interior with a
-/// directional light — `Sky::roomSun` — so an interior is not the sunless case, and this carries the
-/// sun and the moons at the granularity they were already estimated at: one ray a stretch, eight
-/// stretches, each weighed by what the air absorbed over exactly that stretch. What went is the
-/// twenty-four steps inside them.
-///
-/// **The one identity the whole thing rests on** is that `dT/dt` is `-sigma T`, so what a stretch
-/// takes out of the ray is `T(from) - T(to)` — exactly, with no sampling — and that is the weight
-/// every source's share is scaled by.
-vec4 fogUniformAlong(vec3 origin, vec3 direction, float distance, float offset, uint seed)
-{
-    // No air is the frame untouched, and it has to be exactly that: a lit surface with fog over it
-    // is a differently lit one, and the tests that measure radiance turn this off.
-    if (!(frame.mFogExtinction > 0.0))
-        return vec4(0.0, 0.0, 0.0, 1.0);
-
-    const float span = min(distance, FOG_REACH);
-    const float transmittance = exp(-fogColumn(origin, direction, span));
-
-    // The ambient, exactly: the source term does not vary along the ray, so the weights a march
-    // would have accumulated sum to `1 - T` and to nothing else.
-    vec3 scattered = frame.mFogColour * (1.0 - transmittance);
-
-    uint lampState = randomSeed(seed + SEED_LAMPS_FOG);
-    Reservoir lamps = noLamps();
-    lampsInAir(lamps, lampState, origin, direction, 0.0, span, LAMPS_BY_ABSORPTION);
-    scattered += lampsThrough(lamps, vec2(randomNext(lampState), randomNext(lampState)));
-
-    const FogSources sources = fogSourcesAlong(direction);
-
-    if (sources.mSunlit || sources.mMoonlit)
-    {
-        float behind = 0.0;
-        float leaving = 1.0;
-
-        for (uint stretch = 0u; stretch < FOG_SHADOW_RAYS; ++stretch)
-        {
-            const float ahead = fogDepth(float(stretch + 1u) / float(FOG_SHADOW_RAYS)) * span;
-
-            // What the air took out of the ray over this stretch, which is the whole of the weight
-            // its sources are worth — and it is a difference of two transmittances rather than a
-            // sum over steps.
-            const float entering = leaving;
-            leaving = exp(-fogColumn(origin, direction, ahead));
-            const float absorbed = entering - leaving;
-
-            // One point for the stretch, drawn where the march drew it: the fog's own depth toward
-            // each source, and the ray that says whether the source is there at all.
-            const vec3 probe = origin + direction * mix(behind, ahead, offset);
-            const float extinction = fogExtinctionAt(probe, 0.0);
-            const vec3 reaching = daylightReaching(probe);
-            behind = ahead;
-
-            if (sources.mSunlit)
-            {
-                const float visible = sources.mShafts ? lightThrough(probe, frame.mSunPosition, frame.mFar) : 1.0;
-                scattered += sources.mSunward * absorbed * sunInAir(extinction, visible, reaching);
-            }
-
-            if (sources.mMoonlit)
-            {
-                const float lunar = lightThrough(probe, sources.mMoonward, frame.mFar);
-                scattered += absorbed * moonsInAir(extinction, sources, lunar, reaching);
-            }
-        }
-    }
-
-    return vec4(scattered, transmittance);
 }
 
 /// What the far end of the world takes out of what is behind it, and what it puts in on the way.
@@ -804,14 +705,13 @@ vec4 fogAlong(uvec2 pixel, vec3 origin, vec3 direction, float distance, float of
     if (waterOver(origin) > 0.0)
         return vec4(0.0, 0.0, 0.0, 1.0);
 
-    // **The closed form where the field along the ray is even**, which is a room. The volume is what
-    // a coverage field costs, and `fogUniformAlong` is what is left when there is none — so an
-    // interior reads no volume at all, and none is dispatched for it.
-    vec4 weather;
-    if (FOG_UNIFORM)
-        weather = fogUniformAlong(origin, direction, distance, offset, seed);
-    else
-        weather = fogVolumeAlong(pixel, direction, distance);
+    // **The volume, whatever kind of air this is.** A room used to read a closed form instead — its
+    // field is even, so the transmittance integrates exactly and only the shadow rays were left to
+    // march. What that cost was a lamp reservoir and a ray *per pixel*, where the volume walks the
+    // lamps once per froxel and hands this two fetches: 0.15 to 0.35 ms off the trace of every
+    // interior, against 0.12 to 0.16 for the volume itself. `FOG_UNIFORM` still earns its place
+    // inside `fogExtinctionAt`, which is where an even field saves its forty hashes a sample.
+    const vec4 weather = fogVolumeAlong(pixel, direction, distance);
 
     const vec4 edge = fogEdgeAlong(origin, direction, distance);
 

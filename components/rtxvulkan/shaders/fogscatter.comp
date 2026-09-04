@@ -44,11 +44,12 @@
 
 #include "lib/bindings.glsl"
 #include "lib/fog.glsl"
+#include "lib/froxel.glsl"
 #include "lib/lights.glsl"
 #include "lib/random.glsl"
 #include "lib/reproject.glsl"
+#include "lib/shading.glsl"
 #include "lib/traversal.glsl"
-#include "lib/underwater.glsl"
 #include "lib/variants.glsl"
 
 layout(local_size_x = FOG_FROXEL_WORKGROUP_ACROSS, local_size_y = FOG_FROXEL_WORKGROUP_ACROSS,
@@ -96,15 +97,11 @@ void main()
     const ivec2 column = froxel.xy;
     const uint slice = uint(froxel.z);
 
-    // No air is the frame untouched, and it has to be exactly that: a lit surface with fog over it
-    // is a differently lit one, and the tests that measure radiance turn this off.
-    if (!(frame.mFogExtinction > 0.0))
-    {
-        imageStore(fogScatterTarget, froxel, vec4(0.0));
-        imageStore(fogSunwardTarget, froxel, vec4(0.0));
-        imageStore(fogLampsTarget, froxel, vec4(0.0));
-        return;
-    }
+    // **No air is still a frame with light in it.** With the extinction at nought every froxel's
+    // density is nought and the integrate pass adds nothing to any pixel, which is what the tests
+    // that measure radiance turn the fog off for — but the sources a froxel holds are what a puff of
+    // smoke is lit by, and a candle's smoke in a fog-free room is not dark. So the rays below are
+    // cast whatever the air weighs, and only the density says there is none.
 
     // **Two draws, and they turn at different rates on purpose.** `fogColumnRay` moves the column's
     // ray inside its own block of pixels, and that draw is the column's for every slice of it, so
@@ -194,13 +191,10 @@ void main()
     uint lampState = randomSeed(froxelKey(uvec2(column), slice) + SEED_LAMPS_FOG);
     Reservoir lamps = noLamps();
     const vec3 lampScatter
-        = lampsInAir(lamps, lampState, fromMiddle, middle.mDirection, behind, clear, LAMPS_BY_LENGTH) / (clear - behind);
+        = lampsInAir(lamps, lampState, fromMiddle, middle.mDirection, behind, clear) / (clear - behind);
     aimLampFrom(lamps, position);
 
     const FogSources sources = fogSourcesAlong(direction);
-
-    // What any water overhead leaves of the daylight, asked once: both sources want it.
-    const vec3 reaching = daylightReaching(position);
 
     // **Nought where no lamp reaches, which is not what `lampVisible` answers there.** That function
     // returns one for an empty reservoir, and it is right to: its own caller multiplies it by a
@@ -210,14 +204,32 @@ void main()
     const float lampsSeen
         = lamps.mWeight > 0.0 ? lampVisible(lamps, vec2(randomNext(lampState), randomNext(lampState))) : 0.0;
 
+    // **The sun's ray whenever there is a sun, and not only where the air's own shaft is worth it.**
+    // The air throws the sun forward so hard that looking away from it there is nothing to shadow,
+    // and for the air alone the ray would stop at `FOG_SHAFT_FLOOR` the way the moons' does. A puff
+    // of smoke standing in the same froxel is lit by the sun at a card's worth whatever way the eye
+    // looks — `puffLight` — and a shadow it does not have is a splash under a canton lip lit as
+    // though in the open.
+    //
+    // **One path and not two.** A frame with no puff in it could skip both rays below, and that was
+    // measured at 0.07 ms on an open-air view; the flag, the second history channel and the second
+    // way of forming the sun's beam it takes to save that are not worth what they cost to read.
     float visible = 1.0;
     float lunar = 1.0;
-    if (sources.mShafts)
+    if (sources.mSunlit)
         visible = lightThrough(position, frame.mSunPosition, frame.mFar);
     if (sources.mMoonlit)
         lunar = lightThrough(position, sources.mMoonward, frame.mFar);
 
-    const vec3 moons = sources.mMoonlit ? moonsInAir(extinction, sources, lunar, reaching) : vec3(0.0);
+    // **And the ambient's, which the air never asked and a puff does.** The air scatters the
+    // weather's fog colour unshadowed, which is Morrowind's convention for it; a puff is lit by the
+    // frame's ambient the way a surface is, and what it sees of that is a question about the
+    // point. Over the whole sphere, because the air has no side — `ambientReaching` says what that
+    // means in a room and out of one.
+    const float ambientSeen
+        = ambientReaching(position, vec3(0.0), vec3(0.0), 0.0, froxelKey(uvec2(column), slice) + SEED_AMBIENT_FOG);
+
+    const vec3 moons = sources.mMoonlit ? moonsInAir(extinction, sources, lunar) : vec3(0.0);
 
     // Everything below is a property of this *point* and of nothing along the ray, which is what
     // lets it be reprojected and averaged. The transmittance is the integrate pass's.
@@ -230,23 +242,25 @@ void main()
     // column's. Mie's forward peak is thousands of times isotropic within a degree and a column is a
     // quarter of one, so baking it here would smear the blaze around a low sun over four times its
     // width.
-    vec3 transport = sources.mSunlit ? sunInAir(extinction, visible, reaching) : vec3(0.0);
+    float transport = sources.mSunlit ? sunInAir(extinction, visible) : 0.0;
 
-    // **The lamps' seeing rides beside the sun's transport**, because the two are filtered alike and
-    // for one reason: both are what a ray found, both are nought or one at an edge the grid cannot
-    // resolve, and both want their neighbours averaged in. What the lamps *deliver* rides in an
-    // image of its own and is not filtered at all.
+    // **The lamps' seeing and the ambient's ride beside the sun's transport**, because the three are
+    // filtered alike and for one reason: each is what a ray found, nought or one at an edge the grid
+    // cannot resolve, and each wants its neighbours averaged in. What the lamps *deliver* rides in
+    // an image of its own and is not filtered at all.
     float seen = lampsSeen;
+    float ambient = ambientSeen;
 
     if (reprojected)
     {
         inscatter = mix(inscatter, wasScatter.xyz, FOG_VOLUME_HISTORY);
         density = mix(density, wasScatter.w, FOG_VOLUME_HISTORY);
-        transport = mix(transport, wasSunward.xyz, FOG_VOLUME_HISTORY);
-        seen = mix(seen, wasSunward.w, FOG_VOLUME_HISTORY);
+        transport = mix(transport, wasSunward.x, FOG_VOLUME_HISTORY);
+        seen = mix(seen, wasSunward.y, FOG_VOLUME_HISTORY);
+        ambient = mix(ambient, wasSunward.z, FOG_VOLUME_HISTORY);
     }
 
     imageStore(fogScatterTarget, froxel, vec4(inscatter, density));
-    imageStore(fogSunwardTarget, froxel, vec4(transport, seen));
+    imageStore(fogSunwardTarget, froxel, vec4(transport, seen, ambient, 0.0));
     imageStore(fogLampsTarget, froxel, vec4(lampScatter, 0.0));
 }

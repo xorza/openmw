@@ -41,9 +41,10 @@ void main()
     if (any(greaterThanEqual(column, grid)))
         return;
 
-    // No air is no question: the scatter pass stores nothing for it and asks nothing of this.
-    if (!(frame.mFogExtinction > 0.0))
-        return;
+    // **Traced whatever the air weighs.** The scatter pass fills its froxels' sources for a puff of
+    // smoke even where there is no fog to scatter them — `fogscatter.comp` says why — and a froxel
+    // only holds a source short of the surface its column found. An early-out here left this image
+    // unwritten, and every froxel of a fog-free frame read itself as behind a surface.
 
     const Ray ray = fogColumnRay(uvec2(column));
     const vec3 origin = frame.mOrigin + ray.mOffset;

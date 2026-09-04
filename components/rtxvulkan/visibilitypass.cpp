@@ -192,7 +192,7 @@ namespace Rtx
         };
 
         std::vector<Wanted> wanted;
-        wanted.reserve(VisibilityVariant::sCount + VisibilityVariant::sCount / 2);
+        wanted.reserve(2 * VisibilityVariant::sCount);
 
         for (const bool sun : { false, true })
             for (const bool moons : { false, true })
@@ -203,10 +203,7 @@ namespace Rtx
                             .mSun = sun, .mMoons = moons, .mSea = sea, .mUniformFog = evenAir
                         };
                         wanted.push_back(Wanted{ .mVariant = variant });
-
-                        // A room reads the closed form, so it needs no volume and gets no kernel.
-                        if (!evenAir)
-                            wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
+                        wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
                     }
 
         std::atomic<std::size_t> next{ 0 };
@@ -224,7 +221,8 @@ namespace Rtx
                     // One word per `constant_id`, in the order `lib/variants.glsl` declares them.
                     // The volume traces no primary ray and reorders nothing, so it counts none and
                     // sorts none whatever the build asked for; every other constant it takes is the
-                    // tuple's own, and no even air ever reaches the volume's table.
+                    // tuple's own, `FOG_UNIFORM` included — a room's air is even, and that is what
+                    // takes the coverage field's forty hashes out of its froxels.
                     const std::array<std::uint32_t, 7> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
                         variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, variant.mUniformFog ? 1u : 0u,
                         volume ? Shaders::REORDER_OFF : static_cast<std::uint32_t>(mReorder),
@@ -277,12 +275,12 @@ namespace Rtx
         return *held;
     }
 
-    const ComputePipeline* VisibilityPass::scatterPipelineFor(const VisibilityVariant variant) const
+    const ComputePipeline& VisibilityPass::scatterPipelineFor(const VisibilityVariant variant) const
     {
-        assert((variant.mUniformFog || mScatterPipelines[variant.index()] != nullptr)
-            && "a banked air with no scatter kernel made for it");
+        const std::unique_ptr<ComputePipeline>& held = mScatterPipelines[variant.index()];
+        assert(held != nullptr && "a tuple `compileEvery` made no scatter kernel for");
 
-        return mScatterPipelines[variant.index()].get();
+        return *held;
     }
 
     std::array<VkDescriptorSetLayout, 3> VisibilityPass::laterSets(VkDescriptorSetLayout textureLayout) const
@@ -505,57 +503,54 @@ namespace Rtx
         // kept between frames: a dusk moves the tuple and a doorway moves it again.
         const VisibilityVariant variant = VisibilityVariant::resolve(constants, inputs.mWater);
 
-        // Taken for writing whether or not it is filled, because the trace binds a descriptor to it
-        // either way and a descriptor names the layout its image is in.
         inputs.mFogVolume->begin(commands, constants.mFrame);
 
-        if (const ComputePipeline* scatter = scatterPipelineFor(variant); scatter != nullptr)
-        {
-            // **Every column the image has and not every column the camera needs.** A traced view is
-            // drawn into a volume grown to the largest one asked for, and the pixel at its edge
-            // interpolates against the column outside it — which has to hold air rather than
-            // whatever was there.
-            const std::uint32_t columns = inputs.mFogVolume->getColumns();
-            const std::uint32_t rows = inputs.mFogVolume->getRows();
+        const ComputePipeline& scatter = scatterPipelineFor(variant);
 
-            openZone(timer, commands, "air");
+        // **Every column the image has and not every column the camera needs.** A traced view is
+        // drawn into a volume grown to the largest one asked for, and the pixel at its edge
+        // interpolates against the column outside it — which has to hold air rather than
+        // whatever was there.
+        const std::uint32_t columns = inputs.mFogVolume->getColumns();
+        const std::uint32_t rows = inputs.mFogVolume->getRows();
 
-            // **Where each column's ray stops, before anything is drawn along it.** One ray a
-            // column, and the froxels of the column keep their draws short of the answer.
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getHandle());
-            pushInputs(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getLayout(), inputs, buffer, hitCount,
-                constants.mFrame);
+        openZone(timer, commands, "air");
 
-            vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
-                groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
+        // **Where each column's ray stops, before anything is drawn along it.** One ray a
+        // column, and the froxels of the column keep their draws short of the answer.
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getHandle());
+        pushInputs(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mDepthPipeline->getLayout(), inputs, buffer, hitCount,
+            constants.mFrame);
 
-            inputs.mFogVolume->depthTaken(commands);
+        vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
+            groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
 
-            // **The set stays pushed across all three dispatches.** Every pipeline here is
-            // addressed through the same layout at the same bind point, so what was pushed for the
-            // first is still bound for the others — and pushing set zero again would be six
-            // descriptor writes for a pass that reads a handful of images out of another set.
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, scatter->getHandle());
+        inputs.mFogVolume->depthTaken(commands);
 
-            vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
-                groupsFor(rows, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
-                groupsFor(Shaders::FOG_VOLUME_SLICES, Shaders::FOG_FROXEL_WORKGROUP_DEEP));
+        // **The set stays pushed across all three dispatches.** Every pipeline here is
+        // addressed through the same layout at the same bind point, so what was pushed for the
+        // first is still bound for the others — and pushing set zero again would be six
+        // descriptor writes for a pass that reads a handful of images out of another set.
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, scatter.getHandle());
 
-            closeZone(timer, commands);
+        vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
+            groupsFor(rows, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
+            groupsFor(Shaders::FOG_VOLUME_SLICES, Shaders::FOG_FROXEL_WORKGROUP_DEEP));
 
-            inputs.mFogVolume->scattered(commands, constants.mFrame);
+        closeZone(timer, commands);
 
-            openZone(timer, commands, "column");
+        inputs.mFogVolume->scattered(commands, constants.mFrame);
 
-            vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mIntegratePipeline->getHandle());
+        openZone(timer, commands, "column");
 
-            vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
-                groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mIntegratePipeline->getHandle());
 
-            closeZone(timer, commands);
+        vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
+            groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
 
-            inputs.mFogVolume->handOver(commands);
-        }
+        closeZone(timer, commands);
+
+        inputs.mFogVolume->handOver(commands);
 
         openZone(timer, commands, "trace");
 

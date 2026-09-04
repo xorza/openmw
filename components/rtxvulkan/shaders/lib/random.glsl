@@ -38,18 +38,12 @@ const uint SEED_LAMPS_THROUGH = SEED_LAMPS_MIRROR + 1u;
 /// the two have nothing to do with each other.
 const uint SEED_AMBIENT_REACHING = SEED_LAMPS_THROUGH + 1u;
 
-/// And one for where on the sun's disc a sprite layer's shadow ray leaves from.
-///
-/// **Not the one above, which is drawn in the same breath.** Two draws seeded alike take the same
-/// numbers, so the point on the disc and the direction into the sky would move together across the
-/// whole frame — a pattern rather than noise, and the filter keeps a pattern.
-const uint SEED_SPRITE_SUN = SEED_AMBIENT_REACHING + 1u;
+/// And one for the lamp a froxel of the air holds out of every lamp reaching it.
+const uint SEED_LAMPS_FOG = SEED_AMBIENT_REACHING + 1u;
 
-/// And one for the lamp a fog march holds out of every lamp at every one of its steps.
-const uint SEED_LAMPS_FOG = SEED_SPRITE_SUN + 1u;
-
-/// And one for the lamp a layer of sprites holds, beside the sun's and the sky's own rays there.
-const uint SEED_LAMPS_SPRITE = SEED_LAMPS_FOG + 1u;
+/// And one for which way a froxel's ambient ray goes. Apart from the lamp's above, which is drawn
+/// in the same breath: seeded alike, where the lamp is and where the sky is would move together.
+const uint SEED_AMBIENT_FOG = SEED_LAMPS_FOG + 1u;
 
 /// And one for which face of a sheet the eye's bounce leaves by.
 ///
@@ -57,7 +51,7 @@ const uint SEED_LAMPS_SPRITE = SEED_LAMPS_FOG + 1u;
 /// `STREAM_BOUNCE`, which has two channels and no third; a side taken from one of them would tie
 /// which face is asked to where in the hemisphere it is asked, and a sheet's two faces would be
 /// sampled as two halves of one hemisphere rather than as two hemispheres.
-const uint SEED_SHEET_SIDE = SEED_LAMPS_SPRITE + 1u;
+const uint SEED_SHEET_SIDE = SEED_AMBIENT_FOG + 1u;
 
 /// And one for whether an indirect hit is lit at all this frame.
 ///
@@ -65,17 +59,6 @@ const uint SEED_SHEET_SIDE = SEED_LAMPS_SPRITE + 1u;
 /// before the reservoir opens, and taken as a step of it, it would move every lamp the bounce hit
 /// weighed — which is the ordering `gather` states at the top of itself.
 const uint SEED_INDIRECT_LIGHT = SEED_SHEET_SIDE + 1u;
-
-/// And three for the medium's own layer: where on the sun's disc its shadow ray leaves from, which
-/// way its ambient ray goes, and which lamp it holds.
-///
-/// **Its own and not the sprite layer's**, although the two ask the same three questions. A cloud
-/// and a rainstorm over one pixel are two points in the world, and seeded alike they would draw the
-/// same directions at both — which is a pattern across the frame rather than noise, and the filter
-/// keeps a pattern.
-const uint SEED_MEDIUM_SUN = SEED_INDIRECT_LIGHT + 1u;
-const uint SEED_MEDIUM_AMBIENT = SEED_MEDIUM_SUN + 1u;
-const uint SEED_LAMPS_MEDIUM = SEED_MEDIUM_AMBIENT + 1u;
 
 /// How far each stream's sequence advances between frames.
 ///
@@ -230,10 +213,10 @@ vec3 coneDirection(vec3 axis, float sine, vec2 u)
 
 /// A direction anywhere on the sphere, drawn evenly over it.
 ///
-/// **For an asker with no direction to face away from**, which is a point in a medium: a puff of
-/// smoke and a step of a fog march are lit from every side, so what stands over them is a question
-/// about the whole sphere rather than about a hemisphere. `cosineDirection` is the surface's answer
-/// and `coneDirection` a source's; this is the one for a point that has neither.
+/// **For an asker with no direction to face away from**, which is a froxel of the air: it is lit
+/// from every side, so what stands over it is a question about the whole sphere rather than about a
+/// hemisphere. `cosineDirection` is the surface's answer and `coneDirection` a source's; this is the
+/// one for a point that has neither.
 ///
 /// The height is drawn evenly because a sphere's area is even in it — Archimedes' theorem, the same
 /// fact `coneDirection` leans on over its cap.

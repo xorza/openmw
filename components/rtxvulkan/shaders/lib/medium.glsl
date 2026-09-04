@@ -38,15 +38,11 @@
 #include "fog.glsl"
 #include "frame.glsl"
 #include "geometry.glsl"
-#include "lights.glsl"
-#include "random.glsl"
-#include "shading.glsl"
 // A medium is lit the way a puff of smoke is and fills the layer a puff of smoke fills — `puffLight`
 // and `PuffLayer` are the one place each of those is said, and this walk is the second caller.
 #include "sprites.glsl"
 #include "texturing.glsl"
 #include "traversal.glsl"
-#include "underwater.glsl"
 
 /// What one crossing of a shell hides, out of what its texture painted.
 ///
@@ -65,11 +61,9 @@ float mediumCrossing(float painted, float facing)
 
 /// Every medium the eye crosses before `limit`, composited into one layer.
 ///
-/// **One light answer for the layer and not one per shell**, which is the economy `spritesAlong`
-/// makes for the same reason: a shadow ray inside the loop would multiply with however many shells a
-/// cloud puts over a pixel, and what a lamp or the sun leaves changes slowly across a cloud that is
-/// a few hundred units across. So the crossings are gathered first, and the one point they came to
-/// is lit once.
+/// **One light answer for the layer and not one per shell.** The crossings are gathered first and
+/// the one point they came to is lit once, out of the froxel the air's own volume already filled for
+/// it — `puffLight` says what that reads and why it is not three rays of the walk's own.
 ///
 /// **The claim it fills is the covering one**, judged by what a crossing hid, exactly as a puff of
 /// smoke's is: an unlit shell sends back no light at all and still decides everything the pixel
@@ -172,31 +166,14 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
     const float extinction = fogExtinctionAt(origin + direction * (0.5 * seen), max(seen, 1.0));
     const float reaching = exp(-extinction * seen);
 
-    const vec3 toSun = frame.mSunPosition;
-    const vec3 skyward = vec3(0.0, 0.0, 1.0);
-    const uint key = pixelKey(pixel);
-
-    // **The three rays the sprite walk casts, cast the same way** — `standsOverPuffs` is the one
-    // place that says what a layer of puffs asks the world, and this is its second caller. The seeds
-    // are the medium's own, which `SEED_MEDIUM_SUN` says why.
-    const PuffAbove above
-        = standsOverPuffs(point, key + SEED_MEDIUM_SUN, key + SEED_MEDIUM_AMBIENT, key + SEED_LAMPS_MEDIUM);
-
-    // **Thrown forward, because a cloud is smoke.** `SMOKE_ANISOTROPY` says why the sky and the lamps
-    // are not: they arrive from everywhere and keep the even share. It belongs to the angle between
-    // the ray and the light rather than to what is in the way, which is why `standsOverPuffs` hands
-    // the sun back unthrown.
-    const float thrownForward = henyeyGreenstein(SMOKE_ANISOTROPY, dot(toSun, direction)) / INV_FOUR_PI;
-
     // **The side the layer shows, off the shell that hid the most of the pixel.** A cloud has a
     // surface where a puff of smoke has only a ball's silhouette, so the wrap that gives a sprite a
     // lit side is read off a real plane here. Turned to face the eye, because a shell is met from
     // either face and which one the winding names carries no meaning on this content.
     const vec3 normal = faceforward(coveringNormal, direction, coveringNormal);
 
-    const vec3 light = puffLight(daylightReaching(point), lampsAt(point),
-        above.mSunLit * thrownForward * ballWrap(normal, toSun), above.mAmbientLit * ballWrap(normal, skyward),
-        above.mAmbientLit, above.mLampLit * ballWrap(normal, above.mLampToward));
+    // A cloud is smoke, and is lit as a ball of it.
+    const vec3 light = puffLight(pixel, direction, seen, ballPuff(normal, smokeThrow(direction)));
 
     layer.mColour = albedo * (light + glowed / coverage) * reaching;
     layer.mCoveredAt = seen;
