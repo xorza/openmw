@@ -1,16 +1,13 @@
 #include "sceneacceleration.hpp"
 
 #include <cassert>
-#include <chrono>
 #include <cstddef>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 
-#include <components/debug/debuglog.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/frametimes.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
 
@@ -247,11 +244,7 @@ namespace Rtx
         // frame whose report says nothing about what made it slow.
         openZone(timer, batch.getCommands(), "blas");
 
-        const auto opened = std::chrono::steady_clock::now();
         buildMeshes(batch, scene, scene.getArrivedMeshes(), micromaps, graveyard);
-
-        Log(Debug::Verbose) << "  scene build: " << since(opened, std::chrono::steady_clock::now())
-                            << " ms recording structures for " << scene.getArrivedMeshes().size() << " meshes";
 
         closeZone(timer, batch.getCommands());
     }

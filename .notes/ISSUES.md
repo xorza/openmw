@@ -1,5 +1,11 @@
 # Open issues
 
+- `AGENTS.md` references `.notes/rtx/openmw.md`, `debug.sh`, `debug-asan.sh`, and `release.sh`,
+  which are absent from the checkout.
+
+- `RtxGpuTimerTest.aFrameAccountsForItsOwnDeviceTimePassByPass` takes 1.719 seconds when run
+  individually in `build-debug`, exceeding the one-second per-test limit.
+
 - `runInfo` in `apps/rtxtool/main.cpp` builds its `Rtx::RendererOptions` with a designated
   initializer list that skips `mCacheDirectory`, so every build of the harness warns
   `missing initializer for member 'Rtx::RendererOptions::mCacheDirectory'`.

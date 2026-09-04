@@ -9,10 +9,8 @@
 #include <cstring>
 #include <utility>
 
-#include <components/debug/debuglog.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
-#include <components/rtx/frametimes.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
@@ -531,13 +529,6 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
 
-        // **Where an arrival's cost is, and the only place it is visible.** The game measures this
-        // whole as `place ms` and the device's own zones say nothing about it, because everything
-        // below records rather than executes. Reached whenever anything arrives — a ring at a
-        // crossing, and a composite coming back on each of the frames after one — so the five clock
-        // reads are a handful of frames apiece and not every frame.
-        const auto entered = std::chrono::steady_clock::now();
-
         // **An arrival waits.** What arrives is written into every copy of the geometry and the
         // tables — the normals, the positions, the mesh table, the layers — and a frame still
         // reading any of them would see it torn. A cell crossing is tens of milliseconds of work
@@ -557,14 +548,10 @@ namespace Rtx
             timer = &mRing.begin().mTimer;
         }
 
-        const auto drained = std::chrono::steady_clock::now();
-
         Graveyard& graveyard = mRing.recording().mGraveyard;
 
         Batch setup(mPool);
         held.mTextures->write(setup, arrived, graveyard);
-
-        const auto described = std::chrono::steady_clock::now();
 
         // **The meshes that arrived, and no others.** Everything already built stays where it is:
         // the geometry blocks are appended to rather than replaced, so every address a structure was
@@ -594,8 +581,6 @@ namespace Rtx
             held.mBuiltMeshes = scene.getMeshRevision();
         }
 
-        const auto built = std::chrono::steady_clock::now();
-
         // **Deferred to the placement's submit, not flushed ahead of it.** `placeScene` submits
         // what was recorded here in the same call as the refit and the top level, ahead of them,
         // and the barrier every upload and build ends in is what orders them — a build reads
@@ -607,13 +592,6 @@ namespace Rtx
         // Always, because the top level names every instance and an arrival changed the list. It is
         // rebuilt every frame regardless, so an arrival costs it nothing.
         placeScene(slot, scene, sea);
-
-        const auto placed = std::chrono::steady_clock::now();
-
-        Log(Debug::Verbose) << "scene extend: " << arrived.size() << " textures, " << scene.getArrivedMeshes().size()
-                            << " meshes — " << since(entered, drained) << " ms draining, " << since(drained, described)
-                            << " describing, " << since(described, built) << " building, " << since(built, placed)
-                            << " placing";
 
         // **The history is kept.** Nothing was renumbered, so what the last frame resolved still
         // describes the same surfaces — and throwing it away is a visible flash every time an actor
