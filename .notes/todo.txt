@@ -9,5 +9,5 @@
 - async terrain loader
 - precompile shaders?
 - dlss off?
-- use appropriate wather for regions
+- use appropriate weather for regions
 - rain too strong
