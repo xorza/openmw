@@ -8,35 +8,6 @@
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-// What the weather's air holds at one froxel, and what lights it there.
-//
-// **A thread to a froxel, and every question asked where the answer is used.** This pass and
-// `fogintegrate.comp` are the two halves of the march `fogAlong` used to make: this one computes
-// the properties of a *point* — how much air, what reaches it, what stands in the way — and that
-// one carries the transmittance down the column, which is the only part that has to be a scan.
-//
-// **The split is what the estimator needed, and the thread count is what it bought.** One thread
-// to a column had a single probe answer for eight slices at once: drawn anywhere along fourteen
-// hundred units, it decided whether a lamp three hundred units across was seen, and painted that
-// coin over a block of the frame. `Rtx::FogVolume` says what that drew and what replaced it.
-//
-// **Every sample is jittered inside its froxel and averaged with where it stood last frame.** That
-// pairing is the whole of what makes a grid this coarse invisible, and it is what every shipping
-// froxel volumetric does: without it the grid draws its own eight-pixel staircase across every
-// shadow edge in the air. `fogWasScatter` and `fogWasSunward` are the half of it this reads.
-//
-// **What the lamps deliver is not averaged with anything.** It is an integral over the froxel and
-// exact every frame, so a lantern that flickers in a doorway flickers in the air on the frame it
-// flickers on the wall. What is filtered is the *seeing*, which is the half that carries the draw.
-//
-// **And nothing behind a surface is a sample of the air.** A froxel that straddles the ground, or
-// the sea, holds air on one side of the surface and something else on the other, and what a pixel
-// wants of it is the air alone: the pixel's ray ends at the surface, and a ray that passes over the
-// surface passes through the air part. `fogdepth.comp` says what the alternative drew. So the
-// sample is drawn inside the air the froxel holds and not inside the froxel, the lamps are
-// integrated over that same stretch, and a froxel standing wholly past the surface keeps what it
-// had.
-
 #include "camera.h"
 #include "look.h"
 #include "scene.h"
@@ -55,17 +26,10 @@
 layout(local_size_x = FOG_FROXEL_WORKGROUP_ACROSS, local_size_y = FOG_FROXEL_WORKGROUP_ACROSS,
     local_size_z = FOG_FROXEL_WORKGROUP_DEEP) in;
 
-/// How far the blue-noise tile is turned between one slice and the next.
-///
-/// **The tile arranges draws across a screen and has no third axis to arrange.** Two froxels behind
-/// each other would read one texel of it and jitter in step, which is the correlation down a column
-/// this pass exists to break. A shift of the tile moves which froxel holds which number and leaves
-/// the arrangement's spectrum where it was, and two odd steps coprime with the tile's own width
-/// carry every slice to a place of its own.
+
+// Coprime shifts decorrelate the 2D blue-noise tile between depth slices.
 const uvec2 FOG_SLICE_TURN = uvec2(13u, 7u);
 
-/// Where a point `fromEye` in front of this eye stood in the previous frame's grid, or a coordinate
-/// outside it where there is no answer.
 vec3 fogVolumeWas(vec3 fromEye)
 {
     const vec3 was = fromEye + frame.mCameraMotion;
@@ -74,193 +38,73 @@ vec3 fogVolumeWas(vec3 fromEye)
     if (screen.x < 0.0)
         return vec3(-1.0);
 
-    // Normalised by the image and never by the frame, for the reason `fogVolumeAlong` gives.
-    const vec2 columns = vec2(textureSize(fogWasScatter, 0).xy);
+    const vec2 columns = vec2(textureSize(fogWasCoverage, 0).xy);
     const vec2 at = screen * vec2(float(frame.mCamera.mWidth), float(frame.mCamera.mHeight))
         / float(FOG_VOLUME_SCALE) / columns;
 
-    // The depth curve, inverted. A slice holds what its own jittered point read, so its texel centre
-    // is the slice's middle and a distance reads straight off the curve with no half-texel shift —
-    // which the *integrated* volume does need, because there a slice holds its far edge.
     const float along = sqrt(min(length(was), FOG_REACH) / FOG_REACH);
 
     return vec3(at, along);
 }
-
 void main()
 {
-    const ivec3 grid = imageSize(fogScatterTarget);
+    const ivec3 grid = imageSize(fogCoverageTarget);
     const ivec3 froxel = ivec3(gl_GlobalInvocationID);
     if (any(greaterThanEqual(froxel, grid)))
         return;
 
     const ivec2 column = froxel.xy;
     const uint slice = uint(froxel.z);
-
-    // **No air is still a frame with light in it.** With the extinction at nought every froxel's
-    // density is nought and the integrate pass adds nothing to any pixel, which is what the tests
-    // that measure radiance turn the fog off for — but the sources a froxel holds are what a puff of
-    // smoke is lit by, and a candle's smoke in a fog-free room is not dark. So the rays below are
-    // cast whatever the air weighs, and only the density says there is none.
-
-    // **Two draws, and they turn at different rates on purpose.** `fogColumnRay` moves the column's
-    // ray inside its own block of pixels, and that draw is the column's for every slice of it, so
-    // the froxels of a column are stretches of one ray and the lamp integral along them is an
-    // integral. This one moves the sample inside its own slice, and is the froxel's alone.
-    const float alongJitter = randomAt(uvec2(column) + FOG_SLICE_TURN * slice, STREAM_FOG);
-
+    const float jitter = randomAt(uvec2(column) + FOG_SLICE_TURN * slice, STREAM_FOG);
     const Ray ray = fogColumnRay(uvec2(column));
     const vec3 origin = frame.mOrigin + ray.mOffset;
-    const vec3 direction = ray.mDirection;
-
-    // **And the block's own middle, which is the ray the lamps are integrated along.** What a lamp
-    // delivers is smooth, so it wants no jitter and gets no filter — the trace's own trilinear read
-    // across columns is what carries it from one column to the next. Integrated along the jittered
-    // ray instead, it would move by however much an inverse square changes across a block, every
-    // frame, with nothing averaging it: a lantern's glow that boils where the lantern is steady.
     const Ray middle = fogColumnRayAt(uvec2(column), vec2(0.5));
     const vec3 fromMiddle = frame.mOrigin + middle.mOffset;
-
-    // **The boundaries are fixed and only the sample inside them moves.** The stride is what the
-    // integrate pass takes the transmittance over, so a jittered boundary would be a different
-    // integral every frame rather than a different estimate of one.
     const float behind = froxelNear(slice);
-    const float ahead = froxelFar(slice);
+    const float clear = min(froxelFar(slice), imageLoad(fogColumnDepth, column).x);
+    const float along = behind + jitter * (max(clear, behind) - behind);
+    const vec3 position = origin + ray.mDirection * along;
 
-    // **Where this column's view of the air ends**, which `fogdepth.comp` traced along this same
-    // ray, and so where this froxel's air ends: at its own far edge, or at the surface if that
-    // stands inside it. A froxel that starts past the surface holds no air at all.
-    const float surface = imageLoad(fogColumnDepth, column).x;
-    const float clear = min(ahead, surface);
-    const bool inAir = clear > behind;
-
-    // **Drawn inside the air the froxel holds and not inside the froxel**, so a froxel the ground
-    // stands inside is a draw of its air on every frame rather than on the frames the draw happened
-    // to land short of the ground — which for a froxel the surface barely enters was one frame in
-    // twenty, and left it holding its first draw for as long as the eye stood still. The stretch
-    // the integrate pass takes the transmittance over is still the whole slice, because a ray that
-    // passes over the surface crosses the whole slice, and a pixel that ends at the surface steps
-    // through only the part short of it.
-    const float along = behind + alongJitter * (max(clear, behind) - behind);
-    const vec3 position = origin + direction * along;
-
-    // The field's level from where the sample stands and not from the slice's own stride, which is
-    // the same number at the slice's middle and a different one everywhere else in it.
-    const float extinction = fogExtinctionAt(position, froxelStrideAt(along));
-
-    // **The froxel's own middle is what reprojects, and not the point drawn inside it.** What the
-    // history holds is this froxel's running average, so what has to be found in the previous frame
-    // is this froxel — where it stood, not where this frame's sample happens to have landed. Read at
-    // the sample instead, the fetch lands up to half a texel off its own centre in every axis and
-    // takes that much of each neighbour, differently every frame: a blur of the grid against itself,
-    // and a second draw laid over the one the jitter was there to average away. `froxelMiddle` says
-    // why the point is not the mean of the slice's own edges.
+    // Reproject the froxel centre, rather than blurring the history at a new jittered coordinate.
     const vec3 was = fogVolumeWas(middle.mDirection * froxelMiddle(slice));
     const bool reprojected = all(greaterThanEqual(was, vec3(0.0))) && all(lessThanEqual(was, vec3(1.0)));
-    const vec4 wasScatter = reprojected ? texture(fogWasScatter, was) : vec4(0.0);
-    const vec4 wasSunward = reprojected ? texture(fogWasSunward, was) : vec4(0.0);
-
-    // **Every lamp reaching this froxel, integrated over the air it holds, and one of them traced
-    // to.** The sum is the mean irradiance over the stretch and carries no draw at all; what carries
-    // one is which lamp the single ray goes to, and `lampsInAir` says why that is unbiased. The ray
-    // leaves from the jittered point rather than from where the walk weighed the lamp, so a shadow's
-    // edge crossing this froxel is a gradient across frames rather than a step across eight pixels.
-    //
-    // **A froxel with no air in it keeps what it had.** Nothing reads it this frame — the integrate
-    // pass carries the last slice in the air over it, and the tent leaves it out — and what it held
-    // is the best guess for the frame the eye moves and it holds air again. Where there is no
-    // history to keep, nothing at all.
-    //
-    // **Every froxel with air in it asks every question, and a clear one asks them too.** A third of
-    // them are clear — the coverage band lets nothing through below `FOG_CLEARING` — and skipping
-    // their rays looks free, since the integrate pass weighs a froxel by an extinction of nought. A
-    // froxel that stores an answer on the frames it holds air and holds or drops it on the frames
-    // it does not is running two filters, and which of them it runs turns on where inside itself
-    // this frame's sample fell: a bias that grows with the stride, and so with depth, drawn as the
-    // grid's own shells.
-    if (!inAir)
+    const float wasCoverage = reprojected ? texture(fogWasCoverage, was).x : 1.0;
+    const vec4 wasVisibility = reprojected ? texture(fogWasVisibility, was) : vec4(0.0);
+    if (!(clear > behind))
     {
-        imageStore(fogScatterTarget, froxel, reprojected ? wasScatter : vec4(0.0));
-        imageStore(fogSunwardTarget, froxel, reprojected ? wasSunward : vec4(0.0));
+        imageStore(fogCoverageTarget, froxel, vec4(wasCoverage));
+        imageStore(fogVisibilityTarget, froxel, wasVisibility);
         imageStore(fogLampsTarget, froxel, vec4(0.0));
         return;
     }
 
-    // **Over the stretch short of the surface and not over the slice**, so a froxel the ground
-    // stands inside holds the mean over its air.
+    // The analytic layer stays out of the history: moving a sample across water must not
+    // turn a froxel into an average of two different media.
+    float coverage = fogCoverageAt(position, froxelStrideAt(along));
+
+    // Integrate lamp energy along the fixed central ray so an unfiltered lamp does not jitter.
     uint lampState = randomSeed(froxelKey(uvec2(column), slice) + SEED_LAMPS_FOG);
     Reservoir lamps = noLamps();
     const vec3 lampScatter
         = lampsInAir(lamps, lampState, fromMiddle, middle.mDirection, behind, clear) / (clear - behind);
     aimLampFrom(lamps, position);
-
-    const FogSources sources = fogSourcesAlong(direction);
-
-    // **Nought where no lamp reaches, which is not what `lampVisible` answers there.** That function
-    // returns one for an empty reservoir, and it is right to: its own caller multiplies it by a
-    // radiance of nought. Stored, that one is read by the neighbours the integrate pass averages
-    // over — so a froxel with no lamp in it handed full sight of a lamp to the froxel beside it, and
-    // a lantern behind a lid lit the air in front of it after all.
     const float lampsSeen
         = lamps.mWeight > 0.0 ? lampVisible(lamps, vec2(randomNext(lampState), randomNext(lampState))) : 0.0;
 
-    // **The sun's ray whenever there is a sun, and not only where the air's own shaft is worth it.**
-    // The air throws the sun forward so hard that looking away from it there is nothing to shadow,
-    // and for the air alone the ray would stop at `FOG_SHAFT_FLOOR` the way the moons' does. A puff
-    // of smoke standing in the same froxel is lit by the sun at a card's worth whatever way the eye
-    // looks — `puffLight` — and a shadow it does not have is a splash under a canton lip lit as
-    // though in the open.
-    //
-    // **One path and not two.** A frame with no puff in it could skip both rays below, and that was
-    // measured at 0.07 ms on an open-air view; the flag, the second history channel and the second
-    // way of forming the sun's beam it takes to save that are not worth what they cost to read.
-    float visible = 1.0;
-    float lunar = 1.0;
-    if (sources.mSunlit)
-        visible = lightThrough(position, frame.mSunPosition, frame.mFar);
-    if (sources.mMoonlit)
-        lunar = lightThrough(position, sources.mMoonward, frame.mFar);
-
-    // **And the ambient's, which the air never asked and a puff does.** The air scatters the
-    // weather's fog colour unshadowed, which is Morrowind's convention for it; a puff is lit by the
-    // frame's ambient the way a surface is, and what it sees of that is a question about the
-    // point. Over the whole sphere, because the air has no side — `ambientReaching` says what that
-    // means in a room and out of one.
-    const float ambientSeen
+    // Clear air still supplies lighting to smoke, and skipping visibility on clear draws biases history.
+    const FogSources sources = fogSourcesAlong(ray.mDirection);
+    const float sun = sources.mSunlit ? lightThrough(position, frame.mSunPosition, frame.mFar) : 1.0;
+    const float lunar = sources.mMoonlit ? lightThrough(position, sources.mMoonward, frame.mFar) : 1.0;
+    const float ambient
         = ambientReaching(position, vec3(0.0), vec3(0.0), 0.0, froxelKey(uvec2(column), slice) + SEED_AMBIENT_FOG);
-
-    const vec3 moons = sources.mMoonlit ? moonsInAir(extinction, sources, lunar) : vec3(0.0);
-
-    // Everything below is a property of this *point* and of nothing along the ray, which is what
-    // lets it be reprojected and averaged. The transmittance is the integrate pass's.
-    vec3 inscatter = frame.mFogColour + moons;
-    float density = extinction;
-
-    // **The sun without its irradiance and without its phase**, which is the whole of what the
-    // second image is for: both are functions of the direction alone, so they factor out of the
-    // integral exactly and the trace puts them back at the pixel's own angle rather than the
-    // column's. Mie's forward peak is thousands of times isotropic within a degree and a column is a
-    // quarter of one, so baking it here would smear the blaze around a low sun over four times its
-    // width.
-    float transport = sources.mSunlit ? sunInAir(extinction, visible) : 0.0;
-
-    // **The lamps' seeing and the ambient's ride beside the sun's transport**, because the three are
-    // filtered alike and for one reason: each is what a ray found, nought or one at an edge the grid
-    // cannot resolve, and each wants its neighbours averaged in. What the lamps *deliver* rides in
-    // an image of its own and is not filtered at all.
-    float seen = lampsSeen;
-    float ambient = ambientSeen;
-
+    vec4 visibility = vec4(sun, lampsSeen, ambient, lunar);
     if (reprojected)
     {
-        inscatter = mix(inscatter, wasScatter.xyz, FOG_VOLUME_HISTORY);
-        density = mix(density, wasScatter.w, FOG_VOLUME_HISTORY);
-        transport = mix(transport, wasSunward.x, FOG_VOLUME_HISTORY);
-        seen = mix(seen, wasSunward.y, FOG_VOLUME_HISTORY);
-        ambient = mix(ambient, wasSunward.z, FOG_VOLUME_HISTORY);
+        coverage = mix(coverage, wasCoverage, FOG_VOLUME_HISTORY);
+        visibility = mix(visibility, wasVisibility, FOG_VOLUME_HISTORY);
     }
 
-    imageStore(fogScatterTarget, froxel, vec4(inscatter, density));
-    imageStore(fogSunwardTarget, froxel, vec4(transport, seen, ambient, 0.0));
+    imageStore(fogCoverageTarget, froxel, vec4(coverage));
+    imageStore(fogVisibilityTarget, froxel, visibility);
     imageStore(fogLampsTarget, froxel, vec4(lampScatter, 0.0));
 }

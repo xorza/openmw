@@ -198,7 +198,7 @@ void main()
     // stands between the eye and — the water's own absorption included, which is a different medium
     // over a different part of the path. A ray that hit nothing carries `mFar`, which the march
     // clamps to the distance past which air stops mattering.
-    const vec4 fog = fogAlong(pixel, origin, direction, distance, randomAt(pixel, STREAM_FOG), pixelKey(pixel));
+    const vec4 fog = fogAlong(pixel, origin, direction, distance);
     shaded = shaded * fog.w + fog.xyz;
     transmittance *= fog.w;
 
@@ -255,14 +255,9 @@ void main()
     // air between it and the eye — `reaching` is that factor, and applying `Tfront` here would be
     // the second half of the same journey charged twice.
     //
-    // **The same jitter as the whole march**, so the near one is that march's own prefix rather
-    // than an independent estimate of it. The clamp under them is what a prefix cannot need and a
-    // pair of marches quantised apart by a step can: a negative there would show as a bright rim.
     vec3 airBeforeLayer = vec3(0.0);
     if (puffs.mTransmittance < 1.0)
-        airBeforeLayer = fogAlong(pixel, origin, direction, puffs.mCoveredAt,
-            randomAt(pixel, STREAM_FOG), pixelKey(pixel))
-                               .xyz;
+        airBeforeLayer = fogAlong(pixel, origin, direction, puffs.mCoveredAt).xyz;
 
     // **Handed over rather than composited, because Ray Reconstruction composites it itself.** The
     // three `pInTransparencyLayer` inputs are a colour, an opacity and a motion of their own, and

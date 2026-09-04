@@ -65,7 +65,7 @@ namespace Rtx
         /// device rather than once a frame.
         const FogTile* mFog = nullptr;
 
-        /// Where the air in front of this camera is integrated, before the trace reads it.
+        /// The sampled coverage and lighting in front of this camera.
         ///
         /// **Sized to the camera and so not the pass's**, which is the same reason `GBuffer` arrives
         /// here rather than being held: a frame, a doll and a map tile are three sizes, and the pass
@@ -198,12 +198,6 @@ namespace Rtx
         /// The kernel for `variant`, which `compileEvery` made.
         const TracePipeline& pipelineFor(VisibilityVariant variant) const;
 
-        /// The same, for the pass that fills the fog volume's froxels.
-        ///
-        /// **Every tuple has one, a room's included.** The closed form a room used to read instead
-        /// was a lamp reservoir and a shadow ray *per pixel*, where the volume walks the lamps once
-        /// per froxel and hands the pixel two fetches — measured at 0.15 to 0.35 ms off the trace of
-        /// every interior, against 0.12 to 0.16 for the volume itself.
         const ComputePipeline& scatterPipelineFor(VisibilityVariant variant) const;
 
         const Device& mDevice;
@@ -241,7 +235,7 @@ namespace Rtx
         /// per `MaterialKind` in that enum's own order.
         std::filesystem::path mDepthModule;
         std::filesystem::path mScatterModule;
-        std::filesystem::path mIntegrateModule;
+        std::filesystem::path mFogFilterModule;
         std::filesystem::path mRaygenModule;
         std::filesystem::path mAnyHitModule;
         std::array<std::filesystem::path, Shaders::MISS_RECORD_COUNT> mMissModules;
@@ -250,20 +244,12 @@ namespace Rtx
         /// One pipeline per tuple, every one of them made by `compileEvery`.
         std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mPipelines;
 
-        /// The same table for the pass that fills the froxels, of which only the half with
-        /// `mUniformFog` false is filled: a room reads the closed form and no volume is dispatched
-        /// for it.
         std::array<std::unique_ptr<ComputePipeline>, VisibilityVariant::sCount> mScatterPipelines;
 
         /// And one for the pass that finds where each column's ray stops, which no tuple changes:
         /// it traces and shades nothing.
         std::unique_ptr<ComputePipeline> mDepthPipeline;
 
-        /// And one for the pass that integrates the columns, which takes no tuple at all.
-        ///
-        /// **It reads five images and writes two, and knows nothing else.** Whether there is a sun,
-        /// whether there are moons, whether there is a sea — every one of those was answered by the
-        /// pass that filled the froxels, and what is left here is a scan over what that wrote.
-        std::unique_ptr<ComputePipeline> mIntegratePipeline;
+        std::unique_ptr<ComputePipeline> mFogFilterPipeline;
     };
 }

@@ -323,7 +323,7 @@ namespace RtxTool
             return request;
         }
 
-        int runInfo(const std::filesystem::path& shaderDirectory, const Rtx::ValidationOptions& validation)
+        int runInfo(const Command& command, const Rtx::ValidationOptions& validation)
         {
             // A one-pixel target: this reports on a device rather than drawing with it, and the
             // default would spend fifty megabytes of images to print a page of text.
@@ -332,10 +332,13 @@ namespace RtxTool
             // Reporting on a device is not a reason to build half a renderer, and a build whose
             // shaders are missing should say so here rather than at the first frame asked for.
             std::string reason;
-            const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(
-                Rtx::RendererOptions{
-                    .mShaderDirectory = shaderDirectory, .mWidth = 1, .mHeight = 1, .mValidation = validation },
-                reason);
+            const std::unique_ptr<Rtx::Renderer> renderer
+                = Rtx::createRenderer(Rtx::RendererOptions{ .mShaderDirectory = command.mResources / "rtx" / "shaders",
+                                          .mCacheDirectory = command.mConfig.getCachePath(),
+                                          .mWidth = 1,
+                                          .mHeight = 1,
+                                          .mValidation = validation },
+                    reason);
             if (renderer == nullptr)
             {
                 out() << reason << '\n';
@@ -551,7 +554,7 @@ namespace RtxTool
         {
             const Rtx::ValidationOptions validation = validationFrom(command.mVariables, false);
 
-            return runInfo(command.mResources / "rtx" / "shaders", validation);
+            return runInfo(command, validation);
         }
 
         int commandTextures(const Command& command)

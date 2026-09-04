@@ -137,9 +137,9 @@ namespace Rtx::Testing
 
             // The ray runs level at z = 0, so how much fog it crosses is decided by where the layer
             // is put under it and by nothing else.
-            const auto look = [&](float level, float thickness) {
+            const auto look = [&](float level, float thickness, float eye = 0.0f, float fov = 60.0f) {
                 Shaders::VisibilityConstants camera = makeCamera(
-                    osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                    osg::Vec3f(0.0f, -distance, eye), osg::Vec3f(0.0f, 0.0f, eye), fov, size, size, 100000.0f);
                 litThroughFog(camera, thickness, level);
 
                 const SceneDesc scene = makeWall();
@@ -148,16 +148,15 @@ namespace Rtx::Testing
                 return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
 
-            // A dry cell is handed minus infinity, and falls back to sea level — which is where a
-            // water level of zero puts the layer anyway, so the two should agree. **They do not, and
-            // that is logged rather than asserted around**: up to thirteen levels between them out of
-            // the volume, where the closed form this used to run through agreed exactly.
-            // `.notes/ISSUES.md` carries it.
             const std::array<int, 3> dry = look(-std::numeric_limits<float>::infinity(), extinction);
-            const std::array<int, 3> atSeaLevel = look(0.0f, extinction);
-            for (std::size_t channel = 0; channel < 3; ++channel)
-                EXPECT_NEAR(dry[channel], atSeaLevel[channel], 14)
-                    << "channel " << channel << ", the dry-cell fallback";
+            for (const float fov : { 20.0f, 60.0f, 120.0f })
+                for (const float level : { 0.0f, 100.0f })
+                {
+                    const std::array<int, 3> onSurface = look(level, extinction, level, fov);
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                        EXPECT_EQ(dry[channel], onSurface[channel])
+                            << "channel " << channel << ", level " << level << ", fov " << fov;
+                }
 
             // Three thousand units under the ray, so it runs `exp(-3000 / 2600)` = 0.3154 of the way
             // up the layer's own falloff and crosses less than a third of the fog.
@@ -225,20 +224,7 @@ namespace Rtx::Testing
                 EXPECT_NEAR(down[channel], up[channel], 1) << "channel " << channel << ", the same heights descending";
         }
 
-        /// An eye under the surface has no air in front of it, and the volume must say so too.
-        ///
-        /// **The one path that could not tell on its own.** `fogExtinctionAt` gives nothing under the
-        /// surface and `fogColumn` integrates nothing there, so the field and the closed form were
-        /// right already. The volume is an accumulation along a *column's* ray rather than a field
-        /// read along the pixel's, and a froxel the surface stands inside draws its sample from the
-        /// air the column found — which for a column aimed up out of the water is the air above it.
-        /// A pixel under the water then paid for that air, in a band along the waterline where the
-        /// columns first begin to leave the water: 135 pixels of this frame, the worst of them 61 of
-        /// 255 out.
-        ///
-        /// **Asserted as the whole frame against the same frame with no weather in the cell**, which
-        /// is the only exact form the claim has: nothing else differs between the two, so a submerged
-        /// eye owes the fog literally nothing and every byte has to match.
+        // A submerged eye is entirely in the water medium, including pixels beside the waterline.
         TEST_F(RtxVisibilityTest, theVolumesAirIsNotOverAnEyeUnderTheSurface)
         {
             constexpr std::uint32_t size = 65;
@@ -532,88 +518,71 @@ namespace Rtx::Testing
             EXPECT_LT(step / mean, 0.03) << "how far a settled pixel of lit air moves between frames";
         }
 
-        /// The volume lights the air up to a surface, wherever inside a slice the surface stands.
-        ///
-        /// **Two ways a froxel grid gets the last slice wrong, and one measurement for both.** The
-        /// slice a surface stands inside is sampled on both sides of it unless the sampling knows
-        /// where the surface is — `fogdepth.comp` says what that drew — and what a pixel reads
-        /// between two slices' edges is a shape the integrate pass has to have agreed to, which
-        /// `FogSlice` says. Either error is a function of where inside its slice the surface
-        /// stands, so the wall is put at four depths across three slices and the volume is held
-        /// against the closed form at each: half and nine tenths of the way through the slice from
-        /// 732 to 886 units, a tenth of the way through the next, and a quarter of the way through
-        /// the one from 1055.
-        ///
-        /// **The lamp stands in front of the wall at every one of them**, so a draw that lands
-        /// behind the wall finds the lamp hidden by it — which is the contamination a froxel
-        /// sampled on both sides of its surface carries, at its strongest where the lamp is
-        /// brightest. And not behind it: the closed form judges a whole ray by one shadow ray from
-        /// the lamp's closest approach, and a wall standing between that point and the lamp is a
-        /// question that one ray answers for none of the rest.
-        ///
-        /// **And the wall's own light is taken off both paths**, because a lamp in front of the
-        /// wall lights it, identically on either. A frame with no air in it measures what the wall
-        /// alone is worth, and what the air in front of it takes of that is the transmittance the
-        /// closed form states.
-        ///
-        /// **Five per cent, where the estimator sampled on both sides of the wall lost between
-        /// seven and eleven per cent of the lit air at the first three depths**, and the line the
-        /// sampler draws through an inverse square is a few per cent from it over a slice at the
-        /// lamp's closest approach.
         TEST_F(RtxVisibilityTest, theVolumeLightsTheAirUpToASurfaceWhereverInASliceItStands)
         {
             using Fixture = LampInTheAir;
-
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = centreOf(size);
-            constexpr std::size_t frames = 48;
-            constexpr std::size_t settled = 16;
+            constexpr std::size_t centre = centreValueOf(size);
+            const double lampAhead = double{ Fixture::sDistance } + double{ Fixture::sLamp.y() };
+            const double height = Fixture::sLamp.z();
+            const double reach = Fixture::sReach;
+            const double sigma = Fixture::sExtinction;
+            const double intensity = Fixture::sIntensity.x();
 
-            // The lamp stands where the fixture puts it relative to the eye, whatever the wall's
-            // distance, so the air it lights is the same air in every frame and only where the wall
-            // cuts it off moves.
-            const float ahead = Fixture::sDistance + Fixture::sLamp.y();
+            // Independent quadrature of sigma * Tview * I * falloff / (4*pi). The black wall
+            // removes surface lighting, so there is no second render of the same fog code serving
+            // as its own reference. Halving the integration step verifies the reference precision.
+            const auto expected = [&](double distance, unsigned steps) {
+                const double step = distance / steps;
+                double sum = 0.0;
+                for (unsigned i = 0; i <= steps; ++i)
+                {
+                    const double along = step * i;
+                    const double span = std::hypot(height, along - lampAhead);
+                    if (span >= reach)
+                        continue;
 
-            const auto settle = [&](float distance, bool banked, bool fogged) {
-                SceneDesc scene = makeWall();
-                scene.addLight(Light{
-                    .mPosition = osg::Vec3f(0.0f, ahead - distance, Fixture::sLamp.z()),
-                    .mIntensity = Fixture::sIntensity,
-                    .mReach = Fixture::sReach,
-                });
-
-                Shaders::VisibilityConstants camera = makeCamera(
-                    osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 10.0f, size, size, 100000.0f);
-                litThroughFog(camera, fogged ? Fixture::sExtinction : 0.0f);
-                camera.mFogUniform = banked ? sVolumeOverEvenAir : 1.0f;
-
-                // Nothing in the frame but the lamp: black air, a black sky and no ambient, for the
-                // reason the test above gives.
-                camera.mFogColour = osg::Vec3f();
-                camera.mSkyHorizon = osg::Vec3f();
-                camera.mSkyZenith = osg::Vec3f();
-                camera.mAmbientFromSky = 0.0f;
-
-                std::vector<float> radiance;
-                radianceFrameByFrame(scene, camera, size, frames, centre, radiance);
-
-                double total = 0.0;
-                for (std::size_t frame = frames - settled; frame < frames; ++frame)
-                    total += double{ radiance[frame] };
-                return total / double{ settled };
+                    const double window = 1.0 - std::pow(span / reach, 4.0);
+                    const double value = sigma * std::exp(-sigma * along) * intensity * window * window
+                        / ((span * span + 1.0) * 4.0 * std::acos(-1.0));
+                    const double weight = i == 0 || i == steps ? 1.0 : (i % 2 == 0 ? 2.0 : 4.0);
+                    sum += weight * value;
+                }
+                return step * sum / 3.0;
             };
 
+            Material black;
+            black.mDiffuseColour = osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f);
+            std::vector<float> radiance;
             for (const float distance : { 809.0f, 871.0f, 903.0f, 1101.0f })
             {
-                const double wall = settle(distance, false, false);
-                const double through = std::exp(-double{ Fixture::sExtinction } * double{ distance });
+                SceneDesc scene;
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(sWallQuad, {}, {}, sQuadIndices),
+                    .mMaterial = scene.addMaterial(black) });
+                scene.addLight(Light{ .mPosition = osg::Vec3f(0.0f, float(lampAhead) - distance, Fixture::sLamp.z()),
+                    .mIntensity = Fixture::sIntensity,
+                    .mReach = Fixture::sReach });
+                Shaders::VisibilityConstants camera
+                    = makeCamera(osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(), 10.0f, size, size, 100000.0f);
+                camera.mAmbientFromSky = 0.0f;
 
-                const double closed = settle(distance, false, true) - wall * through;
-                const double volume = settle(distance, true, true) - wall * through;
+                renderRadiance(scene, camera, size, radiance);
+                EXPECT_EQ(radiance[centre], 0.0f) << "the black wall contributes no light";
 
-                ASSERT_GT(closed, 0.01) << "the lit air the volume is measured against, at " << distance;
-                EXPECT_NEAR(volume / closed, 1.0, 0.05)
-                    << "the volume's lit air against the closed form's, at " << distance;
+                const double reference = expected(distance, 4096);
+                EXPECT_NEAR(reference, expected(distance, 2048), 1.0e-8);
+                for (const float uniform : { 1.0f, sVolumeOverEvenAir })
+                {
+                    camera.mFogExtinction = Fixture::sExtinction;
+                    camera.mFogUniform = uniform;
+                    renderRadiance(scene, camera, size, radiance);
+
+                    // The ten-degree camera samples lamp irradiance from an eight-pixel grid;
+                    // five percent covers that spatial approximation at the lamp's closest approach.
+                    EXPECT_NEAR(double{ radiance[centre] }, reference, 0.05 * reference)
+                        << "distance " << distance << ", uniform " << uniform;
+                }
             }
         }
 
@@ -743,83 +712,51 @@ namespace Rtx::Testing
         /// what is left is `p(26.6 degrees) / p(153.4)`. An isotropic fog would give exactly one.
         TEST_F(RtxVisibilityTest, theFogScattersTheSunForwardFarHarderThanBack)
         {
-            constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = centreValueOf(size);
-
-            // Bright enough to read against eight bits after the fog's own column has taken 83% of
-            // it, and the forward case still has to stay inside one.
             constexpr float irradiance = 12.7f;
+            constexpr float climb = 0.4472135955f;
 
-            // Level, so the centre ray holds one height and the medium along it is uniform — which
-            // is what lets the two frames cancel to the phase function alone.
-            const auto lookPast = [&](float towardsY) {
-                Shaders::VisibilityConstants camera = makeCamera(
-                    osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 0.0f), 60.0f, size, size, 100000.0f);
+            // Jendersie and d'Eon's eight-micron fit at cosine +/-0.89442719, per steradian.
+            constexpr float forward = 0.22522234169f;
+            constexpr float backward = 0.01170777396f;
 
-                // The sun a quarter of the way up, ahead of the camera or behind it. Both carry the
-                // same climb, so `fogSunDepth` is the same for each and cancels.
-                osg::Vec3f towards(0.0f, towardsY, 0.5f);
-                towards.normalize();
-                camera.mSunPosition = towards;
-                camera.mSunIrradiance = osg::Vec3f(irradiance, irradiance, irradiance);
-                camera.mFogExtinction = 3.0e-4f;
-                camera.mFogUniform = 1.0f;
+            SceneDesc scene;
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(sheetAt(4000.0f, -200000.0f), {}, {}, sQuadIndices) });
 
-                // Nothing to hit and nothing else to scatter: every ray runs out to `FOG_REACH`
-                // through even air whose own colour is black, so the pixel is the sun and no more.
-                //
-                // **Out of reach of the shadow rays and not merely out of the frame.** The march
-                // sends one at the sun from every stretch of the ray, and a wall standing at y = 0
-                // is squarely in the path of the ones the *backward* case sends — so it shadowed the
-                // near steps, at a march offset that decides which, and the ratio below moved by a
-                // sixth with the dither. A sheet below the world is past `mFar` in every direction
-                // any ray here travels.
-                SceneDesc scene;
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(sheetAt(4000.0f, -200000.0f), {}, {}, sQuadIndices) });
+            std::vector<float> radiance;
+            for (const std::uint32_t size : { 1u, 33u })
+                for (const float fov : { 20.0f, 120.0f })
+                    for (const float extinction : { 1.5e-4f, 3.0e-4f })
+                    {
+                        std::array<float, 2> scattered{};
+                        for (const bool ahead : { true, false })
+                        {
+                            Shaders::VisibilityConstants camera
+                                = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 1000.0f, 0.0f), fov, size, size, 100000.0f);
+                            osg::Vec3f towards(0.0f, ahead ? 1.0f : -1.0f, 0.5f);
+                            towards.normalize();
+                            camera.mSunPosition = towards;
+                            camera.mSunIrradiance = osg::Vec3f(irradiance, irradiance, irradiance);
+                            camera.mFogExtinction = extinction;
+                            camera.mFogUniform = 1.0f;
+                            renderRadiance(scene, camera, size, radiance);
 
-                std::vector<std::uint8_t> pixels;
-                countHits(scene, {}, camera, size, pixels);
-
-                return decodeSrgb(pixels[centre]);
-            };
-
-            const float ahead = lookPast(1.0f);
-            const float behind = lookPast(-1.0f);
-
-            // Hand-computed from Jendersie and d'Eon's fit at a droplet diameter of eight microns:
-            // the blend is 47.4% Draine over a Henyey-Greenstein peak of g = 0.98447, and at
-            // `cos = +-0.8944` that comes to 0.225158 forward against 0.011708 back.
-            constexpr float forward = 0.225158f;
-            constexpr float backward = 0.011708f;
-
-            EXPECT_NEAR(ahead / behind, forward / backward, 1.0f) << "forward against backward scattering";
-
-            // **And the absolute value, because a ratio cannot see a factor of `4 pi`.** That is the
-            // mistake this shape of function invites: normalise the phase so isotropic reads one —
-            // the convention a lamp is written in — and both frames grow together while their ratio
-            // stays put. What the eye gets is the sun's irradiance times the phase *per steradian*,
-            // less the fog's own column on the way down, over a ray that runs to `FOG_REACH`:
-            //
-            //   12.7 * 0.225158 * exp(-2600 * 3e-4 / 0.44721) * (1 - exp(-3e-4 * 30000)) = 0.4998
-            //
-            // which the sRGB curve puts at 188 of 255. Four pi times that is white.
-            //
-            // **The volume reads 0.597 here, a fifth over, and that is logged rather than asserted
-            // around.** The closed form this used to run through landed within 0.006; the volume
-            // has always answered this way for an exterior, and nothing had asked it before.
-            // `.notes/ISSUES.md` carries it. What is held here is the factor of `4 pi` the comment
-            // above is about — a fifth is not a factor of twelve.
-            const float climb = 0.5f / std::sqrt(1.25f);
-            const float column = std::exp(-Shaders::FOG_HEIGHT * 3.0e-4f / climb);
-            const float crossed = 1.0f - std::exp(-3.0e-4f * Shaders::FOG_REACH);
-
-            EXPECT_NEAR(ahead, irradiance * forward * column * crossed, 0.12f)
-                << "the sun's own irradiance through the phase function, per steradian";
-
-            // And the backward half is not nothing, which is the other half of why a single lobe
-            // will not do: fog behind you still glows.
-            EXPECT_GT(behind, 0.01f) << "a sixth of isotropic still comes back";
+                            // A level ray holds one density: sun transmittance exp(-sigma*H/climb)
+                            // times the view's absorbed fraction. At sigma=3e-4 the forward result
+                            // is 0.49991. The tolerance covers evaluation of the phase fit and
+                            // single-precision arithmetic over 128 integration intervals.
+                            const float column = std::exp(-Shaders::FOG_HEIGHT * extinction / climb);
+                            const float crossed = -std::expm1(-extinction * Shaders::FOG_REACH);
+                            const float expected = irradiance * (ahead ? forward : backward) * column * crossed;
+                            const float actual = radiance[centreValueOf(size)];
+                            EXPECT_NEAR(actual, expected, 2.0e-5f)
+                                << "size " << size << ", fov " << fov << ", extinction " << extinction << ", ahead "
+                                << ahead;
+                            scattered[ahead ? 0 : 1] = actual;
+                        }
+                        EXPECT_GT(scattered[0], scattered[1]);
+                        EXPECT_NEAR(scattered[0] / scattered[1], forward / backward, 0.001f);
+                    }
         }
 
         /// A lid over the march takes the sun out of the air beneath it, and takes all of it.

@@ -62,7 +62,7 @@ set(RTX_SHADERS
     shaders/composite.comp
     shaders/exposure.comp
     shaders/fogdepth.comp
-    shaders/fogintegrate.comp
+    shaders/fogfilter.comp
     shaders/fogscatter.comp
     shaders/gui.frag
     shaders/gui.vert

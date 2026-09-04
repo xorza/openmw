@@ -3,16 +3,6 @@
 #ifndef OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_FROXEL_GLSL
 #define OPENMW_COMPONENTS_RTXVULKAN_SHADERS_LIB_FROXEL_GLSL
 
-// Where the fog volume's slices stand, which four shaders have to agree about exactly.
-//
-// **Its own file because three of the four want nothing else from the air.** `fogscatter.comp`
-// fills a froxel, `fogintegrate.comp` carries the transmittance down a column and `fogVolumeAlong`
-// resolves a distance to a slice — and a shader that only asks where a slice starts should not have
-// to pull in a phase function, a light grid and a ray query to find out.
-//
-// One statement of the curve, so a boundary the scatter pass sampled inside is the boundary the
-// integrate pass takes its transmittance over.
-
 #include "look.h"
 #include "scene.h"
 
@@ -29,8 +19,7 @@ float fogDepth(float fraction)
 
 /// How far in front of the eye `slice` begins and ends, in world units.
 ///
-/// **The whole reach and not the distance to a surface**, which is the one thing a volume cannot
-/// know: it is filled before anything has been traced.
+/// Fixed boundaries keep temporal samples and pixel integration on the same depth distribution.
 float froxelNear(uint slice)
 {
     return fogDepth(float(slice) / float(FOG_VOLUME_SLICES)) * FOG_REACH;
@@ -68,54 +57,6 @@ float froxelStrideAt(float along)
 float froxelMiddle(uint slice)
 {
     return fogDepth((float(slice) + 0.5) / float(FOG_VOLUME_SLICES)) * FOG_REACH;
-}
-
-/// What one slice of a column scatters and takes out, once everything that lights it is applied:
-/// the air's own colour with the moons and the lamps in it, the extinction per world unit, and the
-/// sun's transport with the irradiance and the phase left off.
-///
-/// **A sample at the slice's middle, and not a constant over the slice.** The volume holds one of
-/// these per froxel, and what a froxel's value is is a property of one point in it, averaged over
-/// draws — so between two of them the air is what a sampler says it is between two texels: the
-/// line from one to the next. `fogThrough` integrates that line, and `fogintegrate.comp` and
-/// `fogVolumeAlong` both step through it, so a column's accumulation and a pixel's read of the
-/// slice it ends in agree exactly at the slice's far edge.
-///
-/// **Constant over a slice instead, the grid drew itself.** The accumulation was then a straight
-/// line across every slice with a corner at every edge — or, reconstructed with a cubic to hide the
-/// corners, a bump in the middle of every slice — and either is a pattern with the slices' own
-/// period, laid on the ground as shells around the eye wherever two neighbouring slices held
-/// different air. Banked air holds different air in neighbouring slices everywhere.
-struct FogSlice
-{
-    vec3 mInscatter;
-    float mExtinction;
-    float mSunward;
-};
-
-FogSlice fogSliceBetween(FogSlice from, FogSlice to, float fraction)
-{
-    return FogSlice(mix(from.mInscatter, to.mInscatter, fraction), mix(from.mExtinction, to.mExtinction, fraction),
-        mix(from.mSunward, to.mSunward, fraction));
-}
-
-/// Carries a ray `length` units through air of `slice`, accumulating what it scattered in and
-/// taking off what it lost.
-///
-/// What this stretch is worth to the frame, computed once and used twice: what it scatters in is
-/// weighted by it, and what the transmittance loses to it is exactly it, since `T * (1 - absorbed)`
-/// is `T - T * absorbed`.
-///
-/// **Exact for a stretch the line does not bend in**, which is why both callers cut a slice at its
-/// middle: the line from one slice's sample to the next bends only at the samples, so each half of
-/// a slice is one straight piece and its mean is its own middle.
-void fogThrough(inout float transmittance, inout vec3 scattered, inout float sunward, FogSlice slice, float length)
-{
-    const float weight = transmittance * (1.0 - exp(-slice.mExtinction * length));
-
-    scattered += weight * slice.mInscatter;
-    sunward += weight * slice.mSunward;
-    transmittance -= weight;
 }
 
 #endif

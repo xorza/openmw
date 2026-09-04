@@ -1,0 +1,61 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+
+#extension GL_EXT_ray_query : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+#include "scene.h"
+#include "lib/bindings.glsl"
+#include "lib/froxel.glsl"
+
+layout(local_size_x = FOG_FROXEL_WORKGROUP_ACROSS, local_size_y = FOG_FROXEL_WORKGROUP_ACROSS,
+    local_size_z = FOG_FROXEL_WORKGROUP_DEEP) in;
+
+const float FOG_TENT[9] = float[9](1.0, 2.0, 1.0, 2.0, 4.0, 2.0, 1.0, 2.0, 1.0);
+const ivec2 FOG_TENT_AT[9] = ivec2[9](ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1), ivec2(-1, 0), ivec2(0, 0),
+    ivec2(1, 0), ivec2(-1, 1), ivec2(0, 1), ivec2(1, 1));
+
+void main()
+{
+    const ivec3 grid = imageSize(fogSliceTarget);
+    const ivec3 froxel = ivec3(gl_GlobalInvocationID);
+    if (any(greaterThanEqual(froxel, grid)))
+        return;
+
+    const float near = froxelNear(uint(froxel.z));
+    float coverage = 0.0;
+    vec4 visibility = vec4(0.0);
+    float total = 0.0;
+    for (int i = 0; i < 9; ++i)
+    {
+        const ivec2 at = clamp(froxel.xy + FOG_TENT_AT[i], ivec2(0), grid.xy - 1);
+        if (!(imageLoad(fogColumnDepth, at).x > near))
+            continue;
+
+        coverage += FOG_TENT[i] * texelFetch(fogCoverage, ivec3(at, froxel.z), 0).x;
+        visibility += FOG_TENT[i] * texelFetch(fogVisibility, ivec3(at, froxel.z), 0);
+        total += FOG_TENT[i];
+    }
+
+    // A surface-containing slice must not interpolate toward unwritten air behind that surface.
+    const float surface = imageLoad(fogColumnDepth, froxel.xy).x;
+    const int last = clamp(int(ceil(sqrt(min(surface, FOG_REACH) / FOG_REACH) * float(FOG_VOLUME_SLICES))) - 1,
+        0, int(FOG_VOLUME_SLICES) - 1);
+    const ivec3 held = ivec3(froxel.xy, min(froxel.z, last));
+    if (!(total > 0.0))
+    {
+        coverage = texelFetch(fogCoverage, held, 0).x;
+        visibility = texelFetch(fogVisibility, held, 0);
+        total = 1.0;
+    }
+
+    coverage /= total;
+    visibility /= total;
+    const vec3 lamps = texelFetch(fogLamps, held, 0).xyz;
+    imageStore(fogSliceTarget, froxel, vec4(lamps * visibility.y, coverage));
+    imageStore(fogSliceVisibilityTarget, froxel, visibility);
+}

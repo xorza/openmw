@@ -216,11 +216,7 @@ namespace Rtx::Shaders
     /// costs memory and bandwidth on all three axes at once.
     const uint FOG_VOLUME_SCALE = 8u;
 
-    /// How many slices a column is integrated in.
-    ///
-    /// **More than the march it replaces takes over one ray**, because a column stands for
-    /// `FOG_VOLUME_SCALE` squared pixels and pays once for all of them. The march spends 24 steps
-    /// per pixel; this spends 64 per sixty-four pixels.
+    /// Depth samples for coverage and lighting; each pixel integrates its own medium through them.
     const uint FOG_VOLUME_SLICES = 64u;
 
     /// How many froxels one workgroup of the scatter pass covers, across the screen and in depth.
@@ -233,7 +229,7 @@ namespace Rtx::Shaders
     const uint FOG_FROXEL_WORKGROUP_ACROSS = 8u;
     const uint FOG_FROXEL_WORKGROUP_DEEP = 4u;
 
-    /// How many columns one workgroup of the integrate pass covers, on each axis.
+    /// How many columns one workgroup of the depth pass covers, on each axis.
     ///
     /// **A thread to a column there, and that is not a shape to be improved.** Front to back is the
     /// only order transmittance can be carried in, so the sixty-four slices of a column are a scan

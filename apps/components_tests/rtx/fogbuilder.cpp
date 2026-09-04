@@ -1,3 +1,6 @@
+#include <array>
+#include <cmath>
+
 #include <gtest/gtest.h>
 
 #include <osg/Vec3f>
@@ -5,6 +8,7 @@
 #include <components/esm3/loadcell.hpp>
 #include <components/rtx/fogbuilder.hpp>
 #include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/shaders/fog.h>
 #include <components/settings/values.hpp>
 
 namespace Rtx
@@ -211,6 +215,79 @@ namespace Rtx
             EXPECT_EQ(room.mEdge, 0.0f);
             EXPECT_EQ(room.mUniform, 1.0f);
             EXPECT_NEAR(room.mExtinction, fogExtinction(0.75f, sInteriorFogReach), 1e-10f);
+        }
+        TEST(RtxFogTransportTest, theExponentialMeanIncludesTheZeroDepthLimit)
+        {
+            EXPECT_EQ(Shaders::fogExponentialMean(0.0f), 1.0f);
+            for (const float depth : { 1.0e-7f, 0.009f, 0.01f, 0.011f, 1.0f, 100.0f })
+            {
+                const double expected = -std::expm1(-double{ depth }) / double{ depth };
+                EXPECT_NEAR(Shaders::fogExponentialMean(depth), expected, expected * 4.0e-6) << "depth " << depth;
+            }
+        }
+
+        TEST(RtxFogTransportTest, theLayerIntegratesItsHeightProfileAndClipsOnlyWater)
+        {
+            struct Path
+            {
+                float mFrom;
+                float mTo;
+                float mDistance;
+                double mDry;
+                double mWet;
+            };
+
+            // sigma = 1/2, H = 2: four units at the base have depth 2; climbing two units
+            // over four units of path has depth 2 * (1 - exp(-1)).
+            const double above = 2.0 * (1.0 - std::exp(-1.0));
+            const std::array paths{
+                Path{ 0.0f, 0.0f, 0.0f, 0.0, 0.0 },
+                Path{ 0.0f, 0.0f, 4.0f, 2.0, 2.0 },
+                Path{ -1.0f, -1.0f, 4.0f, 2.0, 0.0 },
+                Path{ 2.0f, 2.0f, 4.0f, 2.0 / std::exp(1.0), 2.0 / std::exp(1.0) },
+                Path{ 0.0f, 2.0f, 4.0f, above, above },
+                Path{ 2.0f, 0.0f, 4.0f, above, above },
+                Path{ -2.0f, 2.0f, 8.0f, 2.0 + above, above },
+                Path{ 2.0f, -2.0f, 8.0f, 2.0 + above, above },
+            };
+
+            for (const Path& path : paths)
+                for (const bool water : { false, true })
+                {
+                    SCOPED_TRACE(::testing::Message() << path.mFrom << " to " << path.mTo << ", water " << water);
+                    EXPECT_NEAR(Shaders::fogLayerDepth(0.5f, 2.0f, path.mFrom, path.mTo, path.mDistance, water),
+                        water ? path.mWet : path.mDry, 5.0e-7);
+                    EXPECT_EQ(Shaders::fogLayerDepth(0.0f, 2.0f, path.mFrom, path.mTo, path.mDistance, water), 0.0f);
+                }
+
+            EXPECT_EQ(Shaders::fogLayerDepth(1.0f, 2.0f, 0.0f, 0.0f, 4.0f, true), 4.0f);
+            EXPECT_NEAR(
+                Shaders::fogLayerDepth(0.5f, 4.0f, 0.0f, 2.0f, 4.0f, true), 4.0 * (1.0 - std::exp(-0.5)), 5.0e-7);
+            EXPECT_NE(Shaders::fogLayerDepth(0.5f, 2.0f, 0.0f, 2.0f, 4.0f, true),
+                Shaders::fogLayerDepth(0.5f, 4.0f, 0.0f, 2.0f, 4.0f, true));
+        }
+
+        TEST(RtxFogTransportTest, directionalScatteringIncludesBothOpticalPaths)
+        {
+            EXPECT_EQ(Shaders::fogLightDepth(0.5f, 2.0f, 0.0f, 0.5f), 2.0f);
+            EXPECT_EQ(Shaders::fogLightDepth(0.5f, 2.0f, -2.0f, 0.5f), 4.0f);
+            EXPECT_NEAR(Shaders::fogLightDepth(0.5f, 2.0f, 2.0f, 0.5f), 2.0 / std::exp(1.0), 1.0e-7);
+
+            const double level = std::exp(-2.0) * (1.0 - std::exp(-1.0));
+            EXPECT_NEAR(Shaders::fogLightIntegral(1.0f, 2.0f, 2.0f, 0.0f), level, 1.0e-8);
+            EXPECT_EQ(Shaders::fogLightIntegral(0.0f, 2.0f, 2.0f, 0.0f), 0.0f);
+
+            // At the light's own elevation, view depth gained equals light depth lost.
+            // Their sum stays 2, so the integral is exp(-2) times the crossed optical depth.
+            const float depth = static_cast<float>(2.0 * (1.0 - std::exp(-1.0)));
+            const float high = static_cast<float>(2.0 / std::exp(1.0));
+            EXPECT_NEAR(Shaders::fogLightIntegral(depth, 2.0f, high, 1.0f), std::exp(-2.0) * double{ depth }, 3.0e-8);
+
+            const double down = (std::exp(-double{ high }) - std::exp(-double{ depth } - 2.0)) / 2.0;
+            EXPECT_NEAR(Shaders::fogLightIntegral(depth, high, 2.0f, -1.0f), down, 3.0e-8);
+
+            // Twice the light's elevation: a negative exponential slope, without exp(+1000).
+            EXPECT_EQ(Shaders::fogLightIntegral(1000.0f, 2000.0f, 0.0f, 2.0f), 0.0f);
         }
     }
 }

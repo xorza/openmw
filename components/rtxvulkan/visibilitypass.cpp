@@ -163,7 +163,7 @@ namespace Rtx
         , mVolumeLayout(volumeLayout.getHandle())
         , mDepthModule(shaderDirectory / "fogdepth.comp.spv")
         , mScatterModule(shaderDirectory / "fogscatter.comp.spv")
-        , mIntegrateModule(shaderDirectory / "fogintegrate.comp.spv")
+        , mFogFilterModule(shaderDirectory / "fogfilter.comp.spv")
         , mRaygenModule(shaderDirectory / "visibility.rgen.spv")
         , mAnyHitModule(shaderDirectory / "visibility.rahit.spv")
         , mMissModules{ shaderDirectory / "visibility.rmiss.spv" }
@@ -181,8 +181,8 @@ namespace Rtx
         // table stays one entry per tuple.
         mDepthPipeline = std::make_unique<ComputePipeline>(
             mDevice, sBindings, 0, laterSets(textureLayout), mDepthModule, "fog depth");
-        mIntegratePipeline = std::make_unique<ComputePipeline>(
-            mDevice, sBindings, 0, laterSets(textureLayout), mIntegrateModule, "fog integrate");
+        mFogFilterPipeline = std::make_unique<ComputePipeline>(
+            mDevice, sBindings, 0, laterSets(textureLayout), mFogFilterModule, "fog filter");
 
         /// One kernel to make: which tuple, and which of the two modules.
         struct Wanted
@@ -447,7 +447,7 @@ namespace Rtx
 
         assert(inputs.mWaves != nullptr && "a trace with no sea synthesised for it");
         assert(inputs.mFog != nullptr && "a trace with no fog field drawn for it");
-        assert(inputs.mFogVolume != nullptr && "a trace with no air integrated for it");
+        assert(inputs.mFogVolume != nullptr && "a trace with no fog lighting grid");
         assert(inputs.mTextures != VK_NULL_HANDLE && "a trace whose texture array named no set");
 
         Shaders::VisibilityConstants described = constants;
@@ -541,12 +541,13 @@ namespace Rtx
 
         inputs.mFogVolume->scattered(commands, constants.mFrame);
 
-        openZone(timer, commands, "column");
+        openZone(timer, commands, "air filter");
 
-        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mIntegratePipeline->getHandle());
+        vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, mFogFilterPipeline->getHandle());
 
-        vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_COLUMN_WORKGROUP),
-            groupsFor(rows, Shaders::FOG_COLUMN_WORKGROUP), 1);
+        vkCmdDispatch(commands, groupsFor(columns, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
+            groupsFor(rows, Shaders::FOG_FROXEL_WORKGROUP_ACROSS),
+            groupsFor(Shaders::FOG_VOLUME_SLICES, Shaders::FOG_FROXEL_WORKGROUP_DEEP));
 
         closeZone(timer, commands);
 

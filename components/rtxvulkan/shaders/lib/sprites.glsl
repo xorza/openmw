@@ -75,22 +75,21 @@ PuffShape flatPuff()
 ///        `PuffShape`, whose fields say which is which.
 vec3 puffLight(uvec2 pixel, vec3 direction, float seen, PuffShape wrapped)
 {
-    // The column this pixel stands in and the depth the puff stands at, on `fogVolumeAlong`'s own
-    // mapping — the volume's slices are square-rooted in range, so the near air keeps its detail.
-    // The level named for the reason `fogSliceAt` gives.
     const vec3 at = vec3(
-        (vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(textureSize(fogSunward, 0).xy),
+        (vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(textureSize(fogVisibility, 0).xy),
         sqrt(min(seen, FOG_REACH) / FOG_REACH));
-
-    const vec3 seeing = textureLod(fogSunward, at, 0.0).xyz;
+    // Smoke samples point lighting; the fog's broad tent leaks neighboring visibility beneath lids.
+    const vec3 visibility = textureLod(fogVisibility, at, 0.0).xyz;
     const vec3 lamps = textureLod(fogLamps, at, 0.0).xyz;
+    const vec3 position = frame.mOrigin + direction * seen;
+    const vec3 daylight = daylightReaching(position);
+    const float coverage = frame.mFogExtinction > 0.0 ? textureLod(fogCoverage, at, 0.0).x : 1.0;
+    const float beam = waterOver(position) > 0.0 ? 1.0 : exp(-fogBeamDepthAt(position, coverage, frame.mSunPosition));
+    const vec3 sun = HAS_SUN
+        ? frame.mSunIrradiance * daylight * (visibility.x * beam * INV_PI * wrapped.mSunLit) : vec3(0.0);
 
-    const vec3 daylight = daylightReaching(frame.mOrigin + direction * seen);
-
-    const vec3 sun = HAS_SUN ? frame.mSunIrradiance * daylight * (seeing.x * INV_PI * wrapped.mSunLit) : vec3(0.0);
-
-    return frame.mAmbient * daylight * (seeing.z * wrapped.mAmbientLit) + sun
-        + lamps * (seeing.y * wrapped.mAmbientLit);
+    return frame.mAmbient * daylight * (visibility.z * wrapped.mAmbientLit) + sun
+        + lamps * (visibility.y * wrapped.mAmbientLit);
 }
 
 /// What a painted alpha hides over `crossings` of the thickness it was painted for.
