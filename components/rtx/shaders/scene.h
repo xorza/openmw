@@ -19,9 +19,11 @@
 // Scalar block layout throughout, so a `uint` is four bytes and a `vec2` is eight on both sides and
 // there is nothing to translate.
 //
-// The constants are here for the same reason the structures are: a number one side derives and the
-// other applies has to be one number. Two files each holding their own copy is how a sun and a lamp
-// quietly stop being on the same scale.
+// The constants left here are the ones a picture does not turn on: the world's units and the maths
+// over them, the sizes a buffer and a grid are built to, the masks traversal reads and the
+// sentinels a table spells nothing with. Every number somebody reaches for when the frame looks
+// wrong is in `look.h`, which includes this — so a dial and the size it is measured against are
+// still one statement, in the direction a light pass can take without taking the tables too.
 
 #ifdef RTX_HOST
 
@@ -42,6 +44,13 @@ namespace Rtx::Shaders
     using uint64 = std::uint64_t;
 
 #else
+
+// **Asked for here rather than by each shader that includes this.** The tables below are addressed
+// by 64-bit pointers, so a shader reading them needs the extension in scope — and nineteen of them
+// declared it for themselves while this header, which is what actually spells `uint64_t`, declared
+// nothing. A pass that took a constant out of here and had no use for a pointer got a syntax error
+// pointing at a line it never wrote.
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 #define uint64 uint64_t
 
@@ -82,16 +91,6 @@ namespace Rtx::Shaders
     /// makes them and says why at length.
     const uint SHADING_EXTENT = 32u;
 
-    /// How far the estimate may reach either way, which is also how a map is stored.
-    ///
-    /// **A map on the device is a sixteen-bit unorm of `(value - floor) / (ceiling - floor)`**, so
-    /// the whole of the format's range is spent on the values a map can hold — a step of one part
-    /// in forty thousand — and the neutral map, one everywhere, lands on exactly a third: 21845 of
-    /// 65535, which the decode carries back to exactly one. `Rtx::ShadingMap` says why the bounds
-    /// are what they are, and `Rtx::encodeShading` is the one statement of the encode.
-    const float SHADING_FLOOR = 0.5f;
-    const float SHADING_CEILING = 2.0f;
-
     /// A whole turn, which is how a wavelength becomes a wavenumber.
     const float TAU = 6.2831853f;
 
@@ -125,63 +124,6 @@ namespace Rtx::Shaders
     /// of it this way. Left out, lamps light the air twelve and a half times too strongly, which is
     /// a lantern with a white sphere around it rather than a halo.
     const float INV_FOUR_PI = 0.25f * INV_PI;
-
-    /// What the engine paints the second row of its cloud mesh with.
-    ///
-    /// `ModVertexAlphaVisitor::Clouds`'s own 64 over 255, and the only number in the deck's fade
-    /// that is not a radius read off the mesh. `CloudShell::mRings` carries where it applies.
-    const float CLOUD_RING_ALPHA = 0.25098f;
-
-    /// How far above its own mean a texel of a cloud sheet reads as a cloud in full sunlight.
-    ///
-    /// **What the sheet's paint is a ratio against.** `CloudDeck::mMean` divides a texel's luminance
-    /// by what its sheet averages, and this is where that ratio reaches one — so a texel at the mean
-    /// is a cloud half way between its own shadow and its lit face, and one at twice the mean is
-    /// lit through.
-    ///
-    /// **Two rather than one, because one is where the shape goes.** Half a sheet's texels lie above
-    /// its mean by definition, so a scale that saturated there would flatten half of every sheet
-    /// onto one value. Measured over the six sheets the shipped fallbacks reach, the 99th percentile
-    /// of the ratio runs 1.10 to 1.63 and the brightest texel of any of them is 2.03 — so at two
-    /// almost nothing saturates and the whole painting carries.
-    const float CLOUD_THICKNESS_MAX = 2.0f;
-
-    /// How much of the light landing on a cloud deck leaves the underside of it.
-    ///
-    /// **A cloud is darker than the sky it covers, and this is the whole of why.** Water droplets
-    /// scatter nearly everything that reaches them, but most of it leaves *upward*: plane-parallel
-    /// theory puts a deck's transmission at 0.2 to 0.3. At 0.9 — the figure a "lit from the whole
-    /// hemisphere" argument suggests, which is true of the irradiance arriving and silent about what
-    /// leaves — a night deck is 90% of the sky it hides and so cannot be seen at all.
-    ///
-    /// Thin cloud is not dragged down with it: how much sky a wisp replaces at all is its own alpha,
-    /// which is `cloudDeck`'s coverage and not this.
-    const float CLOUD_TRANSMISSION = 0.25f;
-
-    /// How dark a cloud's shadow is, in nepers per unit of alpha over the sheet's own mean.
-    ///
-    /// **Over the mean and not over nothing, because the content has already dimmed the sun.**
-    /// Morrowind gives every weather its own `Sun_*_Color`: clear's is 255, 252, 238 and overcast's
-    /// is 163, 169, 183, so the average cloud is in the number before this renderer touches it. A
-    /// shadow that darkened by the whole of the alpha would state the weather twice — and worst
-    /// where it is most wrong, since `tx_sky_overcast` is 255 alpha in every texel and would come
-    /// out as one flat second dimming with no shape in it at all. Subtracting the sheet's own mean
-    /// leaves the level where the content put it and adds only the pattern.
-    ///
-    /// **And a cloud never brightens the sun**, which the `max` at nought is: a gap in the sheet is
-    /// an open sky and not a lens.
-    ///
-    /// Four is the reference implementation's own figure and the one number in the layer chosen
-    /// rather than derived. Clear weather's sheet is cirrus, which in life casts almost nothing, and
-    /// a shadow that cannot be seen is not worth tracing.
-    const float CLOUD_SHADOW_DEPTH = 4.0f;
-
-    /// Irradiance of the sun against the sky it is set in.
-    ///
-    /// Not a physical figure: exposure absorbs any overall scale, so what matters is the ratio
-    /// between the direct sun and the sky, roughly five to one on a clear day on a surface facing
-    /// it. Shared with the shader because everything else on this scale is measured against it.
-    const float DAYLIGHT = 8.0f;
 
     /// How many independent numbers one pixel draws in one frame.
     ///
@@ -224,177 +166,6 @@ namespace Rtx::Shaders
     /// has no low frequencies to begin with, which is the whole point of it.
     const uint BLUE_NOISE_EXTENT = 64;
 
-    /// What a moon's own texels are worth as radiance.
-    ///
-    /// **Pinned, and not by taste.** A real full moon is a 640,000th of the sun and there is no scale
-    /// this renderer could put both on, so the number has to be chosen — and what chooses it is that
-    /// a moon bright enough to blow all three channels is a white disc whatever colour it was given,
-    /// which throws away the only reason to draw Masser rather than a bright dot. `tx_masser_full`'s
-    /// mean opaque texel is 0.0332 in red, and this is what takes that to 0.18: the most red a moon
-    /// can be and still be a moon.
-    ///
-    /// It multiplies the portrait where one is loaded and the portrait's mean where none is, so the
-    /// two paths are the same brightness and only the detail differs.
-    const float MOON_RADIANCE = 5.4217f;
-
-    /// What a texel of the star field is worth as radiance.
-    ///
-    /// **Morrowind puts a star at the top of the display range.** `paintAtmosphereNight` hands the
-    /// sheet's own texel to a `(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)` blend, so a white texel at full
-    /// alpha lands on the frame buffer at one, over a night sky of 9, 10, 11 out of 255. That is
-    /// also how the engine gets crisp stars out of a bilinear sampler: every pixel of the blob it
-    /// spreads a star over saturates, and what shows is a hard dot. Nothing here clips, so the level
-    /// has to put a star where the content puts it rather than rely on the ceiling to do it.
-    ///
-    /// **Measured through the path the game ships**, which is the only place the answer is real: at
-    /// 1920 by 1080 under `--upscale quality`, on a clear midnight, this puts the brightest star at
-    /// 0.914 of the display range where 0.18 put it at 0.627. The fifth still missing is Ray
-    /// Reconstruction's — the same frame drawn without it reaches 0.973.
-    ///
-    /// **A star is still never brighter than a full moon**, which is the rule and was the old level's
-    /// whole derivation — but it was read against Masser's *mean* texel, and a portrait's peak is
-    /// several times its mean. Masser's brightest pixel measures 0.932 in the same configuration, so
-    /// the rule holds with the bound stated where it belongs.
-    ///
-    /// **It reaches what is drawn and never what lights.** A bounce that escapes takes `skyGlow`,
-    /// which carries the sheets as one mean — `NightSky::mGlow` — so raising this raises that too and
-    /// `skyFill` takes it back out of the weather's own ambient. The night's light does not move.
-    const float STAR_RADIANCE = 0.45f;
-
-    /// What a texel of the three nebulae is worth as radiance.
-    ///
-    /// **A wash over the sky it washes.** Most of a Morrowind night's colour is in these rather than
-    /// in the stars: two of the three reach past a radian, so what they do is tint half the sky at a
-    /// time.
-    ///
-    /// **This level was set against the wrong average and the note said so.** It read
-    /// `tx_stars_nebula` at 0.052 and had this put that at 0.003, which is what `Sky_Night_Color`
-    /// decodes to — but 0.052 is the sheet's colour with its alpha ignored, and `skyPatches` draws
-    /// `rgb * a`. That mean measures 0.00199, so a nebula's average comes out at 1.2e-4 against the
-    /// night sky's 0.003: a twentieth of it rather than a match. Whether a nebula should read as the
-    /// sky it lies over is a question about the picture, and the number here answers it as a wash.
-    const float NEBULA_RADIANCE = 0.06f;
-
-    /// How much of the sunlight falling on Masser comes back off it: its geometric albedo, which is
-    /// what a body sends back at opposition against what a perfectly diffusing disc of the same size
-    /// would.
-    ///
-    /// **The Moon's own, because there is one right answer and Morrowind's moons are rock** — the
-    /// argument `SUN_ANGULAR_RADIUS` makes. What it buys is that moonlight stops being a level
-    /// somebody picked. A disc of geometric albedo `p` and half-angle `t` under irradiance `E`
-    /// delivers `E * p * sin(t)^2` to a surface facing it, and every term of that is already here:
-    /// `DAYLIGHT` is the sun, and `Moons_<name>_Size` is the angle.
-    ///
-    /// **And it is the size of Morrowind's moons that makes the physics usable.** Earth's is half a
-    /// degree across, so the same formula puts real moonlight at a 407,000th of sunlight — a figure
-    /// no frame here could carry beside a noon. Masser is eleven degrees across at OpenMW's own
-    /// `Moons_Masser_Size` and nineteen at the ini's, which is four hundred to thirteen hundred
-    /// times the sky and puts it between an 858th of the sun and a 299th. A Morrowind night is lit
-    /// by its moons because its moons are enormous, and nothing has to be invented to say so.
-    ///
-    /// **Masser's alone, because the two moons do not reflect the same.** `tintOf` normalises both
-    /// portraits on Masser's luminance, so Secunda carries this times the 2.54 its own paler face
-    /// says it is worth. And this is not `MOON_RADIANCE`: that one is pinned by where the tone curve
-    /// stops keeping colour, so a light read out of it would put a night at a thousandth of a day.
-    const float MOON_ALBEDO = 0.12f;
-
-    /// Angular radius of the sun, in radians — a disc about half a degree across.
-    ///
-    /// The real figure, because there is only one right answer and nothing about this renderer wants
-    /// a different sun. It decides how wide the disc in the sky is drawn, and with it how wide the
-    /// glitter path on water is: the two are the same number seen twice, one directly and one in a
-    /// mirror, and they cannot be allowed to disagree.
-    const float SUN_ANGULAR_RADIUS = 0.004654f;
-
-    /// Angular radius of the cone a sun shadow ray is drawn from, in radians: two degrees.
-    ///
-    /// **Wider than the disc, on purpose, and the disc is not moved with it.** A shadow cast by the
-    /// real half degree has a penumbra a centimetre wide on a wall two metres behind what casts it,
-    /// which on a screen is a hard edge — and Morrowind never had one. The game's shadows are maps
-    /// at a thousand texels over eight thousand units, filtered, and so soft at every distance; the
-    /// one the tracer draws was judged too sharp beside them. Two degrees puts a penumbra twenty
-    /// units wide on a wall three hundred units behind its caster, which is about what the maps
-    /// drew.
-    ///
-    /// This is a choice about the look and not a measurement, which is why it is a constant of
-    /// its own: the disc in the sky and the glitter path on the water stay at the real size, since
-    /// those are the sun seen and a sun seen wider is a different sun. A sun seen through haze does
-    /// widen its own shadows — the aureole a hazy sky throws round it is a few degrees across — and
-    /// if this ever wants to follow the weather, that is the model to follow it with.
-    const float SUN_SHADOW_RADIUS = 0.034907f;
-
-    /// The most radiance the sun's disc is drawn with.
-    ///
-    /// **A ceiling for a temporal history, not for a picture.** The sun's disc is drawn at its
-    /// irradiance spread over its own solid angle, which at noon is `8 / (pi * 0.004654^2)` — a
-    /// hundred and seventeen thousand. Nothing downstream can use it: the dimmest exposure the
-    /// renderer will choose is 0.05, so a radiance of 20 is already the top of the display range at
-    /// every exposure it can pick. What the number does reach is the upscaler, which reconstructs
-    /// from several frames of linear radiance and has to hold that value in a history — and a
-    /// neighbourhood five orders of magnitude out of range is one it clears slowly, which is a
-    /// blown pixel that stays blown for seconds after the sun has left the frame.
-    ///
-    /// **A thousand, because a glint is the dimmest thing this can reach.** Water reflects `WATER_F0`
-    /// of what it faces at normal incidence, so a source has to survive a factor of 0.02 and still
-    /// clear the display's top: `20 / 0.02` is the smallest ceiling that leaves every white pixel
-    /// white. It is a hundred and eighteen times below where the disc sits.
-    ///
-    /// **The disc alone, because it is the only thing in the sky that can reach a ceiling at all.**
-    /// A moon's face is held at 0.18, a star at the same, and the dome's own glow is a decoded
-    /// weather colour — every one of them three orders below this.
-    const float MAX_SUN_RADIANCE = 1000.0f;
-
-    /// What an emissive of one is worth on screen.
-    ///
-    /// **The original's scale is not this renderer's.** There a fully lit surface reached one and an
-    /// emissive of one matched it; here the direct sun is `DAYLIGHT`, so the same number has to be
-    /// carried across or a glow that read as bright becomes a rounding error.
-    ///
-    /// **What sets it is what a night frame shows.** A night's exposure is metered off a dark scene,
-    /// so a surface held high enough washes to white and loses the pattern on it — a glowing
-    /// mushroom cap reading as a blob rather than as a mushroom. `FLAME_INTENSITY` says the same of
-    /// a sprite and answers it by deriving a fully lit white card, `DAYLIGHT / pi`; this sits about
-    /// three times that, chosen against rendered frames rather than derived, because a material's
-    /// one and a sprite's one are two content conventions and not one.
-    ///
-    /// **A glow lights nothing, and this is the whole of what it does.** A glowing surface used to
-    /// earn a lamp of its own beside what it shows. Measured with those lamps switched off, three
-    /// frames moved by 0.5 %, 1.2 % and 2.9 % — a mushroom lost the warm ring on the ground under
-    /// its cap and kept everything else, and a guild lit by its own sconces was hard to tell apart.
-    /// What the lamps cost was a light in the grid for every glowing shape in the world, 474 of them
-    /// at Seyda Neen and 248 at Ald-Ruhn, and they were the reach that drove `LightGrid` to coarsen
-    /// its cell. Morrowind lights what it means to light with a `LIGH` record.
-    const float EMISSIVE_INTENSITY = 8.0f;
-
-    /// What light on the far side of a leaf is worth to the side being looked at, against the same
-    /// light on the near side.
-    ///
-    /// **A leaf is a sheet with a mask, and it is the one surface in the game lit from behind.**
-    /// The content marks it exactly — a card doubled for its back, under an alpha property — and a
-    /// real leaf passes about half of what it reflects, so a canopy against the sun glows through
-    /// rather than going black. The same albedo on either side: what colours the light through a
-    /// leaf is the leaf. Half, rather than the tenth a leaf transmits absolutely, because the term
-    /// scales the surface's own diffuse response and not the sun; the reference implementation
-    /// measured backlit foliage a quarter brighter at this value and no noisier.
-    ///
-    /// **The far side's light is the term, and the shadow it would have cast stays whole.** What a
-    /// leaf lets through to the ground under it arrives by the bounce that lands on the leaf's
-    /// underside and gathers the sun there — so a shadow ray thinning itself through the leaf's body
-    /// as well would deliver the same light twice.
-    const float SHEET_TRANSMISSION = 0.5;
-
-    /// How far a ray carries fog before whatever is behind it stops mattering.
-    ///
-    /// Four hundred metres. Past this the transmittance of even the thinnest weather is a rounding
-    /// error, and a ray that hit nothing has to stop somewhere.
-    const float FOG_REACH = 30000.0f;
-
-    /// The height over the fog's base at which its density falls to `1/e`, in world units.
-    ///
-    /// Seventy units to the metre, so about thirty-seven of them — a layer deep enough to fill a
-    /// valley and still thin out over the hill beside it.
-    const float FOG_HEIGHT = 2600.0f;
-
     /// How many texels along each side of the fog's baked volume, how many cells of noise it holds
     /// across, and how many levels sit under it.
     ///
@@ -416,21 +187,6 @@ namespace Rtx::Shaders
     const uint FOG_FIELD_CELLS = 8u;
     const uint FOG_FIELD_LEVELS = 6u;
 
-    /// The coarsest level of that chain a march is allowed to read.
-    ///
-    /// **Not the last one, because a level with too few texels left stops being the field.** Every
-    /// level is stretched until a sampler reads one spread out of it, and at two texels a side that
-    /// stretch runs the texels into the clamp: the mean drifts and the band clears more than it was
-    /// measured against. Measured off the baked volume, the band leaves `FOG_COVERAGE` to within a
-    /// twentieth down to four texels a side, then 0.396 at two, and 0.173 at the single texel that
-    /// is the whole field's own mean.
-    ///
-    /// **Four texels is the last level that holds, and that is level three of six.** Past it a step
-    /// reads a field it cannot resolve and what comes back is noise, which the jittered step and the
-    /// temporal filter take out — and which is what the renderer this is ported from lives with at
-    /// every step, having no chain to climb at all.
-    const float FOG_FIELD_COARSEST = 3.0f;
-
     /// The standard deviation every level of that field is normalised to.
     ///
     /// **A property of the field and not of the level a step reached**, which is what lets the
@@ -442,44 +198,6 @@ namespace Rtx::Shaders
     /// the meanings they were set against.
     const float FOG_FIELD_SPREAD = 0.1204f;
 
-    /// How large one cell of the coarsest scale is, in world units, and so how wide the whole tile is
-    /// laid out at that scale.
-    ///
-    /// **Nine hundred, which is the renderer this is ported from settling the same question twice.**
-    /// Its §8.40 made the grain *coarser* — 1,400 to 3,000 units — because structure finer than the
-    /// march's step aliased, and got fog whose shape was visible only from a ridge. Its §8.41 found
-    /// the diagnosis wrong: sampling finely where the fog is thin buys nothing, because what the eye
-    /// reads over a distant hillside is thousands of units of integration and structure at any scale
-    /// averages out of it. Fog has visible shape where it is optically thick over a *short* distance,
-    /// so the grain came back down to 900 and stayed there.
-    ///
-    /// **The other half of that finding is free here.** Its fix was *sparse and dense rather than
-    /// uniform and thin* — a band clearing more of the volume, with the extinction doubled by hand to
-    /// pay for it. `FOG_COVERAGE` divides that back out, so a band that clears more of the ground
-    /// thickens what is left by exactly as much, and neither number has to be re-tuned against the
-    /// other.
-    ///
-    /// **What used to stop this from shrinking was aliasing, and the mip chain answers that now.**
-    /// The field was hashed at every step, so anything finer than the step between two samples
-    /// arrived as noise and the only defence was a grain too coarse to have any. `fogFieldAt` picks a
-    /// level from the march's own stride instead, so the field is filtered rather than aliased.
-    const float FOG_GRAIN = 900.0f;
-    const float FOG_TILE = FOG_GRAIN * float(FOG_FIELD_CELLS);
-
-    /// What a recorded `Wind Speed` of one comes to in world units a second.
-    ///
-    /// **Read as a wind rather than picked, which is what it took to make an ash storm look like one.**
-    /// The renderer this is ported from first set 120, chosen so the strongest weather crossed one cell
-    /// of the coarsest noise in about nine seconds — and nine seconds to cross thirteen metres is 1.4
-    /// metres a second, which is a still afternoon rather than a storm. Twenty metres a second is a
-    /// Beaufort 8 gale, and seventy units to the metre makes that 1,400. The ten then land where their
-    /// names say: clear's 0.1 is a two-metre breeze, rain's 0.3 is six, thunderstorm's 0.5 is ten,
-    /// ashstorm's 0.8 is sixteen, and blight and blizzard blow eighteen.
-    ///
-    /// `mTime` runs at the clock's own rate rather than the game's thirty-times one, so this is a wind
-    /// rather than a time-lapse.
-    const float FOG_GALE = 1400.0f;
-
     /// How many scales that one tile is read at.
     ///
     /// **Because one tile repeats and three do not.** A field laid down every twelve thousand units
@@ -488,89 +206,6 @@ namespace Rtx::Shaders
     /// any one lattice. Three reaches thirty-six units at the fine end, which is finer than any step
     /// a march near the camera takes.
     const uint FOG_SCALES = 3u;
-
-    /// The step between them. Not two, so the tiles never realign and repeat.
-    const float FOG_LACUNARITY = 2.27f;
-
-    /// The standard deviation of the sideways displacement the finer scales are read at, in world units.
-    ///
-    /// **Domain warping**: rather than adding octaves, the *coordinate* is displaced by a noise of its
-    /// own, so shapes stretch and curl instead of staying the roughly round blobs a sum of octaves
-    /// gives. Quilez's `fbm(p + w * fbm(p))` at one level — and here it costs nothing at all, because
-    /// the coarse scale is fetched anyway and its second channel is a field decorrelated from the first,
-    /// so the pair is a vector already in hand. Horizontal only: the vertical shape of this fog is the
-    /// height falloff, and warping across it would blur the layer it is meant to have.
-    ///
-    /// **Half a cell of the coarsest scale, because what a warp does is relative to what it bends.**
-    /// A displacement much larger than the feature it moves is not a curl, it is a second draw of the
-    /// same field at an unrelated place — so a figure fixed in world units would stop warping and
-    /// start scrambling the moment the grain moved. Half is the ratio the renderer this is ported
-    /// from settled at: 450 units over a grain of 900.
-    const float FOG_WARP = FOG_GRAIN * 0.5f;
-
-    /// Below `FOG_CLEARING` of the field the air is clear, and at `FOG_SOLID` the fog is at full
-    /// thickness. Between them it is a bank's edge.
-    ///
-    /// **This is what makes fog patchy rather than merely uneven.** Scaling density by a noise gives fog
-    /// that is everywhere and varies; cutting a band out of one gives banks with gaps between them,
-    /// which is what a valley at dawn looks like.
-    ///
-    /// **The band has to be cut against the field's own spread, not picked.** Averaging octaves narrows
-    /// a distribution sharply, and a threshold chosen for one octave's range clears almost everything:
-    /// the renderer this is ported from tried `0.42..1.0` and left average coverage at a third of a per
-    /// cent. This field runs mean 0.5 with a standard deviation of `FOG_FIELD_SPREAD` by construction
-    /// rather than by measurement, and it does so at every level of the chain — which is what lets one
-    /// pair of numbers stand for the band at every step of a march.
-    ///
-    /// **Sample it over a plane wider than the tile, not over a sphere.** A million pixels of a sphere of
-    /// radius 5,000 is a million samples of about a tenth of one tile, and the mean it gives is wrong by
-    /// several per cent while looking precise.
-    const float FOG_CLEARING = 0.45f;
-    const float FOG_SOLID = 0.65f;
-
-    /// What that band comes to on average, which the coverage is divided by.
-    ///
-    /// **So the noise redistributes the air rather than removing it.** The extinction the host derived
-    /// is what a ray should cross on average — it is Morrowind's own view distance, turned into a
-    /// coefficient — and a band that clears two thirds of the ground would silently make the world three
-    /// times clearer than the game says. Normalised, a bank is 2.9 times the derived extinction against
-    /// a gap of nothing, and the average is what it was.
-    ///
-    /// **Measured, and it must be re-measured if the band or the field moves.**
-    /// `theCoverageBandLeavesTheShareTheDensityIsDividedBy` computes it off the baked field to four
-    /// figures, and `theBankedFieldHoldsAsMuchAirAsAnEvenOne` checks the frame agrees.
-    const float FOG_COVERAGE = 0.3563f;
-
-    /// What is left of a ray at the world's edge, once the second element of the air has had it.
-    ///
-    /// **The whole point of that element is that this is not a matter of taste.** The last ring of
-    /// terrain ends in mid-air, and the only number that hides it is one small enough that the
-    /// difference between the ground and the sky behind it is below what the frame can carry. One
-    /// step of an eight-bit channel is that number.
-    const float FOG_EDGE_TRANSMITTANCE = 1.0f / 256.0f;
-
-    /// Over what share of `VisibilityConstants::mFogEdge` that air closes, as the `1/e` length of
-    /// its density.
-    ///
-    /// **Exponential in the range from the eye, which is what keeps it off the ground the player is
-    /// standing on.** A uniform medium thick enough to hide the last cell hazes the first one too. A
-    /// density that grows by `e` every eighth of the reach leaves 0.905 of a ray at half of it and
-    /// 0.473 at three quarters, so the world closes over its last quarter and the quarter before it
-    /// is only softened.
-    const float FOG_EDGE_RAMP = 0.125f;
-
-    /// The sine of the climb above which that air is not there at all.
-    ///
-    /// **A ring on the ground and not a dome, because that is what is missing.** A ray that climbs
-    /// leaves the terrain behind and finds sky, which needs no hiding — and air that closed over it
-    /// too would put the horizon's colour across the whole upper sky. Twenty-five degrees covers
-    /// everything within `tan(25)` of the reach above the eye, which at four cells is fifteen
-    /// thousand units of mountain, and leaves the sky over it exactly as it was.
-    ///
-    /// **A climb alone, and a descent is never masked.** An eye that is high enough looks down on
-    /// the ring where the loaded cells stop, so the steeper the view the more of the cut it can see
-    /// — and reading this either way would take the air off precisely there.
-    const float FOG_EDGE_RISE = 0.4226183f;
 
     /// How many pixels of the frame one column of the fog volume stands for, on each axis.
     ///
@@ -604,44 +239,6 @@ namespace Rtx::Shaders
     /// only order transmittance can be carried in, so the sixty-four slices of a column are a scan
     /// and not a fan-out — and the scan is reads and multiply-adds, with no ray and no walk in it.
     const uint FOG_COLUMN_WORKGROUP = 8u;
-
-    /// Water's index of refraction, and the reflectance it gives head-on.
-    ///
-    /// `((1.333 - 1) / (1.333 + 1))^2`, which is why water is a window seen from above and a mirror
-    /// seen along it.
-    const float WATER_IOR = 1.333f;
-    const float WATER_F0 = 0.02f;
-
-    /// Extinction per world unit, per channel — how fast water swallows light along a path.
-    ///
-    /// **Absorption, and not a diffuse attenuation coefficient.** `Kd` is what oceanography usually
-    /// quotes and it is the wrong number here twice over: it counts scattering as a loss, and it
-    /// counts the lengthening of a path that has been scattered about. This renderer already puts
-    /// the scattering back with `WATER_SCATTER`, so charging the beam for it as well is charging it
-    /// twice. What is left of a beam is what was absorbed out of it, which is `a`.
-    ///
-    /// **And scattering takes almost nothing out of a beam here.** The reduced coefficient is
-    /// `a + b (1 - g)`, and with `WATER_ASYMMETRY` at 0.92 and the albedo below, `b (1 - g)` comes
-    /// to between 0.3 and 1.2 per cent of `a`. Water this forward-scattering loses a beam to
-    /// absorption alone, so the term is named rather than carried.
-    ///
-    /// **Blue last, which is what the albedo beside this one already says.** Pure water absorbs red
-    /// twenty-five times as fast as blue, so a body of it reads blue at depth — and a scattering
-    /// albedo that peaks in blue is a statement that blue is what survives to be scattered. Written
-    /// the other way round, with green surviving longest, the two constants describe two different
-    /// waters and the extinction wins: it made every path of any length read green.
-    ///
-    /// Two terms, per metre, over the visible band weighted by each channel's own response:
-    ///
-    ///   pure water, Pope and Fry     0.260, 0.054, 0.010
-    ///   dissolved organic matter     0.002, 0.005, 0.014     `a(440) = 0.02, exp(-0.014 (l - 440))`
-    ///
-    /// The second is what makes this a coastal sea rather than an ocean, and it is the one dial:
-    /// stained water absorbs blue and nothing else much, so it is what stands between Vvardenfell's
-    /// swamp coast and the Pacific. Every expectation a test makes about water derives from this
-    /// sum, so a tuning pass is one line rather than five pieces of arithmetic that quietly stop
-    /// describing the shader.
-    const vec3 WATER_EXTINCTION = vec3(0.262f, 0.059f, 0.024f) / UNITS_PER_METRE;
 
     /// How far under its nominal level the sea's own surface is placed, in world units.
     ///
@@ -678,49 +275,6 @@ namespace Rtx::Shaders
     /// figure a person can picture is the one the sea is built from.
     const float WATER_SIGNIFICANT_HEIGHT = 4.0f;
 
-    /// The single-scattering albedo: the share of extinction that was scattering and not absorption,
-    /// and so the part the water hands back as its own colour instead of swallowing.
-    ///
-    /// **This is what decides whether deep water is dark.** A channel whose scattering albedo
-    /// approaches one settles at a bright colour however deep it gets — a milky sheet. Clear
-    /// tropical water really does behave that way, because molecular scattering dominates its blue;
-    /// a tannin-stained coastal swamp does not, and this game's water is the second.
-    ///
-    /// **Morrowind's own, which it states as a colour rather than as an albedo.**
-    /// `Water_UnderwaterColor` is `012,030,037` and `Water_UnderwaterColorWeight` is 0.85, and
-    /// `MWRender::FogManager::getFogColor` mixes them into the weather's fog at exactly that
-    /// weight — so `(12, 30, 37) / 255 * 0.85` is the colour the game settles its own murk at.
-    /// Read straight across, because the two quantities are the same one: a share of what arrives
-    /// that comes back rather than being swallowed.
-    ///
-    /// **What the game states and this cannot use is the density.** `Water_UnderwaterDayFog` is
-    /// 2.5, and `FogManager` runs its ramp from `min(view, 7168) * (1 - depth)` — which for any
-    /// depth over two starts *behind* the camera and is 60% complete the moment the eye goes under.
-    /// A medium is nought at nought distance by construction, so `Rtx::fogExtinction`'s half-life
-    /// match has nothing to bite on: that number is a screen tint rather than a density, and the
-    /// absorption above is already the stronger of the two by 7168 units.
-    ///
-    /// **It peaks in blue, and `WATER_EXTINCTION` is written to agree with it.** A share of what
-    /// arrives that comes back is largest where least was taken, so a blue-peaked albedo and a
-    /// blue-sparing absorption are one statement about one water. Move either and the other has to
-    /// move with it, or the water is two waters again and the extinction is the one that shows.
-    ///
-    /// **What this asks of the scattering coefficient is not a real water's, and that is the price
-    /// of keeping the game's own number.** Read as an albedo it implies `b = a w / (1 - w)`, which
-    /// falls toward blue where every real water's rises — molecular scattering goes as the fourth
-    /// power of the wavenumber. What that costs is confined to the colour a very deep column
-    /// settles at, which is the one thing the game states outright and this defers to.
-    const vec3 WATER_SCATTER = vec3(0.04f, 0.1f, 0.1233f);
-
-    /// How far forward water throws what it scatters.
-    ///
-    /// **Sea water scatters forward far harder than fog does.** Petzold's measurements of the
-    /// particle phase function of coastal water give a mean cosine of about 0.92: nearly everything
-    /// goes on in the direction it was already travelling, and the sideways part is a thousandth of
-    /// the forward peak. That is why an underwater haze is a beam around the sun rather than an even
-    /// milkiness, and why looking away from the sun under water is looking into the dark.
-    const float WATER_ASYMMETRY = 0.92f;
-
     /// A ceiling on how bright a focus is allowed to get.
     ///
     /// Where the refracted bundle collapses to a line the Jacobian goes to zero and the intensity to
@@ -731,8 +285,8 @@ namespace Rtx::Shaders
     /// the dial to turn. The filaments come from `WATER_CAUSTIC_FOLD` letting the determinant reach
     /// zero; this only says where their tops are cut.
     ///
-    /// **Here rather than beside the rest of the caustic's dials, because `causticGain` is fitted
-    /// against it.** The clip decides how much of the tail ever arrives, so the two are one
+    /// **Here rather than in `look.h` with the rest of the caustic's dials, because `causticGain` is
+    /// fitted against it.** The clip decides how much of the tail ever arrives, so the two are one
     /// statement and a test that checks the fit has to be able to read both.
     const float WATER_CAUSTIC_MAX = 2.0f;
 
@@ -1041,17 +595,6 @@ namespace Rtx::Shaders
     /// is sized so that this is a rare frame and never a wrong one.
     const uint SPRITE_LIST_UNBINNED = 0u;
 
-    /// The most a texel of a sprite may hide of what is behind it.
-    ///
-    /// **An alpha of one is an infinite optical depth, and no chord can thin one.** A sprite is
-    /// composited as a ball the ray crosses, and what it hides is `1 - (1 - alpha) ^ fraction` for
-    /// the fraction of the chord the eye sees — the whole of it in the open, a sliver where the
-    /// ball runs into a wall. At an alpha of one that hides everything for any sliver at all, which
-    /// is a puff clipped hard at the wall it was meant to fade into. So a texel that says opaque is
-    /// taken to mean this, and the price is one part in a hundred of the background through the
-    /// densest texel a sprite has.
-    const float SPRITE_ALPHA_LIMIT = 0.99;
-
     /// How much brighter the lit side of a puff is than its mean, and the far side darker.
     ///
     /// **A puff has no dark side and still has a lit one.** A cloud of droplets scatters the sun
@@ -1060,28 +603,6 @@ namespace Rtx::Shaders
     /// not, and that is what makes a ball read as a ball. `1 + SPRITE_WRAP * dot(normal, toward)`
     /// keeps the mean over the sphere where it was and puts three to one between front and back.
     const float SPRITE_WRAP = 0.5;
-
-    /// What a flame texel of one is worth, as light.
-    ///
-    /// **A white card square to the sun, which is what the original's one meant.** There a fully
-    /// lit surface reached one and an additive sprite at one reached the same white, so the two
-    /// stand at one level here: a card under `DAYLIGHT` leaves `DAYLIGHT / pi`. This is not
-    /// `EMISSIVE_INTENSITY`, which is a material's convention and not a sprite's, and which sits
-    /// about three times this. A flame carried at that scale is more than its own meaning, and at night the
-    /// exposure then puts every texel of it past white — the fringe the texture painted goes with
-    /// the core, and a sprite reads as a cut-out that switches on.
-    const float FLAME_INTENSITY = DAYLIGHT * INV_PI;
-
-    /// How strongly smoke throws the sun forward: Henyey-Greenstein's asymmetry.
-    ///
-    /// **A puff lit by an even share from every side is a card, and a puff is not a card.** A cloud
-    /// of droplets sends most of what it scatters on along the light, so smoke between the eye and
-    /// the sun glows and smoke with the sun behind the eye is dim. The even share drew a chimney's
-    /// column as bright as the sky from in front and six times darker from behind, which is the
-    /// wrong way round. Applied to the sun alone and normalised so the mean over every direction
-    /// stays the card's worth; the sky and the lamps arrive from everywhere and keep the even share.
-    /// Six tenths is the cloud recipe's figure.
-    const float SMOKE_ANISOTROPY = 0.6;
 
     /// One particle system: a sphere a ray is rejected by, and the run of sprites behind it.
     struct GpuEmitter

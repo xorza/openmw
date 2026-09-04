@@ -1,3 +1,5 @@
+#include <components/rtx/shaders/look.h>
+
 #include "accumulatepass.hpp"
 
 #include <array>

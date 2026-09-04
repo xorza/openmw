@@ -11,12 +11,12 @@
 // not. `WavePass` transforms all three out of one spectrum for that reason, and this reads them.
 // Nothing in here is lit — that is `water.glsl`.
 
+#include "look.h"
 #include "scene.h"
 #include "wave.h"
 #include "bindings.glsl"
 #include "footprint.glsl"
 #include "random.glsl"
-
 
 /// How far refraction deflects a ray, per unit of surface slope.
 ///
@@ -25,125 +25,6 @@
 /// the index of refraction rather than written out, so nothing here can come to disagree about what
 /// water is.
 const float WATER_REFRACTION_BEND = 1.0 - 1.0 / WATER_IOR;
-
-/// The scale of the pattern at the focus, in world units, which it grows from.
-///
-/// **Snyder and Dera's other half, and the one a blur cannot supply.** Their measurement is that the
-/// dominant frequency of the fluctuation falls as the inverse square root of the depth — so the
-/// pattern's own scale grows as the root of it, which is branching and not any kind of blurring.
-/// Both blur terms are linear in the depth and still under one texel at three metres, so left to
-/// them nothing at all changed across the shallows anyone looks at.
-///
-/// **Fitted against the law rather than derived.** The contrast from two metres to six comes out at
-/// 0.60 of itself here against the 0.58 the root asks for, and a larger grain overshoots it — 0.36
-/// at twelve. It lands within a texel of the wider tile, which is the finest the transform carries
-/// and so the finest a pattern read off it could have had.
-const float WATER_CAUSTIC_GRAIN = 8.0;
-
-/// How wide a patch of surface a point one unit down gathers its light from, per unit of depth.
-///
-/// **Why a caustic coarsens as the water deepens.** Two things blur it and both are angles, so both
-/// grow with the depth: the sun is a disc rather than a point, and the surface presents a spread of
-/// slopes. Together they say a point at depth `d` is lit by a patch this many units across, and
-/// reading the tiles at that footprint is what broadens the pattern as the water deepens. Both are
-/// geometry and both are linear in the depth, which is why they are not the whole of the coarsening:
-/// `WATER_CAUSTIC_GRAIN` carries the part that is not a blur.
-///
-/// The sun's term is its angular *diameter*, narrowed by refraction on the way in. A mip chain
-/// preserves the mean, so nothing here changes how much light arrives.
-const float WATER_CAUSTIC_SPREAD = 2.0 * SUN_ANGULAR_RADIUS / WATER_IOR;
-
-/// The depth a sea's caustics are boldest at, in world units.
-///
-/// **Measured rather than derived, because the sea this renderer synthesises cannot find its own.**
-/// A real ocean's curvature is dominated by waves far shorter than `sShortestWave` — ripples and
-/// capillaries — so its first focus lies within a metre of the surface, which is where Snyder and
-/// Dera found the maximum of the light fluctuation in 1970 and where every field measurement since
-/// has put it. The transform stops at half a metre of wavelength, so left to itself it focuses at
-/// eight, and a bed at six metres came out bolder than one at two. A metre and a half here, which
-/// is the shallow end of what the measurements report.
-///
-/// **And the carried pattern is normalised to reach its own fold here**, which is the other half of
-/// saying the sea is band-limited. The tiles hold about a fifth of a real sea's curvature, so run at
-/// the literal deflection they would draw a pattern a fifth as bold as the water has — faint at
-/// every depth rather than only at the wrong ones. Scaling instead so the fold lands at the focus
-/// gives the light the strength it is measured to be redistributed with, drawn with the shape the
-/// transform can carry.
-const float WATER_CAUSTIC_FOCUS = 100.0;
-
-/// How much of the pattern is drawn, as a share of its own departure from a flat sea.
-///
-/// **The one number here that answers taste rather than a measurement, and it says so.** Everything
-/// else in this file is the sea differentiated or a figure taken off it; this is how much of the
-/// lens to show. What the arithmetic gives is the whole of it, and the whole of it reads brighter on
-/// a Morrowind shore than the game wants.
-///
-/// **It scales the departure from one and never the light.** `causticGain` makes the pattern average
-/// to exactly one, and a share of a thing that averages to one still averages to one — so this can be
-/// turned anywhere between nothing and the full lens without the bed receiving a photon more or less
-/// than falls on the water. Multiplying the caustic instead would have taken the light with it.
-///
-/// The ceiling is not this dial and cannot be. Cutting the cusps lower makes `causticGain` divide by
-/// less, which puts the peak straight back: at a ceiling of 1.4 the brightest place on the bed comes
-/// out where it was, with a gentler shape under it.
-const float WATER_CAUSTIC_STRENGTH = 0.4;
-
-/// How fast the pattern fades past the focus, as a power of the depth.
-///
-/// **A half is what the sea was measured at.** Snyder and Dera's law is that the amplitude of the
-/// fluctuation and its dominant frequency both fall as the inverse square root of the depth, and
-/// that is what a measurement of the ocean says. One is twice that exponent, so the pattern is gone
-/// by twenty metres where the water still has light in it — chosen for the look and not found in
-/// the sea, which is worth saying out loud beside a file full of numbers that were.
-///
-/// **Blending toward one rather than scaling is what keeps the light wherever this is set**, so the
-/// exponent is free to be turned and the mean does not follow it. Measured at two, six and twenty
-/// metres: 0.213, 0.064 and 0.014 of contrast, where a half leaves the deep end four times bolder.
-const float WATER_CAUSTIC_FADE = 1.0;
-
-/// How far toward its own fold the pattern is run at the focus, as a share of the way there.
-///
-/// **Past one, which is past where a lens has one answer.** At one the determinant first reaches
-/// zero; beyond it the map folds over and a point on the bed is reached by three patches of surface
-/// where this draws one of them. That is what puts the contrast into thin bright filaments, and this
-/// is the dial for how thin they are.
-///
-/// **Conservation is not what limits it any more.** Run to three, the estimator makes between 13 and
-/// 32 per cent of light depending on how coarsely the cone reads the curvature, and `causticGain` is
-/// the mean of exactly that divided back out. What the fold still costs is coherence: a filament is
-/// the finest thing in the field, so it is made of the fastest-turning waves and it is what moves
-/// first — 67 per cent of the pattern is new a twelfth of a second later, of which the sea carries
-/// 14 points shoreward rather than replacing them.
-const float WATER_CAUSTIC_FOLD = 3.0;
-
-/// How far apart the rain's impacts are, in world units: a lattice with one splash a cell.
-///
-/// **How many rings is not how many drops.** A real rain lands thousands of drops a second on a
-/// square metre and a surface cannot show them as separate rings; what an eye picks out is a few
-/// tens. Twenty units is a dozen impacts on a square metre, with a handful of them ringing at any
-/// moment.
-const float RAIN_RING_CELL = 20.0;
-
-/// How long one ring lasts before it has spread into nothing, in seconds.
-const float RAIN_RING_LIFE = 0.6;
-
-/// How fast a ring spreads, in world units a second.
-///
-/// Capillary-gravity waves on water cannot travel slower than 0.23 m/s — where the surface-tension
-/// and the gravity branches of the dispersion relation meet — and a splash ring runs out at about
-/// twice that. Thirty-five units is half a metre a second, so a ring reaches thirty centimetres
-/// before its life is up.
-const float RAIN_RING_SPEED = 35.0;
-
-/// The ring's own wavelength, in world units: eleven centimetres, the scale capillary ripples take.
-const float RAIN_RING_LENGTH = 8.0;
-
-/// How steep a fresh ring is, as slope at its crest.
-///
-/// Per ring, and rings overlap — nine cells are summed — so what it comes to as a field is what is
-/// compared against the sea: an rms slope of about a fifth, a third of a running sea's. Enough to
-/// break a reflection where a drop lands, and gone again within the ring's life.
-const float RAIN_RING_STEEPNESS = 0.30;
 
 /// What the rain adds to the water it lands on, as a slope beside the wave field's.
 ///

@@ -15,6 +15,7 @@
 #include "error.hpp"
 #include "lightbuilder.hpp"
 #include "shaders/colour.h"
+#include "shaders/look.h"
 #include "shaders/scene.h"
 
 namespace Rtx

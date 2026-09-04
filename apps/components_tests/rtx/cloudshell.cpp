@@ -12,6 +12,7 @@
 #include <osg/Vec3f>
 
 #include <components/rtx/cloudshell.hpp>
+#include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
 
 namespace Rtx

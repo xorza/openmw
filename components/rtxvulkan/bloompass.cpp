@@ -5,6 +5,7 @@
 #include <format>
 
 #include <components/rtx/shaders/bloom.h>
+#include <components/rtx/shaders/look.h>
 
 #include "device.hpp"
 #include "result.hpp"

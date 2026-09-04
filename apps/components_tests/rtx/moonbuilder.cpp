@@ -6,6 +6,7 @@
 #include <components/fallback/fallback.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/shaders/colour.h>
+#include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/scene.h>
 
 #include "allocations.hpp"

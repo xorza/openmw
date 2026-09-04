@@ -8,6 +8,7 @@
 #include "colourblock.hpp"
 #include "error.hpp"
 #include "shaders/colour.h"
+#include "shaders/look.h"
 #include "srgb.hpp"
 #include "texturedata.hpp"
 

@@ -3,6 +3,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_COLOUR_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_COLOUR_H
 
+#include "look.h"
 #include "portable.h"
 
 #ifdef RTX_HOST
@@ -42,17 +43,6 @@ RTX_SHADER float brightest(vec3 colour)
 {
     return max(colour.x, max(colour.y, colour.z));
 }
-
-/// How much the curve takes off the darkest channel once it has any to take. Khronos's own.
-const float TONE_SHADOW_OFFSET = 0.04;
-
-/// Where the curve below stops leaving a colour alone and starts bringing it down.
-///
-/// Khronos's own, less the shadow offset, which it has already taken off by then.
-const float TONE_COMPRESSION_START = 0.8 - TONE_SHADOW_OFFSET;
-
-/// How far a compressed colour is carried toward white. Khronos's own.
-const float TONE_DESATURATION = 0.15;
 
 /// Radiance to a display range: Khronos PBR Neutral, with its shadow offset ramped.
 ///

@@ -16,6 +16,7 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/vfs/manager.hpp>
 
+#include "shaders/look.h"
 #include "shaders/scene.h"
 
 namespace Rtx

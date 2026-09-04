@@ -4,6 +4,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_BLOOM_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_BLOOM_H
 
+#include "look.h"
 #include "portable.h"
 
 // What the lens does with the light the frame already has. Included verbatim by both sides, for the
@@ -39,23 +40,6 @@ namespace Rtx::Shaders
     /// A tent reads its own neighbours, so a level thinner than this is mostly its own edge clamp.
     /// Only a frame far smaller than anything played on reaches it.
     const uint BLOOM_NARROWEST = 4;
-
-    /// How much of each coarser level survives into the one above it.
-    ///
-    /// **The pyramid is mixed rather than summed**, which is what keeps the total independent of
-    /// how many levels there are: `mix(finer, coarser, this)` at every step, so a frame that built
-    /// one level fewer is a narrower bloom and not a dimmer one. Higher is a wider, softer veil.
-    const float BLOOM_SCATTER = 0.75f;
-
-    /// How much of the pyramid is left in the picture.
-    ///
-    /// **No threshold anywhere, which is why this is small.** A lens spreads every photon that
-    /// reaches it and not only the bright ones, so the whole frame is blurred and mixed back at a
-    /// few per cent — where a threshold makes bloom arrive as an object crosses a brightness nobody
-    /// can see, and takes the veil off everything under it. What makes a Morrowind sun read as a
-    /// sun is that its disc is a hundred times the median of the frame around it, not that anything
-    /// selected it.
-    const float BLOOM_STRENGTH = 0.05f;
 
     /// What one dispatch of the pyramid is told.
     struct BloomConstants

@@ -7,6 +7,7 @@
 // one bounce it traces for everything else, and the terms an upscaler demodulates by.
 
 #include "colour.h"
+#include "look.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "frame.glsl"
@@ -24,34 +25,6 @@
 /// that nothing resolves on its own, and only there is a light worth dropping.
 const uint PATH_SEEN = 0u;
 const uint PATH_INDIRECT = 1u;
-
-/// What share of indirect hits out of doors are lit at all, the rest paying by weight.
-///
-/// **The two rays a bounce hit spends on direct light are the dimmest pair in the frame.** A sun ray
-/// and a lamp ray are traced there to light a term nothing resolves on its own — the moons are
-/// already refused that path for exactly this reason, and the ambient ray beside them is already
-/// drawn at `AMBIENT_EXTERIOR_RATE`.
-///
-/// **Drawn and divided, so the estimate is unbiased by construction** rather than a guess at what
-/// the unlit half would have said. Two frames of a thousand samples each agree exactly, which is how
-/// that was checked. What it hands the filter is variance in the channel Ray Reconstruction
-/// demodulates and filters hardest, which is why it is judged on a moving camera rather than a still.
-///
-/// **Half the rays are not half the time, and the gap is worth knowing.** Removing the pair outright
-/// takes the trace from 4.30 ms to 3.59 at the ship at Seyda Neen and from 3.03 to 2.77 over
-/// Balmora; a half rate, measured interleaved against its own baseline, takes 4.35 to 4.22 and 3.13
-/// to 3.07 — a fifth of what the gut says, where `AMBIENT_EXTERIOR_RATE` claimed half of its own.
-/// The rays here are short: a lane that skips one does not release the warp, which runs on until the
-/// lanes that kept theirs are done, and a hashed draw leaves no warp with thirty-two skipping lanes.
-/// The ambient ray runs to `mFar` and is nearly all empty traversal, so halving those halves what
-/// the device does whatever the warp is doing. **A rate is worth what the ray it drops is long.**
-///
-/// **Out of doors only, and that is not caution about the arithmetic.** A room's indirect light *is*
-/// its lamps seen once off a wall — the interior ceiling is the larger of the two, 4.21 ms to 3.58 in
-/// the Guild of Mages — so rating it there halves the samples of the term that carries the room,
-/// where outside the sun has already lit everything the bounce lands on. Every interior view renders
-/// bit-identically under this, which `verify` says.
-const float INDIRECT_LIGHT_RATE = 0.5;
 
 /// The *direct* light arriving at a point and turning back out of it, per unit albedo.
 ///
@@ -130,7 +103,6 @@ vec3 gather(vec3 position, vec3 normal, vec3 side, float footprint, float transm
     {
         const float through
             = lightThrough(position, coneDirection(frame.mSunPosition, sin(SUN_SHADOW_RADIUS), sunDraw), frame.mFar);
-
 
         radiance += frame.mSunIrradiance * lightThroughWater(position, frame.mSunPosition, footprint)
             * (sunCosine * INV_PI * through * cloudShadow(position, frame.mSunPosition));
@@ -338,90 +310,6 @@ bool behindTheFace(vec3 towards, vec3 plane, float face)
 {
     return dot(plane, plane) > 0.0 && face * dot(towards, plane) <= 0.0;
 }
-
-/// How fast a bounce ray's cone widens, against a primary ray's.
-///
-/// A diffuse bounce spreads over the whole hemisphere, and what the indirect term wants from a
-/// texture is its *average* rather than any texel of it — so the cone is opened to about a radian,
-/// which reads the coarse mips a bounce should see without collapsing every one to the top level.
-const float BOUNCE_SPREAD = 1.0;
-
-/// How far a room's fill looks for what is standing over a point, in world units.
-///
-/// **Two metres, which is the furniture and not the room.** A cell's `AMBI` ambient is a flat stand
-/// in for every bounce the room makes, and it used to reach a point wedged under a pillow exactly as
-/// fully as one in the middle of the floor — so white cloth lit its own contact shadow, and every
-/// crevice next to something pale came out brighter than the surface beside it. What takes the fill
-/// away is what is close enough to be in front of the room rather than part of it, and Morrowind's
-/// rooms are small enough that anything further is a wall.
-const float ROOM_FILL_REACH = 140.0;
-
-/// How far out of doors a surface traces its own bounce, in world units.
-///
-/// **Beyond it the hemisphere is not traced and the escape is taken as though nothing stood in the
-/// way.** The far half of an exterior is thousands of pixels whose bounce ray leaves a mountainside,
-/// crosses the whole acceleration structure and mostly finds sky anyway — and whose indirect term
-/// the upscaler then averages flat, because a pixel that far away covers a hillside. What the ray
-/// was proving is that nothing was there, at the price of the longest traversal in the frame.
-///
-/// One cell, which is the distance Morrowind itself builds a world in. Nearer than that a bounce is
-/// what fills a doorway, an arch and the shaded side of a house, and every one of those is inside
-/// the cell the camera stands in.
-///
-/// **Biased, unlike the two rates beside it, and it is the bias that makes it worth having.** A draw
-/// and a divide would keep the traversal on half the pixels and the noise on all of them; this stops
-/// the traversal outright, and pays for it in ground lit slightly flatter than it would be. It is
-/// exterior-only for the reason `AMBIENT_EXTERIOR_RATE` is: a room's escape is nothing at all, so a
-/// surface far down a hall would go dark rather than flat.
-///
-/// **Ground alone, because distance does not say ground and this was let loose on everything.** A
-/// draw about a patch of open hillside reaches the sky whatever stands nearby; the same draw about
-/// a wall spends half of itself on whatever the wall is attached to, and handing that the sky makes
-/// it too bright by the share it should have lost. Vivec is where that showed: a canton is one face
-/// hundreds of units tall running well past the reach, so the sphere cut through the middle of a
-/// building and the seam swept across it as the camera moved. Twenty-three per cent of that view
-/// differed from a frame with every bounce traced, thirteen thousand pixels of it by more than a
-/// twentieth of the display range and the worst by three quarters of it. With the escape asked only
-/// of ground the same view is byte-identical to that frame.
-///
-/// **What it is worth depends entirely on where the camera stands.** Measured on the `trace` zone at
-/// 1920x1080, three alternations, against a build that traces every bounce: at eye level it is worth
-/// nothing at all — Vivec 4.09 against 4.16 and the ship at Seyda Neen 3.84 against 3.87, both
-/// inside the run-to-run spread — because far ground is crowded into the few rows under the horizon
-/// and the sky above it costs no bounce. A camera looking at a cell from outside it is the other
-/// case, and a hilltop is that camera: the island crossing runs 2.16 ms against 3.02 and the
-/// shoreline 2.66 against 2.98. Letting objects escape as well bought a further 0.58 ms there and
-/// cost the seam above, which is the trade this is the other side of.
-const float BOUNCE_REACH = 8192.0;
-
-/// What share of exterior points are asked whether they reach the sky, the rest paying by weight.
-///
-/// **Out of doors the ambient ray is the expensive one, by two orders of reach.** It runs to
-/// `mFar` where a room's stops at `ROOM_FILL_REACH`, and it is nearly all sky — the traversal is
-/// spent proving that nothing is there. Removing it outright takes the exteriors suite's trace from
-/// 30.9 ms to 26.3; a half of it measured 28.4, so this buys 2.5 ms of a 4.6 ms ceiling and no one
-/// of the seven places came back the wrong way.
-///
-/// **A half and no further, because a third measured nothing.** Interleaved over the same seven
-/// places, a third came back within 0.01 ms at four of them and 0.09 to 0.12 ms *slower* at the
-/// other three. A rate is a per-lane skip and the ray it skips is a long one, so a warp still runs
-/// until whichever of its thirty-two lanes kept a ray is finished — and at a third, all thirty-two
-/// skipping is a chance in six hundred thousand. What the first halving bought is not on a curve
-/// this can be carried further along.
-///
-/// **Drawn and divided by the draw, so the estimate is unbiased by construction** rather than a
-/// guess at what the untraced half would have said. What that hands the filter is variance, which
-/// is what the filter is for — and it is the same trade the moon pick makes. Nothing downstream
-/// clamps it: `pathEnd` and a sprite's fill both multiply, so a doubled sample stays worth double.
-///
-/// **Hashed rather than blue noise, because three callers must not agree.** The bounce, a water
-/// reflection and a puff of smoke each ask this, and the water's two rays already take separate
-/// seeds so that a reflection and a refraction do not keep one answer between them. A screen-space
-/// tile has one arrangement per channel and would hand every caller the same one.
-///
-/// The interior ray keeps every point: it is short, and a room is where this term does its
-/// visible work.
-const float AMBIENT_EXTERIOR_RATE = 0.5;
 
 /// How much of the ambient a surface can see, as one cosine-weighted sample of its own hemisphere.
 ///

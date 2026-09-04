@@ -3,6 +3,7 @@
 #include <osg/Vec3f>
 
 #include "scenedesc.hpp"
+#include "shaders/look.h"
 #include "shaders/visibility.h"
 
 namespace Rtx

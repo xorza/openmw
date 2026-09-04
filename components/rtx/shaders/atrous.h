@@ -5,6 +5,7 @@
 #define OPENMW_COMPONENTS_RTX_SHADERS_ATROUS_H
 
 #include "camera.h"
+#include "look.h"
 #include "portable.h"
 
 // What one wavelet level of the denoiser needs. Included verbatim by both sides, for the reason
@@ -49,14 +50,6 @@ namespace Rtx::Shaders
 
     /// Threads along each edge of a level's workgroup.
     const uint ATROUS_WORKGROUP = 8;
-
-    /// How far apart a level's taps stand, doubling each level: 1, 2, 4, 8, 16.
-    ///
-    /// **Five levels of a 5×5 kernel reach sixty-two pixels.** Each takes two taps at its own
-    /// spacing, so the cascade's support is twice `1 + 2 + 4 + 8 + 16`. That is the à-trous trick —
-    /// the holes between taps grow while the tap count does not, so a hundred and twenty-five
-    /// samples do what a single kernel of that reach would need fifteen thousand for.
-    const uint ATROUS_LEVELS = 5;
 
     /// Everything one level reads that is not an image.
     ///

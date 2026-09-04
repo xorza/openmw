@@ -9,14 +9,11 @@
 // resolved by this same `trace` and shaded by `shadeSurface`, and neither calls back into
 // water — which a shader with no recursion could not survive.
 
+#include "look.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "geometry.glsl"
 #include "texturing.glsl"
-
-/// Untextured surfaces are mid-grey rather than black, so a missing texture reads as missing rather
-/// than as shadow.
-const vec3 NO_TEXTURE_ALBEDO = vec3(0.5);
 
 /// How far off a surface a shadow ray starts, in world units.
 ///

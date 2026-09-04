@@ -7,6 +7,7 @@
 
 #include <osg/Vec3f>
 
+#include "shaders/look.h"
 #include "shaders/scene.h"
 
 namespace Rtx

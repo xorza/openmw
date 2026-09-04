@@ -19,6 +19,7 @@
 #include "lightbuilder.hpp"
 #include "meantexel.hpp"
 #include "shaders/colour.h"
+#include "shaders/look.h"
 #include "texturebuilder.hpp"
 
 namespace Rtx

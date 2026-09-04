@@ -21,6 +21,7 @@
 
 #include "error.hpp"
 #include "shaders/colour.h"
+#include "shaders/look.h"
 #include "shaders/scene.h"
 #include "shaders/visibility.h"
 #include "srgb.hpp"

@@ -4,6 +4,7 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_EXPOSURE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_EXPOSURE_H
 
+#include "look.h"
 #include "portable.h"
 
 // What the two passes that measure a frame's brightness need. Included verbatim by both sides, for
@@ -30,19 +31,6 @@ namespace Rtx::Shaders
     /// Threads along each edge of the binning pass's workgroup. Squared, it is `EXPOSURE_BINS`, so
     /// each thread owns exactly one bin of the workgroup's own tally.
     const uint HISTOGRAM_WORKGROUP = 16;
-
-    /// Darkest luminance the histogram resolves, as a power of two. About a thousandth of mid grey,
-    /// which is below anything a lit surface reaches and well under an unlit interior.
-    const float MIN_LOG_LUMINANCE = -10.0;
-
-    /// Brightest, as a power of two. Sixty-four times mid grey covers a flame seen directly.
-    const float MAX_LOG_LUMINANCE = 6.0;
-
-    /// Where a pixel stops being binned and starts being counted as black.
-    ///
-    /// Without it the dark areas of an interior pile into the lowest bin and drag the average down
-    /// to meet them, and the exposure opens until the few lit surfaces are white.
-    const float EXPOSURE_BLACK = 0.0001;
 
     /// What the binning pass needs to place a luminance.
     struct HistogramConstants

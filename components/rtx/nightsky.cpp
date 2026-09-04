@@ -15,6 +15,7 @@
 #include <components/vfs/manager.hpp>
 
 #include "meantexel.hpp"
+#include "shaders/look.h"
 #include "shaders/scene.h"
 
 namespace Rtx

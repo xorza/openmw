@@ -5,6 +5,7 @@
 #include <span>
 
 #include <components/rtx/shaders/bloom.h>
+#include <components/rtx/shaders/look.h>
 
 #include "commands.hpp"
 #include "device.hpp"

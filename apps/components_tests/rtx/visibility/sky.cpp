@@ -6,6 +6,8 @@
 #include <span>
 #include <vector>
 
+#include <components/rtx/shaders/look.h>
+
 #include "fixture.hpp"
 
 namespace Rtx::Testing

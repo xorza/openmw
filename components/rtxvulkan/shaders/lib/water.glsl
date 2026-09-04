@@ -6,6 +6,7 @@
 // Shading a water surface: Fresnel across a reflection and a refraction, and what the column
 // under it takes.
 
+#include "look.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "camera.h"
@@ -55,24 +56,6 @@ bool waterUnbounded(bool found, vec3 origin, vec3 direction)
 /// How squarely a wave facet has to face the ray that found it before it is tilted back toward the
 /// plane. Small: a guard against a facet turning away entirely, not a limit on the waves.
 const float WATER_MIN_FACING = 0.03;
-
-/// The waterline, over which water with nothing under it becomes the shore beside it.
-///
-/// Where the ground rises to meet the surface the depth between them goes to zero, and a pixel of
-/// water with no water in it has to come out as the ground — otherwise the plane cuts the terrain
-/// along a hard line, which is the classic tell of a water plane and is on screen in 533 of the
-/// game's 1,292 land cells. Half a metre is enough to hide the intersection without making the
-/// shallows look thin.
-///
-/// **Measured straight down, and it was measured along the refraction before.** Those are the same
-/// number only where the bed is flat under the eye. At Seyda Neen's shore the terrain runs within a
-/// few units of sea level for hundreds of units, so the two planes are very nearly parallel — while
-/// the refracted ray, leaving at forty degrees off the vertical, lands far enough out to find a bed
-/// well down. It reported deep water at a pixel with none, the fade never engaged, and what was left
-/// was exactly the hard line this constant exists to prevent. The renderer this is ported from
-/// found the same and says so in its §8.101, and what holds it here is
-/// `theWaterlineIsAsDeepAsTheWaterOverItAndNotAsFarAsARayThroughItGoes`.
-const float WATER_SHORE_FADE = 35.0;
 
 /// What a ray sent out from the water surface found.
 struct WaterPath

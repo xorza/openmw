@@ -15,6 +15,7 @@
 
 #include "camera.h"
 #include "colour.h"
+#include "look.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "frame.glsl"
@@ -43,31 +44,6 @@ const vec3 FOG_CHURN[FOG_SCALES]
 /// thirty-seven degrees and 5-12-13 is sixty-seven.
 const mat2 FOG_TURN[FOG_SCALES] = mat2[FOG_SCALES](mat2(1.0, 0.0, 0.0, 1.0), mat2(0.8, 0.6, -0.6, 0.8),
     mat2(0.3846154, 0.9230769, -0.9230769, 0.3846154));
-
-/// How many shadow rays the sun gets in the fog, and so how many stretches the march is cut into.
-///
-/// **Not one per step.** A ray costs about four march steps here, so shadowing all twenty-four would
-/// cost more than the whole fog does. One ray answers for a stretch, which is what a froxel does
-/// too — and the jitter is what keeps that from being a decision always taken in the same place: over
-/// frames the probe walks its stretch, so a shaft's edge lands between two neighbours as noise
-/// rather than as a step.
-///
-/// Eight rather than four because they are perfectly coherent — every one of them points at the same
-/// sun — so the eighth costs almost nothing. Against a ray-per-step reference the renderer this is
-/// ported from measured errors of 0.0155, 0.0134, 0.0087 and 0.0048 for one, two, four and eight.
-const uint FOG_SHADOW_RAYS = 8u;
-
-/// Below this share of what the sky puts into the air, the sun does not get a shadow ray.
-///
-/// **What makes the cost fall only where the shafts are.** Ninety degrees off the sun the phase
-/// function is two thousandths of its forward value, so the sun puts less light into the air there
-/// than the rounding on the sky's term — and a shaft cut out of light that faint is one nobody can
-/// see. Looking away from the sun, and in every interior, this is the whole of what shafts cost.
-const float FOG_SHAFT_FLOOR = 0.02;
-
-/// Where the fog pools when the cell has no water to gather over: sea level outdoors, and close
-/// enough to a floor to serve indoors.
-const float FOG_BASE = 0.0;
 
 /// The field at a place, at one scale, read at whatever level the march can tell apart.
 ///
@@ -200,14 +176,6 @@ float fogExtinctionAt(vec3 position, float spacing)
     return frame.mFogExtinction * height * coverage;
 }
 
-/// The mean diameter of the fog's water droplets, in micrometres.
-///
-/// **The one dial on the shape of the sun's halo.** Radiation fog runs from a few micrometres to
-/// about twenty, and the forward peak sharpens brutally with size: at five the fog scatters 1,300
-/// times an isotropic one straight down the sun's line, at eight 4,300, at thirty 81,000. Eight is
-/// a thick coastal fog.
-const float FOG_DROPLET = 8.0;
-
 /// What the fog sends toward the eye per steradian, `cosine` off the sun's line.
 ///
 /// **Mie, not Henyey-Greenstein.** A single lobe is the usual choice and it cannot do this shape:
@@ -259,7 +227,6 @@ float fogBeamDepth(float extinction, vec3 towards)
     // A source on the horizon lights an infinite column of fog; the floor is what keeps that finite.
     return extinction * FOG_HEIGHT * frame.mFogLift / max(towards.z, 1.0e-3);
 }
-
 
 /// Every directional source over the air, as one ray sees it before anything stands in the way.
 ///
@@ -475,14 +442,6 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
 
     return vec4(air.xyz + sun, air.w);
 }
-
-/// How many cells of the light grid one ray may walk before it gives up.
-///
-/// **A budget and not a limit anything reaches.** The closed form runs where the air is even, which
-/// is a room; the grid starts at a cell of one terrain tile, so an interior is a handful of cells
-/// across and a ray crosses two or three of them. What this stops is a fine grid under a long ray
-/// turning the walk back into the march it replaced.
-const uint FOG_CELLS_ALONG = 32u;
 
 /// The fog's optical depth over the first `span` of a ray, exactly.
 ///

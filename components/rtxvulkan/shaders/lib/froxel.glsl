@@ -13,6 +13,7 @@
 // One statement of the curve, so a boundary the scatter pass sampled inside is the boundary the
 // integrate pass takes its transmittance over.
 
+#include "look.h"
 #include "scene.h"
 
 /// Where along the ray the slice ending at `fraction` of the way through reaches.

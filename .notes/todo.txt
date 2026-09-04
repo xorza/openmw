@@ -4,7 +4,6 @@
 - move some computations to loadtime
 
 - rtx-tool travel
-- extract shader and lightting consts for look tweaking
 - tracy
 - async terrain loader
 - precompile shaders?

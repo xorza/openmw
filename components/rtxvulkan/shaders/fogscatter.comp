@@ -38,6 +38,7 @@
 // had.
 
 #include "camera.h"
+#include "look.h"
 #include "scene.h"
 #include "visibility.h"
 
@@ -52,15 +53,6 @@
 
 layout(local_size_x = FOG_FROXEL_WORKGROUP_ACROSS, local_size_y = FOG_FROXEL_WORKGROUP_ACROSS,
     local_size_z = FOG_FROXEL_WORKGROUP_DEEP) in;
-
-/// How much of a froxel's answer comes from where it stood last frame.
-///
-/// **Heavy, because what it is averaging is one jittered sample.** A froxel takes one point out of
-/// its own volume, one shadow ray for the sun, one for the moons and one for the lamp it held; each
-/// is a draw, and the mean of them is the answer. Nine tenths converges over about ten frames,
-/// which is a sixth of a second — slow enough to hide the draw and quick enough that a shaft
-/// swinging open is not a fade.
-const float FOG_VOLUME_HISTORY = 0.9;
 
 /// How far the blue-noise tile is turned between one slice and the next.
 ///

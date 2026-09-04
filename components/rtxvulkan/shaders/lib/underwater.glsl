@@ -11,6 +11,7 @@
 // shading and comes first; the half that shades a water surface comes after.
 
 #include "colour.h"
+#include "look.h"
 #include "scene.h"
 #include "bindings.glsl"
 #include "frame.glsl"
@@ -161,30 +162,6 @@ struct WaterColumn
     vec3 mTransmittance;
     vec3 mScattered;
 };
-
-/// What share of what a stretch of water sends the sun's own beam has to be before its shaft is
-/// drawn, and where the shaft reaches full strength.
-///
-/// **A share and not an angle, which is the same test `fogAlong` makes.** An angle sounds like the
-/// right gate — a shaft is the phase function's forward peak — but what decides whether the pattern
-/// can be *seen* is the beam against the sky scattered beside it, and that turns with the hour, the
-/// weather and the depth. Gated at twenty-six degrees the shafts were there only when the sun was
-/// looked straight at; against this they reach as far as they are worth reaching, which at noon in
-/// clear water is past forty-five degrees and at dusk further still.
-///
-/// **Two of them, because one drew a circle.** A march that begins at a threshold begins with a
-/// pattern already in it, and the ring where that pattern started was the sharpest edge in the
-/// frame. The pattern fades in across the two instead — and the ratio below is what makes *nothing
-/// to show* come out as exactly the closed form rather than nearly it.
-const float WATER_SHAFT_FLOOR = 0.04;
-const float WATER_SHAFT_SHOWN = 0.15;
-
-/// How many samples a shaft is drawn from.
-///
-/// The pattern varies along the ray at the scale the surface's own lens does, which is why the steps
-/// are even rather than bunched: unlike the air, there is no density falling off with height for
-/// them to follow, and what wants resolving is spread along the whole stretch.
-const uint WATER_SHAFT_STEPS = 8u;
 
 /// @param from where the stretch starts, `direction` the unit direction along it, and `path` how
 ///        long it is. All three are below the surface.

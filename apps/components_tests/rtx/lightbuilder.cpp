@@ -19,6 +19,7 @@
 #include <components/rtx/distantland.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/visibility.h>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
