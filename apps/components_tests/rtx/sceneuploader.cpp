@@ -58,7 +58,7 @@ namespace Rtx
 
         /// The three branches in the order a session takes them, each proved by what the renderer
         /// was asked to do and by how much describing it cost.
-        TEST(RtxSceneUploaderTest, aSceneIsRebuiltThenPlacedThenAppendedToThenRebuiltAgain)
+        TEST(RtxSceneUploaderTest, aSessionTakesEachBranchInTheOrderItReachesThem)
         {
             VFS::Manager vfs;
             Resource::ImageManager images(&vfs, 0);

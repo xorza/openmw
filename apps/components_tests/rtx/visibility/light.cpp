@@ -631,14 +631,14 @@ namespace Rtx::Testing
             EXPECT_EQ(render(false, true, behind, true), 0.0f) << "and a solid takes nothing from it";
         }
 
-        /// A source whose size was measured casts a penumbra, where one that carries none casts an
-        /// edge.
+        /// A half-plane hung behind the wall, and one column of pixels read against the same column
+        /// with nothing in the way.
         ///
         /// **The whole of a soft shadow is where the shadow ray leaves from.** A lamp with an extent
         /// and the sun's half-degree disc are neither of them one direction: the ray is drawn from
         /// somewhere on the source, and the band an occluder hides some of it from is the penumbra.
         /// How wide that band is, is arithmetic — the source's own size seen from the occluder — and
-        /// that is what this pins at both of its edges and in the middle.
+        /// the three tests below pin one source each at both edges of its band and in the middle.
         ///
         /// A half-plane occluder, so the geometry is one number: an edge at `x = X` in a plane
         /// parallel to the wall, hung behind it and so out of the camera's own view. The wall is at
@@ -647,48 +647,27 @@ namespace Rtx::Testing
         /// and averaging the column is averaging draws of one quantity rather than smearing several.
         /// Each is divided by what the same pixel reads with nothing in the way, so the falloff and
         /// the cosine — which do differ down the column — cancel and what is left is visibility.
-        ///
-        /// **The lamp** stands 400 units out with a source radius of 20, and the occluder hangs
-        /// halfway: a ray leaving a point 20 units off the axis crosses the occluder's plane 10 off
-        /// it, so an edge twelve units either side is wholly clear of the cone or wholly across it.
-        ///
-        ///     half-width = 200 * tan(asin(20 / 400)) = 10.013
-        ///
-        /// **The sun** is one direction everywhere, so its penumbra grows with nothing but the
-        /// occluder's distance — two thousand units of it, at the two degrees the shadow cone is
-        /// drawn from, which `SUN_SHADOW_RADIUS` says is wider than the disc and why.
-        ///
-        ///     half-width = 2000 * tan(0.034907) = 69.84
-        ///
-        /// **And the same lamp with no measured size is the edge a record's lamp casts.**
-        /// `Rtx::Light::mSourceRadius` says which lamps carry one and which do not. At `X = -1` it is
-        /// still fully lit and at `X = +1` fully dark, where the sized one is part-lit at both — the
-        /// segment of a disc of radius 10.013 cut one unit off its centre:
-        ///
-        ///     u        = -1 / 10.013                          = -0.09987
-        ///     lit      = (acos(u) - u * sqrt(1 - u^2)) / pi    = 0.56348
-        TEST_F(RtxVisibilityTest, aMeasuredSourceCastsAPenumbraAndAnUnmeasuredOneCastsAnEdge)
+        class RtxPenumbraTest : public RtxVisibilityTest
         {
-            constexpr std::uint32_t size = 33;
-            constexpr std::uint32_t column = size / 2;
+        protected:
+            static constexpr std::uint32_t sSize = 33;
+            static constexpr std::uint32_t sColumn = sSize / 2;
+            static constexpr float sLampDepth = -200.0f;
 
-            // Straight on, so the centre column's rays stay in the plane x = 0 and land on the wall
-            // there, which is what makes one column a run of draws of the same quantity.
-            const Shaders::VisibilityConstants base
-                = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f, size, size, 10000.0f);
-
-            // A quad behind the wall covering everything left of `edge`, wide enough that no shadow
-            // ray this frame sends leaves it by the far side.
-            const auto halfPlane = [](float depth, float edge) {
-                return std::array{
+            /// A quad behind the wall covering everything left of `edge`, wide enough that no shadow
+            /// ray this frame sends leaves it by the far side.
+            static std::array<osg::Vec3f, 4> halfPlane(float depth, float edge)
+            {
+                return {
                     osg::Vec3f(edge - 1000.0f, depth, -1000.0f),
                     osg::Vec3f(edge, depth, -1000.0f),
                     osg::Vec3f(edge, depth, 1000.0f),
                     osg::Vec3f(edge - 1000.0f, depth, 1000.0f),
                 };
-            };
+            }
 
-            const auto sceneWith = [&](const std::optional<Light>& lamp, float depth, std::optional<float> edge) {
+            SceneDesc sceneWith(const std::optional<Light>& lamp, float depth, std::optional<float> edge)
+            {
                 SceneDesc scene = makeWall();
                 if (lamp.has_value())
                     scene.addLight(*lamp);
@@ -699,100 +678,150 @@ namespace Rtx::Testing
                         .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(quad, {}, {}, sQuadIndices) });
                 }
                 return scene;
-            };
+            }
 
-            // **One frame where the answer is the same on every frame, and sixty-four where it is a
-            // draw.** A pixel wholly inside or wholly outside the penumbra is decided by geometry
-            // and repeats; one in the middle of it is a coin, and the mean of the column over
-            // sixty-four frames is 33 * 64 = 2112 of them — a standard error of
-            // sqrt(0.25 / 2112) = 0.0109, so the tolerance below is four and a half of them.
-            const auto visible = [&](const SceneDesc& scene, const std::vector<float>& open,
-                                     const Shaders::VisibilityConstants& camera, std::uint32_t frames) {
+            /// The frame with nothing in the way, which every reading below is divided by.
+            std::vector<float> openFor(
+                const std::optional<Light>& lamp, float depth, const Shaders::VisibilityConstants& camera)
+            {
+                std::vector<float> open;
+                renderRadiance(sceneWith(lamp, depth, std::nullopt), camera, sSize, open, { .mFrames = 1 });
+                return open;
+            }
+
+            /// What share of the source the centre column can see.
+            ///
+            /// **One frame where the answer is the same on every frame, and sixty-four where it is a
+            /// draw.** A pixel wholly inside or wholly outside the penumbra is decided by geometry
+            /// and repeats; one in the middle of it is a coin, and the mean of the column over
+            /// sixty-four frames is 33 * 64 = 2112 of them — a standard error of
+            /// sqrt(0.25 / 2112) = 0.0109, so a tolerance of 0.05 is four and a half of them.
+            float visible(const SceneDesc& scene, const std::vector<float>& open,
+                const Shaders::VisibilityConstants& camera, std::uint32_t frames)
+            {
                 std::vector<float> shadowed;
-                renderRadiance(scene, camera, size, shadowed, { .mFrames = frames });
+                renderRadiance(scene, camera, sSize, shadowed, { .mFrames = frames });
 
                 double total = 0.0;
-                for (std::uint32_t row = 0; row < size; ++row)
+                for (std::uint32_t row = 0; row < sSize; ++row)
                 {
-                    const std::size_t at = (std::size_t{ row } * size + column) * 4;
+                    const std::size_t at = (std::size_t{ row } * sSize + sColumn) * 4;
                     total += static_cast<double>(shadowed[at] / open[at]);
                 }
-                return static_cast<float>(total / size);
-            };
+                return static_cast<float>(total / sSize);
+            }
 
-            constexpr float lampDepth = -200.0f;
+            /// Straight on, so the centre column's rays stay in the plane x = 0 and land on the wall
+            /// there, which is what makes one column a run of draws of the same quantity.
+            static Shaders::VisibilityConstants lookAtTheWall()
+            {
+                Shaders::VisibilityConstants camera
+                    = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f, sSize, sSize, 10000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                return camera;
+            }
 
-            // Bright enough to read well clear of the quantiser and nowhere near saturating: the
-            // falloff at 400 units is 1 / 160001, so the wall comes back at 400000 / (160001 * pi)
-            // times its own albedo of a half, which is 0.398.
-            const Light lamp{
-                .mPosition = osg::Vec3f(0.0f, -400.0f, 0.0f),
-                .mIntensity = osg::Vec3f(400000.0f, 400000.0f, 400000.0f),
-                .mReach = 10000.0f,
-                .mSourceRadius = 20.0f,
-                .mClearance = 20.0f,
-            };
+            /// Bright enough to read well clear of the quantiser and nowhere near saturating: the
+            /// falloff at 400 units is 1 / 160001, so the wall comes back at 400000 / (160001 * pi)
+            /// times its own albedo of a half, which is 0.398.
+            static Light makeLamp()
+            {
+                return Light{
+                    .mPosition = osg::Vec3f(0.0f, -400.0f, 0.0f),
+                    .mIntensity = osg::Vec3f(400000.0f, 400000.0f, 400000.0f),
+                    .mReach = 10000.0f,
+                    .mSourceRadius = 20.0f,
+                    .mClearance = 20.0f,
+                };
+            }
+        };
 
-            Shaders::VisibilityConstants lampCamera = base;
-            lampCamera.mSkyHorizon = osg::Vec3f();
-            lampCamera.mSkyZenith = osg::Vec3f();
+        /// A source whose size was measured casts a penumbra as wide as that size allows.
+        ///
+        /// **The lamp** stands 400 units out with a source radius of 20, and the occluder hangs
+        /// halfway: a ray leaving a point 20 units off the axis crosses the occluder's plane 10 off
+        /// it, so an edge twelve units either side is wholly clear of the cone or wholly across it.
+        ///
+        ///     half-width = 200 * tan(asin(20 / 400)) = 10.013
+        TEST_F(RtxPenumbraTest, aMeasuredSourceCastsAPenumbraAsWideAsItsOwnSizeAllows)
+        {
+            const Light lamp = makeLamp();
+            const Shaders::VisibilityConstants camera = lookAtTheWall();
 
-            std::vector<float> lampOpen;
-            renderRadiance(sceneWith(lamp, lampDepth, std::nullopt), lampCamera, size, lampOpen, { .mFrames = 1 });
-            ASSERT_GT(lampOpen[(std::size_t{ column } * size + column) * 4], 0.0f) << "the lamp lights the wall";
+            const std::vector<float> open = openFor(lamp, sLampDepth, camera);
+            ASSERT_GT(open[(std::size_t{ sColumn } * sSize + sColumn) * 4], 0.0f) << "the lamp lights the wall";
 
-            EXPECT_FLOAT_EQ(visible(sceneWith(lamp, lampDepth, -12.0f), lampOpen, lampCamera, 1), 1.0f)
+            EXPECT_FLOAT_EQ(visible(sceneWith(lamp, sLampDepth, -12.0f), open, camera, 1), 1.0f)
                 << "the whole source clears an edge outside its penumbra";
-            EXPECT_FLOAT_EQ(visible(sceneWith(lamp, lampDepth, 12.0f), lampOpen, lampCamera, 1), 0.0f)
+            EXPECT_FLOAT_EQ(visible(sceneWith(lamp, sLampDepth, 12.0f), open, camera, 1), 0.0f)
                 << "and none of it clears one across the far side";
-            EXPECT_NEAR(visible(sceneWith(lamp, lampDepth, 0.0f), lampOpen, lampCamera, 64), 0.5f, 0.05f)
+            EXPECT_NEAR(visible(sceneWith(lamp, sLampDepth, 0.0f), open, camera, 64), 0.5f, 0.05f)
                 << "and exactly half of it stands on the shadow's own edge";
+        }
 
-            // The same lamp with nothing measuring it: the edge a record's lamp casts, crossing from
-            // wholly lit to wholly dark inside the two units the sized one is still part-lit across.
-            //
+        /// A source carrying no size casts an edge, inside the band a measured one is still part-lit
+        /// across.
+        ///
+        /// `Rtx::Light::mSourceRadius` says which lamps carry one and which do not. At `X = -1` the
+        /// unmeasured lamp is still fully lit and at `X = +1` fully dark, where the sized one is
+        /// part-lit at both — the segment of a disc of radius 10.013 cut one unit off its centre:
+        ///
+        ///     u        = -1 / 10.013                          = -0.09987
+        ///     lit      = (acos(u) - u * sqrt(1 - u^2)) / pi    = 0.56348
+        TEST_F(RtxPenumbraTest, anUnmeasuredSourceCastsAnEdgeWhereAMeasuredOneIsStillPartLit)
+        {
+            const Light lamp = makeLamp();
+            const Shaders::VisibilityConstants camera = lookAtTheWall();
+
+            Light point = lamp;
+            point.mSourceRadius = 0.0f;
+            point.mClearance = 0.0f;
+
             // **Its own open reading, and it has to be its own.** A size softens the singularity in
             // `falloff` as well as widening the shadow ray, so the two lamps do not deliver the same
             // light at the same place — 400 units out, one divides by `400^2 + 20^2` and the other
             // by `400^2 + 1`. Divided by the sized lamp's reading, a point that clears every ray
             // would read 1.0025 rather than one.
-            Light point = lamp;
-            point.mSourceRadius = 0.0f;
-            point.mClearance = 0.0f;
+            const std::vector<float> pointOpen = openFor(point, sLampDepth, camera);
 
-            std::vector<float> pointOpen;
-            renderRadiance(sceneWith(point, lampDepth, std::nullopt), lampCamera, size, pointOpen, { .mFrames = 1 });
-
-            EXPECT_FLOAT_EQ(visible(sceneWith(point, lampDepth, -1.0f), pointOpen, lampCamera, 1), 1.0f)
+            EXPECT_FLOAT_EQ(visible(sceneWith(point, sLampDepth, -1.0f), pointOpen, camera, 1), 1.0f)
                 << "an unmeasured source is lit right up to its shadow";
-            EXPECT_FLOAT_EQ(visible(sceneWith(point, lampDepth, 1.0f), pointOpen, lampCamera, 1), 0.0f)
+            EXPECT_FLOAT_EQ(visible(sceneWith(point, sLampDepth, 1.0f), pointOpen, camera, 1), 0.0f)
                 << "and dark from there on, with no band in between";
-            EXPECT_NEAR(visible(sceneWith(lamp, lampDepth, -1.0f), lampOpen, lampCamera, 64), 0.56348f, 0.05f)
-                << "where a measured source is still inside its own penumbra at both";
 
-            // The sun, whose disc is the one this renderer draws and so the one it shadows by.
+            const std::vector<float> lampOpen = openFor(lamp, sLampDepth, camera);
+
+            EXPECT_NEAR(visible(sceneWith(lamp, sLampDepth, -1.0f), lampOpen, camera, 64), 0.56348f, 0.05f)
+                << "where a measured source is still inside its own penumbra at both";
+        }
+
+        /// The sun is one direction everywhere, so its penumbra grows with nothing but the occluder's
+        /// distance — two thousand units of it, at the two degrees the shadow cone is drawn from,
+        /// which `SUN_SHADOW_RADIUS` says is wider than the disc and why.
+        ///
+        ///     half-width = 2000 * tan(0.034907) = 69.84
+        TEST_F(RtxPenumbraTest, theSunsPenumbraGrowsWithTheOccludersDistanceAlone)
+        {
             constexpr float sunDepth = -2000.0f;
 
-            Shaders::VisibilityConstants sunCamera = base;
-            sunCamera.mSkyHorizon = osg::Vec3f();
-            sunCamera.mSkyZenith = osg::Vec3f();
+            Shaders::VisibilityConstants camera = lookAtTheWall();
             // The disc stands along -Y, so its light travels +Y and meets the wall's face square.
-            sunCamera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
-            sunCamera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+            camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
+            camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
 
-            std::vector<float> sunOpen;
-            renderRadiance(sceneWith(std::nullopt, sunDepth, std::nullopt), sunCamera, size, sunOpen, { .mFrames = 1 });
-            ASSERT_GT(sunOpen[(std::size_t{ column } * size + column) * 4], 0.0f) << "the sun lights the wall";
+            const std::vector<float> open = openFor(std::nullopt, sunDepth, camera);
+            ASSERT_GT(open[(std::size_t{ sColumn } * sSize + sColumn) * 4], 0.0f) << "the sun lights the wall";
 
-            EXPECT_FLOAT_EQ(visible(sceneWith(std::nullopt, sunDepth, -72.0f), sunOpen, sunCamera, 1), 1.0f)
+            EXPECT_FLOAT_EQ(visible(sceneWith(std::nullopt, sunDepth, -72.0f), open, camera, 1), 1.0f)
                 << "the whole cone clears an edge outside its penumbra";
-            EXPECT_FLOAT_EQ(visible(sceneWith(std::nullopt, sunDepth, 72.0f), sunOpen, sunCamera, 1), 0.0f)
+            EXPECT_FLOAT_EQ(visible(sceneWith(std::nullopt, sunDepth, 72.0f), open, camera, 1), 0.0f)
                 << "and none of it clears one across the far side";
-            EXPECT_NEAR(visible(sceneWith(std::nullopt, sunDepth, -10.0f), sunOpen, sunCamera, 64), 0.59109f, 0.05f)
+            EXPECT_NEAR(visible(sceneWith(std::nullopt, sunDepth, -10.0f), open, camera, 64), 0.59109f, 0.05f)
                 << "and the disc's own half degree is well inside the band: the segment cut ten off "
                    "a cone of 69.84, u = -0.1432, (acos(u) - u * sqrt(1 - u^2)) / pi";
 
-            EXPECT_NEAR(visible(sceneWith(std::nullopt, sunDepth, 0.0f), sunOpen, sunCamera, 64), 0.5f, 0.05f)
+            EXPECT_NEAR(visible(sceneWith(std::nullopt, sunDepth, 0.0f), open, camera, 64), 0.5f, 0.05f)
                 << "and half a disc stands on the shadow's own edge, two thousand units back";
         }
 

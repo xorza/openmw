@@ -11,14 +11,6 @@ duplication, asymmetry and the accuracy of the comments. It does not question wh
 
 The first failure hides the rest, and the name cannot say what broke. Several of the names admit it.
 
-- [ ] `scenedesc.cpp:214` `aSkinnedMeshKeepsItsBindPoseAndNamesItselfOncePerPose` carries 50
-      assertions across rig tables, bind offsets, pose lists, release, slot reuse and attribute
-      clearing.
-- [ ] `frameworld.cpp:90` `everyNumberTheWorldDecidesReachesTheFrame` carries 46 assertions.
-- [ ] `sceneuploader.cpp:61` `aSceneIsRebuiltThenPlacedThenAppendedToThenRebuiltAgain` carries 38
-      assertions and names four separate branches in its own title.
-- [ ] `visibility/light.cpp:693` `aMeasuredSourceCastsAPenumbraAndAnUnmeasuredOneCastsAnEdge` renders
-      the lamp, the point source and the sun in one body over 128 lines. Three fixtures' worth.
 - [ ] `dlss.cpp:76` `rayReconstructionBuildsAndResolvesAFlatFrame` asserts the second-instance
       refusal, the probe, four render sizes, the `Off` refusal, the build, the resolve, the epsilon
       floor and the validation log. The comment at `:69` says why they share a setup — a fixture

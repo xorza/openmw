@@ -190,122 +190,148 @@ namespace Rtx
                                          osg::Vec4f(0.0f, 0.0f, 1.0f, z) } };
         }
 
-        /// A skinned mesh keeps its slot and its bind pose, holds its rows beside its rig, and names
-        /// itself once per frame it moves.
+        /// One rig with a still mesh beside two skinned ones, which is the shape all three tests
+        /// below are about.
         ///
-        /// The still mesh beside it is what makes the test worth running: rows written at the wrong
-        /// offset would land in a neighbour's, and the bind run of a deforming mesh is a table of
-        /// its own that a static neighbour must not be in.
-        TEST(RtxSceneDescTest, aSkinnedMeshKeepsItsBindPoseAndNamesItselfOncePerPose)
+        /// **The still mesh is what makes them worth running**: rows written at the wrong offset
+        /// would land in a neighbour's, and the bind run of a deforming mesh is a table of its own
+        /// that a static neighbour must not be in.
+        class RtxSkinnedMeshTest : public ::testing::Test
         {
-            const std::array sNormals{
-                osg::Vec3f(0.0f, 0.0f, 1.0f),
-                osg::Vec3f(0.0f, 0.0f, 1.0f),
-                osg::Vec3f(0.0f, 0.0f, 1.0f),
-                osg::Vec3f(0.0f, 0.0f, 1.0f),
-            };
+        protected:
+            /// An upward normal per corner, so a pose that rewrote one would be read.
+            static std::array<osg::Vec3f, 4> upward()
+            {
+                return {
+                    osg::Vec3f(0.0f, 0.0f, 1.0f),
+                    osg::Vec3f(0.0f, 0.0f, 1.0f),
+                    osg::Vec3f(0.0f, 0.0f, 1.0f),
+                    osg::Vec3f(0.0f, 0.0f, 1.0f),
+                };
+            }
 
-            SceneDesc scene;
-            const Index rig = Testing::addOneBoneRig(scene, 4);
-            const Index still = scene.addMesh(Testing::sUnitQuad, sNormals, {}, Testing::sQuadIndices);
-            const Index moving
-                = scene.addMesh(Testing::sUnitQuad, sNormals, {}, Testing::sQuadIndices, {}, Deform::Rig, rig);
-            const Index other
-                = scene.addMesh(Testing::sUnitQuad, sNormals, {}, Testing::sQuadIndices, {}, Deform::Rig, rig);
+            Index addSkin() { return addQuad(Deform::Rig, mRig); }
 
-            EXPECT_TRUE(scene.getDeformed().empty()) << "nothing has been posed yet";
+            SceneDesc mScene;
+            Index mRig = Testing::addOneBoneRig(mScene, 4);
+            Index mStill = addQuad(Deform::None, sNoIndex);
+            Index mMoving = addSkin();
+            Index mOther = addSkin();
+
+            const std::array<Shaders::GpuBone, 1> mAtFive{ boneUp(5.0f) };
+            const std::array<Shaders::GpuBone, 1> mAtSeven{ boneUp(7.0f) };
+            const osg::BoundingBoxf mReach{ osg::Vec3f(0.0f, 0.0f, 5.0f), osg::Vec3f(1.0f, 1.0f, 5.0f) };
+
+        private:
+            Index addQuad(Deform deform, Index deformer)
+            {
+                return mScene.addMesh(Testing::sUnitQuad, upward(), {}, Testing::sQuadIndices, {}, deform, deformer);
+            }
+        };
+
+        /// A rig and the meshes on it arrive with the tables they name, and the still one is in none
+        /// of them.
+        TEST_F(RtxSkinnedMeshTest, aRigAndTheMeshesOnItArriveWithTheTablesTheyName)
+        {
+            EXPECT_TRUE(mScene.getDeformed().empty()) << "nothing has been posed yet";
 
             // The rig's tables: four run words and one influence, and one bone per mesh on it.
-            ASSERT_EQ(scene.getRigs().size(), 1u);
-            EXPECT_EQ(scene.getRigs()[rig].mVertexCount, 4u);
-            EXPECT_EQ(scene.getRigs()[rig].mBoneCount, 1u);
-            EXPECT_EQ(scene.getRigs()[rig].mUses, 2u);
-            EXPECT_EQ(scene.getRuns().size(), 4u);
-            EXPECT_EQ(scene.getInfluences().size(), 1u);
-            EXPECT_EQ(scene.getArrivedRigs().size(), 1u);
+            ASSERT_EQ(mScene.getRigs().size(), 1u);
+            EXPECT_EQ(mScene.getRigs()[mRig].mVertexCount, 4u);
+            EXPECT_EQ(mScene.getRigs()[mRig].mBoneCount, 1u);
+            EXPECT_EQ(mScene.getRigs()[mRig].mUses, 2u);
+            EXPECT_EQ(mScene.getRuns().size(), 4u);
+            EXPECT_EQ(mScene.getInfluences().size(), 1u);
+            EXPECT_EQ(mScene.getArrivedRigs().size(), 1u);
 
             // The still mesh has no bind run and no rows; the two skinned ones have one apiece,
             // laid end to end.
-            EXPECT_EQ(scene.getMeshes()[still].mDeform, Deform::None);
-            EXPECT_EQ(scene.getMeshes()[still].mDeformer, sNoIndex);
-            EXPECT_EQ(scene.getMeshes()[moving].mDeform, Deform::Rig);
-            EXPECT_EQ(scene.getMeshes()[moving].mDeformer, rig);
-            EXPECT_EQ(scene.getMeshes()[moving].mBindOffset, 0u);
-            EXPECT_EQ(scene.getMeshes()[other].mBindOffset, 4u);
-            EXPECT_EQ(scene.getBindVertexCount(), 8u) << "the bind table holds the skinned meshes alone";
-            EXPECT_EQ(scene.getMeshes()[moving].mPoseOffset, 0u);
-            EXPECT_EQ(scene.getMeshes()[other].mPoseOffset, 1u);
-            EXPECT_EQ(scene.getBones().size(), 2u);
+            EXPECT_EQ(mScene.getMeshes()[mStill].mDeform, Deform::None);
+            EXPECT_EQ(mScene.getMeshes()[mStill].mDeformer, sNoIndex);
+            EXPECT_EQ(mScene.getMeshes()[mMoving].mDeform, Deform::Rig);
+            EXPECT_EQ(mScene.getMeshes()[mMoving].mDeformer, mRig);
+            EXPECT_EQ(mScene.getMeshes()[mMoving].mBindOffset, 0u);
+            EXPECT_EQ(mScene.getMeshes()[mOther].mBindOffset, 4u);
+            EXPECT_EQ(mScene.getBindVertexCount(), 8u) << "the bind table holds the skinned meshes alone";
+            EXPECT_EQ(mScene.getMeshes()[mMoving].mPoseOffset, 0u);
+            EXPECT_EQ(mScene.getMeshes()[mOther].mPoseOffset, 1u);
+            EXPECT_EQ(mScene.getBones().size(), 2u);
+        }
 
+        /// A pose is rows and never vertices, and it names its mesh once a frame it moves.
+        TEST_F(RtxSkinnedMeshTest, aPoseNamesItsMeshOncePerFrameAndLeavesEveryVertexAlone)
+        {
             // **The first pose names the mesh whatever it is**, and a second in the same frame is
             // the same structure to refit.
-            const std::array atFive{ boneUp(5.0f) };
-            osg::BoundingBoxf reach(osg::Vec3f(0.0f, 0.0f, 5.0f), osg::Vec3f(1.0f, 1.0f, 5.0f));
-            scene.poseRig(moving, atFive, reach);
-            scene.poseRig(moving, atFive, reach);
+            mScene.poseRig(mMoving, mAtFive, mReach);
+            mScene.poseRig(mMoving, mAtFive, mReach);
 
-            ASSERT_EQ(scene.getDeformed().size(), 1u) << "twice in a frame is one structure to refit";
-            EXPECT_EQ(scene.getDeformed()[0], moving);
-            EXPECT_EQ(scene.getMeshBones(moving)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
-            EXPECT_EQ(scene.getMeshes()[moving].mBounds, reach) << "the reach is the caller's and not the bind's";
+            ASSERT_EQ(mScene.getDeformed().size(), 1u) << "twice in a frame is one structure to refit";
+            EXPECT_EQ(mScene.getDeformed()[0], mMoving);
+            EXPECT_EQ(mScene.getMeshBones(mMoving)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
+            EXPECT_EQ(mScene.getMeshes()[mMoving].mBounds, mReach) << "the reach is the caller's and not the bind's";
 
-            // The bind pose stays where it arrived, and so does everything beside it: a pose is rows
-            // and never vertices.
-            EXPECT_EQ(scene.getPositions().size(), 12u);
-            EXPECT_EQ(scene.getMeshes()[moving].mVertexOffset, 4u);
-            EXPECT_EQ(scene.getMeshPositions(moving)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
-            EXPECT_EQ(scene.getMeshPositions(still)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
-            EXPECT_EQ(scene.getMeshBones(other)[0], Shaders::GpuBone{}) << "the neighbour's rows are untouched";
+            // The bind pose stays where it arrived, and so does everything beside it.
+            EXPECT_EQ(mScene.getPositions().size(), 12u);
+            EXPECT_EQ(mScene.getMeshes()[mMoving].mVertexOffset, 4u);
+            EXPECT_EQ(mScene.getMeshPositions(mMoving)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
+            EXPECT_EQ(mScene.getMeshPositions(mStill)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
+            EXPECT_EQ(mScene.getMeshBones(mOther)[0], Shaders::GpuBone{}) << "the neighbour's rows are untouched";
 
             // The list is a frame's worth, so it goes when the frame's placements do.
-            scene.clearPlacement();
-            EXPECT_TRUE(scene.getDeformed().empty());
-            EXPECT_EQ(scene.getMeshes().size(), 3u) << "clearing where things are keeps what they are";
+            mScene.clearPlacement();
+            EXPECT_TRUE(mScene.getDeformed().empty());
+            EXPECT_EQ(mScene.getMeshes().size(), 3u) << "clearing where things are keeps what they are";
 
             // **A pose that did not change names nothing.** The walk poses every rig it meets and
             // cannot tell which of them the engine animated; the scene can, by looking.
-            scene.poseRig(moving, atFive, reach);
-            EXPECT_TRUE(scene.getDeformed().empty()) << "an unchanged pose named a structure to refit";
+            mScene.poseRig(mMoving, mAtFive, mReach);
+            EXPECT_TRUE(mScene.getDeformed().empty()) << "an unchanged pose named a structure to refit";
 
-            const std::array atSeven{ boneUp(7.0f) };
-            scene.poseRig(moving, atSeven, reach);
-            scene.poseRig(other, atFive, reach);
-            EXPECT_EQ(sorted(scene.getDeformed()), (std::vector<Index>{ moving, other }));
-            EXPECT_EQ(scene.getMeshBones(moving)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 7.0f));
-            EXPECT_EQ(scene.getMeshBones(other)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
+            mScene.poseRig(mMoving, mAtSeven, mReach);
+            mScene.poseRig(mOther, mAtFive, mReach);
+            EXPECT_EQ(sorted(mScene.getDeformed()), (std::vector<Index>{ mMoving, mOther }));
+            EXPECT_EQ(mScene.getMeshBones(mMoving)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 7.0f));
+            EXPECT_EQ(mScene.getMeshBones(mOther)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 5.0f));
+        }
 
-            // **The rig goes with the last mesh on it, and not before.** Freeing one of the two
-            // gives its bind run and its rows back and leaves the rig standing; freeing the other
-            // frees the rig, and the next skin to arrive takes its slot and its runs.
-            scene.clearArrivals();
-            const std::array keepTwo{ still, other };
-            ASSERT_TRUE(scene.release(keepTwo, {}));
-            EXPECT_EQ(scene.getRigs()[rig].mUses, 1u);
-            EXPECT_EQ(scene.getRigs()[rig].mVertexCount, 4u) << "a rig with a mesh on it stays";
-            EXPECT_EQ(std::vector<Index>(scene.getDeformed().begin(), scene.getDeformed().end()),
-                (std::vector<Index>{ other }))
+        /// **The rig goes with the last mesh on it, and not before.** Freeing one of the two gives
+        /// its bind run and its rows back and leaves the rig standing; freeing the other frees the
+        /// rig, and the next skin to arrive takes its slot and its runs.
+        TEST_F(RtxSkinnedMeshTest, aRigGoesWithTheLastMeshOnItAndTheNextSkinTakesItsSlot)
+        {
+            mScene.poseRig(mMoving, mAtFive, mReach);
+            mScene.poseRig(mOther, mAtFive, mReach);
+            mScene.clearArrivals();
+
+            const std::array keepTwo{ mStill, mOther };
+            ASSERT_TRUE(mScene.release(keepTwo, {}));
+            EXPECT_EQ(mScene.getRigs()[mRig].mUses, 1u);
+            EXPECT_EQ(mScene.getRigs()[mRig].mVertexCount, 4u) << "a rig with a mesh on it stays";
+            EXPECT_EQ(std::vector<Index>(mScene.getDeformed().begin(), mScene.getDeformed().end()),
+                (std::vector<Index>{ mOther }))
                 << "the freed slot left the list and the survivor stayed where it was named";
 
-            const std::array keepOne{ still };
-            ASSERT_TRUE(scene.release(keepOne, {}));
-            EXPECT_EQ(scene.getRigs()[rig].mUses, 0u);
-            EXPECT_EQ(scene.getRigs()[rig].mVertexCount, 0u) << "a rig nothing stands on is free";
-            EXPECT_TRUE(scene.getArrivedRigs().empty());
-            EXPECT_TRUE(scene.getDeformed().empty()) << "a slot given back still named a structure to refit";
+            const std::array keepOne{ mStill };
+            ASSERT_TRUE(mScene.release(keepOne, {}));
+            EXPECT_EQ(mScene.getRigs()[mRig].mUses, 0u);
+            EXPECT_EQ(mScene.getRigs()[mRig].mVertexCount, 0u) << "a rig nothing stands on is free";
+            EXPECT_TRUE(mScene.getArrivedRigs().empty());
+            EXPECT_TRUE(mScene.getDeformed().empty()) << "a slot given back still named a structure to refit";
 
-            EXPECT_EQ(Testing::addOneBoneRig(scene, 4), rig) << "the freed slot is the one handed out";
-            EXPECT_EQ(scene.getRuns().size(), 4u) << "the freed run is the one handed out";
-            EXPECT_EQ(sorted(scene.getArrivedRigs()), (std::vector<Index>{ rig }));
+            EXPECT_EQ(Testing::addOneBoneRig(mScene, 4), mRig) << "the freed slot is the one handed out";
+            EXPECT_EQ(mScene.getRuns().size(), 4u) << "the freed run is the one handed out";
+            EXPECT_EQ(sorted(mScene.getArrivedRigs()), (std::vector<Index>{ mRig }));
 
-            const Index back
-                = scene.addMesh(Testing::sUnitQuad, sNormals, {}, Testing::sQuadIndices, {}, Deform::Rig, rig);
-            EXPECT_EQ(back, other) << "the freed mesh slot is the one handed out";
-            EXPECT_EQ(scene.getMeshes()[back].mBindOffset, 0u) << "the freed bind run is the one handed out";
-            EXPECT_EQ(scene.getBindVertexCount(), 4u) << "both runs went, so the table reaches only as far as this one";
-            EXPECT_EQ(scene.getMeshBones(back)[0], Shaders::GpuBone{}) << "a reused pose run holds no old pose";
+            const Index back = addSkin();
+            EXPECT_EQ(back, mOther) << "the freed mesh slot is the one handed out";
+            EXPECT_EQ(mScene.getMeshes()[back].mBindOffset, 0u) << "the freed bind run is the one handed out";
+            EXPECT_EQ(mScene.getBindVertexCount(), 4u)
+                << "both runs went, so the table reaches only as far as this one";
+            EXPECT_EQ(mScene.getMeshBones(back)[0], Shaders::GpuBone{}) << "a reused pose run holds no old pose";
 
-            scene.poseRig(back, atFive, reach);
-            EXPECT_EQ(sorted(scene.getDeformed()), (std::vector<Index>{ back }))
+            mScene.poseRig(back, mAtFive, mReach);
+            EXPECT_EQ(sorted(mScene.getDeformed()), (std::vector<Index>{ back }))
                 << "a reused slot's first pose names it";
         }
 
