@@ -2,7 +2,7 @@
 - audit #pragmas
 - load time allocations
 - move some computations to loadtime
-- dedupe rtxtool, bench and game
+- dedupe rtxtool, bench and game - Not built, reported instead: view.cpp and bench.cpp each hold their own weather-transition state machine. They share the constant now, but the advance-and-arrive logic is written twice. One drives on a key and the wall clock, the other on a list and world time, so folding them is a redesign wider than this diff.
 
 - rtx-tool travel
 - tracy
