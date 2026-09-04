@@ -101,7 +101,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aTextureAppendedLandsInItsOwnSlotAndLeavesTheRestAlone)
         {
             constexpr std::uint32_t size = 32;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
@@ -241,7 +241,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aSceneChangingItsTextureCountStillBindsAgainstTheKeptPass)
         {
             constexpr std::uint32_t size = 32;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
@@ -433,7 +433,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aTexturesPaintedLightIsDividedBackOutOfItsAlbedo)
         {
             constexpr std::uint32_t size = 32;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             std::array<float, ShadingMap::sCells> painted{};
             const TextureData grey = describeGrey(painted);
 
@@ -562,9 +562,7 @@ namespace Rtx::Testing
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
 
-            const auto centreOf = [](const std::vector<std::uint8_t>& pixels) {
-                return pixels[(std::size_t{ size / 2 } * size + size / 2) * 4];
-            };
+            const auto centreOf = [](const std::vector<std::uint8_t>& pixels) { return pixels[centreValueOf(size)]; };
 
             const auto renderAt = [&](float distance) {
                 Shaders::VisibilityConstants camera = makeCamera(

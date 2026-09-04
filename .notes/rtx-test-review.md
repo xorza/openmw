@@ -12,19 +12,10 @@ duplication, asymmetry and the accuracy of the comments. It does not question wh
 The same constants, quads and helpers are written out again in file after file. Several of the files
 that copy them already include the header that defines them.
 
-- [ ] `constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 }` is defined seven
-      times: `visibility/fixture.hpp:53`, `scenedesc.cpp:26`, `frames.cpp:21`, `gputimer.cpp:24`,
-      `instancerecord.cpp:27`, `skinpass.cpp:32`, `guitextures.cpp:411`. `frames.cpp` includes
-      `visibility/fixture.hpp` and then shadows it.
-- [ ] `guitextures.cpp:445` writes the same six indices an eighth time, inside `makeSheet`.
-- [ ] `(std::size_t{ size / 2 } * size + size / 2) * 4` appears 45 times across eight files. Give the
-      fixture a `centreOf(size)` and a `centreByteOf(size)`.
-- [ ] `wallAt(float away)` is written four times: once as a free function in `frames.cpp:26` and
-      three times as a lambda in `visibility/frame.cpp:497`, `:727` and `:824`.
-- [ ] `makeSheet` means two different things: corners in `visibility/fixture.hpp:64`, a whole
-      `SceneDesc` in `guitextures.cpp:443`. Rename one of them.
-- [ ] `addOneBoneRig` exists twice with different signatures: `visibility/fixture.hpp:167` and
-      `scenedesc.cpp:193`.
+- [ ] The unit square is written three times under two names: `sQuadPositions` in
+      `scenedesc.cpp:19`, `sQuad` in `instancerecord.cpp:20` and `sQuad` in `skinpass.cpp:24`.
+- [ ] `makeSheet` still names two things: a `SceneDesc` in `guitextures.cpp:436` and an
+      `osg::Image` in `meantexel.cpp:14`.
 - [ ] The card that exactly fills a sixty-degree frame at a hundred units — `halfExtent =
       57.735027f` and the four corners under it — is written five times:
       `visibility/light.cpp:225`, `:347`, `visibility/surfaces.cpp:545`, `:601`,

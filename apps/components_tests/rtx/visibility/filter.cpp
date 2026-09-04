@@ -27,7 +27,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -98,7 +98,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(40000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(40000.0f, 0.0f), {}, {}, sQuadIndices) });
 
             // A degree and a half above the floor: the horizon sits near the top of the frame and
             // the ground runs from a few hundred units away to eight thousand, so the distance
@@ -250,7 +250,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
             scene.addInstance(MeshInstance{
                 .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(wall, {}, {}, sQuadIndices) });
 
@@ -400,7 +400,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(40000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(40000.0f, 0.0f), {}, {}, sQuadIndices) });
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -8000.0f, 200.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);

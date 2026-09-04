@@ -38,7 +38,7 @@ namespace Rtx::Testing
 
         /// A level rectangle standing between a ray along the y axis and a lamp above it.
         ///
-        /// **Not `makeSheet`, because half a lid is the point.** A square about the origin is
+        /// **Not `sheetAt`, because half a lid is the point.** A square about the origin is
         /// either over the whole march or over none of it, and what these tests need is a shadow
         /// boundary that falls where they put it rather than where the grid does.
         std::array<osg::Vec3f, 4> makeLid(float height, float from, float to, float halfWidth)
@@ -79,7 +79,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, fogTakesWhatBeerLambertSaysOverThePathAndGivesItsOwnColourBack)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float distance = 2000.0f;
             constexpr float extinction = 3.5e-4f;
 
@@ -129,7 +129,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theFogLayerSitsOnTheWaterThinsAboveItAndStopsAtIt)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float distance = 2000.0f;
             constexpr float extinction = 3.5e-4f;
 
@@ -231,7 +231,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aLampLightsTheAirItStandsInByTheIsotropicShareOfWhatItDelivers)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float distance = 200.0f;
             constexpr float reach = 30000.0f;
 
@@ -252,7 +252,7 @@ namespace Rtx::Testing
                 // sees and squarely across every ray the march sends up at the light.
                 if (shaded)
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(makeSheet(40000.0f, 1000.0f), {}, {}, sQuadIndices) });
+                        .mMesh = scene.addMesh(sheetAt(40000.0f, 1000.0f), {}, {}, sQuadIndices) });
 
                 if (lit)
                     scene.addLight(Light{
@@ -350,7 +350,7 @@ namespace Rtx::Testing
             using Fixture = LampInTheAir;
 
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const auto look = [&](bool lit, bool lidded) {
                 SceneDesc scene = makeWall();
@@ -421,7 +421,7 @@ namespace Rtx::Testing
             using Fixture = LampInTheAir;
 
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = std::size_t{ size / 2 } * size + size / 2;
+            constexpr std::size_t centre = centreOf(size);
 
             // Long enough that the history is settled well before the window, and that the window
             // holds many of the ten-frame spans the history's own weight correlates over.
@@ -512,7 +512,7 @@ namespace Rtx::Testing
             using Fixture = LampInTheAir;
 
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = std::size_t{ size / 2 } * size + size / 2;
+            constexpr std::size_t centre = centreOf(size);
             constexpr std::size_t frames = 48;
             constexpr std::size_t settled = 16;
 
@@ -691,7 +691,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theFogScattersTheSunForwardFarHarderThanBack)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             // Bright enough to read against eight bits after the fog's own column has taken 83% of
             // it, and the forward case still has to stay inside one.
@@ -723,7 +723,7 @@ namespace Rtx::Testing
                 // any ray here travels.
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(makeSheet(4000.0f, -200000.0f), {}, {}, sQuadIndices) });
+                    .mMesh = scene.addMesh(sheetAt(4000.0f, -200000.0f), {}, {}, sQuadIndices) });
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, {}, camera, size, pixels);
@@ -773,7 +773,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aLidOverTheMarchTakesTheSunOutOfTheAirBeneathIt)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float irradiance = 4.0f;
 
             const auto look = [&](bool lidded, bool lit) {
@@ -782,7 +782,7 @@ namespace Rtx::Testing
                 // nor in how large it is.
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(makeSheet(40000.0f, lidded ? 500.0f : -500.0f), {}, {}, sQuadIndices) });
+                    .mMesh = scene.addMesh(sheetAt(40000.0f, lidded ? 500.0f : -500.0f), {}, {}, sQuadIndices) });
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 0.0f), 60.0f, size, size, 100000.0f);

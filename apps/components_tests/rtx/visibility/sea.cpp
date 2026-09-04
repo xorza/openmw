@@ -175,7 +175,7 @@ namespace Rtx::Testing
 
             // Well clear of the water, and wider than anything the frame reaches.
             constexpr float over = 500.0f;
-            const std::array<osg::Vec3f, 4> everything = makeSheet(4000.0f, over);
+            const std::array<osg::Vec3f, 4> everything = sheetAt(4000.0f, over);
 
             // A ray leaving the water toward a sun 45 degrees over passes this height 500 units
             // up-sun of where it started, so a lid here shadows the water 500 units down-sun of
@@ -810,7 +810,7 @@ namespace Rtx::Testing
             const auto coneOver = [&](const SeaState& sea) {
                 SceneDesc scene = makeOpenWater(4000.0f);
 
-                const Index bed = scene.addMesh(makeSheet(500.0f, -depth), {}, sQuadUv, sQuadIndices);
+                const Index bed = scene.addMesh(sheetAt(500.0f, -depth), {}, sQuadUv, sQuadIndices);
                 const Index glow = scene.addMaterial(
                     Material{ .mEmissive = scene.addTexture(VFS::Path::NormalizedView("ladder.dds")) });
                 scene.addInstance(

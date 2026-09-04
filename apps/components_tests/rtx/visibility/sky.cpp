@@ -48,7 +48,7 @@ namespace Rtx::Testing
 
             // The camera looks level, so the middle row's rays are horizontal: z of zero, which is
             // the horizon end of the mix exactly. Pure red, and no blue at all.
-            const std::size_t middle = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            const std::size_t middle = centreValueOf(size);
             EXPECT_EQ(pixels[middle], 255) << "the horizon colour, undiluted";
             EXPECT_EQ(pixels[middle + 2], 0);
 
@@ -77,7 +77,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -105,7 +105,7 @@ namespace Rtx::Testing
                 std::vector<std::uint8_t> pixels;
                 EXPECT_EQ(countHits(scene, {}, camera, size, pixels), size * size);
 
-                return decodeSrgb(pixels[(std::size_t{ size / 2 } * size + size / 2) * 4]);
+                return decodeSrgb(pixels[centreValueOf(size)]);
             };
 
             EXPECT_NEAR(litFromSlot(0), 0.31831f, 0.005f);
@@ -118,7 +118,7 @@ namespace Rtx::Testing
 
             std::vector<std::uint8_t> dark;
             EXPECT_EQ(countHits(scene, {}, camera, size, dark), size * size);
-            EXPECT_FLOAT_EQ(decodeSrgb(dark[(std::size_t{ size / 2 } * size + size / 2) * 4]), 0.0f);
+            EXPECT_FLOAT_EQ(decodeSrgb(dark[centreValueOf(size)]), 0.0f);
         }
 
         /// A moon hides the sky behind it, which is the order the engine draws its own in.
@@ -138,11 +138,11 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aMoonHidesWhatStandsBehindIt)
         {
             constexpr std::uint32_t size = 32;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, -2000.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, -2000.0f), {}, {}, sQuadIndices) });
 
             // Forty-five degrees up along `+y`, which keeps the camera off its own pole.
             Shaders::VisibilityConstants camera = makeCamera(
@@ -202,12 +202,12 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theDeckShadowsWhatStandsUnderIt)
         {
             constexpr std::uint32_t size = 32;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             SceneDesc scene;
             scene.addTexture(VFS::Path::NormalizedView("cloud.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
 
             constexpr std::array<std::uint8_t, 4> solid{ 255, 255, 255, 255 };
             const MipLevel one{ 0, 1, 1 };
@@ -268,12 +268,12 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theDeckTakesItsShapeFromWhatTheSheetPaints)
         {
             constexpr std::uint32_t size = 32;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             SceneDesc scene;
             scene.addTexture(VFS::Path::NormalizedView("cloud.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, -2000.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, -2000.0f), {}, {}, sQuadIndices) });
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
             const MipLevel one{ 0, 1, 1 };
@@ -339,7 +339,7 @@ namespace Rtx::Testing
             SceneDesc scene;
             scene.addTexture(VFS::Path::NormalizedView("white.dds"));
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, -400.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, -400.0f), {}, {}, sQuadIndices) });
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
             const MipLevel one{ 0, 1, 1 };
@@ -441,7 +441,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theWorldsEdgeClosesOverTheLastCellAndLeavesTheGroundNearby)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float reach = 32768.0f;
 
             const auto look = [&](float distance, bool edged) {
@@ -485,7 +485,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aClimbLeavesTheWorldsEdgeBehindAndADescentNeverDoes)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float reach = 32768.0f;
 
             // Past the reach along the ray in all three frames, so the ramp is fully crossed and the

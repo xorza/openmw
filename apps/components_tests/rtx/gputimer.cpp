@@ -14,6 +14,7 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
 
+#include "geometry.hpp"
 #include "harness.hpp"
 
 namespace Rtx
@@ -21,7 +22,6 @@ namespace Rtx
     namespace
     {
         constexpr std::uint32_t sSize = 64;
-        constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
 
         /// A square across the view, far enough away to fill the frame.
         const std::array<osg::Vec3f, 4> sWallCorners{
@@ -35,8 +35,8 @@ namespace Rtx
         SceneDesc wall()
         {
             SceneDesc scene;
-            scene.addInstance(MeshInstance{
-                .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(sWallCorners, {}, {}, sQuadIndices) });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(sWallCorners, {}, {}, Testing::sQuadIndices) });
 
             return scene;
         }
@@ -165,7 +165,7 @@ namespace Rtx
             // so without a bracket of their own they are device time the frame's fence carries and
             // no zone accounts for — which is exactly the frame a player feels.
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::translate(0.0f, -50.0f, 0.0f),
-                .mMesh = scene.addMesh(sWallCorners, {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sWallCorners, {}, {}, Testing::sQuadIndices) });
 
             mRenderer->extendScene(Rtx::sWorld, scene, {}, SeaState{});
             const Drawn arrived = draw(*mRenderer, camera);

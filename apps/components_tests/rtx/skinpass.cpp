@@ -16,6 +16,7 @@
 #include <components/rtxvulkan/skintables.hpp>
 #include <components/rtxvulkan/slottable.hpp>
 
+#include "geometry.hpp"
 #include "harness.hpp"
 
 namespace Rtx
@@ -28,8 +29,6 @@ namespace Rtx
             osg::Vec3f(1.0f, 1.0f, 0.0f),
             osg::Vec3f(0.0f, 1.0f, 0.0f),
         };
-
-        constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
 
         /// A run word: `first << RUN_COUNT_BITS | count`.
         constexpr std::uint32_t run(std::uint32_t first, std::uint32_t count)
@@ -104,11 +103,11 @@ namespace Rtx
                 osg::Vec3f(0.0f, 0.0f, 1.0f),
             };
 
-            const Index raised = scene.addMesh(sQuad, upward, {}, sQuadIndices, {}, Deform::Rig, oneBone);
-            const Index still = scene.addMesh(sQuad, upward, {}, sQuadIndices);
-            const Index blended = scene.addMesh(sQuad, upward, {}, sQuadIndices, {}, Deform::Rig, twoBones);
-            const Index turned = scene.addMesh(sQuad, sideways, {}, sQuadIndices, {}, Deform::Rig, oneBone);
-            const Index lifted = scene.addMesh(sQuad, upward, {}, sQuadIndices, {}, Deform::Morph, lift);
+            const Index raised = scene.addMesh(sQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Rig, oneBone);
+            const Index still = scene.addMesh(sQuad, upward, {}, Testing::sQuadIndices);
+            const Index blended = scene.addMesh(sQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Rig, twoBones);
+            const Index turned = scene.addMesh(sQuad, sideways, {}, Testing::sQuadIndices, {}, Deform::Rig, oneBone);
+            const Index lifted = scene.addMesh(sQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Morph, lift);
 
             const osg::BoundingBoxf anywhere(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 1.0f));
 

@@ -14,6 +14,8 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/vfs/pathutil.hpp>
 
+#include "geometry.hpp"
+
 namespace Rtx
 {
     namespace
@@ -24,7 +26,6 @@ namespace Rtx
             osg::Vec3f(1.0f, 1.0f, 0.0f),
             osg::Vec3f(0.0f, 1.0f, 0.0f),
         };
-        constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
 
         /// The rows built from nothing, which is the answer the rows kept across frames must match.
         std::vector<InstanceRecord> whole(const SceneDesc& scene)
@@ -54,7 +55,7 @@ namespace Rtx
         TEST(RtxInstanceRecordTest, rowsKeptAcrossFramesAreTheRowsBuiltFromNothing)
         {
             SceneDesc scene;
-            const Index mesh = scene.addMesh(sQuad, {}, {}, sQuadIndices);
+            const Index mesh = scene.addMesh(sQuad, {}, {}, Testing::sQuadIndices);
 
             const Index cutout = scene.addMaterial(Material{
                 .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("textures/leaf.dds")),

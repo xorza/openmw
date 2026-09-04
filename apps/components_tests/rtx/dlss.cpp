@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include "geometry.hpp"
 #include "harness.hpp"
 
 #ifdef OPENMW_RTX_DLSS
@@ -271,15 +272,8 @@ namespace Rtx
             // A wall four hundred units across, larger than the frame, lit by one sun and no sky —
             // so every pixel is the same surface and nothing in the picture is background.
             SceneDesc scene;
-            const std::array<osg::Vec3f, 4> quad{
-                osg::Vec3f(-200.0f, 0.0f, -200.0f),
-                osg::Vec3f(200.0f, 0.0f, -200.0f),
-                osg::Vec3f(200.0f, 0.0f, 200.0f),
-                osg::Vec3f(-200.0f, 0.0f, 200.0f),
-            };
-            constexpr std::array<std::uint32_t, 6> indices{ 0, 1, 2, 0, 2, 3 };
-            scene.addInstance(
-                MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(quad, {}, {}, indices) });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
 
             // **One camera for both, and it is built for the render extent**, because that is what
             // both renderers trace at — the upscaler only changes what happens after.

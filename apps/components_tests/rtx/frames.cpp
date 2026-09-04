@@ -1,4 +1,3 @@
-#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -9,8 +8,8 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
 
+#include "geometry.hpp"
 #include "harness.hpp"
-#include "visibility/fixture.hpp"
 
 namespace Rtx
 {
@@ -18,20 +17,6 @@ namespace Rtx
     {
         constexpr std::uint32_t sSize = 64;
         constexpr std::uint32_t sEveryPixel = sSize * sSize;
-        constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
-
-        /// A wall across the view `away` units ahead of an eye at the origin looking along +Y, and
-        /// behind it where `away` is negative — so a frame either hits every pixel or none, which is
-        /// what tells the frames apart.
-        std::array<osg::Vec3f, 4> wallAt(float away)
-        {
-            return {
-                osg::Vec3f(-8000.0f, away, -8000.0f),
-                osg::Vec3f(8000.0f, away, -8000.0f),
-                osg::Vec3f(8000.0f, away, 8000.0f),
-                osg::Vec3f(-8000.0f, away, 8000.0f),
-            };
-        }
 
         Shaders::VisibilityConstants ahead()
         {
@@ -57,8 +42,8 @@ namespace Rtx
 
                 // On a skin of one bone, so the same wall can be moved two ways: by its instance
                 // and by its pose. Its bind pose is at two hundred.
-                mWall = mScene.addMesh(
-                    wallAt(200.0f), {}, {}, sQuadIndices, {}, Deform::Rig, Testing::addOneBoneRig(mScene, 4));
+                mWall = mScene.addMesh(Testing::wallAt(200.0f), {}, {}, Testing::sQuadIndices, {}, Deform::Rig,
+                    Testing::addOneBoneRig(mScene, 4));
                 mInstance = mScene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mWall });
                 Testing::poseByOneBone(mScene, mWall, osg::Matrixf::identity());
                 mRenderer->setScene(Rtx::sWorld, mScene, {}, SeaState{});

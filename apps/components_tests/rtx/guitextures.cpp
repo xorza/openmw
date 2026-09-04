@@ -13,6 +13,7 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
 
+#include "geometry.hpp"
 #include "harness.hpp"
 
 namespace Rtx
@@ -408,17 +409,9 @@ namespace Rtx
         /// of it and leaves the rest of the picture exactly as the trace left it.
         TEST_F(RtxGuiDrawTest, theGuiLandsOverATracedFrameAndLeavesTheRestOfItAlone)
         {
-            constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
-            const std::array<osg::Vec3f, 4> sWall{
-                osg::Vec3f(-8000.0f, 200.0f, -8000.0f),
-                osg::Vec3f(8000.0f, 200.0f, -8000.0f),
-                osg::Vec3f(8000.0f, 200.0f, 8000.0f),
-                osg::Vec3f(-8000.0f, 200.0f, 8000.0f),
-            };
-
             SceneDesc scene;
-            scene.addInstance(MeshInstance{
-                .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(sWall, {}, {}, sQuadIndices) });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(Testing::wallAt(200.0f), {}, {}, Testing::sQuadIndices) });
 
             mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
 
@@ -442,17 +435,9 @@ namespace Rtx
         /// A level sheet of `extent` about the origin at z = 0, facing up.
         SceneDesc makeSheet(float extent)
         {
-            constexpr std::array<std::uint32_t, 6> indices{ 0, 1, 2, 0, 2, 3 };
-            const std::array<osg::Vec3f, 4> corners{
-                osg::Vec3f(-extent, -extent, 0.0f),
-                osg::Vec3f(extent, -extent, 0.0f),
-                osg::Vec3f(extent, extent, 0.0f),
-                osg::Vec3f(-extent, extent, 0.0f),
-            };
-
             SceneDesc scene;
-            scene.addInstance(MeshInstance{
-                .mTransform = osg::Matrixf::identity(), .mMesh = scene.addMesh(corners, {}, {}, indices) });
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(Testing::sheetAt(extent, 0.0f), {}, {}, Testing::sQuadIndices) });
 
             return scene;
         }

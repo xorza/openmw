@@ -194,7 +194,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(25.0f, -100.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(25.0f, -100.0f), {}, {}, sQuadIndices) });
 
             // Straight down from a hundred units up, so the sheet is two hundred below the eye.
             // `lookAt` needs an up vector that is not the view direction; +Y is the map's own.
@@ -490,18 +490,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aMotionVectorSaysWhereItsSurfaceWasAndNotWhereTheWorldIs)
         {
             constexpr std::uint32_t size = 64;
-            constexpr std::size_t centre = std::size_t{ size / 2 } * size + size / 2;
-
-            /// A wall across the view at `away` units, large enough to fill the frame from anywhere
-            /// these cameras stand.
-            const auto wallAt = [](float away) {
-                return std::array{
-                    osg::Vec3f(-8000.0f, away, -8000.0f),
-                    osg::Vec3f(8000.0f, away, -8000.0f),
-                    osg::Vec3f(8000.0f, away, 8000.0f),
-                    osg::Vec3f(-8000.0f, away, 8000.0f),
-                };
-            };
+            constexpr std::size_t centre = centreOf(size);
 
             /// The centre pixel's motion after the camera moves from `somewhere`, looking along +y,
             /// to `somewhere + eye` looking at `somewhere + at`.
@@ -640,7 +629,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theSkyReprojectsByTheTurnAloneAndAWallAtAnyDistanceAgrees)
         {
             constexpr std::uint32_t size = 64;
-            constexpr std::size_t centre = std::size_t{ size / 2 } * size + size / 2;
+            constexpr std::size_t centre = centreOf(size);
 
             /// The centre pixel's motion after the camera moves from the origin, looking along +y, to
             /// `eye` looking at `at`, with a wall `away` units along that axis.
@@ -724,20 +713,11 @@ namespace Rtx::Testing
             constexpr float far = 100000.0f;
             constexpr float near = 1.0f;
 
-            const auto wallAt = [](float away) {
-                return std::array{
-                    osg::Vec3f(-8000.0f, away, -8000.0f),
-                    osg::Vec3f(8000.0f, away, -8000.0f),
-                    osg::Vec3f(8000.0f, away, 8000.0f),
-                    osg::Vec3f(-8000.0f, away, 8000.0f),
-                };
-            };
-
             const auto expected = [](float z) { return far / (far - near) * (1.0f - near / z); };
 
             // Two floats a pixel: clip depth, then distance from the eye.
             constexpr std::size_t stride = 2;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * stride;
+            constexpr std::size_t centre = centreOf(size) * stride;
             constexpr float cornerCosine = 1.2829652f;
             constexpr float centreCosine = 1.0000814f;
 
@@ -817,18 +797,9 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aDeformedMeshIsTracedAgainstItsNewVerticesWithoutRebuildingTheScene)
         {
             constexpr std::uint32_t size = 64;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 2 + 1;
+            constexpr std::size_t centre = centreOf(size) * 2 + 1;
             constexpr float far = 100000.0f;
             constexpr float centreCosine = 1.0000814f;
-
-            const auto wallAt = [](float away) {
-                return std::array{
-                    osg::Vec3f(-8000.0f, away, -8000.0f),
-                    osg::Vec3f(8000.0f, away, -8000.0f),
-                    osg::Vec3f(8000.0f, away, 8000.0f),
-                    osg::Vec3f(-8000.0f, away, 8000.0f),
-                };
-            };
 
             const Shaders::VisibilityConstants camera
                 = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, size, size, far);

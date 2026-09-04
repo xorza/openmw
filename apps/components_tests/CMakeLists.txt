@@ -126,6 +126,7 @@ if (OPENMW_RTX)
         rtx/slottable.cpp
         rtx/frametimes.cpp
         rtx/frameworld.cpp
+        rtx/geometry.hpp
         rtx/gputimer.cpp
         rtx/guipass.cpp
         rtx/guitextures.cpp

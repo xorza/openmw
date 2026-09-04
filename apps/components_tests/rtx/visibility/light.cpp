@@ -30,7 +30,7 @@ namespace Rtx::Testing
             const std::array<osg::Vec3f, 4> normals{ leaning, leaning, leaning, leaning };
 
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), normals, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), normals, {}, sQuadIndices) });
 
             return scene;
         }
@@ -43,7 +43,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theSunLightsWhatItFacesAndTheOccluderTakesItAway)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const Shaders::VisibilityConstants base = makeCamera(
                 osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
@@ -221,7 +221,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aGlowJoinsTheLightAndAGlowingMapIsAddedPastIt)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float halfExtent = 57.735027f;
 
             // **Six of 255 on the map and a fortieth as the colour, so both land inside the display's
@@ -433,7 +433,7 @@ namespace Rtx::Testing
         {
             // Odd, so one pixel sits exactly on the axis and its ray lands exactly on the origin.
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const Shaders::VisibilityConstants base = makeCamera(
                 osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
@@ -536,7 +536,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aVertexNormalMayTiltAShadingModelButNotChooseWhichSideIsLit)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             // Fourteen degrees off the wall's own plane, and the centre ray lands exactly on the
             // origin — so the cosines below are the shading normal's and nothing else's.
@@ -593,7 +593,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aLeafIsLitThroughItsBackAndClothAndSolidsAreNot)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             TestTexture white;
             makeOpaqueSheet(white);
@@ -847,9 +847,9 @@ namespace Rtx::Testing
             const auto lidAt = [](float lid) {
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                    .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(makeSheet(4000.0f, lid), {}, {}, sQuadIndices) });
+                    .mMesh = scene.addMesh(sheetAt(4000.0f, lid), {}, {}, sQuadIndices) });
 
                 return scene;
             };
@@ -966,7 +966,7 @@ namespace Rtx::Testing
                 // Wide enough that every direction off the floor which is on its side meets it, so
                 // the share below is the geometry's and not the sheet's edge.
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(makeSheet(40000.0f, z), {}, {}, sQuadIndices),
+                    .mMesh = scene.addMesh(sheetAt(40000.0f, z), {}, {}, sQuadIndices),
                     .mMaterial = scene.addMaterial(glowing) });
 
                 return scene;
@@ -1022,7 +1022,7 @@ namespace Rtx::Testing
 
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
 
             // Three ranges rather than one, and one of them descending, so a test that passed by
             // matching a total or by swapping two channels would not.

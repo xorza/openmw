@@ -54,7 +54,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aSpriteIsShadowedByWhatStandsOverIt)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const OneTexel white({ 255, 255, 255, 255 });
             const std::array<TextureData, 1> puff{ white.describe() };
@@ -76,7 +76,7 @@ namespace Rtx::Testing
 
                 if (lidded)
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                        .mMesh = scene.addMesh(makeSheet(4000.0f, 600.0f), {}, {}, sQuadIndices) });
+                        .mMesh = scene.addMesh(sheetAt(4000.0f, 600.0f), {}, {}, sQuadIndices) });
 
                 // Over the lid, so the same one that takes the sun and the sky takes this too.
                 if (source == Source::Lamp)
@@ -150,7 +150,7 @@ namespace Rtx::Testing
                 if (half > 0.0f)
                     for (const float z : { half, -half })
                         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                            .mMesh = scene.addMesh(makeSheet(4000.0f, z), {}, {}, sQuadIndices) });
+                            .mMesh = scene.addMesh(sheetAt(4000.0f, z), {}, {}, sQuadIndices) });
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -reach, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -194,7 +194,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aSpriteIsAChordAndAFloorCutsItInHalf)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const OneTexel half({ 255, 255, 255, 128 });
             const std::array<TextureData, 1> puff{ half.describe() };
@@ -202,7 +202,7 @@ namespace Rtx::Testing
             const auto through = [&](float height, bool sprited) {
                 SceneDesc scene;
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(makeSheet(4000.0f, 0.0f), {}, {}, sQuadIndices) });
+                    .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
 
                 if (sprited)
                 {
@@ -253,7 +253,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, flamesSaturateWhereTheOriginalClamped)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const OneTexel half({ 255, 255, 255, 128 });
             const std::array<TextureData, 1> flame{ half.describe() };
@@ -307,7 +307,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aPuffIsLitByItsSideAndByWhatItsTextureLetsThrough)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const OneTexel half({ 255, 255, 255, 128 });
 
@@ -371,7 +371,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aPuffInTheShadeOfItsOwnEmitterIsThinnedByOneLayer)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const OneTexel half({ 255, 255, 255, 128 });
             const std::array<TextureData, 1> puff{ half.describe() };
@@ -419,7 +419,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theBiasMaskNamesOnlyWhatNoMotionVectorDescribes)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = std::size_t{ size / 2 } * size + size / 2;
+            constexpr std::size_t centre = centreOf(size);
 
             // The ladder's first level is 40 of 255, so a sprite cut from it covers a sixth of what
             // is behind it — it reaches the pixel and comes nowhere near owning it.

@@ -116,7 +116,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, waterTakesWhatBeerLambertSaysOverThePathTheLightTook)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float depth = 200.0f;
 
             // A bed and a surface, both level and both wide enough to fill the frame.
@@ -198,7 +198,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, deepWaterSettlesAtHalfWhatOneAttenuatedLegWouldGive)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float depth = 2000.0f;
 
             // No sun and a black sky, so the ambient is the only light and the two per cent that
@@ -246,7 +246,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aColumnOfWaterAgreesFromAboveAndFromBelow)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float depth = 200.0f;
 
             const SceneDesc scene = makeFlooded(400.0f, depth);
@@ -302,7 +302,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theWaterOverAnEyeDimsWhatTheWaterInFrontOfItScatters)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float stretch = 200.0f;
 
             // No sun and a black sky, so the ambient is the only light and the answer is the two
@@ -427,7 +427,7 @@ namespace Rtx::Testing
             constexpr float rowUnits = span / static_cast<float>(size);
 
             // A bed that rises through the water along +x, with the waterline at x = 0: the same
-            // corner order as `makeSheet`, so it faces up.
+            // corner order as `sheetAt`, so it faces up.
             const std::array<osg::Vec3f, 4> bed{
                 osg::Vec3f(-extent, -extent, extent * slope),
                 osg::Vec3f(extent, -extent, -extent * slope),
@@ -551,7 +551,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theWaterBetweenAnEyeAndTheSurfaceOverItIsChargedForToo)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const SceneDesc scene = makeFlooded(4000.0f, 2000.0f);
 
@@ -596,7 +596,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theWaterScattersTheSunForwardFarHarderThanBack)
         {
             constexpr std::uint32_t size = 32;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const SceneDesc scene = makeFlooded(4000.0f, 2000.0f);
 
@@ -661,7 +661,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aBounceIntoTheSkyLosesTheWaterOverTheBedItLeft)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
             constexpr float depth = 200.0f;
             constexpr float above = 190.0f;
             constexpr float sky = 0.6f;
@@ -702,7 +702,7 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, aReflectionReprojectsFromWhereItsImageIsAndNotFromTheWater)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = std::size_t{ size / 2 } * size + size / 2;
+            constexpr std::size_t centre = centreOf(size);
 
             // A ceiling two hundred units over the water, with the eye a hundred up between them
             // looking straight down. The water under the eye is a hundred away; the ceiling's image
@@ -717,7 +717,7 @@ namespace Rtx::Testing
 
             SceneDesc scene = makeOpenWater(4000.0f);
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                .mMesh = scene.addMesh(makeSheet(4000.0f, 200.0f), {}, {}, sQuadIndices) });
+                .mMesh = scene.addMesh(sheetAt(4000.0f, 200.0f), {}, {}, sQuadIndices) });
 
             const auto look = [&](float across) {
                 Shaders::VisibilityConstants camera = makeCamera(

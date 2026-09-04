@@ -18,7 +18,6 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameworld.hpp>
-#include <components/rtx/instancerecord.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -44,33 +43,12 @@
 #include <components/rtxvulkan/wavepass.hpp>
 
 #include "../allocations.hpp"
+#include "../geometry.hpp"
 #include "../harness.hpp"
 #include "../wavemoments.hpp"
 
 namespace Rtx::Testing
 {
-    /// Two triangles of a quad, wound so its face points the way its corners were listed.
-    inline constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
-
-    /// The unit square, in the same corner order — a texture laid once across a quad.
-    inline const std::array<osg::Vec2f, 4> sQuadUv{
-        osg::Vec2f(0.0f, 0.0f),
-        osg::Vec2f(1.0f, 0.0f),
-        osg::Vec2f(1.0f, 1.0f),
-        osg::Vec2f(0.0f, 1.0f),
-    };
-
-    /// A level square of `extent` about the origin at height `z`, facing up.
-    inline std::array<osg::Vec3f, 4> makeSheet(float extent, float z)
-    {
-        return {
-            osg::Vec3f(-extent, -extent, z),
-            osg::Vec3f(extent, -extent, z),
-            osg::Vec3f(extent, extent, z),
-            osg::Vec3f(-extent, extent, z),
-        };
-    }
-
     /// A level sheet of water `extent` across at z = 0, with nothing under it.
     inline SceneDesc makeOpenWater(float extent)
     {
@@ -79,7 +57,7 @@ namespace Rtx::Testing
         Material water;
         water.mKind = MaterialKind::Water;
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-            .mMesh = scene.addMesh(makeSheet(extent, 0.0f), {}, {}, sQuadIndices),
+            .mMesh = scene.addMesh(sheetAt(extent, 0.0f), {}, {}, sQuadIndices),
             .mMaterial = scene.addMaterial(water) });
 
         return scene;
@@ -94,7 +72,7 @@ namespace Rtx::Testing
 
         SceneDesc scene = makeOpenWater(extent);
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-            .mMesh = scene.addMesh(makeSheet(extent, -depth), {}, {}, sQuadIndices) });
+            .mMesh = scene.addMesh(sheetAt(extent, -depth), {}, {}, sQuadIndices) });
 
         return scene;
     }
@@ -138,16 +116,7 @@ namespace Rtx::Testing
         camera.mWaterLevel = 0.0f;
     }
 
-    /// A square in the xz plane at y = 0, facing along -Y, four hundred units across, which is
-    /// larger than any frame at the distances most of these tests use.
-    inline const std::array<osg::Vec3f, 4> sWallQuad{
-        osg::Vec3f(-200.0f, 0.0f, -200.0f),
-        osg::Vec3f(200.0f, 0.0f, -200.0f),
-        osg::Vec3f(200.0f, 0.0f, 200.0f),
-        osg::Vec3f(-200.0f, 0.0f, 200.0f),
-    };
-
-    /// That wall, on its own, as a scene.
+    /// The wall `sWallQuad` names, on its own, as a scene.
     ///
     /// @param scale what to stretch it by, for a frame taken far enough away that four hundred
     ///        units is a fraction of one pixel.
@@ -159,28 +128,18 @@ namespace Rtx::Testing
         return scene;
     }
 
-    /// A skin of one bone over `vertices` vertices, every weight one, so a pose is the bone's own
-    /// transform and nothing else — what a test expects is what it moved the bone by.
-    ///
-    /// A run word is `first << RUN_COUNT_BITS | count`, and every vertex here names the one
-    /// influence at nought: a word of one.
-    inline Index addOneBoneRig(SceneDesc& scene, std::uint32_t vertices)
+    /// Which pixel of a `size` by `size` frame is its middle one — `size / 2` along each axis,
+    /// which is the pixel just past the centre where `size` is even.
+    inline constexpr std::size_t centreOf(std::uint32_t size)
     {
-        const std::vector<std::uint32_t> runs(vertices, 1u);
-        const std::array influences{ Shaders::GpuInfluence{ .mBone = 0, .mWeight = 1.0f } };
-        return scene.addRig(runs, influences, 1);
+        return std::size_t{ size / 2 } * size + size / 2;
     }
 
-    /// Poses `mesh`, a mesh on a one-bone rig, by `bone`, with the box its bind pose reaches
-    /// carried through the same transform.
-    inline void poseByOneBone(SceneDesc& scene, Index mesh, const osg::Matrixf& bone)
+    /// The first of the four values that pixel holds, which is how a read-back over this fixture is
+    /// indexed: a byte frame and a radiance frame both carry four values a pixel.
+    inline constexpr std::size_t centreValueOf(std::uint32_t size)
     {
-        osg::BoundingBoxf reach;
-        for (const osg::Vec3f& vertex : scene.getMeshPositions(mesh))
-            reach.expandBy(vertex * bone);
-
-        const std::array rows{ toGpuBone(bone) };
-        scene.poseRig(mesh, rows, reach);
+        return centreOf(size) * 4;
     }
 
     /// A linear value as the display curve writes it, so a test can name the byte it expects.
@@ -564,7 +523,7 @@ namespace Rtx::Testing
             std::vector<std::uint8_t> pixels;
             EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
 
-            return pixels[(std::size_t{ size / 2 } * size + size / 2) * 4];
+            return pixels[centreValueOf(size)];
         }
 
         /// A wall square to the sun with a pane held twenty units across at y = -50, as the three
@@ -579,7 +538,7 @@ namespace Rtx::Testing
             const std::function<void(SceneDesc&, std::span<const osg::Vec3f>)>& place, bool lookAtIt)
         {
             constexpr std::uint32_t size = 33;
-            constexpr std::size_t centre = (std::size_t{ size / 2 } * size + size / 2) * 4;
+            constexpr std::size_t centre = centreValueOf(size);
 
             const std::array pane{
                 osg::Vec3f(-20.0f, -50.0f, -20.0f),

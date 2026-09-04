@@ -286,7 +286,7 @@ namespace Rtx::Testing
 
                 std::vector<float> depth;
                 mRenderer->readChannel(Channel::Depth, depth);
-                return depth[(std::size_t{ sSize / 2 } * sSize + sSize / 2) * 2 + 1];
+                return depth[centreOf(sSize) * 2 + 1];
             };
 
             const float throughTheAnyHit = distanceAtTheCentre(true);
