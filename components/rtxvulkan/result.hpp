@@ -65,6 +65,16 @@ namespace Rtx
     /// `Device::waitIdle` to the raw entry point — which dodges the throw and the fault report with
     /// it. The one that answered with nothing is the one that aborted.
     ///
+    /// **Why the raise is not simply removed instead.** Two kinds of failure reach a teardown here
+    /// and only one of them has a return code. A lost device answers with a `VkResult`; an
+    /// allocation answers with nothing — `PipelineCache::write` asks for the whole blob, which is
+    /// hundreds of megabytes — so no teardown in this backend can be made unable to fail. Nor is
+    /// the `VkResult` half free to hand back: `checkVk` is what turns one into a message and
+    /// appends the device's own fault description, so a sibling that returned instead would either
+    /// build that string to give it back — an allocation, on the path where allocation is the other
+    /// failure — or leave each teardown to assemble it, which is how `Presenter::destroy` came to
+    /// throw the report away. And a result a caller is free to ignore is four answers again.
+    ///
     /// **Named so that misusing it reads wrong.** Wherever a caller can act on a failure, this is
     /// the wrong call and `checkVk` is the right one.
     ///
