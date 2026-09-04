@@ -2,7 +2,6 @@
 - audit includes
 - audit #pragmas
 - rtx-tool travel
-- remove metal
 - extract shader and lightting consts for look tweaking
 - tracy
 - async terrain loader

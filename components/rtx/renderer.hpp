@@ -457,9 +457,9 @@ namespace Rtx
     ///
     /// **Nothing below this line is abstracted:** buffers, images, memory, command buffers,
     /// descriptors and pipelines belong to a backend outright and are shared with nothing. An
-    /// interface drawn tight enough to hide both would be a mini-Vulkan that Metal does not fit, and
-    /// would put a virtual call inside a frame. So a method here is worth a whole scene or a whole
-    /// frame, and none is reached per instance, per light or per pixel.
+    /// interface drawn tight enough to hide those would be a mini-Vulkan, and would put a virtual
+    /// call inside a frame. So a method here is worth a whole scene or a whole frame, and none is
+    /// reached per instance, per light or per pixel.
     ///
     /// A backend that owns a window presents through it. There is no second route off the device
     /// for a frame: `readPixels` copies one back to the host, and nothing exports an allocation.
@@ -734,14 +734,12 @@ namespace Rtx
     };
 
     /// The SDL window flag a window must be created with for this build's backend to make a
-    /// surface on it — `SDL_WINDOW_VULKAN` or `SDL_WINDOW_METAL`, as an SDL flag rather than an
-    /// enum of our own, because ORing it into `SDL_CreateWindow` is the only thing anyone does
-    /// with it.
+    /// surface on it — `SDL_WINDOW_VULKAN` today, as an SDL flag rather than an enum of our own,
+    /// because ORing it into `SDL_CreateWindow` is the only thing anyone does with it.
     ///
-    /// **Asked rather than assumed.** The two are not interchangeable and a window made with the
-    /// wrong one cannot be given a surface at all. `RendererOptions::mWindow` says nothing above
-    /// this line has to know which API it is; without this, opening the window was the one place
-    /// that did.
+    /// **Asked rather than assumed.** A window made with the wrong flag cannot be given a surface
+    /// at all. `RendererOptions::mWindow` says nothing above this line has to know which API it is;
+    /// without this, opening the window was the one place that did.
     std::uint32_t surfaceWindowFlag();
 
     /// Builds a renderer, or nothing where this machine cannot run the backend asked for.

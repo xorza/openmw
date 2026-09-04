@@ -23,7 +23,7 @@ namespace Rtx::Shaders
 #endif
 
     /// Threads along each edge of a bloom workgroup.
-    RTX_CONST uint BLOOM_WORKGROUP = 8;
+    const uint BLOOM_WORKGROUP = 8;
 
     /// How many halvings the pyramid is built over.
     ///
@@ -32,20 +32,20 @@ namespace Rtx::Shaders
     /// renderer is looked at through a harness that renders a tenth of the pixels the game does.
     /// Six halvings put the coarsest level at a sixty-fourth of the frame's width, which is where
     /// the widest tap of the widest tent sits.
-    RTX_CONST uint BLOOM_LEVELS = 6;
+    const uint BLOOM_LEVELS = 6;
 
     /// How narrow a level may be before it is not worth building.
     ///
     /// A tent reads its own neighbours, so a level thinner than this is mostly its own edge clamp.
     /// Only a frame far smaller than anything played on reaches it.
-    RTX_CONST uint BLOOM_NARROWEST = 4;
+    const uint BLOOM_NARROWEST = 4;
 
     /// How much of each coarser level survives into the one above it.
     ///
     /// **The pyramid is mixed rather than summed**, which is what keeps the total independent of
     /// how many levels there are: `mix(finer, coarser, this)` at every step, so a frame that built
     /// one level fewer is a narrower bloom and not a dimmer one. Higher is a wider, softer veil.
-    RTX_CONST float BLOOM_SCATTER = 0.75f;
+    const float BLOOM_SCATTER = 0.75f;
 
     /// How much of the pyramid is left in the picture.
     ///
@@ -55,7 +55,7 @@ namespace Rtx::Shaders
     /// can see, and takes the veil off everything under it. What makes a Morrowind sun read as a
     /// sun is that its disc is a hundred times the median of the frame around it, not that anything
     /// selected it.
-    RTX_CONST float BLOOM_STRENGTH = 0.05f;
+    const float BLOOM_STRENGTH = 0.05f;
 
     /// What one dispatch of the pyramid is told.
     struct BloomConstants

@@ -179,10 +179,10 @@ namespace MWRender
 
     void RtxRenderer::createWindow(const std::filesystem::path& resourceDir)
     {
-        // **The backend's own flag, and no `SDL_GL_SetAttribute` anywhere near it.** Which one it
-        // is — Vulkan here, Metal on Apple silicon — is the one thing about the API this file would
-        // otherwise have had to know, and `Rtx::surfaceWindowFlag` is where that is settled. No GL
-        // context is ever made, which is the point of the whole path.
+        // **The backend's own flag, and no `SDL_GL_SetAttribute` anywhere near it.** Which flag a
+        // surface needs is the one thing about the API this file would otherwise have had to know,
+        // and `Rtx::surfaceWindowFlag` is where that is settled. No GL context is ever made, which
+        // is the point of the whole path.
         const WindowPlacement placement = describeWindow(Rtx::surfaceWindowFlag());
 
         mWindow = SDL_CreateWindow(

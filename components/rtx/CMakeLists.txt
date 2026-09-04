@@ -2,8 +2,8 @@
 #
 # **This library links no graphics API, and that is the point.** What belongs here is what is true
 # of Morrowind's content, of light transport, or of what the scene *is* — written once and read by
-# every backend. The linker is what keeps it that way: nothing here can include a Vulkan or Metal
-# header, because neither is on the include path.
+# every backend. The linker is what keeps it that way: nothing here can include a Vulkan header,
+# because it is not on the include path.
 #
 # **OpenSceneGraph is not that boundary and never was.** The scene arrives as an `osg::Node` graph
 # and the maths types are OSG's, so half this library reads one; what a backend gets handed is
@@ -123,8 +123,8 @@ set(RTX_FILES
     wavespectrum.hpp
 )
 
-# Structures and constants shared verbatim with every shader language, through `#ifdef __cplusplus`.
-# They stay with the core rather than following the GLSL, because a Metal shader includes them too.
+# Structures and constants shared verbatim with the shader language, through `#ifdef __cplusplus`.
+# They stay with the core rather than following the GLSL, because the host reads them as well.
 set(RTX_SHADER_HEADERS
     shaders/bindings.h
     shaders/colour.h

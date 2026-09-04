@@ -53,7 +53,7 @@ namespace Rtx::Shaders
     /// the same array a diffuse map does, so what stands for *nothing loaded* is the same value with
     /// the same meaning — and it used to be that value under three names in two headers, which is a
     /// reader having to check that they agreed.
-    RTX_CONST uint NO_TEXTURE = 0xFFFFFFFFu;
+    const uint NO_TEXTURE = 0xFFFFFFFFu;
 
     /// Elements in one block of the shared vertex buffers, and of the index buffer.
     ///
@@ -69,18 +69,18 @@ namespace Rtx::Shaders
     /// so this leaves four orders of magnitude of headroom; what it costs is the tail of a block too
     /// short for the next run, which `Rtx::SpanAllocator` hands out again like any other hole. Three
     /// megabytes of positions a block.
-    RTX_CONST uint VERTEX_BLOCK = 256u * 1024u;
+    const uint VERTEX_BLOCK = 256u * 1024u;
 
     /// The index buffer wants its own number: a triangle soup has three indices a vertex and a
     /// terrain chunk closer to six.
-    RTX_CONST uint INDEX_BLOCK = 1024u * 1024u;
+    const uint INDEX_BLOCK = 1024u * 1024u;
 
     /// Cells along each edge of the grid a texture's baked lighting is estimated over.
     ///
     /// Coarse on purpose: painted lighting varies slowly across a surface and painted detail does
     /// not, so a grid this size follows the first and cannot follow the second. `Rtx::ShadingMap`
     /// makes them and says why at length.
-    RTX_CONST uint SHADING_EXTENT = 32u;
+    const uint SHADING_EXTENT = 32u;
 
     /// How far the estimate may reach either way, which is also how a map is stored.
     ///
@@ -89,33 +89,33 @@ namespace Rtx::Shaders
     /// in forty thousand — and the neutral map, one everywhere, lands on exactly a third: 21845 of
     /// 65535, which the decode carries back to exactly one. `Rtx::ShadingMap` says why the bounds
     /// are what they are, and `Rtx::encodeShading` is the one statement of the encode.
-    RTX_CONST float SHADING_FLOOR = 0.5f;
-    RTX_CONST float SHADING_CEILING = 2.0f;
+    const float SHADING_FLOOR = 0.5f;
+    const float SHADING_CEILING = 2.0f;
 
     /// A whole turn, which is how a wavelength becomes a wavenumber.
-    RTX_CONST float TAU = 6.2831853f;
+    const float TAU = 6.2831853f;
 
     /// How many world units the game puts in a metre, which is `Constants::UnitsPerMeter`.
     ///
     /// **Here so that a coefficient measured in a laboratory can stay in the units it was measured
     /// in.** Water's absorption is published per metre and every other number in this file is per
     /// world unit, and a conversion done in a comment is a conversion nothing checks.
-    RTX_CONST float UNITS_PER_METRE = 69.99125f;
+    const float UNITS_PER_METRE = 69.99125f;
 
     /// Morrowind's gravity, in world units per second squared.
     ///
     /// **Multiplied out here rather than written down.** The game states both factors —
     /// `Constants::GravityConst` and `Constants::UnitsPerMeter` — and this is the only place that
     /// wants their product, so writing the product is a third number to keep in step with two.
-    RTX_CONST float WATER_GRAVITY = 8.96f * UNITS_PER_METRE;
+    const float WATER_GRAVITY = 8.96f * UNITS_PER_METRE;
 
     /// The circle constant, and the Lambertian BRDF's reciprocal of it.
     ///
     /// Shared because the shader divides every light by `INV_PI` and a lamp's intensity is built
     /// with the matching factor so that the two cancel — a relationship that only holds while both
     /// sides read the same number.
-    RTX_CONST float PI = 3.14159265f;
-    RTX_CONST float INV_PI = 1.0f / PI;
+    const float PI = 3.14159265f;
+    const float INV_PI = 1.0f / PI;
 
     /// What an isotropic phase function is worth: one over the solid angle of the whole sphere.
     ///
@@ -124,13 +124,13 @@ namespace Rtx::Shaders
     /// toward the eye is that irradiance spread over every direction — so the air scatters `1/4pi`
     /// of it this way. Left out, lamps light the air twelve and a half times too strongly, which is
     /// a lantern with a white sphere around it rather than a halo.
-    RTX_CONST float INV_FOUR_PI = 0.25f * INV_PI;
+    const float INV_FOUR_PI = 0.25f * INV_PI;
 
     /// What the engine paints the second row of its cloud mesh with.
     ///
     /// `ModVertexAlphaVisitor::Clouds`'s own 64 over 255, and the only number in the deck's fade
     /// that is not a radius read off the mesh. `CloudShell::mRings` carries where it applies.
-    RTX_CONST float CLOUD_RING_ALPHA = 0.25098f;
+    const float CLOUD_RING_ALPHA = 0.25098f;
 
     /// How far above its own mean a texel of a cloud sheet reads as a cloud in full sunlight.
     ///
@@ -144,7 +144,7 @@ namespace Rtx::Shaders
     /// onto one value. Measured over the six sheets the shipped fallbacks reach, the 99th percentile
     /// of the ratio runs 1.10 to 1.63 and the brightest texel of any of them is 2.03 — so at two
     /// almost nothing saturates and the whole painting carries.
-    RTX_CONST float CLOUD_THICKNESS_MAX = 2.0f;
+    const float CLOUD_THICKNESS_MAX = 2.0f;
 
     /// How much of the light landing on a cloud deck leaves the underside of it.
     ///
@@ -156,7 +156,7 @@ namespace Rtx::Shaders
     ///
     /// Thin cloud is not dragged down with it: how much sky a wisp replaces at all is its own alpha,
     /// which is `cloudDeck`'s coverage and not this.
-    RTX_CONST float CLOUD_TRANSMISSION = 0.25f;
+    const float CLOUD_TRANSMISSION = 0.25f;
 
     /// How dark a cloud's shadow is, in nepers per unit of alpha over the sheet's own mean.
     ///
@@ -174,14 +174,14 @@ namespace Rtx::Shaders
     /// Four is the reference implementation's own figure and the one number in the layer chosen
     /// rather than derived. Clear weather's sheet is cirrus, which in life casts almost nothing, and
     /// a shadow that cannot be seen is not worth tracing.
-    RTX_CONST float CLOUD_SHADOW_DEPTH = 4.0f;
+    const float CLOUD_SHADOW_DEPTH = 4.0f;
 
     /// Irradiance of the sun against the sky it is set in.
     ///
     /// Not a physical figure: exposure absorbs any overall scale, so what matters is the ratio
     /// between the direct sun and the sky, roughly five to one on a clear day on a surface facing
     /// it. Shared with the shader because everything else on this scale is measured against it.
-    RTX_CONST float DAYLIGHT = 8.0f;
+    const float DAYLIGHT = 8.0f;
 
     /// How many independent numbers one pixel draws in one frame.
     ///
@@ -193,7 +193,7 @@ namespace Rtx::Shaders
     /// pair, and the water's own march takes a number. A spare channel would have to be given a step
     /// to advance by, and the honest step for a stream nobody reads is nothing — which is a value
     /// frozen for the life of the process, waiting for whoever reaches for it next.
-    RTX_CONST uint RANDOM_STREAMS = 4;
+    const uint RANDOM_STREAMS = 4;
 
     /// Which channel of the tile each draw takes. A pair costs two, which is why the bounce leaves
     /// a gap.
@@ -206,15 +206,15 @@ namespace Rtx::Shaders
     /// **Here rather than beside the sampler**, because the count above is a promise these ids have
     /// to keep and the two were a header apart: a second shader that drew would have had to find
     /// this list to know which channels were already spoken for, and nothing pointed at it.
-    RTX_CONST uint STREAM_FOG = 0u;
-    RTX_CONST uint STREAM_BOUNCE = 1u;
+    const uint STREAM_FOG = 0u;
+    const uint STREAM_BOUNCE = 1u;
 
     /// Where the water's shaft march starts inside its first step.
     ///
     /// **Its own channel and not the fog's**, though both are march offsets down one ray: a pixel
     /// whose air started late would have its water start late too, and the two marches lie end to
     /// end along the same line.
-    RTX_CONST uint STREAM_WATER = 3u;
+    const uint STREAM_WATER = 3u;
 
     /// Edge of the blue-noise tile, in pixels.
     ///
@@ -222,7 +222,7 @@ namespace Rtx::Shaders
     /// does not read as one.** The tile is turned by an irrational step every frame, so what would
     /// be a fixed grid of sixty-four is a different arrangement each time; and the pattern inside it
     /// has no low frequencies to begin with, which is the whole point of it.
-    RTX_CONST uint BLUE_NOISE_EXTENT = 64;
+    const uint BLUE_NOISE_EXTENT = 64;
 
     /// What a moon's own texels are worth as radiance.
     ///
@@ -235,7 +235,7 @@ namespace Rtx::Shaders
     ///
     /// It multiplies the portrait where one is loaded and the portrait's mean where none is, so the
     /// two paths are the same brightness and only the detail differs.
-    RTX_CONST float MOON_RADIANCE = 5.4217f;
+    const float MOON_RADIANCE = 5.4217f;
 
     /// What a texel of the star field is worth as radiance.
     ///
@@ -259,7 +259,7 @@ namespace Rtx::Shaders
     /// **It reaches what is drawn and never what lights.** A bounce that escapes takes `skyGlow`,
     /// which carries the sheets as one mean — `NightSky::mGlow` — so raising this raises that too and
     /// `skyFill` takes it back out of the weather's own ambient. The night's light does not move.
-    RTX_CONST float STAR_RADIANCE = 0.45f;
+    const float STAR_RADIANCE = 0.45f;
 
     /// What a texel of the three nebulae is worth as radiance.
     ///
@@ -273,7 +273,7 @@ namespace Rtx::Shaders
     /// `rgb * a`. That mean measures 0.00199, so a nebula's average comes out at 1.2e-4 against the
     /// night sky's 0.003: a twentieth of it rather than a match. Whether a nebula should read as the
     /// sky it lies over is a question about the picture, and the number here answers it as a wash.
-    RTX_CONST float NEBULA_RADIANCE = 0.06f;
+    const float NEBULA_RADIANCE = 0.06f;
 
     /// How much of the sunlight falling on Masser comes back off it: its geometric albedo, which is
     /// what a body sends back at opposition against what a perfectly diffusing disc of the same size
@@ -296,7 +296,7 @@ namespace Rtx::Shaders
     /// portraits on Masser's luminance, so Secunda carries this times the 2.54 its own paler face
     /// says it is worth. And this is not `MOON_RADIANCE`: that one is pinned by where the tone curve
     /// stops keeping colour, so a light read out of it would put a night at a thousandth of a day.
-    RTX_CONST float MOON_ALBEDO = 0.12f;
+    const float MOON_ALBEDO = 0.12f;
 
     /// Angular radius of the sun, in radians — a disc about half a degree across.
     ///
@@ -304,7 +304,7 @@ namespace Rtx::Shaders
     /// a different sun. It decides how wide the disc in the sky is drawn, and with it how wide the
     /// glitter path on water is: the two are the same number seen twice, one directly and one in a
     /// mirror, and they cannot be allowed to disagree.
-    RTX_CONST float SUN_ANGULAR_RADIUS = 0.004654f;
+    const float SUN_ANGULAR_RADIUS = 0.004654f;
 
     /// Angular radius of the cone a sun shadow ray is drawn from, in radians: two degrees.
     ///
@@ -321,7 +321,7 @@ namespace Rtx::Shaders
     /// those are the sun seen and a sun seen wider is a different sun. A sun seen through haze does
     /// widen its own shadows — the aureole a hazy sky throws round it is a few degrees across — and
     /// if this ever wants to follow the weather, that is the model to follow it with.
-    RTX_CONST float SUN_SHADOW_RADIUS = 0.034907f;
+    const float SUN_SHADOW_RADIUS = 0.034907f;
 
     /// The most radiance the sun's disc is drawn with.
     ///
@@ -342,7 +342,7 @@ namespace Rtx::Shaders
     /// **The disc alone, because it is the only thing in the sky that can reach a ceiling at all.**
     /// A moon's face is held at 0.18, a star at the same, and the dome's own glow is a decoded
     /// weather colour — every one of them three orders below this.
-    RTX_CONST float MAX_SUN_RADIANCE = 1000.0f;
+    const float MAX_SUN_RADIANCE = 1000.0f;
 
     /// What an emissive of one is worth on screen.
     ///
@@ -364,7 +364,7 @@ namespace Rtx::Shaders
     /// What the lamps cost was a light in the grid for every glowing shape in the world, 474 of them
     /// at Seyda Neen and 248 at Ald-Ruhn, and they were the reach that drove `LightGrid` to coarsen
     /// its cell. Morrowind lights what it means to light with a `LIGH` record.
-    RTX_CONST float EMISSIVE_INTENSITY = 8.0f;
+    const float EMISSIVE_INTENSITY = 8.0f;
 
     /// What light on the far side of a leaf is worth to the side being looked at, against the same
     /// light on the near side.
@@ -381,19 +381,19 @@ namespace Rtx::Shaders
     /// leaf lets through to the ground under it arrives by the bounce that lands on the leaf's
     /// underside and gathers the sun there — so a shadow ray thinning itself through the leaf's body
     /// as well would deliver the same light twice.
-    RTX_CONST float SHEET_TRANSMISSION = 0.5;
+    const float SHEET_TRANSMISSION = 0.5;
 
     /// How far a ray carries fog before whatever is behind it stops mattering.
     ///
     /// Four hundred metres. Past this the transmittance of even the thinnest weather is a rounding
     /// error, and a ray that hit nothing has to stop somewhere.
-    RTX_CONST float FOG_REACH = 30000.0f;
+    const float FOG_REACH = 30000.0f;
 
     /// The height over the fog's base at which its density falls to `1/e`, in world units.
     ///
     /// Seventy units to the metre, so about thirty-seven of them — a layer deep enough to fill a
     /// valley and still thin out over the hill beside it.
-    RTX_CONST float FOG_HEIGHT = 2600.0f;
+    const float FOG_HEIGHT = 2600.0f;
 
     /// How many texels along each side of the fog's baked volume, how many cells of noise it holds
     /// across, and how many levels sit under it.
@@ -412,9 +412,9 @@ namespace Rtx::Shaders
     /// is what hides the tile past that.
     ///
     /// Two channels and a chain come to 73 kilobytes, which a march reads out of cache.
-    RTX_CONST uint FOG_FIELD_SIZE = 32u;
-    RTX_CONST uint FOG_FIELD_CELLS = 8u;
-    RTX_CONST uint FOG_FIELD_LEVELS = 6u;
+    const uint FOG_FIELD_SIZE = 32u;
+    const uint FOG_FIELD_CELLS = 8u;
+    const uint FOG_FIELD_LEVELS = 6u;
 
     /// The coarsest level of that chain a march is allowed to read.
     ///
@@ -429,7 +429,7 @@ namespace Rtx::Shaders
     /// reads a field it cannot resolve and what comes back is noise, which the jittered step and the
     /// temporal filter take out — and which is what the renderer this is ported from lives with at
     /// every step, having no chain to climb at all.
-    RTX_CONST float FOG_FIELD_COARSEST = 3.0f;
+    const float FOG_FIELD_COARSEST = 3.0f;
 
     /// The standard deviation every level of that field is normalised to.
     ///
@@ -440,7 +440,7 @@ namespace Rtx::Shaders
     ///
     /// The figure is what the field this replaced measured at, so the band and `FOG_COVERAGE` keep
     /// the meanings they were set against.
-    RTX_CONST float FOG_FIELD_SPREAD = 0.1204f;
+    const float FOG_FIELD_SPREAD = 0.1204f;
 
     /// How large one cell of the coarsest scale is, in world units, and so how wide the whole tile is
     /// laid out at that scale.
@@ -463,8 +463,8 @@ namespace Rtx::Shaders
     /// The field was hashed at every step, so anything finer than the step between two samples
     /// arrived as noise and the only defence was a grain too coarse to have any. `fogFieldAt` picks a
     /// level from the march's own stride instead, so the field is filtered rather than aliased.
-    RTX_CONST float FOG_GRAIN = 900.0f;
-    RTX_CONST float FOG_TILE = FOG_GRAIN * float(FOG_FIELD_CELLS);
+    const float FOG_GRAIN = 900.0f;
+    const float FOG_TILE = FOG_GRAIN * float(FOG_FIELD_CELLS);
 
     /// What a recorded `Wind Speed` of one comes to in world units a second.
     ///
@@ -478,7 +478,7 @@ namespace Rtx::Shaders
     ///
     /// `mTime` runs at the clock's own rate rather than the game's thirty-times one, so this is a wind
     /// rather than a time-lapse.
-    RTX_CONST float FOG_GALE = 1400.0f;
+    const float FOG_GALE = 1400.0f;
 
     /// How many scales that one tile is read at.
     ///
@@ -487,10 +487,10 @@ namespace Rtx::Shaders
     /// of the first, the three never come back into step, and what is visible is the beat rather than
     /// any one lattice. Three reaches thirty-six units at the fine end, which is finer than any step
     /// a march near the camera takes.
-    RTX_CONST uint FOG_SCALES = 3u;
+    const uint FOG_SCALES = 3u;
 
     /// The step between them. Not two, so the tiles never realign and repeat.
-    RTX_CONST float FOG_LACUNARITY = 2.27f;
+    const float FOG_LACUNARITY = 2.27f;
 
     /// The standard deviation of the sideways displacement the finer scales are read at, in world units.
     ///
@@ -506,7 +506,7 @@ namespace Rtx::Shaders
     /// same field at an unrelated place — so a figure fixed in world units would stop warping and
     /// start scrambling the moment the grain moved. Half is the ratio the renderer this is ported
     /// from settled at: 450 units over a grain of 900.
-    RTX_CONST float FOG_WARP = FOG_GRAIN * 0.5f;
+    const float FOG_WARP = FOG_GRAIN * 0.5f;
 
     /// Below `FOG_CLEARING` of the field the air is clear, and at `FOG_SOLID` the fog is at full
     /// thickness. Between them it is a bank's edge.
@@ -525,8 +525,8 @@ namespace Rtx::Shaders
     /// **Sample it over a plane wider than the tile, not over a sphere.** A million pixels of a sphere of
     /// radius 5,000 is a million samples of about a tenth of one tile, and the mean it gives is wrong by
     /// several per cent while looking precise.
-    RTX_CONST float FOG_CLEARING = 0.45f;
-    RTX_CONST float FOG_SOLID = 0.65f;
+    const float FOG_CLEARING = 0.45f;
+    const float FOG_SOLID = 0.65f;
 
     /// What that band comes to on average, which the coverage is divided by.
     ///
@@ -539,7 +539,7 @@ namespace Rtx::Shaders
     /// **Measured, and it must be re-measured if the band or the field moves.**
     /// `theCoverageBandLeavesTheShareTheDensityIsDividedBy` computes it off the baked field to four
     /// figures, and `theBankedFieldHoldsAsMuchAirAsAnEvenOne` checks the frame agrees.
-    RTX_CONST float FOG_COVERAGE = 0.3563f;
+    const float FOG_COVERAGE = 0.3563f;
 
     /// What is left of a ray at the world's edge, once the second element of the air has had it.
     ///
@@ -547,7 +547,7 @@ namespace Rtx::Shaders
     /// terrain ends in mid-air, and the only number that hides it is one small enough that the
     /// difference between the ground and the sky behind it is below what the frame can carry. One
     /// step of an eight-bit channel is that number.
-    RTX_CONST float FOG_EDGE_TRANSMITTANCE = 1.0f / 256.0f;
+    const float FOG_EDGE_TRANSMITTANCE = 1.0f / 256.0f;
 
     /// Over what share of `VisibilityConstants::mFogEdge` that air closes, as the `1/e` length of
     /// its density.
@@ -557,7 +557,7 @@ namespace Rtx::Shaders
     /// density that grows by `e` every eighth of the reach leaves 0.905 of a ray at half of it and
     /// 0.473 at three quarters, so the world closes over its last quarter and the quarter before it
     /// is only softened.
-    RTX_CONST float FOG_EDGE_RAMP = 0.125f;
+    const float FOG_EDGE_RAMP = 0.125f;
 
     /// The sine of the climb above which that air is not there at all.
     ///
@@ -570,7 +570,7 @@ namespace Rtx::Shaders
     /// **A climb alone, and a descent is never masked.** An eye that is high enough looks down on
     /// the ring where the loaded cells stop, so the steeper the view the more of the cut it can see
     /// — and reading this either way would take the air off precisely there.
-    RTX_CONST float FOG_EDGE_RISE = 0.4226183f;
+    const float FOG_EDGE_RISE = 0.4226183f;
 
     /// How many pixels of the frame one column of the fog volume stands for, on each axis.
     ///
@@ -579,14 +579,14 @@ namespace Rtx::Shaders
     /// more than eight pixels; a shaft's edge is a penumbra and not a line. What a smaller number
     /// would buy is a sharper copy of an answer that has no detail at that size, and the volume
     /// costs memory and bandwidth on all three axes at once.
-    RTX_CONST uint FOG_VOLUME_SCALE = 8u;
+    const uint FOG_VOLUME_SCALE = 8u;
 
     /// How many slices a column is integrated in.
     ///
     /// **More than the march it replaces takes over one ray**, because a column stands for
     /// `FOG_VOLUME_SCALE` squared pixels and pays once for all of them. The march spends 24 steps
     /// per pixel; this spends 64 per sixty-four pixels.
-    RTX_CONST uint FOG_VOLUME_SLICES = 64u;
+    const uint FOG_VOLUME_SLICES = 64u;
 
     /// How many froxels one workgroup of the scatter pass covers, across the screen and in depth.
     ///
@@ -595,22 +595,22 @@ namespace Rtx::Shaders
     /// and froxels behind each other walk the cells of one ray — so both axes are coherent and the
     /// only thing the shape decides is which is more so. Eight by eight keeps the screen-space
     /// block square, which is what the field's read and the reprojection both want.
-    RTX_CONST uint FOG_FROXEL_WORKGROUP_ACROSS = 8u;
-    RTX_CONST uint FOG_FROXEL_WORKGROUP_DEEP = 4u;
+    const uint FOG_FROXEL_WORKGROUP_ACROSS = 8u;
+    const uint FOG_FROXEL_WORKGROUP_DEEP = 4u;
 
     /// How many columns one workgroup of the integrate pass covers, on each axis.
     ///
     /// **A thread to a column there, and that is not a shape to be improved.** Front to back is the
     /// only order transmittance can be carried in, so the sixty-four slices of a column are a scan
     /// and not a fan-out — and the scan is reads and multiply-adds, with no ray and no walk in it.
-    RTX_CONST uint FOG_COLUMN_WORKGROUP = 8u;
+    const uint FOG_COLUMN_WORKGROUP = 8u;
 
     /// Water's index of refraction, and the reflectance it gives head-on.
     ///
     /// `((1.333 - 1) / (1.333 + 1))^2`, which is why water is a window seen from above and a mirror
     /// seen along it.
-    RTX_CONST float WATER_IOR = 1.333f;
-    RTX_CONST float WATER_F0 = 0.02f;
+    const float WATER_IOR = 1.333f;
+    const float WATER_F0 = 0.02f;
 
     /// Extinction per world unit, per channel — how fast water swallows light along a path.
     ///
@@ -641,7 +641,7 @@ namespace Rtx::Shaders
     /// swamp coast and the Pacific. Every expectation a test makes about water derives from this
     /// sum, so a tuning pass is one line rather than five pieces of arithmetic that quietly stop
     /// describing the shader.
-    RTX_CONST vec3 WATER_EXTINCTION = vec3(0.262f, 0.059f, 0.024f) / UNITS_PER_METRE;
+    const vec3 WATER_EXTINCTION = vec3(0.262f, 0.059f, 0.024f) / UNITS_PER_METRE;
 
     /// How far under its nominal level the sea's own surface is placed, in world units.
     ///
@@ -669,14 +669,14 @@ namespace Rtx::Shaders
     /// about 0.04, so a handful of them is under a fifth of a unit. And it has to stay far under
     /// anything the eye reads, which the sea itself sets — the waves are metres of amplitude and
     /// this is seven millimetres.
-    RTX_CONST float WATER_TIE_BREAK = 0.5f;
+    const float WATER_TIE_BREAK = 0.5f;
 
     /// Significant wave height over the surface's rms elevation.
     ///
     /// The oceanographers' definition — the mean of the highest third, which for a Gaussian sea is
     /// four standard deviations. It is what `SeaState` normalises its spectrum to, so that the one
     /// figure a person can picture is the one the sea is built from.
-    RTX_CONST float WATER_SIGNIFICANT_HEIGHT = 4.0f;
+    const float WATER_SIGNIFICANT_HEIGHT = 4.0f;
 
     /// The single-scattering albedo: the share of extinction that was scattering and not absorption,
     /// and so the part the water hands back as its own colour instead of swallowing.
@@ -710,7 +710,7 @@ namespace Rtx::Shaders
     /// falls toward blue where every real water's rises — molecular scattering goes as the fourth
     /// power of the wavenumber. What that costs is confined to the colour a very deep column
     /// settles at, which is the one thing the game states outright and this defers to.
-    RTX_CONST vec3 WATER_SCATTER = vec3(0.04f, 0.1f, 0.1233f);
+    const vec3 WATER_SCATTER = vec3(0.04f, 0.1f, 0.1233f);
 
     /// How far forward water throws what it scatters.
     ///
@@ -719,7 +719,7 @@ namespace Rtx::Shaders
     /// goes on in the direction it was already travelling, and the sideways part is a thousandth of
     /// the forward peak. That is why an underwater haze is a beam around the sun rather than an even
     /// milkiness, and why looking away from the sun under water is looking into the dark.
-    RTX_CONST float WATER_ASYMMETRY = 0.92f;
+    const float WATER_ASYMMETRY = 0.92f;
 
     /// A ceiling on how bright a focus is allowed to get.
     ///
@@ -734,14 +734,14 @@ namespace Rtx::Shaders
     /// **Here rather than beside the rest of the caustic's dials, because `causticGain` is fitted
     /// against it.** The clip decides how much of the tail ever arrives, so the two are one
     /// statement and a test that checks the fit has to be able to read both.
-    RTX_CONST float WATER_CAUSTIC_MAX = 2.0f;
+    const float WATER_CAUSTIC_MAX = 2.0f;
 
     /// What the fit below is made of, and the one relation among them that is not fitted: the
     /// numerator's coefficient is the denominator's plus one, which is what makes the curve's second
     /// order exactly `1 + f^2`. Three loose numbers written into the expression would hide it.
-    RTX_CONST float WATER_CAUSTIC_GAIN_SQUARE = 1.1017f;
-    RTX_CONST float WATER_CAUSTIC_GAIN_CUBE = 0.1872f;
-    RTX_CONST float WATER_CAUSTIC_GAIN_QUARTIC = 0.10896f;
+    const float WATER_CAUSTIC_GAIN_SQUARE = 1.1017f;
+    const float WATER_CAUSTIC_GAIN_CUBE = 0.1872f;
+    const float WATER_CAUSTIC_GAIN_QUARTIC = 0.10896f;
 
     /// The mean of `1 / max(|det(I - b H)|, 1 / WATER_CAUSTIC_MAX)` over a sea of this fold, which
     /// is what the caustic has to be divided by to move light rather than make it.
@@ -788,8 +788,8 @@ namespace Rtx::Shaders
     /// alternative — building water non-opaque so the candidate loop can wave shadow rays past — was
     /// measured at half the frame rate, because every shadow ray crossing the sea then invokes a
     /// shader where traversal alone had been enough.
-    RTX_CONST uint MASK_SOLID = 0x01u;
-    RTX_CONST uint MASK_WATER = 0x02u;
+    const uint MASK_SOLID = 0x01u;
+    const uint MASK_WATER = 0x02u;
 
     /// The player's own arms in first person: seen by the eye and by no other ray.
     ///
@@ -799,16 +799,16 @@ namespace Rtx::Shaders
     /// eye's own trace asks for this bit and the shadow rays, the bounces and the water's rays do
     /// not, and the arms are lit and drawn like anything else while shadowing and reflecting as
     /// nothing at all.
-    RTX_CONST uint MASK_FIRST_PERSON = 0x04u;
+    const uint MASK_FIRST_PERSON = 0x04u;
 
     /// The content doubled every triangle of this mesh for its back — `Rtx::FoldedShape::mSheet`.
     /// With a mask on its material that is a leaf, and `SHEET_TRANSMISSION` says what the light on
     /// its far side is worth to it.
-    RTX_CONST uint MESH_SHEET = 0x01u;
+    const uint MESH_SHEET = 0x01u;
 
     /// Every edge of this mesh carries a triangle each way — `Rtx::FoldedShape::mClosed`. It says
     /// which of a surface's two normals describes it, which `litCosine` reads.
-    RTX_CONST uint MESH_CLOSED = 0x02u;
+    const uint MESH_CLOSED = 0x02u;
 
     /// Where a mesh's vertices and indices begin in the shared buffers.
     ///
@@ -892,9 +892,8 @@ namespace Rtx::Shaders
     /// **In the frame block rather than in a descriptor each**, for the reason the light grid's
     /// geometry already is: a descriptor per table was seventeen storage-buffer bindings pushed twice
     /// a frame, and a binding the layout declared and the pass forgot was a shader reading whatever
-    /// the slot held. An address is a 64-bit integer on both APIs, so the struct belongs to the scene
-    /// and not to a backend: the Vulkan shader constructs a `buffer_reference` from each, and Metal's
-    /// `Scene` is the same idea with the pointers typed.
+    /// the slot held. An address is a 64-bit integer, so the struct belongs to the scene and not to
+    /// a backend: the Vulkan shader constructs a `buffer_reference` from each.
     ///
     /// **Filled by the pass and not by `describeWorld`**, the way `mWaveExtent` and `mLightGrid`
     /// are: where a table is lives with whatever placed it there, and the tables that alternate by
@@ -945,9 +944,9 @@ namespace Rtx::Shaders
     /// least sixteen-aligned on this device and the host asserts it, so the stride decides:
     /// `GpuLayer` is 48 bytes with two `vec4` at sixteen and thirty-two, the block tables hold
     /// eight-byte addresses, and every other row or list is four-aligned only.
-    RTX_CONST uint TABLE_ALIGN_ROWS = 4u;
-    RTX_CONST uint TABLE_ALIGN_BLOCKS = 8u;
-    RTX_CONST uint TABLE_ALIGN_LAYERS = 16u;
+    const uint TABLE_ALIGN_ROWS = 4u;
+    const uint TABLE_ALIGN_BLOCKS = 8u;
+    const uint TABLE_ALIGN_LAYERS = 16u;
 
     /// One layer of terrain: a tiling ground texture and the weights that place it.
     ///
@@ -1020,7 +1019,7 @@ namespace Rtx::Shaders
     /// Against the device bin the offsets cost nothing and the trace gained nothing at all — 1.10
     /// ms at either size, since a drop's own test is cheap once the lamps are walked per emitter —
     /// while the fill, which walks every sprite for every tile, went from 0.05 ms to 0.17.
-    RTX_CONST uint SPRITE_TILE = 16u;
+    const uint SPRITE_TILE = 16u;
 
     /// How many tiles cover `pixels` along one axis of the frame. The last one may be part of a tile.
     ///
@@ -1040,7 +1039,7 @@ namespace Rtx::Shaders
     /// march as it was before the tiles, slow and right. The host reads what the frame needed,
     /// grows the buffer and the next frame is binned. `SceneBuffers::binSprites` says how the list
     /// is sized so that this is a rare frame and never a wrong one.
-    RTX_CONST uint SPRITE_LIST_UNBINNED = 0u;
+    const uint SPRITE_LIST_UNBINNED = 0u;
 
     /// The most a texel of a sprite may hide of what is behind it.
     ///
@@ -1051,7 +1050,7 @@ namespace Rtx::Shaders
     /// is a puff clipped hard at the wall it was meant to fade into. So a texel that says opaque is
     /// taken to mean this, and the price is one part in a hundred of the background through the
     /// densest texel a sprite has.
-    RTX_CONST float SPRITE_ALPHA_LIMIT = 0.99;
+    const float SPRITE_ALPHA_LIMIT = 0.99;
 
     /// How much brighter the lit side of a puff is than its mean, and the far side darker.
     ///
@@ -1060,7 +1059,7 @@ namespace Rtx::Shaders
     /// rather than a sphere's quarter; but the side the sun is on is brighter than the side it is
     /// not, and that is what makes a ball read as a ball. `1 + SPRITE_WRAP * dot(normal, toward)`
     /// keeps the mean over the sphere where it was and puts three to one between front and back.
-    RTX_CONST float SPRITE_WRAP = 0.5;
+    const float SPRITE_WRAP = 0.5;
 
     /// What a flame texel of one is worth, as light.
     ///
@@ -1071,7 +1070,7 @@ namespace Rtx::Shaders
     /// about three times this. A flame carried at that scale is more than its own meaning, and at night the
     /// exposure then puts every texel of it past white — the fringe the texture painted goes with
     /// the core, and a sprite reads as a cut-out that switches on.
-    RTX_CONST float FLAME_INTENSITY = DAYLIGHT * INV_PI;
+    const float FLAME_INTENSITY = DAYLIGHT * INV_PI;
 
     /// How strongly smoke throws the sun forward: Henyey-Greenstein's asymmetry.
     ///
@@ -1082,7 +1081,7 @@ namespace Rtx::Shaders
     /// wrong way round. Applied to the sun alone and normalised so the mean over every direction
     /// stays the card's worth; the sky and the lamps arrive from everywhere and keep the even share.
     /// Six tenths is the cloud recipe's figure.
-    RTX_CONST float SMOKE_ANISOTROPY = 0.6;
+    const float SMOKE_ANISOTROPY = 0.6;
 
     /// One particle system: a sphere a ray is rejected by, and the run of sprites behind it.
     struct GpuEmitter
@@ -1172,11 +1171,11 @@ namespace Rtx::Shaders
         vec4 mTextureTransform;
     };
 
-    // **The two C++-shaped sides have to agree byte for byte**, because one writes these buffers and
-    // the other reads them — and Metal packs a `float3` differently unless told, which is a mistake
-    // that produces a plausible wrong image rather than an error. GLSL is pinned separately, by the
+    // **The host's layout has to be the one the device reads**, because this side writes these
+    // buffers and the shader reads them — and a padding byte nobody asked for is a mistake that
+    // produces a plausible wrong image rather than an error. GLSL is pinned separately, by the
     // `--scalar-block-layout` the build hands the validator.
-#if defined(RTX_HOST) || defined(__METAL_VERSION__)
+#ifdef RTX_HOST
     static_assert(sizeof(GpuMesh) == 12, "GpuMesh must be scalar-packed on every side");
     static_assert(sizeof(GpuInstance) == 60, "GpuInstance must be scalar-packed on every side");
     static_assert(sizeof(GpuLight) == 36, "GpuLight must be scalar-packed on every side");

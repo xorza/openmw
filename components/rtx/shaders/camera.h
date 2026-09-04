@@ -89,7 +89,7 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-#if defined(RTX_HOST) || defined(__METAL_VERSION__)
+#ifdef RTX_HOST
     static_assert(sizeof(Camera) == 60, "Camera must be scalar-packed on every side");
 #endif
 
@@ -97,12 +97,11 @@ namespace Rtx::Shaders
 }
 #endif
 
-// What both shading languages read and the host does not, for the reason `RTX_SHADER` gives.
+// What the shading language reads and the host does not, for the reason `RTX_SHADER` gives.
 //
-// **Every result here is built by assigning fields rather than by calling a constructor**, which is
-// the one form both languages have: GLSL has `Ray(offset, direction)` and no brace initialiser,
-// Metal has `Ray{offset, direction}` and no constructor. Writing it the shared way is what lets the
-// Metal backend generate its rays with this rather than with a third copy of the derivation.
+// **Every result here is built by assigning fields rather than by calling a constructor.** GLSL has
+// `Ray(offset, direction)` and no brace initialiser, so assignment is the form a shared header can
+// write and a second reader could still compile.
 #ifndef RTX_HOST
 
 /// Where a pixel's ray starts relative to the eye, and which way it points.

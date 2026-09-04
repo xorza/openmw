@@ -20,7 +20,7 @@ namespace Rtx::Shaders
 #endif
 
     /// Threads along each edge of the composite's workgroup.
-    RTX_CONST uint COMPOSITE_WORKGROUP = 8;
+    const uint COMPOSITE_WORKGROUP = 8;
 
     /// Everything the recombination needs, which is almost nothing.
     ///

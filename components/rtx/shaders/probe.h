@@ -33,13 +33,13 @@ namespace Rtx::Shaders
 #endif
 
     /// Threads in the probe's workgroup.
-    RTX_CONST uint PROBE_WORKGROUP = 64;
+    const uint PROBE_WORKGROUP = 64;
 
     /// How many ways the probe reads one pattern, and so how many `mCount`-long runs its readings
     /// buffer holds: through a descriptor, through a pointer the host handed over as a push
     /// constant, through a pointer read out of a table and indexed by block, and through a pointer
     /// read out of a uniform block.
-    RTX_CONST uint PROBE_READINGS = 4;
+    const uint PROBE_READINGS = 4;
 
     /// What a reference to a row of `ProbeRow`s claims about every address it is constructed from.
     ///
@@ -47,7 +47,7 @@ namespace Rtx::Shaders
     /// larger than the truth is undefined behaviour with no message. `GpuLayer` is 48 bytes with two
     /// `vec4` at sixteen and thirty-two, so its reference may claim sixteen and the compiler may
     /// load a `vec4` in one instruction. This is the same shape, read the same way.
-    RTX_CONST uint PROBE_ROW_ALIGN = 16;
+    const uint PROBE_ROW_ALIGN = 16;
 
     struct ProbeConstants
     {

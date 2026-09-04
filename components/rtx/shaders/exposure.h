@@ -25,24 +25,24 @@ namespace Rtx::Shaders
     /// tiny flames at a luminance of one, in a room sitting at a hundredth of that. A mean is
     /// dragged around by whichever population has more pixels; a histogram keeps them apart and
     /// lets the reduction decide what to expose for.
-    RTX_CONST uint EXPOSURE_BINS = 256;
+    const uint EXPOSURE_BINS = 256;
 
     /// Threads along each edge of the binning pass's workgroup. Squared, it is `EXPOSURE_BINS`, so
     /// each thread owns exactly one bin of the workgroup's own tally.
-    RTX_CONST uint HISTOGRAM_WORKGROUP = 16;
+    const uint HISTOGRAM_WORKGROUP = 16;
 
     /// Darkest luminance the histogram resolves, as a power of two. About a thousandth of mid grey,
     /// which is below anything a lit surface reaches and well under an unlit interior.
-    RTX_CONST float MIN_LOG_LUMINANCE = -10.0;
+    const float MIN_LOG_LUMINANCE = -10.0;
 
     /// Brightest, as a power of two. Sixty-four times mid grey covers a flame seen directly.
-    RTX_CONST float MAX_LOG_LUMINANCE = 6.0;
+    const float MAX_LOG_LUMINANCE = 6.0;
 
     /// Where a pixel stops being binned and starts being counted as black.
     ///
     /// Without it the dark areas of an interior pile into the lowest bin and drag the average down
     /// to meet them, and the exposure opens until the few lit surfaces are white.
-    RTX_CONST float EXPOSURE_BLACK = 0.0001;
+    const float EXPOSURE_BLACK = 0.0001;
 
     /// What the binning pass needs to place a luminance.
     struct HistogramConstants

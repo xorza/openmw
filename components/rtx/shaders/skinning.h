@@ -36,14 +36,14 @@ namespace Rtx::Shaders
 
     /// Lanes in one workgroup of either kernel. A body is a few thousand vertices, so a dispatch is
     /// tens of groups.
-    RTX_CONST uint SKIN_WORKGROUP = 64;
+    const uint SKIN_WORKGROUP = 64;
 
     /// A vertex's run word: the run's first influence in the low bits above the count, and the
     /// count in the bottom byte. `RigGeometry::VertexList` is `unsigned short`, so a rig's runs are
     /// under sixty-four thousand and its influences a small multiple of that, which leaves the
     /// twenty-four bits of `first` three orders of magnitude of room.
-    RTX_CONST uint RUN_COUNT_BITS = 8u;
-    RTX_CONST uint RUN_COUNT_MASK = 0xFFu;
+    const uint RUN_COUNT_BITS = 8u;
+    const uint RUN_COUNT_MASK = 0xFFu;
 
     /// One bone's share of one vertex.
     ///

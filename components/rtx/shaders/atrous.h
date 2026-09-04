@@ -48,7 +48,7 @@ namespace Rtx::Shaders
 #endif
 
     /// Threads along each edge of a level's workgroup.
-    RTX_CONST uint ATROUS_WORKGROUP = 8;
+    const uint ATROUS_WORKGROUP = 8;
 
     /// How far apart a level's taps stand, doubling each level: 1, 2, 4, 8, 16.
     ///
@@ -56,7 +56,7 @@ namespace Rtx::Shaders
     /// spacing, so the cascade's support is twice `1 + 2 + 4 + 8 + 16`. That is the à-trous trick —
     /// the holes between taps grow while the tap count does not, so a hundred and twenty-five
     /// samples do what a single kernel of that reach would need fifteen thousand for.
-    RTX_CONST uint ATROUS_LEVELS = 5;
+    const uint ATROUS_LEVELS = 5;
 
     /// Everything one level reads that is not an image.
     ///
@@ -100,7 +100,7 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-#if defined(RTX_HOST) || defined(__METAL_VERSION__)
+#ifdef RTX_HOST
     static_assert(sizeof(AtrousConstants) == 76, "AtrousConstants must be scalar-packed on every side");
 #endif
 

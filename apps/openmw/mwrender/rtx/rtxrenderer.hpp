@@ -49,12 +49,10 @@ namespace MWRender
 {
     /// The picture as rays find it: a window, a mirror of the scene graph, and a trace.
     ///
-    /// **It names no graphics API, and there is no `metal/` beside it.** Which API traces is settled
-    /// a layer down — `Rtx::createRenderer` picks `components/rtxvulkan` or `components/rtxmetal` by
-    /// what the build is for — so everything here is written once for both: the mirror, the frame,
-    /// the extents, the capabilities. A second copy of this directory is exactly the duplication
-    /// the two-backend split exists to prevent. `mwrender/gl/` is asymmetric with it for a reason:
-    /// that renderer *is* an API, down to its sky and its water.
+    /// **It names no graphics API.** Which one traces is settled a layer down, where
+    /// `Rtx::createRenderer` hands back what this build has — so the mirror, the frame, the extents
+    /// and the capabilities are written against none of it. `mwrender/gl/` is asymmetric with it
+    /// for a reason: that renderer *is* an API, down to its sky and its water.
     ///
     /// **No OpenGL is initialised anywhere under this.** No GL context, no `osgViewer` graphics
     /// window, no interop and no rasterized frame underneath — the window is an SDL surface the

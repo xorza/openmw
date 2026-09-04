@@ -21,11 +21,6 @@ if (OPENMW_RTX_VULKAN)
     target_compile_definitions(openmw-rtx-backends PRIVATE OPENMW_RTX_VULKAN)
 endif()
 
-if (OPENMW_RTX_METAL)
-    target_link_libraries(openmw-rtx-backends PUBLIC openmw-rtx-metal)
-    target_compile_definitions(openmw-rtx-backends PRIVATE OPENMW_RTX_METAL)
-endif()
-
 if (BUILD_WITH_CODE_COVERAGE)
     target_compile_options(openmw-rtx-backends PRIVATE --coverage)
     target_link_libraries(openmw-rtx-backends gcov)

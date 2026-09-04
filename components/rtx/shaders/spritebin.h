@@ -50,17 +50,17 @@ namespace Rtx::Shaders
     /// stride over the rectangle instead, so the worst sprite costs a hundred iterations of a
     /// warp rather than thousands of one thread. A raindrop's one tile leaves the other lanes
     /// idle, and that idleness is cheaper than the spike it prevents.
-    RTX_CONST uint SPRITE_BIN_LANES = 32u;
+    const uint SPRITE_BIN_LANES = 32u;
 
     /// Lanes in one workgroup of the pass over sprites: eight sprites at `SPRITE_BIN_LANES` each.
-    RTX_CONST uint SPRITE_BIN_WORKGROUP = 256u;
+    const uint SPRITE_BIN_WORKGROUP = 256u;
 
     /// Lanes in the one workgroup that turns the tile counts into starts.
     ///
     /// **One workgroup and not a multi-pass scan**, because there are at most tens of thousands of
     /// tiles: each lane takes a contiguous chunk and the lanes' totals are scanned in shared
     /// memory, which is a few microseconds at the largest frame this renderer traces.
-    RTX_CONST uint SPRITE_SCAN_WORKGROUP = 1024u;
+    const uint SPRITE_SCAN_WORKGROUP = 1024u;
 
     /// Lanes that share one tile in the pass that fills its run.
     ///
@@ -70,10 +70,10 @@ namespace Rtx::Shaders
     /// lanes — fifteen workgroups on a card with seventy-six multiprocessors. Thirty-two lanes
     /// take thirty-two sprites at a stride instead, in one coalesced load, and agree on the order
     /// of what matched through a word in shared memory: `spriteruns.comp` says how.
-    RTX_CONST uint SPRITE_RUNS_LANES = 32u;
+    const uint SPRITE_RUNS_LANES = 32u;
 
     /// Lanes in one workgroup of the pass over tiles: eight tiles at `SPRITE_RUNS_LANES` each.
-    RTX_CONST uint SPRITE_RUNS_WORKGROUP = 256u;
+    const uint SPRITE_RUNS_WORKGROUP = 256u;
 
     /// What the three dispatches are handed.
     struct SpriteBinConstants

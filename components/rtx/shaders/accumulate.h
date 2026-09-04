@@ -62,7 +62,7 @@ namespace Rtx::Shaders
 #endif
 
     /// Threads along each edge of the accumulator's workgroup.
-    RTX_CONST uint ACCUMULATE_WORKGROUP = 8;
+    const uint ACCUMULATE_WORKGROUP = 8;
 
     /// The longest history a pixel may keep, in frames.
     ///
@@ -78,7 +78,7 @@ namespace Rtx::Shaders
     /// sweep nobody has run: measured on the grid the filter tests use, sixteen frames take 44% of
     /// the error the spatial cascade cannot reach, but no other count has been tried against it.
     /// Until one is, this is a number picked from the half of the trade that can be reasoned about.
-    RTX_CONST float ACCUMULATE_FRAMES = 16.0f;
+    const float ACCUMULATE_FRAMES = 16.0f;
 
     /// How far above the running mean a sample may sit before it is taken as an outlier rather than
     /// as light, in standard deviations.
@@ -96,7 +96,7 @@ namespace Rtx::Shaders
     ///
     /// Four sigma leaves a Gaussian tail of one sample in sixteen thousand, which at sixteen frames
     /// of history is a clamp that fires on nothing that is really there.
-    RTX_CONST float ACCUMULATE_SIGMAS = 4.0f;
+    const float ACCUMULATE_SIGMAS = 4.0f;
 
     /// How many frames a pixel needs before its second moment describes a spread rather than a
     /// coincidence.
@@ -104,7 +104,7 @@ namespace Rtx::Shaders
     /// **Under this the outlier clamp holds off and the cascade is told the pixel is as uncertain as
     /// a pixel can be.** Both are the same admission: a mean of two samples has a variance, and it
     /// is not one anybody should filter by.
-    RTX_CONST float ACCUMULATE_SETTLED = 4.0f;
+    const float ACCUMULATE_SETTLED = 4.0f;
 
     /// Where the far plane lands once a distance has been scaled for `ACCUMULATE_SURFACE`.
     ///
@@ -116,7 +116,7 @@ namespace Rtx::Shaders
     /// the near end falls to 5e-6, a denormal whose step is 1.2% of the value against a tolerance of
     /// 2%. Putting the far plane at 2^15 does neither: a surface a world unit from the eye stores
     /// 0.164, eleven binades clear of where a half stops holding proportion.
-    RTX_CONST float ACCUMULATE_DISTANCE_RANGE = 32768.0f;
+    const float ACCUMULATE_DISTANCE_RANGE = 32768.0f;
 
     /// What a level of the wavelet is handed, and what the accumulator writes for it.
     struct AccumulateConstants
@@ -143,7 +143,7 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-#if defined(RTX_HOST) || defined(__METAL_VERSION__)
+#ifdef RTX_HOST
     static_assert(sizeof(AccumulateConstants) == 68, "AccumulateConstants must be scalar-packed on every side");
 #endif
 

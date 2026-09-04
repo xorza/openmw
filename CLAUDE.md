@@ -97,22 +97,19 @@ the world looks like comes over.
 
 ## Where the code lives
 
-The picture is reached twice — **Vulkan on Ada-class NVIDIA, Metal on Apple silicon** — as two
-backends behind one API-neutral core, not a portability layer over either.
+The picture is reached with **Vulkan on Ada-class NVIDIA**, behind an API-neutral core rather than
+through a portability layer. The core stays neutral although one backend reads it: what belongs
+there is what is true of the content and of light transport, and a fact about Vulkan that leaks into
+it is a bug whether or not a second backend ever arrives.
 
 - `components/rtx/` — the core: the scene description, the light transport, what the scene *is*.
   Written once, and it carries no graphics API and no game headers.
-- `components/rtxvulkan/`, `components/rtxmetal/` — the backends, picked by
-  `components/rtxbackends/`. What is true of an API lives here, written twice, and that cost is paid
-  rather than abstracted away.
+- `components/rtxvulkan/` — the backend, reached through `components/rtxbackends/`. What is true of
+  an API lives here and nowhere else.
 - `components/myguirtx/` — MyGUI's backend. `components/surface/` — what the content says a surface
   is.
 - `apps/openmw/mwrender/rtx/` — the game-side owner. `apps/rtxtool/` — the harness.
   `MWRender::Renderer` — the seam against `mwrender/gl/`.
-
-**Each machine develops its own renderer and leaves the other alone.** The backend this box cannot
-run is not built, tested or debugged here; its skipped tests are the result, not a gap to close. The
-core is the exception — a mistake there is one nobody here can see.
 
 ## Traps
 
@@ -201,7 +198,9 @@ re-running `shot`.
 the posture behind them does.
 
 - **`#pragma once`, and includes in five blocks.** Every header in the RTX places opens with
-  `#pragma once` rather than a named guard. Below it come the blocks a blank line apart, in this
+  `#pragma once` rather than a named guard. `components/rtx/shaders/*.h` is the one exception, and
+  `portable.h` says why: `glslc` warns that it is not implemented and carries on. Below the guard
+  come the blocks a blank line apart, in this
   order: the file's own header, the C++ standard library, `<gtest/...>` where a test needs it, other
   libraries, `<components/...>` and `<apps/...>`, then quoted local headers. `.clang-format`
   preserves the blocks and sorts inside each, so the order is the author's and the sorting is not.

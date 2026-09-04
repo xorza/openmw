@@ -9,10 +9,10 @@ namespace Rtx
     {
         /// The two figures a shading language cannot include its way to.
         ///
-        /// **`scene.h` is read by GLSL and by Metal, so it can include no C++ header** — the game's
-        /// own units and gravity are spelled again there, and a copy nothing checks is exactly the
-        /// failure that file's own header comment exists to warn about. A `static_assert` cannot
-        /// reach them: `RTX_CONST` is `const` and a `const float` is not a constant expression.
+        /// **`scene.h` is read by GLSL, so it can include no C++ header** — the game's own units
+        /// and gravity are spelled again there, and a copy nothing checks is exactly the failure
+        /// that file's own header comment exists to warn about. A `static_assert` cannot reach
+        /// them: `const` is `const` and a `const float` is not a constant expression.
         TEST(RtxWaveSpectrumTest, theSharedConstantsAreTheGamesOwn)
         {
             EXPECT_EQ(Shaders::UNITS_PER_METRE, Constants::UnitsPerMeter);

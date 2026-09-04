@@ -38,12 +38,12 @@ namespace Rtx::Shaders
     /// **The launch order the device chose, and nothing asked of it.** This is what the trace was
     /// before it became a ray generation shader, minus the strip permutation a dispatch could
     /// carry and a launch cannot.
-    RTX_CONST uint REORDER_OFF = 0u;
+    const uint REORDER_OFF = 0u;
 
     /// The hit object the traversal answered, and one reorder on it —
     /// `reorderThreadEXT(hitObject)`. The sort is the shader that object names and where the hit is,
     /// and no hint at all, which is where the sources say to start.
-    RTX_CONST uint REORDER_HIT = 1u;
+    const uint REORDER_HIT = 1u;
 
     /// A hint and not the hit object — `reorderThreadEXT(hint, bits)`.
     ///
@@ -51,10 +51,10 @@ namespace Rtx::Shaders
     /// screen-space neighbourhood a thread started in, which is what the eleven channels at the end
     /// of this trace are written through. A hint carries what the shader is about to branch on
     /// without carrying the place.
-    RTX_CONST uint REORDER_HINT = 2u;
+    const uint REORDER_HINT = 2u;
 
     /// Both — `reorderThreadEXT(hitObject, hint, bits)`.
-    RTX_CONST uint REORDER_BOTH = 3u;
+    const uint REORDER_BOTH = 3u;
 
     /// How many closest-hit records the trace's shader binding table holds: one for each
     /// `Rtx::MaterialKind`, in the order that enum names them.
@@ -63,11 +63,11 @@ namespace Rtx::Shaders
     /// `SceneAcceleration::placeRow` writes each instance's shader-table offset from its material's
     /// kind, so traversal follows an index to the shader rather than the shader reading a material
     /// row to find out what it is.
-    RTX_CONST uint HIT_RECORD_COUNT = 3u;
+    const uint HIT_RECORD_COUNT = 3u;
 
     /// The sky, which is the only miss record the trace has.
-    RTX_CONST uint MISS_RECORD_SKY = 0u;
-    RTX_CONST uint MISS_RECORD_COUNT = 1u;
+    const uint MISS_RECORD_SKY = 0u;
+    const uint MISS_RECORD_COUNT = 1u;
 
     /// Morrowind's ten weathers, in the order `MWWorld::WeatherManager` registers them.
     ///
@@ -75,17 +75,17 @@ namespace Rtx::Shaders
     /// along, and it is the order the `Weather_<name>_*` keys sit in a content file. Naming them
     /// here is what lets the game hand over a script id and the harness a name off a command line
     /// and have the two mean one sky — `Rtx::weatherIndex` is the table that joins them.
-    RTX_CONST uint WEATHER_CLEAR = 0u;
-    RTX_CONST uint WEATHER_CLOUDY = 1u;
-    RTX_CONST uint WEATHER_FOGGY = 2u;
-    RTX_CONST uint WEATHER_OVERCAST = 3u;
-    RTX_CONST uint WEATHER_RAIN = 4u;
-    RTX_CONST uint WEATHER_THUNDERSTORM = 5u;
-    RTX_CONST uint WEATHER_ASHSTORM = 6u;
-    RTX_CONST uint WEATHER_BLIGHT = 7u;
-    RTX_CONST uint WEATHER_SNOW = 8u;
-    RTX_CONST uint WEATHER_BLIZZARD = 9u;
-    RTX_CONST uint WEATHER_COUNT = 10u;
+    const uint WEATHER_CLEAR = 0u;
+    const uint WEATHER_CLOUDY = 1u;
+    const uint WEATHER_FOGGY = 2u;
+    const uint WEATHER_OVERCAST = 3u;
+    const uint WEATHER_RAIN = 4u;
+    const uint WEATHER_THUNDERSTORM = 5u;
+    const uint WEATHER_ASHSTORM = 6u;
+    const uint WEATHER_BLIGHT = 7u;
+    const uint WEATHER_SNOW = 8u;
+    const uint WEATHER_BLIZZARD = 9u;
+    const uint WEATHER_COUNT = 10u;
 
     /// Morrowind's cloud deck, as a ray that reached nothing finds it.
     ///
@@ -181,7 +181,7 @@ namespace Rtx::Shaders
     };
 
     /// How many patches the night sky is painted with, over and above the star field.
-    RTX_CONST uint SKY_PATCH_COUNT = 6u;
+    const uint SKY_PATCH_COUNT = 6u;
 
     /// One of them, as a ray that reached nothing finds it.
     ///
@@ -627,7 +627,7 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-#if defined(RTX_HOST) || defined(__METAL_VERSION__)
+#ifdef RTX_HOST
     static_assert(sizeof(MoonDisc) == 88, "MoonDisc must be scalar-packed on every side");
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
@@ -646,9 +646,8 @@ namespace Rtx::Shaders
 
 /// The sky's own colour along a direction: the game's horizon fading to its zenith.
 ///
-/// **The two colours rather than the frame they sit in**, because a shared header may not name an
-/// address space and Metal's reference to a constant buffer must. What this is about is a gradient
-/// between two colours, which is a thing neither backend has an opinion on.
+/// **The two colours rather than the frame they sit in.** What this is about is a gradient between
+/// two colours, and a function that took the frame would tie itself to how a backend binds one.
 ///
 /// Morrowind records one colour for the fog and for the sky's lower half because they are the same
 /// thing seen at two distances, so a ray that reaches nothing has to converge on exactly what a ray

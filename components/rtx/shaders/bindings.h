@@ -35,21 +35,21 @@ namespace Rtx::Shaders
 #endif
 
     /// The top-level structure every ray is traced against.
-    RTX_CONST uint BIND_SCENE = 0;
+    const uint BIND_SCENE = 0;
 
     /// The atomic a specialized trace counts its hits into.
-    RTX_CONST uint BIND_HITS = 1;
+    const uint BIND_HITS = 1;
 
     /// The one uniform: everything the frame itself says, and where every table is.
-    RTX_CONST uint BIND_FRAME = 2;
+    const uint BIND_FRAME = 2;
 
     /// The sea's cascades and the fog's field, which are sampled rather than read.
-    RTX_CONST uint BIND_WAVE_SURFACE = 3;
-    RTX_CONST uint BIND_WAVE_CURVATURE = 4;
-    RTX_CONST uint BIND_FOG_FIELD = 5;
+    const uint BIND_WAVE_SURFACE = 3;
+    const uint BIND_WAVE_CURVATURE = 4;
+    const uint BIND_FOG_FIELD = 5;
 
     /// How many the set declares, which is the last of them and one more.
-    RTX_CONST uint BIND_COUNT = 6;
+    const uint BIND_COUNT = 6;
 
 #ifdef RTX_HOST
 }

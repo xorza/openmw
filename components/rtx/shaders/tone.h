@@ -20,7 +20,7 @@ namespace Rtx::Shaders
 #endif
 
     /// Threads along each edge of the tone pass's workgroup.
-    RTX_CONST uint TONE_WORKGROUP = 8;
+    const uint TONE_WORKGROUP = 8;
 
     /// What the display pass is told: the size of the picture, and what is drawn on it that the
     /// trace could not draw.

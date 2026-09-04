@@ -40,7 +40,7 @@ namespace Rtx::Shaders
     /// **A ceiling and not the size**, because a narrower tile needs a smaller grid: the same band
     /// of wavelengths occupies fewer of its cells, so `Rtx::sWaveTiles` gives each tile its own and
     /// no transform runs over a quadrant of nothing.
-    RTX_CONST uint WAVE_GRID = 512u;
+    const uint WAVE_GRID = 512u;
 
     /// How many tiles the sea is summed from.
     ///
@@ -51,7 +51,7 @@ namespace Rtx::Shaders
     /// half its variance each: two independent fields of half the energy sum to one field of the
     /// full energy and the same spectrum, and their periods do not divide into one another, so the
     /// sum repeats only at a common multiple nothing looks across.
-    RTX_CONST uint WAVE_CASCADES = 2u;
+    const uint WAVE_CASCADES = 2u;
 
     /// How many levels the deepest tile's chain has, which is what any table indexed by one is as
     /// long as.
@@ -60,7 +60,7 @@ namespace Rtx::Shaders
     /// down to one texel, so it holds `log2(WAVE_GRID) + 1` levels; a tile transformed on a smaller
     /// grid has fewer and a sampler clamps to its last. A table over this is then flat past that
     /// tile's own end, which is the answer a clamp gives anyway.
-    RTX_CONST uint WAVE_LEVELS = 10u;
+    const uint WAVE_LEVELS = 10u;
 
 #ifdef RTX_HOST
     static_assert((1u << (WAVE_LEVELS - 1u)) == WAVE_GRID, "WAVE_LEVELS must be the widest grid's own chain");
@@ -71,14 +71,14 @@ namespace Rtx::Shaders
     /// **The last level is one texel, so it is the whole tile's mean.** That is where the surface's
     /// own variance and the variance of its curvature are read from — both are properties of the
     /// sea rather than of a place in it, and a mip chain has already summed them.
-    RTX_CONST float WAVE_COARSEST = 32.0f;
+    const float WAVE_COARSEST = 32.0f;
 
     /// Threads in a transform workgroup, one per butterfly.
     ///
     /// A radix-2 pass over `n` points is `n / 2` butterflies, so the largest grid wants half its own
     /// width. Vulkan promises a thousand and twenty-four threads to a workgroup and thirty-two
     /// kibibytes of shared memory, against the four this holds.
-    RTX_CONST uint WAVE_WORKGROUP = WAVE_GRID / 2u;
+    const uint WAVE_WORKGROUP = WAVE_GRID / 2u;
 
     /// What one pass of the transform is told.
     ///

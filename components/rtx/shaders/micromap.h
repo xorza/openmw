@@ -36,7 +36,7 @@ namespace Rtx::Shaders
 #endif
 
     /// Lanes in one workgroup of the bake: one lane per triangle, so a mesh is tens of groups.
-    RTX_CONST uint MICROMAP_WORKGROUP = 64;
+    const uint MICROMAP_WORKGROUP = 64;
 
     /// The subdivision levels a triangle may be baked at.
     ///
@@ -49,22 +49,22 @@ namespace Rtx::Shaders
     /// **Six at the top is the SDK's cap**, which the memory arithmetic makes necessary: four to
     /// the level in states per triangle, so each level costs four times the one under it, and at
     /// six a town's micromaps measured an eighth to a fifth of its structures' own size.
-    RTX_CONST uint MICROMAP_LEVEL_MIN = 2;
-    RTX_CONST uint MICROMAP_LEVEL_MAX = 6;
+    const uint MICROMAP_LEVEL_MIN = 2;
+    const uint MICROMAP_LEVEL_MAX = 6;
 
     /// The four states of the four-state format, as the specification numbers them: a transparent
     /// microtriangle is ignored without an any-hit, an opaque one commits, and either unknown runs
     /// the any-hit as non-opaque — unless a ray or an instance asks for two states, which folds each
     /// unknown to its half.
-    RTX_CONST uint MICROMAP_TRANSPARENT = 0;
-    RTX_CONST uint MICROMAP_OPAQUE = 1;
-    RTX_CONST uint MICROMAP_UNKNOWN_TRANSPARENT = 2;
-    RTX_CONST uint MICROMAP_UNKNOWN_OPAQUE = 3;
+    const uint MICROMAP_TRANSPARENT = 0;
+    const uint MICROMAP_OPAQUE = 1;
+    const uint MICROMAP_UNKNOWN_TRANSPARENT = 2;
+    const uint MICROMAP_UNKNOWN_OPAQUE = 3;
 
     /// Bits one state takes in the four-state format, packed least significant first, and so how
     /// many states one word holds.
-    RTX_CONST uint MICROMAP_STATE_BITS = 2;
-    RTX_CONST uint MICROMAP_STATES_PER_WORD = 16;
+    const uint MICROMAP_STATE_BITS = 2;
+    const uint MICROMAP_STATES_PER_WORD = 16;
 
     /// The most texels one microtriangle's support may read before the bake leaves it unknown.
     ///
@@ -75,11 +75,11 @@ namespace Rtx::Shaders
     /// four thousand microtriangles is the device's watchdog firing on a cell crossing — measured.
     /// Past this a microtriangle is unknown, which the any-hit decides exactly as it does today,
     /// and only the half it folds to is read, on a sparse grid.
-    RTX_CONST uint MICROMAP_TEXEL_BUDGET = 64;
+    const uint MICROMAP_TEXEL_BUDGET = 64;
 
     /// Samples along each axis of a footprint past the budget, for the mean that folds it. Placed
     /// at the centres of that many bins across each span, in integer arithmetic both sides share.
-    RTX_CONST uint MICROMAP_SPARSE_SAMPLES = 4;
+    const uint MICROMAP_SPARSE_SAMPLES = 4;
 
     /// How many microtriangles a triangle at `level` is cut into.
     RTX_SHADER uint microtriangleCount(uint level)

@@ -23,7 +23,7 @@ namespace Rtx::Shaders
     /// disagreed would be two different ideas of which of two things is brighter. The exposure
     /// histogram measures the frame with it; the trace asks whether the sprites over a pixel put
     /// more light into it than the surface behind them left.
-    RTX_CONST vec3 LUMINANCE_WEIGHTS = vec3(0.2126f, 0.7152f, 0.0722f);
+    const vec3 LUMINANCE_WEIGHTS = vec3(0.2126f, 0.7152f, 0.0722f);
 
 #ifdef RTX_HOST
 }
@@ -44,15 +44,15 @@ RTX_SHADER float brightest(vec3 colour)
 }
 
 /// How much the curve takes off the darkest channel once it has any to take. Khronos's own.
-RTX_CONST float TONE_SHADOW_OFFSET = 0.04;
+const float TONE_SHADOW_OFFSET = 0.04;
 
 /// Where the curve below stops leaving a colour alone and starts bringing it down.
 ///
 /// Khronos's own, less the shadow offset, which it has already taken off by then.
-RTX_CONST float TONE_COMPRESSION_START = 0.8 - TONE_SHADOW_OFFSET;
+const float TONE_COMPRESSION_START = 0.8 - TONE_SHADOW_OFFSET;
 
 /// How far a compressed colour is carried toward white. Khronos's own.
-RTX_CONST float TONE_DESATURATION = 0.15;
+const float TONE_DESATURATION = 0.15;
 
 /// Radiance to a display range: Khronos PBR Neutral, with its shadow offset ramped.
 ///
@@ -99,10 +99,9 @@ RTX_SHADER vec3 toneMap(vec3 colour)
 /// The piecewise form and not the 2.2 approximation. The two differ by several per cent in the
 /// darks, which is where a bounce puts most of what it has to say.
 ///
-/// **Per component, because the two shading languages spell a vector select differently** — GLSL
-/// picks a side with `mix` over a `bvec3`, Metal with `select`, and a ternary is the one form both
-/// read. Nothing changes by it: a select with a boolean weight picks a side rather than blending
-/// toward one.
+/// **Per component, and a ternary rather than a vector select.** GLSL picks a side with `mix` over
+/// a `bvec3`, which the host has no spelling for, so the one form both read is this. Nothing
+/// changes by it: a select with a boolean weight picks a side rather than blending toward one.
 RTX_SHADER float encodeSrgb(float linear)
 {
     if (linear <= 0.0031308)
