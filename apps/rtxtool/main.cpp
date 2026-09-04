@@ -739,6 +739,7 @@ namespace RtxTool
             request.mOrigin = chosen.mOrigin;
             request.mTarget = chosen.mTarget;
             request.mTail = variables["tail"].as<bool>();
+            request.mFrame.mCountCrossings = variables["crossings"].as<bool>();
             request.mDump = variables["dump"].as<std::string>();
             request.mJitter = variables["jitter"].as<bool>();
 

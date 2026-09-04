@@ -355,6 +355,21 @@ namespace Rtx::Shaders
     /// nothing at all.
     const uint MASK_FIRST_PERSON = 0x04u;
 
+    /// A surface that is nowhere opaque, gathered as a depth along the ray rather than met.
+    ///
+    /// **Carried beside `MASK_SOLID` and not instead of it**, because a medium is still something a
+    /// shadow ray is dimmed by and something the eye's traversal has to be handed so it can walk
+    /// past. What this bit is for is the one ray that wants nothing else: `mediumAlong` traverses on
+    /// it alone, so a cell full of shells costs that walk its own instances and no others.
+    const uint MASK_MEDIUM = 0x08u;
+
+    /// The material is a medium — `Rtx::Material::isMedium`.
+    ///
+    /// **A bit and not a second float**, because the row is read at every candidate the eye walks
+    /// past. What a medium's density is is not stored: the texture's own alpha is what a crossing
+    /// square to the surface hides, and the obliquity is the whole of what a thickness adds to it.
+    const uint MATERIAL_MEDIUM = 0x01u;
+
     /// The content doubled every triangle of this mesh for its back — `Rtx::FoldedShape::mSheet`.
     /// With a mask on its material that is a leaf, and `SHEET_TRANSMISSION` says what the light on
     /// its far side is worth to it.
@@ -701,6 +716,13 @@ namespace Rtx::Shaders
         /// Mesh texture coordinates to this material's, as `uv * xy + zw`. The identity for
         /// everything that does not scroll, which is nearly everything.
         vec4 mTextureTransform;
+
+        /// What this material is that no number above says — `MATERIAL_MEDIUM` and nothing else yet.
+        ///
+        /// **Last, so the row's every other field stays where it was.** A `vec4` is four-aligned in
+        /// scalar layout like everything else here, so this costs the row four bytes and moves
+        /// nothing.
+        uint mFlags;
     };
 
     // **The host's layout has to be the one the device reads**, because this side writes these
@@ -713,7 +735,7 @@ namespace Rtx::Shaders
     static_assert(sizeof(GpuLight) == 36, "GpuLight must be scalar-packed on every side");
     static_assert(sizeof(GpuLightGrid) == 28, "GpuLightGrid must be scalar-packed on every side");
     static_assert(sizeof(GpuLayer) == 48, "GpuLayer must be scalar-packed on every side");
-    static_assert(sizeof(GpuMaterial) == 64, "GpuMaterial must be scalar-packed on every side");
+    static_assert(sizeof(GpuMaterial) == 68, "GpuMaterial must be scalar-packed on every side");
     static_assert(sizeof(GpuSprite) == 56, "GpuSprite must be scalar-packed on every side");
 
     static_assert(sizeof(GpuEmitter) == 60, "GpuEmitter must be scalar-packed on every side");

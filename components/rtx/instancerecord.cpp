@@ -83,9 +83,14 @@ namespace Rtx
                 .mMotion = sStillTransform,
                 .mMesh = instance.mMesh,
                 .mKind = worn.mKind,
-                .mMask = water              ? Shaders::MASK_WATER
-                    : instance.mFirstPerson ? Shaders::MASK_FIRST_PERSON
-                                            : Shaders::MASK_SOLID,
+                // **The medium bit rides with whichever of the three this is**, so that every ray
+                // meets it exactly as it did and one more ray can ask for it alone. Everything that
+                // reads a row's mask tests the bit it wants rather than the whole word, which is
+                // what makes a second bit free to ride here.
+                .mMask = (water                          ? Shaders::MASK_WATER
+                                 : instance.mFirstPerson ? Shaders::MASK_FIRST_PERSON
+                                                         : Shaders::MASK_SOLID)
+                    | (worn.mMedium ? Shaders::MASK_MEDIUM : 0u),
 
                 .mCutout = worn.mCutout,
                 .mTranslucent = instance.mOpacity < 1.0f || worn.mTranslucent,

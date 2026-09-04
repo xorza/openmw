@@ -9,7 +9,7 @@
 #include <osg/Image>
 #include <osg/Vec2f>
 
-#include <components/misc/strings/lower.hpp>
+#include <components/misc/resourcehelpers.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/sky/clouds.hpp>
 #include <components/vfs/manager.hpp>
@@ -85,9 +85,14 @@ namespace Rtx
             if (sheet.empty())
                 continue;
 
-            // The file records a bare name and the archive holds it under `textures/`, which is the
-            // same join the scene manager makes before it is handed one.
-            const VFS::Path::Normalized path("textures/" + Misc::StringUtils::lowerCase(std::string(sheet)));
+            // **The name the content records is not the name the archive holds.** `Morrowind.ini`
+            // spells every deck `.tga` and every one of them ships as `.dds`, so a name joined to
+            // `textures/` by hand resolves for the eight weathers whose shipped fallback was already
+            // corrected and for neither of the two an importer writes — which came out as an ash
+            // storm and a blight storm with no deck at all, in silence. `correctTexturePath` is the
+            // same question `mwrender/gl/sky.cpp` asks of the same name.
+            const VFS::Path::Normalized path
+                = Misc::ResourceHelpers::correctTexturePath(VFS::Path::toNormalized(sheet), vfs);
             if (!vfs.exists(path))
                 continue;
 

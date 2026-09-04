@@ -29,6 +29,7 @@ namespace Rtx
         constexpr std::uint8_t sRowCutout = 1;
         constexpr std::uint8_t sRowWater = 2;
         constexpr std::uint8_t sRowMicromapped = 4;
+        constexpr std::uint8_t sRowMedium = 8;
 
         // Addressable as well as build input, because the shader reads the indices back at a hit
         // through the same address the build read them at, and there is no reason for a second copy
@@ -617,6 +618,8 @@ namespace Rtx
             --mMicromappedInstanceCount;
         if ((counted & sRowWater) != 0)
             --mWaterInstanceCount;
+        if ((counted & sRowMedium) != 0)
+            --mMediumInstanceCount;
         counted = 0;
 
         // **A gap is an inactive row and not a row left out.** Its slot is the custom index a hit
@@ -628,10 +631,19 @@ namespace Rtx
             return;
         }
 
-        if (record.mMask == Shaders::MASK_WATER)
+        // **A test on the bit and not on the whole mask.** A row carries `MASK_MEDIUM` beside
+        // whichever of the three it is, so an equality here would stop counting the day anything
+        // that is water is also a medium.
+        if ((record.mMask & Shaders::MASK_WATER) != 0)
         {
             counted |= sRowWater;
             ++mWaterInstanceCount;
+        }
+
+        if ((record.mMask & Shaders::MASK_MEDIUM) != 0)
+        {
+            counted |= sRowMedium;
+            ++mMediumInstanceCount;
         }
 
         // Morrowind's sheet geometry is lit and hit from both faces, so nothing is culled.

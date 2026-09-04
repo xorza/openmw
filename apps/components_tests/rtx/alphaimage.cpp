@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Image>
+
 #include <components/rtx/alphaimage.hpp>
 #include <components/rtx/texturedata.hpp>
 
@@ -217,6 +219,53 @@ namespace Rtx
             EXPECT_TRUE(alpha.isEmpty());
             EXPECT_EQ(alpha.getLevelCount(), 0u);
             EXPECT_EQ(alpha.getWidth(), 0u);
+        }
+
+        /// Two texels by two, in the plain spelling `describeImage` reads.
+        osg::ref_ptr<osg::Image> makeAlphaImage(std::array<std::uint8_t, 4> alphas)
+        {
+            osg::ref_ptr<osg::Image> image = new osg::Image;
+            image->setFileName("paint.dds");
+            image->allocateImage(2, 2, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+
+            for (std::size_t texel = 0; texel < alphas.size(); ++texel)
+            {
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                    image->data()[texel * 4 + channel] = 255;
+                image->data()[texel * 4 + 3] = alphas[texel];
+            }
+
+            return image;
+        }
+
+        /// A wisp is told from a mask by whether the paint ever closes, and 255 is the whole test.
+        ///
+        /// **One below solid is a wisp and solid is a mask**, because that is the difference between
+        /// a cloud and a leaf: a leaf card is opaque wherever the artist drew leaf, and `Tx_Dagoth
+        /// _Cloud` peaks at seven fifteenths of the way up — 119 — over the whole of its 128 by 128.
+        /// A test at anything but the top would call some leaf in the game a cloud.
+        ///
+        /// The solid texel is last, so a walk that answered off the first texel it read fails.
+        TEST(RtxAlphaImageTest, reachesSolidIsTrueOnlyWhereSomeTexelIsFullyOpaque)
+        {
+            EXPECT_TRUE(reachesSolid(*makeAlphaImage({ 0, 119, 254, 255 }))) << "one solid texel is a mask";
+            EXPECT_FALSE(reachesSolid(*makeAlphaImage({ 0, 119, 254, 254 }))) << "one short of solid is a wisp";
+            EXPECT_FALSE(reachesSolid(*makeAlphaImage({ 119, 119, 119, 119 }))) << "the blight cloud's own peak";
+            EXPECT_TRUE(reachesSolid(*makeAlphaImage({ 255, 255, 255, 255 }))) << "an untextured surface's stand-in";
+        }
+
+        /// An image in a format nothing in the game produces is one this cannot answer for.
+        ///
+        /// **True and not false**, because false is what turns a surface into a volume: a texture
+        /// nobody can read is one to go on tracing exactly as before rather than one to stop
+        /// stopping on.
+        TEST(RtxAlphaImageTest, aFormatNobodyShipsReachesSolidRatherThanBecomingAMedium)
+        {
+            osg::ref_ptr<osg::Image> luminance = new osg::Image;
+            luminance->setFileName("odd.dds");
+            luminance->allocateImage(2, 2, 1, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+
+            EXPECT_TRUE(reachesSolid(*luminance));
         }
     }
 }

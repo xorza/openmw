@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -86,8 +87,25 @@ namespace Rtx
         /// The scene's slot for one image, held for as long as this names it.
         Index takeTexture(const osg::Image* image);
 
+        /// Whether `image`'s alpha ever reaches solid — `reachesSolid`, measured at the first
+        /// material that asks and kept for every later one.
+        ///
+        /// **Asked only where the answer changes something**, which is a translucent material's own
+        /// diffuse map: it walks every texel of the finest level, and a cell holds hundreds of
+        /// textures no medium is ever made of.
+        bool diffuseReachesSolid(const osg::Image* image);
+
         /// A node's controllers and the state set they write into, kept so the address is the same
         /// one next frame. See `animate`.
+        /// What the scene knows one image as, and whether its alpha ever reaches solid.
+        ///
+        /// **Unset until something asks**, because the walk over its texels is only worth doing for
+        /// a material that has to tell a wisp from a mask.
+        struct HeldTexture : Known
+        {
+            std::optional<bool> mSolid;
+        };
+
         struct Animated
         {
             osg::ref_ptr<osg::StateSet> mStateSet;
@@ -112,7 +130,7 @@ namespace Rtx
         /// **This entry is a reference, like the emitter resolver's holds.** A slot whose last
         /// material stops naming it drops to nought and is handed out again at once, so an entry
         /// that only remembered the number would answer with a slot another texture had taken over.
-        Identity<const osg::Image> mTextureOf;
+        Identity<const osg::Image, HeldTexture> mTextureOf;
 
         /// Owning for the same reason the identity maps are: a node freed and replaced at the same
         /// address would otherwise be handed the state set the first one's controllers were writing.

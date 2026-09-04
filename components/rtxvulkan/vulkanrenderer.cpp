@@ -171,6 +171,7 @@ namespace Rtx
         , mPool(mDevice)
         , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)
+        , mCountCrossings(options.mCountCrossings)
         , mReorder(options.mReorder)
         , mUpscale(options.mUpscale)
         , mPreset(options.mPreset)
@@ -500,7 +501,7 @@ namespace Rtx
         if (mPass == nullptr)
         {
             mPass = std::make_unique<VisibilityPass>(mDevice, setup, mShaderDirectory, held.mTextures->getLayout(),
-                mChannelLayout, mFogVolumeLayout, mCountHits, mReorder);
+                mChannelLayout, mFogVolumeLayout, mCountHits, mCountCrossings, mReorder);
             mTone = std::make_unique<TonePass>(mDevice, mPool, held.mTextures->getLayout(), mShaderDirectory);
             mMicromapPass = std::make_unique<MicromapPass>(mDevice, held.mTextures->getLayout(), mShaderDirectory);
         }
@@ -967,8 +968,8 @@ namespace Rtx
         // this is the write a frame that never reads it was still paying for. Here and not where
         // the frame opened, because a picture inside the interface traced between the two adds to
         // whichever buffer it is handed.
-        if (mCountHits)
-            *static_cast<std::uint32_t*>(frame.mHitCount.map()) = 0;
+        if (mCountHits || mCountCrossings)
+            *static_cast<FrameCounts*>(frame.mHitCount.map()) = FrameCounts{};
 
         // **What reconstructs this frame, decided once and by one rule.** Every switch below reads
         // this rather than working the interaction out again; the same value goes back in the frame
@@ -987,6 +988,15 @@ namespace Rtx
         // **The one subtraction of two world points, and it happens here.** Two camera positions a
         // step apart subtract exactly in a float; the same difference taken on the device, between
         // coordinates six figures long, would be rounding.
+        // **Only Ray Reconstruction reads the transparency layer**, so only a frame it is about to
+        // upscale hands its sprites over. Every other trace in this renderer composites them itself.
+        sampled.mLayerCompositedAfter = mUpscaler != nullptr ? 1 : 0;
+
+        // The scene's answer and not the camera's, for the reason `VisibilityInputs::mWater` is one:
+        // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
+        // at from.
+        sampled.mMediumInFrame = mWorld.mAcceleration->getMediumInstanceCount() > 0 ? 1 : 0;
+
         sampled.mCameraMotion = camera.mOrigin - mPreviousCamera.mOrigin;
         sampled.mPreviousForward = mPreviousCamera.mCamera.mForward;
         sampled.mPreviousRight = mPreviousCamera.mCamera.mRight;
@@ -1121,6 +1131,9 @@ namespace Rtx
                     .mMotion = mChannels->getMotion(),
                     .mReflectionMotion = mChannels->getReflectionMotion(),
                     .mParticleMask = mChannels->getParticleMask(),
+                    .mTransparency = mChannels->getTransparency(),
+                    .mTransparencyOpacity = mChannels->getTransparencyOpacity(),
+                    .mTransparencyMotion = mChannels->getTransparencyMotion(),
                     .mBiasMask = mChannels->getBiasMask(),
                     .mOutput = *mUpscaled,
                     .mJitter = sampled.mCamera.mJitter,
@@ -1254,6 +1267,10 @@ namespace Rtx
 
         growViewTargets(options.mWidth, options.mHeight);
 
+        // A picture composites its own transparency, for the reason `mLayerCompositedAfter` gives:
+        // nothing upscales one, so nothing would read the layer it handed over.
+        assert(camera.mLayerCompositedAfter == 0 && "a picture inside the interface hands its layer to nobody");
+
         // **Every frame in flight first.** A picture of the world binds the world's tables and
         // bins its sprites into them, and the frame that last traced them may still be reading;
         // a picture of a subject has tables of its own, but the pass, the sea and the fog below
@@ -1267,6 +1284,12 @@ namespace Rtx
         const std::uint32_t slot = options.mScene == sWorld ? mWorldSlot : 0;
 
         const VisibilityInputs inputs = describeInputs(traced, slot, mViewFogVolume.get());
+
+        // **The scene's own, filled here rather than by the caller.** A doll and a map tile are
+        // handed constants that describe a camera, and whether the scene behind that camera holds a
+        // cloud is this renderer's to answer. Copied because the caller's block is theirs.
+        Shaders::VisibilityConstants shown = camera;
+        shown.mMediumInFrame = traced.mAcceleration->getMediumInstanceCount() > 0 ? 1 : 0;
 
         // **Not counted, and not timed.** The hit count and the frame report are the frame's; a
         // picture drawn between two of them would overwrite both. The buffer is still bound because
@@ -1285,7 +1308,7 @@ namespace Rtx
                 Placing{ .mCommands = commands, .mSlot = slot, .mGraveyard = mRing.recording().mGraveyard });
 
             mViewChannels->begin(commands);
-            mPass->record(commands, inputs, *mViewChannels, mRing.recording().mHitCount, camera, true, nullptr);
+            mPass->record(commands, inputs, *mViewChannels, mRing.recording().mHitCount, shown, true, nullptr);
             mViewChannels->handOver(commands);
 
             // A doll and a map tile are one frame with no frame before them, so the accumulator is

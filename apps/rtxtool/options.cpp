@@ -162,6 +162,11 @@ namespace RtxTool
         addOption("tail", bpo::bool_switch(),
             "with `shot`, report what share of the frame's bounce is far enough above the mean to be "
             "a firefly. Wants --upscale=off and an --accumulate long enough to settle the history");
+        addOption("crossings", bpo::bool_switch(),
+            "with `shot`, report how many see-through surfaces an average primary ray crosses. That "
+            "is the census the one-layer peel is sized against, and what an ordered walk of the "
+            "layers would cost. It traces a second ray per pixel, so the frame time beside it is "
+            "not one to quote");
         addOption("albedo", bpo::bool_switch(),
             "write the albedo with no shading over it, which is what a texture problem looks like "
             "when nothing else is in the way");

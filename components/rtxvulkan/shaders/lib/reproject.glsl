@@ -97,12 +97,12 @@ vec2 motionOf(uvec2 pixel, vec3 origin, vec3 direction, float distance, uint ins
     return reprojected(pixel, direction * distance + frame.mCameraMotion + movedBy(instance, point));
 }
 
-/// Where the sprite that owns a pixel stood on the previous frame's screen, in pixels.
+/// Where the puff that owns a pixel stood on the previous frame's screen, in pixels.
 ///
-/// The same reprojection a surface gets: the eye's own walk, and the sprite's travel against it. A
-/// particle born this frame carries no travel, which is the truth — it has no past to point at, and
-/// the mask beside it is what says not to trust the pixel anyway.
-vec2 spriteMotionOf(uvec2 pixel, SpriteClaim claim)
+/// The same reprojection a surface gets: the eye's own walk, and the puff's travel against it. A
+/// particle born this frame carries no travel, and neither does a cloud that stands still — which is
+/// the truth in both cases, one having no past to point at and the other no motion.
+vec2 puffMotionOf(uvec2 pixel, PuffClaim claim)
 {
     return reprojected(pixel, claim.mToward + frame.mCameraMotion - claim.mMoved);
 }

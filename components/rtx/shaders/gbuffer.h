@@ -51,6 +51,8 @@
 #define GBUFFER_GUIDE VK_FORMAT_R16G16B16A16_SFLOAT
 #define GBUFFER_MOTION VK_FORMAT_R32G32_SFLOAT
 #define GBUFFER_DEPTH VK_FORMAT_R32G32_SFLOAT
+#define GBUFFER_LAYER VK_FORMAT_R16G16B16A16_SFLOAT
+#define GBUFFER_LAYER_OPACITY VK_FORMAT_R8G8B8A8_UNORM
 #define GBUFFER_MASK VK_FORMAT_R8_UNORM
 #define GBUFFER_STARS VK_FORMAT_R8G8B8A8_UNORM
 
@@ -61,6 +63,8 @@
 #define GBUFFER_GUIDE rgba16f
 #define GBUFFER_MOTION rg32f
 #define GBUFFER_DEPTH rg32f
+#define GBUFFER_LAYER rgba16f
+#define GBUFFER_LAYER_OPACITY rgba8
 #define GBUFFER_MASK r8
 #define GBUFFER_STARS rgba8
 
@@ -110,8 +114,19 @@ namespace Rtx::Shaders
     /// How much of the star field a pixel still shows, for the pass that draws it.
     const uint CHANNEL_STARS_SHOWN = 10;
 
+    /// The layer the eye sees through, kept apart from the surface behind it.
+    ///
+    /// **Three channels because Ray Reconstruction takes three.** `pInTransparencyLayer`, its
+    /// opacity and its own motion vectors are separate inputs, and handing them over is what lets
+    /// the upscaler reproject a raindrop as a raindrop and the wall behind it as the wall. Composited
+    /// into the colour instead, the two share one vector and one depth and the frame apologises for
+    /// it with `CHANNEL_BIAS_MASK`.
+    const uint CHANNEL_TRANSPARENCY = 11;
+    const uint CHANNEL_TRANSPARENCY_OPACITY = 12;
+    const uint CHANNEL_TRANSPARENCY_MOTION = 13;
+
     /// How many the set declares, which is the last of them and one more.
-    const uint CHANNEL_COUNT = 11;
+    const uint CHANNEL_COUNT = 14;
 
 #ifdef RTX_HOST
 }

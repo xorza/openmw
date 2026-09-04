@@ -617,11 +617,33 @@ namespace Rtx::Shaders
         /// frame, which is what a test wants; a window passes its own count.
         uint mFrame;
 
+        /// Non-zero where something after the trace composites the transparency layer.
+        ///
+        /// **Which is Ray Reconstruction and nothing else.** The sprites reach `CHANNEL_TRANSPARENCY`
+        /// either way, and this says whether anybody will read it: the upscaler is handed it as
+        /// `pInTransparencyLayer` and composites it with a motion vector of its own, and every other
+        /// path — the upscaler off, a doll, a map tile, a test that reads the frame — has nothing
+        /// that would. Those composite it in the trace instead and get the frame they always had.
+        ///
+        /// **Here because this is where the padding was.** `mTables` below is eight-aligned and
+        /// everything above is four, so both languages left four bytes idle in front of it and this
+        /// took them. The flag under it found none left and grew the struct by its own eight, which
+        /// is what the two asserts below now pin.
+        uint mLayerCompositedAfter;
+
+        /// Non-zero where this scene holds a surface the eye passes through — a cloud's shells.
+        ///
+        /// **What keeps `mediumAlong` out of every frame that has none.** The walk traverses on
+        /// `MASK_MEDIUM`, and where nothing carries that bit it still descends the top level once a
+        /// pixel to find nothing: 0.02 ms of a 1.86 ms trace over Seyda Neen. One uniform branch
+        /// takes it back, and the frames it takes it back from are most of the game.
+        uint mMediumInFrame;
+
         /// Where every table a hit reads is. `GpuTables` says why it rides here.
         ///
-        /// **Last, because it is eight-aligned and nothing before it is.** Both languages pad four
-        /// bytes in front of it; anywhere else it would pad the middle of a struct two languages have
-        /// to agree on, and the offset asserted below pins where it landed.
+        /// **Last, because it is eight-aligned and nothing before it is.** Anywhere else it would
+        /// pad the middle of a struct two languages have to agree on, and the offset asserted below
+        /// pins where it landed.
         GpuTables mTables;
     };
 
@@ -632,8 +654,8 @@ namespace Rtx::Shaders
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
     static_assert(sizeof(SkyPatch) == 44, "SkyPatch must be scalar-packed on every side");
-    static_assert(offsetof(VisibilityConstants, mTables) == 984, "GpuTables must land after four bytes of padding");
-    static_assert(sizeof(VisibilityConstants) == 1096, "VisibilityConstants must be scalar-packed on every side");
+    static_assert(offsetof(VisibilityConstants, mTables) == 992, "GpuTables must land where the padding was");
+    static_assert(sizeof(VisibilityConstants) == 1104, "VisibilityConstants must be scalar-packed on every side");
 
 #endif
 

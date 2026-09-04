@@ -109,6 +109,8 @@ namespace RtxTool
         Rtx::GpuBreakdown gpu;
 
         std::uint32_t hits = 0;
+        std::uint32_t crossings = 0;
+        std::uint32_t crossingsMost = 0;
         Rtx::Reconstruction reconstruction;
 
         // **A `do` and not a `for`, for the reason `summarise` takes its argument by reference.** The
@@ -145,6 +147,8 @@ namespace RtxTool
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameStart).count());
             gpu.add(result.mGpu);
             hits = result.mHits;
+            crossings = result.mCrossings;
+            crossingsMost = result.mCrossingsMost;
             ++frame;
         } while (frame < frames);
 
@@ -215,8 +219,19 @@ namespace RtxTool
         }
 
         // Primary rays, so out of the pixels that were traced rather than the pixels written.
-        const double fraction
-            = static_cast<double>(hits) / (static_cast<double>(extents.mRenderWidth) * extents.mRenderHeight) * 100.0;
+        const double traced = static_cast<double>(extents.mRenderWidth) * extents.mRenderHeight;
+        const double fraction = static_cast<double>(hits) / traced * 100.0;
+
+        // **Per ray and not per frame**, because what the number decides is what one march would
+        // cost. Said only where it was asked for: without `--crossings` the trace never counted.
+        std::string census;
+        if (request.mFrame.mCountCrossings)
+        {
+            std::ostringstream line;
+            line << "translucent crossings: " << static_cast<double>(crossings) / traced << " per ray on average, "
+                 << crossingsMost << " on the deepest\n";
+            census = line.str();
+        }
 
         out << "wrote " << Files::pathToUnicodeString(request.mOutput) << ' ' << extents.mOutputWidth << 'x'
             << extents.mOutputHeight;
@@ -245,8 +260,8 @@ namespace RtxTool
             << "  looking at " << placement.mTarget.x() << ", " << placement.mTarget.y() << ", "
             << placement.mTarget.z() << '\n'
             << "primary rays that hit: " << fraction << "%\n"
-            << "instances:  " << stats.mInstances << ", of which " << stats.mCutoutInstances << " are cutouts, "
-            << stats.mMicromappedInstances << " of them micromapped\n"
+            << census << "instances:  " << stats.mInstances << ", of which " << stats.mCutoutInstances
+            << " are cutouts, " << stats.mMicromappedInstances << " of them micromapped\n"
             << tail << "structures: " << stats.mStructureBytes / 1024 << " KiB\n"
             << "micromaps:  " << stats.mMicromapBytes / 1024 << " KiB"
             << (stats.mMicromapsUntextured > 0

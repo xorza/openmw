@@ -45,6 +45,7 @@ namespace Rtx
                 = osg::Vec3f(material.mDiffuseColour.r(), material.mDiffuseColour.g(), material.mDiffuseColour.b()),
                 .mEmissiveColour = material.mEmissiveColour,
                 .mTextureTransform = material.mTextureTransform,
+                .mFlags = material.isMedium() ? Shaders::MATERIAL_MEDIUM : 0u,
             };
         }
 

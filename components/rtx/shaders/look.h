@@ -885,6 +885,19 @@ namespace Rtx::Shaders
     /// Six tenths is the cloud recipe's figure.
     const float SMOKE_ANISOTROPY = 0.6f;
 
+    /// The most a shell of medium may be thickened by the angle the ray crosses it at.
+    ///
+    /// **A painted alpha is what one crossing square to the shell hides, and a slanted crossing goes
+    /// through more of it.** That is the whole of what a thickness is here: the same slab, `1/cos`
+    /// as far through it, so the alpha becomes `1 - (1 - a) ^ (1/cos)`. Head on the content's own
+    /// number is kept exactly, which is where a cloud was authored and judged.
+    ///
+    /// **And it is unbounded at the limb**, where a ray runs along the shell rather than across it —
+    /// a secant that goes to infinity draws a hard opaque ring around every cloud in the game. So it
+    /// is clamped, and four is where a shell stops thickening: a crossing at fifteen degrees off the
+    /// surface, well past where a shell's own curvature has taken over from its slant.
+    const float MEDIUM_GRAZE_LIMIT = 4.0f;
+
     /// The longest history a pixel may keep, in frames.
     ///
     /// **This is the one dial on the trade the accumulator exists to make**, and it is a trade

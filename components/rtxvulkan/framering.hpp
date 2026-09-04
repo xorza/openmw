@@ -21,6 +21,17 @@ namespace Rtx
     class CommandPool;
     class Device;
 
+    /// What the trace counts over a frame, laid out as the shader writes it.
+    ///
+    /// **The host's spelling of `lib/bindings.glsl`'s `HitCount` block**, so the frame that clears
+    /// the buffer and the frame that reads it back agree about where each word sits.
+    struct FrameCounts
+    {
+        std::uint32_t mHits = 0;
+        std::uint32_t mCrossings = 0;
+        std::uint32_t mCrossingsMost = 0;
+    };
+
     /// Everything one frame in flight owns: what it records into, what says it is done, what it
     /// measured, and what it may still be reading.
     ///
@@ -57,7 +68,7 @@ namespace Rtx
         /// Submitted with its fence and not yet waited for.
         bool mPending = false;
 
-        /// Its own timer and its own count, because both are read after the fence, when the
+        /// Its own timer and its own counters, because both are read after the fence, when the
         /// next frame is already writing its own.
         GpuTimer mTimer;
         Buffer mHitCount;
@@ -91,9 +102,10 @@ namespace Rtx
     class FrameRing
     {
     public:
-        /// @param countHits whether a frame's hit count is worth reading back. Borrowed from the
-        ///        renderer, which decides it once and compiles its pipeline against the same answer.
-        FrameRing(const Device& device, CommandPool& pool, const bool& countHits);
+        /// @param countHits,countCrossings whether either of a frame's counts is worth reading
+        ///        back. Borrowed from the renderer, which decides both once and compiles its
+        ///        pipeline against the same answers.
+        FrameRing(const Device& device, CommandPool& pool, const bool& countHits, const bool& countCrossings);
         ~FrameRing();
 
         FrameRing(const FrameRing&) = delete;
@@ -159,6 +171,7 @@ namespace Rtx
         CommandPool& mPool;
 
         const bool& mCountHits;
+        const bool& mCountCrossings;
 
         std::array<FrameSlot, sFrameSlots> mSlots;
 

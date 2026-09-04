@@ -54,12 +54,103 @@ vec3 puffLight(vec3 daylight, vec3 lamps, float sunLit, float skyLit, float fill
         + INV_FOUR_PI * lamps * lampLit;
 }
 
+/// What a painted alpha hides over `crossings` of the thickness it was painted for.
+///
+/// **A painted alpha is an optical depth and not a coverage.** A ray through part of one crossing
+/// hides less and a ray through more than one hides more, and both are `1 - (1 - a) ^ n`. A sprite's
+/// `n` is the share of its own chord the eye sees — one in the open, a sliver where the ball runs
+/// into a wall. A shell of medium's is the secant of the angle the ray crosses it at — one head on,
+/// and more at a slant. One law, and the three places that used to spell it out are the two kinds of
+/// puff and the flame between them.
+///
+/// `SPRITE_ALPHA_LIMIT` says why an alpha of one is not taken at its word.
+float paintedOver(float painted, float crossings)
+{
+    return 1.0 - pow(1.0 - min(painted, SPRITE_ALPHA_LIMIT), crossings);
+}
+
+/// The same per channel, for a flame that absorbs as much as it emits in each of them.
+vec3 paintedOver(vec3 painted, float crossings)
+{
+    return 1.0 - pow(1.0 - min(painted, vec3(SPRITE_ALPHA_LIMIT)), vec3(crossings));
+}
+
 /// How a ball is lit from `toward` against its mean, on the side of it the eye sees.
 ///
 /// A zero `toward` — a lamp that is not there — is lit at the mean, because nothing is being asked.
 float ballWrap(vec3 normal, vec3 toward)
 {
     return 1.0 + SPRITE_WRAP * dot(normal, toward);
+}
+
+/// What the world leaves of each of the three lights a layer of puffs has.
+struct PuffAbove
+{
+    /// What stands between the layer and the sun. One where there is no sun to ask about.
+    float mSunLit;
+
+    /// The same for whichever ambient the frame has: the sky over the layer, or the room around it.
+    float mAmbientLit;
+
+    /// The same for the one lamp the reservoir held, and which way that lamp lies from the layer.
+    float mLampLit;
+    vec3 mLampToward;
+};
+
+/// The three rays a layer of puffs casts, taken once for the layer and not once for a puff.
+///
+/// **One answer for however many puffs a pixel holds**, which is what makes a layer affordable at
+/// all: a shadow ray inside either walk's loop would multiply with the drops a rainstorm puts over a
+/// pixel or the shells a cloud does. What stands between a layer and a light changes slowly — a
+/// torch behind a wall is behind it for the whole layer — so both walks ask here, at the first puff
+/// of theirs that is lit.
+///
+/// **One place, because these are three decisions and not three calls.** Which ambient a frame has,
+/// how far to look for what stands in it, and which lamp of a cell is worth the one ray are answers
+/// a sprite and a cloud shell must not reach differently — and they did not stay the same by being
+/// written twice.
+///
+/// **Cosine about the up out of doors, and the whole sphere in a room**, which is where each ambient
+/// actually comes from: the sky is above a puff and nowhere else, and a room's fill arrives from
+/// every side of it. One ray answers whichever the frame has, because `puffLight` mixes to exactly
+/// one of them. Asked in a room too — a puff's own thickness was once the whole of what stood
+/// between it and the fill, so smoke under a table came out as bright as smoke in the middle of the
+/// floor.
+///
+/// **The sun comes back unthrown.** `SMOKE_ANISOTROPY` belongs to the angle between the ray and the
+/// light rather than to what is in the way, and only the puffs that have a side apply it.
+///
+/// @param sunSeed,ambientSeed,lampSeed the pixel's own key, offset once per question and once per
+///        walk. Three because the three draws must not move together, and one set per walk because
+///        a cloud and a rainstorm over one pixel are two points in the world — `SEED_MEDIUM_SUN`
+///        says what seeding them alike would draw.
+PuffAbove standsOverPuffs(vec3 point, uint sunSeed, uint ambientSeed, uint lampSeed)
+{
+    PuffAbove above;
+    above.mSunLit = 1.0;
+
+    if (sunUp())
+    {
+        uint state = randomSeed(sunSeed);
+        const vec2 draw = vec2(randomNext(state), randomNext(state));
+
+        above.mSunLit
+            = lightThrough(point, coneDirection(frame.mSunPosition, sin(SUN_SHADOW_RADIUS), draw), frame.mFar);
+    }
+
+    above.mAmbientLit
+        = ambientReaching(point, skyLights() ? vec3(0.0, 0.0, 1.0) : vec3(0.0), vec3(0.0), 0.0, ambientSeed);
+
+    // **The lamp that matters where the layer starts, and its answer for all of them.** The
+    // reservoir picks by what a lamp delivers here, so the one traced to is the one the layer would
+    // most notice the loss of.
+    uint lampState = randomSeed(lampSeed);
+    const Reservoir kept = lampsInMedium(lampState, point);
+
+    above.mLampLit = lampVisible(kept, vec2(randomNext(lampState), randomNext(lampState)));
+    above.mLampToward = kept.mTowards;
+
+    return above;
 }
 
 /// What a sprite's own texture lets through to a point on it from `toward`, out of its six-way bake.
@@ -91,10 +182,10 @@ float sixWayThrough(vec3 toward, vec3 planeAcross, vec3 planeUp, vec3 facing, ve
         / weight;
 }
 
-/// One sprite's case for owning a pixel's motion vector.
-struct SpriteClaim
+/// One puff's case for owning a pixel's motion vector.
+struct PuffClaim
 {
-    /// Where the eye stood relative to the sprite.
+    /// Where the eye stood relative to the puff.
     vec3 mToward;
 
     /// How far it travelled since the last frame, in world units.
@@ -105,31 +196,76 @@ struct SpriteClaim
     float mWeight;
 };
 
-/// What the sprites between the eye and `limit` add to the frame, and what they leave of it.
-struct SpriteLayer
+/// What the puffs between the eye and a surface add to the frame, and what they leave of it.
+///
+/// **Two walks fill one of these**, because the two are the same kind of thing: `spritesAlong`
+/// gathers what an emitter drew, and `mediumAlong` gathers the shells of a cloud the content
+/// modelled as geometry. `mergedPuffs` is what puts the two together, and everything downstream —
+/// the air split, the composite, the claim, the layer the upscaler is handed — reads one layer and
+/// never asks which walk filled it.
+struct PuffLayer
 {
-    /// Already fog-attenuated per sprite, so a caller composites this over a frame the fog has
+    /// What the covering puffs look like where they cover a pixel whole — a straight colour and
+    /// not one premultiplied by `1 - mTransmittance`.
+    ///
+    /// **Straight, because that is what a colour is**, and because the two composites want it that
+    /// way at different moments: the frame's own multiplies it by the coverage where it composites,
+    /// and the layer handed to Ray Reconstruction is premultiplied where it is written.
+    /// `visibility.rgen` measured which the upscaler takes.
+    ///
+    /// Already fog-attenuated where it stands, so a caller composites this over a frame the fog has
     /// finished with rather than putting it through the fog a second time.
-    vec3 mRadiance;
+    vec3 mColour;
 
-    /// What survives the covering sprites. One for a frame with only flames in it: additive
+    /// What the additive sprites put in, which no coverage carries.
+    ///
+    /// **Apart from `mColour`, because an alpha blend cannot express a flame.** A layer handed to
+    /// the upscaler is a colour and an opacity, and a flame's opacity is nought by definition — so
+    /// what it adds rides with the frame behind it instead. What that costs is that a plume across
+    /// a flame now dims it, which is the one case this walk's own note says it did not model.
+    vec3 mAdded;
+
+    /// What survives the covering puffs. One for a frame with only flames in it: additive
     /// blending hides nothing by definition.
     float mTransmittance;
 
-    /// The covering sprite that hid the most of this pixel, and the additive one that put the most
+    /// How far along the ray the covering happened, weighted by how much each sprite covered.
+    ///
+    /// **What the caller splits the air at.** A layer that covers what is behind it must not cover
+    /// the haze in front of it, and the mean is the right depth for the same reason the mean colour
+    /// is the right colour: the walk has no order to composite by, so it reports what the coverage
+    /// came to and where it came from. Nought for a frame that covered nothing.
+    float mCoveredAt;
+
+    /// The covering puff that hid the most of this pixel, and the additive sprite that put the most
     /// light into it.
     ///
     /// **Two, because the two kinds of blending are two different ways to own a pixel** and there is
     /// no single number that ranks them against each other. Smoke owns by covering: an unlit puff
     /// contributes no light at all and still decides everything the pixel shows, because what it
     /// shows is the puff. A flame owns by outshining: it hides nothing by definition, so no measure
-    /// of coverage will ever find it. `spriteClaim` is where the two are told apart.
+    /// of coverage will ever find it. `puffClaim` is where the two are told apart.
     ///
     /// One of them wins in the end, because a pixel gets one motion vector and blending two
     /// velocities gives a third that describes neither.
-    SpriteClaim mCovering;
-    SpriteClaim mAdding;
+    PuffClaim mCovering;
+    PuffClaim mAdding;
 };
+
+/// A layer with nothing in it, which is what both walks start from and what either answers with
+/// where it found nothing.
+PuffLayer noPuffs()
+{
+    PuffLayer layer;
+    layer.mColour = vec3(0.0);
+    layer.mAdded = vec3(0.0);
+    layer.mTransmittance = 1.0;
+    layer.mCoveredAt = 0.0;
+    layer.mCovering = PuffClaim(vec3(0.0), vec3(0.0), 0.0);
+    layer.mAdding = PuffClaim(vec3(0.0), vec3(0.0), 0.0);
+
+    return layer;
+}
 
 /// How much of the sprite's rim the mip chain has already eaten, as a factor to taper it by.
 ///
@@ -170,16 +306,13 @@ float spriteTaper(float radial, float lod)
 /// What it does not model is a covering sprite in front of an adding one — a plume across a flame
 /// would dim it, and here it does not. The two are separate emitters in Morrowind's content and
 /// they are stacked rather than crossed.
-SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
+PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 {
-    SpriteLayer layer;
-    layer.mRadiance = vec3(0.0);
-    layer.mTransmittance = 1.0;
-    layer.mCovering = SpriteClaim(vec3(0.0), vec3(0.0), 0.0);
-    layer.mAdding = SpriteClaim(vec3(0.0), vec3(0.0), 0.0);
+    PuffLayer layer = noPuffs();
 
     vec3 covered = vec3(0.0);
     float coverage = 0.0;
+    float coveredAt = 0.0;
     vec3 addedThrough = vec3(1.0);
 
     // The screen's own axes, for reading a sprite's texture the way the quad would have been cut,
@@ -220,22 +353,15 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     // answer they never look at. Negative until read, which no alpha can be.
     float layerMean = -1.0;
 
-    // **What stands over the layer, asked once for it and not once for a puff.** A shadow ray inside
-    // the loop below would multiply with however many sprites a rainstorm puts over a pixel, which
-    // is the reason this was unshadowed at all. Two rays serve the whole layer instead, taken at the
-    // first sprite that is lit — the nearest one, and so the one whose light most of what the pixel
-    // shows is composited from.
-    //
-    // The sun's is skipped where there is no sun. The ambient's is always taken, and what it asks
-    // about is whichever ambient the frame has: the sky over the puff, or the room around it.
-    //
-    // The lamp the layer traced to is also the one it is given a side toward: the reservoir picks
-    // by what a lamp delivers here, so it is the one the layer would most notice the loss of.
+    // **What stands over the layer, asked once for it and not once for a puff** —
+    // `standsOverPuffs` says what the three rays are and why they are shared with the medium's own
+    // walk. Taken at the first sprite that is lit, which is the nearest one and so the one whose
+    // light most of what the pixel shows is composited from.
     bool askedAbove = false;
-    float sunThrough = 1.0;
-    float ambientThrough = 1.0;
-    float lampThrough = 1.0;
-    vec3 lampToward = vec3(0.0);
+    PuffAbove above = PuffAbove(1.0, 1.0, 1.0, vec3(0.0));
+
+    // The pixel's own key, hashed once for the three draws above and the one below.
+    const uint key = pixelKey(pixel);
 
     const vec3 toSun = frame.mSunPosition;
     const vec3 skyward = vec3(0.0, 0.0, 1.0);
@@ -428,10 +554,9 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         if (!(painted > 0.0))
             continue;
 
-        // What the eye's share of the chord hides: exactly what was painted for a whole chord, and
-        // `(1 - painted) ^ fraction` of the background let through for part of one.
-        // `SPRITE_ALPHA_LIMIT` says why the power is not taken at one.
-        const float alpha = 1.0 - pow(1.0 - min(painted, SPRITE_ALPHA_LIMIT), fraction);
+        // What the eye's share of the chord hides, which is `paintedOver`'s own law: the whole of
+        // what was painted for a whole chord, and less for part of one.
+        const float alpha = paintedOver(painted, fraction);
         const vec3 colour = texel.rgb * sprite.mColour;
         const float reaching = exp(-extinction * seen);
 
@@ -450,14 +575,13 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // added, and what twenty add saturates at the white the original's framebuffer clamped
             // to, rather than at twenty times it. The chord cuts a flame at a log the way it cuts
             // smoke at a wall.
-            const vec3 glow
-                = (1.0 - pow(1.0 - min(colour * painted, vec3(SPRITE_ALPHA_LIMIT)), vec3(fraction))) * reaching;
+            const vec3 glow = paintedOver(colour * painted, fraction) * reaching;
             addedThrough *= 1.0 - glow;
 
             const float lit = dot(glow, LUMINANCE_WEIGHTS) * FLAME_INTENSITY;
 
             if (lit > layer.mAdding.mWeight)
-                layer.mAdding = SpriteClaim(direction * seen, sprite.mMoved, lit);
+                layer.mAdding = PuffClaim(direction * seen, sprite.mMoved, lit);
 
             continue;
         }
@@ -465,46 +589,17 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         if (!askedAbove)
         {
             askedAbove = true;
-
-            if (sunUp())
-            {
-                uint state = randomSeed(pixelKey(pixel) + SEED_SPRITE_SUN);
-                const vec2 draw = vec2(randomNext(state), randomNext(state));
-
-                sunThrough = lightThrough(sprite.mPosition,
-                    coneDirection(frame.mSunPosition, sin(SUN_SHADOW_RADIUS), draw), frame.mFar);
-
-            }
-
-            // **Cosine about the up out of doors, and the whole sphere in a room**, which is where
-            // each ambient actually comes from: the sky is above a puff and nowhere else, and a
-            // room's fill arrives from every side of it. One ray answers whichever the frame has,
-            // because `puffLight` mixes to exactly one of them.
-            //
-            // **Asked in a room too**, which it was not: a puff's own thickness was the whole of
-            // what stood between it and the fill, so smoke under a table came out as bright as
-            // smoke in the middle of the floor. `ambientReaching` reads `mAmbientFromSky` again for
-            // how far to look, and in a room that is the furniture rather than the walls.
-            ambientThrough = ambientReaching(sprite.mPosition, skyLights() ? skyward : vec3(0.0), vec3(0.0), 0.0,
-                pixelKey(pixel) + SEED_AMBIENT_REACHING);
-
-            // **The lamp that matters where the layer starts, and its answer for all of them.** The
-            // reservoir picks by what a lamp delivers here, so the one traced to is the one the
-            // layer would most notice the loss of.
-            uint lampState = randomSeed(pixelKey(pixel) + SEED_LAMPS_SPRITE);
-
-            const Reservoir kept = lampsInMedium(lampState, sprite.mPosition);
-            lampThrough = lampVisible(kept, vec2(randomNext(lampState), randomNext(lampState)));
-            lampToward = kept.mTowards;
+            above = standsOverPuffs(sprite.mPosition, key + SEED_SPRITE_SUN, key + SEED_AMBIENT_REACHING,
+                key + SEED_LAMPS_SPRITE);
         }
 
         // What this puff is lit by, over what the layer is: the ball's own side, and what its
         // texture lets through to this texel. A quad hanging in the world keeps the layer's answers
         // — a rain streak is a thin thing seen by what passes through it, and has no side.
-        float sunLit = sunThrough;
-        float skyLit = ambientThrough;
-        float lampLit = lampThrough;
-        float fillLit = ambientThrough;
+        float sunLit = above.mSunLit;
+        float skyLit = above.mAmbientLit;
+        float lampLit = above.mLampLit;
+        float fillLit = above.mAmbientLit;
 
         if (!oriented)
         {
@@ -518,7 +613,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             sunLit *= ballWrap(normal, toSun);
 
             skyLit *= ballWrap(normal, skyward);
-            lampLit *= ballWrap(normal, lampToward);
+            lampLit *= ballWrap(normal, above.mLampToward);
 
             if (emitter.mLighting != NO_TEXTURE)
             {
@@ -532,7 +627,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
                 sunLit *= sixWayThrough(toSun, across, upward, facing, shade, back);
                 skyLit *= sixWayThrough(skyward, across, upward, facing, shade, back);
-                lampLit *= sixWayThrough(lampToward, across, upward, facing, shade, back);
+                lampLit *= sixWayThrough(above.mLampToward, across, upward, facing, shade, back);
                 fillLit *= (shade.x + shade.y + shade.z + shade.w + 1.0 + back) / 6.0;
             }
 
@@ -560,18 +655,22 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
         covered += colour * puffLight(daylight, lamps, sunLit, skyLit, fillLit, lampLit) * (alpha * reaching);
         coverage += alpha;
+        coveredAt += seen * alpha;
         layer.mTransmittance *= 1.0 - alpha;
 
         // **By what it hid and not by what it was lit by.** An unlit puff of smoke sends back no
         // light at all and still decides the whole of what the pixel shows.
         if (alpha > layer.mCovering.mWeight)
-            layer.mCovering = SpriteClaim(direction * seen, sprite.mMoved, alpha);
+            layer.mCovering = PuffClaim(direction * seen, sprite.mMoved, alpha);
     }
 
     if (coverage > 0.0)
-        layer.mRadiance += covered * ((1.0 - layer.mTransmittance) / coverage);
+    {
+        layer.mColour = covered / coverage;
+        layer.mCoveredAt = coveredAt / coverage;
+    }
 
-    layer.mRadiance += (1.0 - addedThrough) * FLAME_INTENSITY;
+    layer.mAdded = (1.0 - addedThrough) * FLAME_INTENSITY;
 
 
     return layer;
@@ -591,7 +690,7 @@ SpriteLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 ///
 /// @param behind the frame as it stood before the sprites were composited over it.
 /// @return a claim whose `mWeight` is nought where the surface keeps its own pixel.
-SpriteClaim spriteClaim(vec3 behind, SpriteLayer layer)
+PuffClaim puffClaim(vec3 behind, PuffLayer layer)
 {
     if (layer.mTransmittance < 0.5)
         return layer.mCovering;
@@ -600,7 +699,42 @@ SpriteClaim spriteClaim(vec3 behind, SpriteLayer layer)
     if (layer.mAdding.mWeight > left)
         return layer.mAdding;
 
-    return SpriteClaim(vec3(0.0), vec3(0.0), 0.0);
+    return PuffClaim(vec3(0.0), vec3(0.0), 0.0);
+}
+
+/// Two layers of puffs as one.
+///
+/// **The same rule each walk already uses inside itself, applied once more.** Neither walk has an
+/// order to composite by, so each reports the exact coverage `1 - prod(1 - a)` filled with its own
+/// coverage-weighted mean colour and taken at its own coverage-weighted depth. Putting two of those
+/// together is the same arithmetic on two terms instead of many, and it is exact wherever the
+/// colours agree — which is what one emitter's smoke and one cloud's shells each are.
+///
+/// **What it gives up is the depth**, and only where both walks found something on one pixel: rain
+/// a few units out and a cloud two thousand away come to one mean the air is split at. The weight
+/// is the coverage, so the one the pixel mostly shows is the one the split is right for.
+PuffLayer mergedPuffs(PuffLayer first, PuffLayer second)
+{
+    const float firstCoverage = 1.0 - first.mTransmittance;
+    const float secondCoverage = 1.0 - second.mTransmittance;
+    const float coverage = firstCoverage + secondCoverage;
+
+    PuffLayer layer;
+    layer.mAdded = first.mAdded + second.mAdded;
+    layer.mTransmittance = first.mTransmittance * second.mTransmittance;
+    layer.mColour = coverage > 0.0
+        ? (first.mColour * firstCoverage + second.mColour * secondCoverage) / coverage
+        : vec3(0.0);
+    layer.mCoveredAt
+        = coverage > 0.0 ? (first.mCoveredAt * firstCoverage + second.mCoveredAt * secondCoverage) / coverage : 0.0;
+
+    // **The stronger case wins outright rather than being blended into the other.** A pixel gets one
+    // motion vector, and a velocity halfway between a raindrop's and a still cloud's describes
+    // neither.
+    layer.mCovering = first.mCovering.mWeight >= second.mCovering.mWeight ? first.mCovering : second.mCovering;
+    layer.mAdding = first.mAdding.mWeight >= second.mAdding.mWeight ? first.mAdding : second.mAdding;
+
+    return layer;
 }
 
 #endif

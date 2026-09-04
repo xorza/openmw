@@ -125,6 +125,13 @@ namespace Rtx
         /// is worse than a slow one.
         bool mCountHits = true;
 
+        /// Whether the trace counts the see-through surfaces each primary ray crosses.
+        ///
+        /// **Off by default, where `mCountHits` is on.** The hit count is an atomic on the pixels
+        /// that hit something; this is a second traversal on every pixel of the frame, so a run
+        /// that left it on would be timing the census rather than the picture.
+        bool mCountCrossings = false;
+
         /// How the trace sorts its threads between the traversal and the shader that resolves what
         /// they found.
         ///
@@ -439,6 +446,16 @@ namespace Rtx
         /// **Nought where `RendererOptions::mCountHits` was cleared**, which the game does and
         /// nothing else should: the trace is then specialized without the atomic entirely.
         std::uint32_t mHits = 0;
+
+        /// See-through surfaces those rays crossed, summed over the frame — the census the peel in
+        /// `visibility.rgen` is sized against. **Nought unless `RendererOptions::mCountCrossings`
+        /// asked for it**, which costs a second traversal a pixel.
+        std::uint32_t mCrossings = 0;
+
+        /// The most any one of those rays crossed, which is what an ordered walk of them would have
+        /// to be sized for. A mean over a frame divides a cloud's own depth by how little of the
+        /// picture it fills.
+        std::uint32_t mCrossingsMost = 0;
 
         /// How long `finishFrame` waited for this frame's fence: what the CPU stood still for the
         /// GPU. Nought where the frame was already finished when it was asked for, which is what a

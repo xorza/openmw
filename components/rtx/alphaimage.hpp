@@ -7,6 +7,11 @@
 
 #include "texturedata.hpp"
 
+namespace osg
+{
+    class Image;
+}
+
 namespace Rtx
 {
     /// A texture's alpha channel, decoded to a byte a texel, at every level the file carried.
@@ -61,4 +66,22 @@ namespace Rtx
         std::vector<MipLevel> mLevels;
         std::vector<std::uint8_t> mValues;
     };
+
+    /// Whether any texel of `image` is fully opaque.
+    ///
+    /// **What tells a wisp from a mask, and it is a fact about the texture alone.** Morrowind keeps
+    /// its foliage and its clouds under one alpha mode, so the mode says nothing: a leaf card is
+    /// solid wherever its paint is, because the paint is a silhouette. A cloud's alpha is a gradient
+    /// that never closes — `Tx_Dagoth_Cloud` peaks at seven fifteenths and `Tx_Dagoth_cloud02` at
+    /// ten — and a surface that is nowhere opaque is not a surface. The eye passes through that and
+    /// stops on the other.
+    ///
+    /// **The finest level alone, which is the only one that can answer.** Every coarser level is an
+    /// average of the one above it, and a mask's average stops reaching solid a level or two down —
+    /// so a chain read whole would call every leaf in the game a wisp. It is also the only one
+    /// decoded.
+    ///
+    /// **True for an image nothing here can decode**, because a texture this cannot answer for is
+    /// not one to turn into a volume on a guess.
+    bool reachesSolid(const osg::Image& image);
 }

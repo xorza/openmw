@@ -20,6 +20,7 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/shaders/gbuffer.h>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/dlss.hpp>
 #include <components/rtxvulkan/dlsspass.hpp>
@@ -190,22 +191,30 @@ namespace Rtx
                 pass = std::make_unique<DlssPass>(*sNgx, commands, render, sOutput, Upscale::Performance, Preset::D);
             });
 
+            // **Every input in the format `GBuffer` gives it, and named rather than spelled.** What
+            // this test proves is that NGX takes the parameter map the renderer builds, and it
+            // proves nothing about a map built out of images the renderer never hands over — the
+            // masks were four bytes here and one byte there, and the two albedos and the guide were
+            // full floats here and halves there. Naming them is also what makes a format changed in
+            // `gbuffer.h` reach this test rather than drift away from it.
+            //
+            // The colour and the output are not the g-buffer's: `VulkanRenderer` makes both at full
+            // float directly, and these follow that.
             const std::unique_ptr<Image> colour
                 = makeImage(device, render, VK_FORMAT_R32G32B32A32_SFLOAT, "test-colour");
-            const std::unique_ptr<Image> diffuse
-                = makeImage(device, render, VK_FORMAT_R32G32B32A32_SFLOAT, "test-diffuse");
-            const std::unique_ptr<Image> specular
-                = makeImage(device, render, VK_FORMAT_R32G32B32A32_SFLOAT, "test-specular");
-            const std::unique_ptr<Image> normals
-                = makeImage(device, render, VK_FORMAT_R32G32B32A32_SFLOAT, "test-normals");
-            const std::unique_ptr<Image> depth = makeImage(device, render, VK_FORMAT_R32_SFLOAT, "test-depth");
-            const std::unique_ptr<Image> motion = makeImage(device, render, VK_FORMAT_R32G32_SFLOAT, "test-motion");
-            // The two the frame writes for what it composites in front of its surfaces. One float
-            // apiece for the reason `gbuffer.h` gives.
-            const std::unique_ptr<Image> reflections
-                = makeImage(device, render, VK_FORMAT_R32G32_SFLOAT, "test-reflections");
-            const std::unique_ptr<Image> particles = makeImage(device, render, VK_FORMAT_R32_SFLOAT, "test-particles");
-            const std::unique_ptr<Image> bias = makeImage(device, render, VK_FORMAT_R32_SFLOAT, "test-bias");
+            const std::unique_ptr<Image> diffuse = makeImage(device, render, GBUFFER_ALBEDO, "test-diffuse");
+            const std::unique_ptr<Image> specular = makeImage(device, render, GBUFFER_ALBEDO, "test-specular");
+            const std::unique_ptr<Image> normals = makeImage(device, render, GBUFFER_GUIDE, "test-normals");
+            const std::unique_ptr<Image> depth = makeImage(device, render, GBUFFER_DEPTH, "test-depth");
+            const std::unique_ptr<Image> motion = makeImage(device, render, GBUFFER_MOTION, "test-motion");
+            const std::unique_ptr<Image> reflections = makeImage(device, render, GBUFFER_MOTION, "test-reflections");
+            const std::unique_ptr<Image> particles = makeImage(device, render, GBUFFER_MASK, "test-particles");
+            const std::unique_ptr<Image> bias = makeImage(device, render, GBUFFER_MASK, "test-bias");
+            const std::unique_ptr<Image> layer = makeImage(device, render, GBUFFER_LAYER, "test-transparency");
+            const std::unique_ptr<Image> layerOpacity
+                = makeImage(device, render, GBUFFER_LAYER_OPACITY, "test-transparency-opacity");
+            const std::unique_ptr<Image> layerMotion
+                = makeImage(device, render, GBUFFER_MOTION, "test-transparency-motion");
             const std::unique_ptr<Image> output
                 = makeImage(device, sOutput, VK_FORMAT_R32G32B32A32_SFLOAT, "test-output");
 
@@ -237,6 +246,9 @@ namespace Rtx
                         .mMotion = *motion,
                         .mReflectionMotion = *reflections,
                         .mParticleMask = *particles,
+                        .mTransparency = *layer,
+                        .mTransparencyOpacity = *layerOpacity,
+                        .mTransparencyMotion = *layerMotion,
                         .mBiasMask = *bias,
                         .mOutput = *output,
                         .mJitter = osg::Vec2f(0.0f, 0.0f),

@@ -139,6 +139,9 @@ namespace Rtx
         NVSDK_NGX_Resource_VK reflections = resourceOf(inputs.mReflectionMotion, mRenderExtent);
         NVSDK_NGX_Resource_VK particles = resourceOf(inputs.mParticleMask, mRenderExtent);
         NVSDK_NGX_Resource_VK bias = resourceOf(inputs.mBiasMask, mRenderExtent);
+        NVSDK_NGX_Resource_VK layer = resourceOf(inputs.mTransparency, mRenderExtent);
+        NVSDK_NGX_Resource_VK layerOpacity = resourceOf(inputs.mTransparencyOpacity, mRenderExtent);
+        NVSDK_NGX_Resource_VK layerMotion = resourceOf(inputs.mTransparencyMotion, mRenderExtent);
 
         NVSDK_NGX_VK_DLSSD_Eval_Params evaluate{};
         evaluate.pInColor = &colour;
@@ -159,6 +162,16 @@ namespace Rtx
         evaluate.pInMotionVectorsReflections = &reflections;
         evaluate.pInIsParticleMask = &particles;
         evaluate.pInBiasCurrentColorMask = &bias;
+
+        // **The layer itself, and not the colour pair below it.** The two are easy to confuse and
+        // the header separates them: these three sit beside the mask and the reflection vectors in
+        // the block it marks optional, and `pInColorBeforeTransparency` sits in the one it marks
+        // research. The pair selects a path through the network and measured worse; these say what
+        // the layer is, what it covers and where it moved, which is the question the mask beside
+        // them can only half answer.
+        evaluate.pInTransparencyLayer = &layer;
+        evaluate.pInTransparencyLayerOpacity = &layerOpacity;
+        evaluate.pInTransparencyLayerMvecs = &layerMotion;
 
         // **The four colour-pair guides are deliberately unset, and that is measured.** All of them
         // sit in the block the header marks `/*** OPTIONAL - only for research purposes ***/`, and

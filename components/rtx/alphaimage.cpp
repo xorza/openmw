@@ -4,8 +4,15 @@
 #include <array>
 #include <cstddef>
 #include <span>
+#include <vector>
+
+#include <osg/Image>
+
+#include <components/debug/debuglog.hpp>
 
 #include "colourblock.hpp"
+#include "error.hpp"
+#include "texturebuilder.hpp"
 
 namespace Rtx
 {
@@ -147,5 +154,43 @@ namespace Rtx
                 std::span(mValues).subspan(at, count));
             at += static_cast<std::uint32_t>(count);
         }
+    }
+
+    bool reachesSolid(const osg::Image& image)
+    {
+        std::vector<MipLevel> levels;
+
+        TextureData described;
+        try
+        {
+            described = describeImage(image, levels);
+        }
+        catch (const Error& what)
+        {
+            // A format nothing in the game produces, which is a mod's business rather than a broken
+            // contract. The caller gets the answer that changes nothing about how the surface is
+            // traced.
+            Log(Debug::Warning) << "cannot read the alpha of \"" << image.getFileName() << "\": " << what.what();
+            return true;
+        }
+
+        if (levels.empty() || levels.front().mWidth == 0 || levels.front().mHeight == 0)
+            return true;
+
+        // **Decoded down to the one level that can answer**, which is three quarters of the work a
+        // whole chain would be: every coarser level is an average of the one above it, and a mask's
+        // average stops reaching solid a level or two down. Handing the description one level is
+        // what says that in code rather than in a comment over a loop that reads `at(0, ...)`.
+        described.mLevels = described.mLevels.subspan(0, 1);
+
+        const AlphaImage alpha(described);
+        const MipLevel& level = levels.front();
+
+        for (std::uint32_t y = 0; y < level.mHeight; ++y)
+            for (std::uint32_t x = 0; x < level.mWidth; ++x)
+                if (alpha.at(0, x, y) == 255)
+                    return true;
+
+        return false;
     }
 }

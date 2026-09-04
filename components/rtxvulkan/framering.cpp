@@ -14,16 +14,17 @@ namespace Rtx
     FrameSlot::FrameSlot(const Device& device, CommandPool& pool)
         : mTimer(device)
         , mHitCount(Buffer::staging(
-              device, sizeof(std::uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
+              device, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         , mGraveyard(device, pool)
         , mGuiGraveyard(device, pool)
     {
     }
 
-    FrameRing::FrameRing(const Device& device, CommandPool& pool, const bool& countHits)
+    FrameRing::FrameRing(const Device& device, CommandPool& pool, const bool& countHits, const bool& countCrossings)
         : mDevice(device)
         , mPool(pool)
         , mCountHits(countHits)
+        , mCountCrossings(countCrossings)
         , mSlots{ { FrameSlot{ device, pool }, FrameSlot{ device, pool } } }
     {
         // Three command buffers a frame to begin with — the first placement's, the trace's, the
@@ -111,9 +112,9 @@ namespace Rtx
 
         // Read after the fence and never before: the count is the device's sum, and the queries
         // are the device's clock.
-        std::uint32_t hits = 0;
-        if (mCountHits)
-            hits = *static_cast<const std::uint32_t*>(frame.mHitCount.map());
+        FrameCounts counted;
+        if (mCountHits || mCountCrossings)
+            counted = *static_cast<const FrameCounts*>(frame.mHitCount.map());
 
         // What this frame may still have been reading is nothing's now.
         frame.mGraveyard.clear();
@@ -129,7 +130,9 @@ namespace Rtx
             mReports.erase(mReports.begin());
 
         mReports.push_back(FrameResult{
-            .mHits = hits,
+            .mHits = counted.mHits,
+            .mCrossings = counted.mCrossings,
+            .mCrossingsMost = counted.mCrossingsMost,
             .mWaitMs = waited,
             .mGpu = frame.mTimer.resolve(),
             .mReconstruction = frame.mReconstruction,

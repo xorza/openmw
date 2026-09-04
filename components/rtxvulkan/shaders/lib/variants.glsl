@@ -58,4 +58,12 @@ layout(constant_id = 4) const bool FOG_UNIFORM = false;
 /// and `Rtx::Reorder` is the host's side of them.
 layout(constant_id = 5) const uint REORDER = REORDER_OFF;
 
+/// Whether the trace counts the see-through surfaces each primary ray crosses.
+///
+/// **A whole traversal, and off wherever nobody asked.** `COUNT_HITS` costs an atomic on the pixels
+/// that hit something; this costs a second walk of the structure on every pixel, so it cannot ride
+/// with it — a benchmark under it would be measuring the census rather than the frame. `shot
+/// --crossings` is the one thing that turns it on.
+layout(constant_id = 6) const bool COUNT_CROSSINGS = false;
+
 #endif

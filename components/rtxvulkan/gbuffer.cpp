@@ -68,6 +68,30 @@ namespace Rtx
         /// the two answers stay together.
         constexpr VkFormat sDepth = GBUFFER_DEPTH;
 
+        /// Half floats for the layer the eye sees through, where the radiance channels take full
+        /// ones.
+        ///
+        /// **The argument above does not reach it.** Full floats are there so a reference summed
+        /// over a thousand frames does not carry a systematic rounding, and nothing sums this: it is
+        /// read once by Ray Reconstruction and by nothing else, and a reference is built with the
+        /// upscaler off — `main.cpp` sets `Upscale::Off` for `--accumulate` and `verify.cpp` for
+        /// every view it renders. So the one path that would care never reads the channel at all.
+        ///
+        /// Eight bytes a pixel rather than sixteen, on a channel handed to the upscaler every frame.
+        constexpr VkFormat sLayer = GBUFFER_LAYER;
+
+        /// Three channels for one number, and a byte apiece.
+        ///
+        /// **Three channels for a reason that is not precision.** A single-channel image handed to
+        /// `pInTransparencyLayerOpacity` is read as a colour rather than as a scalar, so a coverage
+        /// in red alone dimmed the frame's red and left its green and blue whole — grey smoke over a
+        /// blue sky came out cyan. `lib/bindings.glsl` says the rest.
+        ///
+        /// **A byte apiece because a coverage is a fraction**, which is the same argument the two
+        /// masks beside it make and the reason they are bytes. Four bytes a pixel rather than eight,
+        /// on a channel handed to the upscaler every frame.
+        constexpr VkFormat sLayerOpacity = GBUFFER_LAYER_OPACITY;
+
         /// One byte for a yes or a no, and for a value between nought and one. `gbuffer.h` argues
         /// why a byte is enough for both and what a float cost.
         constexpr VkFormat sMask = GBUFFER_MASK;
@@ -99,6 +123,9 @@ namespace Rtx
         , mParticleMask(device, width, height, sMask, sReadable, "g-particle-mask")
         , mBiasMask(device, width, height, sMask, sReadable, "g-bias-mask")
         , mStarsShown(device, width, height, sStars, sUsage, "g-stars-shown")
+        , mTransparency(device, width, height, sLayer, sUsage, "g-transparency")
+        , mTransparencyOpacity(device, width, height, sLayerOpacity, sUsage, "g-transparency-opacity")
+        , mTransparencyMotion(device, width, height, sMotion, sUsage, "g-transparency-motion")
     {
         try
         {
@@ -178,6 +205,9 @@ namespace Rtx
         every[Shaders::CHANNEL_PARTICLE_MASK] = &mParticleMask;
         every[Shaders::CHANNEL_BIAS_MASK] = &mBiasMask;
         every[Shaders::CHANNEL_STARS_SHOWN] = &mStarsShown;
+        every[Shaders::CHANNEL_TRANSPARENCY] = &mTransparency;
+        every[Shaders::CHANNEL_TRANSPARENCY_OPACITY] = &mTransparencyOpacity;
+        every[Shaders::CHANNEL_TRANSPARENCY_MOTION] = &mTransparencyMotion;
 
         // A channel this forgot is a null the sweeps below would walk off, and nothing else says so.
         assert(std::find(every.begin(), every.end(), nullptr) == every.end() && "a channel slot the list did not fill");

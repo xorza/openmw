@@ -54,6 +54,17 @@ namespace Rtx
         /// carry no motion of their own.
         const Image& mParticleMask;
 
+        /// The layer the eye sees the frame through, its coverage and its own motion.
+        ///
+        /// **The one part of the frame that has a second motion vector and can say so.** Composited
+        /// into the colour, a raindrop and the wall behind it share one vector and one depth;
+        /// handed over here, the upscaler reprojects each by its own. `GBuffer::getTransparency`
+        /// says how the three are formed and `DlssPass::record` why they are not the colour pair
+        /// that measured worse.
+        const Image& mTransparency;
+        const Image& mTransparencyOpacity;
+        const Image& mTransparencyMotion;
+
         /// Where the past must not be carried forward: those sprites, and the water whose
         /// reflections move with the surface rather than with what is reflected.
         const Image& mBiasMask;

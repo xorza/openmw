@@ -144,6 +144,22 @@ namespace Rtx
         /// knows there is no sky here at all.
         const Image& getStarsShown() const { return mStarsShown; }
 
+        /// The layer the eye sees through, its coverage and its own motion — what Ray Reconstruction
+        /// takes as `pInTransparencyLayer` and its two companions. `gbuffer.h` says why they are
+        /// three channels and not one composite.
+        ///
+        /// **The opacity is three channels for one number**, because the upscaler reads it as a
+        /// colour: `GBuffer::sLayer` says what a single channel drew instead.
+        ///
+        /// **The motion is full floats for `getMotion`'s reason and not for this channel's own.** A
+        /// raindrop's vector spans the frame when the camera turns, and a half float lands only on
+        /// whole pixels above 1024 — which throws away the sub-pixel accuracy the upscaler is being
+        /// handed the layer for. The colour beside it is halved, and `GBuffer::sLayer` says why the
+        /// two answers differ.
+        const Image& getTransparency() const { return mTransparency; }
+        const Image& getTransparencyOpacity() const { return mTransparencyOpacity; }
+        const Image& getTransparencyMotion() const { return mTransparencyMotion; }
+
         /// The set that names every channel, for the pass that writes them.
         ///
         /// **Written once, when the channels are made, and never again.** The images live as long as
@@ -195,6 +211,9 @@ namespace Rtx
         Image mParticleMask;
         Image mBiasMask;
         Image mStarsShown;
+        Image mTransparency;
+        Image mTransparencyOpacity;
+        Image mTransparencyMotion;
 
         VkDescriptorPool mPool = VK_NULL_HANDLE;
         VkDescriptorSet mSet = VK_NULL_HANDLE;

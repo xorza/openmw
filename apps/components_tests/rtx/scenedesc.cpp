@@ -180,6 +180,42 @@ namespace Rtx
                 .mAlphaRef = 0.3f,
                 .mAlphaMode = AlphaMode::Cutout };
             EXPECT_FALSE(tested.isTranslucent()) << "a mask the content asked to test is a mask";
+
+            // And the texture is the other half of what tells a pane from a cloud. Neither of them
+            // is a medium on its own answer: the leaf keeps its mask whatever its paint does, and
+            // the pane stays a surface while its paint closes anywhere.
+            EXPECT_FALSE(leaf.isMedium());
+            EXPECT_FALSE(pane.isMedium());
+        }
+
+        /// A medium is a translucent material whose paint never closes, and it takes both.
+        ///
+        /// **The two facts are independent and neither implies the other.** A leaf card carries paint
+        /// that reaches solid and a material that does not blend, so it stays a mask however it is
+        /// marked. A pane of stained glass blends and has lead came in it, so something still stops
+        /// on it. A cloud has neither, and a ray goes through it.
+        ///
+        /// **And a material with no diffuse map at all is a surface**, which is an untextured pane:
+        /// all glass, no paint, and a thing to stop on wherever it stands.
+        TEST(RtxSceneDescTest, aMediumIsBlendedEverywhereAndPaintedSolidNowhere)
+        {
+            constexpr Index texture = 3;
+            const osg::Vec4f faint(1.0f, 1.0f, 1.0f, 0.3f);
+
+            const Material cloud{
+                .mDiffuse = texture, .mDiffuseColour = faint, .mAlphaMode = AlphaMode::Blend, .mDiffuseNeverSolid = true
+            };
+            EXPECT_TRUE(cloud.isMedium());
+            EXPECT_TRUE(cloud.getTraversed().mMedium) << "and the placements wearing it are told";
+
+            const Material stained{ .mDiffuse = texture, .mDiffuseColour = faint, .mAlphaMode = AlphaMode::Blend };
+            EXPECT_FALSE(stained.isMedium()) << "paint that closes is something to stop on";
+
+            const Material leaf{ .mDiffuse = texture, .mAlphaMode = AlphaMode::Blend, .mDiffuseNeverSolid = true };
+            EXPECT_FALSE(leaf.isMedium()) << "an opaque material, whatever its paint does";
+
+            const Material glass{ .mDiffuseColour = faint, .mAlphaMode = AlphaMode::Blend };
+            EXPECT_FALSE(glass.isMedium()) << "no map to have measured";
         }
 
         /// The row a bone standing `z` up carries: the identity's three rows with the translation

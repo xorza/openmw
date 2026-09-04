@@ -191,6 +191,14 @@ namespace Rtx
         /// no waves, no caustics and no underwater column in it — `HAS_SEA` is what removes them.
         std::uint32_t getWaterInstanceCount() const { return mWaterInstanceCount; }
 
+        /// How many of them are a medium the eye passes through — `Rtx::Material::isMedium`.
+        ///
+        /// **What says whether the trace has to gather one at all.** `mediumAlong` walks the
+        /// structure on a mask of its own, and where no instance carries that mask the walk still
+        /// descends the top level and finds nothing: measured at 0.02 ms of a 1.86 ms trace over
+        /// Seyda Neen. `VisibilityConstants::mMediumInFrame` is what carries this to the shader.
+        std::uint32_t getMediumInstanceCount() const { return mMediumInstanceCount; }
+
         /// Bytes held by the structures themselves, not counting the geometry they were built from.
         VkDeviceSize getStructureBytes() const { return mBottomLevelStorage.getBytes() + mTopLevelBytes; }
 
@@ -364,6 +372,7 @@ namespace Rtx
         std::uint32_t mCutoutInstanceCount = 0;
         std::uint32_t mMicromappedInstanceCount = 0;
         std::uint32_t mWaterInstanceCount = 0;
+        std::uint32_t mMediumInstanceCount = 0;
 
         /// **Two totals, each assigned, because one accumulated.** The bottom levels are made once
         /// and the top level again every frame that moves, so adding both to one figure reported a

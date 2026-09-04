@@ -150,13 +150,14 @@ namespace Rtx
 
     VisibilityPass::VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
         VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-        bool countHits, Reorder reorder)
+        bool countHits, bool countCrossings, Reorder reorder)
         : mDevice(device)
         , mBlueNoise(
               uploadBuffer(device, batch, BlueNoise::shared().getValues(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT))
         , mConstants(Buffer::deviceLocal(device, sizeof(Shaders::VisibilityConstants),
               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
         , mCountHits(countHits ? 1u : 0u)
+        , mCountCrossings(countCrossings ? 1u : 0u)
         , mReorder(reorder)
         , mChannelLayout(channelLayout.getHandle())
         , mVolumeLayout(volumeLayout.getHandle())
@@ -224,9 +225,10 @@ namespace Rtx
                     // The volume traces no primary ray and reorders nothing, so it counts none and
                     // sorts none whatever the build asked for; every other constant it takes is the
                     // tuple's own, and no even air ever reaches the volume's table.
-                    const std::array<std::uint32_t, 6> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
+                    const std::array<std::uint32_t, 7> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
                         variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, variant.mUniformFog ? 1u : 0u,
-                        volume ? Shaders::REORDER_OFF : static_cast<std::uint32_t>(mReorder) };
+                        volume ? Shaders::REORDER_OFF : static_cast<std::uint32_t>(mReorder),
+                        volume ? 0u : mCountCrossings };
 
                     if (volume)
                         mScatterPipelines[variant.index()] = std::make_unique<ComputePipeline>(mDevice, sBindings, 0,

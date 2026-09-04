@@ -127,13 +127,16 @@ namespace Rtx
         ///        facility: `shot` prints it and a test asserts on it, and nothing in the game reads
         ///        it — so it is specialized away rather than branched on, and the game's module
         ///        carries no atomic at all.
+        /// @param countCrossings whether it also counts the see-through surfaces each of those rays
+        ///        crosses. A second traversal a pixel, so it is a switch of its own and is off
+        ///        wherever a frame time is being taken.
         /// @param reorder how the trace sorts the threads its launch handed it, between the
         ///        traversal and the shader that resolves what it found. Fixed for the life of the
         ///        pass, the way `countHits` is: it is a decision about the build and not about what
         ///        is being looked at.
         VisibilityPass(const Device& device, Batch& batch, const std::filesystem::path& shaderDirectory,
             VkDescriptorSetLayout textureLayout, const SetLayout& channelLayout, const SetLayout& volumeLayout,
-            bool countHits, Reorder reorder);
+            bool countHits, bool countCrossings, Reorder reorder);
 
         VisibilityPass(const VisibilityPass&) = delete;
         VisibilityPass& operator=(const VisibilityPass&) = delete;
@@ -215,6 +218,7 @@ namespace Rtx
         /// Fixed for the life of the pass, where the four in `VisibilityVariant` are the frame's:
         /// what counts hits is which binary was built and not what is being looked at.
         std::uint32_t mCountHits = 0;
+        std::uint32_t mCountCrossings = 0;
 
         /// The same, for what the launch is asked to do with its threads.
         Reorder mReorder = Reorder::Off;

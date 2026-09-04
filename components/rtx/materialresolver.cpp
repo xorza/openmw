@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <optional>
 #include <string>
 
 #include <osg/Image>
@@ -19,6 +20,7 @@
 #include <components/terrain/terraindrawable.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "alphaimage.hpp"
 #include "extractionstats.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
@@ -319,9 +321,28 @@ namespace Rtx
         // **Held, because this entry is the reference.** `mTextureOf` says why a slot the map names
         // has to be one nothing else can hand out.
         mScene.holdTexture(index);
-        mTextureOf.emplace(image, Known{ .mIndex = index, .mEpoch = mPass.mEpoch });
+        mTextureOf.emplace(image, HeldTexture{ { .mIndex = index, .mEpoch = mPass.mEpoch }, std::nullopt });
 
         return index;
+    }
+
+    bool MaterialResolver::diffuseReachesSolid(const osg::Image* const image)
+    {
+        if (image == nullptr)
+            return true;
+
+        // **Asked only of an image `takeTexture` already met**, which is the only way a material
+        // can come to name one. Anything else is a texture this cannot answer for, and the answer
+        // that leaves the surface traced exactly as it was is that it reaches solid.
+        const auto known = mTextureOf.find(image);
+        if (known == mTextureOf.end())
+            return true;
+
+        std::optional<bool>& solid = known->second.mSolid;
+        if (!solid.has_value())
+            solid = reachesSolid(*image);
+
+        return *solid;
     }
 
     Material MaterialResolver::readMaterial(std::span<const Shading> shading)
@@ -341,7 +362,11 @@ namespace Rtx
             return material;
         }
 
-        material.mDiffuse = takeTexture(described->getTexture(Surface::TextureRole::Diffuse));
+        // Kept, because the medium test below asks about the same image and asking the description
+        // twice for it is asking twice.
+        const osg::Image* const diffuse = described->getTexture(Surface::TextureRole::Diffuse);
+
+        material.mDiffuse = takeTexture(diffuse);
         material.mEmissive = takeTexture(described->getTexture(Surface::TextureRole::Emissive));
 
         // The two normal roles differ in what the alpha channel holds, and parallax is a rasterizer
@@ -377,6 +402,12 @@ namespace Rtx
         const osg::Vec2f offset = described->mTextureOffset;
         material.mTextureTransform = osg::Vec4f(
             scale.x(), scale.y(), 0.5f * (1.0f - scale.x()) + offset.x(), 0.5f * (1.0f - scale.y()) + offset.y());
+
+        // **Last, and only for the surfaces the answer separates.** Every field the test reads is
+        // filled above, and the walk over a texture's texels is worth nothing to a material that is
+        // opaque, masked, or has no diffuse map to read — `Material::isMedium` is the other half.
+        if (material.isTranslucent() && material.mDiffuse != sNoIndex)
+            material.mDiffuseNeverSolid = !diffuseReachesSolid(diffuse);
 
         return material;
     }

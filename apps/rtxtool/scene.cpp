@@ -63,6 +63,7 @@ namespace RtxTool
         std::uint32_t cutouts = 0;
         std::uint32_t tested = 0;
         std::uint32_t translucent = 0;
+        std::uint32_t media = 0;
         std::uint32_t glowing = 0;
 
         // **Counted off the scene and not off a walk's own account.** What a walk reports it met is
@@ -75,6 +76,7 @@ namespace RtxTool
             cutouts += material.isCutout() ? 1 : 0;
             tested += material.mAlphaMode == Rtx::AlphaMode::Cutout ? 1 : 0;
             translucent += material.isTranslucent() ? 1 : 0;
+            media += material.isMedium() ? 1 : 0;
             glowing += material.mEmissiveColour.length2() > 0.0f || material.mEmissive != Rtx::sNoIndex ? 1 : 0;
             flattened += material.mFlatten ? 1 : 0;
         }
@@ -86,6 +88,7 @@ namespace RtxTool
         const osg::Vec3f& ambient = staged.getLighting().mDaylight.mAmbient;
         out << "  cutout materials:     " << cutouts << ", " << tested << " of them alpha-tested outright\n"
             << "  translucent:          " << translucent << ", which a cutoff cannot answer for\n"
+            << "  media:                " << media << " of those are nowhere opaque, so nothing stops on them\n"
             << "  emissive materials:   " << glowing << '\n'
             << "  lights:               " << staged.getScene().getLights().size() << " casting, ambient " << ambient.x()
             << ", " << ambient.y() << ", " << ambient.z() << '\n'

@@ -43,7 +43,8 @@ namespace Rtx
                 GTEST_SKIP() << "no device";
 
             const bool countHits = false;
-            FrameRing ring(getDevice(), getPool(), countHits);
+            const bool countCrossings = false;
+            FrameRing ring(getDevice(), getPool(), countHits, countCrossings);
 
             // Filled to the brim: nothing collects, so every frame stays in flight, exactly as
             // `RtxTool::runWindow` leaves the ring.

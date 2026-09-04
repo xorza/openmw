@@ -232,12 +232,16 @@ namespace Rtx
         /// game's does not.
         bool mCountHits = false;
 
+        /// Whether it counts the see-through surfaces each primary ray crosses.
+        /// `RendererOptions::mCountCrossings` says why that is a switch of its own.
+        bool mCountCrossings = false;
+
         /// The frames in flight, their fences and what each may still be reading.
         ///
-        /// **After `mCountHits`, which it borrows.** Declaration order is construction order, and a
-        /// reference bound to a member that has not been given its value yet is a trap even where
-        /// nothing reads it until later.
-        FrameRing mRing{ mDevice, mPool, mCountHits };
+        /// **After the two counters, which it borrows.** Declaration order is construction order,
+        /// and a reference bound to a member that has not been given its value yet is a trap even
+        /// where nothing reads it until later.
+        FrameRing mRing{ mDevice, mPool, mCountHits, mCountCrossings };
 
         /// What the trace this builds does with the threads its launch handed it. Fixed at
         /// construction for the reason `mCountHits` is: it is a specialization constant, and the

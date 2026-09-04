@@ -114,6 +114,24 @@ layout(set = 2, binding = CHANNEL_BIAS_MASK, GBUFFER_MASK) uniform writeonly ima
 /// transmittance. Nought on every pixel that hit something, which is also how that pass knows.
 layout(set = 2, binding = CHANNEL_STARS_SHOWN, GBUFFER_STARS) uniform writeonly image2D starsShown;
 
+/// What the eye sees the frame through: the sprites, and the haze they stand in front of.
+///
+/// **Premultiplied, so the composite is `layer + (1 - opacity) * behind`.** `visibility.rgen` says
+/// how that was measured, and what a straight colour drew instead.
+layout(set = 2, binding = CHANNEL_TRANSPARENCY, GBUFFER_LAYER) uniform writeonly image2D transparency;
+
+/// How much of the pixel that layer covers. A flame covers nothing and still writes a radiance.
+///
+/// **Three channels for one number, and it is not waste.** Written to a one-channel image the
+/// upscaler read it as a colour — coverage in red and nought in green and blue — so it dimmed the
+/// frame's red where a puff stood and let its green and blue through whole. A chimney's grey smoke
+/// came out cyan, and so did a splash and a plume. The two masks beside this one are single-channel
+/// and are read as scalars; this one is not, and the only way to find that out was to look.
+layout(set = 2, binding = CHANNEL_TRANSPARENCY_OPACITY, GBUFFER_LAYER_OPACITY) uniform writeonly image2D transparencyOpacity;
+
+/// Where the layer stood on the last frame's screen, which is not where the surface behind it stood.
+layout(set = 2, binding = CHANNEL_TRANSPARENCY_MOTION, GBUFFER_MOTION) uniform writeonly image2D transparencyMotion;
+
 // One atomic per hit on a single address, which looks like contention and measures as nothing: at
 // 3840x2160 over Seyda Neen the trace runs 0.57-0.79 ms, and a subgroup reduction in place of this
 // ran 0.65-0.78 for an identical count. Only 5.5% of rays hit, and the reduction would have cost the
@@ -122,6 +140,15 @@ layout(set = 2, binding = CHANNEL_STARS_SHOWN, GBUFFER_STARS) uniform writeonly 
 layout(set = 0, binding = BIND_HITS) buffer HitCount
 {
     uint hits;
+
+    /// The see-through surfaces those rays crossed, summed over the frame, and the most any one ray
+    /// crossed. `COUNT_CROSSINGS` says what they are for and why they are not counted with the hits.
+    ///
+    /// **The worst ray beside the mean**, because a mean over a frame answers a question nobody
+    /// asked: a cloud that fills a tenth of the picture divides its own depth by ten, and what a
+    /// march costs is what the deepest ray in it does.
+    uint crossings;
+    uint crossingsMost;
 };
 
 // **A buffer and not a push constant.** The frame's description passed 256 bytes, which is every

@@ -66,6 +66,17 @@ const uint SEED_SHEET_SIDE = SEED_LAMPS_SPRITE + 1u;
 /// weighed — which is the ordering `gather` states at the top of itself.
 const uint SEED_INDIRECT_LIGHT = SEED_SHEET_SIDE + 1u;
 
+/// And three for the medium's own layer: where on the sun's disc its shadow ray leaves from, which
+/// way its ambient ray goes, and which lamp it holds.
+///
+/// **Its own and not the sprite layer's**, although the two ask the same three questions. A cloud
+/// and a rainstorm over one pixel are two points in the world, and seeded alike they would draw the
+/// same directions at both — which is a pattern across the frame rather than noise, and the filter
+/// keeps a pattern.
+const uint SEED_MEDIUM_SUN = SEED_INDIRECT_LIGHT + 1u;
+const uint SEED_MEDIUM_AMBIENT = SEED_MEDIUM_SUN + 1u;
+const uint SEED_LAMPS_MEDIUM = SEED_MEDIUM_AMBIENT + 1u;
+
 /// How far each stream's sequence advances between frames.
 ///
 /// **An additive recurrence with an irrational step**, which is the cheapest sequence whose every

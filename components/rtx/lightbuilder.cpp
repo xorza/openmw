@@ -415,9 +415,17 @@ namespace Rtx
             "Glare_View", "Wind_Speed", "Cloud_Speed", "Clouds_Maximum_Percent" };
 
         const std::string prefix = "Weather_" + std::string(weather) + "_";
+        // **What it names is the data and not a tool.** `openmw-iniimporter` is what writes these
+        // keys on an ordinary install, and every build script in this fork turns that target off —
+        // so a message telling somebody to run it names a binary the tree did not produce. What
+        // always works is the line itself: `[Weather <name>]` of `Morrowind.ini` holds every key,
+        // one `fallback=` line apiece, spaces turned to underscores.
         const auto refuse = [&weather](const std::string& key) {
             throw Error("weather \"" + std::string(weather) + "\" has no \"" + key
-                + "\" in openmw.cfg: run openmw-iniimporter on Morrowind.ini, which writes every weather's keys");
+                + "\" in openmw.cfg: the shipped settings carry eight of the ten weathers, and the "
+                  "other two are in [Weather "
+                + std::string(weather) + "] of Morrowind.ini — one \"fallback=" + key
+                + ",<value>\" line apiece, or run openmw-iniimporter where that target is built");
         };
 
         for (const std::string_view ramp : rampNames)

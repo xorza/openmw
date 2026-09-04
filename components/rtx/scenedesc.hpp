@@ -239,6 +239,17 @@ namespace Rtx
         /// is what refuses one. `MeshRange::mMaterial` says why a mesh has one material to ask.
         bool mAnimated = false;
 
+        /// Whether the diffuse map's alpha never reaches solid anywhere on it — `reachesSolid`.
+        ///
+        /// **A fact about the texture, kept on the material because the material is what asks.**
+        /// It is what separates a cloud from a pane among surfaces that carry the same alpha mode
+        /// and the same kind of alpha, and it is measured once for an image however many materials
+        /// name it.
+        ///
+        /// False for a material with no diffuse map at all, which is an untextured pane: all glass,
+        /// no paint, and a surface wherever it stands.
+        bool mDiffuseNeverSolid = false;
+
         /// Two materials are the same when every field is.
         ///
         /// **For telling a rewrite from a no-op.** A state set with a controller on it is re-read
@@ -279,6 +290,14 @@ namespace Rtx
         /// candidate asks this one first.
         bool isTranslucent() const { return mAlphaMode == AlphaMode::Blend && mDiffuseColour.a() < 1.0f; }
 
+        /// Whether the eye passes through this rather than meeting it: a medium, not a surface.
+        ///
+        /// **Two facts, and neither alone.** The material's own alpha says the content meant to be
+        /// seen through it everywhere, which a leaf's does not. The texture says the paint never
+        /// closes anywhere on it, which a pane's lead came does. Where both hold there is nothing
+        /// for a ray to stop on, and the layers are composited as depth along it — `mediumAlong`.
+        bool isMedium() const { return isTranslucent() && mDiffuseNeverSolid; }
+
         /// What a placement's row tells traversal about the material it wears.
         ///
         /// **Stated once, because two things read it.** The record builder puts these three answers
@@ -292,12 +311,18 @@ namespace Rtx
             bool mCutout = false;
             bool mTranslucent = false;
 
+            /// Whether the placements wearing this material go into the structure under
+            /// `MASK_MEDIUM` as well, which is the one ray that gathers them.
+            bool mMedium = false;
+
             bool operator==(const Traversed& other) const = default;
         };
 
         Traversed getTraversed() const
         {
-            return Traversed{ .mKind = mKind, .mCutout = isCutout(), .mTranslucent = isTranslucent() };
+            return Traversed{
+                .mKind = mKind, .mCutout = isCutout(), .mTranslucent = isTranslucent(), .mMedium = isMedium()
+            };
         }
     };
 

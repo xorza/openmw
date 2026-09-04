@@ -41,6 +41,15 @@ bool hasMask(GpuMaterial material)
     return !isTranslucent(material) && material.mAlphaCutoff > 0.0 && material.mDiffuse != NO_TEXTURE;
 }
 
+/// Whether a material is a medium the ray goes through rather than a surface it can stop on.
+///
+/// The host's `Material::isMedium`, decided there because the measurement behind it is a walk over
+/// every texel of a texture. `MATERIAL_MEDIUM` is the bit it writes.
+bool isMedium(GpuMaterial material)
+{
+    return (material.mFlags & MATERIAL_MEDIUM) != 0u;
+}
+
 /// How much of a surface is there, before its texture is read.
 ///
 /// **The material's own alpha and the placement's fade**, which are two different facts: every
@@ -74,13 +83,22 @@ bool isSeenThrough(float opacity)
 /// see-through on its alpha alone, and an untextured pane is all glass and no lead.
 ///
 /// @param opacity what `surfaceOpacity` gave for this hit, made once by the caller.
-/// @param point where the hit lands on the material's own texture, made once by the caller too.
+/// @param painted the texture's own alpha where the ray met it, or one where there is no texture.
+float sampledOpacity(float opacity, float painted)
+{
+    return clamp(painted * opacity, 0.0, 1.0);
+}
+
+/// The same, for a caller that has not read the texture yet — which is every caller but the one
+/// that wants the colour beside the alpha. `mediumAlong` is that one.
+///
+/// @param point where the hit lands on the material's own texture, made once by the caller.
 float sampledOpacity(float opacity, GpuMaterial material, TexturePoint point, SurfaceCone cone, float coneWidth)
 {
-    const float covered
+    const float painted
         = material.mDiffuse == NO_TEXTURE ? 1.0 : sampleDiffuse(material.mDiffuse, point, cone, coneWidth).a;
 
-    return clamp(covered * opacity, 0.0, 1.0);
+    return sampledOpacity(opacity, painted);
 }
 
 /// Whether a candidate hit stops the ray, and what it lets past where it does not.
@@ -114,6 +132,15 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
 
     const float opacity = surfaceOpacity(instance, material);
     const bool walkPast = seeThrough && isSeenThrough(opacity);
+
+    // **Nothing stops on a medium, whatever the ray was asking.** A surface that is nowhere opaque
+    // is not a surface: the eye walks through a cloud and commits the mountain behind it, and a
+    // bounce does the same. What the cloud looks like is `mediumAlong`'s answer and not a hit's.
+    //
+    // **Before the mask test and before any texture is read**, because a ray that is not keeping
+    // what it passed through has nothing to read one for.
+    if (!walkPast && isMedium(material))
+        return false;
 
     // **Met and not tested where there is nothing to test.** A material with no mask arrives here
     // because forcing an instance non-opaque says nothing about its material: a pane of glass is
@@ -153,11 +180,14 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
 /// @param cone how wide the ray's cone is *at this candidate*, which is what decides how much of the
 ///        mask one pixel is looking at. Nought for a ray that carries no cone, which reads the
 ///        finest level — every shadow ray. Substituted textually, so it may name the traversal.
+/// @param counted raised by one for every candidate walked past, which is every see-through surface
+///        the ray crossed. An lvalue like `through`, folded away by every caller that never reads
+///        it, and read by exactly one — the census `crossingsAlong` takes.
 /// @param through,seeThrough handed straight to `candidateStops`, which says what each is for. A
 ///        ray that sees through cannot commit the surface it saw through, so a caller with no use
-///        for `through` must say false and get the surface. Only the shadow ray says true today —
-///        its answer is a product, and a product does not care what order its factors arrived in.
-#define RTX_RESOLVE(query, along, cone, through, seeThrough)                                                \
+///        for `through` must say false and get the surface. The shadow ray and the census say true —
+///        one wants a product and the other a count, and neither cares what order they arrived in.
+#define RTX_RESOLVE(query, along, cone, through, counted, seeThrough)                                       \
     while (rayQueryProceedEXT(query))                                                                       \
     {                                                                                                       \
         if (rayQueryGetIntersectionTypeEXT(query, false) != gl_RayQueryCandidateIntersectionTriangleEXT)    \
@@ -175,6 +205,8 @@ bool candidateStops(uint instanceIndex, uint primitive, vec2 bary, vec3 crossed,
         if (candidateStops(candidateInstance, candidatePrimitive, candidateBary, candidateCross, (along),   \
                 (cone), (seeThrough), (through)))                                                           \
             rayQueryConfirmIntersectionEXT(query);                                                          \
+        else                                                                                                \
+            ++(counted);                                                                                    \
     }
 
 /// What a traversal answered, before anything at all is read off it.
@@ -277,11 +309,13 @@ Hit committedHit(
         rayQueryInitializeEXT(                                                                              \
             (query), sceneTop, gl_RayFlagsNoneEXT, (mask), (origin), (tmin), (direction), frame.mFar);      \
                                                                                                             \
-        /* An lvalue the resolve needs and nothing here reads: a ray that keeps what it passed       */      \
+        /* Two lvalues the resolve needs and nothing here reads: a ray that keeps what it passed    */      \
         /* through cannot commit the surface it passed through, and this one commits.                */      \
         float traversedThrough = 1.0;                                                                       \
+        uint traversedCrossings = 0u;                                                                       \
         RTX_RESOLVE((query), (direction),                                                                   \
-            (footprint) + (spread) * rayQueryGetIntersectionTEXT((query), false), traversedThrough, false)  \
+            (footprint) + (spread) * rayQueryGetIntersectionTEXT((query), false), traversedThrough,         \
+            traversedCrossings, false)                                                                      \
                                                                                                             \
         if (rayQueryGetIntersectionTypeEXT((query), true) == gl_RayQueryCommittedIntersectionNoneEXT)       \
             (hit) = noHit();                                                                                \
@@ -327,10 +361,14 @@ float lightThrough(vec3 from, vec3 towards, float distance)
 
     float through = 1.0;
 
+    // An lvalue the macro needs and nothing here reads: what a shadow ray wants is the product, and
+    // how many factors it has is nobody's question.
+    uint crossed = 0u;
+
     rayQueryEXT query;
     rayQueryInitializeEXT(
         query, sceneTop, gl_RayFlagsTerminateOnFirstHitEXT, MASK_SOLID, from, SHADOW_BIAS, towards, distance);
-    RTX_RESOLVE(query, towards, 0.0, through, true)
+    RTX_RESOLVE(query, towards, 0.0, through, crossed, true)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) != gl_RayQueryCommittedIntersectionNoneEXT)
         return 0.0;
@@ -355,10 +393,12 @@ float surfaceWithin(vec3 origin, vec3 direction, float tmin, float reach, float 
     rayQueryEXT query;
     rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, mask, origin, tmin, direction, reach);
 
-    // An lvalue the macro needs and nothing here reads: this ray sees through nothing, so what a
-    // translucent surface would have let past is never accumulated.
+    // Two lvalues the macro needs and nothing here reads: this ray sees through nothing, so what a
+    // translucent surface would have let past is never accumulated and nothing is ever walked past.
     float passed = 1.0;
-    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), passed, false)
+    uint crossed = 0u;
+    RTX_RESOLVE(
+        query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), passed, crossed, false)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT)
         return reach;
@@ -369,6 +409,42 @@ float surfaceWithin(vec3 origin, vec3 direction, float tmin, float reach, float 
 float solidWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread)
 {
     return surfaceWithin(origin, direction, tmin, reach, footprint, spread, MASK_SOLID);
+}
+
+/// How many see-through surfaces a ray crosses before the first one that stops it.
+///
+/// **The census the peel is sized against, taken rather than assumed.** One layer is peeled and
+/// everything behind it is painted as though opaque, which is right where a ray crosses one pane and
+/// wrong where it crosses a cloud built of eleven shells. This is what says which of the two a view
+/// holds, and so what an ordered walk of them would cost.
+///
+/// **The shadow ray's walk with the eye's cone on it.** Every see-through candidate is passed and
+/// counted, every other one is taken against its own mask, and the first that stands ends the ray —
+/// which is exactly the stack an ordered composite would have to hold. The distance the eye
+/// committed is no use as a limit: it is the surface the peel already stopped at, and the layers
+/// behind it are the ones being counted.
+///
+/// **It can over-count by whatever a traversal visited out of order.** A candidate beyond the
+/// surface that ends the ray is culled once that surface commits, and a candidate reached before it
+/// is not — so a long ray through a thicket may count one or two it would never have composited.
+/// The number is a census and not a budget.
+///
+/// **A whole traversal, so it is compiled out of every frame that does not want it.**
+/// `COUNT_CROSSINGS` is what asks for it, and only the harness ever does.
+uint crossingsAlong(vec3 origin, vec3 direction, float footprint, float spread)
+{
+    uint crossings = 0u;
+
+    // An lvalue the macro needs and nothing here reads: what each layer let past is the composite's
+    // question, and this one only counts them.
+    float through = 1.0;
+
+    rayQueryEXT query;
+    rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, MASK_SOLID, origin, 0.0, direction, frame.mFar);
+    RTX_RESOLVE(query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), through, crossings,
+        true)
+
+    return crossings;
 }
 
 /// What a ray found, resolved down to the inputs shading needs.
