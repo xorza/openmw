@@ -31,10 +31,10 @@ Priorities, in order:
 Nothing else ranks: no mod compatibility, no configurability for its own sake, no portability layer,
 no abstraction over hardware this does not target.
 
-**Feature-complete first, then fast.** An optimisation aimed at a frame that is about to change
-shape needs its measurement taken again anyway. Land what is missing, note what it costs, act on the
-number later. The exception is a cost so large it stops the work — a harness too slow to look at —
-and that is a judgement to state out loud, not a licence.
+**The renderer is feature complete. Performance now matters a lot.** Optimise the complete frame
+with reproducible Release benchmarks, while preserving image quality and correct light transport.
+Judge median, p99 and worst frame times together: a faster average does not excuse a new spike.
+Measure changes against the previous implementation and retain the version the evidence supports.
 
 Sports programming — strongest technique over safest, fast path first, delete what stopped earning
 its place, settle arguments by measuring. Nothing here is published, so rewriting beats working
@@ -168,8 +168,9 @@ moving camera, so it reproduces anything depending on motion or on cells arrivin
 what only a window shows — how something moves, whether an artefact is a still or a shimmer — and
 `--frames N` drives it.
 
-**No benching and no frame times until the renderer draws everything the game has.** Land the
-feature, check it with `shot`, and move on.
+**Verify appearance with `shot` and performance with `bench`.** Use the moving-camera harness for
+changes affecting reprojection or streaming, and representative exterior and interior views for
+shared rendering paths. Report the settings and baseline alongside the frame-time comparison.
 
 **Measure on a hot card, and never sleep between runs.** A cooldown is the wrong instrument: it
 costs more wall time than every measurement it guards, and it starts each leg of an A/B from a
@@ -195,7 +196,7 @@ re-running `shot`.
 the posture behind them does.
 
 - **`#pragma once`, and includes in five blocks.** Every header in the RTX places opens with
-  `#pragma once` rather than a named guard. `components/rtx/shaders/*.h` is the one exception, and
+  `#pragma once` rather than a named guard. Headers shared with GLSL are the one exception, and
   `portable.h` says why: `glslc` warns that it is not implemented and carries on. Below the guard
   come the blocks a blank line apart, in this
   order: the file's own header, the C++ standard library, `<gtest/...>` where a test needs it, other
