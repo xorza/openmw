@@ -10,22 +10,9 @@
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-// The frame, composed. One ray per pixel against the top-level structure; what a pixel *shows* is
-// answered by whichever shader the hit table names, and this is the order those answers are put
-// together in — the water under the air, the air under the sprites, and each of the G-buffer
-// channels given what its reader was promised.
-//
-// **The traversal and the shading are two programs now, and the reorder stands between them.** The
-// launch traces a hit object, sorts the threads on the shader that object names, and then runs it;
-// what comes back is a payload rather than a `Surface`. So this shader holds no lamp reservoir, no
-// bounce, no layer stack and no sky — each of those is in the shader that needs it, carrying its own
-// registers. `lib/payload.glsl` is what crosses.
-//
-// **What is left here is what belongs to the path rather than to the surface**: the pane the eye
-// looks through, the column of water in front of it, the air, the sprites, and the eleven channels.
+//! Composes surface shading with panes, water, fog and particles into the reconstruction channels.
 
-// **Before anything is included.** `lib/reorder.glsl` declares calls only a ray generation shader
-// may make, and it is reached from a compute shader as well.
+// Reordering calls are ray-generation-only, including when reached through shared compute libraries.
 #define RTX_REORDERING
 
 #include "camera.h"
@@ -48,29 +35,17 @@
 
 layout(location = RTX_PAYLOAD) rayPayloadEXT VisibilityPayload answer;
 
-/// What crosses traversal, which is nothing anything reads. `RTX_TRAVERSAL_PAYLOAD` says why it
-/// exists at all: the any-hit shader a traversal reaches wants a smaller payload than the shader
-/// the execute runs, and this is how small.
+// Traversal uses the smaller payload required by its any-hit shader.
 layout(location = RTX_TRAVERSAL_PAYLOAD) rayPayloadEXT uint traversed;
 
-/// Which rays the eye casts. The eye alone asks for the first-person arms; `MASK_FIRST_PERSON` says
-/// why nothing else does.
+// Only primary eye rays include first-person arms.
 const uint EYE_MASK = MASK_SOLID | MASK_WATER | MASK_FIRST_PERSON;
 
 void main()
 {
-    // **The launch is the frame, so there is no tail to test for.** A dispatch covered the picture
-    // in whole workgroups and every one of them had to ask whether it had run off the edge;
-    // `vkCmdTraceRaysKHR` is handed the width and the height themselves.
     const uvec2 pixel = gl_LaunchIDEXT.xy;
 
-    // **Traversal picks the shader and this shader never asks what it hit.** The instance carries
-    // its material's kind as its shader-table offset, so the hit object comes back naming one of the
-    // three closest-hit records or the sky's miss record — and that name is the sort's first key.
-    //
-    // **The ray is built into the call and not kept.** Live state is what a reorder costs, and the
-    // sources say to spend it on nothing that can be had another way: the same rays the wavelet
-    // rebuilds come from the same `rayAt`, and the hit object hands them back below.
+    // Build the ray inside traversal and recover it from the hit object to avoid migrating live state through SER.
     hitObjectEXT found;
     answer.mAsked = 0u;
     {
@@ -78,9 +53,6 @@ void main()
         RTX_TRACE_AND_SHADE(found, frame.mOrigin + ray.mOffset, 0.0, ray.mDirection, EYE_MASK)
     }
 
-    // **Read back rather than carried across.** The hit object holds the ray it was traced with, so
-    // asking it costs nothing that was not already migrated with the sort — where six floats of the
-    // launch's own would have been spilled and restored beside it.
     vec3 origin = hitObjectGetWorldRayOriginEXT(found);
     vec3 direction = hitObjectGetWorldRayDirectionEXT(found);
 
@@ -95,31 +67,8 @@ void main()
     float skyShown = answer.mSkyShown;
     bool water = answer.mWater;
 
-    // **The nearest surface the eye is looking through, peeled off and kept.** A pane of glass is
-    // one, and so is an actor the game is fading — Invisibility, Chameleon, or the distance fade at
-    // the edge of `actors processing range`. It was met like any other surface and lit like any
-    // other, and now the ray carries on from where it stood, so what is behind it is a real hit
-    // rather than whatever its mask happened to survive a cutoff.
-    //
-    // **The nearest one only, and it is a pane by now.** A second one behind the first is drawn as
-    // the cutout it was, which is what one layer buys: no sorting, no budget, and no second
-    // traversal on a pixel that has nothing see-through in it. What made that enough is that the
-    // deep stacks left: a surface that is nowhere opaque never stops a ray at all and is gathered by
-    // `mediumAlong` instead, so what reaches here is glass. `ASK_BEHIND` is how the second shader is
-    // told which of the two it is.
-    //
-    // **The census is taken rather than assumed** — `crossingsAlong`, under `COUNT_CROSSINGS`. Red
-    // Mountain holds 205 translucent materials and its deepest ray crosses eight of them, which is
-    // what a peel sized at one had to stop answering for.
-    //
-    // **An actor is not that.** A cuirass over a skirt over a leg is three layers, so a person under
-    // Chameleon shows the nearest one faded and the one behind it at full strength. That is what an
-    // ordered walk would buy, and it is the reason this says *to begin with*.
-    //
-    // **Its motion vector, its depth and the guide the upscaler demodulates by all stay the surface
-    // behind it**, which is right while a pane is mostly see-through and wrong as it approaches
-    // opaque. `PuffClaim` is what answering that properly looks like, and no pane in the game is
-    // near enough to opaque to have earned one.
+    // Peel one translucent surface; deeper surfaces retain their cutout treatment.
+    // Background depth, motion and albedo guide reconstruction, assuming a mostly transparent pane.
     vec3 paneRadiance = vec3(0.0);
     float paneThrough = 1.0;
     if (hit && !water && isSeenThrough(answer.mOpacity))
@@ -145,43 +94,22 @@ void main()
         water = answer.mWater;
     }
 
-    // **What the surface is, kept apart from what the path did to it.** These two used to be one
-    // channel: the albedo was multiplied by every transmittance on the way to the eye, which is what
-    // the composite wants back and is not what an upscaler demodulates by. A foggy wall reported an
-    // albedo with the fog in it, so Ray Reconstruction divided the light by the wrong number
-    // wherever there was weather — which outdoors is nearly everywhere.
+    // Reconstruction demodulates by the material albedo, without the path transmittance.
     vec3 transmittance = vec3(1.0);
 
-    // Made here and not before the trace: nothing above reads it, and a value defined before a
-    // reorder and used after it is exactly what the sources call live state.
     const Cone cone = coneAt(frame.mCamera);
 
     const bool submerged = waterOver(origin) > 0.0;
     const bool unbounded = waterUnbounded(hit, origin, direction);
 
-    // **The pane over what it stands in front of, before the water and the air.** Both of those are
-    // measured over the distance to the surface *behind* the glass, so the pane takes the haze of a
-    // path it is only part of the way along — an over-darkening, and the same one `spritesAlong`
-    // accepts below for the same reason.
+    // Pane attenuation uses the background distance, over-attenuating panes closer to the eye.
     shaded = shaded * paneThrough + paneRadiance;
     transmittance *= paneThrough;
 
-    // A camera under the surface sees everything through the water in front of it, **the surface
-    // included**. What the water's own shader attenuated is each of its own rays over its own
-    // stretch — the reflection back down into the water, the refraction through the air above — and
-    // the stretch from the eye up to the surface is a different one that nothing else pays. Leaving
-    // it out is what made the same column read one way from above and another from below: a ray
-    // aimed up from a hundred units down found the surface exactly as bright as one aimed up from
-    // ten.
-    //
-    // Applied to the whole colour rather than to the albedo alone — what the depth took is a
-    // property of the path, so it belongs to the modulation and not to the material.
+    // The surface shader covers reflected and refracted paths; the eye-to-surface water column is separate.
     if (submerged)
     {
-        // An escaped ray carries neither of the two numbers a column is measured with: it kept
-        // `mFar` for its distance and nought for its cone. What an unbounded one crossed is the
-        // whole column, read at the width a cone that far out has — which is wider than any wave, so
-        // the shaft march finds no pattern there to resolve.
+        // Escaped rays have no finite hit footprint; use the unbounded water path for their cone.
         const float footprint = hit ? cone.mWidth + cone.mSpread * distance : 0.0;
 
         const float path = unbounded ? WATER_UNBOUNDED_PATH : distance;
@@ -194,31 +122,11 @@ void main()
         shaded = throughWater(shaded, column);
     }
 
-    // The air in front of all of it. Last, because everything else in the frame is what the fog
-    // stands between the eye and — the water's own absorption included, which is a different medium
-    // over a different part of the path. A ray that hit nothing carries `mFar`, which the march
-    // clamps to the distance past which air stops mattering.
     const vec4 fog = fogAlong(pixel, origin, direction, distance);
     shaded = shaded * fog.w + fog.xyz;
     transmittance *= fog.w;
 
-    // The puffs in front of all of it, each already dimmed by the air between it and the eye — which
-    // is why this composites over a frame the fog has finished with rather than before it.
-    //
-    // **Two walks and one layer.** An emitter's sprites and a cloud's shells are the same kind of
-    // thing standing in the same place, so the second walk fills a layer of its own and `mergedPuffs`
-    // puts the two together — and everything under this reads one layer, splits the air once, and
-    // hands one thing to the upscaler.
-    //
-    // **And the whole of the second walk is inside the test.** `mMediumInFrame` says whether
-    // anything at all carries `MASK_MEDIUM`, so a cell with no cloud in it neither descends the top
-    // level to find nothing nor merges a layer that holds nothing — and the merge is not free: it
-    // divides a coverage back out, which moved a level on two views that hold no medium at all.
-    // Inside the test, a frame with no cloud is the frame it was before there were any.
-    //
-    // **The medium's travel is filled in here**, because it is a placement's and the walk has no
-    // reprojection in it. A cloud that stands still says so exactly: `movedBy` gives nothing at all
-    // for an instance whose motion is the identity.
+    // Sprites and cloud shells share one layer and one split of the air at its coverage depth.
     PuffLayer puffs = spritesAlong(pixel, origin, direction, distance);
 
     if (frame.mMediumInFrame != 0u)
@@ -232,72 +140,20 @@ void main()
         puffs = mergedPuffs(puffs, shells);
     }
 
-    // Kept because the motion vector below is decided by which of the two terms of the composite
-    // under this is the larger, and that composite is where the first of them stops existing.
+    // Motion follows whichever contributes more: the fogged background or the puffs.
     const vec3 beforePuffs = shaded;
 
-    // **The air in front of the layer, so that it covers only what is behind it.** `shaded`
-    // holds the whole path's haze over the surface, and covering the whole of it is what made a
-    // drain's splash at Vivec darker than the fog it stands in: a puff a few units out took two
-    // hundred units of haze away with it and put back its own small light.
-    //
-    // **Splitting the air at the coverage's own depth is exact, and only the near half is marched
-    // again.** With `S` for what `shaded` holds,
-    //
-    //     S      = Lwhole + Twhole * surface
-    //     wanted = Lfront + radiance + puffT * (Lbehind + Tbehind * surface)
-    //
-    // and `Twhole = Tfront * Tbehind` with `Lwhole = Lfront + Tfront * Lbehind` turn the second line
-    // into `Lfront + radiance + puffT * (S - Lfront)`. A frame with nothing covering it has
-    // `Lfront` of nought and composites exactly as it did.
-    //
-    // **The radiance is added raw**, because both walks have already dimmed what they found by the
-    // air between it and the eye — `reaching` is that factor, and applying `Tfront` here would be
-    // the second half of the same journey charged twice.
-    //
+    // S = Lwhole + Twhole * surface; splitting at the layer gives
+    // Lfront + radiance + puffT * (S - Lfront). Near haze must survive coverage behind it.
+    // Particle radiance already contains view attenuation, so do not multiply it by Tfront again.
     vec3 airBeforeLayer = vec3(0.0);
     if (puffs.mTransmittance < 1.0)
         airBeforeLayer = fogAlong(pixel, origin, direction, puffs.mCoveredAt).xyz;
 
-    // **Handed over rather than composited, because Ray Reconstruction composites it itself.** The
-    // three `pInTransparencyLayer` inputs are a colour, an opacity and a motion of their own, and
-    // what the upscaler forms from them is
-    //
-    //     out = behind * (1 - opacity) + layer
-    //
-    // **The layer is premultiplied and the frame is left alone**, and both halves of that were
-    // settled by measuring, because the SDK documents neither. Each form was rendered at
-    // `--upscale=dlaa` — which reconstructs at the native extent, so every pixel has a counterpart —
-    // and compared against the same frame at `--upscale=off`, which composites for itself and is the
-    // answer. Mean absolute difference out of 255, over a chimney plume at Seyda Neen and over the
-    // whole of the caldera under a blight storm:
-    //
-    //     the three inputs withheld altogether       2.15    (the floor the upscaler itself sets)
-    //     premultiplied layer, frame left alone      2.21    7.34
-    //     straight layer, frame left alone          17.30   11.48
-    //     straight layer, the haze in front removed 17.03   11.50
-    //
-    // So the upscaler multiplies nothing by the opacity it is handed: a straight colour arrives at
-    // roughly its own full strength over the frame, which drew a chimney's smoke as a hard white
-    // column against a blue sky. Premultiplied it lands on the floor the upscaler's own
-    // reconstruction sets, which is as close as a handed-over layer can come.
-    //
-    // **And the frame is left alone rather than having the near haze taken off it.** That form is
-    // exactly right —
-    //
-    //     out = S * puffT + (colour + Lfront) * opacity
-    //
-    // is `wanted` term for term — where taking `Lfront` off the frame as well leaves the picture
-    // short of `puffT * Lfront`, which is nothing where a puff is near and the air is thin and is
-    // most of what the pixel had under a storm.
-    //
-    // **The flames ride with the frame.** An opacity of nought cannot carry them, so what they add
-    // goes behind rather than into the layer, where whatever covers them will dim them. That is the
-    // one case `spritesAlong` says it did not model, now modelled the other way round.
-    //
-    // **And only where something will read it.** `mLayerCompositedAfter` says whether the upscaler
-    // is there to take it; a doll, a map tile, a run with the upscaler off and a test that reads the
-    // frame all have nothing that would, so those composite it here and get the frame they had.
+    // Ray Reconstruction forms behind * (1 - opacity) + layer: supply a premultiplied layer.
+    // Native-resolution comparisons against local composition confirmed this undocumented convention.
+    // Keep the background intact: (colour + Lfront) * opacity then preserves the near haze exactly.
+    // Additive flames have no opacity and must stay in the background; covering particles use the layer.
     const float opacity = 1.0 - puffs.mTransmittance;
     const vec3 transparencyLayer = (puffs.mColour + airBeforeLayer) * opacity;
     const bool handedOver = frame.mLayerCompositedAfter != 0u;
@@ -313,9 +169,6 @@ void main()
     if (COUNT_HITS && hit)
         atomicAdd(hits, 1);
 
-    // **The census the peel above was sized against.** The peeled surface is one of these, so what
-    // the number answers is how many layers an ordered walk would have to composite — and the peel
-    // is the first of them.
     if (COUNT_CROSSINGS)
     {
         const uint crossed = crossingsAlong(origin, direction, cone.mWidth, cone.mSpread);
@@ -325,70 +178,36 @@ void main()
 
     const ivec2 at = ivec2(pixel);
 
-    // **Coverage rides in the direct channel's alpha**, which every pass after this carries
-    // through untouched: it is one everywhere but in a picture that has to say where it stops.
+    // Preserve coverage for pictures that must report their background as transparent.
     const float coverage = (frame.mTransparentBackground != 0u && !hit) ? 0.0 : 1.0;
     imageStore(direct, at, vec4(shaded, coverage));
 
-    // **The bounce carries what the path took off it, and the albedo carries only the surface.**
-    // The composite still multiplies the two, so the picture is the same product it always was; what
-    // moved is which of the two the water and the air are folded into. They belong to the light,
-    // which is what they attenuated — and the channel that is left is then the albedo an upscaler
-    // asks for.
-    //
-    // Filtering the bounce with the transmittance already in it averages a quantity that varies as
-    // slowly as fog does, which is to say it changes nothing.
+    // Modulate the bounce by the path so albedo remains a material property for reconstruction.
     imageStore(indirect, at, vec4(bounced * transmittance, 1.0));
     imageStore(albedo, at, vec4(response.mDiffuse, 1.0));
     imageStore(specular, at, vec4(response.mSpecular, 1.0));
     imageStore(guide, at, vec4(response.mNormal, response.mRoughness));
 
-    // **A sprite that hides nothing still moves something.** Additive blending leaves the
-    // transmittance at one by definition, so a flame or a spark shows up only in what it added —
-    // and it is exactly as unreprojectable as a raindrop that occludes. Both count, and so does a
-    // cloud's shell, which reaches this layer by the coverage it hid.
+    // Additive sprites have no coverage, but their radiance still contributes to motion ownership.
     const bool anyPuff = opacity > 0.0 || any(greaterThan(puffs.mAdded, vec3(0.0)));
     imageStore(particleMask, at, vec4(anyPuff ? 1.0 : 0.0));
 
-    // Which puff owns this pixel's motion, if any does — the mask below and the vector further
-    // down are the same question asked twice, so it is answered once.
     const PuffClaim claim = puffClaim(beforePuffs, puffs);
 
-    // **What no motion vector here describes, which is far less than what moves.** This says stop
-    // accumulating, so everything it names is a pixel reconstructed from one sample — and a mask
-    // that names a third of the frame is a third of the frame held at the noise the trace left.
-    //
-    // Water is not on it. Water is shaded where it is seen and shows what is somewhere else, which
-    // is a real problem and is the one `reflectionMotion` answers: the surface has its vector and
-    // what it reflects has another, and NGX weighs the two by the specular albedo it was given.
-    // Marking it untrustworthy as well would throw away the answer for the sake of the question.
-    //
-    // What is left is the flame. Every covering sprite now rides a layer with a motion vector of its
-    // own, so the frame's vector describes the frame; what stays in the frame and does not move with
-    // it is what an additive sprite added, which no opacity could carry over to that layer.
+    // Covering particles have separate motion. Additive flames remain in the background and invalidate history.
+    // Water uses reflectionMotion instead; invalidating it here would discard that reconstruction.
     const bool untrusted = handedOver ? any(greaterThan(puffs.mAdded, vec3(0.0))) : anyPuff;
     imageStore(biasMask, at, vec4(untrusted ? 1.0 : 0.0));
 
-    // **The sky moves too, and only its turn moves it.** `skyMotionOf` says why storing nothing here
-    // was a smear across every camera rotation.
     vec2 moved = hit ? motionOf(pixel, origin, direction, distance, instance) : skyMotionOf(pixel, direction);
 
-    // **The frame's own vector, always.** It used to be overwritten by whichever sprite covered the
-    // pixel most, because one vector was written per pixel and a raindrop crossing a wall had to be
-    // reprojected as something — so the wall behind it was reprojected as the raindrop instead, and
-    // `particleMask` was reduced to apologising for it. The layer below carries the sprite's own.
+    // The background and particle layer each retain their own motion vector.
     if (!handedOver && claim.mWeight > 0.0)
         moved = puffMotionOf(pixel, claim);
 
     imageStore(motion, at, vec4(moved, 0.0, 0.0));
 
-    // The layer the upscaler composites, and where it stood. Its motion is the owning puff's, and
-    // the frame's where no puff owns the pixel — a layer of nothing reprojects with the frame
-    // rather than standing still in it.
-    //
-    // **Written only where the upscaler is there to read it**, which is twenty-five bytes a pixel
-    // the doll, the map tile and every reference save. Nothing reads a channel it was not handed,
-    // so what stays in these three from the last frame that did write them is nobody's.
+    // Empty layers follow background motion. Write these channels only when an upscaler consumes them.
     if (handedOver)
     {
         imageStore(transparency, at, vec4(transparencyLayer, 1.0));
@@ -397,17 +216,11 @@ void main()
             vec4(claim.mWeight > 0.0 ? puffMotionOf(pixel, claim) : moved, 0.0, 0.0));
     }
 
-    // **The one surface in this frame that shows something standing somewhere else.** Water is
-    // shaded where it is seen, so the vector above describes the surface and not what is in it; this
-    // is the other one, and the upscaler weighs the two by the specular albedo it was already given.
+    // A water surface and its reflection have different motion; NGX weights both by specular albedo.
     imageStore(reflectionMotion, at, vec4(water ? mirrorMotionOf(pixel, origin, mirror) : vec2(0.0), 0.0, 0.0));
 
-    // **What the display pass has to draw the star field through**, which is everything this frame
-    // put between the field and the eye: the sky's own layers in `skyShown`, and the pane, the
-    // water, the air and the sprites in the transmittance the light itself was already taken down
-    // by. `starsShown` in `bindings.glsl` says why that pass cannot work any of it out for itself.
+    // Star rendering needs the attenuation of every layer between the sky and the eye.
     imageStore(starsShown, at, vec4(skyShown * transmittance, 1.0));
 
-    // A miss is as far away as anything can be, and the hit object already carries `mFar` for it.
     imageStore(depth, at, vec4(hit ? clipDepth(direction, distance) : 1.0, distance, 0.0, 0.0));
 }

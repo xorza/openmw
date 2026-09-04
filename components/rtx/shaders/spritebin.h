@@ -25,7 +25,7 @@
 // kept by construction rather than by a sort: a tile fills its own run by walking the sprites in
 // order, so no atomic ever decides where an entry lands.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -106,7 +106,7 @@ namespace Rtx::Shaders
         uint mCapacity;
     };
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
     static_assert(sizeof(SpriteBinConstants) == 120, "SpriteBinConstants must be scalar-packed on every side");
 }

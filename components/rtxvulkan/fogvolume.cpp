@@ -8,6 +8,7 @@
 #include "commands.hpp"
 #include "device.hpp"
 #include "result.hpp"
+#include "shaders/fogvolume.h"
 
 namespace Rtx
 {
@@ -17,9 +18,9 @@ namespace Rtx
 
         constexpr VkImageUsageFlags sUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-        constexpr std::uint32_t sBindings = 13;
+        constexpr std::uint32_t sBindings = FogBindings::FOG_BINDING_COUNT;
 
-        constexpr std::uint32_t sSampled = 7;
+        constexpr std::uint32_t sSampled = FogBindings::FOG_SAMPLED_COUNT;
 
         constexpr bool sampledAt(std::uint32_t binding)
         {
@@ -50,18 +51,18 @@ namespace Rtx
         : mDevice(device)
         , mColumns(columnsFor(width))
         , mRows(columnsFor(height))
-        , mCoverage{ Image(device, mColumns, mRows, VK_FORMAT_R16_SFLOAT, sUsage, "fog coverage 0", 1,
+        , mCoverage{ Image(device, mColumns, mRows, FOG_COVERAGE_FORMAT, sUsage, "fog coverage 0", 1,
                          Shaders::FOG_VOLUME_SLICES),
-            Image(device, mColumns, mRows, VK_FORMAT_R16_SFLOAT, sUsage, "fog coverage 1", 1,
-                Shaders::FOG_VOLUME_SLICES) }
+            Image(
+                device, mColumns, mRows, FOG_COVERAGE_FORMAT, sUsage, "fog coverage 1", 1, Shaders::FOG_VOLUME_SLICES) }
         , mVisibility{ Image(
                            device, mColumns, mRows, sFormat, sUsage, "fog visibility 0", 1, Shaders::FOG_VOLUME_SLICES),
             Image(device, mColumns, mRows, sFormat, sUsage, "fog visibility 1", 1, Shaders::FOG_VOLUME_SLICES) }
         , mLamps(device, mColumns, mRows, sFormat, sUsage, "fog lamps", 1, Shaders::FOG_VOLUME_SLICES)
         , mSlice(device, mColumns, mRows, sFormat, sUsage, "fog slice", 1, Shaders::FOG_VOLUME_SLICES)
-        , mSliceVisibility(
-              device, mColumns, mRows, sFormat, sUsage, "fog slice visibility", 1, Shaders::FOG_VOLUME_SLICES)
-        , mColumnDepth(device, mColumns, mRows, VK_FORMAT_R32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "fog column depth")
+        , mSliceVisibility(device, mColumns, mRows, FOG_DIRECTIONAL_FORMAT, sUsage, "fog slice visibility", 1,
+              Shaders::FOG_VOLUME_SLICES)
+        , mColumnDepth(device, mColumns, mRows, FOG_DEPTH_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT, "fog column depth")
     {
         try
         {
@@ -104,21 +105,20 @@ namespace Rtx
                 const std::size_t written = parity;
                 const std::size_t history = 1 - parity;
 
-                const std::array<const Image*, sBindings> named{
-                    &mCoverage[history],
-                    &mVisibility[history],
-                    &mCoverage[written],
-                    &mVisibility[written],
-                    &mLamps,
-                    &mSlice,
-                    &mSliceVisibility,
-                    &mCoverage[written],
-                    &mVisibility[written],
-                    &mLamps,
-                    &mSlice,
-                    &mSliceVisibility,
-                    &mColumnDepth,
-                };
+                std::array<const Image*, sBindings> named{};
+                named[FogBindings::BIND_FOG_WAS_COVERAGE] = &mCoverage[history];
+                named[FogBindings::BIND_FOG_WAS_VISIBILITY] = &mVisibility[history];
+                named[FogBindings::BIND_FOG_COVERAGE] = &mCoverage[written];
+                named[FogBindings::BIND_FOG_VISIBILITY] = &mVisibility[written];
+                named[FogBindings::BIND_FOG_LAMPS] = &mLamps;
+                named[FogBindings::BIND_FOG_SLICE] = &mSlice;
+                named[FogBindings::BIND_FOG_SLICE_VISIBILITY] = &mSliceVisibility;
+                named[FogBindings::BIND_FOG_COVERAGE_TARGET] = &mCoverage[written];
+                named[FogBindings::BIND_FOG_VISIBILITY_TARGET] = &mVisibility[written];
+                named[FogBindings::BIND_FOG_LAMPS_TARGET] = &mLamps;
+                named[FogBindings::BIND_FOG_SLICE_TARGET] = &mSlice;
+                named[FogBindings::BIND_FOG_SLICE_VISIBILITY_TARGET] = &mSliceVisibility;
+                named[FogBindings::BIND_FOG_COLUMN_DEPTH] = &mColumnDepth;
 
                 std::array<VkDescriptorImageInfo, sBindings> views{};
                 std::array<VkWriteDescriptorSet, sBindings> writes{};

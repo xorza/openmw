@@ -13,19 +13,36 @@ namespace Rtx::Testing
 {
     namespace
     {
+        enum class AirLight
+        {
+            Sun,
+            Masser,
+            Secunda,
+        };
+
+        void lightAir(
+            Shaders::VisibilityConstants& camera, AirLight source, const osg::Vec3f& direction, float irradiance)
+        {
+            const osg::Vec3f energy(irradiance, irradiance, irradiance);
+            if (source == AirLight::Sun)
+            {
+                camera.mSunPosition = direction;
+                camera.mSunIrradiance = energy;
+            }
+            else
+            {
+                Shaders::MoonDisc& moon = camera.mMoons[source == AirLight::Masser ? 0 : 1];
+                moon.mDirection = direction;
+                moon.mIrradiance = energy;
+            }
+        }
+
         /// What colour the air is. Named for the reason `sFoggySky` is: each expectation computes
         /// with it as well as handing it to the shader. Deliberately not grey, so a fog scattering
         /// the wrong colour cannot pass by matching a total.
         const osg::Vec3f sHaze(0.1f, 0.2f, 0.4f);
 
-        /// A coverage that keeps the field's own hashes in the scatter pass while leaving the air
-        /// even enough to compute with.
-        ///
-        /// **Every kind of air reads the volume now**, so this no longer chooses the path — it
-        /// chooses whether `FOG_UNIFORM` folds the coverage field away. At a thousandth the field
-        /// moves the density by at most two parts in a thousand, which is below anything asserted
-        /// here, so a test that wants the field's arithmetic exercised sets this and one that does
-        /// not sets one. The banks have their own tests, and those run at nought.
+        // Exercise the noise field within 0.2% of uniform density; analytic tests use exactly one.
         constexpr float sVolumeOverEvenAir = 0.999f;
 
         /// What one unit of a lamp's intensity delivers `span` units away, from the same windowed
@@ -120,6 +137,38 @@ namespace Rtx::Testing
             const std::array<int, 3> clear = look(0.0f);
             for (const int level : clear)
                 EXPECT_EQ(level, int{ encodeSrgb(wall) }) << "with no fog in the cell";
+
+            constexpr std::array<std::uint8_t, 4> black{ 0, 0, 0, 255 };
+            const std::array<TextureData, 1> texture{ describeTexel(black) };
+            Shaders::VisibilityConstants camera
+                = makeCamera(osg::Vec3f(0.0f, -distance, 0.0f), osg::Vec3f(), 60.0f, size, size, 100000.0f);
+            litThroughFog(camera, extinction);
+
+            // A black half-opaque puff dims the wall and the haze behind it, leaving the near
+            // haze intact. The exact boundaries here are 30000 * (3.5/64)^2 and (9.5/64)^2.
+            constexpr float firstSplit = 89.7216796875f;
+            constexpr float secondSplit = 661.0107421875f;
+            for (const float seen : { 20.0f, firstSplit - 1.0f, firstSplit, firstSplit + 1.0f, secondSplit - 1.0f,
+                     secondSplit, secondSplit + 1.0f, 1900.0f })
+            {
+                SCOPED_TRACE(seen);
+                SceneDesc scene = makeWall();
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const std::array<Sprite, 1> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(0.0f, -distance + seen, 0.0f), .mRadius = 10.0f, .mAlpha = 0.5f } };
+                scene.addEmitter(sprites, cut, false);
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, texture, camera, size, pixels);
+
+                const float front = std::exp(-extinction * seen);
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    const float expected = 0.5f * wall * transmittance
+                        + sHaze[channel] * ((1.0f - front) + 0.5f * (front - transmittance));
+                    // Float accumulation through the volume; compare linear radiance before sRGB quantization.
+                    EXPECT_NEAR(mRadiance[centre + channel], expected, 2.0e-5f) << "channel " << channel;
+                }
+            }
         }
 
         /// The fog layer sits on the water, thins with height above it, and stops at the surface.
@@ -698,19 +747,7 @@ namespace Rtx::Testing
             EXPECT_GT(apart(still, upwind), 0.005) << "an eye walking against the wind sees another air";
         }
 
-        /// The fog scatters the sun forward far harder than back, which is what a Mie phase is for.
-        ///
-        /// **A single Henyey-Greenstein lobe cannot do this shape.** Real droplets throw a peak
-        /// within a degree of the light that is orders of magnitude above anything one `g` reaches,
-        /// and still send a sixth of isotropic *backwards* — the blaze around a low sun, and fog not
-        /// going black when you turn away from it. Before this the fog was lit by the sky and the
-        /// lamps and not at all by the sun, so facing it rendered identically to facing away.
-        ///
-        /// **A ratio, because it is the only thing the fixture computes exactly.** Two frames differ
-        /// in nothing but which side of the camera the sun is on, at the same elevation — so the
-        /// column of fog it crosses, the extinction, the transmittance and the march all cancel, and
-        /// what is left is `p(26.6 degrees) / p(153.4)`. An isotropic fog would give exactly one.
-        TEST_F(RtxVisibilityTest, theFogScattersTheSunForwardFarHarderThanBack)
+        TEST_F(RtxVisibilityTest, theFogScattersDirectionalLightByItsPhaseAndBothOpticalPaths)
         {
             constexpr float irradiance = 12.7f;
             constexpr float climb = 0.4472135955f;
@@ -727,36 +764,37 @@ namespace Rtx::Testing
             for (const std::uint32_t size : { 1u, 33u })
                 for (const float fov : { 20.0f, 120.0f })
                     for (const float extinction : { 1.5e-4f, 3.0e-4f })
-                    {
-                        std::array<float, 2> scattered{};
-                        for (const bool ahead : { true, false })
+                        for (const AirLight source : { AirLight::Sun, AirLight::Masser, AirLight::Secunda })
                         {
-                            Shaders::VisibilityConstants camera
-                                = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 1000.0f, 0.0f), fov, size, size, 100000.0f);
-                            osg::Vec3f towards(0.0f, ahead ? 1.0f : -1.0f, 0.5f);
-                            towards.normalize();
-                            camera.mSunPosition = towards;
-                            camera.mSunIrradiance = osg::Vec3f(irradiance, irradiance, irradiance);
-                            camera.mFogExtinction = extinction;
-                            camera.mFogUniform = 1.0f;
-                            renderRadiance(scene, camera, size, radiance);
+                            SCOPED_TRACE(static_cast<int>(source));
+                            std::array<float, 2> scattered{};
+                            for (const bool ahead : { true, false })
+                            {
+                                Shaders::VisibilityConstants camera = makeCamera(
+                                    osg::Vec3f(), osg::Vec3f(0.0f, 1000.0f, 0.0f), fov, size, size, 100000.0f);
+                                osg::Vec3f towards(0.0f, ahead ? 1.0f : -1.0f, 0.5f);
+                                towards.normalize();
+                                lightAir(camera, source, towards, irradiance);
+                                camera.mFogExtinction = extinction;
+                                camera.mFogUniform = 1.0f;
+                                renderRadiance(scene, camera, size, radiance);
 
-                            // A level ray holds one density: sun transmittance exp(-sigma*H/climb)
-                            // times the view's absorbed fraction. At sigma=3e-4 the forward result
-                            // is 0.49991. The tolerance covers evaluation of the phase fit and
-                            // single-precision arithmetic over 128 integration intervals.
-                            const float column = std::exp(-Shaders::FOG_HEIGHT * extinction / climb);
-                            const float crossed = -std::expm1(-extinction * Shaders::FOG_REACH);
-                            const float expected = irradiance * (ahead ? forward : backward) * column * crossed;
-                            const float actual = radiance[centreValueOf(size)];
-                            EXPECT_NEAR(actual, expected, 2.0e-5f)
-                                << "size " << size << ", fov " << fov << ", extinction " << extinction << ", ahead "
-                                << ahead;
-                            scattered[ahead ? 0 : 1] = actual;
+                                // A level ray holds one density: light transmittance exp(-sigma*H/climb)
+                                // times the view's absorbed fraction. At sigma=3e-4 the forward result
+                                // is 0.49991. The tolerance covers evaluation of the phase fit and
+                                // single-precision arithmetic over 65 integration intervals.
+                                const float column = std::exp(-Shaders::FOG_HEIGHT * extinction / climb);
+                                const float crossed = -std::expm1(-extinction * Shaders::FOG_REACH);
+                                const float expected = irradiance * (ahead ? forward : backward) * column * crossed;
+                                const float actual = radiance[centreValueOf(size)];
+                                EXPECT_NEAR(actual, expected, 2.0e-5f)
+                                    << "size " << size << ", fov " << fov << ", extinction " << extinction << ", ahead "
+                                    << ahead;
+                                scattered[ahead ? 0 : 1] = actual;
+                            }
+                            EXPECT_GT(scattered[0], scattered[1]);
+                            EXPECT_NEAR(scattered[0] / scattered[1], forward / backward, 0.001f);
                         }
-                        EXPECT_GT(scattered[0], scattered[1]);
-                        EXPECT_NEAR(scattered[0] / scattered[1], forward / backward, 0.001f);
-                    }
         }
 
         /// A lid over the march takes the sun out of the air beneath it, and takes all of it.
@@ -766,13 +804,13 @@ namespace Rtx::Testing
         /// that only asked for darker would pass while it leaked. The lid spans the whole march and
         /// the camera's own ray never reaches it — it runs level while the lid is five hundred units
         /// overhead — so what changes between the two frames is the shadow ray and nothing else.
-        TEST_F(RtxVisibilityTest, aLidOverTheMarchTakesTheSunOutOfTheAirBeneathIt)
+        TEST_F(RtxVisibilityTest, aLidTakesDirectionalLightOutOfTheAirBeneathIt)
         {
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
             constexpr float irradiance = 4.0f;
 
-            const auto look = [&](bool lidded, bool lit) {
+            const auto look = [&](AirLight source, bool lidded, bool lit) {
                 // The same sheet either way, over the march or under it, so the two frames differ
                 // in what the shadow ray finds and in nothing else — not in what is in the scene,
                 // nor in how large it is.
@@ -787,8 +825,7 @@ namespace Rtx::Testing
                 // forward and every shadow ray still climbs into the lid.
                 osg::Vec3f travelling(0.0f, -0.6f, -0.8f);
                 travelling.normalize();
-                camera.mSunPosition = -travelling;
-                camera.mSunIrradiance = lit ? osg::Vec3f(irradiance, irradiance, irradiance) : osg::Vec3f();
+                lightAir(camera, source, -travelling, lit ? irradiance : 0.0f);
 
                 // Even air with a colour of its own, so the frame is never empty and the two sunless
                 // cases have something to agree about.
@@ -801,12 +838,16 @@ namespace Rtx::Testing
                 return int{ pixels[centre] };
             };
 
-            const int open = look(false, true);
-            const int shaded = look(true, true);
-            const int sunless = look(true, false);
+            for (const AirLight source : { AirLight::Sun, AirLight::Masser, AirLight::Secunda })
+            {
+                SCOPED_TRACE(static_cast<int>(source));
+                const int open = look(source, false, true);
+                const int shaded = look(source, true, true);
+                const int unlit = look(source, true, false);
 
-            EXPECT_EQ(shaded, sunless) << "the lid takes all of the sun, not most of it";
-            EXPECT_GT(open, shaded + 20) << "and there was a sun to take";
+                EXPECT_EQ(shaded, unlit) << "the lid takes all of the directional light";
+                EXPECT_GT(open, shaded + 20) << "the uncovered light scatters into the ray";
+            }
         }
     }
 }

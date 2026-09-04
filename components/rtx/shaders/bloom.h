@@ -5,12 +5,10 @@
 #define OPENMW_COMPONENTS_RTX_SHADERS_BLOOM_H
 
 #include "look.h"
-#include "portable.h"
-
 // What the lens does with the light the frame already has. Included verbatim by both sides, for the
 // reason `visibility.h` is.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -64,7 +62,7 @@ namespace Rtx::Shaders
         float mMix;
     };
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 
@@ -74,7 +72,7 @@ namespace Rtx::Shaders
 // back at a twentieth, so a step of one part in a thousand of it is one part in twenty thousand of
 // the picture — and the levels are read and written far more often than anything else in the frame,
 // which makes their bandwidth the only thing about them that costs.
-#ifdef RTX_HOST
+#ifdef __cplusplus
 #define BLOOM_LEVEL VK_FORMAT_R16G16B16A16_SFLOAT
 #else
 #define BLOOM_LEVEL rgba16f

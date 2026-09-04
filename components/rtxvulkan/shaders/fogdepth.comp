@@ -8,27 +8,15 @@
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-// Where each column's view of the air ends, which every froxel of the column is measured against.
-//
-// **A froxel does not know where the ground is, and the pixel that reads it does.** The volume is
-// filled before anything is traced, so the slice a surface stands inside was sampled on both sides
-// of it: under water there is no fog at all, and inside the ground there is whatever the field says
-// there, which has nothing to do with the air above. The pixel then reads the accumulation between
-// that slice's two edges, and what it gets is the slice's whole optical depth laid out as though
-// the surface were not there — nothing at the near edge, all of it at the far, and the wrong share
-// in between. The pattern that makes is the slices themselves: shells around the eye, drawn on
-// every surface the air stands in front of, and sweeping over the ground as the eye moves.
-//
-// **One ray per column and not per froxel**, because every froxel of a column samples the column's
-// own ray, so what that ray stops at is the column's to know once. `fogscatter.comp` reads it and
-// keeps every sample short of it.
+// Keep coverage and light samples in front of the first surface, where the camera can see air.
+// One shared ray per column gives depth and scattering the same endpoint.
 
 #include "camera.h"
 #include "scene.h"
 #include "visibility.h"
 
 #include "lib/bindings.glsl"
-#include "lib/fog.glsl"
+#include "lib/froxel.glsl"
 #include "lib/traversal.glsl"
 #include "lib/variants.glsl"
 

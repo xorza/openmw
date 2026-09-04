@@ -3,8 +3,6 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_GBUFFER_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_GBUFFER_H
 
-#include "portable.h"
-
 // What each channel of the G-buffer is made of, said once for both sides that have to agree.
 //
 // **A shader's layout qualifier and the `VkFormat` its image was created with are one fact written
@@ -44,7 +42,7 @@
 // it parses anything, and `VK_FORMAT_*` is an enumerator. The preprocessor is the one thing both
 // languages share, which is what lets one line define both.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #define GBUFFER_RADIANCE VK_FORMAT_R32G32B32A32_SFLOAT
 #define GBUFFER_ALBEDO VK_FORMAT_R16G16B16A16_SFLOAT
@@ -77,7 +75,7 @@
 // by walking an initializer list, so the two agreed only for as long as nobody reordered the list —
 // which is a change that compiles, runs, and hands every pass the wrong image.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -128,7 +126,7 @@ namespace Rtx::Shaders
     /// How many the set declares, which is the last of them and one more.
     const uint CHANNEL_COUNT = 14;
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 

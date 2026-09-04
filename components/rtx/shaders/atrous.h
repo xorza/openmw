@@ -6,8 +6,6 @@
 
 #include "camera.h"
 #include "look.h"
-#include "portable.h"
-
 // What one wavelet level of the denoiser needs. Included verbatim by both sides, for the reason
 // `visibility.h` is.
 
@@ -28,7 +26,7 @@
 // `theFilterAndItsHistoryConvergeOnAGrazingSurface` is that scene and carries the pair of figures,
 // and `.notes/rtx/shader-review.md` §4 is what the width bought.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #define ATROUS_CHANNEL VK_FORMAT_R16G16B16A16_SFLOAT
 
@@ -38,7 +36,7 @@
 
 #endif
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -93,11 +91,11 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-#ifdef RTX_HOST
+#ifdef __cplusplus
     static_assert(sizeof(AtrousConstants) == 76, "AtrousConstants must be scalar-packed on every side");
 #endif
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 

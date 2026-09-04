@@ -6,15 +6,6 @@
 
 #include "portable.h"
 
-// What the fog volume's two images are made of, said once for both sides that have to agree.
-// `gbuffer.h` says why a format is a macro and not a constant, and what it costs when the two
-// statements of it drift.
-#ifdef RTX_HOST
-#define FOG_VOLUME_FORMAT VK_FORMAT_R16G16B16A16_SFLOAT
-#else
-#define FOG_VOLUME_FORMAT rgba16f
-#endif
-
 // The scene's tables, and the scale its brightnesses are measured on, as both sides see them.
 // Scalar block layout throughout, so a `uint` is four bytes and a `vec2` is eight on both sides and
 // there is nothing to translate.
@@ -25,7 +16,7 @@
 // wrong is in `look.h`, which includes this — so a dial and the size it is measured against are
 // still one statement, in the direction a light pass can take without taking the tables too.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -725,7 +716,7 @@ namespace Rtx::Shaders
     // buffers and the shader reads them — and a padding byte nobody asked for is a mistake that
     // produces a plausible wrong image rather than an error. GLSL is pinned separately, by the
     // `--scalar-block-layout` the build hands the validator.
-#ifdef RTX_HOST
+#ifdef __cplusplus
     static_assert(sizeof(GpuMesh) == 12, "GpuMesh must be scalar-packed on every side");
     static_assert(sizeof(GpuInstance) == 60, "GpuInstance must be scalar-packed on every side");
     static_assert(sizeof(GpuLight) == 36, "GpuLight must be scalar-packed on every side");
@@ -739,7 +730,7 @@ namespace Rtx::Shaders
 
 #endif
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #else
 #undef uint64
@@ -748,7 +739,7 @@ namespace Rtx::Shaders
 // What both shading languages read and nothing on this side calls. The split is about who calls a
 // function, not about what a shading language can express: a scalar curve a test has to reach goes
 // inside the namespace above, where `RTX_SHADER` makes it `inline` here as well.
-#ifndef RTX_HOST
+#ifndef __cplusplus
 
 /// Henyey-Greenstein, per steradian: the share of what a medium scatters that leaves `cosine` off
 /// the line the light was already travelling.

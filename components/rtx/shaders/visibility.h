@@ -13,7 +13,7 @@
 // about a field. Scalar block layout is what makes that possible: a `vec3` is twelve bytes on both
 // sides, with none of the padding rules that make std140 a translation exercise.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstddef>
 #include <cstdint>
@@ -649,7 +649,7 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-#ifdef RTX_HOST
+#ifdef __cplusplus
     static_assert(sizeof(MoonDisc) == 88, "MoonDisc must be scalar-packed on every side");
     static_assert(sizeof(CloudDeck) == 96, "CloudDeck must be scalar-packed on every side");
     static_assert(sizeof(StarField) == 32, "StarField must be scalar-packed on every side");
@@ -659,12 +659,12 @@ namespace Rtx::Shaders
 
 #endif
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 
 // What both shading languages read and the host does not, for the reason `RTX_SHADER` gives.
-#ifndef RTX_HOST
+#ifndef __cplusplus
 
 /// The sky's own colour along a direction: the game's horizon fading to its zenith.
 ///

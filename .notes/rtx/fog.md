@@ -44,11 +44,20 @@ directional in-scattering. The ambient and lamp term uses 1 - exp(-tau).
 
 The formula is exact for constant coverage and visibility, including horizontal rays, rays aligned
 with the light, and intervals crossing the dry base. Its implementation is shared by C++ tests and
-GLSL. Each pixel integrates two intervals per depth slice, with coverage and lighting sampled at
-the interval midpoint. No field evaluation, light-grid traversal, or shadow ray is repeated per pixel.
+GLSL. Pixel intervals split at the depth texel centres, where trilinear interpolation changes slope.
+The 64-slice grid therefore needs at most 65 intervals, including its two constant boundary stretches.
+Coverage and lighting are sampled at each interval's world-space midpoint. Splitting at slice edges
+instead spans two interpolation slopes and misses narrow lamp peaks. No field evaluation, light-grid
+traversal, or shadow ray is repeated per pixel.
 
 The remaining approximations are the froxel representation of coverage, visibility and lamp
 irradiance, and the locally constant coverage used for the light's atmospheric column. A bank's
 full density field is not marched toward each directional light. Per-pixel integration costs more
 texture reads and arithmetic than fetching an accumulated column; it requires fewer volume images
 and keeps the known medium independent of grid resolution.
+
+The filtered lighting pair contains lamp radiance plus coverage in one image and sun/moon
+visibility in a two-channel image. Particles and cloud shells read the point visibility grid;
+the fog's wider spatial filter leaks neighboring light beneath their occluders. Binding indices
+and image formats are shared between the Vulkan owner and its shaders in `shaders/fogvolume.h`.
+The depth curve, pixel mapping and sampled column ray are shared in `lib/froxel.glsl`.

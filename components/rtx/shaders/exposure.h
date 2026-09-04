@@ -5,12 +5,10 @@
 #define OPENMW_COMPONENTS_RTX_SHADERS_EXPOSURE_H
 
 #include "look.h"
-#include "portable.h"
-
 // What the two passes that measure a frame's brightness need. Included verbatim by both sides, for
 // the reason `visibility.h` is.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -58,7 +56,7 @@ namespace Rtx::Shaders
         float mBias;
     };
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 

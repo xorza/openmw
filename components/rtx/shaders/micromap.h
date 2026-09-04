@@ -17,7 +17,7 @@
 // curve visits them, with the two it visits mirrored. `RtxMicromapCurveTest` is what says the two
 // agree at every level the kernel bakes.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -275,7 +275,7 @@ namespace Rtx::Shaders
         uint mPadding;
     };
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
     static_assert(sizeof(MicromapConstants) == 64, "MicromapConstants must be scalar-packed on every side");
 }

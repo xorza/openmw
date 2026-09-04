@@ -5,8 +5,6 @@
 
 #include "camera.h"
 #include "look.h"
-#include "portable.h"
-
 // What the wavelet's temporal half needs. Included verbatim by both sides, for the reason
 // `visibility.h` is.
 
@@ -38,7 +36,7 @@
 // GLSL reads before it parses anything, and `VK_FORMAT_*` is an enumerator, and the preprocessor is
 // the one thing both languages share.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #define ACCUMULATE_COLOUR VK_FORMAT_R16G16B16A16_SFLOAT
 #define ACCUMULATE_SURFACE VK_FORMAT_R16G16B16A16_SFLOAT
@@ -52,7 +50,7 @@
 
 #endif
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -90,11 +88,11 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-#ifdef RTX_HOST
+#ifdef __cplusplus
     static_assert(sizeof(AccumulateConstants) == 68, "AccumulateConstants must be scalar-packed on every side");
 #endif
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 

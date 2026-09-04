@@ -3,8 +3,6 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_BINDINGS_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_BINDINGS_H
 
-#include "portable.h"
-
 // Where set 0's inputs are bound, for the shader that declares them and the pass that writes them.
 //
 // **Two lists of the same numbers, kept in step by hand, is how a shader comes to read a table
@@ -24,7 +22,7 @@
 // languages read has to sit: `portable.h` is next to it, and the shader compiler is given this
 // directory and no other.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -51,7 +49,7 @@ namespace Rtx::Shaders
     /// How many the set declares, which is the last of them and one more.
     const uint BIND_COUNT = 6;
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 

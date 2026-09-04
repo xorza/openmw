@@ -128,11 +128,13 @@ endforeach()
 # reads it. Named here so an IDE lists them beside the shaders they belong to, which is the only
 # thing the build wants them for.
 set(RTX_SHADER_LIB
+    shaders/fogvolume.h
     shaders/lib/bindings.glsl
     shaders/lib/bloom.glsl
     shaders/lib/fog.glsl
     shaders/lib/footprint.glsl
     shaders/lib/frame.glsl
+    shaders/lib/froxel.glsl
     shaders/lib/geometry.glsl
     shaders/lib/hitstage.glsl
     shaders/lib/lights.glsl

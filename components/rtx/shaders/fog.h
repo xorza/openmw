@@ -3,7 +3,7 @@
 
 #include "portable.h"
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 #include <algorithm>
 #include <cmath>
 
@@ -54,7 +54,7 @@ namespace Rtx::Shaders
         return exp(-min(lightFrom, depth + lightTo)) * depth * fogExponentialMean(abs(1.0f - climbRatio) * depth);
     }
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 

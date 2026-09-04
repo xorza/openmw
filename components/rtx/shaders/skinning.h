@@ -4,8 +4,6 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_SKINNING_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_SKINNING_H
 
-#include "portable.h"
-
 // What poses a skinned body or a morphed face on the device, as both sides see it. Included
 // verbatim by the host and by the two kernels, for the reason `scene.h` is: a row the host packs and
 // a kernel reads has to be one row.
@@ -16,7 +14,7 @@
 // normalised, because the rasterizer does not. A morph is the base plus every target's offset at its
 // weight, positions only. What the game draws is the target, and these are its numbers.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -66,7 +64,7 @@ namespace Rtx::Shaders
     {
         vec4 mRows[3];
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
         /// For telling a pose from the one already held, row by row.
         bool operator==(const GpuBone& other) const = default;
 #endif
@@ -104,7 +102,7 @@ namespace Rtx::Shaders
         uint mTargets;
     };
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
     static_assert(sizeof(GpuInfluence) == 8, "GpuInfluence must be scalar-packed on every side");
     static_assert(sizeof(GpuBone) == 48, "GpuBone must be scalar-packed on every side");

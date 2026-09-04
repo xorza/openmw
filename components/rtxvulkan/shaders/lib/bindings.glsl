@@ -28,6 +28,7 @@
 // not tidiness — the device allows 32 push descriptors and this had reached exactly 32, so every
 // list that keeps growing moved to the owner that already holds it.
 
+#include "../fogvolume.h"
 #include "bindings.h"
 #include "gbuffer.h"
 #include "scene.h"
@@ -380,32 +381,25 @@ layout(set = 0, binding = BIND_WAVE_CURVATURE) uniform sampler2D waveCurvature[W
 /// `Rtx::bakeFogNoise` says what is in it, and why every level of the chain carries one spread.
 layout(set = 0, binding = BIND_FOG_FIELD) uniform sampler3D fogField;
 
-// The air in front of the eye, integrated once for a block of pixels rather than once per pixel.
-// `Rtx::FogVolume` says what each image holds and why there are three pairs of them.
-//
-// **A set of its own, which is the set `GBuffer` already argued for.** Set zero is pushed, the
-// device allows 32 push descriptors and this renderer had reached exactly that once — so images
-// belonging to a camera's size go with the owner that holds them.
-//
-// **Each image is named twice wherever a pass both reads and writes it**, because Vulkan has no
-// descriptor that is both. Which physical image the first two pairs name swaps every frame:
-// `FogVolume::getSet` hands over the set whose history is what the last frame wrote.
+// A camera-sized grid has its own set to stay within the device's push-descriptor limit.
+// Separate sampled and storage bindings let the same images cross passes without descriptor updates.
+// FogVolume selects a set whose history is the previous frame's written pair.
 
-// Only stochastic coverage and visibility have history; the medium's profile is analytic.
-layout(set = 3, binding = 0) uniform sampler3D fogWasCoverage;
-layout(set = 3, binding = 1) uniform sampler3D fogWasVisibility;
-layout(set = 3, binding = 2) uniform sampler3D fogCoverage;
-layout(set = 3, binding = 3) uniform sampler3D fogVisibility;
-layout(set = 3, binding = 4) uniform sampler3D fogLamps;
+// Coverage and visibility have history; deterministic transport is evaluated on the pixel ray.
+layout(set = 3, binding = BIND_FOG_WAS_COVERAGE) uniform sampler3D fogWasCoverage;
+layout(set = 3, binding = BIND_FOG_WAS_VISIBILITY) uniform sampler3D fogWasVisibility;
+layout(set = 3, binding = BIND_FOG_COVERAGE) uniform sampler3D fogCoverage;
+layout(set = 3, binding = BIND_FOG_VISIBILITY) uniform sampler3D fogVisibility;
+layout(set = 3, binding = BIND_FOG_LAMPS) uniform sampler3D fogLamps;
 
-// Lamp scattering and coverage, beside sun/lamp/ambient/moon visibility after spatial filtering.
-layout(set = 3, binding = 5) uniform sampler3D fogSlice;
-layout(set = 3, binding = 6) uniform sampler3D fogSliceVisibility;
-layout(set = 3, binding = 7, r16f) uniform writeonly image3D fogCoverageTarget;
-layout(set = 3, binding = 8, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVisibilityTarget;
-layout(set = 3, binding = 9, FOG_VOLUME_FORMAT) uniform writeonly image3D fogLampsTarget;
-layout(set = 3, binding = 10, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSliceTarget;
-layout(set = 3, binding = 11, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSliceVisibilityTarget;
-layout(set = 3, binding = 12, r32f) uniform image2D fogColumnDepth;
+// Lamp scattering and coverage, beside sun/moon visibility after spatial filtering.
+layout(set = 3, binding = BIND_FOG_SLICE) uniform sampler3D fogSlice;
+layout(set = 3, binding = BIND_FOG_SLICE_VISIBILITY) uniform sampler3D fogSliceVisibility;
+layout(set = 3, binding = BIND_FOG_COVERAGE_TARGET, FOG_COVERAGE_FORMAT) uniform writeonly image3D fogCoverageTarget;
+layout(set = 3, binding = BIND_FOG_VISIBILITY_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogVisibilityTarget;
+layout(set = 3, binding = BIND_FOG_LAMPS_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogLampsTarget;
+layout(set = 3, binding = BIND_FOG_SLICE_TARGET, FOG_VOLUME_FORMAT) uniform writeonly image3D fogSliceTarget;
+layout(set = 3, binding = BIND_FOG_SLICE_VISIBILITY_TARGET, FOG_DIRECTIONAL_FORMAT) uniform writeonly image3D fogSliceVisibilityTarget;
+layout(set = 3, binding = BIND_FOG_COLUMN_DEPTH, FOG_DEPTH_FORMAT) uniform image2D fogColumnDepth;
 
 #endif

@@ -6,7 +6,7 @@
 #include "look.h"
 #include "portable.h"
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <osg/Vec3f>
 
@@ -26,12 +26,12 @@ namespace Rtx::Shaders
     /// more light into it than the surface behind them left.
     const vec3 LUMINANCE_WEIGHTS = vec3(0.2126f, 0.7152f, 0.0722f);
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 
 // What both shading languages read and the host does not, for the reason `RTX_SHADER` gives.
-#ifndef RTX_HOST
+#ifndef __cplusplus
 
 /// The largest of a colour's three channels.
 ///

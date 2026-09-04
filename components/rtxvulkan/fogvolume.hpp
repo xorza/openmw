@@ -33,11 +33,8 @@ namespace Rtx
         VkDescriptorSet getSet(std::uint64_t frame) const { return mSets[writtenAt(frame)]; }
 
         void begin(VkCommandBuffer commands, std::uint64_t frame) const;
-
         void depthTaken(VkCommandBuffer commands) const;
-
         void scattered(VkCommandBuffer commands, std::uint64_t frame) const;
-
         void handOver(VkCommandBuffer commands) const;
 
     private:
@@ -52,7 +49,6 @@ namespace Rtx
 
         // Only sampled coverage and visibility are reprojected; deterministic transport never enters history.
         std::array<Image, 2> mCoverage;
-
         std::array<Image, 2> mVisibility;
 
         // Lamp energy is integrated along each froxel and follows flicker without temporal averaging.
@@ -60,11 +56,9 @@ namespace Rtx
 
         Image mSlice;
         Image mSliceVisibility;
-
         Image mColumnDepth;
 
         VkSampler mSampler = VK_NULL_HANDLE;
-
         VkDescriptorPool mPool = VK_NULL_HANDLE;
         std::array<VkDescriptorSet, 2> mSets{};
     };

@@ -40,53 +40,27 @@ PuffShape flatPuff()
     return PuffShape(1.0, 1.0);
 }
 
-/// What a puff of smoke is lit by, per unit of albedo, out of the froxel it stands in.
-///
-/// **A puff is the same kind of thing the air is, in the same place, so it is lit by the same
-/// answers.** `Rtx::FogVolume` holds, per point and averaged over frames, what a shadow ray from
-/// that point found toward the sun, what the one lamp worth a ray delivered and whether it was seen,
-/// and what the ambient's own ray found over the whole sphere. Reading them is two fetches where
-/// three rays of the puff's own would be.
-///
-/// **What a field buys is not the cost.** Rays cast at one puff of a layer and shared with the rest
-/// flip between neighbouring pixels wherever the layer straddles a shadow edge, and draw that one
-/// puff's silhouette into the picture — a black disc through a drain's splash at Vivec and through
-/// the blight cloud at Dagoth Ur. A field the sampler interpolates cannot draw a silhouette, and one
-/// accumulated over frames cannot speckle.
-///
-/// **The three terms are the ones a puff always had**, and the arithmetic is `pathEnd`'s with the
-/// visibilities read rather than traced: the frame's ambient by what the point sees of it, the sun
-/// by its transport — the shadow and the beam through the fog — and the lamps by what they deliver
-/// times whether they are seen. The sun's irradiance and phase are put back here because the volume
-/// stores neither, both being the direction's alone; a puff throws by `SMOKE_ANISOTROPY` where the
-/// air throws by `fogPhase`, and that is the caller's. What water over the puff leaves of the
-/// daylight is put back here too, on the sun and the sky both — `sunInAir` says why the volume
-/// carries none of it.
-///
-/// **As bright as a card of the same albedo held beside it, and that is not a fudge.** An opaque
-/// diffuse *sphere* would catch `pi r^2` of the beam and radiate over `4 pi r^2` — a quarter of the
-/// facing value — but a puff is neither opaque nor diffuse: it is a cloud of droplets that scatters
-/// strongly forward and again inside itself, so the sun reaches all of it rather than one
-/// hemisphere. The quarter, tried first in the reference implementation, put a plume back at the
-/// sky's own ambient, where it was invisible. `INV_PI` is what carries that convention here.
-///
-/// @param seen how far along the ray the puff stands, which with the pixel names the froxel.
-/// @param wrapped what the puff's own shape and its own texture leave of each of the two terms —
-///        `PuffShape`, whose fields say which is which.
+/// Lighting per unit albedo at a puff, with the shape's sun and ambient responses applied.
+// Shared point visibility avoids extra shadow rays and emitter-shaped shadows at low sample counts.
+// Lamp energy follows the current frame; the sky and sun also cross any water over the puff.
+// INV_PI gives smoke the facing brightness of a card: its droplets scatter through the whole volume,
+// unlike an opaque sphere that catches light on only one hemisphere.
 vec3 puffLight(uvec2 pixel, vec3 direction, float seen, PuffShape wrapped)
 {
-    const vec3 at = vec3(
-        (vec2(pixel) + 0.5) / float(FOG_VOLUME_SCALE) / vec2(textureSize(fogVisibility, 0).xy),
-        sqrt(min(seen, FOG_REACH) / FOG_REACH));
+    const vec3 at = vec3(fogVolumeUV(vec2(pixel) + 0.5, textureSize(fogVisibility, 0).xy), fogVolumeDepth(seen));
     // Smoke samples point lighting; the fog's broad tent leaks neighboring visibility beneath lids.
     const vec3 visibility = textureLod(fogVisibility, at, 0.0).xyz;
     const vec3 lamps = textureLod(fogLamps, at, 0.0).xyz;
     const vec3 position = frame.mOrigin + direction * seen;
     const vec3 daylight = daylightReaching(position);
-    const float coverage = frame.mFogExtinction > 0.0 ? textureLod(fogCoverage, at, 0.0).x : 1.0;
-    const float beam = waterOver(position) > 0.0 ? 1.0 : exp(-fogBeamDepthAt(position, coverage, frame.mSunPosition));
-    const vec3 sun = HAS_SUN
-        ? frame.mSunIrradiance * daylight * (visibility.x * beam * INV_PI * wrapped.mSunLit) : vec3(0.0);
+    vec3 sun = vec3(0.0);
+    if (sunUp())
+    {
+        const float coverage = frame.mFogExtinction > 0.0 ? textureLod(fogCoverage, at, 0.0).x : 1.0;
+        const float beam
+            = waterOver(position) > 0.0 ? 1.0 : exp(-fogBeamDepthAt(position, coverage, frame.mSunPosition));
+        sun = frame.mSunIrradiance * daylight * (visibility.x * beam * INV_PI * wrapped.mSunLit);
+    }
 
     return frame.mAmbient * daylight * (visibility.z * wrapped.mAmbientLit) + sun
         + lamps * (visibility.y * wrapped.mAmbientLit);

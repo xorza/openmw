@@ -43,7 +43,7 @@ void main()
 
     // A surface-containing slice must not interpolate toward unwritten air behind that surface.
     const float surface = imageLoad(fogColumnDepth, froxel.xy).x;
-    const int last = clamp(int(ceil(sqrt(min(surface, FOG_REACH) / FOG_REACH) * float(FOG_VOLUME_SLICES))) - 1,
+    const int last = clamp(int(ceil(fogVolumeDepth(surface) * float(FOG_VOLUME_SLICES))) - 1,
         0, int(FOG_VOLUME_SLICES) - 1);
     const ivec3 held = ivec3(froxel.xy, min(froxel.z, last));
     if (!(total > 0.0))
@@ -57,5 +57,5 @@ void main()
     visibility /= total;
     const vec3 lamps = texelFetch(fogLamps, held, 0).xyz;
     imageStore(fogSliceTarget, froxel, vec4(lamps * visibility.y, coverage));
-    imageStore(fogSliceVisibilityTarget, froxel, visibility);
+    imageStore(fogSliceVisibilityTarget, froxel, vec4(visibility.xw, 0.0, 0.0));
 }

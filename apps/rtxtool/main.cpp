@@ -323,32 +323,6 @@ namespace RtxTool
             return request;
         }
 
-        int runInfo(const Command& command, const Rtx::ValidationOptions& validation)
-        {
-            // A one-pixel target: this reports on a device rather than drawing with it, and the
-            // default would spend fifty megabytes of images to print a page of text.
-            //
-            // **The shaders are still named, because standing a renderer up compiles one.**
-            // Reporting on a device is not a reason to build half a renderer, and a build whose
-            // shaders are missing should say so here rather than at the first frame asked for.
-            std::string reason;
-            const std::unique_ptr<Rtx::Renderer> renderer
-                = Rtx::createRenderer(Rtx::RendererOptions{ .mShaderDirectory = command.mResources / "rtx" / "shaders",
-                                          .mCacheDirectory = command.mConfig.getCachePath(),
-                                          .mWidth = 1,
-                                          .mHeight = 1,
-                                          .mValidation = validation },
-                    reason);
-            if (renderer == nullptr)
-            {
-                out() << reason << '\n';
-                return 1;
-            }
-
-            out() << renderer->describeDevice();
-            return 0;
-        }
-
         /// Reads a cell and places all of it, lights included.
         ///
         /// An interior's illumination is its own lamps over its own `AMBI`; an exterior's is the sky
@@ -554,7 +528,23 @@ namespace RtxTool
         {
             const Rtx::ValidationOptions validation = validationFrom(command.mVariables, false);
 
-            return runInfo(command, validation);
+            // Device reporting still constructs the renderer; a one-pixel target avoids full-size allocations.
+            std::string reason;
+            const std::unique_ptr<Rtx::Renderer> renderer
+                = Rtx::createRenderer(Rtx::RendererOptions{ .mShaderDirectory = command.mResources / "rtx" / "shaders",
+                                          .mCacheDirectory = command.mConfig.getCachePath(),
+                                          .mWidth = 1,
+                                          .mHeight = 1,
+                                          .mValidation = validation },
+                    reason);
+            if (renderer == nullptr)
+            {
+                out() << reason << '\n';
+                return 1;
+            }
+
+            out() << renderer->describeDevice();
+            return 0;
         }
 
         int commandTextures(const Command& command)

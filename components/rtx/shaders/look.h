@@ -28,7 +28,7 @@
 // them, the air in front of all of it, the water, the sprites, and last how many frames and samples
 // go into settling the result.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <osg/Vec3f>
 
@@ -959,7 +959,7 @@ namespace Rtx::Shaders
     /// swinging open is not a fade.
     const float FOG_VOLUME_HISTORY = 0.9f;
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 

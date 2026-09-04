@@ -7,7 +7,7 @@
 
 // How a pixel becomes a ray, and nothing else about the frame.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -89,11 +89,11 @@ namespace Rtx::Shaders
 
     // Pinned for the reason `scene.h` gives: the side that writes these bytes and the side that
     // reads them are different compilers.
-#ifdef RTX_HOST
+#ifdef __cplusplus
     static_assert(sizeof(Camera) == 60, "Camera must be scalar-packed on every side");
 #endif
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 
@@ -102,7 +102,7 @@ namespace Rtx::Shaders
 // **Every result here is built by assigning fields rather than by calling a constructor.** GLSL has
 // `Ray(offset, direction)` and no brace initialiser, so assignment is the form a shared header can
 // write and a second reader could still compile.
-#ifndef RTX_HOST
+#ifndef __cplusplus
 
 /// Where a pixel's ray starts relative to the eye, and which way it points.
 ///

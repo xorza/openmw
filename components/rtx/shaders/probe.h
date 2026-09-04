@@ -4,8 +4,6 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_PROBE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_PROBE_H
 
-#include "portable.h"
-
 // What a device-behaviour probe is handed. Included verbatim by both sides, for the reason
 // `visibility.h` is.
 //
@@ -14,7 +12,7 @@
 // destroyed — can be stated as a test that fails, instead of being put to a whole traced frame and
 // answered by elimination.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -84,7 +82,7 @@ namespace Rtx::Shaders
         vec4 mC;
     };
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
     static_assert(sizeof(ProbeAddresses) == 16, "ProbeAddresses must be scalar-packed on every side");
     static_assert(sizeof(ProbeRow) == 48, "ProbeRow must be scalar-packed on every side");

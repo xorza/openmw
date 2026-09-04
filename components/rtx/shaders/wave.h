@@ -19,7 +19,7 @@
 // sixty-four sines, and the surface is read twice per water pixel — once for the normal and once for
 // the curvature. The synthesis is one pass a frame over a few small grids.
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -62,7 +62,7 @@ namespace Rtx::Shaders
     /// tile's own end, which is the answer a clamp gives anyway.
     const uint WAVE_LEVELS = 10u;
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
     static_assert((1u << (WAVE_LEVELS - 1u)) == WAVE_GRID, "WAVE_LEVELS must be the widest grid's own chain");
 #endif
 
@@ -129,12 +129,12 @@ namespace Rtx::Shaders
         uint mCount;
     };
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 
 // What both shading languages read and nothing on this side calls.
-#ifndef RTX_HOST
+#ifndef __cplusplus
 
 /// A complex number turned by an angle, which is a multiply by `exp(i angle)`.
 ///

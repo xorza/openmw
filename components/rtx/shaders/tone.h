@@ -4,13 +4,11 @@
 #ifndef OPENMW_COMPONENTS_RTX_SHADERS_TONE_H
 #define OPENMW_COMPONENTS_RTX_SHADERS_TONE_H
 
-#include "portable.h"
-
 // What the display pass needs. Included verbatim by both sides, for the reason `visibility.h` is.
 
 #include "visibility.h"
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 
 #include <cstdint>
 
@@ -81,7 +79,7 @@ namespace Rtx::Shaders
         StarField mStars;
     };
 
-#ifdef RTX_HOST
+#ifdef __cplusplus
 }
 #endif
 

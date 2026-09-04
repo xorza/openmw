@@ -26,7 +26,6 @@
 layout(local_size_x = FOG_FROXEL_WORKGROUP_ACROSS, local_size_y = FOG_FROXEL_WORKGROUP_ACROSS,
     local_size_z = FOG_FROXEL_WORKGROUP_DEEP) in;
 
-
 // Coprime shifts decorrelate the 2D blue-noise tile between depth slices.
 const uvec2 FOG_SLICE_TURN = uvec2(13u, 7u);
 
@@ -38,14 +37,10 @@ vec3 fogVolumeWas(vec3 fromEye)
     if (screen.x < 0.0)
         return vec3(-1.0);
 
-    const vec2 columns = vec2(textureSize(fogWasCoverage, 0).xy);
-    const vec2 at = screen * vec2(float(frame.mCamera.mWidth), float(frame.mCamera.mHeight))
-        / float(FOG_VOLUME_SCALE) / columns;
-
-    const float along = sqrt(min(length(was), FOG_REACH) / FOG_REACH);
-
-    return vec3(at, along);
+    const vec2 pixel = screen * vec2(frame.mCamera.mWidth, frame.mCamera.mHeight);
+    return vec3(fogVolumeUV(pixel, textureSize(fogWasCoverage, 0).xy), fogVolumeDepth(length(was)));
 }
+
 void main()
 {
     const ivec3 grid = imageSize(fogCoverageTarget);
