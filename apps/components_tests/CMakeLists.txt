@@ -127,6 +127,7 @@ if (OPENMW_RTX)
         rtx/frametimes.cpp
         rtx/frameworld.cpp
         rtx/geometry.hpp
+        rtx/graphlight.hpp
         rtx/gputimer.cpp
         rtx/guipass.cpp
         rtx/guitextures.cpp

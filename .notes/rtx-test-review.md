@@ -12,12 +12,6 @@ duplication, asymmetry and the accuracy of the comments. It does not question wh
 The same constants, quads and helpers are written out again in file after file. Several of the files
 that copy them already include the header that defines them.
 
-- [ ] `makeGraphLight(diffuse, ambient)` in `lightbuilder.cpp:56` and `makeLightSource(radius,
-      diffuse, ambient)` in `extractor/fixture.hpp:135` build the same `SceneUtil::LightSource`.
-- [ ] `sTrianglePositions` and `sTriangleIndices` name different geometry in `scenedesc.cpp:570` and
-      `micromap.cpp:370`. Two names, two meanings, one suite.
-- [ ] `const osg::Vec3f origin(0.0f, 0.0f, 0.0f); origin * instance.mTransform` is the standing idiom
-      of the extractor suite. Give it a `placedAt(scene, index)` helper.
 - [ ] `Rtx::SceneDesc scene; SceneExtractor extractor(scene);` opens 56 of the 58 extractor tests, and
       `extractor.extract(*root, osg::Matrixf::identity(), 0)` appears 89 times. A fixture holding the
       pair, with a `walk(root)` method, removes both.

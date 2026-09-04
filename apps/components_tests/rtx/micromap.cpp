@@ -28,6 +28,7 @@
 #include <components/rtxvulkan/scenemicromaps.hpp>
 #include <components/rtxvulkan/texture.hpp>
 
+#include "geometry.hpp"
 #include "harness.hpp"
 
 namespace Rtx
@@ -365,20 +366,12 @@ namespace Rtx
             }
         };
 
-        /// One triangle over the whole of a mask: vertex nought at the sheet's origin, one along
-        /// `u`, two along `v`.
-        const std::array<osg::Vec3f, 3> sTrianglePositions{
-            osg::Vec3f(0.0f, 0.0f, 0.0f),
-            osg::Vec3f(1.0f, 0.0f, 0.0f),
-            osg::Vec3f(0.0f, 1.0f, 0.0f),
-        };
+        /// The mask laid over `Testing::sUnitTriangle`, corner for corner.
         const std::array<osg::Vec2f, 3> sTriangleUv{
             osg::Vec2f(0.0f, 0.0f),
             osg::Vec2f(1.0f, 0.0f),
             osg::Vec2f(0.0f, 1.0f),
         };
-        constexpr std::array<std::uint32_t, 3> sTriangleIndices{ 0, 1, 2 };
-
         /// The same triangle with the mask repeated a hundred times along it, so every microtriangle
         /// at level two covers twenty-five repeats and is past the budget.
         const std::array<osg::Vec2f, 3> sRepeatedUv{
@@ -408,8 +401,8 @@ namespace Rtx
                 .mAlphaRef = 0.5f,
                 .mAlphaMode = AlphaMode::Cutout,
             });
-            const Index triangle
-                = scene.addMesh(sTrianglePositions, {}, uv, sTriangleIndices, {}, Deform::None, sNoIndex, cutout);
+            const Index triangle = scene.addMesh(
+                Testing::sUnitTriangle, {}, uv, Testing::sTriangleIndices, {}, Deform::None, sNoIndex, cutout);
 
             Graveyard graveyard(device, pool);
             Batch setup(pool);
@@ -588,12 +581,12 @@ namespace Rtx
             const Index untextured = scene.addMaterial(unopened);
 
             const Index baked = scene.addMesh(
-                sTrianglePositions, {}, sTriangleUv, sTriangleIndices, {}, Deform::None, sNoIndex, cutout);
-            const Index refused = scene.addMesh(
-                sTrianglePositions, {}, sTriangleUv, sTriangleIndices, {}, Deform::None, sNoIndex, animated);
-            const Index bare = scene.addMesh(
-                sTrianglePositions, {}, sTriangleUv, sTriangleIndices, {}, Deform::None, sNoIndex, untextured);
-            const Index plain = scene.addMesh(sTrianglePositions, {}, sTriangleUv, sTriangleIndices);
+                Testing::sUnitTriangle, {}, sTriangleUv, Testing::sTriangleIndices, {}, Deform::None, sNoIndex, cutout);
+            const Index refused = scene.addMesh(Testing::sUnitTriangle, {}, sTriangleUv, Testing::sTriangleIndices, {},
+                Deform::None, sNoIndex, animated);
+            const Index bare = scene.addMesh(Testing::sUnitTriangle, {}, sTriangleUv, Testing::sTriangleIndices, {},
+                Deform::None, sNoIndex, untextured);
+            const Index plain = scene.addMesh(Testing::sUnitTriangle, {}, sTriangleUv, Testing::sTriangleIndices);
 
             for (const Index mesh : { baked, refused, bare, plain })
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
@@ -684,7 +677,7 @@ namespace Rtx
                 .mAlphaMode = AlphaMode::Cutout,
             });
             const Index baked = scene.addMesh(
-                sTrianglePositions, {}, sTriangleUv, sTriangleIndices, {}, Deform::None, sNoIndex, cutout);
+                Testing::sUnitTriangle, {}, sTriangleUv, Testing::sTriangleIndices, {}, Deform::None, sNoIndex, cutout);
 
             Graveyard graveyard(device, pool);
             Batch setup(pool);

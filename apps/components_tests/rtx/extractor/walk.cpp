@@ -158,9 +158,8 @@ namespace Rtx::Testing
             ASSERT_EQ(scene.getInstances().size(), 2u);
             EXPECT_EQ(scene.getInstances()[0].mMesh, scene.getInstances()[1].mMesh);
 
-            const osg::Vec3f origin(0.0f, 0.0f, 0.0f);
-            EXPECT_EQ(origin * scene.getInstances()[0].mTransform, osg::Vec3f(10.0f, 0.0f, 0.0f));
-            EXPECT_EQ(origin * scene.getInstances()[1].mTransform, osg::Vec3f(0.0f, 20.0f, 0.0f));
+            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
+            EXPECT_EQ(placedAt(scene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
         }
 
         /// **A branch a switch has turned off is not in the picture, and `osg::Switch::traverse`
@@ -186,13 +185,11 @@ namespace Rtx::Testing
             const ExtractionStats noon = extractor.extract(*root, osg::Matrixf::identity(), 0);
             ASSERT_TRUE(extractor.retire().empty()) << "the first walk swept something it had just placed";
 
-            const osg::Vec3f origin(0.0f, 0.0f, 0.0f);
-
             // The night branch was not walked, so it is not a mesh either: one added rather than two.
             EXPECT_EQ(noon.mMeshesAdded, 1u);
             EXPECT_EQ(noon.mInstances, 1u);
             ASSERT_EQ(scene.getInstances().size(), 1u);
-            EXPECT_EQ(origin * scene.getInstances()[0].mTransform, osg::Vec3f(10.0f, 0.0f, 0.0f));
+            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
 
             root->setSingleChildOn(1);
             scene.clearPlacement();
@@ -210,7 +207,7 @@ namespace Rtx::Testing
             ASSERT_EQ(scene.getInstances().size(), 2u);
             EXPECT_FALSE(scene.getInstances()[0].isPlaced()) << "the day branch outlived the sweep";
             ASSERT_TRUE(scene.getInstances()[1].isPlaced());
-            EXPECT_EQ(origin * scene.getInstances()[1].mTransform, osg::Vec3f(0.0f, 20.0f, 0.0f));
+            EXPECT_EQ(placedAt(scene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
         }
 
         TEST(RtxSceneExtractorTest, theRootTransformIsAppliedAfterTheGraphsOwn)
@@ -297,7 +294,7 @@ namespace Rtx::Testing
 
             // And it still placed what was under it, at the transform it asked for.
             ASSERT_EQ(scene.getPlacedCount(), 1u);
-            EXPECT_EQ(osg::Vec3f(0.0f, 0.0f, 0.0f) * scene.getInstances()[0].mTransform, osg::Vec3f(0.0f, 0.0f, 4.0f));
+            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(0.0f, 0.0f, 4.0f));
         }
 
         /// An absolute reference frame replaces what is above it rather than adding to it, which is
@@ -326,13 +323,12 @@ namespace Rtx::Testing
             extractor.extract(*above, osg::Matrixf::identity(), 0);
 
             ASSERT_EQ(scene.getInstances().size(), 2u);
-            const osg::Vec3f origin(0.0f, 0.0f, 0.0f);
 
             // The absolute one stands at its own translation and nowhere near the hundred above it.
-            EXPECT_EQ(origin * scene.getInstances()[0].mTransform, osg::Vec3f(0.0f, 0.0f, 7.0f));
+            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(0.0f, 0.0f, 7.0f));
 
             // The relative one carries it.
-            EXPECT_EQ(origin * scene.getInstances()[1].mTransform, osg::Vec3f(100.0f, 100.0f, 107.0f));
+            EXPECT_EQ(placedAt(scene, 1), osg::Vec3f(100.0f, 100.0f, 107.0f));
         }
 
         /// The property the incremental mirror rests on: nothing changed, so nothing is added.
@@ -389,9 +385,8 @@ namespace Rtx::Testing
             ASSERT_EQ(scene.getPlacedCount(), 2u);
             EXPECT_EQ(scene.getMeshes().size(), 1u) << "one model is still one mesh";
 
-            const osg::Vec3f origin(0.0f, 0.0f, 0.0f);
-            EXPECT_EQ(origin * scene.getInstances()[0].mTransform, osg::Vec3f(10.0f, 0.0f, 0.0f));
-            EXPECT_EQ(origin * scene.getInstances()[1].mTransform, osg::Vec3f(0.0f, 20.0f, 0.0f));
+            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
+            EXPECT_EQ(placedAt(scene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
 
             // And they keep their own histories. Moving one must leave the other reporting nothing —
             // sharing a slot would have the still one inherit the mover's previous transform and

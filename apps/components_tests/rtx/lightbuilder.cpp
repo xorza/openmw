@@ -30,6 +30,7 @@
 #include <components/weather/downpour.hpp>
 
 #include "allocations.hpp"
+#include "graphlight.hpp"
 #include "statistics.hpp"
 
 namespace Rtx
@@ -52,17 +53,6 @@ namespace Rtx
             record.mData.mColor = colour;
             record.mData.mFlags = flags;
             return SceneUtil::LightCommon(record);
-        }
-
-        osg::ref_ptr<SceneUtil::LightSource> makeGraphLight(const osg::Vec4f& diffuse, const osg::Vec4f& ambient)
-        {
-            osg::ref_ptr<SceneUtil::Light> light = new SceneUtil::Light;
-            light->setDiffuse(diffuse);
-            light->setAmbient(ambient);
-
-            osg::ref_ptr<SceneUtil::LightSource> source = new SceneUtil::LightSource;
-            source->setLight(light);
-            return source;
         }
 
         /// One light's animation, sampled.
@@ -239,15 +229,15 @@ namespace Rtx
             const osg::Vec4f grey(128.0f / 255.0f, 128.0f / 255.0f, 128.0f / 255.0f, 1.0f);
             const osg::Vec4f glow(1.5f, 1.5f, 1.5f, 1.0f);
 
-            const osg::ref_ptr<SceneUtil::LightSource> full = makeGraphLight(grey, glow);
-            const osg::ref_ptr<SceneUtil::LightSource> half = makeGraphLight(grey, glow);
+            const osg::ref_ptr<SceneUtil::LightSource> full = Testing::makeLightSource(0.0f, grey, glow);
+            const osg::ref_ptr<SceneUtil::LightSource> half = Testing::makeLightSource(0.0f, grey, glow);
             half->setActorFade(0.5f);
 
             EXPECT_NEAR(lightColour(*half, 0.0).x(), lightColour(*full, 0.0).x() * 0.5f, 1e-5f);
 
             // What the distance fade reaches exactly at `actors processing range`, which is the
             // frame before the node mask takes the whole actor out of the picture.
-            const osg::ref_ptr<SceneUtil::LightSource> gone = makeGraphLight(grey, glow);
+            const osg::ref_ptr<SceneUtil::LightSource> gone = Testing::makeLightSource(0.0f, grey, glow);
             gone->setActorFade(0.0f);
 
             EXPECT_EQ(lightColour(*gone, 0.0), osg::Vec3f());
@@ -271,7 +261,8 @@ namespace Rtx
             // A pulse turns once in three seconds. Eight samples across it put one of them within an
             // eighth of a turn of the peak, so the deepest is at least `0.35 * cos(pi / 8)` from
             // rest — and every one of them carries the same ambient, which is the point.
-            const osg::Vec3f white = lightColour(*makeGraphLight(osg::Vec4f(), osg::Vec4f(1, 1, 1, 1)), 0.0);
+            const osg::Vec3f white
+                = lightColour(*Testing::makeLightSource(0.0f, osg::Vec4f(), osg::Vec4f(1, 1, 1, 1)), 0.0);
 
             float deepest = 0.0f;
             for (int i = 0; i < 8; ++i)
@@ -339,18 +330,19 @@ namespace Rtx
         {
             // 128 of 255 is 0.50196 encoded, and ((0.50196 + 0.055) / 1.055)^2.4 = 0.21586 linear.
             const osg::Vec4f grey(128.0f / 255.0f, 0.0f, 0.0f, 1.0f);
-            EXPECT_NEAR(lightColour(*makeGraphLight(grey, osg::Vec4f()), 0.0).x(), 0.21586f, 1e-5f);
+            EXPECT_NEAR(lightColour(*Testing::makeLightSource(0.0f, grey, osg::Vec4f()), 0.0).x(), 0.21586f, 1e-5f);
 
             // What `Animation::setLightEffect` builds: nothing in the diffuse, 1.5 in the ambient.
             // ((1.5 + 0.055) / 1.055)^2.4 = 2.53716, and a walk reading the diffuse alone gets zero.
-            const osg::Vec3f glow
-                = lightColour(*makeGraphLight(osg::Vec4f(0, 0, 0, 0), osg::Vec4f(1.5f, 1.5f, 1.5f, 1)), 0.0);
+            const osg::Vec3f glow = lightColour(
+                *Testing::makeLightSource(0.0f, osg::Vec4f(0, 0, 0, 0), osg::Vec4f(1.5f, 1.5f, 1.5f, 1)), 0.0);
             EXPECT_NEAR(glow.x(), 2.53716f, 1e-4f);
             EXPECT_NEAR(glow.z(), 2.53716f, 1e-4f);
 
             // Both at once add as light adds, after each is decoded and not before: 0.21586 of red
             // on top of 2.53716 of white.
-            const osg::Vec3f both = lightColour(*makeGraphLight(grey, osg::Vec4f(1.5f, 1.5f, 1.5f, 1)), 0.0);
+            const osg::Vec3f both
+                = lightColour(*Testing::makeLightSource(0.0f, grey, osg::Vec4f(1.5f, 1.5f, 1.5f, 1)), 0.0);
             EXPECT_NEAR(both.x(), 2.75302f, 1e-4f);
             EXPECT_NEAR(both.y(), 2.53716f, 1e-4f);
 
@@ -363,7 +355,7 @@ namespace Rtx
                 const std::optional<Rtx::Light> fromRecord = makeLight(record, osg::Vec3f(1, 2, 3));
 
                 const osg::ref_ptr<SceneUtil::LightSource> graph
-                    = makeGraphLight(SceneUtil::colourFromRGB(packed), osg::Vec4f());
+                    = Testing::makeLightSource(0.0f, SceneUtil::colourFromRGB(packed), osg::Vec4f());
                 const std::optional<Rtx::Light> fromGraph
                     = makeLight(lightColour(*graph, 0.0), 100.0f, osg::Vec3f(1, 2, 3));
 

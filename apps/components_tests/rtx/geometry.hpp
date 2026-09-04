@@ -38,6 +38,17 @@ namespace Rtx::Testing
         osg::Vec3f(0.0f, 1.0f, 0.0f),
     };
 
+    /// The unit right triangle in the xy plane, its right angle at the origin, its second corner
+    /// along x and its third along y.
+    inline const std::array<osg::Vec3f, 3> sUnitTriangle{
+        osg::Vec3f(0.0f, 0.0f, 0.0f),
+        osg::Vec3f(1.0f, 0.0f, 0.0f),
+        osg::Vec3f(0.0f, 1.0f, 0.0f),
+    };
+
+    /// One triangle, wound the way its corners were listed.
+    inline constexpr std::array<std::uint32_t, 3> sTriangleIndices{ 0, 1, 2 };
+
     /// A level square of `extent` about the origin at height `z`, facing up.
     inline std::array<osg::Vec3f, 4> sheetAt(float extent, float z)
     {

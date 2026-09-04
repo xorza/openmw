@@ -556,19 +556,21 @@ namespace Rtx
             EXPECT_FALSE(scene.getEmitters()[2].isFixed());
         }
 
-        /// A triangle, so that a mesh beside the quads has a length of its own to be packed against.
-        const std::array sTrianglePositions{
-            osg::Vec3f(0.0f, 0.0f, 5.0f),
-            osg::Vec3f(1.0f, 0.0f, 5.0f),
-            osg::Vec3f(0.0f, 1.0f, 5.0f),
-        };
-
-        constexpr std::array<std::uint32_t, 3> sTriangleIndices{ 0, 1, 2 };
-
-        /// The same quad lifted to `z`, so a mesh can be told apart by what came back out of it.
+        /// The unit quad lifted to `z`, so a mesh can be told apart by what came back out of it.
         std::array<osg::Vec3f, 4> quadAt(float z)
         {
             std::array<osg::Vec3f, 4> lifted = Testing::sUnitQuad;
+            for (osg::Vec3f& vertex : lifted)
+                vertex.z() = z;
+
+            return lifted;
+        }
+
+        /// The unit triangle lifted the same way, so that a mesh beside the quads has a length of
+        /// its own to be packed against.
+        std::array<osg::Vec3f, 3> triangleAt(float z)
+        {
+            std::array<osg::Vec3f, 3> lifted = Testing::sUnitTriangle;
             for (osg::Vec3f& vertex : lifted)
                 vertex.z() = z;
 
@@ -590,7 +592,7 @@ namespace Rtx
             SceneDesc scene;
             const std::array quads{ quadAt(0.0f), quadAt(2.0f) };
             const Index first = scene.addMesh(quads[0], {}, {}, Testing::sQuadIndices);
-            const Index middle = scene.addMesh(sTrianglePositions, {}, {}, sTriangleIndices);
+            const Index middle = scene.addMesh(triangleAt(5.0f), {}, {}, Testing::sTriangleIndices);
             const Index last = scene.addMesh(quads[1], {}, {}, Testing::sQuadIndices);
 
             ASSERT_EQ(scene.getPositions().size(), 11u);
@@ -626,7 +628,7 @@ namespace Rtx
 
             // A triangle fits the hole exactly and takes it back, at the index and the offset the
             // old one had.
-            const Index moved = scene.addMesh(sTrianglePositions, {}, {}, sTriangleIndices);
+            const Index moved = scene.addMesh(triangleAt(5.0f), {}, {}, Testing::sTriangleIndices);
             EXPECT_EQ(moved, middle);
             EXPECT_EQ(scene.getMeshes()[moved].mVertexOffset, 4u);
             EXPECT_EQ(scene.getMeshes()[moved].mVertexCount, 3u);
@@ -672,7 +674,7 @@ namespace Rtx
             ASSERT_TRUE(scene.release({}, {}));
             EXPECT_EQ(scene.getMeshRevision(), meshes) << "a cell leaving asked for the structures to be built again";
 
-            EXPECT_EQ(scene.addMesh(sTrianglePositions, {}, {}, sTriangleIndices), slot);
+            EXPECT_EQ(scene.addMesh(triangleAt(5.0f), {}, {}, Testing::sTriangleIndices), slot);
             EXPECT_EQ(scene.getMeshes().size(), 1u) << "the table grew, so a size test would have caught this anyway";
             EXPECT_GT(scene.getMeshRevision(), meshes) << "a slot taken over went unnoticed";
         }

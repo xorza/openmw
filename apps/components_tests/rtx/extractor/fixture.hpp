@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <initializer_list>
 #include <optional>
@@ -40,7 +41,6 @@
 #include <components/rtx/spritelight.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightcontroller.hpp>
-#include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/morphgeometry.hpp>
 #include <components/sceneutil/riggeometry.hpp>
@@ -48,6 +48,8 @@
 #include <components/sceneutil/statesetupdater.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/surface/material.hpp>
+
+#include "../graphlight.hpp"
 
 namespace Rtx::Testing
 {
@@ -117,6 +119,13 @@ namespace Rtx::Testing
         std::srand(1);
     }
 
+    /// Where the walk put instance `index`: the origin of its own space, carried through the
+    /// transform the walk gave it.
+    inline osg::Vec3f placedAt(const Rtx::SceneDesc& scene, std::size_t index)
+    {
+        return osg::Vec3f() * scene.getInstances()[index].mTransform;
+    }
+
     /// A unit quad in the xy plane: four vertices, two triangles.
     inline osg::ref_ptr<osg::Geometry> makeQuad()
     {
@@ -129,20 +138,6 @@ namespace Rtx::Testing
         }));
         geometry->addPrimitiveSet(makeTriangles({ 0, 1, 2, 0, 2, 3 }));
         return geometry;
-    }
-
-    /// A light in the graph, placed where the walk found it.
-    inline osg::ref_ptr<SceneUtil::LightSource> makeLightSource(
-        float radius, const osg::Vec4f& diffuse, const osg::Vec4f& ambient = osg::Vec4f())
-    {
-        osg::ref_ptr<SceneUtil::Light> light = new SceneUtil::Light;
-        light->setDiffuse(diffuse);
-        light->setAmbient(ambient);
-
-        osg::ref_ptr<SceneUtil::LightSource> source = new SceneUtil::LightSource;
-        source->setRadius(radius);
-        source->setLight(light);
-        return source;
     }
 
     /// A skeleton with one bone, and a rig bound rigidly to it.
