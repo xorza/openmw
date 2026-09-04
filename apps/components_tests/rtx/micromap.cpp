@@ -30,6 +30,7 @@
 
 #include "geometry.hpp"
 #include "harness.hpp"
+#include "testtexture.hpp"
 
 namespace Rtx
 {
@@ -333,38 +334,25 @@ namespace Rtx
         /// A mask sixteen texels square whose columns two to twelve are opaque and the rest
         /// transparent, with texel (5, 0) one step under the cutoff. `theKernelDecides...` says what
         /// each microtriangle of a triangle over it comes to.
-        struct MaskTexture
+        void paintMask(Testing::TestTexture& texture)
         {
-            static constexpr std::uint32_t sExtent = 16;
+            constexpr std::uint32_t extent = 16;
 
-            std::vector<std::uint8_t> mBytes;
-            MipLevel mLevel{ 0, sExtent, sExtent };
-            TextureData mData;
+            texture.mLevels.push_back(MipLevel{ 0, extent, extent });
+            texture.mBytes.assign(std::size_t{ extent } * extent * 4, 0);
 
-            MaskTexture()
-                : mBytes(std::size_t{ sExtent } * sExtent * 4, 0)
-            {
-                for (std::uint32_t y = 0; y < sExtent; ++y)
-                    for (std::uint32_t x = 0; x < sExtent; ++x)
-                    {
-                        std::uint8_t* const texel = &mBytes[(std::size_t{ y } * sExtent + x) * 4];
-                        texel[0] = 255;
-                        texel[3] = x >= 2 && x <= 12 ? 255 : 0;
-                    }
+            for (std::uint32_t y = 0; y < extent; ++y)
+                for (std::uint32_t x = 0; x < extent; ++x)
+                {
+                    std::uint8_t* const texel = &texture.mBytes[(std::size_t{ y } * extent + x) * 4];
+                    texel[0] = 255;
+                    texel[3] = x >= 2 && x <= 12 ? 255 : 0;
+                }
 
-                mBytes[(std::size_t{ 0 } * sExtent + 5) * 4 + 3] = 127;
+            texture.mBytes[(std::size_t{ 0 } * extent + 5) * 4 + 3] = 127;
 
-                mData = TextureData{
-                    .mSlot = 0,
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = sExtent,
-                    .mHeight = sExtent,
-                    .mBytes = std::as_bytes(std::span(mBytes)),
-                    .mLevels = std::span(&mLevel, 1),
-                    .mName = "mask",
-                };
-            }
-        };
+            texture.describe(extent, extent, "mask");
+        }
 
         /// The mask laid over `Testing::sUnitTriangle`, corner for corner.
         const std::array<osg::Vec2f, 3> sTriangleUv{
@@ -392,8 +380,8 @@ namespace Rtx
             std::uint32_t mOracle = 0;
         };
 
-        BakedWord bakeOne(Device& device, CommandPool& pool, const MaskTexture& mask, std::span<const osg::Vec2f, 3> uv,
-            std::uint32_t level)
+        BakedWord bakeOne(Device& device, CommandPool& pool, const Testing::TestTexture& mask,
+            std::span<const osg::Vec2f, 3> uv, std::uint32_t level)
         {
             SceneDesc scene;
             const Index cutout = scene.addMaterial(Material{
@@ -494,7 +482,8 @@ namespace Rtx
         {
             constexpr std::uint32_t level = 2;
 
-            const MaskTexture mask;
+            Testing::TestTexture mask;
+            paintMask(mask);
             const BakedWord word = bakeOne(getDevice(), getPool(), mask, sTriangleUv, level);
             const std::uint32_t baked = word.mKernel;
 
@@ -540,7 +529,8 @@ namespace Rtx
         {
             constexpr std::uint32_t level = 2;
 
-            const MaskTexture mask;
+            Testing::TestTexture mask;
+            paintMask(mask);
             const BakedWord word = bakeOne(getDevice(), getPool(), mask, sRepeatedUv, level);
 
             for (std::uint32_t index = 0; index < Shaders::microtriangleCount(level); ++index)
@@ -563,7 +553,8 @@ namespace Rtx
             Device& device = getDevice();
             CommandPool& pool = getPool();
 
-            const MaskTexture mask;
+            Testing::TestTexture mask;
+            paintMask(mask);
 
             SceneDesc scene;
             const Index cutout = scene.addMaterial(Material{
@@ -668,7 +659,8 @@ namespace Rtx
             Device& device = getDevice();
             CommandPool& pool = getPool();
 
-            const MaskTexture mask;
+            Testing::TestTexture mask;
+            paintMask(mask);
 
             SceneDesc scene;
             const Index cutout = scene.addMaterial(Material{

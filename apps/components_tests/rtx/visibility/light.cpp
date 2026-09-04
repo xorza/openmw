@@ -231,18 +231,8 @@ namespace Rtx::Testing
             const std::array<std::uint8_t, 4> green{ 0, 255, 0, 255 };
             const std::array<std::uint8_t, 4> dimRed{ 6, 0, 0, 255 };
 
-            const MipLevel one{ 0, 1, 1 };
-            const auto describe = [&one](std::span<const std::uint8_t> bytes) {
-                return TextureData{
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = 1,
-                    .mHeight = 1,
-                    .mBytes = std::as_bytes(bytes),
-                    .mLevels = std::span(&one, 1),
-                };
-            };
-
-            const std::array<TextureData, 3> textures{ describe(white), describe(green), describe(dimRed) };
+            const std::array<TextureData, 3> textures{ describeTexel(white), describeTexel(green),
+                describeTexel(dimRed) };
 
             const std::array positions = cardAt(0.0f);
 
@@ -583,7 +573,7 @@ namespace Rtx::Testing
             constexpr std::size_t centre = centreValueOf(size);
 
             TestTexture white;
-            makeOpaqueSheet(white);
+            paintOpaqueSheet(white);
             const std::span<const TextureData> textures(&white.mData, 1);
 
             const osg::Vec3f behind(0.0f, 50.0f, 0.0f);

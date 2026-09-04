@@ -109,18 +109,6 @@ namespace Rtx::Testing
 
             constexpr std::array<std::uint8_t, 4> redTexel{ 255, 0, 0, 255 };
             constexpr std::array<std::uint8_t, 4> blueTexel{ 0, 0, 255, 255 };
-            constexpr MipLevel one{ 0, 1, 1 };
-            const auto describe = [&one](std::span<const std::uint8_t> texel, std::uint32_t slot) {
-                return TextureData{
-                    .mSlot = slot,
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = 1,
-                    .mHeight = 1,
-                    .mBytes = std::as_bytes(texel),
-                    .mLevels = std::span(&one, 1),
-                };
-            };
-
             SceneDesc scene;
             const Index mesh = scene.addMesh(sWallQuad, {}, sQuadUv, sQuadIndices);
             const Index red
@@ -128,7 +116,7 @@ namespace Rtx::Testing
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = red });
 
             mRenderer->resize(size, size);
-            const TextureData first = describe(redTexel, 0);
+            const TextureData first = describeTexel(redTexel, 0);
             mRenderer->setScene(Rtx::sWorld, scene, std::span(&first, 1), SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
 
@@ -154,7 +142,7 @@ namespace Rtx::Testing
             // **The slot the scene gave it**, which is what an arrival now carries: a texture is
             // written where it belongs rather than after whatever is already there.
             const Index blueTexture = scene.getMaterials()[blue].mDiffuse;
-            const TextureData second = describe(blueTexel, blueTexture);
+            const TextureData second = describeTexel(blueTexel, blueTexture);
             mRenderer->extendScene(Rtx::sWorld, scene, std::span(&second, 1), SeaState{});
             EXPECT_EQ(mRenderer->getTextureCount(Rtx::sWorld), 2u);
 
@@ -261,17 +249,7 @@ namespace Rtx::Testing
             // that view does not read, so it is here to be counted rather than to be seen.
             constexpr std::array<std::uint8_t, 4> redTexel{ 255, 0, 0, 255 };
             constexpr std::array<std::uint8_t, 4> greenTexel{ 0, 255, 0, 255 };
-            constexpr MipLevel one{ 0, 1, 1 };
-            const auto describe = [&one](std::span<const std::uint8_t> texel) {
-                return TextureData{
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = 1,
-                    .mHeight = 1,
-                    .mBytes = std::as_bytes(texel),
-                    .mLevels = std::span(&one, 1),
-                };
-            };
-            const std::array<TextureData, 2> textures{ describe(redTexel), describe(greenTexel) };
+            const std::array<TextureData, 2> textures{ describeTexel(redTexel), describeTexel(greenTexel) };
 
             // The same wall, and it needs texture coordinates that `makeWall` has no use for.
             SceneDesc textured;
@@ -407,18 +385,12 @@ namespace Rtx::Testing
         /// One linear-128 texel with `shading` painted over it: a texture with nothing in it but a
         /// map, which is what a test of the estimate's other half wants.
         constexpr std::array<std::uint8_t, 4> sGreyTexel{ 128, 128, 128, 255 };
-        constexpr MipLevel sOneTexel{ 0, 1, 1 };
 
         TextureData describeGrey(std::span<const float> shading)
         {
-            return TextureData{
-                .mFormat = TextureFormat::Rgba8Unorm,
-                .mWidth = 1,
-                .mHeight = 1,
-                .mBytes = std::as_bytes(std::span(sGreyTexel)),
-                .mLevels = std::span(&sOneTexel, 1),
-                .mShading = shading,
-            };
+            TextureData grey = describeTexel(sGreyTexel);
+            grey.mShading = shading;
+            return grey;
         }
 
         /// The other half of de-lighting: the shader dividing the estimate back out.
@@ -544,7 +516,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 64;
 
             TestTexture ladder;
-            makeMipLadder(ladder);
+            paintMipLadder(ladder);
             const std::span<const TextureData> textures(&ladder.mData, 1);
 
             const std::array positions = cardAt(0.0f);
@@ -605,23 +577,17 @@ namespace Rtx::Testing
             for (std::uint32_t texel = 0; texel < size; ++texel)
                 strip[texel * 4 + (texel < size / 2 ? 1 : 2)] = 255;
 
-            const MipLevel one{ 0, 1, 1 };
             const MipLevel wide{ 0, size, 1 };
-            const auto describe = [](TextureFormat format, std::uint32_t width, std::span<const std::uint8_t> bytes,
-                                      const MipLevel& level) {
-                return TextureData{
-                    .mFormat = format,
-                    .mWidth = width,
-                    .mHeight = 1,
-                    .mBytes = std::as_bytes(bytes),
-                    .mLevels = std::span(&level, 1),
-                };
-            };
-
             const std::array<TextureData, 3> textures{
-                describe(TextureFormat::Rgba8Unorm, 1, redTexel, one),
-                describe(TextureFormat::Rgba8Unorm, 1, greenTexel, one),
-                describe(TextureFormat::Rgba8Unorm, size, strip, wide),
+                describeTexel(redTexel),
+                describeTexel(greenTexel),
+                TextureData{
+                    .mFormat = TextureFormat::Rgba8Unorm,
+                    .mWidth = size,
+                    .mHeight = 1,
+                    .mBytes = std::as_bytes(std::span(strip)),
+                    .mLevels = std::span(&wide, 1),
+                },
             };
 
             const std::array positions = cardAt(0.0f);

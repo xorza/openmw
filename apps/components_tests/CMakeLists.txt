@@ -166,6 +166,7 @@ if (OPENMW_RTX)
         rtx/statistics.hpp
         rtx/terraincomposite.cpp
         rtx/terrainresidency.cpp
+        rtx/testtexture.hpp
         rtx/structurestorage.cpp
         rtx/texturebuilder.cpp
         rtx/tracepipeline.cpp

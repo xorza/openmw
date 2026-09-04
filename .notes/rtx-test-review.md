@@ -7,25 +7,6 @@ duplication, asymmetry and the accuracy of the comments. It does not question wh
 
 ---
 
-## Every file builds its own texture description
-
-A one-texel `TextureData` is the most common object in this suite, and no two files build it the
-same way.
-
-- [ ] `MipLevel one{ 0, 1, 1 }` followed by a `TextureData` aggregate is written nine times:
-      `visibility/surfaces.cpp:112`, `:264`, `:410`, `:617`, `visibility/sky.cpp:213`, `:279`,
-      `:345`, `visibility/light.cpp:235`, `visibility/sprites.cpp:19`.
-- [ ] Five structs hold the same three members — bytes, levels, description — and differ only in what
-      they paint: `TestTexture` (`visibility/fixture.hpp:224`), `OneTexel`
-      (`visibility/sprites.cpp:16`), `CheckerTexture` (`visibility/micromap.cpp:17`),
-      `HoleyChainTexture` (`visibility/micromap.cpp:235`), `MaskTexture` (`micromap.cpp:335`). One
-      builder with named painters covers all five.
-- [ ] A `describe` lambda that wraps a span of texels in a `TextureData` is defined five times, each
-      with a different signature: `visibility/surfaces.cpp:113`, `:265`, `:619`,
-      `visibility/light.cpp:236`, `visibility/framecost.cpp:265`.
-
----
-
 ## Doc comments no longer describe the code under them
 
 Each of these is a comment a reader will act on and be wrong. They cost nothing to fix and they are

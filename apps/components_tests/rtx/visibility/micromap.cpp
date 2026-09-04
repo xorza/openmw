@@ -14,35 +14,23 @@ namespace Rtx::Testing
         /// A red mask sixteen texels square in four quadrants, the first and the last opaque and
         /// the other two holes, at one level — so the cone's mip and the micromap's level nought
         /// are one level, and the two ways of reading the mask can be asked to agree exactly.
-        struct CheckerTexture
+        void paintChecker(TestTexture& texture)
         {
-            static constexpr std::uint32_t sExtent = 16;
+            constexpr std::uint32_t extent = 16;
 
-            std::vector<std::uint8_t> mBytes;
-            MipLevel mLevel{ 0, sExtent, sExtent };
-            TextureData mData;
+            texture.mLevels.push_back(MipLevel{ 0, extent, extent });
+            texture.mBytes.assign(std::size_t{ extent } * extent * 4, 0);
 
-            CheckerTexture()
-                : mBytes(std::size_t{ sExtent } * sExtent * 4, 0)
-            {
-                for (std::uint32_t y = 0; y < sExtent; ++y)
-                    for (std::uint32_t x = 0; x < sExtent; ++x)
-                    {
-                        std::uint8_t* const texel = &mBytes[(std::size_t{ y } * sExtent + x) * 4];
-                        texel[0] = 255;
-                        texel[3] = (x < sExtent / 2) == (y < sExtent / 2) ? 255 : 0;
-                    }
+            for (std::uint32_t y = 0; y < extent; ++y)
+                for (std::uint32_t x = 0; x < extent; ++x)
+                {
+                    std::uint8_t* const texel = &texture.mBytes[(std::size_t{ y } * extent + x) * 4];
+                    texel[0] = 255;
+                    texel[3] = (x < extent / 2) == (y < extent / 2) ? 255 : 0;
+                }
 
-                mData = TextureData{
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = sExtent,
-                    .mHeight = sExtent,
-                    .mBytes = std::as_bytes(std::span(mBytes)),
-                    .mLevels = std::span(&mLevel, 1),
-                    .mName = "checker",
-                };
-            }
-        };
+            texture.describe(extent, extent, "checker");
+        }
 
         /// The card of the cutout test, fifty units in front of the origin — which is a hundred
         /// from where `lookAtTheCard` puts the eye, so it exactly fills the frame.
@@ -62,6 +50,12 @@ namespace Rtx::Testing
         class RtxMicromapPictureTest : public RtxVisibilityTest
         {
         protected:
+            void SetUp() override
+            {
+                RtxVisibilityTest::SetUp();
+                paintChecker(mChecker);
+            }
+
             /// The card's material: the checker as a cutout at the half, animated where asked —
             /// which is what refuses it a micromap and sends every candidate to the any-hit.
             static Index addCutout(SceneDesc& scene, bool animated)
@@ -114,7 +108,7 @@ namespace Rtx::Testing
                 return picture.mDepth[(std::size_t{ y } * sSize + x) * 2 + 1];
             }
 
-            CheckerTexture mChecker;
+            TestTexture mChecker;
         };
 
         /// A card with a checker mask in front of a wall, traced over its micromap, comes out
@@ -225,42 +219,29 @@ namespace Rtx::Testing
         /// micromap is a level-nought answer and finds the leaf — and its answer stands over the row's
         /// forced non-opaque bit, or nothing here would have changed at all. `micromap.h` says why
         /// the level-nought answer is the truer one under accumulation.
-        struct HoleyChainTexture
+        void paintHoleyChain(TestTexture& texture)
         {
-            static constexpr std::uint32_t sExtent = 256;
+            constexpr std::uint32_t extent = 256;
 
-            std::vector<std::uint8_t> mBytes;
-            std::vector<MipLevel> mLevels;
-            TextureData mData;
-
-            HoleyChainTexture()
+            for (std::uint32_t side = extent, level = 0; side >= 1; side /= 2, ++level)
             {
-                for (std::uint32_t side = sExtent, level = 0; side >= 1; side /= 2, ++level)
+                texture.mLevels.push_back(MipLevel{ static_cast<std::uint32_t>(texture.mBytes.size()), side, side });
+                for (std::uint32_t texel = 0; texel < side * side; ++texel)
                 {
-                    mLevels.push_back(MipLevel{ static_cast<std::uint32_t>(mBytes.size()), side, side });
-                    for (std::uint32_t texel = 0; texel < side * side; ++texel)
-                    {
-                        mBytes.push_back(255);
-                        mBytes.push_back(0);
-                        mBytes.push_back(0);
-                        mBytes.push_back(level == 0 ? 255 : 0);
-                    }
+                    texture.mBytes.push_back(255);
+                    texture.mBytes.push_back(0);
+                    texture.mBytes.push_back(0);
+                    texture.mBytes.push_back(level == 0 ? 255 : 0);
                 }
-
-                mData = TextureData{
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = sExtent,
-                    .mHeight = sExtent,
-                    .mBytes = std::as_bytes(std::span(mBytes)),
-                    .mLevels = mLevels,
-                    .mName = "holey chain",
-                };
             }
-        };
+
+            texture.describe(extent, extent, "holey chain");
+        }
 
         TEST_F(RtxMicromapPictureTest, aMicromapAnswersAtTheFinestLevelWhereTheConeWouldReadACoarserOne)
         {
-            const HoleyChainTexture chain;
+            TestTexture chain;
+            paintHoleyChain(chain);
 
             const auto makeScene = [](bool animated) {
                 SceneDesc scene = makeWall();

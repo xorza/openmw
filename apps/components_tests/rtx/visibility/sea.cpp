@@ -15,7 +15,7 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// Which level of `makeMipLadder` a linear sample came from.
+        /// Which level of `paintMipLadder` a linear sample came from.
         float ladderLevel(float sampled)
         {
             return (sampled * 255.0f - 40.0f) / 30.0f;
@@ -776,7 +776,7 @@ namespace Rtx::Testing
             constexpr std::uint32_t across = 5;
 
             TestTexture ladder;
-            makeMipLadder(ladder);
+            paintMipLadder(ladder);
             const std::span<const TextureData> textures(&ladder.mData, 1);
 
             // A fifth of a degree off the vertical, which is the least `makeCamera` will take.

@@ -210,14 +210,7 @@ namespace Rtx::Testing
                 .mMesh = scene.addMesh(sheetAt(4000.0f, 0.0f), {}, {}, sQuadIndices) });
 
             constexpr std::array<std::uint8_t, 4> solid{ 255, 255, 255, 255 };
-            const MipLevel one{ 0, 1, 1 };
-            const std::array<TextureData, 1> sheet{ TextureData{
-                .mFormat = TextureFormat::Rgba8Unorm,
-                .mWidth = 1,
-                .mHeight = 1,
-                .mBytes = std::as_bytes(std::span(solid)),
-                .mLevels = std::span(&one, 1),
-            } };
+            const std::array<TextureData, 1> sheet{ describeTexel(solid) };
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -1.0f, 300.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -276,14 +269,7 @@ namespace Rtx::Testing
                 .mMesh = scene.addMesh(sheetAt(4000.0f, -2000.0f), {}, {}, sQuadIndices) });
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
-            const MipLevel one{ 0, 1, 1 };
-            const std::array<TextureData, 1> sheet{ TextureData{
-                .mFormat = TextureFormat::Rgba8Unorm,
-                .mWidth = 1,
-                .mHeight = 1,
-                .mBytes = std::as_bytes(std::span(white)),
-                .mLevels = std::span(&one, 1),
-            } };
+            const std::array<TextureData, 1> sheet{ describeTexel(white) };
 
             // Forty-five degrees up, which puts every ray on the deck and none of them on its pole.
             Shaders::VisibilityConstants camera = makeCamera(
@@ -342,14 +328,7 @@ namespace Rtx::Testing
                 .mMesh = scene.addMesh(sheetAt(4000.0f, -400.0f), {}, {}, sQuadIndices) });
 
             constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
-            const MipLevel one{ 0, 1, 1 };
-            const std::array<TextureData, 1> sheet{ TextureData{
-                .mFormat = TextureFormat::Rgba8Unorm,
-                .mWidth = 1,
-                .mHeight = 1,
-                .mBytes = std::as_bytes(std::span(white)),
-                .mLevels = std::span(&one, 1),
-            } };
+            const std::array<TextureData, 1> sheet{ describeTexel(white) };
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -2000.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);

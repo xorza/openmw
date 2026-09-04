@@ -12,29 +12,6 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// A one-texel sprite texture: white, and as opaque as its fourth byte says.
-        struct OneTexel
-        {
-            std::array<std::uint8_t, 4> mBytes;
-            MipLevel mLevel{ 0, 1, 1 };
-
-            explicit OneTexel(std::array<std::uint8_t, 4> bytes)
-                : mBytes(bytes)
-            {
-            }
-
-            TextureData describe() const
-            {
-                return TextureData{
-                    .mFormat = TextureFormat::Rgba8Unorm,
-                    .mWidth = 1,
-                    .mHeight = 1,
-                    .mBytes = std::as_bytes(std::span(mBytes)),
-                    .mLevels = std::span(&mLevel, 1),
-                };
-            }
-        };
-
         /// A sprite is shadowed like anything else, by the sun and by the sky over it.
         ///
         /// **A particle has no normal and it still has an up**, which is what the layer was missing:
@@ -56,8 +33,8 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
 
-            const OneTexel white({ 255, 255, 255, 255 });
-            const std::array<TextureData, 1> puff{ white.describe() };
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 1> puff{ describeTexel(white) };
 
             // One source at a time, so what the lid takes is never ambiguous.
             enum class Source
@@ -135,8 +112,8 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr float reach = 140.0f;
 
-            const OneTexel white({ 255, 255, 255, 255 });
-            const std::array<TextureData, 1> puff{ white.describe() };
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 1> puff{ describeTexel(white) };
 
             const auto boxedAt = [&](float half) {
                 SceneDesc scene;
@@ -196,8 +173,8 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
 
-            const OneTexel half({ 255, 255, 255, 128 });
-            const std::array<TextureData, 1> puff{ half.describe() };
+            constexpr std::array<std::uint8_t, 4> half{ 255, 255, 255, 128 };
+            const std::array<TextureData, 1> puff{ describeTexel(half) };
 
             const auto through = [&](float height, bool sprited) {
                 SceneDesc scene;
@@ -255,8 +232,8 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
 
-            const OneTexel half({ 255, 255, 255, 128 });
-            const std::array<TextureData, 1> flame{ half.describe() };
+            constexpr std::array<std::uint8_t, 4> half{ 255, 255, 255, 128 };
+            const std::array<TextureData, 1> flame{ describeTexel(half) };
 
             const auto glowing = [&](std::size_t count) {
                 SceneDesc scene;
@@ -309,11 +286,10 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
 
-            const OneTexel half({ 255, 255, 255, 128 });
+            constexpr std::array<std::uint8_t, 4> half{ 255, 255, 255, 128 };
 
             const auto lit = [&](const osg::Vec3f& sun, std::array<std::uint8_t, 4> through) {
-                const OneTexel shade(through);
-                const std::array<TextureData, 2> textures{ half.describe(), shade.describe() };
+                const std::array<TextureData, 2> textures{ describeTexel(half), describeTexel(through) };
 
                 SceneDesc scene;
                 const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
@@ -373,8 +349,8 @@ namespace Rtx::Testing
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
 
-            const OneTexel half({ 255, 255, 255, 128 });
-            const std::array<TextureData, 1> puff{ half.describe() };
+            constexpr std::array<std::uint8_t, 4> half{ 255, 255, 255, 128 };
+            const std::array<TextureData, 1> puff{ describeTexel(half) };
 
             const auto lit = [&](bool shaded) {
                 SceneDesc scene;
@@ -424,7 +400,7 @@ namespace Rtx::Testing
             // The ladder's first level is 40 of 255, so a sprite cut from it covers a sixth of what
             // is behind it — it reaches the pixel and comes nowhere near owning it.
             TestTexture ladder;
-            makeMipLadder(ladder);
+            paintMipLadder(ladder);
             const std::span<const TextureData> textures(&ladder.mData, 1);
 
             SceneDesc scene = makeFlooded(4000.0f, 40.0f);
@@ -483,7 +459,7 @@ namespace Rtx::Testing
             constexpr float expected = 33.0f * travel / (2.0f * 200.0f * 0.5773503f);
 
             TestTexture sheet;
-            makeOpaqueSheet(sheet);
+            paintOpaqueSheet(sheet);
             const std::span<const TextureData> textures(&sheet.mData, 1);
 
             SceneDesc scene = makeFlooded(4000.0f, 40.0f);

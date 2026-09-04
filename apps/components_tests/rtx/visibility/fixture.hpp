@@ -45,6 +45,7 @@
 #include "../allocations.hpp"
 #include "../geometry.hpp"
 #include "../harness.hpp"
+#include "../testtexture.hpp"
 #include "../wavemoments.hpp"
 
 namespace Rtx::Testing
@@ -176,17 +177,6 @@ namespace Rtx::Testing
     /// whole answer.
     inline constexpr float sFoggySky = 0.6f;
 
-    /// A texture a test builds by hand, and the storage its description spans.
-    ///
-    /// Filled in place rather than returned, because `TextureData` carries spans into these
-    /// vectors and nothing should have to reason about whether a move kept their buffers.
-    struct TestTexture
-    {
-        std::vector<std::uint8_t> mBytes;
-        std::vector<MipLevel> mLevels;
-        TextureData mData;
-    };
-
     /// A texture whose every mip is one flat colour — level `i` is `40 + 30i`, evenly spaced
     /// and none of them black.
     ///
@@ -195,7 +185,7 @@ namespace Rtx::Testing
     /// `40 + 30 * lod`. A *fractional* level is readable that way, which is what makes a cone's
     /// width measurable rather than merely orderable. Flat colours also mean the answer does not
     /// depend on where in the texture the cone landed.
-    inline void makeMipLadder(TestTexture& texture)
+    inline void paintMipLadder(TestTexture& texture)
     {
         constexpr std::uint32_t extent = 64;
         constexpr std::uint32_t levels = 7;
@@ -208,37 +198,23 @@ namespace Rtx::Testing
                 texture.mBytes.end(), std::size_t{ side } * side * 4, static_cast<std::uint8_t>(40 + 30 * level));
         }
 
-        texture.mData = TextureData{
-            .mFormat = TextureFormat::Rgba8Unorm,
-            .mWidth = extent,
-            .mHeight = extent,
-            .mBytes = std::as_bytes(std::span(texture.mBytes)),
-            .mLevels = texture.mLevels,
-            .mName = "mip ladder",
-        };
+        texture.describe(extent, extent, "mip ladder");
     }
 
     /// A texture that is white and wholly opaque, at one level.
     ///
-    /// **What `makeMipLadder` cannot be.** Its levels encode which one was sampled, so its alpha
+    /// **What `paintMipLadder` cannot be.** Its levels encode which one was sampled, so its alpha
     /// is the level's own byte and its first is 40 of 255 — a sprite cut from it covers a sixth
     /// of what is behind it, which is a fine thing to be seen through and no use at all for
     /// asking what happens when a sprite owns a pixel.
-    inline void makeOpaqueSheet(TestTexture& texture)
+    inline void paintOpaqueSheet(TestTexture& texture)
     {
         constexpr std::uint32_t extent = 4;
 
         texture.mLevels.push_back(MipLevel{ 0, extent, extent });
         texture.mBytes.assign(std::size_t{ extent } * extent * 4, std::uint8_t{ 255 });
 
-        texture.mData = TextureData{
-            .mFormat = TextureFormat::Rgba8Unorm,
-            .mWidth = extent,
-            .mHeight = extent,
-            .mBytes = std::as_bytes(std::span(texture.mBytes)),
-            .mLevels = texture.mLevels,
-            .mName = "opaque sheet",
-        };
+        texture.describe(extent, extent, "opaque sheet");
     }
 
     /// Everything a render over this fixture decides beyond the scene, the camera and the extent.
