@@ -10,6 +10,7 @@ prebuilt
 
 ## build process
 /deps
+/.refs
 /MSVC*
 
 ## doxygen

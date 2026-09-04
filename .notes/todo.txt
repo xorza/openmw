@@ -8,7 +8,6 @@
 - remove metal
 - extract shader and lightting consts for look tweaking
 - tracy
-- dlss sdk path
 - async terrain loader
 - screen upside down for loading terrains
 - precompile shaders?

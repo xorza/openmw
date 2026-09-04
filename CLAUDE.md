@@ -131,6 +131,12 @@ are the gates. What those do not tell you:
   `build-release/`, which is `-O3 -DNDEBUG` and is where a number is taken. Each script says what
   its own directory needs — the sanitizer's two `ASAN_OPTIONS` are not optional and `debug-asan.sh`
   says why.
+- **`.refs/` is where a reference checkout goes, and nothing there is built.** NVIDIA's NGX SDK is
+  750 MB of prebuilt binaries under NVIDIA's own licence, so it is named rather than vendored,
+  submoduled or fetched — `extern/` is for source this tree compiles, and upstream keeps no
+  submodules at all. `DLSS_SDK_DIR` in the environment points at it, one checkout serving every
+  build directory here and `rtxmw` beside it. `components/rtxvulkan/CMakeLists.txt` states the
+  clone command and the tag it is pinned to.
 - **`bullet-dp`, not `bullet`**, if it ever has to be configured again: OpenMW needs a
   double-precision Bullet, the two Arch packages conflict, and the single-precision one has to come
   out first.

@@ -11,14 +11,23 @@ endif()
 
 find_package(Vulkan REQUIRED)
 
-# NVIDIA's NGX SDK, which is what DLSS is. Public, and 750 MB, so it is pointed at rather than
-# vendored: clone it once with
+# NVIDIA's NGX SDK, which is what DLSS is. Prebuilt, licensed by NVIDIA rather than by this tree,
+# and 750 MB — so it is named rather than vendored, submoduled or fetched. `extern/` is for source
+# this build compiles, and none of that is true of a static library and a set of signed feature
+# libraries.
 #
-#   git clone --depth 1 https://github.com/NVIDIA/DLSS.git .refs/dlss
-#
-# or set OPENMW_DLSS_SDK to wherever it already is.
-set(OPENMW_DLSS_SDK "${OpenMW_SOURCE_DIR}/.refs/dlss" CACHE PATH
-    "NVIDIA's NGX SDK, for OPENMW_RTX_DLSS")
+# **`DLSS_SDK_DIR` in the environment is the default, the way `VULKAN_SDK` is for
+# `find_package(Vulkan)`.** One checkout serves every build directory here and the reference
+# implementation beside it, which is why the shared name is the environment's rather than this
+# project's. `-DOPENMW_DLSS_SDK=` still wins over both.
+if (DEFINED ENV{DLSS_SDK_DIR})
+    set(DLSS_SDK_DEFAULT "$ENV{DLSS_SDK_DIR}")
+else()
+    set(DLSS_SDK_DEFAULT "${OpenMW_SOURCE_DIR}/.refs/dlss")
+endif()
+
+set(OPENMW_DLSS_SDK "${DLSS_SDK_DEFAULT}" CACHE PATH
+    "NVIDIA's NGX SDK, for OPENMW_RTX_DLSS. Defaults to $DLSS_SDK_DIR, then to .refs/dlss")
 
 if (OPENMW_RTX_DLSS)
     set(DLSS_LIB "${OPENMW_DLSS_SDK}/lib/Linux_x86_64")
@@ -26,12 +35,17 @@ if (OPENMW_RTX_DLSS)
     # **A hard error and not a quiet disable.** Compiling the feature out would put "is DLSS really
     # here" in a definition only this directory can see, which every caller would then have to guess
     # at. Asking for it and not having it is one message instead.
+    #
+    # **The tag is named and not left to the default branch.** What is linked here is a prebuilt
+    # library and what ships beside it is signed, so "whatever was newest that day" is not a version
+    # anything can be compared against.
     if (NOT EXISTS "${DLSS_LIB}/libnvsdk_ngx.a")
         message(FATAL_ERROR
             "OPENMW_RTX_DLSS is on by default and needs NVIDIA's NGX SDK, and there is none at "
             "${DLSS_LIB}.\n"
-            "Clone it with: git clone --depth 1 https://github.com/NVIDIA/DLSS.git .refs/dlss\n"
-            "or point -DOPENMW_DLSS_SDK= at a copy.")
+            "Clone it with: "
+            "git clone --depth 1 --branch v310.7.0 https://github.com/NVIDIA/DLSS.git .refs/dlss\n"
+            "or set DLSS_SDK_DIR in the environment, or point -DOPENMW_DLSS_SDK= at a copy.")
     endif()
 endif()
 
