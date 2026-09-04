@@ -12,6 +12,8 @@
 #include <components/rtx/shadingmap.hpp>
 #include <components/rtx/texturedata.hpp>
 
+#include "statistics.hpp"
+
 namespace Rtx
 {
     namespace
@@ -115,15 +117,6 @@ namespace Rtx
             return furthest;
         }
 
-        float meanOf(const ShadingMap& map)
-        {
-            float sum = 0.0f;
-            for (const float value : map.getValues())
-                sum += value;
-
-            return sum / static_cast<float>(map.getValues().size());
-        }
-
         /// A texture with nothing painted into it has nothing to take out of it.
         TEST(RtxShadingMapTest, anEvenTextureComesBackNeutral)
         {
@@ -169,7 +162,7 @@ namespace Rtx
             const ShadingMap map(lit.describe());
             const std::span<const float> values = map.getValues();
 
-            EXPECT_NEAR(meanOf(map), 1.0f, 0.01f) << "the estimate moves light rather than adding it";
+            EXPECT_NEAR(Testing::meanOf(values), 1.0f, 0.01f) << "the estimate moves light rather than adding it";
 
             // The middle row: the texture does not vary down the image, so every row is the same
             // and this one is as good as any.

@@ -44,16 +44,9 @@ namespace Rtx::Testing
             }
         };
 
-        /// The card of the cutout test: a hundred units from the eye, exactly filling a
-        /// sixty-degree frame, so that each quadrant of the mask is a quadrant of the picture and
-        /// the seams fall between pixel columns and rows rather than on them.
-        constexpr float sHalfExtent = 57.735027f;
-        const std::array<osg::Vec3f, 4> sCard{
-            osg::Vec3f(-sHalfExtent, -50.0f, -sHalfExtent),
-            osg::Vec3f(sHalfExtent, -50.0f, -sHalfExtent),
-            osg::Vec3f(sHalfExtent, -50.0f, sHalfExtent),
-            osg::Vec3f(-sHalfExtent, -50.0f, sHalfExtent),
-        };
+        /// The card of the cutout test, fifty units in front of the origin — which is a hundred
+        /// from where `lookAtTheCard` puts the eye, so it exactly fills the frame.
+        const std::array<osg::Vec3f, 4> sCard = cardAt(-50.0f);
 
         constexpr std::uint32_t sSize = 64;
 

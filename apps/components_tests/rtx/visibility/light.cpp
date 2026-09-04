@@ -222,7 +222,6 @@ namespace Rtx::Testing
         {
             constexpr std::uint32_t size = 33;
             constexpr std::size_t centre = centreValueOf(size);
-            constexpr float halfExtent = 57.735027f;
 
             // **Six of 255 on the map and a fortieth as the colour, so both land inside the display's
             // range once `EMISSIVE_INTENSITY` has scaled them.** The bytes are derived from the
@@ -245,12 +244,7 @@ namespace Rtx::Testing
 
             const std::array<TextureData, 3> textures{ describe(white), describe(green), describe(dimRed) };
 
-            const std::array positions{
-                osg::Vec3f(-halfExtent, 0.0f, -halfExtent),
-                osg::Vec3f(halfExtent, 0.0f, -halfExtent),
-                osg::Vec3f(halfExtent, 0.0f, halfExtent),
-                osg::Vec3f(-halfExtent, 0.0f, halfExtent),
-            };
+            const std::array positions = cardAt(0.0f);
 
             // Nothing lights this scene at all: no lamp, no sun, no ambient. Whatever comes back is
             // the surface's own glow and nothing else.
@@ -343,14 +337,7 @@ namespace Rtx::Testing
 
             const std::span<const TextureData> textures(&data, 1);
 
-            // A hundred units from the camera, where the frame is 2 * 100 * tan(30) across.
-            constexpr float halfExtent = 57.735027f;
-            const std::array masked{
-                osg::Vec3f(-halfExtent, -50.0f, -halfExtent),
-                osg::Vec3f(halfExtent, -50.0f, -halfExtent),
-                osg::Vec3f(halfExtent, -50.0f, halfExtent),
-                osg::Vec3f(-halfExtent, -50.0f, halfExtent),
-            };
+            const std::array masked = cardAt(-50.0f);
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -150.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);

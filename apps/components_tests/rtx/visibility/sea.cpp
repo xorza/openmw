@@ -9,6 +9,8 @@
 #include <span>
 #include <vector>
 
+#include "../statistics.hpp"
+
 namespace Rtx::Testing
 {
     namespace
@@ -17,15 +19,6 @@ namespace Rtx::Testing
         float ladderLevel(float sampled)
         {
             return (sampled * 255.0f - 40.0f) / 30.0f;
-        }
-
-        float meanOf(const std::vector<float>& field)
-        {
-            float total = 0.0f;
-            for (const float value : field)
-                total += value;
-
-            return total / static_cast<float>(field.size());
         }
 
         /// How far a field varies, as a fraction of its own mean.

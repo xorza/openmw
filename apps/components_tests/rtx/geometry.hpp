@@ -1,10 +1,12 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
 #include <osg/BoundingBox>
+#include <osg/Math>
 #include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
@@ -19,12 +21,21 @@ namespace Rtx::Testing
     /// Two triangles of a quad, wound so its face points the way its corners were listed.
     inline constexpr std::array<std::uint32_t, 6> sQuadIndices{ 0, 1, 2, 0, 2, 3 };
 
-    /// The unit square, in the same corner order — a texture laid once across a quad.
+    /// A texture laid once across a quad, in the same corner order.
     inline const std::array<osg::Vec2f, 4> sQuadUv{
         osg::Vec2f(0.0f, 0.0f),
         osg::Vec2f(1.0f, 0.0f),
         osg::Vec2f(1.0f, 1.0f),
         osg::Vec2f(0.0f, 1.0f),
+    };
+
+    /// The unit square in the xy plane, its first corner at the origin, wound the way
+    /// `sQuadIndices` reads it.
+    inline const std::array<osg::Vec3f, 4> sUnitQuad{
+        osg::Vec3f(0.0f, 0.0f, 0.0f),
+        osg::Vec3f(1.0f, 0.0f, 0.0f),
+        osg::Vec3f(1.0f, 1.0f, 0.0f),
+        osg::Vec3f(0.0f, 1.0f, 0.0f),
     };
 
     /// A level square of `extent` about the origin at height `z`, facing up.
@@ -38,14 +49,22 @@ namespace Rtx::Testing
         };
     }
 
-    /// A square in the xz plane at y = 0, facing along -Y, four hundred units across, which is
-    /// larger than any frame at the distances most of these tests use.
-    inline const std::array<osg::Vec3f, 4> sWallQuad{
-        osg::Vec3f(-200.0f, 0.0f, -200.0f),
-        osg::Vec3f(200.0f, 0.0f, -200.0f),
-        osg::Vec3f(200.0f, 0.0f, 200.0f),
-        osg::Vec3f(-200.0f, 0.0f, 200.0f),
-    };
+    /// A square in the xz plane at y = `away`, `halfExtent` from the axis on every side. Its face
+    /// points along -Y, back at an eye standing on the negative side and looking along +Y, which is
+    /// where every camera in these tests stands.
+    inline std::array<osg::Vec3f, 4> uprightQuadAt(float halfExtent, float away)
+    {
+        return {
+            osg::Vec3f(-halfExtent, away, -halfExtent),
+            osg::Vec3f(halfExtent, away, -halfExtent),
+            osg::Vec3f(halfExtent, away, halfExtent),
+            osg::Vec3f(-halfExtent, away, halfExtent),
+        };
+    }
+
+    /// One such square at y = 0, four hundred units across, which is larger than any frame at the
+    /// distances most of these tests use.
+    inline const std::array<osg::Vec3f, 4> sWallQuad = uprightQuadAt(200.0f, 0.0f);
 
     /// A wall across the view `away` units ahead of an eye at the origin looking along +Y, and
     /// behind it where `away` is negative — so a frame either hits every pixel or none, which is
@@ -54,12 +73,21 @@ namespace Rtx::Testing
     /// Sixteen thousand units across, which fills the frame from anywhere these cameras stand.
     inline std::array<osg::Vec3f, 4> wallAt(float away)
     {
-        return {
-            osg::Vec3f(-8000.0f, away, -8000.0f),
-            osg::Vec3f(8000.0f, away, -8000.0f),
-            osg::Vec3f(8000.0f, away, 8000.0f),
-            osg::Vec3f(-8000.0f, away, 8000.0f),
-        };
+        return uprightQuadAt(8000.0f, away);
+    }
+
+    /// Half the width a sixty-degree frame covers a hundred units from the eye.
+    ///
+    /// **Derived rather than pinned, because it is a fact about the camera and not a choice.** A
+    /// card built to it exactly fills the frame, which is what the tests that use it are built on:
+    /// each quadrant of the card's texture is then a quadrant of the picture, and the seams fall
+    /// between pixel columns and rows rather than on them.
+    inline const float sCardHalfExtent = 100.0f * std::tan(osg::DegreesToRadians(30.0f));
+
+    /// That card, at y = `away`, so an eye a hundred units in front of it sees nothing else.
+    inline std::array<osg::Vec3f, 4> cardAt(float away)
+    {
+        return uprightQuadAt(sCardHalfExtent, away);
     }
 
     /// A skin of one bone over `vertices` vertices, every weight one, so a pose is the bone's own

@@ -30,6 +30,7 @@
 #include <components/weather/downpour.hpp>
 
 #include "allocations.hpp"
+#include "statistics.hpp"
 
 namespace Rtx
 {
@@ -96,15 +97,6 @@ namespace Rtx
             return static_cast<float>(static_cast<double>(crossings) / (static_cast<double>(run.size() - 1) * step));
         }
 
-        float mean(const std::vector<float>& run)
-        {
-            double total = 0.0;
-            for (const float value : run)
-                total += static_cast<double>(value);
-
-            return static_cast<float>(total / static_cast<double>(run.size()));
-        }
-
         /// A light the record says nothing about burns at exactly what it is.
         TEST(RtxLightBuilderTest, aSteadyLightIsExactlyOne)
         {
@@ -137,7 +129,7 @@ namespace Rtx
 
                 // Ten minutes is at least a hundred turns of the slowest band any of them carries,
                 // so what is left of it here is a thousandth.
-                EXPECT_NEAR(mean(run), 1.0f, 0.001f);
+                EXPECT_NEAR(Testing::meanOf(run), 1.0f, 0.001f);
 
                 // And it did move, rather than sitting at its mean and passing the two tests above.
                 EXPECT_GT(*std::max_element(run.begin(), run.end()) - *std::min_element(run.begin(), run.end()), depth);

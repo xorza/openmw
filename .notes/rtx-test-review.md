@@ -12,16 +12,6 @@ duplication, asymmetry and the accuracy of the comments. It does not question wh
 The same constants, quads and helpers are written out again in file after file. Several of the files
 that copy them already include the header that defines them.
 
-- [ ] The unit square is written three times under two names: `sQuadPositions` in
-      `scenedesc.cpp:19`, `sQuad` in `instancerecord.cpp:20` and `sQuad` in `skinpass.cpp:24`.
-- [ ] `makeSheet` still names two things: a `SceneDesc` in `guitextures.cpp:436` and an
-      `osg::Image` in `meantexel.cpp:14`.
-- [ ] The card that exactly fills a sixty-degree frame at a hundred units — `halfExtent =
-      57.735027f` and the four corners under it — is written five times:
-      `visibility/light.cpp:225`, `:347`, `visibility/surfaces.cpp:545`, `:601`,
-      `visibility/micromap.cpp:50`.
-- [ ] A mean over a container is written three times: `meanOf` in `visibility/sea.cpp:22`, `mean` in
-      `lightbuilder.cpp:99`, `meanOf` in `dlss.cpp:230`.
 - [ ] `makeGraphLight(diffuse, ambient)` in `lightbuilder.cpp:56` and `makeLightSource(radius,
       diffuse, ambient)` in `extractor/fixture.hpp:135` build the same `SceneUtil::LightSource`.
 - [ ] `sTrianglePositions` and `sTriangleIndices` name different geometry in `scenedesc.cpp:570` and

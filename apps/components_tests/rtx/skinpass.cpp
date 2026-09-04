@@ -23,13 +23,6 @@ namespace Rtx
 {
     namespace
     {
-        const std::array sQuad{
-            osg::Vec3f(0.0f, 0.0f, 0.0f),
-            osg::Vec3f(1.0f, 0.0f, 0.0f),
-            osg::Vec3f(1.0f, 1.0f, 0.0f),
-            osg::Vec3f(0.0f, 1.0f, 0.0f),
-        };
-
         /// A run word: `first << RUN_COUNT_BITS | count`.
         constexpr std::uint32_t run(std::uint32_t first, std::uint32_t count)
         {
@@ -103,11 +96,15 @@ namespace Rtx
                 osg::Vec3f(0.0f, 0.0f, 1.0f),
             };
 
-            const Index raised = scene.addMesh(sQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Rig, oneBone);
-            const Index still = scene.addMesh(sQuad, upward, {}, Testing::sQuadIndices);
-            const Index blended = scene.addMesh(sQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Rig, twoBones);
-            const Index turned = scene.addMesh(sQuad, sideways, {}, Testing::sQuadIndices, {}, Deform::Rig, oneBone);
-            const Index lifted = scene.addMesh(sQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Morph, lift);
+            const Index raised
+                = scene.addMesh(Testing::sUnitQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Rig, oneBone);
+            const Index still = scene.addMesh(Testing::sUnitQuad, upward, {}, Testing::sQuadIndices);
+            const Index blended
+                = scene.addMesh(Testing::sUnitQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Rig, twoBones);
+            const Index turned
+                = scene.addMesh(Testing::sUnitQuad, sideways, {}, Testing::sQuadIndices, {}, Deform::Rig, oneBone);
+            const Index lifted
+                = scene.addMesh(Testing::sUnitQuad, upward, {}, Testing::sQuadIndices, {}, Deform::Morph, lift);
 
             const osg::BoundingBoxf anywhere(osg::Vec3f(), osg::Vec3f(1.0f, 1.0f, 1.0f));
 
@@ -196,7 +193,8 @@ namespace Rtx
             // One bone at five: every corner five up, and an upward normal left as it was.
             for (std::uint32_t vertex = 0; vertex < 4; ++vertex)
             {
-                EXPECT_EQ(positionOf(raised, vertex), sQuad[vertex] + osg::Vec3f(0.0f, 0.0f, 5.0f)) << vertex;
+                EXPECT_EQ(positionOf(raised, vertex), Testing::sUnitQuad[vertex] + osg::Vec3f(0.0f, 0.0f, 5.0f))
+                    << vertex;
                 EXPECT_EQ(normalOf(raised, vertex), osg::Vec3f(0.0f, 0.0f, 1.0f)) << vertex;
             }
 
@@ -218,7 +216,8 @@ namespace Rtx
             // The morph: half of a unit lift on every corner, and a normal a morph never touches
             // still holding whatever the block held — nothing, because the pass wrote no normal.
             for (std::uint32_t vertex = 0; vertex < 4; ++vertex)
-                EXPECT_EQ(positionOf(lifted, vertex), sQuad[vertex] + osg::Vec3f(0.0f, 0.0f, 0.5f)) << vertex;
+                EXPECT_EQ(positionOf(lifted, vertex), Testing::sUnitQuad[vertex] + osg::Vec3f(0.0f, 0.0f, 0.5f))
+                    << vertex;
             EXPECT_EQ(normalOf(lifted, 0), osg::Vec3f()) << "a morph moved a normal";
 
             // **And the quad between them is untouched.** Its run holds what the block was made

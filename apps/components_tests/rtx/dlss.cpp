@@ -228,7 +228,7 @@ namespace Rtx
         }
 
         /// The mean of one channel over a frame `readPixels` gave back.
-        double meanOf(const std::vector<std::uint8_t>& pixels, std::size_t channel)
+        double channelMeanOf(const std::vector<std::uint8_t>& pixels, std::size_t channel)
         {
             double total = 0.0;
             for (std::size_t at = channel; at < pixels.size(); at += 4)
@@ -308,8 +308,8 @@ namespace Rtx
 
             for (std::size_t channel = 0; channel < 3; ++channel)
             {
-                const double was = meanOf(reference, channel);
-                const double now = meanOf(upscaled, channel);
+                const double was = channelMeanOf(reference, channel);
+                const double now = channelMeanOf(upscaled, channel);
                 EXPECT_GT(was, 1.0) << "channel " << channel << " of the reference is black, so it proves nothing";
                 EXPECT_NEAR(now, was, was * 0.05)
                     << "channel " << channel << " came out of the upscaler at a different exposure";

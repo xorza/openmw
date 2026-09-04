@@ -11,7 +11,7 @@
 namespace
 {
     /// One image of four texels, in the plain spelling the sky's own decks are stored in.
-    osg::ref_ptr<osg::Image> makeSheet(std::array<std::uint8_t, 16> bytes)
+    osg::ref_ptr<osg::Image> makeSheetImage(std::array<std::uint8_t, 16> bytes)
     {
         osg::ref_ptr<osg::Image> image = new osg::Image;
         image->setFileName("sheet.dds");
@@ -36,7 +36,7 @@ namespace
     TEST(RtxMeanTexelTest, aTexelIsWorthItsColourInLightTimesHowMuchOfItIsThere)
     {
         const Rtx::MeanTexel mean
-            = Rtx::meanTexel(*makeSheet({ 255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 255 }));
+            = Rtx::meanTexel(*makeSheetImage({ 255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 255 }));
 
         EXPECT_NEAR(mean.mColour.x(), 0.5f, 1e-5f);
         EXPECT_NEAR(mean.mColour.y(), 0.37549f, 1e-5f);
@@ -55,12 +55,12 @@ namespace
     TEST(RtxMeanTexelTest, theCurveIsUndoneBeforeTheMeanRatherThanAfterIt)
     {
         const Rtx::MeanTexel chequer
-            = Rtx::meanTexel(*makeSheet({ 255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255 }));
+            = Rtx::meanTexel(*makeSheetImage({ 255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255 }));
 
         EXPECT_NEAR(chequer.mColour.x(), 0.5f, 1e-5f);
 
         const Rtx::MeanTexel flat = Rtx::meanTexel(
-            *makeSheet({ 128, 128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255 }));
+            *makeSheetImage({ 128, 128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255 }));
 
         EXPECT_NEAR(flat.mColour.x(), 0.21586f, 1e-5f);
     }
@@ -91,7 +91,7 @@ namespace
     TEST(RtxMeanTexelTest, aSheetsPaintIsWhatItsOwnAlphaCallsSolid)
     {
         const Rtx::MeanTexel wisps
-            = Rtx::meanTexel(*makeSheet({ 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0 }));
+            = Rtx::meanTexel(*makeSheetImage({ 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0 }));
 
         EXPECT_NEAR(wisps.mColour.x(), 0.5f, 1e-5f);
         EXPECT_NEAR(wisps.mAlpha, 0.5f, 1e-5f);
@@ -99,8 +99,8 @@ namespace
 
         // And a sheet with nothing painted on it has no paint to average, rather than a division by
         // the nothing that covers it.
-        const Rtx::MeanTexel empty
-            = Rtx::meanTexel(*makeSheet({ 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0 }));
+        const Rtx::MeanTexel empty = Rtx::meanTexel(
+            *makeSheetImage({ 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0 }));
 
         EXPECT_EQ(empty.mAlpha, 0.0f);
         EXPECT_EQ(empty.opaque(), osg::Vec3f());

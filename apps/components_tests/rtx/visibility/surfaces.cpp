@@ -542,18 +542,12 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, theConeReadsTheMipTheDistanceCallsFor)
         {
             constexpr std::uint32_t size = 64;
-            constexpr float halfExtent = 57.735027f;
 
             TestTexture ladder;
             makeMipLadder(ladder);
             const std::span<const TextureData> textures(&ladder.mData, 1);
 
-            const std::array positions{
-                osg::Vec3f(-halfExtent, 0.0f, -halfExtent),
-                osg::Vec3f(halfExtent, 0.0f, -halfExtent),
-                osg::Vec3f(halfExtent, 0.0f, halfExtent),
-                osg::Vec3f(-halfExtent, 0.0f, halfExtent),
-            };
+            const std::array positions = cardAt(0.0f);
 
             SceneDesc scene;
             const Index mesh = scene.addMesh(positions, {}, sQuadUv, sQuadIndices);
@@ -596,7 +590,6 @@ namespace Rtx::Testing
         TEST_F(RtxVisibilityTest, groundSumsItsLayersByTheWeightsItsMasksName)
         {
             constexpr std::uint32_t size = 64;
-            constexpr float halfExtent = 57.735027f;
 
             // Two solid textures and one two-texel strip, all one level so nothing but the layer
             // arithmetic can move a byte.
@@ -631,12 +624,7 @@ namespace Rtx::Testing
                 describe(TextureFormat::Rgba8Unorm, size, strip, wide),
             };
 
-            const std::array positions{
-                osg::Vec3f(-halfExtent, 0.0f, -halfExtent),
-                osg::Vec3f(halfExtent, 0.0f, -halfExtent),
-                osg::Vec3f(halfExtent, 0.0f, halfExtent),
-                osg::Vec3f(-halfExtent, 0.0f, halfExtent),
-            };
+            const std::array positions = cardAt(0.0f);
             constexpr std::array<float, 2> firstMask{ 1.0f, 0.0f };
             constexpr std::array<float, 2> secondMask{ 0.0f, 1.0f };
 

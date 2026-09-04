@@ -6,7 +6,6 @@
 #include <gtest/gtest.h>
 
 #include <osg/Matrixf>
-#include <osg/Vec3f>
 #include <osg/Vec4f>
 
 #include <components/rtx/instancerecord.hpp>
@@ -20,13 +19,6 @@ namespace Rtx
 {
     namespace
     {
-        const std::array<osg::Vec3f, 4> sQuad{
-            osg::Vec3f(0.0f, 0.0f, 0.0f),
-            osg::Vec3f(1.0f, 0.0f, 0.0f),
-            osg::Vec3f(1.0f, 1.0f, 0.0f),
-            osg::Vec3f(0.0f, 1.0f, 0.0f),
-        };
-
         /// The rows built from nothing, which is the answer the rows kept across frames must match.
         std::vector<InstanceRecord> whole(const SceneDesc& scene)
         {
@@ -55,7 +47,7 @@ namespace Rtx
         TEST(RtxInstanceRecordTest, rowsKeptAcrossFramesAreTheRowsBuiltFromNothing)
         {
             SceneDesc scene;
-            const Index mesh = scene.addMesh(sQuad, {}, {}, Testing::sQuadIndices);
+            const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
 
             const Index cutout = scene.addMaterial(Material{
                 .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("textures/leaf.dds")),

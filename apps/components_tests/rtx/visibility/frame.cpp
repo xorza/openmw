@@ -321,8 +321,7 @@ namespace Rtx::Testing
             std::vector<std::uint8_t> pixels;
             const std::uint32_t hits = countHits(scene, {}, camera, size, pixels);
 
-            const float halfExtent = 100.0f * std::tan(osg::DegreesToRadians(30.0f));
-            const float covered = 30.0f / halfExtent;
+            const float covered = 30.0f / sCardHalfExtent;
             const auto expected = static_cast<std::uint32_t>(covered * covered * size * size);
 
             // Within a pixel of edge on each side of a 33-pixel square.

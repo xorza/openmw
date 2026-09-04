@@ -162,6 +162,7 @@ if (OPENMW_RTX)
         rtx/spritelight.cpp
         rtx/spriteshade.cpp
         rtx/spritebinpass.cpp
+        rtx/statistics.hpp
         rtx/terraincomposite.cpp
         rtx/terrainresidency.cpp
         rtx/structurestorage.cpp
