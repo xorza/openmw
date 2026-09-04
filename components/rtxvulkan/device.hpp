@@ -14,6 +14,7 @@ namespace Rtx
 {
     class Instance;
     class PipelineCache;
+    struct PipelineCacheSpec;
 
     /// Entry points that come from the required extensions rather than from core Vulkan.
     ///
@@ -47,9 +48,11 @@ namespace Rtx
     public:
         /// @param instance must outlive the device. Not held: a `VkDevice` does not reference its
         ///        instance, but every entry point reached through it does.
+        /// @param cache where the pipeline cache is kept and what it is keyed on. An empty
+        ///        directory keeps none, and every pipeline is compiled from source every run.
         /// @param extraExtensions device extensions beyond the required and optional lists — the
         ///        swapchain, when there is a window.
-        Device(const Instance& instance, PhysicalDevice&& physicalDevice,
+        Device(const Instance& instance, PhysicalDevice&& physicalDevice, const PipelineCacheSpec& cache,
             const std::vector<const char*>& extraExtensions = {});
         ~Device();
 

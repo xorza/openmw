@@ -7,5 +7,4 @@
 - tracy
 - async terrain loader
 - precompile shaders?
-- where to save shadercache
 - audit alloc tests

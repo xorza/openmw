@@ -14,6 +14,7 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/image.hpp>
 #include <components/rtxvulkan/instance.hpp>
+#include <components/rtxvulkan/pipelinecache.hpp>
 
 namespace Rtx::Testing
 {
@@ -94,6 +95,15 @@ namespace Rtx::Testing
 
     /// Where the build wrote the compiled shaders.
     std::filesystem::path getShaderDirectory();
+
+    /// Where a device this suite makes keeps what it compiled, and what that cache is keyed on.
+    ///
+    /// **The user's own cache directory, the same one the game uses.** The whole point of keeping a
+    /// pipeline cache is that a later process finds what an earlier one compiled, and a suite with a
+    /// directory of its own is a suite that pays for a cold compile the game has already paid for.
+    /// `PipelineCache` keys the file on the driver and on the shaders, so the two share it only
+    /// while they agree about both.
+    PipelineCacheSpec getPipelineCacheSpec();
 
     /// How every renderer in this suite is built, apart from the extent and the upscaler a caller
     /// sets for itself.

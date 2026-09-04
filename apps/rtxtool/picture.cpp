@@ -102,6 +102,7 @@ namespace RtxTool
     {
         return Rtx::RendererOptions{
             .mShaderDirectory = mShaderDirectory,
+            .mCacheDirectory = mCacheDirectory,
             .mWidth = mWidth,
             .mHeight = mHeight,
             .mValidation = validation,

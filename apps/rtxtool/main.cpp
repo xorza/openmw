@@ -260,18 +260,28 @@ namespace RtxTool
             }
         }
 
+        /// What every command is handed: the line it was given, the configuration that line was
+        /// read against, and where the resources are.
+        struct Command
+        {
+            const bpo::variables_map& mVariables;
+            Files::ConfigurationManager& mConfig;
+            const std::filesystem::path& mResources;
+        };
+
         /// The whole of a `FrameRequest`, from the command line.
         ///
         /// @param hour,weather what the world stands under. `chooseView` decides them for a single
         ///        place, and `applyConditions` for a run of them — so they are passed rather than
         ///        read here.
-        FrameRequest frameFrom(const bpo::variables_map& variables, const std::filesystem::path& resources, float hour,
-            const std::string& weather)
+        FrameRequest frameFrom(const Command& command, float hour, const std::string& weather)
         {
+            const bpo::variables_map& variables = command.mVariables;
             const auto [width, height] = parseSize(variables["size"].as<std::string>());
 
             FrameRequest request;
-            request.mShaderDirectory = resources / "rtx" / "shaders";
+            request.mShaderDirectory = command.mResources / "rtx" / "shaders";
+            request.mCacheDirectory = command.mConfig.getCachePath();
             request.mWidth = width;
             request.mHeight = height;
             request.mFieldOfView = variables["fov"].as<float>();
@@ -295,14 +305,15 @@ namespace RtxTool
         /// @param width the size to write at where `--size` said nothing. **Its own default and not
         ///        the shot's**, because a doll and a map tile are pictures rather than frames: the
         ///        game draws one at 512 by 1024 and the other square.
-        PictureRequest pictureFrom(const bpo::variables_map& variables, const std::filesystem::path& resources,
-            std::uint32_t width, std::uint32_t height)
+        PictureRequest pictureFrom(const Command& command, std::uint32_t width, std::uint32_t height)
         {
+            const bpo::variables_map& variables = command.mVariables;
             const auto [asked, high] = parseSize(variables["size"].as<std::string>());
 
             PictureRequest request;
             request.mOutput = variables["out"].as<std::string>();
-            request.mShaderDirectory = resources / "rtx" / "shaders";
+            request.mShaderDirectory = command.mResources / "rtx" / "shaders";
+            request.mCacheDirectory = command.mConfig.getCachePath();
             request.mWidth = variables["size"].defaulted() ? width : asked;
             request.mHeight = variables["size"].defaulted() ? height : high;
             request.mSeconds = variables["actor-time"].as<float>();
@@ -536,15 +547,6 @@ namespace RtxTool
             return 0;
         }
 
-        /// What every command is handed: the line it was given, the configuration that line was
-        /// read against, and where the resources are.
-        struct Command
-        {
-            const bpo::variables_map& mVariables;
-            Files::ConfigurationManager& mConfig;
-            const std::filesystem::path& mResources;
-        };
-
         int commandInfo(const Command& command)
         {
             const Rtx::ValidationOptions validation = validationFrom(command.mVariables, false);
@@ -565,7 +567,7 @@ namespace RtxTool
             if (cell == nullptr)
                 return 1;
 
-            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour, chosen.mWeather);
+            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
 
             return runTextures(world, *cell, frame.describeStaging(), frame.mActors, variables["out"].as<std::string>(),
                 frame.mDelight);
@@ -589,7 +591,7 @@ namespace RtxTool
             }
 
             const PictureRequest request
-                = pictureFrom(variables, command.mResources, SceneUtil::sInventoryWidth, SceneUtil::sInventoryHeight);
+                = pictureFrom(command, SceneUtil::sInventoryWidth, SceneUtil::sInventoryHeight);
 
             const Content content(command.mConfig, variables, command.mResources);
             World world(content);
@@ -608,7 +610,7 @@ namespace RtxTool
         {
             const bpo::variables_map& variables = command.mVariables;
             const Chosen chosen = chooseView(variables, command.mResources);
-            const PictureRequest request = pictureFrom(variables, command.mResources, 1024, 1024);
+            const PictureRequest request = pictureFrom(command, 1024, 1024);
 
             const Content content(command.mConfig, variables, command.mResources);
             World world(content);
@@ -618,7 +620,7 @@ namespace RtxTool
             if (cell == nullptr)
                 return 1;
 
-            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour, chosen.mWeather);
+            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
 
             return runMap(
                 world, *cell, frame.describeStaging(), frame.mActors, validationFrom(variables, false), request);
@@ -641,7 +643,7 @@ namespace RtxTool
             if (!needle.empty())
                 return runFind(content, *cell, needle);
 
-            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour, chosen.mWeather);
+            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
 
             return runScene(world, *cell, frame.describeStaging(), frame.mActors, variables["twice"].as<bool>());
         }
@@ -651,8 +653,7 @@ namespace RtxTool
             const bpo::variables_map& variables = command.mVariables;
 
             VerifyRequest request;
-            request.mFrame = frameFrom(
-                variables, command.mResources, variables["hour"].as<float>(), variables["weather"].as<std::string>());
+            request.mFrame = frameFrom(command, variables["hour"].as<float>(), variables["weather"].as<std::string>());
             request.mViews = chooseViews(
                 loadViews(command.mResources / "rtx" / "views.cfg"), splitNames(variables["views"].as<std::string>()));
             applyConditions(variables, request.mViews);
@@ -674,8 +675,7 @@ namespace RtxTool
 
             std::string suite;
             BenchRequest request;
-            request.mFrame = frameFrom(
-                variables, command.mResources, variables["hour"].as<float>(), variables["weather"].as<std::string>());
+            request.mFrame = frameFrom(command, variables["hour"].as<float>(), variables["weather"].as<std::string>());
             request.mViews = chooseBenchViews(variables, command.mResources, suite);
             applyConditions(variables, request.mViews);
             request.mSuite = suite;
@@ -707,7 +707,7 @@ namespace RtxTool
             // the one place every player of this game has stood.
             const Chosen chosen = chooseView(variables, command.mResources);
 
-            const FrameRequest frame = frameFrom(variables, command.mResources, chosen.mHour, chosen.mWeather);
+            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
             const Rtx::ValidationOptions validation = validationFrom(variables, windowed);
 
             const Content content(command.mConfig, variables, command.mResources);

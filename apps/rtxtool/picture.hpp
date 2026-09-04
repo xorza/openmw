@@ -31,6 +31,10 @@ namespace RtxTool
         std::filesystem::path mOutput;
         std::filesystem::path mShaderDirectory;
 
+        /// Where the pipelines it compiles are kept, so a later run finds them — the user's own
+        /// cache directory, shared with the game.
+        std::filesystem::path mCacheDirectory;
+
         std::uint32_t mWidth = 512;
         std::uint32_t mHeight = 1024;
 

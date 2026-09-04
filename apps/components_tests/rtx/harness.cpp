@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include <components/files/configurationmanager.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
 #include <components/rtxvulkan/requirements.hpp>
@@ -57,7 +58,7 @@ namespace Rtx::Testing
             }
 
             harness->mDevice = std::make_unique<Device>(
-                *harness->mInstance, PhysicalDevice::select(harness->mInstance->getHandle()));
+                *harness->mInstance, PhysicalDevice::select(harness->mInstance->getHandle()), getPipelineCacheSpec());
             return harness;
         }
 
@@ -163,10 +164,20 @@ namespace Rtx::Testing
         return std::filesystem::path(OPENMW_RTX_SHADER_DIR);
     }
 
+    PipelineCacheSpec getPipelineCacheSpec()
+    {
+        // Silent, and built once: what is wanted is the path rule and not a configuration, and this
+        // constructor reads no files to answer it.
+        static const std::filesystem::path directory = Files::ConfigurationManager(true).getCachePath();
+
+        return PipelineCacheSpec{ .mDirectory = directory, .mShaderDirectory = getShaderDirectory() };
+    }
+
     RendererOptions describeRenderer(std::uint32_t width, std::uint32_t height)
     {
         RendererOptions options;
         options.mShaderDirectory = getShaderDirectory();
+        options.mCacheDirectory = getPipelineCacheSpec().mDirectory;
         options.mWidth = width;
         options.mHeight = height;
         options.mValidation.mEnabled = true;

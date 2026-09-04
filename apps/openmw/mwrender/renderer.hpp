@@ -78,6 +78,10 @@ namespace MWRender
         std::filesystem::path mResourceDir;
 
         std::filesystem::path mScreenshotPath;
+
+        /// Where a renderer keeps what it compiled — `ConfigurationManager::getCachePath`. What goes
+        /// there is regenerable, so it is the cache directory and not the user's data.
+        std::filesystem::path mCachePath;
     };
 
     /// One image of the world on the screen, and the window it goes in.

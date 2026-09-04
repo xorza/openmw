@@ -122,6 +122,7 @@ namespace MWRender
 
         Rtx::RendererOptions options;
         options.mShaderDirectory = spec.mResourceDir / "rtx" / "shaders";
+        options.mCacheDirectory = spec.mCachePath;
         options.mWidth = mWidth;
         options.mHeight = mHeight;
         options.mUpscale = *upscale;

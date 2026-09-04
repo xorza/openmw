@@ -20,6 +20,7 @@
 #include "image.hpp"
 #include "micromappass.hpp"
 #include "physicaldevice.hpp"
+#include "pipelinecache.hpp"
 #include "presenter.hpp"
 #include "requirements.hpp"
 #include "result.hpp"
@@ -164,7 +165,9 @@ namespace Rtx
 
     VulkanRenderer::VulkanRenderer(const RendererOptions& options)
         : mInstance(instanceOptionsFor(options))
-        , mDevice(mInstance, PhysicalDevice::select(mInstance.getHandle()), deviceExtensionsFor(options))
+        , mDevice(mInstance, PhysicalDevice::select(mInstance.getHandle()),
+              PipelineCacheSpec{ .mDirectory = options.mCacheDirectory, .mShaderDirectory = options.mShaderDirectory },
+              deviceExtensionsFor(options))
         , mPool(mDevice)
         , mShaderDirectory(options.mShaderDirectory)
         , mCountHits(options.mCountHits)

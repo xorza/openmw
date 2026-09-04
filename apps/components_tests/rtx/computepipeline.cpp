@@ -9,6 +9,7 @@
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/instance.hpp>
 #include <components/rtxvulkan/physicaldevice.hpp>
+#include <components/rtxvulkan/pipelinecache.hpp>
 #include <components/rtxvulkan/validation.hpp>
 
 #include "harness.hpp"
@@ -39,7 +40,8 @@ namespace Rtx
             options.mPolicy = ValidationPolicy::Log;
 
             const Instance instance(options);
-            auto device = std::make_unique<Device>(instance, PhysicalDevice::select(instance.getHandle()));
+            auto device = std::make_unique<Device>(
+                instance, PhysicalDevice::select(instance.getHandle()), Testing::getPipelineCacheSpec());
 
             ValidationLog* log = instance.getValidationLog();
             ASSERT_NE(log, nullptr) << "the layers are what this test reads its answer from";

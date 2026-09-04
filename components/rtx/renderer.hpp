@@ -81,6 +81,14 @@ namespace Rtx
         /// Where the build wrote the compiled shaders for whichever backend this is.
         std::filesystem::path mShaderDirectory;
 
+        /// Where a backend keeps what it compiled, so that a later run need not compile it again.
+        ///
+        /// **The user's own cache directory and not a temporary one.** What goes here is regenerable
+        /// and worth tens of megabytes, so it belongs where a cache cleaner may empty it and a backup
+        /// will not copy it — `ConfigurationManager::getCachePath`. Empty keeps nothing, which is
+        /// every pipeline compiled from source every run.
+        std::filesystem::path mCacheDirectory;
+
         /// The size the frame is **presented** at. What it is traced at follows from `mUpscale`.
         std::uint32_t mWidth = 1920;
         std::uint32_t mHeight = 1080;

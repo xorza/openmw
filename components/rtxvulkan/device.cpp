@@ -54,8 +54,8 @@ namespace Rtx
         }
     }
 
-    Device::Device(
-        const Instance& instance, PhysicalDevice&& physicalDevice, const std::vector<const char*>& extraExtensions)
+    Device::Device(const Instance& instance, PhysicalDevice&& physicalDevice, const PipelineCacheSpec& cache,
+        const std::vector<const char*>& extraExtensions)
         : mPhysicalDevice(std::move(physicalDevice))
     {
         std::vector<const char*> extensions;
@@ -163,8 +163,8 @@ namespace Rtx
                     vkGetDeviceProcAddr(mHandle, "vkCmdEndDebugUtilsLabelEXT"));
             }
 
-            mPipelineCache
-                = std::make_unique<PipelineCache>(mHandle, mPhysicalDevice.getProperties().mProperties2.properties);
+            mPipelineCache = std::make_unique<PipelineCache>(
+                mHandle, mPhysicalDevice.getProperties().mProperties2.properties, cache);
         }
         catch (...)
         {
