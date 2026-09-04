@@ -23,21 +23,19 @@ namespace Rtx::Testing
         /// retired part's entry under the new part's and mirrors geometry that has nothing to do with
         /// it. The entry owns its subject, so that address is not available to hand out again until
         /// the sweep lets go — which is what makes the identity true rather than likely.
-        TEST(RtxSceneExtractorTest, aDrawableTheGraphLetGoKeepsItsAddressUntilTheSweepReleasesIt)
+        TEST_F(RtxSceneExtractorTest, aDrawableTheGraphLetGoKeepsItsAddressUntilTheSweepReleasesIt)
         {
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
 
             osg::ref_ptr<osg::Group> root = new osg::Group;
             osg::ref_ptr<osg::Geometry> part = makeQuad();
             root->addChild(part);
 
-            extractor.extract(*root, osg::Matrixf::identity(), 0);
-            ASSERT_EQ(scene.getMeshes().size(), 1u);
+            walk(*root);
+            ASSERT_EQ(mScene.getMeshes().size(), 1u);
 
             // The epoch this opens is what the walk below is measured against, so the sweep at the
             // end has something to find stale.
-            ASSERT_TRUE(extractor.retire().empty());
+            ASSERT_TRUE(mExtractor.retire().empty());
 
             const osg::Geometry* was = part.get();
             osg::observer_ptr<osg::Geometry> watch = part;
@@ -55,25 +53,25 @@ namespace Rtx::Testing
             ASSERT_NE(replacement.get(), was) << "the replacement landed on the retired part's address";
 
             root->addChild(replacement);
-            scene.clearPlacement();
+            mScene.clearPlacement();
 
-            const ExtractionStats again = extractor.extract(*root, osg::Matrixf::identity(), 0, 1);
+            const ExtractionStats again = walk(*root, 0, 1);
             EXPECT_EQ(again.mMeshesAdded, 1u) << "the replacement resolved to the retired part's mesh";
             EXPECT_EQ(again.mMeshesReused, 0u);
 
             // Two slots, and the new one carries its own vertices rather than the retired one's.
-            ASSERT_EQ(scene.getMeshes().size(), 2u);
-            EXPECT_EQ(scene.getMeshPositions(1)[0].z(), 5.0f);
+            ASSERT_EQ(mScene.getMeshes().size(), 2u);
+            EXPECT_EQ(mScene.getMeshPositions(1)[0].z(), 5.0f);
 
             // **And the sweep is what lets go.** Holding the key is what costs: geometry the graph
             // dropped outlives its owner until here, and a caller that never sweeps holds every
             // drawable it has ever walked.
-            const Retirement went = extractor.retire();
+            const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 1u);
             EXPECT_FALSE(watch.valid()) << "the sweep dropped the entry and kept the drawable alive";
         }
 
-        TEST(RtxSceneExtractorTest, aSweepDropsWhatTheWalkNoLongerFindsAndCarriesTheRest)
+        TEST_F(RtxSceneExtractorTest, aSweepDropsWhatTheWalkNoLongerFindsAndCarriesTheRest)
         {
             osg::ref_ptr<osg::Geometry> stays = makeQuad();
             osg::ref_ptr<osg::Geometry> goes = makeQuad();
@@ -88,36 +86,34 @@ namespace Rtx::Testing
             whole->addChild(goes);
             whole->addChild(alsoStays);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            extractor.extract(*whole, osg::Matrixf::identity(), 0);
-            ASSERT_EQ(scene.getMeshes().size(), 3u);
+            walk(*whole);
+            ASSERT_EQ(mScene.getMeshes().size(), 3u);
 
             // Nothing has gone yet, so the sweep is a no-op — and the epoch it opens is what the
             // next walk is measured against.
-            EXPECT_TRUE(extractor.retire().empty());
-            EXPECT_EQ(scene.getMeshes().size(), 3u);
+            EXPECT_TRUE(mExtractor.retire().empty());
+            EXPECT_EQ(mScene.getMeshes().size(), 3u);
 
             osg::ref_ptr<osg::Group> less = new osg::Group;
             less->addChild(stays);
             less->addChild(alsoStays);
 
-            scene.clearPlacement();
-            extractor.extract(*less, osg::Matrixf::identity(), 0);
+            mScene.clearPlacement();
+            walk(*less);
 
-            const Retirement went = extractor.retire();
+            const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 1u);
             EXPECT_EQ(went.mMaterials, 0u) << "an untextured quad has no state set and so no material";
 
             // **The table is the same size and the survivors are where they were.** Freeing a slot
             // in place is what lets a cell leave without renumbering every mesh in the world, and
             // renumbering is what made a boundary cost a full rebuild.
-            ASSERT_EQ(scene.getMeshes().size(), 3u);
-            EXPECT_EQ(scene.getMeshes()[1].mVertexCount, 0u) << "the middle slot should be free";
-            EXPECT_EQ(scene.getMeshPositions(2)[0].z(), 7.0f) << "a survivor moved";
+            ASSERT_EQ(mScene.getMeshes().size(), 3u);
+            EXPECT_EQ(mScene.getMeshes()[1].mVertexCount, 0u) << "the middle slot should be free";
+            EXPECT_EQ(mScene.getMeshPositions(2)[0].z(), 7.0f) << "a survivor moved";
 
-            scene.clearPlacement();
-            const ExtractionStats after = extractor.extract(*less, osg::Matrixf::identity(), 0);
+            mScene.clearPlacement();
+            const ExtractionStats after = walk(*less);
 
             EXPECT_EQ(after.mMeshesAdded, 0u) << "a survivor was re-added rather than recognised";
             EXPECT_EQ(after.mMeshesReused, 2u);
@@ -126,17 +122,17 @@ namespace Rtx::Testing
             // that graph is not walked any more, so the sweep took their placements — and the two
             // walked under `less` are different placements of the same geometry, so they took slots
             // of their own. A dropped placement leaves its slot behind rather than closing the gap.
-            ASSERT_EQ(scene.getPlacedCount(), 2u);
-            ASSERT_EQ(scene.getInstances().size(), 5u);
+            ASSERT_EQ(mScene.getPlacedCount(), 2u);
+            ASSERT_EQ(mScene.getInstances().size(), 5u);
             for (std::size_t gap = 0; gap < 3; ++gap)
-                EXPECT_FALSE(scene.getInstances()[gap].isPlaced()) << "slot " << gap << " should be a gap";
+                EXPECT_FALSE(mScene.getInstances()[gap].isPlaced()) << "slot " << gap << " should be a gap";
 
             // And what those placements name is what they always named, because nothing was carried
             // anywhere: the third quad is still mesh two, where it was put.
-            ASSERT_TRUE(scene.getInstances()[3].isPlaced());
-            ASSERT_TRUE(scene.getInstances()[4].isPlaced());
-            EXPECT_EQ(scene.getInstances()[3].mMesh, 0u);
-            EXPECT_EQ(scene.getInstances()[4].mMesh, 2u);
+            ASSERT_TRUE(mScene.getInstances()[3].isPlaced());
+            ASSERT_TRUE(mScene.getInstances()[4].isPlaced());
+            EXPECT_EQ(mScene.getInstances()[3].mMesh, 0u);
+            EXPECT_EQ(mScene.getInstances()[4].mMesh, 2u);
 
             // The freed slot goes to the next quad that turns up, which is the same size as the one
             // that left it.
@@ -146,11 +142,11 @@ namespace Rtx::Testing
             more->addChild(alsoStays);
             more->addChild(arrives);
 
-            scene.clearPlacement();
-            extractor.extract(*more, osg::Matrixf::identity(), 0);
+            mScene.clearPlacement();
+            walk(*more);
 
-            EXPECT_EQ(scene.getMeshes().size(), 3u) << "the free slot was passed over and the table grew";
-            EXPECT_EQ(scene.getMeshes()[1].mVertexCount, 4u);
+            EXPECT_EQ(mScene.getMeshes().size(), 3u) << "the free slot was passed over and the table grew";
+            EXPECT_EQ(mScene.getMeshes()[1].mVertexCount, 4u);
         }
 
         /// A cell that unloads takes its creatures with it, and the cell beside it keeps its own.
@@ -167,7 +163,7 @@ namespace Rtx::Testing
         /// deforming drawable is a bottom-level structure rebuilt from a pose every frame, so a
         /// creature the sweep missed is not only a body standing in an unloaded town but the price
         /// of one — which is why the one that leaves is posed again after it has.
-        TEST(RtxSceneExtractorTest, aCellTakenOffTheRootTakesItsActorsAndLeavesItsNeighboursStanding)
+        TEST_F(RtxSceneExtractorTest, aCellTakenOffTheRootTakesItsActorsAndLeavesItsNeighboursStanding)
         {
             RiggedQuad leaves;
             RiggedQuad stays;
@@ -192,19 +188,16 @@ namespace Rtx::Testing
             root->addChild(unloading);
             root->addChild(loaded);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-
             // `RtxRenderer::renderFrame`'s own order, because what this guards against lives
             // between one frame and the next: clear, walk the world, close the frame, sweep.
-            scene.clearPlacement();
-            const ExtractionStats arrived = extractor.extractWorld(*root, osg::Matrixf::identity(), 0, 1);
-            extractor.advance();
-            ASSERT_TRUE(extractor.retire().empty()) << "the walk that found them is the epoch they survive";
+            mScene.clearPlacement();
+            const ExtractionStats arrived = mExtractor.extractWorld(*root, osg::Matrixf::identity(), 0, 1);
+            mExtractor.advance();
+            ASSERT_TRUE(mExtractor.retire().empty()) << "the walk that found them is the epoch they survive";
 
             EXPECT_EQ(arrived.mMeshesAdded, 3u);
             EXPECT_EQ(arrived.mDeformed, 2u);
-            ASSERT_EQ(scene.getPlacedCount(), 3u);
+            ASSERT_EQ(mScene.getPlacedCount(), 3u);
 
             // The whole of what `Objects::removeCell` does to the graph.
             root->removeChild(unloading);
@@ -215,10 +208,10 @@ namespace Rtx::Testing
             leaves.update(2);
             stays.update(2);
 
-            scene.clearPlacement();
-            const ExtractionStats after = extractor.extractWorld(*root, osg::Matrixf::identity(), 0, 2);
-            extractor.advance();
-            const Retirement went = extractor.retire();
+            mScene.clearPlacement();
+            const ExtractionStats after = mExtractor.extractWorld(*root, osg::Matrixf::identity(), 0, 2);
+            mExtractor.advance();
+            const Retirement went = mExtractor.retire();
 
             EXPECT_EQ(after.mInstances, 1u);
             EXPECT_EQ(after.mMeshesAdded, 0u) << "the cell that stayed was mirrored again rather than recognised";
@@ -226,16 +219,16 @@ namespace Rtx::Testing
             EXPECT_EQ(went.mMeshes, 2u) << "the crate leaves with the creature";
             EXPECT_EQ(went.mMaterials, 0u) << "an untextured quad has no state set and so no material";
 
-            ASSERT_EQ(scene.getPlacedCount(), 1u);
+            ASSERT_EQ(mScene.getPlacedCount(), 1u);
 
-            const auto instances = scene.getInstances();
+            const auto instances = mScene.getInstances();
             const auto standing = std::find_if(
                 instances.begin(), instances.end(), [](const MeshInstance& slot) { return slot.isPlaced(); });
             ASSERT_NE(standing, instances.end());
-            EXPECT_EQ(scene.getMeshBones(standing->mMesh)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 11.0f))
+            EXPECT_EQ(mScene.getMeshBones(standing->mMesh)[0].mRows[2], osg::Vec4f(0.0f, 0.0f, 1.0f, 11.0f))
                 << "the sweep kept the actor from the cell that unloaded";
-            EXPECT_EQ(scene.getRigs().size(), 2u) << "a rig is a slot and keeps its index";
-            EXPECT_EQ(scene.getRigs()[scene.getMeshes()[standing->mMesh].mDeformer].mUses, 1u)
+            EXPECT_EQ(mScene.getRigs().size(), 2u) << "a rig is a slot and keeps its index";
+            EXPECT_EQ(mScene.getRigs()[mScene.getMeshes()[standing->mMesh].mDeformer].mUses, 1u)
                 << "the rig of the one that left went with it and the survivor's stayed";
         }
 
@@ -251,7 +244,7 @@ namespace Rtx::Testing
         /// carried down the subtree: a quad under the marked group takes `MASK_FIRST_PERSON`, and
         /// one beside it — with the mask every drawable is born with — stays solid. Read by the
         /// water's rule, no bit outside the named one, so the all-ones default never matches.
-        TEST(RtxSceneExtractorTest, whatStandsUnderTheFirstPersonRootIsPlacedForTheEyeAlone)
+        TEST_F(RtxSceneExtractorTest, whatStandsUnderTheFirstPersonRootIsPlacedForTheEyeAlone)
         {
             constexpr osg::Node::NodeMask sFirstPerson = 1u << 9;
 
@@ -263,13 +256,11 @@ namespace Rtx::Testing
             root->addChild(arms);
             root->addChild(makeQuad());
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            extractor.setFirstPersonMask(sFirstPerson);
-            extractor.extract(*root, osg::Matrixf::identity(), 0);
+            mExtractor.setFirstPersonMask(sFirstPerson);
+            walk(*root);
 
             std::vector<Rtx::InstanceRecord> records;
-            Rtx::makeInstanceRecords(scene, records);
+            Rtx::makeInstanceRecords(mScene, records);
 
             ASSERT_EQ(records.size(), 2u);
             EXPECT_EQ(records[0].mMask, Rtx::Shaders::MASK_FIRST_PERSON) << "under the arms' root";
@@ -284,42 +275,40 @@ namespace Rtx::Testing
         }
 
         /// A material and the texture behind it go when the last thing wearing them does.
-        TEST(RtxSceneExtractorTest, aSweepTakesTheMaterialsNothingWearsAndTheTexturesTheyNamed)
+        TEST_F(RtxSceneExtractorTest, aSweepTakesTheMaterialsNothingWearsAndTheTexturesTheyNamed)
         {
             osg::ref_ptr<osg::Geometry> stone = makeQuad();
             paint(*stone->getOrCreateStateSet(), "textures/tx_stone_01.dds");
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            extractor.extract(*stone, osg::Matrixf::identity(), 0);
+            walk(*stone);
 
-            ASSERT_EQ(scene.getMaterials().size(), 1u);
-            ASSERT_EQ(scene.getTextures().size(), 1u);
-            ASSERT_TRUE(extractor.retire().empty()) << "the walk that found it is the epoch it survives";
+            ASSERT_EQ(mScene.getMaterials().size(), 1u);
+            ASSERT_EQ(mScene.getTextures().size(), 1u);
+            ASSERT_TRUE(mExtractor.retire().empty()) << "the walk that found it is the epoch it survives";
 
             // A walk that finds nothing at all is still a walk, and it is what an emptied cell is.
             osg::ref_ptr<osg::Group> nothing = new osg::Group;
-            scene.clearPlacement();
-            extractor.extract(*nothing, osg::Matrixf::identity(), 0);
+            mScene.clearPlacement();
+            walk(*nothing);
 
-            const Retirement went = extractor.retire();
+            const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 1u);
             EXPECT_EQ(went.mMaterials, 1u);
 
             // **Freed, not removed.** The slots stay where they are so nothing above them is
             // renumbered — there is nothing above them here, but the rule is what a cell boundary
             // depends on — and what they held is gone.
-            ASSERT_EQ(scene.getMeshes().size(), 1u);
-            EXPECT_EQ(scene.getMeshes()[0].mVertexCount, 0u);
-            EXPECT_EQ(scene.getMaterials().size(), 1u);
-            EXPECT_EQ(scene.getMaterials()[0].mDiffuse, Rtx::sNoIndex);
+            ASSERT_EQ(mScene.getMeshes().size(), 1u);
+            EXPECT_EQ(mScene.getMeshes()[0].mVertexCount, 0u);
+            EXPECT_EQ(mScene.getMaterials().size(), 1u);
+            EXPECT_EQ(mScene.getMaterials()[0].mDiffuse, Rtx::sNoIndex);
 
             // **The slot stays, and that is deliberate.** It lives in a bindless array a material
             // indexes by position, so reclaiming one renumbers the rest and the array is built again
             // — a fifth of a second, against nothing saved but a texture's bytes. What goes is what
             // was in it: the material that named it was the last thing naming it.
-            EXPECT_EQ(scene.getTextures().size(), 1u);
-            EXPECT_TRUE(scene.getTextures()[0].value().empty()) << "a texture nothing names was kept";
+            EXPECT_EQ(mScene.getTextures().size(), 1u);
+            EXPECT_TRUE(mScene.getTextures()[0].value().empty()) << "a texture nothing names was kept";
         }
     }
 }

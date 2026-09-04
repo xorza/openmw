@@ -33,20 +33,18 @@ namespace Rtx::Testing
             NifOsg::Loader::Configuration mHeld;
         };
 
-        TEST(RtxSceneExtractorTest, twoDrawablesBecomeTwoMeshesAndTwoInstances)
+        TEST_F(RtxSceneExtractorTest, twoDrawablesBecomeTwoMeshesAndTwoInstances)
         {
             osg::ref_ptr<osg::Group> root = new osg::Group;
             root->addChild(makeQuad());
             root->addChild(makeQuad());
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            const ExtractionStats stats = extractor.extract(*root, osg::Matrixf::identity(), 0);
+            const ExtractionStats stats = walk(*root);
 
             EXPECT_EQ(stats.mMeshesAdded, 2u);
             EXPECT_EQ(stats.mMeshesReused, 0u);
             EXPECT_EQ(stats.mInstances, 2u);
-            EXPECT_EQ(scene.getTriangleCount(), 4u);
+            EXPECT_EQ(mScene.getTriangleCount(), 4u);
         }
 
         /// A flipbook shows one frame at a time, and this walk is what advances it.
@@ -59,7 +57,7 @@ namespace Rtx::Testing
         /// Two frames a second apart, read at two times. One instance each time, and the second
         /// read is the other frame. Both halves are claimed: honouring it without stepping it shows
         /// frame zero for ever, and stepping it without honouring it shows both frames at once.
-        TEST(RtxSceneExtractorTest, aFlipbookShowsOneFrameAndThisWalkIsWhatAdvancesIt)
+        TEST_F(RtxSceneExtractorTest, aFlipbookShowsOneFrameAndThisWalkIsWhatAdvancesIt)
         {
             osg::ref_ptr<osg::MatrixTransform> first = new osg::MatrixTransform(osg::Matrix::translate(10.0, 0.0, 0.0));
             first->addChild(makeQuad());
@@ -107,7 +105,7 @@ namespace Rtx::Testing
         /// The same graph twice under two answers, because a mask taken from the wrong place still
         /// skips a node whose own mask is zero. The marked node here carries a real bit, so only a
         /// walk that took the loader's answer can tell the two runs apart.
-        TEST(RtxSceneExtractorTest, aWalkLeavesOutWhatTheLoaderSaysAHiddenNodeCarries)
+        TEST_F(RtxSceneExtractorTest, aWalkLeavesOutWhatTheLoaderSaysAHiddenNodeCarries)
         {
             constexpr osg::Node::NodeMask marked = 1u << 3;
             constexpr osg::Node::NodeMask elsewhere = 1u << 4;
@@ -136,7 +134,7 @@ namespace Rtx::Testing
         /// not a cosmetic waste: OpenMW's resource cache hands out the same object for every
         /// reference to a model, so a cell of a hundred identical crates would build a hundred
         /// acceleration structures.
-        TEST(RtxSceneExtractorTest, sharedGeometryIsOneMeshPlacedTwice)
+        TEST_F(RtxSceneExtractorTest, sharedGeometryIsOneMeshPlacedTwice)
         {
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
 
@@ -149,17 +147,15 @@ namespace Rtx::Testing
             root->addChild(left);
             root->addChild(right);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            const ExtractionStats stats = extractor.extract(*root, osg::Matrixf::identity(), 0);
+            const ExtractionStats stats = walk(*root);
 
             EXPECT_EQ(stats.mMeshesAdded, 1u);
             EXPECT_EQ(stats.mMeshesReused, 1u);
-            ASSERT_EQ(scene.getInstances().size(), 2u);
-            EXPECT_EQ(scene.getInstances()[0].mMesh, scene.getInstances()[1].mMesh);
+            ASSERT_EQ(mScene.getInstances().size(), 2u);
+            EXPECT_EQ(mScene.getInstances()[0].mMesh, mScene.getInstances()[1].mMesh);
 
-            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
-            EXPECT_EQ(placedAt(scene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
+            EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
+            EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
         }
 
         /// **A branch a switch has turned off is not in the picture, and `osg::Switch::traverse`
@@ -167,7 +163,7 @@ namespace Rtx::Testing
         /// alone, `MWRender`'s `DayNightCallback` traces the night lamp at noon and the day mesh at
         /// midnight at the same time, and a harvested plant is traced through the unharvested one it
         /// replaced.
-        TEST(RtxSceneExtractorTest, onlyTheBranchASwitchHasOnIsMirrored)
+        TEST_F(RtxSceneExtractorTest, onlyTheBranchASwitchHasOnIsMirrored)
         {
             osg::ref_ptr<osg::MatrixTransform> day = new osg::MatrixTransform(osg::Matrix::translate(10.0, 0.0, 0.0));
             day->addChild(makeQuad());
@@ -179,21 +175,18 @@ namespace Rtx::Testing
             root->addChild(night);
             root->setSingleChildOn(0);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-
-            const ExtractionStats noon = extractor.extract(*root, osg::Matrixf::identity(), 0);
-            ASSERT_TRUE(extractor.retire().empty()) << "the first walk swept something it had just placed";
+            const ExtractionStats noon = walk(*root);
+            ASSERT_TRUE(mExtractor.retire().empty()) << "the first walk swept something it had just placed";
 
             // The night branch was not walked, so it is not a mesh either: one added rather than two.
             EXPECT_EQ(noon.mMeshesAdded, 1u);
             EXPECT_EQ(noon.mInstances, 1u);
-            ASSERT_EQ(scene.getInstances().size(), 1u);
-            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
+            ASSERT_EQ(mScene.getInstances().size(), 1u);
+            EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
 
             root->setSingleChildOn(1);
-            scene.clearPlacement();
-            const ExtractionStats midnight = extractor.extract(*root, osg::Matrixf::identity(), 1);
+            mScene.clearPlacement();
+            const ExtractionStats midnight = walk(*root, 1);
 
             EXPECT_EQ(midnight.mMeshesAdded, 1u) << "the branch that came on had never been read";
             EXPECT_EQ(midnight.mMeshesReused, 0u);
@@ -202,31 +195,29 @@ namespace Rtx::Testing
             // The branch that went off is standing until the sweep, which is what any placement
             // leaving the graph costs — and gone after it, in its own slot rather than by
             // renumbering the one that arrived.
-            EXPECT_EQ(extractor.retire().mMeshes, 1u);
-            EXPECT_EQ(scene.getPlacedCount(), 1u);
-            ASSERT_EQ(scene.getInstances().size(), 2u);
-            EXPECT_FALSE(scene.getInstances()[0].isPlaced()) << "the day branch outlived the sweep";
-            ASSERT_TRUE(scene.getInstances()[1].isPlaced());
-            EXPECT_EQ(placedAt(scene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
+            EXPECT_EQ(mExtractor.retire().mMeshes, 1u);
+            EXPECT_EQ(mScene.getPlacedCount(), 1u);
+            ASSERT_EQ(mScene.getInstances().size(), 2u);
+            EXPECT_FALSE(mScene.getInstances()[0].isPlaced()) << "the day branch outlived the sweep";
+            ASSERT_TRUE(mScene.getInstances()[1].isPlaced());
+            EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
         }
 
-        TEST(RtxSceneExtractorTest, theRootTransformIsAppliedAfterTheGraphsOwn)
+        TEST_F(RtxSceneExtractorTest, theRootTransformIsAppliedAfterTheGraphsOwn)
         {
             osg::ref_ptr<osg::MatrixTransform> inner = new osg::MatrixTransform(osg::Matrix::scale(2.0, 2.0, 2.0));
             inner->addChild(makeQuad());
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            extractor.extract(*inner, osg::Matrixf::translate(0.0f, 0.0f, 5.0f), 0);
+            mExtractor.extract(*inner, osg::Matrixf::translate(0.0f, 0.0f, 5.0f), 0);
 
             // The quad's (1,1,0) corner doubles to (2,2,0), then rises by five.
-            ASSERT_EQ(scene.getInstances().size(), 1u);
-            EXPECT_EQ(osg::Vec3f(1.0f, 1.0f, 0.0f) * scene.getInstances()[0].mTransform, osg::Vec3f(2.0f, 2.0f, 5.0f));
+            ASSERT_EQ(mScene.getInstances().size(), 1u);
+            EXPECT_EQ(osg::Vec3f(1.0f, 1.0f, 0.0f) * mScene.getInstances()[0].mTransform, osg::Vec3f(2.0f, 2.0f, 5.0f));
         }
 
         /// The visitor accumulates the local-to-world on its way down instead of rebuilding each
         /// drawable's chain from the root, so what a chain composes to is its own property to hold.
-        TEST(RtxSceneExtractorTest, nestedTransformsComposeFromTheRootDownwards)
+        TEST_F(RtxSceneExtractorTest, nestedTransformsComposeFromTheRootDownwards)
         {
             // Outermost first: scale by two, then rotate a quarter turn about z, then move along x.
             osg::ref_ptr<osg::MatrixTransform> scale = new osg::MatrixTransform(osg::Matrix::scale(2.0, 2.0, 2.0));
@@ -238,12 +229,10 @@ namespace Rtx::Testing
             turn->addChild(shift);
             shift->addChild(makeQuad());
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            extractor.extract(*scale, osg::Matrixf::identity(), 0);
+            walk(*scale);
 
-            ASSERT_EQ(scene.getInstances().size(), 1u);
-            const osg::Matrixf& place = scene.getInstances()[0].mTransform;
+            ASSERT_EQ(mScene.getInstances().size(), 1u);
+            const osg::Matrixf& place = mScene.getInstances()[0].mTransform;
 
             // (1,0,0) shifts to (4,0,0), turns to (0,4,0), and scales to (0,8,0). Order is the whole
             // of what this asserts: composed the other way round it would be (0,2,0) moved to
@@ -280,27 +269,25 @@ namespace Rtx::Testing
             mutable osg::NodeVisitor::VisitorType mSaw = osg::NodeVisitor::UPDATE_VISITOR;
         };
 
-        TEST(RtxSceneExtractorTest, aTransformThatReadsTheVisitorIsGivenOne)
+        TEST_F(RtxSceneExtractorTest, aTransformThatReadsTheVisitorIsGivenOne)
         {
             osg::ref_ptr<VisitorReadingTransform> reads = new VisitorReadingTransform;
             reads->setMatrix(osg::Matrix::translate(0.0, 0.0, 4.0));
             reads->addChild(makeQuad());
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            extractor.extract(*reads, osg::Matrixf::identity(), 0);
+            walk(*reads);
 
             EXPECT_EQ(reads->mSaw, osg::NodeVisitor::NODE_VISITOR) << "the transform was handed a null visitor";
 
             // And it still placed what was under it, at the transform it asked for.
-            ASSERT_EQ(scene.getPlacedCount(), 1u);
-            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(0.0f, 0.0f, 4.0f));
+            ASSERT_EQ(mScene.getPlacedCount(), 1u);
+            EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(0.0f, 0.0f, 4.0f));
         }
 
         /// An absolute reference frame replaces what is above it rather than adding to it, which is
         /// a branch inside `computeLocalToWorldMatrix` and the one thing an accumulating visitor
         /// could quietly get wrong by adding where it should overwrite.
-        TEST(RtxSceneExtractorTest, anAbsoluteFrameDiscardsTheTransformsAboveIt)
+        TEST_F(RtxSceneExtractorTest, anAbsoluteFrameDiscardsTheTransformsAboveIt)
         {
             osg::ref_ptr<osg::MatrixTransform> above
                 = new osg::MatrixTransform(osg::Matrix::translate(100.0, 100.0, 100.0));
@@ -318,35 +305,31 @@ namespace Rtx::Testing
             relative->addChild(makeQuad());
             above->addChild(relative);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            extractor.extract(*above, osg::Matrixf::identity(), 0);
+            walk(*above);
 
-            ASSERT_EQ(scene.getInstances().size(), 2u);
+            ASSERT_EQ(mScene.getInstances().size(), 2u);
 
             // The absolute one stands at its own translation and nowhere near the hundred above it.
-            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(0.0f, 0.0f, 7.0f));
+            EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(0.0f, 0.0f, 7.0f));
 
             // The relative one carries it.
-            EXPECT_EQ(placedAt(scene, 1), osg::Vec3f(100.0f, 100.0f, 107.0f));
+            EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(100.0f, 100.0f, 107.0f));
         }
 
         /// The property the incremental mirror rests on: nothing changed, so nothing is added.
-        TEST(RtxSceneExtractorTest, aSecondPassOverAnUnchangedGraphAddsNothing)
+        TEST_F(RtxSceneExtractorTest, aSecondPassOverAnUnchangedGraphAddsNothing)
         {
             osg::ref_ptr<osg::Group> root = new osg::Group;
             root->addChild(makeQuad());
             root->addChild(makeQuad());
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            const ExtractionStats first = extractor.extract(*root, osg::Matrixf::identity(), 0);
+            const ExtractionStats first = walk(*root);
 
-            const ExtractionStats second = extractor.extract(*root, osg::Matrixf::identity(), 0);
+            const ExtractionStats second = walk(*root);
 
             EXPECT_EQ(second.mMeshesAdded, 0u);
             EXPECT_EQ(second.mMeshesReused, 2u);
-            EXPECT_EQ(scene.getMeshes().size(), 2u);
+            EXPECT_EQ(mScene.getMeshes().size(), 2u);
 
             // **Each walk counts into its own report and never into the walk before it.** What a
             // resolver counts through is `MirrorPass`, which is the mirror's own member and outlives
@@ -359,44 +342,41 @@ namespace Rtx::Testing
             // at two places is still two rows of the acceleration structure — placements are not
             // deduplicated — but a second pass over an unchanged graph finds the slots those two
             // already hold rather than making two more. Nothing was added, and nothing moved.
-            EXPECT_EQ(scene.getPlacedCount(), 2u);
-            EXPECT_EQ(scene.getInstances().size(), 2u);
+            EXPECT_EQ(mScene.getPlacedCount(), 2u);
+            EXPECT_EQ(mScene.getInstances().size(), 2u);
 
-            scene.advancePlacement();
-            EXPECT_EQ(extractor.extract(*root, osg::Matrixf::identity(), 0).mInstances, 2u);
-            EXPECT_TRUE(scene.getMoved().empty()) << "an unchanged graph reported a placement moving";
+            mScene.advancePlacement();
+            EXPECT_EQ(walk(*root).mInstances, 2u);
+            EXPECT_TRUE(mScene.getMoved().empty()) << "an unchanged graph reported a placement moving";
         }
 
         /// **A node path does not identify a placement, and this is the case that proves it.**
         /// `SceneManager::getTemplate` hands out one node per model, so every reference to that model
         /// is walked from the same node down the same path. Without the anchor they share a slot,
         /// and a hundred crates collapse into one.
-        TEST(RtxSceneExtractorTest, oneTemplateWalkedUnderTwoAnchorsIsTwoPlacements)
+        TEST_F(RtxSceneExtractorTest, oneTemplateWalkedUnderTwoAnchorsIsTwoPlacements)
         {
             osg::ref_ptr<osg::Group> shared = new osg::Group;
             shared->addChild(makeQuad());
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
+            mExtractor.extract(*shared, osg::Matrixf::translate(10.0f, 0.0f, 0.0f), 1);
+            mExtractor.extract(*shared, osg::Matrixf::translate(0.0f, 20.0f, 0.0f), 2);
 
-            extractor.extract(*shared, osg::Matrixf::translate(10.0f, 0.0f, 0.0f), 1);
-            extractor.extract(*shared, osg::Matrixf::translate(0.0f, 20.0f, 0.0f), 2);
+            ASSERT_EQ(mScene.getPlacedCount(), 2u);
+            EXPECT_EQ(mScene.getMeshes().size(), 1u) << "one model is still one mesh";
 
-            ASSERT_EQ(scene.getPlacedCount(), 2u);
-            EXPECT_EQ(scene.getMeshes().size(), 1u) << "one model is still one mesh";
-
-            EXPECT_EQ(placedAt(scene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
-            EXPECT_EQ(placedAt(scene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
+            EXPECT_EQ(placedAt(mScene, 0), osg::Vec3f(10.0f, 0.0f, 0.0f));
+            EXPECT_EQ(placedAt(mScene, 1), osg::Vec3f(0.0f, 20.0f, 0.0f));
 
             // And they keep their own histories. Moving one must leave the other reporting nothing —
             // sharing a slot would have the still one inherit the mover's previous transform and
             // smear across the frame.
-            scene.advancePlacement();
-            extractor.extract(*shared, osg::Matrixf::translate(11.0f, 0.0f, 0.0f), 1);
-            extractor.extract(*shared, osg::Matrixf::translate(0.0f, 20.0f, 0.0f), 2);
+            mScene.advancePlacement();
+            mExtractor.extract(*shared, osg::Matrixf::translate(11.0f, 0.0f, 0.0f), 1);
+            mExtractor.extract(*shared, osg::Matrixf::translate(0.0f, 20.0f, 0.0f), 2);
 
-            ASSERT_EQ(scene.getMoved().size(), 1u);
-            EXPECT_EQ(scene.getMoved()[0], 0u);
+            ASSERT_EQ(mScene.getMoved().size(), 1u);
+            EXPECT_EQ(mScene.getMoved()[0], 0u);
         }
     }
 }

@@ -7,16 +7,7 @@ duplication, asymmetry and the accuracy of the comments. It does not question wh
 
 ---
 
-## The shared vocabulary is copied per file instead of taken from a fixture
-
-The same constants, quads and helpers are written out again in file after file. Several of the files
-that copy them already include the header that defines them.
-
-- [ ] `Rtx::SceneDesc scene; SceneExtractor extractor(scene);` opens 56 of the 58 extractor tests, and
-      `extractor.extract(*root, osg::Matrixf::identity(), 0)` appears 89 times. A fixture holding the
-      pair, with a `walk(root)` method, removes both.
-
-### Every file builds its own texture description
+## Every file builds its own texture description
 
 A one-texel `TextureData` is the most common object in this suite, and no two files build it the
 same way.

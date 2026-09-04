@@ -12,20 +12,18 @@ namespace Rtx::Testing
         /// Every state set the content pipeline produces carries a description; one that does not
         /// was built somewhere else, or was rebuilt by something that copied the pipeline state and
         /// dropped the description with it. The extractor says so and does not try to recover it.
-        TEST(RtxSceneExtractorTest, anUndescribedSurfaceIsCountedRatherThanGuessedAt)
+        TEST_F(RtxSceneExtractorTest, anUndescribedSurfaceIsCountedRatherThanGuessedAt)
         {
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
             quad->getOrCreateStateSet()->setAttributeAndModes(
                 new osg::CullFace(osg::CullFace::BACK), osg::StateAttribute::ON);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            const ExtractionStats stats = extractor.extract(*quad, osg::Matrixf::identity(), 0);
+            const ExtractionStats stats = walk(*quad);
 
             EXPECT_EQ(stats.mUndescribedMaterials, 1u);
             EXPECT_EQ(stats.mInstances, 1u) << "the geometry is still placed; only its shading is unknown";
-            ASSERT_EQ(scene.getMaterials().size(), 1u);
-            EXPECT_EQ(scene.getMaterials()[0].mDiffuse, Rtx::sNoIndex);
+            ASSERT_EQ(mScene.getMaterials().size(), 1u);
+            EXPECT_EQ(mScene.getMaterials()[0].mDiffuse, Rtx::sNoIndex);
         }
 
         /// A texture arrives under the format it was decoded in, and its mip chain is counted beside
@@ -33,7 +31,7 @@ namespace Rtx::Testing
         ///
         /// The count is what says whether the content is what the uploader was written for, so a
         /// walk that met a format nobody expected reports it rather than leaving it to a throw.
-        TEST(RtxSceneExtractorTest, texturesAreCountedByFormatAndByWhetherTheyBroughtMips)
+        TEST_F(RtxSceneExtractorTest, texturesAreCountedByFormatAndByWhetherTheyBroughtMips)
         {
             osg::ref_ptr<osg::Image> chained = new osg::Image;
             chained->setFileName("textures/tx_chained.dds");
@@ -55,9 +53,7 @@ namespace Rtx::Testing
                 root->addChild(quad);
             }
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            const ExtractionStats stats = extractor.extract(*root, osg::Matrixf::identity(), 0);
+            const ExtractionStats stats = walk(*root);
 
             const FormatCount& blocks = stats.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc1)];
             EXPECT_EQ(blocks.mMet, 2u);
@@ -95,7 +91,7 @@ namespace Rtx::Testing
         /// **A count the sum passes over is a number that is quietly short**, which is what a report
         /// of an incremental mirror is least able to survive: it dropped the sheets and the flattened
         /// ground, and both read as zero however much of either a cell held.
-        TEST(RtxSceneExtractorTest, twoWalksAddUpCountByCount)
+        TEST_F(RtxSceneExtractorTest, twoWalksAddUpCountByCount)
         {
             ExtractionStats sum = counted(0);
             sum += counted(100);
@@ -124,7 +120,7 @@ namespace Rtx::Testing
 
         /// The format an unnamed count stood for survives the sum, since a report that says how many
         /// there were and not which they were sends the reader nowhere.
-        TEST(RtxSceneExtractorTest, theUnnamedFormatSurvivesASumWithAWalkThatMetNone)
+        TEST_F(RtxSceneExtractorTest, theUnnamedFormatSurvivesASumWithAWalkThatMetNone)
         {
             ExtractionStats met;
             met.mUnnamedFormat = GL_ALPHA;

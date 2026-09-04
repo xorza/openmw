@@ -20,7 +20,7 @@ namespace Rtx::Testing
         /// off — and a `LIGH` whose mesh is empty still burns. And the diffuse alone is not a light's
         /// colour: `Animation::setLightEffect` puts a glow light's whole colour in the ambient, so a
         /// Light spell read that way lit nothing at all.
-        TEST(RtxSceneExtractorTest, aLightIsMirroredForWhatItRadiatesRatherThanForWhatItHangsOn)
+        TEST_F(RtxSceneExtractorTest, aLightIsMirroredForWhatItRadiatesRatherThanForWhatItHangsOn)
         {
             osg::ref_ptr<SceneUtil::LightSource> lamp = makeLightSource(100.0f, osg::Vec4f(1, 1, 1, 1));
 
@@ -39,22 +39,20 @@ namespace Rtx::Testing
             where->addChild(bare);
             where->addChild(glow);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            const ExtractionStats stats = extractor.extract(*where, osg::Matrixf::identity(), 0);
+            const ExtractionStats stats = walk(*where);
 
             EXPECT_EQ(stats.mLights, 3u);
-            ASSERT_EQ(scene.getLights().size(), 3u);
+            ASSERT_EQ(mScene.getLights().size(), 3u);
 
-            for (const Rtx::Light& light : scene.getLights())
+            for (const Rtx::Light& light : mScene.getLights())
                 EXPECT_EQ(light.mPosition, osg::Vec3f(10.0f, 20.0f, 30.0f)) << "a light stood somewhere else";
 
-            EXPECT_NEAR(scene.getLights()[0].mIntensity.x(), sWhiteLampAtHundred, 0.01f);
-            EXPECT_EQ(scene.getLights()[1].mIntensity, scene.getLights()[0].mIntensity)
+            EXPECT_NEAR(mScene.getLights()[0].mIntensity.x(), sWhiteLampAtHundred, 0.01f);
+            EXPECT_EQ(mScene.getLights()[1].mIntensity, mScene.getLights()[0].mIntensity)
                 << "an empty model dimmed the light hanging on it";
 
             // The same lamp scaled by what 1.5 of ambient decodes to.
-            EXPECT_NEAR(scene.getLights()[2].mIntensity.x(), sWhiteLampAtHundred * 2.53716f, 0.05f);
+            EXPECT_NEAR(mScene.getLights()[2].mIntensity.x(), sWhiteLampAtHundred * 2.53716f, 0.05f);
         }
 
         /// A lamp the record says animates is mirrored at the instant the walk was told, not at rest.
@@ -64,7 +62,7 @@ namespace Rtx::Testing
         /// a `view` and a `bench` burned at its resting brightness while the same lamp in the game
         /// flickered. The walk holds the world's clock already, and a light's animation is a
         /// function of that clock alone, so the walk is where the two can be made to agree.
-        TEST(RtxSceneExtractorTest, aWalkMirrorsALampAtTheInstantItWasToldRatherThanAtRest)
+        TEST_F(RtxSceneExtractorTest, aWalkMirrorsALampAtTheInstantItWasToldRatherThanAtRest)
         {
             ESM::Light record;
             record.mData.mRadius = 100;

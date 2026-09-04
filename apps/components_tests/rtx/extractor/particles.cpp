@@ -65,7 +65,7 @@ namespace Rtx::Testing
         /// each sprite and its uniform scale widens it, because `NifOsg` asks for particle sizes in
         /// the emitter's own coordinates and the modelview is what the rasterizer would have scaled
         /// them by.
-        TEST(RtxSceneExtractorTest, aParticleSystemPlacesSpritesAndNoMesh)
+        TEST_F(RtxSceneExtractorTest, aParticleSystemPlacesSpritesAndNoMesh)
         {
             // Scaled by two and moved a hundred along x, so the radius and the position each prove a
             // different half of the transform.
@@ -75,9 +75,7 @@ namespace Rtx::Testing
             emit(*plume.mParticles, osg::Vec3f(0.0f, 0.0f, 5.0f), 3.0f, osg::Vec4f(1.0f, 0.5f, 0.25f, 0.5f));
             emit(*plume.mParticles, osg::Vec3f(0.0f, 0.0f, 9.0f), 1.0f, osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f));
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            const ExtractionStats stats = extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0);
+            const ExtractionStats stats = walk(*plume.mRoot);
 
             EXPECT_EQ(stats.mEmitters, 1u);
             EXPECT_EQ(stats.mSprites, 2u);
@@ -85,11 +83,11 @@ namespace Rtx::Testing
             EXPECT_EQ(stats.mInstances, 0u) << "sprites are the drawing, so there is nothing to build over";
             EXPECT_EQ(stats.mMeshesAdded, 0u);
 
-            ASSERT_EQ(scene.getSprites().size(), 2u);
+            ASSERT_EQ(mScene.getSprites().size(), 2u);
 
             // (0, 0, 5) scaled by two is (0, 0, 10), then moved to x = 100. The radius is the file's
             // three by the same two.
-            const Rtx::Sprite& low = scene.getSprites()[0];
+            const Rtx::Sprite& low = mScene.getSprites()[0];
             EXPECT_EQ(low.mPosition, osg::Vec3f(100.0f, 0.0f, 10.0f));
             EXPECT_FLOAT_EQ(low.mRadius, 6.0f);
             EXPECT_EQ(low.mColour, osg::Vec3f(1.0f, 0.5f, 0.25f));
@@ -99,22 +97,22 @@ namespace Rtx::Testing
             // the two being read and the other dropped.
             EXPECT_FLOAT_EQ(low.mAlpha, 0.25f);
 
-            EXPECT_EQ(scene.getSprites()[1].mPosition, osg::Vec3f(100.0f, 0.0f, 18.0f));
-            EXPECT_FLOAT_EQ(scene.getSprites()[1].mRadius, 2.0f);
+            EXPECT_EQ(mScene.getSprites()[1].mPosition, osg::Vec3f(100.0f, 0.0f, 18.0f));
+            EXPECT_FLOAT_EQ(mScene.getSprites()[1].mRadius, 2.0f);
 
             // Two sprites four apart before the scale and eight after, each one wider than the
             // other: the box runs z = 4 to 20, so the centre is 12 and the reach 8.
-            ASSERT_EQ(scene.getEmitters().size(), 1u);
-            EXPECT_EQ(scene.getEmitters().front().mCentre, osg::Vec3f(100.0f, 0.0f, 12.0f));
-            EXPECT_FLOAT_EQ(scene.getEmitters().front().mReach, 8.0f);
+            ASSERT_EQ(mScene.getEmitters().size(), 1u);
+            EXPECT_EQ(mScene.getEmitters().front().mCentre, osg::Vec3f(100.0f, 0.0f, 12.0f));
+            EXPECT_FLOAT_EQ(mScene.getEmitters().front().mReach, 8.0f);
 
             // The texture, and beside it the bake of its alpha the sprites are lit by.
-            ASSERT_EQ(scene.getTextures().size(), 2u);
-            EXPECT_EQ(scene.getTextures()[0], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
-            EXPECT_EQ(scene.getBakedTextures()[1],
+            ASSERT_EQ(mScene.getTextures().size(), 2u);
+            EXPECT_EQ(mScene.getTextures()[0], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            EXPECT_EQ(mScene.getBakedTextures()[1],
                 SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_fire_00.dds")));
-            EXPECT_EQ(scene.getEmitters().front().mTexture, 0u);
-            EXPECT_EQ(scene.getEmitters().front().mLighting, 1u);
+            EXPECT_EQ(mScene.getEmitters().front().mTexture, 0u);
+            EXPECT_EQ(mScene.getEmitters().front().mLighting, 1u);
         }
 
         /// `SRC_ALPHA, ONE` is a flame and anything else covers, and the difference is what decides
@@ -123,7 +121,7 @@ namespace Rtx::Testing
         /// The blend sits on the transform above the emitter, where `NifOsg` puts it, and the
         /// emitter carries a state set of its own that says nothing about blending — so an answer
         /// read off the drawable is "covers" both times.
-        TEST(RtxSceneExtractorTest, theBlendTellsAFlameFromSmoke)
+        TEST_F(RtxSceneExtractorTest, theBlendTellsAFlameFromSmoke)
         {
             const auto extractOne = [](bool additive) {
                 const Plume plume = makePlume(osg::Matrix::identity(), additive);
@@ -144,7 +142,7 @@ namespace Rtx::Testing
         /// A dead slot keeps the position its last particle expired at, and an emitter with nothing
         /// alive places nothing at all — not a sphere with an empty run behind it, which every ray
         /// crossing that part of the cell would then be rejected by one test later than it needs.
-        TEST(RtxSceneExtractorTest, deadParticlesAndUntexturedEmittersPlaceNothing)
+        TEST_F(RtxSceneExtractorTest, deadParticlesAndUntexturedEmittersPlaceNothing)
         {
             const Plume spent = makePlume(osg::Matrix::identity(), true);
             osgParticle::Particle* particle
@@ -153,18 +151,16 @@ namespace Rtx::Testing
             particle->update(0.0, false);
             ASSERT_FALSE(particle->isAlive());
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            const ExtractionStats stats = extractor.extract(*spent.mRoot, osg::Matrixf::identity(), 0);
+            const ExtractionStats stats = walk(*spent.mRoot);
 
             EXPECT_EQ(stats.mEmitters, 0u);
             EXPECT_EQ(stats.mSprites, 0u);
-            EXPECT_TRUE(scene.getEmitters().empty());
+            EXPECT_TRUE(mScene.getEmitters().empty());
 
             // The texture is registered the moment the emitter is met, alive or not: it is what the
             // array is built from, and one that turns up two hundred frames later has nowhere to go.
             // The bake of its alpha arrives with it, for the same reason.
-            EXPECT_EQ(scene.getTextures().size(), 2u);
+            EXPECT_EQ(mScene.getTextures().size(), 2u);
 
             // A particle's whole silhouette is that texture's alpha, so an emitter with none draws
             // nothing rather than a white disc.
@@ -183,7 +179,7 @@ namespace Rtx::Testing
         ///
         /// The emitter outlives a textured quad here, and the texture the quad wore is what proves
         /// the sweep is doing anything at all: a pass that kept every texture would keep both.
-        TEST(RtxSceneExtractorTest, aSweepKeepsTheTextureAnEmitterIsStillDrawingWith)
+        TEST_F(RtxSceneExtractorTest, aSweepKeepsTheTextureAnEmitterIsStillDrawingWith)
         {
             osg::ref_ptr<osg::Geometry> stone = makeQuad();
             paint(*stone->getOrCreateStateSet(), "textures/tx_stone_01.dds");
@@ -195,16 +191,14 @@ namespace Rtx::Testing
             both->addChild(stone);
             both->addChild(plume.mRoot);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-            extractor.extract(*both, osg::Matrixf::identity(), 0);
-            ASSERT_EQ(scene.getTextures().size(), 3u) << "the stone's, the sprite's and the sprite's bake";
-            ASSERT_TRUE(extractor.retire().empty());
+            walk(*both);
+            ASSERT_EQ(mScene.getTextures().size(), 3u) << "the stone's, the sprite's and the sprite's bake";
+            ASSERT_TRUE(mExtractor.retire().empty());
 
-            scene.clearPlacement();
-            extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0);
+            mScene.clearPlacement();
+            walk(*plume.mRoot);
 
-            const Retirement went = extractor.retire();
+            const Retirement went = mExtractor.retire();
 
             EXPECT_EQ(went.mMeshes, 1u) << "the stone the second walk did not meet";
             EXPECT_EQ(went.mMaterials, 1u);
@@ -213,35 +207,35 @@ namespace Rtx::Testing
             // that the sprite's texture is still *named*, which is the thing the emitter map exists
             // for: a sprite hangs off no material, so nothing else holds it. The stone's went with
             // the stone's material, which is the other half of the same statement.
-            ASSERT_EQ(scene.getTextures().size(), 3u);
-            EXPECT_TRUE(scene.getTextures()[0].value().empty()) << "the stone's texture outlived the stone";
-            EXPECT_EQ(scene.getTextures()[1], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
-            EXPECT_FALSE(scene.getBakedTextures()[2].empty()) << "the sprite's bake went with the stone";
+            ASSERT_EQ(mScene.getTextures().size(), 3u);
+            EXPECT_TRUE(mScene.getTextures()[0].value().empty()) << "the stone's texture outlived the stone";
+            EXPECT_EQ(mScene.getTextures()[1], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            EXPECT_FALSE(mScene.getBakedTextures()[2].empty()) << "the sprite's bake went with the stone";
 
             // And the emitter still draws with it.
-            scene.clearPlacement();
-            extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0);
+            mScene.clearPlacement();
+            walk(*plume.mRoot);
 
-            ASSERT_EQ(scene.getEmitters().size(), 1u);
-            EXPECT_EQ(scene.getEmitters().front().mTexture, 1u) << "the sprite lost the slot it was given";
-            EXPECT_EQ(scene.getEmitters().front().mLighting, 2u) << "the bake lost the slot it was given";
-            EXPECT_EQ(scene.getTextures().size(), 3u) << "the sprite's path was added a second time";
+            ASSERT_EQ(mScene.getEmitters().size(), 1u);
+            EXPECT_EQ(mScene.getEmitters().front().mTexture, 1u) << "the sprite lost the slot it was given";
+            EXPECT_EQ(mScene.getEmitters().front().mLighting, 2u) << "the bake lost the slot it was given";
+            EXPECT_EQ(mScene.getTextures().size(), 3u) << "the sprite's path was added a second time";
 
             // **And the other way round, on the frame the sweep does not look at.** The stone comes
             // back and then the emitter goes, taking no mesh and no material with it — which is
             // exactly the frame `SceneDesc::release` answers with two comparisons and returns from.
             // The sprite's slot has to be given back by whatever was holding it.
-            scene.clearPlacement();
-            extractor.extract(*both, osg::Matrixf::identity(), 0);
-            ASSERT_TRUE(extractor.retire().empty());
-            ASSERT_EQ(scene.getTextures()[0], VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
+            mScene.clearPlacement();
+            walk(*both);
+            ASSERT_TRUE(mExtractor.retire().empty());
+            ASSERT_EQ(mScene.getTextures()[0], VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
 
-            scene.clearPlacement();
-            extractor.extract(*stone, osg::Matrixf::identity(), 0);
+            mScene.clearPlacement();
+            walk(*stone);
 
-            EXPECT_TRUE(extractor.retire().empty()) << "an emitter is neither a mesh nor a material";
-            EXPECT_TRUE(scene.getTextures()[1].value().empty()) << "the sprite outlived the emitter";
-            EXPECT_TRUE(scene.getBakedTextures()[2].empty()) << "the bake outlived the emitter";
+            EXPECT_TRUE(mExtractor.retire().empty()) << "an emitter is neither a mesh nor a material";
+            EXPECT_TRUE(mScene.getTextures()[1].value().empty()) << "the sprite outlived the emitter";
+            EXPECT_TRUE(mScene.getBakedTextures()[2].empty()) << "the bake outlived the emitter";
         }
 
         /// Gives a plume what makes it run: something emitting at a fixed rate, and the updater
@@ -311,7 +305,7 @@ namespace Rtx::Testing
         /// something hand-built does not — and then it is one frame of staleness in a position,
         /// which nothing will ever notice. Reading after the walk has settled removes the question,
         /// and this is the assertion that says so.
-        TEST(RtxSceneExtractorTest, spritesAreReadAfterTheWalkRatherThanAsItPassesThem)
+        TEST_F(RtxSceneExtractorTest, spritesAreReadAfterTheWalkRatherThanAsItPassesThem)
         {
             const auto run = [](bool updaterAbove) {
                 resetRandom();
@@ -352,36 +346,33 @@ namespace Rtx::Testing
         /// system in the world stands still on the seed its file was authored with. That failure is
         /// silent: the scene still has an emitter in it and still places sprites, they just never
         /// change, which is why this asserts on a count that moves rather than on one that exists.
-        TEST(RtxSceneExtractorTest, anEmitterRunsOnTheEmitterClockAndOnlyOncePerTurnOfIt)
+        TEST_F(RtxSceneExtractorTest, anEmitterRunsOnTheEmitterClockAndOnlyOncePerTurnOfIt)
         {
             Plume plume = makePlume(osg::Matrix::identity(), /*additive=*/true);
             drive(plume, 100.0);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-
             // **The first turn only starts the clock.** `ParticleProcessor` keeps the last time it
             // saw and has none yet, so it records one and steps nothing — which is also why a
             // renderer that walks a cell once and shows it has to warm its emitters first.
-            extractor.advanceEmitters(0.1);
-            EXPECT_EQ(extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0).mSprites, 0u);
+            mExtractor.advanceEmitters(0.1);
+            EXPECT_EQ(walk(*plume.mRoot).mSprites, 0u);
 
             EXPECT_FALSE(plume.mParticles->getFreezeOnCull())
                 << "freeze-on-cull asks whether the draw has touched this, and nothing here draws";
 
             // A tenth of a second at a hundred a second is ten.
-            extractor.advanceEmitters(0.1);
-            EXPECT_EQ(extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0).mSprites, 10u);
+            mExtractor.advanceEmitters(0.1);
+            EXPECT_EQ(walk(*plume.mRoot).mSprites, 10u);
 
             // **The same ten, and not another ten.** Every walk that reaches an emitter says it is a
             // cull traversal, and the game reaches this one twice a frame — the world's walk and the
             // weather's. What keeps that one step is `ParticleProcessor`'s own once-per-frame guard,
             // and it only holds while a single clock is writing it.
-            EXPECT_EQ(extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0).mSprites, 10u);
+            EXPECT_EQ(walk(*plume.mRoot).mSprites, 10u);
 
             // Ten more on the next turn, so the guard is a guard and not a stop.
-            extractor.advanceEmitters(0.1);
-            EXPECT_EQ(extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0).mSprites, 20u);
+            mExtractor.advanceEmitters(0.1);
+            EXPECT_EQ(walk(*plume.mRoot).mSprites, 20u);
         }
 
         /// A gap in the world's clock is clamped rather than emitted.
@@ -389,47 +380,41 @@ namespace Rtx::Testing
         /// A loading screen, a paused window or a harness holding the world still are each a gap an
         /// emitter would take literally, and a literal hour at a hundred a second is three hundred
         /// and sixty thousand particles in one frame.
-        TEST(RtxSceneExtractorTest, aJumpInTheWorldsClockIsClampedRatherThanEmitted)
+        TEST_F(RtxSceneExtractorTest, aJumpInTheWorldsClockIsClampedRatherThanEmitted)
         {
             Plume plume = makePlume(osg::Matrix::identity(), /*additive=*/true);
             drive(plume, 100.0);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-
-            extractor.advanceEmitters(0.1);
-            extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0);
+            mExtractor.advanceEmitters(0.1);
+            walk(*plume.mRoot);
 
             // Clamped to the two tenths the game's own frame loop caps a step at: twenty, not
             // 360,000.
-            extractor.advanceEmitters(3600.0);
-            EXPECT_EQ(extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0).mSprites, 20u);
+            mExtractor.advanceEmitters(3600.0);
+            EXPECT_EQ(walk(*plume.mRoot).mSprites, 20u);
 
             // And a step backwards is not a step backwards, it is no step at all.
-            extractor.advanceEmitters(-10.0);
-            EXPECT_EQ(extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0).mSprites, 20u);
+            mExtractor.advanceEmitters(-10.0);
+            EXPECT_EQ(walk(*plume.mRoot).mSprites, 20u);
         }
 
         /// The emitters can be run without a frame being mirrored, which is what a warm-up is.
-        TEST(RtxSceneExtractorTest, emittersCanBeSteppedWithoutMirroringAnything)
+        TEST_F(RtxSceneExtractorTest, emittersCanBeSteppedWithoutMirroringAnything)
         {
             Plume plume = makePlume(osg::Matrix::identity(), /*additive=*/true);
             drive(plume, 100.0);
 
-            Rtx::SceneDesc scene;
-            SceneExtractor extractor(scene);
-
             for (int turn = 0; turn < 3; ++turn)
             {
-                extractor.advanceEmitters(0.1);
-                extractor.stepEmitters(*plume.mRoot);
+                mExtractor.advanceEmitters(0.1);
+                mExtractor.stepEmitters(*plume.mRoot);
             }
 
-            EXPECT_EQ(scene.getSprites().size(), 0u) << "stepping is not mirroring: nothing was placed";
+            EXPECT_EQ(mScene.getSprites().size(), 0u) << "stepping is not mirroring: nothing was placed";
 
             // Two of those three turns emitted — the first only started the clock — and the walk that
             // finally mirrors them adds none of its own, because its turn is already spent.
-            EXPECT_EQ(extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0).mSprites, 20u);
+            EXPECT_EQ(walk(*plume.mRoot).mSprites, 20u);
         }
     }
 }

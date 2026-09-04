@@ -20,6 +20,8 @@
 #include <osg/Image>
 #include <osg/Material>
 #include <osg/MatrixTransform>
+#include <osg/Matrixf>
+#include <osg/Node>
 #include <osg/Sequence>
 #include <osg/Switch>
 #include <osg/Texture2D>
@@ -34,6 +36,7 @@
 
 #include <components/esm3/loadligh.hpp>
 #include <components/nifosg/nifloader.hpp>
+#include <components/rtx/extractionstats.hpp>
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
@@ -118,6 +121,29 @@ namespace Rtx::Testing
     {
         std::srand(1);
     }
+
+    /// The scene every test here fills, and the walk that fills it.
+    ///
+    /// **Held by the fixture rather than opened by each test**, because the pair is what a test of
+    /// the extractor is made of, and the transform and the anchor a walk takes are the same in
+    /// nearly all of them. A test that wants a second scene, or a fresh walk on every call of a
+    /// lambda, still builds its own — and says something by doing it.
+    class RtxSceneExtractorTest : public ::testing::Test
+    {
+    protected:
+        /// Walks `node` into `mScene` from the world's own origin.
+        ///
+        /// @param anchor what the walk is placing, which only a test that places two things through
+        ///        one walk has to tell apart.
+        /// @param frame the game's own, which only a test about a semi-active skeleton needs.
+        ExtractionStats walk(const osg::Node& node, std::size_t anchor = 0, std::size_t frame = 0)
+        {
+            return mExtractor.extract(node, osg::Matrixf::identity(), anchor, frame);
+        }
+
+        Rtx::SceneDesc mScene;
+        SceneExtractor mExtractor{ mScene };
+    };
 
     /// Where the walk put instance `index`: the origin of its own space, carried through the
     /// transform the walk gave it.
