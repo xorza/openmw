@@ -224,6 +224,12 @@ namespace MWRender
         /// copies its own framebuffer where it stands; a renderer that owns its swapchain has the
         /// image it just presented. Reading either back to main memory and handing it over as pixels
         /// would be the same picture at several times the price, on the frame a load begins.
+        ///
+        /// **The bottom row of the picture is texel row nought**, which is what `createOffscreenView`
+        /// promises of its own texture and what `LoadingScreen` inverts the widget's V for. OpenGL
+        /// puts a framebuffer that way round and the GUI was written against it; a renderer whose
+        /// frame arrives the other way up owes the flip here. Unwritten, that cost the ray tracer a
+        /// world stood on its head behind every progress bar.
         virtual MyGUI::ITexture& freezeFrame() = 0;
 
         /// The GUI, with no world behind it.

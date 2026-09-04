@@ -391,11 +391,14 @@ namespace MWRender
     {
         const Rtx::TracedFrame frame = mCapture.read(*mRenderer);
 
-        // The trace's own row order, kept: `MyGUIPlatform::Picture` copies an image straight into a
-        // locked texture and the interface draws it from the top down, so flipping here would stand
-        // the world the player was in on its head behind the loading screen.
+        // **Bottom row first, because that is what the one caller takes.** `LoadingScreen` inverts
+        // the widget's own V — `_setUVSet(0, 1, 1, 0)` — since the rasterizer's frozen frame is a
+        // copy of the framebuffer and OpenGL puts its bottom row at texel row nought. So a texture
+        // handed over in the trace's own order is one the loading screen then turns over: the world
+        // the player was in, upside down behind the progress bar, for as long as a cell took to
+        // load.
         const osg::ref_ptr<osg::Image> taken = Rtx::frameImage(
-            frame, static_cast<int>(frame.mWidth), static_cast<int>(frame.mHeight), Rtx::RowOrder::TopFirst);
+            frame, static_cast<int>(frame.mWidth), static_cast<int>(frame.mHeight), Rtx::RowOrder::BottomFirst);
 
         // A full readback, which a load screen is exactly the moment to afford.
         if (taken != nullptr)
