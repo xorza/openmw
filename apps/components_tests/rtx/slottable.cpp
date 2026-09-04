@@ -45,7 +45,8 @@ namespace Rtx
                 mTable.open(getDevice(), 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test");
             }
 
-            /// Which rows `slot` is owed, sorted and with the duplicates a repeated write leaves.
+            /// Which rows `slot` is owed, sorted and with the duplicates taken out, so that two
+            /// debts naming the same rows compare equal whatever order they arrived in.
             std::vector<Index> owedBy(std::uint32_t slot)
             {
                 const std::span<const Index> owed = mTable.getOwed(slot);

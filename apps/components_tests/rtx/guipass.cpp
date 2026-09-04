@@ -218,7 +218,6 @@ namespace Rtx
         }
 
         /// The texture is what the quad shows, and its first row is the one at the top of the frame.
-
         ///
         /// **This is the assertion that catches a flipped V.** MyGUI puts texture coordinate zero at
         /// the top of a widget and clip coordinate +1 there too; Vulkan's clip space points the other

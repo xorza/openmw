@@ -656,7 +656,6 @@ namespace Rtx::Testing
         }
 
         /// Rain rings the still water under the eye, moves the rings on, and far off roughens it.
-
         ///
         /// **Close, the rings are read against a graded sky.** A resolved ring is a mirror facet,
         /// and a facet catches a quarter-degree sun only where its slope matches exactly — so a sun

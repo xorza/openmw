@@ -12,19 +12,6 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// Parallel rays, and the whole difference between them and a pinhole's.
-        ///
-        /// **The count is exact, so the arithmetic is the assertion.** A sheet fifty units across
-        /// lies two hundred units under an eye looking straight down. The orthographic camera's box
-        /// is two hundred across, so the sheet covers a quarter of each axis: pixel `p` of
-        /// sixty-four samples the world at `100 * ((p + 0.5) / 32 - 1)`, which is inside twenty-five
-        /// for `p` in 24..39 — sixteen columns, sixteen rows, **256 hits**, and no pixel near enough
-        /// the boundary for rounding to argue.
-        ///
-        /// The same viewpoint as a pinhole with a ninety-degree field of view spans four hundred
-        /// units at that distance rather than two hundred, so the sheet covers an eighth of each
-        /// axis: `p` in 28..35, **64 hits**. That the two differ is the point — a parallel ray that
-        /// quietly fanned out would still fill a plausible-looking image.
         /// A scene with nothing in it still has a table at every address the frame carries.
         ///
         /// **A null handle at a descriptor is undefined at the dispatch**, and undefined here meant a

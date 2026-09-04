@@ -772,11 +772,6 @@ namespace Rtx
             EXPECT_EQ(nextRegionWeather(&nowhere, Rtx::Shaders::WEATHER_CLEAR, true), Rtx::Shaders::WEATHER_CLOUDY);
         }
 
-        /// Ash and blight blow off Red Mountain at whoever is standing in them.
-        ///
-        /// `apps/openmw/mwworld/weather.cpp:47` takes the direction from the volcano at (25000,
-        /// 70000) to the player, flattened to the ground. Every other weather leaves it due north,
-        /// which is `Weather::defaultStormDirection`.
         /// The hour holds an exposure back, and a noon does not.
         ///
         /// **The histogram cannot tell a midnight from a noon**, because it normalises whatever it
@@ -991,6 +986,11 @@ namespace Rtx
             EXPECT_FLOAT_EQ(bare.mFog.mExtinction, 0.0f);
         }
 
+        /// Ash and blight blow off Red Mountain at whoever is standing in them.
+        ///
+        /// `apps/openmw/mwworld/weather.cpp:47` takes the direction from the volcano at (25000,
+        /// 70000) to the player, flattened to the ground. Every other weather leaves it due north,
+        /// which is `Weather::defaultStormDirection`.
         TEST(RtxLightBuilderTest, anAshStormBlowsAwayFromRedMountainAndNothingElseTurnsAtAll)
         {
             const osg::Vec3f north(0.0f, 1.0f, 0.0f);

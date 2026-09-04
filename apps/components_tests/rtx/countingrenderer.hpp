@@ -16,7 +16,7 @@ namespace Rtx::Testing
     ///
     /// **The decision is what is under test, so nothing here draws.** What `extendScene` and
     /// `setScene` do with the descriptions has its own tests against a real device
-    /// (`apps/components_tests/rtx/visibilitypass.cpp`); what nothing else covers is which of
+    /// (`apps/components_tests/rtx/visibility/`); what nothing else covers is which of
     /// them a frame picks, and that answer is the same one on every machine.
     class CountingRenderer final : public Rtx::Renderer
     {
@@ -27,8 +27,6 @@ namespace Rtx::Testing
         /// Counted rather than acted on: what a caller has to prove is that the discontinuity
         /// reaches the renderer at all, and this double has no history to throw away.
         void resetHistory() override { ++mHistoryResets; }
-
-        std::uint32_t mHistoryResets = 0;
 
         void setScene(std::uint32_t slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> textures,
             const Rtx::SeaState&) override
@@ -66,17 +64,8 @@ namespace Rtx::Testing
             return const_cast<CountingRenderer*>(this)->countAt(slot);
         }
 
-        /// Which slots the last hand-over described, in the order it described them.
-        ///
-        /// **What says the loader answered about this scene and not the last one.** `SceneTextures`
-        /// is held by the uploader and cleared per arrival, so a buffer left unclear would show up
-        /// here as a slot belonging to a scene that has gone.
-        std::vector<std::uint32_t> mDescribedSlots;
-
-        /// The slots the scene gave back, in the order it named them, across every call.
-        ///
-        /// **The array does not shrink**, which is what `mTextures` staying put records: a slot goes
-        /// on being where an append begins from whether or not it holds an image.
+        /// **The texture array does not shrink**, which is what `mTextures` staying put records: a
+        /// slot goes on being where an append begins from whether or not it holds an image.
         void dropTextures(std::uint32_t, std::span<const std::uint32_t> slots) override
         {
             ++mDropCalls;
@@ -123,13 +112,22 @@ namespace Rtx::Testing
                 mDescribedSlots.push_back(texture.mSlot);
         }
 
-        std::vector<std::uint32_t> mViewTextures;
         void dropViewScene(std::uint32_t) override {}
         void readGuiTexture(std::uint32_t, std::vector<std::uint8_t>&) override {}
         void readPixels(std::vector<std::uint8_t>&) override {}
         void readChannel(Rtx::Channel, std::vector<float>&) override {}
         void takeValidationErrors(std::vector<std::string>&) override {}
 
+        std::uint32_t mHistoryResets = 0;
+
+        /// Which slots the last hand-over described, in the order it described them.
+        ///
+        /// **What says the loader answered about this scene and not the last one.** `SceneTextures`
+        /// is held by the uploader and cleared per arrival, so a buffer left unclear would show up
+        /// here as a slot belonging to a scene that has gone.
+        std::vector<std::uint32_t> mDescribedSlots;
+
+        std::vector<std::uint32_t> mViewTextures;
         std::uint32_t mViewScenes = 0;
         std::uint32_t mPlaced = 0;
         std::uint32_t mExtended = 0;

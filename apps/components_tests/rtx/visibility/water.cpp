@@ -101,7 +101,6 @@ namespace Rtx::Testing
         }
 
         /// Water over a bed, absorbing exactly what Beer-Lambert says it should over the path taken.
-
         ///
         /// A flat sea, so the surface is its own plane and the ray crosses the depth once rather than
         /// through whatever facet a wave put in the way. Nearly straight down — `makeCamera` will not

@@ -7,35 +7,11 @@ duplication, asymmetry and the accuracy of the comments. It does not question wh
 
 ---
 
-## Doc comments no longer describe the code under them
+## A claim its own helper guarantees
 
-Each of these is a comment a reader will act on and be wrong. They cost nothing to fix and they are
-the record this suite is written for.
-
-- [ ] `visibility/surfaces.cpp:15-27` opens with "Parallel rays, and the whole difference between
-      them and a pinhole's" and works out hit counts for an orthographic camera. No such test is in
-      the file — it is `anOrthographicCameraSendsItsRaysParallelRatherThanThroughAnEye` in
-      `visibility/frame.cpp:191`. The orphaned block is merged into `RtxSceneTableTest`'s own.
-- [ ] `lightbuilder.cpp:791-795` opens with "Ash and blight blow off Red Mountain at whoever is
-      standing in them" and cites `weather.cpp:47`. The test under it is
-      `theHourHoldsAnExposureBackAndANoonDoesNot`. The described test is
-      `anAshStormBlowsAwayFromRedMountainAndNothingElseTurnsAtAll` at `lightbuilder.cpp:1010`, which
-      now has no doc comment.
-- [ ] A doc block is split by a blank line, so the first line is not part of it:
-      `visibility/water.cpp:103`, `visibility/sea.cpp:665`, `visibility/sprites.cpp:248`,
-      `guipass.cpp:220`.
-- [ ] `visibility/sprites.cpp:306` leaves a blank line between the doc block and
-      `TEST_F(RtxVisibilityTest, aPuffIsLitByItsSideAndByWhatItsTextureLetsThrough)`, so the block is
-      detached.
-- [ ] `countingrenderer.hpp:19` names `apps/components_tests/rtx/visibilitypass.cpp`. That file does
-      not exist; the suite is `apps/components_tests/rtx/visibility/`.
-- [ ] `slottable.cpp:48` says `owedBy` returns rows "with the duplicates a repeated write leaves".
-      The body erases them with `std::unique` at `:54`.
-- [ ] `countingrenderer.hpp:76-79` documents `mDescribedSlots` — "The slots the scene gave back, in
-      the order it named them, across every call" — and then declares `dropTextures`. The member the
-      comment describes is `mDropped`, declared at `:146`.
-- [ ] `countingrenderer.hpp` scatters its data members through its overrides: `mDescribedSlots` at
-      `:74`, `mViewTextures` at `:126`, `mViewScenes` at `:133`. Group them.
+- [ ] `slottable.cpp:173` asserts `owedBy(1) == { 1 }` under "one row named twice is one row to
+      write". `RowDebt::owe` appends without deduplicating, so the table owes `{ 1, 1 }` and it is
+      `owedBy`'s own `std::unique` that makes the assertion hold.
 
 ---
 
