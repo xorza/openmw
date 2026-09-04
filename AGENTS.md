@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## What this is
 
@@ -6,13 +6,10 @@ A fork of OpenMW 0.52 whose purpose is an **experimental ray-traced renderer**. 
 the host engine — cells, references, physics, scripts, animation, weather, GUI — and it keeps all of
 that. What it stops owning is the picture.
 
-Two documents, and they do not overlap:
-
-- **`.notes/rtx/openmw.md`** — how the host engine is built and where the seams are. Read before
-  touching `apps/openmw/mwrender/`, `components/sceneutil/`, `components/resource/` or the settings
-  plumbing.
-- **this file** — goals and working rules. Anything the tree, `--help` or a commit already answers
-  does not belong here.
+This file records goals and working rules. Read `apps/openmw/mwrender/renderer.hpp` and its callers
+before changing the renderer seam; follow resource and scene data back to their owners before
+changing how the RT path consumes them. Anything the tree, `--help` or a commit already answers
+does not belong here.
 
 **`/home/xxorza/Projects/rtxmw/`** is the reference implementation: a Rust Morrowind ray tracer with
 working water, caustics and volumetric fog. Its `docs/design.md` collects findings about
@@ -122,12 +119,12 @@ are the gates. What those do not tell you:
   `-O2 -g` for that one reason, and `grep -c NDEBUG build-*/build.ninja` is how a directory says
   which kind it is. `GuiTextures` reached a commit reading write-combined memory through the
   accessor that refuses it, and nothing in a full test run could tell.
-- **Three build directories, one job each, and a script apiece configures it.** `debug.sh` makes
-  `build-debug/`, the everyday one; `debug-asan.sh` makes `build-debug-asan/` and runs the tests
-  under it, `tool` in front of an argument sending it to the harness instead; `release.sh` makes
-  `build-release/`, which is `-O3 -DNDEBUG` and is where a number is taken. Each script says what
-  its own directory needs — the sanitizer's two `ASAN_OPTIONS` are not optional and `debug-asan.sh`
-  says why.
+- **Three build directories, configured by the scripts in `apps/rtxtool/`.**
+  `apps/rtxtool/debug.sh` makes `build-debug/`, the everyday one;
+  `apps/rtxtool/debug-asan.sh` makes `build-debug-asan/` and runs the tests under it, `tool` in front
+  of an argument sending it to the harness instead; `apps/rtxtool/release.sh` makes
+  `build-release/`, which is `-O3 -DNDEBUG` and is where a number is taken. Each script states its
+  configuration; the sanitizer script also sets and explains the required `ASAN_OPTIONS`.
 - **`.refs/` is where a reference checkout goes, and nothing there is built.** NVIDIA's NGX SDK is
   750 MB of prebuilt binaries under NVIDIA's own licence, so it is named rather than vendored,
   submoduled or fetched — `extern/` is for source this tree compiles, and upstream keeps no
