@@ -1,12 +1,12 @@
-- audit alloc tests
 - audit includes
 - audit #pragmas
+- load time allocations
+- move some computations to loadtime
+
 - rtx-tool travel
 - extract shader and lightting consts for look tweaking
 - tracy
 - async terrain loader
-- screen upside down for loading terrains
 - precompile shaders?
-- load time allocations
-- move some computations to loadtime
 - where to save shadercache
+- audit alloc tests
