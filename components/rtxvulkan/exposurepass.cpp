@@ -1,6 +1,7 @@
 #include "exposurepass.hpp"
 
 #include <array>
+#include <cstdint>
 
 #include "image.hpp"
 

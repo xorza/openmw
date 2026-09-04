@@ -5,9 +5,8 @@
 #include <span>
 #include <vector>
 
-#include <vulkan/vulkan_core.h>
-
 #include <osg/Vec4f>
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/micromap.h>

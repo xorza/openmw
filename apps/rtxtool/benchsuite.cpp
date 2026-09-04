@@ -1,6 +1,7 @@
 #include "benchsuite.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <stdexcept>
 
 #include <components/files/conversion.hpp>

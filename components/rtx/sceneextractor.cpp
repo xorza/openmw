@@ -1,11 +1,15 @@
 #include "sceneextractor.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <functional>
+#include <optional>
+#include <span>
 #include <unordered_map>
-
-#include "lightbuilder.hpp"
-#include "nodelibrary.hpp"
 
 #include <osg/FrameStamp>
 #include <osg/Geometry>
@@ -17,12 +21,6 @@
 #include <osgParticle/ParticleSystem>
 #include <osgParticle/ParticleSystemUpdater>
 
-#include <array>
-#include <cassert>
-#include <cstdint>
-#include <functional>
-#include <span>
-
 #include <components/nifosg/nifloader.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/skeleton.hpp>
@@ -30,6 +28,9 @@
 // does not compile on its own. This is what completes them.
 #include <components/terrain/compositemaprenderer.hpp>
 #include <components/terrain/terraindrawable.hpp>
+
+#include "lightbuilder.hpp"
+#include "nodelibrary.hpp"
 
 namespace Rtx
 {

@@ -1,5 +1,4 @@
-#ifndef GAME_RENDER_RTX_TRACEDVIEW_H
-#define GAME_RENDER_RTX_TRACEDVIEW_H
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -79,5 +78,3 @@ namespace MWRender
     };
 
 }
-
-#endif

@@ -1,10 +1,9 @@
 #include <gtest/gtest.h>
 
-#include <components/rtx/renderer.hpp>
-
 #include <apps/rtxtool/framerequest.hpp>
 #include <apps/rtxtool/picture.hpp>
 #include <apps/rtxtool/validationchoice.hpp>
+#include <components/rtx/renderer.hpp>
 
 namespace RtxTool
 {

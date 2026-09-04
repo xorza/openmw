@@ -1,5 +1,6 @@
 #include "png.hpp"
 
+#include <cstddef>
 #include <cstring>
 
 #include <osg/Image>

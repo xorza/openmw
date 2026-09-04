@@ -1,7 +1,9 @@
 #include "texture.hpp"
 
 #include <cassert>
+#include <cstddef>
 #include <stdexcept>
+#include <utility>
 
 #include <osg/Image>
 

@@ -1,5 +1,7 @@
 #include "extractionstats.hpp"
 
+#include <cstddef>
+
 #include <osg/Image>
 
 namespace Rtx

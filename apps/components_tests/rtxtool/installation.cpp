@@ -7,11 +7,10 @@
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
 
-#include <components/files/configurationmanager.hpp>
-
 #include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/options.hpp>
 #include <apps/rtxtool/world.hpp>
+#include <components/files/configurationmanager.hpp>
 
 #include "../rtx/harness.hpp"
 

@@ -1,13 +1,13 @@
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 
 #include <gtest/gtest.h>
 
+#include <apps/rtxtool/contactsheet.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/texturedata.hpp>
-
-#include <apps/rtxtool/contactsheet.hpp>
 
 namespace RtxTool
 {

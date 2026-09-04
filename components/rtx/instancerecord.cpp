@@ -1,5 +1,6 @@
 #include "instancerecord.hpp"
 
+#include <cstddef>
 #include <span>
 
 #include "shaders/scene.h"

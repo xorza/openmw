@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <utility>
 #include <vector>
 
 #include <osg/ref_ptr>

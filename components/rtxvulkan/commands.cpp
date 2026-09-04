@@ -1,6 +1,7 @@
 #include "commands.hpp"
 
 #include <cassert>
+#include <cstdint>
 #include <exception>
 #include <iterator>
 #include <utility>

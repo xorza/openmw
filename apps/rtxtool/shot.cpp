@@ -1,14 +1,9 @@
 #include "shot.hpp"
 
-#include "framing.hpp"
-#include "placement.hpp"
-#include <components/rtx/error.hpp>
-#include <components/rtx/frametimes.hpp>
-#include <components/rtx/png.hpp>
-#include <components/rtx/shaders/colour.h>
-
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <fstream>
 #include <memory>
 #include <ostream>
@@ -19,9 +14,16 @@
 
 #include <components/debug/debugging.hpp>
 #include <components/files/conversion.hpp>
+#include <components/rtx/error.hpp>
+#include <components/rtx/frametimes.hpp>
+#include <components/rtx/png.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneuploader.hpp>
+#include <components/rtx/shaders/colour.h>
+
+#include "framing.hpp"
+#include "placement.hpp"
 
 namespace RtxTool
 {

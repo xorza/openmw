@@ -6,12 +6,11 @@
 
 #include <gtest/gtest.h>
 
-#include <components/rtx/scenedesc.hpp>
-
 #include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/posedactors.hpp>
 #include <apps/rtxtool/stagedworld.hpp>
 #include <apps/rtxtool/world.hpp>
+#include <components/rtx/scenedesc.hpp>
 
 #include "installation.hpp"
 

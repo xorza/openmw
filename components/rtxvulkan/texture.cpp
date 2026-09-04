@@ -1,7 +1,10 @@
 #include "texture.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <cstddef>
+#include <string>
 #include <utility>
 #include <vector>
 

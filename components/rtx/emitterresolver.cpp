@@ -1,5 +1,7 @@
 #include "emitterresolver.hpp"
 
+#include <cstdint>
+
 #include <osgParticle/Particle>
 #include <osgParticle/ParticleSystem>
 

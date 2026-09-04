@@ -2,12 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 #include <osg/Group>
 #include <osg/PositionAttitudeTransform>
 #include <osg/Texture2D>
 #include <osg/Transform>
-
 #include <osgParticle/BoxPlacer>
 #include <osgParticle/ConstantRateCounter>
 #include <osgParticle/ModularEmitter>

@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <exception>
 #include <mutex>
 #include <span>

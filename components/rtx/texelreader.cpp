@@ -1,6 +1,7 @@
 #include "texelreader.hpp"
 
 #include <cassert>
+#include <cstddef>
 
 #include "colourblock.hpp"
 

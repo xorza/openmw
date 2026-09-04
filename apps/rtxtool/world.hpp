@@ -9,7 +9,6 @@
 #include <osg/ref_ptr>
 
 #include <components/misc/cellgrid.hpp>
-
 #include <components/rtx/distantlights.hpp>
 #include <components/rtx/terrainresidency.hpp>
 

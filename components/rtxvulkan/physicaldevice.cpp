@@ -4,6 +4,7 @@
 #include <cstring>
 #include <sstream>
 #include <string_view>
+#include <utility>
 
 #include <components/rtx/error.hpp>
 

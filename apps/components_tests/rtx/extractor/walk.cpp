@@ -1,5 +1,7 @@
 #include "fixture.hpp"
 
+#include <vector>
+
 namespace Rtx::Testing
 {
     namespace

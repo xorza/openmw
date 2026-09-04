@@ -1,5 +1,8 @@
 #include "fixture.hpp"
 
+#include <algorithm>
+#include <span>
+
 namespace Rtx::Testing
 {
     namespace

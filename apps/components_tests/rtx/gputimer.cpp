@@ -1,8 +1,11 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>

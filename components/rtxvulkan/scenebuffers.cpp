@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <string>
 
 #include <components/rtx/instancerecord.hpp>

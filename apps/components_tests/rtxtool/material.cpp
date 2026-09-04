@@ -1,7 +1,11 @@
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include <osg/AlphaFunc>
 #include <osg/BlendFunc>
@@ -11,18 +15,14 @@
 #include <osg/NodeVisitor>
 #include <osg/Texture2D>
 
-#include <gtest/gtest.h>
-
-#include <components/esm3/loadcell.hpp>
-#include <components/sceneutil/texturetype.hpp>
-#include <components/surface/material.hpp>
-
-#include <components/terrain/compositemaprenderer.hpp>
-#include <components/terrain/terraindrawable.hpp>
-
 #include <apps/rtxtool/cellscene.hpp>
 #include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/world.hpp>
+#include <components/esm3/loadcell.hpp>
+#include <components/sceneutil/texturetype.hpp>
+#include <components/surface/material.hpp>
+#include <components/terrain/compositemaprenderer.hpp>
+#include <components/terrain/terraindrawable.hpp>
 
 #include "installation.hpp"
 

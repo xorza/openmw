@@ -1,11 +1,11 @@
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include <components/rtx/png.hpp>
-
 #include <apps/rtxtool/verify.hpp>
+#include <components/rtx/png.hpp>
 
 namespace RtxTool
 {

@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -6,22 +7,21 @@
 #include <string_view>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include <osg/Group>
 #include <osg/Matrixf>
 
-#include <gtest/gtest.h>
-
+#include <apps/rtxtool/cellscene.hpp>
+#include <apps/rtxtool/content.hpp>
+#include <apps/rtxtool/stagedworld.hpp>
+#include <apps/rtxtool/world.hpp>
 #include <components/debug/debugging.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/misc/constants.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/sceneuploader.hpp>
-
-#include <apps/rtxtool/cellscene.hpp>
-#include <apps/rtxtool/content.hpp>
-#include <apps/rtxtool/stagedworld.hpp>
-#include <apps/rtxtool/world.hpp>
 
 #include "../rtx/countingrenderer.hpp"
 #include "installation.hpp"

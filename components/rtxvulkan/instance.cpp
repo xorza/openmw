@@ -6,7 +6,6 @@
 #include <vector>
 
 #include <components/debug/debuglog.hpp>
-
 #include <components/rtx/error.hpp>
 
 #include "dlss.hpp"

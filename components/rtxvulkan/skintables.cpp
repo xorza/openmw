@@ -1,6 +1,7 @@
 #include "skintables.hpp"
 
 #include <cassert>
+#include <cstddef>
 
 #include "device.hpp"
 #include "graveyard.hpp"

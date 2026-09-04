@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <string>
+#include <string_view>
 
 #include <osg/Image>
 #include <osg/Vec2f>

@@ -1,8 +1,5 @@
 #include "rtxrenderer.hpp"
 
-#include "readworld.hpp"
-#include "worldmirror.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -11,9 +8,12 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <string>
+#include <utility>
 
+#include <MyGUI_ITexture.h>
+#include <MyGUI_RenderManager.h>
 #include <SDL.h>
-
 #include <osg/Camera>
 #include <osg/FrameStamp>
 #include <osg/Image>
@@ -21,16 +21,13 @@
 #include <osg/Node>
 #include <osg/Stats>
 #include <osg/Timer>
-
 #include <osgGA/EventQueue>
-
-#include <MyGUI_ITexture.h>
-#include <MyGUI_RenderManager.h>
 
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/myguiplatform/myguiplatform.hpp>
 #include <components/myguirtx/rendermanager.hpp>
+#include <components/resource/resourcesystem.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameimage.hpp>
@@ -51,15 +48,14 @@
 #include <components/terrain/chunkmanager.hpp>
 
 #include "../offscreenview.hpp"
+#include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
+#include "../screenshotwriter.hpp"
 #include "../stage.hpp"
 #include "../windowsetup.hpp"
-#include <components/resource/resourcesystem.hpp>
-
-#include "../renderingmanager.hpp"
-#include "../screenshotwriter.hpp"
-
+#include "readworld.hpp"
 #include "tracedview.hpp"
+#include "worldmirror.hpp"
 
 namespace MWRender
 {

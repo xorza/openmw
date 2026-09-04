@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <format>
 #include <fstream>
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <span>
 #include <string>
 #include <vector>
 

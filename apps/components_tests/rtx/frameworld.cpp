@@ -1,6 +1,8 @@
-#include <gtest/gtest.h>
-
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+
+#include <gtest/gtest.h>
 
 #include <components/rtx/cloudshell.hpp>
 #include <components/rtx/frameworld.hpp>

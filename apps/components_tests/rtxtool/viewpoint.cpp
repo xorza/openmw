@@ -9,11 +9,10 @@
 
 #include <osg/Vec3f>
 
-#include <components/rtx/renderer.hpp>
-
 #include <apps/rtxtool/view.hpp>
 #include <apps/rtxtool/viewpoint.hpp>
 #include <apps/rtxtool/views.hpp>
+#include <components/rtx/renderer.hpp>
 
 namespace RtxTool
 {

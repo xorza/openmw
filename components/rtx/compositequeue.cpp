@@ -6,6 +6,7 @@
 #include <charconv>
 #include <chrono>
 #include <exception>
+#include <span>
 #include <utility>
 
 #include <components/debug/debuglog.hpp>

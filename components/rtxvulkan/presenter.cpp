@@ -1,5 +1,7 @@
 #include "presenter.hpp"
 
+#include <string>
+
 #include <SDL_vulkan.h>
 
 #include <components/rtx/error.hpp>

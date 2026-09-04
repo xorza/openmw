@@ -1,7 +1,7 @@
-#ifndef GAME_RENDER_RTX_RTXRENDERER_H
-#define GAME_RENDER_RTX_RTXRENDERER_H
+#pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -13,7 +13,6 @@
 #include <components/rtx/frameimage.hpp>
 
 #include "../renderer.hpp"
-
 #include "bench.hpp"
 #include "framecapture.hpp"
 #include "worldmirror.hpp"
@@ -321,5 +320,3 @@ namespace MWRender
         bool mComplained = false;
     };
 }
-
-#endif

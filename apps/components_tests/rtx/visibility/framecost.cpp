@@ -1,8 +1,15 @@
-#include "fixture.hpp"
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <string>
+#include <vector>
 
 #include <components/rtx/shadingmap.hpp>
 #include <components/rtxvulkan/scenemicromaps.hpp>
 #include <components/rtxvulkan/spritebinpass.hpp>
+
+#include "fixture.hpp"
 
 namespace Rtx::Testing
 {

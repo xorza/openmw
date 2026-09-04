@@ -1,8 +1,7 @@
 #pragma once
 
-#include <vulkan/vulkan_core.h>
-
 #include <osg/Vec2f>
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/reconstruction.hpp>
 

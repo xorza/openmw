@@ -1,4 +1,9 @@
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <vector>
 
 #include <gtest/gtest.h>
 

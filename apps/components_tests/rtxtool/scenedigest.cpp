@@ -11,10 +11,9 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
+#include <apps/rtxtool/scenedigest.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/vfs/pathutil.hpp>
-
-#include <apps/rtxtool/scenedigest.hpp>
 
 namespace RtxTool
 {

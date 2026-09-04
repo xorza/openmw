@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_MYGUIRTX_RENDERMANAGER_H
-#define OPENMW_COMPONENTS_MYGUIRTX_RENDERMANAGER_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -126,5 +125,3 @@ namespace MyGUIRtx
     };
 
 }
-
-#endif

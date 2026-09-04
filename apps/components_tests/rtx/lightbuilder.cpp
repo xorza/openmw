@@ -1,7 +1,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <map>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,11 +19,8 @@
 #include <components/rtx/distantland.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/lightbuilder.hpp>
-
 #include <components/rtx/shaders/visibility.h>
 #include <components/sceneutil/lightcommon.hpp>
-
-#include "allocations.hpp"
 #include <components/sceneutil/lightcontroller.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
@@ -27,6 +28,8 @@
 #include <components/sceneutil/vismask.hpp>
 #include <components/sky/sun.hpp>
 #include <components/weather/downpour.hpp>
+
+#include "allocations.hpp"
 
 namespace Rtx
 {

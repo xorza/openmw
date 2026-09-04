@@ -5,9 +5,11 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <format>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>

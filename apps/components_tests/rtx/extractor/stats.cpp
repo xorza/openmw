@@ -1,5 +1,8 @@
 #include "fixture.hpp"
 
+#include <cstddef>
+#include <cstdint>
+
 namespace Rtx::Testing
 {
     namespace

@@ -5,6 +5,7 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <utility>
 
@@ -13,12 +14,6 @@
 #include <components/rtx/error.hpp>
 #include <components/rtx/frametimes.hpp>
 #include <components/rtx/scenedesc.hpp>
-
-#ifdef OPENMW_RTX_DLSS
-#include "dlss.hpp"
-#include "dlsspass.hpp"
-#endif
-
 #include <components/rtx/shaders/gbuffer.h>
 
 #include "gbuffer.hpp"
@@ -34,6 +29,11 @@
 #include "skintables.hpp"
 #include "texture.hpp"
 #include "visibilitypass.hpp"
+
+#ifdef OPENMW_RTX_DLSS
+#include "dlss.hpp"
+#include "dlsspass.hpp"
+#endif
 
 namespace Rtx
 {

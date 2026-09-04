@@ -1,9 +1,11 @@
 #include "posedactors.hpp"
 
-#include <osg/MatrixTransform>
-
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <utility>
+
+#include <osg/MatrixTransform>
 
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadnpc.hpp>

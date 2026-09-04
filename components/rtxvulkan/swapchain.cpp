@@ -5,7 +5,6 @@
 #include <string_view>
 
 #include <components/debug/debuglog.hpp>
-
 #include <components/rtx/error.hpp>
 
 #include "device.hpp"

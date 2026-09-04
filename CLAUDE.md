@@ -200,6 +200,16 @@ re-running `shot`.
 **C++20, `.clang-format` at 120 columns.** The user's global Rust rules do not apply to this tree;
 the posture behind them does.
 
+- **`#pragma once`, and includes in five blocks.** Every header in the RTX places opens with
+  `#pragma once` rather than a named guard. Below it come the blocks a blank line apart, in this
+  order: the file's own header, the C++ standard library, `<gtest/...>` where a test needs it, other
+  libraries, `<components/...>` and `<apps/...>`, then quoted local headers. `.clang-format`
+  preserves the blocks and sorts inside each, so the order is the author's and the sorting is not.
+  A conditional `#include` goes last, after every unconditional one. A block out of order needs the
+  comment saying why, the way `dlsspass.cpp` does for NGX.
+- **Include what you name.** A file that spells `std::size_t` includes `<cstddef>`, whatever else
+  happens to drag it in. A `.cpp` may lean on its own header for what that header's interface
+  already needs, and on nothing else.
 - **Comments say *why*.** A block comment on a type or a non-obvious function says what it is for.
   Inside a body, a comment earns its place by naming an invariant, a workaround and its cause, or a
   trade-off against the obvious alternative — never by restating the line under it. No decorative

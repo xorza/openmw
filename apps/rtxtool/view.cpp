@@ -11,6 +11,7 @@
 #include <ostream>
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include <SDL.h>
 

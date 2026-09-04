@@ -1,13 +1,19 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <format>
+#include <limits>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <boost/program_options.hpp>
@@ -29,11 +35,9 @@
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/upscale.hpp>
-
 #include <components/sceneutil/offscreenframing.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
-#include <limits>
 
 #include "actor.hpp"
 #include "bench.hpp"

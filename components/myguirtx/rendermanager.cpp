@@ -1,7 +1,9 @@
 #include "rendermanager.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <span>
 
 #include <MyGUI_VertexData.h>
 

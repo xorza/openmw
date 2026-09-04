@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include <components/rtx/fognoise.hpp>

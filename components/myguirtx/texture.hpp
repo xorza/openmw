@@ -1,6 +1,6 @@
-#ifndef OPENMW_COMPONENTS_MYGUIRTX_TEXTURE_H
-#define OPENMW_COMPONENTS_MYGUIRTX_TEXTURE_H
+#pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -110,5 +110,3 @@ namespace MyGUIRtx
     };
 
 }
-
-#endif

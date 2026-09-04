@@ -3,11 +3,11 @@
 #include <cassert>
 #include <chrono>
 
+#include <components/rtx/frametimes.hpp>
+
 #include "commands.hpp"
 #include "device.hpp"
 #include "result.hpp"
-
-#include <components/rtx/frametimes.hpp>
 
 namespace Rtx
 {

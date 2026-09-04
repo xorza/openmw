@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <utility>
 
 #include "commands.hpp"
 #include "device.hpp"

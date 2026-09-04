@@ -5,10 +5,9 @@
 #include <cstring>
 #include <variant>
 
-#include <osg/Image>
-
 #include <MyGUI_ITexture.h>
 #include <MyGUI_RenderManager.h>
+#include <osg/Image>
 
 #include <components/myguiplatform/picture.hpp>
 #include <components/myguirtx/texture.hpp>

@@ -1,5 +1,6 @@
 #include "terrainstorage.hpp"
 
+#include <algorithm>
 #include <limits>
 
 #include <components/esm/util.hpp>

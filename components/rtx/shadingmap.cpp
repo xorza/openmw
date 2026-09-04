@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 
 #include "colourblock.hpp"
 #include "error.hpp"

@@ -1,5 +1,6 @@
-#include <components/rtx/cloudshell.hpp>
-#include <components/rtx/shaders/scene.h>
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
 
 #include <gtest/gtest.h>
 
@@ -10,8 +11,8 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
-#include <cmath>
-#include <cstddef>
+#include <components/rtx/cloudshell.hpp>
+#include <components/rtx/shaders/scene.h>
 
 namespace
 {

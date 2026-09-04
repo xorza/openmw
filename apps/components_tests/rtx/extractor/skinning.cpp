@@ -1,6 +1,8 @@
-#include "fixture.hpp"
-
 #include "../allocations.hpp"
+
+#include "fixture.hpp"
+#include <cstddef>
+#include <vector>
 
 namespace Rtx::Testing
 {

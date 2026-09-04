@@ -1,4 +1,12 @@
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <numbers>
+#include <optional>
+#include <span>
+#include <utility>
+#include <vector>
 
 #include "fixture.hpp"
 

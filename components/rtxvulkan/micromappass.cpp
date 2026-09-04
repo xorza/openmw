@@ -1,5 +1,6 @@
 #include "micromappass.hpp"
 
+#include <cstdint>
 #include <span>
 
 #include "device.hpp"

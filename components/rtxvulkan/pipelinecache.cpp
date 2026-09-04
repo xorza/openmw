@@ -1,10 +1,12 @@
 #include "pipelinecache.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstring>
 #include <fstream>
 #include <random>
 #include <span>
+#include <string>
 #include <system_error>
 
 #include <components/debug/debuglog.hpp>

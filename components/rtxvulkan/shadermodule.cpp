@@ -1,11 +1,12 @@
 #include "shadermodule.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <string>
 #include <vector>
 
 #include <components/files/conversion.hpp>
-
 #include <components/rtx/error.hpp>
 
 #include "device.hpp"

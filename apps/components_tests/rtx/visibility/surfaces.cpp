@@ -1,6 +1,12 @@
-#include "fixture.hpp"
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <vector>
 
 #include <components/rtx/shadingmap.hpp>
+
+#include "fixture.hpp"
 
 namespace Rtx::Testing
 {

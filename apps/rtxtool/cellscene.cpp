@@ -1,10 +1,5 @@
 #include "cellscene.hpp"
 
-#include <osg/MatrixTransform>
-
-#include <components/misc/cellgrid.hpp>
-#include <components/misc/constants.hpp>
-
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -13,8 +8,12 @@
 #include <utility>
 #include <vector>
 
+#include <osg/MatrixTransform>
+
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadcell.hpp>
+#include <components/misc/cellgrid.hpp>
+#include <components/misc/constants.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/texturebuilder.hpp>

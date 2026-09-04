@@ -1,20 +1,21 @@
+#include <initializer_list>
+#include <utility>
+
 #include <gtest/gtest.h>
 
+#include <apps/rtxtool/terrainstorage.hpp>
 #include <components/esm/exteriorcelllocation.hpp>
-#include <components/esm3/loadcell.hpp>
-#include <components/esm3/loadland.hpp>
-#include <components/esmloader/esmdata.hpp>
-
 // `EsmData`'s move constructor is defaulted in the class, so moving one out of a helper needs every
 // record type it holds to be complete, not just the ones this file names.
 #include <components/esm3/loadacti.hpp>
+#include <components/esm3/loadcell.hpp>
 #include <components/esm3/loadcont.hpp>
 #include <components/esm3/loaddoor.hpp>
 #include <components/esm3/loadgmst.hpp>
+#include <components/esm3/loadland.hpp>
 #include <components/esm3/loadstat.hpp>
+#include <components/esmloader/esmdata.hpp>
 #include <components/vfs/manager.hpp>
-
-#include <apps/rtxtool/terrainstorage.hpp>
 
 namespace RtxTool
 {

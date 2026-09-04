@@ -4,7 +4,6 @@
 #include <cmath>
 
 #include <SDL.h>
-
 #include <osg/Math>
 
 #include <components/rtx/error.hpp>

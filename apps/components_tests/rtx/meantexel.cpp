@@ -1,11 +1,12 @@
-#include <components/rtx/meantexel.hpp>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 
 #include <gtest/gtest.h>
 
 #include <osg/Image>
 
-#include <array>
-#include <cstdint>
+#include <components/rtx/meantexel.hpp>
 
 namespace
 {

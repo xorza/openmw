@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -9,13 +10,16 @@
 #include <string_view>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include <osg/Group>
 #include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
-#include <gtest/gtest.h>
-
+#include <apps/rtxtool/cellscene.hpp>
+#include <apps/rtxtool/content.hpp>
+#include <apps/rtxtool/world.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/misc/constants.hpp>
 #include <components/rtx/compositequeue.hpp>
@@ -24,10 +28,6 @@
 #include <components/rtx/shadingmap.hpp>
 #include <components/rtx/terraincomposite.hpp>
 #include <components/rtx/texturebuilder.hpp>
-
-#include <apps/rtxtool/cellscene.hpp>
-#include <apps/rtxtool/content.hpp>
-#include <apps/rtxtool/world.hpp>
 
 #include "installation.hpp"
 

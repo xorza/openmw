@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_RTX_SHAPEFOLD_H
-#define OPENMW_COMPONENTS_RTX_SHAPEFOLD_H
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -147,5 +146,3 @@ namespace Rtx
         std::vector<Edge> mEdges;
     };
 }
-
-#endif

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cassert>
+#include <cstddef>
 
 #include "gbuffer.hpp"
 

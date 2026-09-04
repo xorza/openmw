@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 
 #include <osg/Group>
 #include <osg/PositionAttitudeTransform>

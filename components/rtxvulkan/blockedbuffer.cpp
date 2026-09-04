@@ -1,6 +1,8 @@
 #include "blockedbuffer.hpp"
 
+#include <algorithm>
 #include <cstring>
+#include <utility>
 
 #include "device.hpp"
 

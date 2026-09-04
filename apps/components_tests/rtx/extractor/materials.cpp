@@ -1,11 +1,16 @@
-#include "fixture.hpp"
-
 // `terraindrawable.hpp` holds `osg::ref_ptr`s to composite-map types it only forward-declares, so it
 // does not compile on its own. This is what completes them.
+#include <cstddef>
+#include <optional>
+#include <span>
+#include <string_view>
+#include <vector>
+
 #include <components/terrain/compositemaprenderer.hpp>
 #include <components/terrain/terraindrawable.hpp>
 
 #include "../allocations.hpp"
+#include "fixture.hpp"
 
 namespace Rtx::Testing
 {

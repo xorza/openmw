@@ -1,8 +1,7 @@
 #include "placement.hpp"
 
-#include "parsefloat.hpp"
-
 #include <cmath>
+#include <cstddef>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -10,6 +9,8 @@
 #include <osg/Math>
 
 #include <components/esm/position.hpp>
+
+#include "parsefloat.hpp"
 
 namespace RtxTool
 {

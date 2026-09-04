@@ -1,11 +1,15 @@
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 
 #include <gtest/gtest.h>
 
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <apps/rtxtool/framing.hpp>
+#include <apps/rtxtool/placement.hpp>
+#include <apps/rtxtool/world.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/renderer.hpp>
@@ -14,10 +18,6 @@
 #include <components/sky/clouds.hpp>
 
 #include "../rtx/allocations.hpp"
-
-#include <apps/rtxtool/framing.hpp>
-#include <apps/rtxtool/placement.hpp>
-#include <apps/rtxtool/world.hpp>
 
 namespace RtxTool
 {

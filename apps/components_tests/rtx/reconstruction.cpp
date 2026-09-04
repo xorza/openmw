@@ -1,3 +1,5 @@
+#include <optional>
+
 #include <gtest/gtest.h>
 
 #include <components/rtx/reconstruction.hpp>

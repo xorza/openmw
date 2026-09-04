@@ -1,6 +1,7 @@
 #include "fogvolume.hpp"
 
 #include <array>
+#include <cstddef>
 
 #include <components/rtx/shaders/scene.h>
 

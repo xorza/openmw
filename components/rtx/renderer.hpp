@@ -11,14 +11,14 @@
 #include <type_traits>
 #include <vector>
 
+#include <components/sdlutil/vsyncmode.hpp>
+
 #include "reconstruction.hpp"
 #include "reorder.hpp"
 #include "shaders/visibility.h"
 #include "texturedata.hpp"
 #include "upscale.hpp"
 #include "wavespectrum.hpp"
-
-#include <components/sdlutil/vsyncmode.hpp>
 
 struct SDL_Window;
 

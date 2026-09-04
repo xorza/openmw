@@ -1,11 +1,10 @@
 #include "frametimes.hpp"
 
-#include <format>
-
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <format>
 #include <numeric>
 #include <string_view>
 

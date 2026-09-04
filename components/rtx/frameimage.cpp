@@ -1,6 +1,7 @@
 #include "frameimage.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
 
 namespace Rtx

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <string_view>
+#include <utility>
 
 #include <osg/FrameStamp>
 #include <osg/Group>

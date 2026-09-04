@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <boost/program_options/variables_map.hpp>

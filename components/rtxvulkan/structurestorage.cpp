@@ -1,5 +1,8 @@
 #include "structurestorage.hpp"
 
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <string>
 #include <utility>
 

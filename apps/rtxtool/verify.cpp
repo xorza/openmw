@@ -1,11 +1,13 @@
 #include "verify.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdlib>
 #include <format>
 #include <memory>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <components/debug/debugging.hpp>

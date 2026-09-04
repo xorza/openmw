@@ -1,5 +1,8 @@
 #include "readworld.hpp"
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 
 #include <components/esm3/loadcell.hpp>

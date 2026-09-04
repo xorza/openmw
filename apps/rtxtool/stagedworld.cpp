@@ -1,8 +1,12 @@
 #include "stagedworld.hpp"
 
+#include <cstddef>
 #include <cstdlib>
+#include <limits>
 #include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 
 #include <components/esm/position.hpp>
 #include <components/esm/util.hpp>

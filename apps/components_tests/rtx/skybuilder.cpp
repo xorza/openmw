@@ -1,5 +1,6 @@
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 #include <gtest/gtest.h>

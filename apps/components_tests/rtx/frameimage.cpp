@@ -1,5 +1,8 @@
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <span>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>

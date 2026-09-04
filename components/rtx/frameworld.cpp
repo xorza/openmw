@@ -1,5 +1,7 @@
 #include "frameworld.hpp"
 
+#include <cstddef>
+
 #include "shaders/scene.h"
 #include <components/weather/precipitation.hpp>
 

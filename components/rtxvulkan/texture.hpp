@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -8,8 +9,6 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/texturedata.hpp>
-
-#include <memory>
 
 #include "image.hpp"
 #include "setlayout.hpp"

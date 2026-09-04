@@ -1,23 +1,24 @@
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
-
-#include <osg/Group>
 
 #include <gtest/gtest.h>
 
-#include <components/esm3/loadcell.hpp>
-#include <components/rtx/scenedesc.hpp>
-#include <components/rtx/sceneextractor.hpp>
+#include <osg/Group>
 
 #include <apps/rtxtool/cellscene.hpp>
 #include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/posedactors.hpp>
 #include <apps/rtxtool/world.hpp>
+#include <components/esm3/loadcell.hpp>
+#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/sceneextractor.hpp>
 
 #include "installation.hpp"
 

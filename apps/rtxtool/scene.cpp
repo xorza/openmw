@@ -1,9 +1,10 @@
 #include "scene.hpp"
 
-#include <osg/Vec3f>
-
+#include <cstddef>
 #include <cstdint>
 #include <ostream>
+
+#include <osg/Vec3f>
 
 #include <components/debug/debugging.hpp>
 #include <components/rtx/scenedesc.hpp>

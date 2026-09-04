@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include <osg/Matrix>
 #include <osg/Node>
 #include <osg/Vec3f>

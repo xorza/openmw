@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -17,7 +19,6 @@
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/instancerecord.hpp>
-
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>

@@ -6,6 +6,8 @@
 #include <initializer_list>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>

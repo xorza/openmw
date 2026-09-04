@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstddef>
 #include <span>
 #include <string>
 #include <string_view>

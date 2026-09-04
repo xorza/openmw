@@ -2,15 +2,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <utility>
 #include <vector>
 
 #include <components/rtx/error.hpp>
+#include <components/rtx/png.hpp>
 #include <components/rtx/shadingmap.hpp>
 #include <components/rtx/srgb.hpp>
 #include <components/rtx/texelreader.hpp>
 #include <components/rtx/texturedata.hpp>
-
-#include <components/rtx/png.hpp>
 
 namespace RtxTool
 {

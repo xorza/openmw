@@ -1,3 +1,7 @@
+#include <cstdint>
+#include <memory>
+#include <string>
+
 #include <components/rtx/renderer.hpp>
 
 #include <SDL_video.h>

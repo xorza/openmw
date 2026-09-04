@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -6,22 +7,21 @@
 #include <string>
 #include <vector>
 
-#include <osg/Group>
-
 #include <gtest/gtest.h>
 
-#include <components/esm3/loadcell.hpp>
-#include <components/rtx/camera.hpp>
-#include <components/rtx/renderer.hpp>
-#include <components/rtx/scenedesc.hpp>
-#include <components/rtx/sceneextractor.hpp>
-#include <components/rtx/texturebuilder.hpp>
+#include <osg/Group>
 
 #include <apps/rtxtool/cellscene.hpp>
 #include <apps/rtxtool/content.hpp>
 #include <apps/rtxtool/framing.hpp>
 #include <apps/rtxtool/lighting.hpp>
 #include <apps/rtxtool/world.hpp>
+#include <components/esm3/loadcell.hpp>
+#include <components/rtx/camera.hpp>
+#include <components/rtx/renderer.hpp>
+#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/sceneextractor.hpp>
+#include <components/rtx/texturebuilder.hpp>
 
 #include "../rtx/harness.hpp"
 #include "installation.hpp"

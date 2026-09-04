@@ -1,5 +1,11 @@
 #include "fixture.hpp"
 
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
 namespace Rtx::Testing
 {
     namespace

@@ -4,9 +4,8 @@
 #include <span>
 #include <vector>
 
-#include <vulkan/vulkan_core.h>
-
 #include <osg/Vec3f>
+#include <vulkan/vulkan_core.h>
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/shaders/scene.h>

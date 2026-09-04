@@ -1,5 +1,7 @@
 #include "material.hpp"
 
+#include <string>
+
 #include <osg/StateSet>
 #include <osg/Texture>
 

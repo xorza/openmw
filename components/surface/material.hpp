@@ -1,5 +1,4 @@
-#ifndef OPENMW_COMPONENTS_SURFACE_MATERIAL_H
-#define OPENMW_COMPONENTS_SURFACE_MATERIAL_H
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -212,5 +211,3 @@ namespace Surface
     /// edited in place from then on.
     Material* getWritableMaterial(osg::StateSet& stateSet);
 }
-
-#endif

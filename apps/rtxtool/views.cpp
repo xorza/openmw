@@ -1,9 +1,7 @@
 #include "views.hpp"
 
-#include "parsefloat.hpp"
-#include "placement.hpp"
-
 #include <algorithm>
+#include <cstddef>
 #include <stdexcept>
 #include <utility>
 
@@ -11,6 +9,9 @@
 #include <components/rtx/lightbuilder.hpp>
 #include <components/settings/categories.hpp>
 #include <components/settings/parser.hpp>
+
+#include "parsefloat.hpp"
+#include "placement.hpp"
 
 namespace RtxTool
 {

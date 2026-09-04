@@ -1,5 +1,4 @@
-#ifndef OPENMW_MWRENDER_RTX_BENCH_H
-#define OPENMW_MWRENDER_RTX_BENCH_H
+#pragma once
 
 #include <cstdint>
 #include <memory>
@@ -123,5 +122,3 @@ namespace MWRender
 #endif
     };
 }
-
-#endif

@@ -1,6 +1,7 @@
 #include "spritebinpass.hpp"
 
 #include <cassert>
+#include <cstdint>
 
 #include "device.hpp"
 #include "gputimer.hpp"

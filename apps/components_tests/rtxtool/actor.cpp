@@ -1,19 +1,21 @@
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include <components/rtx/scenedesc.hpp>
-#include <components/rtx/sceneextractor.hpp>
-#include <components/sceneutil/visitor.hpp>
-
-#include <components/esm3/loadnpc.hpp>
-
 #include <apps/rtxtool/actor.hpp>
 #include <apps/rtxtool/npc.hpp>
 #include <apps/rtxtool/world.hpp>
+#include <components/esm3/loadnpc.hpp>
+#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/sceneextractor.hpp>
+#include <components/sceneutil/visitor.hpp>
 
 #include "installation.hpp"
 
