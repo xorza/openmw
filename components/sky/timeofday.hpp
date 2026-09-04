@@ -1,13 +1,37 @@
 #pragma once
 
-#include <map>
-#include <string>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string_view>
 
 #include <osg/Vec4f>
 
 namespace Sky
 {
+    /// Which quantity a window belongs to.
+    ///
+    /// **A closed set, because the content records exactly these five.** Every one of them is
+    /// spelled into four fallback keys and read back by name, so the name is the content's and the
+    /// enumerator is what the code carries between the two.
+    enum class DayPhaseOf : std::uint8_t
+    {
+        Sky,
+        Ambient,
+        Fog,
+        Sun,
+        Stars,
+    };
+
+    inline constexpr std::size_t sDayPhaseCount = 5;
+
+    /// The name the content records that quantity's four keys under.
+    std::string_view nameOf(DayPhaseOf of);
+
+    /// The quantity one of those names stands for. Empty for a name none of them is.
+    std::optional<DayPhaseOf> dayPhaseOf(std::string_view name);
+
     /// How far either side of a boundary one quantity takes to change.
     ///
     /// **Every quantity crosses dawn at its own pace.** The sky, the ambient, the fog, the sun and
@@ -29,7 +53,13 @@ namespace Sky
         float mDayStart;
         float mDayEnd;
 
-        std::map<std::string, WeatherSetting> mSunriseTransitions;
+        /// One window per quantity, indexed by `DayPhaseOf`, empty where nothing recorded one.
+        ///
+        /// **Empty and `{1,1,1,1}` are the same answer and still not the same thing.** A quantity
+        /// with no window crosses instantly at the boundary, which is what an hour either side
+        /// comes to once the phases are this wide — so a dropped reading cannot be told from a
+        /// recorded window by what `getSetting` answers, and `hasSetting` is what tells them apart.
+        std::array<std::optional<WeatherSetting>, sDayPhaseCount> mSunriseTransitions;
 
         float mStarsPostSunsetStart;
         float mStarsPreSunriseFinish;
@@ -37,13 +67,29 @@ namespace Sky
 
         /// A quantity nothing recorded a window for crosses instantly at the boundary, which is what
         /// a window of one hour either side comes to once the phases are this wide.
-        WeatherSetting getSetting(const std::string& type) const
+        WeatherSetting getSetting(DayPhaseOf of) const
         {
-            const auto it = mSunriseTransitions.find(type);
-            return it != mSunriseTransitions.end() ? it->second : WeatherSetting{ 1.f, 1.f, 1.f, 1.f };
+            return mSunriseTransitions[static_cast<std::size_t>(of)].value_or(WeatherSetting{ 1.f, 1.f, 1.f, 1.f });
         }
 
-        void addSetting(const std::string& type);
+        /// The same by the content's own name, which is how the ramps ask: a name none of the five
+        /// is answers the same window as one nothing recorded.
+        WeatherSetting getSetting(std::string_view type) const
+        {
+            const std::optional<DayPhaseOf> of = dayPhaseOf(type);
+            return of.has_value() ? getSetting(*of) : WeatherSetting{ 1.f, 1.f, 1.f, 1.f };
+        }
+
+        /// Whether a window was recorded for `of` at all. See `mSunriseTransitions`.
+        bool hasSetting(DayPhaseOf of) const { return mSunriseTransitions[static_cast<std::size_t>(of)].has_value(); }
+
+        void setSetting(DayPhaseOf of, const WeatherSetting& window)
+        {
+            mSunriseTransitions[static_cast<std::size_t>(of)] = window;
+        }
+
+        /// Reads `of`'s four keys out of the fallback map and records the window they make.
+        void addSetting(DayPhaseOf of);
 
         /// The whole of it, out of the `Weather_*` settings.
         ///
@@ -83,7 +129,7 @@ namespace Sky
 
         /// @param prefix which quantity this is — "Sky", "Ambient", "Fog", "Sun" or "Stars" — which
         ///        is what picks the window it crosses the boundaries over.
-        T getValue(const float gameHour, const TimeOfDaySettings& timeSettings, const std::string& prefix) const;
+        T getValue(const float gameHour, const TimeOfDaySettings& timeSettings, std::string_view prefix) const;
 
         const T& getSunriseValue() const { return mSunriseValue; }
         const T& getDayValue() const { return mDayValue; }

@@ -100,17 +100,19 @@ namespace RtxTool
         if (!centre.isExterior())
             return 0;
 
-        std::vector<osg::Vec2i> square;
-        gridAround(centre).listCells(square);
-
-        std::set<std::string> keep;
-        for (const osg::Vec2i& position : square)
-            keep.insert(std::to_string(position.x()) + ',' + std::to_string(position.y()));
+        // **Asked of the grid rather than of a square built out as keys.** `Misc::CellGrid` is what
+        // decides which cells stand — the terrain is told this very object — so a second answer
+        // spelled as nine strings in a set is one that can disagree with it.
+        const Misc::CellGrid grid = gridAround(centre);
 
         std::uint32_t went = 0;
         for (auto entry = loaded.begin(); entry != loaded.end();)
         {
-            if (keep.contains(entry->first))
+            // An interior in the map goes whatever the grid says: it is a region of one, and the
+            // exterior square it would be judged by is not a square it stands in.
+            const ESM::Cell* standing = world.getContent().findCell(entry->first);
+            if (standing != nullptr && standing->isExterior()
+                && grid.contains(standing->getGridX(), standing->getGridY()))
             {
                 ++entry;
                 continue;
@@ -122,8 +124,8 @@ namespace RtxTool
             // **The ground goes with the references standing on it.** They arrive by two routes —
             // the cell's own group, and the one node `Terrain::TerrainGrid` accumulates into — so
             // taking the group off the root drops only half of what the cell brought.
-            if (const ESM::Cell* left = world.getContent().findCell(entry->first))
-                world.unloadTerrain(left->getGridX(), left->getGridY());
+            if (standing != nullptr)
+                world.unloadTerrain(standing->getGridX(), standing->getGridY());
 
             entry = loaded.erase(entry);
             ++went;

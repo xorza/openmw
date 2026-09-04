@@ -417,7 +417,9 @@ namespace Rtx
     /// them cost, timed by the GPU between the commands that bracket it.
     struct GpuSpan
     {
-        /// A literal owned by the backend. Valid as long as the span it came in is.
+        /// **A literal, and never a name built for the occasion.** Every zone is opened with one,
+        /// so the view outlives the span it arrives in and a report may keep it — which is what
+        /// `GpuBreakdown` does over a whole run.
         std::string_view mName;
         double mMs = 0.0;
     };

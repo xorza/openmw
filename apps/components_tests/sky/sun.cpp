@@ -26,7 +26,7 @@ namespace Sky
             // `Weather_Sun_Pre-Sunset_Time` and its three siblings, as the shipped fallbacks record
             // them. Only the pre-sunset one reaches the disc's colour; the rest are here so this
             // reads as the setting the game assembles rather than as one field of it.
-            times.mSunriseTransitions["Sun"] = WeatherSetting{ 0.0f, 0.0f, 1.0f, 1.25f };
+            times.setSetting(DayPhaseOf::Sun, WeatherSetting{ 0.0f, 0.0f, 1.0f, 1.25f });
 
             return times;
         }
@@ -172,7 +172,7 @@ namespace Sky
         TEST(RtxSunDiscTest, theDiscIsWhiteAllDayAndWarmOnlyOnTheWayDown)
         {
             const TimeOfDaySettings times = vanillaHours();
-            const float preSunset = times.getSetting("Sun").mPreSunsetTime;
+            const float preSunset = times.getSetting(DayPhaseOf::Sun).mPreSunsetTime;
             const float turns = times.mDayEnd - preSunset;
             ASSERT_GT(preSunset, 0.0f) << "a window with no width has no midpoint to check";
 

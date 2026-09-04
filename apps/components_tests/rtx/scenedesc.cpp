@@ -293,6 +293,9 @@ namespace Rtx
             ASSERT_TRUE(scene.release(keepTwo, {}));
             EXPECT_EQ(scene.getRigs()[rig].mUses, 1u);
             EXPECT_EQ(scene.getRigs()[rig].mVertexCount, 4u) << "a rig with a mesh on it stays";
+            EXPECT_EQ(std::vector<Index>(scene.getDeformed().begin(), scene.getDeformed().end()),
+                (std::vector<Index>{ other }))
+                << "the freed slot left the list and the survivor stayed where it was named";
 
             const std::array keepOne{ still };
             ASSERT_TRUE(scene.release(keepOne, {}));

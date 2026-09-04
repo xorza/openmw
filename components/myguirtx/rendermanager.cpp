@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstring>
 
-#include <MyGUI_Timer.h>
 #include <MyGUI_VertexData.h>
 
 #include <components/debug/debuglog.hpp>
@@ -179,14 +178,11 @@ namespace MyGUIRtx
 
     void RenderManager::update()
     {
-        static MyGUI::Timer timer;
-        static unsigned long lastTime = timer.getMilliseconds();
-        const unsigned long nowTime = timer.getMilliseconds();
-        const unsigned long time = nowTime - lastTime;
+        const unsigned long now = mTimer.getMilliseconds();
+        const unsigned long elapsed = mLastTime.has_value() ? now - *mLastTime : 0;
+        mLastTime = now;
 
-        onFrameEvent(static_cast<float>(static_cast<double>(time) / 1000));
-
-        lastTime = nowTime;
+        onFrameEvent(static_cast<float>(static_cast<double>(elapsed) / 1000));
     }
 
     void RenderManager::collectDrawCalls()

@@ -3,10 +3,12 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <MyGUI_IRenderTarget.h>
+#include <MyGUI_Timer.h>
 
 #include <components/myguiplatform/guirendermanager.hpp>
 #include <components/rtx/renderer.hpp>
@@ -112,6 +114,15 @@ namespace MyGUIRtx
 
         bool mUpdate = false;
         bool mIsInitialise = false;
+
+        /// The clock `update` reads its frame delta from, and what it last read.
+        ///
+        /// **The manager's own and not the process's.** Held in function statics, they would hand a
+        /// manager made after another one the whole gap since that one's last frame, as a single
+        /// delta — and every animation in the interface would jump. Empty until the first frame,
+        /// which is what stops the gap between construction and it becoming that same jump.
+        MyGUI::Timer mTimer;
+        std::optional<unsigned long> mLastTime;
     };
 
 }

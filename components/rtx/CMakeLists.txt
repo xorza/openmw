@@ -95,6 +95,8 @@ set(RTX_FILES
     skybuilder.hpp
     slotchanges.cpp
     slotchanges.hpp
+    slotset.cpp
+    slotset.hpp
     spanallocator.cpp
     spanallocator.hpp
     spritelight.cpp

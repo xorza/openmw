@@ -110,7 +110,7 @@ namespace Rtx
     /// One stretch of the device's frame, over a run of frames.
     struct GpuZone
     {
-        std::string mName;
+        std::string_view mName;
         FrameTimes mTimes;
     };
 
@@ -134,7 +134,8 @@ namespace Rtx
         bool empty() const { return mNames.empty(); }
 
     private:
-        std::vector<std::string> mNames;
+        /// The backend's own literals — see `GpuSpan::mName` for why a view over one is kept.
+        std::vector<std::string_view> mNames;
 
         /// One row of samples per name, indexed alongside `mNames`.
         std::vector<std::vector<double>> mTimes;

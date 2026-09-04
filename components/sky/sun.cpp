@@ -111,7 +111,7 @@ namespace Sky
     osg::Vec3f sunDiscAt(
         float hour, const TimeOfDaySettings& times, const osg::Vec4f& sunsetColour, const osg::Vec4f& ambient)
     {
-        const float preSunset = times.getSetting("Sun").mPreSunsetTime;
+        const float preSunset = times.getSetting(DayPhaseOf::Sun).mPreSunsetTime;
         if (hour < times.mDayEnd - preSunset)
             return osg::Vec3f(1.0f, 1.0f, 1.0f);
 

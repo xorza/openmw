@@ -23,6 +23,7 @@
 #include "shaders/skinning.h"
 #include "shapefold.hpp"
 #include "slotchanges.hpp"
+#include "slotset.hpp"
 #include "spanallocator.hpp"
 #include "texturetable.hpp"
 
@@ -765,7 +766,7 @@ namespace Rtx
 
         /// Which meshes changed shape since the last `clearPlacement`, each named once and in no
         /// particular order. Empty for a world that only moves.
-        std::span<const Index> getDeformed() const { return mDeformed; }
+        std::span<const Index> getDeformed() const { return mDeformed.getSlots(); }
 
         /// Every rig slot, live or free — `Rig::mUses` tells them apart — and the two tables the rigs
         /// index.
@@ -904,7 +905,7 @@ namespace Rtx
         /// every layer and every mask copied to the device — megabytes, every frame a flipbook
         /// turned, to change eighty bytes. A material the sweep freed is not here: nothing stands on
         /// it, so its row is never read and need not be written.
-        std::span<const Index> getWrittenMaterials() const { return mWrittenMaterials; }
+        std::span<const Index> getWrittenMaterials() const { return mWrittenMaterials.getSlots(); }
 
         /// The runs `addLayers` placed since the last `clearArrivals`, and the same for `addMask`.
         ///
@@ -970,15 +971,10 @@ namespace Rtx
         std::vector<osg::Vec2f> mTexCoords;
         std::vector<std::uint32_t> mIndices;
         std::vector<MeshRange> mMeshes;
-        std::vector<Index> mDeformed;
 
-        /// A byte per mesh slot, set for exactly the slots `mDeformed` names.
-        ///
-        /// **What stops the list being searched once per pose.** A mesh is named once however many
-        /// callers pose it, and asking a vector made that N²/2 comparisons for the N movers of a
-        /// crowded cell — 55,000 of them at Vivec, on every frame, for a count the cell decides
-        /// rather than one this code sets. Grown with `mMeshNews` and emptied with the placement.
-        std::vector<char> mDeformedFlags;
+        /// Which meshes were posed this frame. Grown with `mMeshChanges` and emptied with the
+        /// placement.
+        SlotSet mDeformed;
 
         /// What poses the deforming meshes, and the poses themselves. `Rig` and `Morph` say what
         /// each table holds; the runs behind them are handed out by the allocators below and given
@@ -1053,8 +1049,8 @@ namespace Rtx
         /// is already giving thousands of runs back to the allocators, and the last one that should
         /// also be sizing two buffers to the whole table. Refilled by `release` and read by nobody
         /// else.
-        std::vector<char> mKeptMeshes;
-        std::vector<char> mKeptMaterials;
+        std::vector<std::uint8_t> mKeptMeshes;
+        std::vector<std::uint8_t> mKeptMaterials;
 
         /// Where a mesh's vertices and indices, a material's layers and a layer's weights live.
         ///
@@ -1100,11 +1096,9 @@ namespace Rtx
         /// Which mesh slots arrived and which were freed, since a backend last read them.
         SlotChanges mMeshChanges;
 
-        /// Material rows written since the last `clearArrivals`, and a flag per slot that keeps the
-        /// list free of duplicates — a flipbook that is added and then rewritten on one frame is one
-        /// row, not two.
-        std::vector<Index> mWrittenMaterials;
-        std::vector<std::uint8_t> mMaterialWritten;
+        /// Material rows written since the last `clearArrivals` — a flipbook that is added and then
+        /// rewritten on one frame is one row, not two.
+        SlotSet mWrittenMaterials;
 
         /// Runs placed in the layer and mask tables since the last `clearArrivals`.
         std::vector<Span> mArrivedLayers;

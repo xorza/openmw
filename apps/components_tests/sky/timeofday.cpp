@@ -1,5 +1,4 @@
 #include <cstddef>
-#include <string>
 
 #include <gtest/gtest.h>
 
@@ -42,10 +41,11 @@ namespace Sky
         TEST(SkyTimeOfDayTest, everyQuantityTheRampReadsCarriesAWindowOfItsOwn)
         {
             for (const TimeOfDaySettings& times : { TimeOfDaySettings::fromFallback(), TimeOfDaySettings::shared() })
-                for (const std::string& quantity : { std::string("Sky"), std::string("Ambient"), std::string("Fog"),
-                         std::string("Sun"), std::string("Stars") })
-                    EXPECT_EQ(times.mSunriseTransitions.count(quantity), std::size_t{ 1 })
-                        << quantity << " has no window";
+                for (std::size_t at = 0; at < sDayPhaseCount; ++at)
+                {
+                    const DayPhaseOf quantity = static_cast<DayPhaseOf>(at);
+                    EXPECT_TRUE(times.hasSetting(quantity)) << nameOf(quantity) << " has no window";
+                }
         }
 
         /// The stars' window is derived from their three recorded numbers rather than read.
@@ -56,7 +56,7 @@ namespace Sky
         {
             for (const TimeOfDaySettings& times : { TimeOfDaySettings::fromFallback(), TimeOfDaySettings::shared() })
             {
-                const WeatherSetting stars = times.getSetting("Stars");
+                const WeatherSetting stars = times.getSetting(DayPhaseOf::Stars);
 
                 EXPECT_EQ(stars.mPreSunriseTime, times.mStarsPreSunriseFinish);
                 EXPECT_EQ(stars.mPostSunriseTime, times.mStarsFadingDuration - times.mStarsPreSunriseFinish);

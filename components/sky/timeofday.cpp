@@ -1,6 +1,7 @@
 #include "timeofday.hpp"
 
 #include <stdexcept>
+#include <string>
 
 #include <components/fallback/fallback.hpp>
 
@@ -21,12 +22,42 @@ namespace Sky
         }
     }
 
-    void TimeOfDaySettings::addSetting(const std::string& type)
+    std::string_view nameOf(const DayPhaseOf of)
     {
-        mSunriseTransitions[type] = WeatherSetting{ Fallback::Map::getFloat("Weather_" + type + "_Pre-Sunrise_Time"),
-            Fallback::Map::getFloat("Weather_" + type + "_Post-Sunrise_Time"),
-            Fallback::Map::getFloat("Weather_" + type + "_Pre-Sunset_Time"),
-            Fallback::Map::getFloat("Weather_" + type + "_Post-Sunset_Time") };
+        switch (of)
+        {
+            case DayPhaseOf::Sky:
+                return "Sky";
+            case DayPhaseOf::Ambient:
+                return "Ambient";
+            case DayPhaseOf::Fog:
+                return "Fog";
+            case DayPhaseOf::Sun:
+                return "Sun";
+            case DayPhaseOf::Stars:
+                return "Stars";
+        }
+
+        throw std::logic_error("a quantity outside the five the content records");
+    }
+
+    std::optional<DayPhaseOf> dayPhaseOf(const std::string_view name)
+    {
+        for (std::size_t at = 0; at < sDayPhaseCount; ++at)
+            if (nameOf(static_cast<DayPhaseOf>(at)) == name)
+                return static_cast<DayPhaseOf>(at);
+
+        return std::nullopt;
+    }
+
+    void TimeOfDaySettings::addSetting(const DayPhaseOf of)
+    {
+        const std::string key = "Weather_" + std::string(nameOf(of));
+
+        setSetting(of,
+            WeatherSetting{ Fallback::Map::getFloat(key + "_Pre-Sunrise_Time"),
+                Fallback::Map::getFloat(key + "_Post-Sunrise_Time"), Fallback::Map::getFloat(key + "_Pre-Sunset_Time"),
+                Fallback::Map::getFloat(key + "_Post-Sunset_Time") });
     }
 
     TimeOfDaySettings TimeOfDaySettings::fromFallback()
@@ -40,10 +71,10 @@ namespace Sky
         settings.mDayStart = sunrise + Fallback::Map::getFloat("Weather_Sunrise_Duration");
         settings.mDayEnd = sunset;
 
-        settings.addSetting("Sky");
-        settings.addSetting("Ambient");
-        settings.addSetting("Fog");
-        settings.addSetting("Sun");
+        settings.addSetting(DayPhaseOf::Sky);
+        settings.addSetting(DayPhaseOf::Ambient);
+        settings.addSetting(DayPhaseOf::Fog);
+        settings.addSetting(DayPhaseOf::Sun);
 
         settings.mStarsPostSunsetStart = Fallback::Map::getFloat("Weather_Stars_Post-Sunset_Start");
         settings.mStarsPreSunriseFinish = Fallback::Map::getFloat("Weather_Stars_Pre-Sunrise_Finish");
@@ -51,9 +82,10 @@ namespace Sky
 
         // The stars' own window is derived rather than recorded: they begin after sunset and finish
         // before sunrise, and the fading duration is what is left of each.
-        settings.mSunriseTransitions["Stars"] = WeatherSetting{ settings.mStarsPreSunriseFinish,
-            settings.mStarsFadingDuration - settings.mStarsPreSunriseFinish, settings.mStarsPostSunsetStart,
-            settings.mStarsFadingDuration - settings.mStarsPostSunsetStart };
+        settings.setSetting(DayPhaseOf::Stars,
+            WeatherSetting{ settings.mStarsPreSunriseFinish,
+                settings.mStarsFadingDuration - settings.mStarsPreSunriseFinish, settings.mStarsPostSunsetStart,
+                settings.mStarsFadingDuration - settings.mStarsPostSunsetStart });
 
         return settings;
     }
@@ -83,7 +115,7 @@ namespace Sky
 
     template <typename T>
     T TimeOfDayInterpolator<T>::getValue(
-        const float gameHour, const TimeOfDaySettings& timeSettings, const std::string& prefix) const
+        const float gameHour, const TimeOfDaySettings& timeSettings, const std::string_view prefix) const
     {
         WeatherSetting setting = timeSettings.getSetting(prefix);
         float preSunriseTime = setting.mPreSunriseTime;

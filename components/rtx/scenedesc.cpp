@@ -157,23 +157,18 @@ namespace Rtx
 
     void SceneDesc::noteMesh(Index slot, SlotNews what)
     {
-        // Grown here rather than beside every push, so the two stay parallel in one place. A resize
-        // to the size it already is does not allocate, which is what the frame path pays.
+        // Grown here rather than beside every push, so everything keyed on a mesh slot reaches the
+        // table's size in one place. A resize to the size it already is does not allocate, which is
+        // what the frame path pays.
         mMeshChanges.grow(mMeshes.size());
-        mDeformedFlags.resize(mMeshes.size(), 0);
+        mDeformed.grow(mMeshes.size());
         mMeshChanges.note(slot, what);
     }
 
     void SceneDesc::noteMaterial(Index slot)
     {
-        mMaterialWritten.resize(mMaterials.size(), 0);
-        assert(slot < mMaterialWritten.size());
-
-        if (mMaterialWritten[slot] != 0)
-            return;
-
-        mMaterialWritten[slot] = 1;
-        mWrittenMaterials.push_back(slot);
+        mWrittenMaterials.grow(mMaterials.size());
+        mWrittenMaterials.add(slot);
     }
 
     void SceneDesc::writeMesh(const MeshRange& range, std::span<const osg::Vec3f> positions,
@@ -312,12 +307,7 @@ namespace Rtx
 
         // Named once however many callers reach it, because a backend builds one structure per mesh
         // and building it twice in a frame is the same answer for twice the cost.
-        assert(mesh < mDeformedFlags.size());
-        if (mDeformedFlags[mesh] == 0)
-        {
-            mDeformedFlags[mesh] = 1;
-            mDeformed.push_back(mesh);
-        }
+        mDeformed.add(mesh);
     }
 
     std::span<const Shaders::GpuBone> SceneDesc::getMeshBones(Index mesh) const
@@ -588,11 +578,6 @@ namespace Rtx
     {
         mLights.clear();
 
-        // The flags and the list say one thing between them, so they are emptied together — over
-        // the frame's movers, and never over every mesh slot the scene holds.
-        for (const Index mesh : mDeformed)
-            mDeformedFlags[mesh] = 0;
-
         mDeformed.clear();
         mSprites.clear();
         mEmitters.clear();
@@ -601,7 +586,7 @@ namespace Rtx
     namespace
     {
         /// A byte per entry, set for everything `keep` names. Duplicates and any order are fine.
-        void markKept(std::vector<char>& flags, std::size_t count, std::span<const Index> keep)
+        void markKept(std::vector<std::uint8_t>& flags, std::size_t count, std::span<const Index> keep)
         {
             // Cleared before it is grown, so the fill reaches every row rather than only the rows
             // past the length the last sweep left.
@@ -665,19 +650,15 @@ namespace Rtx
             range.mBounds = osg::BoundingBoxf();
 
             // A slot given back names no structure to refit, however it was posed this frame: the
-            // structure has gone with it. The list is compacted once below rather than searched
-            // once per slot freed.
-            mDeformedFlags[index] = 0;
+            // structure has gone with it.
+            mDeformed.remove(index);
 
             mFreeMeshes.push_back(index);
             noteMesh(index, SlotNews::Freed);
             ++freedMeshes;
         }
 
-        // One pass over the frame's movers, on the frame a cell leaves, rather than one per slot
-        // freed: a cell can give back thousands of slots and a crowd can be posing hundreds.
-        if (freedMeshes > 0)
-            std::erase_if(mDeformed, [this](const Index mesh) { return mDeformedFlags[mesh] == 0; });
+        mDeformed.compact();
 
         std::size_t freedMaterials = 0;
         for (Index index = 0; index < mMaterials.size(); ++index)
@@ -739,7 +720,6 @@ namespace Rtx
         mIndices.clear();
         mMeshes.clear();
         mDeformed.clear();
-        mDeformedFlags.clear();
         mRigs.clear();
         mRuns.clear();
         mInfluences.clear();
@@ -773,16 +753,12 @@ namespace Rtx
         mMaskRuns.clear();
         mMeshChanges.clear();
         mWrittenMaterials.clear();
-        mMaterialWritten.clear();
         mArrivedLayers.clear();
         mArrivedMasks.clear();
     }
 
     void SceneDesc::clearArrivals()
     {
-        for (const Index slot : mWrittenMaterials)
-            mMaterialWritten[slot] = 0;
-
         mMeshChanges.clearArrivals();
         mTextures.clearArrivals();
         mWrittenMaterials.clear();
