@@ -59,6 +59,8 @@ set(RTX_FILES
     materialresolver.hpp
     meshresolver.cpp
     meshresolver.hpp
+    mipchain.cpp
+    mipchain.hpp
     mirroridentity.hpp
     mirrorpass.hpp
     moonbuilder.cpp

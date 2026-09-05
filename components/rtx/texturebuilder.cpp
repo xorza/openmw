@@ -157,6 +157,7 @@ namespace Rtx
         mLevels.clear();
         mDescriptions.clear();
         mSpriteLights.clear();
+        mChains.clear();
         mKept.clear();
         mLightOf.clear();
         mUnreadable = 0;
@@ -164,6 +165,7 @@ namespace Rtx
         mKept.reserve(slots.size());
         mImages.reserve(slots.size());
         mLightOf.reserve(slots.size());
+        mChains.reserve(slots.size());
 
         for (const Index slot : slots)
         {
@@ -199,7 +201,16 @@ namespace Rtx
                     mSourceLevels.clear();
                     try
                     {
-                        const AlphaImage alpha(describeImage(*sprite, mSourceLevels));
+                        TextureData painted = describeImage(*sprite, mSourceLevels);
+
+                        // **The same chain the sprite's own slot gets**, because a bake is read at
+                        // whatever level the ray can resolve and a source with one level would bake
+                        // one answer for every distance.
+                        const MipChain built(painted);
+                        if (!built.isEmpty())
+                            painted = built.describe();
+
+                        const AlphaImage alpha(painted);
                         if (!alpha.isEmpty())
                         {
                             mSpriteLights.emplace_back(alpha);
@@ -239,6 +250,12 @@ namespace Rtx
                 try
                 {
                     described = describeImage(*image, mLevels);
+
+                    // **What the file did not carry, built rather than done without.** `MipChain`
+                    // says why almost nothing in the game needs this and why the rain does.
+                    mChains.emplace_back(*described);
+                    if (!mChains.back().isEmpty())
+                        described = mChains.back().describe();
                 }
                 catch (const Error&)
                 {

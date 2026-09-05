@@ -6,6 +6,7 @@
 
 #include <osg/Image>
 
+#include "mipchain.hpp"
 #include "scenedesc.hpp"
 #include "spritelight.hpp"
 #include "texturedata.hpp"
@@ -25,8 +26,10 @@ namespace Rtx
     /// so `levels` must outlive the upload and must not grow again while the description is alive.
     /// `SceneTextures` is what reserves for that.
     ///
-    /// Throws for a format Morrowind does not produce: every texture in the game is block
-    /// compressed with its mip chain already built, and inventing a conversion path for something no
+    /// The levels are the file's own, however few it carried. `MipChain` is what builds the rest,
+    /// and `SceneTextures` is what asks it to.
+    ///
+    /// Throws for a format Morrowind does not produce: inventing a conversion path for something no
     /// content file contains is how a renderer grows code nothing runs.
     TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels);
 
@@ -120,6 +123,11 @@ namespace Rtx
         /// The bakes of the sprite textures the scene's emitters draw with, each made here from the
         /// alpha of the file its key names. `SpriteLightMap` says what one is.
         std::vector<SpriteLightMap> mSpriteLights;
+
+        /// The levels the files did not carry, for the few textures that carry none. Empty entries
+        /// cost nothing and keep this parallel to nothing — a description either spans its image or
+        /// spans one of these.
+        std::vector<MipChain> mChains;
 
         /// Which slots `describe` kept, because a free one is passed over and the descriptions are
         /// no longer one per entry of what it was asked for.

@@ -359,6 +359,122 @@ namespace Rtx::Testing
             EXPECT_EQ(leaning[alongLean(60.0f, 45.0f)], 0.0f) << "the streak was wider than its width";
         }
 
+        /// A streak takes the sun broadside and takes nothing along its own axis.
+        ///
+        /// **The march draws an oriented quad as a cylinder, so it is lit as one.** Its width is
+        /// swung about its axis to meet the ray, which is a cylinder's silhouette, and such a body
+        /// presents `sin` of the angle off its axis to whatever lights it. A streak used to take a
+        /// full card's worth of the sun whichever way it hung, so rain at noon was lit as brightly
+        /// as rain at dawn.
+        ///
+        /// One sun, straight up, and the streak turned under it — which is what keeps everything
+        /// else about the three frames identical: the same coverage, the same level, the same air.
+        /// Lying across the sun it takes the whole of the broadside; thirty degrees off the vertical
+        /// takes `sin 30`, which is half of it; straight up and down takes none.
+        TEST_F(RtxVisibilityTest, aStreakTakesTheSunBroadsideAndNothingAlongItsOwnAxis)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 1> drop{ describeTexel(white) };
+
+            const auto lit = [&](const osg::Vec3f& axis) {
+                SceneDesc scene;
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const std::array<Sprite, 1> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAxis = axis, .mAlpha = 1.0f } };
+                scene.addEmitter(sprites, cut, false, 0.25f);
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+                // The sun and nothing else, so what a pixel holds is the shape's own share of it.
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
+                camera.mSunIrradiance = osg::Vec3f(4.0f, 4.0f, 4.0f);
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, drop, camera, size, pixels);
+
+                return mRadiance[centre];
+            };
+
+            constexpr float lean = 0.8660254f;
+            const float across = lit(osg::Vec3f(1.0f, 0.0f, 0.0f));
+            const float leaning = lit(osg::Vec3f(0.5f, 0.0f, -lean));
+            const float upright = lit(osg::Vec3f(0.0f, 0.0f, -1.0f));
+
+            ASSERT_GT(across, 0.01f) << "a streak lying across the sun was not lit at all";
+
+            EXPECT_NEAR(leaning / across, 0.5f, 0.02f) << "thirty degrees off the sun is sin 30 of it";
+            EXPECT_NEAR(upright, 0.0f, across * 0.02f) << "a streak pointing at the sun has no side to turn to it";
+        }
+
+        /// The level a streak is read at comes from the axis its texels are densest along.
+        ///
+        /// **A rain streak carries its texture at two densities**, because the quad is a fraction as
+        /// wide as it is long and the texture is stretched over the whole of it. A level chosen from
+        /// the length alone reads the width sharper than the ray can carry, which is the drop
+        /// aliasing into a hard mark rather than fading — and it is what a drop did at every
+        /// distance in the game.
+        ///
+        /// **Two levels painted different colours, so which one was read is in the picture.** The
+        /// texture is four square and the sprite is sixty across. A quad as wide as it is long
+        /// spreads four texels over a hundred and twenty units either way, one every thirty; a quad
+        /// a quarter as wide spreads the same four over thirty, one every seven and a half. The
+        /// pixel's cone at eight hundred units is `atan(2 tan 30 / 33) * 800 = 27.98` units, which
+        /// is under one texel of the first and 3.73 of the second — so the first reads level nought
+        /// and the second reads the level below it.
+        TEST_F(RtxVisibilityTest, theLevelAStreakIsReadAtComesFromTheAxisItsTexelsAreDensestAlong)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            // Level nought is white and level one is red, so the green channel says which was read.
+            TestTexture layered;
+            for (std::uint32_t texel = 0; texel < 4 * 4; ++texel)
+                for (const std::uint8_t byte : { 255, 255, 255, 255 })
+                    layered.mBytes.push_back(byte);
+
+            for (std::uint32_t texel = 0; texel < 2 * 2; ++texel)
+                for (const std::uint8_t byte : { 255, 0, 0, 255 })
+                    layered.mBytes.push_back(byte);
+
+            layered.mLevels.push_back(MipLevel{ .mOffset = 0, .mWidth = 4, .mHeight = 4 });
+            layered.mLevels.push_back(MipLevel{ .mOffset = 4 * 4 * 4, .mWidth = 2, .mHeight = 2 });
+            layered.describe(4, 4, "layered.dds");
+
+            const auto green = [&](float width) {
+                SceneDesc scene;
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const std::array<Sprite, 1> sprites{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f),
+                    .mRadius = 60.0f,
+                    .mAxis = osg::Vec3f(0.0f, 0.0f, -1.0f),
+                    .mAlpha = 1.0f } };
+
+                // Additive, so what a pixel holds is the texel it read and nothing has to light it.
+                scene.addEmitter(sprites, cut, true, width);
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -800.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mSunIrradiance = osg::Vec3f();
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, std::span(&layered.mData, 1), camera, size, pixels);
+
+                return mRadiance[centre + 1] / std::max(mRadiance[centre], 1.0e-6f);
+            };
+
+            EXPECT_NEAR(green(1.0f), 1.0f, 0.05f) << "a square quad read the level below its own";
+            EXPECT_NEAR(green(0.25f), 0.0f, 0.05f) << "a streak read its length rather than its width";
+        }
+
         /// A puff is lit from the side the light is on, and by what its own texture lets through.
         ///
         /// A sprite facing an eye that looks along +Y, lit by a sun of four and nothing else, so its

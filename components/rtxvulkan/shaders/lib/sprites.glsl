@@ -31,13 +31,33 @@ struct PuffShape
     float mAmbientLit;
 };
 
-/// A puff with no shape at all, which is what a quad hanging in the world is.
+/// What a cylinder takes of a source at right angles to it, against its own mean over every
+/// direction. The mean of `sin` over a sphere is `pi / 4`, so this is what makes a shape of one the
+/// even share here as it is for a ball.
+const float CYLINDER_SHARE = 4.0 * INV_PI;
+
+/// The shape of a streak of rain, which is a cylinder's own share of what lights it.
 ///
-/// **A rain streak is a thin thing seen by what passes through it**, so it has no side and no
-/// thickness of its own to take: it shows the air's answer whole.
-PuffShape flatPuff()
+/// **The march draws the streak as a cylinder, so it is lit as one.** Its width is swung about its
+/// axis to meet the ray, which is exactly a cylinder's silhouette — and what such a body presents to
+/// a source standing at an angle off that axis is `sin` of the angle, broadside. So rain under a low
+/// sun takes a quarter more than the even share, rain under a high one takes two thirds of it, and a
+/// streak looked at end-on takes none.
+///
+/// **The rasterizer's answer is not this, and is not copied.** `osgParticle` commits a `FIXED`
+/// quad to the plane its two authored axes span, so every raindrop in the game wears one normal —
+/// world north — and the storm is lit by how far the sun happens to stand from it. That is a fact
+/// about drawing quads, and it is the same one this walk already refuses when it swings the width
+/// rather than keeping the plane the content picked.
+///
+/// **The ambient keeps the even share.** A sky is a hemisphere and a standing streak sees it from
+/// every side; only a source with a direction can be met broadside, and `ballPuff` treats the sky as
+/// one because a ball has a side to turn toward it. A cylinder about the vertical has none.
+///
+/// @param along unit, the axis the streak hangs on.
+PuffShape streakPuff(vec3 along)
 {
-    return PuffShape(1.0, 1.0);
+    return PuffShape(CYLINDER_SHARE * length(cross(along, frame.mSunPosition)), 1.0);
 }
 
 /// What a puff of smoke is lit by, per unit of albedo, out of the froxel it stands in.
@@ -340,7 +360,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     float band = 1.0;
     bool oriented = false;
     float width = 0.0;
-    float widest = 0.0;
+    vec2 texels = vec2(0.0);
 
     // What one layer of this emitter's texture hides on average, read from its coarsest level.
     //
@@ -390,10 +410,9 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                 width = emitter.mWidth;
                 oriented = width > 0.0;
 
-                // The texture's own extent, which every sprite of this emitter shares. Only the
-                // wider axis reaches the level below.
-                const vec2 size = vec2(textureSize(textures[nonuniformEXT(emitter.mTexture)], 0));
-                widest = max(size.x, size.y);
+                // The texture's own extent, which every sprite of this emitter shares. Both axes,
+                // because a streak carries them at different densities — see the level below.
+                texels = vec2(textureSize(textures[nonuniformEXT(emitter.mTexture)], 0));
             }
         }
 
@@ -404,13 +423,16 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
         // How far along the ray the eye sees the sprite, what share of the sprite's own depth that
         // is, where across it the ray crossed in units of its own half-extents, how far out that is
-        // as a fraction, and how far the sprite's surface stands toward the eye there — the things
-        // the rest needs, and the only place the two kinds of sprite differ.
+        // as a fraction, how far the sprite's surface stands toward the eye there, how densely it
+        // carries texels and which way it hangs — the things the rest needs, and the only place the
+        // two kinds of sprite differ.
         float seen;
         float fraction;
         vec2 at;
         float radial;
         float lift = 0.0;
+        float rate;
+        vec3 alongUnit = vec3(0.0);
 
         if (oriented)
         {
@@ -436,6 +458,17 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // quad is edge-on to this ray and there is nothing of it to see.
             if (swing <= 1.0e-4)
                 continue;
+
+            const float inverseAxis = inversesqrt(dot(axis, axis));
+            alongUnit = axis * inverseAxis;
+
+            // **Both of the quad's own axes, and the denser one decides.** A rain streak carries
+            // eight texels across a fifth of its own height and thirty-two down the whole of it, so
+            // its width resolves two and a half times finer than its length — and a level chosen
+            // from the length alone reads the width sharper than the ray can carry, which is a drop
+            // that aliases into a hard mark instead of fading. A disc is the same extent both ways,
+            // which is why one number served until a quad hung in the world.
+            rate = 0.5 * max(texels.x / width, texels.y * inverseAxis) / sprite.mRadius;
 
             const vec3 quadAcross = swung * (width * sprite.mRadius / swing);
             const vec3 quadUpward = axis * sprite.mRadius;
@@ -488,16 +521,16 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             seen = 0.5 * (from + until);
             radial = sqrt(radial2);
             at = -vec2(dot(offset, across), dot(offset, upward)) / sprite.mRadius;
+            rate = 0.5 * max(texels.x, texels.y) / sprite.mRadius;
         }
 
-        // The sprite is `2 * mRadius` wide where the pixel's cone has spread to `mWidth + mSpread *
-        // seen`, and the ratio of the two in texels is the level that resolves it. Clamped inside
-        // the logarithm rather than outside, because an eye inside the ball sees it at no distance.
-        // `coneAt` and not `mSpreadAngle`, for the reason it gives: a map tile's cone never widens
-        // and is a pixel of the box wide from the start, where the angle alone read every sprite in
-        // it at level zero.
-        const float lod
-            = log2(max(widest * (cone.mWidth + cone.mSpread * seen) / (2.0 * sprite.mRadius), 1.0));
+        // How many texels the pixel's cone covers where the sprite stands, which is the level that
+        // resolves it: the cone has spread to `mWidth + mSpread * seen` there, and `rate` is what
+        // the sprite carries per unit of that. Clamped inside the logarithm rather than outside,
+        // because an eye inside the ball sees it at no distance. `coneAt` and not `mSpreadAngle`,
+        // for the reason it gives: a map tile's cone never widens and is a pixel of the box wide
+        // from the start, where the angle alone read every sprite in it at level zero.
+        const float lod = log2(max(rate * (cone.mWidth + cone.mSpread * seen), 1.0));
 
         // The quad `osgParticle` would have drawn: texture coordinate zero at `-right -up` and
         // one at `+right +up`, about a centre at half.
@@ -550,11 +583,15 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         }
 
         // What this puff's own shape leaves of what the air around it is lit by: the ball's own
-        // side, and what its texture lets through to this texel. A quad hanging in the world takes
-        // neither — `flatPuff` says why.
-        PuffShape wrapped = flatPuff();
+        // side and what its texture lets through to this texel, or the cylinder a streak is drawn
+        // as.
+        PuffShape wrapped;
 
-        if (!oriented)
+        if (oriented)
+        {
+            wrapped = streakPuff(alongUnit);
+        }
+        else
         {
             // Where the ray entered the ball, as a normal: `at` across the disc, and the ball's
             // surface lifted toward the eye by what is left of the radius there.

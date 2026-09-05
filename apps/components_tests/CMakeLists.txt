@@ -139,6 +139,7 @@ if (OPENMW_RTX)
         rtx/lightgrid.cpp
         rtx/meantexel.cpp
         rtx/micromap.cpp
+        rtx/mipchain.cpp
         rtx/moonbuilder.cpp
         rtx/offscreentrace.cpp
         rtx/pipelinecache.cpp

@@ -45,10 +45,14 @@ namespace Rtx::Testing
         TestTexture& operator=(const TestTexture&) = delete;
 
         /// Describes what a painter wrote, over the levels it pushed.
-        void describe(std::uint32_t width, std::uint32_t height, std::string_view name)
+        ///
+        /// @param format what those bytes are to be read as. Unorm by default, which is the one
+        ///        with no transfer function under it and so the one a hand-computed byte belongs in.
+        void describe(std::uint32_t width, std::uint32_t height, std::string_view name,
+            TextureFormat format = TextureFormat::Rgba8Unorm)
         {
             mData = TextureData{
-                .mFormat = TextureFormat::Rgba8Unorm,
+                .mFormat = format,
                 .mWidth = width,
                 .mHeight = height,
                 .mBytes = std::as_bytes(std::span(mBytes)),
