@@ -204,6 +204,11 @@ namespace Rtx
         /// Whether a frame is upscaled: a runtime that is up **and** a mode that wants one. The
         /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
         /// second and somebody who turned it off may turn it back on.
+        ///
+        /// **The one answer the build decides, so that nothing else is compiled twice.** The three
+        /// members below exist only in a build with DLSS in it, so a reader that tested one of them
+        /// instead would be a reader that has to be conditionally compiled — and a reader outside a
+        /// guard is a build with the option off that does not compile at all.
         bool upscaling() const;
 
         /// Makes the picture-inside-the-interface chain at least this big, keeping whatever extent

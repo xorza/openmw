@@ -132,9 +132,7 @@ namespace MWRender
 
     std::optional<SessionRequest> takeInstalledSession()
     {
-        std::optional<SessionRequest> taken;
-        taken.swap(sInstalled);
-        return taken;
+        return std::exchange(sInstalled, std::nullopt);
     }
 
     void publishSessionResult(SessionResult result)
@@ -142,13 +140,13 @@ namespace MWRender
         sResult = std::move(result);
     }
 
+    /// **The whole slot, and never a field at a time.** A launcher reads eight of these and a run
+    /// fills all eight, so a take written out member by member loses whichever ones nobody
+    /// remembered — silently, since an unfilled `SessionResult` is a valid one describing a camera
+    /// at the origin.
     SessionResult takeSessionResult()
     {
-        SessionResult taken;
-        taken.mPlaces.swap(sResult.mPlaces);
-        taken.mReport.swap(sResult.mReport);
-        taken.mExitStatus = std::exchange(sResult.mExitStatus, 0);
-        return taken;
+        return std::exchange(sResult, SessionResult{});
     }
 
     /// What a stop gathers, and the few things a whole run does. Out of line so the header names

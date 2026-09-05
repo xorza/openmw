@@ -245,9 +245,11 @@ namespace Rtx
 
     bool VulkanRenderer::upscaling() const
     {
-        // The runtime is null in a build with no DLSS in it, so this is the same answer there
-        // without saying so twice.
+#ifdef OPENMW_RTX_DLSS
         return mNgx != nullptr && mUpscale != Upscale::Off;
+#else
+        return false;
+#endif
     }
 
     void VulkanRenderer::setUpscale(Upscale upscale)
@@ -346,7 +348,13 @@ namespace Rtx
 #ifdef OPENMW_RTX_DLSS
         // Released before the next is built: the feature holds the network's weights for one pair
         // of resolutions, which is most of what it occupies.
+        //
+        // **And the image it writes goes with it**, which is what makes `upscaling()` the answer for
+        // both. It is sized to the output — 33 MiB at 1080p and 133 at 4K — so leaving it behind
+        // held that memory until something upscaled again, at the extent of whichever frame last
+        // did, and every frame between the two still discarded it.
         mUpscaler.reset();
+        mUpscaled.reset();
 
         if (upscaling())
         {
@@ -365,15 +373,8 @@ namespace Rtx
         // **Over whatever the frame is by the time the curve maps it**, which is the upscaler's
         // output where one runs and the trace's own extent where none does. The same test the frame
         // path makes, because a pyramid built at the other extent is a bloom at the wrong scale.
-        std::uint32_t shownWidth = mRenderWidth;
-        std::uint32_t shownHeight = mRenderHeight;
-#ifdef OPENMW_RTX_DLSS
-        if (mUpscaler != nullptr)
-        {
-            shownWidth = mOutputWidth;
-            shownHeight = mOutputHeight;
-        }
-#endif
+        const std::uint32_t shownWidth = upscaling() ? mOutputWidth : mRenderWidth;
+        const std::uint32_t shownHeight = upscaling() ? mOutputHeight : mRenderHeight;
         mBloom.resize(shownWidth, shownHeight);
 
         // A frame of a different size is not one this one can be reprojected against.
@@ -1008,18 +1009,18 @@ namespace Rtx
         if (reconstruction.mJitter)
             sampled.mCamera.mJitter = haltonJitter(camera.mFrame);
 
-        // **The one subtraction of two world points, and it happens here.** Two camera positions a
-        // step apart subtract exactly in a float; the same difference taken on the device, between
-        // coordinates six figures long, would be rounding.
         // **Only Ray Reconstruction reads the transparency layer**, so only a frame it is about to
         // upscale hands its sprites over. Every other trace in this renderer composites them itself.
-        sampled.mLayerCompositedAfter = mUpscaler != nullptr ? 1 : 0;
+        sampled.mLayerCompositedAfter = upscaling() ? 1 : 0;
 
         // The scene's answer and not the camera's, for the reason `VisibilityInputs::mWater` is one:
         // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
         // at from.
         sampled.mMediumInFrame = mWorld.mAcceleration->getMediumInstanceCount() > 0 ? 1 : 0;
 
+        // **The one subtraction of two world points, and it happens here.** Two camera positions a
+        // step apart subtract exactly in a float; the same difference taken on the device, between
+        // coordinates six figures long, would be rounding.
         sampled.mCameraMotion = camera.mOrigin - mPreviousCamera.mOrigin;
         sampled.mPreviousForward = mPreviousCamera.mCamera.mForward;
         sampled.mPreviousRight = mPreviousCamera.mCamera.mRight;
@@ -1071,7 +1072,11 @@ namespace Rtx
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
 #ifdef OPENMW_RTX_DLSS
-        if (mUpscaled != nullptr)
+        // `createTargets` makes the pass and its image together and releases them together, so
+        // nothing below asks whether they are there.
+        assert(!upscaling() || (mUpscaler != nullptr && mUpscaled != nullptr));
+
+        if (upscaling())
             mUpscaled->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT);
@@ -1141,7 +1146,7 @@ namespace Rtx
         const Image* shown = mColour.get();
 
 #ifdef OPENMW_RTX_DLSS
-        if (mUpscaler != nullptr)
+        if (upscaling())
         {
             timer.open(commands, "upscale");
             mUpscaler->record(commands,

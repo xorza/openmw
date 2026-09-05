@@ -10,46 +10,10 @@ touches. Test files are out of scope.
 
 ---
 
-## The build option `-DOPENMW_RTX_DLSS=OFF` does not compile
-
-`vulkanrenderer.hpp` declares `mNgx`, `mUpscaler` and `mUpscaled` inside
-`#ifdef OPENMW_RTX_DLSS`. Two uses sit outside that guard. The CMake option is
-public and defaults to `ON`, so nothing catches it.
-
-- [ ] `components/rtxvulkan/vulkanrenderer.cpp:250` — `upscaling()` reads `mNgx`
-  unguarded. Its comment claims "The runtime is null in a build with no DLSS in
-  it", which is not what the header says: the member does not exist there.
-- [ ] `components/rtxvulkan/vulkanrenderer.cpp:1016` — `renderFrame` reads
-  `mUpscaler` unguarded, twenty lines above a use of `mUpscaled` that *is*
-  guarded (line 1074).
-
-## A finished run loses the numbers a launcher reads back
-
-- [ ] `apps/openmw/mwrender/rtx/session.cpp:145` — `takeSessionResult()` moves
-  `mPlaces`, `mReport` and `mExitStatus` and leaves `mEye`, `mLook`, `mHour`,
-  `mDay` and `mWeather` at their defaults. `Session::describeRun` fills all five
-  and `RtxTool::runHosted` (`apps/rtxtool/hosted.cpp:130-140`) prints them as a
-  `views.cfg` block, so `openmw-rtxtool view` always emits a zero camera at
-  hour 0 on day 0 with no weather. `SessionResult::mEye`'s own comment states
-  the feature this silently disables. `return std::exchange(sResult,
-  SessionResult{});` is both the fix and shorter than what is there.
-
-## The composite queue frees its host bytes only on frames that collect none
-
-`CompositeQueue::releaseFinished` is documented as "**After the upload and not
-before**", and a composite is 1.5 MiB of host memory.
-
-- [ ] `components/rtx/sceneuploader.cpp:88` vs `:133` — `hand()` calls
-  `releaseFinished()` only on the `!arrived` early return. But line 61 makes
-  `arrived` true whenever `baked > 0`, so *every frame that collects a
-  composite takes the path that never releases*. The bytes live until some
-  later frame has no arrivals at all, and a crossing that collects on
-  consecutive frames accumulates them.
-
 ## State that is written and never read
 
 - [ ] `apps/openmw/mwrender/rtx/session.hpp:461-462` — `mChecked` and `mFailed`
-  are incremented in `runChecks` (`session.cpp:1026-1030`) and read by nothing.
+  are incremented in `runChecks` (`session.cpp:1025-1029`) and read by nothing.
   Either report them in `finish()` beside the check lines, or remove both.
 - [ ] `apps/openmw/mwrender/rtx/rtxrenderer.cpp:762-764` — `mSpentMs` is
   accumulated only when `finishFrame` returned a result, but `mTimed` counts
@@ -163,9 +127,6 @@ A paragraph break inside one block was dropped, so the second paragraph reads
 as a continuation of the first (`components/rtx/lightbuilder.hpp` style is a
 blank `///` between paragraphs):
 
-- [ ] `components/rtxvulkan/vulkanrenderer.cpp:1011-1016` — "**The one
-  subtraction of two world points, and it happens here.**" sits on
-  `mLayerCompositedAfter`. The subtraction it is about is at line 1023.
 - [ ] `components/rtx/sceneextractor.cpp:581`
 - [ ] `components/rtx/texturebuilder.cpp:281`
 - [ ] `components/rtx/renderer.hpp:454`
@@ -193,10 +154,10 @@ blank `///` between paragraphs):
 
 ## Duplicated blocks inside one function
 
-- [ ] `apps/openmw/mwrender/rtx/session.cpp:364-368` and `:377-380` —
+- [ ] `apps/openmw/mwrender/rtx/session.cpp:363-367` and `:376-379` —
   `beginStop`'s free-camera branch and its final `else` branch compute `mFrom`
   and `mFromLook` with identical code. Hoist it above the `if`.
-- [ ] `apps/openmw/mwrender/rtx/session.cpp:347` and `:364` — `const
+- [ ] `apps/openmw/mwrender/rtx/session.cpp:346` and `:363` — `const
   MWWorld::Ptr player` is declared twice, the second shadowing the first inside
   the free-camera branch. The comment beside the inner one explains where a
   position lives, not why a second `getPlayerPtr()` is needed.
@@ -249,6 +210,13 @@ blank `///` between paragraphs):
   members into sub-objects that clear themselves, the way `PlacementTable` and
   `TextureTable` already do, so the list shrinks to the things that are really
   `SceneDesc`'s own.
+- [ ] `components/rtx/scenedesc.cpp:718` — `SceneDesc::clear()` has no production
+  caller at all, and `components/rtx/renderer.hpp:554` states as much:
+  "`SceneDesc::clear` is never called on it". So `getResetRevision()` never
+  moves, `SceneUploader`'s `Kind::Rebuilt` path is reached only by an uploader
+  that has never seen the pair in front of it, and `CompositeQueue::gather`'s
+  whole reset branch is dead. Either delete the three of them, or say what is
+  meant to call `clear` and why nothing does.
 
 ## Include blocks out of the order the tree states
 

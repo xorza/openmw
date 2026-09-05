@@ -56,6 +56,7 @@ namespace Rtx
         // Geometry the walk has not met before has no bottom-level structure and no uploaded
         // texture. **Which is a cell change and a load, not a frame** — a door opening moves
         // instances the walk already knows.
+        //
         // A frame that only finished a bake has no new geometry and a new texture, which is an
         // arrival for everything below even though nothing was walked.
         const bool arrived = !mine || scene.getStructureRevision() != mBuilt || baked > 0;
@@ -66,70 +67,78 @@ namespace Rtx
         // has not built has nothing to append to, whatever it happens to be holding.
         const bool reset = !mine || scene.getResetRevision() != mReset;
 
+        SceneUpload done;
+
         if (!arrived)
         {
             // **A departure with nothing arriving is the ordinary way to leave a region**, and it is
             // the frame that must not wait for an arrival to give the memory back: walking away from
             // a ring frees its slots and nothing takes them over until the walk reaches the far side
             // of the next one.
-            SceneUpload left;
-            left.mDropped = dropFreed(renderer, slot, scene);
+            done.mDropped = dropFreed(renderer, slot, scene);
 
             // **Placed before the lists are forgotten**, because placing is what consumes the meshes
             // that went: their structures are destroyed and their storage given back there. Clearing
             // first would hand the renderer an empty list and hold a departed ring's structures
             // until something arrived to take the slots over.
             renderer.placeScene(slot, scene, sea);
-            scene.clearArrivals();
+            done.mKind = SceneUpload::Kind::Placed;
+        }
+        else
+        {
+            // Read only across the call below: `TextureData` carries spans into `mTextures`, and
+            // both `extendScene` and `setScene` have finished reading them when they return. What
+            // the loader holds after that is capacity for the next arrival.
+            //
+            // **Everything on a reset and the arrivals otherwise.** A reset builds the array from
+            // nothing, so what it wants is the table in its own order; a frame that grew wants the
+            // slots that were written and no others, wherever in the table they sit.
+            if (reset)
+                mTextures.describeAll(scene, images, &mComposites);
+            else
+                mTextures.describe(scene, images, scene.getArrivedTextures(), &mComposites);
 
-            // **After the upload and not before.** Between the collect and here, what the queue holds
-            // is the only copy of a composite's bytes; a region's worth is fifty megabytes, and
-            // keeping them past the frame that read them would be paying for one picture twice.
-            mComposites.releaseFinished();
-            return left;
+            done.mDescribed = mTextures.getDescriptions().size();
+            done.mUnreadable = mTextures.getUnreadable();
+
+            if (reset)
+            {
+                renderer.setScene(slot, scene, mTextures.getDescriptions(), sea);
+                done.mKind = SceneUpload::Kind::Rebuilt;
+            }
+            else
+            {
+                // Order against the arrivals is free — `SceneDesc` keeps the two lists disjoint —
+                // and first is where the memory is given back soonest. A reset needs none of this:
+                // the array is made again from nothing and holds no image of what went.
+                done.mDropped = dropFreed(renderer, slot, scene);
+                renderer.extendScene(slot, scene, mTextures.getDescriptions(), sea);
+                done.mKind = SceneUpload::Kind::Extended;
+            }
         }
 
-        // Read only across the call below: `TextureData` carries spans into `mTextures`, and both
-        // `extendScene` and `setScene` have finished reading them when they return. What the loader
-        // holds after that is capacity for the next arrival.
+        // **One tail, because all three hand-overs end the same way**: each has uploaded, so each is
+        // done with the scene's arrivals and with the queue's bytes, and each leaves the uploader
+        // describing what it just handed over. Said per branch instead, none of it is owed by any
+        // one branch in particular, so a branch written without a line of it looks finished — and
+        // the release is the line a frame that baked a composite never reaches.
         //
-        // **Everything on a reset and the arrivals otherwise.** A reset builds the array from
-        // nothing, so what it wants is the table in its own order; a frame that grew wants the slots
-        // that were written and no others, wherever in the table they sit.
-        if (reset)
-            mTextures.describeAll(scene, images, &mComposites);
-        else
-            mTextures.describe(scene, images, scene.getArrivedTextures(), &mComposites);
-
-        const SceneTextures& textures = mTextures;
-
-        SceneUpload done;
-        done.mDescribed = textures.getDescriptions().size();
-        done.mUnreadable = textures.getUnreadable();
-
-        if (reset)
-        {
-            renderer.setScene(slot, scene, textures.getDescriptions(), sea);
-            mReset = scene.getResetRevision();
-            done.mKind = SceneUpload::Kind::Rebuilt;
-        }
-        else
-        {
-            // Order against the arrivals is free — `SceneDesc` keeps the two lists disjoint — and
-            // first is where the memory is given back soonest. A reset needs none of this: the array
-            // is made again from nothing and holds no image of what went.
-            done.mDropped = dropFreed(renderer, slot, scene);
-            renderer.extendScene(slot, scene, textures.getDescriptions(), sea);
-            done.mKind = SceneUpload::Kind::Extended;
-        }
-
+        // Every field below is already what it is being set to wherever the placing branch ran, since
+        // that branch is reached only where `mine` held and nothing on it moves a revision or grows
+        // the renderer's table.
         scene.clearArrivals();
+
+        // **After the upload and not before.** Between the collect and here, what the queue holds is
+        // the only copy of a composite's bytes; a region's worth is fifty megabytes, and keeping
+        // them past the frame that read them would be paying for one picture twice.
+        mComposites.releaseFinished();
 
         mRenderer = &renderer;
         mSlot = slot;
         mScene = &scene;
         mUploaded = renderer.getTextureCount(slot);
         mBuilt = scene.getStructureRevision();
+        mReset = scene.getResetRevision();
         return done;
     }
 }
