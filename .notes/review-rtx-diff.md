@@ -10,6 +10,29 @@ touches. Test files are out of scope.
 
 ---
 
+## The checks gate cannot pass, for two reasons that are the suite's and not the renderer's
+
+`CI/check_rtx_checks.sh` is this fork's own gate. Run at Addamasartus it reports
+six checks ok and two FAIL, and the two fail the same way with the renderer
+reverted four commits, so neither is a regression.
+
+- [ ] `apps/rtxtool/main.cpp:762-808` — `commandCheck` leaves the upscaler at the
+  default `quality`, and `Check::PictureSettles` asks whether two frames of a held
+  camera hash the same. Ray Reconstruction is temporal, so they never do and the
+  check can never pass. `commandVerify` already states exactly this and forces
+  `--upscale=off` for it (`main.cpp:610-614`): "Ray Reconstruction is temporal and
+  carries state nothing below can hold still". Either `check` sets the same, or
+  `PictureSettles` joins `CrossingsAppend` as a check asked only where it can be
+  answered — that loop is already there, at `main.cpp:790-792`.
+- [ ] `apps/openmw/mwrender/rtx/checks.cpp:106-108` — `Check::SurfacesDescribed`
+  reports "1 placements wore a material nothing described" at **every** place of
+  the default suite, indoors and out, so the gate is red everywhere whatever the
+  upscaler does. Exactly one, everywhere, points at something every world has
+  rather than at a cell's content. `ExtractionStats::mUndescribedMaterials` is
+  what the check reads and `MaterialResolver::readMaterial` is what counts it —
+  find which drawable reaches it with no `Surface::Material` on its state set
+  before deciding whether the check or the extractor is wrong.
+
 ## State that is written and never read
 
 - [ ] `apps/openmw/mwrender/rtx/session.hpp:461-462` — `mChecked` and `mFailed`

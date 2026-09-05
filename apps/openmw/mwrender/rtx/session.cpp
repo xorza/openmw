@@ -205,6 +205,21 @@ namespace MWRender
         publishSessionResult(describeRun());
     }
 
+    void Session::noteStanding()
+    {
+        MWBase::World& world = *MWBase::Environment::get().getWorld();
+        const Camera& camera = *world.getRenderingManager()->getCamera();
+        const MWWorld::TimeStamp now = world.getTimeStamp();
+
+        mStood = Standing{
+            .mAt = camera.getPosition(),
+            .mFacing = camera.getOrient(),
+            .mHour = now.getHour(),
+            .mDay = now.getDay(),
+            .mWeather = world.getCurrentWeatherScriptId(),
+        };
+    }
+
     SessionResult Session::describeRun() const
     {
         SessionResult result;
@@ -212,22 +227,18 @@ namespace MWRender
         result.mPlaces = mPlaces;
         result.mReport = mReport;
 
-        if (!isPlaying())
+        if (!mStood.has_value())
             return result;
 
-        MWBase::World& world = *MWBase::Environment::get().getWorld();
-        const Camera& camera = *world.getRenderingManager()->getCamera();
+        result.mEye = osg::Vec3f(mStood->mAt);
 
         // The direction and not a point on it, for the reason `Rtx::makeCamera` gives — but a view
         // file holds a `look`, and a landmark's distance is what makes one readable.
-        const osg::Quat orient = camera.getOrient();
-        result.mEye = camera.getPosition();
-        result.mLook = result.mEye + orient * osg::Vec3d(0.0, sLookAhead, 0.0);
+        result.mLook = osg::Vec3f(mStood->mAt + mStood->mFacing * osg::Vec3d(0.0, sLookAhead, 0.0));
 
-        const MWWorld::TimeStamp now = world.getTimeStamp();
-        result.mHour = now.getHour();
-        result.mDay = now.getDay();
-        result.mWeather = Rtx::weatherName(static_cast<std::uint32_t>(world.getCurrentWeatherScriptId()));
+        result.mHour = mStood->mHour;
+        result.mDay = mStood->mDay;
+        result.mWeather = Rtx::weatherName(static_cast<std::uint32_t>(mStood->mWeather));
 
         return result;
     }
@@ -521,6 +532,12 @@ namespace MWRender
             fly();
             turnWeather();
         }
+
+        // **After the schedule has moved, because the note is of the frame about to be drawn.** The
+        // route flies the eye and the turn crosses the sky above it, both between this call and the
+        // trace — so a note taken before them describes a camera under a sky that no frame ever
+        // used. The last one taken is what `describeRun` publishes.
+        noteStanding();
     }
 
     bool Session::wantsSecondWalk() const

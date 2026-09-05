@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include <osg/Quat>
+#include <osg/Vec3d>
 #include <osg/Vec3f>
 
 #include <components/rtx/renderer.hpp>
@@ -227,7 +229,7 @@ namespace MWRender
     {
         std::vector<Stop> mStops;
 
-        /// Whether the window is shown while the run happens.
+        /// Whether the run keeps its window hidden while it happens.
         ///
         /// **Hidden costs a present per frame and nothing else**, so a headless run is not a
         /// different renderer — it is the same one with nobody watching. `view` is the one caller
@@ -327,7 +329,6 @@ namespace MWRender
         Session(const Session&) = delete;
         Session& operator=(const Session&) = delete;
 
-        /// Whether the run wants a window shown.
         bool isHeadless() const { return mRequest.mHeadless; }
 
         /// Which layers the run asked for.
@@ -407,10 +408,17 @@ namespace MWRender
         /// Everything a launcher reads back, including where the eye was left.
         ///
         /// **Published from the destructor and nowhere else.** A run that ends its last stop and a
-        /// window somebody closes both come here, and only one of the two ever reaches `finish`;
-        /// the world outlives this, because `OMW::Engine` declares it before the renderer that
-        /// holds this.
+        /// window somebody closes both come here, and only one of the two ever reaches `finish`.
+        ///
+        /// **And it asks the world nothing.** `OMW::Engine::~Engine` clears its members in a body
+        /// rather than leaving them to declaration order, and it clears the world and the state
+        /// manager *before* the renderer that holds this — so every question put to
+        /// `MWBase::Environment` from here goes through a pointer to something that has gone.
+        /// Where the run was left is read off the note `noteStanding` took instead.
         SessionResult describeRun() const;
+
+        /// Takes that note, on a frame that still has a world to take it from.
+        void noteStanding();
 
         /// Flies the player along the current stop's route by one frame's worth.
         void fly();
@@ -441,6 +449,24 @@ namespace MWRender
         /// The cell the last flown frame was drawn in, so a change of it is a boundary crossed.
         /// Compared as an address and never read, which is all an identity needs.
         const void* mCell = nullptr;
+
+        /// Where the eye stood, what it faced and what the sky was, on one frame.
+        ///
+        /// **The numbers and never the names**, because `noteStanding` writes one of these every
+        /// frame and a weather's spelling is a `std::string`. `describeRun` is the one place a name
+        /// is wanted, and it is reached once.
+        struct Standing
+        {
+            osg::Vec3d mAt;
+            osg::Quat mFacing;
+            float mHour = 0.0f;
+            int mDay = 0;
+            int mWeather = 0;
+        };
+
+        /// The last frame the run drew. Empty until a stop has begun, so a run that reached no
+        /// place describes none rather than describing wherever the new game happened to start.
+        std::optional<Standing> mStood;
 
         /// Which weather the turn is on, and how far into the transition to the next.
         std::size_t mTurnedTo = 0;
