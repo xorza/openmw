@@ -376,7 +376,7 @@ float lightThrough(vec3 from, vec3 towards, float distance)
     return through;
 }
 
-/// How far the nearest solid surface is along a ray, at most `reach` away.
+/// How far the nearest surface that stops a ray is along it, at most `reach` away.
 ///
 /// **Traversal and the cutout, and no material resolved at all.** An asker that wants a distance
 /// pays for the whole of `trace` otherwise — the plane, the shading normal, the emissive, and for a
@@ -388,17 +388,22 @@ float lightThrough(vec3 from, vec3 towards, float distance)
 /// *no nearer than that*. Nothing here runs to `mFar` unless a caller asks it to.
 ///
 /// @param mask which surfaces stop the ray. `solidWithin` asks for solids alone.
-float surfaceWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread, uint mask)
+/// @param seeThrough whether a surface the eye would see through is walked past rather than stopped
+///        at, which is the eye's own rule: `visibility.rgen` peels those and commits what stands
+///        behind them. An asker whose question is "where does the picture end" wants this, and one
+///        asking "what is the nearest thing there" does not.
+float surfaceWithin(
+    vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread, uint mask, bool seeThrough)
 {
     rayQueryEXT query;
     rayQueryInitializeEXT(query, sceneTop, gl_RayFlagsNoneEXT, mask, origin, tmin, direction, reach);
 
-    // Two lvalues the macro needs and nothing here reads: this ray sees through nothing, so what a
-    // translucent surface would have let past is never accumulated and nothing is ever walked past.
+    // Two lvalues the macro needs and nothing here reads: what a surface walked past let through is
+    // a question for whoever wants the picture, and this ray wants the distance.
     float passed = 1.0;
     uint crossed = 0u;
     RTX_RESOLVE(
-        query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), passed, crossed, false)
+        query, direction, footprint + spread * rayQueryGetIntersectionTEXT(query, false), passed, crossed, seeThrough)
 
     if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT)
         return reach;
@@ -408,7 +413,7 @@ float surfaceWithin(vec3 origin, vec3 direction, float tmin, float reach, float 
 
 float solidWithin(vec3 origin, vec3 direction, float tmin, float reach, float footprint, float spread)
 {
-    return surfaceWithin(origin, direction, tmin, reach, footprint, spread, MASK_SOLID);
+    return surfaceWithin(origin, direction, tmin, reach, footprint, spread, MASK_SOLID, false);
 }
 
 /// How many see-through surfaces a ray crosses before the first one that stops it.

@@ -147,16 +147,37 @@ namespace Rtx::Testing
                 return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
             };
 
-            // A dry cell is handed minus infinity, and falls back to sea level — which is where a
-            // water level of zero puts the layer anyway, so the two should agree. **They do not, and
-            // that is logged rather than asserted around**: up to thirteen levels between them out of
-            // the volume, where the closed form this used to run through agreed exactly.
-            // `.notes/ISSUES.md` carries it.
-            const std::array<int, 3> dry = look(-std::numeric_limits<float>::infinity(), extinction);
-            const std::array<int, 3> atSeaLevel = look(0.0f, extinction);
+            // A dry cell is handed minus infinity and falls back to sea level, which is where a
+            // water level of zero puts the layer anyway — so the two hold the same air above the
+            // base and have to draw the same frame through it.
+            //
+            // **Above the base and not on it.** The two are different worlds *below* it: a dry
+            // cell's layer is capped at its full strength down there and a flooded one holds no air
+            // at all, since the water's own absorption is what stands over a point under the
+            // surface. A ray along the base samples both sides of that step — a column of the
+            // volume has width, and the tent reaches a column either side of it, which at this
+            // frame and this distance is some five hundred units of height at the far end — so the
+            // two read up to thirteen levels apart there and agree exactly six hundred units over
+            // it. The closed form this replaced integrated the profile along the ray alone and so
+            // could not see the step at all.
+            constexpr float clearOfTheBase = 600.0f;
+            const auto lookAbove = [&](float level) {
+                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -distance, clearOfTheBase),
+                    osg::Vec3f(0.0f, 0.0f, clearOfTheBase), 60.0f, size, size, 100000.0f);
+                litThroughFog(camera, extinction, level);
+
+                // Stretched, because the ray runs six hundred units over the middle of the wall the
+                // rest of this test is measured against.
+                const SceneDesc scene = makeWall(20.0f);
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels);
+                return std::array<int, 3>{ pixels[centre], pixels[centre + 1], pixels[centre + 2] };
+            };
+
+            const std::array<int, 3> dry = lookAbove(-std::numeric_limits<float>::infinity());
+            const std::array<int, 3> atSeaLevel = lookAbove(0.0f);
             for (std::size_t channel = 0; channel < 3; ++channel)
-                EXPECT_NEAR(dry[channel], atSeaLevel[channel], 14)
-                    << "channel " << channel << ", the dry-cell fallback";
+                EXPECT_NEAR(dry[channel], atSeaLevel[channel], 1) << "channel " << channel << ", the dry-cell fallback";
 
             // Three thousand units under the ray, so it runs `exp(-3000 / 2600)` = 0.3154 of the way
             // up the layer's own falloff and crosses less than a third of the fog.
@@ -742,7 +763,15 @@ namespace Rtx::Testing
         /// what is left is `p(26.6 degrees) / p(153.4)`. An isotropic fog would give exactly one.
         TEST_F(RtxVisibilityTest, theFogScattersTheSunForwardFarHarderThanBack)
         {
-            constexpr std::uint32_t size = 33;
+            // **Wider than the 33 every other test here uses, because the volume answers per
+            // column.** A column is eight pixels across and holds the air along *its own* ray, so
+            // at 33 pixels the column the centre pixel reads points six degrees off that pixel's,
+            // climbs out of the layer, and carries air a fifth thinner than the level ray the
+            // closed form below is written for. The bias falls with the frame — 0.63 at 33 pixels,
+            // 0.53 at 129, 0.515 at 257 and 0.509 at 513, against the 0.4999 it is going to — and
+            // at 1920 by 1080 a column is a quarter of a degree wide. The ratio does not care,
+            // since the transport it divides out is the column's either way.
+            constexpr std::uint32_t size = 257;
             constexpr std::size_t centre = centreValueOf(size);
 
             // Bright enough to read against eight bits after the fog's own column has taken 83% of
@@ -804,16 +833,14 @@ namespace Rtx::Testing
             //
             // which the sRGB curve puts at 188 of 255. Four pi times that is white.
             //
-            // **The volume reads 0.597 here, a fifth over, and that is logged rather than asserted
-            // around.** The closed form this used to run through landed within 0.006; the volume
-            // has always answered this way for an exterior, and nothing had asked it before.
-            // `.notes/ISSUES.md` carries it. What is held here is the factor of `4 pi` the comment
-            // above is about — a fifth is not a factor of twelve.
+            // **The tolerance is what a column eight pixels wide has left over**, which the frame
+            // size above is about: 0.515 measured against 0.4999 here, and falling as the frame
+            // grows rather than sitting where it is.
             const float climb = 0.5f / std::sqrt(1.25f);
             const float column = std::exp(-Shaders::FOG_HEIGHT * 3.0e-4f / climb);
             const float crossed = 1.0f - std::exp(-3.0e-4f * Shaders::FOG_REACH);
 
-            EXPECT_NEAR(ahead, irradiance * forward * column * crossed, 0.12f)
+            EXPECT_NEAR(ahead, irradiance * forward * column * crossed, 0.02f)
                 << "the sun's own irradiance through the phase function, per steradian";
 
             // And the backward half is not nothing, which is the other half of why a single lobe
@@ -947,6 +974,67 @@ namespace Rtx::Testing
             EXPECT_NEAR(hazed / clear, 0.35058f, 0.02f) << "the layer's integral over the whole descent";
         }
 
+        /// The air behind a pane is the air that is there.
+        ///
+        /// **A column of the volume ends where the eye's own ray ends, and the eye sees through
+        /// glass.** `fogdepth.comp` stopped each column at the first surface its ray met, so every
+        /// slice past a pane was left as it stood and the room behind a window carried no air at
+        /// all: a wall four thousand units off behind a pane at one thousand kept 0.66 of its light
+        /// where 0.25 is what the air leaves it, and taking the pane out of the scene put it back.
+        ///
+        /// **A ratio against the same scene in clear air**, so the pane's own half and the wall's
+        /// own radiance divide out and what is left is the transmittance. The wall glows, for the
+        /// reason the test below gives: a figure no shadow, no ambient and no bounce can move.
+        TEST_F(RtxVisibilityTest, theAirBehindAPaneIsTheAirThatIsThere)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+            constexpr float wallAway = 4000.0f;
+            constexpr float extinction = 3.5e-4f;
+
+            const auto look = [&](bool paned, float thickness) {
+                SceneDesc scene;
+
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(wallAt(0.0f), {}, {}, sQuadIndices),
+                    .mMaterial = scene.addMaterial(Material{
+                        .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 1.0f),
+                        .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                    }) });
+
+                // A quarter of the way along the path, and wide enough to fill the middle of the
+                // frame from there.
+                if (paned)
+                    addPane(scene, uprightQuadAt(2400.0f, 1000.0f - wallAway), osg::Vec4f(0.0f, 0.0f, 0.0f, 0.5f));
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -wallAway, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                litThroughFog(camera, thickness);
+
+                // Nothing in the pixel but the wall's own glow through the air: a black pane
+                // reflects nothing, and air with no colour of its own scatters none in.
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mSunIrradiance = osg::Vec3f();
+                camera.mFogColour = osg::Vec3f();
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels);
+
+                return mRadiance[centre];
+            };
+
+            // The volume's own quadrature stands this a little over the closed form, which is what
+            // the tolerance is: `exp(-3.5e-4 * 4000)` is 0.2466 and it reads 0.268.
+            const float open = look(false, extinction) / look(false, 0.0f);
+            EXPECT_NEAR(open, std::exp(-extinction * wallAway), 0.03f) << "the wall through four thousand units";
+
+            // **The same air, and the pane changed none of it.** Exactly, because the two frames
+            // differ in what stands at a thousand units and in nothing about the air.
+            EXPECT_NEAR(look(true, extinction) / look(true, 0.0f), open, 1.0e-3f) << "and the same behind a pane";
+        }
+
         /// A pane is hazed over its own distance and not over the path behind it.
         ///
         /// **Two stretches of one path, split at the glass.** The composite ran before the water
@@ -967,6 +1055,12 @@ namespace Rtx::Testing
         /// `exp(-0.35)` = 0.70469 and `exp(-1.05)` = 0.34994. Composited the old way both read the
         /// wall's own column instead, and read the same number as each other.
         ///
+        /// **And the same two figures with a second pane in front of it**, which is the same fault
+        /// one layer deeper: the stack was charged the medium in front of its *nearest* layer, so a
+        /// glowing pane behind a plain one at five hundred units read as though it stood at five
+        /// hundred, and moving it along the path changed nothing at all. The plain pane halves both
+        /// frames and divides out of the ratio.
+        ///
         /// **The tolerances are the volume's own quadrature and nothing else.** Its slices are
         /// quadratic in depth, so a longer stretch is read across coarser ones: the near answer
         /// stands 0.003 over the closed form and the far one 0.014, and each tolerance is the next
@@ -980,7 +1074,7 @@ namespace Rtx::Testing
 
             const std::array<osg::Vec3f, 4> wall = wallAt(0.0f);
 
-            const auto glow = [&](float paneAway, float thickness) {
+            const auto glow = [&](float paneAway, float thickness, bool behindAnother = false) {
                 SceneDesc scene;
 
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
@@ -999,6 +1093,11 @@ namespace Rtx::Testing
                         .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
                         .mAlphaMode = AlphaMode::Blend,
                     }) });
+
+                // Half way to the glowing one at its nearest, and black, so what it puts into the
+                // pixel is nothing and what it does to the pane behind it is a half.
+                if (behindAnother)
+                    addPane(scene, uprightQuadAt(2400.0f, 500.0f - wallAway), osg::Vec4f(0.0f, 0.0f, 0.0f, 0.5f));
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -wallAway, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
@@ -1025,6 +1124,12 @@ namespace Rtx::Testing
             const float farClear = glow(3000.0f, 0.0f);
             ASSERT_NEAR(farClear, nearClear, 1.0e-4f) << "the same glass, and only the air in front of it moved";
             EXPECT_NEAR(glow(3000.0f, extinction) / farClear, 0.34994f, 0.02f) << "three thousand units of it";
+
+            // The same two, each behind a pane of its own at five hundred units.
+            EXPECT_NEAR(glow(1000.0f, extinction, true) / glow(1000.0f, 0.0f, true), 0.70469f, 0.005f)
+                << "a thousand units of air, behind a second pane";
+            EXPECT_NEAR(glow(3000.0f, extinction, true) / glow(3000.0f, 0.0f, true), 0.34994f, 0.02f)
+                << "three thousand units of it, behind a second pane";
         }
 
         /// A moon too faint for a shadow ray still lights the air.

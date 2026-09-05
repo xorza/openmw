@@ -13,25 +13,6 @@
   frame, so the lidded sprite is a handful of Bernoulli draws. Moving `SEED_LAMPS_MIRROR` and the
   seeds after it by three took the lidded value from under 5% of the open one to 92% of it.
 
-- The fog volume disagrees with the analytic answer for an even layer in two places the closed form
-  it replaced did not. A ray lying exactly on the water surface reads up to thirteen levels apart
-  between a dry cell and a cell whose water is at nought. And a level ray toward a sun a quarter of
-  the way up reads the sun's in-scattering a fifth over the closed form's
-  `irradiance * phase * column * crossed`: 0.597 against 0.500. Both are in
-  `apps/components_tests/rtx/visibility/fog.cpp` at lines 158 and 818, with their tolerances widened
-  to 14 levels and 0.12 to say so, and both were already so for every exterior.
-
-- The fog volume holds no air behind a translucent pane. `fogdepth.comp` ends each column at the
-  first surface its ray meets and a pane is one, so `fogintegrate.comp` leaves every slice past the
-  glass as it stood. With even air of 3.5e-4 per unit, a wall 4000 units off behind a pane at 1000
-  reads a transmittance of 0.638 where the closed form gives 0.247, and reads 0.265 with the pane
-  taken out of the scene.
-
-- The medium in front of a peeled stack is measured to the nearest layer alone, so every layer
-  behind it is charged the air and the water in front of the first. `visibility.rgen` composites
-  `paneRadiance` at `paneDistance` whatever the layers stand at, which a window at a thousand units
-  with another at three thousand behind it reads as one at a thousand.
-
 - Exterior cell crossings hold the tail of the moving-camera benchmark. Three `build-release` runs of
   `bench --views=island-crossing --seconds=10` on a hot card measure a median frame of 6.7-7.2 ms
   against a p99 of 127-140 ms and a worst frame of 178-202 ms. The 19 crossings take 1.9 s of the

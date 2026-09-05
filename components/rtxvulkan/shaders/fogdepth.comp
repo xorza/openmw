@@ -52,12 +52,17 @@ void main()
     // **The eye's own cone**, so a leaf's cutout is decided at the mip the eye sees it at and the
     // column stops where the pixel's ray would.
     //
+    // **And past everything the eye is seeing through, for the same reason.** The launch peels a
+    // pane of glass and a fading actor and commits what stands behind them, so a column that had
+    // ended at the glass held no air over the room behind it: a wall four thousand units off behind
+    // a pane at one thousand kept two thirds of its light where a quarter is what the air leaves it.
+    //
     // **`mFar` on a miss and not the fog's reach**, because that is what a ray that hit nothing
     // carries to the fog: the march clamps it to the reach, and a froxel past it is one no pixel
     // reads.
     const Cone cone = coneAt(frame.mCamera);
     const float surface
-        = surfaceWithin(origin, ray.mDirection, 0.0, frame.mFar, cone.mWidth, cone.mSpread, FOG_COLUMN_MASK);
+        = surfaceWithin(origin, ray.mDirection, 0.0, frame.mFar, cone.mWidth, cone.mSpread, FOG_COLUMN_MASK, true);
 
     imageStore(fogColumnDepth, column, vec4(surface, 0.0, 0.0, 0.0));
 }
