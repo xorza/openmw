@@ -54,6 +54,7 @@
 #include "../stage.hpp"
 #include "../windowsetup.hpp"
 #include "readworld.hpp"
+#include "session.hpp"
 #include "tracedview.hpp"
 #include "worldmirror.hpp"
 
@@ -84,10 +85,6 @@ namespace MWRender
         /// How often the trace's running average is reported. Five seconds at sixty frames.
         constexpr std::uint32_t sReportEvery = 300;
 
-        /// How many frames `OPENMW_RTX_SHOT` writes before it stops. A cap rather than a count,
-        /// because the alternative to a cap is filling a disk with a run somebody forgot about.
-        constexpr std::uint32_t sKeepAtMost = 16;
-
         /// Whether an environment variable is set to anything other than nothing or `0`.
         bool askedFor(const char* name)
         {
@@ -106,6 +103,12 @@ namespace MWRender
         , mStats(new osg::Stats("Viewer"))
         , mStartTick(osg::Timer::instance()->tick())
     {
+        // **Taken before anything is built, because it decides how the window opens and what the
+        // trace counts.** A run installed by a launcher is the same renderer with a schedule on it;
+        // an ordinary session takes nothing and behaves exactly as it did.
+        if (std::optional<SessionRequest> asked = takeInstalledSession(); asked.has_value())
+            mSession = std::make_unique<Session>(std::move(*asked));
+
         // **Before any content is read, because it decides what reading one records.** This is the
         // only renderer that asks what the content says a surface is, and the answer is stored on
         // every state set as it is built — so nothing else in the process pays for it.
@@ -119,7 +122,7 @@ namespace MWRender
         mFrameStamp->setSimulationTime(0.0);
         mUpdateVisitor->setFrameStamp(mFrameStamp);
 
-        createWindow(spec.mResourceDir);
+        createWindow(spec.mResourceDir, mSession != nullptr && mSession->isHeadless());
 
         mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mStats);
 
@@ -177,11 +180,12 @@ namespace MWRender
         options.mValidation.mEnabled
             = options.mValidation.mEnabled || options.mValidation.mSynchronization || options.mValidation.mGpuAssisted;
 
-        // **The one place that clears it.** The hit count is a harness figure — `shot` prints it,
-        // `bench` reports it, tests assert on it — and nothing in the game ever reads it, so the
-        // trace this builds is specialized without the atomic rather than writing a number to a
-        // buffer nobody looks at, once per pixel that hit anything, for the life of the session.
-        options.mCountHits = false;
+        // **Cleared for a played session and kept for a measured one.** The hit count is a report's
+        // figure — it is what tells "the cell rendered" from "the camera faced away from it" — and
+        // nothing a player does ever reads it, so an ordinary session is specialized without the
+        // atomic rather than writing a number to a buffer nobody looks at, once per pixel that hit
+        // anything, for the life of the session.
+        options.mCountHits = mSession != nullptr;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the
@@ -208,6 +212,15 @@ namespace MWRender
         if (SDL_GL_GetCurrentContext() != nullptr)
             throw std::runtime_error("something initialised OpenGL under the ray tracing renderer");
 
+        // **The last thing in a frame that would otherwise run on the wall clock.** The eye adapts
+        // in real time and the upscaler tunes itself against how fast a motion vector was
+        // travelled, so a played session leaves this empty and the renderer times itself. A
+        // measured run cannot: two runs of one build then adapt by different amounts and draw
+        // different pictures — measured, 48% of the frame moved by up to 29 of 255 between two runs
+        // of one binary. `[RTX] fixed step` is the same statement the simulation is stepped by.
+        if (const float step = Settings::rtx().mFixedStep; step > 0.0f)
+            mFixedStep = step;
+
         if (const char* where = std::getenv("OPENMW_RTX_SHOT"); where != nullptr && *where != '\0')
             mCapture.keepFrames(where);
     }
@@ -225,7 +238,7 @@ namespace MWRender
             SDL_DestroyWindow(mWindow);
     }
 
-    void RtxRenderer::createWindow(const std::filesystem::path& resourceDir)
+    void RtxRenderer::createWindow(const std::filesystem::path& resourceDir, const bool hidden)
     {
         // **The backend's own flag, and no `SDL_GL_SetAttribute` anywhere near it.** Which flag a
         // surface needs is the one thing about the API this file would otherwise have had to know,
@@ -233,8 +246,13 @@ namespace MWRender
         // is the point of the whole path.
         const WindowPlacement placement = describeWindow(Rtx::surfaceWindowFlag());
 
-        mWindow = SDL_CreateWindow(
-            "OpenMW", placement.mX, placement.mY, placement.mWidth, placement.mHeight, placement.mFlags);
+        // **Hidden and not absent.** A surface still needs a window, and a swapchain built on one
+        // nobody is looking at costs a present per frame and nothing else — so a headless run is
+        // the same renderer rather than a second path through it. `SDL_WINDOW_HIDDEN` also keeps
+        // the compositor from raising a window over whatever the person running it is doing.
+        const Uint32 flags = hidden ? (placement.mFlags | SDL_WINDOW_HIDDEN) : placement.mFlags;
+
+        mWindow = SDL_CreateWindow("OpenMW", placement.mX, placement.mY, placement.mWidth, placement.mHeight, flags);
         if (mWindow == nullptr)
             throw std::runtime_error(std::string("failed to create SDL window: ") + SDL_GetError());
 
@@ -305,6 +323,12 @@ namespace MWRender
         // is the only way to get this wrong.
         osgGA::EventQueue::Events events;
         mEvents->takeEvents(events);
+    }
+
+    void RtxRenderer::tickSchedule()
+    {
+        if (mSession != nullptr)
+            mSession->beforeFrame();
     }
 
     void RtxRenderer::updateTraversal()
@@ -659,7 +683,11 @@ namespace MWRender
         // upscaler, which jitters whatever it is told, is handed the same sub-pixel offset every
         // frame and reconstructs from one sample taken repeatedly. The harness had exactly this, and
         // it cost a picture that looked plausible and carried none of the detail it was paying for.
-        constants.mFrame = static_cast<std::uint32_t>(mFrame);
+        // **The stop's own count where a run is being made, and the game's frame number
+        // otherwise.** `Session::getSampleFrame` says why: a measured run has to walk the same
+        // sequence twice, and a game's frame number carries the loading screen's frames with it.
+        const std::optional<std::uint32_t> sample = mSession != nullptr ? mSession->getSampleFrame() : std::nullopt;
+        constants.mFrame = sample.value_or(static_cast<std::uint32_t>(mFrame));
 
         // **Measured, not held at one.** A picture wants the exposure the frame asks for; holding
         // it is what a reference and a pixel test want, and the default is theirs. Without this an
@@ -672,16 +700,23 @@ namespace MWRender
         const float bias
             = read.mExposureBias.value_or(Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient));
 
-        const Rtx::Reconstruction reconstruction
-            = mRenderer->renderFrame(constants, Rtx::FrameOptions{ .mExposureBias = bias, .mExposure = std::nullopt });
+        const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(
+            constants, Rtx::FrameOptions{ .mSinceLast = mFixedStep, .mExposureBias = bias, .mExposure = std::nullopt });
 
         // **The whole frame, measured between one trace and the next.** Everything the game does
         // in between is in it — update, cull, this — which is what a player feels and what the
         // wait on the device on its own cannot say.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
         if (mEnteredOnce && result.has_value())
-            mBench.frame(
-                *result, Rtx::since(mEntered, now), walkMs, placeMs, handed.mKind == Rtx::SceneUpload::Kind::Rebuilt);
+        {
+            const double frameMs = Rtx::since(mEntered, now);
+            const bool rebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
+
+            mBench.frame(*result, frameMs, walkMs, placeMs, rebuilt);
+
+            if (mSession != nullptr)
+                mSession->frame(*mRenderer, *result, frameMs, walkMs, placeMs, rebuilt);
+        }
 
         mEntered = now;
         mEnteredOnce = true;

@@ -12,7 +12,7 @@
 #include <components/files/conversion.hpp>
 #include <components/rtx/error.hpp>
 
-namespace RtxTool
+namespace Rtx
 {
     namespace
     {
@@ -50,14 +50,14 @@ namespace RtxTool
         // that did not get written and a command that still succeeded is the next run comparing
         // against whatever was at that path before.
         if (!out)
-            throw Rtx::Error("could not write " + Files::pathToUnicodeString(file));
+            throw Error("could not write " + Files::pathToUnicodeString(file));
     }
 
     FrameHashes FrameHashes::read(const std::filesystem::path& file)
     {
         std::ifstream in(file);
         if (!in)
-            throw Rtx::Error("could not read " + Files::pathToUnicodeString(file));
+            throw Error("could not read " + Files::pathToUnicodeString(file));
 
         FrameHashes held;
         std::string line;
@@ -74,13 +74,13 @@ namespace RtxTool
             // **Every line or none.** A reference read half way is one that matches the frames it
             // reached and says nothing about the rest, which reads as a pass.
             if (!fields || hash.size() != 32)
-                throw Rtx::Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+                throw Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
 
             for (int half = 0; half < 2; ++half)
             {
                 const char* from = hash.data() + half * 16;
                 if (std::from_chars(from, from + 16, frame.mHash[half], 16).ec != std::errc{})
-                    throw Rtx::Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+                    throw Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
             }
 
             held.mFrames.push_back(std::move(frame));
@@ -124,7 +124,7 @@ namespace RtxTool
         return differences;
     }
 
-    std::string describe(const FrameHashes::ViewDifference& difference)
+    std::string describeDifference(const FrameHashes::ViewDifference& difference)
     {
         if (difference.same())
             return std::format("{} frames, every one of them the same", difference.mFrames);

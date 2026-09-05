@@ -21,19 +21,6 @@ namespace RtxTool
             return Rtx::Testing::getShaderDirectory().parent_path();
         }
 
-        TEST(RtxBenchSuiteTest, aListOfNamesLosesItsSpacingAndItsEmptyEntries)
-        {
-            EXPECT_EQ(splitNames("balmora,vivec"), (std::vector<std::string>{ "balmora", "vivec" }));
-            EXPECT_EQ(splitNames("  balmora ,\tvivec  "), (std::vector<std::string>{ "balmora", "vivec" }));
-
-            // A trailing comma is what a list being edited looks like halfway through, and an empty
-            // entry is not a view whose name is the empty string.
-            EXPECT_EQ(splitNames("balmora,,vivec,"), (std::vector<std::string>{ "balmora", "vivec" }));
-            EXPECT_EQ(splitNames("one"), (std::vector<std::string>{ "one" }));
-            EXPECT_TRUE(splitNames("").empty());
-            EXPECT_TRUE(splitNames("  ,  ").empty());
-        }
-
         TEST(RtxBenchSuiteTest, aSuiteFileIsSectionsOfViewNames)
         {
             const std::filesystem::path file = std::filesystem::temp_directory_path() / "openmw-rtx-suite-test.cfg";

@@ -17,6 +17,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/wavespectrum.hpp>
+#include <components/rtxbench/benchspec.hpp>
 
 #include "content.hpp"
 #include "framing.hpp"
@@ -157,7 +158,7 @@ namespace RtxTool
             framing.mFrame = 0;
 
             renderer->renderFrame(makeFrameConstants(framing, extents),
-                Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
+                Rtx::FrameOptions{ .mSinceLast = Rtx::sStepSeconds,
                     .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
                     .mFilter = request.mFrame.mFilter,
                     .mExposure = request.mFrame.mExposure });

@@ -61,12 +61,6 @@ namespace RtxTool
         /// Write the albedo with no shading over it.
         bool mShowAlbedo = false;
 
-        /// Whether the trace also counts the see-through surfaces each primary ray crosses.
-        ///
-        /// **Off, because it is a second traversal a pixel.** A frame time taken under it is a
-        /// measurement of the census; `shot --crossings` is the one thing that asks for it.
-        bool mCountCrossings = false;
-
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame. A picture wants it measured; a reference wants it held still.
         std::optional<float> mExposure;

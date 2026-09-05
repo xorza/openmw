@@ -10,10 +10,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <apps/rtxtool/perfcontrol.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtxbench/perfcontrol.hpp>
 
-namespace RtxTool
+namespace Rtx
 {
     namespace
     {
@@ -111,7 +111,7 @@ namespace RtxTool
             std::filesystem::remove(missing);
 
             PerfControl control(missing);
-            EXPECT_THROW(control.enable(), Rtx::Error);
+            EXPECT_THROW(control.enable(), Error);
         }
     }
 }

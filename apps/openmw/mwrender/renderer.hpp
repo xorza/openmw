@@ -194,6 +194,21 @@ namespace MWRender
         /// bindings, the HUD and the settings page read this and already treat null as "no chain".
         virtual PostProcessor* getPostProcessor() { return nullptr; }
 
+        /// The one point in the frame where the world is the calling thread's alone, offered to a
+        /// renderer that has a schedule to run against it.
+        ///
+        /// **Nothing by default, because only a renderer that is being driven has anything to do
+        /// here.** `MWRender::Session` teleports, aims a camera and turns a sky, and each of those
+        /// is a change to the simulation rather than to a picture — so it has to happen where the
+        /// simulation is changed, before the scripts, the mechanics and the Lua worker.
+        ///
+        /// **Not `advance` or `updateTraversal`, which a loading screen drives frames of its own
+        /// through.** A teleport made from either re-enters the call it was made from once per
+        /// loaded cell, and measured, that hangs: the ring reads, the screen ticks, and
+        /// `changeToCell` never returns. This one is called from `Engine::frame` and from nowhere
+        /// else, so a screen that draws under it cannot reach it again.
+        virtual void tickSchedule() {}
+
         /// Stamps the next frame. Simulation time stops when the game is paused; reference time
         /// does not.
         virtual void advance(double simulationTime) = 0;

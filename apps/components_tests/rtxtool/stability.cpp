@@ -22,6 +22,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/texturebuilder.hpp>
+#include <components/rtxbench/benchspec.hpp>
 
 #include "../rtx/harness.hpp"
 #include "installation.hpp"
@@ -222,8 +223,8 @@ namespace RtxTool
                 camera.mFrame = frame;
                 // The exposure adapts over how long a frame stood for, so a run that let it read
                 // the wall would resolve differently every time — which is the one thing this test
-                // is about. `RtxTool::sStepRate` says the rest.
-                renderer->renderFrame(camera, Rtx::FrameOptions{ .mSinceLast = sStepSeconds });
+                // is about. `RtxTool::Rtx::sStepRate` says the rest.
+                renderer->renderFrame(camera, Rtx::FrameOptions{ .mSinceLast = Rtx::sStepSeconds });
 
                 if (frame + sMeasured >= sFrames)
                 {

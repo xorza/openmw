@@ -7,6 +7,7 @@
 #include <osg/Math>
 
 #include <components/rtx/renderer.hpp>
+#include <components/rtxbench/benchrecord.hpp>
 
 #include "view.hpp"
 #include "views.hpp"
@@ -40,12 +41,6 @@ namespace RtxTool
 
     }
 
-    std::string clockFace(float hour)
-    {
-        const int minutes = static_cast<int>(std::lround(hour * 60.0f)) % (24 * 60);
-        return std::format("{:02}:{:02}", minutes / 60, minutes % 60);
-    }
-
     float Viewpoint::getBearing() const
     {
         osg::Vec3f forward = mTarget - mOrigin;
@@ -69,7 +64,7 @@ namespace RtxTool
     {
         return std::format("# {} at {:.0f}, {:.0f}, {:.0f} — bearing {:.0f}°, climb {:.0f}° — day {}, {}, {}\n",
             spot.mCell, spot.mOrigin.x(), spot.mOrigin.y(), spot.mOrigin.z(), spot.getBearing(), spot.getClimb(),
-            spot.mDay, clockFace(spot.mHour), spot.mWeather);
+            spot.mDay, Rtx::describeHour(spot.mHour), spot.mWeather);
     }
 
     std::string describeBlock(const Viewpoint& spot)
@@ -108,7 +103,7 @@ namespace RtxTool
 
         return std::format("{}  |  {:.0f} fps  |  {}  |  {:.0f}, {:.0f}, {:.0f}  |  {:.0f} u/s  |  day {} {} {}",
             title.mName, title.mFps, sizes, title.mOrigin.x(), title.mOrigin.y(), title.mOrigin.z(), title.mSpeed,
-            title.mDay, clockFace(title.mHour), sky);
+            title.mDay, Rtx::describeHour(title.mHour), sky);
     }
 
     std::string describeProfile(const ViewRequest& request, const Rtx::ValidationOptions& validation,

@@ -1,11 +1,8 @@
 #include "bench.hpp"
 
-#include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <cstddef>
 #include <format>
-#include <fstream>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -23,13 +20,16 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneuploader.hpp>
 #include <components/rtx/wavespectrum.hpp>
+#include <components/rtxbench/benchrecord.hpp>
+#include <components/rtxbench/benchspec.hpp>
+#include <components/rtxbench/framehashes.hpp>
+#include <components/rtxbench/gpuclock.hpp>
+#include <components/rtxbench/perfcontrol.hpp>
 #include <components/sky/clouds.hpp>
 #include <components/sky/skyroll.hpp>
 
 #include "content.hpp"
-#include "framehashes.hpp"
 #include "framing.hpp"
-#include "perfcontrol.hpp"
 #include "picture.hpp"
 #include "stagedworld.hpp"
 #include "viewpoint.hpp"
@@ -84,7 +84,7 @@ namespace RtxTool
                 if (!turns(mThrough))
                     return false;
 
-                mTurned += sStepSeconds / StagedWorld::sTransitionSeconds;
+                mTurned += Rtx::sStepSeconds / StagedWorld::sTransitionSeconds;
                 if (mTurned >= 1.0f)
                 {
                     mAt = (mAt + 1) % mThrough.size();
@@ -133,151 +133,6 @@ namespace RtxTool
             Rtx::OffscreenTrace mTrace;
         };
 
-        double megabytes(std::uint64_t bytes)
-        {
-            return static_cast<double>(bytes) / (1024.0 * 1024.0);
-        }
-
-        void report(const BenchPlace& place)
-        {
-            out() << '\n' << place.mView;
-            if (!place.mNote.empty())
-                out() << " — " << place.mNote;
-
-            out() << '\n'
-                  << std::format(
-                         "  cell {} at {} in {}   {} instances ({} cutouts, {} micromapped)   {:.1f} MiB structures, "
-                         "{:.1f} MiB micromaps   {} textures, {:.1f} MiB\n",
-                         place.mCell, clockFace(place.mHour), place.mWeather, place.mScene.mInstances,
-                         place.mScene.mCutoutInstances, place.mScene.mMicromappedInstances,
-                         megabytes(place.mScene.mStructureBytes), megabytes(place.mScene.mMicromapBytes),
-                         place.mScene.mTextureCount, megabytes(place.mScene.mTextureBytes))
-                  << std::format("  build {:.0f} ms   {:.1f}% of primary rays hit\n", place.mBuildMs, place.mHitPercent)
-                  << Rtx::describeHeadings() << Rtx::describeTimes("frame ms", place.mFrame)
-                  << Rtx::describeTimes("wait ms", place.mWait) << Rtx::describeTimes("walk ms", place.mWalk)
-                  << Rtx::describeTimes("place ms", place.mPlace);
-
-            // **The device's own account of the same frame, one figure each.** Six distributions
-            // would be a wall; what this row answers is "which of them is the expensive one", and
-            // the row above already says how much the whole frame varies. Each figure is the
-            // zone's share of the average frame, so the row sums to the device's part of it and a
-            // pass that only runs at a crossing says so beside its own share.
-            out() << Rtx::describeZones(place.mGpu) << describeClock(place.mClock);
-
-            // **Only for a route, because a place that stands still has nothing to say here.** The
-            // worst is the one to read: a crossing is a dropped frame, and an average over six
-            // hundred frames of which four were the expensive ones hides exactly the thing.
-            if (place.mCrossings.mCount > 0)
-                out() << std::format(
-                    "  {} crossings, {} of them rebuilds — {:.0f} ms worst; {:.1f} s over the run, "
-                    "{:.1f} reading and {:.1f} building{}\n",
-                    place.mCrossings.mCount, place.mCrossings.mRebuilds, place.mCrossings.mWorstMs,
-                    (place.mCrossings.mReadMs + place.mCrossings.mBuildMs) / 1000.0, place.mCrossings.mReadMs / 1000.0,
-                    place.mCrossings.mBuildMs / 1000.0,
-                    place.mTravelled < 1.0 ? std::format(", {:.0f}% of the route flown", place.mTravelled * 100.0)
-                                           : "");
-
-            out() << std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", place.mFrames,
-                place.mWallSeconds, place.mFrame.getRate(), place.mFrame.getLowRate());
-        }
-
-        /// Null where nothing answered, so a record taken on a machine with no `nvidia-smi` says it
-        /// carries no clock rather than claiming one of zero.
-        std::string asJson(const GpuClock& clock)
-        {
-            if (!clock.mRead)
-                return "null";
-
-            return std::format(
-                R"({{"lowestMhz": {}, "highestMhz": {}, "memoryMhz": {}, "temperatureC": {}, "throttle": "{}"}})",
-                clock.mLowestMhz, clock.mHighestMhz, clock.mMemoryMhz, clock.mTemperatureC,
-                describeThrottle(clock.mThrottleMask));
-        }
-
-        /// Everything a scene came to, so the record can compare what a change cost in memory as
-        /// well as in time.
-        ///
-        /// **Every field, because the report beside it chooses and this does not.** A human report
-        /// leaves out what nobody reads at a glance; a record exists to be diffed against the same
-        /// run on another commit, and a figure it never wrote is one nobody can go back for.
-        std::string asJson(const Rtx::SceneStats& scene)
-        {
-            return std::format(R"({{"instances": {}, "cutoutInstances": {}, "micromappedInstances": {}, )"
-                               R"("structureBytes": {}, "micromapBytes": {}, "tableBytes": {}, "textureCount": {}, )"
-                               R"("textureBytes": {}}})",
-                scene.mInstances, scene.mCutoutInstances, scene.mMicromappedInstances, scene.mStructureBytes,
-                scene.mMicromapBytes, scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes);
-        }
-
-        std::string asJson(const Crossings& crossings)
-        {
-            return std::format(
-                R"({{"count": {}, "rebuilds": {}, "worstMs": {:.2f}, "readMs": {:.2f}, "buildMs": {:.2f}}})",
-                crossings.mCount, crossings.mRebuilds, crossings.mWorstMs, crossings.mReadMs, crossings.mBuildMs);
-        }
-
-        std::string asJson(const Rtx::FrameTimes& times)
-        {
-            return std::format(
-                R"({{"median": {:.4f}, "mean": {:.4f}, "p95": {:.4f}, "p99": {:.4f}, "best": {:.4f}, "worst": {:.4f}}})",
-                times.mMedian, times.mMean, times.mP95, times.mP99, times.mBest, times.mWorst);
-        }
-
-        /// **The counts as well as the times**, because a zone's distribution is over the frames
-        /// that ran it: without them a record cannot tell a pass that costs the frame a tenth of a
-        /// millisecond from one that costs seven every sixtieth frame.
-        std::string asJson(const Rtx::GpuZone& zone)
-        {
-            return std::format(R"({{"shareMs": {:.4f}, "frames": {}, "ofFrames": {}, "times": {}}})", zone.mShareMs,
-                zone.mFrames, zone.mOfFrames, asJson(zone.mTimes));
-        }
-
-        /// Writes the run as one record, for comparing against the same run on another commit.
-        ///
-        /// Hand-written rather than through a library: this is numbers and the names of places, and
-        /// the alternative is a dependency for the sake of a page. Whatever is a record of its own —
-        /// a scene, a distribution, a clock — has an `asJson` above, so a field added to one of
-        /// those reaches this without anybody remembering to come here.
-        void writeJson(const std::filesystem::path& path, const BenchRequest& request, const Rtx::FrameExtents& extents,
-            bool validating, const std::vector<BenchPlace>& places)
-        {
-            std::ofstream file(path);
-
-            file << "{\n"
-                 << std::format(R"(  "suite": "{}",)", request.mSuite) << '\n'
-                 << std::format(R"(  "output": [{}, {}],)", extents.mOutputWidth, extents.mOutputHeight) << '\n'
-                 << std::format(R"(  "render": [{}, {}],)", extents.mRenderWidth, extents.mRenderHeight) << '\n'
-                 << std::format(R"(  "upscale": "{}",)", Rtx::upscaleName(request.mFrame.mUpscale)) << '\n'
-                 << std::format(R"(  "preset": "{}",)", Rtx::presetName(request.mFrame.mPreset)) << '\n'
-                 << std::format(R"(  "reorder": "{}",)", Rtx::reorderName(request.mFrame.mReorder)) << '\n'
-                 << std::format(R"(  "frames": {}, "warmup": {}, "validation": {},)", request.getMeasured(),
-                        request.getWarmup(), validating)
-                 << '\n'
-                 << R"(  "places": [)" << '\n';
-
-            for (std::size_t at = 0; at < places.size(); ++at)
-            {
-                const BenchPlace& place = places[at];
-                file << std::format(R"(    {{"view": "{}", "cell": "{}", "hour": {}, "weather": "{}", )", place.mView,
-                    place.mCell, place.mHour, place.mWeather)
-                     << std::format(R"("buildMs": {:.2f}, )", place.mBuildMs) << R"("scene": )" << asJson(place.mScene)
-                     << std::format(R"(, "frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
-                            place.mWallSeconds, place.mHitPercent)
-                     << R"("crossings": )" << asJson(place.mCrossings)
-                     << std::format(R"(, "travelled": {:.4f}, )", place.mTravelled) << R"("frameMs": )"
-                     << asJson(place.mFrame) << R"(, "waitMs": )" << asJson(place.mWait) << R"(, "walkMs": )"
-                     << asJson(place.mWalk) << R"(, "placeMs": )" << asJson(place.mPlace) << R"(, "gpuMs": {)";
-
-                for (std::size_t zone = 0; zone < place.mGpu.size(); ++zone)
-                    file << std::format(
-                        R"({}"{}": {})", zone == 0 ? "" : ", ", place.mGpu[zone].mName, asJson(place.mGpu[zone]));
-
-                file << "}, \"clock\": " << asJson(place.mClock) << "}" << (at + 1 < places.size() ? "," : "") << '\n';
-            }
-
-            file << "  ]\n}\n";
-        }
-
         /// Whether someone has asked for the run to stop. Events are pumped whether or not there is
         /// a window: SDL is initialised either way, and a window nobody drains stops being drawn by
         /// the compositor and starts being reported as hung.
@@ -295,26 +150,13 @@ namespace RtxTool
         }
     }
 
-    std::uint32_t BenchRequest::getMeasured() const
-    {
-        if (mFrames > 0)
-            return mFrames;
-
-        return std::max(1u, static_cast<std::uint32_t>(std::lround(mSeconds * sStepRate)));
-    }
-
-    std::uint32_t BenchRequest::getWarmup() const
-    {
-        return static_cast<std::uint32_t>(std::lround(std::max(mWarmup, 0.0f) * sStepRate));
-    }
-
     /// Everything one place is measured with, which is the same for every place in a run.
     struct BenchRun
     {
         World& mWorld;
         Rtx::Renderer& mRenderer;
         const BenchRequest& mRequest;
-        PerfControl& mProfiling;
+        Rtx::PerfControl& mProfiling;
 
         /// Where the run is shown, or null where nobody asked to watch it.
         Window* mWindow = nullptr;
@@ -323,7 +165,7 @@ namespace RtxTool
         /// a read back submits a copy and waits on it, so every frame is serialised against the
         /// device and what the rows measure is that.
         bool mJudging = false;
-        FrameHashes& mHashes;
+        Rtx::FrameHashes& mHashes;
 
         std::uint32_t mWarmup = 0;
         std::uint32_t mMeasured = 0;
@@ -341,7 +183,7 @@ namespace RtxTool
     ///        for both this and `verify`, and a report that worked it out again could disagree.
     /// @param samples and `pixelScratch` belong to the run and are refilled here, so that a place
     ///        does not allocate what the place before it already had.
-    std::optional<BenchPlace> measurePlace(const BenchRun& run, const View& view, const StagingRequest& staging,
+    std::optional<Rtx::BenchPlace> measurePlace(const BenchRun& run, const View& view, const StagingRequest& staging,
         StagedWorld& staged, Rtx::FrameSamples& samples, std::vector<std::uint8_t>& pixelScratch, bool& stopped)
     {
         Rtx::Renderer& renderer = run.mRenderer;
@@ -364,7 +206,7 @@ namespace RtxTool
 
         samples.clear();
 
-        Crossings crossings;
+        Rtx::Crossings crossings;
         float part = 0.0f;
 
         WeatherTurn turn(run.mRequest.mTurnWeather, staged, run.mRequest.mFrame.mDay, run.mRequest.mFrame.mHour);
@@ -380,7 +222,7 @@ namespace RtxTool
         Rtx::GpuBreakdown gpu;
 
         // Both ends of the measured window, so what it reports bounds the frames between them.
-        GpuClock clock;
+        Rtx::GpuClock clock;
 
         std::uint32_t hits = 0;
 
@@ -406,7 +248,7 @@ namespace RtxTool
                 // and it would print a fast clock over frames drawn at a slower one. Outside
                 // the wall clock and before `frameStart`, so the process spawn it costs is in
                 // no frame's time.
-                clock.add(readGpuClock());
+                clock.add(Rtx::readGpuClock());
 
                 runStart = Clock::now();
                 run.mProfiling.enable();
@@ -425,7 +267,8 @@ namespace RtxTool
             Placement standing = staged.getPlacement();
             if (view.mRoute.has_value() && frame >= run.mWarmup)
             {
-                part = view.mRoute->partAt(staged.getPlacement(), static_cast<float>(frame - run.mWarmup) / sStepRate);
+                part = view.mRoute->partAt(
+                    staged.getPlacement(), static_cast<float>(frame - run.mWarmup) / Rtx::sStepRate);
                 standing = view.mRoute->at(staged.getPlacement(), part);
             }
 
@@ -495,7 +338,7 @@ namespace RtxTool
             framing.mShowAlbedo = run.mRequest.mFrame.mShowAlbedo;
 
             framing.mLighting = staged.getLighting();
-            framing.mLighting.mSeconds = static_cast<float>(frame) / sStepRate;
+            framing.mLighting.mSeconds = static_cast<float>(frame) / Rtx::sStepRate;
 
             // **Off the frame index, like everything else a measured run animates.** The hour
             // does not move here, so no game time passes for the star sphere to turn on, and
@@ -515,7 +358,7 @@ namespace RtxTool
                 tile->draw(standing.mOrigin);
 
             renderer.renderFrame(makeFrameConstants(framing, renderer.getExtents()),
-                Rtx::FrameOptions{ .mSinceLast = sStepSeconds,
+                Rtx::FrameOptions{ .mSinceLast = Rtx::sStepSeconds,
                     .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
                     .mFilter = run.mRequest.mFrame.mFilter,
                     .mExposure = run.mRequest.mFrame.mExposure });
@@ -560,7 +403,7 @@ namespace RtxTool
 
         // After the wall clock above and not before it, so the spawn this costs is outside the
         // run it describes.
-        clock.add(readGpuClock());
+        clock.add(Rtx::readGpuClock());
 
         if (samples.empty())
             return std::nullopt;
@@ -572,7 +415,7 @@ namespace RtxTool
         // the first one's iterators point at.
         const std::span<const Rtx::GpuZone> zones = gpu.summariseZones();
 
-        return BenchPlace{
+        return Rtx::BenchPlace{
             .mView = view.mName,
             .mCell = view.mCell,
             .mNote = view.mNote,
@@ -596,10 +439,10 @@ namespace RtxTool
 
     int runBench(World& world, const Rtx::ValidationOptions& validation, const BenchRequest& request)
     {
-        const std::uint32_t measured = request.getMeasured();
-        const std::uint32_t warmup = request.getWarmup();
+        const std::uint32_t measured = request.mSpec.getMeasured();
+        const std::uint32_t warmup = request.mSpec.getWarmup();
 
-        PerfControl profiling(request.mPerfControl);
+        Rtx::PerfControl profiling(request.mPerfControl);
 
         std::unique_ptr<Window> window;
         if (request.mWindow)
@@ -621,7 +464,7 @@ namespace RtxTool
 
         out() << std::format("bench: {} {}, {} frames each ({:.1f} s of world at {:.0f} Hz) after {} warming up\n",
             request.mViews.size(), request.mViews.size() == 1 ? "place" : "places", measured,
-            static_cast<double>(measured) / static_cast<double>(sStepRate), sStepRate, warmup);
+            static_cast<double>(measured) / static_cast<double>(Rtx::sStepRate), Rtx::sStepRate, warmup);
 
         out() << std::format("       {}x{}", extents.mOutputWidth, extents.mOutputHeight);
         if (extents.mRenderWidth != extents.mOutputWidth || extents.mRenderHeight != extents.mOutputHeight)
@@ -667,12 +510,13 @@ namespace RtxTool
                      "game — pass\n       `object paging active grid = false` there, or read its "
                      "instance count as another scene's\n";
 
-        FrameHashes hashes;
-        const FrameHashes reference = request.mAgainst.empty() ? FrameHashes{} : FrameHashes::read(request.mAgainst);
+        Rtx::FrameHashes hashes;
+        const Rtx::FrameHashes reference
+            = request.mAgainst.empty() ? Rtx::FrameHashes{} : Rtx::FrameHashes::read(request.mAgainst);
         // Cleared and refilled by every frame that is hashed, never freed.
         std::vector<std::uint8_t> pixelScratch;
 
-        std::vector<BenchPlace> places;
+        std::vector<Rtx::BenchPlace> places;
         places.reserve(request.mViews.size());
 
         Rtx::FrameSamples samples;
@@ -713,14 +557,14 @@ namespace RtxTool
                 return 1;
             }
 
-            const std::optional<BenchPlace> place
+            const std::optional<Rtx::BenchPlace> place
                 = measurePlace(run, view, staging, staged, samples, pixelScratch, stopped);
 
             if (!place.has_value())
                 break;
 
             places.push_back(*place);
-            report(places.back());
+            out() << Rtx::describePlace(places.back());
         }
 
         if (places.empty())
@@ -740,28 +584,30 @@ namespace RtxTool
         if (!request.mAgainst.empty())
         {
             out() << std::format("\nagainst {}\n", Files::pathToUnicodeString(request.mAgainst));
-            for (const FrameHashes::ViewDifference& difference : hashes.against(reference))
+            for (const Rtx::FrameHashes::ViewDifference& difference : hashes.against(reference))
             {
-                out() << std::format("  {:<28} {}\n", difference.mView, describe(difference));
+                out() << std::format("  {:<28} {}\n", difference.mView, Rtx::describeDifference(difference));
                 if (!difference.same())
                     judgement = 1;
             }
         }
 
-        std::uint32_t frames = 0;
-        double lasted = 0.0;
-        for (const BenchPlace& place : places)
-        {
-            frames += place.mFrames;
-            lasted += place.mWallSeconds;
-        }
-
-        out() << std::format("\n{} {}, {} frames in {:.1f} s{}\n", places.size(),
-            places.size() == 1 ? "place" : "places", frames, lasted, stopped ? " — stopped early" : "");
+        out() << Rtx::describeTotal(places, stopped);
 
         if (!request.mJson.empty())
         {
-            writeJson(request.mJson, request, extents, renderer->isValidating(), places);
+            Rtx::writeJson(request.mJson,
+                Rtx::BenchHeader{
+                    .mSuite = request.mSuite,
+                    .mExtents = extents,
+                    .mUpscale = request.mFrame.mUpscale,
+                    .mPreset = request.mFrame.mPreset,
+                    .mReorder = request.mFrame.mReorder,
+                    .mMeasured = measured,
+                    .mWarmup = warmup,
+                    .mValidating = renderer->isValidating(),
+                },
+                places);
             out() << "wrote " << Files::pathToUnicodeString(request.mJson) << '\n';
         }
 

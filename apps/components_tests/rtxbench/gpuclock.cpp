@@ -3,9 +3,9 @@
 
 #include <gtest/gtest.h>
 
-#include <apps/rtxtool/gpuclock.hpp>
+#include <components/rtxbench/gpuclock.hpp>
 
-namespace RtxTool
+namespace Rtx
 {
     namespace
     {

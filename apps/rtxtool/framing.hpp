@@ -17,20 +17,6 @@ namespace Rtx
 
 namespace RtxTool
 {
-    /// What a measured run advances the world by per frame, which is `PosedActors`' own step and
-    /// not a second opinion about it: an actor has to move the same amount per frame here as it
-    /// does in the game, and two clocks that disagreed would make a run irreproducible in the one
-    /// way that matters.
-    constexpr float sStepRate = 60.0f;
-
-    /// How long one of those frames stands for, which is what a measured frame tells the renderer.
-    ///
-    /// **The eye's adaptation and the upscaler's tuning are the last things in a frame that would
-    /// otherwise run on the wall.** A run that steps everything else by the frame index and lets
-    /// those read the clock draws a different picture every time it is run, which is a run that
-    /// cannot be compared with itself. `Rtx::FrameOptions::mSinceLast` is where this goes.
-    constexpr float sStepSeconds = 1.0f / sStepRate;
-
     /// Everything one traced frame needs settled before it is traced.
     ///
     /// **One struct because the three commands that trace a frame had each grown their own block of

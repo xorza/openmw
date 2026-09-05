@@ -20,6 +20,7 @@
 
 #include <components/debug/debugging.hpp>
 #include <components/debug/debuglog.hpp>
+#include <components/esm/refid.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
@@ -35,6 +36,8 @@
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/upscale.hpp>
+#include <components/rtxbench/benchrecord.hpp>
+#include <components/rtxbench/benchspec.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
@@ -46,13 +49,13 @@
 #include "cellscene.hpp"
 #include "find.hpp"
 #include "framerequest.hpp"
+#include "hosted.hpp"
 #include "npc.hpp"
 #include "options.hpp"
 #include "picture.hpp"
 #include "placement.hpp"
 #include "posedactors.hpp"
 #include "scene.hpp"
-#include "shot.hpp"
 #include "stagedworld.hpp"
 #include "textures.hpp"
 #include "validationchoice.hpp"
@@ -356,45 +359,6 @@ namespace RtxTool
             return 0;
         }
 
-        /// Reads a cell and places all of it, lights included.
-        ///
-        /// An interior's illumination is its own lamps over its own `AMBI`; an exterior's is the sky
-        /// and the weather, which the cell says nothing about and the clock decides.
-        int runShot(
-            World& world, const std::string& cellSpec, const Rtx::ValidationOptions& validation, ShotRequest request)
-        {
-            const ESM::Cell* cell = findCellOrComplain(world.getContent(), cellSpec);
-            if (cell == nullptr)
-                return 1;
-
-            StagingRequest staging = request.mFrame.describeStaging(request.mOrigin, request.mTarget);
-            staging.mSeaSeconds = request.mSeaSeconds;
-
-            // Held for the whole render: the extractor keys its meshes on node pointers, and actors
-            // freed while the scene still names them is a dangling identity.
-            StagedWorld staged(world, *cell, staging, request.mFrame.mActors);
-
-            request.mLighting = staged.getLighting();
-            request.mOrigin = staged.getPlacement().mOrigin;
-            request.mTarget = staged.getPlacement().mTarget;
-            request.mMotion = staged.getMotion();
-
-            printCellHeading(*cell);
-
-            if (staged.getActorCount() > 0 || staged.getPropCount() > 0)
-            {
-                const Rtx::ExtractionStats& settled = staged.getSettled();
-                out() << "actors:     " << staged.getActorCount() << " placed, " << settled.mDeformed
-                      << " deforming drawables\n"
-                      << "props:      " << staged.getPropCount() << " live, " << settled.mEmitters
-                      << " emitters holding " << settled.mSprites << " particles\n";
-            }
-
-            out() << '\n';
-
-            return renderShot(staged.getScene(), world.getImageManager(), validation, request);
-        }
-
         int runView(
             World& world, const std::string& cellSpec, const Rtx::ValidationOptions& validation, ViewRequest request)
         {
@@ -497,6 +461,34 @@ namespace RtxTool
             };
         }
 
+        /// One stop, from a place the command line named.
+        MWRender::Stop stopFrom(const Chosen& chosen)
+        {
+            MWRender::Stop stop;
+            stop.mName = chosen.mView.empty() ? chosen.mCell : chosen.mView;
+            stop.mNote = chosen.mNote;
+            stop.mCell = chosen.mCell;
+            stop.mStand.mCell = chosen.mCell;
+            stop.mStand.mEye = chosen.mOrigin;
+            stop.mStand.mLook = chosen.mTarget;
+            stop.mSky.mHour = chosen.mHour;
+            stop.mSky.mWeather = chosen.mWeather;
+
+            return stop;
+        }
+
+        /// What a hosted run writes into the settings before the engine reads them.
+        ///
+        /// **The renderer's own knobs are settings and not a second command line**, because both
+        /// binaries have to reach one renderer configured one way. The two here are the two the
+        /// game already offers; the rest — the de-lighting, the filter, the exposure, the reorder —
+        /// are still hard-coded on the game's side and are what the next step moves.
+        void applyRendererSettings(const FrameRequest& frame)
+        {
+            Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(frame.mUpscale)));
+            Settings::rtx().mPreset.set(std::string(Rtx::presetName(frame.mPreset)));
+        }
+
         /// The places a profiling run visits, in the order it visits them.
         ///
         /// **`--views` beats `--suite`, and both name entries in `views.cfg`.** A suite is a list
@@ -528,7 +520,7 @@ namespace RtxTool
                 wanted = suite->mViews;
             }
             else
-                wanted = splitNames(named);
+                wanted = Rtx::splitNames(named);
 
             const std::vector<View> chosen = chooseViews(views, wanted);
             if (chosen.empty())
@@ -546,7 +538,7 @@ namespace RtxTool
                 // A place that fixes a condition is a different frame from the same camera at noon
                 // under a clear sky, and this listing is how a view is found.
                 if (view.mHour.has_value())
-                    out() << " at " << clockFace(*view.mHour);
+                    out() << " at " << Rtx::describeHour(*view.mHour);
 
                 if (view.mWeather.has_value())
                     out() << " in " << *view.mWeather;
@@ -664,8 +656,8 @@ namespace RtxTool
 
             VerifyRequest request;
             request.mFrame = frameFrom(command, variables["hour"].as<float>(), variables["weather"].as<std::string>());
-            request.mViews = chooseViews(
-                loadViews(command.mResources / "rtx" / "views.cfg"), splitNames(variables["views"].as<std::string>()));
+            request.mViews = chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"),
+                Rtx::splitNames(variables["views"].as<std::string>()));
             applyConditions(variables, request.mViews);
             request.mOut = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
             request.mAgainst = variables["against"].as<std::string>();
@@ -693,11 +685,16 @@ namespace RtxTool
             request.mHashes = variables["hashes"].as<std::string>();
             request.mAgainst = variables["against"].as<std::string>();
             request.mPerfControl = variables["perf-control"].as<std::string>();
-            request.mSeconds = variables["seconds"].as<float>();
-            request.mWarmup = variables["warmup"].as<float>();
-            request.mFrames = variables["frames"].as<std::uint32_t>();
+
+            // **Frames win over seconds where both were named**, which is the rule the one spec
+            // spelling states: `--frames` is what a run that has to be exactly reproducible asks
+            // for, and `--seconds` is what a run being read asks for.
+            request.mSpec.mRun = variables["frames"].as<std::uint32_t>() > 0
+                ? Rtx::BenchSpan{ .mFrames = variables["frames"].as<std::uint32_t>() }
+                : Rtx::BenchSpan{ .mSeconds = variables["seconds"].as<float>() };
+            request.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
             request.mWindow = variables["window"].as<bool>();
-            request.mTurnWeather = splitNames(variables["turn-weather"].as<std::string>());
+            request.mTurnWeather = Rtx::splitNames(variables["turn-weather"].as<std::string>());
             request.mMapTile = variables["map-tile"].as<bool>();
 
             const Rtx::ValidationOptions validation = validationForMeasuring(variables, request.mWindow);
@@ -709,72 +706,71 @@ namespace RtxTool
             return runBench(world, validation, request);
         }
 
-        /// A shot and a window are one path with a window on the end of it: the same cell, the same
-        /// camera and the same frame, and they part only over what is done with the frames.
-        int shotOrView(const Command& command, const bool windowed)
+        /// A screenshot of the game's own world, taken headless.
+        ///
+        /// **The world a player stands in and not one staged here**, which is the whole of what
+        /// this path is for: the cells are read by `MWWorld::Scene`, the people are dressed by
+        /// `NpcAnimation` and the sky is reported by `MWWorld::WeatherManager`, so the picture is
+        /// the one the game draws rather than one derived beside it.
+        int commandShot(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
+            const Chosen chosen = chooseView(variables, command.mResources);
+            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
 
-            // With nothing on the command line, the ship at Seyda Neen: where the game starts, and
-            // the one place every player of this game has stood.
+            applyRendererSettings(frame);
+
+            const auto [width, height] = parseSize(variables["size"].as<std::string>());
+            Settings::video().mResolutionX.set(static_cast<int>(width));
+            Settings::video().mResolutionY.set(static_cast<int>(height));
+            Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
+            Settings::camera().mFieldOfView.set(frame.mFieldOfView);
+
+            MWRender::Stop stop = stopFrom(chosen);
+
+            // **Warmed and then held still, because a shot is a still.** The world has to arrive —
+            // the ring read, the models built, the emitters run up — before the frame that is kept
+            // means anything, and holding the clock after that is what makes two runs of one build
+            // the same picture.
+            stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
+            stop.mSchedule.mSpec.mRun
+                = Rtx::BenchSpan{ .mFrames = std::max(variables["repeat"].as<std::uint32_t>(), 1u) };
+            stop.mSchedule.mFrozen = true;
+            stop.mActions.mCapture = variables["out"].as<std::string>();
+            stop.mActions.mDump = variables["dump"].as<std::string>();
+
+            MWRender::SessionRequest request;
+            request.mStops.push_back(std::move(stop));
+
+            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
+        }
+
+        /// A window on a cell, flown by hand. The one command that still stages a world of its
+        /// own, until the game's is what it opens on.
+        int commandView(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
             const Chosen chosen = chooseView(variables, command.mResources);
 
             const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
-            const Rtx::ValidationOptions validation = validationFrom(variables, windowed);
+            const Rtx::ValidationOptions validation = validationFrom(variables, true);
 
             const Content content(command.mConfig, variables, command.mResources);
             World world(content);
             pageTerrainFrom(world, variables);
 
-            if (windowed)
-            {
-                ViewRequest request;
-                request.mFrame = frame;
-                request.mTitle = chosen.mTitle;
-                request.mView = chosen.mView;
-                request.mNote = chosen.mNote;
-                request.mCell = chosen.mCell;
-                request.mScreenshotDirectory = command.mConfig.getScreenshotPath();
-                request.mOrigin = chosen.mOrigin;
-                request.mTarget = chosen.mTarget;
-                request.mFrames = variables["frames"].as<std::uint32_t>();
-
-                return runView(world, chosen.mCell, validation, request);
-            }
-
-            ShotRequest request;
+            ViewRequest request;
             request.mFrame = frame;
-            request.mOutput = variables["out"].as<std::string>();
-            request.mSeaSeconds = variables["sea-time"].as<float>();
+            request.mTitle = chosen.mTitle;
+            request.mView = chosen.mView;
+            request.mNote = chosen.mNote;
+            request.mCell = chosen.mCell;
+            request.mScreenshotDirectory = command.mConfig.getScreenshotPath();
             request.mOrigin = chosen.mOrigin;
             request.mTarget = chosen.mTarget;
-            request.mTail = variables["tail"].as<bool>();
-            request.mFrame.mCountCrossings = variables["crossings"].as<bool>();
-            request.mDump = variables["dump"].as<std::string>();
-            request.mJitter = variables["jitter"].as<bool>();
+            request.mFrames = variables["frames"].as<std::uint32_t>();
 
-            // **A reference cannot be built through a denoiser.** `--accumulate` averages frames
-            // towards the truth and Ray Reconstruction resolves each of them towards its own
-            // opinion, so a thousand of those converge on the network rather than on the integral —
-            // the same argument `mFilter` carries, one denoiser along. Turned off rather than
-            // refused, because the default is on and nobody asking for a reference is asking for
-            // this; someone who names `--upscale` too gets what they named.
-            if (variables["accumulate"].as<std::uint32_t>() > 0 && variables["upscale"].defaulted())
-                request.mFrame.mUpscale = Rtx::Upscale::Off;
-            request.mRepeat = variables["repeat"].as<std::uint32_t>();
-            request.mAccumulate = variables["accumulate"].as<std::uint32_t>();
-
-            return runShot(world, chosen.mCell, validation, request);
-        }
-
-        int commandShot(const Command& command)
-        {
-            return shotOrView(command, false);
-        }
-
-        int commandView(const Command& command)
-        {
-            return shotOrView(command, true);
+            return runView(world, chosen.mCell, validation, request);
         }
 
         /// One verb: which command it is, the line `--help` prints for it, and what it does.

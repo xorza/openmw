@@ -66,9 +66,6 @@ namespace RtxTool
         float getClimb() const;
     };
 
-    /// The hour as a clock reads it. Rounded to the minute, which is finer than the sun moves.
-    std::string clockFace(float hour);
-
     /// One line for a person: where this is, in numbers worth reading rather than round-tripping.
     ///
     /// A `#` comment in both of the formats below, so a file of these can be fed to either.

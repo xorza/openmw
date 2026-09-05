@@ -17,14 +17,10 @@ set(RTXTOOL_FILES
     exteriorindex.hpp
     find.cpp
     find.hpp
-    framehashes.cpp
-    framehashes.hpp
     framerequest.cpp
     framerequest.hpp
     framing.cpp
     framing.hpp
-    gpuclock.cpp
-    gpuclock.hpp
     lighting.cpp
     lighting.hpp
     motion.hpp
@@ -36,8 +32,6 @@ set(RTXTOOL_FILES
     options.hpp
     parsefloat.cpp
     parsefloat.hpp
-    perfcontrol.cpp
-    perfcontrol.hpp
     picture.cpp
     picture.hpp
     placement.cpp
@@ -48,8 +42,6 @@ set(RTXTOOL_FILES
     scene.hpp
     scenedigest.cpp
     scenedigest.hpp
-    shot.cpp
-    shot.hpp
     stagedworld.cpp
     stagedworld.hpp
     terrainstorage.cpp
@@ -88,6 +80,7 @@ target_link_libraries(openmw-rtxtool-lib
     SDL2::SDL2
     openmw-rtx
     openmw-rtx-backends
+    openmw-rtx-bench
     openmw-rtx-vulkan
     components
 )
@@ -108,9 +101,25 @@ copy_resource_file("${OpenMW_SOURCE_DIR}/files/rtx/views.cfg" "${RTX_RESOURCES_R
 # Which of those a profiling run visits, and in what order.
 copy_resource_file("${OpenMW_SOURCE_DIR}/files/rtx/benches.cfg" "${RTX_RESOURCES_ROOT}" "resources/rtx/benches.cfg")
 
-openmw_add_executable(openmw-rtxtool main.cpp)
+# **The harness links the game, because it drives one.** A run stands in the world the player
+# stands in — its cells read by `MWWorld::Scene`, its people dressed by `NpcAnimation`, its sky
+# reported by `MWWorld::WeatherManager` — so a picture taken here and a picture played are one
+# picture.
+#
+# **Only the executable links it.** `openmw-rtxtool-lib` stays engine-free, which is what lets
+# `components-tests` keep linking it without pulling a whole game into a unit test binary — so
+# `hosted.cpp` is built here rather than into the library beside everything else.
+#
+# `apps/openmw` is added after this directory, and a target named in `target_link_libraries` is
+# resolved when the build files are generated rather than when the line is read — so the order is
+# free and only whether the target exists at all matters.
+if (BUILD_OPENMW)
+    openmw_add_executable(openmw-rtxtool main.cpp hosted.cpp)
 
-target_link_libraries(openmw-rtxtool openmw-rtxtool-lib)
+    target_link_libraries(openmw-rtxtool openmw-rtxtool-lib openmw-lib)
+
+    target_compile_options(openmw-rtxtool PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})
+endif()
 
 if (BUILD_WITH_CODE_COVERAGE)
     target_compile_options(openmw-rtxtool-lib PRIVATE --coverage)

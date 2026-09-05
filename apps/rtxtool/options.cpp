@@ -140,15 +140,12 @@ namespace RtxTool
 
         addOption("list-views", bpo::bool_switch(), "print the named viewpoints and quit");
 
-        owned(Verbs::Shot, "jitter", bpo::bool_switch(),
-            "move each frame's sample inside its pixel, along a Halton sequence. With "
-            "--accumulate this is what makes a reference antialiased");
         addOption("delight", bpo::value<float>()->default_value(1.0f),
             "how much of the lighting painted into each texture to divide back out, from 0 to 1. "
             "Zero is the A/B that says what it did");
         addOption("filter", bpo::value<bool>()->default_value(true)->implicit_value(true),
             "run the denoiser over the indirect light. Off shows the raw bounce, and is what a "
-            "reference built with --accumulate has to be made with");
+            "reference is made with");
         // Defaulted to an empty list rather than left absent, because `readConfiguration` walks
         // every option in this description and casts it: a composing option with no value in the
         // map is a `bad_any_cast` on every run that did not name one.
@@ -183,12 +180,6 @@ namespace RtxTool
             "actors in it measures an animated frame -- the skinning, and the structure rebuild "
             "behind it -- rather than the same frame over again");
 
-        owned(Verbs::Shot, "sea-time", bpo::value<float>()->default_value(0.0f),
-            "how many seconds the water has been moving. Zero is a still sea and a "
-            "repeatable frame, which is what a screenshot wants; two shots a known interval apart "
-            "are what say whether the caustics on a seabed travel or boil, and a window or a bench "
-            "drives this off its own clock instead");
-
         addOption("upscale", bpo::value<std::string>()->default_value(std::string(sUpscaleByDefault)),
             "put DLSS Ray Reconstruction between the trace and the picture: off, performance, "
             "balanced, quality or dlaa. --size is what comes out, and what gets traced is DLSS's "
@@ -196,7 +187,7 @@ namespace RtxTool
             "so a plain run is the renderer with everything switched on without quartering the "
             "pixels it traced; --upscale=performance is the 1920x1080 to 3840x2160 the frame budget "
             "is written against, and --upscale=off is what an A/B against the unupscaled path "
-            "needs. --accumulate turns it off unless this is named, because a reference cannot be "
+            "needs. A reference cannot be "
             "built through a denoiser");
 
         addOption("reorder", bpo::value<std::string>()->default_value("off"),
@@ -231,14 +222,6 @@ namespace RtxTool
             "also write the frame in linear radiance to this path: four floats a pixel, "
             "raw, at the render extent. What a measurement is taken on, where the PNG is what a "
             "picture is looked at as");
-        owned(Verbs::Shot, "tail", bpo::bool_switch(),
-            "report what share of the frame's bounce is far enough above the mean to be "
-            "a firefly. Wants --upscale=off and an --accumulate long enough to settle the history");
-        owned(Verbs::Shot, "crossings", bpo::bool_switch(),
-            "report how many see-through surfaces an average primary ray crosses. That "
-            "is the census `PEEL_LAYERS` is sized against, and what a deeper walk of the layers "
-            "would cost. It traces a second ray per pixel, so the frame time beside it is "
-            "not one to quote");
         addOption("albedo", bpo::bool_switch(),
             "write the albedo with no shading over it, which is what a texture problem looks like "
             "when nothing else is in the way");
@@ -293,7 +276,7 @@ namespace RtxTool
             "twelve hundred frames either way and two builds render the same twelve hundred. Twenty "
             "because ten left the CPU medians moving by more than the changes being measured");
 
-        owned(Verbs::Bench, "warmup", bpo::value<float>()->default_value(3.0f),
+        owned(Verbs::Bench | Verbs::Shot | Verbs::Verify, "warmup", bpo::value<float>()->default_value(3.0f),
             "how many seconds of world to draw and throw away before measuring. This "
             "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
             "for its residency as well");
@@ -314,11 +297,6 @@ namespace RtxTool
         owned(Verbs::Shot, "repeat", bpo::value<std::uint32_t>()->default_value(8),
             "trace the frame this many times and report the best. One submit times "
             "the GPU's clock rather than the shader; a comparison worth making wants hundreds");
-
-        owned(Verbs::Shot, "accumulate", bpo::value<std::uint32_t>()->default_value(0),
-            "average this many differently-seeded frames into the picture. The way "
-            "to a converged reference for a sampled renderer: error falls as the square root, so "
-            "a hundred is a clean picture and a thousand is something to measure against");
 
         owned(Verbs::Scene, "find", bpo::value<std::string>()->default_value(""),
             "print the world position of every object whose model path contains this. "
@@ -395,6 +373,16 @@ namespace RtxTool
         addOption("fallback",
             bpo::value<Fallback::FallbackMap>()->default_value(Fallback::FallbackMap(), "")->multitoken()->composing(),
             "fallback values");
+
+        // **The engine's own two, because a hosted run starts a real game.** Where to stand is a
+        // savegame's business — it restores the player, the camera, the hour and every cell the
+        // session had loaded, which no pair of coordinates can — and what the world draws at random
+        // is the seed's, which is what makes two runs of one build the same run.
+        addOption("load-savegame", bpo::value<Files::MaybeQuotedPath>()->default_value(Files::MaybeQuotedPath(), ""),
+            "start from this savegame rather than from a new game");
+
+        addOption("random-seed", bpo::value<unsigned int>()->default_value(42),
+            "seed the world's random draws, so two runs of one build draw the same world");
 
         Files::ConfigurationManager::addCommonOptions(result.mDescription);
 

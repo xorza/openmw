@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <string_view>
 
-namespace RtxTool
+namespace Rtx
 {
     /// perf's control fifo, so a recording holds the frames that were measured and nothing else.
     ///

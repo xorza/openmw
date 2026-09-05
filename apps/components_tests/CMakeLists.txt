@@ -191,18 +191,19 @@ if (OPENMW_RTX)
         rtx/wavemoments.hpp
         rtx/wavepass.cpp
         rtx/wavespectrum.cpp
+        rtxbench/benchspec.cpp
+        rtxbench/gpuclock.cpp
+        rtxbench/perfcontrol.cpp
         rtxtool/actor.cpp
         rtxtool/benchsuite.cpp
         rtxtool/contactsheet.cpp
         rtxtool/crossing.cpp
         rtxtool/framing.cpp
-        rtxtool/gpuclock.cpp
         rtxtool/installation.cpp
         rtxtool/lamps.cpp
         rtxtool/material.cpp
         rtxtool/options.cpp
         rtxtool/pagedterrain.cpp
-        rtxtool/perfcontrol.cpp
         rtxtool/props.cpp
         rtxtool/retire.cpp
         rtxtool/scenedigest.cpp
@@ -233,8 +234,8 @@ target_link_libraries(components-tests
 )
 
 if (OPENMW_RTX)
-    target_link_libraries(components-tests openmw-rtx openmw-rtx-backends openmw-rtx-vulkan
-                          openmw-rtxtool-lib)
+    target_link_libraries(components-tests openmw-rtx openmw-rtx-backends openmw-rtx-bench
+                          openmw-rtx-vulkan openmw-rtxtool-lib)
 
     # Per file rather than per target: this binary holds upstream's tests as well as this fork's, and
     # only the latter are ours to keep warning-free.

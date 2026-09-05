@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <osg/ref_ptr>
@@ -15,6 +16,7 @@
 #include "../renderer.hpp"
 #include "bench.hpp"
 #include "framecapture.hpp"
+#include "session.hpp"
 #include "worldmirror.hpp"
 
 namespace Resource
@@ -95,6 +97,7 @@ namespace MWRender
         void showWorld(bool shown) override { mWorldShown = shown; }
         bool toggleWorld() override { return mWorldToggled = !mWorldToggled; }
 
+        void tickSchedule() override;
         void advance(double simulationTime) override;
         void eventTraversal() override;
         void updateTraversal() override;
@@ -203,7 +206,10 @@ namespace MWRender
     private:
         /// Makes the SDL window the backend builds its surface on. No GL attribute is set and no GL
         /// flag is passed, which is what `SDL_GL_GetCurrentContext() == nullptr` then proves.
-        void createWindow(const std::filesystem::path& resourceDir);
+        ///
+        /// @param hidden opens the window without showing it, which is what a headless run wants:
+        ///        the same renderer with nobody watching, rather than a second path through it.
+        void createWindow(const std::filesystem::path& resourceDir, bool hidden);
 
         /// Sizes the trace, the surface and the viewport to the window once its size has settled.
         ///
@@ -322,6 +328,15 @@ namespace MWRender
 
         /// Times a run of frames when asked to, and is not compiled at all when it cannot be.
         Bench mBench;
+
+        /// The run a launcher installed before the engine started, or null for an ordinary
+        /// session. `MWRender::Session` says what one is and why it lives here.
+        std::unique_ptr<Session> mSession;
+
+        /// How long every frame is told it stands for, or nothing for a session that lets the
+        /// renderer time itself. `[RTX] fixed step`, read once because it cannot change while a
+        /// run is being made.
+        std::optional<float> mFixedStep;
 
         /// When the last frame was handed over, so what `Bench` measures is the whole frame and not
         /// this renderer's slice of it.

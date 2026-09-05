@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-namespace RtxTool
+namespace Rtx
 {
     /// What the device's clock and power state were, as `nvidia-smi` reports them.
     ///

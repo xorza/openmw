@@ -144,6 +144,10 @@ bool OMW::Engine::frame(unsigned frameNumber, float frametime)
             mStateManager->update(frametime);
         }
 
+        // **Where a renderer with a schedule changes the world**, and nothing by default.
+        // `MWRender::Renderer::tickSchedule` says why it is here rather than in a render callback.
+        mRenderer->tickSchedule();
+
         bool paused = mWorld->getTimeManager()->isPaused();
 
         {
@@ -668,10 +672,14 @@ void OMW::Engine::go()
     const std::chrono::steady_clock::duration maxSimulationInterval(std::chrono::milliseconds(200));
     while (!mRenderer->done() && !mStateManager->hasQuitRequest())
     {
-        const double dt = std::chrono::duration_cast<std::chrono::duration<double>>(
-                              std::min(frameRateLimiter.getLastFrameDuration(), maxSimulationInterval))
-                              .count()
-            * timeManager.getSimulationTimeScale();
+        // **The wall clock, or the step a measured run states.** `[RTX] fixed step` says why a run
+        // that has to be comparable with itself cannot animate by how long its last frame took.
+        const double measured = std::chrono::duration_cast<std::chrono::duration<double>>(
+            std::min(frameRateLimiter.getLastFrameDuration(), maxSimulationInterval))
+                                    .count();
+
+        const float fixedStep = Settings::rtx().mFixedStep;
+        const double dt = (fixedStep > 0.0f ? fixedStep : measured) * timeManager.getSimulationTimeScale();
 
         mRenderer->advance(timeManager.getRenderingSimulationTime());
 

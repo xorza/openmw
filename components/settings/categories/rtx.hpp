@@ -49,6 +49,18 @@ namespace Settings
         /// `Rtx::presetNamed`. Ray Reconstruction keeps its own presets, which are not
         /// super-resolution's.
         SettingValue<std::string> mPreset{ mIndex, "RTX", "preset" };
+
+        /// How long every frame stands for, in seconds, or nought to time each one.
+        ///
+        /// **What makes two runs of one build the same run.** Everything the world animates steps
+        /// by what the last frame took, so a build that draws a frame in four milliseconds animates
+        /// further per frame than one that takes twenty — and the two then measure different
+        /// scenes and draw different pictures. A measured run states the step instead, and ten
+        /// seconds of world is six hundred frames on every machine.
+        ///
+        /// **Nought for anybody playing**, which is the wall clock and the only thing a played
+        /// session should have.
+        SettingValue<float> mFixedStep{ mIndex, "RTX", "fixed step" };
     };
 }
 

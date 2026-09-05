@@ -27,10 +27,4 @@ namespace RtxTool
 
     /// The suite called `name`, or null.
     const BenchSuite* findSuite(const std::vector<BenchSuite>& suites, std::string_view name);
-
-    /// Splits a comma-separated list, dropping the space around each name and any empty entry.
-    ///
-    /// Shared with `--views`, so a list written on the command line and a list written in the file
-    /// are read by the same code and cannot come to disagree about a trailing comma.
-    std::vector<std::string> splitNames(std::string_view text);
 }

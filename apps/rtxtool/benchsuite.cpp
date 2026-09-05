@@ -1,38 +1,15 @@
 #include "benchsuite.hpp"
 
 #include <algorithm>
-#include <cstddef>
 #include <stdexcept>
 
 #include <components/files/conversion.hpp>
+#include <components/rtxbench/benchspec.hpp>
 #include <components/settings/categories.hpp>
 #include <components/settings/parser.hpp>
 
 namespace RtxTool
 {
-    std::vector<std::string> splitNames(std::string_view text)
-    {
-        std::vector<std::string> names;
-
-        for (std::size_t at = 0; at <= text.size();)
-        {
-            const std::size_t comma = std::min(text.find(',', at), text.size());
-            std::string_view name = text.substr(at, comma - at);
-
-            while (!name.empty() && (name.front() == ' ' || name.front() == '\t'))
-                name.remove_prefix(1);
-            while (!name.empty() && (name.back() == ' ' || name.back() == '\t'))
-                name.remove_suffix(1);
-
-            if (!name.empty())
-                names.emplace_back(name);
-
-            at = comma + 1;
-        }
-
-        return names;
-    }
-
     std::vector<BenchSuite> loadSuites(const std::filesystem::path& path)
     {
         Settings::CategorySettingValueMap entries;
@@ -53,7 +30,7 @@ namespace RtxTool
 
             BenchSuite& suite = suites.back();
             if (field == "views")
-                suite.mViews = splitNames(value);
+                suite.mViews = Rtx::splitNames(value);
             else if (field == "note")
                 suite.mNote = value;
             else

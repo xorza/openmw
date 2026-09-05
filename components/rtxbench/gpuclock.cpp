@@ -10,9 +10,9 @@
 #include <utility>
 #include <vector>
 
-#include "benchsuite.hpp"
+#include "benchspec.hpp"
 
-namespace RtxTool
+namespace Rtx
 {
     namespace
     {

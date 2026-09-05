@@ -12,6 +12,7 @@
 
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
+#include <components/rtxbench/benchspec.hpp>
 
 #include "motion.hpp"
 
@@ -119,12 +120,12 @@ namespace RtxTool
         /// standing where it will stand while the walk happens.
         void poseFor(float elapsed) { posedAt(mSeconds, elapsed); }
 
-        /// How far a repeated frame carries the animation. Sixty a second, because that is what the
-        /// frame budget is written against and an actor should move the same amount per frame here
-        /// as it does in the game.
+        /// How far a repeated frame carries the animation.
         ///
-        /// Public because `StagedWorld::warmEmitters` steps the whole graph on it.
-        static constexpr float sFrameSeconds = 1.0f / 60.0f;
+        /// **`Rtx::sStepSeconds` and not a second opinion about it.** An actor has to move the same
+        /// amount per frame here as it does in the game, and two constants for one sixtieth are two
+        /// chances to disagree about how far a run animated.
+        static constexpr float sFrameSeconds = Rtx::sStepSeconds;
 
         /// Advances to `seconds` and walks everyone back in. False where there is nobody.
         bool advanceTo(float seconds);

@@ -3,7 +3,12 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
+
+// Last, and conditional, because nothing outside the run below names either of them.
+#ifdef OPENMW_RTX_BENCH
+#include <components/rtxbench/benchrecord.hpp>
+#include <components/rtxbench/benchspec.hpp>
+#endif
 
 namespace Rtx
 {
@@ -67,8 +72,6 @@ namespace MWRender
     private:
         /// Not `const`: `Rtx::summarise` sorts each row of samples where it lies.
         void report();
-        std::string describeRun() const;
-        std::string describeWarmup() const;
 
         /// Flies the player forwards by what `mSpeed` comes to over `frameMs`, and counts the cell
         /// boundary it crossed since the last call — and whether that crossing had to be rebuilt.
@@ -76,26 +79,20 @@ namespace MWRender
         /// and a bench that stands still crosses nothing, so the count belongs here rather than
         /// beside the rows.
         ///
-        /// **Off the frame's own length and not a fixed step**, because the game's world moves on
-        /// the wall clock: a player crossing a boundary crosses it after the same distance whatever
-        /// the frame rate, which is the thing being measured. The harness steps by frame index
-        /// instead, for a reason `BenchRequest::mSeconds` gives, and the two are not the same run.
+        /// **Off the frame's own length and not a fixed step**, because a played session's world
+        /// moves on the wall clock: a player crossing a boundary crosses it after the same distance
+        /// whatever the frame rate, which is the thing being measured. A run that has to be
+        /// comparable with itself states its step instead — `[RTX] fixed step` — and the two are
+        /// not the same run.
         void fly(double frameMs, bool rebuilt);
 
-        // Frames or seconds, whichever the spec named; the other is zero.
-        std::uint32_t mWanted = 0;
-        double mWantedSeconds = 0.0;
-        std::uint32_t mWarmup = 0;
-        double mWarmupSeconds = 0.0;
-
-        /// World units a second, or zero for a bench that stands still.
-        float mSpeed = 0.0f;
+        /// How long the run is, how much of it warms up, and how fast it flies.
+        Rtx::BenchSpec mSpec;
 
         /// The height the route holds, taken where it starts. `fly` says why it is held at all.
         std::optional<float> mHeight;
 
         std::uint32_t mSeen = 0;
-        double mWarmedMs = 0.0;
         double mMeasuredMs = 0.0;
         bool mDone = false;
 
@@ -104,13 +101,8 @@ namespace MWRender
         const void* mCell = nullptr;
 
         /// How many boundaries the run crossed, how many of those could not be appended to, and
-        /// what the worst of those frames cost.
-        ///
-        /// **A count and the worst, for the reason `Crossings` gives**: a run crosses a handful,
-        /// percentiles over a handful say nothing, and the frame a player feels is the worst one.
-        std::uint32_t mCrossings = 0;
-        std::uint32_t mRebuilds = 0;
-        double mCrossWorstMs = 0.0;
+        /// what the worst of those frames cost. `Rtx::Crossings` says why a count and a worst.
+        Rtx::Crossings mCrossings;
 
         // Out of line so this header names no container, and reserved once so the run itself does
         // not allocate — a bench that stutters where it measures is measuring its own stutter.

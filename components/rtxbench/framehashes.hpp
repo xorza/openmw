@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace RtxTool
+namespace Rtx
 {
     /// MurmurHash3 over whatever is fed to it, in the order it is fed.
     ///
@@ -104,5 +104,5 @@ namespace RtxTool
     };
 
     /// The differing frames of one view, as a line for the report — or empty where it matched.
-    std::string describe(const FrameHashes::ViewDifference& difference);
+    std::string describeDifference(const FrameHashes::ViewDifference& difference);
 }
