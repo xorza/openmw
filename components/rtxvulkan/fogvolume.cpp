@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 
+#include <components/rtx/shaders/fogvolume.h>
 #include <components/rtx/shaders/scene.h>
 
 #include "commands.hpp"
@@ -26,18 +27,11 @@ namespace Rtx
 
         constexpr VkImageUsageFlags sUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-        /// Everything a pass reads, and then everything a pass writes. `lib/bindings.glsl` names
-        /// them in this order.
-        ///
-        /// **Ten images and seventeen bindings, seven of the images named twice**, because Vulkan
-        /// has no descriptor a shader may both sample and store through — and every one of them but
-        /// a pair's history is written by one pass and read by the next. The column depth is named
-        /// once: both passes reach it through the one storage binding.
-        constexpr std::uint32_t sBindings = 17;
+        /// What the set holds, which `shaders/fogvolume.h` states for this side and the shaders
+        /// that declare the same slots.
+        constexpr std::uint32_t sBindings = Shaders::FOG_BINDING_COUNT;
 
-        /// Whether a binding is read or written, which the layout and the writes must not disagree
-        /// about. Sampled first and storage after, so this is a bound rather than a table.
-        constexpr std::uint32_t sSampled = 9;
+        constexpr std::uint32_t sSampled = Shaders::FOG_SAMPLED_COUNT;
 
         constexpr bool sampledAt(std::uint32_t binding)
         {
@@ -79,11 +73,11 @@ namespace Rtx
         , mLamps(device, mColumns, mRows, sFormat, sUsage, "fog lamps", 1, Shaders::FOG_VOLUME_SLICES)
         , mAir(device, mColumns, mRows, sFormat, sUsage, "fog air", 1, Shaders::FOG_VOLUME_SLICES)
         , mAirSunward(
-              device, mColumns, mRows, VK_FORMAT_R16_SFLOAT, sUsage, "fog air sunward", 1, Shaders::FOG_VOLUME_SLICES)
+              device, mColumns, mRows, FOG_SUNWARD_FORMAT, sUsage, "fog air sunward", 1, Shaders::FOG_VOLUME_SLICES)
         , mSlice(device, mColumns, mRows, sFormat, sUsage, "fog slice", 1, Shaders::FOG_VOLUME_SLICES)
         , mSliceSunward(
-              device, mColumns, mRows, VK_FORMAT_R16_SFLOAT, sUsage, "fog slice sunward", 1, Shaders::FOG_VOLUME_SLICES)
-        , mColumnDepth(device, mColumns, mRows, VK_FORMAT_R32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "fog column depth")
+              device, mColumns, mRows, FOG_SUNWARD_FORMAT, sUsage, "fog slice sunward", 1, Shaders::FOG_VOLUME_SLICES)
+        , mColumnDepth(device, mColumns, mRows, FOG_DEPTH_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT, "fog column depth")
     {
         try
         {
@@ -129,25 +123,24 @@ namespace Rtx
                 const std::size_t written = parity;
                 const std::size_t history = 1 - parity;
 
-                const std::array<const Image*, sBindings> named{
-                    &mScatter[history],
-                    &mSunward[history],
-                    &mScatter[written],
-                    &mSunward[written],
-                    &mLamps,
-                    &mAir,
-                    &mAirSunward,
-                    &mSlice,
-                    &mSliceSunward,
-                    &mScatter[written],
-                    &mSunward[written],
-                    &mLamps,
-                    &mAir,
-                    &mAirSunward,
-                    &mSlice,
-                    &mSliceSunward,
-                    &mColumnDepth,
-                };
+                std::array<const Image*, sBindings> named{};
+                named[Shaders::BIND_FOG_WAS_SCATTER] = &mScatter[history];
+                named[Shaders::BIND_FOG_WAS_SUNWARD] = &mSunward[history];
+                named[Shaders::BIND_FOG_SCATTER] = &mScatter[written];
+                named[Shaders::BIND_FOG_SUNWARD] = &mSunward[written];
+                named[Shaders::BIND_FOG_LAMPS] = &mLamps;
+                named[Shaders::BIND_FOG_AIR] = &mAir;
+                named[Shaders::BIND_FOG_AIR_SUNWARD] = &mAirSunward;
+                named[Shaders::BIND_FOG_SLICE] = &mSlice;
+                named[Shaders::BIND_FOG_SLICE_SUNWARD] = &mSliceSunward;
+                named[Shaders::BIND_FOG_SCATTER_TARGET] = &mScatter[written];
+                named[Shaders::BIND_FOG_SUNWARD_TARGET] = &mSunward[written];
+                named[Shaders::BIND_FOG_LAMPS_TARGET] = &mLamps;
+                named[Shaders::BIND_FOG_AIR_TARGET] = &mAir;
+                named[Shaders::BIND_FOG_AIR_SUNWARD_TARGET] = &mAirSunward;
+                named[Shaders::BIND_FOG_SLICE_TARGET] = &mSlice;
+                named[Shaders::BIND_FOG_SLICE_SUNWARD_TARGET] = &mSliceSunward;
+                named[Shaders::BIND_FOG_COLUMN_DEPTH] = &mColumnDepth;
 
                 std::array<VkDescriptorImageInfo, sBindings> views{};
                 std::array<VkWriteDescriptorSet, sBindings> writes{};

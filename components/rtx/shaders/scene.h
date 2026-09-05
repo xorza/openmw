@@ -6,15 +6,6 @@
 
 #include "portable.h"
 
-// What the fog volume's two images are made of, said once for both sides that have to agree.
-// `gbuffer.h` says why a format is a macro and not a constant, and what it costs when the two
-// statements of it drift.
-#ifdef RTX_HOST
-#define FOG_VOLUME_FORMAT VK_FORMAT_R16G16B16A16_SFLOAT
-#else
-#define FOG_VOLUME_FORMAT rgba16f
-#endif
-
 // The scene's tables, and the scale its brightnesses are measured on, as both sides see them.
 // Scalar block layout throughout, so a `uint` is four bytes and a `vec2` is eight on both sides and
 // there is nothing to translate.

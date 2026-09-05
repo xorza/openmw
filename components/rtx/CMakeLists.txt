@@ -132,6 +132,7 @@ set(RTX_SHADER_HEADERS
     shaders/colour.h
     shaders/atrous.h
     shaders/composite.h
+    shaders/fogvolume.h
     shaders/gbuffer.h
     shaders/look.h
     shaders/micromap.h
