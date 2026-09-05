@@ -3,12 +3,11 @@
 # own build directory, so it does not fight debug.sh over one set of objects. Extra arguments are
 # passed to the tool: `release.sh --view=balmora`.
 #
-# `release.sh game` builds and runs OpenMW itself on the quicksave instead, `release.sh build` only
-# builds, and `release.sh bench` measures — which is what an optimised build with no layers in it is
-# for. `profile.sh` is where the measurement turns into an explanation.
+# `release.sh build` only builds and `release.sh bench` measures, which is what an optimised build
+# with no layers in it is for. `profile.sh` is where the measurement turns into an explanation.
 #
-# **Every verb drives a real game now**, so there is one binary and one bench: `bench` stands the
-# harness at each place of a suite and measures the frames a player would have seen.
+# **Every verb drives a real game**, so there is one binary and one bench: `bench` stands at each
+# place of a suite and measures the frames a player would have seen.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -39,19 +38,9 @@ if [ ! -f "$build/CMakeCache.txt" ]; then
         -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold
 fi
 
-# `game` runs OpenMW itself on the quicksave; anything else goes to the harness. Two entry points
-# rather than two more scripts, because the build directory and its configure line are the whole of
-# what the two share and the whole of what makes them different from each other.
-if [ "${1-}" = game ]; then
-    shift
-    cmake --build "$build" -j32 --target openmw
-    cd "$build"
-    exec ./openmw --skip-menu --load-savegame "$HOME/.local/share/openmw/saves/asd/Quicksave.omwsave" "$@"
-fi
-
-# `release.sh build` stops there. That is what profile.sh calls: the flags above and the configure
-# line under them are this script's, and perf has to read the binary they produced rather than one
-# built beside it.
+# `release.sh build` stops at the binary. That is what `profile.sh` calls: the flags above and the
+# configure line under them are this script's, and perf has to read the binary they produced rather
+# than one built beside it.
 if [ "${1-}" = build ]; then
     exec cmake --build "$build" -j32 --target openmw-rtxtool
 fi

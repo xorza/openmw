@@ -302,17 +302,17 @@ Each check is a stop with `mActions.mChecks`, and each `CheckId` maps to one fun
 Deleted with their subject: `actor.cpp`, `framing.cpp`, `worldclock.cpp`, `terrainstorage.cpp`,
 `installation.*`, and `crossing.cpp`'s "a region read after another stands on its own ground".
 
-`CI/check_rtx_checks.sh` runs `openmw-rtxtool check --all` in `build-debug`. One process visits
+`CI/check_rtx_checks.sh` runs `openmw-rtxtool check` in `build-debug`. One process visits
 every check's stop, so the suite costs one engine start and a cell load per stop.
 
-Verification: every verb in `--help` runs. `check --all` passes. `components-tests` builds without
+Verification: every verb in `--help` runs. `check` passes. `components-tests` builds without
 `openmw-rtxtool-lib` linking anything of the world.
 
 ## Step 4: cleanup
 
 | file | change |
 | --- | --- |
-| `AGENTS.md` | the verification paragraph: `shot` takes about five seconds and traces the game's world; `bench` is the one bench; `check --all` is the world gate. The traps: `OPENMW_RTX_BENCH` goes. The owned places: `components/rtxbench/`, `apps/components_tests/rtxbench/`. A line recording upstream edit one, and two where it landed. |
+| `AGENTS.md` | the verification paragraph: `shot` takes about five seconds and traces the game's world; `bench` is the one bench; `check` is the world gate. The traps: `OPENMW_RTX_BENCH` goes. The owned places: `components/rtxbench/`, `apps/components_tests/rtxbench/`. A line recording upstream edit one, and two where it landed. |
 | `apps/rtxtool/debug.sh`, `release.sh` | `game` runs `openmw-rtxtool view --load-savegame=...` |
 | `.notes/todo.txt` | "dedupe rtxtool, bench and game" goes |
 | `.notes/bench.txt` | the heading says which verb the rows come from |
@@ -325,8 +325,8 @@ Verification: every verb in `--help` runs. `check --all` passes. `components-tes
 | 0 | staged, plus a hosted switch | staged | staged | staged | staged | all |
 | 1 | staged | staged, new report code | staged | staged | staged | moved ones pass |
 | 2 | hosted | hosted, one bench | hosted | staged | staged | world tests still pass |
-| 3 | hosted | hosted | hosted | hosted | hosted | `check --all` |
-| 4 | hosted | hosted | hosted | hosted | hosted | `check --all` |
+| 3 | hosted | hosted | hosted | hosted | hosted | `check` |
+| 4 | hosted | hosted | hosted | hosted | hosted | `check` |
 
 Step 1 can run before or beside step 0. Step 2 needs both. Step 3 needs step 2.
 
@@ -468,11 +468,22 @@ nothing; the eight claims about paged ground, distant lights and composites; a d
 motion is its own fall; nothing falls where the eye is under water; the sea is one sheet; residents
 leave with their cell. Each is still true of the code and none is guarded.
 
+### Step 4, complete
+
+`AGENTS.md` says what the verbs are now, that a run is the same run twice and which three clocks say
+so, and where a claim belongs — a test for what is true without a world, a check for what is true of
+one. `CI/check_rtx_checks.sh` runs the checks against a real game, and says plainly that it needs an
+installation and a device rather than pretending a runner could hold it.
+
+`debug.sh` and `release.sh` lost their `game` entry points, because every verb is one.
+
 ### What is left
 
 - Time the hosted `shot` in release against the 4.4 s the staged one took, and close the spike gate.
-- Write the twelve checks listed above, and a `CI/check_rtx_checks.sh` that runs `check --all`.
-- Step 4: the guidance file and the two run scripts.
+  This needs the graphics card.
+- Run the 544 tests of `components-tests --gtest_filter=Rtx*`, which also needs the card.
+- Write the twelve checks listed above. That is the largest thing owed: five claims stand where
+  thirty-one did.
 - `view` lost the keys that ran its clock, turned its weather and printed a `views.cfg` block. The
   console answers the first two with `set gamehour to` and `changeweather`; the third wants a Lua
   script under `files/rtx/` or a console command, and `describeSpot` and `describeBlock` are kept

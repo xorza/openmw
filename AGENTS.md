@@ -68,8 +68,8 @@ taken, which is what makes "does the RT path do this correctly" answerable by co
 
 **Upstream's files are read-only.** A change lands in the RTX-owned places and nowhere else:
 `components/rtx*/`, `components/surface/`, `components/myguirtx/`, `apps/rtxtool/`,
-`apps/openmw/mwrender/rtx/`, `apps/components_tests/{rtx,rtxtool,surface}/`, `files/rtx/` and
-`.notes/`. Where the RT path cannot work without touching an upstream file, name the file and the
+`apps/openmw/mwrender/rtx/`, `apps/components_tests/{rtx,rtxbench,rtxtool,surface}/`, `files/rtx/`
+and `.notes/`. Where the RT path cannot work without touching an upstream file, name the file and the
 change and wait for a go-ahead. What is allowed is lifting shared code into `components/` so both
 hosts read one answer — `components/sky/`, `components/weather/` and `components/sceneutil/vismask.hpp`
 are that — with the rasterizer still reading what it read before. Git shows those lifts as a delete
@@ -103,6 +103,9 @@ it is a bug whether or not a second backend ever arrives.
   Written once, and it carries no graphics API and no game headers.
 - `components/rtxvulkan/` — the backend, reached through `components/rtxbackends/`. What is true of
   an API lives here and nowhere else.
+- `components/rtxbench/` — the instruments a measured run is taken with: what a run's length is
+  written as, what a place came to, how it is printed and recorded, the card's clock, perf's fifo,
+  a frame hash, a scene digest and a texture sheet. It knows nothing about a world.
 - `components/myguirtx/` — MyGUI's backend. `components/surface/` — what the content says a surface
   is.
 - `apps/openmw/mwrender/rtx/` — the game-side owner. `apps/rtxtool/` — the harness.
@@ -148,6 +151,11 @@ are the gates. What those do not tell you:
   `find <dir> -name '*.o' ! -newermt '<that time>' -delete` is the repair.
 - **CI pins clang-format 14**; this box has 22 and they disagree, so run
   `CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh`.
+- **What a test can assert and what a check can are different questions.** `components-tests` holds
+  what is true without a world: a spec, a record, a digest, a sheet. What is true *of* a world is
+  `openmw-rtxtool check`, which asks it of a running game at every place of a suite and exits
+  non-zero on the first failure. Twelve claims the deleted fixture tests carried have no check yet,
+  and `.notes/one-world-plan.md` lists each one.
 - **Tests are gtest binaries run directly**, with `--gtest_filter`; there is no ctest registration.
   Tests that need game data **skip** when it is absent and **fail** when the path is set and wrong —
   a silent skip looks like a pass.
@@ -160,13 +168,23 @@ Build the targets you touched, run the test binary that covers them with a filte
 Building the world for a one-line change in the harness is waste; so is claiming a change works
 because it compiled.
 
-**Do not open the game window to check a rendering change.** `openmw-rtxtool shot` renders the real
-renderer headlessly in about a second, takes a camera on the command line, and prints hit fraction,
-camera and frame time — enough to settle most hypotheses without looking at a picture. `scene`
-answers "what was the renderer handed" without drawing. `bench` is the only headless path with a
-moving camera, so it reproduces anything depending on motion or on cells arriving. `view` is for
-what only a window shows — how something moves, whether an artefact is a still or a shimmer — and
-`--frames N` drives it.
+**Every verb drives a real game, headless.** `openmw-rtxtool` starts an engine, teleports to the
+place a view names, warms the world up and then does whatever the verb asks — so the cells are read
+by `MWWorld::Scene`, the people are dressed by `NpcAnimation` and the sky is reported by
+`MWWorld::WeatherManager`. There is no second world any more, and no second bench.
+
+**Do not open the game window to check a rendering change.** `shot` writes one frame with no window
+and prints the hit fraction, the scene it was handed and the frame time — enough to settle most
+hypotheses without looking at a picture. `scene` answers "what was the renderer handed" without
+drawing. `bench` is what has a moving camera, so it reproduces anything depending on motion or on
+cells arriving. `check` asserts what the tree claims about both. `view` is for what only a window
+shows — how something moves, whether an artefact is a still or a shimmer — and it is the game, with
+the player's own camera and collision off; `--frames N` closes it for something that cannot click.
+
+**A run is the same run twice, and three clocks say so.** `[RTX] fixed step` is how far the
+simulation steps and how long the renderer is told a frame took, and a stop's own frame count is
+what the trace's sampler and the upscaler's jitter are walked by. A game's frame number carries
+every frame a loading screen happened to draw, which is why it is not that.
 
 **No benching and no frame times until the renderer draws everything the game has.** Land the
 feature, check it with `shot`, and move on.

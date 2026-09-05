@@ -18,8 +18,14 @@ namespace RtxTool
 {
     /// Where a camera is standing and under what, as this tool writes a place down.
     ///
-    /// **A type rather than a handful of `format` calls in the key handler**, because everything it
-    /// writes is something the tool has to be able to read back — a `views.cfg` section and a
+    /// **Kept although nothing calls the three formatters below outside their tests.** They are how
+    /// a place found by flying is written into `views.cfg`, and the window that used to print them
+    /// was this tool's own; the game's has no key bound to it yet. What that binding will be — a
+    /// Lua script under `files/rtx/` or a console command — is the open question, and rewriting
+    /// these afterwards would be rewriting what the tests already pin.
+    ///
+    /// **A type rather than a handful of `format` calls at whatever prints it**, because everything
+    /// it writes is something the tool has to be able to read back — a `views.cfg` section and a
     /// command line — and a format that drifts from its parser is not a thing an eye catches in a
     /// log. Held apart from whatever prints it, so the tests can assert both without a device.
     struct Viewpoint

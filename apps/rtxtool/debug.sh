@@ -2,12 +2,10 @@
 # Builds with debug info and opens the harness on the ship at Seyda Neen, under the validation
 # layers. Extra arguments are passed to the tool: `debug.sh --view=balmora`.
 #
-# `debug.sh game` builds and runs OpenMW itself on the quicksave instead. Profiling belongs in
-# `release.sh` and `profile.sh`: the layers cost between a tenth and half the frame rate, and
-# `bench` will say so.
-#
-# The harness drives a real game, so `debug.sh` and `debug.sh game` differ only in which binary
-# opens the window and whether a schedule is running behind it.
+# **There is no `game` entry point any more, because every verb is one.** `view` opens a window on
+# the game with the player own camera, and `--load-savegame=<file>` starts from a save rather than
+# from a new game. Profiling belongs in `release.sh` and `profile.sh`: the layers cost between a
+# tenth and half the frame rate, and `bench` will say so.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -32,16 +30,6 @@ if [ ! -f "$build/CMakeCache.txt" ]; then
         -DOPENMW_USE_SYSTEM_RECASTNAVIGATION=ON -DOPENMW_USE_SYSTEM_GOOGLETEST=ON \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold
-fi
-
-# `game` runs OpenMW itself on the quicksave; anything else goes to the harness. Two entry points
-# rather than two more scripts, because the build directory and its configure line are the whole of
-# what the two share and the whole of what makes them different from each other.
-if [ "${1-}" = game ]; then
-    shift
-    cmake --build "$build" -j32 --target openmw
-    cd "$build"
-    exec ./openmw --skip-menu --load-savegame "$HOME/.local/share/openmw/saves/asd/Quicksave.omwsave" "$@"
 fi
 
 cmake --build "$build" -j32 --target openmw-rtxtool
