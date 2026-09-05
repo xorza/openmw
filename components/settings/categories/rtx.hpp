@@ -36,7 +36,7 @@ namespace Settings
         /// How hard DLSS Ray Reconstruction works, or `off` for none of it.
         ///
         /// A name rather than a number, and unrecognised is refused rather than defaulted — see
-        /// `Rtx::upscaleNamed`.
+        /// `Rtx::upscaleNamed`. **No menu offers `off`**, for the reason `Rtx::sUpscaleModes` gives.
         ///
         /// **Changing it rebuilds every target**, which `Rtx::Renderer::setUpscale` does and the
         /// window manager asks for when this changes. A machine that cannot reach the mode keeps

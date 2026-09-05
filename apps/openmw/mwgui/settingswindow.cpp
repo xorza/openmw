@@ -1,6 +1,8 @@
 #include "settingswindow.hpp"
 
 #include <array>
+#include <cstddef>
+#include <optional>
 
 #include <unicode/locid.h>
 
@@ -644,10 +646,13 @@ namespace MWGui
 
     void SettingsWindow::onRayTracingUpscaleChanged(MyGUI::ComboBox* sender, size_t pos)
     {
-        if (pos == MyGUI::ITEM_NONE)
+        // A position the menu's own list has no mode for, which is a layout with more entries in it
+        // than there are modes.
+        const std::optional<Rtx::Upscale> chosen = Rtx::upscaleAtMenu(pos);
+        if (!chosen.has_value())
             return;
 
-        Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(Rtx::sUpscaleModes[pos])));
+        Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(*chosen)));
         apply();
     }
 
@@ -1042,9 +1047,12 @@ namespace MWGui
         // **What the setting says and not what the renderer is running**, which are the same until a
         // machine refuses a mode: the list is where a choice is made, and showing somebody another
         // answer than the one they chose would hide that the choice was written down.
-        const std::optional<Rtx::Upscale> upscale = Rtx::upscaleNamed(Settings::rtx().mUpscale.get());
+        // **Nothing selected where the setting names a mode no menu offers**, which is `off` and
+        // whatever a typo made. Showing an offered mode instead would say the renderer is in one it
+        // is not, and the first thing anybody did with the list would write that untruth down.
+        const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
 
-        mRayTracingUpscale->setIndexSelected(Rtx::upscaleModeAt(upscale.value_or(Rtx::Upscale::Off)));
+        mRayTracingUpscale->setIndexSelected(offered.value_or(MyGUI::ITEM_NONE));
     }
 
     void SettingsWindow::layoutControlsBox()

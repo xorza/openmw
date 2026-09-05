@@ -263,12 +263,24 @@
         <translation>DLSS Ray Reconstruction</translation>
     </message>
     <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame whichever mode is chosen, and every mode but DLAA also traces fewer pixels than it shows.</source>
+        <translation>Jak mocno pracuje DLSS Ray Reconstruction. W każdym trybie odszumia i wygładza śledzoną klatkę, a każdy tryb poza DLAA śledzi też mniej pikseli, niż wyświetla.</translation>
+    </message>
+    <message>
+        <source>Ultra Performance</source>
+        <translation>Ultra wydajność</translation>
+    </message>
+    <message>
+        <source>DLAA</source>
+        <translation>DLAA</translation>
+    </message>
+    <message>
         <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation>Jak mocno pracuje DLSS Ray Reconstruction. Odszumia i wygładza śledzoną klatkę, a każdy tryb poza ostatnim śledzi też mniej pikseli, niż wyświetla.</translation>
+        <translation type="vanished">Jak mocno pracuje DLSS Ray Reconstruction. Odszumia i wygładza śledzoną klatkę, a każdy tryb poza ostatnim śledzi też mniej pikseli, niż wyświetla.</translation>
     </message>
     <message>
         <source>Off</source>
-        <translation>Wyłączone</translation>
+        <translation type="vanished">Wyłączone</translation>
     </message>
     <message>
         <source>Performance</source>
@@ -284,7 +296,7 @@
     </message>
     <message>
         <source>Antialiasing only</source>
-        <translation>Tylko antyaliasing</translation>
+        <translation type="vanished">Tylko antyaliasing</translation>
     </message>
     <message>
         <source>Ray Tracing Distant Land</source>

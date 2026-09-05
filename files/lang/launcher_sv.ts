@@ -195,12 +195,24 @@
         <translation>DLSS Ray Reconstruction</translation>
     </message>
     <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame whichever mode is chosen, and every mode but DLAA also traces fewer pixels than it shows.</source>
+        <translation>Hur hårt DLSS Ray Reconstruction arbetar. Det brusreducerar och kantutjämnar den strålspårade bilden i varje läge, och alla lägen utom DLAA spårar dessutom färre pixlar än de visar.</translation>
+    </message>
+    <message>
+        <source>Ultra Performance</source>
+        <translation>Ultraprestanda</translation>
+    </message>
+    <message>
+        <source>DLAA</source>
+        <translation>DLAA</translation>
+    </message>
+    <message>
         <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation>Hur hårt DLSS Ray Reconstruction arbetar. Det brusreducerar och kantutjämnar den strålspårade bilden, och alla lägen utom det sista spårar dessutom färre pixlar än de visar.</translation>
+        <translation type="vanished">Hur hårt DLSS Ray Reconstruction arbetar. Det brusreducerar och kantutjämnar den strålspårade bilden, och alla lägen utom det sista spårar dessutom färre pixlar än de visar.</translation>
     </message>
     <message>
         <source>Off</source>
-        <translation>Av</translation>
+        <translation type="vanished">Av</translation>
     </message>
     <message>
         <source>Performance</source>
@@ -216,7 +228,7 @@
     </message>
     <message>
         <source>Antialiasing only</source>
-        <translation>Endast kantutjämning</translation>
+        <translation type="vanished">Endast kantutjämning</translation>
     </message>
     <message>
         <source>Ray Tracing Distant Land</source>

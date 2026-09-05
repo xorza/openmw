@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cstddef>
 #include <optional>
 #include <string_view>
@@ -22,7 +21,13 @@ namespace Rtx
         /// Trace and present at the same size, with no upscaler in the frame at all. What every test
         /// and every reference render uses, because a converged average is of the trace and not of
         /// a network's opinion of it.
+        ///
+        /// **Reachable by name and offered by no menu**, for the reason `sUpscaleMenu` gives.
         Off,
+
+        /// A third of the output's width and height, so a ninth of its pixels — 1280×720 internal
+        /// to 3840×2160. The fewest pixels the network will be handed for a given output.
+        UltraPerformance,
 
         /// Half the output's width and height, so a quarter of its pixels. What the frame budget is
         /// written against — 1920×1080 internal to 3840×2160.
@@ -46,6 +51,8 @@ namespace Rtx
         {
             case Upscale::Off:
                 return "off";
+            case Upscale::UltraPerformance:
+                return "ultraperformance";
             case Upscale::Performance:
                 return "performance";
             case Upscale::Balanced:
@@ -59,24 +66,43 @@ namespace Rtx
         return "off";
     }
 
-    /// Every mode, in the order something offering a choice lists them.
+    /// The modes a menu offers, in the order it lists them: fewest pixels traced first, every pixel
+    /// last, and each of them denoised.
+    ///
+    /// **Not every mode**, which is what the name says and the entries below leave out.
     ///
     /// **One list, because two menus offer it.** The launcher and the game's own settings window
     /// each turn a position in a list into a mode and back, and a list stated twice is two of them
     /// the moment a mode is added.
     ///
-    /// Read down, it is: none of it, then the three by how few pixels they trace, then the one that
-    /// traces every pixel and denoises them anyway.
-    inline constexpr std::array sUpscaleModes{ Upscale::Off, Upscale::Performance, Upscale::Balanced, Upscale::Quality,
-        Upscale::Dlaa };
+    /// **`Off` is not among them, and that is the whole of what the list decides.** Ray
+    /// Reconstruction is this renderer's denoiser and not an upscaler bolted on to one, so turning
+    /// it off does not trade sharpness for speed — it hands the frame to the wavelet filter instead
+    /// and the picture is worse in every way. The mode stays reachable by name, for a reference
+    /// render and for telling the two denoisers apart, and nobody is offered it in a menu.
+    inline constexpr std::array sUpscaleMenu{ Upscale::UltraPerformance, Upscale::Performance, Upscale::Balanced,
+        Upscale::Quality, Upscale::Dlaa };
 
-    /// Where `mode` sits in that list, which every mode does.
-    inline std::size_t upscaleModeAt(Upscale mode)
+    /// Where `mode` sits in that menu, or nothing for one it does not offer.
+    inline std::optional<std::size_t> upscaleMenuIndex(Upscale mode)
     {
-        const auto* found = std::find(sUpscaleModes.begin(), sUpscaleModes.end(), mode);
-        assert(found != sUpscaleModes.end() && "a mode the list of every mode does not hold");
+        const auto* found = std::find(sUpscaleMenu.begin(), sUpscaleMenu.end(), mode);
+        if (found == sUpscaleMenu.end())
+            return std::nullopt;
 
-        return static_cast<std::size_t>(found - sUpscaleModes.begin());
+        return static_cast<std::size_t>(found - sUpscaleMenu.begin());
+    }
+
+    /// The mode at `index` of that menu, or nothing where the menu is shorter than that.
+    ///
+    /// **Asked rather than indexed, because the list of entries lives in a layout file.** A menu
+    /// with an entry the list has no mode for would otherwise read past the end of it.
+    inline std::optional<Upscale> upscaleAtMenu(std::size_t index)
+    {
+        if (index >= sUpscaleMenu.size())
+            return std::nullopt;
+
+        return sUpscaleMenu[index];
     }
 
     /// The mode `name` spells, or nothing where it spells none of them.
@@ -88,6 +114,8 @@ namespace Rtx
     {
         if (name == "off")
             return Upscale::Off;
+        if (name == "ultraperformance")
+            return Upscale::UltraPerformance;
         if (name == "performance")
             return Upscale::Performance;
         if (name == "balanced")
@@ -96,6 +124,19 @@ namespace Rtx
             return Upscale::Quality;
         if (name == "dlaa")
             return Upscale::Dlaa;
+
+        return std::nullopt;
+    }
+
+    /// Where the mode `name` spells sits in the menu — nothing where it spells no mode at all, and
+    /// nothing where it spells one the menu does not offer.
+    ///
+    /// **Both menus ask exactly this**, of the same setting, and each answering it for itself was
+    /// three lines of the same two questions in two files.
+    inline std::optional<std::size_t> upscaleMenuIndex(std::string_view name)
+    {
+        if (const std::optional<Upscale> mode = upscaleNamed(name))
+            return upscaleMenuIndex(*mode);
 
         return std::nullopt;
     }

@@ -238,11 +238,11 @@
         <item row="8" column="1">
          <widget class="QComboBox" name="rayTracingUpscaleComboBox">
           <property name="toolTip">
-           <string>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</string>
+           <string>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame whichever mode is chosen, and every mode but DLAA also traces fewer pixels than it shows.</string>
           </property>
           <item>
            <property name="text">
-            <string>Off</string>
+            <string>Ultra Performance</string>
            </property>
           </item>
           <item>
@@ -262,7 +262,7 @@
           </item>
           <item>
            <property name="text">
-            <string>Antialiasing only</string>
+            <string>DLAA</string>
            </property>
           </item>
          </widget>

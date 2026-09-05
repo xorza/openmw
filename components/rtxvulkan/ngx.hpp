@@ -44,6 +44,8 @@ namespace Rtx
     {
         switch (upscale)
         {
+            case Upscale::UltraPerformance:
+                return NVSDK_NGX_PerfQuality_Value_UltraPerformance;
             case Upscale::Performance:
                 return NVSDK_NGX_PerfQuality_Value_MaxPerf;
             case Upscale::Balanced:
@@ -94,6 +96,8 @@ namespace Rtx
     {
         switch (upscale)
         {
+            case Upscale::UltraPerformance:
+                return NVSDK_NGX_Parameter_RayReconstruction_Hint_Render_Preset_UltraPerformance;
             case Upscale::Performance:
                 return NVSDK_NGX_Parameter_RayReconstruction_Hint_Render_Preset_Performance;
             case Upscale::Balanced:

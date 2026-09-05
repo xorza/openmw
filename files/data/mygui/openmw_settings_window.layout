@@ -976,7 +976,7 @@
                                 <!-- In the order `Rtx::sUpscaleModes` states, which is what turns a
                                      position here into a mode and back. -->
                                 <Widget type="ComboBox" skin="MW_ComboBox" position="0 0 200 24" name="RayTracingUpscaleList">
-                                    <Property key="AddItem" value="#{Interface:Off}"/>
+                                    <Property key="AddItem" value="#{OMWEngine:RayTracingUpscaleUltraPerformance}"/>
                                     <Property key="AddItem" value="#{OMWEngine:RayTracingUpscalePerformance}"/>
                                     <Property key="AddItem" value="#{OMWEngine:RayTracingUpscaleBalanced}"/>
                                     <Property key="AddItem" value="#{OMWEngine:RayTracingUpscaleQuality}"/>

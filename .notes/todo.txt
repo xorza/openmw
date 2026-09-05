@@ -8,5 +8,4 @@
 - tracy
 - async terrain loader
 - precompile shaders?
-- dlss off?
 - use appropriate weather for regions

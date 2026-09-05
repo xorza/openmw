@@ -507,6 +507,25 @@ namespace Rtx
             EXPECT_LT(fine.mRenderWidth, fine.mOutputWidth);
             EXPECT_GT(fine.mRenderWidth, fast.mRenderWidth) << "quality traces more of each side than performance";
 
+            // **Every mode a menu offers, in the order it offers them.** Each traces at least as
+            // many pixels as the one before it and DLAA traces every one, which is the whole of what
+            // the list means — and a mode the network refuses would fail here rather than in a menu.
+            std::uint32_t before = 0;
+            for (const Upscale mode : sUpscaleMenu)
+            {
+                upscaling->setUpscale(mode);
+                ASSERT_EQ(upscaling->getUpscale(), mode) << upscaleName(mode);
+
+                const FrameExtents at = drawAndRead();
+                EXPECT_GT(at.mRenderWidth, before) << upscaleName(mode) << " traced no more than the mode before it";
+                EXPECT_LE(at.mRenderWidth, at.mOutputWidth) << upscaleName(mode) << " traced more than it showed";
+                before = at.mRenderWidth;
+            }
+
+            EXPECT_EQ(sUpscaleMenu.back(), Upscale::Dlaa);
+            EXPECT_EQ(upscaling->getExtents().mRenderWidth, upscaling->getExtents().mOutputWidth)
+                << "the last mode a menu offers traces every pixel it shows";
+
             std::vector<std::string> errors;
             upscaling->takeValidationErrors(errors);
             for (const std::string& error : errors)

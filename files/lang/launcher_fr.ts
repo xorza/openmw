@@ -195,12 +195,24 @@
         <translation>DLSS Ray Reconstruction</translation>
     </message>
     <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame whichever mode is chosen, and every mode but DLAA also traces fewer pixels than it shows.</source>
+        <translation>À quel point DLSS Ray Reconstruction travaille. Il débruite et anticrénèle l&apos;image tracée quel que soit le mode, et tous les modes sauf DLAA tracent aussi moins de pixels qu&apos;ils n&apos;en affichent.</translation>
+    </message>
+    <message>
+        <source>Ultra Performance</source>
+        <translation>Ultra performance</translation>
+    </message>
+    <message>
+        <source>DLAA</source>
+        <translation>DLAA</translation>
+    </message>
+    <message>
         <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation>À quel point DLSS Ray Reconstruction travaille. Il débruite et anticrénèle l&apos;image tracée, et tous les modes sauf le dernier tracent aussi moins de pixels qu&apos;ils n&apos;en affichent.</translation>
+        <translation type="vanished">À quel point DLSS Ray Reconstruction travaille. Il débruite et anticrénèle l&apos;image tracée, et tous les modes sauf le dernier tracent aussi moins de pixels qu&apos;ils n&apos;en affichent.</translation>
     </message>
     <message>
         <source>Off</source>
-        <translation>Inactif</translation>
+        <translation type="vanished">Inactif</translation>
     </message>
     <message>
         <source>Performance</source>
@@ -216,7 +228,7 @@
     </message>
     <message>
         <source>Antialiasing only</source>
-        <translation>Anticrénelage uniquement</translation>
+        <translation type="vanished">Anticrénelage uniquement</translation>
     </message>
     <message>
         <source>Ray Tracing Distant Land</source>

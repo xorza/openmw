@@ -263,12 +263,24 @@
         <translation>DLSS Ray Reconstruction</translation>
     </message>
     <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame whichever mode is chosen, and every mode but DLAA also traces fewer pixels than it shows.</source>
+        <translation>Насколько интенсивно работает DLSS Ray Reconstruction. В любом режиме он убирает шум и сглаживает трассированный кадр, а все режимы кроме DLAA ещё и трассируют меньше пикселей, чем показывают.</translation>
+    </message>
+    <message>
+        <source>Ultra Performance</source>
+        <translation>Ультрапроизводительность</translation>
+    </message>
+    <message>
+        <source>DLAA</source>
+        <translation>DLAA</translation>
+    </message>
+    <message>
         <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
-        <translation>Насколько интенсивно работает DLSS Ray Reconstruction. Он убирает шум и сглаживает трассированный кадр, а все режимы кроме последнего ещё и трассируют меньше пикселей, чем показывают.</translation>
+        <translation type="vanished">Насколько интенсивно работает DLSS Ray Reconstruction. Он убирает шум и сглаживает трассированный кадр, а все режимы кроме последнего ещё и трассируют меньше пикселей, чем показывают.</translation>
     </message>
     <message>
         <source>Off</source>
-        <translation>Отключено</translation>
+        <translation type="vanished">Отключено</translation>
     </message>
     <message>
         <source>Performance</source>
@@ -284,7 +296,7 @@
     </message>
     <message>
         <source>Antialiasing only</source>
-        <translation>Только сглаживание</translation>
+        <translation type="vanished">Только сглаживание</translation>
     </message>
     <message>
         <source>Ray Tracing Distant Land</source>

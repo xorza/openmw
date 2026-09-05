@@ -19,6 +19,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <optional>
 
 #include <components/rtx/upscale.hpp>
@@ -100,10 +101,11 @@ bool Launcher::GraphicsPage::loadSettings()
     if (Settings::rtx().mEnabled)
         rayTracingCheckBox->setCheckState(Qt::Checked);
 
-    // A name this cannot read leaves the box where it is, which is the first entry — the same
-    // refusal `Rtx::upscaleNamed` makes, for the reason it gives.
-    if (const std::optional<Rtx::Upscale> upscale = Rtx::upscaleNamed(Settings::rtx().mUpscale.get()))
-        rayTracingUpscaleComboBox->setCurrentIndex(static_cast<int>(Rtx::upscaleModeAt(*upscale)));
+    // **Nothing selected where the setting names a mode this list does not offer**, which is `off`
+    // and whatever a typo made. `saveSettings` then leaves the setting alone rather than writing an
+    // offered mode over a choice somebody made by hand.
+    const std::optional<std::size_t> offered = Rtx::upscaleMenuIndex(Settings::rtx().mUpscale.get());
+    rayTracingUpscaleComboBox->setCurrentIndex(offered ? static_cast<int>(*offered) : -1);
 
     rayTracingDistantLandSpinBox->setValue(static_cast<int>(std::lround(Settings::rtx().mDistantLandCells)));
 
@@ -169,8 +171,11 @@ void Launcher::GraphicsPage::saveSettings()
     Settings::video().mAntialiasing.set(antiAliasingComboBox->currentText().toInt());
 
     Settings::rtx().mEnabled.set(rayTracingCheckBox->checkState() == Qt::Checked);
-    Settings::rtx().mUpscale.set(
-        std::string(Rtx::upscaleName(Rtx::sUpscaleModes[rayTracingUpscaleComboBox->currentIndex()])));
+    // Nothing chosen is a setting nobody here may answer for — see `loadSettings`.
+    const int chosenIndex = rayTracingUpscaleComboBox->currentIndex();
+    if (chosenIndex >= 0)
+        if (const std::optional<Rtx::Upscale> chosen = Rtx::upscaleAtMenu(static_cast<std::size_t>(chosenIndex)))
+            Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(*chosen)));
     Settings::rtx().mDistantLandCells.set(static_cast<float>(rayTracingDistantLandSpinBox->value()));
 
     int cWidth = 0;
