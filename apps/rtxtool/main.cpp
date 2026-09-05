@@ -240,6 +240,7 @@ namespace RtxTool
             request.mJitter = variables["jitter"].as<bool>();
             request.mCountCrossings = variables["crossings"].as<bool>();
             request.mDistantCells = variables["distant-cells"].as<float>();
+            request.mDistantStatics = variables["distant-statics"].as<bool>();
             request.mExposure = parseExposure(variables["exposure"].as<std::string>());
             request.mWeather = weather;
             request.mHour = hour;
@@ -445,6 +446,7 @@ namespace RtxTool
             Settings::rtx().mExposure.set(frame.mExposure.value_or(0.0f));
             Settings::rtx().mJitter.set(frame.mJitter);
             Settings::rtx().mDistantLandCells.set(frame.mDistantCells);
+            Settings::terrain().mObjectPaging.set(frame.mDistantStatics);
             Settings::rtx().mCountCrossings.set(frame.mCountCrossings);
         }
 
@@ -586,7 +588,8 @@ namespace RtxTool
             applyHostedSettings(frame);
 
             MWRender::Stop stop = stillStopAt(variables, place, frame);
-            stop.mActions.mDigest = true;
+            stop.mActions.mFind = variables["find"].as<std::string>();
+            stop.mActions.mDigest = stop.mActions.mFind.empty();
             stop.mActions.mWalkTwice = variables["twice"].as<bool>();
 
             return runOneStop(command, std::move(stop));
@@ -742,7 +745,11 @@ namespace RtxTool
             request.mQuitAtEnd = frames > 0;
             request.mValidation = validationFrom(variables, true);
 
-            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
+            // What the place is called, for the block printed when the window closes. Where the eye
+            // ends up is the game's to say.
+            const Viewpoint spot{ .mView = place.mName, .mNote = place.mNote, .mCell = place.mCell };
+
+            return runHosted(variables, command.mConfig, command.mResources, std::move(request), &spot);
         }
 
         /// Every claim the tree makes about what the renderer is handed and what it draws, asked

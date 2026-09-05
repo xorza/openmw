@@ -78,6 +78,15 @@ namespace RtxTool
         /// four cells out and a fog measured over thirty thousand units are one number.
         float mDistantCells = 4.0f;
 
+        /// Whether what the content files stand on the distant ground is paged in with it.
+        ///
+        /// **The game's own `object paging`, set rather than answered here.** What a run measures
+        /// is the paging a player gets, so the A/B that says what the buildings and the trees cost
+        /// is that setting turned off and not a second way of building the world. The ground itself
+        /// carries no flag: `Renderer::wantsPagedTerrain` says why a tracing renderer always pages
+        /// it.
+        bool mDistantStatics = true;
+
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame. A picture wants it measured; a reference wants it held still.
         std::optional<float> mExposure;

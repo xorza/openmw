@@ -31,11 +31,12 @@ namespace RtxTool
             const ToolOptions options = makeOptions(false);
 
             EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Shot),
-                "`shot` does not read --views, which belongs to `bench` and `verify`.\n");
+                "`shot` does not read --views, which belongs to `bench`, `verify` and `check`.\n");
 
             EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Bench), "")
                 << "the command the option belongs to takes it";
             EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Verify), "");
+            EXPECT_EQ(options.complainAbout(parse(options, { "--views=balmora" }), Verbs::Check), "");
 
             // The same mistake the other way round: a run of places takes its cell from `--views`,
             // and `--view` is what a command that stands at one place reads.
@@ -56,8 +57,8 @@ namespace RtxTool
             EXPECT_EQ(
                 options.complainAbout(line, Verbs::Bench), "`bench` does not read --find, which belongs to `scene`.\n");
             EXPECT_EQ(options.complainAbout(line, Verbs::Scene),
-                "`scene` does not read --suite, which belongs to `bench`.\n"
-                "`scene` does not read --seconds, which belongs to `bench`.\n");
+                "`scene` does not read --suite, which belongs to `bench` and `check`.\n"
+                "`scene` does not read --seconds, which belongs to `bench` and `check`.\n");
 
             // A composing option is written once per value and is worth one complaint.
             EXPECT_EQ(options.complainAbout(parse(options, { "--npc=fargoth", "--npc=hrisskar" }), Verbs::Doll), "")
@@ -77,10 +78,10 @@ namespace RtxTool
             EXPECT_EQ(options.readsOption("upscale"), Verbs::Every);
             EXPECT_EQ(options.readsOption("validation"), Verbs::Every);
             EXPECT_EQ(options.readsOption("data"), Verbs::Every) << "nothing declared here is restricted either";
-            EXPECT_EQ(options.readsOption("views"), Verbs::Bench | Verbs::Verify);
+            EXPECT_EQ(options.readsOption("views"), Verbs::Bench | Verbs::Verify | Verbs::Check);
 
             for (const std::string_view name :
-                { "info", "scene", "shot", "view", "bench", "textures", "doll", "map", "verify" })
+                { "info", "scene", "shot", "view", "bench", "textures", "doll", "map", "verify", "check" })
                 EXPECT_EQ(options.complainAbout(parse(options, { "--upscale=off" }), verbNamed(name)), "") << name;
         }
 
@@ -93,10 +94,10 @@ namespace RtxTool
             const auto lineFor
                 = [&](const std::string& name) { return options.mDescription.find(name, false).description(); };
 
-            EXPECT_TRUE(lineFor("views").starts_with("with `bench` and `verify`, ")) << lineFor("views");
+            EXPECT_TRUE(lineFor("views").starts_with("with `bench`, `verify` and `check`, ")) << lineFor("views");
             EXPECT_TRUE(lineFor("find").starts_with("with `scene`, ")) << lineFor("find");
 
-            // Most of the nine read a camera, so the line names the few that do not rather than
+            // Most of the ten read a camera, so the line names the few that do not rather than
             // the many that do.
             EXPECT_TRUE(lineFor("fov").starts_with("with every command but `info` and `doll`, ")) << lineFor("fov");
 
@@ -109,14 +110,16 @@ namespace RtxTool
         {
             EXPECT_EQ(verbName(Verbs::Shot), "shot");
             EXPECT_EQ(verbNamed("shot"), Verbs::Shot);
+            EXPECT_EQ(verbName(Verbs::Check), "check");
+            EXPECT_EQ(verbNamed("check"), Verbs::Check);
             EXPECT_EQ(verbNamed("nonesuch"), Verbs::None);
             EXPECT_EQ(verbName(Verbs::Bench | Verbs::Verify), "") << "a set of two is not a command";
             EXPECT_EQ(verbName(Verbs::None), "");
 
-            EXPECT_EQ(countVerbs(Verbs::Every), 9u) << "the nine `--help` prints";
+            EXPECT_EQ(countVerbs(Verbs::Every), 10u) << "the ten `--help` prints";
             EXPECT_EQ(countVerbs(Verbs::None), 0u);
             EXPECT_EQ(otherThan(Verbs::Every), Verbs::None);
-            EXPECT_EQ(countVerbs(otherThan(Verbs::Shot)), 8u);
+            EXPECT_EQ(countVerbs(otherThan(Verbs::Shot)), 9u);
             EXPECT_TRUE(holds(Verbs::Bench | Verbs::Verify, Verbs::Verify));
             EXPECT_FALSE(holds(Verbs::Bench | Verbs::Verify, Verbs::Shot));
 

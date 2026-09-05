@@ -42,12 +42,12 @@
 #include "../../mwworld/cell.hpp"
 #include "../../mwworld/cellstore.hpp"
 #include "../../mwworld/datetimemanager.hpp"
+#include "../../mwworld/esmstore.hpp"
 #include "../../mwworld/globals.hpp"
+#include "../../mwworld/manualref.hpp"
 #include "../../mwworld/ptr.hpp"
 #include "../../mwworld/refdata.hpp"
-
-#include "../../mwworld/esmstore.hpp"
-#include "../../mwworld/manualref.hpp"
+#include "../../mwworld/timestamp.hpp"
 
 #include "../camera.hpp"
 #include "../characterpreview.hpp"
@@ -82,6 +82,13 @@ namespace MWRender
         /// Where the tile's eye stands and how far it sees, both far enough to clear any cell.
         constexpr float sMapEyeHeight = 50000.0f;
         constexpr float sMapFar = 150000.0f;
+
+        /// How far ahead the `look` a run reports points.
+        ///
+        /// **A landmark's distance rather than a nose's.** The renderer wants a direction; a person
+        /// reading `pos` and `look` in `views.cfg` wants to be able to tell where they point, and a
+        /// cell is eight thousand units across.
+        constexpr double sLookAhead = 1000.0;
     }
 
     std::optional<SessionRequest> readSessionSetting()
@@ -195,7 +202,37 @@ namespace MWRender
             mDone = true;
     }
 
-    Session::~Session() = default;
+    Session::~Session()
+    {
+        publishSessionResult(describeRun());
+    }
+
+    SessionResult Session::describeRun() const
+    {
+        SessionResult result;
+        result.mExitStatus = mExitStatus;
+        result.mPlaces = mPlaces;
+        result.mReport = mReport;
+
+        if (!isPlaying())
+            return result;
+
+        MWBase::World& world = *MWBase::Environment::get().getWorld();
+        const Camera& camera = *world.getRenderingManager()->getCamera();
+
+        // The direction and not a point on it, for the reason `Rtx::makeCamera` gives — but a view
+        // file holds a `look`, and a landmark's distance is what makes one readable.
+        const osg::Quat orient = camera.getOrient();
+        result.mEye = camera.getPosition();
+        result.mLook = result.mEye + orient * osg::Vec3d(0.0, sLookAhead, 0.0);
+
+        const MWWorld::TimeStamp now = world.getTimeStamp();
+        result.mHour = now.getHour();
+        result.mDay = now.getDay();
+        result.mWeather = Rtx::weatherName(static_cast<std::uint32_t>(world.getCurrentWeatherScriptId()));
+
+        return result;
+    }
 
     bool Session::isPlaying() const
     {
@@ -315,13 +352,17 @@ namespace MWRender
             // **The walls come off, because a view file names where a camera stands.** Half of them
             // are inside a rock or over the sea, and a body dropped there either falls or cannot be
             // put there at all.
+            //
             // **Toggled until it is off, because the call reports rather than sets.** `tcl` is the
             // same call, and a session that had already used it would otherwise turn collision back
             // on.
             if (world.toggleCollisionMode())
                 world.toggleCollisionMode();
 
-            const ESM::Position& stood = world.getPlayerPtr().getRefData().getPosition();
+            // The reference lives in the cell store rather than in the `Ptr`, which is what the
+            // named player says: the position outlives the handle it was reached through.
+            const MWWorld::Ptr player = world.getPlayerPtr();
+            const ESM::Position& stood = player.getRefData().getPosition();
             mFrom = osg::Vec3f(stood.pos[0], stood.pos[1], stood.pos[2]);
             mFromLook = mFrom + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
         }
@@ -684,6 +725,9 @@ namespace MWRender
         if (!stop.mActions.mDoll.empty())
             writeDoll(owner, stop.mActions.mDoll, stop.mActions.mDollOut);
 
+        if (!stop.mActions.mFind.empty())
+            reportFound(owner, stop.mActions.mFind);
+
         if (!stop.mActions.mChecks.empty())
             runChecks(owner);
 
@@ -937,6 +981,39 @@ namespace MWRender
         mReport += std::format("wrote {} {}x{}\n", Files::pathToUnicodeString(file), width, height);
     }
 
+    void Session::reportFound(RtxRenderer& owner, const std::string& needle)
+    {
+        const Rtx::SceneDesc& scene = owner.getMirror().getScene();
+        const std::span<const VFS::Path::Normalized> paths = scene.getTextures();
+
+        // **Found by texture and reported by placement**, because a mesh carries no name of its own
+        // once it is a run of triangles: what a walk keeps is the material it arrived wearing, and a
+        // material names the file it samples.
+        std::uint32_t met = 0;
+        for (const Rtx::MeshInstance& instance : scene.getInstances())
+        {
+            if (!instance.isPlaced())
+                continue;
+
+            if (instance.mMaterial == Rtx::sNoIndex)
+                continue;
+
+            const Rtx::Material& material = scene.getMaterials()[instance.mMaterial];
+            if (material.mDiffuse == Rtx::sNoIndex)
+                continue;
+
+            const std::string_view path = paths[material.mDiffuse].value();
+            if (path.find(needle) == std::string_view::npos)
+                continue;
+
+            const osg::Vec3f at = instance.mTransform.getTrans();
+            mReport += std::format("  {:.0f}, {:.0f}, {:.0f}   {}\n", at.x(), at.y(), at.z(), path);
+            ++met;
+        }
+
+        mReport += std::format("{} placements wear a texture matching \"{}\"\n", met, needle);
+    }
+
     void Session::runChecks(RtxRenderer& owner)
     {
         const Stop& stop = mRequest.mStops[mAt];
@@ -987,12 +1064,6 @@ namespace MWRender
             Rtx::writeJson(mRequest.mJson, mHeader, mPlaces);
             mReport += "wrote " + Files::pathToUnicodeString(mRequest.mJson) + '\n';
         }
-
-        SessionResult result;
-        result.mExitStatus = mExitStatus;
-        result.mPlaces = mPlaces;
-        result.mReport = mReport;
-        publishSessionResult(std::move(result));
 
         // **The way the quit key ends a session, and not `exit`.** A run that tore the process down
         // where it stood would leave the save, the log and the device wherever they happened to be,

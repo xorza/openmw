@@ -29,11 +29,10 @@ namespace RtxTool
             return request;
         }
 
-        /// A held exposure names its number where a measured one names itself.
-        ///
-        /// **Both are in the line because both change the frame**, and one of them changes what it
-        /// costs: measuring is two dispatches over the finished image, about a tenth of a
-        /// millisecond at 4K.
+        /// The cell every line below is about, passed rather than carried: `describeProfile` takes
+        /// it because a place and the frame it is traced with are two different things.
+        const std::string sCell = "Balmora, Guild of Fighters";
+
         Viewpoint makeSpot()
         {
             return Viewpoint{
@@ -47,6 +46,11 @@ namespace RtxTool
             };
         }
 
+        /// A held exposure names its number where a measured one names itself.
+        ///
+        /// **Both are in the line because both change the frame**, and one of them changes what it
+        /// costs: measuring is two dispatches over the finished image, about a tenth of a
+        /// millisecond at 4K.
         TEST(RtxProfileLineTest, aHeldExposureIsInTheLineAsItsNumber)
         {
             FrameRequest request = makeRequest();
@@ -54,11 +58,11 @@ namespace RtxTool
             const osg::Vec3f origin(0.0f, 0.0f, 0.0f);
             const osg::Vec3f target(0.0f, 100.0f, 0.0f);
 
-            EXPECT_NE(describeProfile("-2,-9", request, validation, origin, target, 64, 64).find("--exposure=auto"),
+            EXPECT_NE(describeProfile(sCell, request, validation, origin, target, 64, 64).find("--exposure=auto"),
                 std::string::npos);
 
             request.mExposure = 0.25f;
-            EXPECT_NE(describeProfile("-2,-9", request, validation, origin, target, 64, 64).find("--exposure=0.25"),
+            EXPECT_NE(describeProfile(sCell, request, validation, origin, target, 64, 64).find("--exposure=0.25"),
                 std::string::npos);
         }
 
@@ -76,7 +80,7 @@ namespace RtxTool
             const osg::Vec3f origin(-19216.5f, -14896.25f, 160.0f);
             const osg::Vec3f target(-19323.0f, -13903.0f, 109.5f);
 
-            EXPECT_EQ(describeProfile("-2,-9", request, validation, origin, target, 2560, 1440),
+            EXPECT_EQ(describeProfile(sCell, request, validation, origin, target, 2560, 1440),
                 "--cell=\"Balmora, Guild of Fighters\" --pos=-19216.5,-14896.25,160 --look=-19323,-13903,109.5"
                 " --fov=60 --size=2560x1440 --weather=Ashstorm --hour=17.25 --day=0 --exposure=auto"
                 " --upscale=off --preset=d --reorder=off --filter=false"

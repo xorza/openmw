@@ -182,6 +182,13 @@ namespace MWRender
         std::string mDoll;
         std::filesystem::path mDollOut;
 
+        /// A word to look for among the textures the world around this place is wearing.
+        ///
+        /// **Off the scene the renderer was handed**, which is what makes it useful: what it lists
+        /// is what a frame of this place would actually trace, rather than what the content files
+        /// say stands somewhere near.
+        std::string mFind;
+
         /// Whether every measured frame is read back and hashed.
         ///
         /// **Asking for it stops the run being a benchmark**: a read back submits a copy and waits
@@ -263,6 +270,19 @@ namespace MWRender
 
         /// What the run printed, whole, for a launcher whose output is read rather than logged.
         std::string mReport;
+
+        /// Where the eye stood and what it looked at when the run ended, and the sky it stood
+        /// under.
+        ///
+        /// **What a window is for as much as the picture is.** Somebody flies to a place worth
+        /// keeping and closes the window; without this the coordinates go with it, and the view
+        /// file gains nothing. The names are the launcher's — a view id and a cell spelling are
+        /// what it asked for in the first place.
+        osg::Vec3f mEye;
+        osg::Vec3f mLook;
+        float mHour = 0.0f;
+        int mDay = 0;
+        std::string mWeather;
     };
 
     /// The run `[RTX] session` asks for, or nothing where nobody asked for one.
@@ -368,6 +388,9 @@ namespace MWRender
         /// The inventory doll of one person.
         void writeDoll(RtxRenderer& owner, const std::string& who, const std::filesystem::path& file);
 
+        /// Lists the textures whose path holds `needle`, and where the meshes wearing them stand.
+        void reportFound(RtxRenderer& owner, const std::string& needle);
+
         /// Asks every check the stop named, and reports each one's answer.
         void runChecks(RtxRenderer& owner);
 
@@ -378,8 +401,16 @@ namespace MWRender
         /// file wants the other order, so the rows are turned over on the way out.
         bool writeView(OffscreenView& view, int width, int height, const std::filesystem::path& file);
 
-        /// Writes what the run was asked to write and publishes the result.
+        /// Writes what the run was asked to write and ends it.
         void finish();
+
+        /// Everything a launcher reads back, including where the eye was left.
+        ///
+        /// **Published from the destructor and nowhere else.** A run that ends its last stop and a
+        /// window somebody closes both come here, and only one of the two ever reaches `finish`;
+        /// the world outlives this, because `OMW::Engine` declares it before the renderer that
+        /// holds this.
+        SessionResult describeRun() const;
 
         /// Flies the player along the current stop's route by one frame's worth.
         void fly();

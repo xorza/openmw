@@ -18,11 +18,9 @@ namespace RtxTool
 {
     /// Where a camera is standing and under what, as this tool writes a place down.
     ///
-    /// **Kept although nothing calls the three formatters below outside their tests.** They are how
-    /// a place found by flying is written into `views.cfg`, and the window that used to print them
-    /// was this tool's own; the game's has no key bound to it yet. What that binding will be — a
-    /// Lua script under `files/rtx/` or a console command — is the open question, and rewriting
-    /// these afterwards would be rewriting what the tests already pin.
+    /// **How a place found by flying is written into `views.cfg`.** A run that opened a window
+    /// prints one of these where the eye was left, so somebody who flew somewhere worth keeping
+    /// closes the window and pastes what it said.
     ///
     /// **A type rather than a handful of `format` calls at whatever prints it**, because everything
     /// it writes is something the tool has to be able to read back — a `views.cfg` section and a
@@ -38,12 +36,11 @@ namespace RtxTool
         /// The cell as `--cell` spells it: a pair of integers for an exterior, a name for an
         /// interior.
         ///
-        /// **The cell the place names, and not the one a camera has since flown into.** The
-        /// reference implementation prints the containing square instead, and is right to: it
-        /// streams, so its camera really is standing in the cell it names. This tool loads exactly
-        /// one cell and shows nothing outside it, so a marker naming the square the camera drifted
-        /// into would reload a different cell and render a different frame — which is the opposite
-        /// of what a marker is for.
+        /// **Where a run enters, and not the square a camera has since flown into.** The world is
+        /// streamed around the player, and a stop moves the player to `mOrigin` once it is standing
+        /// somewhere — so the two disagreeing costs nothing, and the block still opens on the frame
+        /// it was printed from. Naming the containing square would ask the game to spell a cell
+        /// back, which is a second spelling of a name `--cell` already reads.
         std::string mCell;
 
         osg::Vec3f mOrigin;

@@ -1,12 +1,4 @@
-- guard what the drops promise. `Rtx::mirrorPrecipitation` walks nothing where the eye is under
-  water, and anchors the box at the eye so a sprite's own travel is its fall. Neither is tested:
-  a `Weather::Precipitation` needs a `Resource::SceneManager`, and no fixture in
-  apps/components_tests builds one. Either give it one, or split the two decisions out of the call
-  so they can be asked without the object
 - time `shot` in release against the 4.4 s the staged one took, and close the spike gate
-- run the 544 tests of `components-tests --gtest_filter=Rtx*`, unrun since the harness moved
-- bind a key to `describeBlock`, so a place found by flying can be written into views.cfg again.
-  A Lua script under files/rtx/ or a console command; the formatters are kept and tested
 
 - audit includes
 - audit #pragmas

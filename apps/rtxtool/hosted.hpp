@@ -13,6 +13,8 @@ namespace Files
 
 namespace RtxTool
 {
+    struct Viewpoint;
+
     /// Runs `request` against a real game, headless, and gives back what it came to.
     ///
     /// **The game and not a world of this tool's own.** A staged world re-walks only its actors, so
@@ -28,7 +30,10 @@ namespace RtxTool
     ///
     /// @param variables the parsed command line, which carries the data directories, the content
     ///        files and the encoding the engine is configured from.
+    /// @param spot where the run was asked to stand, or null for a run whose end nobody wants
+    ///        written down. Given one, the place the eye was left at is printed as a `views.cfg`
+    ///        block — which is what a window is for as much as the picture is.
     /// @return a process exit status.
     int runHosted(const boost::program_options::variables_map& variables, Files::ConfigurationManager& config,
-        const std::filesystem::path& resources, MWRender::SessionRequest request);
+        const std::filesystem::path& resources, MWRender::SessionRequest request, const Viewpoint* spot = nullptr);
 }

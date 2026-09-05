@@ -245,12 +245,5 @@ hour = 19.25
             EXPECT_NE(hourFor(std::nullopt, 6.5f), hourFor(9.0f, 6.5f));
             EXPECT_NE(weatherFor(std::nullopt, std::string("Overcast")), weatherFor(std::string("Rain"), std::nullopt));
         }
-
-        /// Where the camera stands part-way along, hand-computed and clamped at the far end.
-        ///
-        /// **A thousand units at a hundred a second is a tenth of the way after a second**, and the
-        /// look point moves with it — the two endpoints below are each a hundred units ahead of
-        /// their own position, so the camera faces the same way throughout and the frame at the
-        /// halfway mark is the frame five hundred units in.
     }
 }

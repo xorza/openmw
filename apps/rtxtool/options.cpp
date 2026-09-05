@@ -46,7 +46,7 @@ namespace RtxTool
         /// The commands that frame a camera on the world, which is every one that builds a
         /// `FrameRequest`. `doll` is not one: its picture is framed on a person by the game's own
         /// inventory rules, and `info` draws nothing at all.
-        constexpr Verbs sFramed = sPlaces | Verbs::Bench | Verbs::Verify;
+        constexpr Verbs sFramed = sPlaces | Verbs::Bench | Verbs::Verify | Verbs::Check;
 
         /// How an owned option's help line opens: the commands that read it.
         ///
@@ -149,36 +149,10 @@ namespace RtxTool
         // Defaulted to an empty list rather than left absent, because `readConfiguration` walks
         // every option in this description and casts it: a composing option with no value in the
         // map is a `bad_any_cast` on every run that did not name one.
-        addOption("actor", bpo::value<StringsVector>()->default_value(StringsVector(), "")->composing(),
-            "put an animated creature in front of the camera, by the model path a CREA record "
-            "holds — meshes/r/cliffracer.nif, not the x-prefixed skeleton beside it. Repeatable, "
-            "and several stand in a row across the view. This is the only way to see skinned "
-            "geometry without starting the game, which is what it is for");
-        addOption("npc", bpo::value<StringsVector>()->default_value(StringsVector(), "")->composing(),
-            "put a person in front of the camera, by their NPC record id -- fargoth, "
-            "\"caius cosades\". Repeatable, and they stand in the same row the creatures do. They "
-            "arrive dressed out of their own record, which --clothes is what turns off");
-        addOption("people", bpo::value<bool>()->default_value(true)->implicit_value(true),
-            "put the region's own residents in it, assembled from their races' body parts and "
-            "standing where the cell puts them. On, because a town with nobody in it is not the "
-            "picture this renderer is being judged on; off is the A/B that says what they cost, and "
-            "what a profiling run should hold still");
-        addOption("props", bpo::value<bool>()->default_value(true)->implicit_value(true),
-            "run the cell's particle emitters -- the candles, torches, braziers and fires. On, "
-            "because a template's emitters are frozen at the seed the file authored and a lit room "
-            "with no flames in it is not the picture; off leaves them as that seed, which is the "
-            "A/B that says what a cell's emitters cost");
-        addOption("clothes", bpo::value<bool>()->default_value(true)->implicit_value(true),
-            "dress and arm people out of what their own record carries, which is what the game "
-            "equips them with -- clothes, armour, a shield, and a weapon in the hand. Off leaves "
-            "everyone in their skin and empty-handed, which is worth looking at, because skin is "
-            "the hardest surface in the game to get right and the one the shipped textures have the "
-            "most light painted into");
-        addOption("actor-time", bpo::value<float>()->default_value(0.0f),
-            "how many seconds into its animation each actor stands, wrapped to the track's own "
-            "length. A --repeat carries on from there at sixty frames a second, so a repeat with "
-            "actors in it measures an animated frame -- the skinning, and the structure rebuild "
-            "behind it -- rather than the same frame over again");
+        owned(Verbs::Doll, "npc", bpo::value<StringsVector>()->default_value(StringsVector(), "")->composing(),
+            "whose inventory doll to draw, by NPC record id -- fargoth, \"caius cosades\". "
+            "Repeatable, and each one is written beside the last. They arrive dressed out of their "
+            "own record, which is what the game equips them with");
 
         addOption("upscale", bpo::value<std::string>()->default_value(std::string(sUpscaleByDefault)),
             "put DLSS Ray Reconstruction between the trace and the picture: off, performance, "
@@ -292,22 +266,16 @@ namespace RtxTool
             "the GPU's clock rather than the shader; a comparison worth making wants hundreds");
 
         owned(Verbs::Scene, "find", bpo::value<std::string>()->default_value(""),
-            "print the world position of every object whose model path contains this. "
-            "How the coordinates in a view are found.");
-
-        addOption("distant-terrain", bpo::value<bool>()->default_value(true)->implicit_value(true),
-            "page the terrain the way the game does with `distant terrain` on, through "
-            "Terrain::QuadTreeWorld instead of Terrain::TerrainGrid. **The one terrain a mirror "
-            "cannot find by walking**: a quad tree resolves its chunks inside a cull and parents "
-            "them to nothing, so this is the only way anything headless can see whether the ground "
-            "is reached at all. On by default, since a radius means nothing without it; "
-            "`--distant-terrain=false` puts the staged cells back");
+            "print where every placement wearing a texture whose path contains this stands. A mesh "
+            "keeps no name of its own once it is a run of triangles, so the material it arrived "
+            "wearing is what it is found by. How the coordinates in a view are found.");
 
         addOption("distant-statics", bpo::value<bool>()->default_value(true)->implicit_value(true),
-            "with `--distant-terrain`, stand on the distant ground what the content files put there "
-            "— the buildings, trees and rocks — through the same `Terrain::ObjectPaging` the game "
-            "registers under `object paging`. **Off is the A/B that says what they cost**: the same "
-            "ground with nothing on it, which is also every run of this harness before they arrived");
+            "stand on the distant ground what the content files put there — the buildings, trees "
+            "and rocks — which is the game's own `object paging`. **Off is the A/B that says what "
+            "they cost**: the same ground with nothing on it. The ground itself is always paged, "
+            "because `Renderer::wantsPagedTerrain` answers for a renderer that traces rather than "
+            "draws");
 
         addOption("distant-cells", bpo::value<float>()->default_value(5.0f),
             "with `--distant-terrain`, how far out the quad tree may make ground, in cells. Past a "
