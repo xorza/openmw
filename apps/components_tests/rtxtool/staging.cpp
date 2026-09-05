@@ -6,7 +6,10 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Vec3f>
+
 #include <apps/rtxtool/content.hpp>
+#include <apps/rtxtool/motion.hpp>
 #include <apps/rtxtool/posedactors.hpp>
 #include <apps/rtxtool/stagedworld.hpp>
 #include <apps/rtxtool/world.hpp>
@@ -219,6 +222,65 @@ namespace RtxTool
                 ASSERT_FALSE(staged.empty());
                 expectSameLights(staged.getScene(), alone);
             }
+        }
+
+        /// Nothing falls where the eye is under water.
+        ///
+        /// **Frozen is not gone, and the harness was reading the frozen one.**
+        /// `Weather::Precipitation` stops the rain where it stands when the eye goes under and
+        /// leaves what to draw to whoever is drawing — so a walk that kept meeting the subtree
+        /// placed the drops the surface was crossed with, and they hung in the air for as long as
+        /// the eye stayed down there. The rasterizer answers this by not culling the subtree and
+        /// `MWRender::WorldMirror` by not walking it.
+        ///
+        /// **A run of frames and not a still**, because a still under water has no rain to leave
+        /// behind: the system is frozen before it has emitted anything, and the defect is what it
+        /// does with what is already falling.
+        ///
+        /// The same shore, the same frames and the same props either way, so what the two counts
+        /// differ by is the weather and nothing else.
+        TEST_F(RtxStagingTest, nothingFallsWhereTheEyeIsUnderWater)
+        {
+            const ESM::Cell* shore = getContent().findCell(std::string(sShore));
+            ASSERT_NE(shore, nullptr);
+
+            // Over the water off Seyda Neen's docks, and under it: the sea there stands at nought.
+            const osg::Vec3f over(-8292.0f, -73376.0f, 200.0f);
+            const osg::Vec3f under(-8292.0f, -73376.0f, -200.0f);
+
+            // The props, because they are what puts a `Motion` in the world at all — and they run
+            // in both halves of this, which is why the two are compared rather than either read on
+            // its own.
+            const ActorRequest actors{ .mResidents = false, .mProps = true };
+
+            constexpr std::uint32_t sFrames = 30;
+
+            /// The sprites standing after a run of frames with the eye wherever `stand` puts it.
+            const auto sprited = [&](std::string_view weather, const osg::Vec3f& first, const osg::Vec3f& then) {
+                StagingRequest request;
+                request.mWeather = weather;
+                request.mOrigin = first;
+                request.mTarget = first + osg::Vec3f(0.0f, 1000.0f, 0.0f);
+
+                StagedWorld staged(getWorld(), *shore, request, actors);
+                Motion* motion = staged.getMotion();
+                EXPECT_NE(motion, nullptr) << "the props were meant to make this world move";
+
+                for (std::uint32_t frame = 1; motion != nullptr && frame <= 2 * sFrames; ++frame)
+                {
+                    staged.moveTo(frame <= sFrames ? first : then);
+                    motion->step(frame);
+                }
+
+                return staged.getScene().getSprites().size();
+            };
+
+            // One at a time, for the reason the test above gives.
+            const std::size_t dry = sprited("Clear", over, over);
+            const std::size_t raining = sprited("Rain", over, over);
+            ASSERT_GT(raining, dry) << "the rain put nothing in the air, so this proves nothing";
+
+            EXPECT_EQ(sprited("Rain", over, under), dry) << "the drops crossed the surface and stayed";
         }
     }
 }

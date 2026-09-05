@@ -268,6 +268,18 @@ namespace RtxTool
     {
         mWeatherNode->setPosition(eye);
 
+        // The same question the game asks of the water it owns, asked here of the level this cell
+        // reported. A cell with no water reports minus infinity, so nothing is ever under it.
+        const bool underwater = eye.z() < mLighting.mWaterLevel;
+
+        // **Nothing falls where the eye is under water, and stopping it is not hiding it.**
+        // `Weather::Precipitation` freezes the rain where it stands and leaves what to draw to
+        // whoever is drawing: the rasterizer answers by not culling the subtree and `WorldMirror` by
+        // not walking it. This has one walk and the weather hangs inside it, so the node is what
+        // says so — left in, the drops the surface was crossed with hang in the air, frozen, for as
+        // long as the eye stays under it.
+        mWeatherNode->setNodeMask(underwater ? 0u : ~0u);
+
         mPrecipitation->update(Weather::Conditions{
             .mEye = eye,
 
@@ -276,10 +288,7 @@ namespace RtxTool
             // observer is whoever is looking.
             .mStormDirection = Weather::stormDirection(mStormEffect, eye),
 
-            // The same question the game asks of the water it owns, asked here of the level this
-            // cell reported. A cell with no water reports minus infinity, so nothing is ever under
-            // it.
-            .mUnderwater = eye.z() < mLighting.mWaterLevel,
+            .mUnderwater = underwater,
         });
     }
 
