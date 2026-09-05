@@ -138,11 +138,17 @@ float fogBase()
     return fogPools() ? frame.mWaterLevel : FOG_BASE;
 }
 
-/// The fog's extinction at a point, per world unit.
+/// What the coverage band and the water leave of the layer's strength at a point, as a fraction.
 ///
-/// @param spacing how far apart the march is sampling here, which decides how much of the field it
+/// **The half of the air that varies along a ray in a way nothing integrates.** The other half is
+/// the height falloff, which is an exponential in `z` and has a closed form — `fogColumn`. Splitting
+/// them is what lets a reader take the layer exactly and sample only what it has to: a walk that
+/// wants the whole density at a point multiplies the two, and one that wants a whole path takes the
+/// column exactly and this once.
+///
+/// @param spacing how far apart the reader is sampling here, which decides how much of the band it
 ///        can resolve.
-float fogExtinctionAt(vec3 position, float spacing)
+float fogCoverageAt(vec3 position, float spacing)
 {
     // **Air only, and under a bay there is none.** The layer pools *at* the water rather than in
     // it, and a point below the surface already has the water's own absorption over it — fog there
@@ -151,29 +157,30 @@ float fogExtinctionAt(vec3 position, float spacing)
     if (waterOver(position) > 0.0)
         return 0.0;
 
-    // **How deep the layer stands is the weather's and not a constant.** `FOG_HEIGHT` is the bank
-    // clear weather makes in dead still air, and `mFogLift` is what every other weather does to it.
-    const float height = exp(-max(position.z - fogBase(), 0.0) / (FOG_HEIGHT * frame.mFogLift));
-
     // **Even indoors, and banked out of doors.** Banks are something weather does to a landscape; a
     // room is smaller than one bank and its air is still, so what belongs there is a faint uniform
     // haze rather than a rendering fault. One is what the band averages to, so moving between them
     // changes the air's character and never how much of it there is.
     //
-    // **Branched rather than mixed, because `mix` evaluates both sides.** An interior is uniform
-    // outright, and a field it then multiplies by nothing was costing it forty hashes a step for an
-    // answer it discards — measured at 2.0 ms of a 2.1 ms trace.
-    //
     // **A far step keeps its banks rather than giving them up for even air.** The two hold the same
     // amount of air on average, so trading one for the other looks free, and it is not: even air is
     // a screen that glows wherever a lamp lights it, where banked air has gaps to see a lit tree
     // through. `FOG_FIELD_COARSEST` is what keeps the far end banked.
-    float coverage = 1.0;
-    if (!FOG_UNIFORM && frame.mFogUniform < 1.0)
-        coverage = mix(smoothstep(FOG_CLEARING, FOG_SOLID, fogShape(position, spacing)) / FOG_COVERAGE, 1.0,
-            frame.mFogUniform);
+    return mix(
+        smoothstep(FOG_CLEARING, FOG_SOLID, fogShape(position, spacing)) / FOG_COVERAGE, 1.0, frame.mFogUniform);
+}
 
-    return frame.mFogExtinction * height * coverage;
+/// The fog's extinction at a point, per world unit.
+///
+/// @param spacing how far apart the march is sampling here, which decides how much of the field it
+///        can resolve.
+float fogExtinctionAt(vec3 position, float spacing)
+{
+    // **How deep the layer stands is the weather's and not a constant.** `FOG_HEIGHT` is the bank
+    // clear weather makes in dead still air, and `mFogLift` is what every other weather does to it.
+    const float height = exp(-max(position.z - fogBase(), 0.0) / (FOG_HEIGHT * frame.mFogLift));
+
+    return frame.mFogExtinction * height * fogCoverageAt(position, spacing);
 }
 
 /// What the fog sends toward the eye per steradian, `cosine` off the sun's line.
@@ -444,14 +451,15 @@ vec4 fogVolumeAlong(uvec2 pixel, vec3 direction, float distance)
     return vec4(air.xyz + sun, air.w);
 }
 
-/// The fog's optical depth over the first `span` of a ray, exactly.
+/// The layer's optical depth over the first `span` of a ray, exactly, before the coverage band.
 ///
-/// **The march exists for the coverage field, and an even haze has none.** With `mFogUniform` at one
-/// the only thing left varying along the ray is the height falloff, which is an exponential in `z` —
-/// so the integral is the one every layered atmosphere has a closed form for, and twenty-four
-/// samples of it are twenty-four samples of a curve two `exp` describe.
+/// **The half of the air a closed form reaches.** What varies along a ray is a height falloff and a
+/// coverage band, and only the first is an exponential in `z` — so the integral of it is the one
+/// every layered atmosphere has a closed form for, and twenty-four samples of that curve are
+/// twenty-four samples of two `exp`. A reader multiplies this by `fogCoverageAt` at the path's
+/// mean-value point, which is the one term nothing integrates.
 ///
-/// This is `fogExtinctionAt` integrated rather than a second statement of it: below the base the
+/// The profile is `fogExtinctionAt`'s own rather than a second statement of it: below the base the
 /// density is the layer's full strength where the cell is dry and nothing at all where the base is
 /// the water's own surface, which is what that function says twice over.
 float fogColumn(vec3 origin, vec3 direction, float span)
@@ -700,13 +708,13 @@ vec4 fogAlong(uvec2 pixel, vec3 origin, vec3 direction, float distance, float of
     // charged the whole of it for the water.
     //
     // **Here rather than in each element, because only one of the three could tell.**
-    // `fogExtinctionAt` gives nothing under the surface and `fogColumn` integrates nothing there, so
-    // the field and the closed form the sprites and the shells read were already right. The volume is not a field read along the
-    // pixel's ray but an accumulation along its column's, and the slices past where that column met
-    // the surface hold whatever they held when the eye was above it — `fogintegrate.comp` says why
-    // it keeps them. A pixel reaching past its own column's surface read those: along the waterline,
-    // where one column looks up at the surface and the pixel beside it looks away down the seabed,
-    // that drew a band of weather under the water.
+    // `fogCoverageAt` gives nothing under the surface and `fogColumn` integrates nothing there, so
+    // the field and the closed form the sprites and the shells read were already right. The volume
+    // is not a field read along the pixel's ray but an accumulation along its column's, and the
+    // slices past where that column met the surface hold whatever they held when the eye was above
+    // it — `fogintegrate.comp` says why it keeps them. A pixel reaching past its own column's
+    // surface read those: along the waterline, where one column looks up at the surface and the
+    // pixel beside it looks away down the seabed, that drew a band of weather under the water.
     if (waterOver(origin) > 0.0)
         return vec4(0.0, 0.0, 0.0, 1.0);
 
@@ -714,8 +722,7 @@ vec4 fogAlong(uvec2 pixel, vec3 origin, vec3 direction, float distance, float of
     // field is even, so the transmittance integrates exactly and only the shadow rays were left to
     // march. What that cost was a lamp reservoir and a ray *per pixel*, where the volume walks the
     // lamps once per froxel and hands this two fetches: 0.15 to 0.35 ms off the trace of every
-    // interior, against 0.12 to 0.16 for the volume itself. `FOG_UNIFORM` still earns its place
-    // inside `fogExtinctionAt`, which is where an even field saves its forty hashes a sample.
+    // interior, against 0.12 to 0.16 for the volume itself.
     const vec4 weather = fogVolumeAlong(pixel, direction, distance);
 
     const vec4 edge = fogEdgeAlong(origin, direction, distance);

@@ -18,14 +18,13 @@ namespace Rtx::Testing
         /// the wrong colour cannot pass by matching a total.
         const osg::Vec3f sHaze(0.1f, 0.2f, 0.4f);
 
-        /// A coverage that keeps the field's own hashes in the scatter pass while leaving the air
-        /// even enough to compute with.
+        /// A coverage band faint enough that the air is still even enough to compute with.
         ///
-        /// **Every kind of air reads the volume now**, so this no longer chooses the path — it
-        /// chooses whether `FOG_UNIFORM` folds the coverage field away. At a thousandth the field
-        /// moves the density by at most two parts in a thousand, which is below anything asserted
-        /// here, so a test that wants the field's arithmetic exercised sets this and one that does
-        /// not sets one. The banks have their own tests, and those run at nought.
+        /// **One path serves every kind of air**, so this chooses nothing but how much of the band
+        /// the arithmetic carries. At a thousandth it moves the density by at most two parts in a
+        /// thousand, which is below anything asserted here, so a test that wants the band exercised
+        /// sets this and one that does not sets one. The banks have their own tests, and those run
+        /// at nought.
         constexpr float sVolumeOverEvenAir = 0.999f;
 
         /// What one unit of a lamp's intensity delivers `span` units away, from the same windowed
@@ -870,6 +869,174 @@ namespace Rtx::Testing
 
             EXPECT_EQ(shaded, sunless) << "the lid takes all of the sun, not most of it";
             EXPECT_GT(open, shaded + 20) << "and there was a sun to take";
+        }
+
+        /// A sprite fades through the layer's own integral, not through one sample of it.
+        ///
+        /// **A descending ray is what tells the two apart.** Along a level ray the air holds one
+        /// density and a sample anywhere in it is the whole answer, so the midpoint the sprite walk
+        /// took was exact. A ray that drops three scale heights crosses a layer that thickens under
+        /// it, and the mean of an exponential over that stretch is not the exponential at its middle
+        /// — so a puff of smoke and the wall behind it, one distance from the eye, faded at two
+        /// rates.
+        ///
+        /// **An adding sprite, because what it puts into the pixel is the transmittance times a
+        /// constant.** `spritesAlong` writes `mAdded` as `(1 - addedThrough) * FLAME_INTENSITY`, and
+        /// for one sprite that is its own `glow` — the texel, the paint and the chord, all of them
+        /// the same in both legs, times `reaching`. A covering sprite is lit by the froxel it stands
+        /// in, and the froxel moves when the fog does.
+        ///
+        /// The camera stands three scale heights up and looks down at forty-five degrees to a sprite
+        /// on the base, so the ray runs `7800 * sqrt(2)` = 11030.87 units from `z = 7800` to
+        /// `z = 0`. Over that stretch the layer's mean falloff is
+        ///
+        ///   (exp(-3) - exp(0)) / (0 - 3) = 0.3167376
+        ///
+        /// so the optical depth is `3e-4 * 11030.87 * 0.3167376` = 1.048177 and what is left of the
+        /// sprite is `exp(-1.048177)` = 0.35058. One sample at the middle reads `exp(-1.5)` =
+        /// 0.2231302 instead, for a depth of 0.738438 and a transmittance of 0.47784 — a third more
+        /// of the sprite than the air leaves.
+        TEST_F(RtxVisibilityTest, aSpriteFadesThroughTheWholeLayerAndNotOneSampleOfIt)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+            const float height = 3.0f * Shaders::FOG_HEIGHT;
+
+            constexpr std::array<std::uint8_t, 4> half{ 255, 255, 255, 128 };
+            const std::array<TextureData, 1> flame{ describeTexel(half) };
+
+            const auto glow = [&](float extinction) {
+                SceneDesc scene;
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+
+                // Wide enough to fill the middle of the frame from three scale heights away, which
+                // is what the descent costs in distance.
+                const std::array<Sprite, 1> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 2000.0f, .mAlpha = 1.0f } };
+                scene.addEmitter(sprites, cut, true);
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -height, height), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+                // Nothing but the sprite in the pixel: black air adds no colour of its own, and an
+                // unlit sky leaves the ray past the sprite carrying nothing.
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mSunIrradiance = osg::Vec3f();
+                camera.mFogColour = osg::Vec3f();
+                camera.mFogExtinction = extinction;
+
+                // Even air, which is the case the closed form is exact for: with no coverage band
+                // along the ray, the height falloff is the whole of what varies.
+                camera.mFogUniform = 1.0f;
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, flame, camera, size, pixels);
+
+                // The radiance and not the byte: what is asserted is a ratio, and eight bits of a
+                // display curve is a coarse place to take one.
+                return mRadiance[centre];
+            };
+
+            const float clear = glow(0.0f);
+            ASSERT_GT(clear, 0.02f) << "the sprite has to be in the frame before its fading means anything";
+
+            const float hazed = glow(3.0e-4f);
+
+            EXPECT_NEAR(hazed / clear, 0.35058f, 0.02f) << "the layer's integral over the whole descent";
+        }
+
+        /// A moon too faint for a shadow ray still lights the air.
+        ///
+        /// **`FOG_SHAFT_FLOOR` is a threshold on the ray and not on the light.** It asks whether a
+        /// shaft cut out of what the pair delivers would be visible at all, and ninety degrees off a
+        /// moon it is not. The scatter pass read the same flag to decide whether the moons lit the
+        /// air, so both of them left the frame together the moment their share of the sky's term
+        /// crossed the threshold, rather than losing only their shadow.
+        ///
+        /// **And they left it one column at a time.** `fogSourcesAlong` takes the phase from the
+        /// column's own direction, so neighbouring columns sit either side of the threshold and the
+        /// tent the integrate pass reads averages a lit column with a black one. What that draws is
+        /// a seam across the air rather than a step in time.
+        ///
+        /// **Measured in a channel the air's own colour barely holds.** The threshold is
+        /// `FOG_SHAFT_FLOOR` of the *brightest* channel of the fog colour, so an air bright in red
+        /// and green and near black in blue puts the crossing far above what the air itself puts
+        /// into blue. An even grey would put the whole effect under the rounding of an eight-bit
+        /// channel.
+        ///
+        /// **What is asserted is the light per unit of irradiance**, which is bounded above and
+        /// below rather than fixed: a leg under the threshold casts no ray and arrives unshadowed,
+        /// so it delivers *more* per unit than one that pays for its own shadow, and the fog's own
+        /// beam is what stands between the two. Nothing may deliver less than the shadowed leg, and
+        /// nothing may deliver more than twice it. The step this is about reads nought.
+        TEST_F(RtxVisibilityTest, aMoonTooFaintForItsOwnShadowStillLightsTheAir)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+
+            // Bright in red and green so the threshold is high, and near black in blue so the moon
+            // has a channel of its own to be read in.
+            const osg::Vec3f haze(0.4f, 0.4f, 0.001f);
+
+            // A decade apart, which is what puts the threshold inside the sweep: measured here, the
+            // brightest two legs are worth their ray and the faintest is not.
+            constexpr std::array<float, 4> irradiances{ 0.001f, 0.01f, 0.1f, 1.0f };
+
+            const auto lit = [&](float irradiance) {
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, 0.0f, 0.0f), osg::Vec3f(0.0f, 1000.0f, 0.0f), 60.0f, size, size, 100000.0f);
+
+                camera.mFogColour = haze;
+                camera.mFogExtinction = 3.0e-4f;
+                camera.mFogUniform = 1.0f;
+
+                // **No disc, because what is measured is the air and not the moon.** A disc drawn
+                // where the ray runs would put the moon's own radiance into the same pixel, and the
+                // irradiance alone still carries `HAS_MOONS` — so the basis, the colour and the face
+                // a disc would be cut from are all left at nothing. `mLimb` is not one of those: it
+                // is how wide the shadow ray's cone opens.
+                Shaders::MoonDisc moon{};
+                osg::Vec3f towards(0.0f, 1.0f, 0.5f);
+                towards.normalize();
+                moon.mDirection = towards;
+                moon.mIrradiance = osg::Vec3f(0.0f, 0.0f, irradiance);
+                moon.mLimb = std::sin(moonAngularRadius(Moon::Masser));
+                moon.mAlpha = 0.0f;
+                moon.mFace = Shaders::NO_TEXTURE;
+                camera.mMoons[0] = moon;
+
+                // The sheet is past `mFar` in every direction a ray here travels, for the reason
+                // `theFogScattersTheSunForwardFarHarderThanBack` gives: a wall in the path of a
+                // shadow ray would shadow what this measures.
+                SceneDesc scene;
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(sheetAt(4000.0f, -200000.0f), {}, {}, sQuadIndices) });
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels);
+
+                // Blue is the third of the pixel's four values, and the channel the moon has to
+                // itself.
+                return decodeSrgb(pixels[centre + 2]);
+            };
+
+            const float dark = lit(0.0f);
+
+            // The brightest leg is far above the threshold and pays for its own shadow, so it is the
+            // floor every fainter leg is measured against.
+            const float shadowed = (lit(irradiances.back()) - dark) / irradiances.back();
+            EXPECT_GT(shadowed, 0.0f) << "a moon well above the threshold lit the air";
+
+            for (const float irradiance : irradiances)
+            {
+                const float delivered = (lit(irradiance) - dark) / irradiance;
+
+                EXPECT_GE(delivered, shadowed) << "the air went dark at an irradiance of " << irradiance;
+                EXPECT_LE(delivered, 2.0f * shadowed)
+                    << "more than the moon's own shadow was worth, at an irradiance of " << irradiance;
+            }
         }
     }
 }

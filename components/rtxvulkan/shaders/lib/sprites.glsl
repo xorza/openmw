@@ -337,7 +337,7 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
     uint held = ~0u;
     GpuEmitter emitter;
     bool missed = true;
-    float extinction = 0.0;
+    float band = 1.0;
     bool oriented = false;
     float width = 0.0;
     float widest = 0.0;
@@ -378,10 +378,11 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
 
             if (!missed)
             {
-                // **One evaluation of the fog's field for the whole emitter**, taken halfway to it:
-                // that is the mean-value point of the path, and the field costs forty hashes out of
-                // doors. Every sprite behind this sphere is within `mReach` of the same air.
-                extinction = fogExtinctionAt(origin + direction * (0.5 * along), max(along, 1.0));
+                // **One evaluation of the coverage band for the whole emitter**, taken halfway to
+                // it: that is the mean-value point of the path, the band costs forty hashes, and
+                // every sprite behind this sphere is within `mReach` of the same air. The layer
+                // under the band is `fogColumn`'s and is taken exactly, per sprite.
+                band = fogCoverageAt(origin + direction * (0.5 * along), max(along, 1.0));
 
                 // **Two zero axes is a sprite that faces the eye**, which is nearly every emitter in
                 // the game; asked once for the emitter rather than once for each of its sprites.
@@ -518,7 +519,12 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
         // what was painted for a whole chord, and less for part of one.
         const float alpha = paintedOver(painted, fraction);
         const vec3 colour = texel.rgb * sprite.mColour;
-        const float reaching = exp(-extinction * seen);
+        // **The layer taken exactly and the band taken once.** A sheet of sprites and the wall
+        // behind it are one distance from the eye and were fading at two rates: the wall goes
+        // through the volume, which integrates the height falloff, and these charged one density
+        // over the whole path — so a puff seen down a slope kept a third more of itself than the
+        // air left it.
+        const float reaching = exp(-fogColumn(origin, direction, seen) * band);
 
         if (emitter.mAdditive != 0u)
         {

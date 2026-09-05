@@ -158,13 +158,13 @@ PuffLayer mediumAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit, Con
 
     const vec3 albedo = covered / coverage;
     const float seen = coveredAt / coverage;
-    const vec3 point = origin + direction * seen;
 
-    // **One evaluation of the fog's field for the whole layer**, taken halfway to it — the
-    // mean-value point of the path, and the same economy the sprite walk makes for the same forty
-    // hashes a sample costs out of doors.
-    const float extinction = fogExtinctionAt(origin + direction * (0.5 * seen), max(seen, 1.0));
-    const float reaching = exp(-extinction * seen);
+    // **The layer taken exactly and the band taken once**, which is what the geometry behind this
+    // shell is charged — so a cloud and the mountain behind it fade at one rate. `fogColumn` states
+    // the height falloff's integral in closed form, and the band is the term nothing integrates, so
+    // it is sampled at the path's mean-value point.
+    const float reaching
+        = exp(-fogColumn(origin, direction, seen) * fogCoverageAt(origin + direction * (0.5 * seen), max(seen, 1.0)));
 
     // **The side the layer shows, off the shell that hid the most of the pixel.** A cloud has a
     // surface where a puff of smoke has only a ball's silhouette, so the wrap that gives a sprite a

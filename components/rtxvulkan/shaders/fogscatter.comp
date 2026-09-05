@@ -229,7 +229,12 @@ void main()
     const float ambientSeen
         = ambientReaching(position, vec3(0.0), vec3(0.0), 0.0, froxelKey(uvec2(column), slice) + SEED_AMBIENT_FOG);
 
-    const vec3 moons = sources.mMoonlit ? moonsInAir(extinction, sources, lunar) : vec3(0.0);
+    // **Whatever the moons deliver, whether or not they were worth a ray.** `mMoonlit` gates the
+    // shadow and nothing else: gating the energy with it stepped both moons out of the frame the
+    // moment their share of the sky's term crossed `FOG_SHAFT_FLOOR`, where what the threshold is
+    // for is a shaft nobody can see cut out of light that faint. `lunar` stands at one where no ray
+    // was cast, so the light arrives unshadowed rather than not at all.
+    const vec3 moons = HAS_MOONS ? moonsInAir(extinction, sources, lunar) : vec3(0.0);
 
     // Everything below is a property of this *point* and of nothing along the ray, which is what
     // lets it be reprojected and averaged. The transmittance is the integrate pass's.

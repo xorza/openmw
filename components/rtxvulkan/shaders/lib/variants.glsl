@@ -6,9 +6,9 @@
 // What kind of frame this is, told to the compiler rather than to the branch predictor.
 //
 // **The trace is occupancy-bound, so a path nothing takes still costs the pixels that take
-// another.** One kernel served an interior with no sun, no moons, no sea and even air: the registers
-// the moons need are registers every pixel of that room did without, and taking the moons out alone
-// was measured at half a millisecond in a room no moon ray is ever traced in.
+// another.** One kernel served an interior with no sun, no moons and no sea: the registers the
+// moons need are registers every pixel of that room did without, and taking the moons out alone was
+// measured at half a millisecond in a room no moon ray is ever traced in.
 //
 // **Each of these stands in front of the runtime test it replaces and never in place of it.** True
 // leaves the shader exactly as it was. False is set only where the test behind it already answers
@@ -41,15 +41,6 @@ layout(constant_id = 2) const bool HAS_MOONS = true;
 /// under. False takes the waves, the caustics and the whole underwater column out of a room.
 layout(constant_id = 3) const bool HAS_SEA = true;
 
-/// Whether the air is an even haze rather than a banked one.
-///
-/// **The one constant that is false in the general case**, because an exterior is the general case.
-/// It names the interior, where the coverage field multiplies by one — so `fogExtinctionAt` skips
-/// the forty hashes a sample of that field costs, in every froxel the scatter pass fills. A room's
-/// air is drawn into the same volume an exterior's is; what differs is only how much a sample of it
-/// costs.
-layout(constant_id = 4) const bool FOG_UNIFORM = false;
-
 /// How the trace sorts its threads between the traversal and the shader that resolves what they
 /// found.
 ///
@@ -58,7 +49,7 @@ layout(constant_id = 4) const bool FOG_UNIFORM = false;
 /// harness names it on the command line, so each form of the reorder is a build of one pipeline
 /// rather than a pipeline of its own. The `REORDER_*` values in `visibility.h` are what this takes,
 /// and `Rtx::Reorder` is the host's side of them.
-layout(constant_id = 5) const uint REORDER = REORDER_OFF;
+layout(constant_id = 4) const uint REORDER = REORDER_OFF;
 
 /// Whether the trace counts the see-through surfaces each primary ray crosses.
 ///
@@ -66,6 +57,6 @@ layout(constant_id = 5) const uint REORDER = REORDER_OFF;
 /// that hit something; this costs a second walk of the structure on every pixel, so it cannot ride
 /// with it — a benchmark under it would be measuring the census rather than the frame. `shot
 /// --crossings` is the one thing that turns it on.
-layout(constant_id = 6) const bool COUNT_CROSSINGS = false;
+layout(constant_id = 5) const bool COUNT_CROSSINGS = false;
 
 #endif

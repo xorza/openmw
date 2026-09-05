@@ -125,13 +125,12 @@ namespace Rtx
             // Either half is water in the frame: a surface the eye can meet, or a level it can be
             // under. A cell with a level and no surface is one the eye can still be submerged in.
             .mSea = water || !std::isinf(frame.mWaterLevel),
-            .mUniformFog = frame.mFogUniform >= 1.0f,
         };
     }
 
     std::uint32_t VisibilityVariant::index() const
     {
-        return (mSun ? 1u : 0u) | (mMoons ? 2u : 0u) | (mSea ? 4u : 0u) | (mUniformFog ? 8u : 0u);
+        return (mSun ? 1u : 0u) | (mMoons ? 2u : 0u) | (mSea ? 4u : 0u);
     }
 
     std::string VisibilityVariant::describe(const std::string_view kernel) const
@@ -143,8 +142,6 @@ namespace Rtx
             name += " moons";
         if (mSea)
             name += " sea";
-        if (mUniformFog)
-            name += " even-air";
         return name;
     }
 
@@ -197,14 +194,11 @@ namespace Rtx
         for (const bool sun : { false, true })
             for (const bool moons : { false, true })
                 for (const bool sea : { false, true })
-                    for (const bool evenAir : { false, true })
-                    {
-                        const VisibilityVariant variant{
-                            .mSun = sun, .mMoons = moons, .mSea = sea, .mUniformFog = evenAir
-                        };
-                        wanted.push_back(Wanted{ .mVariant = variant });
-                        wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
-                    }
+                {
+                    const VisibilityVariant variant{ .mSun = sun, .mMoons = moons, .mSea = sea };
+                    wanted.push_back(Wanted{ .mVariant = variant });
+                    wanted.push_back(Wanted{ .mVariant = variant, .mVolume = true });
+                }
 
         std::atomic<std::size_t> next{ 0 };
         std::mutex kept;
@@ -221,10 +215,9 @@ namespace Rtx
                     // One word per `constant_id`, in the order `lib/variants.glsl` declares them.
                     // The volume traces no primary ray and reorders nothing, so it counts none and
                     // sorts none whatever the build asked for; every other constant it takes is the
-                    // tuple's own, `FOG_UNIFORM` included — a room's air is even, and that is what
-                    // takes the coverage field's forty hashes out of its froxels.
-                    const std::array<std::uint32_t, 7> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
-                        variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u, variant.mUniformFog ? 1u : 0u,
+                    // tuple's own.
+                    const std::array<std::uint32_t, 6> specialization{ volume ? 0u : mCountHits, variant.mSun ? 1u : 0u,
+                        variant.mMoons ? 1u : 0u, variant.mSea ? 1u : 0u,
                         volume ? Shaders::REORDER_OFF : static_cast<std::uint32_t>(mReorder),
                         volume ? 0u : mCountCrossings };
 

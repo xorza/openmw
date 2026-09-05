@@ -91,7 +91,6 @@ namespace Rtx
         bool mSun = true;
         bool mMoons = true;
         bool mSea = true;
-        bool mUniformFog = false;
 
         /// What this frame is. `water` is `VisibilityInputs::mWater`, for the reason given there.
         static VisibilityVariant resolve(const Shaders::VisibilityConstants& frame, bool water);
@@ -103,7 +102,7 @@ namespace Rtx
         std::string describe(std::string_view kernel) const;
 
         /// How many tuples there are, and so how long the table is.
-        static constexpr std::uint32_t sCount = 16;
+        static constexpr std::uint32_t sCount = 8;
     };
 
     /// One ray per pixel against the top-level structure, shaded by the geometric normal it hit.
@@ -250,9 +249,7 @@ namespace Rtx
         /// One pipeline per tuple, every one of them made by `compileEvery`.
         std::array<std::unique_ptr<TracePipeline>, VisibilityVariant::sCount> mPipelines;
 
-        /// The same table for the pass that fills the froxels, of which only the half with
-        /// `mUniformFog` false is filled: a room reads the closed form and no volume is dispatched
-        /// for it.
+        /// The same table for the pass that fills the froxels.
         std::array<std::unique_ptr<ComputePipeline>, VisibilityVariant::sCount> mScatterPipelines;
 
         /// And one for the pass that finds where each column's ray stops, which no tuple changes:

@@ -12,13 +12,6 @@
   the first `setScene`. `RtxVisibilityTest.theVolumeLightsTheAirUpToASurfaceWhereverInASliceItStands`
   at 1446 ms traces 48 frames of a 33-pixel square. The whole run is 567 tests in 26.0 s.
 
-- Renderer tests skip when renderer construction raises `Rtx::Error`. `createVulkanRenderer` at
-  `components/rtxvulkan/vulkanrenderer.cpp:1472` turns every one of them into a reason, and
-  `RendererTest::SetUp` at `apps/components_tests/rtx/harness.cpp:243` turns any reason into
-  `GTEST_SKIP`. `components/rtxvulkan/image.cpp:57` throws that type for an image format with no
-  recorded texel size, which is a fault in this code rather than a machine that cannot run the
-  backend. The process reports success after it skips every GPU regression.
-
 - The fog volume disagrees with the analytic answer for an even layer in two places the closed form
   it replaced did not. A ray lying exactly on the water surface reads up to thirteen levels apart
   between a dry cell and a cell whose water is at nought. And a level ray toward a sun a quarter of
@@ -26,19 +19,6 @@
   `irradiance * phase * column * crossed`: 0.597 against 0.500. Both are in
   `apps/components_tests/rtx/visibility/fog.cpp` at lines 158 and 818, with their tolerances widened
   to 14 levels and 0.12 to say so, and both were already so for every exterior.
-
-- Fog attenuation for particles at `components/rtxvulkan/shaders/lib/sprites.glsl:384` and for cloud
-  shells at `components/rtxvulkan/shaders/lib/medium.glsl:166` reads one `fogExtinctionAt` at the
-  midpoint of the view path, then takes `exp(-extinction * span)`. Opaque geometry at the same
-  distance is attenuated by the volume instead, so an even exponential height layer attenuates the
-  two differently. `fogColumn` at `components/rtxvulkan/shaders/lib/fog.glsl:452` states that
-  layer's exact integral and has no caller anywhere in the tree, and the comment in `fogAlong` at
-  line 698 names it as though a shader read it.
-
-- Fog drops both moons' in-scattering below `FOG_SHAFT_FLOOR`, even when their irradiance is
-  nonzero. `fogSourcesAlong` at `components/rtxvulkan/shaders/lib/fog.glsl:324` sets `mMoonlit` from
-  that threshold, and `components/rtxvulkan/shaders/fogscatter.comp:232` reads the same flag both to
-  skip the moons' shadow ray and to zero what they deliver.
 
 - Translucent panes receive water and fog attenuation over the distance to the surface behind them,
   rather than the distance to the pane. `components/rtxvulkan/shaders/visibility.rgen:166`.
@@ -57,3 +37,7 @@
   the zones cover different frame counts. The row cannot be summed, and no zone can be set against
   the frame median beside it. The `island-crossing` run prints `micromap 7.51` above a frame median
   of 6.73 ms, because the micromap pass runs at a crossing rather than every frame.
+
+- `shot` accepts `--views` and silently ignores it. The option belongs to `bench` and `verify`, and
+  `shot` reads `--view`, so `shot --views=balmora` renders the default view at Seyda Neen and reports
+  it without a word.
