@@ -462,7 +462,14 @@ void main()
     // so what stays in these three from the last frame that did write them is nobody's.
     if (handedOver)
     {
-        imageStore(transparency, at, vec4(transparencyLayer, 1.0));
+        // **The alpha is the blending factor, and it was one.** The integration guide states the
+        // single-input form as "RGB premultiplied with Alpha, Alpha channel is the blending
+        // factor", so a layer handed over with an alpha of one says it covers every pixel — and
+        // where no sprite reached, the colour it covers them with is black. The picture survived
+        // that wherever the render extent was an exact fraction of the output and went black
+        // everywhere else, which is every window the upscale ratio does not divide: 5120 by 1440 at
+        // `--upscale=quality` traces 3413 by 960, and every frame of it came back black.
+        imageStore(transparency, at, vec4(transparencyLayer, opacity));
         imageStore(transparencyOpacity, at, vec4(opacity));
         imageStore(transparencyMotion, at,
             vec4(claim.mWeight > 0.0 ? puffMotionOf(pixel, claim) : moved, 0.0, 0.0));

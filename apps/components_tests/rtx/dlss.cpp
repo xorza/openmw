@@ -318,9 +318,17 @@ namespace Rtx
         /// one. It is a weak claim about sharpness and a strong one about everything that goes wrong
         /// here, since a frame that lost an input, read the wrong image, or skipped the curve is not
         /// off by five per cent but by all of it.
+        ///
+        /// **At an output the ratio does not divide, deliberately.** 1281 by 721 renders at 641 by
+        /// 361, which is a hair under half rather than exactly half — and a guide the upscaler reads
+        /// only there is one nothing at a round resolution can see. The transparency layer's alpha
+        /// was such a guide: handed over as one it says the layer covers every pixel, which resolved
+        /// the whole frame to a layer that was black wherever no sprite reached. Every extent this
+        /// suite measured at was an exact fraction of its output, so nothing here failed while every
+        /// window whose width the ratio does not divide drew a black frame.
         TEST_F(RtxUpscaledFrameTest, anUpscaledFrameIsTheSameFrameLarger)
         {
-            RendererOptions options = Testing::describeRenderer(1280, 720);
+            RendererOptions options = Testing::describeRenderer(1281, 721);
             options.mUpscale = Upscale::Performance;
 
             std::string reason;
@@ -329,8 +337,9 @@ namespace Rtx
                 GTEST_SKIP() << reason;
 
             const FrameExtents extents = upscaling->getExtents();
-            EXPECT_EQ(extents.mOutputWidth, 1280u);
-            EXPECT_EQ(extents.mOutputHeight, 720u);
+            EXPECT_EQ(extents.mOutputWidth, 1281u);
+            EXPECT_EQ(extents.mOutputHeight, 721u);
+            EXPECT_NE(extents.mOutputWidth, extents.mRenderWidth * 2u) << "an exact half hides what this is for";
             EXPECT_LT(extents.mRenderWidth, extents.mOutputWidth);
             EXPECT_LT(extents.mRenderHeight, extents.mOutputHeight);
 
