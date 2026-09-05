@@ -105,12 +105,6 @@ namespace MWRender
 
         createWindow(spec.mResourceDir);
 
-        int width = 0;
-        int height = 0;
-        SDL_GetWindowSizeInPixels(mWindow, &width, &height);
-        mWidth = static_cast<std::uint32_t>(std::max(width, 1));
-        mHeight = static_cast<std::uint32_t>(std::max(height, 1));
-
         mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mStats);
 
         const std::string wanted = Settings::rtx().mUpscale;
@@ -126,11 +120,16 @@ namespace MWRender
         if (!preset.has_value())
             throw std::runtime_error('"' + wantedPreset + "\" is not one of default, d or e");
 
+        // The window's own size, which `fitToWindow` asks for again on every frame after this one.
+        int width = 0;
+        int height = 0;
+        SDL_GetWindowSizeInPixels(mWindow, &width, &height);
+
         Rtx::RendererOptions options;
         options.mShaderDirectory = spec.mResourceDir / "rtx" / "shaders";
         options.mCacheDirectory = spec.mCachePath;
-        options.mWidth = mWidth;
-        options.mHeight = mHeight;
+        options.mWidth = static_cast<std::uint32_t>(std::max(width, 1));
+        options.mHeight = static_cast<std::uint32_t>(std::max(height, 1));
         options.mUpscale = *upscale;
         options.mPreset = *preset;
         options.mWindow = mWindow;
@@ -326,14 +325,14 @@ namespace MWRender
         int height = 0;
         SDL_GetWindowSizeInPixels(mWindow, &width, &height);
 
-        const std::uint32_t wide = static_cast<std::uint32_t>(std::max(width, 1));
-        const std::uint32_t high = static_cast<std::uint32_t>(std::max(height, 1));
-        if (wide != mWidth || high != mHeight)
-        {
-            mWidth = wide;
-            mHeight = high;
-            mRenderer->resize(mWidth, mHeight);
-        }
+        // **Handed over unguarded, because the guard belongs to the backend.** It knows two things
+        // this does not: the extent the surface settled on, which is not always the one it was asked
+        // for, and whether the swapchain has been told it is stale. A guard on the window's own size
+        // would answer the first wrongly and would never rebuild for the second — a swapchain that
+        // went stale at an unchanged size then failed its present for good. `Presenter::resize`
+        // returns on a comparison where neither has happened.
+        mRenderer->resize(
+            static_cast<std::uint32_t>(std::max(width, 1)), static_cast<std::uint32_t>(std::max(height, 1)));
 
         // Whatever the backend settled on, which is what the trace and the GUI are both sized to.
         const Rtx::FrameExtents extents = mRenderer->getExtents();
@@ -393,8 +392,10 @@ namespace MWRender
     {
         drawGui();
 
-        if (!mRenderer->presentFrame())
-            fitToWindow();
+        // **A present that failed is a swapchain to rebuild, and `renderFrame` is where that
+        // happens.** It asks the window its size before every frame and hands it over unguarded, so
+        // the rebuild this needs is the one the next frame opens with.
+        mRenderer->presentFrame();
     }
 
     void RtxRenderer::capture(osg::Image& image, int width, int height)
@@ -473,6 +474,10 @@ namespace MWRender
         const osg::FrameStamp& when = frame.mWhen;
 
         mFrame = when.getFrameNumber();
+
+        // **Ahead of the trace and not after the present**, so the frame this draws is the one the
+        // window's own extent asked for rather than the one behind it.
+        fitToWindow();
 
         // **A frame with the world hidden is the interface and nothing else.** No walk, because the
         // update traversal did not run either; no trace, because the interface covers every pixel of

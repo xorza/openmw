@@ -203,7 +203,15 @@ namespace MWRender
         /// flag is passed, which is what `SDL_GL_GetCurrentContext() == nullptr` then proves.
         void createWindow(const std::filesystem::path& resourceDir);
 
-        /// Resizes the trace to the window where the window has changed under it.
+        /// Sizes the trace, the surface and the viewport to the window as it now is.
+        ///
+        /// **Every frame, because a surface cannot be asked whether the window moved.** A swapchain
+        /// reports itself out of date when it stops matching the surface it was made for, and a
+        /// Wayland surface has no size of its own to be matched against: its `currentExtent` is
+        /// `0xFFFFFFFF` by specification, the swapchain's extent being what defines the surface
+        /// rather than the other way about. So a present succeeds for ever, and a renderer that
+        /// waited to be told would keep the extent the window opened at while the compositor
+        /// stretched its picture to whatever the window had become.
         void fitToWindow();
 
         /// Traces the world the walk has just mirrored, from the eye the frame arrived with.
@@ -280,9 +288,6 @@ namespace MWRender
         osg::Timer_t mStartTick = 0;
 
         std::unique_ptr<Rtx::Renderer> mRenderer;
-
-        std::uint32_t mWidth = 0;
-        std::uint32_t mHeight = 0;
 
         /// The one sequence every mirror walk in this renderer poses at.
         ///
