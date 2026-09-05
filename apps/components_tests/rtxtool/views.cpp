@@ -11,7 +11,6 @@
 
 #include <osg/Vec3f>
 
-#include <apps/rtxtool/placement.hpp>
 #include <apps/rtxtool/views.hpp>
 
 namespace RtxTool
@@ -62,7 +61,8 @@ look = 8292, 300, 700
             ASSERT_NE(start, nullptr);
             ASSERT_TRUE(start->mRoute.has_value());
 
-            EXPECT_EQ(start->mRoute->mTo, "finish");
+            // The destination view is resolved when the file is read, so what a route carries is
+            // where it ends rather than the name of a place to look up later.
             EXPECT_EQ(start->mRoute->mOrigin, osg::Vec3f(8292.0f, 200.0f, 700.0f));
             EXPECT_EQ(start->mRoute->mTarget, osg::Vec3f(8292.0f, 300.0f, 700.0f));
             EXPECT_EQ(start->mRoute->mSpeed, 1500.0f);
@@ -252,37 +252,5 @@ hour = 19.25
         /// look point moves with it — the two endpoints below are each a hundred units ahead of
         /// their own position, so the camera faces the same way throughout and the frame at the
         /// halfway mark is the frame five hundred units in.
-        TEST(RtxViewsTest, aRouteIsFlownAtItsSpeedAndStopsWhenItArrives)
-        {
-            const Placement start{ .mOrigin = { 0.0f, 0.0f, 0.0f }, .mTarget = { 0.0f, 100.0f, 0.0f } };
-            const Route route{ .mTo = "finish",
-                .mOrigin = { 0.0f, 1000.0f, 0.0f },
-                .mTarget = { 0.0f, 1100.0f, 0.0f },
-                .mSpeed = 100.0f };
-
-            EXPECT_EQ(route.partAt(start, 0.0f), 0.0f);
-            EXPECT_EQ(route.partAt(start, 1.0f), 0.1f);
-            EXPECT_EQ(route.partAt(start, 5.0f), 0.5f);
-
-            // Ten seconds is the thousand units exactly; anything past it stands at the far end.
-            EXPECT_EQ(route.partAt(start, 10.0f), 1.0f);
-            EXPECT_EQ(route.partAt(start, 40.0f), 1.0f);
-
-            EXPECT_EQ(route.at(start, 0.5f).mOrigin, osg::Vec3f(0.0f, 500.0f, 0.0f));
-            EXPECT_EQ(route.at(start, 0.5f).mTarget, osg::Vec3f(0.0f, 600.0f, 0.0f));
-            EXPECT_EQ(route.at(start, 1.0f).mOrigin, route.mOrigin);
-            EXPECT_EQ(route.at(start, 1.0f).mTarget, route.mTarget);
-
-            // **Twice the speed is twice the distance, which is what says the speed is read at all.**
-            const Route faster{
-                .mTo = route.mTo, .mOrigin = route.mOrigin, .mTarget = route.mTarget, .mSpeed = 200.0f
-            };
-            EXPECT_EQ(faster.partAt(start, 1.0f), 0.2f);
-            EXPECT_NE(faster.partAt(start, 1.0f), route.partAt(start, 1.0f));
-
-            // A route whose ends coincide has arrived, rather than dividing by nothing.
-            const Route standing{ .mTo = "here", .mOrigin = start.mOrigin, .mTarget = start.mTarget, .mSpeed = 100.0f };
-            EXPECT_EQ(standing.partAt(start, 1.0f), 1.0f);
-        }
     }
 }

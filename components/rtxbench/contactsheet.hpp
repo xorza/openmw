@@ -8,10 +8,7 @@
 namespace Rtx
 {
     struct TextureData;
-}
 
-namespace RtxTool
-{
     /// A drawn contact sheet, before anything has decided what to do with it.
     struct ContactSheet
     {
@@ -48,9 +45,9 @@ namespace RtxTool
     ///
     /// @param strength the same `--delight` the frame runs at, so the sheet shows what the frame
     ///        is actually doing rather than what it could do.
-    ContactSheet drawContactSheet(std::span<const Rtx::TextureData> textures, float strength);
+    ContactSheet drawContactSheet(std::span<const TextureData> textures, float strength);
 
     /// The same, written where it can be looked at. Empty where the cell used no textures.
     ContactSheet writeContactSheet(
-        std::span<const Rtx::TextureData> textures, const std::filesystem::path& out, float strength);
+        std::span<const TextureData> textures, const std::filesystem::path& out, float strength);
 }

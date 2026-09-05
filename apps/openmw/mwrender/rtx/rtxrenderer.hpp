@@ -170,6 +170,20 @@ namespace MWRender
         /// Takes a view off that list, because it is going away.
         void forgetView(TracedView& view);
 
+        /// The engine's scene graph as this renderer holds it, for whatever asks what it was
+        /// handed rather than what it drew.
+        WorldMirror& getMirror() { return mMirror; }
+
+        /// Whatever is topmost, for a picture of the world that has to be told what to draw.
+        osg::Group* getSceneRoot() const { return mSceneRoot.get(); }
+
+        /// What this frame's walk found, and what a second walk over the same graph added.
+        ///
+        /// **A second walk should add nothing**, which is the property the incremental mirror rests
+        /// on and the only way to ask it is to ask twice. It is made only where a run asked for it.
+        const Rtx::ExtractionStats& getWalkStats() const { return mFound; }
+        const Rtx::ExtractionStats& getSecondWalkStats() const { return mFoundAgain; }
+
         /// The one sequence every mirror walk here poses at — the world's, and every traced view's.
         ///
         /// **Shared rather than each keeping its own**, because a subtree both can reach would
@@ -313,6 +327,11 @@ namespace MWRender
         /// The engine's scene graph mirrored into what a ray can meet, and the hand-over that
         /// puts it on the device.
         WorldMirror mMirror;
+
+        /// What the last walk found, and what a second walk over the same graph added. Kept because
+        /// a report is written at the end of a stop and the walks are over by then.
+        Rtx::ExtractionStats mFound;
+        Rtx::ExtractionStats mFoundAgain;
 
         /// A running average of what the trace costs, reported every `sReportEvery` frames.
         ///

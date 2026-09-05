@@ -255,21 +255,21 @@ namespace RtxTool
             "closed, and `bench` measures this many at each place instead of deriving them from "
             "--seconds");
 
-        owned(Verbs::Bench, "suite", bpo::value<std::string>()->default_value("default"),
+        owned(Verbs::Bench | Verbs::Check, "suite", bpo::value<std::string>()->default_value("default"),
             "which list of places in resources/rtx/benches.cfg to profile. Overridden "
             "by --views");
 
-        owned(Verbs::Bench | Verbs::Verify, "views", bpo::value<std::string>()->default_value(""),
+        owned(Verbs::Bench | Verbs::Verify | Verbs::Check, "views", bpo::value<std::string>()->default_value(""),
             "which views.cfg views to visit, by name rather than by suite — the places `bench` "
             "profiles and the ones `verify` renders. --views=all runs every view there is");
 
-        owned(Verbs::Bench, "seconds", bpo::value<float>()->default_value(20.0f),
+        owned(Verbs::Bench | Verbs::Check, "seconds", bpo::value<float>()->default_value(20.0f),
             "how many seconds of world to run at each place. World and not wall: the "
             "world steps a sixtieth of a second per frame however long the frame took, so this is "
             "twelve hundred frames either way and two builds render the same twelve hundred. Twenty "
             "because ten left the CPU medians moving by more than the changes being measured");
 
-        owned(Verbs::Bench | Verbs::Shot | Verbs::Verify, "warmup", bpo::value<float>()->default_value(3.0f),
+        owned(otherThan(Verbs::Info | Verbs::View), "warmup", bpo::value<float>()->default_value(3.0f),
             "how many seconds of world to draw and throw away before measuring. This "
             "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
             "for its residency as well");

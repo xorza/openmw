@@ -192,29 +192,16 @@ if (OPENMW_RTX)
         rtx/wavepass.cpp
         rtx/wavespectrum.cpp
         rtxbench/benchspec.cpp
+        rtxbench/contactsheet.cpp
         rtxbench/gpuclock.cpp
         rtxbench/perfcontrol.cpp
-        rtxtool/actor.cpp
+        rtxbench/scenedigest.cpp
         rtxtool/benchsuite.cpp
-        rtxtool/contactsheet.cpp
-        rtxtool/crossing.cpp
-        rtxtool/framing.cpp
-        rtxtool/installation.cpp
-        rtxtool/lamps.cpp
-        rtxtool/material.cpp
         rtxtool/options.cpp
-        rtxtool/pagedterrain.cpp
-        rtxtool/props.cpp
-        rtxtool/retire.cpp
-        rtxtool/scenedigest.cpp
-        rtxtool/stability.cpp
-        rtxtool/staging.cpp
-        rtxtool/terrainstorage.cpp
         rtxtool/validationchoice.cpp
         rtxtool/verify.cpp
         rtxtool/viewpoint.cpp
         rtxtool/views.cpp
-        rtxtool/worldclock.cpp
         sky/clouds.cpp
         sky/skyroll.cpp
         sky/sun.cpp

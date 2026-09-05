@@ -11,11 +11,11 @@
 #include <osg/Vec2f>
 #include <osg/Vec3f>
 
-#include <apps/rtxtool/scenedigest.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtxbench/scenedigest.hpp>
 #include <components/vfs/pathutil.hpp>
 
-namespace RtxTool
+namespace Rtx
 {
     namespace
     {

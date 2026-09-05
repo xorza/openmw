@@ -11,7 +11,6 @@
 #include <components/settings/parser.hpp>
 
 #include "parsefloat.hpp"
-#include "placement.hpp"
 
 namespace RtxTool
 {
@@ -137,7 +136,6 @@ namespace RtxTool
                         + "\", which names no pos and look of its own to arrive at");
 
                 views[at].mRoute = Route{
-                    .mTo = to,
                     .mOrigin = *end->mOrigin,
                     .mTarget = *end->mTarget,
                     .mSpeed = paired->second,
@@ -217,23 +215,6 @@ namespace RtxTool
 
         resolveRoutes(views, ends, speeds);
         return views;
-    }
-
-    float Route::partAt(const Placement& start, float seconds) const
-    {
-        const float length = (mOrigin - start.mOrigin).length();
-        if (!(length > 0.0f))
-            return 1.0f;
-
-        return std::min(1.0f, std::max(0.0f, mSpeed * seconds / length));
-    }
-
-    Placement Route::at(const Placement& start, float part) const
-    {
-        return Placement{
-            .mOrigin = start.mOrigin + (mOrigin - start.mOrigin) * part,
-            .mTarget = start.mTarget + (mTarget - start.mTarget) * part,
-        };
     }
 
     const View* findView(const std::vector<View>& views, std::string_view name)

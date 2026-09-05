@@ -5,10 +5,7 @@
 namespace Rtx
 {
     class SceneDesc;
-}
 
-namespace RtxTool
-{
     /// One number for what a scene hands the renderer, the same for two stagings of one cell.
     ///
     /// **Per placement and summed, because the host hands sibling shapes over in heap order.**
@@ -29,5 +26,5 @@ namespace RtxTool
     /// **Fields and not records, wherever a record has padding.** The bytes between fields are
     /// whatever the allocator left, and a hash that read them would call two identical scenes
     /// different. Textures by their paths and not their slots, for the same reason as the shapes.
-    std::string digestScene(const Rtx::SceneDesc& scene);
+    std::string digestScene(const SceneDesc& scene);
 }

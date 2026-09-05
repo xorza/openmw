@@ -1,71 +1,22 @@
 set(RTXTOOL_FILES
-    actor.cpp
-    actor.hpp
     benchsuite.cpp
     benchsuite.hpp
-    cellchoice.cpp
-    cellchoice.hpp
-    cellscene.cpp
-    cellscene.hpp
-    contactsheet.cpp
-    contactsheet.hpp
-    content.cpp
-    content.hpp
-    exteriorindex.cpp
-    exteriorindex.hpp
-    find.cpp
-    find.hpp
-    framerequest.cpp
-    framerequest.hpp
-    framing.cpp
-    framing.hpp
-    lighting.cpp
-    lighting.hpp
-    motion.hpp
-    npc.cpp
-    npc.hpp
-    objectstorage.cpp
-    objectstorage.hpp
-    options.cpp
-    options.hpp
     parsefloat.cpp
     parsefloat.hpp
-    picture.cpp
-    picture.hpp
-    placement.cpp
-    placement.hpp
-    posedactors.cpp
-    posedactors.hpp
-    scene.cpp
-    scene.hpp
-    scenedigest.cpp
-    scenedigest.hpp
-    stagedworld.cpp
-    stagedworld.hpp
-    terrainstorage.cpp
-    terrainstorage.hpp
-    textures.cpp
-    textures.hpp
+    framerequest.cpp
+    framerequest.hpp
+    options.cpp
+    options.hpp
     validationchoice.cpp
     validationchoice.hpp
     verbs.cpp
     verbs.hpp
     verify.cpp
     verify.hpp
-    view.cpp
-    view.hpp
     viewpoint.cpp
     viewpoint.hpp
     views.cpp
     views.hpp
-    waterplane.cpp
-    waterplane.hpp
-    window.cpp
-    window.hpp
-    world.cpp
-    world.hpp
-    worldclock.cpp
-    worldclock.hpp
 )
 
 source_group(apps\\rtxtool FILES ${RTXTOOL_FILES} main.cpp)

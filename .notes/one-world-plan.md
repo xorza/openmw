@@ -429,9 +429,51 @@ player's configuration file is a build whose quoted numbers were measured throug
 somebody left a line behind. So a launcher states them for the one run it is making, and a played
 session has only the build to go on.
 
+### Step 3, complete
+
+Every verb drives a real game. The harness went from 78 files to 21, and the world it staged is
+gone: its content reader, its cell loader, its NPC assembler, its animation poser, its weather
+lighting, its water, its terrain storages, its window and its fly camera.
+
+| verb | how it answers now |
+| --- | --- |
+| `scene` | `WorldMirror::getScene`, and the walk's own account of what it met |
+| `textures` | the same scene's texture table, through the shared contact sheet |
+| `map` | an `OffscreenViewSpec` framed as `MWRender::LocalMap` frames one |
+| `doll` | `MWRender::InventoryPreview` of an NPC the world placed |
+| `view` | the game, with collision off and the player's own camera |
+| `check` | a new verb, below |
+
+`contactsheet` and `scenedigest` moved to `components/rtxbench/` with them: what a sheet shows and
+what a digest names are facts about the content, not about whichever host staged it.
+
+### The fixture tests became a verb
+
+Thirty-one tests stood on the deleted world. `openmw-rtxtool check` asks the same kind of claim of
+the running game, at every place of a suite, and exits non-zero on the first failure.
+
+| check | what it asserts |
+| --- | --- |
+| `walk-twice` | a second walk over one graph adds no mesh and no material, and resolves every drawable |
+| `surfaces-described` | no placement wears a material nothing described |
+| `lights-placed` | the world holds lights to cast |
+| `crossings-append` | a route crossed boundaries and not every crossing rebuilt |
+| `picture-settles` | a still camera over a still world draws the same picture twice |
+
+**That is five claims where there were thirty-one, and the gap is real.** What the deleted tests
+also asserted, and what a check has yet to be written for: a lamp stands at its wick; a light off by
+default is not placed; a light with no mesh still burns; a cell's emitters run; the sweep drops what
+the walk stopped finding and keeps what is shared; a compacted scene renders as one that lost
+nothing; the eight claims about paged ground, distant lights and composites; a drop's reported
+motion is its own fall; nothing falls where the eye is under water; the sea is one sheet; residents
+leave with their cell. Each is still true of the code and none is guarded.
+
 ### What is left
 
 - Time the hosted `shot` in release against the 4.4 s the staged one took, and close the spike gate.
-- Step 3: `doll`, `map`, `textures`, `scene` and `view` on the session, then the harness world goes
-  and the fixture tests become `check`.
+- Write the twelve checks listed above, and a `CI/check_rtx_checks.sh` that runs `check --all`.
 - Step 4: the guidance file and the two run scripts.
+- `view` lost the keys that ran its clock, turned its weather and printed a `views.cfg` block. The
+  console answers the first two with `set gamehour to` and `changeweather`; the third wants a Lua
+  script under `files/rtx/` or a console command, and `describeSpot` and `describeBlock` are kept
+  for whichever it turns out to be.

@@ -12,12 +12,22 @@
 #include <components/rtx/reorder.hpp>
 #include <components/rtx/upscale.hpp>
 
-#include "posedactors.hpp"
 #include "views.hpp"
 
 namespace RtxTool
 {
-    struct StagingRequest;
+    /// When and where a place stands, once a view file entry and a command line have met.
+    struct StagingRequest
+    {
+        std::string mWeather;
+        float mHour = sDefaultHour;
+
+        /// Which day, counted from the one a new game begins on. Only the moons read it.
+        int mDay = 0;
+
+        std::optional<osg::Vec3f> mOrigin;
+        std::optional<osg::Vec3f> mTarget;
+    };
 
     /// What a command's frames are traced with, and when and where the world stands for them.
     ///
@@ -27,12 +37,6 @@ namespace RtxTool
     /// line into them four times, and the two conversions below were written out by hand at each.
     struct FrameRequest
     {
-        std::filesystem::path mShaderDirectory;
-
-        /// Where the pipelines it compiles are kept, so a later run finds them — the user's own
-        /// cache directory, shared with the game.
-        std::filesystem::path mCacheDirectory;
-
         /// The size the frame is presented at. What it is traced at follows from `mUpscale`.
         std::uint32_t mWidth = 1920;
         std::uint32_t mHeight = 1080;
@@ -67,6 +71,13 @@ namespace RtxTool
         /// Whether the trace also counts the see-through surfaces each primary ray crosses.
         bool mCountCrossings = false;
 
+        /// How far out from the eye the world is built, in cells.
+        ///
+        /// **How much world exists, which is a property of the structure rays are cast against and
+        /// not of the camera.** The air is tuned to it as well as the ground, so a ring of ground
+        /// four cells out and a fog measured over thirty thousand units are one number.
+        float mDistantCells = 4.0f;
+
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame. A picture wants it measured; a reference wants it held still.
         std::optional<float> mExposure;
@@ -81,14 +92,6 @@ namespace RtxTool
 
         /// Which day, counted from the one a new game begins on. Only the moons read it.
         int mDay = 0;
-
-        ActorRequest mActors;
-
-        /// The renderer these frames are traced by.
-        ///
-        /// @param window where the frames are shown, or null for one that only reads pixels back.
-        Rtx::RendererOptions describeRenderer(
-            const Rtx::ValidationOptions& validation, SDL_Window* window = nullptr) const;
 
         /// When and where the region stands, for a camera at `origin` looking at `target`.
         ///

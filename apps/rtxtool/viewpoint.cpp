@@ -9,7 +9,6 @@
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 
-#include "view.hpp"
 #include "views.hpp"
 
 namespace RtxTool
@@ -90,24 +89,9 @@ namespace RtxTool
         return block;
     }
 
-    std::string describeTitle(const WindowTitle& title)
-    {
-        // Both extents only where they differ, which is every run that upscales and no other.
-        std::string sizes = std::format("{}x{}", title.mOutputWidth, title.mOutputHeight);
-        if (title.mRenderWidth != title.mOutputWidth)
-            sizes = std::format("{}x{} to {}", title.mRenderWidth, title.mRenderHeight, sizes);
-
-        const std::string sky = title.mInto.empty()
-            ? std::string(title.mWeather)
-            : std::format("{} to {} {:.0f}%", title.mWeather, title.mInto, title.mTurned * 100.0f);
-
-        return std::format("{}  |  {:.0f} fps  |  {}  |  {:.0f}, {:.0f}, {:.0f}  |  {:.0f} u/s  |  day {} {} {}",
-            title.mName, title.mFps, sizes, title.mOrigin.x(), title.mOrigin.y(), title.mOrigin.z(), title.mSpeed,
-            title.mDay, Rtx::describeHour(title.mHour), sky);
-    }
-
-    std::string describeProfile(const ViewRequest& request, const Rtx::ValidationOptions& validation,
-        const osg::Vec3f& origin, const osg::Vec3f& target, std::uint32_t width, std::uint32_t height)
+    std::string describeProfile(const std::string& cell, const FrameRequest& frame,
+        const Rtx::ValidationOptions& validation, const osg::Vec3f& origin, const osg::Vec3f& target,
+        std::uint32_t width, std::uint32_t height)
     {
         // Shortest round-trip rather than the rounded form `describeSpot` uses: these numbers exist
         // to be read back into the same floats, and a position rounded to the unit is a different
@@ -127,17 +111,15 @@ namespace RtxTool
         // percent and it moves a scattering of pixels, so a line without it says one thing about two
         // frames that cost different amounts.
         const std::string exposure
-            = request.mFrame.mExposure.has_value() ? std::format("{}", *request.mFrame.mExposure) : std::string("auto");
+            = frame.mExposure.has_value() ? std::format("{}", *frame.mExposure) : std::string("auto");
 
         return std::format(
             "--cell=\"{}\" --pos={},{},{} --look={},{},{} --fov={} --size={}x{} --weather={}"
             " --hour={} --day={} --exposure={} --upscale={} --preset={} --reorder={} --filter={}"
             " --validation={} --sync-validation={} --gpu-validation={}{}",
-            request.mCell, origin.x(), origin.y(), origin.z(), target.x(), target.y(), target.z(),
-            request.mFrame.mFieldOfView, width, height, request.mFrame.mWeather, request.mFrame.mHour,
-            request.mFrame.mDay, exposure, Rtx::upscaleName(request.mFrame.mUpscale),
-            Rtx::presetName(request.mFrame.mPreset), Rtx::reorderName(request.mFrame.mReorder), request.mFrame.mFilter,
-            validation.mEnabled, validation.mSynchronization, validation.mGpuAssisted,
-            request.mFrame.mShowAlbedo ? " --albedo" : "");
+            cell, origin.x(), origin.y(), origin.z(), target.x(), target.y(), target.z(), frame.mFieldOfView, width,
+            height, frame.mWeather, frame.mHour, frame.mDay, exposure, Rtx::upscaleName(frame.mUpscale),
+            Rtx::presetName(frame.mPreset), Rtx::reorderName(frame.mReorder), frame.mFilter, validation.mEnabled,
+            validation.mSynchronization, validation.mGpuAssisted, frame.mShowAlbedo ? " --albedo" : "");
     }
 }

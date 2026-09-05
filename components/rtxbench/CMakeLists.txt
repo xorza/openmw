@@ -6,19 +6,25 @@
 # and the clock the card was at and the fifo perf listens on are the same instruments whichever
 # binary is holding them.
 #
-# It knows nothing about a world, a cell or a view. What a run visits is its caller's.
+# It knows nothing about a world, a cell or a view. What a run visits is its caller's, and what it
+# looks at — a scene's digest, a sheet of its textures — is a fact about the content rather than
+# about whichever host staged it.
 
 set(RTXBENCH_FILES
     benchrecord.cpp
     benchrecord.hpp
     benchspec.cpp
     benchspec.hpp
+    contactsheet.cpp
+    contactsheet.hpp
     framehashes.cpp
     framehashes.hpp
     gpuclock.cpp
     gpuclock.hpp
     perfcontrol.cpp
     perfcontrol.hpp
+    scenedigest.cpp
+    scenedigest.hpp
 )
 
 source_group(components\\rtxbench FILES ${RTXBENCH_FILES})

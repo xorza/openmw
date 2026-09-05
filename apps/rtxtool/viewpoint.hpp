@@ -6,6 +6,7 @@
 
 #include <osg/Vec3f>
 
+#include "framerequest.hpp"
 #include "views.hpp"
 
 namespace Rtx
@@ -15,14 +16,12 @@ namespace Rtx
 
 namespace RtxTool
 {
-    struct ViewRequest;
-
-    /// Where the camera is standing and under what, as the window's own prints take it.
+    /// Where a camera is standing and under what, as this tool writes a place down.
     ///
     /// **A type rather than a handful of `format` calls in the key handler**, because everything it
     /// writes is something the tool has to be able to read back — a `views.cfg` section and a
     /// command line — and a format that drifts from its parser is not a thing an eye catches in a
-    /// log. Held apart from the window so the tests can assert both without a device.
+    /// log. Held apart from whatever prints it, so the tests can assert both without a device.
     struct Viewpoint
     {
         /// The `views.cfg` id this was opened as, or empty where it was opened by `--cell`. Kept so
@@ -33,7 +32,7 @@ namespace RtxTool
         /// The cell as `--cell` spells it: a pair of integers for an exterior, a name for an
         /// interior.
         ///
-        /// **The cell the window opened, and not the one the camera has since flown into.** The
+        /// **The cell the place names, and not the one a camera has since flown into.** The
         /// reference implementation prints the containing square instead, and is right to: it
         /// streams, so its camera really is standing in the cell it names. This tool loads exactly
         /// one cell and shows nothing outside it, so a marker naming the square the camera drifted
@@ -74,56 +73,20 @@ namespace RtxTool
     /// The whole `views.cfg` section, ready to paste into it.
     ///
     /// **The whole section and not two of its lines.** A block with no `cell` in it is one the view
-    /// file refuses to load, so what the window printed could never have gone where it was printed
-    /// to go. Numbers are shortest-round-trip for the reason `describeProfile` gives.
+    /// file refuses to load, so what was printed could never have gone where it was printed to go.
+    /// Numbers are shortest-round-trip for the reason `describeProfile` gives.
     std::string describeBlock(const Viewpoint& spot);
-
-    /// What a window's own title bar says.
-    ///
-    /// **Everything that moves while the window is open, and nothing that does not.** The cell and
-    /// the view's name are on the command line and in `views.cfg`, and a bar that repeated them
-    /// would spend its width on what the person who opened it already knows.
-    struct WindowTitle
-    {
-        /// What the window is called, which is the view's name or the cell's.
-        std::string_view mName;
-
-        double mFps = 0.0;
-
-        /// What the frame is presented at, and what it was traced at. The bar says both only where
-        /// they differ, because equal numbers twice say nothing.
-        std::uint32_t mOutputWidth = 0;
-        std::uint32_t mOutputHeight = 0;
-        std::uint32_t mRenderWidth = 0;
-        std::uint32_t mRenderHeight = 0;
-
-        osg::Vec3f mOrigin;
-
-        /// How fast the camera flies, in units a second.
-        float mSpeed = 0.0f;
-
-        int mDay = 0;
-        float mHour = sDefaultHour;
-
-        /// The weather now, what it is turning into, and how far along. `mInto` is empty where the
-        /// sky is settled, which is every frame but the four seconds after a weather key.
-        std::string_view mWeather;
-        std::string_view mInto;
-        float mTurned = 0.0f;
-    };
-
-    /// The title bar as one line, rewritten five times a second.
-    std::string describeTitle(const WindowTitle& title);
 
     /// One line of arguments that renders this frame again, wherever it is pasted.
     ///
-    /// **What the window is looking at, plus everything that changes what it costs.** The camera and
-    /// the size are passed rather than read off `request` because both move while the window is
+    /// **Where the camera is, plus everything that changes what the frame costs.** The camera and
+    /// the size are passed rather than read off `frame` because both move while a session is
     /// open; the rest of the conditions do not, and come off the request as they were given.
     ///
     /// The denoiser and the validation flags are in it deliberately, because both cost time a
     /// profiling line has to account for: five wavelet levels are about 2 ms at 1080p, and a trace
     /// timed under the layers is not a figure to compare against anything at all.
-    std::string describeProfile(const ViewRequest& request, const Rtx::ValidationOptions& validation,
-        const osg::Vec3f& origin, const osg::Vec3f& target, std::uint32_t width, std::uint32_t height);
+    std::string describeProfile(const std::string& cell, const FrameRequest& frame,
+        const Rtx::ValidationOptions& validation, const osg::Vec3f& origin, const osg::Vec3f& target,
+        std::uint32_t width, std::uint32_t height);
 }

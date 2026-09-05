@@ -8,8 +8,6 @@
 
 #include <osg/Vec3f>
 
-#include "placement.hpp"
-
 namespace RtxTool
 {
     /// Where a bench flies to from a view, and how fast.
@@ -21,27 +19,14 @@ namespace RtxTool
     /// frames on every machine and on every build.
     struct Route
     {
-        /// The view it ends at, named for the report. The two below were copied out of it when the
-        /// file was read, so nothing downstream resolves anything.
-        std::string mTo;
-
+        /// Where it ends, copied out of the view it names when the file was read — so nothing
+        /// downstream resolves anything.
         osg::Vec3f mOrigin;
         osg::Vec3f mTarget;
 
         /// World units a second. A Morrowind exterior cell is 8,192 across, so this times the run's
         /// length is roughly how many boundaries get crossed.
         float mSpeed = 0.0f;
-
-        /// How far along this route the camera stands `seconds` in, as a fraction of the way.
-        ///
-        /// **Clamped at one**, so a run longer than the route is stands at the far end rather than
-        /// sailing off into the sea. A route whose ends coincide is arrived at immediately.
-        float partAt(const Placement& start, float seconds) const;
-
-        /// Where the camera stands and looks, `part` of the way along. Both ends interpolate, so a
-        /// pair of endpoints whose looks are the same offset from their positions gives a camera
-        /// that faces one direction throughout.
-        Placement at(const Placement& start, float part) const;
     };
 
     /// The hour a place stands at where neither the view nor the command line names one.

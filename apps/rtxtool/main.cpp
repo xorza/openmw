@@ -38,32 +38,22 @@
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchspec.hpp>
+
+#include <apps/openmw/mwrender/rtx/session.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
 
-#include "actor.hpp"
 #include "benchsuite.hpp"
-#include "cellchoice.hpp"
-#include "cellscene.hpp"
-#include "find.hpp"
 #include "framerequest.hpp"
 #include "hosted.hpp"
-#include "npc.hpp"
 #include "options.hpp"
-#include "picture.hpp"
-#include "placement.hpp"
-#include "posedactors.hpp"
-#include "scene.hpp"
-#include "stagedworld.hpp"
-#include "textures.hpp"
+#include "parsefloat.hpp"
 #include "validationchoice.hpp"
 #include "verbs.hpp"
 #include "verify.hpp"
-#include "view.hpp"
 #include "viewpoint.hpp"
 #include "views.hpp"
-#include "world.hpp"
 
 namespace RtxTool
 {
@@ -74,6 +64,11 @@ namespace RtxTool
         using StringsVector = std::vector<std::string>;
 
         constexpr std::string_view applicationName = "RtxTool";
+
+        /// How long a window runs when nobody said: until it is closed. A count rather than a
+        /// special case, so one schedule serves a run of eight frames and a session somebody flies
+        /// for an hour.
+        constexpr std::uint32_t sForever = ~0u;
 
         /// Which layers a run wants, from what the command line asked for.
         ///
@@ -162,44 +157,6 @@ namespace RtxTool
             return value;
         }
 
-        /// Applies every terrain option at once: whether the world pages, how far, and whether
-        /// the distant ground carries anything.
-        ///
-        /// **Together, because they are read together everywhere.** Paging without distance is a
-        /// quad tree that barely leaves the active grid, distance without paging is a radius
-        /// `TerrainGrid` ignores, and statics without either are statics on ground that does not
-        /// exist — so a command that set one and forgot the rest would be rendering a different
-        /// world from the one its line asked for.
-        void pageTerrainFrom(World& world, const bpo::variables_map& variables)
-        {
-            // **Written to the setting and not only handed to the terrain**, because the air reads
-            // the same number. Fog is a half-life measured across some distance; tuned to seven
-            // thousand units it swallows a world built to thirty, and a ring of ground four cells
-            // out then renders identically to one built none — which is how this came to be one
-            // number rather than two.
-            const float cells = variables["distant-cells"].as<float>();
-
-            // **On by default, and still nameable.** A radius means nothing without the paged
-            // world — `TerrainGrid` builds the staged cells and nothing else, which is the
-            // three-cell square of ground with sea to the horizon `--distant-terrain=false` puts
-            // back. That is what the flag is for now: an A/B against the world the game builds,
-            // rather than a way to reach ground that only the grid could make.
-            const bool paged = variables["distant-terrain"].as<bool>();
-            world.pageTerrain(paged);
-            world.pageStatics(variables["distant-statics"].as<bool>());
-
-            // **The air follows the world that is actually built, and the grid does not honour a
-            // radius.** `TerrainGrid` makes the staged cells and nothing else, so a run without the
-            // paged world left at four cells of reach would see clearly to thirty thousand units and
-            // find the edge of a three-cell square there. Zero hands the air back to `viewing
-            // distance`, which is what that square was always lit for.
-            Settings::rtx().mDistantLandCells.set(paged ? cells : 0.0f);
-            world.setTerrainViewDistance(landReach());
-        }
-
-        /// Who stands in the region, from the command line. **One reading of it**, because a
-        /// report that described a differently populated cell than the one `shot` renders is the
-        /// drift this tool exists to catch.
         /// The layers a run that will be measured or compared gets, which is none unless it asked.
         ///
         /// **Off unless somebody asked, whatever the build default is.** The layers cost between a
@@ -213,18 +170,6 @@ namespace RtxTool
                 || !variables["gpu-validation"].defaulted();
 
             return asked ? validationFrom(variables, windowed) : Rtx::ValidationOptions{};
-        }
-
-        ActorRequest actorsFrom(const bpo::variables_map& variables)
-        {
-            return ActorRequest{
-                .mCreatures = variables["actor"].as<StringsVector>(),
-                .mPeople = variables["npc"].as<StringsVector>(),
-                .mSeconds = variables["actor-time"].as<float>(),
-                .mResidents = variables["people"].as<bool>(),
-                .mProps = variables["props"].as<bool>(),
-                .mClothes = variables["clothes"].as<bool>(),
-            };
         }
 
         /// What `--hour` named, or nothing where it was left at its default. `hourFor` is the rule
@@ -283,8 +228,6 @@ namespace RtxTool
             const auto [width, height] = parseSize(variables["size"].as<std::string>());
 
             FrameRequest request;
-            request.mShaderDirectory = command.mResources / "rtx" / "shaders";
-            request.mCacheDirectory = command.mConfig.getCachePath();
             request.mWidth = width;
             request.mHeight = height;
             request.mFieldOfView = variables["fov"].as<float>();
@@ -296,35 +239,12 @@ namespace RtxTool
             request.mShowAlbedo = variables["albedo"].as<bool>();
             request.mJitter = variables["jitter"].as<bool>();
             request.mCountCrossings = variables["crossings"].as<bool>();
+            request.mDistantCells = variables["distant-cells"].as<float>();
             request.mExposure = parseExposure(variables["exposure"].as<std::string>());
             request.mWeather = weather;
             request.mHour = hour;
             request.mDay = variables["day"].as<int>();
-            request.mActors = actorsFrom(variables);
 
-            return request;
-        }
-
-        /// What a picture inside the interface is asked for, from the command line.
-        ///
-        /// @param width the size to write at where `--size` said nothing. **Its own default and not
-        ///        the shot's**, because a doll and a map tile are pictures rather than frames: the
-        ///        game draws one at 512 by 1024 and the other square.
-        PictureRequest pictureFrom(const Command& command, std::uint32_t width, std::uint32_t height)
-        {
-            const bpo::variables_map& variables = command.mVariables;
-            const auto [asked, high] = parseSize(variables["size"].as<std::string>());
-
-            PictureRequest request;
-            request.mOutput = variables["out"].as<std::string>();
-            request.mShaderDirectory = command.mResources / "rtx" / "shaders";
-            request.mCacheDirectory = command.mConfig.getCachePath();
-            request.mWidth = variables["size"].defaulted() ? width : asked;
-            request.mHeight = variables["size"].defaulted() ? height : high;
-            request.mSeconds = variables["actor-time"].as<float>();
-            request.mDressed = variables["clothes"].as<bool>();
-            request.mOrigin = parseVec3(variables["pos"].as<std::string>(), "--pos");
-            request.mTarget = parseVec3(variables["look"].as<std::string>(), "--look");
             return request;
         }
 
@@ -360,40 +280,6 @@ namespace RtxTool
             return 0;
         }
 
-        int runView(
-            World& world, const std::string& cellSpec, const Rtx::ValidationOptions& validation, ViewRequest request)
-        {
-            const ESM::Cell* cell = findCellOrComplain(world.getContent(), cellSpec);
-            if (cell == nullptr)
-                return 1;
-
-            printCellHeading(*cell);
-
-            return runWindow(world, *cell, validation, std::move(request));
-        }
-
-        /// Where the command line and the view file meet.
-        ///
-        /// A named view supplies the cell and usually the camera; anything given explicitly on the
-        /// command line wins over it, so a view is a starting point rather than a straitjacket.
-        struct Chosen
-        {
-            std::string mCell;
-            std::string mTitle;
-
-            /// The view file's id and note, empty where nothing named one.
-            std::string mView;
-            std::string mNote;
-
-            std::optional<osg::Vec3f> mOrigin;
-            std::optional<osg::Vec3f> mTarget;
-
-            /// Resolved here rather than left to each command, so a view measured at dawn under an
-            /// overcast is drawn that way by every one of them.
-            float mHour = sDefaultHour;
-            std::string mWeather = std::string(sDefaultWeather);
-        };
-
         /// Where someone starts when they have said nothing about where: the ship at Seyda Neen,
         /// where the game starts and the one place every player of it has stood.
         constexpr std::string_view sDefaultView = "seyda-neen-ship";
@@ -427,7 +313,16 @@ namespace RtxTool
             throw std::runtime_error("no view is called \"" + name + "\". These are:" + known);
         }
 
-        Chosen chooseView(const bpo::variables_map& variables, const std::filesystem::path& resources)
+        /// Where the command line and the view file meet, as one place.
+        ///
+        /// **A `View` and not a second type beside one.** A named view supplies the cell and usually
+        /// the camera; anything given on the command line wins over it, so what comes back is the
+        /// same kind of thing a suite hands out — and one function turns either into a stop.
+        ///
+        /// The conditions come back settled rather than optional, because they have been decided:
+        /// `hourFor` and `weatherFor` are what decide them, and asking twice is how a picture and a
+        /// number end up under different skies.
+        View chooseView(const bpo::variables_map& variables, const std::filesystem::path& resources)
         {
             // Holds what the view below points into, for as long as this function needs it.
             std::vector<View> views;
@@ -438,82 +333,75 @@ namespace RtxTool
             const std::optional<osg::Vec3f> origin = parseVec3(variables["pos"].as<std::string>(), "--pos");
             const std::optional<osg::Vec3f> target = parseVec3(variables["look"].as<std::string>(), "--look");
 
-            if (view == nullptr)
-                return Chosen{
-                    .mCell = variables["cell"].as<std::string>(),
-                    .mTitle = "OpenMW RTX",
-                    .mView = {},
-                    .mNote = {},
-                    .mOrigin = origin,
-                    .mTarget = target,
-                    .mHour = hourFor(hourGiven(variables), std::nullopt),
-                    .mWeather = weatherFor(weatherGiven(variables), std::nullopt),
-                };
+            View place;
+            place.mCell = view != nullptr ? view->mCell : variables["cell"].as<std::string>();
+            place.mName = view != nullptr ? view->mName : std::string();
+            place.mNote = view != nullptr ? view->mNote : std::string();
+            place.mOrigin = origin.has_value() ? origin : (view != nullptr ? view->mOrigin : std::nullopt);
+            place.mTarget = target.has_value() ? target : (view != nullptr ? view->mTarget : std::nullopt);
+            place.mHour = hourFor(hourGiven(variables), view != nullptr ? view->mHour : std::nullopt);
+            place.mWeather = weatherFor(weatherGiven(variables), view != nullptr ? view->mWeather : std::nullopt);
+            place.mRoute = view != nullptr ? view->mRoute : std::nullopt;
 
-            return Chosen{
-                .mCell = view->mCell,
-                .mTitle = "OpenMW RTX - " + view->mName,
-                .mView = view->mName,
-                .mNote = view->mNote,
-                .mOrigin = origin.has_value() ? origin : view->mOrigin,
-                .mTarget = target.has_value() ? target : view->mTarget,
-                .mHour = hourFor(hourGiven(variables), view->mHour),
-                .mWeather = weatherFor(weatherGiven(variables), view->mWeather),
-            };
+            return place;
         }
 
-        /// One stop, from a place the command line named. The day is the command line's alone: a
-        /// view file entry names an hour and a weather and never a date.
-        MWRender::Stop stopFrom(const Chosen& chosen, const FrameRequest& frame)
+        /// One stop, from a place a view file or a command line named.
+        MWRender::Stop stopFrom(const View& place, const FrameRequest& frame)
         {
-            MWRender::Stop stop;
-            stop.mName = chosen.mView.empty() ? chosen.mCell : chosen.mView;
-            stop.mNote = chosen.mNote;
-            stop.mCell = chosen.mCell;
-            stop.mStand.mCell = chosen.mCell;
-            stop.mStand.mEye = chosen.mOrigin;
-            stop.mStand.mLook = chosen.mTarget;
-            stop.mSky.mHour = chosen.mHour;
-            stop.mSky.mDay = frame.mDay;
-            stop.mSky.mWeather = chosen.mWeather;
-
-            return stop;
-        }
-
-        /// One stop, from an entry in the view file.
-        ///
-        /// **The same fields `Chosen` carries, because a view is where a `Chosen` comes from.** A
-        /// list of places and a single place are one kind of thing, so a run of six and a shot of
-        /// one stand under the rules stated once.
-        MWRender::Stop stopFrom(const View& view, const FrameRequest& frame)
-        {
-            // **`describeStaging` decides which of the two wins, and it is asked rather than
-            // copied.** A view fixes the conditions its frame is about and the command line
-            // overrules it, and a rule applied at one place and not the other would put a picture
-            // and a number under different skies.
-            const StagingRequest staging = frame.describeStaging(view);
+            // **`describeStaging` decides which of a view and a command line wins, and it is asked
+            // rather than copied.** A rule applied at one place and not the other would put a
+            // picture and a number under different skies.
+            const StagingRequest staging = frame.describeStaging(place);
 
             MWRender::Stop stop;
-            stop.mName = view.mName;
-            stop.mNote = view.mNote;
-            stop.mCell = view.mCell;
-            stop.mStand.mCell = view.mCell;
-            stop.mStand.mEye = view.mOrigin;
-            stop.mStand.mLook = view.mTarget;
+            stop.mName = place.mName.empty() ? place.mCell : place.mName;
+            stop.mNote = place.mNote;
+            stop.mCell = place.mCell;
+            stop.mStand.mCell = place.mCell;
+            stop.mStand.mEye = place.mOrigin;
+            stop.mStand.mLook = place.mTarget;
             stop.mSky.mHour = staging.mHour;
             stop.mSky.mDay = staging.mDay;
             stop.mSky.mWeather = staging.mWeather;
 
             // **A route flies the player, which is what puts a cell arriving into a measurement.**
             // Where it ends is another view's camera, copied into the entry when the file was read.
-            if (view.mRoute.has_value())
+            if (place.mRoute.has_value())
                 stop.mSchedule.mRoute = MWRender::Route{
-                    .mTo = view.mRoute->mOrigin,
-                    .mLookTo = view.mRoute->mTarget,
-                    .mSpeed = view.mRoute->mSpeed,
+                    .mTo = place.mRoute->mOrigin,
+                    .mLookTo = place.mRoute->mTarget,
+                    .mSpeed = place.mRoute->mSpeed,
                 };
 
             return stop;
+        }
+
+        /// A stop that stands at one place, holds the world still and draws one frame of it.
+        ///
+        /// **What every command that writes a picture or a report wants.** The world has to arrive
+        /// — the ring read, the models built, the emitters run up — before the frame that is kept
+        /// means anything, and holding the clock after that is what makes two runs of one build the
+        /// same picture.
+        MWRender::Stop stillStopAt(const bpo::variables_map& variables, const View& place, const FrameRequest& frame)
+        {
+            MWRender::Stop stop = stopFrom(place, frame);
+            stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
+            stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = 1 };
+            stop.mSchedule.mFrozen = true;
+
+            return stop;
+        }
+
+        /// Runs one stop against a real game, which is what every command that writes one picture
+        /// or one report does.
+        int runOneStop(const Command& command, MWRender::Stop stop)
+        {
+            MWRender::SessionRequest request;
+            request.mStops.push_back(std::move(stop));
+            request.mValidation = validationFrom(command.mVariables, false);
+
+            return runHosted(command.mVariables, command.mConfig, command.mResources, std::move(request));
         }
 
         /// How long every stop of a run lasts, from what the command line asked for.
@@ -538,11 +426,10 @@ namespace RtxTool
         /// reach one renderer configured one way. The game used to hard-code every one of them and
         /// the harness used to take each as an option, so a picture taken here and a frame played
         /// were traced by two differently configured renderers.
-        void applyHostedSettings(const bpo::variables_map& variables, const FrameRequest& frame)
+        void applyHostedSettings(const FrameRequest& frame)
         {
-            const auto [width, height] = parseSize(variables["size"].as<std::string>());
-            Settings::video().mResolutionX.set(static_cast<int>(width));
-            Settings::video().mResolutionY.set(static_cast<int>(height));
+            Settings::video().mResolutionX.set(static_cast<int>(frame.mWidth));
+            Settings::video().mResolutionY.set(static_cast<int>(frame.mHeight));
             Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
             Settings::camera().mFieldOfView.set(frame.mFieldOfView);
 
@@ -557,6 +444,7 @@ namespace RtxTool
             // way to be absent, so the number the absence stands for is the one nothing multiplies.
             Settings::rtx().mExposure.set(frame.mExposure.value_or(0.0f));
             Settings::rtx().mJitter.set(frame.mJitter);
+            Settings::rtx().mDistantLandCells.set(frame.mDistantCells);
             Settings::rtx().mCountCrossings.set(frame.mCountCrossings);
         }
 
@@ -627,35 +515,33 @@ namespace RtxTool
             return runInfo(command, validation);
         }
 
+        /// Every texture the world around a place uses, vanilla beside de-lit, as one sheet.
+        ///
+        /// **Off the world the renderer is handed**, so the sheet holds what a frame of that place
+        /// would actually sample — a town's people wear textures the town itself never names.
         int commandTextures(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
-            const Chosen chosen = chooseView(variables, command.mResources);
+            const View place = chooseView(variables, command.mResources);
+            const FrameRequest frame = frameFrom(command, *place.mHour, *place.mWeather);
 
-            const Content content(command.mConfig, variables, command.mResources);
-            World world(content);
-            pageTerrainFrom(world, variables);
+            applyHostedSettings(frame);
 
-            const ESM::Cell* cell = findCellOrComplain(content, chosen.mCell);
-            if (cell == nullptr)
-                return 1;
+            MWRender::Stop stop = stillStopAt(variables, place, frame);
+            stop.mActions.mSheet = variables["out"].as<std::string>();
 
-            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
-
-            return runTextures(world, *cell, frame.describeStaging(), frame.mActors, variables["out"].as<std::string>(),
-                frame.mDelight);
+            return runOneStop(command, std::move(stop));
         }
 
+        /// The inventory doll of one person, traced against a scene of its own.
+        ///
+        /// **The game's own preview and not a body assembled beside it.** `MWRender::NpcAnimation`
+        /// dresses the parts a race calls for, equips what the record carries and finds the bone a
+        /// weapon hangs on, and that is the path a played session takes.
         int commandDoll(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
 
-            // **The first of them, because `--npc` is the row `shot` stands up.** One picture is of
-            // one person, and the option is shared rather than duplicated so that the same name
-            // reaches the same record either way.
-            //
-            // Read before the content files are, so a run that named nobody says so in the time it
-            // takes to print a line.
             const StringsVector people = variables["npc"].as<StringsVector>();
             if (people.empty())
             {
@@ -663,62 +549,47 @@ namespace RtxTool
                 return 1;
             }
 
-            const PictureRequest request
-                = pictureFrom(command, SceneUtil::sInventoryWidth, SceneUtil::sInventoryHeight);
+            const View place = chooseView(variables, command.mResources);
+            const FrameRequest frame = frameFrom(command, *place.mHour, *place.mWeather);
 
-            const Content content(command.mConfig, variables, command.mResources);
-            World world(content);
+            applyHostedSettings(frame);
 
-            const ESM::NPC* npc = findNpc(content, people.front());
-            if (npc == nullptr)
-            {
-                out() << "no NPC record is called \"" << people.front() << "\".\n";
-                return 1;
-            }
+            MWRender::Stop stop = stillStopAt(variables, place, frame);
+            stop.mActions.mDoll = people.front();
+            stop.mActions.mDollOut = variables["out"].as<std::string>();
 
-            return runDoll(world, *npc, validationFrom(variables, false), request);
+            return runOneStop(command, std::move(stop));
         }
 
+        /// One local-map tile of where a place stands, framed as the game's own compass frames one.
         int commandMap(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
-            const Chosen chosen = chooseView(variables, command.mResources);
-            const PictureRequest request = pictureFrom(command, 1024, 1024);
+            const View place = chooseView(variables, command.mResources);
+            const FrameRequest frame = frameFrom(command, *place.mHour, *place.mWeather);
 
-            const Content content(command.mConfig, variables, command.mResources);
-            World world(content);
-            pageTerrainFrom(world, variables);
+            applyHostedSettings(frame);
 
-            const ESM::Cell* cell = findCellOrComplain(content, chosen.mCell);
-            if (cell == nullptr)
-                return 1;
+            MWRender::Stop stop = stillStopAt(variables, place, frame);
+            stop.mActions.mMapTile = variables["out"].as<std::string>();
 
-            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
-
-            return runMap(
-                world, *cell, frame.describeStaging(), frame.mActors, validationFrom(variables, false), request);
+            return runOneStop(command, std::move(stop));
         }
 
+        /// What the renderer was handed at a place, without looking at what it drew.
         int commandScene(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
-            const Chosen chosen = chooseView(variables, command.mResources);
+            const View place = chooseView(variables, command.mResources);
+            const FrameRequest frame = frameFrom(command, *place.mHour, *place.mWeather);
 
-            const Content content(command.mConfig, variables, command.mResources);
-            World world(content);
-            pageTerrainFrom(world, variables);
+            applyHostedSettings(frame);
 
-            const ESM::Cell* cell = findCellOrComplain(content, chosen.mCell);
-            if (cell == nullptr)
-                return 1;
+            MWRender::Stop stop = stillStopAt(variables, place, frame);
+            stop.mActions.mDigest = true;
+            stop.mActions.mWalkTwice = variables["twice"].as<bool>();
 
-            const std::string needle = variables["find"].as<std::string>();
-            if (!needle.empty())
-                return runFind(content, *cell, needle);
-
-            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
-
-            return runScene(world, *cell, frame.describeStaging(), frame.mActors, variables["twice"].as<bool>());
+            return runOneStop(command, std::move(stop));
         }
 
         int commandVerify(const Command& command)
@@ -731,7 +602,7 @@ namespace RtxTool
                 Rtx::splitNames(variables["views"].as<std::string>()));
             applyConditions(variables, views);
 
-            applyHostedSettings(variables, frame);
+            applyHostedSettings(frame);
 
             // **Upscaling off, and not offered as an option.** Ray Reconstruction is temporal and
             // carries state nothing below can hold still: two builds that describe the same scene
@@ -777,7 +648,7 @@ namespace RtxTool
             std::vector<View> views = chooseBenchViews(variables, command.mResources, suite);
             applyConditions(variables, views);
 
-            applyHostedSettings(variables, frame);
+            applyHostedSettings(frame);
 
             const Rtx::BenchSpec spec = specFrom(variables);
             const std::vector<std::string> turn = Rtx::splitNames(variables["turn-weather"].as<std::string>());
@@ -815,21 +686,17 @@ namespace RtxTool
         int commandShot(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
-            const Chosen chosen = chooseView(variables, command.mResources);
-            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
+            const View place = chooseView(variables, command.mResources);
+            const FrameRequest frame = frameFrom(command, *place.mHour, *place.mWeather);
 
-            applyHostedSettings(variables, frame);
+            applyHostedSettings(frame);
 
-            MWRender::Stop stop = stopFrom(chosen, frame);
-
-            // **Warmed and then held still, because a shot is a still.** The world has to arrive —
-            // the ring read, the models built, the emitters run up — before the frame that is kept
-            // means anything, and holding the clock after that is what makes two runs of one build
-            // the same picture.
-            stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
+            // **Traced more than once, because one submit measures the clock and not the shader.**
+            // This machine's GPU idles at 315 MHz and ramps only under load, so the same frame from
+            // a cold start has timed anywhere between 0.37 and 2.1 ms.
+            MWRender::Stop stop = stillStopAt(variables, place, frame);
             stop.mSchedule.mSpec.mRun
                 = Rtx::BenchSpan{ .mFrames = std::max(variables["repeat"].as<std::uint32_t>(), 1u) };
-            stop.mSchedule.mFrozen = true;
             stop.mActions.mCapture = variables["out"].as<std::string>();
             stop.mActions.mDump = variables["dump"].as<std::string>();
             stop.mActions.mTail = variables["tail"].as<bool>();
@@ -841,39 +708,96 @@ namespace RtxTool
             if (stop.mSchedule.mAccumulate > 0)
                 stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = stop.mSchedule.mAccumulate };
 
+            return runOneStop(command, std::move(stop));
+        }
+
+        /// A window on a place, with the game running behind it.
+        ///
+        /// **The game and not a camera of this tool's own.** What a window is for is seeing how
+        /// something moves and whether an artefact is a still or a shimmer, and both are questions
+        /// about the frame a player gets — so the player is who flies it, with their own controls,
+        /// their own collision and their own console.
+        ///
+        /// Collision comes off, because a view file's coordinates are where a camera stands rather
+        /// than where a body fits.
+        int commandView(const Command& command)
+        {
+            const bpo::variables_map& variables = command.mVariables;
+            const View place = chooseView(variables, command.mResources);
+            const FrameRequest frame = frameFrom(command, *place.mHour, *place.mWeather);
+
+            applyHostedSettings(frame);
+
+            MWRender::Stop stop = stopFrom(place, frame);
+
+            // **A schedule with no end, because somebody is watching.** `--frames` closes it after
+            // that many, which is how the window path gets exercised by something that cannot click.
+            const std::uint32_t frames = variables["frames"].as<std::uint32_t>();
+            stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = frames > 0 ? frames : sForever };
+            stop.mSchedule.mFreeCamera = true;
+
             MWRender::SessionRequest request;
             request.mStops.push_back(std::move(stop));
-            request.mValidation = validationFrom(variables, false);
+            request.mHeadless = false;
+            request.mQuitAtEnd = frames > 0;
+            request.mValidation = validationFrom(variables, true);
 
             return runHosted(variables, command.mConfig, command.mResources, std::move(request));
         }
 
-        /// A window on a cell, flown by hand. The one command that still stages a world of its
-        /// own, until the game's is what it opens on.
-        int commandView(const Command& command)
+        /// Every claim the tree makes about what the renderer is handed and what it draws, asked
+        /// of a real game at each place of a suite.
+        ///
+        /// **These were tests against a world of this tool's own.** That world read its cells by
+        /// hand, dressed its people by rules of its own and derived its sky from the content files,
+        /// so a claim proved there was a claim about a world nobody plays. Asked here, each of them
+        /// is about the world a player stands in.
+        int commandCheck(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
-            const Chosen chosen = chooseView(variables, command.mResources);
+            const FrameRequest frame
+                = frameFrom(command, variables["hour"].as<float>(), variables["weather"].as<std::string>());
 
-            const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
-            const Rtx::ValidationOptions validation = validationFrom(variables, true);
+            std::string suite;
+            std::vector<View> views = chooseBenchViews(variables, command.mResources, suite);
+            applyConditions(variables, views);
 
-            const Content content(command.mConfig, variables, command.mResources);
-            World world(content);
-            pageTerrainFrom(world, variables);
+            applyHostedSettings(frame);
 
-            ViewRequest request;
-            request.mFrame = frame;
-            request.mTitle = chosen.mTitle;
-            request.mView = chosen.mView;
-            request.mNote = chosen.mNote;
-            request.mCell = chosen.mCell;
-            request.mScreenshotDirectory = command.mConfig.getScreenshotPath();
-            request.mOrigin = chosen.mOrigin;
-            request.mTarget = chosen.mTarget;
-            request.mFrames = variables["frames"].as<std::uint32_t>();
+            const std::span<const MWRender::Check> every = MWRender::everyCheck();
 
-            return runView(world, chosen.mCell, validation, request);
+            MWRender::SessionRequest request;
+            request.mStops.reserve(views.size());
+            for (const View& view : views)
+            {
+                MWRender::Stop stop = stopFrom(view, frame);
+                stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
+
+                // **Two measured frames at least, because one of the claims is about a pair of
+                // them.** A still camera resolving to a still picture cannot be asked of one frame.
+                stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = 2 };
+                stop.mSchedule.mFrozen = true;
+
+                // **A route asks a claim the others cannot**, and a place that stands still cannot
+                // answer it, so only a view that flies is asked about crossings.
+                for (const MWRender::Check check : every)
+                    if (check != MWRender::Check::CrossingsAppend || view.mRoute.has_value())
+                        stop.mActions.mChecks.push_back(check);
+
+                if (view.mRoute.has_value())
+                {
+                    stop.mSchedule.mFrozen = false;
+                    stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mSeconds = variables["seconds"].as<float>() };
+                }
+
+                stop.mActions.mWalkTwice = true;
+                request.mStops.push_back(std::move(stop));
+            }
+
+            request.mSuite = suite;
+            request.mValidation = validationFrom(variables, false);
+
+            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
         }
 
         /// One verb: which command it is, the line `--help` prints for it, and what it does.
@@ -895,7 +819,7 @@ namespace RtxTool
         /// forgotten in the other was either a command nobody could find or a line of help nothing
         /// answered. In the order `--help` prints them, which is the order they were written to be
         /// read in rather than a sorted one.
-        constexpr std::array<Verb, 9> sVerbs{
+        constexpr std::array<Verb, 10> sVerbs{
             Verb{ Verbs::Info, "report the device this renderer would run on", commandInfo },
             Verb{ Verbs::Scene, "read a cell and report what the renderer would be handed", commandScene },
             Verb{ Verbs::Shot, "render a cell and write a PNG, with no window", commandShot },
@@ -905,6 +829,8 @@ namespace RtxTool
             Verb{ Verbs::Doll, "the inventory doll of one person, traced against a scene of its own", commandDoll },
             Verb{ Verbs::Map, "one local-map tile of a cell, traced straight down", commandMap },
             Verb{ Verbs::Verify, "render every view and say what moved since the last run", commandVerify },
+            Verb{ Verbs::Check, "assert what the renderer is handed and what it draws, at every place of a suite",
+                commandCheck },
         };
 
         void printUsage(const bpo::options_description& options)

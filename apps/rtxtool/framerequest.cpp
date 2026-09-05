@@ -1,26 +1,7 @@
 #include "framerequest.hpp"
 
-#include "stagedworld.hpp"
-
 namespace RtxTool
 {
-    Rtx::RendererOptions FrameRequest::describeRenderer(
-        const Rtx::ValidationOptions& validation, SDL_Window* window) const
-    {
-        return Rtx::RendererOptions{
-            .mShaderDirectory = mShaderDirectory,
-            .mCacheDirectory = mCacheDirectory,
-            .mWidth = mWidth,
-            .mHeight = mHeight,
-            .mUpscale = mUpscale,
-            .mPreset = mPreset,
-            .mWindow = window,
-            .mValidation = validation,
-            .mCountCrossings = mCountCrossings,
-            .mReorder = mReorder,
-        };
-    }
-
     StagingRequest FrameRequest::describeStaging(
         const std::optional<osg::Vec3f>& origin, const std::optional<osg::Vec3f>& target) const
     {
@@ -28,7 +9,6 @@ namespace RtxTool
             .mWeather = mWeather,
             .mHour = mHour,
             .mDay = mDay,
-            .mFieldOfView = mFieldOfView,
             .mOrigin = origin,
             .mTarget = target,
         };

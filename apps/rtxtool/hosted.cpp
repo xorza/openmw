@@ -103,6 +103,10 @@ namespace RtxTool
         engine.setSoundUsage(false);
         engine.setGrabMouse(false);
 
+        // **Whether the run was meant to end on its own**, which is what says an empty report is a
+        // failure. A window somebody closes has finished no stop and owes no numbers.
+        const bool scheduled = request.mQuitAtEnd;
+
         MWRender::installSession(std::move(request));
 
         engine.go();
@@ -111,9 +115,9 @@ namespace RtxTool
         out << result.mReport;
 
         // **A run that reached no stop is a failure and not an empty report.** A cell that could
-        // not be loaded, a save that would not open and a window closed early all end here, and
-        // each of them is a command that did not do what it was asked.
-        if (result.mPlaces.empty())
+        // not be loaded and a save that would not open both end here, and each of them is a command
+        // that did not do what it was asked. A window somebody closed is not one of them.
+        if (scheduled && result.mPlaces.empty())
         {
             out << "\nnothing was measured: the run ended before a stop finished\n";
             return 1;

@@ -3,6 +3,8 @@
 #include <optional>
 #include <string_view>
 
+#include <osg/Vec3f>
+
 namespace RtxTool
 {
     /// The number `text` spells, or nothing where it spells anything else.
@@ -16,4 +18,9 @@ namespace RtxTool
     /// own on some platforms, and a decimal point read where a comma is the separator turns a view
     /// that flies at 1500 units a second into one that flies at one.
     std::optional<float> parseFloat(std::string_view text);
+
+    /// Parses `x,y,z`. Empty text is not a failure; it means nothing was said.
+    ///
+    /// Throws `std::runtime_error` naming `what` when the text is present and malformed.
+    std::optional<osg::Vec3f> parseVec3(std::string_view text, std::string_view what);
 }

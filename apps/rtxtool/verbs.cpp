@@ -14,7 +14,7 @@ namespace RtxTool
         ///
         /// **The one list of the names**, which is what makes an option's ownership and the
         /// dispatch's table the same statement: a command renamed here is renamed in both.
-        constexpr std::array<std::pair<Verbs, std::string_view>, 9> sNames{
+        constexpr std::array<std::pair<Verbs, std::string_view>, 10> sNames{
             std::pair{ Verbs::Info, std::string_view("info") },
             std::pair{ Verbs::Scene, std::string_view("scene") },
             std::pair{ Verbs::Shot, std::string_view("shot") },
@@ -24,6 +24,7 @@ namespace RtxTool
             std::pair{ Verbs::Doll, std::string_view("doll") },
             std::pair{ Verbs::Map, std::string_view("map") },
             std::pair{ Verbs::Verify, std::string_view("verify") },
+            std::pair{ Verbs::Check, std::string_view("check") },
         };
     }
 

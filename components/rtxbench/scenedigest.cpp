@@ -13,9 +13,9 @@
 
 #include <components/rtx/scenedesc.hpp>
 
-#include <components/rtxbench/framehashes.hpp>
+#include "framehashes.hpp"
 
-namespace RtxTool
+namespace Rtx
 {
     namespace
     {
@@ -23,7 +23,7 @@ namespace RtxTool
         class Unordered
         {
         public:
-            void add(const Rtx::Digest& part)
+            void add(const Digest& part)
             {
                 mWords[0] += part.getWords()[0];
                 mWords[1] += part.getWords()[1];
@@ -35,23 +35,23 @@ namespace RtxTool
             std::array<std::uint64_t, 2> mWords{};
         };
 
-        void addTexture(Rtx::Digest& digest, const Rtx::SceneDesc& scene, const Rtx::Index texture)
+        void addTexture(Digest& digest, const SceneDesc& scene, const Index texture)
         {
-            digest.add(texture == Rtx::sNoIndex);
-            if (texture == Rtx::sNoIndex)
+            digest.add(texture == sNoIndex);
+            if (texture == sNoIndex)
                 return;
 
             const std::string_view path = scene.getTextures()[texture].value();
             digest.add(std::span<const char>(path.data(), path.size()));
         }
 
-        void addMaterial(Rtx::Digest& digest, const Rtx::SceneDesc& scene, const Rtx::Index index)
+        void addMaterial(Digest& digest, const SceneDesc& scene, const Index index)
         {
-            digest.add(index == Rtx::sNoIndex);
-            if (index == Rtx::sNoIndex)
+            digest.add(index == sNoIndex);
+            if (index == sNoIndex)
                 return;
 
-            const Rtx::Material& material = scene.getMaterials()[index];
+            const Material& material = scene.getMaterials()[index];
             digest.add(material.mKind);
             addTexture(digest, scene, material.mDiffuse);
             addTexture(digest, scene, material.mNormal);
@@ -64,7 +64,7 @@ namespace RtxTool
             digest.add(material.mTextureTransform);
             digest.add(material.mLayerCount);
 
-            for (Rtx::Index at = 0; at < material.mLayerCount; ++at)
+            for (Index at = 0; at < material.mLayerCount; ++at)
             {
                 const Rtx::MaterialLayer& layer = scene.getLayers()[material.mLayerOffset + at];
                 addTexture(digest, scene, layer.mDiffuse);
@@ -89,7 +89,7 @@ namespace RtxTool
             }
         };
 
-        void addCorner(Rtx::Digest& digest, const Corner& corner)
+        void addCorner(Digest& digest, const Corner& corner)
         {
             digest.add(corner.mPosition);
             digest.add(corner.mNormal);
@@ -98,7 +98,7 @@ namespace RtxTool
 
         /// A shape as the multiset of its triangles, each turned to start at its least corner so
         /// that the winding survives and the corner it happens to be spelt from does not.
-        Unordered digestTriangles(const Rtx::SceneDesc& scene, const Rtx::MeshRange& mesh)
+        Unordered digestTriangles(const SceneDesc& scene, const MeshRange& mesh)
         {
             Unordered triangles;
             const std::span<const std::uint32_t> indices
@@ -116,7 +116,7 @@ namespace RtxTool
                 const std::size_t least
                     = static_cast<std::size_t>(std::min_element(corners.begin(), corners.end()) - corners.begin());
 
-                Rtx::Digest triangle;
+                Digest triangle;
                 for (std::size_t corner = 0; corner < 3; ++corner)
                     addCorner(triangle, corners[(least + corner) % 3]);
                 triangles.add(triangle);
@@ -125,24 +125,24 @@ namespace RtxTool
             return triangles;
         }
 
-        void addMesh(Rtx::Digest& digest, const Rtx::SceneDesc& scene, const Rtx::Index index)
+        void addMesh(Digest& digest, const SceneDesc& scene, const Index index)
         {
-            const Rtx::MeshRange& mesh = scene.getMeshes()[index];
+            const MeshRange& mesh = scene.getMeshes()[index];
             digest.add(digestTriangles(scene, mesh).getWords());
             digest.add(mesh.mDeform);
         }
     }
 
-    std::string digestScene(const Rtx::SceneDesc& scene)
+    std::string digestScene(const SceneDesc& scene)
     {
         Unordered whole;
 
         for (const Rtx::MeshInstance& instance : scene.getInstances())
         {
-            if (instance.mMesh == Rtx::sNoIndex)
+            if (instance.mMesh == sNoIndex)
                 continue;
 
-            Rtx::Digest placement;
+            Digest placement;
             placement.add(std::span<const float>(instance.mTransform.ptr(), 16));
             placement.add(instance.mOpacity);
             placement.add(instance.mFirstPerson);
@@ -153,7 +153,7 @@ namespace RtxTool
 
         for (const Rtx::Light& light : scene.getLights())
         {
-            Rtx::Digest lamp;
+            Digest lamp;
             lamp.add(light.mPosition);
             lamp.add(light.mIntensity);
             lamp.add(light.mReach);
@@ -162,7 +162,7 @@ namespace RtxTool
 
         for (const Rtx::SpriteEmitter& emitter : scene.getEmitters())
         {
-            Rtx::Digest plume;
+            Digest plume;
             plume.add(emitter.mCentre);
             plume.add(emitter.mReach);
             plume.add(emitter.mAdditive);
@@ -176,6 +176,6 @@ namespace RtxTool
             }
             whole.add(plume);
         }
-        return Rtx::spellHash(whole.getWords());
+        return spellHash(whole.getWords());
     }
 }

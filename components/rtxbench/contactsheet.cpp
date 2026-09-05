@@ -13,7 +13,7 @@
 #include <components/rtx/texelreader.hpp>
 #include <components/rtx/texturedata.hpp>
 
-namespace RtxTool
+namespace Rtx
 {
     namespace
     {
@@ -45,7 +45,7 @@ namespace RtxTool
         return sGap + index / sColumns * (sThumbnail + sGap);
     }
 
-    ContactSheet drawContactSheet(std::span<const Rtx::TextureData> textures, float strength)
+    ContactSheet drawContactSheet(std::span<const TextureData> textures, float strength)
     {
         if (textures.empty())
             return ContactSheet{};
@@ -65,7 +65,7 @@ namespace RtxTool
         ContactSheet drawn{ std::move(sheet), width, height, count };
         for (std::uint32_t index = 0; index < count; ++index)
         {
-            const Rtx::TextureData& texture = textures[index];
+            const TextureData& texture = textures[index];
             const std::uint32_t left = drawn.getLeftOf(index);
             const std::uint32_t top = drawn.getTopOf(index);
 
@@ -113,11 +113,11 @@ namespace RtxTool
     }
 
     ContactSheet writeContactSheet(
-        std::span<const Rtx::TextureData> textures, const std::filesystem::path& out, float strength)
+        std::span<const TextureData> textures, const std::filesystem::path& out, float strength)
     {
         ContactSheet sheet = drawContactSheet(textures, strength);
         if (sheet.mCount > 0)
-            Rtx::writePng(out, sheet.mWidth, sheet.mHeight, sheet.mPixels);
+            writePng(out, sheet.mWidth, sheet.mHeight, sheet.mPixels);
 
         return sheet;
     }

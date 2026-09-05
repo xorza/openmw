@@ -5,11 +5,11 @@
 
 #include <gtest/gtest.h>
 
-#include <apps/rtxtool/contactsheet.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/texturedata.hpp>
+#include <components/rtxbench/contactsheet.hpp>
 
-namespace RtxTool
+namespace Rtx
 {
     namespace
     {

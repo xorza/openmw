@@ -27,9 +27,10 @@ namespace RtxTool
         Doll = 1 << 6,
         Map = 1 << 7,
         Verify = 1 << 8,
+        Check = 1 << 9,
 
-        /// All nine, which is what an option nobody restricted is read by.
-        Every = 0x1ff,
+        /// All ten, which is what an option nobody restricted is read by.
+        Every = 0x3ff,
     };
 
     constexpr Verbs operator|(Verbs a, Verbs b)

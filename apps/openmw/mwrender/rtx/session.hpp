@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -14,8 +15,13 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchspec.hpp>
 
+#include "checks.hpp"
+
 namespace MWRender
 {
+    class OffscreenView;
+    class RtxRenderer;
+
     /// Where a stop stands: a place in the world, and where the eye is inside it.
     ///
     /// **A savegame restores what no pair of coordinates can** — the player, their equipment, the
@@ -120,6 +126,14 @@ namespace MWRender
         /// the renderer rather than the animation. `DateTimeManager::setSimulationTimeScale` is
         /// where it lands, so nothing in the world moves — not an actor, not a plume, not the sea.
         bool mFrozen = false;
+
+        /// Whether the player keeps their own camera and their own collision.
+        ///
+        /// **What a window is for.** A stop that pins a static camera at a view's coordinates is
+        /// taking a picture; one that hands the body back is a session somebody flies, and a view
+        /// file's coordinates are where a camera stands rather than where a body fits — so the
+        /// walls come off with it.
+        bool mFreeCamera = false;
     };
 
     /// What a stop writes, and when.
@@ -141,11 +155,41 @@ namespace MWRender
         /// byte, so the tail is read off the channel the accumulator wrote.
         bool mTail = false;
 
+        /// Whether the scene the renderer was handed is reported: what it holds, what it could
+        /// not place, and one number for the whole of it.
+        bool mDigest = false;
+
+        /// Whether the same graph is walked a second time, so what that added can be asked about.
+        ///
+        /// **A diagnostic and not a frame.** Nothing changes between the two walks, so every count
+        /// for new geometry should be zero — which is the property the incremental mirror rests on,
+        /// and the only way to ask it is to ask twice. It is the largest cost a frame has, so only
+        /// a stop that asked pays for it.
+        bool mWalkTwice = false;
+
+        /// Where every texture the scene holds is written, vanilla beside de-lit, as one sheet.
+        std::filesystem::path mSheet;
+
+        /// Where one local-map tile of the place is written, framed the way the game's own compass
+        /// frames one.
+        std::filesystem::path mMapTile;
+
+        /// Whose inventory doll to write, and where. Empty for a stop that draws none.
+        ///
+        /// **A picture of a subject and not of the world**, which is the half a frame never
+        /// exercises: the body is assembled and dressed by `MWRender::NpcAnimation`, mirrored into
+        /// a scene of its own and traced against it.
+        std::string mDoll;
+        std::filesystem::path mDollOut;
+
         /// Whether every measured frame is read back and hashed.
         ///
         /// **Asking for it stops the run being a benchmark**: a read back submits a copy and waits
         /// on it, so every frame is serialised against the device and the rows measure that.
         bool mHash = false;
+
+        /// What this stop asserts. Empty for a stop that only draws.
+        std::vector<Check> mChecks;
     };
 
     /// One place a run visits, and everything that is true of it.
@@ -296,8 +340,11 @@ namespace MWRender
         /// carries everything the game does between them — which is the number a player feels and
         /// the one `result.mWaitMs` cannot see. `walkMs` and `placeMs` are the two shares of it
         /// this fork owns.
-        void frame(Rtx::Renderer& renderer, const Rtx::FrameResult& result, double frameMs, double walkMs,
-            double placeMs, bool rebuilt);
+        void frame(RtxRenderer& owner, const Rtx::FrameResult& result, double frameMs, double walkMs, double placeMs,
+            bool rebuilt);
+
+        /// Whether the stop wants the graph walked a second time, so it can report what that added.
+        bool wantsSecondWalk() const;
 
     private:
         /// Whether the game has a world with a player in it. Nothing happens before it does.
@@ -307,7 +354,29 @@ namespace MWRender
         void beginStop();
 
         /// Closes the stop, records it, and moves to the next one — or ends the run.
-        void endStop(Rtx::Renderer& renderer);
+        void endStop(RtxRenderer& owner);
+
+        /// What the renderer was handed, as `scene` reports it.
+        void reportScene(RtxRenderer& owner);
+
+        /// Every texture the scene holds, vanilla beside de-lit, as one sheet.
+        void writeSheet(RtxRenderer& owner, const std::filesystem::path& sheet);
+
+        /// One local-map tile of wherever the stop stands.
+        void writeMapTile(RtxRenderer& owner, const std::filesystem::path& file);
+
+        /// The inventory doll of one person.
+        void writeDoll(RtxRenderer& owner, const std::string& who, const std::filesystem::path& file);
+
+        /// Asks every check the stop named, and reports each one's answer.
+        void runChecks(RtxRenderer& owner);
+
+        /// Draws `view` and writes what it drew, right way up.
+        ///
+        /// **A picture inside the interface is written bottom row first**, which is what
+        /// `OffscreenView::getTexture` promises and what the widgets showing one invert V for. A
+        /// file wants the other order, so the rows are turned over on the way out.
+        bool writeView(OffscreenView& view, int width, int height, const std::filesystem::path& file);
 
         /// Writes what the run was asked to write and publishes the result.
         void finish();
@@ -356,6 +425,10 @@ namespace MWRender
 
         int mExitStatus = 0;
         bool mDone = false;
+
+        /// How many checks the run asked and how many of them failed.
+        std::uint32_t mChecked = 0;
+        std::uint32_t mFailed = 0;
 
         /// Out of line so this header names no container of samples, and reserved once so the run
         /// itself does not allocate — a bench that stutters where it measures is measuring its own

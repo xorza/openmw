@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <apps/rtxtool/framerequest.hpp>
-#include <apps/rtxtool/picture.hpp>
 #include <apps/rtxtool/validationchoice.hpp>
 #include <components/rtx/renderer.hpp>
 
@@ -63,38 +62,6 @@ namespace RtxTool
         /// `--sync-validation`, accepted it, and traced with nothing loaded — and a run under it came
         /// back clean because nothing was checking. The switch is now an argument of the conversion
         /// rather than a field of the request, so a caller has to have one in hand.
-        TEST(RtxValidationChoiceTest, everyRequestHandsTheChoiceToTheRendererItDescribes)
-        {
-            const Rtx::ValidationOptions asked{
-                .mEnabled = true, .mSynchronization = true, .mGpuAssisted = true, .mAbortOnError = true
-            };
-
-            PictureRequest picture;
-            picture.mWidth = 512;
-            picture.mHeight = 1024;
-
-            const Rtx::RendererOptions drawn = picture.describeRenderer(asked);
-            EXPECT_TRUE(drawn.mValidation.mEnabled);
-            EXPECT_TRUE(drawn.mValidation.mSynchronization);
-            EXPECT_TRUE(drawn.mValidation.mGpuAssisted);
-            EXPECT_TRUE(drawn.mValidation.mAbortOnError) << "the whole choice and not the layers alone";
-            EXPECT_EQ(drawn.mWidth, 512u) << "and the rest of the picture came with it";
-            EXPECT_EQ(drawn.mHeight, 1024u);
-
-            FrameRequest frame;
-            frame.mWidth = 1920;
-            frame.mHeight = 1080;
-
-            const Rtx::RendererOptions traced = frame.describeRenderer(asked);
-            EXPECT_TRUE(traced.mValidation.mEnabled);
-            EXPECT_TRUE(traced.mValidation.mSynchronization);
-            EXPECT_TRUE(traced.mValidation.mGpuAssisted);
-            EXPECT_TRUE(traced.mValidation.mAbortOnError);
-            EXPECT_EQ(traced.mWidth, 1920u);
-            EXPECT_EQ(traced.mHeight, 1080u);
-        }
-
-        /// Nothing on by default, which is a Release build, and each switch still reaches its layer.
         TEST(RtxValidationChoiceTest, aReleaseBuildStaysQuietUntilSomethingIsAskedFor)
         {
             constexpr CommandSwitch quiet{ .mValue = false, .mGiven = false };

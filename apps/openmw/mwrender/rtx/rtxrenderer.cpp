@@ -600,10 +600,15 @@ namespace MWRender
         // harness times the same stretch, which is what lets the two rows be read against each
         // other.
         const std::chrono::steady_clock::time_point walked = std::chrono::steady_clock::now();
-        const Rtx::ExtractionStats found = mMirror.mirror(frame, mFrame);
+        mFound = mMirror.mirror(frame, mFrame);
         const double walkMs = Rtx::since(walked, std::chrono::steady_clock::now());
 
-        traceWorld(frame, found, walkMs);
+        // **The same graph again, and it should add nothing.** Only a run that asked pays for it,
+        // because a second whole-graph walk is the largest cost a frame has.
+        if (mSession != nullptr && mSession->wantsSecondWalk())
+            mFoundAgain = mMirror.mirror(frame, mFrame);
+
+        traceWorld(frame, mFound, walkMs);
 
         renderGui();
 
@@ -746,7 +751,7 @@ namespace MWRender
             const bool rebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
 
             if (mSession != nullptr)
-                mSession->frame(*mRenderer, *result, frameMs, walkMs, placeMs, rebuilt);
+                mSession->frame(*this, *result, frameMs, walkMs, placeMs, rebuilt);
         }
 
         mEntered = now;
