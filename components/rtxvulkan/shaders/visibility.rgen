@@ -122,10 +122,15 @@ void main()
     // near enough to opaque to have earned one.
     vec3 paneRadiance = vec3(0.0);
     float paneThrough = 1.0;
+    float paneDistance = 0.0;
     if (hit && !water && isSeenThrough(answer.mOpacity))
     {
         paneThrough = 1.0 - answer.mOpacity;
         paneRadiance = shaded * answer.mOpacity;
+
+        // **Kept before the second trace overwrites it**, because the medium in front of the glass
+        // is measured over this and not over the whole path.
+        paneDistance = distance;
 
         answer.mAsked = ASK_BEHIND;
         RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, EYE_MASK)
@@ -159,13 +164,6 @@ void main()
     const bool submerged = waterOver(origin) > 0.0;
     const bool unbounded = waterUnbounded(hit, origin, direction);
 
-    // **The pane over what it stands in front of, before the water and the air.** Both of those are
-    // measured over the distance to the surface *behind* the glass, so the pane takes the haze of a
-    // path it is only part of the way along — an over-darkening, and the same one `spritesAlong`
-    // accepts below for the same reason.
-    shaded = shaded * paneThrough + paneRadiance;
-    transmittance *= paneThrough;
-
     // A camera under the surface sees everything through the water in front of it, **the surface
     // included**. What the water's own shader attenuated is each of its own rays over its own
     // stretch — the reflection back down into the water, the refraction through the air above — and
@@ -198,9 +196,54 @@ void main()
     // stands between the eye and — the water's own absorption included, which is a different medium
     // over a different part of the path. A ray that hit nothing carries `mFar`, which the march
     // clamps to the distance past which air stops mattering.
-    const vec4 fog = fogAlong(pixel, origin, direction, distance, randomAt(pixel, STREAM_FOG), pixelKey(pixel));
+    const vec4 fog = fogAlong(pixel, origin, direction, distance);
     shaded = shaded * fog.w + fog.xyz;
     transmittance *= fog.w;
+
+    // **The pane over what it stands in front of, after the water and the air.** Both of those are
+    // measured over the distance to the surface *behind* the glass, and a pane stands part of the
+    // way along that path: composited before them it was charged for the whole of it, so a lit
+    // window a few units out arrived as dim as the room two hundred units behind it.
+    //
+    // **The near stretch is a prefix of the whole one, so the split is exact.** With `S` for what
+    // `shaded` holds, `Lnear` for what the medium in front of the pane scattered and `Tnear` for
+    // what it let through,
+    //
+    //     S      = Lwhole + Twhole * behind
+    //     wanted = Lnear + Tnear * pane + paneThrough * (Lwhole - Lnear + Twhole * behind)
+    //
+    // and the second line is `Lnear + Tnear * pane + paneThrough * (S - Lnear)`. It is the same
+    // identity the puff layer below splits the air by, for the same reason.
+    //
+    // **A second column, and on a pane pixel only.** The air is one accumulation read twice, so the
+    // near read is the whole one's own prefix rather than an independent estimate of it, and the
+    // water march is handed the whole one's offset for the same reason. The clamp is what a pair
+    // quantised apart by a froxel slice can need and a prefix cannot.
+    if (paneThrough < 1.0)
+    {
+        vec3 nearThrough = vec3(1.0);
+        vec3 nearScattered = vec3(0.0);
+
+        // The pane is a hit, so neither of the two figures an escaped ray has to stand in for
+        // arises here: the stretch is bounded and the cone at the end of it is the pane's own.
+        if (submerged)
+        {
+            const WaterColumn column = waterColumn(origin, direction, paneDistance,
+                cone.mWidth + cone.mSpread * paneDistance, randomAt(pixel, STREAM_WATER));
+
+            nearThrough = column.mTransmittance;
+            nearScattered = column.mScattered;
+        }
+
+        const vec4 air = fogAlong(pixel, origin, direction, paneDistance);
+
+        nearThrough *= air.w;
+        nearScattered = nearScattered * air.w + air.xyz;
+
+        shaded = nearScattered + paneRadiance * nearThrough + paneThrough * max(shaded - nearScattered, vec3(0.0));
+    }
+
+    transmittance *= paneThrough;
 
     // The puffs in front of all of it, each already dimmed by the air between it and the eye — which
     // is why this composites over a frame the fog has finished with rather than before it.
@@ -241,7 +284,7 @@ void main()
     // drain's splash at Vivec darker than the fog it stands in: a puff a few units out took two
     // hundred units of haze away with it and put back its own small light.
     //
-    // **Splitting the air at the coverage's own depth is exact, and only the near half is marched
+    // **Splitting the air at the coverage's own depth is exact, and only the near half is read
     // again.** With `S` for what `shaded` holds,
     //
     //     S      = Lwhole + Twhole * surface
@@ -255,14 +298,12 @@ void main()
     // air between it and the eye — `reaching` is that factor, and applying `Tfront` here would be
     // the second half of the same journey charged twice.
     //
-    // **The same jitter as the whole march**, so the near one is that march's own prefix rather
-    // than an independent estimate of it. The clamp under them is what a prefix cannot need and a
-    // pair of marches quantised apart by a step can: a negative there would show as a bright rim.
+    // **One accumulation read twice**, so the near read is the whole one's own prefix rather than
+    // an independent estimate of it. The clamp under them is what a prefix cannot need and a pair
+    // quantised apart by a froxel slice can: a negative there would show as a bright rim.
     vec3 airBeforeLayer = vec3(0.0);
     if (puffs.mTransmittance < 1.0)
-        airBeforeLayer = fogAlong(pixel, origin, direction, puffs.mCoveredAt,
-            randomAt(pixel, STREAM_FOG), pixelKey(pixel))
-                               .xyz;
+        airBeforeLayer = fogAlong(pixel, origin, direction, puffs.mCoveredAt).xyz;
 
     // **Handed over rather than composited, because Ray Reconstruction composites it itself.** The
     // three `pInTransparencyLayer` inputs are a colour, an opacity and a motion of their own, and

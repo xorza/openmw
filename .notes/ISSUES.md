@@ -20,8 +20,11 @@
   `apps/components_tests/rtx/visibility/fog.cpp` at lines 158 and 818, with their tolerances widened
   to 14 levels and 0.12 to say so, and both were already so for every exterior.
 
-- Translucent panes receive water and fog attenuation over the distance to the surface behind them,
-  rather than the distance to the pane. `components/rtxvulkan/shaders/visibility.rgen:166`.
+- The fog volume holds no air behind a translucent pane. `fogdepth.comp` ends each column at the
+  first surface its ray meets and a pane is one, so `fogintegrate.comp` leaves every slice past the
+  glass as it stood. With even air of 3.5e-4 per unit, a wall 4000 units off behind a pane at 1000
+  reads a transmittance of 0.638 where the closed form gives 0.247, and reads 0.265 with the pane
+  taken out of the scene.
 
 - Faded actors peel only their nearest translucent surface. Clothing and body layers under it render
   at full strength. `components/rtxvulkan/shaders/visibility.rgen:123`.

@@ -700,7 +700,7 @@ vec4 fogEdgeAlong(vec3 origin, vec3 direction, float distance)
 /// **The edge stands beyond the weather and not in front of it**, which is where its air actually
 /// is: its density is nothing until the last quarter of the reach, so what it scatters has the
 /// whole of the weather's air in front of it and arrives dimmed by exactly that.
-vec4 fogAlong(uvec2 pixel, vec3 origin, vec3 direction, float distance, float offset, uint seed)
+vec4 fogAlong(uvec2 pixel, vec3 origin, vec3 direction, float distance)
 {
     // **Air only, and an eye under the surface has none of it in front of it.** Every ray from a
     // submerged eye ends at the water or short of it — `MASK_WATER` stops the trace and stops

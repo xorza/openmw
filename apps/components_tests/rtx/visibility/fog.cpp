@@ -947,6 +947,86 @@ namespace Rtx::Testing
             EXPECT_NEAR(hazed / clear, 0.35058f, 0.02f) << "the layer's integral over the whole descent";
         }
 
+        /// A pane is hazed over its own distance and not over the path behind it.
+        ///
+        /// **Two stretches of one path, split at the glass.** The composite ran before the water
+        /// and the air rather than after them, so the pane was multiplied by the transmittance
+        /// measured to the surface *behind* it — and a lit window a few units out arrived as dim as
+        /// the wall four thousand units further on. Moving the glass along the path changed nothing
+        /// at all.
+        ///
+        /// **A surface that glows on its own, because a lit one brings its own questions.** What is
+        /// asserted is a transmittance, so the radiance under it has to be a figure no shadow, no
+        /// ambient term and no bounce can move. The glow joins the light rather than the albedo, so
+        /// the wall behind carries an albedo of nought and stays dark whatever the scene puts on it,
+        /// and the pane's own figure divides back out of the ratio against the same scene in clear
+        /// air.
+        ///
+        /// The eye stands 4000 units from the wall, and the pane is held at 1000 units and again at
+        /// 3000, so over air of even density and an extinction of 3.5e-4 the two answers are
+        /// `exp(-0.35)` = 0.70469 and `exp(-1.05)` = 0.34994. Composited the old way both read the
+        /// wall's own column instead, and read the same number as each other.
+        ///
+        /// **The tolerances are the volume's own quadrature and nothing else.** Its slices are
+        /// quadratic in depth, so a longer stretch is read across coarser ones: the near answer
+        /// stands 0.003 over the closed form and the far one 0.014, and each tolerance is the next
+        /// round figure above its own.
+        TEST_F(RtxVisibilityTest, aPaneIsHazedOverItsOwnDistanceAndNotOverThePathBehindIt)
+        {
+            constexpr std::uint32_t size = 33;
+            constexpr std::size_t centre = centreValueOf(size);
+            constexpr float wallAway = 4000.0f;
+            constexpr float extinction = 3.5e-4f;
+
+            const std::array<osg::Vec3f, 4> wall = wallAt(0.0f);
+
+            const auto glow = [&](float paneAway, float thickness) {
+                SceneDesc scene;
+
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(wall, {}, {}, sQuadIndices),
+                    .mMaterial = scene.addMaterial(Material{
+                        .mDiffuseColour = osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f),
+                    }) });
+
+                // Wide enough to fill the middle of the frame from the far end of the path, where
+                // a sixty-degree frame covers 1732 units either side of the axis.
+                const std::array<osg::Vec3f, 4> pane = uprightQuadAt(2400.0f, paneAway - wallAway);
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
+                    .mMaterial = scene.addMaterial(Material{
+                        .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f),
+                        .mEmissiveColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                        .mAlphaMode = AlphaMode::Blend,
+                    }) });
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -wallAway, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                litThroughFog(camera, thickness);
+
+                // Nothing in the pixel but the glass: black air scatters no colour of its own, and
+                // an unlit sky leaves both surfaces with nothing to reflect.
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mSunIrradiance = osg::Vec3f();
+                camera.mFogColour = osg::Vec3f();
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, {}, camera, size, pixels);
+
+                return mRadiance[centre];
+            };
+
+            const float nearClear = glow(1000.0f, 0.0f);
+            ASSERT_GT(nearClear, 0.02f) << "the pane has to be in the frame before its fading means anything";
+            EXPECT_NEAR(glow(1000.0f, extinction) / nearClear, 0.70469f, 0.005f) << "a thousand units of air";
+
+            const float farClear = glow(3000.0f, 0.0f);
+            ASSERT_NEAR(farClear, nearClear, 1.0e-4f) << "the same glass, and only the air in front of it moved";
+            EXPECT_NEAR(glow(3000.0f, extinction) / farClear, 0.34994f, 0.02f) << "three thousand units of it";
+        }
+
         /// A moon too faint for a shadow ray still lights the air.
         ///
         /// **`FOG_SHAFT_FLOOR` is a threshold on the ray and not on the light.** It asks whether a
