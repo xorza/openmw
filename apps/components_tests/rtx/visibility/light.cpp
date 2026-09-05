@@ -142,6 +142,42 @@ namespace Rtx::Testing
                 << "a pane that stops nothing is a pane that is not there";
         }
 
+        /// Every layer of a stack is peeled, and not only the nearest of them.
+        ///
+        /// **A person is a stack.** A cuirass over a skirt over a leg is three surfaces on one
+        /// pixel, so an actor under Chameleon — or fading out at the edge of `actors processing
+        /// range` — showed its nearest layer see-through and every layer under it at full strength.
+        /// `PEEL_LAYERS` is what the launch now peels, and the layer past it is drawn as the solid
+        /// it stands in for rather than as a hole through the world.
+        ///
+        /// Black panes again, for the reason the test above gives: each is lit to nothing, so what
+        /// comes back is the wall times what every layer let past. Half a pane a layer halves it a
+        /// layer, which is the same multiplication as a sun of half the irradiance — so each of
+        /// these is checked against the sun that lands where it lands.
+        TEST_F(RtxVisibilityTest, everyLayerOfAStackIsPeeledAndNotOnlyTheNearest)
+        {
+            const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
+            const osg::Vec4f half(0.0f, 0.0f, 0.0f, 0.5f);
+
+            const std::array<osg::Vec4f, 5> stack{ half, half, half, half, half };
+            const auto through
+                = [&](std::size_t layers) { return litThroughStack(std::span(stack).first(layers), bright); };
+
+            EXPECT_EQ(through(0), 153) << "the wall alone, as the tests above have it";
+            EXPECT_EQ(through(1), 111) << "half the wall through one half pane";
+
+            // A quarter and an eighth, which under the one-layer peel this replaces were nought:
+            // the second pane was drawn as the solid it is not.
+            EXPECT_EQ(through(2), litThroughStack({}, bright * 0.25f));
+            EXPECT_EQ(through(3), litThroughStack({}, bright * 0.125f));
+            EXPECT_EQ(through(4), litThroughStack({}, bright * 0.0625f));
+            EXPECT_GT(through(4), 0) << "four layers is what the budget peels, and it is not black";
+
+            // **The budget's own edge.** The fifth surface is past what the launch peels, so it is
+            // shaded as the solid it stands in for — a black one — rather than left as a hole.
+            EXPECT_EQ(through(5), 0);
+        }
+
         /// A placement the game is fading is seen through, whatever its material says.
         ///
         /// **The same pane, made see-through by the other of the two numbers.** The tests around

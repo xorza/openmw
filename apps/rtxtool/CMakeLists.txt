@@ -58,6 +58,8 @@ set(RTXTOOL_FILES
     textures.hpp
     validationchoice.cpp
     validationchoice.hpp
+    verbs.cpp
+    verbs.hpp
     verify.cpp
     verify.hpp
     view.cpp

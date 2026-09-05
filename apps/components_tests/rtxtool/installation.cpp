@@ -34,7 +34,7 @@ namespace RtxTool
             Files::ConfigurationManager config;
             bpo::variables_map variables;
 
-            bpo::options_description options = makeOptionsDescription(false);
+            bpo::options_description options = makeOptions(false).mDescription;
             bpo::store(bpo::command_line_parser(std::vector<std::string>{}).options(options).run(), variables);
             bpo::notify(variables);
 

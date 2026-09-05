@@ -22,7 +22,8 @@ const uint SEED_LAMPS_EYE = 0x51u;
 const uint SEED_LAMPS_BOUNCE = SEED_LAMPS_EYE + 1u;
 
 /// And a third for the pane the eye is looking through, which shades beside the surface behind it
-/// and would choose the same lamp at both if it stepped the same sequence.
+/// and would choose the same lamp at both if it stepped the same sequence. `SEED_LAMPS_PANE_DEEPER`
+/// is where the layers under it draw from.
 const uint SEED_LAMPS_PANE = SEED_LAMPS_BOUNCE + 1u;
 
 /// Water shades two surfaces from one hit — what it reflects and what is seen through it — and each
@@ -59,6 +60,21 @@ const uint SEED_SHEET_SIDE = SEED_AMBIENT_FOG + 1u;
 /// before the reservoir opens, and taken as a step of it, it would move every lamp the bounce hit
 /// weighed — which is the ordering `gather` states at the top of itself.
 const uint SEED_INDIRECT_LIGHT = SEED_SHEET_SIDE + 1u;
+
+/// And one for each layer of the peel under the first: a cuirass over a skirt over a leg shade
+/// beside each other as well as beside the body under them, and a stack stepping one sequence would
+/// light every layer of a person from the same lamp.
+///
+/// **At the end of the chain rather than beside `SEED_LAMPS_PANE`**, because this block is
+/// `PEEL_LAYERS - 1` wide: written where the pane's own seed is, every seed after it would move each
+/// time the peel's budget did, and a seed that moves is every sequence in the frame redrawn.
+const uint SEED_LAMPS_PANE_DEEPER = SEED_INDIRECT_LIGHT + 1u;
+
+/// Which of them the `layer`th peeled surface draws its lamps from, counting the nearest as nought.
+uint paneSeed(uint layer)
+{
+    return layer == 0u ? SEED_LAMPS_PANE : SEED_LAMPS_PANE_DEEPER + layer - 1u;
+}
 
 /// How far each stream's sequence advances between frames.
 ///

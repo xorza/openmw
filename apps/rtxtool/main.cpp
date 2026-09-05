@@ -56,6 +56,7 @@
 #include "stagedworld.hpp"
 #include "textures.hpp"
 #include "validationchoice.hpp"
+#include "verbs.hpp"
 #include "verify.hpp"
 #include "view.hpp"
 #include "viewpoint.hpp"
@@ -323,7 +324,7 @@ namespace RtxTool
             return request;
         }
 
-        int runInfo(const std::filesystem::path& shaderDirectory, const Rtx::ValidationOptions& validation)
+        int runInfo(const Command& command, const Rtx::ValidationOptions& validation)
         {
             // A one-pixel target: this reports on a device rather than drawing with it, and the
             // default would spend fifty megabytes of images to print a page of text.
@@ -331,10 +332,19 @@ namespace RtxTool
             // **The shaders are still named, because standing a renderer up compiles one.**
             // Reporting on a device is not a reason to build half a renderer, and a build whose
             // shaders are missing should say so here rather than at the first frame asked for.
+            //
+            // **And the cache is the one every other command fills**, since compiling those
+            // pipelines is most of what this verb waits for. A run that named no cache compiled
+            // them from source, kept nothing, and left the next `shot` to compile them again.
             std::string reason;
             const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(
                 Rtx::RendererOptions{
-                    .mShaderDirectory = shaderDirectory, .mWidth = 1, .mHeight = 1, .mValidation = validation },
+                    .mShaderDirectory = command.mResources / "rtx" / "shaders",
+                    .mCacheDirectory = command.mConfig.getCachePath(),
+                    .mWidth = 1,
+                    .mHeight = 1,
+                    .mValidation = validation,
+                },
                 reason);
             if (renderer == nullptr)
             {
@@ -551,7 +561,7 @@ namespace RtxTool
         {
             const Rtx::ValidationOptions validation = validationFrom(command.mVariables, false);
 
-            return runInfo(command.mResources / "rtx" / "shaders", validation);
+            return runInfo(command, validation);
         }
 
         int commandTextures(const Command& command)
@@ -767,10 +777,14 @@ namespace RtxTool
             return shotOrView(command, true);
         }
 
-        /// One verb: what it is called, the line `--help` prints for it, and what it does.
+        /// One verb: which command it is, the line `--help` prints for it, and what it does.
+        ///
+        /// **Which one it is and not what it is called**, because `verbs.hpp` holds the names: an
+        /// option says which commands read it in the same terms this table names them in, so the
+        /// two cannot drift into a command whose options nothing reaches.
         struct Verb
         {
-            std::string_view mName;
+            Verbs mVerb;
             std::string_view mSummary;
             int (*mRun)(const Command&);
         };
@@ -783,15 +797,15 @@ namespace RtxTool
         /// answered. In the order `--help` prints them, which is the order they were written to be
         /// read in rather than a sorted one.
         constexpr std::array<Verb, 9> sVerbs{
-            Verb{ "info", "report the device this renderer would run on", commandInfo },
-            Verb{ "scene", "read a cell and report what the renderer would be handed", commandScene },
-            Verb{ "shot", "render a cell and write a PNG, with no window", commandShot },
-            Verb{ "view", "open a window on a cell and fly around it", commandView },
-            Verb{ "bench", "time a run of frames at each of a list of places", commandBench },
-            Verb{ "textures", "every texture a cell uses, vanilla beside de-lit, as one sheet", commandTextures },
-            Verb{ "doll", "the inventory doll of one person, traced against a scene of its own", commandDoll },
-            Verb{ "map", "one local-map tile of a cell, traced straight down", commandMap },
-            Verb{ "verify", "render every view and say what moved since the last run", commandVerify },
+            Verb{ Verbs::Info, "report the device this renderer would run on", commandInfo },
+            Verb{ Verbs::Scene, "read a cell and report what the renderer would be handed", commandScene },
+            Verb{ Verbs::Shot, "render a cell and write a PNG, with no window", commandShot },
+            Verb{ Verbs::View, "open a window on a cell and fly around it", commandView },
+            Verb{ Verbs::Bench, "time a run of frames at each of a list of places", commandBench },
+            Verb{ Verbs::Textures, "every texture a cell uses, vanilla beside de-lit, as one sheet", commandTextures },
+            Verb{ Verbs::Doll, "the inventory doll of one person, traced against a scene of its own", commandDoll },
+            Verb{ Verbs::Map, "one local-map tile of a cell, traced straight down", commandMap },
+            Verb{ Verbs::Verify, "render every view and say what moved since the last run", commandVerify },
         };
 
         void printUsage(const bpo::options_description& options)
@@ -801,7 +815,7 @@ namespace RtxTool
                      "Commands:\n";
 
             for (const Verb& verb : sVerbs)
-                out() << std::format("  {:<8} {}\n", verb.mName, verb.mSummary);
+                out() << std::format("  {:<8} {}\n", verbName(verb.mVerb), verb.mSummary);
 
             out() << "\nWith no arguments at all: a window on the ship at Seyda Neen, where the game starts.\n\n"
                   << options;
@@ -821,25 +835,31 @@ namespace RtxTool
             const bool hasVerb = argc >= 2 && argv[1][0] != '-';
             const std::string_view command = hasVerb ? argv[1] : "view";
 
-            bpo::options_description options = makeOptionsDescription(Rtx::sValidationByDefault);
+            const ToolOptions options = makeOptions(Rtx::sValidationByDefault);
 
             // Boost skips the first token as the program name; when there is a verb, that token is
             // the verb.
+            //
+            // **Held, because the line itself says what was asked for and the map does not.** A
+            // variables map cannot tell an option somebody wrote from one `openmw.cfg` set or one
+            // that came back defaulted, and what a command has to refuse is the first of the three.
+            const bpo::parsed_options line = hasVerb
+                ? bpo::command_line_parser(argc - 1, argv + 1).options(options.mDescription).run()
+                : bpo::command_line_parser(argc, argv).options(options.mDescription).run();
+
             bpo::variables_map variables;
-            bpo::store(hasVerb ? bpo::command_line_parser(argc - 1, argv + 1).options(options).run()
-                               : bpo::command_line_parser(argc, argv).options(options).run(),
-                variables);
+            bpo::store(line, variables);
             bpo::notify(variables);
 
             if (variables.count("help") > 0)
             {
-                printUsage(options);
+                printUsage(options.mDescription);
                 return 0;
             }
 
             Files::ConfigurationManager config;
             config.processPaths(variables, std::filesystem::current_path());
-            config.readConfiguration(variables, options);
+            config.readConfiguration(variables, options.mDescription);
             Debug::setupLogging(config.getLogPath(), applicationName);
             Settings::Manager::load(config);
 
@@ -850,13 +870,24 @@ namespace RtxTool
             if (variables["list-views"].as<bool>())
                 return runListViews(resources);
 
+            const Verbs chosen = verbNamed(command);
             const auto found = std::find_if(
-                sVerbs.begin(), sVerbs.end(), [command](const Verb& verb) { return verb.mName == command; });
+                sVerbs.begin(), sVerbs.end(), [chosen](const Verb& verb) { return verb.mVerb == chosen; });
 
             if (found == sVerbs.end())
             {
                 out() << "Unknown command: " << command << "\n\n";
-                printUsage(options);
+                printUsage(options.mDescription);
+                return 1;
+            }
+
+            // **Before the command runs, because the alternative is a picture of somewhere else.**
+            // Every option is declared on one description, so a command took every one of them and
+            // read the ones it knew about: `shot --views=balmora` rendered the default view at
+            // Seyda Neen and reported it without a word.
+            if (const std::string complaint = options.complainAbout(line, chosen); !complaint.empty())
+            {
+                out() << complaint;
                 return 1;
             }
 

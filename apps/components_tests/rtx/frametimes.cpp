@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <span>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -81,6 +82,75 @@ namespace Rtx
             // report infinity as a frame rate.
             EXPECT_DOUBLE_EQ(FrameTimes{}.getRate(), 0.0);
             EXPECT_DOUBLE_EQ(FrameTimes{}.getLowRate(), 0.0);
+        }
+
+        /// A zone is quoted by what it cost the run and not by what it cost a frame that ran it.
+        ///
+        /// **The row has to be summable**, which is what a pass that runs at a cell crossing broke:
+        /// it was a median of the frames that crossed, and the row printed `micromap 7.51` above a
+        /// frame median of 6.73 ms.
+        TEST(RtxGpuBreakdownTest, aZoneIsQuotedOverTheWholeRun)
+        {
+            GpuBreakdown breakdown;
+            EXPECT_TRUE(breakdown.empty());
+
+            // Ten frames. `trace` runs in all of them at 4 ms, and `micromap` in the first two at
+            // 20 ms and 10 ms — a pass that costs the run 30 ms and three of them per frame.
+            const GpuSpan trace{ .mName = "trace", .mMs = 4.0 };
+            for (int frame = 0; frame < 10; ++frame)
+            {
+                const GpuSpan micromap{ .mName = "micromap", .mMs = frame == 0 ? 20.0 : 10.0 };
+                const std::vector<GpuSpan> spans
+                    = frame < 2 ? std::vector<GpuSpan>{ micromap, trace } : std::vector<GpuSpan>{ trace };
+
+                breakdown.add(spans);
+            }
+
+            const std::span<const GpuZone> zones = breakdown.summariseZones();
+            ASSERT_EQ(zones.size(), 2u);
+
+            EXPECT_EQ(zones[0].mName, "trace") << "4 ms of every frame beats 3 ms of the average one";
+            EXPECT_DOUBLE_EQ(zones[0].mShareMs, 4.0) << "40 ms over ten frames";
+            EXPECT_EQ(zones[0].mFrames, 10u);
+            EXPECT_EQ(zones[0].mOfFrames, 10u);
+            EXPECT_TRUE(zones[0].isEveryFrame());
+
+            EXPECT_EQ(zones[1].mName, "micromap");
+            EXPECT_DOUBLE_EQ(zones[1].mShareMs, 3.0) << "30 ms over ten frames, not the 10 ms it cost when it ran";
+            EXPECT_EQ(zones[1].mFrames, 2u);
+            EXPECT_EQ(zones[1].mOfFrames, 10u);
+            EXPECT_FALSE(zones[1].isEveryFrame());
+            EXPECT_DOUBLE_EQ(zones[1].mTimes.mMedian, 10.0) << "ceil(0.5 x 2) = 1, the shorter of the two";
+            EXPECT_DOUBLE_EQ(zones[1].mTimes.mWorst, 20.0);
+
+            // The device's part of the average frame is the row added up: 4 ms of trace and 3 ms
+            // of micromap against the 70 ms it spent over ten frames.
+            EXPECT_DOUBLE_EQ(zones[0].mShareMs + zones[1].mShareMs, 7.0);
+
+            EXPECT_EQ(describeZone(zones[0]), "trace 4.00") << "a zone every frame ran needs no qualification";
+            EXPECT_EQ(describeZone(zones[1]), "micromap 3.00 (10.00 on 2 of 10)");
+            EXPECT_EQ(describeZones(zones), "  gpu ms    trace 4.00  micromap 3.00 (10.00 on 2 of 10)\n");
+        }
+
+        /// A frame that reported no zone at all still counts against every share.
+        TEST(RtxGpuBreakdownTest, aFrameWithNoZonesIsStillAFrame)
+        {
+            GpuBreakdown breakdown;
+
+            const GpuSpan trace{ .mName = "trace", .mMs = 6.0 };
+            const std::vector<GpuSpan> one{ trace };
+            breakdown.add(one);
+
+            // Three more frames the device wrote no timestamp for, which is what the first frames
+            // of a run look like.
+            for (int frame = 0; frame < 3; ++frame)
+                breakdown.add({});
+
+            const std::span<const GpuZone> zones = breakdown.summariseZones();
+            ASSERT_EQ(zones.size(), 1u);
+            EXPECT_DOUBLE_EQ(zones[0].mShareMs, 1.5) << "6 ms over the four frames measured";
+            EXPECT_EQ(zones[0].mOfFrames, 4u);
+            EXPECT_EQ(describeZones({}), "") << "a run with no zones prints no row at all";
         }
     }
 }

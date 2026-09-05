@@ -111,7 +111,26 @@ namespace Rtx
     struct GpuZone
     {
         std::string_view mName;
+
+        /// What the zone cost on the frames that ran it, which for an occasional pass is a
+        /// distribution over a handful of frames and not over the run.
         FrameTimes mTimes;
+
+        /// How many frames ran it, out of how many the run measured.
+        std::uint32_t mFrames = 0;
+        std::uint32_t mOfFrames = 0;
+
+        /// What it cost the average frame: everything it spent, over every frame of the run.
+        ///
+        /// **The figure a report quotes, because it is the only one that can be summed or set
+        /// against the frame beside it.** A pass that runs at a cell crossing and nowhere else is
+        /// a median of the nineteen frames that crossed, and a row of those medians describes no
+        /// frame that ever happened — `micromap 7.51` was printed above a frame median of 6.73.
+        double mShareMs = 0.0;
+
+        /// Whether every measured frame ran it, which is what says the share above is also what
+        /// the zone costs on a frame.
+        bool isEveryFrame() const { return mFrames == mOfFrames; }
     };
 
     /// Per-zone device times, gathered a frame at a time.
@@ -125,10 +144,14 @@ namespace Rtx
     public:
         /// Takes one frame's zones. The names are the backend's literals and are copied on first
         /// sight only, so a long run pushes a double per zone and nothing else.
+        ///
+        /// **One call per measured frame, whether or not that frame reported a zone.** The count
+        /// it keeps is the denominator every share below is taken over, so a frame handed to the
+        /// report and not to this would make each of them larger than the frame it describes.
         void add(std::span<const GpuSpan> spans);
 
-        /// Summarises what was gathered, most expensive first — which is the order the question
-        /// "where did the frame go" wants read. Empty where no frame reported a zone.
+        /// Summarises what was gathered, the largest share of a frame first — which is the order
+        /// the question "where did the frame go" wants read. Empty where no frame reported a zone.
         std::span<const GpuZone> summariseZones();
 
         bool empty() const { return mNames.empty(); }
@@ -140,6 +163,9 @@ namespace Rtx
         /// One row of samples per name, indexed alongside `mNames`.
         std::vector<std::vector<double>> mTimes;
 
+        /// Frames `add` was called for, which is what a zone's row is short against.
+        std::uint32_t mFrames = 0;
+
         std::vector<GpuZone> mZones;
     };
 
@@ -149,7 +175,14 @@ namespace Rtx
     /// One row of six figures under `heading`, in the order `describeHeadings` names them.
     std::string describeTimes(std::string_view heading, const FrameTimes& times);
 
-    /// The device's own account of the frame, medians only and most expensive first.
+    /// One zone in a report: what it cost the average frame, and — where it did not run in every
+    /// frame — what it cost when it did, on how many of them.
+    ///
+    /// **One spelling for both hosts**, because the harness and the game print the same zones and a
+    /// figure read differently between the two reports is a difference read as a finding.
+    std::string describeZone(const GpuZone& zone);
+
+    /// The device's own account of the frame, shares of a frame only and largest first.
     ///
     /// **Six distributions would be a wall**; what this row answers is which stretch of the frame is
     /// the expensive one, and the rows above it already say how much the whole frame varies.

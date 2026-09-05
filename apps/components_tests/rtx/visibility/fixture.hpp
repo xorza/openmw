@@ -129,6 +129,45 @@ namespace Rtx::Testing
         return scene;
     }
 
+    /// One see-through quad in `scene`, of `colour` and its own alpha, faded as the game fades a
+    /// placement.
+    ///
+    /// **The two numbers an opacity is made of, added the one way.** The shader multiplies a
+    /// material's alpha by a placement's fade, and a helper that built either of them its own way
+    /// would be holding up a surface this renderer does not have.
+    inline void addPane(SceneDesc& scene, std::span<const osg::Vec3f> quad, const osg::Vec4f& colour, float fade = 1.0f)
+    {
+        const Index glass = scene.addMaterial(Material{
+            .mDiffuseColour = colour,
+            .mAlphaMode = AlphaMode::Blend,
+        });
+
+        scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+            .mMesh = scene.addMesh(quad, {}, {}, sQuadIndices),
+            .mMaterial = glass,
+            .mOpacity = fade });
+    }
+
+    /// The eye and the sun every test over that wall stands it under: the sun along +Y, square to
+    /// the wall, and the eye off that axis at x = 100 looking at the middle of it.
+    ///
+    /// **One camera, because each of these tests is read as a ratio against the wall's own byte.**
+    /// The figures they are pinned to hold only while the wall, the eye and the sun are the same in
+    /// every one of them — and off the sun's axis is what lets a pane on the eye's ray leave the
+    /// patch of wall the centre pixel looks at fully lit.
+    ///
+    /// @param origin,target where to aim it instead, for the one test that has to see the pane
+    ///        rather than what it shadows.
+    inline Shaders::VisibilityConstants wallCamera(std::uint32_t size, const osg::Vec3f& irradiance,
+        const osg::Vec3f& origin = osg::Vec3f(100.0f, -100.0f, 0.0f), const osg::Vec3f& target = osg::Vec3f())
+    {
+        Shaders::VisibilityConstants camera = makeCamera(origin, target, 60.0f, size, size, 10000.0f);
+        camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
+        camera.mSunIrradiance = irradiance;
+
+        return camera;
+    }
+
     /// Which pixel of a `size` by `size` frame is its middle one — `size / 2` along each axis,
     /// which is the pixel just past the centre where `size` is even.
     inline constexpr std::size_t centreOf(std::uint32_t size)
@@ -491,22 +530,50 @@ namespace Rtx::Testing
 
             SceneDesc scene = makeWall();
             if (colour.has_value())
-            {
-                const Index glass = scene.addMaterial(Material{
-                    .mDiffuseColour = *colour,
-                    .mAlphaMode = AlphaMode::Blend,
-                });
+                addPane(scene, pane, *colour, fade);
 
-                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
-                    .mMesh = scene.addMesh(pane, {}, {}, sQuadIndices),
-                    .mMaterial = glass,
-                    .mOpacity = fade });
+            const Shaders::VisibilityConstants camera = wallCamera(size, irradiance);
+
+            std::vector<std::uint8_t> pixels;
+            EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
+
+            return pixels[centreValueOf(size)];
+        }
+
+        /// A wall square to the sun with a stack of panes strung along the eye's own ray, as the
+        /// byte its centre pixel comes back as.
+        ///
+        /// **The wall, the camera and the sun `litThroughPane` holds one pane up to**, so a stack of
+        /// one is that helper's own answer and the figures the tests around it are pinned to carry
+        /// over to this.
+        ///
+        /// The eye stands at x = 100 and looks at the origin, so its ray runs at x = -y the whole
+        /// way: each pane is centred there, ten units to a side, and so is clear of the sun's own
+        /// path to the middle of the wall — which travels along +Y at x = 0. The panes stand ten
+        /// units apart, nearest to the eye first.
+        ///
+        /// @param layers what each pane is made of, its own alpha included, from the eye inwards.
+        /// @param where the caller's own line, never passed, for the reason `litThroughPane` gives.
+        std::uint8_t litThroughStack(std::span<const osg::Vec4f> layers, const osg::Vec3f& irradiance,
+            std::source_location where = std::source_location::current())
+        {
+            const ::testing::ScopedTrace trace(where.file_name(), static_cast<int>(where.line()), "litThroughStack");
+
+            constexpr std::uint32_t size = 33;
+
+            SceneDesc scene = makeWall();
+            for (std::size_t at = 0; at < layers.size(); ++at)
+            {
+                const float away = -60.0f + 10.0f * static_cast<float>(at);
+
+                std::array<osg::Vec3f, 4> pane = uprightQuadAt(10.0f, away);
+                for (osg::Vec3f& corner : pane)
+                    corner.x() -= away;
+
+                addPane(scene, pane, layers[at]);
             }
 
-            Shaders::VisibilityConstants camera = makeCamera(
-                osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
-            camera.mSunIrradiance = irradiance;
+            const Shaders::VisibilityConstants camera = wallCamera(size, irradiance);
 
             std::vector<std::uint8_t> pixels;
             EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);
@@ -542,13 +609,10 @@ namespace Rtx::Testing
             SceneDesc scene = makeWall();
             place(scene, pane);
 
-            Shaders::VisibilityConstants camera = lookAtIt
-                ? makeCamera(
-                    osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, -50.0f, 0.0f), 60.0f, size, size, 10000.0f)
-                : makeCamera(
-                    osg::Vec3f(100.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
-            camera.mSunPosition = osg::Vec3f(0.0f, -1.0f, 0.0f);
-            camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+            const osg::Vec3f bright(2.0f, 2.0f, 2.0f);
+            const Shaders::VisibilityConstants camera = lookAtIt
+                ? wallCamera(size, bright, osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, -50.0f, 0.0f))
+                : wallCamera(size, bright);
 
             std::vector<std::uint8_t> pixels;
             EXPECT_GT(countHits(scene, {}, camera, size, pixels), 0u);

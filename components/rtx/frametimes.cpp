@@ -64,6 +64,8 @@ namespace Rtx
 
     void GpuBreakdown::add(std::span<const GpuSpan> spans)
     {
+        ++mFrames;
+
         for (const GpuSpan& span : spans)
         {
             // The index and not the iterator: adding a name invalidates whatever `find` returned,
@@ -92,10 +94,24 @@ namespace Rtx
         mZones.reserve(mNames.size());
 
         for (std::size_t at = 0; at < mNames.size(); ++at)
-            mZones.push_back(GpuZone{ .mName = mNames[at], .mTimes = summarise(mTimes[at]) });
+        {
+            const double spent = std::accumulate(mTimes[at].begin(), mTimes[at].end(), 0.0);
 
-        std::sort(mZones.begin(), mZones.end(),
-            [](const GpuZone& a, const GpuZone& b) { return a.mTimes.mMedian > b.mTimes.mMedian; });
+            mZones.push_back(GpuZone{
+                .mName = mNames[at],
+                .mTimes = summarise(mTimes[at]),
+                .mFrames = static_cast<std::uint32_t>(mTimes[at].size()),
+                .mOfFrames = mFrames,
+                .mShareMs = spent / static_cast<double>(mFrames),
+            });
+        }
+
+        // **By what each cost the run and not by what it cost a frame that ran it**, which is the
+        // order "where did the frame go" is asked in: a pass that runs at a cell crossing is
+        // seven milliseconds and a fifth of a per-cent of the run, and sorting it to the top of
+        // the row put it above the frame median printed over it.
+        std::sort(
+            mZones.begin(), mZones.end(), [](const GpuZone& a, const GpuZone& b) { return a.mShareMs > b.mShareMs; });
 
         return mZones;
     }
@@ -112,6 +128,18 @@ namespace Rtx
             times.mMean, times.mP95, times.mP99, times.mBest, times.mWorst);
     }
 
+    std::string describeZone(const GpuZone& zone)
+    {
+        if (zone.isEveryFrame())
+            return std::format("{} {:.2f}", zone.mName, zone.mShareMs);
+
+        // What it cost when it ran, and how rarely — the two figures the share is the product of,
+        // and without them a pass that stalls a frame every sixty of them reads as a rounding
+        // error.
+        return std::format("{} {:.2f} ({:.2f} on {} of {})", zone.mName, zone.mShareMs, zone.mTimes.mMedian,
+            zone.mFrames, zone.mOfFrames);
+    }
+
     std::string describeZones(std::span<const GpuZone> zones)
     {
         if (zones.empty())
@@ -119,7 +147,7 @@ namespace Rtx
 
         std::string row = "  gpu ms  ";
         for (const GpuZone& zone : zones)
-            row += std::format("  {} {:.2f}", zone.mName, zone.mTimes.mMedian);
+            row += "  " + describeZone(zone);
 
         return row + "\n";
     }

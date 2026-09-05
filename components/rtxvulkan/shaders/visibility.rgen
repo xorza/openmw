@@ -21,8 +21,9 @@
 // bounce, no layer stack and no sky — each of those is in the shader that needs it, carrying its own
 // registers. `lib/payload.glsl` is what crosses.
 //
-// **What is left here is what belongs to the path rather than to the surface**: the pane the eye
-// looks through, the column of water in front of it, the air, the sprites, and the eleven channels.
+// **What is left here is what belongs to the path rather than to the surface**: the layers the eye
+// looks through, the column of water in front of them, the air, the sprites, and the eleven
+// channels.
 
 // **Before anything is included.** `lib/reorder.glsl` declares calls only a ray generation shader
 // may make, and it is reached from a compute shader as well.
@@ -95,44 +96,53 @@ void main()
     float skyShown = answer.mSkyShown;
     bool water = answer.mWater;
 
-    // **The nearest surface the eye is looking through, peeled off and kept.** A pane of glass is
-    // one, and so is an actor the game is fading — Invisibility, Chameleon, or the distance fade at
-    // the edge of `actors processing range`. It was met like any other surface and lit like any
-    // other, and now the ray carries on from where it stood, so what is behind it is a real hit
+    // **The surfaces the eye is looking through, peeled off nearest first and kept.** A pane of
+    // glass is one, and so is an actor the game is fading — Invisibility, Chameleon, or the distance
+    // fade at the edge of `actors processing range`. Each was met like any other surface and lit
+    // like any other, and the ray carries on from where it stood, so what is behind it is a real hit
     // rather than whatever its mask happened to survive a cutoff.
     //
-    // **The nearest one only, and it is a pane by now.** A second one behind the first is drawn as
-    // the cutout it was, which is what one layer buys: no sorting, no budget, and no second
-    // traversal on a pixel that has nothing see-through in it. What made that enough is that the
-    // deep stacks left: a surface that is nowhere opaque never stops a ray at all and is gathered by
-    // `mediumAlong` instead, so what reaches here is glass. `ASK_BEHIND` is how the second shader is
-    // told which of the two it is.
+    // **A stack and not one layer, because a person is a stack.** A cuirass over a skirt over a leg
+    // is three surfaces, and peeling only the nearest showed one of them faded and the two under it
+    // at full strength — an actor under Chameleon wearing a solid body. `PEEL_LAYERS` is the budget
+    // and `ASK_BEHIND` is how the shader past it is told to draw a solid, so a deeper stack ends in
+    // the surface standing there rather than in a hole.
     //
     // **The census is taken rather than assumed** — `crossingsAlong`, under `COUNT_CROSSINGS`. Red
-    // Mountain holds 205 translucent materials and its deepest ray crosses eight of them, which is
-    // what a peel sized at one had to stop answering for.
+    // Mountain holds 205 translucent materials and its deepest ray crosses eight of them, and those
+    // are the medium's: a surface that is nowhere opaque never stops a ray at all and is gathered by
+    // `mediumAlong` instead, so what reaches here is glass and clothing.
     //
-    // **An actor is not that.** A cuirass over a skirt over a leg is three layers, so a person under
-    // Chameleon shows the nearest one faded and the one behind it at full strength. That is what an
-    // ordered walk would buy, and it is the reason this says *to begin with*.
+    // **The composite is the ordered one, back to front by construction.** Each layer keeps what
+    // every layer in front of it let through, which is one multiply a layer and no sorting: the ray
+    // meets them in depth order and cannot meet them in any other.
     //
-    // **Its motion vector, its depth and the guide the upscaler demodulates by all stay the surface
-    // behind it**, which is right while a pane is mostly see-through and wrong as it approaches
-    // opaque. `PuffClaim` is what answering that properly looks like, and no pane in the game is
-    // near enough to opaque to have earned one.
+    // **Their motion vector, their depth and the guide the upscaler demodulates by all stay the
+    // surface behind them**, which is right while the stack is mostly see-through and wrong as it
+    // approaches opaque. `PuffClaim` is what answering that properly looks like, and no pane in the
+    // game is near enough to opaque to have earned one.
     vec3 paneRadiance = vec3(0.0);
     float paneThrough = 1.0;
-    float paneDistance = 0.0;
-    if (hit && !water && isSeenThrough(answer.mOpacity))
+
+    // **Taken before the first trace overwrites it**, because the medium in front of the stack is
+    // measured over this and not over the whole path. Read only where something was peeled.
+    //
+    // **The nearest layer's distance stands for the whole stack's**, so the layers behind it are
+    // charged the medium in front of the first. Exact for the one pane this began as and for the
+    // layers of one person, which stand within a few units of each other; a window with another
+    // window far behind it is the case it approximates, and a fog read per layer is what it would
+    // cost to stop approximating.
+    float paneDistance = distance;
+
+    for (uint layer = 0u; layer < PEEL_LAYERS && hit && !water && isSeenThrough(answer.mOpacity); ++layer)
     {
-        paneThrough = 1.0 - answer.mOpacity;
-        paneRadiance = shaded * answer.mOpacity;
+        paneRadiance += paneThrough * shaded * answer.mOpacity;
+        paneThrough *= 1.0 - answer.mOpacity;
 
-        // **Kept before the second trace overwrites it**, because the medium in front of the glass
-        // is measured over this and not over the whole path.
-        paneDistance = distance;
-
-        answer.mAsked = ASK_BEHIND;
+        // The layer this trace is for, and — on the last one the budget allows — that whatever it
+        // finds is to be shaded as a solid.
+        const uint next = layer + 1u;
+        answer.mAsked = askForLayer(next) | (next == PEEL_LAYERS ? ASK_BEHIND : 0u);
         RTX_TRACE_AND_SHADE(found, origin, distance + SHADOW_BIAS, direction, EYE_MASK)
 
         origin = hitObjectGetWorldRayOriginEXT(found);
@@ -200,19 +210,19 @@ void main()
     shaded = shaded * fog.w + fog.xyz;
     transmittance *= fog.w;
 
-    // **The pane over what it stands in front of, after the water and the air.** Both of those are
-    // measured over the distance to the surface *behind* the glass, and a pane stands part of the
-    // way along that path: composited before them it was charged for the whole of it, so a lit
-    // window a few units out arrived as dim as the room two hundred units behind it.
+    // **The peeled layers over what they stand in front of, after the water and the air.** Both of
+    // those are measured over the distance to the surface *behind* the glass, and the stack stands
+    // part of the way along that path: composited before them it was charged for the whole of it,
+    // so a lit window a few units out arrived as dim as the room two hundred units behind it.
     //
     // **The near stretch is a prefix of the whole one, so the split is exact.** With `S` for what
     // `shaded` holds, `Lnear` for what the medium in front of the pane scattered and `Tnear` for
     // what it let through,
     //
     //     S      = Lwhole + Twhole * behind
-    //     wanted = Lnear + Tnear * pane + paneThrough * (Lwhole - Lnear + Twhole * behind)
+    //     wanted = Lnear + Tnear * stack + paneThrough * (Lwhole - Lnear + Twhole * behind)
     //
-    // and the second line is `Lnear + Tnear * pane + paneThrough * (S - Lnear)`. It is the same
+    // and the second line is `Lnear + Tnear * stack + paneThrough * (S - Lnear)`. It is the same
     // identity the puff layer below splits the air by, for the same reason.
     //
     // **A second column, and on a pane pixel only.** The air is one accumulation read twice, so the
@@ -224,8 +234,8 @@ void main()
         vec3 nearThrough = vec3(1.0);
         vec3 nearScattered = vec3(0.0);
 
-        // The pane is a hit, so neither of the two figures an escaped ray has to stand in for
-        // arises here: the stretch is bounded and the cone at the end of it is the pane's own.
+        // The nearest layer is a hit, so neither of the two figures an escaped ray has to stand in
+        // for arises here: the stretch is bounded and the cone at the end of it is that layer's.
         if (submerged)
         {
             const WaterColumn column = waterColumn(origin, direction, paneDistance,

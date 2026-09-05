@@ -301,9 +301,9 @@ namespace RtxTool
         {
             out << "gpu:       ";
             for (const Rtx::GpuZone& zone : zones)
-                out << ' ' << zone.mName << ' ' << zone.mTimes.mMedian;
+                out << ' ' << Rtx::describeZone(zone);
 
-            out << "  (median ms each)\n";
+            out << "  (ms of the average frame)\n";
         }
 
         return 0;

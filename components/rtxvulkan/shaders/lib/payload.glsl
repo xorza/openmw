@@ -31,18 +31,38 @@
 /// runs never touches.
 #define RTX_TRAVERSAL_PAYLOAD 1
 
-/// The shader that ran was told it stands behind a pane the launch has already peeled.
+/// The shader that ran was told it stands behind every layer the launch has left to peel.
 ///
-/// **The nearest see-through surface is peeled and the next one is not.** Without this a chit would
-/// look at its own opacity, find a second pane, and shade it from the pane's own lamp sequence — so
-/// a window behind a window would be lit twice from one draw. `visibility.rgen` says what one layer
-/// buys and why there is no second.
+/// **The launch peels `PEEL_LAYERS` of them and the one after that is a solid.** Without this a
+/// chit would look at its own opacity, find one more pane, and shade it as a pane however deep the
+/// stack went — so a launch that had run out of layers would draw a hole through the world rather
+/// than the surface standing in it.
 const uint ASK_BEHIND = 1u;
+
+/// Where the layer of the peel this hit belongs to sits in `mAsked`, above the flags.
+///
+/// **Which layer and not only whether**, because the layers of a stack shade beside each other:
+/// each opens a lamp reservoir, and a stack seeded alike would light every layer of a person from
+/// the one lamp. `paneSeed` is where those sequences come from.
+const uint ASK_LAYER_SHIFT = 1u;
+
+/// What the launch tells a shader about the layer it is tracing for.
+uint askForLayer(uint layer)
+{
+    return layer << ASK_LAYER_SHIFT;
+}
+
+/// Which layer of the peel the shader that reads this is standing at, counting the eye's own hit
+/// as nought.
+uint layerAsked(uint asked)
+{
+    return asked >> ASK_LAYER_SHIFT;
+}
 
 /// What the shader an execute ran hands back to the launch.
 struct VisibilityPayload
 {
-    /// Handed in by the launch. `ASK_BEHIND` is the only thing it says.
+    /// Handed in by the launch: `ASK_BEHIND`, and the layer of the peel above it.
     uint mAsked;
 
     /// What the surface sends back along the ray, before the pane, the water column, the air and

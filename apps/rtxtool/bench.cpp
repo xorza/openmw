@@ -157,9 +157,11 @@ namespace RtxTool
                   << Rtx::describeTimes("wait ms", place.mWait) << Rtx::describeTimes("walk ms", place.mWalk)
                   << Rtx::describeTimes("place ms", place.mPlace);
 
-            // **The device's own account of the same frame, medians only.** Six distributions would
-            // be a wall; what this row answers is "which of them is the expensive one", and the row
-            // above already says how much the whole frame varies.
+            // **The device's own account of the same frame, one figure each.** Six distributions
+            // would be a wall; what this row answers is "which of them is the expensive one", and
+            // the row above already says how much the whole frame varies. Each figure is the
+            // zone's share of the average frame, so the row sums to the device's part of it and a
+            // pass that only runs at a crossing says so beside its own share.
             out() << Rtx::describeZones(place.mGpu) << describeClock(place.mClock);
 
             // **Only for a route, because a place that stands still has nothing to say here.** The
@@ -221,6 +223,15 @@ namespace RtxTool
                 times.mMedian, times.mMean, times.mP95, times.mP99, times.mBest, times.mWorst);
         }
 
+        /// **The counts as well as the times**, because a zone's distribution is over the frames
+        /// that ran it: without them a record cannot tell a pass that costs the frame a tenth of a
+        /// millisecond from one that costs seven every sixtieth frame.
+        std::string asJson(const Rtx::GpuZone& zone)
+        {
+            return std::format(R"({{"shareMs": {:.4f}, "frames": {}, "ofFrames": {}, "times": {}}})", zone.mShareMs,
+                zone.mFrames, zone.mOfFrames, asJson(zone.mTimes));
+        }
+
         /// Writes the run as one record, for comparing against the same run on another commit.
         ///
         /// Hand-written rather than through a library: this is numbers and the names of places, and
@@ -258,8 +269,8 @@ namespace RtxTool
                      << asJson(place.mWalk) << R"(, "placeMs": )" << asJson(place.mPlace) << R"(, "gpuMs": {)";
 
                 for (std::size_t zone = 0; zone < place.mGpu.size(); ++zone)
-                    file << std::format(R"({}"{}": {})", zone == 0 ? "" : ", ", place.mGpu[zone].mName,
-                        asJson(place.mGpu[zone].mTimes));
+                    file << std::format(
+                        R"({}"{}": {})", zone == 0 ? "" : ", ", place.mGpu[zone].mName, asJson(place.mGpu[zone]));
 
                 file << "}, \"clock\": " << asJson(place.mClock) << "}" << (at + 1 < places.size() ? "," : "") << '\n';
             }

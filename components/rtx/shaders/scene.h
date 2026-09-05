@@ -346,6 +346,23 @@ namespace Rtx::Shaders
     /// nothing at all.
     const uint MASK_FIRST_PERSON = 0x04u;
 
+    /// How many see-through surfaces the eye peels off before it draws what is under them.
+    ///
+    /// **A person is a stack and a window is not.** A pane of glass is one surface, and one layer
+    /// answered it; a cuirass over a skirt over a leg is three, so an actor the game fades —
+    /// Invisibility, Chameleon, the distance fade at the edge of `actors processing range` — showed
+    /// its nearest layer faded and every layer under it at full strength.
+    ///
+    /// **Four, because that is a dressed person and what is behind them.** The layers are peeled
+    /// nearest first and the surface after the last is drawn as the solid it stands in for, so a
+    /// deeper stack ends in a surface rather than in a hole. Red Mountain's deepest ray crosses
+    /// eight translucent surfaces — `shot --crossings` is the census — and those are the medium's,
+    /// which a ray never stops at: `MASK_MEDIUM` says why a shell is gathered rather than met.
+    ///
+    /// Each layer costs a traversal on the pixels that reach it, and none on a pixel with nothing
+    /// see-through in it.
+    const uint PEEL_LAYERS = 4u;
+
     /// A surface that is nowhere opaque, gathered as a depth along the ray rather than met.
     ///
     /// **Carried beside `MASK_SOLID` and not instead of it**, because a medium is still something a

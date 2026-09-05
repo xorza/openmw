@@ -1,16 +1,17 @@
 # Open issues
 
-- `runInfo` at `apps/rtxtool/main.cpp:336` builds its `Rtx::RendererOptions` with a designated
-  initializer list that skips `mCacheDirectory`, which `components/rtx/renderer.hpp:90` declares
-  between `mShaderDirectory` and `mWidth`. Every build of the harness warns
-  `missing initializer for member 'Rtx::RendererOptions::mCacheDirectory'`.
-
 - Three tests pass one second in a whole `Rtx*` run of `build-debug`:
   `RtxUpscaledFrameTest.anUpscaledFrameIsTheSameFrameLarger` at 3385 ms and
   `RtxUpscalerStabilityTest.aStillCameraResolvesToAStillPicture` at 2354 ms each build a renderer of
   their own, which `harness.hpp:129` measures at 700-870 ms for `createRenderer` and 900-1150 ms for
   the first `setScene`. `RtxVisibilityTest.theVolumeLightsTheAirUpToASurfaceWhereverInASliceItStands`
   at 1446 ms traces 48 frames of a 33-pixel square. The whole run is 567 tests in 26.0 s.
+
+- `RtxVisibilityTest.aSpriteIsShadowedByWhatStandsOverIt` turns on which numbers the seed constants
+  in `random.glsl` happen to hold. The froxel's ambient term is one direction per froxel per frame —
+  `ambientReaching` over the whole sphere, at `AMBIENT_EXTERIOR_RATE` — and the fixture draws one
+  frame, so the lidded sprite is a handful of Bernoulli draws. Moving `SEED_LAMPS_MIRROR` and the
+  seeds after it by three took the lidded value from under 5% of the open one to 92% of it.
 
 - The fog volume disagrees with the analytic answer for an even layer in two places the closed form
   it replaced did not. A ray lying exactly on the water surface reads up to thirteen levels apart
@@ -26,8 +27,10 @@
   reads a transmittance of 0.638 where the closed form gives 0.247, and reads 0.265 with the pane
   taken out of the scene.
 
-- Faded actors peel only their nearest translucent surface. Clothing and body layers under it render
-  at full strength. `components/rtxvulkan/shaders/visibility.rgen:123`.
+- The medium in front of a peeled stack is measured to the nearest layer alone, so every layer
+  behind it is charged the air and the water in front of the first. `visibility.rgen` composites
+  `paneRadiance` at `paneDistance` whatever the layers stand at, which a window at a thousand units
+  with another at three thousand behind it reads as one at a thousand.
 
 - Exterior cell crossings hold the tail of the moving-camera benchmark. Three `build-release` runs of
   `bench --views=island-crossing --seconds=10` on a hot card measure a median frame of 6.7-7.2 ms
@@ -35,12 +38,3 @@
   8.6 s run, 1.2-1.3 s of it reading and 0.6 s building, and the worst single crossing is 175-193 ms.
   None of them is a rebuild. The cost is on the host: `walk` reaches 53-89 ms and `place` 27-30 ms in
   a frame whose whole device time is near 12 ms.
-
-- The `gpu ms` row of a bench report gives each zone the median of the frames that ran that zone, so
-  the zones cover different frame counts. The row cannot be summed, and no zone can be set against
-  the frame median beside it. The `island-crossing` run prints `micromap 7.51` above a frame median
-  of 6.73 ms, because the micromap pass runs at a crossing rather than every frame.
-
-- `shot` accepts `--views` and silently ignores it. The option belongs to `bench` and `verify`, and
-  `shot` reads `--view`, so `shot --views=balmora` renders the default view at Seyda Neen and reports
-  it without a word.

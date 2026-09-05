@@ -1,15 +1,19 @@
 #include "options.hpp"
 
+#include <algorithm>
 #include <cstdint>
+#include <format>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include <boost/program_options/option.hpp>
 #include <boost/program_options/value_semantic.hpp>
 
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
 
+#include "verbs.hpp"
 #include "views.hpp"
 
 namespace bpo = boost::program_options;
@@ -34,12 +38,80 @@ namespace RtxTool
 #else
         constexpr std::string_view sUpscaleByDefault = "off";
 #endif
+
+        /// The commands that stand at one place, which is what `chooseView` reads a camera for.
+        /// A run of places — `bench` and `verify` — takes its cell and its camera from `--views`.
+        constexpr Verbs sPlaces = Verbs::Scene | Verbs::Shot | Verbs::View | Verbs::Textures | Verbs::Map;
+
+        /// The commands that frame a camera on the world, which is every one that builds a
+        /// `FrameRequest`. `doll` is not one: its picture is framed on a person by the game's own
+        /// inventory rules, and `info` draws nothing at all.
+        constexpr Verbs sFramed = sPlaces | Verbs::Bench | Verbs::Verify;
+
+        /// How an owned option's help line opens: the commands that read it.
+        ///
+        /// **Or the ones that do not, where that is the shorter list.** Naming seven commands to
+        /// exclude two is a line nobody reads to the end, and the two are what the reader is
+        /// actually being told.
+        std::string describeOwnership(const Verbs verbs)
+        {
+            const Verbs missing = otherThan(verbs);
+            if (countVerbs(missing) < countVerbs(verbs))
+                return std::format("with every command but {}", describeVerbs(missing));
+
+            return std::format("with {}", describeVerbs(verbs));
+        }
     }
 
-    boost::program_options::options_description makeOptionsDescription(const bool validationByDefault)
+    Verbs ToolOptions::readsOption(const std::string_view name) const
     {
-        bpo::options_description result("Options");
-        auto addOption = result.add_options();
+        for (const OptionOwner& owner : mOwners)
+        {
+            if (owner.mName == name)
+                return owner.mVerbs;
+        }
+
+        return Verbs::Every;
+    }
+
+    std::string ToolOptions::complainAbout(const bpo::parsed_options& line, const Verbs verb) const
+    {
+        std::string complaint;
+        std::vector<std::string_view> said;
+
+        for (const bpo::option& given : line.options)
+        {
+            const Verbs reads = readsOption(given.string_key);
+            if (holds(reads, verb))
+                continue;
+
+            // A composing option arrives once per time it was written, and a run that named three
+            // creatures is not owed three complaints about `--actor`.
+            if (std::find(said.begin(), said.end(), given.string_key) != said.end())
+                continue;
+
+            said.push_back(given.string_key);
+            complaint += std::format("`{}` does not read --{}, which belongs to {}.\n", verbName(verb),
+                given.string_key, describeVerbs(reads));
+        }
+
+        return complaint;
+    }
+
+    ToolOptions makeOptions(const bool validationByDefault)
+    {
+        ToolOptions result{ bpo::options_description("Options"), {} };
+        auto addOption = result.mDescription.add_options();
+
+        // An option only some commands read. **Recorded and printed from one statement**: the help
+        // line opens with the commands that read it, and a run that names it under any other one
+        // is stopped rather than quietly rendering something else.
+        const auto owned
+            = [&](Verbs verbs, const char* name, const bpo::value_semantic* semantic, std::string_view description) {
+                  result.mOwners.push_back(OptionOwner{ .mName = name, .mVerbs = verbs });
+                  addOption(name, semantic, std::format("{}, {}", describeOwnership(verbs), description).c_str());
+              };
+
         addOption("help", "print this message and quit");
 
         // On unless this was built for release, and `--validation=false` turns any of them off
@@ -53,22 +125,22 @@ namespace RtxTool
             "does with its own arguments (implies --validation). Costs about half the frame rate, "
             "and is left off by `view` unless asked for: a window under it loses the device");
 
-        addOption("cell", bpo::value<std::string>()->default_value(""),
+        owned(sPlaces, "cell", bpo::value<std::string>()->default_value(""),
             "cell to read, addressed the way Morrowind does: a pair of integers is an exterior, "
             "anything else is an interior's name. Write --cell=-2,-9 rather than --cell -2,-9, or "
             "the leading minus reads as an option. Left out, the default view decides.");
 
-        addOption("twice", bpo::bool_switch(),
+        owned(Verbs::Scene, "twice", bpo::bool_switch(),
             "extract the cell a second time and report what the second pass added, which should "
             "be nothing");
 
-        addOption("view", bpo::value<std::string>()->default_value(""),
+        owned(sPlaces, "view", bpo::value<std::string>()->default_value(""),
             "a named viewpoint from resources/rtx/views.cfg, which supplies the cell and usually the "
-            "camera. Overrides --cell.");
+            "camera. Overrides --cell. A run of places names them with --views instead.");
 
         addOption("list-views", bpo::bool_switch(), "print the named viewpoints and quit");
 
-        addOption("jitter", bpo::bool_switch(),
+        owned(Verbs::Shot, "jitter", bpo::bool_switch(),
             "move each frame's sample inside its pixel, along a Halton sequence. With "
             "--accumulate this is what makes a reference antialiased");
         addOption("delight", bpo::value<float>()->default_value(1.0f),
@@ -111,8 +183,8 @@ namespace RtxTool
             "actors in it measures an animated frame -- the skinning, and the structure rebuild "
             "behind it -- rather than the same frame over again");
 
-        addOption("sea-time", bpo::value<float>()->default_value(0.0f),
-            "with `shot`, how many seconds the water has been moving. Zero is a still sea and a "
+        owned(Verbs::Shot, "sea-time", bpo::value<float>()->default_value(0.0f),
+            "how many seconds the water has been moving. Zero is a still sea and a "
             "repeatable frame, which is what a screenshot wants; two shots a known interval apart "
             "are what say whether the caustics on a seabed travel or boil, and a window or a bench "
             "drives this off its own clock instead");
@@ -155,17 +227,17 @@ namespace RtxTool
             "and a number holds it there. A pixel test and a converged reference want it held, "
             "because a measured exposure makes every value depend on the whole frame");
 
-        addOption("dump", bpo::value<std::string>()->default_value(""),
-            "with `shot`, also write the frame in linear radiance to this path: four floats a pixel, "
+        owned(Verbs::Shot, "dump", bpo::value<std::string>()->default_value(""),
+            "also write the frame in linear radiance to this path: four floats a pixel, "
             "raw, at the render extent. What a measurement is taken on, where the PNG is what a "
             "picture is looked at as");
-        addOption("tail", bpo::bool_switch(),
-            "with `shot`, report what share of the frame's bounce is far enough above the mean to be "
+        owned(Verbs::Shot, "tail", bpo::bool_switch(),
+            "report what share of the frame's bounce is far enough above the mean to be "
             "a firefly. Wants --upscale=off and an --accumulate long enough to settle the history");
-        addOption("crossings", bpo::bool_switch(),
-            "with `shot`, report how many see-through surfaces an average primary ray crosses. That "
-            "is the census the one-layer peel is sized against, and what an ordered walk of the "
-            "layers would cost. It traces a second ray per pixel, so the frame time beside it is "
+        owned(Verbs::Shot, "crossings", bpo::bool_switch(),
+            "report how many see-through surfaces an average primary ray crosses. That "
+            "is the census `PEEL_LAYERS` is sized against, and what a deeper walk of the layers "
+            "would cost. It traces a second ray per pixel, so the frame time beside it is "
             "not one to quote");
         addOption("albedo", bpo::bool_switch(),
             "write the albedo with no shading over it, which is what a texture problem looks like "
@@ -177,8 +249,8 @@ namespace RtxTool
             "Blight, Snow, Blizzard. The ones that drop something drop it here too. Given, it beats "
             "a weather a view fixes for itself");
 
-        addOption("turn-weather", bpo::value<std::string>()->default_value(""),
-            "with `bench`, turn the sky through these weathers while each place runs, comma "
+        owned(Verbs::Bench, "turn-weather", bpo::value<std::string>()->default_value(""),
+            "turn the sky through these weathers while each place runs, comma "
             "separated and round again — --turn-weather=Rain,Foggy. Each transition takes four "
             "seconds of world, as a window's weather keys do, and the precipitation of the one "
             "arriving replaces the one leaving halfway through. **A run under it is not a "
@@ -186,8 +258,8 @@ namespace RtxTool
             "turning frees a whole emitter's meshes and textures on an ordinary frame, which is "
             "the one thing the game does constantly that no other path in this tool could do");
 
-        addOption("map-tile", bpo::value<bool>()->implicit_value(true)->default_value(false),
-            "with `bench`, trace a local-map tile of the camera's cell on every frame, the way the "
+        owned(Verbs::Bench, "map-tile", bpo::value<bool>()->implicit_value(true)->default_value(false),
+            "trace a local-map tile of the camera's cell on every frame, the way the "
             "game's compass does. A picture of the world is traced between the placement and the "
             "frame, off the same scene and the same copy of the tables — the one half of the "
             "renderer no bench has ever reached. A run under it is not a benchmark: a second trace "
@@ -202,54 +274,54 @@ namespace RtxTool
             "where both moons are full. It is the moons this decides and nothing else: their phase "
             "runs on a three-day cycle and the hour they rise on a twenty-four day one");
 
-        addOption("frames", bpo::value<std::uint32_t>()->default_value(0),
-            "with `view`, close after this many frames instead of waiting to be closed. With "
-            "`bench`, measure this many frames at each place instead of deriving them from "
+        owned(Verbs::View | Verbs::Bench, "frames", bpo::value<std::uint32_t>()->default_value(0),
+            "how many frames to run: `view` closes after this many instead of waiting to be "
+            "closed, and `bench` measures this many at each place instead of deriving them from "
             "--seconds");
 
-        addOption("suite", bpo::value<std::string>()->default_value("default"),
-            "with `bench`, which list of places in resources/rtx/benches.cfg to profile. Overridden "
+        owned(Verbs::Bench, "suite", bpo::value<std::string>()->default_value("default"),
+            "which list of places in resources/rtx/benches.cfg to profile. Overridden "
             "by --views");
 
-        addOption("views", bpo::value<std::string>()->default_value(""),
-            "with `bench`, profile these views.cfg views by name rather than a suite; with "
-            "`verify`, render only these. --views=all runs every view there is");
+        owned(Verbs::Bench | Verbs::Verify, "views", bpo::value<std::string>()->default_value(""),
+            "which views.cfg views to visit, by name rather than by suite — the places `bench` "
+            "profiles and the ones `verify` renders. --views=all runs every view there is");
 
-        addOption("seconds", bpo::value<float>()->default_value(20.0f),
-            "with `bench`, how many seconds of world to run at each place. World and not wall: the "
+        owned(Verbs::Bench, "seconds", bpo::value<float>()->default_value(20.0f),
+            "how many seconds of world to run at each place. World and not wall: the "
             "world steps a sixtieth of a second per frame however long the frame took, so this is "
             "twelve hundred frames either way and two builds render the same twelve hundred. Twenty "
             "because ten left the CPU medians moving by more than the changes being measured");
 
-        addOption("warmup", bpo::value<float>()->default_value(3.0f),
-            "with `bench`, how many seconds of world to draw and throw away before measuring. This "
+        owned(Verbs::Bench, "warmup", bpo::value<float>()->default_value(3.0f),
+            "how many seconds of world to draw and throw away before measuring. This "
             "machine's GPU idles at 315 MHz and ramps under load, and a scene's first frames pay "
             "for its residency as well");
 
-        addOption("window", bpo::value<bool>()->default_value(true)->implicit_value(true),
-            "with `bench`, show the run while it happens. The swapchain is mailbox, so it does not "
+        owned(Verbs::Bench, "window", bpo::value<bool>()->default_value(true)->implicit_value(true),
+            "show the run while it happens. The swapchain is mailbox, so it does not "
             "pace the loop; --window=false is one fewer thing between the trace and the number");
 
-        addOption("json", bpo::value<std::string>()->default_value(""),
-            "with `bench`, also write the run to this file as one record, for comparing against the "
+        owned(Verbs::Bench, "json", bpo::value<std::string>()->default_value(""),
+            "also write the run to this file as one record, for comparing against the "
             "same run on another commit");
 
-        addOption("perf-control", bpo::value<std::string>()->default_value(""),
-            "with `bench`, turn a `perf record --delay=-1 --control=fifo:<path>` on around each "
+        owned(Verbs::Bench, "perf-control", bpo::value<std::string>()->default_value(""),
+            "turn a `perf record --delay=-1 --control=fifo:<path>` on around each "
             "place's measured frames, so the profile holds those frames and not the cell being "
             "loaded either side of them. profile.sh passes this");
 
-        addOption("repeat", bpo::value<std::uint32_t>()->default_value(8),
-            "with `shot`, trace the frame this many times and report the best. One submit times "
+        owned(Verbs::Shot, "repeat", bpo::value<std::uint32_t>()->default_value(8),
+            "trace the frame this many times and report the best. One submit times "
             "the GPU's clock rather than the shader; a comparison worth making wants hundreds");
 
-        addOption("accumulate", bpo::value<std::uint32_t>()->default_value(0),
-            "with `shot`, average this many differently-seeded frames into the picture. The way "
+        owned(Verbs::Shot, "accumulate", bpo::value<std::uint32_t>()->default_value(0),
+            "average this many differently-seeded frames into the picture. The way "
             "to a converged reference for a sampled renderer: error falls as the square root, so "
             "a hundred is a clean picture and a thousand is something to measure against");
 
-        addOption("find", bpo::value<std::string>()->default_value(""),
-            "with `scene`, print the world position of every object whose model path contains this. "
+        owned(Verbs::Scene, "find", bpo::value<std::string>()->default_value(""),
+            "print the world position of every object whose model path contains this. "
             "How the coordinates in a view are found.");
 
         addOption("distant-terrain", bpo::value<bool>()->default_value(true)->implicit_value(true),
@@ -272,29 +344,30 @@ namespace RtxTool
             "decides whether that path is reached at all. Zero hands `viewing distance` back the "
             "decision, which is 7168 against a cell of 8192 and so barely leaves the active grid");
 
-        addOption("against", bpo::value<std::string>()->default_value(""),
-            "with `verify`, a directory a previous `verify` wrote, to subtract this run from; with "
-            "`bench`, a file a previous `--hashes` wrote, to say which frames of the run now draw "
+        owned(Verbs::Bench | Verbs::Verify, "against", bpo::value<std::string>()->default_value(""),
+            "what to subtract this run from: the directory a previous `verify` wrote, or the file "
+            "a previous `bench --hashes` wrote, which says which frames of the run now draw "
             "something else. The reference is always a run of the previous build on this machine "
             "and never a corpus in the tree: the picture is a function of the driver and the card "
             "as much as of the code");
 
-        addOption("hashes", bpo::value<std::string>()->default_value(""),
-            "with `bench`, write one hash a frame to this file — the oracle a moving camera has "
+        owned(Verbs::Bench, "hashes", bpo::value<std::string>()->default_value(""),
+            "write one hash a frame to this file — the oracle a moving camera has "
             "instead of `verify`'s stills, since six hundred frames of pictures is a few hundred "
             "megabytes. Reading a frame back waits on the device, so a run under this or "
             "--against is not a benchmark and its times are not comparable with one");
 
-        addOption("out", bpo::value<std::string>()->default_value("shot.png"),
+        owned(Verbs::Shot | Verbs::Textures | Verbs::Doll | Verbs::Map | Verbs::Verify, "out",
+            bpo::value<std::string>()->default_value("shot.png"),
             "where to write the image, or with `verify` the directory to write every view into "
             "(\"verify\" unless named)");
         addOption("size", bpo::value<std::string>()->default_value("1920x1080"), "image size, as WIDTHxHEIGHT");
-        addOption("fov", bpo::value<float>()->default_value(60.0f), "vertical field of view, in degrees");
-        addOption("pos", bpo::value<std::string>()->default_value(""),
+        owned(sFramed, "fov", bpo::value<float>()->default_value(60.0f), "vertical field of view, in degrees");
+        owned(sPlaces | Verbs::Doll, "pos", bpo::value<std::string>()->default_value(""),
             "where to put the camera, as x,y,z. Defaults to a view of the whole cell from outside it, "
             "which is a poor view of an interior. Write --pos=-100,200,300, or a leading minus reads "
             "as an option.");
-        addOption("look", bpo::value<std::string>()->default_value(""),
+        owned(sPlaces | Verbs::Doll, "look", bpo::value<std::string>()->default_value(""),
             "what the camera looks at, as x,y,z. Defaults to the centre of the cell.");
 
         addOption("data",
@@ -323,7 +396,7 @@ namespace RtxTool
             bpo::value<Fallback::FallbackMap>()->default_value(Fallback::FallbackMap(), "")->multitoken()->composing(),
             "fallback values");
 
-        Files::ConfigurationManager::addCommonOptions(result);
+        Files::ConfigurationManager::addCommonOptions(result.mDescription);
 
         return result;
     }

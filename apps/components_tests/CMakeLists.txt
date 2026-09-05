@@ -199,6 +199,7 @@ if (OPENMW_RTX)
         rtxtool/installation.cpp
         rtxtool/lamps.cpp
         rtxtool/material.cpp
+        rtxtool/options.cpp
         rtxtool/pagedterrain.cpp
         rtxtool/perfcontrol.cpp
         rtxtool/props.cpp

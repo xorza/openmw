@@ -56,21 +56,24 @@ uvec2 stagePixel()
 /// just made — the launch would have to be handed the material row and read it again. What the
 /// launch is handed instead is `mOpacity`, which is the whole of what it needs to peel.
 ///
-/// **A pane gets direct light and no bounce, and its own lamp sequence.** `bounceLight` draws from
-/// the pixel and nothing else, so a pane and the wall behind it would bounce off the same numbers —
-/// which is the correlation `SEED_LAMPS_PANE` exists to keep out of the direct term, and there is no
-/// such seed to hand a bounce.
+/// **A pane gets direct light and no bounce, and a lamp sequence of its own.** `bounceLight` draws
+/// from the pixel and nothing else, so a pane and the wall behind it would bounce off the same
+/// numbers — which is the correlation `SEED_LAMPS_PANE` exists to keep out of the direct term, and
+/// there is no such seed to hand a bounce. One sequence per layer, because a stack of them shades
+/// beside itself as well: `ASK_LAYER_SHIFT` is how the launch says which layer this is, and
+/// `paneSeed` is the sequence that layer draws from.
 void answerSolid(inout VisibilityPayload answer, Surface surface)
 {
     const uvec2 pixel = stagePixel();
 
     answer.mOpacity = surface.mOpacity;
 
-    // The second surface of a pair is shaded as the solid it stands in for, whatever its own
-    // opacity says. `ASK_BEHIND` is where that is argued.
+    // The surface past the last layer the launch peels is shaded as the solid it stands in for,
+    // whatever its own opacity says. `ASK_BEHIND` is where that is argued.
     if (isSeenThrough(surface.mOpacity) && (answer.mAsked & ASK_BEHIND) == 0u)
     {
-        answer.mRadiance = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + SEED_LAMPS_PANE, PATH_SEEN);
+        answer.mRadiance
+            = shadeSurface(surface, vec3(0.0), pixelKey(pixel) + paneSeed(layerAsked(answer.mAsked)), PATH_SEEN);
         return;
     }
 
