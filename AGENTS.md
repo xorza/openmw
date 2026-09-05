@@ -154,8 +154,7 @@ are the gates. What those do not tell you:
 - **What a test can assert and what a check can are different questions.** `components-tests` holds
   what is true without a world: a spec, a record, a digest, a sheet. What is true *of* a world is
   `openmw-rtxtool check`, which asks it of a running game at every place of a suite and exits
-  non-zero on the first failure. Twelve claims the deleted fixture tests carried have no check yet,
-  and `.notes/one-world-plan.md` lists each one.
+  non-zero on the first failure.
 - **Tests are gtest binaries run directly**, with `--gtest_filter`; there is no ctest registration.
   Tests that need game data **skip** when it is absent and **fail** when the path is set and wrong —
   a silent skip looks like a pass.

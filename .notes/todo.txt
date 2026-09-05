@@ -1,3 +1,27 @@
+- write the checks the deleted fixture tests carried, one per claim:
+    a lamp stands at its wick
+    a light off by default is not placed
+    a light with no mesh still burns
+    a cell's emitters run
+    the sweep drops what the walk stopped finding and keeps what is shared
+    a compacted scene renders as one that lost nothing
+    a paged world's ground reaches the mirror, and only because it was asked for
+    the ground a camera leaves gets its statics back
+    a light past the active grid reaches the scene and none is stood twice
+    a paged world stands statics past the active grid and a grid world stands none
+    no chunk is textured by a render target however large it is
+    ground past a cell is flattened into one texture the uploader can read
+    a second world walk keeps the ground the graph does not parent
+    a paged world's ground survives the frames after it
+    a drop's reported travel is its own fall
+    nothing falls where the eye is under water
+    the sea is one sheet the world owns
+    the residents of a cell leave with it
+- time `shot` in release against the 4.4 s the staged one took, and close the spike gate
+- run the 544 tests of `components-tests --gtest_filter=Rtx*`, unrun since the harness moved
+- bind a key to `describeBlock`, so a place found by flying can be written into views.cfg again.
+  A Lua script under files/rtx/ or a console command; the formatters are kept and tested
+
 - audit includes
 - audit #pragmas
 - load time allocations
