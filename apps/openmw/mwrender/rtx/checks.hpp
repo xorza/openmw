@@ -49,6 +49,29 @@ namespace MWRender
         /// texture table, and the two are an order of magnitude apart.
         CrossingsAppend,
 
+        /// An exterior's ground reaches past the square the simulation holds.
+        ///
+        /// **`Terrain::QuadTreeWorld` parents its chunks to nothing**, so distant land is the one
+        /// thing a mirror cannot find by walking the graph — it is collected through a residency
+        /// instead. A world whose scene stops at the active grid is one where that collection
+        /// silently did nothing, and it looks like a world with a short view rather than like a
+        /// fault.
+        GroundReaches,
+
+        /// No two lights stand at the same point.
+        ///
+        /// **The lamps of the cells the paging leaves dark are read out of the content files**,
+        /// because `Terrain::pagedType` stands no `LIGH` and no walk of any graph can find one. A
+        /// cell that then loads brings its own copy of every lamp, so the reach has to stop
+        /// standing them — and a doubled lamp is twice the light with nothing to say so.
+        LightsNotDoubled,
+
+        /// Every texture the scene named could be read.
+        ///
+        /// **A canary, and it should be nought.** A texture the uploader could not read is drawn
+        /// grey, which reads as a material fault rather than as a missing file.
+        TexturesReadable,
+
         /// A still camera over a still world resolves to a still picture.
         ///
         /// **What a temporal reconstruction has to promise.** Two frames of one scene from one eye

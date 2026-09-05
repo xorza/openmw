@@ -653,6 +653,8 @@ namespace MWRender
                              << found.mDeformed << " of them deforming, and skipped " << found.mSkippedUnknown
                              << " it cannot read";
 
+        mUnreadable += handed.mUnreadable;
+
         if (handed.mUnreadable > 0)
             Log(Debug::Warning) << "Ray tracing could not read " << handed.mUnreadable << " of " << handed.mDescribed
                                 << " textures and drew them grey — a live graph holds textures that were never files";

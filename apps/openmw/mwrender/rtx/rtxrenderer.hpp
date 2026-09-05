@@ -182,6 +182,14 @@ namespace MWRender
         /// **A second walk should add nothing**, which is the property the incremental mirror rests
         /// on and the only way to ask it is to ask twice. It is made only where a run asked for it.
         const Rtx::ExtractionStats& getWalkStats() const { return mFound; }
+
+        /// How many textures this renderer has failed to read since it was built, and drew grey.
+        ///
+        /// **Summed and never the last hand-over's own count**, because almost every frame places
+        /// rather than describes: a figure that reset on the next of those would be nought by the
+        /// time anything looked at it. Should be nought outright — a live graph holding textures
+        /// that were never files is what makes it worth counting.
+        std::uint32_t getUnreadableTextures() const { return mUnreadable; }
         const Rtx::ExtractionStats& getSecondWalkStats() const { return mFoundAgain; }
 
         /// The one sequence every mirror walk here poses at — the world's, and every traced view's.
@@ -332,6 +340,7 @@ namespace MWRender
         /// a report is written at the end of a stop and the walks are over by then.
         Rtx::ExtractionStats mFound;
         Rtx::ExtractionStats mFoundAgain;
+        std::uint32_t mUnreadable = 0;
 
         /// A running average of what the trace costs, reported every `sReportEvery` frames.
         ///
