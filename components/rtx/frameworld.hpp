@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -20,6 +21,8 @@ namespace Weather
 
 namespace Rtx
 {
+    class SceneExtractor;
+
     /// What the world is doing this frame, in the units the renderer takes.
     ///
     /// **One list of the frame's world half, and one place that writes it.** The game and the
@@ -46,6 +49,31 @@ namespace Rtx
     /// settles, off the ini's own `Rain Ripples` and `Snow Ripples`.
     /// @param fall what is falling, or null for a world with no weather over it.
     float rainOnWater(const Weather::Precipitation* fall);
+
+    /// Walks what the weather drops, which is a second root to whoever mirrors the world.
+    ///
+    /// **One call, because the shape of this walk is nobody's to choose.** Those nodes hang under
+    /// something that carries no translation — the sky's camera-relative transform in the game, a
+    /// group of its own in the harness — so their particles are placed about the origin and the eye
+    /// is what stands them back in the world. Where each host anchored, masked and gated that walk
+    /// for itself, the harness slid the box with a transform the game has no equivalent of, and the
+    /// wrap operator grew a line to undo it.
+    ///
+    /// **Stood at the eye the drops were driven with**, because that is the one place the box
+    /// travels nowhere: every step of that eye is taken back out of the drops again, so a sprite's
+    /// own travel between two frames is its fall and the reprojection can be handed it as such. The
+    /// rasterizer stands the box at the camera it draws from, and the game hands this the same eye
+    /// — `Weather::Conditions::mEye` says where.
+    ///
+    /// **Nothing falls where the eye is under water, and stopping it is not hiding it.**
+    /// `Weather::Precipitation` freezes the drops where they stand and leaves what to draw to
+    /// whoever is drawing: the rasterizer answers by not culling the subtree and a ray tracer by not
+    /// walking it. Walked anyway, the drops the surface was crossed with hang in the air, frozen,
+    /// for as long as the eye stays under it.
+    ///
+    /// @param fall what is falling, or null for a world with no weather over it.
+    /// @param frameNumber the frame the walk belongs to, as `SceneExtractor::extractWorld` takes it.
+    void mirrorPrecipitation(SceneExtractor& extractor, Weather::Precipitation* fall, std::size_t frameNumber);
 
     /// The deck and the star field a world with no sky has: nothing to draw, which the shader reads
     /// off the texture slot before it samples anything.

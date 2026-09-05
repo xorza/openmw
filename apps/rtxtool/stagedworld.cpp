@@ -56,19 +56,19 @@ namespace RtxTool
         mWater.emplace(*mRoot);
         mLighting.mWaterLevel = mWater->follow(cell);
 
-        // **The same particle systems the game builds, from the same component.** Under a node of
+        // **The same particle systems the game builds, from the same component.** Under a group of
         // this harness's own rather than the sky's camera-relative transform, because there is no
-        // sky manager here — what matters is that the box travels with the eye, and `driveWeather`
-        // is what does that.
+        // sky manager here; neither carries a translation, and `Rtx::mirrorPrecipitation` is what
+        // stands the drops in the world.
+        //
         // **Both of the weather's constants, read once and where the other one is.** The first is a
         // game setting and comes from the store; the second is a fallback and comes from the ini,
         // which is the only reason they are fetched differently.
         mStormWindSpeed = world.getContent().findGameSetting("fStromWindSpeed", 50.0f);
         mRainGravity = Fallback::Map::getFloat("Weather_Precip_Gravity");
 
-        mWeatherNode = new osg::PositionAttitudeTransform;
+        mWeatherNode = new osg::Group;
         mWeatherNode->setName("Precipitation");
-        mRoot->addChild(mWeatherNode);
         mPrecipitation
             = std::make_unique<Weather::Precipitation>(mWeatherNode, *world.getResourceSystem().getSceneManager(), ~0u);
 
@@ -142,7 +142,7 @@ namespace RtxTool
 
         if (!actors.empty() || !residents.empty() || !props.empty())
         {
-            mPosed = std::make_unique<PosedActors>(world, mScene, mExtractor, *mRoot, actors);
+            mPosed = std::make_unique<PosedActors>(world, mScene, mExtractor, *mRoot, mPrecipitation.get(), actors);
             mPosed->addResidents(residents);
             mPosed->addProps(props);
             mPosed->addRow(actors, mPlacement);
@@ -204,6 +204,10 @@ namespace RtxTool
 
             mExtractor.advanceEmitters(PosedActors::sFrameSeconds);
             mExtractor.stepEmitters(*mRoot);
+
+            // **And the weather, which is not under that root.** It is walked as a second one, so
+            // it is stepped as a second one — see `Rtx::mirrorPrecipitation`.
+            mExtractor.stepEmitters(*mPrecipitation->getNode());
         }
     }
 
@@ -221,6 +225,10 @@ namespace RtxTool
         // the hand-over that follows it empties `getMoved` before anything has written those rows.
         // `RtxRenderer::renderFrame` advances after its trace, which is the same instant as this.
         mExtractor.advance();
+
+        // What the weather drops, which is a second root to this walk exactly as it is to the
+        // game's.
+        Rtx::mirrorPrecipitation(mExtractor, mPrecipitation.get(), frame);
 
         // **The world walk, so the chunks a paged world keeps out of the graph are dated, counted
         // and swept with everything the graph does hold.** What it follows was set when the terrain
@@ -266,19 +274,9 @@ namespace RtxTool
 
     void StagedWorld::driveWeather(const osg::Vec3f& eye)
     {
-        mWeatherNode->setPosition(eye);
-
         // The same question the game asks of the water it owns, asked here of the level this cell
         // reported. A cell with no water reports minus infinity, so nothing is ever under it.
         const bool underwater = eye.z() < mLighting.mWaterLevel;
-
-        // **Nothing falls where the eye is under water, and stopping it is not hiding it.**
-        // `Weather::Precipitation` freezes the rain where it stands and leaves what to draw to
-        // whoever is drawing: the rasterizer answers by not culling the subtree and `WorldMirror` by
-        // not walking it. This has one walk and the weather hangs inside it, so the node is what
-        // says so — left in, the drops the surface was crossed with hang in the air, frozen, for as
-        // long as the eye stays under it.
-        mWeatherNode->setNodeMask(underwater ? 0u : ~0u);
 
         mPrecipitation->update(Weather::Conditions{
             .mEye = eye,

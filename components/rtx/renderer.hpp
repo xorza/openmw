@@ -321,6 +321,14 @@ namespace Rtx
         /// One float a pixel: one where a sprite reached, nought where none did.
         ParticleMask,
 
+        /// Two floats a pixel: where the sprites over a pixel stood on the previous frame's screen.
+        ///
+        /// **The layer's own and not the frame's**, which is the whole of what it is for: the
+        /// upscaler composites the sprites after it has resolved the frame, so what carries them is
+        /// this rather than `Motion`. Written only where a frame hands its layer over, which is
+        /// where something is upscaling it.
+        TransparencyMotion,
+
         /// One float a pixel: how much of this pixel the reconstruction must not carry forward.
         BiasMask,
 

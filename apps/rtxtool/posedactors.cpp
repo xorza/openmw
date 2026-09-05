@@ -9,6 +9,7 @@
 
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/loadnpc.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/lightbuilder.hpp>
 
 #include "actor.hpp"
@@ -35,11 +36,12 @@ namespace RtxTool
     }
 
     PosedActors::PosedActors(World& world, Rtx::SceneDesc& scene, Rtx::SceneExtractor& extractor, osg::Group& root,
-        const ActorRequest& request)
+        Weather::Precipitation* falling, const ActorRequest& request)
         : mWorld(world)
         , mScene(scene)
         , mExtractor(extractor)
         , mRoot(root)
+        , mFalling(falling)
         , mSeconds(request.mSeconds)
         , mClothes(request.mClothes)
         , mLastSeconds(request.mSeconds)
@@ -190,6 +192,11 @@ namespace RtxTool
         // **The world walk and not a subtree's**, because this is the same root `StagedWorld` walks
         // and the sweep after it is global: a walk that missed what the graph does not parent
         // retires it.
+        // **The weather with it, because a frame is both walks.** It hangs off a root of its own —
+        // `Rtx::mirrorPrecipitation` says why — so a frame walked from here and not from
+        // `StagedWorld::mirror` left the drops unstepped and unplaced.
+        Rtx::mirrorPrecipitation(mExtractor, mFalling, 0);
+
         return mExtractor.extractWorld(mRoot, osg::Matrixf::identity(), 0);
     }
 

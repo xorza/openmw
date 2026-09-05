@@ -651,6 +651,35 @@ PuffClaim puffClaim(vec3 behind, PuffLayer layer)
     return PuffClaim(vec3(0.0), vec3(0.0), 0.0);
 }
 
+/// Which sprite the transparency layer over a pixel is, if any is.
+///
+/// **A different question from `puffClaim`'s, and the layer asks this one.** That one decides
+/// whether a sprite or the surface behind it owns the *frame's* one vector, so it answers no for
+/// anything covering less than half a pixel — the surface is what such a pixel mostly is. The layer
+/// holds the sprites and nothing else: wherever a drop reached a pixel at all, the layer at that
+/// pixel is the drop, and its travel is what describes it however little of the pixel it took.
+///
+/// **A raindrop almost never wins a majority.** It is authored as a streak on a mostly empty quad
+/// and read at the mip the eye sees it at, so a drop more than a few units off covers a fraction of
+/// a pixel — and the layer was then handed the vector of the wall behind it. Ray Reconstruction is
+/// told that layer may be accumulated, so it held the rain against whatever the player was walking
+/// past: the storm stood still looking one way and smeared looking another.
+///
+/// @return a claim whose `mWeight` is nought where no sprite reached the pixel.
+PuffClaim layerClaim(PuffLayer layer)
+{
+    // **Weighed as light, because the two kinds cannot be compared any other way.** A covering
+    // claim is ranked by the share it hid and an additive one by what it put in; what each *is*
+    // in the layer is a colour, and that is one scale for both.
+    const float covering = dot(layer.mColour, LUMINANCE_WEIGHTS) * (1.0 - layer.mTransmittance);
+    const float adding = dot(layer.mAdded, LUMINANCE_WEIGHTS);
+
+    if (layer.mCovering.mWeight > 0.0 && covering >= adding)
+        return layer.mCovering;
+
+    return layer.mAdding;
+}
+
 /// Two layers of puffs as one.
 ///
 /// **The same rule each walk already uses inside itself, applied once more.** Neither walk has an

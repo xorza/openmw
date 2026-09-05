@@ -823,18 +823,6 @@ namespace MWRender
                 MWBase::Environment::get().getWorld()->getTimeManager()->getGameTimeScale(), Sky::timescaleClouds());
             mSky->setRoll(mWorld.mSkyRoll);
 
-            // **The whole of driving the weather, in one call and from the one place that holds
-            // all three answers.** The eye is the camera's, whether it is submerged is the water's,
-            // and which way a storm blows arrived from the weather system — no other object has
-            // more than one of them, which is why this used to be four calls across two classes and
-            // why the harness reproduced only half of them.
-            const osg::Vec3f eye = mCamera->getPosition();
-            mSky->getPrecipitation()->update(Weather::Conditions{
-                .mEye = eye,
-                .mStormDirection = mStormParticleDirection,
-                .mUnderwater = mWater->isUnderwater(eye),
-            });
-
             mSky->update();
 
             const MWWorld::Ptr& player = mPlayerAnimation->getPtr();
@@ -917,6 +905,24 @@ namespace MWRender
 
     void RenderingManager::renderFrame()
     {
+        // **The whole of driving the weather, in one call and from the one place that holds all
+        // three answers.** Whether the eye is submerged is the water's, which way a storm blows
+        // arrived from the weather system, and the eye is the one this frame is drawn from — no
+        // other object has more than one of them, which is why this used to be four calls across
+        // two classes and why the harness reproduced only half of them.
+        //
+        // **Here and not in `update`, because the eye is not known there.** `Camera::updateCamera`
+        // writes the view matrix from the update traversal, which runs between the two; upstream's
+        // wrap operator read the render camera at cull time, and the rasterizer stands the box at
+        // that same camera. Handed `Camera::getPosition` before the update instead, the box slid by
+        // the previous frame's step of a different eye and drifted by the difference.
+        const osg::Vec3f eye = mStage.getCamera().getInverseViewMatrix().getTrans();
+        mSky->getPrecipitation()->update(Weather::Conditions{
+            .mEye = eye,
+            .mStormDirection = mStormParticleDirection,
+            .mUnderwater = mWater->isUnderwater(eye),
+        });
+
         const WorldState world = describeWorld();
 
         const SceneFrame frame{

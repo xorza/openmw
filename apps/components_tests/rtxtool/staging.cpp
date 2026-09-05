@@ -1,4 +1,7 @@
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -221,6 +224,82 @@ namespace RtxTool
                 StagedWorld staged(*world, *shore, request, actors);
                 ASSERT_FALSE(staged.empty());
                 expectSameLights(staged.getScene(), alone);
+            }
+        }
+
+        /// What a drop reports having travelled is its own fall and not the eye's walk.
+        ///
+        /// **The box of rain hangs from the eye and every step of that eye is taken back out of the
+        /// drops again** — `Weather::WrapAroundOperator` slides each particle back by what the eye
+        /// moved, which is what keeps a handful of drops around the camera and leaves them standing
+        /// in the world. So a drop's travel between two frames is its fall, whatever the player
+        /// did, and that is what the reprojection is handed. Adding the carriage back on — which is
+        /// right for a torch on a walking arm and wrong for this — reads as rain that streaks at one
+        /// heading and stands still at another.
+        ///
+        /// **Both of the boxes the weather builds, because they were built in two orders.** The
+        /// rain node ran its wrap before its integration and the snow node ran it after, and a
+        /// particle records where it was as it integrates — so the snow's previous position was in
+        /// the box before the slide and its current one in the box after, and the eye's whole step
+        /// came out in the difference. Rain passed this and snow failed it.
+        ///
+        /// The median over the drops, because they all fall at one speed and a handful of them wrap
+        /// to the far side of the box on any frame the eye moves.
+        TEST_F(RtxStagingTest, whatADropReportsHavingTravelledIsItsOwnFall)
+        {
+            const ESM::Cell* shore = getContent().findCell(std::string(sShore));
+            ASSERT_NE(shore, nullptr);
+
+            const osg::Vec3f over(-8292.0f, -73376.0f, 200.0f);
+
+            const ActorRequest actors{ .mResidents = false, .mProps = true };
+
+            for (const std::string_view weather : { "Rain", "Snow" })
+            {
+                StagingRequest request;
+                request.mWeather = std::string(weather);
+                request.mOrigin = over;
+                request.mTarget = over + osg::Vec3f(0.0f, 1000.0f, 0.0f);
+
+                /// The middle of what the drops say they travelled, after a run of frames that ends
+                /// with the eye taking `step`.
+                const auto travelled = [&](const osg::Vec3f& step) {
+                    StagedWorld staged(getWorld(), *shore, request, actors);
+                    Motion* motion = staged.getMotion();
+                    EXPECT_NE(motion, nullptr);
+
+                    for (std::uint32_t frame = 1; motion != nullptr && frame <= 30; ++frame)
+                    {
+                        staged.moveTo(frame < 30 ? over : over + step);
+                        motion->step(frame);
+                    }
+
+                    // Each axis on its own, because the median of a length would hide a sideways
+                    // step under a fall ten times its size.
+                    osg::Vec3f middle;
+                    for (int axis = 0; axis < 3; ++axis)
+                    {
+                        std::vector<float> along;
+                        for (const Rtx::Sprite& sprite : staged.getScene().getSprites())
+                            along.push_back(sprite.mMoved[axis]);
+
+                        std::sort(along.begin(), along.end());
+                        middle[axis] = along.empty() ? 0.0f : along[along.size() / 2];
+                    }
+
+                    return middle;
+                };
+
+                // One at a time, for the reason the first test in this file gives.
+                const osg::Vec3f still = travelled(osg::Vec3f());
+                ASSERT_LT(still.z(), -0.1f) << weather << ": nothing fell, so this proves nothing";
+
+                // A step the size of a sprint, across the drops rather than along them.
+                const osg::Vec3f walking = travelled(osg::Vec3f(60.0f, 0.0f, 0.0f));
+
+                EXPECT_NEAR(walking.x(), still.x(), 0.5f)
+                    << weather << ": the eye's walk came back in what the drops said they did";
+                EXPECT_NEAR(walking.z(), still.z(), 0.05f * std::abs(still.z())) << weather;
             }
         }
 

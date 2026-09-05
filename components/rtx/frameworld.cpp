@@ -2,14 +2,30 @@
 
 #include <cstddef>
 
-#include "shaders/scene.h"
+#include <osg/Matrixf>
+
 #include <components/weather/precipitation.hpp>
+
+#include "sceneextractor.hpp"
+#include "shaders/scene.h"
 
 namespace Rtx
 {
     float rainOnWater(const Weather::Precipitation* fall)
     {
         return fall != nullptr && fall->ripplesEnabled() ? fall->getPrecipitationAlpha() : 0.0f;
+    }
+
+    void mirrorPrecipitation(SceneExtractor& extractor, Weather::Precipitation* fall, const std::size_t frameNumber)
+    {
+        if (fall == nullptr || fall->isUnderwater())
+            return;
+
+        // **The same mask as everything else, because there is nothing here to select.** The walk
+        // starts at the precipitation node, so the subtree is already chosen; a mask is only ever
+        // excluding what a renderer draws for itself, and none of that is under here. A
+        // set-and-restore around one walk was the shape the mistake came in.
+        extractor.extract(*fall->getNode(), osg::Matrixf::translate(fall->getEye()), 0, frameNumber);
     }
 
     Shaders::CloudDeck noDeck()

@@ -99,7 +99,7 @@ namespace RtxTool
             ASSERT_FALSE(report.mProps.empty());
 
             const ActorRequest request{ .mResidents = false, .mProps = true };
-            PosedActors posed(getWorld(), live, extractor, *root, request);
+            PosedActors posed(getWorld(), live, extractor, *root, /*falling=*/nullptr, request);
             posed.addProps(report.mProps);
             const Rtx::ExtractionStats settled = posed.settle();
 

@@ -112,18 +112,7 @@ namespace Weather
                 osg::Vec3 position = getCameraPosition();
                 osg::Vec3 positionDifference = position - mPreviousCameraPosition;
 
-                // **The box travels with the eye, so where the eye stands is not part of the frame
-                // the box is defined in.** The placer fills `±range/2` about the origin of whatever
-                // the particles hang under, and the wrap below is about that origin too — so a
-                // parent carrying a translation would have every drop wrapped about the middle of
-                // the world instead. Upstream never had to say this: its only parent is
-                // `CameraRelativeTransform`, which zeroes its own translation for exactly this
-                // reason. This fork hangs the same systems under a plain transform at the eye as
-                // well, and there the drops drifted out of the box towards the origin until only the
-                // newest were anywhere near the camera.
                 osg::Matrix toWorld = localToWorldOf(*ps);
-                toWorld.setTrans(osg::Vec3f(0.f, 0.f, 0.f));
-
                 osg::Matrix toLocal;
                 toLocal.invert(toWorld);
 
@@ -528,7 +517,16 @@ namespace Weather
                 program->addOperator(new WrapAroundOperator(mEye, sEffectWrapRange));
             program->addOperator(new WeatherAlphaOperator(mPrecipitationAlpha, false));
             program->setParticleSystem(ps);
-            mParticleNode->addChild(program);
+
+            // **Before the effect, so the box slides before its particles integrate — the order the
+            // rain node above already has.** A particle records where it was as it integrates, and
+            // the wrap moves every particle by the eye's step; run after the integration, that step
+            // sat between a flake's previous position and its current one, and a renderer that
+            // reprojects a sprite by the difference had every snowflake travelling against the
+            // player's walk. The rasterizer reads the same graph and draws the same box: a flake the
+            // integration carries past the edge is wrapped a frame later, which is the whole of the
+            // difference.
+            mParticleNode->insertChild(0, program);
 
             for (int particleIndex = 0; particleIndex < ps->numParticles(); ++particleIndex)
             {

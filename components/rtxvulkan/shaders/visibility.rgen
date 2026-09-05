@@ -453,9 +453,10 @@ void main()
 
     imageStore(motion, at, vec4(moved, 0.0, 0.0));
 
-    // The layer the upscaler composites, and where it stood. Its motion is the owning puff's, and
-    // the frame's where no puff owns the pixel — a layer of nothing reprojects with the frame
-    // rather than standing still in it.
+    // The layer the upscaler composites, and where it stood. Its motion is the sprite the layer is
+    // — `layerClaim`, and not the majority `claim` above — and the frame's where no sprite reached
+    // the pixel at all: a layer of nothing reprojects with the frame rather than standing still in
+    // it.
     //
     // **Written only where the upscaler is there to read it**, which is twenty-five bytes a pixel
     // the doll, the map tile and every reference save. Nothing reads a channel it was not handed,
@@ -471,8 +472,9 @@ void main()
         // `--upscale=quality` traces 3413 by 960, and every frame of it came back black.
         imageStore(transparency, at, vec4(transparencyLayer, opacity));
         imageStore(transparencyOpacity, at, vec4(opacity));
+        const PuffClaim inLayer = layerClaim(puffs);
         imageStore(transparencyMotion, at,
-            vec4(claim.mWeight > 0.0 ? puffMotionOf(pixel, claim) : moved, 0.0, 0.0));
+            vec4(inLayer.mWeight > 0.0 ? puffMotionOf(pixel, inLayer) : moved, 0.0, 0.0));
     }
 
     // **The one surface in this frame that shows something standing somewhere else.** Water is

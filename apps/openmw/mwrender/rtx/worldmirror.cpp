@@ -8,11 +8,11 @@
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/distantland.hpp>
 #include <components/rtx/frametimes.hpp>
+#include <components/rtx/frameworld.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/settings/values.hpp>
 #include <components/terrain/world.hpp>
-#include <components/weather/precipitation.hpp>
 
 #include "../sceneframe.hpp"
 
@@ -37,10 +37,6 @@ namespace MWRender
         /// stamped it rather than named again here — see where this is installed.
         constexpr osg::Node::NodeMask sWorldTraversal = ~static_cast<osg::Node::NodeMask>(
             SceneUtil::Mask_Sky | SceneUtil::Mask_Sun | SceneUtil::Mask_SimpleWater);
-    }
-
-    namespace
-    {
     }
 
     float landReach()
@@ -114,31 +110,14 @@ namespace MWRender
         // the precipitation subtree below is part of it. The harness times the same stretch, which
         // is what lets the two rows be read against each other.
 
-        // **What the weather drops, walked as a second root.** Those nodes hang under the sky's
-        // camera-relative transform, which strips the translation — so their particles are placed
-        // about the origin and the eye is what puts them back. And the sky's own mask keeps the
-        // first walk out of that subtree entirely, which is right: a cloud deck is a texture on a
-        // ray that reached nothing, and rain is geometry standing in front of one.
+        // **What the weather drops, walked as a second root**, which `Rtx::mirrorPrecipitation`
+        // is the whole of: the sky's own mask keeps the world walk out of that subtree entirely,
+        // and it is right that it does — a cloud deck is a texture on a ray that reached nothing,
+        // and rain is geometry standing in front of one.
         //
-        // The same systems the rasterizer draws, not a second set of them. `MWRender::Precipitation`
+        // The same systems the rasterizer draws, not a second set of them. `Weather::Precipitation`
         // owns them and neither renderer does.
-        // Nothing falls where the eye is under water. The rasterizer answers this by not culling
-        // the subtree; this renderer answers it by not walking it — off the frame's own answer,
-        // which `RenderingManager` already worked out from the water it owns.
-        if (frame.mWorld.mPrecipitation != nullptr && !frame.mWorld.mUnderwater)
-        {
-            osg::Vec3d at;
-            osg::Vec3d ahead;
-            osg::Vec3d skyward;
-            frame.mCamera.getViewMatrixAsLookAt(at, ahead, skyward);
-
-            // **The same mask as everything else, because there is nothing here to select.** The
-            // walk starts at the precipitation node, so the subtree is already chosen; the mask is
-            // only ever excluding what this renderer draws for itself, and none of that is under
-            // here. A set-and-restore around one walk was the shape the mistake came in.
-            mExtractor.extract(
-                *frame.mWorld.mPrecipitation->getNode(), osg::Matrixf::translate(osg::Vec3f(at)), 0, frameNumber);
-        }
+        Rtx::mirrorPrecipitation(mExtractor, frame.mWorld.mPrecipitation, frameNumber);
 
         // **The eye, which is what a cull would have used.** The detail a chunk is built at has to
         // be the detail the primary rays hit, and asking from anywhere else would put the ground a

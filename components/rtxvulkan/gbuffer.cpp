@@ -105,8 +105,8 @@ namespace Rtx
         /// costs no memory, so every channel carries it rather than only the five DLSS reads today.
         constexpr VkImageUsageFlags sUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-        /// The channels a caller can ask to read back: the bounce, the two motion fields, the depth
-        /// and the two masks. See `Rtx::Channel`.
+        /// The channels a caller can ask to read back: the bounce, the three motion fields, the
+        /// depth and the two masks. See `Rtx::Channel`.
         constexpr VkImageUsageFlags sReadable = sUsage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
 
@@ -125,7 +125,7 @@ namespace Rtx
         , mStarsShown(device, width, height, sStars, sUsage, "g-stars-shown")
         , mTransparency(device, width, height, sLayer, sUsage, "g-transparency")
         , mTransparencyOpacity(device, width, height, sLayerOpacity, sUsage, "g-transparency-opacity")
-        , mTransparencyMotion(device, width, height, sMotion, sUsage, "g-transparency-motion")
+        , mTransparencyMotion(device, width, height, sMotion, sReadable, "g-transparency-motion")
     {
         try
         {

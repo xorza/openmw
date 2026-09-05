@@ -1391,6 +1391,9 @@ namespace Rtx
             case Channel::ParticleMask:
                 image = &mChannels->getParticleMask();
                 break;
+            case Channel::TransparencyMotion:
+                image = &mChannels->getTransparencyMotion();
+                break;
             case Channel::BiasMask:
                 image = &mChannels->getBiasMask();
                 break;

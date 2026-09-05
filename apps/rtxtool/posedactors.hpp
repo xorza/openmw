@@ -20,6 +20,11 @@ namespace osg
     class MatrixTransform;
 }
 
+namespace Weather
+{
+    class Precipitation;
+}
+
 namespace RtxTool
 {
     struct ActorModel;
@@ -77,8 +82,11 @@ namespace RtxTool
         /// **The snapshot before anyone is added, and `settle` after everyone is.** Adding builds a
         /// body without placing it; a snapshot taken with one already in it would put a second copy
         /// of that person in the scene on the very next frame.
+        /// @param falling what the weather drops, walked as a second root beside `root` — every
+        ///        frame this one walks is a frame the drops have to be walked in too. Null where
+        ///        there is no weather over the scene at all.
         PosedActors(World& world, Rtx::SceneDesc& scene, Rtx::SceneExtractor& extractor, osg::Group& root,
-            const ActorRequest& request);
+            Weather::Precipitation* falling, const ActorRequest& request);
         ~PosedActors();
 
         PosedActors(const PosedActors&) = delete;
@@ -178,6 +186,9 @@ namespace RtxTool
         /// benchmark could not see the cost the game pays every frame. In the graph they are just
         /// more of it.
         osg::Group& mRoot;
+
+        /// What the weather drops. Borrowed: `StagedWorld` builds it before this and outlives it.
+        Weather::Precipitation* mFalling;
 
         /// One thing being posed, and what it belongs to.
         ///

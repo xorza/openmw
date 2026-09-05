@@ -12,7 +12,6 @@
 
 namespace osg
 {
-    class Camera;
     class Group;
     class Node;
     class PositionAttitudeTransform;
@@ -56,12 +55,17 @@ namespace Weather
     /// one tool that exists to catch exactly that.
     struct Conditions
     {
-        /// Where the eye is, which is what the box of drops slides along with.
+        /// Where the frame is drawn from, which is what the box of drops slides along with.
         ///
         /// **Handed over rather than read off a camera.** A finite handful of drops is a whole
         /// rainstorm only because the box follows the player, and the eye is a thing the game keeps
         /// on `MWRender::Camera` and the harness keeps in a viewpoint — neither of them an
         /// `osg::Camera` this could have reached into and asked.
+        ///
+        /// **The eye of the traversal that follows, and not of the update before it.** Upstream's
+        /// operator read the render camera at cull time, and the rasterizer stands the box at that
+        /// same camera; handed anything else, the box drifts by the difference between the two
+        /// eyes' steps. `RenderingManager::renderFrame` is where the game knows it.
         osg::Vec3f mEye;
 
         /// Which way a storm drives what it carries, from `Weather::stormDirection`.
@@ -121,6 +125,18 @@ namespace Weather
 
         /// Everything it has built, for whoever is drawing.
         osg::Group* getNode() { return mNode.get(); }
+
+        /// Where the box of drops was last slid to, which is where a renderer stands these nodes.
+        ///
+        /// The drops are placed about the origin of what carries them and every step of this eye is
+        /// taken back out of them again — `WrapAroundOperator` — so a box stood here travels
+        /// nowhere in the world, and a box stood anywhere else travels by the difference.
+        const osg::Vec3f& getEye() const { return mEye; }
+
+        /// Whether the eye is under the water, which is what holds the drops where they are. Asked
+        /// of what was told, so the renderer holding them still and the renderer not drawing them
+        /// read one answer.
+        bool isUnderwater() const { return mUnderwater; }
 
         /// Bumped whenever what is under `getNode` is torn down and built again.
         ///

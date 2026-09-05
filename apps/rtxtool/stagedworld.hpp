@@ -9,7 +9,6 @@
 #include <string_view>
 
 #include <osg/Group>
-#include <osg/PositionAttitudeTransform>
 #include <osg/Vec3f>
 
 #include <components/esm/refid.hpp>
@@ -115,7 +114,7 @@ namespace RtxTool
 
         /// One frame's worth of driving the weather, from where the eye now is.
         ///
-        /// **The same one call `RenderingManager::update` makes**, which is the point: this used to
+        /// **The same one call `RenderingManager::renderFrame` makes**, which is the point: this used to
         /// set two of `Weather::Precipitation`'s four inputs and call neither of the others, so a
         /// shot of a storm showed drops that never froze under water and an ash cloud that never
         /// turned to face the wind.
@@ -316,13 +315,10 @@ namespace RtxTool
         std::optional<WaterPlane> mWater;
         Placement mPlacement;
 
-        /// Where the weather's particles hang, moved to the eye each time it moves.
-        ///
-        /// **The game hangs them under the sky's `CameraRelativeTransform`, which is the same thing
-        /// said in the rasterizer's vocabulary**: a finite box of drops is a rainstorm only because
-        /// it travels with the player. There is no such transform here, so the box is a node this
-        /// puts where the eye is.
-        osg::ref_ptr<osg::PositionAttitudeTransform> mWeatherNode;
+        /// Where the weather's particles hang: a second root to the world walk, as the sky's
+        /// `CameraRelativeTransform` is in the game, and like it carrying no translation.
+        /// `Rtx::mirrorPrecipitation` is what walks it and what puts the box at the eye.
+        osg::ref_ptr<osg::Group> mWeatherNode;
 
         /// The rain and the storm the weather drives, built exactly as the game builds them.
         ///

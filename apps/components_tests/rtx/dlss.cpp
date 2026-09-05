@@ -26,6 +26,8 @@
 #include <components/rtxvulkan/dlsspass.hpp>
 #include <components/rtxvulkan/image.hpp>
 
+#include "testtexture.hpp"
+
 namespace Rtx
 {
     namespace
@@ -304,6 +306,16 @@ namespace Rtx
         /// of its suite.
         struct RtxUpscaledFrameTest : Testing::RendererTest
         {
+            /// A renderer of the test's own that upscales to `width` by `height`, or null with the
+            /// reason in `reason`. Beside `mRenderer` and not instead of it, for the two seconds
+            /// `Testing::getRenderer` says a second one costs.
+            static std::unique_ptr<Renderer> makeUpscaling(
+                std::uint32_t width, std::uint32_t height, std::string& reason)
+            {
+                RendererOptions options = Testing::describeRenderer(width, height);
+                options.mUpscale = Upscale::Performance;
+                return createRenderer(options, reason);
+            }
         };
 
         /// The whole frame through the renderer, against the same frame with nothing upscaling it.
@@ -328,11 +340,8 @@ namespace Rtx
         /// window whose width the ratio does not divide drew a black frame.
         TEST_F(RtxUpscaledFrameTest, anUpscaledFrameIsTheSameFrameLarger)
         {
-            RendererOptions options = Testing::describeRenderer(1281, 721);
-            options.mUpscale = Upscale::Performance;
-
             std::string reason;
-            const std::unique_ptr<Renderer> upscaling = createRenderer(options, reason);
+            const std::unique_ptr<Renderer> upscaling = makeUpscaling(1281, 721, reason);
             if (upscaling == nullptr)
                 GTEST_SKIP() << reason;
 
@@ -393,6 +402,88 @@ namespace Rtx
             upscaling->takeValidationErrors(errors);
             for (const std::string& error : errors)
                 ADD_FAILURE() << "validation error from the upscaled frame: " << error;
+        }
+
+        /// A sprite carries its own travel into the layer whatever share of a pixel it took.
+        ///
+        /// **The rain, which never owns a pixel and is the whole layer of the ones it reaches.**
+        /// `puffClaim` decides which of the sprite and the surface owns the *frame's* one vector,
+        /// and a fifth of a pixel of sprite rightly loses that: the pixel is mostly the wall. The
+        /// layer is not the pixel — it holds the sprites and nothing else — so the same test applied
+        /// there handed the drops the wall's vector, and Ray Reconstruction, told that layer may be
+        /// accumulated, held the storm against whatever the player was walking past.
+        ///
+        /// A fifth of a pixel of sprite, a hundred units ahead of the eye, travelling ten units
+        /// across: `height * 10 / (2 * 100 * tan 30°)` pixels of screen motion, and a wall two
+        /// hundred units out that did not move at all.
+        ///
+        /// An upscaling renderer because nothing else writes the layer.
+        TEST_F(RtxUpscaledFrameTest, aSpriteCarriesItsOwnMotionIntoTheLayerItIsTheWholeOf)
+        {
+            std::string reason;
+            const std::unique_ptr<Renderer> upscaling = makeUpscaling(721, 721, reason);
+            if (upscaling == nullptr)
+                GTEST_SKIP() << reason;
+
+            const FrameExtents extents = upscaling->getExtents();
+            const std::uint32_t width = extents.mRenderWidth;
+            const std::uint32_t height = extents.mRenderHeight;
+            const std::size_t centre = (std::size_t{ height / 2 } * width + width / 2) * 2;
+
+            constexpr float travel = 10.0f;
+            constexpr float ahead = 100.0f;
+            const float expected = static_cast<float>(height) * travel / (2.0f * ahead * 0.5773503f);
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 1> puff{ Testing::describeTexel(white) };
+
+            Shaders::VisibilityConstants camera
+                = makeCamera(osg::Vec3f(0.0f, -200.0f, 0.0f), osg::Vec3f(), 60.0f, width, height, 10000.0f);
+            camera.mSunPosition = osg::Vec3f(0.0f, -0.6f, -0.8f);
+            camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+
+            // **The layer's vector for a sprite that travelled `moved`, at the middle of the
+            // frame.** Two frames, because the first has no past to reproject against.
+            const auto layerMotionAtCentre = [&](const osg::Vec3f& moved, std::vector<float>& frameMotion) {
+                SceneDesc scene;
+                scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                    .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
+
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+
+                // A fifth, which is under the half `puffClaim` asks for and over nothing at all.
+                const std::array<Sprite, 1> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(0.0f, -ahead, 0.0f), .mRadius = 20.0f, .mAlpha = 0.2f, .mMoved = moved } };
+                scene.addEmitter(sprites, cut, false);
+
+                upscaling->setScene(Rtx::sWorld, scene, puff, SeaState{});
+                upscaling->renderFrame(camera, FrameOptions{ .mFilter = false });
+                upscaling->renderFrame(camera, FrameOptions{ .mFilter = false });
+
+                std::vector<float> layer;
+                upscaling->readChannel(Channel::TransparencyMotion, layer);
+                upscaling->readChannel(Channel::Motion, frameMotion);
+                return layer;
+            };
+
+            std::vector<float> frameMotion;
+            const std::vector<float> travelled = layerMotionAtCentre(osg::Vec3f(travel, 0.0f, 0.0f), frameMotion);
+            ASSERT_EQ(travelled.size(), std::size_t{ width } * height * 2);
+
+            std::vector<float> particles;
+            upscaling->readChannel(Channel::ParticleMask, particles);
+            ASSERT_EQ(particles[centre / 2], 1.0f) << "the sprite reached the middle of the frame";
+
+            EXPECT_NEAR(std::abs(travelled[centre]), expected, 1.0f)
+                << "the sprite's own travel, projected at the depth it hangs at";
+            EXPECT_NEAR(travelled[centre + 1], 0.0f, 1.0f) << "and it travelled across rather than along";
+
+            EXPECT_NEAR(frameMotion[centre], 0.0f, 0.01f) << "the pixel is mostly the wall, and the wall stood still";
+
+            // **The parameter has to matter**, or this measures a coincidence: the same frame with a
+            // sprite that did not move writes the wall's nought into the layer as well.
+            const std::vector<float> stood = layerMotionAtCentre(osg::Vec3f(), frameMotion);
+            EXPECT_NEAR(stood[centre], 0.0f, 0.01f) << "a sprite that stood still moved nothing";
         }
     }
 }
