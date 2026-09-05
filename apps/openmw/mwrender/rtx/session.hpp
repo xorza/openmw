@@ -10,6 +10,7 @@
 
 #include <osg/Vec3f>
 
+#include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchspec.hpp>
 
@@ -55,6 +56,13 @@ namespace MWRender
     {
         std::optional<float> mHour;
 
+        /// Which day of Morrowind's own calendar, counted from the one a new game begins on.
+        ///
+        /// **Only the moons read it**, and they are the reason it is separate from the hour: a
+        /// phase runs on a three-day cycle and a rise hour on a twenty-four day one, so no hour can
+        /// stand for a date.
+        std::optional<int> mDay;
+
         /// A weather as the content files spell it: `Clear`, `Overcast`, `Thunderstorm`. Set
         /// immediately, so a stop stands under it from its first frame.
         std::optional<std::string> mWeather;
@@ -97,6 +105,14 @@ namespace MWRender
 
         std::optional<Route> mRoute;
 
+        /// How many differently-seeded frames to average into one picture, or nought for none.
+        ///
+        /// **A converged reference, which is the only ground truth a sampled renderer has.** One
+        /// bounce per pixel estimates an integral without bias, so enough of them average to the
+        /// value itself. Error falls as the square root of this, so four times the frames halves
+        /// it: a hundred is a clean picture and a thousand is a reference.
+        std::uint32_t mAccumulate = 0;
+
         /// Whether the world's clock is held still while the stop runs.
         ///
         /// **What a reference wants and a measurement does not.** A still frame traced many times
@@ -116,6 +132,14 @@ namespace MWRender
         /// extent. **What a measurement is taken against**, where the PNG is what a picture is
         /// looked at as.
         std::filesystem::path mDump;
+
+        /// Report the share of pixels whose accumulated bounce luminance passes each of a ladder
+        /// of thresholds, beside the frame's other figures.
+        ///
+        /// **What a firefly is counted in, and the one thing bytes cannot say.** A bright bounce is
+        /// scene-referred radiance and the display curve has spent that by the time a pixel is a
+        /// byte, so the tail is read off the channel the accumulator wrote.
+        bool mTail = false;
 
         /// Whether every measured frame is read back and hashed.
         ///
@@ -174,6 +198,14 @@ namespace MWRender
 
         /// Which suite the stops came from, for the record's own header.
         std::string mSuite;
+
+        /// Which validation layers the run wants.
+        ///
+        /// **Carried here and never in a settings file**, for the reason `Rtx::sValidationByDefault`
+        /// gives: a developer's diagnostic in a player's configuration is a build whose quoted
+        /// numbers were measured through the layers because somebody left a line behind. A launcher
+        /// states it on the command line for the one run it is making.
+        Rtx::ValidationOptions mValidation;
     };
 
     /// What a launcher reads back once `Engine::go` has returned.
@@ -188,6 +220,13 @@ namespace MWRender
         /// What the run printed, whole, for a launcher whose output is read rather than logged.
         std::string mReport;
     };
+
+    /// The run `[RTX] session` asks for, or nothing where nobody asked for one.
+    ///
+    /// **What lets the plain game measure itself.** A launcher installs a whole request; a played
+    /// binary has only a settings file, so what it can say is how long the run is and how fast to
+    /// fly — where it stands is the savegame's.
+    std::optional<SessionRequest> readSessionSetting();
 
     /// Hands a run to whichever renderer the engine is about to build.
     ///
@@ -227,6 +266,9 @@ namespace MWRender
         /// Whether the run wants a window shown.
         bool isHeadless() const { return mRequest.mHeadless; }
 
+        /// Which layers the run asked for.
+        const Rtx::ValidationOptions& getValidation() const { return mRequest.mValidation; }
+
         /// Which sample the trace should take, or nothing while no stop is running.
         ///
         /// **The stop's own count and not the game's frame number.** What the bounce sampler and
@@ -235,6 +277,10 @@ namespace MWRender
         /// two runs of one binary then sat at different points in the Halton sequence and 47% of
         /// the frame differed by up to 38 of 255, however long the warm-up.
         std::optional<std::uint32_t> getSampleFrame() const;
+
+        /// How many frames have gone into the running sum, this one included, or nought where the
+        /// stop is not averaging. `Schedule::mAccumulate` says what that is for.
+        std::uint32_t getAccumulated() const;
 
         /// Before the world is walked. Starts the stop that is due, flies a route on, and turns a
         /// sky. Does nothing until the game is running and has a world to stand in.

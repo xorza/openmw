@@ -61,6 +61,12 @@ namespace RtxTool
         /// Write the albedo with no shading over it.
         bool mShowAlbedo = false;
 
+        /// Whether each frame samples a different point inside its pixel.
+        bool mJitter = false;
+
+        /// Whether the trace also counts the see-through surfaces each primary ray crosses.
+        bool mCountCrossings = false;
+
         /// What to scale the frame by before the display curve, or nothing to measure it off the
         /// frame. A picture wants it measured; a reference wants it held still.
         std::optional<float> mExposure;

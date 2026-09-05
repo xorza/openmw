@@ -5,6 +5,9 @@
 # `debug.sh game` builds and runs OpenMW itself on the quicksave instead. Profiling belongs in
 # `release.sh` and `profile.sh`: the layers cost between a tenth and half the frame rate, and
 # `bench` will say so.
+#
+# The harness drives a real game, so `debug.sh` and `debug.sh game` differ only in which binary
+# opens the window and whether a schedule is running behind it.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

@@ -1,8 +1,6 @@
 set(RTXTOOL_FILES
     actor.cpp
     actor.hpp
-    bench.cpp
-    bench.hpp
     benchsuite.cpp
     benchsuite.hpp
     cellchoice.cpp

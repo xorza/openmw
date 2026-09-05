@@ -37,7 +37,7 @@ add_openmw_dir (mwrender/gl
 # Gated, because these are the only files in the game that name a graphics API other than OpenGL.
 if (OPENMW_RTX)
     add_openmw_dir (mwrender/rtx
-        bench framecapture readworld rtxrenderer session tracedview worldmirror
+        framecapture readworld rtxrenderer session tracedview worldmirror
         )
 endif()
 
@@ -174,13 +174,6 @@ if (OPENMW_RTX)
     # One macro gates every game-side reference to the ray tracing renderer.
     target_compile_definitions(openmw-lib PUBLIC OPENMW_RTX)
 
-    # **Asked for, rather than inferred from the build type.** The build worth measuring is the
-    # optimised one, so gating this on "not Release" would have put the benchmark in every build
-    # except the only one whose numbers mean anything. Off by default keeps it out of a shipping
-    # build, which is the whole requirement; `apps/rtxtool/release.sh` turns it on.
-    if (OPENMW_RTX_BENCH)
-        target_compile_definitions(openmw-lib PUBLIC OPENMW_RTX_BENCH)
-    endif()
     target_link_libraries(openmw-lib openmw-rtx openmw-rtx-backends openmw-rtx-bench openmw-myguirtx)
 endif()
 

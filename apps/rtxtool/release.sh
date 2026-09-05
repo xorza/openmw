@@ -6,6 +6,9 @@
 # `release.sh game` builds and runs OpenMW itself on the quicksave instead, `release.sh build` only
 # builds, and `release.sh bench` measures — which is what an optimised build with no layers in it is
 # for. `profile.sh` is where the measurement turns into an explanation.
+#
+# **Every verb drives a real game now**, so there is one binary and one bench: `bench` stands the
+# harness at each place of a suite and measures the frames a player would have seen.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -27,7 +30,6 @@ if [ ! -f "$build/CMakeCache.txt" ]; then
         -DCMAKE_C_FLAGS="$profiling" \
         -DCMAKE_CXX_FLAGS="$profiling" \
         -DOPENMW_RTX=ON \
-        -DOPENMW_RTX_BENCH=ON \
         -DOPENMW_DLSS_SDK="${OPENMW_DLSS_SDK:?point OPENMW_DLSS_SDK at an unpacked DLSS SDK}" \
         -DBUILD_COMPONENTS_TESTS=OFF -DBUILD_OPENMW_TESTS=OFF \
         -DBUILD_OPENCS=OFF -DBUILD_WIZARD=OFF -DBUILD_ESSIMPORTER=OFF \

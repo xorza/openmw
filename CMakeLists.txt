@@ -48,7 +48,6 @@ option(BUILD_OPENMW_TESTS       "Build OpenMW tests" OFF)
 option(OPENMW_RTX               "Build the experimental ray tracing renderer" OFF)
 option(OPENMW_RTX_VULKAN        "Build its Vulkan backend" ON)
 option(OPENMW_RTX_DLSS          "Upscale and denoise with DLSS Ray Reconstruction" ON)
-option(OPENMW_RTX_BENCH         "Compile the in-game benchmark, which OPENMW_RTX_BENCH= then runs" OFF)
 option(PRECOMPILE_HEADERS_WITH_MSVC "Precompile most common used headers with MSVC (alternative to ccache)" ON)
 
 set(OpenGL_GL_PREFERENCE LEGACY)  # Use LEGACY as we use GL2; GLNVD is for GL3 and up.

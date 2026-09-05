@@ -104,9 +104,13 @@ namespace MWRender
         , mStartTick(osg::Timer::instance()->tick())
     {
         // **Taken before anything is built, because it decides how the window opens and what the
-        // trace counts.** A run installed by a launcher is the same renderer with a schedule on it;
-        // an ordinary session takes nothing and behaves exactly as it did.
-        if (std::optional<SessionRequest> asked = takeInstalledSession(); asked.has_value())
+        // trace counts.** A launcher installs a whole run; a played binary can only name one in its
+        // settings, and a session that asked for neither behaves exactly as it did.
+        std::optional<SessionRequest> asked = takeInstalledSession();
+        if (!asked.has_value())
+            asked = readSessionSetting();
+
+        if (asked.has_value())
             mSession = std::make_unique<Session>(std::move(*asked));
 
         // **Before any content is read, because it decides what reading one records.** This is the
@@ -155,7 +159,13 @@ namespace MWRender
         options.mUpscale = *upscale;
         options.mPreset = *preset;
         options.mWindow = mWindow;
-        options.mValidation.mEnabled = Rtx::sValidationByDefault;
+        // **The run's answer where a run was installed, and the build's otherwise.** A launcher
+        // making a measurement says on its command line whether the layers load, because a figure
+        // taken under them is not one to compare against anything; a played session has only the
+        // build to go on, which `Rtx::sValidationByDefault` says is the one thing that should
+        // decide it.
+        options.mValidation
+            = mSession != nullptr ? mSession->getValidation() : Rtx::ValidationOptions{ Rtx::sValidationByDefault };
 
         // **The two finer layers, asked for by name and never on by themselves.** The build decides
         // whether the layers load; these decide what they check, and each costs far more than the
@@ -171,8 +181,9 @@ namespace MWRender
         // `RtxTool::chooseValidation` measured it and leaves the layer off over a window for the
         // same reason. So `OPENMW_RTX_SYNC_VALIDATION` is the one to reach for in the game, and
         // `OPENMW_RTX_GPU_VALIDATION` is there for a session willing to tell the two losses apart.
-        options.mValidation.mSynchronization = askedFor("OPENMW_RTX_SYNC_VALIDATION");
-        options.mValidation.mGpuAssisted = askedFor("OPENMW_RTX_GPU_VALIDATION");
+        options.mValidation.mSynchronization
+            = options.mValidation.mSynchronization || askedFor("OPENMW_RTX_SYNC_VALIDATION");
+        options.mValidation.mGpuAssisted = options.mValidation.mGpuAssisted || askedFor("OPENMW_RTX_GPU_VALIDATION");
 
         // Either of them is a kind of validation, so either loads the layer that carries it whatever
         // the build said — which is what lets a Release build be asked one question without being
@@ -186,6 +197,18 @@ namespace MWRender
         // atomic rather than writing a number to a buffer nobody looks at, once per pixel that hit
         // anything, for the life of the session.
         options.mCountHits = mSession != nullptr;
+
+        // **The knobs a measurement turns, read where the renderer is built.** They were hard-coded
+        // here and taken as command-line options by the harness, so a picture taken by one and a
+        // frame drawn by the other were traced by two differently configured renderers.
+        options.mCountCrossings = Settings::rtx().mCountCrossings;
+
+        const std::string wantedReorder = Settings::rtx().mReorder;
+        const std::optional<Rtx::Reorder> reorder = Rtx::reorderNamed(wantedReorder);
+        if (!reorder.has_value())
+            throw std::runtime_error('"' + wantedReorder + "\" is not one of off, hit or hint");
+
+        options.mReorder = *reorder;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the
@@ -212,6 +235,16 @@ namespace MWRender
         if (SDL_GL_GetCurrentContext() != nullptr)
             throw std::runtime_error("something initialised OpenGL under the ray tracing renderer");
 
+        // **Read once, because none of them changes while a run is being made.** A frame that asked
+        // the settings registry per knob per frame would be asking six questions a frame for
+        // answers that were settled before the window opened.
+        mDelight = Settings::rtx().mDelight;
+        mShowAlbedo = Settings::rtx().mShowAlbedo;
+        mFilter = Settings::rtx().mFilter;
+        mJitter = Settings::rtx().mJitter;
+        if (const float exposure = Settings::rtx().mExposure; exposure > 0.0f)
+            mExposure = exposure;
+
         // **The last thing in a frame that would otherwise run on the wall clock.** The eye adapts
         // in real time and the upscaler tunes itself against how fast a motion vector was
         // travelled, so a played session leaves this empty and the renderer times itself. A
@@ -220,9 +253,6 @@ namespace MWRender
         // of one binary. `[RTX] fixed step` is the same statement the simulation is stepped by.
         if (const float step = Settings::rtx().mFixedStep; step > 0.0f)
             mFixedStep = step;
-
-        if (const char* where = std::getenv("OPENMW_RTX_SHOT"); where != nullptr && *where != '\0')
-            mCapture.keepFrames(where);
     }
 
     // Out of line because the members it destroys are only forward declared in the header.
@@ -573,7 +603,7 @@ namespace MWRender
         const Rtx::ExtractionStats found = mMirror.mirror(frame, mFrame);
         const double walkMs = Rtx::since(walked, std::chrono::steady_clock::now());
 
-        const bool traced = traceWorld(frame, found, walkMs);
+        traceWorld(frame, found, walkMs);
 
         renderGui();
 
@@ -581,22 +611,16 @@ namespace MWRender
         // the walk still ran, so its epoch is still the one the next walk has to be measured
         // against. `WorldMirror::settle` says what each half of it is for.
         mMirror.settle();
-
-        // Only what a trace wrote, because the cap is a count of pictures and not of frames: a run
-        // that spent its first sixteen at the main menu would write the same black texel sixteen
-        // times and have nothing left for the world.
-        if (traced)
-            mCapture.keep(*mRenderer);
     }
 
-    bool RtxRenderer::traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs)
+    void RtxRenderer::traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs)
     {
         const osg::FrameStamp& when = frame.mWhen;
         const osg::Camera& camera = frame.mCamera;
         const WorldState& world = frame.mWorld;
 
         if (mMirror.getScene().getPlacedCount() == 0)
-            return false;
+            return;
 
         // **Waited for here, ahead of the placement that would otherwise absorb it.** `placeScene`
         // writes the copy of the tables the frame behind is still tracing, so it waits that frame
@@ -667,7 +691,7 @@ namespace MWRender
                 mComplained = true;
                 Log(Debug::Warning) << "Ray tracing skipped a frame: " << what.what();
             }
-            return false;
+            return;
         }
 
         Rtx::Shaders::VisibilityConstants constants = *viewpoint;
@@ -688,6 +712,15 @@ namespace MWRender
         // sequence twice, and a game's frame number carries the loading screen's frames with it.
         const std::optional<std::uint32_t> sample = mSession != nullptr ? mSession->getSampleFrame() : std::nullopt;
         constants.mFrame = sample.value_or(static_cast<std::uint32_t>(mFrame));
+
+        // **The game set neither of these, and the de-lighting is what that cost.**
+        // `Rtx::makeCameraFromView` names every field it fills and leaves the rest
+        // value-initialised, so a played frame ran at `mDelight` nought — which `texturing.glsl`
+        // short-circuits on, handing the trace Bethesda's textures with their painted lighting
+        // still in them. The harness set it from `--delight` and defaulted to one, so the two hosts
+        // had been lighting the same world by different rules.
+        constants.mDelight = mDelight;
+        constants.mShowAlbedo = mShowAlbedo ? 1u : 0u;
 
         // **Measured, not held at one.** A picture wants the exposure the frame asks for; holding
         // it is what a reference and a pixel test want, and the default is theirs. Without this an
@@ -711,8 +744,6 @@ namespace MWRender
         {
             const double frameMs = Rtx::since(mEntered, now);
             const bool rebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
-
-            mBench.frame(*result, frameMs, walkMs, placeMs, rebuilt);
 
             if (mSession != nullptr)
                 mSession->frame(*mRenderer, *result, frameMs, walkMs, placeMs, rebuilt);
@@ -739,7 +770,5 @@ namespace MWRender
             mSpentMs = 0.0;
             mTimed = 0;
         }
-
-        return true;
     }
 }

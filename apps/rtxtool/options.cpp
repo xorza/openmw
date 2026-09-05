@@ -241,13 +241,6 @@ namespace RtxTool
             "turning frees a whole emitter's meshes and textures on an ordinary frame, which is "
             "the one thing the game does constantly that no other path in this tool could do");
 
-        owned(Verbs::Bench, "map-tile", bpo::value<bool>()->implicit_value(true)->default_value(false),
-            "trace a local-map tile of the camera's cell on every frame, the way the "
-            "game's compass does. A picture of the world is traced between the placement and the "
-            "frame, off the same scene and the same copy of the tables — the one half of the "
-            "renderer no bench has ever reached. A run under it is not a benchmark: a second trace "
-            "a frame is most of a second frame");
-
         addOption("hour", bpo::value<float>()->default_value(sDefaultHour),
             "what time an exterior's sun is at, on a twenty-four hour clock. An interior is lit "
             "by its own lamps and does not care. Given, it beats an hour a view fixes for itself");
@@ -347,6 +340,26 @@ namespace RtxTool
             "as an option.");
         owned(sPlaces | Verbs::Doll, "look", bpo::value<std::string>()->default_value(""),
             "what the camera looks at, as x,y,z. Defaults to the centre of the cell.");
+
+        owned(Verbs::Shot, "accumulate", bpo::value<std::uint32_t>()->default_value(0),
+            "average this many differently-seeded frames into one picture. A converged reference, "
+            "which is the only ground truth a sampled renderer has: error falls as the square root "
+            "of this, so a hundred is a clean picture and a thousand is a reference. Wants "
+            "--upscale=off, because a denoiser resolves every frame towards its own opinion rather "
+            "than towards the integral");
+
+        owned(Verbs::Shot, "tail", bpo::value<bool>()->default_value(false)->implicit_value(true),
+            "report the share of pixels whose bounce luminance passes each of a ladder of "
+            "thresholds. What a firefly is counted in, and the one thing bytes cannot say. Wants "
+            "--upscale=off so the wavelet and its accumulator run at all");
+
+        addOption("jitter", bpo::value<bool>()->default_value(false)->implicit_value(true),
+            "sample a different point inside each pixel every frame. Only worth anything to "
+            "something putting several frames together, and forced on whenever anything upscales");
+
+        addOption("crossings", bpo::value<bool>()->default_value(false)->implicit_value(true),
+            "also count the see-through surfaces each primary ray crosses. A second traversal a "
+            "pixel, so a frame time taken under it measures the census rather than the picture");
 
         addOption("data",
             bpo::value<Files::MaybeQuotedPathContainer>()

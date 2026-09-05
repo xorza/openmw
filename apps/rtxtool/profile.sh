@@ -110,7 +110,7 @@ else
     record+=(-e task-clock -F "$freq" --call-graph fp)
 fi
 
-bench=("$build/openmw-rtxtool" bench --validation=false "${place[@]}"
+bench=("$build/openmw-rtxtool" bench --validation=false --window=false "${place[@]}"
        "--perf-control=$control" "${extra[@]}")
 
 cd "$build"

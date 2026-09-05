@@ -1,7 +1,9 @@
 #include "session.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <format>
 #include <fstream>
 #include <span>
@@ -18,9 +20,11 @@
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/png.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/shaders/colour.h>
 #include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/perfcontrol.hpp>
+#include <components/settings/values.hpp>
 
 #include "../../mwbase/environment.hpp"
 #include "../../mwbase/statemanager.hpp"
@@ -54,6 +58,40 @@ namespace MWRender
         /// cadence of the asking, off the frame index rather than the clock, so the same frame
         /// stands under the same sky on every machine.
         constexpr float sTurnFrames = 4.0f * Rtx::sStepRate;
+    }
+
+    std::optional<SessionRequest> readSessionSetting()
+    {
+        const std::string spelling = Settings::rtx().mSession;
+        if (spelling.empty())
+            return std::nullopt;
+
+        std::string complaint;
+        const std::optional<Rtx::BenchSpec> spec = Rtx::readSpec(spelling, complaint);
+
+        // **A run nobody can read the settings of is not a run.** Starting anyway would hand
+        // somebody a number for a length they did not ask for.
+        if (!spec.has_value())
+        {
+            Log(Debug::Error) << "[RTX] session: " << complaint;
+            return std::nullopt;
+        }
+
+        Stop stop;
+        stop.mName = "the game";
+        stop.mSchedule.mSpec = *spec;
+        if (spec->mSpeed > 0.0f)
+            stop.mSchedule.mRoute = Route{ .mSpeed = spec->mSpeed };
+
+        SessionRequest request;
+        request.mStops.push_back(std::move(stop));
+
+        // **A window, because somebody asked for this in a game they can see.** The harness hides
+        // its own; a settings file is read by the binary a player runs.
+        request.mHeadless = false;
+        request.mValidation.mEnabled = Rtx::sValidationByDefault;
+
+        return request;
     }
 
     void installSession(SessionRequest request)
@@ -200,11 +238,14 @@ namespace MWRender
         else if (stop.mStand.mEye.has_value())
             world.moveObject(world.getPlayerPtr(), *stop.mStand.mEye, true, true);
 
-        // **Through the global the console writes and not through the clock's own setter**, which
-        // is `MWWorld::World`'s alone. `set gamehour to` is the same call, so the hour a stop
-        // stands at is the hour a player could have typed.
+        // **Through the globals the console writes and not through the clock's own setters**, which
+        // are `MWWorld::World`'s alone. `set gamehour to` and `set day to` are the same two calls,
+        // so a stop stands at an hour and a date a player could have typed.
         if (stop.mSky.mHour.has_value())
             world.setGlobalFloat(MWWorld::Globals::sGameHour, *stop.mSky.mHour);
+
+        if (stop.mSky.mDay.has_value())
+            world.setGlobalInt(MWWorld::Globals::sDay, *stop.mSky.mDay);
 
         if (stop.mSky.mWeather.has_value())
         {
@@ -218,7 +259,7 @@ namespace MWRender
         // **Settled rather than crossed into**, which is what the game does when a player sleeps:
         // a stop asked to stand under a sky stands under it from its first frame rather than four
         // seconds later. A run that turns its sky asks for the transition instead.
-        if (stop.mSky.mHour.has_value() || stop.mSky.mWeather.has_value())
+        if (stop.mSky.mHour.has_value() || stop.mSky.mDay.has_value() || stop.mSky.mWeather.has_value())
             world.advanceTime(0.0, false);
 
         if (!stop.mSky.mTurnThrough.empty())
@@ -248,6 +289,13 @@ namespace MWRender
             mFrom = osg::Vec3f(stood.pos[0], stood.pos[1], stood.pos[2]);
             mFromLook = mFrom + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
         }
+
+        // **A stop is a discontinuity, and only a worldspace change says so on its own.** A
+        // teleport from Balmora to Vivec stays in one worldspace, so nothing tells the renderer its
+        // history describes somewhere else — and the exposure adapts toward its measurement over
+        // seconds rather than taking it, so a room drawn after a noon exterior opens at the
+        // exterior's brightness. The warm-up absorbs the frame it costs.
+        MWBase::Environment::get().getWorld()->getRenderingManager()->notifyWorldSpaceChanged();
 
         mSeen = 0;
         mTurnedTo = 0;
@@ -349,6 +397,22 @@ namespace MWRender
             return std::nullopt;
 
         return mSeen;
+    }
+
+    std::uint32_t Session::getAccumulated() const
+    {
+        if (mDone || !mStarted)
+            return 0;
+
+        const Stop& stop = mRequest.mStops[mAt];
+        const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();
+        if (stop.mSchedule.mAccumulate == 0 || mSeen < warmup)
+            return 0;
+
+        // **Counted from the first measured frame**, because the warm-up is the world arriving and
+        // the card coming off its idle clock. Averaging those in would put a picture of a
+        // half-built cell into the reference.
+        return mSeen - warmup + 1;
     }
 
     void Session::beforeFrame()
@@ -468,6 +532,44 @@ namespace MWRender
                     "could not write {}: {}\n", Files::pathToUnicodeString(stop.mActions.mCapture), failed.what());
                 mExitStatus = 1;
             }
+        }
+
+        // **The bounce's tail, in radiance and not in bytes.** A firefly is a bounce far enough
+        // above what the pixel has been seeing to be an outlier, and that is a statement about
+        // scene-referred light: the display curve has spent the range it lives in long before a
+        // pixel is a byte. Read off the channel the accumulator wrote, so what is counted is what
+        // the clamp has already been over.
+        if (stop.mActions.mTail)
+        {
+            std::vector<float> bounce;
+            renderer.readChannel(Rtx::Channel::Accumulated, bounce);
+
+            // The ladder the fork's own table was taken on. One is about where the signal ends — a
+            // surface seeing a full hemisphere of sky — and everything past it is the tail proper.
+            static constexpr std::array<float, 5> sThresholds{ 0.5f, 1.0f, 8.0f, 32.0f, 64.0f };
+            std::array<std::uint64_t, 5> over{};
+
+            const std::size_t counted = bounce.size() / 4;
+            for (std::size_t at = 0; at < counted; ++at)
+            {
+                // **The renderer's own weights and not a copy of them.** A second set would be a
+                // second idea of which of two things is brighter, and this is what decides which of
+                // a frame's pixels are outliers.
+                const float lit = bounce[at * 4] * Rtx::Shaders::LUMINANCE_WEIGHTS.x()
+                    + bounce[at * 4 + 1] * Rtx::Shaders::LUMINANCE_WEIGHTS.y()
+                    + bounce[at * 4 + 2] * Rtx::Shaders::LUMINANCE_WEIGHTS.z();
+
+                for (std::size_t step = 0; step < sThresholds.size(); ++step)
+                    if (lit > sThresholds[step])
+                        ++over[step];
+            }
+
+            mReport += "bounce tail:";
+            for (std::size_t step = 0; step < sThresholds.size(); ++step)
+                mReport += std::format("{}>{} {:.4f}%", step == 0 ? " " : ", ", sThresholds[step],
+                    counted > 0 ? static_cast<double>(over[step]) / static_cast<double>(counted) * 100.0 : 0.0);
+
+            mReport += '\n';
         }
 
         // **The frame a measurement is taken on**, which is not the frame a picture is looked at.

@@ -43,7 +43,6 @@
 #include <components/settings/values.hpp>
 
 #include "actor.hpp"
-#include "bench.hpp"
 #include "benchsuite.hpp"
 #include "cellchoice.hpp"
 #include "cellscene.hpp"
@@ -295,6 +294,8 @@ namespace RtxTool
             request.mDelight = variables["delight"].as<float>();
             request.mFilter = variables["filter"].as<bool>();
             request.mShowAlbedo = variables["albedo"].as<bool>();
+            request.mJitter = variables["jitter"].as<bool>();
+            request.mCountCrossings = variables["crossings"].as<bool>();
             request.mExposure = parseExposure(variables["exposure"].as<std::string>());
             request.mWeather = weather;
             request.mHour = hour;
@@ -461,8 +462,9 @@ namespace RtxTool
             };
         }
 
-        /// One stop, from a place the command line named.
-        MWRender::Stop stopFrom(const Chosen& chosen)
+        /// One stop, from a place the command line named. The day is the command line's alone: a
+        /// view file entry names an hour and a weather and never a date.
+        MWRender::Stop stopFrom(const Chosen& chosen, const FrameRequest& frame)
         {
             MWRender::Stop stop;
             stop.mName = chosen.mView.empty() ? chosen.mCell : chosen.mView;
@@ -472,21 +474,90 @@ namespace RtxTool
             stop.mStand.mEye = chosen.mOrigin;
             stop.mStand.mLook = chosen.mTarget;
             stop.mSky.mHour = chosen.mHour;
+            stop.mSky.mDay = frame.mDay;
             stop.mSky.mWeather = chosen.mWeather;
 
             return stop;
         }
 
-        /// What a hosted run writes into the settings before the engine reads them.
+        /// One stop, from an entry in the view file.
         ///
-        /// **The renderer's own knobs are settings and not a second command line**, because both
-        /// binaries have to reach one renderer configured one way. The two here are the two the
-        /// game already offers; the rest — the de-lighting, the filter, the exposure, the reorder —
-        /// are still hard-coded on the game's side and are what the next step moves.
-        void applyRendererSettings(const FrameRequest& frame)
+        /// **The same fields `Chosen` carries, because a view is where a `Chosen` comes from.** A
+        /// list of places and a single place are one kind of thing, so a run of six and a shot of
+        /// one stand under the rules stated once.
+        MWRender::Stop stopFrom(const View& view, const FrameRequest& frame)
         {
+            // **`describeStaging` decides which of the two wins, and it is asked rather than
+            // copied.** A view fixes the conditions its frame is about and the command line
+            // overrules it, and a rule applied at one place and not the other would put a picture
+            // and a number under different skies.
+            const StagingRequest staging = frame.describeStaging(view);
+
+            MWRender::Stop stop;
+            stop.mName = view.mName;
+            stop.mNote = view.mNote;
+            stop.mCell = view.mCell;
+            stop.mStand.mCell = view.mCell;
+            stop.mStand.mEye = view.mOrigin;
+            stop.mStand.mLook = view.mTarget;
+            stop.mSky.mHour = staging.mHour;
+            stop.mSky.mDay = staging.mDay;
+            stop.mSky.mWeather = staging.mWeather;
+
+            // **A route flies the player, which is what puts a cell arriving into a measurement.**
+            // Where it ends is another view's camera, copied into the entry when the file was read.
+            if (view.mRoute.has_value())
+                stop.mSchedule.mRoute = MWRender::Route{
+                    .mTo = view.mRoute->mOrigin,
+                    .mLookTo = view.mRoute->mTarget,
+                    .mSpeed = view.mRoute->mSpeed,
+                };
+
+            return stop;
+        }
+
+        /// How long every stop of a run lasts, from what the command line asked for.
+        ///
+        /// **Frames win over seconds where both were named.** `--frames` is what a run that has to
+        /// be exactly reproducible asks for, and `--seconds` is what a run being read asks for.
+        Rtx::BenchSpec specFrom(const bpo::variables_map& variables)
+        {
+            Rtx::BenchSpec spec;
+            spec.mRun = variables["frames"].as<std::uint32_t>() > 0
+                ? Rtx::BenchSpan{ .mFrames = variables["frames"].as<std::uint32_t>() }
+                : Rtx::BenchSpan{ .mSeconds = variables["seconds"].as<float>() };
+            spec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
+
+            return spec;
+        }
+
+        /// Everything a hosted run writes into the settings before the engine reads them: the
+        /// window it is presented in, and the knobs the trace is made with.
+        ///
+        /// **These are settings and not a second command line**, because both binaries have to
+        /// reach one renderer configured one way. The game used to hard-code every one of them and
+        /// the harness used to take each as an option, so a picture taken here and a frame played
+        /// were traced by two differently configured renderers.
+        void applyHostedSettings(const bpo::variables_map& variables, const FrameRequest& frame)
+        {
+            const auto [width, height] = parseSize(variables["size"].as<std::string>());
+            Settings::video().mResolutionX.set(static_cast<int>(width));
+            Settings::video().mResolutionY.set(static_cast<int>(height));
+            Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
+            Settings::camera().mFieldOfView.set(frame.mFieldOfView);
+
             Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(frame.mUpscale)));
             Settings::rtx().mPreset.set(std::string(Rtx::presetName(frame.mPreset)));
+            Settings::rtx().mReorder.set(std::string(Rtx::reorderName(frame.mReorder)));
+            Settings::rtx().mDelight.set(frame.mDelight);
+            Settings::rtx().mShowAlbedo.set(frame.mShowAlbedo);
+            Settings::rtx().mFilter.set(frame.mFilter);
+
+            // **Nought means measure it, which is what `--exposure=auto` says.** A setting has no
+            // way to be absent, so the number the absence stands for is the one nothing multiplies.
+            Settings::rtx().mExposure.set(frame.mExposure.value_or(0.0f));
+            Settings::rtx().mJitter.set(frame.mJitter);
+            Settings::rtx().mCountCrossings.set(frame.mCountCrossings);
         }
 
         /// The places a profiling run visits, in the order it visits them.
@@ -653,57 +724,86 @@ namespace RtxTool
         int commandVerify(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
+            const FrameRequest frame
+                = frameFrom(command, variables["hour"].as<float>(), variables["weather"].as<std::string>());
 
-            VerifyRequest request;
-            request.mFrame = frameFrom(command, variables["hour"].as<float>(), variables["weather"].as<std::string>());
-            request.mViews = chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"),
+            std::vector<View> views = chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"),
                 Rtx::splitNames(variables["views"].as<std::string>()));
-            applyConditions(variables, request.mViews);
-            request.mOut = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
-            request.mAgainst = variables["against"].as<std::string>();
+            applyConditions(variables, views);
 
-            const Rtx::ValidationOptions validation = validationForMeasuring(variables, false);
+            applyHostedSettings(variables, frame);
 
-            const Content content(command.mConfig, variables, command.mResources);
-            World world(content);
-            pageTerrainFrom(world, variables);
+            // **Upscaling off, and not offered as an option.** Ray Reconstruction is temporal and
+            // carries state nothing below can hold still: two builds that describe the same scene
+            // identically write different bytes through it, and fifteen of sixteen views once read
+            // as changed by a refactor that changed nothing.
+            Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(Rtx::Upscale::Off)));
 
-            return runVerify(world, validation, request);
+            const std::filesystem::path out
+                = variables["out"].defaulted() ? "verify" : variables["out"].as<std::string>();
+            std::filesystem::create_directories(out);
+
+            // **Every view held still, because what this compares is the picture and not a run.**
+            // A frame that animated between two builds would differ for a reason nobody is looking
+            // for, and the whole point is that a refactor leaves the picture exactly as it was.
+            MWRender::SessionRequest request;
+            request.mStops.reserve(views.size());
+            for (const View& view : views)
+            {
+                MWRender::Stop stop = stopFrom(view, frame);
+                stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
+                stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = 1 };
+                stop.mSchedule.mFrozen = true;
+                stop.mActions.mCapture = out / (view.mName + ".png");
+                request.mStops.push_back(std::move(stop));
+            }
+
+            request.mValidation = validationForMeasuring(variables, false);
+
+            if (const int status = runHosted(variables, command.mConfig, command.mResources, std::move(request));
+                status != 0)
+                return status;
+
+            return compareRuns(out, variables["against"].as<std::string>(), views);
         }
 
         int commandBench(const Command& command)
         {
             const bpo::variables_map& variables = command.mVariables;
+            const FrameRequest frame
+                = frameFrom(command, variables["hour"].as<float>(), variables["weather"].as<std::string>());
 
             std::string suite;
-            BenchRequest request;
-            request.mFrame = frameFrom(command, variables["hour"].as<float>(), variables["weather"].as<std::string>());
-            request.mViews = chooseBenchViews(variables, command.mResources, suite);
-            applyConditions(variables, request.mViews);
+            std::vector<View> views = chooseBenchViews(variables, command.mResources, suite);
+            applyConditions(variables, views);
+
+            applyHostedSettings(variables, frame);
+
+            const Rtx::BenchSpec spec = specFrom(variables);
+            const std::vector<std::string> turn = Rtx::splitNames(variables["turn-weather"].as<std::string>());
+            const bool hashing
+                = !variables["hashes"].as<std::string>().empty() || !variables["against"].as<std::string>().empty();
+
+            MWRender::SessionRequest request;
+            request.mStops.reserve(views.size());
+            for (const View& view : views)
+            {
+                MWRender::Stop stop = stopFrom(view, frame);
+                stop.mSchedule.mSpec = spec;
+                stop.mSky.mTurnThrough = turn;
+                stop.mActions.mHash = hashing;
+                request.mStops.push_back(std::move(stop));
+            }
+
             request.mSuite = suite;
             request.mJson = variables["json"].as<std::string>();
             request.mHashes = variables["hashes"].as<std::string>();
             request.mAgainst = variables["against"].as<std::string>();
             request.mPerfControl = variables["perf-control"].as<std::string>();
+            request.mHeadless = !variables["window"].as<bool>();
+            request.mValidation = validationForMeasuring(variables, !request.mHeadless);
 
-            // **Frames win over seconds where both were named**, which is the rule the one spec
-            // spelling states: `--frames` is what a run that has to be exactly reproducible asks
-            // for, and `--seconds` is what a run being read asks for.
-            request.mSpec.mRun = variables["frames"].as<std::uint32_t>() > 0
-                ? Rtx::BenchSpan{ .mFrames = variables["frames"].as<std::uint32_t>() }
-                : Rtx::BenchSpan{ .mSeconds = variables["seconds"].as<float>() };
-            request.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
-            request.mWindow = variables["window"].as<bool>();
-            request.mTurnWeather = Rtx::splitNames(variables["turn-weather"].as<std::string>());
-            request.mMapTile = variables["map-tile"].as<bool>();
-
-            const Rtx::ValidationOptions validation = validationForMeasuring(variables, request.mWindow);
-
-            const Content content(command.mConfig, variables, command.mResources);
-            World world(content);
-            pageTerrainFrom(world, variables);
-
-            return runBench(world, validation, request);
+            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
         }
 
         /// A screenshot of the game's own world, taken headless.
@@ -718,15 +818,9 @@ namespace RtxTool
             const Chosen chosen = chooseView(variables, command.mResources);
             const FrameRequest frame = frameFrom(command, chosen.mHour, chosen.mWeather);
 
-            applyRendererSettings(frame);
+            applyHostedSettings(variables, frame);
 
-            const auto [width, height] = parseSize(variables["size"].as<std::string>());
-            Settings::video().mResolutionX.set(static_cast<int>(width));
-            Settings::video().mResolutionY.set(static_cast<int>(height));
-            Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
-            Settings::camera().mFieldOfView.set(frame.mFieldOfView);
-
-            MWRender::Stop stop = stopFrom(chosen);
+            MWRender::Stop stop = stopFrom(chosen, frame);
 
             // **Warmed and then held still, because a shot is a still.** The world has to arrive —
             // the ring read, the models built, the emitters run up — before the frame that is kept
@@ -738,9 +832,18 @@ namespace RtxTool
             stop.mSchedule.mFrozen = true;
             stop.mActions.mCapture = variables["out"].as<std::string>();
             stop.mActions.mDump = variables["dump"].as<std::string>();
+            stop.mActions.mTail = variables["tail"].as<bool>();
+            stop.mSchedule.mAccumulate = variables["accumulate"].as<std::uint32_t>();
+
+            // **Accumulating replaces repeating rather than joining it.** A run that also honoured
+            // the repeat default would quietly average eight frames more than it was asked for, and
+            // a convergence ladder built on that reads as though the first frames bought nothing.
+            if (stop.mSchedule.mAccumulate > 0)
+                stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = stop.mSchedule.mAccumulate };
 
             MWRender::SessionRequest request;
             request.mStops.push_back(std::move(stop));
+            request.mValidation = validationFrom(variables, false);
 
             return runHosted(variables, command.mConfig, command.mResources, std::move(request));
         }

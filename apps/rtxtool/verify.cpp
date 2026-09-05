@@ -4,25 +4,11 @@
 #include <cstddef>
 #include <cstdlib>
 #include <format>
-#include <memory>
 #include <ostream>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include <components/debug/debugging.hpp>
-#include <components/esm3/loadcell.hpp>
 #include <components/files/conversion.hpp>
-#include <components/rtx/renderer.hpp>
-#include <components/rtx/scenedesc.hpp>
-#include <components/rtx/sceneuploader.hpp>
-#include <components/rtx/wavespectrum.hpp>
-#include <components/rtxbench/benchspec.hpp>
-
-#include "content.hpp"
-#include "framing.hpp"
-#include "stagedworld.hpp"
-#include "world.hpp"
 
 namespace RtxTool
 {
@@ -86,109 +72,44 @@ namespace RtxTool
         return difference;
     }
 
-    int runVerify(World& world, const Rtx::ValidationOptions& validation, const VerifyRequest& request)
+    int compareRuns(
+        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const View> views)
     {
-        std::filesystem::create_directories(request.mOut);
-
-        // **Upscaling off, and not offered as an option.** Ray Reconstruction is temporal and
-        // carries state the code below cannot hold still: two builds that describe the same scene
-        // identically write different bytes through it, and fifteen of sixteen views once read as
-        // changed by a refactor that changed nothing. One renderer for the whole run, for the
-        // reason `bench` gives.
-        Rtx::RendererOptions options = request.mFrame.describeRenderer(validation);
-        options.mUpscale = Rtx::Upscale::Off;
-
-        std::string reason;
-        const std::unique_ptr<Rtx::Renderer> renderer = Rtx::createRenderer(options, reason);
-        if (renderer == nullptr)
+        if (against.empty())
         {
-            out() << reason << '\n';
-            return 1;
+            out() << "verify: no --against, so this run is only a reference for the next one\n";
+            return 0;
         }
 
-        const Rtx::FrameExtents extents = renderer->getExtents();
-
-        out() << std::format("verify: {} {} at {}x{}, upscaling off\n", request.mViews.size(),
-            request.mViews.size() == 1 ? "view" : "views", extents.mOutputWidth, extents.mOutputHeight);
-
-        if (request.mAgainst.empty())
-            out() << "        no --against, so this run is only a reference for the next one\n";
+        out() << std::format("verify: {} {} against {}\n", views.size(), views.size() == 1 ? "view" : "views",
+            Files::pathToUnicodeString(against));
 
         std::uint32_t differing = 0;
         std::uint32_t unmatched = 0;
 
-        for (const View& view : request.mViews)
+        for (const View& view : views)
         {
-            const ESM::Cell* cell = world.getContent().findCell(view.mCell);
-            if (cell == nullptr)
-            {
-                out() << std::format("  {:<28} no cell called \"{}\"\n", view.mName, view.mCell);
-                return 1;
-            }
-
-            StagedWorld staged(world, *cell, request.mFrame.describeStaging(view), request.mFrame.mActors);
-
-            if (staged.empty())
-            {
-                out() << std::format("  {:<28} the region placed no geometry\n", view.mName);
-                return 1;
-            }
-
-            // **A place staged into a shared renderer is a discontinuity**, and the exposure is what
-            // would otherwise carry across one: it adapts toward its measurement over seconds rather
-            // than taking it, so a room drawn after a noon exterior opens at the exterior's
-            // brightness. `Rtx::Renderer::resetHistory` says why only a caller can know this.
-            renderer->resetHistory();
-
-            // **Staged and not streamed**: this renders the region once, so every composite has to be
-            // finished here rather than drained over frames that will never come.
-            Rtx::SceneUploader uploader;
-            uploader.setStaged(true);
-            uploader.hand(*renderer, Rtx::sWorld, staged.getScene(), world.getImageManager(), Rtx::SeaState{});
-
-            Framing framing = Framing::lookingFrom(staged.getPlacement());
-            framing.mFieldOfView = request.mFrame.mFieldOfView;
-            framing.mLighting = staged.getLighting();
-            framing.mDelight = request.mFrame.mDelight;
-            framing.mShowAlbedo = request.mFrame.mShowAlbedo;
-
-            // **One frame at seed zero.** Everything a repeat buys is a timing figure, and this
-            // command measures nothing; a second frame would only give the sampler somewhere else
-            // to be.
-            framing.mFrame = 0;
-
-            renderer->renderFrame(makeFrameConstants(framing, extents),
-                Rtx::FrameOptions{ .mSinceLast = Rtx::sStepSeconds,
-                    .mExposureBias = framing.mLighting.mDaylight.mExposureBias,
-                    .mFilter = request.mFrame.mFilter,
-                    .mExposure = request.mFrame.mExposure });
-
-            std::vector<std::uint8_t> pixels;
-            renderer->readPixels(pixels);
-            Rtx::writePng(frameFile(request.mOut, view.mName), extents.mOutputWidth, extents.mOutputHeight, pixels);
-
-            if (request.mAgainst.empty())
-                continue;
-
-            const Rtx::PngImage reference = Rtx::readPng(frameFile(request.mAgainst, view.mName));
-            const Rtx::PngImage taken{ extents.mOutputWidth, extents.mOutputHeight, std::move(pixels) };
-            const FrameDifference difference = compareFrames(reference, taken);
-
-            unmatched += difference.mMismatched ? 1u : 0u;
-            differing += !difference.mMismatched && !difference.same() ? 1u : 0u;
+            const Rtx::PngImage drawn = Rtx::readPng(frameFile(wrote, view.mName));
+            const Rtx::PngImage reference = Rtx::readPng(frameFile(against, view.mName));
+            const FrameDifference difference = compareFrames(reference, drawn);
 
             out() << std::format("  {:<28} {}\n", view.mName, describe(difference));
+
+            if (difference.mMismatched)
+                ++unmatched;
+            else if (!difference.same())
+                ++differing;
         }
 
-        out() << std::format("wrote {} to {}\n", request.mViews.size() == 1 ? "1 frame" : "frames",
-            Files::pathToUnicodeString(request.mOut));
-
-        if (request.mAgainst.empty())
+        if (differing == 0 && unmatched == 0)
+        {
+            out() << "  every view is the same picture\n";
             return 0;
+        }
 
-        out() << std::format("{} {}, {} differ, {} without a reference\n", request.mViews.size(),
-            request.mViews.size() == 1 ? "view" : "views", differing, unmatched);
+        out() << std::format(
+            "  {} of {} views moved, {} had nothing to compare against\n", differing, views.size(), unmatched);
 
-        return differing + unmatched > 0 ? 1 : 0;
+        return 1;
     }
 }

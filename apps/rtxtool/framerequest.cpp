@@ -16,6 +16,7 @@ namespace RtxTool
             .mPreset = mPreset,
             .mWindow = window,
             .mValidation = validation,
+            .mCountCrossings = mCountCrossings,
             .mReorder = mReorder,
         };
     }

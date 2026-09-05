@@ -1,13 +1,11 @@
 #include "framecapture.hpp"
 
 #include <cstring>
-#include <format>
 
 #include <osg/Image>
 
 #include <components/debug/debuglog.hpp>
 #include <components/rtx/frameimage.hpp>
-#include <components/rtx/png.hpp>
 #include <components/rtx/renderer.hpp>
 
 namespace MWRender
@@ -71,37 +69,6 @@ namespace MWRender
         // Straight to the writer rather than through a capture handler: the handler's job is to get
         // a frame off the graphics context, and this frame is already off it.
         (*mWriter)(*taken, 0);
-    }
-
-    void FrameCapture::keep(Rtx::Renderer& renderer)
-    {
-        if (mKeepLeft == 0)
-            return;
-
-        --mKeepLeft;
-
-        const Rtx::FrameExtents extents = renderer.getExtents();
-        renderer.readPixels(mPixels);
-
-        const std::filesystem::path file = mKeepAt.string() + std::format("-{:04}.png", sKeepAtMost - mKeepLeft - 1);
-
-        try
-        {
-            Rtx::writePng(file, extents.mOutputWidth, extents.mOutputHeight, mPixels);
-        }
-        catch (const std::exception& failed)
-        {
-            mKeepLeft = 0;
-            Log(Debug::Error) << "Ray tracing could not write " << file << ": " << failed.what();
-        }
-    }
-
-    void FrameCapture::keepFrames(const std::filesystem::path& where)
-    {
-        mKeepAt = where;
-        mKeepLeft = sKeepAtMost;
-        Log(Debug::Info) << "Ray tracing will write its first " << mKeepLeft << " frames to " << mKeepAt
-                         << "-0000.png and on";
     }
 
     void FrameCapture::stop()

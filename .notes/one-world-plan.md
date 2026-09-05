@@ -403,9 +403,35 @@ sequence. Walking the sequence by the stop's own count made them equal.
 sends no event for a window that was never shown, so the fallback the plan held in reserve is not
 needed.
 
+### Step 2, complete
+
+`shot`, `bench` and `verify` all drive a real game. One `Stop` is built from a view file entry, one
+`Rtx::BenchSpec` says how long every stop runs, and one report prints them.
+
+| gone | replaced by |
+| --- | --- |
+| `apps/openmw/mwrender/rtx/bench.*` | `MWRender::Session` |
+| `apps/rtxtool/bench.cpp`, `bench.hpp` | the same |
+| `apps/rtxtool/bench.sh` | `bench --load-savegame=<file>` |
+| `OPENMW_RTX_BENCH`, and the build option that gated it | `[RTX] session` |
+| `OPENMW_RTX_SHOT`, and the frame-keeping half of `FrameCapture` | `shot --out` |
+| `--map-tile` | the game's own compass, which traces one every frame |
+
+**Every knob the two hosts disagreed about is a setting now.** `delight`, `show albedo`, `filter`,
+`exposure`, `jitter`, `count crossings` and `reorder` join `upscale` and `preset` under `[RTX]`. The
+game used to hard-code each of them and the harness used to take each as an option, so a picture
+taken by one and a frame drawn by the other were traced by two differently configured renderers.
+The command line still names them; what it does now is write the setting the renderer reads.
+
+**The validation layers are the exception, and they ride on the request.**
+`Rtx::sValidationByDefault` says why they must not be a setting: a developer's diagnostic in a
+player's configuration file is a build whose quoted numbers were measured through the layers because
+somebody left a line behind. So a launcher states them for the one run it is making, and a played
+session has only the build to go on.
+
 ### What is left
 
-- Time the hosted `shot` in release against the 4.4 s the staged one took, and close the gate.
-- Steps 2, 3 and 4 as written above. The session already carries most of step 2: stops, a schedule,
-  a route, a weather turn, hashes, the JSON record and the report. What `bench` and `verify` still
-  need is the request built from a view list rather than from one view.
+- Time the hosted `shot` in release against the 4.4 s the staged one took, and close the spike gate.
+- Step 3: `doll`, `map`, `textures`, `scene` and `view` on the session, then the harness world goes
+  and the fixture tests become `check`.
+- Step 4: the guidance file and the two run scripts.

@@ -14,7 +14,6 @@
 #include <components/rtx/frameimage.hpp>
 
 #include "../renderer.hpp"
-#include "bench.hpp"
 #include "framecapture.hpp"
 #include "session.hpp"
 #include "worldmirror.hpp"
@@ -151,7 +150,7 @@ namespace MWRender
         osg::Timer_t getStartTick() const override { return mStartTick; }
 
         /// The OSG stats overlay is the rasterizer's instrumentation and the rasterizer draws it.
-        /// What this renderer has instead is its own frame times and `OPENMW_RTX_BENCH`.
+        /// What this renderer has instead is its own frame times and `MWRender::Session`.
         void installStatsOverlay(const VFS::Manager& vfs, bool toFile) override {}
         void reportStats(unsigned frameNumber, std::ostream& stream) const override {}
 
@@ -232,9 +231,7 @@ namespace MWRender
         ///
         /// `walkMs` is what the mirror took, carried through rather than measured here: the
         /// benchmark's row is closed at the end of the trace and the walk is over before it starts.
-        ///
-        /// @return whether anything was written into the target.
-        bool traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs);
+        void traceWorld(const SceneFrame& frame, const Rtx::ExtractionStats& found, double walkMs);
 
         /// Hands MyGUI's triangles to the renderer, where there is a GUI up at all.
         void drawGui();
@@ -276,7 +273,7 @@ namespace MWRender
 
         MyGUIPlatform::Picture mFrozenFrame{ "frozen frame" };
 
-        /// Screenshots, savegame thumbnails and the frames `OPENMW_RTX_SHOT` writes.
+        /// Screenshots, savegame thumbnails and the frozen frame a loading screen puts up.
         ///
         /// The screenshot writer inside it is the same one the OpenGL renderer uses, so the two
         /// write the same file the same way.
@@ -326,9 +323,6 @@ namespace MWRender
         double mSpentMs = 0.0;
         std::uint32_t mTimed = 0;
 
-        /// Times a run of frames when asked to, and is not compiled at all when it cannot be.
-        Bench mBench;
-
         /// The run a launcher installed before the engine started, or null for an ordinary
         /// session. `MWRender::Session` says what one is and why it lives here.
         std::unique_ptr<Session> mSession;
@@ -337,6 +331,18 @@ namespace MWRender
         /// renderer time itself. `[RTX] fixed step`, read once because it cannot change while a
         /// run is being made.
         std::optional<float> mFixedStep;
+
+        /// The knobs a measurement turns, out of `[RTX]` and read once. They are what the harness
+        /// used to take as command-line options and this used to hard-code, which is two renderers
+        /// configured two ways drawing what was meant to be one picture.
+        float mDelight = 1.0f;
+        bool mShowAlbedo = false;
+        bool mFilter = true;
+        bool mJitter = false;
+
+        /// What to scale the frame by before the display curve, or nothing to measure it off the
+        /// frame. A picture wants it measured, and a reference wants it held still.
+        std::optional<float> mExposure;
 
         /// When the last frame was handed over, so what `Bench` measures is the whole frame and not
         /// this renderer's slice of it.
