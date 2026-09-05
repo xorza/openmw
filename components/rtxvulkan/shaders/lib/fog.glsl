@@ -261,6 +261,10 @@ struct FogSources
     /// **A moon casts a shaft too, and at night it is the only thing that can.** A headland is not a
     /// penumbra: air standing behind one gets no moonlight at all, and without the test the march
     /// lit the mist in front of a cliff from a moon the cliff was covering.
+    ///
+    /// **The ray and nothing else.** What the pair delivers is `moonsInAir` either way — this said
+    /// whether the moons lit the air at all, so a moon whose share of the sky's term fell under
+    /// `FOG_SHAFT_FLOOR` lost its whole contribution rather than only its shadow.
     bool mMoonlit;
 
     /// Whichever of the two delivers more, which is what that one ray is aimed at.
@@ -297,7 +301,8 @@ float sunInAir(float extinction, float visible)
 /// **Each on its own slant and not the sun's**, which `fogBeamDepth` is where it matters: a moon
 /// standing high crosses far less air than one on the rim.
 ///
-/// @param lunar what a shadow ray found between the point and the pair, which share one.
+/// @param lunar what a shadow ray found between the point and the pair, which share one, and one
+///        where `FogSources::mMoonlit` said the pair was not worth casting it.
 vec3 moonsInAir(float extinction, FogSources sources, float lunar)
 {
     return lunar
@@ -696,7 +701,7 @@ vec4 fogAlong(uvec2 pixel, vec3 origin, vec3 direction, float distance, float of
     //
     // **Here rather than in each element, because only one of the three could tell.**
     // `fogExtinctionAt` gives nothing under the surface and `fogColumn` integrates nothing there, so
-    // the field and the closed form were already right. The volume is not a field read along the
+    // the field and the closed form the sprites and the shells read were already right. The volume is not a field read along the
     // pixel's ray but an accumulation along its column's, and the slices past where that column met
     // the surface hold whatever they held when the eye was above it — `fogintegrate.comp` says why
     // it keeps them. A pixel reaching past its own column's surface read those: along the waterline,
