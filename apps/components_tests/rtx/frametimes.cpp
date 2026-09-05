@@ -132,6 +132,45 @@ namespace Rtx
             EXPECT_EQ(describeZones(zones), "  gpu ms    trace 4.00  micromap 3.00 (10.00 on 2 of 10)\n");
         }
 
+        /// A pass recorded in batches opens its zone several times over one frame, and the frame is
+        /// what it is charged to.
+        ///
+        /// **A row longer than the run is what this stops.** The structure builds are recorded per
+        /// batch, so a crossing frame opened `tlas` twice — and the report then said the zone ran on
+        /// 620 frames of a 601-frame run.
+        TEST(RtxGpuBreakdownTest, aZoneOpenedTwiceInAFrameIsOneSampleOfIt)
+        {
+            GpuBreakdown breakdown;
+
+            // Two frames. The first builds in two batches of 3 ms and 5 ms, the second in one of
+            // 4 ms, and `trace` runs once in each.
+            const std::vector<GpuSpan> batched{
+                GpuSpan{ .mName = "tlas", .mMs = 3.0 },
+                GpuSpan{ .mName = "trace", .mMs = 2.0 },
+                GpuSpan{ .mName = "tlas", .mMs = 5.0 },
+            };
+            const std::vector<GpuSpan> once{
+                GpuSpan{ .mName = "tlas", .mMs = 4.0 },
+                GpuSpan{ .mName = "trace", .mMs = 2.0 },
+            };
+
+            breakdown.add(batched);
+            breakdown.add(once);
+
+            const std::span<const GpuZone> zones = breakdown.summariseZones();
+            ASSERT_EQ(zones.size(), 2u);
+
+            EXPECT_EQ(zones[0].mName, "tlas");
+            EXPECT_EQ(zones[0].mFrames, 2u) << "two frames ran it, whatever the batches";
+            EXPECT_EQ(zones[0].mOfFrames, 2u);
+            EXPECT_DOUBLE_EQ(zones[0].mShareMs, 6.0) << "12 ms over two frames";
+            EXPECT_DOUBLE_EQ(zones[0].mTimes.mWorst, 8.0) << "the frame that built twice cost the pair";
+            EXPECT_DOUBLE_EQ(zones[0].mTimes.mBest, 4.0);
+
+            EXPECT_EQ(zones[1].mName, "trace");
+            EXPECT_DOUBLE_EQ(zones[1].mShareMs, 2.0);
+        }
+
         /// A frame that reported no zone at all still counts against every share.
         TEST(RtxGpuBreakdownTest, aFrameWithNoZonesIsStillAFrame)
         {

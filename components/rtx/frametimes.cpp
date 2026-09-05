@@ -77,6 +77,7 @@ namespace Rtx
             {
                 mNames.emplace_back(span.mName);
                 mTimes.emplace_back();
+                mSeen.push_back(0u);
 
                 // **Room for the run taken on the frame the zone first appears.** A row that grows
                 // does it inside a frame it is timing, and what a growth costs is a copy of every
@@ -84,7 +85,18 @@ namespace Rtx
                 mTimes.back().reserve(sExpectedFrames);
             }
 
-            mTimes[at].push_back(span.mMs);
+            // **One sample a frame, whatever a frame opened the zone.** A pass recorded in
+            // batches — the structure builds are — opens its zone several times over one frame, and
+            // a row longer than the run then reported a zone as running on more frames than there
+            // were: `tlas 0.24 on 620 of 601`. What a frame's budget is spent on is what the frame
+            // spent there, so the spans of one frame are that frame's sample.
+            if (mSeen[at] == mFrames)
+                mTimes[at].back() += span.mMs;
+            else
+            {
+                mTimes[at].push_back(span.mMs);
+                mSeen[at] = mFrames;
+            }
         }
     }
 

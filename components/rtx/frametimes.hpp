@@ -143,7 +143,8 @@ namespace Rtx
     {
     public:
         /// Takes one frame's zones. The names are the backend's literals and are copied on first
-        /// sight only, so a long run pushes a double per zone and nothing else.
+        /// sight only, so a long run pushes a double per zone and nothing else, and a zone opened
+        /// more than once in the frame is summed into that frame's own sample.
         ///
         /// **One call per measured frame, whether or not that frame reported a zone.** The count
         /// it keeps is the denominator every share below is taken over, so a frame handed to the
@@ -160,8 +161,13 @@ namespace Rtx
         /// The backend's own literals — see `GpuSpan::mName` for why a view over one is kept.
         std::vector<std::string_view> mNames;
 
-        /// One row of samples per name, indexed alongside `mNames`.
+        /// One row of samples per name, indexed alongside `mNames`: one sample a frame, never one
+        /// a span.
         std::vector<std::vector<double>> mTimes;
+
+        /// Which frame each name was last given a sample on, so the spans of one frame land in one
+        /// of them. Nought for a name nothing has reported yet, which is an index no frame has.
+        std::vector<std::uint32_t> mSeen;
 
         /// Frames `add` was called for, which is what a zone's row is short against.
         std::uint32_t mFrames = 0;

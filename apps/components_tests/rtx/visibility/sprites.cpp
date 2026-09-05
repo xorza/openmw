@@ -14,7 +14,7 @@ namespace Rtx::Testing
 {
     namespace
     {
-        /// A sprite is shadowed like anything else, by the sun and by the sky over it.
+        /// A sprite is shadowed like anything else, by whatever stands over it.
         ///
         /// **A particle has no normal and it still has an up**, which is what the layer was missing:
         /// what a point sees of the sky is a question about the point. So rain under a bridge stops
@@ -30,6 +30,15 @@ namespace Rtx::Testing
         ///
         /// A lid four hundred units over the sprite and nothing else in the scene, and each source
         /// in turn: what lights the sprite in the open stops lighting it under the lid.
+        ///
+        /// **The two that arrive from a direction, and not the fill.** A puff has no side, so what
+        /// it sees of an ambient is drawn over the whole sphere — and a lid over a sprite with
+        /// nothing under it leaves the lower half of that sphere open, so the honest answer there is
+        /// half and not nought. It is also one draw a froxel a frame, so a single frame of it is a
+        /// coin: this test read whatever the seeds in `random.glsl` happened to make that coin say,
+        /// and moving them by three took it from under a twentieth of the open value to nine tenths
+        /// of it. What the fill owes to what stands near is measured exactly by the test below, in
+        /// the room the reach makes it a question about.
         TEST_F(RtxVisibilityTest, aSpriteIsShadowedByWhatStandsOverIt)
         {
             constexpr std::uint32_t size = 33;
@@ -42,7 +51,6 @@ namespace Rtx::Testing
             enum class Source
             {
                 Sun,
-                Sky,
                 Lamp,
             };
 
@@ -57,7 +65,7 @@ namespace Rtx::Testing
                     scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                         .mMesh = scene.addMesh(sheetAt(4000.0f, 600.0f), {}, {}, sQuadIndices) });
 
-                // Over the lid, so the same one that takes the sun and the sky takes this too.
+                // Over the lid, so the same sheet that takes the sun takes this too.
                 if (source == Source::Lamp)
                     scene.addLight(Light{ .mPosition = osg::Vec3f(0.0f, 0.0f, 800.0f),
                         .mIntensity = osg::Vec3f(4.0e5f, 4.0e5f, 4.0e5f),
@@ -71,7 +79,7 @@ namespace Rtx::Testing
                 camera.mAmbientFromSky = 1.0f;
                 camera.mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f);
                 camera.mSunIrradiance = source == Source::Sun ? osg::Vec3f(4.0f, 4.0f, 4.0f) : osg::Vec3f();
-                camera.mAmbient = source == Source::Sky ? osg::Vec3f(0.5f, 0.5f, 0.5f) : osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
 
                 std::vector<std::uint8_t> pixels;
                 countHits(scene, puff, camera, size, pixels);
@@ -79,12 +87,15 @@ namespace Rtx::Testing
                 return mRadiance[centre];
             };
 
-            for (const Source source : { Source::Sun, Source::Sky, Source::Lamp })
+            // **Nought and not merely less**, which each of the two can be held to: a shadow ray at
+            // the sun is one ray with no draw in it, and the lamp stands over the lid so every point
+            // of it a ray is aimed at is behind the same sheet.
+            for (const Source source : { Source::Sun, Source::Lamp })
             {
                 const float open = sprited(false, source);
                 ASSERT_GT(open, 0.01f) << "the source did not reach the sprite at all";
 
-                EXPECT_LT(sprited(true, source), 0.05f * open) << "a lid did not stop it";
+                EXPECT_EQ(sprited(true, source), 0.0f) << "a lid did not stop it";
             }
         }
 
