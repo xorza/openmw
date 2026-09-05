@@ -58,7 +58,7 @@ namespace Rtx
     {
         checkVk(vkEnumerateInstanceVersion(&mApiVersion), "vkEnumerateInstanceVersion");
         if (mApiVersion < sApiVersion)
-            throw Error("the Vulkan loader offers " + versionString(mApiVersion) + ", and this renderer is written "
+            throw Unsupported("the Vulkan loader offers " + versionString(mApiVersion) + ", and this renderer is written "
                 "against " + versionString(sApiVersion));
 
         std::vector<const char*> extensions(options.mSurfaceExtensions);
@@ -210,7 +210,7 @@ namespace Rtx
             .ppEnabledExtensionNames = extensions.data(),
         };
 
-        checkVk(vkCreateInstance(&createInfo, nullptr, &mHandle), "vkCreateInstance");
+        checkVkSupport(vkCreateInstance(&createInfo, nullptr, &mHandle), "vkCreateInstance");
 
         // **A constructor that throws runs no destructor**, and this throw does not take the process
         // with it: `createVulkanRenderer` catches it and hands the caller a reason instead. So
@@ -226,7 +226,7 @@ namespace Rtx
                 const auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
                     vkGetInstanceProcAddr(mHandle, "vkCreateDebugUtilsMessengerEXT"));
                 if (create == nullptr)
-                    throw Error("the validation layer is loaded but vkCreateDebugUtilsMessengerEXT is missing");
+                    throw Unsupported("the validation layer is loaded but vkCreateDebugUtilsMessengerEXT is missing");
 
                 checkVk(create(mHandle, &messengerInfo, nullptr, &mMessenger), "vkCreateDebugUtilsMessengerEXT");
             }

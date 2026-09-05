@@ -159,7 +159,7 @@ namespace Rtx
         std::uint32_t count = 0;
         checkVk(vkEnumeratePhysicalDevices(instance, &count, nullptr), "vkEnumeratePhysicalDevices");
         if (count == 0)
-            throw Error("no Vulkan device is installed");
+            throw Unsupported("no Vulkan device is installed");
 
         std::vector<VkPhysicalDevice> handles(count);
         checkVk(vkEnumeratePhysicalDevices(instance, &count, handles.data()), "vkEnumeratePhysicalDevices");
@@ -203,7 +203,7 @@ namespace Rtx
         }
 
         if (best.mHandle == VK_NULL_HANDLE)
-            throw Error("no Vulkan device meets this renderer's requirements:" + rejections);
+            throw Unsupported("no Vulkan device meets this renderer's requirements:" + rejections);
 
         return best;
     }

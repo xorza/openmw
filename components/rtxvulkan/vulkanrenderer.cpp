@@ -195,11 +195,11 @@ namespace Rtx
 #ifdef OPENMW_RTX_DLSS
             mNgx = std::make_unique<Dlss>(mDevice, mInstance.getHandle());
             if (!mNgx->isAvailable())
-                throw Error("DLSS Ray Reconstruction was asked for and " + mNgx->getObstacle());
+                throw Unsupported("DLSS Ray Reconstruction was asked for and " + mNgx->getObstacle());
 #else
             // **Named rather than quietly ignored.** A build that cannot upscale and renders at the
             // output size anyway is one whose frame times mean something else entirely.
-            throw Error(
+            throw Unsupported(
                 "upscaling was asked for and this build has no DLSS; configure with "
                 "-DOPENMW_RTX_DLSS=ON");
 #endif
@@ -1462,16 +1462,20 @@ namespace Rtx
 
     std::unique_ptr<Renderer> createVulkanRenderer(const RendererOptions& options, std::string& reason)
     {
-        // **Where this backend's exceptions stop.** Everything below throws `Error` on a machine that
-        // cannot run it — no loader, no driver, a device that does not qualify — and every caller
-        // wants that as an answer rather than as an unwind.
+        // **Where a machine that cannot run this backend stops, and nothing else.** No loader, no
+        // driver, a device that does not qualify, no DLSS: every caller wants those as an answer
+        // rather than as an unwind, and `Unsupported` is what says a failure is one of them.
+        //
+        // **A contract is let out.** `Error` on its own means this code broke one — a format with no
+        // recorded texel size, a shader the build did not write — and the harness turned every one
+        // of those into a skip, so a GPU suite could report success after it ran nothing.
         try
         {
             return std::make_unique<VulkanRenderer>(options);
         }
-        catch (const Error& error)
+        catch (const Unsupported& obstacle)
         {
-            reason = error.what();
+            reason = obstacle.what();
             return nullptr;
         }
     }

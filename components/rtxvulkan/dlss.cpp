@@ -73,7 +73,7 @@ namespace Rtx
 
         if (NVSDK_NGX_VULKAN_RequiredExtensions(&instanceCount, &instance, &deviceCount, &device)
             != NVSDK_NGX_Result_Success)
-            throw Error("NGX would not say which instance extensions it needs");
+            throw Unsupported("NGX would not say which instance extensions it needs");
 
         return std::span<const char* const>(instance, instanceCount);
     }
@@ -87,7 +87,7 @@ namespace Rtx
 
         if (NVSDK_NGX_VULKAN_RequiredExtensions(&instanceCount, &instance, &deviceCount, &device)
             != NVSDK_NGX_Result_Success)
-            throw Error("NGX would not say which device extensions it needs");
+            throw Unsupported("NGX would not say which device extensions it needs");
 
         return std::span<const char* const>(device, deviceCount);
     }
@@ -137,7 +137,7 @@ namespace Rtx
             vkGetInstanceProcAddr, vkGetDeviceProcAddr, &common, NVSDK_NGX_Version_API);
 
         if (NVSDK_NGX_FAILED(started))
-            throw Error("NGX would not start: " + describeNgxResult(started));
+            throw Unsupported("NGX would not start: " + describeNgxResult(started));
 
         const NVSDK_NGX_Result asked = NVSDK_NGX_VULKAN_GetCapabilityParameters(&mCapabilities);
         if (NVSDK_NGX_FAILED(asked) || mCapabilities == nullptr)
@@ -145,7 +145,7 @@ namespace Rtx
             // A constructor that throws gets no destructor, and NGX is up: leaving it that way
             // would refuse every later attempt for a reason that is no longer true.
             NVSDK_NGX_VULKAN_Shutdown1(mDevice);
-            throw Error("NGX started and would not say what it can do: " + describeNgxResult(asked));
+            throw Unsupported("NGX started and would not say what it can do: " + describeNgxResult(asked));
         }
 
         int available = 0;
@@ -184,10 +184,10 @@ namespace Rtx
             ngxQualityOf(upscale), &width, &height, &mostWide, &mostTall, &leastWide, &leastTall, &sharpness);
 
         if (NVSDK_NGX_FAILED(asked))
-            throw Error("DLSS would not say what to render at: " + describeNgxResult(asked));
+            throw Unsupported("DLSS would not say what to render at: " + describeNgxResult(asked));
 
         if (width == 0 || height == 0)
-            throw Error("DLSS answered with an empty render size");
+            throw Unsupported("DLSS answered with an empty render size");
 
         return VkExtent2D{ width, height };
     }

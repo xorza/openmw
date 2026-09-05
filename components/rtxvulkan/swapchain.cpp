@@ -24,7 +24,7 @@ namespace Rtx
                 "vkGetPhysicalDeviceSurfaceFormatsKHR");
 
             if (formats.empty())
-                throw Error("the surface offers no formats");
+                throw Unsupported("the surface offers no formats");
 
             // A plain unsigned-normalised format, because the blit that fills it converts between
             // formats and an sRGB target would encode an image that `TonePass` has already encoded:
@@ -108,7 +108,7 @@ namespace Rtx
                     device.getPhysicalDevice().getHandle(), device.getQueueFamily(), surface, &supported),
             "vkGetPhysicalDeviceSurfaceSupportKHR");
         if (supported != VK_TRUE)
-            throw Error("the queue this renderer submits on cannot present to this surface");
+            throw Unsupported("the queue this renderer submits on cannot present to this surface");
 
         mFormat = chooseFormat(device.getPhysicalDevice().getHandle(), surface);
         mPresentMode = presentModeFor(device.getPhysicalDevice().getHandle(), surface, mVerticalSync);

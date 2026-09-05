@@ -23,7 +23,7 @@ namespace Rtx
                 return i;
         }
 
-        throw Error("no memory type has properties " + std::to_string(properties) + " among the "
+        throw Unsupported("no memory type has properties " + std::to_string(properties) + " among the "
             + std::to_string(memory.memoryTypeCount) + " this device offers");
     }
 

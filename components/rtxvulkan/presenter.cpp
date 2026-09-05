@@ -49,11 +49,11 @@ namespace Rtx
     {
         unsigned int count = 0;
         if (SDL_Vulkan_GetInstanceExtensions(window, &count, nullptr) == SDL_FALSE)
-            throw Error(std::string("SDL would not count this window's instance extensions: ") + SDL_GetError());
+            throw Unsupported(std::string("SDL would not count this window's instance extensions: ") + SDL_GetError());
 
         std::vector<const char*> names(count);
         if (SDL_Vulkan_GetInstanceExtensions(window, &count, names.data()) == SDL_FALSE)
-            throw Error(std::string("SDL would not name this window's instance extensions: ") + SDL_GetError());
+            throw Unsupported(std::string("SDL would not name this window's instance extensions: ") + SDL_GetError());
 
         return names;
     }
@@ -65,7 +65,7 @@ namespace Rtx
         try
         {
             if (SDL_Vulkan_CreateSurface(window, instance, &mSurface) == SDL_FALSE)
-                throw Error(std::string("SDL would not make a Vulkan surface: ") + SDL_GetError());
+                throw Unsupported(std::string("SDL would not make a Vulkan surface: ") + SDL_GetError());
 
             mSwapchain = std::make_unique<Swapchain>(device, mSurface, drawableSize(window));
             mPool = std::make_unique<CommandPool>(device);

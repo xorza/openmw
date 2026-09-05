@@ -26,6 +26,14 @@ namespace Rtx
     /// `Device::describeFault`, which is the one moment that question may be asked.
     void checkVk(const Device& device, VkResult result, const char* call);
 
+    /// The same as the first, for a bring-up call whose failure means this machine cannot run the
+    /// backend: making the instance, or opening the device.
+    ///
+    /// **Throws `Unsupported`, which is the whole difference.** A loader with no driver behind it
+    /// answers `vkCreateInstance` with a failure, and that is a machine to skip rather than a fault
+    /// to report — `Rtx::Unsupported` says which of the two a caller is looking at.
+    void checkVkSupport(VkResult result, const char* call);
+
     /// How long a wait on the device may take before it is called a failure.
     ///
     /// **Generous, because this is a canary and not a budget.** No honest submit in this renderer

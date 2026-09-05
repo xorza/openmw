@@ -106,7 +106,7 @@ namespace Rtx
         const std::uint32_t finest
             = device.getPhysicalDevice().getProperties().mOpacityMicromap.maxOpacity4StateSubdivisionLevel;
         if (finest < Shaders::MICROMAP_LEVEL_MAX)
-            throw Error("the device cuts a four-state micromap triangle to level " + std::to_string(finest)
+            throw Unsupported("the device cuts a four-state micromap triangle to level " + std::to_string(finest)
                 + " at most, and the bake wants " + std::to_string(Shaders::MICROMAP_LEVEL_MAX));
     }
 

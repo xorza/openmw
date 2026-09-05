@@ -151,9 +151,9 @@ namespace Rtx::Testing
         {
             const Instance probe{ InstanceOptions{} };
         }
-        catch (const Error& error)
+        catch (const Unsupported& obstacle)
         {
-            return std::string("no Vulkan driver is installed: ") + error.what();
+            return std::string("no Vulkan driver is installed: ") + obstacle.what();
         }
 
         return {};

@@ -98,6 +98,14 @@ namespace Rtx
         throw Error(describeFailure(result, call));
     }
 
+    void checkVkSupport(VkResult result, const char* call)
+    {
+        if (result == VK_SUCCESS)
+            return;
+
+        throw Unsupported(describeFailure(result, call));
+    }
+
     void checkVk(const Device& device, VkResult result, const char* call)
     {
         if (result == VK_SUCCESS)

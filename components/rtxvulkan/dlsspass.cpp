@@ -74,7 +74,7 @@ namespace Rtx
     {
         const NVSDK_NGX_Result allocated = NVSDK_NGX_VULKAN_AllocateParameters(&mParameters);
         if (NVSDK_NGX_FAILED(allocated) || mParameters == nullptr)
-            throw Error("NGX would not allocate a parameter map: " + describeNgxResult(allocated));
+            throw Unsupported("NGX would not allocate a parameter map: " + describeNgxResult(allocated));
 
         // **Set on the map before the feature is built, because it is read while it is built.** The
         // create parameters carry no preset field; the hint is one of the values NGX picks up off
@@ -111,7 +111,7 @@ namespace Rtx
             // A constructor that throws gets no destructor, and the map is already NGX's to free.
             NVSDK_NGX_VULKAN_DestroyParameters(mParameters);
             mParameters = nullptr;
-            throw Error("NGX would not build Ray Reconstruction: " + describeNgxResult(built));
+            throw Unsupported("NGX would not build Ray Reconstruction: " + describeNgxResult(built));
         }
     }
 
