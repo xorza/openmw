@@ -384,15 +384,11 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
                 // under the band is `fogColumn`'s and is taken exactly, per sprite.
                 band = fogCoverageAt(origin + direction * (0.5 * along), max(along, 1.0));
 
-                // **Two zero axes is a sprite that faces the eye**, which is nearly every emitter in
-                // the game; asked once for the emitter rather than once for each of its sprites.
-                // `fixed` is a reserved word in GLSL, which is why this is not called one.
-                oriented
-                    = dot(emitter.mAcross, emitter.mAcross) > 0.0 && dot(emitter.mUpward, emitter.mUpward) > 0.0;
-
-                // How wide the streak is against how long, which is the shape the content authored
-                // and the one thing kept from its across axis. Asked here for the same reason.
-                width = oriented ? length(emitter.mAcross) : 0.0;
+                // **A width of nothing is a sprite that faces the eye**, which is nearly every
+                // emitter in the game; asked once for the emitter rather than once for each of its
+                // sprites. `fixed` is a reserved word in GLSL, which is why this is not called one.
+                width = emitter.mWidth;
+                oriented = width > 0.0;
 
                 // The texture's own extent, which every sprite of this emitter shares. Only the
                 // wider axis reaches the level below.
@@ -421,26 +417,27 @@ PuffLayer spritesAlong(uvec2 pixel, vec3 origin, vec3 direction, float limit)
             // **A quad that hangs in the world**, so the ray meets a plane rather than a ball. A
             // rain streak is a thin thing, and where it meets a wall is where the drop does.
             //
-            // **The axis it hangs on is the content's; which way its width faces is not.**
-            // `osgParticle` uses both authored axes untransformed for a `FIXED` system because
-            // a rasterizer has to commit the quad to some plane, and Morrowind's rain commits
+            // **The axis it hangs on is the sprite's; which way its width faces is not.**
+            // `osgParticle` commits a `FIXED` system's quad to the plane its two axes span,
+            // because a rasterizer has to commit it to some plane, and Morrowind's rain commits
             // it to the world's X–Z one — so a drop looked at from along X is a polygon seen
             // edge-on and thins away to nothing, and the same storm reads three times heavier
             // facing north than facing east. That is a fact about drawing quads rather than
             // about rain, and it is the sort of thing rays are here to stop answering with.
             //
-            // So the streak's axis is kept exactly as authored — its length, its fall, the lean
-            // the wind gave it — and only the width is swung about that axis to meet the ray.
-            // Seen face-on, which is where the content was authored and judged, nothing moves.
-            const vec3 axis = emitter.mUpward;
+            // So the streak's axis is kept exactly as the particle carries it — its length, its
+            // fall, the lean the wind gave it — and only the width is swung about that axis to
+            // meet the ray. Seen face-on, where the content was authored and judged, nothing moves.
+            const vec3 axis = sprite.mAxis;
             const vec3 swung = cross(axis, direction);
             const float swing = length(swung);
 
-            // Looking straight down the streak's own axis, where no swing presents any width.
-            // There is nothing to see from there either, so the authored width stands in.
-            const vec3 side = swing > 1.0e-4 ? swung * (width / swing) : emitter.mAcross;
+            // Looking straight down the streak's own axis, where no swing presents any width: the
+            // quad is edge-on to this ray and there is nothing of it to see.
+            if (swing <= 1.0e-4)
+                continue;
 
-            const vec3 quadAcross = side * sprite.mRadius;
+            const vec3 quadAcross = swung * (width * sprite.mRadius / swing);
             const vec3 quadUpward = axis * sprite.mRadius;
             const vec3 normal = cross(quadAcross, quadUpward);
 

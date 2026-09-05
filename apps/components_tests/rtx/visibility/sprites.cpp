@@ -273,6 +273,92 @@ namespace Rtx::Testing
                 << "two screen rather than sum";
         }
 
+        /// A streak hangs on the axis its own particle carries, and the trace draws it leaning.
+        ///
+        /// **The axis is the sprite's and not the emitter's**, because `osgParticle` turns a quad by
+        /// the angle the particle holds and `Weather::RainShooter` leans every drop it fires into
+        /// the wind that way. The march read the emitter's own authored axis for as long as there
+        /// was one, so a storm the rasterizer drew leaning fell straight down here.
+        ///
+        /// A streak 120 long and a quarter of that wide, seen face-on from 400 units off through
+        /// sixty degrees — so half the frame is `400 * tan 30 = 230.94` units at the sprite's own
+        /// plane. Standing upright it covers `|x| < 30` about a fall of `|z| < 120`; leant
+        /// forty-five degrees it covers that rectangle turned, its length running up and to the
+        /// left. A point eighty above the middle is inside the first and `80 * sin 45 = 56.6` from
+        /// the second's axis, which is well outside its thirty — and a point eighty up the leant
+        /// axis is the other way about.
+        ///
+        /// Additive, so what a pixel holds is the coverage alone and nothing has to light it.
+        TEST_F(RtxVisibilityTest, aStreakLeansWithTheAxisItsOwnParticleCarries)
+        {
+            constexpr std::uint32_t size = 65;
+            constexpr float radius = 120.0f;
+            constexpr float width = 0.25f;
+
+            constexpr std::array<std::uint8_t, 4> white{ 255, 255, 255, 255 };
+            const std::array<TextureData, 1> drop{ describeTexel(white) };
+
+            const auto drawn = [&](const osg::Vec3f& axis) {
+                SceneDesc scene;
+                const Index cut = scene.addTexture(VFS::Path::NormalizedView("sprite.dds"));
+                const std::array<Sprite, 1> sprites{ Sprite{
+                    .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = radius, .mAxis = axis, .mAlpha = 1.0f } };
+                scene.addEmitter(sprites, cut, true, width);
+
+                Shaders::VisibilityConstants camera = makeCamera(
+                    osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);
+                camera.mSkyHorizon = osg::Vec3f();
+                camera.mSkyZenith = osg::Vec3f();
+                camera.mAmbient = osg::Vec3f();
+                camera.mSunIrradiance = osg::Vec3f();
+
+                std::vector<std::uint8_t> pixels;
+                countHits(scene, drop, camera, size, pixels);
+
+                return mRadiance;
+            };
+
+            // Where a point of the sprite's own plane lands, as the first value of its pixel. The
+            // middle of pixel `n` sits at `(n + 0.5) / size * 2 - 1` of half the frame, and the
+            // frame's up is the screen's down.
+            constexpr float half = 230.9401f;
+            const auto pixelAt = [](float x, float z) {
+                const auto column = static_cast<std::uint32_t>(std::lround((x / half + 1.0f) * 0.5f * size - 0.5f));
+                const auto row = static_cast<std::uint32_t>(std::lround((-z / half + 1.0f) * 0.5f * size - 0.5f));
+
+                return (std::size_t{ row } * size + column) * 4;
+            };
+
+            constexpr float lean = 0.70710678f;
+            const std::size_t aboveTheMiddle = pixelAt(0.0f, 80.0f);
+            const std::size_t upTheLean = pixelAt(-80.0f * lean, 80.0f * lean);
+
+            const std::vector<float> upright = drawn(osg::Vec3f(0.0f, 0.0f, -1.0f));
+            const std::vector<float> leaning = drawn(osg::Vec3f(lean, 0.0f, -lean));
+
+            ASSERT_EQ(upright.size(), std::size_t{ size } * size * 4);
+
+            EXPECT_GT(upright[aboveTheMiddle], 0.01f) << "a streak standing up did not cover its own fall";
+            EXPECT_EQ(upright[upTheLean], 0.0f) << "a streak standing up covered the diagonal";
+
+            EXPECT_EQ(leaning[aboveTheMiddle], 0.0f) << "a leaning streak still covered the upright fall";
+            EXPECT_GT(leaning[upTheLean], 0.01f) << "the lean the particle carries never reached the picture";
+
+            // **A turn cannot change the shape it turned**, so the leaning streak is measured along
+            // its new axis and across it: 120 long and 30 wide, exactly as it stood.
+            //
+            // A hundred up the lean is inside its fall and a hundred and forty is past the end of
+            // it. Twenty across, taken sixty up, is inside its width and forty-five is outside —
+            // and every one of those is several pixels clear of the edge it names.
+            const auto alongLean
+                = [&](float along, float across) { return pixelAt(lean * (across - along), lean * (along + across)); };
+
+            EXPECT_GT(leaning[alongLean(100.0f, 0.0f)], 0.01f) << "the streak fell short of its own length";
+            EXPECT_EQ(leaning[alongLean(140.0f, 0.0f)], 0.0f) << "the streak ran past its own length";
+            EXPECT_GT(leaning[alongLean(60.0f, 20.0f)], 0.01f) << "the streak was narrower than its width";
+            EXPECT_EQ(leaning[alongLean(60.0f, 45.0f)], 0.0f) << "the streak was wider than its width";
+        }
+
         /// A puff is lit from the side the light is on, and by what its own texture lets through.
         ///
         /// A sprite facing an eye that looks along +Y, lit by a sun of four and nothing else, so its
@@ -308,7 +394,7 @@ namespace Rtx::Testing
                     = scene.addBakedTexture(SpriteLightMap::keyFor(VFS::Path::NormalizedView("sprite.dds")));
                 const std::array<Sprite, 1> sprites{ Sprite{
                     .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 60.0f, .mAlpha = 1.0f } };
-                scene.addEmitter(sprites, cut, false, osg::Vec3f(), osg::Vec3f(), bake);
+                scene.addEmitter(sprites, cut, false, 0.0f, bake);
 
                 Shaders::VisibilityConstants camera = makeCamera(
                     osg::Vec3f(0.0f, -400.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 100000.0f);

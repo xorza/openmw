@@ -115,6 +115,63 @@ namespace Rtx::Testing
             EXPECT_EQ(mScene.getEmitters().front().mLighting, 1u);
         }
 
+        /// A quad that hangs in the world hangs on the axis its own particle carries.
+        ///
+        /// **`osgParticle` turns both of a quad's axes by the angle the particle holds**, and
+        /// `Weather::RainShooter` is what leans a raindrop into the wind that way — the shooter sets
+        /// an angle off the wind speed as it fires each drop. An axis read from the system alone is
+        /// the same for every drop, so a storm the rasterizer drew leaning fell straight down here,
+        /// and it leant further as the wind rose in one renderer and not in the other.
+        ///
+        /// **And the placement turns that axis without scaling it**, because the sprite's radius
+        /// already carries the scale: a quad reaches `mAxis * mRadius`, so an emitter that scaled
+        /// both squared the scale.
+        TEST_F(RtxSceneExtractorTest, aQuadHangsOnTheAxisItsOwnParticleCarries)
+        {
+            // Turned a quarter turn about z and doubled, so the axis proves the turn and the radius
+            // proves the scale.
+            const Plume rain = makePlume(
+                osg::Matrix::scale(2.0, 2.0, 2.0) * osg::Matrix::rotate(osg::PI_2, osg::Vec3d(0.0, 0.0, 1.0)),
+                /*additive=*/false);
+
+            // Morrowind's own rain shape: an across axis squashed to a tenth against an axis
+            // pointing straight down.
+            rain.mParticles->setParticleAlignment(osgParticle::ParticleSystem::FIXED);
+            rain.mParticles->setAlignVectors(osg::Vec3f(0.1f, 0.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, -1.0f));
+
+            const osg::Vec4f white(1.0f, 1.0f, 1.0f, 1.0f);
+            emit(*rain.mParticles, osg::Vec3f(), 3.0f, white);
+            emit(*rain.mParticles, osg::Vec3f(), 3.0f, white)->setAngle(osg::Vec3f(osg::PIf / 6.0f, 0.0f, 0.0f));
+
+            walk(*rain.mRoot);
+
+            ASSERT_EQ(mScene.getEmitters().size(), 1u);
+            ASSERT_EQ(mScene.getSprites().size(), 2u);
+
+            // The width is the across axis's own length, and neither the turn nor the scale reaches
+            // it — which is why it is the emitter's and is read once.
+            EXPECT_FLOAT_EQ(mScene.getEmitters().front().mWidth, 0.1f);
+
+            // A drop with no angle hangs where the content put it: a quarter turn about z leaves an
+            // axis pointing down where it was, and the scale is the radius's alone.
+            const Rtx::Sprite& straight = mScene.getSprites()[0];
+            EXPECT_NEAR(straight.mAxis.x(), 0.0f, 1e-6f);
+            EXPECT_NEAR(straight.mAxis.y(), 0.0f, 1e-6f);
+            EXPECT_NEAR(straight.mAxis.z(), -1.0f, 1e-6f);
+            EXPECT_FLOAT_EQ(straight.mRadius, 6.0f) << "the radius is the one thing the scale reaches";
+
+            // Thirty degrees about x takes (0, 0, -1) to (0, sin 30, -cos 30), and the quarter turn
+            // about z takes that to (-sin 30, 0, -cos 30).
+            const Rtx::Sprite& leaning = mScene.getSprites()[1];
+            EXPECT_NEAR(leaning.mAxis.x(), -0.5f, 1e-6f);
+            EXPECT_NEAR(leaning.mAxis.y(), 0.0f, 1e-6f);
+            EXPECT_NEAR(leaning.mAxis.z(), -0.8660254f, 1e-6f);
+
+            // **A rotation cannot lengthen a streak**, so the drop that leans is the same drop.
+            EXPECT_NEAR(leaning.mAxis.length(), 1.0f, 1e-6f);
+            EXPECT_FLOAT_EQ(leaning.mRadius, straight.mRadius);
+        }
+
         /// `SRC_ALPHA, ONE` is a flame and anything else covers, and the difference is what decides
         /// whether the sprite is light or an albedo to be lit.
         ///

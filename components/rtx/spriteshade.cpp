@@ -31,8 +31,7 @@ namespace Rtx
         // shaded is written whole — so nothing is cleared first.
         for (const Shaders::GpuEmitter& emitter : emitters)
         {
-            const bool oriented = emitter.mAcross.length2() > 0.0f && emitter.mUpward.length2() > 0.0f;
-            if (emitter.mAdditive != 0u || oriented || emitter.mCount < 2)
+            if (emitter.mAdditive != 0u || emitter.mWidth > 0.0f || emitter.mCount < 2)
                 continue;
 
             const std::span<Shaders::GpuSprite> run = sprites.subspan(emitter.mFirst, emitter.mCount);

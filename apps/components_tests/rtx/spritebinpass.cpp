@@ -58,9 +58,8 @@ namespace Rtx
             const osg::Vec3f& origin, const osg::Vec3f& direction)
         {
             const osg::Vec3f toSprite = sprite.mPosition - origin;
-            const bool oriented = emitter.mAcross.length2() > 0.0f && emitter.mUpward.length2() > 0.0f;
 
-            if (!oriented)
+            if (!(emitter.mWidth > 0.0f))
             {
                 const float depth = toSprite * direction;
                 if (depth <= 0.0f)
@@ -69,12 +68,13 @@ namespace Rtx
                 return (toSprite - direction * depth).length() < sprite.mRadius;
             }
 
-            const osg::Vec3f axis = emitter.mUpward;
+            const osg::Vec3f axis = sprite.mAxis;
             const osg::Vec3f swung = axis ^ direction;
             const float swing = swung.length();
-            const osg::Vec3f side = swing > 1.0e-4f ? swung * (emitter.mAcross.length() / swing) : emitter.mAcross;
+            if (swing <= 1.0e-4f)
+                return false;
 
-            const osg::Vec3f across = side * sprite.mRadius;
+            const osg::Vec3f across = swung * (emitter.mWidth * sprite.mRadius / swing);
             const osg::Vec3f upward = axis * sprite.mRadius;
             const osg::Vec3f normal = across ^ upward;
 
@@ -98,14 +98,16 @@ namespace Rtx
             std::vector<Shaders::GpuSprite> mSprites;
             std::vector<Shaders::GpuEmitter> mEmitters;
 
-            void addEmitter(const osg::Vec3f& across, const osg::Vec3f& upward)
+            /// @param width nought for a billboard, and then `axis` is nought too.
+            void addEmitter(float width, const osg::Vec3f& axis)
             {
                 Shaders::GpuEmitter emitter{};
                 emitter.mFirst = static_cast<std::uint32_t>(mSprites.size());
                 emitter.mCount = 0;
-                emitter.mAcross = across;
-                emitter.mUpward = upward;
+                emitter.mWidth = width;
                 mEmitters.push_back(emitter);
+
+                mAxis = axis;
             }
 
             void addSprite(const osg::Vec3f& position, float radius)
@@ -113,10 +115,14 @@ namespace Rtx
                 Shaders::GpuSprite sprite{};
                 sprite.mPosition = position;
                 sprite.mRadius = radius;
+                sprite.mAxis = mAxis;
                 sprite.mEmitter = static_cast<std::uint32_t>(mEmitters.size() - 1);
                 mSprites.push_back(sprite);
                 ++mEmitters.back().mCount;
             }
+
+            /// What the emitter last added hangs its quads on, which every sprite of it carries.
+            osg::Vec3f mAxis;
         };
 
         /// The list the pass made, read back whole, beside what it reported and the rectangles it
@@ -261,14 +267,14 @@ namespace Rtx
             Layer layer;
 
             // Billboards spread across the view and in depth, including one that grazes the edge.
-            layer.addEmitter(osg::Vec3f(), osg::Vec3f());
+            layer.addEmitter(0.0f, osg::Vec3f());
             for (float x : { 20.0f, 60.0f, 200.0f })
                 for (float y : { -30.0f, 0.0f, 17.0f })
                     for (float z : { -12.0f, 0.0f, 9.0f })
                         layer.addSprite(osg::Vec3f(x, y, z), 4.0f);
 
             // A rain streak: a tenth as wide as it is long, falling straight down.
-            layer.addEmitter(osg::Vec3f(0.1f, 0.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, -1.0f));
+            layer.addEmitter(0.1f, osg::Vec3f(0.0f, 0.0f, -1.0f));
             for (float x : { 30.0f, 90.0f })
                 for (float y : { -20.0f, 5.0f, 25.0f })
                     layer.addSprite(osg::Vec3f(x, y, 3.0f), 6.0f);
@@ -281,7 +287,7 @@ namespace Rtx
 
             // And one leaning through the plane the eye stands in, where there is no projected
             // segment to bound at all.
-            layer.addEmitter(osg::Vec3f(0.1f, 0.0f, 0.0f), osg::Vec3f(1.0f, 0.0f, -1.0f));
+            layer.addEmitter(0.1f, osg::Vec3f(1.0f, 0.0f, -1.0f));
             layer.addSprite(osg::Vec3f(2.0f, 0.0f, 0.0f), 6.0f);
 
             for (const osg::Vec2f jitter : { osg::Vec2f(0.0f, 0.0f), osg::Vec2f(0.49f, -0.49f) })
@@ -329,7 +335,7 @@ namespace Rtx
         TEST_F(RtxSpriteBinPassTest, aTilesRunAscendsSoTheCompositeOrderIsTheOneTheMarchKept)
         {
             Layer layer;
-            layer.addEmitter(osg::Vec3f(), osg::Vec3f());
+            layer.addEmitter(0.0f, osg::Vec3f());
             for (float y : { -8.0f, -4.0f, 0.0f, 4.0f, 8.0f })
                 layer.addSprite(osg::Vec3f(40.0f, y, 0.0f), 30.0f);
 
@@ -359,7 +365,7 @@ namespace Rtx
         TEST_F(RtxSpriteBinPassTest, aSpriteAroundTheEyeIsInEveryTile)
         {
             Layer layer;
-            layer.addEmitter(osg::Vec3f(), osg::Vec3f());
+            layer.addEmitter(0.0f, osg::Vec3f());
             layer.addSprite(osg::Vec3f(1.0f, 0.0f, 0.0f), 50.0f);
 
             const Binned tiles = bin(layer, lookingAlongX(), sPlenty);
@@ -380,7 +386,7 @@ namespace Rtx
         TEST_F(RtxSpriteBinPassTest, aStreakFallingPastTheEyeReachesTheStripItCoversAndNoMore)
         {
             Layer layer;
-            layer.addEmitter(osg::Vec3f(0.1f, 0.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, -1.0f));
+            layer.addEmitter(0.1f, osg::Vec3f(0.0f, 0.0f, -1.0f));
             layer.addSprite(osg::Vec3f(6.0f, 0.0f, 0.0f), 8.0f);
 
             const Binned tiles = bin(layer, lookingAlongX(), sPlenty);
@@ -405,7 +411,7 @@ namespace Rtx
         TEST_F(RtxSpriteBinPassTest, whatTheFrameCannotSeeIsBinnedNowhereAndTheRestIsBinnedNarrowly)
         {
             Layer layer;
-            layer.addEmitter(osg::Vec3f(), osg::Vec3f());
+            layer.addEmitter(0.0f, osg::Vec3f());
             layer.addSprite(osg::Vec3f(-200.0f, 0.0f, 0.0f), 4.0f);
             layer.addSprite(osg::Vec3f(100.0f, 0.0f, 0.0f), 2.0f);
 
@@ -427,7 +433,7 @@ namespace Rtx
         TEST_F(RtxSpriteBinPassTest, theOrthographicCameraBinsWhereTheSpriteStands)
         {
             Layer layer;
-            layer.addEmitter(osg::Vec3f(), osg::Vec3f());
+            layer.addEmitter(0.0f, osg::Vec3f());
             layer.addSprite(osg::Vec3f(50.0f, 0.0f, 0.0f), 2.0f);
 
             osg::Matrixf view;
@@ -477,19 +483,19 @@ namespace Rtx
 
             Layer layer;
 
-            layer.addEmitter(osg::Vec3f(), osg::Vec3f());
+            layer.addEmitter(0.0f, osg::Vec3f());
             for (float x : { 30.0f, 60.0f, 120.0f, 250.0f })
                 for (int y = -12; y <= 12; ++y)
                     for (int z = -8; z <= 8; z += 2)
                         layer.addSprite(
                             osg::Vec3f(x, static_cast<float>(y) * 4.0f, static_cast<float>(z) * 3.0f), 1.5f);
 
-            layer.addEmitter(osg::Vec3f(0.1f, 0.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, -1.0f));
+            layer.addEmitter(0.1f, osg::Vec3f(0.0f, 0.0f, -1.0f));
             for (float x : { 25.0f, 75.0f, 150.0f })
                 for (int y = -10; y <= 10; ++y)
                     layer.addSprite(osg::Vec3f(x, static_cast<float>(y) * 5.0f, 2.0f), 4.0f);
 
-            layer.addEmitter(osg::Vec3f(), osg::Vec3f());
+            layer.addEmitter(0.0f, osg::Vec3f());
             for (float x : { 1.0f, 3.0f, 5.0f })
                 layer.addSprite(osg::Vec3f(x, 0.0f, 0.0f), 40.0f);
 
@@ -550,7 +556,7 @@ namespace Rtx
             Layer layer;
             for (int column = 0; column < 19; ++column)
             {
-                layer.addEmitter(osg::Vec3f(), osg::Vec3f());
+                layer.addEmitter(0.0f, osg::Vec3f());
 
                 const float x
                     = column < 3 ? 2.0f + static_cast<float>(column) : 40.0f + static_cast<float>(column) * 9.0f;
@@ -585,7 +591,7 @@ namespace Rtx
         TEST_F(RtxSpriteBinPassTest, aListTooSmallForItsRunsSaysSoAndNamesWhatItNeeded)
         {
             Layer layer;
-            layer.addEmitter(osg::Vec3f(), osg::Vec3f());
+            layer.addEmitter(0.0f, osg::Vec3f());
             for (float y : { -8.0f, -4.0f, 0.0f, 4.0f, 8.0f })
                 layer.addSprite(osg::Vec3f(40.0f, y, 0.0f), 30.0f);
 

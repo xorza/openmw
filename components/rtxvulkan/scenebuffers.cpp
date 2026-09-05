@@ -65,6 +65,7 @@ namespace Rtx
             return Shaders::GpuSprite{
                 .mPosition = sprite.mPosition,
                 .mRadius = sprite.mRadius,
+                .mAxis = sprite.mAxis,
                 .mColour = sprite.mColour,
                 .mAlpha = sprite.mAlpha,
                 .mMoved = sprite.mMoved,
@@ -80,8 +81,7 @@ namespace Rtx
                 .mCount = emitter.mCount,
                 .mTexture = emitter.mTexture,
                 .mAdditive = emitter.mAdditive ? 1u : 0u,
-                .mAcross = emitter.mAcross,
-                .mUpward = emitter.mUpward,
+                .mWidth = emitter.mWidth,
                 .mLighting = emitter.mLighting,
             };
         }

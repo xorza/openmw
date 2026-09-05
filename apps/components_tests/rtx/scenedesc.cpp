@@ -536,7 +536,7 @@ namespace Rtx
                 Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 1.0f },
                 Sprite{ .mPosition = osg::Vec3f(4.0f, 0.0f, 0.0f), .mRadius = 1.0f },
             };
-            scene.addEmitter(sPlume, texture, true, osg::Vec3f(), osg::Vec3f(), lighting);
+            scene.addEmitter(sPlume, texture, true, 0.0f, lighting);
 
             ASSERT_EQ(scene.getEmitters().size(), 1u);
             const SpriteEmitter& plume = scene.getEmitters().front();
@@ -588,34 +588,33 @@ namespace Rtx
             SceneDesc scene;
             const Index texture = scene.addTexture(VFS::Path::NormalizedView("textures/tx_raindrop_01.dds"));
 
-            const std::array one{ Sprite{ .mPosition = osg::Vec3f(), .mRadius = 10.0f } };
-
             // Facing the eye: a disc, and the reach is the radius.
-            scene.addEmitter(one, texture, false);
+            const std::array disc{ Sprite{ .mPosition = osg::Vec3f(), .mRadius = 10.0f } };
+            scene.addEmitter(disc, texture, false);
             ASSERT_EQ(scene.getEmitters().size(), 1u);
-            EXPECT_FALSE(scene.getEmitters()[0].isFixed()) << "two zero axes is a billboard";
+            EXPECT_FLOAT_EQ(scene.getEmitters()[0].mWidth, 0.0f) << "a width of nothing is a billboard";
             EXPECT_FLOAT_EQ(scene.getEmitters()[0].mReach, 10.0f);
 
-            // Morrowind's own rain axes. The quad runs `+-0.1 * 10` across and `+-1 * 10` down, so
+            // Morrowind's own rain shape. The quad runs `+-0.1 * 10` across and `+-1 * 10` down, so
             // its corner is `|(0.1, 0, -1)| * 10 = 10.0499` from the middle — and that, not the ten,
             // is what has to fit in the sphere.
-            const osg::Vec3f across(0.1f, 0.0f, 0.0f);
-            const osg::Vec3f upward(0.0f, 0.0f, -1.0f);
-            scene.addEmitter(one, texture, false, across, upward);
+            const std::array streak{ Sprite{
+                .mPosition = osg::Vec3f(), .mRadius = 10.0f, .mAxis = osg::Vec3f(0.0f, 0.0f, -1.0f) } };
+            scene.addEmitter(streak, texture, false, 0.1f);
 
             ASSERT_EQ(scene.getEmitters().size(), 2u);
             const SpriteEmitter& rain = scene.getEmitters()[1];
-            EXPECT_TRUE(rain.isFixed());
-            EXPECT_EQ(rain.mAcross, across) << "carried as authored, because the length is the shape";
-            EXPECT_EQ(rain.mUpward, upward);
+            EXPECT_FLOAT_EQ(rain.mWidth, 0.1f) << "carried as authored, because the length is the shape";
             EXPECT_NEAR(rain.mReach, 10.0499f, 1e-3f);
             EXPECT_GT(rain.mReach, 10.0f) << "further than the radius alone would have reached";
 
-            // **And an axis of nothing is not an orientation.** A system that named only one of them
-            // is a billboard, which is what the zero state has to mean for a default to be safe.
-            scene.addEmitter(one, texture, false, across, osg::Vec3f());
+            // **And the axis is what the reach is measured on**, not the width beside it: a streak
+            // leant by the wind reaches exactly as far as one falling straight down.
+            const std::array leant{ Sprite{
+                .mPosition = osg::Vec3f(), .mRadius = 10.0f, .mAxis = osg::Vec3f(0.0f, 0.5f, -0.8660254f) } };
+            scene.addEmitter(leant, texture, false, 0.1f);
             ASSERT_EQ(scene.getEmitters().size(), 3u);
-            EXPECT_FALSE(scene.getEmitters()[2].isFixed());
+            EXPECT_NEAR(scene.getEmitters()[2].mReach, rain.mReach, 1e-3f);
         }
 
         /// The unit quad lifted to `z`, so a mesh can be told apart by what came back out of it.

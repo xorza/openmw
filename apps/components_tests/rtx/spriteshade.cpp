@@ -169,8 +169,7 @@ namespace Rtx
             Column rain;
             rain.add(osg::Vec3f(6.0f, 0.0f, 0.0f), 8.0f, 1.0f);
             rain.add(osg::Vec3f(0.0f, 0.0f, 0.0f), 4.0f, 1.0f);
-            rain.mEmitter.mAcross = osg::Vec3f(0.1f, 0.0f, 0.0f);
-            rain.mEmitter.mUpward = osg::Vec3f(0.0f, 0.0f, -1.0f);
+            rain.mEmitter.mWidth = 0.1f;
             rain.shade(sEast);
             EXPECT_FLOAT_EQ(rain.mSprites[1].mSunLayers, 0.0f) << "a streak is a thin thing";
 

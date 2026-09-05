@@ -26,6 +26,25 @@ namespace Rtx
         {
             return osg::Vec3f(place(0, 0), place(0, 1), place(0, 2)).length();
         }
+
+        /// `axis` turned by the rotation one particle carries.
+        ///
+        /// **The rasterizer's own matrix, composed the way it composes it.** `osgParticle` turns
+        /// both of a quad's axes by `Matrix::makeRotate(angle.x, X, angle.y, Y, angle.z, Z)` before
+        /// it draws them, and `Weather::RainShooter` is what leans a raindrop into the wind that
+        /// way. Built from the three angles here rather than derived from the wind, so the ray
+        /// tracer cannot lean a drop differently from the renderer beside it.
+        osg::Vec3f leant(const osg::Vec3f& axis, const osg::Vec3f& angle)
+        {
+            if (angle == osg::Vec3f())
+                return axis;
+
+            osg::Matrixf turn;
+            turn.makeRotate(angle.x(), osg::Vec3f(1.0f, 0.0f, 0.0f), angle.y(), osg::Vec3f(0.0f, 1.0f, 0.0f), angle.z(),
+                osg::Vec3f(0.0f, 0.0f, 1.0f));
+
+            return axis * turn;
+        }
     }
 
     void EmitterResolver::add(
@@ -105,6 +124,38 @@ namespace Rtx
 
         const float scale = scaleOf(place);
 
+        // **Which way the quad faces, and `osgParticle` offers two answers.** A `BILLBOARD` system's
+        // axes are the screen's and are recomputed into view space every frame, which is a disc
+        // facing the eye and needs nothing carried across. A `FIXED` one's are used exactly as they
+        // were authored, so its quad hangs in the world at an orientation of its own — and that is
+        // the mode Morrowind's rain is built on: an X axis squashed to a tenth against a Y pointing
+        // straight down is a falling streak rather than a round drop.
+        //
+        // **Both axes or neither**, because one of them alone describes no plane.
+        const bool oriented = particles.getParticleAlignment() == osgParticle::ParticleSystem::FIXED
+            && particles.getAlignVectorX().length2() > 0.0f && particles.getAlignVectorY().length2() > 0.0f;
+
+        // How wide the streak is against its own length, which is all the across axis says here: the
+        // march swings the width about the axis to meet the ray rather than committing the quad to
+        // the plane the content picked. Neither the particle's rotation nor the placement can change
+        // that length, so it is the emitter's and is taken once.
+        const float width = oriented ? particles.getAlignVectorX().length() : 0.0f;
+        const osg::Vec3f authored = oriented ? particles.getAlignVectorY() : osg::Vec3f();
+
+        // **Turned by the placement and not scaled by it**, because a sprite's radius already
+        // carries the scale: the quad reaches `mAxis * mRadius`, so scaling both would square it.
+        // A placement that collapses to nothing gives a zero axis, and its sprites have no radius
+        // to draw with either.
+        const float inverseScale = scale > 0.0f ? 1.0f / scale : 0.0f;
+        const auto orient
+            = [&](const osg::Vec3f& axis) { return osg::Matrixf::transform3x3(axis, place) * inverseScale; };
+
+        // **The angle one run of particles shares, and the axis it gave.** A shooter fires every
+        // particle it makes with the same angle, so a frame of rain is one or two runs — and this is
+        // what keeps it from building a rotation matrix per drop.
+        osg::Vec3f angle;
+        osg::Vec3f axis = orient(authored);
+
         mSpriteScratch.clear();
         const int held = particles.numParticles();
         for (int at = 0; at < held; ++at)
@@ -139,9 +190,16 @@ namespace Rtx
             const osg::Vec3f stood = particle->getPosition() * place;
             const osg::Vec3f came = particle->getPreviousPosition() * place;
 
+            if (particle->getAngle() != angle)
+            {
+                angle = particle->getAngle();
+                axis = orient(leant(authored, angle));
+            }
+
             mSpriteScratch.push_back(Sprite{
                 .mPosition = stood,
                 .mRadius = radius,
+                .mAxis = axis,
                 .mColour = osg::Vec3f(colour.r(), colour.g(), colour.b()),
                 .mAlpha = alpha,
                 .mMoved = stood - came,
@@ -153,24 +211,7 @@ namespace Rtx
 
         countFormat(*pending.mSprite, stats);
 
-        // **Which way the quad faces, and `osgParticle` offers two answers.** A `BILLBOARD` system's
-        // axes are the screen's and are recomputed into view space every frame, which is a disc
-        // facing the eye and needs nothing carried across. A `FIXED` one's are used exactly as they
-        // were authored, so its quad hangs in the world at an orientation of its own — and that is
-        // the mode Morrowind's rain is built on: an X axis squashed to a tenth against a Y pointing
-        // straight down is a falling streak rather than a round drop.
-        //
-        // Rotated into the world by the placement and not normalised, because their length is the
-        // shape rather than a direction.
-        osg::Vec3f across;
-        osg::Vec3f upward;
-        if (particles.getParticleAlignment() == osgParticle::ParticleSystem::FIXED)
-        {
-            across = osg::Matrixf::transform3x3(particles.getAlignVectorX(), place);
-            upward = osg::Matrixf::transform3x3(particles.getAlignVectorY(), place);
-        }
-
-        mScene.addEmitter(mSpriteScratch, pending.mTexture, pending.mLight, across, upward, pending.mLighting);
+        mScene.addEmitter(mSpriteScratch, pending.mTexture, pending.mLight, width, pending.mLighting);
 
         ++stats.mEmitters;
         stats.mSprites += static_cast<std::uint32_t>(mSpriteScratch.size());

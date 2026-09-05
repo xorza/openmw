@@ -451,6 +451,20 @@ namespace Rtx
         /// quad runs from `-size` to `+size` about the particle and its bounds are expanded by it.
         float mRadius = 0.0f;
 
+        /// The streak's own axis in the world, per unit of `mRadius` — or **zero for a sprite that
+        /// faces the eye**, which is nearly every one. `SpriteEmitter::mWidth` is the other half of
+        /// the shape and is the emitter's, because a rotation cannot change it.
+        ///
+        /// **Per particle, because the rotation is.** `osgParticle` turns both of a quad's axes by
+        /// the angle the particle carries before it draws them, and `Weather::RainShooter` is what
+        /// leans a raindrop into the wind with it — so two drops fired under different winds hang at
+        /// different angles in one frame, and an axis held once for the emitter drew the whole storm
+        /// falling straight down.
+        ///
+        /// **Not normalised**, because its length is the shape: rain's is a whole radius against a
+        /// width of a tenth, which is what makes a drop a streak.
+        osg::Vec3f mAxis;
+
         /// Linear, and already carrying wherever the particle's own colour ramp has reached.
         osg::Vec3f mColour{ 1.0f, 1.0f, 1.0f };
 
@@ -495,24 +509,22 @@ namespace Rtx
         /// over, which is smoke and needs its colour ramp to fade it.
         bool mAdditive = false;
 
-        /// The quad's own axes in world space, per unit of `Sprite::mRadius` — or **two zero vectors
-        /// for a sprite that faces the eye**, which is nearly everything.
+        /// How wide this emitter's quads are against their own axis, per unit of `Sprite::mRadius`
+        /// — or **nought for sprites that face the eye**, which is nearly every emitter in the game.
         ///
         /// `osgParticle` draws a particle as `position ± axisX * size ± axisY * size` and offers two
         /// ways of choosing those axes. A `BILLBOARD` system's are the screen's, transformed into
         /// view space every frame — that is a disc facing the eye and needs nothing carried here. A
-        /// `FIXED` one's are used untransformed, so the quad hangs in the world at an orientation of
-        /// its own, and Morrowind's rain is the reason the mode exists: an X axis squashed to a tenth
-        /// and a Y axis pointing straight down is a falling streak rather than a round drop.
+        /// `FIXED` one's are used as they were authored, so the quad hangs in the world at an
+        /// orientation of its own, and Morrowind's rain is the reason the mode exists: an X axis
+        /// squashed to a tenth against a Y axis pointing straight down is a falling streak rather
+        /// than a round drop.
         ///
-        /// **Not normalised**, because their length is the shape: it is that tenth that makes a
-        /// raindrop thin.
-        osg::Vec3f mAcross;
-        osg::Vec3f mUpward;
-
-        /// Whether those two mean anything. **The zero state is a billboard**, which is what a
-        /// default-constructed one is and what almost every emitter in the game is.
-        bool isFixed() const { return mAcross.length2() > 0.0f && mUpward.length2() > 0.0f; }
+        /// **The length of that X axis and not its direction**, because the march swings the width
+        /// about the sprite's own axis to meet the ray rather than committing it to the plane the
+        /// content picked. `Sprite::mAxis` carries the rest of the shape, and carries it per
+        /// particle because a particle's own rotation turns it.
+        float mWidth = 0.0f;
     };
 
     /// Everything the renderer needs to know about a world, with no Vulkan and no scene graph in it.
@@ -723,11 +735,11 @@ namespace Rtx
         /// The sphere is derived here rather than passed in, so the rejection test a ray makes and
         /// the sprites it would then walk cannot disagree about where they are. Nothing is added for
         /// an emitter with no live particles, which is most of them for most of a frame.
-        /// @param across the quad's own axes in world space, per unit of `Sprite::mRadius`, or two
-        ///        zero vectors for a sprite that faces the eye. `SpriteEmitter::mAcross` says why.
+        /// @param width how wide the quads are against their own axis, per unit of
+        ///        `Sprite::mRadius`, or nought for sprites that face the eye. Every sprite carries
+        ///        an axis where this is set and none where it is not — `SpriteEmitter::mWidth`.
         /// @param lighting the bake of `texture`'s alpha, or `sNoIndex`. `SpriteEmitter::mLighting`.
-        void addEmitter(std::span<const Sprite> sprites, Index texture, bool additive,
-            const osg::Vec3f& across = osg::Vec3f(), const osg::Vec3f& upward = osg::Vec3f(),
+        void addEmitter(std::span<const Sprite> sprites, Index texture, bool additive, float width = 0.0f,
             Index lighting = sNoIndex);
 
         /// Drops every mesh and material the caller did not name.

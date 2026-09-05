@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <tuple>
 
@@ -480,33 +481,39 @@ namespace Rtx
         mLights.push_back(light);
     }
 
-    void SceneDesc::addEmitter(std::span<const Sprite> sprites, Index texture, bool additive, const osg::Vec3f& across,
-        const osg::Vec3f& upward, Index lighting)
+    void SceneDesc::addEmitter(
+        std::span<const Sprite> sprites, Index texture, bool additive, float width, Index lighting)
     {
-
         if (sprites.empty())
             return;
+
+        // **A quad's reach is its own diagonal, not its size.** An eye-facing sprite is a disc of
+        // `mRadius`; an oriented one is a rectangle as long as its axis and as wide as `width`, and
+        // a rain streak ten times as tall as it is wide would be cut off by a sphere measured on the
+        // width. The two are perpendicular wherever the march looks at the quad, because the width
+        // is swung about the axis — so the corner is the diagonal of the two lengths.
+        const auto spanOf = [width](const Sprite& sprite) {
+            assert((width > 0.0f) == (sprite.mAxis.length2() > 0.0f)
+                && "an emitter and its sprites disagree about whether the quads hang in the world");
+
+            return width > 0.0f ? std::sqrt(sprite.mAxis.length2() + width * width) : 1.0f;
+        };
 
         // The centre of the sprites' own bounding box rather than their mean, and the reach measured
         // off it: a plume is a handful of parcels strung along one axis, and a mean sits where most
         // of them happen to be at this instant rather than where the extent is.
-        // **A quad's reach is its own diagonal, not its size.** An eye-facing sprite is a disc of
-        // `mRadius`; a fixed one is a rectangle whose axes carry their own lengths, and a rain streak
-        // ten times as tall as it is wide would be cut off by a sphere measured on the width.
-        const float span = across.length2() > 0.0f || upward.length2() > 0.0f ? (across + upward).length() : 1.0f;
-
         osg::BoundingBoxf box;
         for (const Sprite& sprite : sprites)
         {
-            const osg::Vec3f rim(sprite.mRadius * span, sprite.mRadius * span, sprite.mRadius * span);
-            box.expandBy(sprite.mPosition - rim);
-            box.expandBy(sprite.mPosition + rim);
+            const float rim = sprite.mRadius * spanOf(sprite);
+            box.expandBy(sprite.mPosition - osg::Vec3f(rim, rim, rim));
+            box.expandBy(sprite.mPosition + osg::Vec3f(rim, rim, rim));
         }
 
         const osg::Vec3f centre = box.center();
         float reach = 0.0f;
         for (const Sprite& sprite : sprites)
-            reach = std::max(reach, (sprite.mPosition - centre).length() + sprite.mRadius * span);
+            reach = std::max(reach, (sprite.mPosition - centre).length() + sprite.mRadius * spanOf(sprite));
 
         mEmitters.push_back(SpriteEmitter{
             .mCentre = centre,
@@ -516,9 +523,7 @@ namespace Rtx
             .mTexture = texture,
             .mLighting = lighting,
             .mAdditive = additive,
-            .mAcross = across,
-
-            .mUpward = upward,
+            .mWidth = width,
         });
 
         mSprites.insert(mSprites.end(), sprites.begin(), sprites.end());

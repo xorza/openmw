@@ -11,7 +11,7 @@
 // has to hold every sprite any ray through the tile could meet, because `spritesAlong` tests a
 // sprite it is handed and never looks for one it was not — a sprite the binning drops is a raindrop
 // that stops being drawn. So what is bounded here is exactly what the march tests against: a ball
-// for a sprite that faces the eye, and for a quad hanging on an authored axis the capsule that
+// for a sprite that faces the eye, and for a quad hanging on an axis of its own the capsule that
 // swinging its width about that axis sweeps. `Rtx::SceneDesc::addEmitter` says why the emitter's
 // own sphere is the wrong granularity for this, and rain is what proved it.
 //
@@ -190,9 +190,9 @@ TileRect tilesOf(ivec4 rect)
 ///
 /// **A ball for a billboard and a capsule for an oriented quad**, because that is the shape the
 /// march tests against. A billboard is rejected past `mRadius` of the ray, so the ball is exact. An
-/// oriented quad hangs on its authored axis and swings its width about that axis to meet the ray —
-/// so over every direction the eye can look from, it sweeps a cylinder of the width's radius about
-/// the axis segment, and the capsule is that cylinder with its ends rounded.
+/// oriented quad hangs on the axis its own particle carries and swings its width about that axis
+/// to meet the ray — so over every direction the eye can look from, it sweeps a cylinder of the
+/// width's radius about the axis segment, and the capsule is that cylinder with its ends rounded.
 struct Bound
 {
     vec3 mFrom;
@@ -203,11 +203,8 @@ struct Bound
 
 Bound boundOf(GpuSprite sprite, GpuEmitter emitter)
 {
-    const float across = length(emitter.mAcross);
-    const float upward = length(emitter.mUpward);
-
     Bound bound;
-    bound.mOriented = across > 0.0 && upward > 0.0;
+    bound.mOriented = emitter.mWidth > 0.0;
     if (!bound.mOriented)
     {
         bound.mFrom = sprite.mPosition;
@@ -217,10 +214,10 @@ Bound boundOf(GpuSprite sprite, GpuEmitter emitter)
         return bound;
     }
 
-    const vec3 reach = emitter.mUpward * sprite.mRadius;
+    const vec3 reach = sprite.mAxis * sprite.mRadius;
     bound.mFrom = sprite.mPosition - reach;
     bound.mTo = sprite.mPosition + reach;
-    bound.mRadius = sprite.mRadius * across;
+    bound.mRadius = sprite.mRadius * emitter.mWidth;
 
     return bound;
 }
