@@ -76,6 +76,16 @@ namespace Rtx
         if (NVSDK_NGX_FAILED(allocated) || mParameters == nullptr)
             throw Unsupported("NGX would not allocate a parameter map: " + describeNgxResult(allocated));
 
+        // **What a released feature costs, which is everything it held unless this is set.** NGX
+        // caches a feature's memory on release rather than freeing it, so that re-creating the same
+        // one is cheap — and a renderer that follows a window through a drag creates a different one
+        // every time, so nothing is ever reused and nothing is ever given back. Measured on this
+        // card: forty rebuilds over eight extents settle three and a half gigabytes above the
+        // baseline and stay there, and forty over forty extents climb to fifteen until
+        // `vkAllocateMemory` refuses. The SDK's programming guide names both the behaviour and this
+        // hint.
+        NVSDK_NGX_Parameter_SetI(mParameters, NVSDK_NGX_Parameter_FreeMemOnReleaseFeature, 1);
+
         // **Set on the map before the feature is built, because it is read while it is built.** The
         // create parameters carry no preset field; the hint is one of the values NGX picks up off
         // the map it is handed, and setting it afterwards would name a network for a feature that

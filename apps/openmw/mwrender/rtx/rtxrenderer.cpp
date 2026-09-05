@@ -65,6 +65,22 @@ namespace MWRender
         /// has to be nearer than anything the eye can find itself inside of.
         constexpr float sNear = 1.0f;
 
+        /// How long the window must report one size before the renderer is rebuilt for it.
+        ///
+        /// **Because rebuilding costs about as long as this waits.** A new extent releases every
+        /// target, allocates them again and uploads Ray Reconstruction's weights for the pair of
+        /// resolutions it is now between — measured at a tenth of a second apiece over sixty
+        /// rebuilds. A window dragged across a screen passes through hundreds of extents, and
+        /// following each of them would draw the drag at ten frames a second.
+        ///
+        /// So a gesture is followed once it stops. Until then the surface keeps the extent it has,
+        /// and what the compositor shows is that picture scaled — which is what a window being
+        /// dragged shows anyway.
+        ///
+        /// **Six frames at sixty.** Long enough that a drag settles into one rebuild, short enough
+        /// that letting go of a window edge and seeing the picture follow reads as immediate.
+        constexpr double sSettleSeconds = 0.1;
+
         /// How often the trace's running average is reported. Five seconds at sixty frames.
         constexpr std::uint32_t sReportEvery = 300;
 
@@ -121,15 +137,18 @@ namespace MWRender
             throw std::runtime_error('"' + wantedPreset + "\" is not one of default, d or e");
 
         // The window's own size, which `fitToWindow` asks for again on every frame after this one.
+        // Kept, so that the first of those sees a size that has already settled.
         int width = 0;
         int height = 0;
         SDL_GetWindowSizeInPixels(mWindow, &width, &height);
+        mAskedWidth = static_cast<std::uint32_t>(std::max(width, 1));
+        mAskedHeight = static_cast<std::uint32_t>(std::max(height, 1));
 
         Rtx::RendererOptions options;
         options.mShaderDirectory = spec.mResourceDir / "rtx" / "shaders";
         options.mCacheDirectory = spec.mCachePath;
-        options.mWidth = static_cast<std::uint32_t>(std::max(width, 1));
-        options.mHeight = static_cast<std::uint32_t>(std::max(height, 1));
+        options.mWidth = mAskedWidth;
+        options.mHeight = mAskedHeight;
         options.mUpscale = *upscale;
         options.mPreset = *preset;
         options.mWindow = mWindow;
@@ -325,14 +344,27 @@ namespace MWRender
         int height = 0;
         SDL_GetWindowSizeInPixels(mWindow, &width, &height);
 
-        // **Handed over unguarded, because the guard belongs to the backend.** It knows two things
-        // this does not: the extent the surface settled on, which is not always the one it was asked
-        // for, and whether the swapchain has been told it is stale. A guard on the window's own size
-        // would answer the first wrongly and would never rebuild for the second — a swapchain that
-        // went stale at an unchanged size then failed its present for good. `Presenter::resize`
-        // returns on a comparison where neither has happened.
-        mRenderer->resize(
-            static_cast<std::uint32_t>(std::max(width, 1)), static_cast<std::uint32_t>(std::max(height, 1)));
+        const osg::Timer_t now = osg::Timer::instance()->tick();
+        const auto wide = static_cast<std::uint32_t>(std::max(width, 1));
+        const auto high = static_cast<std::uint32_t>(std::max(height, 1));
+
+        if (wide != mAskedWidth || high != mAskedHeight)
+        {
+            mAskedWidth = wide;
+            mAskedHeight = high;
+            mAskedSince = now;
+        }
+
+        if (osg::Timer::instance()->delta_s(mAskedSince, now) < sSettleSeconds)
+            return;
+
+        // **Handed over on every settled frame, because whether it changes anything is the
+        // backend's to say.** It knows two things this does not: the extent the surface settled on,
+        // which is not always the one it was asked for, and whether the swapchain has been told it
+        // is stale. Stopping here on the window's own size would answer the first wrongly and would
+        // never rebuild for the second — a swapchain that went stale without moving then failed its
+        // present for good. `Presenter::resize` returns on a comparison where neither has happened.
+        mRenderer->resize(mAskedWidth, mAskedHeight);
 
         // Whatever the backend settled on, which is what the trace and the GUI are both sized to.
         const Rtx::FrameExtents extents = mRenderer->getExtents();
@@ -393,8 +425,10 @@ namespace MWRender
         drawGui();
 
         // **A present that failed is a swapchain to rebuild, and `renderFrame` is where that
-        // happens.** It asks the window its size before every frame and hands it over unguarded, so
-        // the rebuild this needs is the one the next frame opens with.
+        // happens.** It asks the window its size before every frame and hands over whatever has
+        // settled, so a surface that went stale where the window is standing still is rebuilt on the
+        // next frame. One that went stale mid-gesture waits for the gesture, which is the frozen
+        // picture a window being dragged shows anyway.
         mRenderer->presentFrame();
     }
 

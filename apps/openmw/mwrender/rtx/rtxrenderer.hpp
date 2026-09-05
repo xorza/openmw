@@ -203,15 +203,17 @@ namespace MWRender
         /// flag is passed, which is what `SDL_GL_GetCurrentContext() == nullptr` then proves.
         void createWindow(const std::filesystem::path& resourceDir);
 
-        /// Sizes the trace, the surface and the viewport to the window as it now is.
+        /// Sizes the trace, the surface and the viewport to the window once its size has settled.
         ///
-        /// **Every frame, because a surface cannot be asked whether the window moved.** A swapchain
-        /// reports itself out of date when it stops matching the surface it was made for, and a
-        /// Wayland surface has no size of its own to be matched against: its `currentExtent` is
-        /// `0xFFFFFFFF` by specification, the swapchain's extent being what defines the surface
+        /// **Asked every frame, because a surface cannot be asked whether the window moved.** A
+        /// swapchain reports itself out of date when it stops matching the surface it was made for,
+        /// and a Wayland surface has no size of its own to be matched against: its `currentExtent`
+        /// is `0xFFFFFFFF` by specification, the swapchain's extent being what defines the surface
         /// rather than the other way about. So a present succeeds for ever, and a renderer that
         /// waited to be told would keep the extent the window opened at while the compositor
         /// stretched its picture to whatever the window had become.
+        ///
+        /// **Acted on only once the window stops moving**, which `sSettleSeconds` says the price of.
         void fitToWindow();
 
         /// Traces the world the walk has just mirrored, from the eye the frame arrived with.
@@ -288,6 +290,16 @@ namespace MWRender
         osg::Timer_t mStartTick = 0;
 
         std::unique_ptr<Rtx::Renderer> mRenderer;
+
+        /// The size the window last reported, and the moment it first reported it. **Not the extent
+        /// anything is drawn at** — a surface settles on its own, and `Rtx::FrameExtents` says where
+        /// it settled. `sSettleSeconds` is how long the moment has to have been ago.
+        ///
+        /// **A tick of nought is further back than any tick there is**, which is what makes the
+        /// first fit act rather than wait: the constructor fills the extent and leaves this alone.
+        std::uint32_t mAskedWidth = 0;
+        std::uint32_t mAskedHeight = 0;
+        osg::Timer_t mAskedSince = 0;
 
         /// The one sequence every mirror walk in this renderer poses at.
         ///

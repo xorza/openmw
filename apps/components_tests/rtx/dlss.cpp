@@ -404,6 +404,60 @@ namespace Rtx
                 ADD_FAILURE() << "validation error from the upscaled frame: " << error;
         }
 
+        /// A frame after a resize is upscaled at the extent the resize asked for.
+        ///
+        /// **What a window does, without a window.** Ray Reconstruction holds the network's weights
+        /// for one pair of resolutions, so a resize releases the feature and builds another against
+        /// targets that have all been made again — and this is the only place that path is walked.
+        TEST_F(RtxUpscaledFrameTest, aFrameAfterAResizeIsUpscaledAtTheExtentTheResizeAskedFor)
+        {
+            std::string reason;
+            const std::unique_ptr<Renderer> upscaling = makeUpscaling(1280, 720, reason);
+            if (upscaling == nullptr)
+                GTEST_SKIP() << reason;
+
+            SceneDesc scene;
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
+            upscaling->setScene(Rtx::sWorld, scene, {}, SeaState{});
+
+            const auto drawTwice = [&] {
+                const FrameExtents extents = upscaling->getExtents();
+
+                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f,
+                    extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
+                camera.mSunPosition = osg::Vec3f(0.0f, -0.6f, -0.8f);
+                camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+
+                // Two, because an upscaler has no history on the first and the frame after one is
+                // where a feature built against the wrong extent would be read.
+                upscaling->renderFrame(camera, FrameOptions{});
+                upscaling->renderFrame(camera, FrameOptions{});
+
+                return extents;
+            };
+
+            const FrameExtents first = drawTwice();
+            EXPECT_EQ(first.mOutputWidth, 1280u);
+            EXPECT_LT(first.mRenderWidth, first.mOutputWidth);
+
+            upscaling->resize(1600, 900);
+
+            const FrameExtents second = drawTwice();
+            EXPECT_EQ(second.mOutputWidth, 1600u);
+            EXPECT_EQ(second.mOutputHeight, 900u);
+            EXPECT_NE(second.mRenderWidth, first.mRenderWidth) << "the trace followed the output it was resized to";
+
+            std::vector<std::uint8_t> pixels;
+            upscaling->readPixels(pixels);
+            EXPECT_EQ(pixels.size(), std::size_t{ second.mOutputWidth } * second.mOutputHeight * 4);
+
+            std::vector<std::string> errors;
+            upscaling->takeValidationErrors(errors);
+            for (const std::string& error : errors)
+                ADD_FAILURE() << "validation error from the frame after the resize: " << error;
+        }
+
         /// A sprite carries its own travel into the layer whatever share of a pixel it took.
         ///
         /// **The rain, which never owns a pixel and is the whole layer of the ones it reaches.**
