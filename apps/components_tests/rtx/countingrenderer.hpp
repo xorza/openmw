@@ -71,6 +71,8 @@ namespace Rtx::Testing
 
         const Rtx::SceneStats& getSceneStats() const override { return mStats; }
         void resize(std::uint32_t, std::uint32_t) override {}
+        void setUpscale(Upscale upscale) override { mUpscale = upscale; }
+        Upscale getUpscale() const override { return mUpscale; }
         void setVerticalSync(SDLUtil::VSyncMode) override {}
         Rtx::FrameExtents getExtents() const override { return {}; }
         Rtx::Reconstruction renderFrame(const Rtx::Shaders::VisibilityConstants&, const Rtx::FrameOptions&) override
@@ -150,5 +152,8 @@ namespace Rtx::Testing
     private:
         Rtx::SceneStats mStats;
         std::uint32_t mGuiTextures = 0;
+
+        /// Whatever it was last told, since nothing here traces and no mode can be refused.
+        Upscale mUpscale = Upscale::Off;
     };
 }

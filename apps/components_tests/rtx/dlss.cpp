@@ -458,6 +458,61 @@ namespace Rtx
                 ADD_FAILURE() << "validation error from the frame after the resize: " << error;
         }
 
+        /// The mode can be changed while the renderer is running, in either direction.
+        ///
+        /// **What the game's own menu asks for.** A mode is a pair of resolutions the feature is
+        /// built for, so changing one rebuilds every target — and turning it off has to stop the
+        /// upscaler rather than build it for no upscaling, which is a question NGX refuses.
+        TEST_F(RtxUpscaledFrameTest, theUpscaleModeCanBeChangedWhileTheRendererRuns)
+        {
+            std::string reason;
+            const std::unique_ptr<Renderer> upscaling = makeUpscaling(1280, 720, reason);
+            if (upscaling == nullptr)
+                GTEST_SKIP() << reason;
+
+            SceneDesc scene;
+            scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
+                .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
+            upscaling->setScene(Rtx::sWorld, scene, {}, SeaState{});
+
+            const auto drawAndRead = [&] {
+                const FrameExtents extents = upscaling->getExtents();
+
+                Shaders::VisibilityConstants camera = makeCamera(osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(), 60.0f,
+                    extents.mRenderWidth, extents.mRenderHeight, 10000.0f);
+                camera.mSunPosition = osg::Vec3f(0.0f, -0.6f, -0.8f);
+                camera.mSunIrradiance = osg::Vec3f(2.0f, 2.0f, 2.0f);
+                upscaling->renderFrame(camera, FrameOptions{});
+
+                return extents;
+            };
+
+            EXPECT_EQ(upscaling->getUpscale(), Upscale::Performance);
+            const FrameExtents fast = drawAndRead();
+            EXPECT_EQ(fast.mRenderWidth * 2u, fast.mOutputWidth) << "performance traces half of each side";
+
+            // **Off, which is the direction that used to build a feature for no upscaling at all.**
+            upscaling->setUpscale(Upscale::Off);
+            EXPECT_EQ(upscaling->getUpscale(), Upscale::Off);
+
+            const FrameExtents plain = drawAndRead();
+            EXPECT_EQ(plain.mRenderWidth, plain.mOutputWidth) << "nothing upscales, so the two extents are one";
+            EXPECT_EQ(plain.mRenderHeight, plain.mOutputHeight);
+
+            // And back, over a runtime that was left up.
+            upscaling->setUpscale(Upscale::Quality);
+            EXPECT_EQ(upscaling->getUpscale(), Upscale::Quality);
+
+            const FrameExtents fine = drawAndRead();
+            EXPECT_LT(fine.mRenderWidth, fine.mOutputWidth);
+            EXPECT_GT(fine.mRenderWidth, fast.mRenderWidth) << "quality traces more of each side than performance";
+
+            std::vector<std::string> errors;
+            upscaling->takeValidationErrors(errors);
+            for (const std::string& error : errors)
+                ADD_FAILURE() << "validation error after the mode changed: " << error;
+        }
+
         /// A sprite carries its own travel into the layer whatever share of a pixel it took.
         ///
         /// **The rain, which never owns a pixel and is the whole layer of the ones it reaches.**

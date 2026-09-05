@@ -258,6 +258,46 @@
         <source>Experimental Ray Tracing</source>
         <translation>Экспериментальная трассировка лучей</translation>
     </message>
+    <message>
+        <source>DLSS Ray Reconstruction</source>
+        <translation>DLSS Ray Reconstruction</translation>
+    </message>
+    <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
+        <translation>Насколько интенсивно работает DLSS Ray Reconstruction. Он убирает шум и сглаживает трассированный кадр, а все режимы кроме последнего ещё и трассируют меньше пикселей, чем показывают.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Отключено</translation>
+    </message>
+    <message>
+        <source>Performance</source>
+        <translation>Производительность</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>Сбалансированное</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Качество</translation>
+    </message>
+    <message>
+        <source>Antialiasing only</source>
+        <translation>Только сглаживание</translation>
+    </message>
+    <message>
+        <source>Ray Tracing Distant Land</source>
+        <translation>Удалённый ландшафт при трассировке лучей</translation>
+    </message>
+    <message>
+        <source>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</source>
+        <translation>Насколько далеко от глаза строится мир, в ячейках. Рендерер с трассировкой лучей строит то, до чего могут добраться лучи, — это другой вопрос, чем то, как далеко видит растеризатор.</translation>
+    </message>
+    <message>
+        <source> cells</source>
+        <translation> ячеек</translation>
+    </message>
 </context>
 <context>
     <name>ImportPage</name>

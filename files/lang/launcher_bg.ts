@@ -258,6 +258,46 @@
         <source>Experimental Ray Tracing</source>
         <translation>Експериментално трасиране на лъчи</translation>
     </message>
+    <message>
+        <source>DLSS Ray Reconstruction</source>
+        <translation>DLSS Ray Reconstruction</translation>
+    </message>
+    <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
+        <translation>Колко усилено работи DLSS Ray Reconstruction. То премахва шума и заглажда трасирания кадър, а всички режими освен последния трасират и по-малко пиксели, отколкото показват.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Изключено</translation>
+    </message>
+    <message>
+        <source>Performance</source>
+        <translation>Производителност</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>Балансирано</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Качество</translation>
+    </message>
+    <message>
+        <source>Antialiasing only</source>
+        <translation>Само заглаждане</translation>
+    </message>
+    <message>
+        <source>Ray Tracing Distant Land</source>
+        <translation>Далечна земя при трасиране на лъчи</translation>
+    </message>
+    <message>
+        <source>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</source>
+        <translation>Докъде от окото се изгражда светът, в клетки. Рендерът с трасиране на лъчи изгражда това, до което лъчите достигат, което е различен въпрос от това докъде вижда растеризаторът.</translation>
+    </message>
+    <message>
+        <source> cells</source>
+        <translation> клетки</translation>
+    </message>
 </context>
 <context>
     <name>ImportPage</name>

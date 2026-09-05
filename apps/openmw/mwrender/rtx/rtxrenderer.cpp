@@ -452,6 +452,21 @@ namespace MWRender
         mRenderer->setVerticalSync(mode);
     }
 
+    void RtxRenderer::setUpscale(Rtx::Upscale upscale)
+    {
+        try
+        {
+            mRenderer->setUpscale(upscale);
+        }
+        catch (const Rtx::Error& what)
+        {
+            // **Reported and then left alone.** What asks is somebody choosing from a menu, and a
+            // machine that cannot run the mode they picked is an answer rather than a fault: the
+            // renderer is still drawing under the one it had, and `getUpscale` still says which.
+            Log(Debug::Warning) << "Ray tracing kept the upscaler it had: " << what.what();
+        }
+    }
+
     MyGUI::ITexture& RtxRenderer::freezeFrame()
     {
         const Rtx::TracedFrame frame = mCapture.read(*mRenderer);

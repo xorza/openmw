@@ -8,6 +8,7 @@
 
 #include <osg/Timer>
 
+#include <components/rtx/upscale.hpp>
 #include <components/sdlutil/vsyncmode.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -265,6 +266,20 @@ namespace MWRender
         virtual void setCompileOperation(osgUtil::IncrementalCompileOperation* operation) = 0;
 
         virtual void setVSync(SDLUtil::VSyncMode mode) = 0;
+
+        /// How hard the upscaler between the trace and the picture works.
+        ///
+        /// **Nothing by default, because a rasterizer has no upscaler to work.** `Rtx::Upscale` is
+        /// named here for the reason `SDLUtil::VSyncMode` is: it is the value the setting holds and
+        /// the one the backend acts on, and a second spelling in between would be two ideas of what
+        /// `quality` means. The header is a handful of inline functions and is there in every build.
+        ///
+        /// **A mode this machine cannot reach is refused and reported, not thrown**, because what
+        /// asks is somebody choosing from a menu. `getUpscale` is what they are actually running.
+        virtual void setUpscale(Rtx::Upscale upscale) {}
+
+        /// Which mode the frames are drawn under, or `Off` for a renderer with no upscaler at all.
+        virtual Rtx::Upscale getUpscale() const { return Rtx::Upscale::Off; }
 
         /// Recompiles whatever shader source has been edited since the last call. Costs a directory
         /// scan and nothing else when the feature is off, which is what makes it callable per frame.

@@ -24,6 +24,7 @@ namespace MWGui
         void updateLightSettings();
 
         void updateVSyncModeSettings();
+        void updateRayTracingSettings();
 
         void updateWindowModeSettings();
 
@@ -68,6 +69,10 @@ namespace MWGui
         MyGUI::Widget* mWindowModeHint;
 
         MyGUI::Button* mRayTracingButton;
+        MyGUI::ComboBox* mRayTracingUpscale;
+        MyGUI::Widget* mRayTracingUpscaleText;
+        MyGUI::Widget* mRayTracingDistantLand;
+        MyGUI::Widget* mRayTracingDistantLandText;
         MyGUI::Widget* mRayTracingRestartHint;
         MyGUI::Widget* mRayTracingUnavailableHint;
 
@@ -113,6 +118,7 @@ namespace MWGui
 
         void onWindowModeChanged(MyGUI::ComboBox* sender, size_t pos);
         void onVSyncModeChanged(MyGUI::ComboBox* sender, size_t pos);
+        void onRayTracingUpscaleChanged(MyGUI::ComboBox* sender, size_t pos);
 
         void onRebindAction(MyGUI::Widget* sender);
         void onInputTabMouseWheel(MyGUI::Widget* sender, int rel);

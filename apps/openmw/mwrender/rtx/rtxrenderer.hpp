@@ -134,6 +134,8 @@ namespace MWRender
         /// immediate — the newest frame and no tearing — and adaptive is relaxed FIFO. Costs a
         /// swapchain rebuild where it changes anything, so the settings window is the only caller.
         void setVSync(SDLUtil::VSyncMode mode) override;
+        void setUpscale(Rtx::Upscale upscale) override;
+        Rtx::Upscale getUpscale() const override { return mRenderer->getUpscale(); }
 
         /// GLSL is the rasterizer's language. What this renderer draws with is compiled SPIR-V, and
         /// swapping it under a running frame is not a thing it offers.

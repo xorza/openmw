@@ -600,6 +600,22 @@ namespace Rtx
         /// `getExtents` is what says. Kept by the backend, so nothing here allocates per frame.
         virtual void resize(std::uint32_t width, std::uint32_t height) = 0;
 
+        /// How hard the upscaler works, which decides what the frame is traced at.
+        ///
+        /// **Rebuilds every target, which is what makes it a setting and not a per-frame option.**
+        /// The extent a frame is traced at is the upscaler's answer for the presented one, so a mode
+        /// is as big a change as a resize and costs the same: `getExtents` reports the new pair
+        /// afterwards, and a caller holding the old one is holding a camera nothing will accept.
+        ///
+        /// Throws where the mode cannot be reached — a build with no upscaler in it, or a machine
+        /// whose driver cannot run one. **Which is the answer to a setting and not a fault**, so a
+        /// caller that offers the mode to somebody catches it and stays where it was.
+        virtual void setUpscale(Upscale upscale) = 0;
+
+        /// Which mode the frames are being traced under, which is not always the one that was asked
+        /// for: a mode this machine refused leaves the renderer where it was.
+        virtual Upscale getUpscale() const = 0;
+
         /// How the presented image should meet the monitor's refresh.
         ///
         /// **`SDLUtil::VSyncMode` and not a spelling of this fork's own**, because it is the setting

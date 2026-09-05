@@ -191,6 +191,46 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>DLSS Ray Reconstruction</source>
+        <translation>DLSS Ray Reconstruction</translation>
+    </message>
+    <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
+        <translation>Wie stark DLSS Ray Reconstruction arbeitet. Es entrauscht und glättet das getracte Bild, und alle Modi außer dem letzten tracen zudem weniger Pixel, als sie anzeigen.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Aus</translation>
+    </message>
+    <message>
+        <source>Performance</source>
+        <translation>Leistung</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>Ausgewogen</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Qualität</translation>
+    </message>
+    <message>
+        <source>Antialiasing only</source>
+        <translation>Nur Kantenglättung</translation>
+    </message>
+    <message>
+        <source>Ray Tracing Distant Land</source>
+        <translation>Raytracing-Fernsicht</translation>
+    </message>
+    <message>
+        <source>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</source>
+        <translation>Wie weit vom Auge entfernt die Welt aufgebaut wird, in Zellen. Der Raytracing-Renderer baut auf, was Strahlen erreichen können — eine andere Frage als die, wie weit der Rasterizer sehen kann.</translation>
+    </message>
+    <message>
+        <source> cells</source>
+        <translation> Zellen</translation>
+    </message>
+    <message>
         <source>Custom:</source>
         <translation type="unfinished"></translation>
     </message>
@@ -744,7 +784,7 @@ Logs and settings changed through the launcher and in-game will be saved here.</
     </message>
     <message>
         <source>Off</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">Aus</translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;How many threads will be spawned to compute physics update in the background. A value of 0 means that the update will be performed in the main thread.&lt;/p&gt;&lt;p&gt;A value greater than 1 requires the Bullet library be compiled with multithreading support.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
@@ -1041,7 +1081,7 @@ Logs and settings changed through the launcher and in-game will be saved here.</
     </message>
     <message>
         <source> cells</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished"> Zellen</translation>
     </message>
     <message>
         <source>Shadows</source>

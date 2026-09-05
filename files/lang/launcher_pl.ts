@@ -258,6 +258,46 @@
         <source>Experimental Ray Tracing</source>
         <translation>Eksperymentalny ray tracing</translation>
     </message>
+    <message>
+        <source>DLSS Ray Reconstruction</source>
+        <translation>DLSS Ray Reconstruction</translation>
+    </message>
+    <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
+        <translation>Jak mocno pracuje DLSS Ray Reconstruction. Odszumia i wygładza śledzoną klatkę, a każdy tryb poza ostatnim śledzi też mniej pikseli, niż wyświetla.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Wyłączone</translation>
+    </message>
+    <message>
+        <source>Performance</source>
+        <translation>Wydajność</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>Zrównoważony</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Jakość</translation>
+    </message>
+    <message>
+        <source>Antialiasing only</source>
+        <translation>Tylko antyaliasing</translation>
+    </message>
+    <message>
+        <source>Ray Tracing Distant Land</source>
+        <translation>Odległy teren przy śledzeniu promieni</translation>
+    </message>
+    <message>
+        <source>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</source>
+        <translation>Jak daleko od oka budowany jest świat, w komórkach. Renderer ze śledzeniem promieni buduje to, co mogą osiągnąć promienie, co jest innym pytaniem niż to, jak daleko widzi rasteryzator.</translation>
+    </message>
+    <message>
+        <source> cells</source>
+        <translation> komórek</translation>
+    </message>
 </context>
 <context>
     <name>ImportPage</name>

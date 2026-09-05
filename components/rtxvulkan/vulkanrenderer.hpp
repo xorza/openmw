@@ -132,6 +132,8 @@ namespace Rtx
         void placeScene(std::uint32_t slot, const SceneDesc& scene, const SeaState& sea) override;
         const SceneStats& getSceneStats() const override { return mStats; }
         void resize(std::uint32_t width, std::uint32_t height) override;
+        void setUpscale(Upscale upscale) override;
+        Upscale getUpscale() const override { return mUpscale; }
 
         void setVerticalSync(SDLUtil::VSyncMode mode) override;
         FrameExtents getExtents() const override;
@@ -196,6 +198,14 @@ namespace Rtx
         ///        upscaler's answer for that, or the same numbers where nothing upscales.
         void createTargets(std::uint32_t width, std::uint32_t height);
 
+        /// Brings the upscaler's runtime up if it is not already, and throws where it cannot be.
+        void startUpscaler();
+
+        /// Whether a frame is upscaled: a runtime that is up **and** a mode that wants one. The
+        /// runtime outlives a mode being turned off, because raising it again costs a quarter of a
+        /// second and somebody who turned it off may turn it back on.
+        bool upscaling() const;
+
         /// Makes the picture-inside-the-interface chain at least this big, keeping whatever extent
         /// it already reached on either axis.
         void growViewTargets(std::uint32_t width, std::uint32_t height);
@@ -248,8 +258,8 @@ namespace Rtx
         /// pass compiles every kernel before a frame runs.
         Reorder mReorder = Reorder::Off;
 
-        /// Fixed at construction: an upscaler is brought up once, and there is nothing to switch
-        /// to at runtime that would not mean rebuilding every target anyway.
+        /// What the frames are traced under. **Changing it rebuilds every target**, which is what
+        /// `setUpscale` is for and why it is a setting rather than a frame option.
         Upscale mUpscale = Upscale::Off;
         Preset mPreset = Preset::Default;
 
@@ -428,9 +438,11 @@ namespace Rtx
 #ifdef OPENMW_RTX_DLSS
         /// NGX, where this renderer was asked to upscale.
         ///
-        /// **Owned outright and null otherwise** — built in the constructor, destroyed with the
-        /// renderer, and the only one in the process. What `describeDevice` reports comes from
-        /// `Dlss::probe` instead, which asks the device without standing a runtime up.
+        /// **Owned outright and null otherwise** — raised by `startUpscaler` the first time a mode
+        /// wants one, destroyed with the renderer, and the only one in the process. It outlives a
+        /// mode being turned off, so `upscaling` and not this is what says whether a frame is
+        /// upscaled. What `describeDevice` reports comes from `Dlss::probe` instead, which asks the
+        /// device without standing a runtime up.
         std::unique_ptr<Dlss> mNgx;
 
         /// Ray Reconstruction, built for one pair of resolutions and so rebuilt by every resize.

@@ -191,6 +191,46 @@
         <translation>Experimentell strålspårning</translation>
     </message>
     <message>
+        <source>DLSS Ray Reconstruction</source>
+        <translation>DLSS Ray Reconstruction</translation>
+    </message>
+    <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
+        <translation>Hur hårt DLSS Ray Reconstruction arbetar. Det brusreducerar och kantutjämnar den strålspårade bilden, och alla lägen utom det sista spårar dessutom färre pixlar än de visar.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Av</translation>
+    </message>
+    <message>
+        <source>Performance</source>
+        <translation>Prestanda</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>Balanserad</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Kvalitet</translation>
+    </message>
+    <message>
+        <source>Antialiasing only</source>
+        <translation>Endast kantutjämning</translation>
+    </message>
+    <message>
+        <source>Ray Tracing Distant Land</source>
+        <translation>Fjärran landskap vid strålspårning</translation>
+    </message>
+    <message>
+        <source>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</source>
+        <translation>Hur långt från ögat världen byggs, i celler. Strålspårningsrenderaren bygger det som strålar kan nå, vilket är en annan fråga än hur långt rasteriseraren kan se.</translation>
+    </message>
+    <message>
+        <source> cells</source>
+        <translation> celler</translation>
+    </message>
+    <message>
         <source>Custom:</source>
         <translation>Egen:</translation>
     </message>

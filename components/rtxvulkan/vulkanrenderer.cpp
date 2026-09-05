@@ -191,19 +191,7 @@ namespace Rtx
     {
         // Before the first targets, because what to trace at is its answer and not ours.
         if (mUpscale != Upscale::Off)
-        {
-#ifdef OPENMW_RTX_DLSS
-            mNgx = std::make_unique<Dlss>(mDevice, mInstance.getHandle());
-            if (!mNgx->isAvailable())
-                throw Unsupported("DLSS Ray Reconstruction was asked for and " + mNgx->getObstacle());
-#else
-            // **Named rather than quietly ignored.** A build that cannot upscale and renders at the
-            // output size anyway is one whose frame times mean something else entirely.
-            throw Unsupported(
-                "upscaling was asked for and this build has no DLSS; configure with "
-                "-DOPENMW_RTX_DLSS=ON");
-#endif
-        }
+            startUpscaler();
 
         // Before the first targets, because a windowed renderer is sized by its surface rather
         // than by what the caller guessed the window would come up at.
@@ -229,6 +217,58 @@ namespace Rtx
         mRing.emptyGraveyards();
     }
 
+    void VulkanRenderer::startUpscaler()
+    {
+#ifdef OPENMW_RTX_DLSS
+        if (mNgx != nullptr)
+            return;
+
+        // **A quarter of a second, which is why it waits to be wanted.** Bringing the runtime up
+        // loads the feature libraries; a player who never upscales should not spend that at every
+        // start, and one who turns it on in the menu spends it once.
+        mNgx = std::make_unique<Dlss>(mDevice, mInstance.getHandle());
+        if (!mNgx->isAvailable())
+        {
+            const std::string obstacle = mNgx->getObstacle();
+
+            // Let go of it, so that a machine that gains a driver need not be restarted twice and a
+            // second attempt is not refused by the one-runtime-per-process rule.
+            mNgx.reset();
+            throw Unsupported("DLSS Ray Reconstruction was asked for and " + obstacle);
+        }
+#else
+        // **Named rather than quietly ignored.** A build that cannot upscale and renders at the
+        // output size anyway is one whose frame times mean something else entirely.
+        throw Unsupported("upscaling was asked for and this build has no DLSS; configure with -DOPENMW_RTX_DLSS=ON");
+#endif
+    }
+
+    bool VulkanRenderer::upscaling() const
+    {
+        // The runtime is null in a build with no DLSS in it, so this is the same answer there
+        // without saying so twice.
+        return mNgx != nullptr && mUpscale != Upscale::Off;
+    }
+
+    void VulkanRenderer::setUpscale(Upscale upscale)
+    {
+        if (upscale == mUpscale)
+            return;
+
+        // **Before anything is torn down**, so a mode this machine cannot reach leaves the renderer
+        // drawing exactly as it was rather than half way between two of them.
+        if (upscale != Upscale::Off)
+            startUpscaler();
+
+        mUpscale = upscale;
+
+        // The same wait a resize makes, and for the same reason: what is about to be replaced may
+        // still be in flight.
+        mRing.finishAll();
+        mDevice.waitIdle();
+        createTargets(mOutputWidth, mOutputHeight);
+    }
+
     void VulkanRenderer::createTargets(std::uint32_t width, std::uint32_t height)
     {
         assert(width > 0 && height > 0);
@@ -238,9 +278,14 @@ namespace Rtx
 
         // Whatever upscales picks the render size; without one the two extents are the same number
         // twice, and every pass below is written as though they always might not be.
+        //
+        // **The mode and not the runtime, which stopped being the same question the moment the mode
+        // could change.** A runtime that is up because somebody upscaled and then turned it off is
+        // still up — it costs a quarter of a second to raise and is kept for the next time — and
+        // asking it what to trace at for no upscaling at all is a question it refuses.
         VkExtent2D render{ width, height };
 #ifdef OPENMW_RTX_DLSS
-        if (mNgx != nullptr)
+        if (upscaling())
             render = mNgx->getRenderSize(VkExtent2D{ width, height }, mUpscale);
 #endif
         mRenderWidth = render.width;
@@ -303,7 +348,7 @@ namespace Rtx
         // of resolutions, which is most of what it occupies.
         mUpscaler.reset();
 
-        if (mNgx != nullptr)
+        if (upscaling())
         {
             mUpscaled = std::make_unique<Image>(mDevice, mOutputWidth, mOutputHeight, VK_FORMAT_R32G32B32A32_SFLOAT,
                 VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, "upscaled");

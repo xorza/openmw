@@ -9,9 +9,12 @@ namespace Settings
 {
     /// The experimental ray tracing renderer.
     ///
-    /// These are read once, at startup: the renderer decides how the window is created and what
-    /// draws into it, so there is nothing meaningful to change while a frame is in flight. The
-    /// settings exist whether or not the renderer was compiled in, so that a configuration file
+    /// **Which renderer draws is read once and the rest are read as they are wanted.** The choice
+    /// decides how the window is created and what draws into it, so it cannot be made again while a
+    /// frame is in flight; how much world is built and how hard the upscaler works are questions the
+    /// renderer asks again, and both are offered in the game's own menu.
+    ///
+    /// The settings exist whether or not the renderer was compiled in, so that a configuration file
     /// survives moving between builds.
     struct RTXCategory : WithIndex
     {
@@ -19,7 +22,8 @@ namespace Settings
 
         SettingValue<bool> mEnabled{ mIndex, "RTX", "enabled" };
 
-        /// How far out from the eye the world is built, in cells.
+        /// How far out from the eye the world is built, in cells. **Read every frame**, so moving
+        /// it moves the world's edge without a restart.
         ///
         /// **How much world exists, which is a property of the structure rays are cast against and
         /// not of the camera.** `viewing distance` is the rasterizer's fog-and-visibility knob and
@@ -33,6 +37,10 @@ namespace Settings
         ///
         /// A name rather than a number, and unrecognised is refused rather than defaulted — see
         /// `Rtx::upscaleNamed`.
+        ///
+        /// **Changing it rebuilds every target**, which `Rtx::Renderer::setUpscale` does and the
+        /// window manager asks for when this changes. A machine that cannot reach the mode keeps
+        /// the one it had and says so in the log.
         SettingValue<std::string> mUpscale{ mIndex, "RTX", "upscale" };
 
         /// Which Ray Reconstruction network runs, where one runs at all.

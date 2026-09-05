@@ -191,6 +191,46 @@
         <translation>Ray tracing expérimental</translation>
     </message>
     <message>
+        <source>DLSS Ray Reconstruction</source>
+        <translation>DLSS Ray Reconstruction</translation>
+    </message>
+    <message>
+        <source>How hard DLSS Ray Reconstruction works. It denoises and antialiases the traced frame, and every mode but the last also traces fewer pixels than it shows.</source>
+        <translation>À quel point DLSS Ray Reconstruction travaille. Il débruite et anticrénèle l&apos;image tracée, et tous les modes sauf le dernier tracent aussi moins de pixels qu&apos;ils n&apos;en affichent.</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Inactif</translation>
+    </message>
+    <message>
+        <source>Performance</source>
+        <translation>Performance</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>Équilibré</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Qualité</translation>
+    </message>
+    <message>
+        <source>Antialiasing only</source>
+        <translation>Anticrénelage uniquement</translation>
+    </message>
+    <message>
+        <source>Ray Tracing Distant Land</source>
+        <translation>Terrain distant du ray tracing</translation>
+    </message>
+    <message>
+        <source>How far out from the eye the world is built, in cells. The ray tracing renderer builds what rays can reach, which is a different question from how far the rasterizer can see.</source>
+        <translation>Jusqu&apos;où depuis l&apos;œil le monde est construit, en cellules. Le moteur de rendu par ray tracing construit ce que les rayons peuvent atteindre, ce qui est une question différente de la distance à laquelle le rastériseur peut voir.</translation>
+    </message>
+    <message>
+        <source> cells</source>
+        <translation> cellules</translation>
+    </message>
+    <message>
         <source>Custom:</source>
         <translation>Personnalisé :</translation>
     </message>

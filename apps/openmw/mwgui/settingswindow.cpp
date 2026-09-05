@@ -25,6 +25,7 @@
 #include <components/misc/strings/algorithm.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/rtx/upscale.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/settings/values.hpp>
 #include <components/vfs/manager.hpp>
@@ -315,6 +316,10 @@ namespace MWGui
         getWidget(mObjectShadowsButton, "ObjectShadowsButton");
         getWidget(mShadowMapResolution, "ShadowMapResolution");
         getWidget(mRayTracingButton, "RayTracingButton");
+        getWidget(mRayTracingUpscale, "RayTracingUpscaleList");
+        getWidget(mRayTracingUpscaleText, "RayTracingUpscaleText");
+        getWidget(mRayTracingDistantLand, "RayTracingDistantLandSlider");
+        getWidget(mRayTracingDistantLandText, "RayTracingDistantLandText");
         getWidget(mRayTracingRestartHint, "RayTracingRestartHint");
         getWidget(mRayTracingUnavailableHint, "RayTracingUnavailableHint");
 
@@ -326,6 +331,17 @@ namespace MWGui
         mRayTracingUnavailableHint->setVisible(!rayTracing);
         mRayTracingButton->setEnabled(rayTracing);
         mRayTracingRestartHint->setVisible(rayTracing);
+
+        // **Hidden rather than shown dead, unlike the switch above and unlike the launcher's.**
+        // A dead control is only better than a missing one where it can say why it is dead, which
+        // is a tooltip the launcher has and this tab does not — and the hint below already says the
+        // build has no renderer to configure.
+        for (MyGUI::Widget* widget : { static_cast<MyGUI::Widget*>(mRayTracingUpscale), mRayTracingUpscaleText,
+                 mRayTracingDistantLand, mRayTracingDistantLandText })
+            widget->setVisible(rayTracing);
+
+        mRayTracingUpscale->eventComboChangePosition
+            += MyGUI::newDelegate(this, &SettingsWindow::onRayTracingUpscaleChanged);
 
 #ifndef WIN32
         // hide gamma controls since it currently does not work under Linux
@@ -623,6 +639,15 @@ namespace MWGui
             return;
 
         Settings::video().mVsyncMode.set(static_cast<SDLUtil::VSyncMode>(sender->getIndexSelected()));
+        apply();
+    }
+
+    void SettingsWindow::onRayTracingUpscaleChanged(MyGUI::ComboBox* sender, size_t pos)
+    {
+        if (pos == MyGUI::ITEM_NONE)
+            return;
+
+        Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(Rtx::sUpscaleModes[pos])));
         apply();
     }
 
@@ -1012,6 +1037,16 @@ namespace MWGui
         mVSyncModeList->setIndexSelected(static_cast<size_t>(Settings::video().mVsyncMode));
     }
 
+    void SettingsWindow::updateRayTracingSettings()
+    {
+        // **What the setting says and not what the renderer is running**, which are the same until a
+        // machine refuses a mode: the list is where a choice is made, and showing somebody another
+        // answer than the one they chose would hide that the choice was written down.
+        const std::optional<Rtx::Upscale> upscale = Rtx::upscaleNamed(Settings::rtx().mUpscale.get());
+
+        mRayTracingUpscale->setIndexSelected(Rtx::upscaleModeAt(upscale.value_or(Rtx::Upscale::Off)));
+    }
+
     void SettingsWindow::layoutControlsBox()
     {
         const int h = Settings::gui().mFontSize + 2;
@@ -1143,6 +1178,7 @@ namespace MWGui
         updateLightSettings();
         updateWindowModeSettings();
         updateVSyncModeSettings();
+        updateRayTracingSettings();
         resetScrollbars();
         renderScriptSettings();
         MWBase::Environment::get().getWindowManager()->setKeyFocusWidget(mOkButton);

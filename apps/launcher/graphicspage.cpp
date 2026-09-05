@@ -18,6 +18,10 @@
 #include <SDL_video.h>
 
 #include <array>
+#include <cmath>
+#include <optional>
+
+#include <components/rtx/upscale.hpp>
 
 Launcher::GraphicsPage::GraphicsPage(QWidget* parent)
     : QWidget(parent)
@@ -96,14 +100,27 @@ bool Launcher::GraphicsPage::loadSettings()
     if (Settings::rtx().mEnabled)
         rayTracingCheckBox->setCheckState(Qt::Checked);
 
-    // The setting exists in every build so a config file survives moving between them; the switch
-    // is shown dead rather than hidden, because a control that silently does nothing is worse than
-    // one that says why. Asked of the build rather than of the preprocessor — see
+    // A name this cannot read leaves the box where it is, which is the first entry — the same
+    // refusal `Rtx::upscaleNamed` makes, for the reason it gives.
+    if (const std::optional<Rtx::Upscale> upscale = Rtx::upscaleNamed(Settings::rtx().mUpscale.get()))
+        rayTracingUpscaleComboBox->setCurrentIndex(static_cast<int>(Rtx::upscaleModeAt(*upscale)));
+
+    rayTracingDistantLandSpinBox->setValue(static_cast<int>(std::lround(Settings::rtx().mDistantLandCells)));
+
+    // The settings exist in every build so a config file survives moving between them; the controls
+    // are shown dead rather than hidden, because one that silently does nothing is worse than one
+    // that says why. Asked of the build rather than of the preprocessor — see
     // `Features::hasRayTracing`.
     if (!Features::hasRayTracing())
     {
-        rayTracingCheckBox->setEnabled(false);
-        rayTracingCheckBox->setToolTip(tr("This build was made without the ray tracing renderer."));
+        const QString why = tr("This build was made without the ray tracing renderer.");
+        for (QWidget* widget :
+            { static_cast<QWidget*>(rayTracingCheckBox), static_cast<QWidget*>(rayTracingUpscaleComboBox),
+                static_cast<QWidget*>(rayTracingDistantLandSpinBox) })
+        {
+            widget->setEnabled(false);
+            widget->setToolTip(why);
+        }
     }
 
     // aaValue is the actual value (0, 1, 2, 4, 8, 16)
@@ -152,6 +169,9 @@ void Launcher::GraphicsPage::saveSettings()
     Settings::video().mAntialiasing.set(antiAliasingComboBox->currentText().toInt());
 
     Settings::rtx().mEnabled.set(rayTracingCheckBox->checkState() == Qt::Checked);
+    Settings::rtx().mUpscale.set(
+        std::string(Rtx::upscaleName(Rtx::sUpscaleModes[rayTracingUpscaleComboBox->currentIndex()])));
+    Settings::rtx().mDistantLandCells.set(static_cast<float>(rayTracingDistantLandSpinBox->value()));
 
     int cWidth = 0;
     int cHeight = 0;

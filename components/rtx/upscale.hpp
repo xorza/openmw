@@ -1,5 +1,9 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstddef>
 #include <optional>
 #include <string_view>
 
@@ -53,6 +57,26 @@ namespace Rtx
         }
 
         return "off";
+    }
+
+    /// Every mode, in the order something offering a choice lists them.
+    ///
+    /// **One list, because two menus offer it.** The launcher and the game's own settings window
+    /// each turn a position in a list into a mode and back, and a list stated twice is two of them
+    /// the moment a mode is added.
+    ///
+    /// Read down, it is: none of it, then the three by how few pixels they trace, then the one that
+    /// traces every pixel and denoises them anyway.
+    inline constexpr std::array sUpscaleModes{ Upscale::Off, Upscale::Performance, Upscale::Balanced, Upscale::Quality,
+        Upscale::Dlaa };
+
+    /// Where `mode` sits in that list, which every mode does.
+    inline std::size_t upscaleModeAt(Upscale mode)
+    {
+        const auto* found = std::find(sUpscaleModes.begin(), sUpscaleModes.end(), mode);
+        assert(found != sUpscaleModes.end() && "a mode the list of every mode does not hold");
+
+        return static_cast<std::size_t>(found - sUpscaleModes.begin());
     }
 
     /// The mode `name` spells, or nothing where it spells none of them.
