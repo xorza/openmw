@@ -18,20 +18,14 @@ persistent loader could keep the memory it already has.
 
 `Buffer` and `Image` each construct a `DeviceMemory`, and `DeviceMemory` calls
 `vkAllocateMemory`. There is no suballocator. A cell arrival therefore spends one
-device allocation per staging buffer, one per texture image and one per shading map.
+device allocation per texture image and one per shading map.
 
-- [ ] `components/rtxvulkan/texture.cpp:150` — `upload` makes a staging buffer per
-  call. `Texture`'s constructor calls it twice, once at line 190 for the levels and
-  once at line 211 for the shading map. A cell of two hundred textures spends four
-  hundred device allocations on the arrival frame, and buries all of them in the
-  batch until the submit finishes. One growable staging ring, reused across the
-  uploads of one batch, removes every one of them.
 - [ ] `components/rtxvulkan/memory.cpp:45` — one `vkAllocateMemory` per object, and
   two objects per texture. `maxMemoryAllocationCount` is 4294967295 on this driver,
   so the count is not the risk. The cost is the call itself and the padding: each
   allocation is a kernel-visible operation and each is rounded up to the driver's
   granularity, which a shading map of 2 KB pays in full. A suballocator behind
-  `DeviceMemory` serves both this and the staging item above.
+  `DeviceMemory` is what removes it.
 
 ## Facts about a node are derived again every frame
 

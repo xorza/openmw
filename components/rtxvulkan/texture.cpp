@@ -12,7 +12,6 @@
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/shadingmap.hpp>
 
-#include "buffer.hpp"
 #include "commands.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"
@@ -138,33 +137,6 @@ namespace Rtx
 
             return set;
         }
-
-        /// Copies `bytes` into `image` by `regions`, and leaves it where a sampler expects it.
-        ///
-        /// **Recorded rather than submitted.** A cell brings hundreds of these and the queue is asked
-        /// once for all of them; the image is left where a sampler expects it, so nothing recorded
-        /// afterwards has to know this one happened.
-        void upload(const Device& device, Batch& batch, Image& image, std::span<const std::byte> bytes,
-            std::span<const VkBufferImageCopy> regions)
-        {
-            Buffer staging = Buffer::staging(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-            staging.write(bytes);
-
-            const VkCommandBuffer commands = batch.getCommands();
-
-            image.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
-
-            vkCmdCopyBufferToImage(commands, staging.getHandle(), image.getHandle(),
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, static_cast<std::uint32_t>(regions.size()), regions.data());
-
-            image.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-
-            batch.keep(std::move(staging));
-        }
     }
 
     Texture::Texture(const Device& device, Batch& batch, const TextureData& data, std::string_view name,
@@ -187,7 +159,7 @@ namespace Rtx
                 .imageExtent = { data.mLevels[level].mWidth, data.mLevels[level].mHeight, 1 },
             });
 
-        upload(device, batch, *mImage, data.mBytes, regions);
+        uploadImage(device, batch, *mImage, data.mBytes, regions);
 
         // **The map, in the same batch and left where the same sampler expects it.** One level and
         // no chain: the map is read at level nought whatever the cone, because it has no detail for
@@ -204,11 +176,11 @@ namespace Rtx
         mShading = std::make_unique<Image>(device, Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT,
             VK_FORMAT_R16_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadingName);
 
-        const VkBufferImageCopy region{
+        VkBufferImageCopy region{
             .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
             .imageExtent = { Shaders::SHADING_EXTENT, Shaders::SHADING_EXTENT, 1 },
         };
-        upload(device, batch, *mShading, std::as_bytes(std::span(stored)), std::span(&region, 1));
+        uploadImage(device, batch, *mShading, std::as_bytes(std::span(stored)), std::span(&region, 1));
 
         mBytes = data.mBytes.size() + sizeof(stored);
     }

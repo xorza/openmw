@@ -1,5 +1,6 @@
 #include "commands.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <iterator>
@@ -7,6 +8,7 @@
 
 #include "device.hpp"
 #include "graveyard.hpp"
+#include "image.hpp"
 #include "result.hpp"
 
 namespace Rtx
@@ -184,32 +186,62 @@ namespace Rtx
         mStaging.push_back(std::move(staging));
     }
 
+    StagingRun Batch::stage(const Device& device, std::span<const std::byte> bytes)
+    {
+        VkDeviceSize at = (mFilled + sStagingAlignment - 1) / sStagingAlignment * sStagingAlignment;
+
+        if (mBlocks.empty() || at + bytes.size() > mBlocks.back().getSize())
+        {
+            mBlocks.push_back(Buffer::staging(
+                device, std::max<VkDeviceSize>(bytes.size(), sStagingBlock), VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
+            at = 0;
+        }
+
+        const Buffer& block = mBlocks.back();
+        block.writeAt(at, bytes);
+        mFilled = at + bytes.size();
+
+        return StagingRun{ .mBuffer = block.getHandle(), .mOffset = at };
+    }
+
+    void Batch::release()
+    {
+        mStaging.clear();
+        mBlocks.clear();
+        mFilled = 0;
+    }
+
     void Batch::flush()
     {
         if (mCommands == VK_NULL_HANDLE)
         {
             // Staging with nothing recorded is a caller that kept a buffer and then decided against
             // the copy; it has no reader either way.
-            mStaging.clear();
+            release();
             return;
         }
 
-        // Cleared before the wait can be skipped and after it cannot: the copies have run by the
+        // Released before the wait can be skipped and after it cannot: the copies have run by the
         // time `endAndWait` returns, so this is where a staging buffer stops being read.
         mPool.endAndWait(std::exchange(mCommands, VK_NULL_HANDLE));
-        mStaging.clear();
+        release();
     }
 
     void Batch::defer()
     {
         if (mCommands == VK_NULL_HANDLE)
         {
-            mStaging.clear();
+            release();
             return;
         }
 
+        // **The blocks go with what callers handed over**, because a deferred copy has not run: the
+        // pool holds both until the submit that carries this batch has been waited on.
+        mStaging.insert(
+            mStaging.end(), std::make_move_iterator(mBlocks.begin()), std::make_move_iterator(mBlocks.end()));
+
         mPool.defer(std::exchange(mCommands, VK_NULL_HANDLE), std::move(mStaging));
-        mStaging.clear();
+        release();
     }
 
     Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage)
@@ -247,5 +279,26 @@ namespace Rtx
         batch.keep(std::move(staging));
 
         return result;
+    }
+
+    void uploadImage(const Device& device, Batch& batch, Image& image, std::span<const std::byte> bytes,
+        std::span<VkBufferImageCopy> regions)
+    {
+        const StagingRun staged = batch.stage(device, bytes);
+        for (VkBufferImageCopy& region : regions)
+            region.bufferOffset += staged.mOffset;
+
+        const VkCommandBuffer commands = batch.getCommands();
+
+        image.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+
+        vkCmdCopyBufferToImage(commands, staged.mBuffer, image.getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            static_cast<std::uint32_t>(regions.size()), regions.data());
+
+        image.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
     }
 }

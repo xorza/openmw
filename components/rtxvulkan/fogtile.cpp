@@ -2,13 +2,11 @@
 
 #include <cstdint>
 #include <span>
-#include <utility>
 #include <vector>
 
 #include <components/rtx/fognoise.hpp>
 #include <components/rtx/shaders/scene.h>
 
-#include "buffer.hpp"
 #include "commands.hpp"
 #include "device.hpp"
 #include "result.hpp"
@@ -38,25 +36,7 @@ namespace Rtx
             });
 
         Batch batch(pool);
-        {
-            Buffer staging = Buffer::staging(device, noise.mBytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-            staging.write(std::span<const std::uint8_t>(noise.mBytes));
-
-            const VkCommandBuffer commands = batch.getCommands();
-
-            mField.transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
-
-            vkCmdCopyBufferToImage(commands, staging.getHandle(), mField.getHandle(),
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, static_cast<std::uint32_t>(regions.size()), regions.data());
-
-            mField.transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-
-            batch.keep(std::move(staging));
-        }
+        uploadImage(device, batch, mField, std::as_bytes(std::span(noise.mBytes)), regions);
         batch.flush();
 
         // After the image, for the reason `WavePass` gives: a member that throws while being

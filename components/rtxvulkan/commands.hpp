@@ -12,6 +12,7 @@
 namespace Rtx
 {
     class Device;
+    class Image;
     class Graveyard;
 
     /// The one command pool, and both ways a submit is made out of it.
@@ -119,6 +120,30 @@ namespace Rtx
         std::vector<VkCommandBufferSubmitInfo> mSubmitScratch;
     };
 
+    /// How much staging a batch takes at a time.
+    ///
+    /// **Sized so a cell's textures cost a handful of allocations and not one apiece.** Balmora
+    /// arrives with sixty-odd megabytes of them; at this size that is a few blocks where it was four
+    /// hundred buffers. An upload larger than a block is given a block of its own exactly its size,
+    /// so nothing is rounded up to this that does not need to be.
+    inline constexpr VkDeviceSize sStagingBlock = 8 * 1024 * 1024;
+
+    /// What every run inside a block starts on.
+    ///
+    /// **The largest texel block of any format this renderer uploads**, which is BC2's and BC3's
+    /// sixteen bytes. `VkBufferImageCopy::bufferOffset` has to be a multiple of four and of the
+    /// format's texel block, and a texture's own level offsets are added to a run's start — so a
+    /// start every requirement divides leaves every sum as legal as it was.
+    inline constexpr VkDeviceSize sStagingAlignment = 16;
+
+    /// Where a batch put an upload's bytes: the buffer holding them, and how far into it they
+    /// start. See `Batch::stage`.
+    struct StagingRun
+    {
+        VkBuffer mBuffer = VK_NULL_HANDLE;
+        VkDeviceSize mOffset = 0;
+    };
+
     /// One command buffer that a run of setup records into, submitted and waited on once.
     ///
     /// **A load path's cost is round trips, not work.** A cell arriving at Balmora creates 361
@@ -158,6 +183,19 @@ namespace Rtx
         /// Holds `staging` until this batch has been submitted and waited on.
         void keep(Buffer&& staging);
 
+        /// Writes `bytes` into the batch's own staging and says where they landed.
+        ///
+        /// **One block serves every upload of a batch.** A buffer apiece was a `vkCreateBuffer`, a
+        /// `vkAllocateMemory` and a `vkMapMemory` per upload, and a cell that arrives with two
+        /// hundred textures uploads four hundred times — the levels and the shading map of each.
+        /// The bytes are the same bytes and they are alive just as long either way: the batch has
+        /// held every one of them until the submit since it was written.
+        ///
+        /// **Appended and never rewound**, because nothing has run yet: a block reused inside one
+        /// batch would have the copy of the upload before reading whatever the one after wrote.
+        /// A block that cannot take an upload is left where it is and another is taken.
+        StagingRun stage(const Device& device, std::span<const std::byte> bytes);
+
         /// Submits what has been recorded and waits for it, then releases the staging. Does nothing
         /// where nothing was recorded, so a batch nobody used costs nothing.
         void flush();
@@ -170,9 +208,18 @@ namespace Rtx
         void defer();
 
     private:
+        /// Lets go of everything this batch was holding, whichever way it ended.
+        void release();
+
         CommandPool& mPool;
         VkCommandBuffer mCommands = VK_NULL_HANDLE;
+
+        /// What callers handed over with `keep`, which is whole buffers of their own making.
         std::vector<Buffer> mStaging;
+
+        /// The batch's own staging, and how much of the last block is spoken for. See `stage`.
+        std::vector<Buffer> mBlocks;
+        VkDeviceSize mFilled = 0;
     };
 
     /// A device-local buffer holding `bytes`, staged through host-visible memory.
@@ -182,6 +229,23 @@ namespace Rtx
     /// later in the same batch, which is what lets a structure be built from a buffer uploaded
     /// beside it.
     Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage);
+
+    /// Copies `bytes` into `image` by `regions`, and leaves it where a sampler expects it.
+    ///
+    /// **Recorded rather than submitted.** A cell brings hundreds of these and the queue is asked
+    /// once for all of them; the image is left where a sampler expects it, so nothing recorded
+    /// afterwards has to know this one happened.
+    ///
+    /// **From `UNDEFINED`, so whatever the image held is thrown away.** That is what an image being
+    /// filled for the first time is. An image already in a sampler's hands that is being written
+    /// over in part — the interface's textures — transitions from where it stands instead, and
+    /// `GuiTextures` is that.
+    ///
+    /// **`regions` is written to**, because the bytes land somewhere inside the batch's staging
+    /// rather than at the start of a buffer of their own: each region is moved along by where they
+    /// landed.
+    void uploadImage(const Device& device, Batch& batch, Image& image, std::span<const std::byte> bytes,
+        std::span<VkBufferImageCopy> regions);
 
     template <class T>
     Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const T> data, VkBufferUsageFlags usage)

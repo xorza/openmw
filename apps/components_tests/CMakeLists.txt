@@ -115,6 +115,7 @@ if (OPENMW_RTX)
         rtx/bluenoise.cpp
         rtx/buffer.cpp
         rtx/cloudshell.cpp
+        rtx/commands.cpp
         rtx/computepipeline.cpp
         rtx/device.cpp
         rtx/distantlights.cpp
