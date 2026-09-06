@@ -1119,8 +1119,8 @@ namespace MWWorld
         osg::Vec3f predictedPos = playerPos + moved / dt * mPredictionTime;
 
         if (mCurrentCell->isExterior())
-            exteriorPositions.push_back(PositionCellGrid{
-                predictedPos, gridCenterToBounds(getNewGridCenter(predictedPos, &mGrid.getCentre())) });
+            exteriorPositions.push_back(
+                PositionCellGrid{ predictedPos, gridCenterToBounds(getNewGridCenter(predictedPos, nullptr)) });
 
         mLastPlayerPos = playerPos;
 

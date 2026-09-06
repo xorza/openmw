@@ -22,6 +22,7 @@ file(GLOB UNITTEST_SRC_FILES
     mwscript/testscripts.cpp
 
     mwsound/testheadcache.cpp
+    mwsound/testwarmqueue.cpp
 )
 
 if (MSVC)
