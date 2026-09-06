@@ -293,9 +293,9 @@ namespace Rtx
         /// and a hand-over takes two of the finished ones, so how many have landed when a run ends
         /// is the baker's answer rather than the frame index's. Measured over six runs of the
         /// shoreline route: the same five hundred and thirty content textures every time, and
-        /// thirty-four to thirty-six composites at 1.34 MiB apiece. `SceneUploader::setStaged`
-        /// waits them all out, which is what makes a `shot` reproducible, and
-        /// `SceneUploader::setSettled` is what a run that has to compare itself turns on.
+        /// thirty-four to thirty-six composites at 1.34 MiB apiece. `CompositeQueue::setSettled`
+        /// takes the baker's timing out of that count, which is why a run that has to compare
+        /// itself asks for it.
         std::uint32_t mTextureCount = 0;
         std::uint64_t mTextureBytes = 0;
     };

@@ -1,8 +1,8 @@
 #include "sceneuploader.hpp"
 
-#include <limits>
 #include <span>
 
+#include "compositequeue.hpp"
 #include "renderer.hpp"
 #include "scenedesc.hpp"
 #include "texturebuilder.hpp"
@@ -29,8 +29,8 @@ namespace Rtx
         return mRenderer == &renderer && mSlot == slot && mScene == &scene && mUploaded == textures;
     }
 
-    SceneUpload SceneUploader::hand(
-        Renderer& renderer, std::uint32_t slot, SceneDesc& scene, Resource::ImageManager& images, const SeaState& sea)
+    SceneUpload SceneUploader::hand(Renderer& renderer, std::uint32_t slot, SceneDesc& scene,
+        Resource::ImageManager& images, CompositeQueue* const composites, const SeaState& sea)
     {
         const bool mine = recognises(renderer, slot, scene, renderer.getTextureCount(slot));
 
@@ -40,18 +40,7 @@ namespace Rtx
         // last before anything reads them. `SceneDesc::orderLights` says what depends on it.
         scene.orderLights();
 
-        // **Before anything reads what arrived, because a composite coming back is an arrival.**
-        // The queue hands its baker whatever the walk marked for flattening and takes back a
-        // bounded number of what the baker finished; a composite taken here took a texture slot on
-        // the way, so the upload below carries it without knowing it was ever waiting. A caller with
-        // no next frame waits for the baker first and takes everything.
-        mComposites.gather(scene, images);
-
-        if (mStaged || mSettled)
-            mComposites.finish();
-
-        const std::size_t baked
-            = mComposites.collect(scene, mStaged ? std::numeric_limits<std::size_t>::max() : sCompositesPerFrame);
+        const std::size_t baked = composites != nullptr ? composites->advance(scene, images) : 0;
 
         // Geometry the walk has not met before has no bottom-level structure and no uploaded
         // texture. **Which is a cell change and a load, not a frame** — a door opening moves
@@ -89,9 +78,9 @@ namespace Rtx
             // what it wants is the table in its own order; a frame that grew wants the slots that
             // were written and no others, wherever in the table they sit.
             if (!mine)
-                mTextures.describeAll(scene, images, &mComposites);
+                mTextures.describeAll(scene, images, composites);
             else
-                mTextures.describe(scene, images, scene.getArrivedTextures(), &mComposites);
+                mTextures.describe(scene, images, scene.getArrivedTextures(), composites);
 
             done.mDescribed = mTextures.getDescriptions().size();
             done.mUnreadable = mTextures.getUnreadable();
@@ -126,7 +115,8 @@ namespace Rtx
         // **After the upload and not before.** Between the collect and here, what the queue holds is
         // the only copy of a composite's bytes; a region's worth is fifty megabytes, and keeping
         // them past the frame that read them would be paying for one picture twice.
-        mComposites.releaseFinished();
+        if (composites != nullptr)
+            composites->releaseFinished();
 
         mRenderer = &renderer;
         mSlot = slot;

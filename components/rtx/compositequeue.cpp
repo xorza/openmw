@@ -35,6 +35,16 @@ namespace Rtx
         }
     }
 
+    std::size_t CompositeQueue::advance(SceneDesc& scene, Resource::ImageManager& images)
+    {
+        gather(scene, images);
+
+        if (mSettled)
+            finish();
+
+        return collect(scene, sCompositesPerFrame);
+    }
+
     void CompositeQueue::gather(const SceneDesc& scene, Resource::ImageManager& images)
     {
         const std::span<const Material> materials = scene.getMaterials();
@@ -124,7 +134,7 @@ namespace Rtx
     void CompositeQueue::finish()
     {
         std::unique_lock<std::mutex> lock(mMutex);
-        mSettled.wait(lock, [&] { return mPending.empty() && mBaking == 0; });
+        mBaked.wait(lock, [&] { return mPending.empty() && mBaking == 0; });
     }
 
     std::size_t CompositeQueue::collect(SceneDesc& scene, const std::size_t limit)
@@ -220,7 +230,7 @@ namespace Rtx
             lock.lock();
             --mBaking;
             mDone.push_back(std::move(baked));
-            mSettled.notify_all();
+            mBaked.notify_all();
         }
     }
 

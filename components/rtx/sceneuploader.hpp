@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "compositequeue.hpp"
 #include "renderer.hpp"
 #include "texturebuilder.hpp"
 #include "wavespectrum.hpp"
@@ -15,6 +14,7 @@ namespace Resource
 
 namespace Rtx
 {
+    class CompositeQueue;
     class SceneDesc;
 
     /// What handing a mirrored scene to a renderer came to.
@@ -72,38 +72,13 @@ namespace Rtx
         ///        out. **A doll takes the same three branches a cell does** — a race-creation slider
         ///        drag redraws the same subject sixty times a second, and rebuilding it each time is
         ///        what this exists to stop.
+        /// @param composites the world's terrain baker, or null for a scene with no distant ground.
+        ///        **Not a member, because flattening a chunk is the world's business and not the
+        ///        hand-over's**: a doll and a map tile go through the same three branches and
+        ///        neither has ground to flatten, so an uploader of its own would carry a mutex, a
+        ///        thread and a shading cache to bake nothing.
         SceneUpload hand(Renderer& renderer, std::uint32_t slot, SceneDesc& scene, Resource::ImageManager& images,
-            const SeaState& sea = SeaState{});
-
-        /// Whether this serves a world staged once rather than a game that keeps running.
-        ///
-        /// **A caller with no next frame cannot leave a bake unfinished.** Flattening a chunk's
-        /// ground costs 28.5 ms, so a running game leaves it to the queue's own thread and the chunk
-        /// shades from its layer stack until the bytes come back — a cost per hit for a moment
-        /// instead of a hitch. A harness that stages a region, renders one frame and stops has
-        /// nowhere to put a bake that finishes later, and would photograph a picture no player ever
-        /// sees; it waits for every one instead. Told once, because it is a fact about the caller
-        /// and not about the frame.
-        void setStaged(bool staged) { mStaged = staged; }
-
-        /// Whether a hand-over waits for the bakes it queued before it takes any.
-        ///
-        /// **Which frame a composite lands on is otherwise the baker thread's answer, not the
-        /// schedule's.** A chunk arrives, a bake is queued, and it comes back whenever a thread
-        /// finishes it — so two runs of one build take it on different frames and draw different
-        /// pictures from the crossing onwards. That is a run that cannot be compared with itself,
-        /// which is the same reason `Rtx::FrameOptions::mSinceLast` exists.
-        ///
-        /// **The per-frame bound is kept.** Waiting is not collecting: a settled run still takes
-        /// `sCompositesPerFrame` and no more, so the arrival pattern is the one the streaming path
-        /// really has and only the thread's timing is gone. What it costs is a stall at the
-        /// crossing that queued the bakes, which is a trade a measured run can make and a game
-        /// cannot.
-        ///
-        /// **This is the only thread a streaming run waits on, and the terrain is not one.** The
-        /// quad tree is the obvious suspect and the wrong one: `Terrain::QuadTreeWorld::collect`
-        /// resolves its view and loads every entry it names, in the calling thread.
-        void setSettled(bool settled) { mSettled = settled; }
+            CompositeQueue* composites, const SeaState& sea = SeaState{});
 
     private:
         /// **Whether the pair in front of it is the pair it last built, and appending is only
@@ -120,16 +95,6 @@ namespace Rtx
         /// pointers are what stop a coincidence in it from mattering.
         bool recognises(
             const Renderer& renderer, std::uint32_t slot, const SceneDesc& scene, std::uint32_t textures) const;
-
-        bool mStaged = false;
-        bool mSettled = false;
-
-        /// The distant chunks waiting for their ground to be flattened, and the thread flattening
-        /// them.
-        ///
-        /// **Here because this is the once-a-frame call**, and because a bake outlives the frame
-        /// that asked for it.
-        CompositeQueue mComposites;
 
         /// What an arrival is described into, and the storage the descriptions point at.
         ///

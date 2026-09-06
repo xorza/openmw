@@ -53,7 +53,9 @@ namespace Rtx
     /// expected value, which cannot tell a stale table from a camera that moved.
     ///
     /// **A run stays comparable with itself only while nothing in it reads the wall clock.**
-    /// `Rtx::FrameOptions::mSinceLast` and `Rtx::SceneUploader::setSettled` are the two that did.
+    /// `Rtx::FrameOptions::mSinceLast` and `Rtx::CompositeQueue::setSettled` are two that did, and
+    /// they are not all of them: two `bench --views=island-crossing --hashes` runs of one build
+    /// still differ on 355 of 360 frames, of which settling the terrain accounts for four.
     ///
     /// **A hash and not a picture**, because six hundred frames at 1920x1080 is a few hundred
     /// megabytes and the sixteen stills are kilobytes. What this answers is "did the run draw the

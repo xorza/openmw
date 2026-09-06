@@ -119,6 +119,11 @@ namespace MWRender
         if (asked.has_value())
             mSession = std::make_unique<Session>(std::move(asked->mRequest), asked->mInto);
 
+        // **A run judged against another one waits for its ground.** Which frame a flattened chunk
+        // lands on is otherwise the baker thread's answer rather than the schedule's, and a hashed
+        // run is the one that cannot have a thread deciding what it drew.
+        mMirror.setSettled(mSession != nullptr && mSession->hashesFrames());
+
         // **Before any content is read, because it decides what reading one records.** This is the
         // only renderer that asks what the content says a surface is, and the answer is stored on
         // every state set as it is built — so nothing else in the process pays for it.

@@ -110,6 +110,14 @@ namespace MWRender
         /// Whether the stop wants the graph walked a second time, so it can report what that added.
         bool wantsSecondWalk() const;
 
+        /// Whether any stop hashes its frames, which makes the run one that has to be comparable
+        /// with another run of the same build.
+        ///
+        /// **What decides whether the terrain waits.** `Rtx::CompositeQueue::setSettled` says why a
+        /// run judged against another cannot let a baker thread choose which frame the ground lands
+        /// on, and what the waiting costs.
+        bool hashesFrames() const;
+
     private:
         /// Whether the game has a world with a player in it. Nothing happens before it does.
         bool isPlaying() const;

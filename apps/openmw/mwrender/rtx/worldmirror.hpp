@@ -2,6 +2,7 @@
 
 #include <cstddef>
 
+#include <components/rtx/compositequeue.hpp>
 #include <components/rtx/distantlights.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -60,6 +61,10 @@ namespace MWRender
         /// Hands the scene to `renderer`, building only what has to be built.
         Rtx::SceneUpload hand(Rtx::Renderer& renderer, Resource::ImageManager& images);
 
+        /// Whether each hand-over waits for the ground it queued. `Rtx::CompositeQueue::setSettled`
+        /// says which runs want that and what it costs them.
+        void setSettled(bool settled) { mComposites.setSettled(settled); }
+
         /// Catches the walk up and drops what it did not find.
         ///
         /// **After the trace and not before the walk.** Where everything stood this frame is what
@@ -94,6 +99,14 @@ namespace MWRender
         Rtx::DistantLights mDistantLights;
 
         Rtx::SceneUploader mUploader;
+
+        /// The distant chunks waiting for their ground to be flattened, and the thread flattening
+        /// them.
+        ///
+        /// **Here because only a world has ground.** A bake outlives the frame that asked for it,
+        /// so it belongs to what outlives frames rather than to the once-a-frame call — and every
+        /// picture inside the interface goes through that same call with no ground to flatten.
+        Rtx::CompositeQueue mComposites;
 
         /// Where the sky's meshes are loaded from. Borrowed: the world outlives this.
         Resource::ResourceSystem* mResources = nullptr;

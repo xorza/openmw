@@ -62,6 +62,43 @@ namespace Rtx
         CompositeQueue(const CompositeQueue&) = delete;
         CompositeQueue& operator=(const CompositeQueue&) = delete;
 
+        /// Whether a hand-over waits for the bakes it queued before it takes any.
+        ///
+        /// **Which frame a composite lands on is otherwise the baker thread's answer, not the
+        /// schedule's.** A chunk arrives, a bake is queued, and it comes back whenever a thread
+        /// finishes it — so two runs of one build take it on different frames and draw different
+        /// pictures from the crossing onwards. That is a run that cannot be compared with itself,
+        /// which is the same reason `Rtx::FrameOptions::mSinceLast` exists.
+        ///
+        /// **The per-frame bound is kept.** Waiting is not collecting: a settled run still takes
+        /// `sCompositesPerFrame` and no more, so the arrival pattern is the one the streaming path
+        /// really has and only the thread's timing is gone. What it costs is a stall at the
+        /// crossing that queued the bakes, which is a trade a measured run can make and a game
+        /// cannot.
+        ///
+        /// **This is the only thread a settled run waits on, and the terrain is not one.** The quad
+        /// tree is the obvious suspect and the wrong one: `Terrain::QuadTreeWorld::collect` resolves
+        /// its view and loads every entry it names, in the calling thread.
+        void setSettled(bool settled) { mSettled = settled; }
+
+        /// Hands the baker what this walk marked, then moves what is finished into the scene.
+        ///
+        /// **Before anything reads what arrived, because a composite coming back is an arrival.** A
+        /// composite taken here took a texture slot on the way, so the upload that follows carries
+        /// it without knowing it was ever waiting.
+        ///
+        /// @return how many landed, which is what makes a frame that only finished a bake an
+        ///         arrival for everything downstream.
+        std::size_t advance(SceneDesc& scene, Resource::ImageManager& images);
+
+        /// The finished composite in `slot`, or null where nothing here baked one.
+        const TerrainComposite* find(Index slot) const;
+
+        /// Lets go of everything `collect` took. **After the upload and not before**: what is held
+        /// between those two calls is the only copy of the bytes a backend has to read.
+        void releaseFinished() { mFinished.clear(); }
+
+    private:
         /// Hands the baker every chunk the walk wrote that wants flattening and is not already
         /// handed over.
         ///
@@ -72,29 +109,18 @@ namespace Rtx
         void gather(const SceneDesc& scene, Resource::ImageManager& images);
 
         /// Waits until nothing handed over is still baking.
-        ///
-        /// **For a caller with no next frame.** A harness that stages a region, renders one frame
-        /// and stops has nowhere to put a bake that finishes later, and would photograph ground no
-        /// player sees.
         void finish();
 
         /// Moves at most `limit` finished composites into the scene, oldest first.
         ///
-        /// A composite taken takes a texture slot — which puts it among the scene's arrivals, so the
-        /// upload that follows carries it — and goes onto the material that asked. One whose chunk
-        /// left the world while it baked is dropped instead.
+        /// A composite taken takes a texture slot and goes onto the material that asked. One whose
+        /// chunk left the world while it baked is dropped instead.
         ///
         /// @return how many were taken.
         std::size_t collect(SceneDesc& scene, std::size_t limit);
 
-        /// The finished composite in `slot`, or null where nothing here baked one.
-        const TerrainComposite* find(Index slot) const;
+        bool mSettled = false;
 
-        /// Lets go of everything `collect` took. **After the upload and not before**: what is held
-        /// between those two calls is the only copy of the bytes a backend has to read.
-        void releaseFinished() { mFinished.clear(); }
-
-    private:
         /// Which chunk asked: the material's slot and where its layers sat when it did.
         ///
         /// What the frame side remembers of everything handed over and not yet collected, without
@@ -165,7 +191,7 @@ namespace Rtx
         std::condition_variable_any mWake;
 
         /// Woken by a bake finishing, which is what `finish` waits for.
-        std::condition_variable mSettled;
+        std::condition_variable mBaked;
 
         /// Oldest first, so the baker finishes chunks in the order they arrived.
         std::deque<Request> mPending;
@@ -217,8 +243,8 @@ namespace Rtx
 
         /// **Last, so it is joined first.** A member declared above it would be destroyed while
         /// the baker was still reading it; the stop the join begins with is what wakes the wait.
-        /// Started by the first chunk that asks rather than with the queue: every picture inside
-        /// the interface has an uploader and a queue of its own, and a doll never asks.
+        /// Started by the first chunk that asks rather than with the queue: a world that never
+        /// reaches distant ground never pays for a thread.
         std::jthread mWorker;
     };
 }

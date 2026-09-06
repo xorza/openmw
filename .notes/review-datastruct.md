@@ -13,22 +13,7 @@ of scope. No measurements were taken.
 
 ---
 
-## A run reaches the renderer through a global
-
-- [ ] **`FrameRequest` reaches the renderer through the settings registry.**
-      `main.cpp:391` writes eleven fields into `Settings::rtx()` and `Settings::video()`, and
-      `RtxRenderer` reads five of them back into `mDelight`, `mShowAlbedo`, `mFilter`, `mJitter` and
-      `mExposure`. The registry is a string-keyed global between two objects in one process.
-
----
-
 ## Ownership placed for convenience rather than for what needs it
-
-- [ ] **Every `OffscreenTrace` owns a terrain baker.** `OffscreenTrace` owns a `SceneUploader`, and
-      `SceneUploader` owns a `CompositeQueue`. That queue holds a `std::jthread`, a `ShadingCache`,
-      three scratch vectors and a `CompositeScratch`. The queue's own comment says a doll never
-      asks. Move the queue to whatever owns the world, and hand it to `hand()` as the argument that
-      `describeAll` and `describe` already take.
 
 - [ ] **The frame's target chain and the interface picture's chain are written twice.** The frame
       has `mColour`, `mTarget`, `mSpare`, `mPresented`, `mSum`, `mChannels` and `mFogVolume`. The

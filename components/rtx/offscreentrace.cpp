@@ -35,10 +35,6 @@ namespace Rtx
         mOptions.mWidth = width;
         mOptions.mHeight = height;
         mOptions.mScene = sWorld;
-
-        // A picture inside the interface is traced when its subject changes and not per frame, so
-        // there is no later frame for an unfinished bake to be drained into.
-        mUploader.setStaged(true);
     }
 
     OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, osg::Node& subject,
@@ -184,7 +180,7 @@ namespace Rtx
         mExtractor->retire();
 
         // It consumes the arrivals, so nothing here clears them.
-        mUploader.hand(mRenderer, mViewScene, *mScene, images);
+        mUploader.hand(mRenderer, mViewScene, *mScene, images, nullptr);
 
         return mScene->getPlacedCount() > 0;
     }

@@ -142,7 +142,7 @@ namespace MWRender
 
     Rtx::SceneUpload WorldMirror::hand(Rtx::Renderer& renderer, Resource::ImageManager& images)
     {
-        return mUploader.hand(renderer, Rtx::sWorld, mScene, images, Rtx::SeaState{});
+        return mUploader.hand(renderer, Rtx::sWorld, mScene, images, &mComposites, Rtx::SeaState{});
     }
 
     void WorldMirror::settle()

@@ -509,6 +509,11 @@ namespace MWRender
         noteStanding();
     }
 
+    bool Session::hashesFrames() const
+    {
+        return std::ranges::any_of(mRequest.mStops, [](const Rtx::Stop& stop) { return stop.mActions.mHash; });
+    }
+
     bool Session::wantsSecondWalk() const
     {
         return !mDone && mStarted && mRequest.mStops[mAt].mActions.mWalkTwice;
