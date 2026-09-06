@@ -10,12 +10,15 @@
 #include <osg/Vec3f>
 
 #include <components/resource/imagemanager.hpp>
+#include <components/resource/objectcache.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/spritelight.hpp>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/vfs/manager.hpp>
 #include <components/vfs/pathutil.hpp>
+
+#include "allocations.hpp"
 
 namespace Rtx
 {
@@ -57,6 +60,23 @@ namespace Rtx
             image->allocateImage(4, 4, 1, format, GL_UNSIGNED_BYTE);
             return image;
         }
+
+        /// An image manager a test can put a decoded image into.
+        ///
+        /// **The cache and not the VFS**, because `getImage` reads it first: an image written in
+        /// here comes back without a file, without a reader plugin, and without the warning image a
+        /// miss caches — which is `GL_RGB`, a format this renderer refuses, so a slot that opened a
+        /// file would be described as unreadable and logged by name.
+        class HeldImages : public Resource::ImageManager
+        {
+        public:
+            using Resource::ImageManager::ImageManager;
+
+            void hold(VFS::Path::NormalizedView path, osg::ref_ptr<osg::Image> image)
+            {
+                mCache->addEntryToObjectCache(std::string(path.value()), image);
+            }
+        };
 
         /// DXT1 arrives under two names and both of them read the alpha bit.
         ///
@@ -150,6 +170,51 @@ namespace Rtx
         {
             std::vector<Rtx::MipLevel> levels;
             EXPECT_THROW(describeImage(*makeBlock(GL_RGB), levels), Rtx::Error);
+        }
+
+        /// Describing an arrival a second time reaches the heap not at all.
+        ///
+        /// **What every scratch in `SceneTextures` is for, stated as a number.** A cell arriving is
+        /// the frame with the least room to grow anything, and the class holds the images, the
+        /// levels, the descriptions, the kept slots and the shading maps across arrivals so that one
+        /// refills what the last one grew. A `clear()` traded for a fresh vector anywhere in there
+        /// is what this catches, and nothing else would.
+        ///
+        /// **The first call is the one that grows them**, so it is spent and not measured — the same
+        /// shape the frame-path guards use.
+        TEST(RtxTextureBuilderTest, describingAnArrivalASecondTimeReachesTheHeapNotAtAll)
+        {
+            VFS::Manager vfs;
+            HeldImages images(&vfs, 0);
+
+            // **Held under the name the image carries**, so the slot, the cache key and the name
+            // the description comes back with are one path rather than three.
+            constexpr VFS::Path::NormalizedView path("textures/tx_test.dds");
+            const osg::ref_ptr<osg::Image> image = makeBlock(GL_RGBA);
+            ASSERT_EQ(image->getFileName(), path.value()) << "the slot and the image name a different file";
+            images.hold(path, image);
+
+            Rtx::SceneDesc scene;
+            addModel(scene, path);
+
+            SceneTextures described;
+            described.describeAll(scene, images);
+            ASSERT_EQ(described.getUnreadable(), 0u) << "the image did not come back from the cache";
+            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
+
+            // Four texels across and one level in the file, so `MipChain` builds the rest: 4, 2 and
+            // 1. That puts the pooled chain under the guard below rather than only the flat tables.
+            ASSERT_EQ(described.getDescriptions()[0].mLevels.size(), std::size_t{ 3 });
+
+            const std::size_t before = Testing::getAllocationCount();
+            described.describeAll(scene, images);
+            const std::size_t spent = Testing::getAllocationCount() - before;
+
+            EXPECT_EQ(spent, 0u) << "a second description reached the heap " << spent << " times";
+
+            // And it answered, rather than reaching the heap not at all by doing nothing.
+            EXPECT_EQ(described.getUnreadable(), 0u);
+            ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
         }
 
         /// A slot the scene has given up is described by nobody, and the gap it leaves is survived.
