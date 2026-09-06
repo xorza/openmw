@@ -285,14 +285,6 @@ namespace Rtx
 
         SceneDesc& mScene;
 
-        /// Which slot each placement holds, and when it was last met.
-        ///
-        /// **This is what a slot buys.** The two maps of matrices it replaces were rebuilt every
-        /// frame — a lookup, an insert and a heap node for each of fifty thousand placements, to
-        /// carry a transform from one frame to the next that the scene can simply keep. What
-        /// remains is one lookup, and Phase 2 is about not making that either.
-        std::unordered_map<std::size_t, Known> mPlacements;
-
         /// The walk itself, made once rather than per call.
         ///
         /// It carries the sequence clock, the emitter clock and the chain of state sets it refills
@@ -325,6 +317,14 @@ namespace Rtx
         /// below: each reads the mirror's own rather than keeping a copy that could fall behind it.
         MirrorPass mPass;
 
+        /// Which slot each placement holds, and when it was last met.
+        ///
+        /// **This is what a slot buys.** The two maps of matrices it replaces were rebuilt every
+        /// frame — a lookup, an insert and a heap node for each of fifty thousand placements, to
+        /// carry a transform from one frame to the next that the scene can simply keep. What
+        /// remains is one lookup, and Phase 2 is about not making that either.
+        Kept<std::unordered_map<std::size_t, Known>> mPlacements{ mPass };
+
         /// The drawables the walk met, and what poses the ones that deform.
         MeshResolver mMeshes{ mScene, mPass };
 
@@ -333,16 +333,6 @@ namespace Rtx
 
         /// The particle systems the walk met, and the sprite textures they hold.
         EmitterResolver mEmitters{ mScene, mPass };
-
-        /// How many placements this epoch's walks stamped, against how many the map holds.
-        ///
-        /// **What lets the sweep be skipped rather than run to find nothing.** A world that stands
-        /// still reaches every placement it holds, so the two agree and there is provably nothing
-        /// stale to erase — where the sweep would iterate tens of thousands of entries, a cache miss
-        /// apiece, to reach the same conclusion. It is only ever an equality: a walk stamps an entry
-        /// once, so the count cannot pass the size, and anything short of it means something in the
-        /// map went unreached and the sweep has to run.
-        std::size_t mPlacementsReached = 0;
 
         // Refilled per sweep: the survivors, as the scene wants them.
         std::vector<Index> mLiveMeshes;

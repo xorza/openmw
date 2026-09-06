@@ -15,7 +15,6 @@ namespace Rtx::Testing
         /// crate already uploaded — and an address the engine freed when a cell unloaded can be
         /// handed straight back for something else. Sweeping is what stops the next thing allocated
         /// there inheriting a mesh it has nothing to do with.
-        /// A drawable the graph has let go cannot be mistaken for whatever replaces it.
         ///
         /// **The torn figure a change of clothes produced.** `NpcAnimation::updateParts` frees the
         /// body parts that changed and builds their replacements, and the allocator is free to put a
@@ -232,12 +231,66 @@ namespace Rtx::Testing
                 << "the rig of the one that left went with it and the survivor's stayed";
         }
 
-        /// The sea is named by a node mask, and only the drawables that carry it become water.
+        /// A slot the walk stopped naming is freed on the frame it stopped, however whole the map is.
         ///
-        /// **The engine is the only thing that knows.** Water reaches the mirror as a blended quad
-        /// with a texture on it and nothing else — no geometry, state set or name tells it apart
-        /// from a painted floor — so `MWRender::Water`'s own node mask is the answer, and a mirror
-        /// that is not told keeps every surface a surface.
+        /// **What the sweep's own guard cannot see.** A frame where every entry was reached has
+        /// nothing stale in it, so the sweep and the release are both skipped — but a deforming
+        /// drawable whose source geometry was replaced is not stale, it is wrong: `MeshResolver`
+        /// lets go of that entry in the middle of the walk and mirrors the drawable afresh. The map
+        /// ends the frame the size it started, every entry in it stamped, and the slot the abandoned
+        /// entry named is named by nothing at all.
+        TEST_F(RtxSceneExtractorTest, aSlotAbandonedInsideAWalkIsFreedByTheSameFrameThatAbandonedIt)
+        {
+            RiggedQuad actor;
+            osg::ref_ptr<osg::Geometry> crate = makeQuad();
+
+            osg::ref_ptr<osg::Group> root = new osg::Group;
+            root->addChild(actor.mSkeleton);
+            root->addChild(crate);
+
+            actor.update(1);
+            mScene.clearPlacement();
+            const ExtractionStats arrived = mExtractor.extractWorld(*root, osg::Matrixf::identity(), 0, 1);
+            mExtractor.advance();
+            ASSERT_TRUE(mExtractor.retire().empty()) << "the walk that found them is the epoch they survive";
+
+            ASSERT_EQ(arrived.mMeshesAdded, 2u);
+            ASSERT_EQ(mScene.getMeshes().size(), 2u);
+            ASSERT_EQ(mScene.getMeshes()[0].mVertexCount, 4u) << "the actor is the first drawable under the root";
+
+            // **The rig re-pointed at a longer mesh, which is the same rig.** Posing six vertices
+            // into a run of four is not a wrong pose: the run lives in one shared vertex buffer, so
+            // the kernel would write over the meshes that follow it.
+            osg::ref_ptr<osg::Geometry> longer = new osg::Geometry;
+            longer->setVertexArray(makePositions({
+                osg::Vec3f(0.0f, 0.0f, 0.0f),
+                osg::Vec3f(1.0f, 0.0f, 0.0f),
+                osg::Vec3f(1.0f, 1.0f, 0.0f),
+                osg::Vec3f(0.0f, 1.0f, 0.0f),
+                osg::Vec3f(2.0f, 0.0f, 0.0f),
+                osg::Vec3f(2.0f, 1.0f, 0.0f),
+            }));
+            longer->addPrimitiveSet(makeTriangles({ 0, 1, 2, 0, 2, 3, 1, 4, 5 }));
+            actor.mRig->setSourceGeometry(longer);
+
+            actor.update(2);
+            mScene.clearPlacement();
+            const ExtractionStats again = mExtractor.extractWorld(*root, osg::Matrixf::identity(), 0, 2);
+            mExtractor.advance();
+            const Retirement went = mExtractor.retire();
+
+            // Both drawables were reached and the map is the size it was, so the sweep found nothing
+            // to erase — and the slot still has to go.
+            EXPECT_EQ(again.mMeshesAdded, 1u) << "the longer mesh was posed into the slot it does not fit";
+            EXPECT_EQ(again.mMeshesReused, 1u) << "the crate was mirrored again rather than recognised";
+            EXPECT_TRUE(went.empty()) << "the sweep erased an entry that was still being reached";
+
+            ASSERT_EQ(mScene.getMeshes().size(), 3u);
+            EXPECT_EQ(mScene.getMeshes()[0].mVertexCount, 0u) << "the abandoned slot was left standing";
+            EXPECT_EQ(mScene.getMeshes()[1].mVertexCount, 4u) << "the crate lost its slot";
+            EXPECT_EQ(mScene.getMeshes()[2].mVertexCount, 6u);
+        }
+
         /// Everything under the node the caller calls first person is placed for the eye alone.
         ///
         /// The game marks the root of the player's arms and not their drawables, so the mark is

@@ -30,6 +30,13 @@ namespace Rtx
 {
     namespace
     {
+        /// What the sea's material is keyed on: the state set it has not got. See `resolveWater`.
+        ///
+        /// **Nothing else in the world can key as null.** A shading chain's entries come from
+        /// `MirrorTraversal::pushShading`, which takes a reference; a terrain chunk's first pass is
+        /// asserted in `resolveTerrain`, where a null one would otherwise be handed the sea.
+        constexpr const osg::StateSet* sSea = nullptr;
+
         const osg::Texture2D* getTexture(const osg::StateSet& stateSet, unsigned int unit)
         {
             return dynamic_cast<const osg::Texture2D*>(
@@ -124,7 +131,7 @@ namespace Rtx
         if (updater == nullptr)
             return nullptr;
 
-        auto [entry, arrived] = mAnimated.try_emplace(&node);
+        const auto [entry, arrived] = mAnimated.reach(&node);
         if (arrived)
         {
             // **A copy of what the node already wears, and a shallow one.** `applyCull` starts from
@@ -143,7 +150,6 @@ namespace Rtx
             updater->setDefaults(entry->second.mStateSet);
         }
 
-        entry->second.mEpoch = mPass.mEpoch;
         updater->apply(entry->second.mStateSet, visitor);
         return entry->second.mStateSet;
     }
@@ -159,11 +165,13 @@ namespace Rtx
         // The first pass is as good an identity as the chunk itself and is already a state set, so
         // terrain shares the material map with everything else.
         const osg::StateSet* identity = passes.front().get();
+        assert(identity != nullptr && "a terrain pass with no state set, which would key as the sea");
+
         const auto known = mMaterials.find(identity);
         if (known != mMaterials.end())
         {
             ++stats.mMaterialsReused;
-            known->second.mEpoch = mPass.mEpoch;
+            mMaterials.stamp(known);
             return known->second.mIndex;
         }
 
@@ -233,7 +241,7 @@ namespace Rtx
         }
 
         const Index index = mScene.addMaterial(material);
-        mMaterials.emplace(identity, Known{ .mIndex = index, .mEpoch = mPass.mEpoch });
+        mMaterials.add(identity, Known{ .mIndex = index });
         ++stats.mMaterialsAdded;
         return index;
     }
@@ -242,26 +250,31 @@ namespace Rtx
     {
         ExtractionStats& stats = mPass.getStats();
 
-        // **One material for the sea, and it is keyed on nothing.** Water has no albedo — what it
-        // looks like is what is behind and above it, worked out from the world position — so there
-        // is nothing on a state set worth reading, and reading one is actively wrong twice over.
+        // **One material for the sea, and what identifies it is the state set it has not got.**
+        // Water has no albedo — what it looks like is what is behind and above it, worked out from
+        // the world position — so there is nothing on a state set worth reading, and reading one is
+        // actively wrong twice over.
         //
         // `MWRender::Water` animates its surface with a `SceneUtil::StateSetUpdater`, which swaps
         // the node's state set between two copies of its own every frame: keyed on the address, the
         // mirror saw a new material each frame and swept the one before it, for a surface that had
         // not changed. And with `water shader = true` there is no state set on the node at all,
         // because that one is pushed from a cull callback the mirror runs outside of.
-        if (mWater != sNoIndex)
+        //
+        // **In the map under `sSea` rather than beside it**, so that one sweep and one count answer
+        // for every material the walk met. A slot held outside them is a slot the survivor list has
+        // to be told about by hand.
+        if (const auto known = mMaterials.find(sSea); known != mMaterials.end())
         {
             ++stats.mMaterialsReused;
-            mWaterEpoch = mPass.mEpoch;
-            return mWater;
+            mMaterials.stamp(known);
+            return known->second.mIndex;
         }
 
-        mWater = mScene.addMaterial(Material{ .mKind = MaterialKind::Water });
-        mWaterEpoch = mPass.mEpoch;
+        const Index index = mScene.addMaterial(Material{ .mKind = MaterialKind::Water });
+        mMaterials.add(sSea, Known{ .mIndex = index });
         ++stats.mMaterialsAdded;
-        return mWater;
+        return index;
     }
 
     Index MaterialResolver::resolve(std::span<const Shading> shading)
@@ -281,7 +294,7 @@ namespace Rtx
         if (known != mMaterials.end())
         {
             ++stats.mMaterialsReused;
-            known->second.mEpoch = mPass.mEpoch;
+            mMaterials.stamp(known);
 
             // **Read again, because a controller rewrote it since the last frame.** The state set
             // is the same object — that is what lets the material keep its slot and every placement
@@ -293,7 +306,7 @@ namespace Rtx
         }
 
         const Index index = mScene.addMaterial(readMaterial(shading));
-        mMaterials.emplace(own.mStateSet, Known{ .mIndex = index, .mEpoch = mPass.mEpoch });
+        mMaterials.add(own.mStateSet, Known{ .mIndex = index });
         ++stats.mMaterialsAdded;
         return index;
     }
@@ -312,7 +325,7 @@ namespace Rtx
 
         if (const auto known = mTextureOf.find(image); known != mTextureOf.end())
         {
-            known->second.mEpoch = mPass.mEpoch;
+            mTextureOf.stamp(known);
             return known->second.mIndex;
         }
 
@@ -321,7 +334,7 @@ namespace Rtx
         // **Held, because this entry is the reference.** `mTextureOf` says why a slot the map names
         // has to be one nothing else can hand out.
         mScene.holdTexture(index);
-        mTextureOf.emplace(image, HeldTexture{ { .mIndex = index, .mEpoch = mPass.mEpoch }, std::nullopt });
+        mTextureOf.add(image, HeldTexture{ { .mIndex = index }, std::nullopt });
 
         return index;
     }
@@ -414,39 +427,21 @@ namespace Rtx
 
     std::uint32_t MaterialResolver::retire(std::vector<Index>& live)
     {
-        std::uint32_t went = sweep(mMaterials, mPass.mEpoch, live);
+        return mMaterials.sweep(live);
+    }
 
-        // The sea's own, which is in no identity map because it is keyed on nothing. It survives a
-        // frame that met water and goes with the last cell that had any.
-        if (mWater != sNoIndex)
-        {
-            if (mWaterEpoch == mPass.mEpoch)
-                live.push_back(mWater);
-            else
-            {
-                mWater = sNoIndex;
-                ++went;
-            }
-        }
-
+    void MaterialResolver::retireHolds()
+    {
         // The walk's own hold on every image a material is read from, given back the same way.
         //
         // **Most of these are met once.** A material a controller does not rewrite is resolved from
         // its cached entry and never read again, so the images behind it go stale on the frame after
         // they arrived — and the material's own reference is what keeps their slots. What settles
         // here is the animated materials, which are the ones the map exists for.
-        std::erase_if(mTextureOf, [this](const auto& entry) {
-            if (entry.second.mEpoch == mPass.mEpoch)
-                return false;
+        mTextureOf.retire([this](const HeldTexture& held) { mScene.dropTexture(held.mIndex); });
 
-            mScene.dropTexture(entry.second.mIndex);
-            return true;
-        });
-
-        // What `animate` keeps. Swept with everything else because it is keyed on a node the graph
+        // What `animate` keeps. Swept beside everything else because it is keyed on a node the graph
         // can drop, and because a state set held past its node holds the textures in it alive too.
-        std::erase_if(mAnimated, [this](const auto& entry) { return entry.second.mEpoch != mPass.mEpoch; });
-
-        return went;
+        mAnimated.retire();
     }
 }

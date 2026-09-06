@@ -14,46 +14,6 @@ persistent loader could keep the memory it already has.
 
 ---
 
-## The sweep walks the whole world every frame, and only the placements got the guard
-
-`SceneExtractor::retire` runs once a frame from `WorldMirror::settle`. It walks
-seven hash maps from end to end. It then writes two flag tables of the same
-length.
-
-The placements have a guard against this. `mPlacementsReached` counts the entries
-each epoch stamped. `sceneextractor.cpp:581` compares that count with the map size
-and skips the sweep where the two agree. A world that stands still reaches every
-placement it holds, so the count proves that nothing died.
-
-`MeshResolver::mMeshes` is the same size as `mPlacements` — one entry per drawable,
-which is 47,828 on a nine-by-nine exterior. It got no guard. Every other map beside
-it got no guard either. The frame budget is 5.3 ms and the walk is 1.8 ms of it, so
-a second pass of the same length is not small.
-
-The same count answers all of them. Each resolver can count the entries it stamped
-this epoch. Where every count equals its map size, the sweep and
-`SceneDesc::release` both have nothing to do, and both can be skipped together.
-
-- [ ] `components/rtx/meshresolver.cpp:496` — `sweep(mMeshes, ...)` visits every
-  entry of a map with one entry per drawable. Each visit is a hash node and a cache
-  miss. It builds `live` from the survivors, and `SceneDesc::release` is the only
-  reader of that list.
-- [ ] `components/rtx/meshresolver.cpp:503` and `:504` — `std::erase_if` over
-  `mRigs` and `mMorphs`, unguarded, every frame.
-- [ ] `components/rtx/materialresolver.cpp:417` — `sweep(mMaterials, ...)`,
-  unguarded.
-- [ ] `components/rtx/materialresolver.cpp:438` — `std::erase_if` over
-  `mTextureOf`, unguarded.
-- [ ] `components/rtx/materialresolver.cpp:448` — `std::erase_if` over `mAnimated`,
-  unguarded.
-- [ ] `components/rtx/emitterresolver.cpp:225` — `std::erase_if` over `mHeld`,
-  unguarded.
-- [ ] `components/rtx/scenedesc.cpp:611` and `:612` — `markKept` clears a flag
-  vector and resizes it to the table length. That is a memset of the whole mesh
-  table and the whole material table, every frame. A scattered byte write per
-  survivor follows it. The early return at line 622 comes after both passes, so the
-  frame that has nothing to free still pays for both.
-
 ## The load path allocates buffers a persistent loader could keep
 
 `SceneTextures` states the pattern this project wants. Its comment says it is

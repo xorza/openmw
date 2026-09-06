@@ -74,7 +74,7 @@ namespace Rtx
         //
         // Kept in a map of its own because nothing else can speak for it when the scene is swept: a
         // sprite's texture is on no material, and an emitter is not in the scene between frames.
-        auto [known, arrived] = mHeld.try_emplace(&particles);
+        const auto [known, arrived] = mHeld.reach(&particles);
         if (arrived)
         {
             const VFS::Path::Normalized path(sprite->getFileName());
@@ -90,8 +90,6 @@ namespace Rtx
             mScene.holdTexture(known->second.mIndex);
             mScene.holdTexture(known->second.mLighting);
         }
-
-        known->second.mEpoch = mPass.mEpoch;
 
         // **Noted now and read when the walk is over.** Whether this system has been integrated
         // this frame depends on where its `ParticleSystemUpdater` sits among its siblings — above
@@ -222,14 +220,9 @@ namespace Rtx
         // The sprite's own references go back with the emitter that took them, which is what makes
         // an emitter leaving enough to free its textures — a frame where no mesh and no material
         // died is exactly the frame the mirror's sweep returns from without looking.
-        std::erase_if(mHeld, [this](const auto& entry) {
-            if (entry.second.mEpoch == mPass.mEpoch)
-                return false;
-
-            mScene.dropTexture(entry.second.mIndex);
-            mScene.dropTexture(entry.second.mLighting);
-
-            return true;
+        mHeld.retire([this](const HeldSprite& held) {
+            mScene.dropTexture(held.mIndex);
+            mScene.dropTexture(held.mLighting);
         });
     }
 }

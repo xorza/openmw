@@ -8,7 +8,6 @@
 #include <functional>
 #include <optional>
 #include <span>
-#include <unordered_map>
 
 #include <osg/FrameStamp>
 #include <osg/Geometry>
@@ -576,41 +575,44 @@ namespace Rtx
         // thing placed.
         //
         // **Not run at all where every placement was reached**, which is a world that stands still —
-        // see `mPlacementsReached`. The sweep below erases nothing then, and it costs a walk of the
-        // whole map to say so.
-        if (mPlacementsReached < mPlacements.size())
-        {
-            std::erase_if(mPlacements, [this](const auto& entry) {
-                if (entry.second.mEpoch == mPass.mEpoch)
-                    return false;
+        // see `Kept::whole`. The sweep erases nothing then, and it costs a walk of the whole map to
+        // say so.
+        mPlacements.retire([this](const Known& gone) { mScene.dropInstance(gone.mIndex); });
 
-                mScene.dropInstance(entry.second.mIndex);
-                return true;
-            });
+        // **Both tables or neither, and nothing at all where both stand whole.** `SceneDesc::release`
+        // frees the mesh table and the material table against one pair of survivor lists, so a list
+        // an earlier epoch filled cannot be read beside a list this one did: the slots it names have
+        // since been handed out. Where the two are whole nothing has stopped being named, so the
+        // release has nothing to free and the lists have nothing to say — and what that saves is two
+        // walks of a map with one entry per drawable, plus the two keep-set tables `release` writes
+        // to reach the same answer.
+        if (!mMeshes.whole() || !mMaterials.whole())
+        {
+            went.mMeshes = mMeshes.retire(mLiveMeshes);
+            went.mMaterials = mMaterials.retire(mLiveMaterials);
+
+            // **Freed, not compacted, and that is what makes a cell boundary cheap.** Closing the
+            // gaps renumbered every mesh and every material, so everything built from an index —
+            // which is every bottom-level acceleration structure in the world — had to be built
+            // again: nineteen of nineteen crossings on a route across Vvardenfell were full
+            // rebuilds. A slot that is freed keeps its index and its room, and the next arrival that
+            // fits takes it over. Nothing downstream is told anything, because for it nothing moved.
+            mScene.release(mLiveMeshes, mLiveMaterials);
         }
 
-        went.mMeshes = mMeshes.retire(mLiveMeshes);
-        went.mMaterials = mMaterials.retire(mLiveMaterials);
-
-        // **The emitters are swept beside them and count as neither.** A sprite's texture hangs off
-        // no material and an emitter is not in the scene between frames, so nothing else can speak
-        // for it — and a frame where no mesh and no material died is exactly the frame where an
-        // emitter leaving has to be enough to free what it held.
+        // **Swept whatever the two tables above did, because each of these goes stale on its own.**
+        // A skin outlives the mesh that named it by nothing, but an image a material stopped reading
+        // and a state set whose node left the graph both go on a frame where no material died at
+        // all — and a sprite's texture hangs off no material, so nothing but an emitter leaving can
+        // speak for it. Each map skips its own walk where the epoch reached all of it.
+        mMeshes.retireDeformers();
+        mMaterials.retireHolds();
         mEmitters.retire();
-
-        // **Freed, not compacted, and that is what makes a cell boundary cheap.** Closing the gaps
-        // renumbered every mesh and every material, so everything built from an index — which is
-        // every bottom-level acceleration structure in the world — had to be built again: nineteen
-        // of nineteen crossings on a route across Vvardenfell were full rebuilds. A slot that is
-        // freed keeps its index and its room, and the next arrival that fits takes it over. Nothing
-        // downstream is told anything, because for it nothing moved.
-        mScene.release(mLiveMeshes, mLiveMaterials);
 
         // **After the sweep and not before it**, so that the walk which fills the next epoch is the
         // one this is measured against. Every entry that survived is still carrying the old stamp
         // and would be dropped on the spot otherwise.
         ++mPass.mEpoch;
-        mPlacementsReached = 0;
 
         return went;
     }
@@ -729,17 +731,11 @@ namespace Rtx
                 .mFirstPerson = firstPerson,
             });
 
-            mPlacements.emplace(who, Known{ .mIndex = slot, .mEpoch = mPass.mEpoch });
-            ++mPlacementsReached;
+            mPlacements.add(who, Known{ .mIndex = slot });
         }
         else
         {
-            // Counted on the way to the stamp rather than by the stamp, so a placement two walks of
-            // one epoch both reach is one entry and counts once.
-            if (held->second.mEpoch != mPass.mEpoch)
-                ++mPlacementsReached;
-
-            held->second.mEpoch = mPass.mEpoch;
+            mPlacements.stamp(held);
             mScene.moveInstance(held->second.mIndex, place);
             mScene.fadeInstance(held->second.mIndex, fade);
         }

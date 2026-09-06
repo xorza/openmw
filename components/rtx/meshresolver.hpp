@@ -78,10 +78,22 @@ namespace Rtx
         ///        arrives — `MeshRange::mMaterial`.
         Index resolve(const osg::Drawable& drawable, const Read& read, Index material);
 
+        /// Whether every mesh the map holds was met this epoch — see `Kept::whole`. What the
+        /// mirror asks before it sweeps, because the survivor list this fills is read beside the
+        /// material resolver's.
+        bool whole() const { return mMeshes.whole(); }
+
         /// Drops every mesh this epoch did not meet, and collects the survivors into `live`.
         ///
         /// @return how many were dropped.
         std::uint32_t retire(std::vector<Index>& live);
+
+        /// Drops the rigs and the morph targets no mesh named this epoch.
+        ///
+        /// **Asked whatever the meshes did**, and each map skips its own walk where the epoch
+        /// reached all of it. A deformer goes stale only where a mesh on it died, so this is nearly
+        /// always the two comparisons and nothing else.
+        void retireDeformers();
 
     private:
         /// The scene's rig for a skin, added the first time the skin is met. Shared by every copy of
@@ -108,12 +120,12 @@ namespace Rtx
         //
         // **Owning, which is what makes that identity sound.** What these hold outlives the graph
         // by one sweep, and a sweep is what lets go.
-        Identity<const osg::Drawable> mMeshes;
+        Identity<const osg::Drawable> mMeshes{ mPass };
 
         /// What the scene knows each skin and each set of morph targets as. Swept with the meshes: a
         /// rig no mesh named this epoch is a rig the scene has let go of.
-        Identity<const SceneUtil::RigGeometry::InfluenceData> mRigs;
-        Identity<const osg::Vec3Array> mMorphs;
+        Identity<const SceneUtil::RigGeometry::InfluenceData> mRigs{ mPass };
+        Identity<const osg::Vec3Array> mMorphs{ mPass };
 
         /// Which cards the content drew as two coincident sheets, so a ray offset can tell them
         /// from a wall.

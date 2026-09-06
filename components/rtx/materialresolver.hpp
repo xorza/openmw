@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <optional>
 #include <span>
-#include <unordered_map>
 #include <vector>
 
 #include <osg/Node>
@@ -65,7 +64,8 @@ namespace Rtx
         /// The same for a terrain chunk, whose material is on the drawable rather than on the graph.
         Index resolveTerrain(const Terrain::TerrainDrawable& terrain);
 
-        /// The sea's own, which is keyed on nothing because a node mask is what identifies it.
+        /// The sea's own, keyed on the state set it has not got because a node mask is what
+        /// identifies it.
         Index resolveWater();
 
         /// Runs the state-set controller on `node`, if it carries one, and hands back what it wrote.
@@ -75,10 +75,23 @@ namespace Rtx
         /// @param visitor what the controller is applied under, which is the walk itself.
         const osg::StateSet* animate(osg::Node& node, osg::NodeVisitor* visitor);
 
+        /// Whether every material the map holds was met this epoch, the sea's included — see
+        /// `Kept::whole`. What the mirror asks before it sweeps, because the survivor list this
+        /// fills is read beside the mesh resolver's.
+        bool whole() const { return mMaterials.whole(); }
+
         /// Drops every material this epoch did not meet, and collects the survivors into `live`.
         ///
         /// @return how many were dropped.
         std::uint32_t retire(std::vector<Index>& live);
+
+        /// Lets go of the images and the animated state sets this epoch did not meet.
+        ///
+        /// **Asked whatever the materials did.** A material a controller does not rewrite is
+        /// resolved from its cached entry and never read again, so the images behind it go stale on
+        /// the frame after they arrived — on a frame where nothing died at all. Each map skips its
+        /// own walk where the epoch reached all of it.
+        void retireHolds();
 
     private:
         /// Reads a whole material off the chain, which is what an arrival and a rewrite both want.
@@ -95,8 +108,6 @@ namespace Rtx
         /// textures no medium is ever made of.
         bool diffuseReachesSolid(const osg::Image* image);
 
-        /// A node's controllers and the state set they write into, kept so the address is the same
-        /// one next frame. See `animate`.
         /// What the scene knows one image as, and whether its alpha ever reaches solid.
         ///
         /// **Unset until something asks**, because the walk over its texels is only worth doing for
@@ -106,6 +117,8 @@ namespace Rtx
             std::optional<bool> mSolid;
         };
 
+        /// The state set a node's controllers write into, kept so that the address a material is
+        /// keyed on is the same one next frame. See `animate`.
         struct Animated
         {
             osg::ref_ptr<osg::StateSet> mStateSet;
@@ -115,9 +128,10 @@ namespace Rtx
         SceneDesc& mScene;
         const MirrorPass& mPass;
 
-        /// Which state set each material came from. Owning, so that a state set cannot go while the
-        /// entry stands: see `ByAddress`.
-        Identity<const osg::StateSet> mMaterials;
+        /// Which state set each material came from, and the sea under the one it has not got —
+        /// `resolveWater`. Owning, so that a state set cannot go while the entry stands: see
+        /// `ByAddress`.
+        Identity<const osg::StateSet> mMaterials{ mPass };
 
         /// Which slot each image the walk has met stands in.
         ///
@@ -130,18 +144,11 @@ namespace Rtx
         /// **This entry is a reference, like the emitter resolver's holds.** A slot whose last
         /// material stops naming it drops to nought and is handed out again at once, so an entry
         /// that only remembered the number would answer with a slot another texture had taken over.
-        Identity<const osg::Image, HeldTexture> mTextureOf;
+        Identity<const osg::Image, HeldTexture> mTextureOf{ mPass };
 
         /// Owning for the same reason the identity maps are: a node freed and replaced at the same
         /// address would otherwise be handed the state set the first one's controllers were writing.
-        std::unordered_map<osg::ref_ptr<const osg::Node>, Animated, ByAddress<const osg::Node>,
-            ByAddress<const osg::Node>>
-            mAnimated;
-
-        /// The sea's material and when it was last met. Not in `mMaterials`, because what identifies
-        /// it is the node mask rather than any state set — see `resolveWater`.
-        Index mWater = sNoIndex;
-        std::uint64_t mWaterEpoch = 0;
+        Identity<const osg::Node, Animated> mAnimated{ mPass };
 
         /// One blend map's weights as floats, refilled per terrain layer that carries one.
         std::vector<float> mMaskScratch;

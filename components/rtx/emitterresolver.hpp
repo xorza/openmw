@@ -90,7 +90,7 @@ namespace Rtx
         /// **This entry is the reference**, and not a note about one: a sprite's texture hangs off
         /// no material, so the scene is told to hold it when the emitter is first met and to let go
         /// when the sweep loses it. It saves a path hash per emitter per frame as well.
-        Identity<const osg::Drawable, HeldSprite> mHeld;
+        Identity<const osg::Drawable, HeldSprite> mHeld{ mPass };
 
         /// Refilled per emitter and never freed: a cell's plumes are hundreds of discs apiece.
         std::vector<Sprite> mSpriteScratch;
