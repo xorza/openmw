@@ -230,6 +230,15 @@ namespace Rtx
     /// beside it.
     Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage);
 
+    /// Makes every staged write recorded into `batch` visible to whatever reads it next.
+    ///
+    /// **One dependency for a run of writes, because they are read together.** A load stages a
+    /// mesh's vertices, indices, normals and texture coordinates into the same command buffer that
+    /// then builds an acceleration structure out of them, so the copies are ordered against the
+    /// build once rather than one barrier per buffer. `uploadBuffer` is the other shape: a single
+    /// buffer whose reader may be the very next command.
+    void orderStagedWrites(Batch& batch);
+
     /// Copies `bytes` into `image` by `regions`, and leaves it where a sampler expects it.
     ///
     /// **Recorded rather than submitted.** A cell brings hundreds of these and the queue is asked

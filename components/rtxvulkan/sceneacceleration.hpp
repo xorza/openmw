@@ -96,7 +96,7 @@ namespace Rtx
         /// @param slots how many frames may be tracing this scene at once — `sFrameSlots` for the
         ///        world, one for a picture inside the interface — which is how many copies there are
         ///        of the rows and of the positions a refit reads.
-        SceneAcceleration(const Device& device, const SceneDesc& scene, std::uint32_t slots);
+        SceneAcceleration(const Device& device, Batch& batch, const SceneDesc& scene, std::uint32_t slots);
         ~SceneAcceleration();
 
         SceneAcceleration(const SceneAcceleration&) = delete;
@@ -166,7 +166,7 @@ namespace Rtx
         ///
         /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
         /// the positions, and what it replaces goes to `graveyard` all the same.
-        void extend(const SceneDesc& scene, Graveyard& graveyard);
+        void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
 
         /// Builds the structures of the meshes that arrived, over the first copy of the positions
         /// as `extend` and the pass left it.
@@ -248,7 +248,7 @@ namespace Rtx
         ///
         /// **Per mesh and not per scene**, because that is what an arrival is: the blocks already
         /// hold everything else, and rewriting them would be rewriting what nothing changed.
-        void writeGeometry(const SceneDesc& scene, std::span<const Index> meshes);
+        void writeGeometry(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes);
 
         /// Creates and records the build of a structure for each of `meshes`, taking storage for it.
         ///

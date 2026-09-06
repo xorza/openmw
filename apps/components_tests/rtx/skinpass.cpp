@@ -135,8 +135,13 @@ namespace Rtx
             SlotBlocks normals{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
             positions.open(device, 2, readable, "posed positions");
             normals.open(device, 2, readable, "posed normals");
-            positions.reserve(vertices);
-            normals.reserve(vertices);
+            // Its own scope, because the blocks are device memory: the fills have to reach the
+            // queue before the dispatch below reads what they left.
+            {
+                Batch setup(pool);
+                positions.reserve(setup, vertices);
+                normals.reserve(setup, vertices);
+            }
             for (std::uint32_t slot = 0; slot < 2; ++slot)
             {
                 positions.settle(slot);

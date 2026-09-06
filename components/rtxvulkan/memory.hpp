@@ -142,7 +142,10 @@ namespace Rtx
         DeviceMemory take(const VkMemoryRequirements& requirements, VkMemoryPropertyFlags properties, Tiling tiling);
 
         /// How many calls to `vkAllocateMemory` stand behind everything handed out.
-        std::size_t getBlockCount() const { return mBlocks.size(); }
+        ///
+        /// The allocations and not the slots: a block given back to the device leaves its slot for
+        /// the next one, because a range names its block by index.
+        std::size_t getBlockCount() const;
 
         /// Every heap of the device, what this allocator took out of each, and what the driver says
         /// is left.
@@ -178,7 +181,15 @@ namespace Rtx
         /// `run` in block `at`, as the range a resource of `alignment` is bound in.
         DeviceMemory place(std::uint32_t at, Span run, VkDeviceSize alignment);
 
-        /// Gives a range back. Called by `DeviceMemory` and by nothing else.
+        /// Gives a range back, and hands the block behind it to the device where that was the last
+        /// range in it.
+        ///
+        /// **Incremental, and never a sweep.** At most one `vkFreeMemory` per range given back, so
+        /// a frame that drops a cell's textures pays for them one at a time rather than in a lump
+        /// no other frame pays. The last block of a pool is kept whatever happens: a pool that
+        /// emptied and refilled would otherwise free and allocate on alternate frames.
+        ///
+        /// Called by `DeviceMemory` and by nothing else.
         void give(std::uint32_t block, Span run);
 
         VkDevice mDevice = VK_NULL_HANDLE;
@@ -189,9 +200,18 @@ namespace Rtx
         /// what it asked for itself.
         bool mBudget = false;
 
-        /// Every block of every pool, in one list. A block is never removed, so the index a range
-        /// carries names the same block for the allocator's life — and a pool is the blocks whose
-        /// `mPool` says so, which a walk of a few dozen entries finds without a table of its own.
+        /// Every block of every pool, in one list. A block's slot is never removed, so the index a
+        /// range carries names the same block for the allocator's life — and a pool is the blocks
+        /// whose `mPool` says so, which a walk of a few dozen entries finds without a table of its
+        /// own. A slot whose allocation went back to the device holds no pages and is taken over by
+        /// the next block that pool needs.
         std::vector<Block> mBlocks;
+
+        /// How many blocks of each pool hold an allocation.
+        ///
+        /// **Kept rather than counted, because `give` runs per resource.** Whether a block is the
+        /// last of its pool decides whether it may go back, and a walk of `mBlocks` to answer that
+        /// would put the length of the list on the frame path.
+        std::vector<std::uint32_t> mBlocksInPool;
     };
 }

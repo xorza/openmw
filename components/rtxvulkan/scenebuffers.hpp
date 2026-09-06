@@ -41,8 +41,8 @@ namespace Rtx
         /// @param slots how many frames may be tracing this scene at once: `sFrameSlots` for the
         ///        world, and one for a picture inside the interface, which is traced and waited for
         ///        before anything else touches it.
-        SceneBuffers(const Device& device, const SceneDesc& scene, std::span<const InstanceRecord> records,
-            std::uint32_t slots, Graveyard& graveyard);
+        SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
+            std::span<const InstanceRecord> records, std::uint32_t slots, Graveyard& graveyard);
 
         /// Takes in the attributes of the meshes the scene says arrived.
         ///
@@ -52,7 +52,7 @@ namespace Rtx
         ///
         /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
         /// the normals and the whole mesh table, and a frame still reading either would see it torn.
-        void extend(const SceneDesc& scene, Graveyard& graveyard);
+        void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
 
         /// Rewrites what a moving world changes, leaving what it is made of alone.
         ///
@@ -179,7 +179,7 @@ namespace Rtx
         ///
         /// **Per mesh and not per scene**, because that is what an arrival is: the blocks already
         /// hold everything else, and rewriting them would be rewriting what nothing changed.
-        void writeMeshes(const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard);
+        void writeMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard);
 
         /// Writes the material rows `slot`'s copy owes, and the layer and mask runs that arrived into
         /// every copy — or a table whole where it had to be made again to hold them.

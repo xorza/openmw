@@ -4,6 +4,7 @@
 #include <cstring>
 #include <utility>
 
+#include "commands.hpp"
 #include "device.hpp"
 
 namespace Rtx
@@ -15,12 +16,13 @@ namespace Rtx
         mDevice = &device;
 
         // A shader reaches a block through a pointer out of the table, and a buffer only has an
-        // address if it was created saying so.
-        mUsage = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        // address if it was created saying so. `TRANSFER_DST` because a block is filled and written
+        // by the device rather than by the host: `writeAt` says why.
+        mUsage = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         mName = name;
     }
 
-    void BlockedBuffer::reserve(std::uint32_t elements)
+    void BlockedBuffer::reserve(Batch& batch, std::uint32_t elements)
     {
         assert(mDevice != nullptr && "a blocked buffer written before it was opened");
 
@@ -28,20 +30,38 @@ namespace Rtx
         if (wanted <= mBlocks.size())
             return;
 
+        // **The fill below and the copies after it write the same bytes.** A run written into a
+        // block this call just emptied is a write after a write, and the queue orders neither
+        // against the other on its own — the layers say so at once, which is how this was found.
+        const VkMemoryBarrier2 emptied{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT,
+            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        };
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .memoryBarrierCount = 1,
+            .pMemoryBarriers = &emptied,
+        };
+
         while (mBlocks.size() < wanted)
         {
-            Buffer made = Buffer::hostWritten(*mDevice, getBlockBytes(), mUsage);
+            Buffer made = Buffer::deviceLocal(*mDevice, getBlockBytes(), mUsage);
 
             // **Zeroed at birth, not left as the allocator found it.** A block is longer than what
             // is put in it and holds gaps between the runs handed out, and a picture that depended
             // on what was last in that memory would depend on it.
-            made.clear();
+            vkCmdFillBuffer(batch.getCommands(), made.getHandle(), 0, VK_WHOLE_SIZE, 0);
 
             mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(made.getHandle()),
                 mName + " " + std::to_string(mBlocks.size()));
             mAddresses.push_back(made.getDeviceAddress());
             mBlocks.push_back(std::move(made));
         }
+
+        vkCmdPipelineBarrier2(batch.getCommands(), &dependency);
 
         // Made again rather than appended to, which is what a table of a few dozen addresses is
         // worth: the address changes, and every frame carries it afresh. Addressable and never
@@ -50,5 +70,18 @@ namespace Rtx
             *mDevice, mAddresses.size() * sizeof(VkDeviceAddress), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
         mTable.write(std::span<const VkDeviceAddress>(mAddresses));
         mDevice->setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(mTable.getHandle()), mName + " blocks");
+    }
+
+    void BlockedBuffer::writeInto(Batch& batch, std::uint32_t element, std::span<const std::byte> bytes)
+    {
+        assert(blockOf(element) < mBlocks.size());
+
+        const StagingRun staged = batch.stage(*mDevice, bytes);
+        const VkBufferCopy region{
+            .srcOffset = staged.mOffset,
+            .dstOffset = offsetOf(element),
+            .size = bytes.size(),
+        };
+        vkCmdCopyBuffer(batch.getCommands(), staged.mBuffer, mBlocks[blockOf(element)].getHandle(), 1, &region);
     }
 }

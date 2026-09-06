@@ -131,7 +131,8 @@ namespace Rtx
         return result;
     }
 
-    SceneAcceleration::SceneAcceleration(const Device& device, const SceneDesc& scene, const std::uint32_t slots)
+    SceneAcceleration::SceneAcceleration(
+        const Device& device, Batch& batch, const SceneDesc& scene, const std::uint32_t slots)
         : mDevice(device)
         , mSlots(slots)
     {
@@ -146,7 +147,7 @@ namespace Rtx
         for (std::size_t at = 0; at < mEveryMesh.size(); ++at)
             mEveryMesh[at] = static_cast<Index>(at);
 
-        writeGeometry(scene, mEveryMesh);
+        writeGeometry(batch, scene, mEveryMesh);
 
         // Every copy of the positions holds what it will ever read from here, so what a copy owes
         // from now on is the poses it missed.
@@ -178,13 +179,13 @@ namespace Rtx
                 functions.mDestroyAccelerationStructure(mDevice.getHandle(), structure, nullptr);
     }
 
-    void SceneAcceleration::writeGeometry(const SceneDesc& scene, std::span<const Index> meshes)
+    void SceneAcceleration::writeGeometry(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes)
     {
         // The scene's own reach, so a block exists for every run it has handed out. Blocks already
         // made are left exactly where they are, and one call reaches every copy — `SlotBlocks` is
         // what holds one per frame in flight.
-        mPositions.reserve(static_cast<std::uint32_t>(scene.getPositions().size()));
-        mIndices.reserve(static_cast<std::uint32_t>(scene.getIndices().size()));
+        mPositions.reserve(batch, static_cast<std::uint32_t>(scene.getPositions().size()));
+        mIndices.reserve(batch, static_cast<std::uint32_t>(scene.getIndices().size()));
 
         for (const Index mesh : meshes)
         {
@@ -197,13 +198,20 @@ namespace Rtx
             // writes a pose over it.
             const std::span<const osg::Vec3f> positions
                 = scene.getPositions().subspan(range.mVertexOffset, range.mVertexCount);
-            mPositions.at(0).writeAt(range.mVertexOffset, positions);
+            mPositions.at(0).writeAt(batch, range.mVertexOffset, positions);
             if (range.mDeform != Deform::None)
                 for (std::uint32_t slot = 1; slot < mSlots; ++slot)
-                    mPositions.at(slot).writeAt(range.mVertexOffset, positions);
+                    mPositions.at(slot).writeAt(batch, range.mVertexOffset, positions);
 
-            mIndices.writeAt(range.mIndexOffset, scene.getIndices().subspan(range.mIndexOffset, range.mIndexCount));
+            mIndices.writeAt(
+                batch, range.mIndexOffset, scene.getIndices().subspan(range.mIndexOffset, range.mIndexCount));
         }
+
+        // **What is built out of these was copied a moment ago.** The blocks are device memory, so a
+        // mesh reaches them through a transfer rather than through a host write that a submit already
+        // orders — and the acceleration structures built from them are recorded into this same
+        // command buffer. One dependency for every block, because they are read together.
+        orderStagedWrites(batch);
     }
 
     void SceneAcceleration::release(std::span<const Index> meshes, Graveyard& graveyard)
@@ -225,7 +233,7 @@ namespace Rtx
         }
     }
 
-    void SceneAcceleration::extend(const SceneDesc& scene, Graveyard& graveyard)
+    void SceneAcceleration::extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
     {
         // **Departures first, and their rooms go to the graveyard rather than straight back**, so an
         // arrival this frame cannot be built into room a frame in flight is still tracing. The two
@@ -233,7 +241,7 @@ namespace Rtx
         // dealt with by `buildMeshes`, which buries whatever the slot was holding.
         release(scene.getFreedMeshes(), graveyard);
 
-        writeGeometry(scene, scene.getArrivedMeshes());
+        writeGeometry(batch, scene, scene.getArrivedMeshes());
     }
 
     void SceneAcceleration::buildArrived(

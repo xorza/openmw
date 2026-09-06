@@ -208,10 +208,37 @@ the contract. `describe` reads the profile, which also removes a second query of
 
 **A Turing card is accepted at the end of this, and fails on memory rather than on policy.**
 
-**Stage 2 — residency.** Budget query, the split position copy, `Residency::Staged`, incremental
-block retirement. Measure the reserved total at `island-crossing` before and after. A Turing card
-runs at the end of this.
-*Three to five days.*
+**Stage 2 — residency. Mostly done, and simpler than this said.**
+
+The design proposed a `Residency` the profile chose between. Reading the code said otherwise: the
+copies for slots past the first are written by the skinning shader, not by the host, and the arrival
+write is a load-path event. **So there is no choice to make — every blocked table is device memory,
+staged through the batch a load already records, on every card.** One path, which is what the posture
+asks for, and no profile field driving a fork.
+
+    host-written reserved     Seyda Neen    island-crossing
+    before                       184.0 MiB        248.0 MiB
+    after                     24 to 56 MiB         56.0 MiB
+
+Against 246 MiB on an RTX 2060 and 214 MiB on an RTX 2080. **A range and not a figure**, because
+retirement made the reservation depend on arrival order: whether a block empties before or after the
+next request decides whether it is taken over or a new one is made, and the loading threads decide
+that. Two consecutive runs of one binary gave 24.0 and 56.0. Both are a quarter of the smallest
+aperture, so the conclusion holds either way.
+
+The crossing costs what it did: 119 ms worst frame against 120, and 0.4 s of reading over the run
+either way.
+
+Block retirement landed with it. A block that empties goes back to the device, one per range given
+back and never a sweep, and the last block of a pool stays so an emptying pool does not thrash. The
+184 MiB of staging a world load left standing in system memory settles at 8 MiB, and video memory
+reserved at Seyda Neen fell from 991.6 MiB to 895.6 MiB.
+
+**Left:** the doubled position copy. `SlotBlocks` still reserves the whole scene twice while only a
+deforming mesh is written into the second — about 21 MiB of video memory at Seyda Neen bought for
+nothing. It is no longer an aperture question, so it is a VRAM saving rather than a blocker, and it
+carries a real hazard: the compact copy needs its own offset space, and a site that mixes the two
+would alias silently. It wants the mesh index rather than a raw offset at every call site.
 
 **Stage 3 — resource use.** `Use`, `Barriers`, then the 47 call sites, one file at a time, under the
 Stage 0 gate. `readBack()` lands here. Measure the frame's barrier count and recording cost.

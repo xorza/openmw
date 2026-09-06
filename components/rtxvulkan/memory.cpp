@@ -166,14 +166,26 @@ namespace Rtx
         const std::uint32_t pool = poolOf(type, tiling);
         const std::uint32_t pages = pagesFor(requirements.size, requirements.alignment);
 
-        std::uint32_t held = 0;
+        if (pool >= mBlocksInPool.size())
+            mBlocksInPool.resize(pool + 1, 0);
+
+        // A slot whose allocation went back to the device stands nothing and can hold nothing. It
+        // is remembered on the way past, because a block made below goes into one rather than
+        // lengthening the list: a range names its block by index, and every index handed out has to
+        // go on meaning what it meant.
+        std::size_t retired = mBlocks.size();
+
         for (std::size_t at = 0; at < mBlocks.size(); ++at)
         {
             Block& block = mBlocks[at];
+            if (block.mPages == 0)
+            {
+                retired = std::min(retired, at);
+                continue;
+            }
+
             if (block.mPool != pool)
                 continue;
-
-            ++held;
 
             // **Asked for and given back rather than measured first**, which is what
             // `StructureStorage` says of the same allocator: where a run goes is best fit over a
@@ -185,7 +197,8 @@ namespace Rtx
             block.mRuns.release(run);
         }
 
-        const std::uint32_t made = std::max(static_cast<std::uint32_t>(blockBytes(type, held) / sPage), pages);
+        const std::uint32_t made
+            = std::max(static_cast<std::uint32_t>(blockBytes(type, mBlocksInPool[pool]) / sPage), pages);
 
         // **Built whole before it joins the list**, so that a device out of memory leaves the
         // allocator holding what it held rather than a block with no allocation behind it.
@@ -214,16 +227,33 @@ namespace Rtx
         if ((mMemory.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
             checkVk(vkMapMemory(mDevice, block.mHandle.get(), 0, VK_WHOLE_SIZE, 0, &block.mMapped), "vkMapMemory");
 
-        mBlocks.push_back(std::move(block));
+        ++mBlocksInPool[pool];
 
-        const auto at = static_cast<std::uint32_t>(mBlocks.size() - 1);
+        const bool append = retired == mBlocks.size();
+        if (append)
+            mBlocks.push_back(std::move(block));
+        else
+            mBlocks[retired] = std::move(block);
+
+        const auto at = static_cast<std::uint32_t>(append ? mBlocks.size() - 1 : retired);
 
         return place(at, mBlocks[at].mRuns.allocate(pages), requirements.alignment);
     }
 
     void MemoryAllocator::give(std::uint32_t block, Span run)
     {
-        mBlocks[block].mRuns.release(run);
+        Block& held = mBlocks[block];
+        held.mRuns.release(run);
+
+        // The last block of a pool stays whatever happens: a pool that emptied and refilled would
+        // otherwise free and allocate on alternate frames.
+        if (held.mRuns.getEnd() > 0 || mBlocksInPool[held.mPool] <= 1)
+            return;
+
+        held.mHandle.reset();
+        held.mMapped = nullptr;
+        held.mPages = 0;
+        --mBlocksInPool[held.mPool];
     }
 
     MemoryReport MemoryAllocator::report() const
@@ -247,6 +277,9 @@ namespace Rtx
 
         for (const Block& block : mBlocks)
         {
+            if (block.mPages == 0)
+                continue;
+
             const std::uint32_t type = typeOf(block.mPool);
             const VkDeviceSize reserved = VkDeviceSize{ block.mPages } * sPage;
             const VkDeviceSize live = VkDeviceSize{ block.mRuns.getEnd() - block.mRuns.getFree() } * sPage;
@@ -286,5 +319,11 @@ namespace Rtx
         }
 
         return out;
+    }
+
+    std::size_t MemoryAllocator::getBlockCount() const
+    {
+        return static_cast<std::size_t>(
+            std::count_if(mBlocks.begin(), mBlocks.end(), [](const Block& block) { return block.mPages > 0; }));
     }
 }

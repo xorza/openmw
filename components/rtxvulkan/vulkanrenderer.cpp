@@ -532,8 +532,8 @@ namespace Rtx
         Graveyard& graveyard = mRing.recording().mGraveyard;
         const std::uint32_t slots = slot == sWorld ? sFrameSlots : 1;
 
-        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, scene, slots);
-        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, scene, held.mRecords, slots, graveyard);
+        held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, slots);
+        held.mBuffers = std::make_unique<SceneBuffers>(mDevice, setup, scene, held.mRecords, slots, graveyard);
         held.mSkinTables = std::make_unique<SkinTables>(mDevice, scene, slots, graveyard);
 
         // **The textures before the structures, because the bake between them samples the
@@ -622,9 +622,9 @@ namespace Rtx
         // guard on the size would send that here without noticing.
         if (scene.getMeshRevision() != held.mBuiltMeshes)
         {
-            held.mBuffers->extend(scene, graveyard);
+            held.mBuffers->extend(setup, scene, graveyard);
             held.mSkinTables->extend(scene, graveyard);
-            held.mAcceleration->extend(scene, graveyard);
+            held.mAcceleration->extend(setup, scene, graveyard);
             held.mMicromaps->release(scene.getFreedMeshes(), graveyard);
 
             // **Posed before it is built**, as `setScene` does: an actor walking in is built over

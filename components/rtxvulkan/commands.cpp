@@ -246,7 +246,10 @@ namespace Rtx
 
     Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage)
     {
-        Buffer staging = Buffer::hostWritten(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+        // **Host memory and not the aperture.** These bytes are written once and read once by the
+        // copy below, so putting them in the video memory the host writes into spends the scarcest
+        // heap on a card without resizable BAR for a buffer that is gone by the next submit.
+        Buffer staging = Buffer::staging(device, bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
         staging.write(bytes);
 
         Buffer result = Buffer::deviceLocal(device, bytes.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
@@ -300,5 +303,21 @@ namespace Rtx
             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+    }
+    void orderStagedWrites(Batch& batch)
+    {
+        const VkMemoryBarrier2 copied{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+            .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
+        };
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .memoryBarrierCount = 1,
+            .pMemoryBarriers = &copied,
+        };
+        vkCmdPipelineBarrier2(batch.getCommands(), &dependency);
     }
 }

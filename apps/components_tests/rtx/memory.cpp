@@ -260,6 +260,45 @@ namespace Rtx
                 << "no heap the host writes into, on a device this renderer accepted";
         }
 
+        /// A pool that empties hands its blocks back, and keeps the last one.
+        ///
+        /// **What a load's staging costs after the load.** A world's geometry goes to the device
+        /// through 184 MiB of staging blocks, measured at Seyda Neen, and nothing reads them again —
+        /// so a block that empties goes back to the device rather than standing until the renderer
+        /// closes. The last of a pool stays: a pool that emptied and refilled would otherwise free
+        /// and allocate on alternate frames.
+        TEST_F(RtxMemoryTest, aPoolThatEmptiesGivesItsBlocksBackAndKeepsTheLast)
+        {
+            MemoryAllocator& memory = getDevice().getMemory();
+            constexpr VkMemoryPropertyFlags staging
+                = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+            const std::size_t before = memory.getBlockCount();
+
+            // Larger than the largest block a pool grows to, so each range forces a block of its
+            // own whatever the tests before this left standing in the shared device.
+            constexpr VkDeviceSize alone = 96 * 1024 * 1024;
+
+            std::vector<DeviceMemory> held;
+            for (int at = 0; at < 3; ++at)
+                held.push_back(memory.take(asks(alone, 1024), staging, Tiling::Linear));
+
+            const std::size_t grown = memory.getBlockCount();
+            ASSERT_EQ(grown, before + 3) << "three ranges too large to share did not make three blocks";
+
+            held.clear();
+
+            // Every block the pool grew by is back, and one is not: the pool keeps its last.
+            const std::size_t settled = memory.getBlockCount();
+            EXPECT_LT(settled, grown) << "an emptied pool kept every block it grew";
+            EXPECT_GE(settled, 1u) << "the last block of a pool went back";
+
+            // And the slots are taken over rather than appended to, so a range's index goes on
+            // meaning the block it named.
+            const DeviceMemory again = memory.take(asks(alone, 1024), staging, Tiling::Linear);
+            EXPECT_LE(memory.getBlockCount(), grown) << "a retired slot was not taken over";
+        }
+
         /// A budget the driver would not state is left out of the line rather than printed as none.
         ///
         /// **Zero and "would not say" are different answers**, and a reader who cannot tell them

@@ -222,10 +222,10 @@ namespace Rtx
 
         /// Makes room in every copy for `elements`. Nothing already written moves, which is what a
         /// block table is for, so this owes nothing on its own.
-        void reserve(std::uint32_t elements)
+        void reserve(Batch& batch, std::uint32_t elements)
         {
             for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mCopies[slot].reserve(elements);
+                mCopies[slot].reserve(batch, elements);
         }
 
         /// Says that `at`'s run has changed, so every copy owes it.

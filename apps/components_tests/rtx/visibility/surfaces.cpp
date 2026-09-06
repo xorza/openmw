@@ -40,7 +40,8 @@ namespace Rtx::Testing
 
             // No sprites, so no tiles, and that table used to come out as `VK_NULL_HANDLE`.
             Graveyard graveyard(device, pool);
-            const SceneBuffers buffers(device, empty, {}, 1, graveyard);
+            Batch setup(pool);
+            const SceneBuffers buffers(device, setup, empty, {}, 1, graveyard);
 
             // **Every table this hands out, and not the three that were caught.** The rule was the
             // same for all of them; which ones happened to be empty on the day is not what decides

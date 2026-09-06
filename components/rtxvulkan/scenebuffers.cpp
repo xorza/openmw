@@ -9,6 +9,7 @@
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/scene.h>
 
+#include "commands.hpp"
 #include "device.hpp"
 #include "graveyard.hpp"
 #include "spritebinpass.hpp"
@@ -118,8 +119,8 @@ namespace Rtx
         }
     }
 
-    SceneBuffers::SceneBuffers(const Device& device, const SceneDesc& scene, std::span<const InstanceRecord> records,
-        const std::uint32_t slots, Graveyard& graveyard)
+    SceneBuffers::SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
+        std::span<const InstanceRecord> records, const std::uint32_t slots, Graveyard& graveyard)
         : mDevice(&device)
         , mSlots(slots)
     {
@@ -157,7 +158,7 @@ namespace Rtx
         for (std::size_t at = 0; at < every.size(); ++at)
             every[at] = static_cast<Index>(at);
 
-        writeMeshes(scene, every, graveyard);
+        writeMeshes(batch, scene, every, graveyard);
 
         // Every copy of the normals holds every mesh from here, so what a copy owes from now on is
         // the poses it missed.
@@ -170,18 +171,19 @@ namespace Rtx
         place(scene, records, {}, 0, graveyard);
     }
 
-    void SceneBuffers::extend(const SceneDesc& scene, Graveyard& graveyard)
+    void SceneBuffers::extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
     {
-        writeMeshes(scene, scene.getArrivedMeshes(), graveyard);
+        writeMeshes(batch, scene, scene.getArrivedMeshes(), graveyard);
     }
 
-    void SceneBuffers::writeMeshes(const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard)
+    void SceneBuffers::writeMeshes(
+        Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard)
     {
         // **Whole runs here and a mesh at a time afterwards.** Only a skinned body's normals change,
         // so filling these when the mesh arrives is a load's cost and every frame after it pays for
         // what actually moved.
-        mTexCoords.reserve(static_cast<std::uint32_t>(scene.getTexCoords().size()));
-        mNormalTable.reserve(static_cast<std::uint32_t>(scene.getNormals().size()));
+        mTexCoords.reserve(batch, static_cast<std::uint32_t>(scene.getTexCoords().size()));
+        mNormalTable.reserve(batch, static_cast<std::uint32_t>(scene.getNormals().size()));
 
         for (const Index mesh : meshes)
         {
@@ -192,11 +194,17 @@ namespace Rtx
             const std::span<const osg::Vec3f> normals
                 = scene.getNormals().subspan(range.mVertexOffset, range.mVertexCount);
             for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mNormalTable.at(slot).writeAt(range.mVertexOffset, normals);
+                mNormalTable.at(slot).writeAt(batch, range.mVertexOffset, normals);
 
             mTexCoords.writeAt(
-                range.mVertexOffset, scene.getTexCoords().subspan(range.mVertexOffset, range.mVertexCount));
+                batch, range.mVertexOffset, scene.getTexCoords().subspan(range.mVertexOffset, range.mVertexCount));
         }
+
+        // **What is built out of these was copied a moment ago.** The blocks are device memory, so a
+        // mesh reaches them through a transfer rather than through a host write that a submit already
+        // orders — and the acceleration structures built from them are recorded into this same
+        // command buffer. One dependency for every block, because they are read together.
+        orderStagedWrites(batch);
 
         // **Whole, and it is twelve bytes a slot.** A mesh arriving moves nothing already in this,
         // but sizing it to the scene means growing it, and growing means writing it — so the rows

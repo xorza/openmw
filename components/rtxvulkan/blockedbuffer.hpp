@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -14,6 +15,7 @@
 
 namespace Rtx
 {
+    class Batch;
     class Device;
 
     /// One table of fixed-size elements, kept as a list of separate buffers of a fixed count each.
@@ -28,10 +30,12 @@ namespace Rtx
     /// what the paragraph above buys: a block cut to what is currently in it would have to be made
     /// again the moment anything more arrived. The slack is bounded by one block per table.
     ///
-    /// **Host-written, and every one of these is.** Resizable BAR makes the whole of video memory
-    /// writable by the processor, so a mesh arriving is a `memcpy` into the memory the device will
-    /// read — no staging buffer, no copy to record, no transfer to order against the build that
-    /// reads it. That is what lets an arrival be written without touching what is already there.
+    /// **Device memory, written through the batch a load is already recording.** These hold the
+    /// bulk of a world — 118 MiB of Seyda Neen's 184 — and the memory the host writes into directly
+    /// is a couple of hundred megabytes on a card without resizable BAR, so a table that lived there
+    /// would run a cell out of room. The copy costs a load what a load already pays: the bytes are
+    /// staged into the same blocks every texture upload uses, and the barrier `writeGeometry` ends
+    /// in is what orders them against the build that reads them.
     ///
     /// `Rtx::SceneDesc` never lets a mesh's run straddle a block, so `addressOf` on a run's first
     /// element covers the whole run.
@@ -59,12 +63,12 @@ namespace Rtx
         /// Makes blocks until the table can hold `elements`, and rewrites the address table where it
         /// made any. Nothing already in it moves. At least one block always exists, because a table
         /// nothing has been put in still has to be bound.
-        void reserve(std::uint32_t elements);
+        void reserve(Batch& batch, std::uint32_t elements);
 
         /// Copies `values` in, starting at element `at`. Splits across blocks where it has to, so
         /// the caller never has to know where the boundaries fell. The room must have been reserved.
         template <class T>
-        void writeAt(std::uint32_t at, std::span<const T> values)
+        void writeAt(Batch& batch, std::uint32_t at, std::span<const T> values)
         {
             assert(sizeof(T) == mStride);
 
@@ -75,8 +79,7 @@ namespace Rtx
                 const std::uint32_t room = mBlockSize - element % mBlockSize;
                 const auto part = std::min<std::uint32_t>(room, static_cast<std::uint32_t>(values.size()) - written);
 
-                assert(blockOf(element) < mBlocks.size());
-                mBlocks[blockOf(element)].writeAt(offsetOf(element), values.subspan(written, part));
+                writeInto(batch, element, std::as_bytes(values.subspan(written, part)));
                 written += part;
             }
         }
@@ -109,6 +112,10 @@ namespace Rtx
         VkDeviceSize getBytes() const { return getBlockBytes() * mBlocks.size(); }
 
     private:
+        /// One run, staged and copied into the block it falls in. `writeAt` is what splits a run
+        /// that straddles two.
+        void writeInto(Batch& batch, std::uint32_t element, std::span<const std::byte> bytes);
+
         const Device* mDevice = nullptr;
         VkBufferUsageFlags mUsage = 0;
         std::string mName;

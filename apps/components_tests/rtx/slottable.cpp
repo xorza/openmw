@@ -228,7 +228,8 @@ namespace Rtx
         {
             SlotBlocks blocks(64, sizeof(std::uint32_t));
             blocks.open(getDevice(), 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test blocks");
-            blocks.reserve(128);
+            Batch setup(getPool());
+            blocks.reserve(setup, 128);
 
             blocks.write(2);
             blocks.write(5);
@@ -250,7 +251,8 @@ namespace Rtx
         {
             SlotBlocks blocks(64, sizeof(std::uint32_t));
             blocks.open(getDevice(), 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test blocks");
-            blocks.reserve(128);
+            Batch setup(getPool());
+            blocks.reserve(setup, 128);
 
             blocks.write(3);
             blocks.settle(0);

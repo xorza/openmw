@@ -394,8 +394,8 @@ namespace Rtx
 
             Graveyard graveyard(device, pool);
             Batch setup(pool);
-            const SceneAcceleration acceleration(device, scene, 1);
-            const SceneBuffers buffers(device, scene, {}, 1, graveyard);
+            const SceneAcceleration acceleration(device, setup, scene, 1);
+            const SceneBuffers buffers(device, setup, scene, {}, 1, graveyard);
             const TextureArray textures(device, setup, 1, std::span(&mask.mData, 1), graveyard);
             const MicromapPass pass(device, textures.getLayout(), Testing::getShaderDirectory());
 
@@ -589,8 +589,8 @@ namespace Rtx
 
             Graveyard graveyard(device, pool);
             Batch setup(pool);
-            SceneAcceleration acceleration(device, scene, 1);
-            const SceneBuffers buffers(device, scene, records, 1, graveyard);
+            SceneAcceleration acceleration(device, setup, scene, 1);
+            const SceneBuffers buffers(device, setup, scene, records, 1, graveyard);
             const TextureArray textures(device, setup, 1, std::span(&mask.mData, 1), graveyard);
             const MicromapPass pass(device, textures.getLayout(), Testing::getShaderDirectory());
             SceneMicromaps micromaps(device);
@@ -673,8 +673,8 @@ namespace Rtx
 
             Graveyard graveyard(device, pool);
             Batch setup(pool);
-            const SceneAcceleration acceleration(device, scene, 1);
-            const SceneBuffers buffers(device, scene, {}, 1, graveyard);
+            const SceneAcceleration acceleration(device, setup, scene, 1);
+            const SceneBuffers buffers(device, setup, scene, {}, 1, graveyard);
             const TextureArray textures(device, setup, 1, std::span(&mask.mData, 1), graveyard);
             const MicromapPass pass(device, textures.getLayout(), Testing::getShaderDirectory());
             SceneMicromaps micromaps(device);
