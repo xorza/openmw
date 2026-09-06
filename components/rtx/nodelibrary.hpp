@@ -17,4 +17,16 @@ namespace Rtx
     {
         return std::strcmp(node.libraryName(), library) == 0;
     }
+
+    /// Whether `node` is exactly `type`, for the cast a library name cannot narrow.
+    ///
+    /// **The class where the library is every node in a cell.** `isFrom` is the gate to reach for,
+    /// because one library rules out whole kinds at once; it says nothing where the library is
+    /// `osg` itself, which every plain group in a cell belongs to. This asks the narrower question
+    /// at the same price, and it is sound only for a type nothing derives from — a subclass answers
+    /// with its own name.
+    inline bool isExactly(const osg::Node& node, const char* type)
+    {
+        return std::strcmp(node.className(), type) == 0;
+    }
 }

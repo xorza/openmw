@@ -3,8 +3,7 @@
 - load time allocations
 - move some computations to loadtime
 
-- rtx-tool travel
 - tracy
 - async terrain loader
 - precompile shaders?
-- use appropriate weather for regions
+- rtxtool - stats money, weather, time

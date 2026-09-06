@@ -5,7 +5,6 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <optional>
 #include <span>
@@ -330,10 +329,9 @@ namespace Rtx
         }
 
         // Cast the group and not the node: this walk reaches far more drawables than groups, and
-        // only a group can be a sequence. And the class before the cast: `osg` is every plain
-        // group in a cell, and nothing derives from `Sequence`.
-        if (auto* frames
-            = std::strcmp(node.className(), "Sequence") == 0 ? dynamic_cast<osg::Sequence*>(node.asGroup()) : nullptr)
+        // only a group can be a sequence. And the class and not the library, because the library
+        // here is `osg` — every plain group in a cell.
+        if (auto* frames = isExactly(node, "Sequence") ? dynamic_cast<osg::Sequence*>(node.asGroup()) : nullptr)
         {
             frames->traverse(mSequenceClock);
 

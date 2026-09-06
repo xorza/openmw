@@ -34,6 +34,10 @@ namespace Rtx
             if (here.empty())
                 continue;
 
+            // **The hole's own size, because that is what the waste is.** Whatever a run's
+            // alignment skips at the front of a hole and whatever is left behind it come to
+            // `hole->mCount - count` between them, so the smallest hole that fits wastes the least
+            // whatever the block size does to where the run lands.
             if (best == mFree.end() || hole->mCount < best->mCount)
             {
                 best = hole;

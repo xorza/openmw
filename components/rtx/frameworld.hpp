@@ -26,9 +26,13 @@ namespace Rtx
     /// How hard a fall of weather rains on the water, from nought to one.
     ///
     /// **The precipitation's own alpha where its kind rings the surface, and nought where it does
-    /// not** — which is the number the rasterizer hands its water as `rainIntensity`, and
-    /// `Weather::Precipitation::ripplesEnabled` is what says whether a kind rings: rain does and snow
-    /// settles, off the ini's own `Rain Ripples` and `Snow Ripples`.
+    /// not.** `Weather::Precipitation::ripplesEnabled` is what says whether a kind rings: rain does
+    /// and snow settles, off the ini's own `Rain Ripples` and `Snow Ripples`.
+    ///
+    /// **The same number the rasterizer hands its water, and not the same expression.**
+    /// `SkyManager::getRainRipplesEnabled` asks this with the sky's own switch in front of it, which
+    /// changes no answer: `setEnabled(false)` clears the downpour in the same call, and an interior
+    /// is the only thing that turns the sky off.
     ///
     /// @param fall what is falling, or null for a world with no weather over it.
     float rainOnWater(const Weather::Precipitation* fall);
