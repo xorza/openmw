@@ -4,7 +4,7 @@
 
 #include <boost/program_options/variables_map.hpp>
 
-#include <apps/openmw/mwrender/rtx/session.hpp>
+#include <components/rtxbench/benchrun.hpp>
 
 namespace Files
 {
@@ -35,5 +35,5 @@ namespace RtxTool
     ///        block — which is what a window is for as much as the picture is.
     /// @return a process exit status.
     int runHosted(const boost::program_options::variables_map& variables, Files::ConfigurationManager& config,
-        const std::filesystem::path& resources, MWRender::SessionRequest request, const Viewpoint* spot = nullptr);
+        const std::filesystem::path& resources, Rtx::SessionRequest request, const Viewpoint* spot = nullptr);
 }

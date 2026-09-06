@@ -37,9 +37,9 @@
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrecord.hpp>
+#include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/benchspec.hpp>
 
-#include <apps/openmw/mwrender/rtx/session.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
 #include <components/settings/settings.hpp>
 #include <components/settings/values.hpp>
@@ -314,9 +314,9 @@ namespace RtxTool
         }
 
         /// One stop, from a place a view file or a command line named.
-        MWRender::Stop stopFrom(const Place& place, const FrameRequest& frame)
+        Rtx::Stop stopFrom(const Place& place, const FrameRequest& frame)
         {
-            MWRender::Stop stop;
+            Rtx::Stop stop;
             stop.mName = place.mName.empty() ? place.mCell : place.mName;
             stop.mNote = place.mNote;
             stop.mCell = place.mCell;
@@ -329,12 +329,7 @@ namespace RtxTool
 
             // **A route flies the player, which is what puts a cell arriving into a measurement.**
             // Where it ends is another view's camera, copied into the entry when the file was read.
-            if (place.mRoute.has_value())
-                stop.mSchedule.mRoute = MWRender::Route{
-                    .mTo = place.mRoute->mOrigin,
-                    .mLookTo = place.mRoute->mTarget,
-                    .mSpeed = place.mRoute->mSpeed,
-                };
+            stop.mSchedule.mRoute = place.mRoute;
 
             return stop;
         }
@@ -348,7 +343,7 @@ namespace RtxTool
         ///
         /// @param frames how many to measure once the world has arrived. Why a command wants more
         ///        than one is that command's to say.
-        void holdStill(MWRender::Stop& stop, const bpo::variables_map& variables, const std::uint32_t frames = 1)
+        void holdStill(Rtx::Stop& stop, const bpo::variables_map& variables, const std::uint32_t frames = 1)
         {
             stop.mSchedule.mSpec.mWarm = Rtx::BenchSpan{ .mSeconds = variables["warmup"].as<float>() };
             stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = frames };
@@ -357,9 +352,9 @@ namespace RtxTool
 
         /// Runs one stop against a real game, which is what every command that writes one picture
         /// or one report does.
-        int runOneStop(const Command& command, MWRender::Stop stop)
+        int runOneStop(const Command& command, Rtx::Stop stop)
         {
-            MWRender::SessionRequest request;
+            Rtx::SessionRequest request;
             request.mStops.push_back(std::move(stop));
             request.mValidation = validationFrom(command.mVariables, false);
 
@@ -419,7 +414,7 @@ namespace RtxTool
         struct StagedPlace
         {
             Place mPlace;
-            MWRender::Stop mStop;
+            Rtx::Stop mStop;
         };
 
         /// Everything a command that renders one place opens with.
@@ -601,11 +596,11 @@ namespace RtxTool
             // **Every view held still, because what this compares is the picture and not a run.**
             // A frame that animated between two builds would differ for a reason nobody is looking
             // for, and the whole point is that a refactor leaves the picture exactly as it was.
-            MWRender::SessionRequest request;
+            Rtx::SessionRequest request;
             request.mStops.reserve(places.size());
             for (const Place& place : places)
             {
-                MWRender::Stop stop = stopFrom(place, frame);
+                Rtx::Stop stop = stopFrom(place, frame);
                 holdStill(stop, variables);
                 stop.mActions.mCapture = out / (place.mName + ".png");
                 request.mStops.push_back(std::move(stop));
@@ -636,11 +631,11 @@ namespace RtxTool
             const bool hashing
                 = !variables["hashes"].as<std::string>().empty() || !variables["against"].as<std::string>().empty();
 
-            MWRender::SessionRequest request;
+            Rtx::SessionRequest request;
             request.mStops.reserve(places.size());
             for (const Place& place : places)
             {
-                MWRender::Stop stop = stopFrom(place, frame);
+                Rtx::Stop stop = stopFrom(place, frame);
                 stop.mSchedule.mSpec = spec;
                 stop.mSky.mTurnThrough = turn;
                 stop.mActions.mHash = hashing;
@@ -710,7 +705,7 @@ namespace RtxTool
             staged.mStop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = frames > 0 ? frames : sForever };
             staged.mStop.mSchedule.mFreeCamera = true;
 
-            MWRender::SessionRequest request;
+            Rtx::SessionRequest request;
             request.mStops.push_back(std::move(staged.mStop));
             request.mHeadless = false;
             request.mQuitAtEnd = frames > 0;
@@ -732,22 +727,22 @@ namespace RtxTool
         /// than counted as a failure: a crossing count needs a route to cross anything with, and
         /// only the view says whether there is one.
         ///
-        /// **Every check named, and no `default`**, so one added to `MWRender::Check` stops the
+        /// **Every check named, and no `default`**, so one added to `Rtx::Check` stops the
         /// build here and has to say which kind it is. It was a chain of `check != X || condition`
         /// beside the loop, which grows a clause per check and answers nothing when it is wrong.
-        bool canAsk(const MWRender::Check check, const Place& place)
+        bool canAsk(const Rtx::Check check, const Place& place)
         {
             switch (check)
             {
-                case MWRender::Check::CrossingsAppend:
+                case Rtx::Check::CrossingsAppend:
                     return place.mRoute.has_value();
 
-                case MWRender::Check::WalkTwice:
-                case MWRender::Check::SurfacesDescribed:
-                case MWRender::Check::LightsPlaced:
-                case MWRender::Check::GroundReaches:
-                case MWRender::Check::LightsNotDoubled:
-                case MWRender::Check::TexturesReadable:
+                case Rtx::Check::WalkTwice:
+                case Rtx::Check::SurfacesDescribed:
+                case Rtx::Check::LightsPlaced:
+                case Rtx::Check::GroundReaches:
+                case Rtx::Check::LightsNotDoubled:
+                case Rtx::Check::TexturesReadable:
                     return true;
             }
 
@@ -772,18 +767,18 @@ namespace RtxTool
 
             applyHostedSettings(frame);
 
-            const std::span<const MWRender::Check> every = MWRender::everyCheck();
+            const std::span<const Rtx::Check> every = Rtx::everyCheck();
 
-            MWRender::SessionRequest request;
+            Rtx::SessionRequest request;
             request.mStops.reserve(places.size());
             for (const Place& place : places)
             {
                 // **Two measured frames, because one of the claims is about a pair of them.** A
                 // still camera resolving to a still picture cannot be asked of one frame.
-                MWRender::Stop stop = stopFrom(place, frame);
+                Rtx::Stop stop = stopFrom(place, frame);
                 holdStill(stop, variables, 2);
 
-                for (const MWRender::Check check : every)
+                for (const Rtx::Check check : every)
                     if (canAsk(check, place))
                         stop.mActions.mChecks.push_back(check);
 

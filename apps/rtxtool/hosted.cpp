@@ -17,6 +17,7 @@
 #include <components/toutf8/toutf8.hpp>
 
 #include <apps/openmw/engine.hpp>
+#include <apps/openmw/mwrender/rtx/session.hpp>
 
 #include "viewpoint.hpp"
 
@@ -30,7 +31,7 @@ namespace RtxTool
     }
 
     int runHosted(const bpo::variables_map& variables, Files::ConfigurationManager& config,
-        const std::filesystem::path& resources, MWRender::SessionRequest request, const Viewpoint* spot)
+        const std::filesystem::path& resources, Rtx::SessionRequest request, const Viewpoint* spot)
     {
         std::ostream& out = Debug::getRawStdout();
 
@@ -121,7 +122,7 @@ namespace RtxTool
             engine.go();
         }
 
-        const MWRender::SessionResult result = MWRender::takeSessionResult();
+        const Rtx::SessionResult result = MWRender::takeSessionResult();
         out << result.mReport;
 
         // **Where it was left, so a session that ended somewhere worth keeping did not lose it.**
@@ -130,11 +131,7 @@ namespace RtxTool
         if (spot != nullptr)
         {
             Viewpoint left = *spot;
-            left.mOrigin = result.mEye;
-            left.mTarget = result.mLook;
-            left.mHour = result.mHour;
-            left.mDay = result.mDay;
-            left.mWeather = result.mWeather;
+            left.mAt = result.mLeft;
 
             out << describeSpot(left) << describeBlock(left);
         }

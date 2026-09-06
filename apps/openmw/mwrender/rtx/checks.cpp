@@ -1,18 +1,15 @@
 #include "checks.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <format>
 #include <limits>
-#include <utility>
 #include <vector>
 
 #include <osg/BoundingBox>
 #include <osg/Vec3f>
 
 #include <components/misc/constants.hpp>
-#include <components/rtx/namedenum.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtxbench/benchrecord.hpp>
@@ -30,22 +27,6 @@ namespace MWRender
 {
     namespace
     {
-        /// Every check and the word it is asked for by.
-        ///
-        /// **The one list of the names**, so a check renamed here is renamed in the command line
-        /// and in the report at once, and a check added here reaches the runner without anybody
-        /// remembering to list it a second time.
-        constexpr Rtx::NamedEnum sChecks{ std::array{
-            std::pair{ Check::WalkTwice, std::string_view("walk-twice") },
-            std::pair{ Check::SurfacesDescribed, std::string_view("surfaces-described") },
-            std::pair{ Check::LightsPlaced, std::string_view("lights-placed") },
-            std::pair{ Check::GroundReaches, std::string_view("ground-reaches") },
-            std::pair{ Check::LightsNotDoubled, std::string_view("lights-not-doubled") },
-            std::pair{ Check::TexturesReadable, std::string_view("textures-readable") },
-            std::pair{ Check::CrossingsAppend, std::string_view("crossings-append") },
-        } };
-
-        constexpr auto sEvery = sChecks.values();
 
         /// How wide the square of cells the simulation holds is, in units.
         ///
@@ -56,24 +37,14 @@ namespace MWRender
             = static_cast<float>(Constants::CellSizeInUnits) * (2 * Constants::CellGridRadius + 1);
     }
 
-    std::string_view checkName(const Check check)
-    {
-        return sChecks.name(check);
-    }
-
-    std::span<const Check> everyCheck()
-    {
-        return sEvery;
-    }
-
-    bool checkHolds(RtxRenderer& owner, const Check check, const Rtx::Crossings& crossings, std::string& found)
+    bool checkHolds(RtxRenderer& owner, const Rtx::Check check, const Rtx::Crossings& crossings, std::string& found)
     {
         const Rtx::SceneDesc& scene = owner.getMirror().getScene();
         const Rtx::ExtractionStats& stats = owner.getWalkStats();
 
         switch (check)
         {
-            case Check::WalkTwice:
+            case Rtx::Check::WalkTwice:
             {
                 const Rtx::ExtractionStats& again = owner.getSecondWalkStats();
                 found = std::format("{} meshes and {} materials added by the second walk, {} drawables resolved",
@@ -81,7 +52,7 @@ namespace MWRender
                 return again.mMeshesAdded == 0 && again.mMaterialsAdded == 0 && again.mMeshesReused > 0;
             }
 
-            case Check::SurfacesDescribed:
+            case Rtx::Check::SurfacesDescribed:
                 // **The emitters are reported and not asserted**, for the reason
                 // `ExtractionStats::mSpritelessEmitters` gives: every world carries one of the
                 // rasterizer's that the traced path answers for itself.
@@ -89,7 +60,7 @@ namespace MWRender
                     stats.mUndescribedSurfaces, stats.mUndescribedGround, stats.mSpritelessEmitters);
                 return stats.mUndescribedSurfaces == 0 && stats.mUndescribedGround == 0;
 
-            case Check::LightsPlaced:
+            case Rtx::Check::LightsPlaced:
             {
                 const bool indoors = !MWBase::Environment::get().getWorld()->isCellExterior();
                 found = std::format("{} lights casting {}", scene.getLights().size(),
@@ -97,7 +68,7 @@ namespace MWRender
                 return !indoors || !scene.getLights().empty();
             }
 
-            case Check::GroundReaches:
+            case Rtx::Check::GroundReaches:
             {
                 // **Asked of an exterior and answered yes by every room**, which has no distant
                 // ground to reach for.
@@ -123,7 +94,7 @@ namespace MWRender
                 return !outdoors || widest > sActiveGridWidth;
             }
 
-            case Check::LightsNotDoubled:
+            case Rtx::Check::LightsNotDoubled:
             {
                 std::vector<osg::Vec3f> where;
                 where.reserve(scene.getLights().size());
@@ -141,12 +112,12 @@ namespace MWRender
                 return doubled == where.end();
             }
 
-            case Check::TexturesReadable:
+            case Rtx::Check::TexturesReadable:
                 found = std::format(
                     "{} of {} textures could not be read", owner.getUnreadableTextures(), scene.getTextures().size());
                 return owner.getUnreadableTextures() == 0;
 
-            case Check::CrossingsAppend:
+            case Rtx::Check::CrossingsAppend:
                 found = std::format("{} crossings, {} of them rebuilds", crossings.mCount, crossings.mRebuilds);
                 return crossings.mCount > 0 && crossings.mRebuilds < crossings.mCount;
         }

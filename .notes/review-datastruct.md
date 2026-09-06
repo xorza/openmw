@@ -19,19 +19,11 @@ Each pair below states the same thing twice. The tree already counts one of thes
 canary instead of removing the second copy. Every item here is a place where a field added to one
 half reaches the other only if somebody remembers.
 
-- [ ] **`RtxTool::Route` and `MWRender::Route` are one fact under one name.** The first holds
-      `mOrigin`, `mTarget` and `mSpeed`. The second holds `mTo`, `mLookTo` and `mSpeed`.
-      `main.cpp:333` converts field by field. Two types with the same name in one build is also a
-      reading hazard.
-
-- [ ] **`RtxTool::Place` and `MWRender::Stand` plus `StopSky` describe one stop twice.** `Place`
-      resolves the hour and the weather into plain values. `StopSky` makes both optional again, and
-      `stopFrom` puts the resolved values back into optionals. The optionality is removed and then
-      restored for nothing.
-
-- [ ] **`RtxTool::Viewpoint` and `MWRender::SessionResult` both say where the eye was left.**
-      `Viewpoint` adds the view id, the note and the cell. `SessionResult` adds the exit status, the
-      places and the report. The five fields they share are copied between them.
+- [ ] **`RtxTool::Place` restates `Rtx::Stand` plus `StopSky`.** `Place` resolves the hour and the
+      weather into plain values, and `stopFrom` puts them straight back into `StopSky`'s optionals.
+      Both types are reachable from one namespace now, so `chooseView` could hand back the `Stop`
+      it is about to become. What `Place` buys is a type shape that says the conditions are
+      settled, and only `stopFrom` reads them.
 
 - [ ] **`Surface::AlphaMode` and `Rtx::AlphaMode` hold the same three enumerators.**
       `materialresolver.cpp:392` converts one to the other with a switch. The core can name the
@@ -125,12 +117,6 @@ weather turn, the checks, the report, the record, the hashes and seven writers.
       `sInstalled` and `sResult` at file scope, and four free functions read and write them. The
       header explains why `RendererSpec` cannot carry the request, and that reason covers the
       request only. `SessionResult` travels back the same way for no stated reason.
-
-- [ ] **The description of a measured run lives in three modules.** `components/rtxbench` holds
-      `BenchSpec` and `BenchPlace`. `apps/openmw/mwrender/rtx/session.hpp` holds `SessionRequest`,
-      `Stop`, `Schedule` and `Actions`. `apps/rtxtool` holds `FrameRequest`, `View`, `Place` and
-      `BenchSuite`. `apps/rtxtool/hosted.hpp` includes the game's own header to reach the middle
-      one. The tree's own layout says the instruments belong in `components/rtxbench`.
 
 - [ ] **`FrameRequest` reaches the renderer through the settings registry.**
       `main.cpp:391` writes eleven fields into `Settings::rtx()` and `Settings::video()`, and

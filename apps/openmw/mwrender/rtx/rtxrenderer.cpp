@@ -109,7 +109,7 @@ namespace MWRender
         // **Taken before anything is built, because it decides how the window opens and what the
         // trace counts.** A launcher installs a whole run; a played binary can only name one in its
         // settings, and a session that asked for neither behaves exactly as it did.
-        std::optional<SessionRequest> asked = takeInstalledSession();
+        std::optional<Rtx::SessionRequest> asked = takeInstalledSession();
         if (!asked.has_value())
             asked = readSessionSetting();
 

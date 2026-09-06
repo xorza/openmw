@@ -41,7 +41,7 @@ namespace RtxTool
 
     float Viewpoint::getBearing() const
     {
-        osg::Vec3f forward = mTarget - mOrigin;
+        osg::Vec3f forward = mAt.mLook - mAt.mEye;
         forward.normalize();
 
         const float degrees = osg::RadiansToDegrees(std::atan2(forward.x(), forward.y()));
@@ -50,7 +50,7 @@ namespace RtxTool
 
     float Viewpoint::getClimb() const
     {
-        osg::Vec3f forward = mTarget - mOrigin;
+        osg::Vec3f forward = mAt.mLook - mAt.mEye;
         forward.normalize();
 
         // Clamped because a normalised vector's z can land a bit past one, and `asin` answers a NaN
@@ -61,8 +61,8 @@ namespace RtxTool
     std::string describeSpot(const Viewpoint& spot)
     {
         return std::format("# {} at {:.0f}, {:.0f}, {:.0f} — bearing {:.0f}°, climb {:.0f}° — day {}, {}, {}\n",
-            spot.mCell, spot.mOrigin.x(), spot.mOrigin.y(), spot.mOrigin.z(), spot.getBearing(), spot.getClimb(),
-            spot.mDay, Rtx::describeHour(spot.mHour), spot.mWeather);
+            spot.mCell, spot.mAt.mEye.x(), spot.mAt.mEye.y(), spot.mAt.mEye.z(), spot.getBearing(), spot.getClimb(),
+            spot.mAt.mDay, Rtx::describeHour(spot.mAt.mHour), spot.mAt.mWeather);
     }
 
     std::string describeBlock(const Viewpoint& spot)
@@ -72,18 +72,18 @@ namespace RtxTool
         if (!spot.mNote.empty())
             block += std::format("note = {}\n", spot.mNote);
 
-        block += std::format("cell = {}\npos = {}, {}, {}\nlook = {}, {}, {}\n", spot.mCell, spot.mOrigin.x(),
-            spot.mOrigin.y(), spot.mOrigin.z(), spot.mTarget.x(), spot.mTarget.y(), spot.mTarget.z());
+        block += std::format("cell = {}\npos = {}, {}, {}\nlook = {}, {}, {}\n", spot.mCell, spot.mAt.mEye.x(),
+            spot.mAt.mEye.y(), spot.mAt.mEye.z(), spot.mAt.mLook.x(), spot.mAt.mLook.y(), spot.mAt.mLook.z());
 
         // **Each condition only where the window was not at the file's own**, because one written
         // down fixes the place under it. A block pasted from a window flown at dawn in a storm has
         // to bring both with it — the light is most of what the frame is — and one from a window at
         // clear noon should leave the view free to be measured under whatever a run names.
-        if (spot.mHour != sDefaultHour)
-            block += std::format("hour = {}\n", spot.mHour);
+        if (spot.mAt.mHour != sDefaultHour)
+            block += std::format("hour = {}\n", spot.mAt.mHour);
 
-        if (spot.mWeather != sDefaultWeather)
-            block += std::format("weather = {}\n", spot.mWeather);
+        if (spot.mAt.mWeather != sDefaultWeather)
+            block += std::format("weather = {}\n", spot.mAt.mWeather);
 
         return block;
     }

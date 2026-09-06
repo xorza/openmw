@@ -63,8 +63,8 @@ look = 8292, 300, 700
 
             // The destination view is resolved when the file is read, so what a route carries is
             // where it ends rather than the name of a place to look up later.
-            EXPECT_EQ(start->mRoute->mOrigin, osg::Vec3f(8292.0f, 200.0f, 700.0f));
-            EXPECT_EQ(start->mRoute->mTarget, osg::Vec3f(8292.0f, 300.0f, 700.0f));
+            EXPECT_EQ(start->mRoute->mTo, osg::Vec3f(8292.0f, 200.0f, 700.0f));
+            EXPECT_EQ(start->mRoute->mLookTo, osg::Vec3f(8292.0f, 300.0f, 700.0f));
             EXPECT_EQ(start->mRoute->mSpeed, 1500.0f);
 
             // The destination is an ordinary view and goes nowhere itself.
@@ -237,7 +237,7 @@ hour = 19.25
                 .mHour = 6.5f,
                 .mWeather = std::string("Overcast"),
                 .mNote = "a deck at dawn",
-                .mRoute = Route{ .mOrigin = osg::Vec3f(7.0f, 8.0f, 9.0f), .mTarget = osg::Vec3f(), .mSpeed = 400.0f },
+                .mRoute = Rtx::Route{ .mTo = osg::Vec3f(7.0f, 8.0f, 9.0f), .mLookTo = osg::Vec3f(), .mSpeed = 400.0f },
             };
 
             const View bare{ .mCell = "-2,-9" };

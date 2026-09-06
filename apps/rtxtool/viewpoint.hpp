@@ -1,11 +1,8 @@
 #pragma once
 
 #include <string>
-#include <string_view>
 
-#include <osg/Vec3f>
-
-#include "views.hpp"
+#include <components/rtxbench/benchrun.hpp>
 
 namespace RtxTool
 {
@@ -36,20 +33,12 @@ namespace RtxTool
         /// back, which is a second spelling of a name `--cell` already reads.
         std::string mCell;
 
-        osg::Vec3f mOrigin;
-        osg::Vec3f mTarget;
-
-        /// As the fallback settings spell it, and a twenty-four hour clock.
+        /// Where the eye was left and what it stood under, as the run reported it.
         ///
-        /// **The same defaults the view file's absent `weather` and `hour` mean**, because
-        /// `describeBlock` writes each out only where it differs from one — a disagreement would put
-        /// `hour = 12` into every pasted block and fix at clear noon a place that meant to take the
-        /// run's own conditions.
-        std::string mWeather = std::string(sDefaultWeather);
-        float mHour = sDefaultHour;
-
-        /// Which day, counted from the one a new game begins on. Only the moons read it.
-        int mDay = 0;
+        /// **`Rtx::Standing` and not five fields of this type's own**, because the run states the
+        /// same five and a launcher only writes them down — held apart, a field added to the report
+        /// reached the file that has to be able to read it back only if somebody carried it across.
+        Rtx::Standing mAt;
 
         /// Degrees clockwise from north, in `[0, 360)`.
         ///

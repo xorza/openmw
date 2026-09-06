@@ -53,6 +53,7 @@
 #include "../characterpreview.hpp"
 #include "../offscreenview.hpp"
 #include "../renderingmanager.hpp"
+#include "checks.hpp"
 #include "rtxrenderer.hpp"
 
 namespace MWRender
@@ -64,8 +65,8 @@ namespace MWRender
         /// **Two slots rather than a channel through `RendererSpec`.** That struct is filled inside
         /// `Engine::go`, and a field there would be an edit to upstream for a value one launcher
         /// sets and every other caller leaves empty.
-        std::optional<SessionRequest> sInstalled;
-        SessionResult sResult;
+        std::optional<Rtx::SessionRequest> sInstalled;
+        Rtx::SessionResult sResult;
 
         /// How often a run that turns its sky asks for the next weather, in frames of world.
         ///
@@ -91,7 +92,7 @@ namespace MWRender
         constexpr double sLookAhead = 1000.0;
     }
 
-    std::optional<SessionRequest> readSessionSetting()
+    std::optional<Rtx::SessionRequest> readSessionSetting()
     {
         const std::string spelling = Settings::rtx().mSession;
         if (spelling.empty())
@@ -108,13 +109,13 @@ namespace MWRender
             return std::nullopt;
         }
 
-        Stop stop;
+        Rtx::Stop stop;
         stop.mName = "the game";
         stop.mSchedule.mSpec = *spec;
         if (spec->mSpeed > 0.0f)
-            stop.mSchedule.mRoute = Route{ .mSpeed = spec->mSpeed };
+            stop.mSchedule.mRoute = Rtx::Route{ .mSpeed = spec->mSpeed };
 
-        SessionRequest request;
+        Rtx::SessionRequest request;
         request.mStops.push_back(std::move(stop));
 
         // **A window, because somebody asked for this in a game they can see.** The harness hides
@@ -125,28 +126,28 @@ namespace MWRender
         return request;
     }
 
-    void installSession(SessionRequest request)
+    void installSession(Rtx::SessionRequest request)
     {
         sInstalled = std::move(request);
     }
 
-    std::optional<SessionRequest> takeInstalledSession()
+    std::optional<Rtx::SessionRequest> takeInstalledSession()
     {
         return std::exchange(sInstalled, std::nullopt);
     }
 
-    void publishSessionResult(SessionResult result)
+    void publishSessionResult(Rtx::SessionResult result)
     {
         sResult = std::move(result);
     }
 
     /// **The whole slot, and never a field at a time.** A launcher reads eight of these and a run
     /// fills all eight, so a take written out member by member loses whichever ones nobody
-    /// remembered — silently, since an unfilled `SessionResult` is a valid one describing a camera
+    /// remembered — silently, since an unfilled `Rtx::SessionResult` is a valid one describing a camera
     /// at the origin.
-    SessionResult takeSessionResult()
+    Rtx::SessionResult takeSessionResult()
     {
-        return std::exchange(sResult, SessionResult{});
+        return std::exchange(sResult, Rtx::SessionResult{});
     }
 
     /// What a stop gathers, and the few things a whole run does. Out of line so the header names
@@ -168,7 +169,7 @@ namespace MWRender
         std::vector<std::uint8_t> mPixels;
     };
 
-    Session::Session(SessionRequest request)
+    Session::Session(Rtx::SessionRequest request)
         : mRequest(std::move(request))
         , mHeld(std::make_unique<Held>())
     {
@@ -178,7 +179,7 @@ namespace MWRender
             mHeld->mReference = Rtx::FrameHashes::read(mRequest.mAgainst);
 
         std::uint32_t longest = 0;
-        for (const Stop& stop : mRequest.mStops)
+        for (const Rtx::Stop& stop : mRequest.mStops)
             longest = std::max(longest, stop.mSchedule.mSpec.getMeasured());
 
         // Reserved once at the longest stop's length, so no measured frame grows a vector — a
@@ -202,7 +203,7 @@ namespace MWRender
         const Camera& camera = *world.getRenderingManager()->getCamera();
         const MWWorld::TimeStamp now = world.getTimeStamp();
 
-        mStood = Standing{
+        mStood = Note{
             .mAt = camera.getPosition(),
             .mFacing = camera.getOrient(),
             .mHour = now.getHour(),
@@ -211,9 +212,9 @@ namespace MWRender
         };
     }
 
-    SessionResult Session::describeRun() const
+    Rtx::SessionResult Session::describeRun() const
     {
-        SessionResult result;
+        Rtx::SessionResult result;
         result.mExitStatus = mExitStatus;
         result.mPlaces = mPlaces;
         result.mReport = mReport;
@@ -221,15 +222,16 @@ namespace MWRender
         if (!mStood.has_value())
             return result;
 
-        result.mEye = osg::Vec3f(mStood->mAt);
+        result.mLeft = Rtx::Standing{
+            .mEye = osg::Vec3f(mStood->mAt),
 
-        // The direction and not a point on it, for the reason `Rtx::makeCamera` gives — but a view
-        // file holds a `look`, and a landmark's distance is what makes one readable.
-        result.mLook = osg::Vec3f(mStood->mAt + mStood->mFacing * osg::Vec3d(0.0, sLookAhead, 0.0));
-
-        result.mHour = mStood->mHour;
-        result.mDay = mStood->mDay;
-        result.mWeather = Rtx::weatherName(static_cast<std::uint32_t>(mStood->mWeather));
+            // The direction and not a point on it, for the reason `Rtx::makeCamera` gives — but a
+            // view file holds a `look`, and a landmark's distance is what makes one readable.
+            .mLook = osg::Vec3f(mStood->mAt + mStood->mFacing * osg::Vec3d(0.0, sLookAhead, 0.0)),
+            .mHour = mStood->mHour,
+            .mDay = mStood->mDay,
+            .mWeather = std::string(Rtx::weatherName(static_cast<std::uint32_t>(mStood->mWeather))),
+        };
 
         return result;
     }
@@ -279,7 +281,7 @@ namespace MWRender
 
     void Session::beginStop()
     {
-        const Stop& stop = mRequest.mStops[mAt];
+        const Rtx::Stop& stop = mRequest.mStops[mAt];
         MWBase::World& world = *MWBase::Environment::get().getWorld();
 
         // **The player goes first, because the ring is read around them and not around the eye.**
@@ -411,11 +413,11 @@ namespace MWRender
 
     void Session::fly()
     {
-        const Stop& stop = mRequest.mStops[mAt];
+        const Rtx::Stop& stop = mRequest.mStops[mAt];
         if (!stop.mSchedule.mRoute.has_value())
             return;
 
-        const Route& route = *stop.mSchedule.mRoute;
+        const Rtx::Route& route = *stop.mSchedule.mRoute;
         if (!(route.mSpeed > 0.0f))
             return;
 
@@ -500,7 +502,7 @@ namespace MWRender
         if (mDone || !mStarted)
             return 0;
 
-        const Stop& stop = mRequest.mStops[mAt];
+        const Rtx::Stop& stop = mRequest.mStops[mAt];
         const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();
         if (stop.mSchedule.mAccumulate == 0 || mSeen < warmup)
             return 0;
@@ -551,7 +553,7 @@ namespace MWRender
         if (mDone || !mStarted)
             return;
 
-        const Stop& stop = mRequest.mStops[mAt];
+        const Rtx::Stop& stop = mRequest.mStops[mAt];
         const std::uint32_t warmup = stop.mSchedule.mSpec.getWarmup();
         const std::uint32_t measured = stop.mSchedule.mSpec.getMeasured();
 
@@ -609,7 +611,7 @@ namespace MWRender
 
     void Session::endStop(RtxRenderer& owner)
     {
-        const Stop& stop = mRequest.mStops[mAt];
+        const Rtx::Stop& stop = mRequest.mStops[mAt];
         Rtx::Renderer& renderer = owner.getBackend();
 
         mHeld->mProfiling->disable();
@@ -1019,9 +1021,9 @@ namespace MWRender
 
     void Session::runChecks(RtxRenderer& owner)
     {
-        const Stop& stop = mRequest.mStops[mAt];
+        const Rtx::Stop& stop = mRequest.mStops[mAt];
 
-        for (const Check check : stop.mActions.mChecks)
+        for (const Rtx::Check check : stop.mActions.mChecks)
         {
             std::string found;
             const bool held = checkHolds(owner, check, mHeld->mCrossings, found);

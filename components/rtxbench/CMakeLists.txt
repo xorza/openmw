@@ -13,6 +13,8 @@
 set(RTXBENCH_FILES
     benchrecord.cpp
     benchrecord.hpp
+    benchrun.cpp
+    benchrun.hpp
     benchspec.cpp
     benchspec.hpp
     contactsheet.cpp

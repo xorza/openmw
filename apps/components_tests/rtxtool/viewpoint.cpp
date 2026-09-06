@@ -20,10 +20,10 @@ namespace RtxTool
                 .mView = "balmora-mages-guild",
                 .mNote = "a guild interior, dense with clutter",
                 .mCell = "Balmora, Guild of Mages",
-                .mOrigin = osg::Vec3f(-283.29843f, -671.29584f, -580.77014f),
-                .mTarget = osg::Vec3f(503.60007f, -1265.436f, -747.46844f),
-                .mWeather = "Clear",
-                .mHour = 12.0f,
+                .mAt = { .mEye = osg::Vec3f(-283.29843f, -671.29584f, -580.77014f),
+                    .mLook = osg::Vec3f(503.60007f, -1265.436f, -747.46844f),
+                    .mHour = 12.0f,
+                    .mWeather = "Clear" },
             };
         }
 
@@ -31,8 +31,8 @@ namespace RtxTool
         {
             const auto facing = [](float x, float y, float z) {
                 Viewpoint spot;
-                spot.mOrigin = osg::Vec3f();
-                spot.mTarget = osg::Vec3f(x, y, z);
+                spot.mAt.mEye = osg::Vec3f();
+                spot.mAt.mLook = osg::Vec3f(x, y, z);
                 return spot;
             };
 
@@ -62,8 +62,8 @@ namespace RtxTool
 
             // A quarter past five in the evening, because a decimal hour is not a time anyone reads.
             Viewpoint evening = makeSpot();
-            evening.mHour = 17.25f;
-            evening.mWeather = "Ashstorm";
+            evening.mAt.mHour = 17.25f;
+            evening.mAt.mWeather = "Ashstorm";
             EXPECT_NE(describeSpot(evening).find("17:15, Ashstorm"), std::string::npos) << describeSpot(evening);
         }
 
@@ -96,8 +96,8 @@ namespace RtxTool
             EXPECT_EQ(read.front().mCell, spot.mCell);
             ASSERT_TRUE(read.front().mOrigin.has_value());
             ASSERT_TRUE(read.front().mTarget.has_value());
-            EXPECT_EQ(*read.front().mOrigin, spot.mOrigin);
-            EXPECT_EQ(*read.front().mTarget, spot.mTarget);
+            EXPECT_EQ(*read.front().mOrigin, spot.mAt.mEye);
+            EXPECT_EQ(*read.front().mTarget, spot.mAt.mLook);
 
             // **Clear noon writes neither condition**, so a view pasted from an ordinary window is
             // still free to be measured under whatever a run names.
@@ -107,8 +107,8 @@ namespace RtxTool
             // **And anything else writes both**, because the light is most of what the frame is: a
             // block pasted from a window flown at dawn in a storm has to bring both with it.
             Viewpoint dawn = spot;
-            dawn.mHour = 6.5f;
-            dawn.mWeather = "Thunderstorm";
+            dawn.mAt.mHour = 6.5f;
+            dawn.mAt.mWeather = "Thunderstorm";
 
             const std::filesystem::path second
                 = std::filesystem::temp_directory_path() / "openmw-rtx-viewpoint-dawn.cfg";

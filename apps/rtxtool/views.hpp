@@ -8,27 +8,10 @@
 
 #include <osg/Vec3f>
 
+#include <components/rtxbench/benchrun.hpp>
+
 namespace RtxTool
 {
-    /// Where a bench flies to from a view, and how fast.
-    ///
-    /// **A route is what puts a cell arriving into a benchmark at all.** A camera standing still
-    /// measures a frame; the cost this harness exists to see — the ring read off disk, the models
-    /// built, the sweep that follows the cells that left — only happens to a camera that goes
-    /// somewhere. Flown at a fixed speed from a frame index, so the crossings land on the same
-    /// frames on every machine and on every build.
-    struct Route
-    {
-        /// Where it ends, copied out of the view it names when the file was read — so nothing
-        /// downstream resolves anything.
-        osg::Vec3f mOrigin;
-        osg::Vec3f mTarget;
-
-        /// World units a second. A Morrowind exterior cell is 8,192 across, so this times the run's
-        /// length is roughly how many boundaries get crossed.
-        float mSpeed = 0.0f;
-    };
-
     /// The hour a place stands at where neither the view nor the command line names one.
     ///
     /// Noon, because it is the hour a picture of a place is taken at. **It is not the hour a budget
@@ -79,7 +62,7 @@ namespace RtxTool
 
         /// Where a bench run flies from here, or absent for a place that stands still. A shot and a
         /// window ignore it: one is a still and the other is flown by hand.
-        std::optional<Route> mRoute;
+        std::optional<Rtx::Route> mRoute;
     };
 
     /// A place a run actually stands at: a view file entry with its conditions settled.
@@ -101,7 +84,7 @@ namespace RtxTool
         std::string mWeather = std::string(sDefaultWeather);
 
         std::string mNote;
-        std::optional<Route> mRoute;
+        std::optional<Rtx::Route> mRoute;
     };
 
     /// `view` with whatever the command line named settled into it.

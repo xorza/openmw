@@ -135,9 +135,9 @@ namespace RtxTool
                     throw std::runtime_error("view \"" + views[at].mName + "\" flies to \"" + to
                         + "\", which names no pos and look of its own to arrive at");
 
-                views[at].mRoute = Route{
-                    .mOrigin = *end->mOrigin,
-                    .mTarget = *end->mTarget,
+                views[at].mRoute = Rtx::Route{
+                    .mTo = *end->mOrigin,
+                    .mLookTo = *end->mTarget,
                     .mSpeed = paired->second,
                 };
             }
