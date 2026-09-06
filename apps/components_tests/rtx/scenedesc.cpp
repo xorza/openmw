@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+#include <osg/Vec3f>
+
 #include <components/rtx/error.hpp>
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/scenedesc.hpp>
@@ -31,6 +33,55 @@ namespace Rtx
             std::vector<Index> copy(slots.begin(), slots.end());
             std::sort(copy.begin(), copy.end());
             return copy;
+        }
+
+        /// The order the lights come out in is the lights' own, and every field takes its turn.
+        ///
+        /// **What a repeated run rests on.** `orderLights` says why: a walk meets lights in graph
+        /// order, a graph gains and loses cells as a player moves, and the grid and the reservoir
+        /// both read the order — so the same place walked twice draws a different picture unless
+        /// this is a total order over what a light *is*.
+        ///
+        /// **Every step below raises exactly one field and leaves every earlier one alone**, which
+        /// is what makes a field dropped from the comparator show: the two rows it separates become
+        /// equal, and they were handed over in the opposite order. A step that raised two at once
+        /// would be ordered by whichever of them survived. The four rows at the front are the same
+        /// statement about `osg::Vec3f`, whose order is lexicographic on x, y and z.
+        TEST(RtxSceneDescTest, everyFieldOfALightTakesItsTurnInTheOrder)
+        {
+            const osg::Vec3f one{ 1.0f, 1.0f, 1.0f };
+
+            // Ascending, and each row names only what it raises: everything else a `Light` carries
+            // starts at nothing.
+            const std::array<Light, 9> ordered{
+                Light{},
+                Light{ .mPosition = { 0.0f, 0.0f, 1.0f } },
+                Light{ .mPosition = { 0.0f, 1.0f, 0.0f } },
+                Light{ .mPosition = { 1.0f, 0.0f, 0.0f } },
+                Light{ .mPosition = one },
+                Light{ .mPosition = one, .mIntensity = one },
+                Light{ .mPosition = one, .mIntensity = one, .mReach = 1.0f },
+                Light{ .mPosition = one, .mIntensity = one, .mReach = 1.0f, .mSourceRadius = 1.0f },
+                Light{ .mPosition = one, .mIntensity = one, .mReach = 1.0f, .mSourceRadius = 1.0f, .mClearance = 1.0f },
+            };
+
+            // Handed over backwards, so a walk that did nothing at all would fail this.
+            SceneDesc scene;
+            for (auto light = ordered.rbegin(); light != ordered.rend(); ++light)
+                scene.addLight(*light);
+
+            scene.orderLights();
+
+            ASSERT_EQ(scene.getLights().size(), ordered.size());
+            for (std::size_t at = 0; at < ordered.size(); ++at)
+            {
+                const Light& made = scene.getLights()[at];
+                EXPECT_EQ(made.mPosition, ordered[at].mPosition) << "position at " << at;
+                EXPECT_EQ(made.mIntensity, ordered[at].mIntensity) << "intensity at " << at;
+                EXPECT_EQ(made.mReach, ordered[at].mReach) << "reach at " << at;
+                EXPECT_EQ(made.mSourceRadius, ordered[at].mSourceRadius) << "source radius at " << at;
+                EXPECT_EQ(made.mClearance, ordered[at].mClearance) << "clearance at " << at;
+            }
         }
 
         TEST(RtxSceneDescTest, aMeshRemembersWhereItsVerticesWent)

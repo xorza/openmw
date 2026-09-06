@@ -46,24 +46,38 @@ instead is below.
 ## Smaller items
 
 - [ ] `components/rtx/scenedesc.cpp:553` — `orderLights` sorts every light every
-  frame. The comparator builds two nine-element tuples per comparison. The sort exists
-  to make a run repeat itself, and only the residency walks make the walk order
-  uncertain. Sorting the residency's own contribution and merging it would leave the
-  graph walk's order alone.
-- [ ] `components/rtx/distantlights.cpp:49` — `build` collects into a
-  `std::map<ESM::RefNum, Terrain::PagedCellRef>`. **Smaller than it reads.**
-  `collectPagedRefs` applies `wanted` before it inserts, and `collectLights` passes
-  `litType`, so only `REC_LIGH` reaches the map — a handful a cell, and `mCells`
-  keeps the answer for the life of the scene. That is a few hundred nodes once per
-  world. `Terrain::ObjectStorage` and `collectPagedRefs` are this fork's own files
-  rather than upstream's, so the container could be changed — but the same function
-  is what the lifted `objectpaging.cpp` collects every chunk through, and that is the
-  rasterizer's path. Not worth the reach for the count.
-- [ ] `components/rtx/texturebuilder.cpp:147` — `describeAll` fills `mEverything`
-  with a hand-written loop. `std::iota` says the same thing.
+  frame. **The comparator is fixed and the sort still runs.** It ties five members
+  where it copied nine floats a side, and `everyFieldOfALightTakesItsTurnInTheOrder`
+  now pins the order every level of it deep — nothing did before, and the order is
+  what a repeated run rests on.
+
+  **Merging the residency's own contribution is closed.** `SceneExtractor::walk`
+  does put the residency after the graph, so one walk is a stable prefix and an
+  uncertain suffix — but `orderLights` is at the uploader, which is "the one point
+  every path passes", and the game walks its precipitation beside its world. So the
+  list is several prefix-and-suffix pairs and a merge would have to carry each
+  boundary out of the extractor. What makes the suffix uncertain is the order
+  `Terrain::View` hands its chunks over in, which is the lifted terrain code the
+  rasterizer walks too — so fixing it at source is out of this fork's places.
 - [ ] `apps/components_tests/rtx/` — the allocation guard covers the frame path and
   stops there. `extractor/materials.cpp:630`, `extractor/skinning.cpp:111` and
-  `lightbuilder.cpp:437` all assert zero allocations for a scene already walked. No
-  test measures `SceneTextures::describe` or `CompositeQueue::bake`. Those are the
-  paths this review found allocating, and a count there is what would keep the
-  persistent loaders persistent.
+  `lightbuilder.cpp:437` all assert zero allocations for a scene already walked.
+
+  **`CompositeQueue::bake` needs none.** What the queue's scratch exists for is
+  `TerrainComposite`'s own working set, and
+  `RtxTerrainCompositeTest.aScratchTheCallerKeepsLeavesABakeNothingButItsAnswerToAllocate`
+  already asserts that a warm bake reaches the heap exactly twice and names which two.
+  What the queue adds over that is a request copy on the baker's thread, which is off
+  the frame path by design — the class opens by saying a bake happens on no frame at
+  all.
+
+  **`SceneTextures::describe` still wants one, and a unit test cannot reach it.**
+  Every route through `describe` in a test meets a file that is not there:
+  `ImageManager::getImage` answers a miss with its warning image, which is `GL_RGB`
+  and so a format this renderer refuses, and the refusal is logged by name — a
+  `std::string` per slot per call. So a guard would read the log's allocations rather
+  than the scratch's. Reaching the real path needs a decodable file in the VFS, which
+  means depending on an OSG image plugin being loadable in the test binary; a test
+  that skips when it is not there is the silent pass this suite refuses. What would
+  settle it is a description built from bytes the test owns, the way `TestTexture`
+  already builds one — a seam `describe` does not have.

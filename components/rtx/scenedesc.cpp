@@ -555,11 +555,14 @@ namespace Rtx
         // **A total order and not a distance**, so that two lights the walk could hand over either
         // way round come out the same way round every time. Position separates all but the lamps
         // standing in one another, and what they carry separates those.
+        //
+        // **Tied and not built**, because a sort of a cell's three hundred lamps compares thousands
+        // of times and a tuple of references copies none of them. `osg::Vec3f` orders itself
+        // lexicographically on x, y and z, which is what makes the two vectors here the same order
+        // as their six components spelled out.
         std::sort(mLights.begin(), mLights.end(), [](const Light& a, const Light& b) {
-            return std::make_tuple(a.mPosition.x(), a.mPosition.y(), a.mPosition.z(), a.mIntensity.x(),
-                       a.mIntensity.y(), a.mIntensity.z(), a.mReach, a.mSourceRadius, a.mClearance)
-                < std::make_tuple(b.mPosition.x(), b.mPosition.y(), b.mPosition.z(), b.mIntensity.x(), b.mIntensity.y(),
-                    b.mIntensity.z(), b.mReach, b.mSourceRadius, b.mClearance);
+            return std::tie(a.mPosition, a.mIntensity, a.mReach, a.mSourceRadius, a.mClearance)
+                < std::tie(b.mPosition, b.mIntensity, b.mReach, b.mSourceRadius, b.mClearance);
         });
     }
 

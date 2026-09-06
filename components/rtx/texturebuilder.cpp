@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -160,8 +161,7 @@ namespace Rtx
         const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites)
     {
         mEverything.resize(scene.getTextures().size());
-        for (Index slot = 0; slot < mEverything.size(); ++slot)
-            mEverything[slot] = slot;
+        std::iota(mEverything.begin(), mEverything.end(), Index{ 0 });
 
         describe(scene, images, mEverything, composites);
     }
