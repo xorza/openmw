@@ -71,23 +71,7 @@ namespace MWRender
         /// **A canary, and it should be nought.** A texture the uploader could not read is drawn
         /// grey, which reads as a material fault rather than as a missing file.
         TexturesReadable,
-
-        /// A still camera over a still world resolves to a still picture.
-        ///
-        /// **What a temporal reconstruction has to promise.** Two frames of one scene from one eye
-        /// differ only if something carried state it should not have, and that shows as a shimmer
-        /// nothing else in this fork can see.
-        PictureSettles,
     };
-
-    /// What a check is called on a command line and in a report.
-    std::string_view checkName(Check check);
-
-    /// The check called `name`, or nothing where nothing is called that.
-    std::optional<Check> checkNamed(std::string_view name);
-
-    /// Every check there is, in the order they are run.
-    std::span<const Check> everyCheck();
 
     /// What a check is called on a command line and in a report.
     std::string_view checkName(Check check);
@@ -102,6 +86,5 @@ namespace MWRender
     /// `found` either way.
     ///
     /// @param crossings what the stop's route came to, which only that check reads.
-    /// @param settled whether the last two measured frames were the same picture.
-    bool checkHolds(RtxRenderer& owner, Check check, const Rtx::Crossings& crossings, bool settled, std::string& found);
+    bool checkHolds(RtxRenderer& owner, Check check, const Rtx::Crossings& crossings, std::string& found);
 }

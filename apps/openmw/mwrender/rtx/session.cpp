@@ -161,15 +161,6 @@ namespace MWRender
         Rtx::FrameHashes mHashes;
         Rtx::FrameHashes mReference;
 
-        /// The last measured frame's own hash, and whether the frame before it hashed the same.
-        ///
-        /// **What says a still camera resolved to a still picture.** Two frames of one scene from
-        /// one eye differ only if something carried state it should not have, and there is nothing
-        /// else in this fork that can see that.
-        std::array<std::uint64_t, 2> mLastHash{};
-        bool mHadHash = false;
-        bool mSettled = false;
-
         /// perf's control fifo, held for the whole run so every stop brackets its own frames.
         std::unique_ptr<Rtx::PerfControl> mProfiling;
 
@@ -597,23 +588,10 @@ namespace MWRender
 
         const std::uint32_t drawn = mSeen - warmup;
 
-        const bool watching
-            = std::find(stop.mActions.mChecks.begin(), stop.mActions.mChecks.end(), Check::PictureSettles)
-            != stop.mActions.mChecks.end();
-
-        if (stop.mActions.mHash || watching)
+        if (stop.mActions.mHash)
         {
             renderer.readPixels(mHeld->mPixels);
-
-            if (stop.mActions.mHash)
-                mHeld->mHashes.add(stop.mName, drawn, mHeld->mPixels);
-
-            Rtx::Digest digest;
-            digest.add(std::span<const std::uint8_t>(mHeld->mPixels));
-
-            mHeld->mSettled = mHeld->mHadHash && digest.getWords() == mHeld->mLastHash;
-            mHeld->mLastHash = digest.getWords();
-            mHeld->mHadHash = true;
+            mHeld->mHashes.add(stop.mName, drawn, mHeld->mPixels);
         }
 
         if (drawn < measured)
@@ -854,11 +832,13 @@ namespace MWRender
             "  unreadable drawables: {}\n"
             "  unskinned rigs:       {} met before an update found their skeleton\n"
             "  empty geometry:       {}\n"
-            "  undescribed surfaces: {}\n"
+            "  undescribed surfaces: {} drawn as a default material\n"
+            "  undescribed ground:   {} passes left out of their chunk's stack\n"
+            "  spriteless emitters:  {} dropped whole\n"
             "  worn otherwise:       {} placements wearing another material than their mesh\n"
             "  sheets:               {} of the meshes, doubled for their backs\n",
-            stats.mSkippedUnknown, stats.mUnskinned, stats.mSkippedEmpty, stats.mUndescribedMaterials,
-            stats.mWornOtherwise, sheets);
+            stats.mSkippedUnknown, stats.mUnskinned, stats.mSkippedEmpty, stats.mUndescribedSurfaces,
+            stats.mUndescribedGround, stats.mSpritelessEmitters, stats.mWornOtherwise, sheets);
 
         if (mRequest.mStops[mAt].mActions.mWalkTwice)
         {
@@ -1036,7 +1016,7 @@ namespace MWRender
         for (const Check check : stop.mActions.mChecks)
         {
             std::string found;
-            const bool held = checkHolds(owner, check, mHeld->mCrossings, mHeld->mSettled, found);
+            const bool held = checkHolds(owner, check, mHeld->mCrossings, found);
 
             ++mChecked;
             if (!held)

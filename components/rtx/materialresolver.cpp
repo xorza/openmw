@@ -177,7 +177,7 @@ namespace Rtx
             const Surface::Material* described = Surface::getMaterial(*pass);
             if (described == nullptr)
             {
-                ++stats.mUndescribedMaterials;
+                ++stats.mUndescribedGround;
                 continue;
             }
 
@@ -358,7 +358,7 @@ namespace Rtx
         const Surface::Material* described = findDescription(shading);
         if (described == nullptr)
         {
-            ++stats.mUndescribedMaterials;
+            ++stats.mUndescribedSurfaces;
             return material;
         }
 

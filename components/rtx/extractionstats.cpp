@@ -16,8 +16,8 @@ namespace Rtx
         auto countersOf(auto& stats)
         {
             auto& [meshesAdded, materialsAdded, sheets, composites, meshesReused, materialsReused, instances, deformed,
-                unskinned, emitters, sprites, skippedUnknown, undescribedMaterials, formats, unnamedFormat,
-                skippedEmpty, lights, unbakeable, wornOtherwise]
+                unskinned, emitters, sprites, skippedUnknown, undescribedSurfaces, undescribedGround,
+                spritelessEmitters, formats, unnamedFormat, skippedEmpty, lights, unbakeable, wornOtherwise]
                 = stats;
 
             // The two the sum owes something other than addition, and so the two left out of it.
@@ -25,8 +25,8 @@ namespace Rtx
             (void)unnamedFormat;
 
             return std::array{ &meshesAdded, &materialsAdded, &sheets, &composites, &meshesReused, &materialsReused,
-                &instances, &deformed, &unskinned, &emitters, &sprites, &skippedUnknown, &undescribedMaterials,
-                &skippedEmpty, &lights, &unbakeable, &wornOtherwise };
+                &instances, &deformed, &unskinned, &emitters, &sprites, &skippedUnknown, &undescribedSurfaces,
+                &undescribedGround, &spritelessEmitters, &skippedEmpty, &lights, &unbakeable, &wornOtherwise };
         }
     }
 

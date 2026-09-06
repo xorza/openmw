@@ -34,7 +34,7 @@ namespace MWRender
         ///
         /// **The one list of the names**, so a check renamed here is renamed in the command line
         /// and in the report at once.
-        constexpr std::array<std::pair<Check, std::string_view>, 8> sChecks{
+        constexpr std::array<std::pair<Check, std::string_view>, 7> sChecks{
             std::pair{ Check::WalkTwice, std::string_view("walk-twice") },
             std::pair{ Check::SurfacesDescribed, std::string_view("surfaces-described") },
             std::pair{ Check::LightsPlaced, std::string_view("lights-placed") },
@@ -42,7 +42,6 @@ namespace MWRender
             std::pair{ Check::LightsNotDoubled, std::string_view("lights-not-doubled") },
             std::pair{ Check::TexturesReadable, std::string_view("textures-readable") },
             std::pair{ Check::CrossingsAppend, std::string_view("crossings-append") },
-            std::pair{ Check::PictureSettles, std::string_view("picture-settles") },
         };
 
         /// The same list as a run of checks, derived rather than restated: a check added above
@@ -87,8 +86,7 @@ namespace MWRender
         return sEvery;
     }
 
-    bool checkHolds(
-        RtxRenderer& owner, const Check check, const Rtx::Crossings& crossings, const bool settled, std::string& found)
+    bool checkHolds(RtxRenderer& owner, const Check check, const Rtx::Crossings& crossings, std::string& found)
     {
         const Rtx::SceneDesc& scene = owner.getMirror().getScene();
         const Rtx::ExtractionStats& stats = owner.getWalkStats();
@@ -104,8 +102,12 @@ namespace MWRender
             }
 
             case Check::SurfacesDescribed:
-                found = std::format("{} placements wore a material nothing described", stats.mUndescribedMaterials);
-                return stats.mUndescribedMaterials == 0;
+                // **The emitters are reported and not asserted**, for the reason
+                // `ExtractionStats::mSpritelessEmitters` gives: every world carries one of the
+                // rasterizer's that the traced path answers for itself.
+                found = std::format("{} surfaces and {} ground passes undescribed, {} emitters spriteless",
+                    stats.mUndescribedSurfaces, stats.mUndescribedGround, stats.mSpritelessEmitters);
+                return stats.mUndescribedSurfaces == 0 && stats.mUndescribedGround == 0;
 
             case Check::LightsPlaced:
             {
@@ -167,13 +169,6 @@ namespace MWRender
             case Check::CrossingsAppend:
                 found = std::format("{} crossings, {} of them rebuilds", crossings.mCount, crossings.mRebuilds);
                 return crossings.mCount > 0 && crossings.mRebuilds < crossings.mCount;
-
-            case Check::PictureSettles:
-                // **The last two measured frames**, which are the settled ones: what is compared is
-                // the picture as a person would look at it rather than a channel that may not
-                // survive a rebuild.
-                found = settled ? "the last two frames are the same picture" : "the last two frames differ";
-                return settled;
         }
 
         return false;

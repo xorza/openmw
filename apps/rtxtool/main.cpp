@@ -752,6 +752,38 @@ namespace RtxTool
             return runHosted(variables, command.mConfig, command.mResources, std::move(request), &spot);
         }
 
+        /// Whether a place staged this way can answer `check` at all, which is a different question
+        /// from whether it passes.
+        ///
+        /// Whether a place staged this way can answer `check` at all, which is a different question
+        /// from whether it passes.
+        ///
+        /// **A claim a stop is not shaped for answers something else**, so it is left out rather
+        /// than counted as a failure: a crossing count needs a route to cross anything with, and
+        /// only the view says whether there is one.
+        ///
+        /// **Every check named, and no `default`**, so one added to `MWRender::Check` stops the
+        /// build here and has to say which kind it is. It was a chain of `check != X || condition`
+        /// beside the loop, which grows a clause per check and answers nothing when it is wrong.
+        bool canAsk(const MWRender::Check check, const View& view)
+        {
+            switch (check)
+            {
+                case MWRender::Check::CrossingsAppend:
+                    return view.mRoute.has_value();
+
+                case MWRender::Check::WalkTwice:
+                case MWRender::Check::SurfacesDescribed:
+                case MWRender::Check::LightsPlaced:
+                case MWRender::Check::GroundReaches:
+                case MWRender::Check::LightsNotDoubled:
+                case MWRender::Check::TexturesReadable:
+                    return true;
+            }
+
+            return true;
+        }
+
         /// Every claim the tree makes about what the renderer is handed and what it draws, asked
         /// of a real game at each place of a suite.
         ///
@@ -785,10 +817,8 @@ namespace RtxTool
                 stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mFrames = 2 };
                 stop.mSchedule.mFrozen = true;
 
-                // **A route asks a claim the others cannot**, and a place that stands still cannot
-                // answer it, so only a view that flies is asked about crossings.
                 for (const MWRender::Check check : every)
-                    if (check != MWRender::Check::CrossingsAppend || view.mRoute.has_value())
+                    if (canAsk(check, view))
                         stop.mActions.mChecks.push_back(check);
 
                 if (view.mRoute.has_value())

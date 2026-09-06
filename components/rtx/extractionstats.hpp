@@ -81,7 +81,29 @@ namespace Rtx
         /// for everything they build; a drawable arriving without one means a state set was made
         /// somewhere else, or remade by something that copied the pipeline state and dropped the
         /// description with it.
-        std::uint32_t mUndescribedMaterials = 0;
+        std::uint32_t mUndescribedSurfaces = 0;
+
+        /// Ground passes with no description, which are left out of the chunk's layer stack — so
+        /// the chunk shades from whatever layers were described, and from nothing else.
+        std::uint32_t mUndescribedGround = 0;
+
+        /// Particle systems the walk met and could not draw, because nothing described them or
+        /// because what did named no diffuse map. Dropped whole: a sprite's silhouette is its
+        /// texture's alpha, so there is nothing to put on the screen either way.
+        ///
+        /// **One of these is the rasterizer's, and every world has it.** `MWRender::RippleSimulation`
+        /// hangs one `osgParticle::ParticleSystem` off the scene root under `Mask_Water` for the
+        /// whole session, indoors and out and whatever the weather, and it is built by hand rather
+        /// than by `NifOsg` — so nothing describes it. The traced path draws no ripple sprites: what
+        /// rain does to water is `VisibilityConstants::mRainOnWater`. So it is a canary and not a
+        /// deficit, the way `mSkippedUnknown` is for the debug drawer, and no check asserts it away.
+        ///
+        /// **Three counts and not one, because what each costs is different.** An undescribed
+        /// surface is drawn and drawn wrongly, an undescribed ground pass is left out of a stack
+        /// that still shades, and this one is a plume that is not there. One counter over the three
+        /// said "a material nothing described", which names the route rather than the outcome and
+        /// leaves a reader unable to tell which of the three had happened.
+        std::uint32_t mSpritelessEmitters = 0;
 
         /// What the textures a scene reached for turned out to be, one entry per `ImageFormat`.
         ///

@@ -52,18 +52,20 @@ namespace Rtx
     {
         ExtractionStats& stats = mPass.getStats();
 
-        // A particle's whole silhouette is its texture's alpha, so an emitter with no texture has
-        // nothing to draw — not a white disc, which is what sampling nothing would give it.
+        // **One question and one count, because both ways of answering no cost the same.** A
+        // particle's whole silhouette is its texture's alpha, so an emitter this cannot name a
+        // sprite for draws nothing — not a white disc, which is what sampling nothing would give
+        // it. Nothing describing the system and a description naming no diffuse map end in the same
+        // place, and a count of only the first reports a share of the plumes that went missing.
         const Surface::Material* described = findDescription(shading);
-        if (described == nullptr)
+        const osg::Image* sprite
+            = described != nullptr ? described->getTexture(Surface::TextureRole::Diffuse) : nullptr;
+
+        if (sprite == nullptr || sprite->getFileName().empty())
         {
-            ++stats.mUndescribedMaterials;
+            ++stats.mSpritelessEmitters;
             return;
         }
-
-        const osg::Image* sprite = described->getTexture(Surface::TextureRole::Diffuse);
-        if (sprite == nullptr || sprite->getFileName().empty())
-            return;
 
         // **Registered the first time the emitter is seen, and not the first time it has a
         // particle alive.** The texture array is uploaded when the scene is built; a flame that was
@@ -100,10 +102,8 @@ namespace Rtx
             .mPlace = place,
             .mTexture = known->second.mIndex,
             .mLighting = known->second.mLighting,
-
             .mLight = addsLight(shading),
             .mSprite = sprite,
-
         });
     }
 

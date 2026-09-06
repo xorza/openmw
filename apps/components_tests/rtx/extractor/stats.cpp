@@ -20,7 +20,7 @@ namespace Rtx::Testing
 
             const ExtractionStats stats = walk(*quad);
 
-            EXPECT_EQ(stats.mUndescribedMaterials, 1u);
+            EXPECT_EQ(stats.mUndescribedSurfaces, 1u);
             EXPECT_EQ(stats.mInstances, 1u) << "the geometry is still placed; only its shading is unknown";
             ASSERT_EQ(mScene.getMaterials().size(), 1u);
             EXPECT_EQ(mScene.getMaterials()[0].mDiffuse, Rtx::sNoIndex);
@@ -77,12 +77,14 @@ namespace Rtx::Testing
             stats.mEmitters = from + 9;
             stats.mSprites = from + 10;
             stats.mSkippedUnknown = from + 11;
-            stats.mUndescribedMaterials = from + 12;
+            stats.mUndescribedSurfaces = from + 12;
             stats.mSkippedEmpty = from + 13;
             stats.mLights = from + 14;
             stats.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc3)]
                 = FormatCount{ .mMet = from + 15, .mMipped = from + 16 };
             stats.mUnskinned = from + 17;
+            stats.mUndescribedGround = from + 18;
+            stats.mSpritelessEmitters = from + 19;
             return stats;
         }
 
@@ -107,10 +109,12 @@ namespace Rtx::Testing
             EXPECT_EQ(sum.mEmitters, 118u);
             EXPECT_EQ(sum.mSprites, 120u);
             EXPECT_EQ(sum.mSkippedUnknown, 122u);
-            EXPECT_EQ(sum.mUndescribedMaterials, 124u);
+            EXPECT_EQ(sum.mUndescribedSurfaces, 124u);
             EXPECT_EQ(sum.mSkippedEmpty, 126u);
             EXPECT_EQ(sum.mLights, 128u);
             EXPECT_EQ(sum.mUnskinned, 134u);
+            EXPECT_EQ(sum.mUndescribedGround, 136u);
+            EXPECT_EQ(sum.mSpritelessEmitters, 138u);
 
             const FormatCount& blocks = sum.mTextureFormats[static_cast<std::size_t>(ImageFormat::Bc3)];
             EXPECT_EQ(blocks.mMet, 130u);
