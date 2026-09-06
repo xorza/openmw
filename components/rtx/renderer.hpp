@@ -259,6 +259,15 @@ namespace Rtx
         std::uint64_t mStructureBytes = 0;
         std::uint64_t mTableBytes = 0;
 
+        /// What the last build's structures would come to if each were copied tight, or nought
+        /// where the device would not say.
+        ///
+        /// **Beside `mStructureBytes`, because the pair is the question.** A structure is built loose
+        /// — the builder cannot know the answer until it has finished — and the difference between
+        /// these two is what compacting them would give back.
+        std::uint64_t mCompactableBytes = 0;
+        std::uint64_t mCompactableNowBytes = 0;
+
         /// What the opacity micromaps hold, apart from the structures they are attached to. The
         /// figure the level cap is measured against.
         std::uint64_t mMicromapBytes = 0;

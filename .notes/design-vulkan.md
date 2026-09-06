@@ -304,11 +304,19 @@ transition apiece, and the loop runs once when the volume is made rather than on
   missing instance dependency on the first windowed run; 180 frames under synchronization validation
   are clean after it.
 
+- **The measurement compaction was waiting on.** `ALLOW_COMPACTION` on every static build, and a
+  query pool the build writes the compacted sizes into. `scene` and `bench` print the pair:
+  **118.0 MiB would compact to 46.6 at Seyda Neen, and 145.6 to 56.6 on the route — 60%.** The flag
+  itself cost 0.6% of the structures. So the copy is worth building, which is what the review item
+  now says and what the number it was waiting for says too.
+
 **Left:**
 
-- **BLAS compaction.** A size query, a second structure, a copy and a retirement, for a saving
-  nothing has measured. `scene` reports 226 MiB of structures at `island-crossing`, so the
-  measurement is available before the work — and should come first.
+- **The compaction copy**, which is the two-frame half: read the query, allocate the tight room, copy
+  with `MODE_COMPACT_KHR`, swap the handle and the address, mark the instances changed, bury the
+  original.
+- **Streaming and the interface drain the frame pipeline.** The shared texture set's ownership moves
+  first.
 
 ## Cost
 

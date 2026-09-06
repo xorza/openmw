@@ -206,7 +206,6 @@ namespace Rtx
         // allocator holding what it held rather than a block with no allocation behind it.
         Block block;
         block.mPool = pool;
-        block.mPages = made;
 
         // **Every block, because a pool cannot know what will be put in it.** The flag costs a
         // device nothing it does not already pay for `bufferDeviceAddress`, which this renderer
@@ -216,13 +215,31 @@ namespace Rtx
             .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
             .flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT,
         };
-        const VkMemoryAllocateInfo allocate{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            .pNext = &flags,
-            .allocationSize = VkDeviceSize{ made } * sPage,
-            .memoryTypeIndex = type,
+
+        const auto ask = [&](const std::uint32_t wanted) {
+            const VkMemoryAllocateInfo allocate{
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .pNext = &flags,
+                .allocationSize = VkDeviceSize{ wanted } * sPage,
+                .memoryTypeIndex = type,
+            };
+
+            const VkResult result = vkAllocateMemory(mDevice, &allocate, nullptr, block.mHandle.put(mDevice));
+            if (result == VK_SUCCESS)
+                block.mPages = wanted;
+
+            return result;
         };
-        checkVk(vkAllocateMemory(mDevice, &allocate, nullptr, block.mHandle.put(mDevice)), "vkAllocateMemory");
+
+        // **The room the block wants is a preference; the room the resource needs is not.** A block
+        // is sized from the heap, which is what the device has rather than what is left of it, so
+        // another process holding most of the card turns the first request into a refusal where the
+        // pages this one resource asked for would still have fitted.
+        VkResult allocated = ask(made);
+        if (allocated != VK_SUCCESS && made != pages)
+            allocated = ask(pages);
+
+        checkVk(allocated, "vkAllocateMemory");
 
         // **Mapped here rather than by whoever holds a range of it**, so the pointer goes when the
         // block does, and once for the whole block rather than once per resource in it.

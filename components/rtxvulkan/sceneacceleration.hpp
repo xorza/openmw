@@ -13,6 +13,7 @@
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
 #include "frameslots.hpp"
+#include "owned.hpp"
 #include "placing.hpp"
 #include "slottable.hpp"
 #include "structurestorage.hpp"
@@ -243,6 +244,22 @@ namespace Rtx
         /// Bytes held by the structures themselves, not counting the geometry they were built from.
         VkDeviceSize getStructureBytes() const { return mBottomLevelStorage.getBytes() + mTopLevelBytes; }
 
+        /// What the last build's structures would come to if each were copied tight, or nought where
+        /// nothing was built or the device would not say.
+        ///
+        /// **The measurement compaction is worth doing on the strength of.** A structure is built
+        /// loose because the builder cannot know the answer until it has finished; copying it into
+        /// the size it turned out to need is a saving nobody here has a figure for, and the copy is
+        /// a two-frame affair over the structures every ray traces. So the figure comes first.
+        ///
+        /// **Every structure the scene holds**, asked afresh whenever anything is built: a route
+        /// that builds at every crossing would otherwise report whatever the last crossing brought,
+        /// which is nought where it brought only actors.
+        VkDeviceSize getCompactableBytes() const;
+
+        /// What those same structures occupy now. The pair says what compaction would give back.
+        VkDeviceSize getCompactableNowBytes() const { return mCompactableNow; }
+
     private:
         /// Reserves room for the scene's geometry and copies in the runs `meshes` names.
         ///
@@ -297,6 +314,29 @@ namespace Rtx
         /// built from there once and never refitted, so the copies past it would hold a pose nothing
         /// ever reads. A mesh that deforms is written into every copy on arrival, holding its bind
         /// pose until the pass writes over it.
+        /// One slot per mesh, filled by the build with what a tight copy of each would come to.
+        ///
+        /// Made again when the scene outgrows it, which loses what it held: a figure is a figure
+        /// about the build that wrote it.
+        Owned<VkQueryPool, vkDestroyQueryPool> mCompactable;
+
+        /// How many queries the pool holds, and how many the last build wrote. The first only grows.
+        std::uint32_t mCompactablePool = 0;
+        std::uint32_t mCompactableCount = 0;
+
+        /// What those same structures occupy as they were built, so the pair the report prints is a
+        /// saving rather than a number on its own.
+        VkDeviceSize mCompactableNow = 0;
+
+        /// What each mesh's structure was created at, by slot.
+        std::vector<VkDeviceSize> mBuiltSize;
+
+        /// Refilled per build, so the walk that gathers them allocates nothing.
+        std::vector<VkAccelerationStructureKHR> mCompactableHandles;
+
+        /// Writes what a tight copy of each structure the last build made would come to.
+        void askWhatCompactionWouldSave(VkCommandBuffer commands);
+
         SlotBlocks mPositions{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
         std::uint32_t mSlots = 1;
 

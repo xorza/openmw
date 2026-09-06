@@ -26,14 +26,27 @@ more. What is left is defects the hardware does not decide.
 
 ## P3 — performance, unmeasured
 
-- [ ] **A block is sized from the heap and not from the budget.** `blockBytes` takes a sixteenth of
-      the heap's static size, so a card most of whose memory another process holds is asked for a
-      block that cannot fit — and `take` has no smaller second try before it gives up.
+- [ ] **Static acceleration structures are never compacted.** `sceneacceleration.cpp` asks for fast
+      trace and data access, and update only for deforming meshes, but never `ALLOW_COMPACTION`.
+      `scene` reports 226 MiB of structures at `island-crossing`, which is what a saving would come
+      out of.
 
-- [ ] **Static acceleration structures are never compacted.** `sceneacceleration.cpp:328` asks for
-      fast trace and data access, and update only for deforming meshes, but never
-      `ALLOW_COMPACTION`. No size query and no copy path exists. `mPositions` also keeps the build
-      inputs of static meshes that position fetch could answer from the structure.
+      **Measured, and it is worth doing.** The flag and the size query landed, so `scene` and `bench`
+      now print the pair:
+
+          seyda-neen-ship   121.6 MiB structures, 118.0 of them would compact to  46.6   — 60% off
+          island-crossing   227.4 MiB structures, 145.6 of them would compact to  56.6   — 61% off
+
+      `ALLOW_COMPACTION` itself cost 0.7 MiB of 120.9, which is 0.6%.
+
+      **What is left is the copy, and it is a two-frame state machine.** A compacted size is known
+      only after the build has run, so: read the query on a later frame, allocate the compacted
+      room, copy with `MODE_COMPACT_KHR`, swap the handle and the address, mark every instance that
+      names the mesh changed so the top level is rebuilt from the new address, and bury the original
+      — while whatever frame is in flight still traces the old one. That is the whole of the risk.
+
+      `mPositions` also keeps the build inputs of static meshes that position fetch could answer
+      from the structure.
 
 - [ ] **Streaming and the interface drain the frame pipeline.** `vulkanrenderer.cpp:594` finishes
       every frame before extending the world, offscreen placement uses `submitAndWait` at

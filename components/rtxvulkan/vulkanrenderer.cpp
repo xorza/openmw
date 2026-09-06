@@ -795,6 +795,8 @@ namespace Rtx
         readPlacedStats(held);
 
         mStats.mStructureBytes = held.mAcceleration->getStructureBytes();
+        mStats.mCompactableBytes = held.mAcceleration->getCompactableBytes();
+        mStats.mCompactableNowBytes = held.mAcceleration->getCompactableNowBytes();
         mStats.mMicromapBytes = held.mMicromaps->getBytes();
         mStats.mMicromapsUntextured = held.mMicromaps->getUntexturedCount();
 

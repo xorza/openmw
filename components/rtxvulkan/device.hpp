@@ -28,6 +28,10 @@ namespace Rtx
         PFN_vkCreateAccelerationStructureKHR mCreateAccelerationStructure = nullptr;
         PFN_vkDestroyAccelerationStructureKHR mDestroyAccelerationStructure = nullptr;
         PFN_vkCmdBuildAccelerationStructuresKHR mCmdBuildAccelerationStructures = nullptr;
+
+        /// What a structure would come to if it were copied tight. `SceneAcceleration` writes the
+        /// answers into a query pool after a build and reports their sum.
+        PFN_vkCmdWriteAccelerationStructuresPropertiesKHR mCmdWriteAccelerationStructuresProperties = nullptr;
         PFN_vkGetAccelerationStructureDeviceAddressKHR mGetAccelerationStructureDeviceAddress = nullptr;
 
         PFN_vkCreateRayTracingPipelinesKHR mCreateRayTracingPipelines = nullptr;

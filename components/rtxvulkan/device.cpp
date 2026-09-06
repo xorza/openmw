@@ -178,6 +178,8 @@ namespace Rtx
             load(mHandle, mFunctions.mCreateAccelerationStructure, "vkCreateAccelerationStructureKHR");
             load(mHandle, mFunctions.mDestroyAccelerationStructure, "vkDestroyAccelerationStructureKHR");
             load(mHandle, mFunctions.mCmdBuildAccelerationStructures, "vkCmdBuildAccelerationStructuresKHR");
+            load(mHandle, mFunctions.mCmdWriteAccelerationStructuresProperties,
+                "vkCmdWriteAccelerationStructuresPropertiesKHR");
             load(mHandle, mFunctions.mGetAccelerationStructureDeviceAddress,
                 "vkGetAccelerationStructureDeviceAddressKHR");
             load(mHandle, mFunctions.mCreateRayTracingPipelines, "vkCreateRayTracingPipelinesKHR");

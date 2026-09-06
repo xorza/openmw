@@ -74,6 +74,22 @@ namespace Rtx
         return std::format("{:02}:{:02}", minutes / 60, minutes % 60);
     }
 
+    namespace
+    {
+        /// What compaction would give back, or nothing where the device would not say.
+        ///
+        /// **Left out rather than printed as nought**, because a pair reading "would compact to 0.0"
+        /// is a saving of everything rather than an answer nobody has.
+        std::string describeCompaction(const SceneStats& scene)
+        {
+            if (scene.mCompactableBytes == 0)
+                return {};
+
+            return std::format(" ({:.1f} of them would compact to {:.1f})", megabytes(scene.mCompactableNowBytes),
+                megabytes(scene.mCompactableBytes));
+        }
+    }
+
     std::string describePlace(const BenchPlace& place)
     {
         std::string out;
@@ -93,12 +109,13 @@ namespace Rtx
 
         if (!place.mCell.empty())
             out += std::format(
-                "  cell {} at {} in {}   {} instances ({} cutouts, {} micromapped)   {:.1f} MiB structures, "
+                "  cell {} at {} in {}   {} instances ({} cutouts, {} micromapped)   {:.1f} MiB structures{}, "
                 "{:.1f} MiB micromaps   {} textures, {:.1f} MiB\n",
                 place.mCell, describeHour(place.mHour), place.mWeather, place.mScene.mInstances,
                 place.mScene.mCutoutInstances, place.mScene.mMicromappedInstances,
-                megabytes(place.mScene.mStructureBytes), megabytes(place.mScene.mMicromapBytes),
-                place.mScene.mTextureCount, megabytes(place.mScene.mTextureBytes));
+                megabytes(place.mScene.mStructureBytes), describeCompaction(place.mScene),
+                megabytes(place.mScene.mMicromapBytes), place.mScene.mTextureCount,
+                megabytes(place.mScene.mTextureBytes));
 
         // **Two facts and not one line.** A staged place pays one build before its frames and can
         // name what it cost; a run of a real game builds a little at every crossing and has no such
