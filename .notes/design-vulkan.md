@@ -194,9 +194,19 @@ RTX 2080.** So the P1 in `review-vulkan.md` is not a risk, it is a measurement: 
 an RTX 2080's whole aperture before the player walks anywhere, and ten seconds of walking passes an
 RTX 2060's. Stage 2 has its number.
 
-**Stage 1 — `DeviceProfile`.** The type, the two synthetic fixtures, `physicaldevice.cpp` reduced to
-reporting. A Turing card is accepted at the end of this, and fails on memory rather than on policy.
-*Two to three days.*
+**Stage 1 — `DeviceProfile`. Done.** `profileOf` is a function of what a device reports and calls no
+Vulkan, so the tests hand it an RTX 2060's three heaps and hint of `NONE` and an RTX 4090's single
+host-visible heap, and assert the profile differs in exactly the two fields the hardware does. The
+Ada fixture's 16376 MiB matches what `info` prints on this box.
+
+`physicaldevice.cpp` gathers and reports; every decision moved. The reordering hint no longer refuses
+a card — `VulkanRenderer` refuses a `--reorder` other than `off` on a device that answers `NONE`,
+naming the option rather than the device. `hasResizableBar` is gone: the profile states how much room
+is behind the host-written type, and refuses only a device with none. `SceneMicromaps` no longer
+tests the subdivision level; `profileOf` names it before a scene is built, and the constructor asserts
+the contract. `describe` reads the profile, which also removes a second query of the queue families.
+
+**A Turing card is accepted at the end of this, and fails on memory rather than on policy.**
 
 **Stage 2 — residency.** Budget query, the split position copy, `Residency::Staged`, incremental
 block retirement. Measure the reserved total at `island-crossing` before and after. A Turing card

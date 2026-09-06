@@ -7,10 +7,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <string>
 #include <utility>
 
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/reorder.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
@@ -191,6 +193,15 @@ namespace Rtx
         , mGuiPass(mDevice, options.mShaderDirectory, sTargetFormat)
         , mGuiTextures(mDevice, mPool)
     {
+        // **A sort the hardware will not do is refused by name, and the device is not.** Ada added
+        // the reordering hardware; every earlier RTX card exposes the extension, answers `NONE` and
+        // reorders nothing, so the call costs what a call costs and buys what the hint says. Off is
+        // the default and measured the fastest even on hardware that reorders, so this stops a run
+        // that asked for a sort from quietly getting none.
+        if (mReorder != Reorder::Off && !mDevice.getPhysicalDevice().getProfile().mReorders)
+            throw Unsupported("this device answers that it reorders nothing, so a reorder mode of "
+                + std::string(reorderName(mReorder)) + " would sort no threads");
+
         // Before the first targets, because what to trace at is its answer and not ours.
         if (mUpscale != Upscale::Off)
             startUpscaler();

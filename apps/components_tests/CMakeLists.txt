@@ -118,6 +118,7 @@ if (OPENMW_RTX)
         rtx/commands.cpp
         rtx/computepipeline.cpp
         rtx/device.cpp
+        rtx/deviceprofile.cpp
         rtx/distantlights.cpp
         rtx/dlss.cpp
         rtx/fogbuilder.cpp

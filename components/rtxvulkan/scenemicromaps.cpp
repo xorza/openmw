@@ -103,11 +103,10 @@ namespace Rtx
     SceneMicromaps::SceneMicromaps(const Device& device)
         : mDevice(device)
     {
-        const std::uint32_t finest
-            = device.getPhysicalDevice().getProperties().mOpacityMicromap.maxOpacity4StateSubdivisionLevel;
-        if (finest < Shaders::MICROMAP_LEVEL_MAX)
-            throw Unsupported("the device cuts a four-state micromap triangle to level " + std::to_string(finest)
-                + " at most, and the bake wants " + std::to_string(Shaders::MICROMAP_LEVEL_MAX));
+        // A contract and not a capability test: `profileOf` refuses a device that cuts no finer
+        // than the bake needs, so one that reached here cuts finely enough.
+        assert(device.getPhysicalDevice().getProfile().mMicromapLevel >= Shaders::MICROMAP_LEVEL_MAX
+            && "a device the profile should have refused");
     }
 
     SceneMicromaps::~SceneMicromaps()

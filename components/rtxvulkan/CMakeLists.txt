@@ -173,6 +173,8 @@ set(RTX_VULKAN_FILES
     computepipeline.hpp
     device.cpp
     device.hpp
+    deviceprofile.cpp
+    deviceprofile.hpp
     exposurepass.cpp
     exposurepass.hpp
     fogtile.cpp

@@ -19,24 +19,12 @@ as Ada, so `SceneMicromaps` passes. Vulkan 1.4 is reported on Linux from driver 
 micromaps run on pre-Ada hardware through the driver's own emulation, so the extension is real work
 rather than a stub.
 
-So the device baseline is not the problem people assume. Two things reject a Turing card, and both
-are below.
+So the device baseline is not the problem people assume. One thing rejects a Turing card, and it is
+below.
 
 ---
 
 ## P1
-
-- [ ] **The reordering-hint check refuses every card but Ada, for a feature that is off by
-      default.** `physicaldevice.cpp:127` rejects a device whose
-      `rayTracingInvocationReorderReorderingHint` is not `REORDER`. Both Turing reports say `0`
-      (`NONE`). `Rtx::Reorder` defaults to `Off`, and `reorder.glsl:20` records that every reorder
-      mode measured 7 to 25 percent slower — so the check refuses hardware over a call the renderer
-      does not make.
-
-      Drop the check. Report the hint instead, and refuse only a `--reorder` other than `off` on a
-      device that answers `NONE`. `hitObjectTraceRayEXT` and `hitObjectExecuteShaderEXT` stay valid
-      there: the feature bit is `true` and `reorderThreadEXT` becomes a no-op, which is exactly the
-      "one path for every card" the posture asks for.
 
 - [ ] **Host-visible video memory is 246 MiB on Turing, and every table, mesh and shader binding
       table is put in it.** `buffer.cpp:15` defines `hostWritten` as
@@ -54,15 +42,6 @@ are below.
       video memory where the heap is large enough to hold the scene, a staged path into ordinary
       device-local memory where it is not, chosen once when the device is picked. Nothing above the
       allocator should have to know which was chosen.
-
-- [ ] **`hasResizableBar` proves nothing it claims, and its rejection message names the wrong
-      cause.** `physicaldevice.cpp:73` tests property bits only. A 246 MiB aperture carries the same
-      three bits as a 16 GiB one, so the test passes on every card checked and the renderer starts
-      believing it has what it does not. `physicaldevice.cpp:137` then blames firmware for a case it
-      never reached.
-
-      Test the heap's size, not the type's flags, and let the answer feed the policy above rather
-      than a refusal.
 
 - [ ] **The pipeline compile workers race the memory allocator.** `visibilitypass.cpp:256` starts a
       worker per core. Each builds a `TracePipeline`, whose constructor reaches

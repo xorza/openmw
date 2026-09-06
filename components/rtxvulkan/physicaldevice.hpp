@@ -7,11 +7,16 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "deviceprofile.hpp"
 #include "requirements.hpp"
 
 namespace Rtx
 {
-    /// A physical device that met every requirement, with what it reported about itself.
+    /// A physical device that qualified, what it reported about itself, and what this renderer
+    /// decided from that.
+    ///
+    /// **This asks the device and `DeviceProfile` decides.** Every query is here so nothing asks
+    /// twice; every judgement is there so a test can make one about a card nobody here owns.
     ///
     /// Selection is deliberately unforgiving: a device that lacks a required extension or feature is
     /// rejected with that name in the message rather than silently demoted to a lesser path. There
@@ -29,12 +34,16 @@ namespace Rtx
 
         const DeviceProperties& getProperties() const { return *mProperties; }
 
+        /// What this renderer decided from those properties. `DeviceProfile` says why the two are
+        /// different things.
+        const DeviceProfile& getProfile() const { return mProfile; }
+
         /// Queue family with graphics and compute, which on the target hardware is also the one
         /// that can present. A separate transfer queue is an M12 question.
-        std::uint32_t getQueueFamily() const { return mQueueFamily; }
+        std::uint32_t getQueueFamily() const { return mProfile.mQueueFamily; }
 
         /// Which of `getOptionalDeviceExtensions()` this device offers, in that order.
-        const std::vector<const char*>& getAvailableOptionalExtensions() const { return mOptionalExtensions; }
+        const std::vector<const char*>& getAvailableOptionalExtensions() const { return mProfile.mOptionalExtensions; }
 
         /// Whether `name` is one of them.
         bool hasOptionalExtension(const char* name) const;
@@ -50,7 +59,6 @@ namespace Rtx
         // By pointer so a move leaves the internal pNext chain pointing at the same memory.
         std::unique_ptr<DeviceProperties> mProperties;
 
-        std::uint32_t mQueueFamily = 0;
-        std::vector<const char*> mOptionalExtensions;
+        DeviceProfile mProfile;
     };
 }

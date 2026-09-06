@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstring>
 #include <sstream>
-#include <string_view>
 #include <utility>
 
 #include <components/rtx/error.hpp>
@@ -31,29 +30,6 @@ namespace Rtx
             return names;
         }
 
-        bool has(const std::vector<std::string>& names, std::string_view name)
-        {
-            return std::find(names.begin(), names.end(), name) != names.end();
-        }
-
-        /// The queue family that can do everything this renderer submits.
-        ///
-        /// Returns `-1` when there is none, which disqualifies the device.
-        int findQueueFamily(VkPhysicalDevice device)
-        {
-            std::uint32_t count = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
-            std::vector<VkQueueFamilyProperties> families(count);
-            vkGetPhysicalDeviceQueueFamilyProperties(device, &count, families.data());
-
-            constexpr VkQueueFlags wanted = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
-            for (std::uint32_t i = 0; i < count; ++i)
-                if ((families[i].queueFlags & wanted) == wanted)
-                    return static_cast<int>(i);
-
-            return -1;
-        }
-
         VkDeviceSize sumDeviceLocalHeaps(const VkPhysicalDeviceMemoryProperties& memory)
         {
             VkDeviceSize total = 0;
@@ -63,87 +39,40 @@ namespace Rtx
             return total;
         }
 
-        /// Whether any memory type is video memory the host can write into directly.
-        ///
-        /// **Required, and not fallen back from.** Every table the frame rewrites — the instance
-        /// rows, the light grid, the deformed vertices — is written straight into the memory the
-        /// shader reads, which is what removes a staging buffer, a queue submit and a wait on the
-        /// whole queue from each of them. Without it the renderer would need the staging path back,
-        /// and a second way of doing this is a second thing to keep correct for hardware this fork
-        /// does not target.
-        bool hasResizableBar(const VkPhysicalDeviceMemoryProperties& memory)
+        /// Everything a device says about itself, and what this renderer makes of it.
+        struct Candidate
         {
-            for (std::uint32_t i = 0; i < memory.memoryTypeCount; ++i)
-                if ((memory.memoryTypes[i].propertyFlags & sHostWritten) == sHostWritten)
-                    return true;
+            std::unique_ptr<DeviceProperties> mProperties;
+            DeviceProfile mProfile;
+        };
 
-            return false;
-        }
-
-        /// Fills `available` with the device's extensions on the way through: the caller needs the
-        /// same list to work out which optional ones to enable, and enumerating twice for the device
-        /// that qualifies is the sort of waste that spreads.
-        std::string disqualify(
-            VkPhysicalDevice handle, const DeviceProperties& properties, std::vector<std::string>& available)
+        Candidate examine(VkPhysicalDevice handle)
         {
-            available = getDeviceExtensions(handle);
-
-            if (properties.mProperties2.properties.apiVersion < sApiVersion)
-                return "reports Vulkan " + versionString(properties.mProperties2.properties.apiVersion);
-
-            std::string missing;
-            for (const char* const required : getRequiredDeviceExtensions())
-                if (!has(available, required))
-                {
-                    if (!missing.empty())
-                        missing += ", ";
-                    missing += required;
-                }
-            if (!missing.empty())
-                return "missing extensions: " + missing;
+            Candidate found;
+            found.mProperties = std::make_unique<DeviceProperties>();
+            vkGetPhysicalDeviceProperties2(handle, &found.mProperties->mProperties2);
+            vkGetPhysicalDeviceMemoryProperties(handle, &found.mProperties->mMemory);
 
             DeviceFeatures supported;
             vkGetPhysicalDeviceFeatures2(handle, &supported.mFeatures2);
 
-            std::vector<std::string_view> missingFeatures;
-            findMissingFeatures(supported, missingFeatures);
-            if (!missingFeatures.empty())
-            {
-                std::string names;
-                for (const std::string_view feature : missingFeatures)
-                {
-                    if (!names.empty())
-                        names += ", ";
-                    names += feature;
-                }
-                return "missing features: " + names;
-            }
+            std::uint32_t families = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(handle, &families, nullptr);
+            std::vector<VkQueueFamilyProperties> queues(families);
+            vkGetPhysicalDeviceQueueFamilyProperties(handle, &families, queues.data());
 
-            // **A driver that takes the hint and ignores it is refused.** The whole of the reorder
-            // is what the hardware does with the key, so a device that reorders nothing runs a trace
-            // that pays for the call and buys nothing — and this tree keeps no second path for one.
-            if (properties.mInvocationReorder.rayTracingInvocationReorderReorderingHint
-                != VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_EXT)
-                return "reports reordering hint mode "
-                    + std::to_string(
-                        static_cast<int>(properties.mInvocationReorder.rayTracingInvocationReorderReorderingHint))
-                    + ", which is not REORDER";
+            found.mProfile = profileOf(*found.mProperties, supported, getDeviceExtensions(handle), queues);
 
-            if (findQueueFamily(handle) < 0)
-                return "no queue family with graphics, compute and transfer";
-
-            if (!hasResizableBar(properties.mMemory))
-                return "no video memory the host can write: resizable BAR is off in firmware, or the "
-                       "driver does not expose it";
-
-            return {};
+            return found;
         }
     }
 
     bool PhysicalDevice::hasOptionalExtension(const char* name) const
     {
-        return std::any_of(mOptionalExtensions.begin(), mOptionalExtensions.end(),
-            [name](const char* const offered) { return std::strcmp(offered, name) == 0; });
+        const std::vector<const char*>& offered = mProfile.mOptionalExtensions;
+
+        return std::any_of(offered.begin(), offered.end(),
+            [name](const char* const listed) { return std::strcmp(listed, name) == 0; });
     }
 
     PhysicalDevice PhysicalDevice::select(VkInstance instance)
@@ -162,35 +91,24 @@ namespace Rtx
 
         for (const VkPhysicalDevice handle : handles)
         {
-            auto properties = std::make_unique<DeviceProperties>();
-            vkGetPhysicalDeviceProperties2(handle, &properties->mProperties2);
-            vkGetPhysicalDeviceMemoryProperties(handle, &properties->mMemory);
-
-            std::vector<std::string> available;
-            const std::string reason = disqualify(handle, *properties, available);
-            if (!reason.empty())
+            Candidate found = examine(handle);
+            if (!found.mProfile.mObstacle.empty())
             {
                 rejections += "\n  ";
-                rejections += properties->mProperties2.properties.deviceName;
+                rejections += found.mProperties->mProperties2.properties.deviceName;
                 rejections += ": ";
-                rejections += reason;
+                rejections += found.mProfile.mObstacle;
                 continue;
             }
 
             const bool discrete
-                = properties->mProperties2.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+                = found.mProperties->mProperties2.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
             if (best.mHandle != VK_NULL_HANDLE && (bestIsDiscrete || !discrete))
                 continue;
 
-            std::vector<const char*> optional;
-            for (const char* const name : getOptionalDeviceExtensions())
-                if (has(available, name))
-                    optional.push_back(name);
-
             best.mHandle = handle;
-            best.mProperties = std::move(properties);
-            best.mQueueFamily = static_cast<std::uint32_t>(findQueueFamily(handle));
-            best.mOptionalExtensions = std::move(optional);
+            best.mProperties = std::move(found.mProperties);
+            best.mProfile = std::move(found.mProfile);
             bestIsDiscrete = discrete;
         }
 
@@ -210,25 +128,20 @@ namespace Rtx
             << "driver:            " << mProperties->mVulkan12.driverName << ' ' << mProperties->mVulkan12.driverInfo
             << '\n'
             << "Vulkan:            " << versionString(base.apiVersion) << '\n'
-            << "device-local heap: " << sumDeviceLocalHeaps(mProperties->mMemory) / (1024 * 1024) << " MiB\n"
-            << "queue family:      " << mQueueFamily << '\n'
+            << "device-local heap: " << sumDeviceLocalHeaps(mProperties->mMemory) / (1024 * 1024)
+            << " MiB\n"
+            // **The heap a table the frame rewrites has to fit in**, which on a card without
+            // resizable BAR is a couple of hundred megabytes of the line above rather than all of
+            // it. Printed beside it because the two look alike and only one of them bounds a scene.
+            << "host-written:      " << mProfile.mHostWrittenBytes / (1024 * 1024) << " MiB\n"
+            << "queue family:      " << mProfile.mQueueFamily << '\n'
             << "subgroup size:     " << mProperties->mVulkan11.subgroupSize << '\n';
 
-        // **Whether a frame can say where its own device time went.** Every per-pass figure this
-        // renderer reports is a pair of timestamps scaled by this, so a device that cannot write
-        // them reports nothing rather than something wrong — and this is where that shows.
-        std::uint32_t families = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(mHandle, &families, nullptr);
-
-        std::vector<VkQueueFamilyProperties> queues(families);
-        vkGetPhysicalDeviceQueueFamilyProperties(mHandle, &families, queues.data());
-
-        const std::uint32_t bits = mQueueFamily < families ? queues[mQueueFamily].timestampValidBits : 0;
         out << "timestamps:        ";
-        if (bits == 0)
+        if (mProfile.mTimestampBits == 0)
             out << "not on this queue\n";
         else
-            out << bits << " bits at " << base.limits.timestampPeriod << " ns a tick\n";
+            out << mProfile.mTimestampBits << " bits at " << base.limits.timestampPeriod << " ns a tick\n";
 
         const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& pipeline = mProperties->mRayTracingPipeline;
         const VkPhysicalDeviceRayTracingInvocationReorderPropertiesEXT& reorder = mProperties->mInvocationReorder;
@@ -240,11 +153,12 @@ namespace Rtx
             << "  max primitive count:          " << as.maxPrimitiveCount << '\n'
             << "  shader group handle:          " << pipeline.shaderGroupHandleSize << " bytes, aligned "
             << pipeline.shaderGroupHandleAlignment << ", based " << pipeline.shaderGroupBaseAlignment << '\n'
-            << "  max ray dispatch:             " << pipeline.maxRayDispatchInvocationCount << '\n'
-            << "  reordering hint:              "
-            << (reorder.rayTracingInvocationReorderReorderingHint == VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_EXT
-                       ? "reorder"
-                       : "none")
+            << "  max ray dispatch:             " << pipeline.maxRayDispatchInvocationCount
+            << '\n'
+            // **Reported and not required.** Ada added the hardware; every earlier RTX card
+            // exposes the extension and reorders nothing, so a run that asks for a sort on one of
+            // those is refused by name and a run that does not is the same trace either way.
+            << "  reordering hint:              " << (mProfile.mReorders ? "reorder" : "none")
             << '\n'
             // **What a hit object may record and never execute**, which is the whole of what Stage 1
             // asks of the shader table. The field arrived with the extension's revision 2, so a
@@ -255,9 +169,9 @@ namespace Rtx
             << micromap.maxOpacity4StateSubdivisionLevel << " four-state\n";
 
         out << "\noptional extensions present\n";
-        if (mOptionalExtensions.empty())
+        if (mProfile.mOptionalExtensions.empty())
             out << "  (none)\n";
-        for (const char* const name : mOptionalExtensions)
+        for (const char* const name : mProfile.mOptionalExtensions)
             out << "  " << name << '\n';
 
         return out.str();
