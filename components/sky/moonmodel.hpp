@@ -59,13 +59,13 @@ namespace Sky
     ///
     /// **Reverse engineered from Morrowind's own scene graph**, and every odd-looking constant in
     /// the implementation carries the reason it is that number. It is a component rather than game
-    /// code because two renderers need the same answer from it: the game runs a weather system and
-    /// asks this through `MWWorld::MoonModel`, and `openmw-rtxtool` has no weather system at all and
-    /// asks it directly from a clock it was handed. Two copies of this arithmetic is what there used
-    /// to be, and the only thing keeping them in step was a test.
+    /// code because it is arithmetic over settings and nothing else: `MWWorld::MoonModel` wraps it
+    /// for the weather system, and anything else holding a day and an hour can ask it directly. Two
+    /// copies of this arithmetic is what there used to be, and the only thing keeping them in step
+    /// was a test.
     ///
     /// Nothing here reads the world. Given a day and an hour it is pure arithmetic over the
-    /// settings, which is what lets it sit below both.
+    /// settings, which is what lets it sit below whatever asks.
     class MoonModel
     {
     public:

@@ -208,6 +208,7 @@ if (OPENMW_RTX)
         rtxtool/viewpoint.cpp
         rtxtool/views.cpp
         sky/clouds.cpp
+        sky/moon.cpp
         sky/skyroll.cpp
         sky/sun.cpp
         sky/timeofday.cpp

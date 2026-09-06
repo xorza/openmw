@@ -82,20 +82,6 @@ namespace Rtx
         osg::Vec3f mColour;
     };
 
-    /// Where a moon stands on `day` at `hour`, out of the `Moons_*` settings.
-    ///
-    /// **`Sky::MoonModel`'s clock, reached from an hour rather than from a weather system.** The
-    /// game asks that same component through `MWWorld::MoonModel` and hands the answer down as a
-    /// `MoonState`; this asks it directly, for a caller that holds a date and no world. One
-    /// arithmetic, two routes to it.
-    ///
-    /// @param day days since the world began, on Morrowind's own count: the game starts on day 0,
-    ///        which the rise-hour formula anchors to 16 Last Seed.
-    /// @param hour on a twenty-four hour clock.
-    /// @param glare the weather's `Glare_View`, which fades the moons as it fades the stars — the
-    ///        `Moon::adjustTransparency` the rasterizer applies after the weather has spoken.
-    MoonPlacement makeMoon(Moon moon, int day, float hour, float glare);
-
     /// The two painted faces, in a scene's texture table.
     ///
     /// **Held rather than named by a material**, because a moon is not a surface anything stands on:
@@ -121,10 +107,10 @@ namespace Rtx
 
     /// A moon placed from angles somebody else worked out.
     ///
-    /// **The angles are somebody else's and the moon is this one's.** The weather system settles
-    /// where a moon stands and `makeMoon` works the same out from a date. What a moon *is* once
-    /// those angles are known — where its face points, how wide it is, which way its terminator
-    /// falls — is one answer and lives here.
+    /// **The angles are somebody else's and the moon is this one's.** `Sky::MoonModel` settles
+    /// where a moon stands at a day and an hour, and the weather system is what asks it. What a moon
+    /// *is* once those angles are known — where its face points, how wide it is, which way its
+    /// terminator falls — is one answer and lives here.
     ///
     /// @param alongArc degrees travelled from the horizon it rose at, zero to 180.
     /// @param axisOffset degrees the whole arc is swung about the zenith.
@@ -141,7 +127,7 @@ namespace Rtx
     /// the shader the same way.
     Shaders::MoonDisc describeMoon(const MoonPlacement& placement);
 
-    /// The angular radius `makeMoon` gives that moon, in radians.
+    /// The angular radius a placement gives that moon, in radians.
     ///
     /// **Out of the renderer the game already has**, and not out of the mesh: `Moons_<name>_Size` is
     /// scaled by 450/125 onto a quad of half-extent 0.5 a thousand units off

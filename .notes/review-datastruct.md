@@ -13,17 +13,6 @@ of scope. No measurements were taken.
 
 ---
 
-## `Rtx::makeMoon` is the only test of a clock the game runs
-
-- [ ] **Move the moon clock's tests to `components/sky` and drop the adapter.** `Rtx::makeMoon` has
-      no production caller — the game hands `placeMoon` the angles `MWWorld::MoonModel` settled on.
-      What holds it is that `apps/components_tests/rtx/moonbuilder.cpp` is the only place
-      `Sky::MoonModel`'s clock is asserted at all, and the game reaches that clock through
-      `MWWorld`. The fix is a `components_tests/sky/moon.cpp` beside `sun.cpp`, which is outside
-      this review's scope.
-
----
-
 ## `MWRender::Session` drives the run and writes everything the run produces
 
 `session.hpp` is 502 lines and `session.cpp` is 1082. One class holds the schedule, the camera, the

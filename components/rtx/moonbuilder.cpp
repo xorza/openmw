@@ -9,7 +9,6 @@
 #include <osg/Quat>
 
 #include <components/fallback/fallback.hpp>
-#include <components/sky/moonmodel.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "error.hpp"
@@ -76,31 +75,6 @@ namespace Rtx
         {
             static const float sMasser = subtendedBy(Moon::Masser);
             static const float sSecunda = subtendedBy(Moon::Secunda);
-
-            return moon == Moon::Masser ? sMasser : sSecunda;
-        }
-
-        /// This moon's clock, read out of its ten `Moons_*` settings.
-        ///
-        /// **The speed is asked for first, and `requireSetting` says why.** A `MoonModel` reads all
-        /// ten without judging any of them, so nothing else here would notice a clock built out of
-        /// nothing — and `clockOf` holds it for the run.
-        Sky::MoonModel readClock(Moon moon)
-        {
-            requireSetting(moon, "Speed");
-
-            return Sky::MoonModel(nameOf(moon));
-        }
-
-        /// This moon's clock, built once.
-        ///
-        /// **`MoonModel`'s constructor reads ten `Moons_*` settings by name**, each of them a key
-        /// built on the spot, and both moons are placed on every frame. What it holds is fixed for
-        /// the run: `at` is given the day and the hour and reads nothing else.
-        const Sky::MoonModel& clockOf(Moon moon)
-        {
-            static const Sky::MoonModel sMasser = readClock(Moon::Masser);
-            static const Sky::MoonModel sSecunda = readClock(Moon::Secunda);
 
             return moon == Moon::Masser ? sMasser : sSecunda;
         }
@@ -185,14 +159,6 @@ namespace Rtx
     float moonAngularRadius(Moon moon)
     {
         return angularRadiusOf(moon);
-    }
-
-    MoonPlacement makeMoon(Moon moon, int day, float hour, float glare)
-    {
-        const Sky::MoonMoment moment = clockOf(moon).at(day, hour);
-
-        return placeMoon(
-            moon, moment.mAlongArc, moment.mAxisOffset, static_cast<int>(moment.mPhase), moment.mDaylightFade * glare);
     }
 
     MoonPlacement placeMoon(Moon moon, float alongArcDegrees, float axisOffsetDegrees, int phase, float alpha)

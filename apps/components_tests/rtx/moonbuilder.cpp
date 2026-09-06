@@ -31,14 +31,6 @@ namespace Rtx
             return osg::componentDivide(moon.mIrradiance, moon.mThroughAir);
         }
 
-        /// Degrees along its arc that Masser covers in an hour.
-        ///
-        /// **Not the 0.5 the ini asks for.** Fifteen degrees an hour is one rotation a day and the
-        /// speed counts rotations, so 0.5 would leave the moon short of its own horizon in
-        /// twenty-four hours; the engine floors every moon at `180 / 23 / 15` and Masser is the one
-        /// that hits the floor. 15 * 0.5217391 is 7.826087 degrees an hour.
-        constexpr float sMasserPerHour = 15.0f * (180.0f / 23.0f / 15.0f);
-
         /// A moon is as wide as the renderer the game already has draws it.
         ///
         /// `Moons_<name>_Size` is scaled by 450/125 onto a quad of half-extent 0.5 a thousand units
@@ -67,77 +59,72 @@ namespace Rtx
             EXPECT_LT(moonAngularRadius(Moon::Masser) / moonAngularRadius(Moon::Secunda), masser / secunda);
         }
 
-        /// Masser rises at four in the afternoon on the day the game begins, and climbs from there.
+        /// The direction is the arc tipped up from the horizon and swung about the zenith.
         ///
-        /// The rise hour is `increment + (day - 1 + 16) * increment mod 24`, and Masser's increment
-        /// is one, so day zero gives `1 + 15`. At the horizon the moon's height is nothing; six
-        /// hours later it has travelled `6 * 7.826087` degrees and stands at the sine of that.
-        ///
-        /// **The height is the sine of the arc and the axis offset does not enter it**, which is the
-        /// whole reason the offset swings the arc about the zenith rather than tipping it: both
-        /// moons climb as high as the sun does and only their rising points differ.
-        TEST(RtxMoonBuilderTest, masserRisesAtSixteenHundredOnTheDayTheGameBegins)
+        /// **Swung and not tipped**, which is what makes both moons climb as high as the sun does
+        /// and only their rising points differ — so their paths cross. `Sky::MoonModel` is what
+        /// says which angles an hour comes to; this is what a moon *is* once they are known.
+        TEST(RtxMoonBuilderTest, aMoonStandsWhereItsArcAndItsOffsetPutIt)
         {
-            const MoonPlacement rising = makeMoon(Moon::Masser, 0, 16.0f, 1.0f);
-            EXPECT_NEAR(rising.mDirection.z(), 0.0f, 1e-6f) << "on the horizon at the moment it rises";
+            const MoonPlacement risen = placeMoon(Moon::Masser, 0.0f, 35.0f, 0, 1.0f);
+            EXPECT_NEAR(risen.mDirection.z(), 0.0f, 1e-6f) << "no height at the horizon it rises from";
 
-            const MoonPlacement up = makeMoon(Moon::Masser, 0, 22.0f, 1.0f);
-            const float travelled = osg::DegreesToRadians(6.0f * sMasserPerHour);
-            EXPECT_NEAR(up.mDirection.z(), std::sin(travelled), 1e-4f);
+            constexpr float sAlong = 47.0f;
+            constexpr float sOffset = 35.0f;
+            const MoonPlacement up = placeMoon(Moon::Masser, sAlong, sOffset, 0, 1.0f);
 
-            // Due north swung 35 degrees, at the cosine of the arc: `(-cos a sin 35, cos a cos 35)`.
-            EXPECT_NEAR(up.mDirection.x(), -std::cos(travelled) * std::sin(osg::DegreesToRadians(35.0f)), 1e-4f);
-            EXPECT_NEAR(up.mDirection.y(), std::cos(travelled) * std::cos(osg::DegreesToRadians(35.0f)), 1e-4f);
+            const float along = osg::DegreesToRadians(sAlong);
+            const float swung = osg::DegreesToRadians(sOffset);
 
-            // Secunda's arc is swung further and runs faster, so the two rise apart and cross.
-            const MoonPlacement other = makeMoon(Moon::Secunda, 0, 22.0f, 1.0f);
+            // Due north swung about the zenith, at the cosine of the arc: `(-cos a sin o, cos a cos
+            // o, sin a)`. The height is the sine of the arc and the offset does not enter it.
+            EXPECT_NEAR(up.mDirection.z(), std::sin(along), 1e-5f);
+            EXPECT_NEAR(up.mDirection.x(), -std::cos(along) * std::sin(swung), 1e-5f);
+            EXPECT_NEAR(up.mDirection.y(), std::cos(along) * std::cos(swung), 1e-5f);
+
+            // A wider swing puts the same arc somewhere else, which is what separates the two moons.
+            const MoonPlacement other = placeMoon(Moon::Secunda, sAlong, 50.0f, 0, 1.0f);
             EXPECT_GT(std::abs(other.mDirection.x() - up.mDirection.x()), 0.1f);
         }
 
         /// The face is a frame, not a billboard: three unit vectors at right angles to each other.
         TEST(RtxMoonBuilderTest, theFaceStandsSquareToWhereTheMoonIs)
         {
-            for (const float hour : { 17.0f, 20.0f, 23.0f })
+            for (const float along : { 8.0f, 47.0f, 94.0f })
             {
-                const MoonPlacement at = makeMoon(Moon::Masser, 0, hour, 1.0f);
-                EXPECT_NEAR(at.mDirection.length(), 1.0f, 1e-5f) << "at hour " << hour;
-                EXPECT_NEAR(at.mRight.length(), 1.0f, 1e-5f) << "at hour " << hour;
-                EXPECT_NEAR(at.mUp.length(), 1.0f, 1e-5f) << "at hour " << hour;
+                const MoonPlacement at = placeMoon(Moon::Masser, along, 35.0f, 0, 1.0f);
+                EXPECT_NEAR(at.mDirection.length(), 1.0f, 1e-5f) << "along " << along;
+                EXPECT_NEAR(at.mRight.length(), 1.0f, 1e-5f) << "along " << along;
+                EXPECT_NEAR(at.mUp.length(), 1.0f, 1e-5f) << "along " << along;
 
-                EXPECT_NEAR(at.mRight * at.mUp, 0.0f, 1e-5f) << "at hour " << hour;
-                EXPECT_NEAR(at.mRight * at.mDirection, 0.0f, 1e-5f) << "at hour " << hour;
-                EXPECT_NEAR(at.mUp * at.mDirection, 0.0f, 1e-5f) << "at hour " << hour;
+                EXPECT_NEAR(at.mRight * at.mUp, 0.0f, 1e-5f) << "along " << along;
+                EXPECT_NEAR(at.mRight * at.mDirection, 0.0f, 1e-5f) << "along " << along;
+                EXPECT_NEAR(at.mUp * at.mDirection, 0.0f, 1e-5f) << "along " << along;
             }
 
             // **And it turns against the horizon as the moon crosses**, which is what a locked moon
             // does and what a billboard does not: the face's up is not the world's.
-            const osg::Vec3f early = makeMoon(Moon::Masser, 0, 17.0f, 1.0f).mUp;
-            const osg::Vec3f late = makeMoon(Moon::Masser, 0, 23.0f, 1.0f).mUp;
+            const osg::Vec3f early = placeMoon(Moon::Masser, 8.0f, 35.0f, 0, 1.0f).mUp;
+            const osg::Vec3f late = placeMoon(Moon::Masser, 94.0f, 35.0f, 0, 1.0f).mUp;
             EXPECT_LT(early * late, 0.99f) << "the portrait would be pinned to the horizon";
         }
 
-        /// A moon arrives and leaves twice over: by the hour, and by whatever the weather lets
-        /// through.
+        /// A moon that is not on its arc is not drawn, and the weather has the last word on one that
+        /// is.
         ///
-        /// **The third way the engine has is deliberately not here.** `MoonMoment::mAlpha` also hides
-        /// a moon under `Fade_End_Angle`, and the ray tracer takes `mDaylightFade` instead — see
-        /// `aMoonRisesOutOfTheHorizonRatherThanArrivingAboveIt`.
-        TEST(RtxMoonBuilderTest, aMoonIsFadedByTheHourAndByTheWeather)
+        /// **Two of the three ways a moon goes out.** The hour's own fade is
+        /// `Sky::MoonMoment::mDaylightFade` and is asserted where the clock is; what reaches here is
+        /// that number with `Glare_View` already on it, which is the `adjustTransparency` the
+        /// rasterizer applies after the moon's state is settled.
+        TEST(RtxMoonBuilderTest, aMoonOffItsArcIsNotDrawnAndTheWeatherDimsOneThatIs)
         {
-            // Day nine is where Masser rises at one in the morning — `1 + (9 - 1 + 16) mod 24` — so
-            // half past two in the afternoon finds it a hundred and six degrees along and inside the
-            // hour-long fade in that runs from fourteen to fifteen. Half an hour of one hour is half
-            // the moon.
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 9, 14.5f, 1.0f).mAlpha, 0.5f);
+            // **Nought until it is on its arc**, which the engine states by leaving the angle there
+            // until a moon rises and returning it there once it sets.
+            EXPECT_EQ(placeMoon(Moon::Masser, 0.0f, 35.0f, 0, 1.0f).mAlpha, 0.0f);
 
-            // And between the fade out finishing and the fade in starting there is no moon at all,
-            // whatever its arc says.
-            EXPECT_EQ(makeMoon(Moon::Masser, 9, 12.0f, 1.0f).mAlpha, 0.0f);
-
-            // The weather has the last word on all of it, which is the `adjustTransparency` the
-            // rasterizer calls with `Glare_View` after the moon's own state is settled.
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 0, 22.0f, 0.25f).mAlpha, 0.25f);
-            EXPECT_EQ(makeMoon(Moon::Masser, 0, 22.0f, 0.0f).mIrradiance, osg::Vec3f()) << "a thunderstorm";
+            EXPECT_FLOAT_EQ(placeMoon(Moon::Masser, 47.0f, 35.0f, 0, 0.5f).mAlpha, 0.5f);
+            EXPECT_FLOAT_EQ(placeMoon(Moon::Masser, 47.0f, 35.0f, 0, 0.25f).mAlpha, 0.25f);
+            EXPECT_EQ(placeMoon(Moon::Masser, 47.0f, 35.0f, 0, 0.0f).mIrradiance, osg::Vec3f()) << "a thunderstorm";
         }
 
         /// It rises out of the horizon, dimmed and reddened by the air rather than switched off.
@@ -147,11 +134,11 @@ namespace Rtx
         /// as a sticker. Nothing here needs that: `Rtx::airTransmittance` takes a low moon out on the
         /// slant path, and takes the blue out first, so one comes over the edge as a deep red ember.
         ///
-        /// **Masser rises at sixteen hundred on day zero** and climbs 7.826 degrees an hour, so
-        /// seventeen hundred is eight degrees up — inside the arc the engine draws nothing over.
+        /// **Eight degrees up is inside the arc the engine draws nothing over** — an hour after
+        /// Masser rises, by `Sky::MoonModel`'s clock.
         TEST(RtxMoonBuilderTest, aMoonRisesOutOfTheHorizonRatherThanArrivingAboveIt)
         {
-            const MoonPlacement low = makeMoon(Moon::Masser, 0, 17.0f, 1.0f);
+            const MoonPlacement low = placeMoon(Moon::Masser, 7.826f, 35.0f, 0, 1.0f);
             EXPECT_NEAR(osg::RadiansToDegrees(std::asin(low.mDirection.z())), 7.826f, 0.01f);
 
             EXPECT_FLOAT_EQ(low.mAlpha, 1.0f) << "the engine's own arc gate is still in the way";
@@ -180,36 +167,28 @@ namespace Rtx
             EXPECT_EQ(down.mIrradiance, osg::Vec3f());
         }
 
-        /// The game begins under a full moon, and it wanes from there on a three-day cycle.
+        /// A painted phase is an angle: zero at full, pi at new, and an eighth of a turn a step.
         ///
-        /// `(day + 1) / 3 mod 8` counts the eight painted phases from full once the moon has risen,
-        /// so days zero through one are full, two through four the first step off it, and the eighth
-        /// step comes back round. Zero radians is full and pi is new, which puts new — the fifth of
-        /// the eight — at days twelve to fourteen.
-        TEST(RtxMoonBuilderTest, theGameBeginsFullAndWanesOnAThreeDayCycle)
+        /// **The steps are even, which is what lets one index stand for an angle.** `Sky::MoonPhase`
+        /// declares the eight in the game's own order and `SkyMoonTest` is where the clock's walk
+        /// over them is asserted; what is here is the angle each of them becomes.
+        TEST(RtxMoonBuilderTest, aPaintedPhaseIsAnAngleFromFull)
         {
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 0, 22.0f, 1.0f).mPhaseAngle, 0.0f) << "16 Last Seed";
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 1, 22.0f, 1.0f).mPhaseAngle, 0.0f);
+            const auto angleOf
+                = [](const int phase) { return placeMoon(Moon::Masser, 47.0f, 35.0f, phase, 1.0f).mPhaseAngle; };
 
-            // A quarter turn of the cycle is one of the eight steps, and the steps go by threes.
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 2, 22.0f, 1.0f).mPhaseAngle, 0.25f * osg::PIf);
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 5, 22.0f, 1.0f).mPhaseAngle, 0.5f * osg::PIf);
-
-            // Halfway round is new, twelve days in — a moon that is up and unlit.
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 11, 22.0f, 1.0f).mPhaseAngle, osg::PIf);
-
-            // And a full cycle is twenty-four days, which is the loop the rise hour runs on too. The
-            // count is of tomorrow rather than today, so the last of the eight steps is days twenty
-            // to twenty-two and the twenty-third is already back at full.
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 21, 22.0f, 1.0f).mPhaseAngle, 1.75f * osg::PIf);
-            EXPECT_FLOAT_EQ(makeMoon(Moon::Masser, 23, 22.0f, 1.0f).mPhaseAngle, 0.0f) << "back to full";
+            EXPECT_FLOAT_EQ(angleOf(0), 0.0f) << "full";
+            EXPECT_FLOAT_EQ(angleOf(1), 0.25f * osg::PIf);
+            EXPECT_FLOAT_EQ(angleOf(2), 0.5f * osg::PIf);
+            EXPECT_FLOAT_EQ(angleOf(4), osg::PIf) << "new, halfway round";
+            EXPECT_FLOAT_EQ(angleOf(7), 1.75f * osg::PIf);
 
             // **The lit share is the cosine, and it is what the shader carves the terminator with.**
             // Full is all of it, the two quarters are half, and new is none.
             const auto lit = [](float phaseAngle) { return 0.5f * (1.0f + std::cos(phaseAngle)); };
-            EXPECT_FLOAT_EQ(lit(makeMoon(Moon::Masser, 0, 22.0f, 1.0f).mPhaseAngle), 1.0f);
-            EXPECT_NEAR(lit(makeMoon(Moon::Masser, 5, 22.0f, 1.0f).mPhaseAngle), 0.5f, 1e-6f);
-            EXPECT_NEAR(lit(makeMoon(Moon::Masser, 11, 22.0f, 1.0f).mPhaseAngle), 0.0f, 1e-6f);
+            EXPECT_FLOAT_EQ(lit(angleOf(0)), 1.0f);
+            EXPECT_NEAR(lit(angleOf(2)), 0.5f, 1e-6f);
+            EXPECT_NEAR(lit(angleOf(4)), 0.0f, 1e-6f);
         }
 
         /// A full Masser delivers what a lit disc of its size and albedo delivers, and no more.
@@ -334,15 +313,15 @@ namespace Rtx
 
         /// Placing a moon goes to the heap not at all, and answers the same either way.
         ///
-        /// **Both moons are placed on every frame, by the game and by the harness alike.** A clock
-        /// is ten `Moons_*` lookups and a size is one more, every one of them a key built on the
-        /// spot — twenty-two allocations a frame, for numbers that are fixed for the run.
+        /// **Both moons are placed on every frame.** A size is a `Moons_*` lookup and the key is
+        /// built on the spot, so a placement that read one would allocate twice a frame for a
+        /// number that is fixed for the run.
         TEST(RtxMoonBuilderTest, placingAMoonReadsNothingItHasAlreadyRead)
         {
-            const MoonPlacement first = makeMoon(Moon::Masser, 3, 21.0f, 1.0f);
+            const MoonPlacement first = placeMoon(Moon::Masser, 47.0f, 35.0f, 3, 1.0f);
 
             const std::size_t before = Testing::getAllocationCount();
-            const MoonPlacement again = makeMoon(Moon::Masser, 3, 21.0f, 1.0f);
+            const MoonPlacement again = placeMoon(Moon::Masser, 47.0f, 35.0f, 3, 1.0f);
             const std::size_t after = Testing::getAllocationCount();
 
             EXPECT_EQ(after, before) << after - before << " allocations to place a moon";
