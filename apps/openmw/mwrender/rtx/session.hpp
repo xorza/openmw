@@ -9,6 +9,7 @@
 #include <osg/Vec3d>
 #include <osg/Vec3f>
 
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/runrecord.hpp>
@@ -32,7 +33,7 @@ namespace MWRender
         /// The launcher's own slot, filled once by `~Session` and never read here.
         ///
         /// **Null for a run a settings file asked for**, which is a played binary measuring itself
-        /// with nobody waiting on the answer.
+        /// with nobody waiting on the answer. That run's report goes to the log instead.
         Rtx::SessionResult* mInto = nullptr;
     };
 
@@ -123,7 +124,10 @@ namespace MWRender
         void beginStop();
 
         /// Closes the stop, records it, and moves to the next one — or ends the run.
-        void endStop(RtxRenderer& owner);
+        ///
+        /// @param reconstruction what put the last measured frame back together, which is the frame
+        ///        every writer describes.
+        void endStop(RtxRenderer& owner, const Rtx::Reconstruction& reconstruction);
 
         /// Writes what the run was asked to write and ends it.
         void finish();
@@ -160,8 +164,8 @@ namespace MWRender
 
         Rtx::SessionRequest mRequest;
 
-        /// Where the run's answer goes, or null where nobody asked for one. `installSession` says
-        /// what keeps it alive.
+        /// Where the run's answer goes, or null where nobody installed a run. `installSession`
+        /// says what keeps it alive, and `~Session` says where a null one's report goes.
         Rtx::SessionResult* mInto = nullptr;
 
         /// Which stop is running, and whether it has been started.

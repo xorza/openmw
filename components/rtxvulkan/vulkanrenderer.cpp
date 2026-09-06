@@ -1148,7 +1148,7 @@ namespace Rtx
         // when nothing filtered it. **Ray Reconstruction is itself the denoiser**, and handing
         // it a frame the wavelet already blurred is asking it to recover what was thrown away —
         // which is why `resolve` never answers with both.
-        const bool filtering = reconstruction.mDenoiser == Denoiser::Wavelet;
+        const bool filtering = reconstruction.filtered();
         const Image* indirect = &mChannels->getIndirect();
         if (filtering)
         {
@@ -1490,7 +1490,8 @@ namespace Rtx
                 break;
             case Channel::Accumulated:
                 // The denoiser's own, so a frame nothing denoised has no answer here — `getBlended`
-                // asserts on one rather than handing back whatever the allocation held.
+                // asserts on one rather than handing back whatever the allocation held, and
+                // `hasChannel` is where a caller asks before it comes to that.
                 image = &mAccumulate.getBlended();
                 break;
             case Channel::Radiance:

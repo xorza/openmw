@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
@@ -37,20 +38,23 @@ namespace MWRender
         /// **The last measured frame, and never a later one.** Every figure the stop reports
         /// describes those frames, so a picture taken after them is a picture of a different run.
         ///
+        /// @param reconstruction what put that frame back together, which decides what channels it
+        ///        has. `Rtx::hasChannel` is where that rule lives.
         /// @param crossings what the stop's route came to, which only a check reads.
-        void write(
-            RtxRenderer& owner, const Rtx::Actions& actions, const Rtx::Crossings& crossings, Rtx::RunRecord& record);
+        void write(RtxRenderer& owner, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
+            const Rtx::Crossings& crossings, Rtx::RunRecord& record);
 
     private:
-        /// What a writer reads a frame from and says its answer into.
+        /// The frame a writer reads, what put it together, and where it says its answer.
         ///
-        /// **Two references every writer takes and neither one a member.** The renderer arrives per
-        /// frame — `Session` is built inside `RtxRenderer`'s own constructor, so there is none to
-        /// hold — and the record belongs to the run rather than to the writing. Bundling them keeps
-        /// the pair off every writer's signature.
+        /// **None of the three is a member.** The renderer and the reconstruction both arrive per
+        /// frame — `Session` is built inside `RtxRenderer`'s own constructor, so there is no
+        /// renderer to hold — and the record belongs to the run rather than to the writing.
+        /// Bundling them keeps the three off every writer's signature.
         struct Writing
         {
             RtxRenderer& mOwner;
+            Rtx::Reconstruction mReconstruction;
             Rtx::RunRecord& mRecord;
         };
 
@@ -58,7 +62,7 @@ namespace MWRender
         void writeCapture(const Writing& into, const std::filesystem::path& file);
 
         /// The share of that frame's pixels whose accumulated bounce passes each of a ladder of
-        /// luminances.
+        /// luminances. Fails the run where the frame carries no accumulated bounce.
         void reportTail(const Writing& into);
 
         /// That frame's linear radiance, four floats a pixel, raw.

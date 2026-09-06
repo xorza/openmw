@@ -380,9 +380,23 @@ namespace Rtx
         /// the range that made the number mean something.
         ///
         /// **Only a frame the wavelet denoised has one.** Nothing writes this where the upscaler
-        /// denoises for itself, or where no filter ran at all.
+        /// denoises for itself, or where no filter ran at all. `hasChannel` is that rule.
         Accumulated,
     };
+
+    /// Whether a frame `reconstruction` put back together has `channel` in it to read.
+    ///
+    /// **The one copy of the rule.** The accumulator runs only where the wavelet does, so a frame
+    /// an upscaler denoised and a frame nothing denoised both leave `Channel::Accumulated`
+    /// unwritten. `readChannel` asserts rather than hand back an image nobody filled, so a caller
+    /// asks here first and names what the run cannot have, instead of aborting inside the backend.
+    inline bool hasChannel(const Reconstruction& reconstruction, const Channel channel)
+    {
+        if (channel != Channel::Accumulated)
+            return true;
+
+        return reconstruction.filtered();
+    }
 
     /// What a frame is asked for, beyond where the camera stands.
     struct FrameOptions

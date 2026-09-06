@@ -154,7 +154,16 @@ namespace MWRender
     Session::~Session()
     {
         if (mInto != nullptr)
+        {
             *mInto = describeRun();
+            return;
+        }
+
+        // **Nobody installed this run, so nobody is waiting for what it came to.** A settings file
+        // starts a session inside a played binary, where the log is the only reader there is — and
+        // a report built and then dropped is a run nobody can read.
+        if (const std::string& report = mRecord.getReport(); !report.empty())
+            Log(Debug::Info) << "Ray tracing session:\n" << report;
     }
 
     void Session::noteStanding()
@@ -566,10 +575,10 @@ namespace MWRender
         if (drawn < measured)
             return;
 
-        endStop(owner);
+        endStop(owner, result.mReconstruction);
     }
 
-    void Session::endStop(RtxRenderer& owner)
+    void Session::endStop(RtxRenderer& owner, const Rtx::Reconstruction& reconstruction)
     {
         const Rtx::Stop& stop = mRequest.mStops[mAt];
         Rtx::Renderer& renderer = owner.getBackend();
@@ -595,7 +604,7 @@ namespace MWRender
             header.mWarmup = stop.mSchedule.mSpec.getWarmup();
         }
 
-        mHeld->mWriter.write(owner, stop.mActions, mHeld->mCrossings, mRecord);
+        mHeld->mWriter.write(owner, reconstruction, stop.mActions, mHeld->mCrossings, mRecord);
 
         Rtx::BenchPlace place;
         place.mView = stop.mName;

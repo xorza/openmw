@@ -33,6 +33,7 @@
 #include <components/rtx/meshinstance.hpp>
 #include <components/rtx/meshrange.hpp>
 #include <components/rtx/png.hpp>
+#include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/shaders/colour.h>
@@ -71,10 +72,10 @@ namespace MWRender
         constexpr float sMapFar = 150000.0f;
     }
 
-    void StopWriter::write(
-        RtxRenderer& owner, const Rtx::Actions& actions, const Rtx::Crossings& crossings, Rtx::RunRecord& record)
+    void StopWriter::write(RtxRenderer& owner, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
+        const Rtx::Crossings& crossings, Rtx::RunRecord& record)
     {
-        const Writing into{ owner, record };
+        const Writing into{ owner, reconstruction, record };
 
         if (!actions.mCapture.empty())
             writeCapture(into, actions.mCapture);
@@ -130,6 +131,15 @@ namespace MWRender
 
     void StopWriter::reportTail(const Writing& into)
     {
+        if (!Rtx::hasChannel(into.mReconstruction, Rtx::Channel::Accumulated))
+        {
+            into.mRecord.note(
+                std::format("no bounce tail: only the wavelet writes one, and {} put this frame back together\n",
+                    Rtx::denoiserName(into.mReconstruction.mDenoiser)));
+            into.mRecord.fail();
+            return;
+        }
+
         Rtx::Renderer& renderer = into.mOwner.getBackend();
 
         std::vector<float> bounce;

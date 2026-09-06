@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <components/rtx/reconstruction.hpp>
+#include <components/rtx/renderer.hpp>
 
 namespace Rtx
 {
@@ -55,6 +56,36 @@ namespace Rtx
             // A preset is a statement about a network, so where none runs there is none to report.
             EXPECT_EQ(wavelet.mPreset, Preset::Default) << "no network ran, so no preset did";
             EXPECT_EQ(wavelet.mUpscale, Upscale::Off);
+        }
+
+        /// The accumulated bounce exists only where the wavelet ran.
+        ///
+        /// **The rule `readChannel` asserts on**, so a caller that wants the firefly tail asks
+        /// first and is told which denoiser ran, rather than aborting inside the backend.
+        TEST(RtxReconstructionTest, onlyAWaveletFrameCarriesTheAccumulatedBounce)
+        {
+            const Reconstruction wavelet
+                = Reconstruction::resolve(Upscale::Off, ReconstructionRequest{ .mFilter = true });
+            const Reconstruction raw = Reconstruction::resolve(Upscale::Off, ReconstructionRequest{ .mFilter = false });
+            const Reconstruction upscaled
+                = Reconstruction::resolve(Upscale::Quality, ReconstructionRequest{ .mFilter = true });
+
+            EXPECT_TRUE(wavelet.filtered());
+            EXPECT_FALSE(raw.filtered()) << "nothing denoised it, which is what a reference is built from";
+            EXPECT_FALSE(upscaled.filtered()) << "Ray Reconstruction is the denoiser, and it is not this one";
+
+            EXPECT_TRUE(hasChannel(wavelet, Channel::Accumulated));
+            EXPECT_FALSE(hasChannel(raw, Channel::Accumulated));
+            EXPECT_FALSE(hasChannel(upscaled, Channel::Accumulated)) << "the same ask, and no channel to read";
+
+            // Every other channel is the trace's or the composite's, so it is there whatever put the
+            // frame back together.
+            for (const Reconstruction& put : { wavelet, raw, upscaled })
+            {
+                EXPECT_TRUE(hasChannel(put, Channel::Radiance));
+                EXPECT_TRUE(hasChannel(put, Channel::Indirect));
+                EXPECT_TRUE(hasChannel(put, Channel::Depth));
+            }
         }
 
         /// Every name round-trips, because a report is only worth anything if it reads back.
