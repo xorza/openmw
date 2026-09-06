@@ -13,34 +13,6 @@ of scope. No measurements were taken.
 
 ---
 
-## One fact, two types, and a conversion written by hand
-
-Each pair below states the same thing twice. The tree already counts one of these drifts with a
-canary instead of removing the second copy. Every item here is a place where a field added to one
-half reaches the other only if somebody remembers.
-
-- [ ] **`RtxTool::Place` restates `Rtx::Stand` plus `StopSky`.** `Place` resolves the hour and the
-      weather into plain values, and `stopFrom` puts them straight back into `StopSky`'s optionals.
-      Both types are reachable from one namespace now, so `chooseView` could hand back the `Stop`
-      it is about to become. What `Place` buys is a type shape that says the conditions are
-      settled, and only `stopFrom` reads them.
-
-- [ ] **`Surface::AlphaMode` and `Rtx::AlphaMode` hold the same three enumerators.**
-      `materialresolver.cpp:392` converts one to the other with a switch. The core can name the
-      content's enum, as it already names `Surface::Material`.
-
-- [ ] **`Surface::Material::mTextureScale` and `mTextureOffset` become
-      `Rtx::Material::mTextureTransform`.** One transform, two spellings, and a conversion at
-      `materialresolver.cpp:414`. Both sides could hold the `uv * xy + zw` form the terrain layers
-      already use.
-
-- [ ] **The material is on the mesh and on the placement.** `MeshRange::mMaterial` is read by
-      `SceneMicromaps`. `MeshInstance::mMaterial` is read by the shading table.
-      `ExtractionStats::mWornOtherwise` counts the frames on which the two disagree. A canary that
-      watches a duplicate is evidence that the duplicate should go.
-
----
-
 ## `SceneDesc` holds four tables that share nothing but the class
 
 `scenedesc.hpp` is 1151 lines. The class carries about forty members. Two of its tables already have

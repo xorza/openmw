@@ -73,7 +73,7 @@ namespace RtxTool
     }
 
     int compareRuns(
-        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const Place> places)
+        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const Rtx::Stop> stops)
     {
         if (against.empty())
         {
@@ -81,19 +81,19 @@ namespace RtxTool
             return 0;
         }
 
-        out() << std::format("verify: {} {} against {}\n", places.size(), places.size() == 1 ? "view" : "views",
+        out() << std::format("verify: {} {} against {}\n", stops.size(), stops.size() == 1 ? "view" : "views",
             Files::pathToUnicodeString(against));
 
         std::uint32_t differing = 0;
         std::uint32_t unmatched = 0;
 
-        for (const Place& place : places)
+        for (const Rtx::Stop& stop : stops)
         {
-            const Rtx::PngImage drawn = Rtx::readPng(frameFile(wrote, place.mName));
-            const Rtx::PngImage reference = Rtx::readPng(frameFile(against, place.mName));
+            const Rtx::PngImage drawn = Rtx::readPng(frameFile(wrote, stop.mName));
+            const Rtx::PngImage reference = Rtx::readPng(frameFile(against, stop.mName));
             const FrameDifference difference = compareFrames(reference, drawn);
 
-            out() << std::format("  {:<28} {}\n", place.mName, describe(difference));
+            out() << std::format("  {:<28} {}\n", stop.mName, describe(difference));
 
             if (difference.mMismatched)
                 ++unmatched;
@@ -108,7 +108,7 @@ namespace RtxTool
         }
 
         out() << std::format(
-            "  {} of {} views moved, {} had nothing to compare against\n", differing, places.size(), unmatched);
+            "  {} of {} views moved, {} had nothing to compare against\n", differing, stops.size(), unmatched);
 
         return 1;
     }

@@ -54,11 +54,11 @@ namespace Rtx
     {
         switch (mAlphaMode)
         {
-            case AlphaMode::Opaque:
+            case Surface::AlphaMode::Opaque:
                 return 0.0f;
-            case AlphaMode::Cutout:
+            case Surface::AlphaMode::Cutout:
                 return mAlphaRef;
-            case AlphaMode::Blend:
+            case Surface::AlphaMode::Blend:
                 return mAlphaRef > 0.0f ? mAlphaRef : sBlendCutoff;
         }
 

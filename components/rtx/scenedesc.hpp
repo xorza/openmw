@@ -15,6 +15,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/surface/alphamode.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include "index.hpp"
@@ -142,23 +143,6 @@ namespace Rtx
         Index mUses = 0;
     };
 
-    /// How the alpha channel of a surface's diffuse texture is meant to be read.
-    enum class AlphaMode
-    {
-        /// Ignore it. The overwhelming majority of Morrowind's geometry.
-        Opaque,
-
-        /// Test against `Material::mAlphaRef`, which costs every candidate a loop into the shader.
-        Cutout,
-
-        /// Blend, and read the opposite of the obvious way: **this is where the foliage is.** Barely
-        /// any of Morrowind's material set is alpha-tested outright — a canopy, a grate or a banner
-        /// is an `NiAlphaProperty` over a texture whose alpha is all but binary, and the original
-        /// renderer sorted it rather than testing it. Marking only the tested ones would look
-        /// correct and leave every tree a solid card.
-        Blend,
-    };
-
     /// What shading a hit takes, which is not a variation on one path but three different ones.
     enum class MaterialKind
     {
@@ -195,7 +179,8 @@ namespace Rtx
         osg::Vec3f mEmissiveColour{ 0.0f, 0.0f, 0.0f };
 
         float mAlphaRef = 0.0f;
-        AlphaMode mAlphaMode = AlphaMode::Opaque;
+
+        Surface::AlphaMode mAlphaMode = Surface::AlphaMode::Opaque;
 
         /// Sheet geometry lit and hit from both faces. Morrowind leans on this heavily and a ray
         /// tracer has to be told, because back-face culling is not free the way a rasterizer's is.
@@ -274,7 +259,7 @@ namespace Rtx
 
         /// Whether what is behind this surface is meant to show through it.
         ///
-        /// **`AlphaMode::Blend` alone does not say so, and this is the whole difficulty.** Morrowind
+        /// **`Surface::AlphaMode::Blend` alone does not say so, and this is the whole difficulty.** Morrowind
         /// keeps its foliage under `NiAlphaProperty`, so a leaf card and a pane of glass carry the
         /// same mode: the leaf is fully opaque where its painted mask is opaque, and the pane is
         /// translucent everywhere. What tells them apart is the *material's* own alpha, which
@@ -288,7 +273,7 @@ namespace Rtx
         /// material a stand-in threshold, so the build marks a pane non-opaque and traversal stops
         /// for it — which is what a transmittance needs anyway. A reader deciding what to do with a
         /// candidate asks this one first.
-        bool isTranslucent() const { return mAlphaMode == AlphaMode::Blend && mDiffuseColour.a() < 1.0f; }
+        bool isTranslucent() const { return mAlphaMode == Surface::AlphaMode::Blend && mDiffuseColour.a() < 1.0f; }
 
         /// Whether the eye passes through this rather than meeting it: a medium, not a surface.
         ///

@@ -166,17 +166,18 @@ namespace RtxTool
 
         /// Every view a run names, settled: a condition named on the command line is every
         /// place's, and none of them keeps its own.
-        std::vector<Place> placesFrom(const std::vector<View>& views, const bpo::variables_map& variables)
+        std::vector<Rtx::Stop> stopsFrom(
+            const std::vector<View>& views, const bpo::variables_map& variables, const FrameRequest& frame)
         {
             const std::optional<float> hour = hourGiven(variables);
             const std::optional<std::string> weather = weatherGiven(variables);
 
-            std::vector<Place> places;
-            places.reserve(views.size());
+            std::vector<Rtx::Stop> stops;
+            stops.reserve(views.size());
             for (const View& view : views)
-                places.push_back(placeFrom(view, hour, weather));
+                stops.push_back(stopFor(view, hour, weather, frame.mDay));
 
-            return places;
+            return stops;
         }
 
         /// What every command is handed: the line it was given, the configuration that line was
@@ -284,55 +285,18 @@ namespace RtxTool
             throw std::runtime_error("no view is called \"" + name + "\". These are:" + known);
         }
 
-        /// Where the command line and the view file meet, as one place.
-        ///
-        /// **A `View` and not a second type beside one.** A named view supplies the cell and usually
-        /// the camera; anything given on the command line wins over it, so what comes back is the
-        /// same kind of thing a suite hands out — and one function turns either into a stop.
-        ///
-        /// The conditions come back settled rather than optional, because they have been decided:
-        /// `placeFrom` is what decides them, and asking twice is how a picture and a
-        /// number end up under different skies.
-        Place chooseView(const bpo::variables_map& variables, const std::filesystem::path& resources)
+        /// The one place a command renders, and what a window would write it down as.
+        struct StagedPlace
         {
-            // Holds what the view below points into, for as long as this function needs it.
-            std::vector<View> views;
-            const View* view = findChosenView(variables, resources, views);
+            Rtx::Stop mStop;
 
-            Place place = placeFrom(view != nullptr ? *view : View{ .mCell = variables["cell"].as<std::string>() },
-                hourGiven(variables), weatherGiven(variables));
-
-            // Anything given on the command line wins over the view, which is the rule the two
-            // conditions above already follow.
-            if (const std::optional<osg::Vec3f> origin = parseVec3(variables["pos"].as<std::string>(), "--pos"))
-                place.mOrigin = origin;
-
-            if (const std::optional<osg::Vec3f> target = parseVec3(variables["look"].as<std::string>(), "--look"))
-                place.mTarget = target;
-
-            return place;
-        }
-
-        /// One stop, from a place a view file or a command line named.
-        Rtx::Stop stopFrom(const Place& place, const FrameRequest& frame)
-        {
-            Rtx::Stop stop;
-            stop.mName = place.mName.empty() ? place.mCell : place.mName;
-            stop.mNote = place.mNote;
-            stop.mCell = place.mCell;
-            stop.mStand.mCell = place.mCell;
-            stop.mStand.mEye = place.mOrigin;
-            stop.mStand.mLook = place.mTarget;
-            stop.mSky.mHour = place.mHour;
-            stop.mSky.mDay = frame.mDay;
-            stop.mSky.mWeather = place.mWeather;
-
-            // **A route flies the player, which is what puts a cell arriving into a measurement.**
-            // Where it ends is another view's camera, copied into the entry when the file was read.
-            stop.mSchedule.mRoute = place.mRoute;
-
-            return stop;
-        }
+            /// What the place is called, for the block `view` prints when the window closes.
+            ///
+            /// **Named here because the run cannot name it.** A view id and a cell spelling are
+            /// what the command line asked for; where the eye ends up is the game's, and
+            /// `runHosted` fills that half in.
+            Viewpoint mSpot;
+        };
 
         /// Holds `stop` still: warmed as the command line asks, then `frames` measured with the
         /// simulation stopped.
@@ -406,17 +370,6 @@ namespace RtxTool
             Settings::rtx().mCountCrossings.set(frame.mCountCrossings);
         }
 
-        /// The one place a command renders: where it stands, and the stop that says so.
-        ///
-        /// **The place travels beside the stop because a window prints it.** `view` writes where
-        /// the eye was left as a `views.cfg` block, and the name, the note and the cell of that
-        /// block are the ones the run was asked for rather than any the game can report.
-        struct StagedPlace
-        {
-            Place mPlace;
-            Rtx::Stop mStop;
-        };
-
         /// Everything a command that renders one place opens with.
         ///
         /// **One statement, because six commands opened with the same four calls.** Each chose a
@@ -424,17 +377,35 @@ namespace RtxTool
         /// the engine reads and made a stop of it — and then differed only by what it asked the
         /// stop to keep.
         ///
-        /// **`chooseView` resolves both conditions before the frame is built**, so a picture and
-        /// the sky it was framed for are one answer. It fills both optionals, which is what makes
-        /// the dereferences here sound — and saying that once is most of why this is a function.
+        /// **The frame is written into the settings before the stop is made**, so a picture and the
+        /// sky it was framed for are one answer.
         StagedPlace stageOnePlace(const Command& command)
         {
-            StagedPlace staged;
-            staged.mPlace = chooseView(command.mVariables, command.mResources);
+            const bpo::variables_map& variables = command.mVariables;
 
             const FrameRequest frame = frameFrom(command);
             applyHostedSettings(frame);
-            staged.mStop = stopFrom(staged.mPlace, frame);
+
+            // Holds what the view below points into, for as long as this function needs it.
+            std::vector<View> views;
+            const View* found = findChosenView(variables, command.mResources, views);
+            const View view = found != nullptr ? *found : View{ .mCell = variables["cell"].as<std::string>() };
+
+            StagedPlace staged;
+            staged.mStop = stopFor(view, hourGiven(variables), weatherGiven(variables), frame.mDay);
+
+            // Anything given on the command line wins over the view, which is the rule `stopFor`
+            // already follows for the hour and the sky.
+            if (const std::optional<osg::Vec3f> origin = parseVec3(variables["pos"].as<std::string>(), "--pos"))
+                staged.mStop.mStand.mEye = origin;
+
+            if (const std::optional<osg::Vec3f> target = parseVec3(variables["look"].as<std::string>(), "--look"))
+                staged.mStop.mStand.mLook = target;
+
+            // **The raw id and not the stop's name**, which falls back to the cell: a block printed
+            // for a place opened by `--cell` opens a section named after the cell, and one for a
+            // named view replaces that view's own.
+            staged.mSpot = Viewpoint{ .mView = view.mName, .mNote = view.mNote, .mCell = view.mCell };
 
             return staged;
         }
@@ -576,12 +547,11 @@ namespace RtxTool
             const bpo::variables_map& variables = command.mVariables;
             const FrameRequest frame = frameFrom(command);
 
-            const std::vector<Place> places
-                = placesFrom(chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"),
-                                 Rtx::splitNames(variables["views"].as<std::string>())),
-                    variables);
-
             applyHostedSettings(frame);
+
+            std::vector<Rtx::Stop> stops = stopsFrom(chooseViews(loadViews(command.mResources / "rtx" / "views.cfg"),
+                                                         Rtx::splitNames(variables["views"].as<std::string>())),
+                variables, frame);
 
             // **Upscaling off, and not offered as an option.** Ray Reconstruction is temporal and
             // carries state nothing below can hold still: two builds that describe the same scene
@@ -597,13 +567,15 @@ namespace RtxTool
             // A frame that animated between two builds would differ for a reason nobody is looking
             // for, and the whole point is that a refactor leaves the picture exactly as it was.
             Rtx::SessionRequest request;
-            request.mStops.reserve(places.size());
-            for (const Place& place : places)
+            request.mStops.reserve(stops.size());
+            for (Rtx::Stop& stop : stops)
             {
-                Rtx::Stop stop = stopFrom(place, frame);
                 holdStill(stop, variables);
-                stop.mActions.mCapture = out / (place.mName + ".png");
-                request.mStops.push_back(std::move(stop));
+                stop.mActions.mCapture = out / (stop.mName + ".png");
+
+                // Copied and not moved, because the comparison below reads these names back after
+                // the run has taken the request.
+                request.mStops.push_back(stop);
             }
 
             request.mValidation = validationForMeasuring(variables, false);
@@ -612,7 +584,7 @@ namespace RtxTool
                 status != 0)
                 return status;
 
-            return compareRuns(out, variables["against"].as<std::string>(), places);
+            return compareRuns(out, variables["against"].as<std::string>(), stops);
         }
 
         int commandBench(const Command& command)
@@ -621,10 +593,10 @@ namespace RtxTool
             const FrameRequest frame = frameFrom(command);
 
             std::string suite;
-            const std::vector<Place> places
-                = placesFrom(chooseBenchViews(variables, command.mResources, suite), variables);
-
             applyHostedSettings(frame);
+
+            std::vector<Rtx::Stop> stops
+                = stopsFrom(chooseBenchViews(variables, command.mResources, suite), variables, frame);
 
             const Rtx::BenchSpec spec = specFrom(variables);
             const std::vector<std::string> turn = Rtx::splitNames(variables["turn-weather"].as<std::string>());
@@ -632,10 +604,9 @@ namespace RtxTool
                 = !variables["hashes"].as<std::string>().empty() || !variables["against"].as<std::string>().empty();
 
             Rtx::SessionRequest request;
-            request.mStops.reserve(places.size());
-            for (const Place& place : places)
+            request.mStops.reserve(stops.size());
+            for (Rtx::Stop& stop : stops)
             {
-                Rtx::Stop stop = stopFrom(place, frame);
                 stop.mSchedule.mSpec = spec;
                 stop.mSky.mTurnThrough = turn;
                 stop.mActions.mHash = hashing;
@@ -711,13 +682,7 @@ namespace RtxTool
             request.mQuitAtEnd = frames > 0;
             request.mValidation = validationFrom(variables, true);
 
-            // What the place is called, for the block printed when the window closes. Where the eye
-            // ends up is the game's to say.
-            const Viewpoint spot{
-                .mView = staged.mPlace.mName, .mNote = staged.mPlace.mNote, .mCell = staged.mPlace.mCell
-            };
-
-            return runHosted(variables, command.mConfig, command.mResources, std::move(request), &spot);
+            return runHosted(variables, command.mConfig, command.mResources, std::move(request), &staged.mSpot);
         }
 
         /// Whether a place staged this way can answer `check` at all, which is a different question
@@ -730,12 +695,12 @@ namespace RtxTool
         /// **Every check named, and no `default`**, so one added to `Rtx::Check` stops the
         /// build here and has to say which kind it is. It was a chain of `check != X || condition`
         /// beside the loop, which grows a clause per check and answers nothing when it is wrong.
-        bool canAsk(const Rtx::Check check, const Place& place)
+        bool canAsk(const Rtx::Check check, const Rtx::Stop& stop)
         {
             switch (check)
             {
                 case Rtx::Check::CrossingsAppend:
-                    return place.mRoute.has_value();
+                    return stop.mSchedule.mRoute.has_value();
 
                 case Rtx::Check::WalkTwice:
                 case Rtx::Check::SurfacesDescribed:
@@ -762,27 +727,26 @@ namespace RtxTool
             const FrameRequest frame = frameFrom(command);
 
             std::string suite;
-            const std::vector<Place> places
-                = placesFrom(chooseBenchViews(variables, command.mResources, suite), variables);
-
             applyHostedSettings(frame);
+
+            std::vector<Rtx::Stop> stops
+                = stopsFrom(chooseBenchViews(variables, command.mResources, suite), variables, frame);
 
             const std::span<const Rtx::Check> every = Rtx::everyCheck();
 
             Rtx::SessionRequest request;
-            request.mStops.reserve(places.size());
-            for (const Place& place : places)
+            request.mStops.reserve(stops.size());
+            for (Rtx::Stop& stop : stops)
             {
                 // **Two measured frames, because one of the claims is about a pair of them.** A
                 // still camera resolving to a still picture cannot be asked of one frame.
-                Rtx::Stop stop = stopFrom(place, frame);
                 holdStill(stop, variables, 2);
 
                 for (const Rtx::Check check : every)
-                    if (canAsk(check, place))
+                    if (canAsk(check, stop))
                         stop.mActions.mChecks.push_back(check);
 
-                if (place.mRoute.has_value())
+                if (stop.mSchedule.mRoute.has_value())
                 {
                     stop.mSchedule.mFrozen = false;
                     stop.mSchedule.mSpec.mRun = Rtx::BenchSpan{ .mSeconds = variables["seconds"].as<float>() };

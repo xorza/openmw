@@ -156,18 +156,31 @@ namespace RtxTool
         }
     }
 
-    Place placeFrom(const View& view, const std::optional<float>& hour, const std::optional<std::string>& weather)
+    Rtx::Stop stopFor(
+        const View& view, const std::optional<float>& hour, const std::optional<std::string>& weather, const int day)
     {
-        return Place{
-            .mName = view.mName,
-            .mCell = view.mCell,
-            .mOrigin = view.mOrigin,
-            .mTarget = view.mTarget,
-            .mHour = hourFor(hour, view.mHour),
-            .mWeather = weatherFor(weather, view.mWeather),
-            .mNote = view.mNote,
-            .mRoute = view.mRoute,
-        };
+        Rtx::Stop stop;
+
+        // **The cell where a view names no id**, because a report row and a hash file are keyed on
+        // this and neither can be keyed on nothing. `Viewpoint::mView` keeps the raw id, which is
+        // what says whether the block a window prints opens a section of its own.
+        stop.mName = view.mName.empty() ? view.mCell : view.mName;
+        stop.mNote = view.mNote;
+        stop.mCell = view.mCell;
+
+        stop.mStand.mCell = view.mCell;
+        stop.mStand.mEye = view.mOrigin;
+        stop.mStand.mLook = view.mTarget;
+
+        stop.mSky.mHour = hourFor(hour, view.mHour);
+        stop.mSky.mWeather = weatherFor(weather, view.mWeather);
+        stop.mSky.mDay = day;
+
+        // **A route flies the player, which is what puts a cell arriving into a measurement.**
+        // Where it ends is another view's camera, copied into the entry when the file was read.
+        stop.mSchedule.mRoute = view.mRoute;
+
+        return stop;
     }
 
     std::vector<View> loadViews(const std::filesystem::path& path)

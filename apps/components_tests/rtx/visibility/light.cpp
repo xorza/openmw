@@ -107,7 +107,7 @@ namespace Rtx::Testing
         /// The eye sees through the nearest pane to what stands behind it.
         ///
         /// **A translucent surface used to be the hit**, resolved against the stand-in cutoff
-        /// `AlphaMode::Blend` is given, so a pane with an opaque texture was drawn solid and whatever
+        /// `Surface::AlphaMode::Blend` is given, so a pane with an opaque texture was drawn solid and whatever
         /// was behind it was never traced at all. It is now shaded, kept, and the ray carries on from
         /// where it stood.
         ///
@@ -371,7 +371,7 @@ namespace Rtx::Testing
                 osg::Vec3f(0.0f, -150.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
             camera.mShowAlbedo = 1u;
 
-            const auto render = [&](AlphaMode mode, float alphaRef) {
+            const auto render = [&](Surface::AlphaMode mode, float alphaRef) {
                 SceneDesc scene = makeWall();
                 const Index mesh = scene.addMesh(masked, {}, sQuadUv, sQuadIndices);
                 const Index material = scene.addMaterial(Material{
@@ -394,7 +394,7 @@ namespace Rtx::Testing
             // one value here given a byte of room.
             constexpr int wallGrey = 188;
 
-            const std::vector<std::uint8_t> cutout = render(AlphaMode::Cutout, 0.5f);
+            const std::vector<std::uint8_t> cutout = render(Surface::AlphaMode::Cutout, 0.5f);
             ASSERT_EQ(cutout.size(), std::size_t{ size } * size * 4);
             for (std::uint32_t row = 0; row < size; ++row)
                 for (std::uint32_t column = 0; column < size; ++column)
@@ -415,11 +415,11 @@ namespace Rtx::Testing
             // A blend that named no threshold of its own is traced against the stand-in, and the
             // stand-in is the same half. Same bytes, or Morrowind's foliage — which is blended and
             // never alpha-tested — would not be cut out at all.
-            EXPECT_EQ(render(AlphaMode::Blend, 0.0f), cutout);
+            EXPECT_EQ(render(Surface::AlphaMode::Blend, 0.0f), cutout);
 
             // And the control: the same texture on an opaque material hides the wall completely, so
             // it is the cutout doing this and not the geometry.
-            const std::vector<std::uint8_t> opaque = render(AlphaMode::Opaque, 0.5f);
+            const std::vector<std::uint8_t> opaque = render(Surface::AlphaMode::Opaque, 0.5f);
             for (std::size_t i = 0; i < opaque.size(); i += 4)
             {
                 ASSERT_EQ(opaque[i], 255) << "red at pixel " << i / 4;
@@ -624,7 +624,7 @@ namespace Rtx::Testing
                 if (masked)
                 {
                     material.mDiffuse = scene.addTexture(VFS::Path::NormalizedView("sheet.dds"));
-                    material.mAlphaMode = AlphaMode::Cutout;
+                    material.mAlphaMode = Surface::AlphaMode::Cutout;
                     material.mAlphaRef = 0.5f;
                 }
 

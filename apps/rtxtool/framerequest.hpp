@@ -35,7 +35,7 @@ namespace RtxTool
     /// command line into them four times.
     ///
     /// **Where a run stands is not here.** The hour and the sky belong to the place, because a view
-    /// may fix either and the command line may overrule it — `Place` is what that came to.
+    /// may fix either and the command line may overrule it — `stopFor` is where the two meet.
     struct FrameRequest
     {
         /// The size the frame is presented at. What it is traced at follows from `mUpscale`.

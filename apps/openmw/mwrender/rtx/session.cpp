@@ -813,7 +813,7 @@ namespace MWRender
         for (const Rtx::Material& material : scene.getMaterials())
         {
             cutouts += material.isCutout() ? 1 : 0;
-            tested += material.mAlphaMode == Rtx::AlphaMode::Cutout ? 1 : 0;
+            tested += material.mAlphaMode == Surface::AlphaMode::Cutout ? 1 : 0;
             translucent += material.isTranslucent() ? 1 : 0;
             media += material.isMedium() ? 1 : 0;
             glowing += material.mEmissiveColour.length2() > 0.0f || material.mEmissive != Rtx::sNoIndex ? 1 : 0;

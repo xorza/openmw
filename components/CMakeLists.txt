@@ -150,7 +150,7 @@ add_component_dir (bodyparts
     )
 
 add_component_dir (surface
-    material
+    alphamode material
     )
 
 add_component_dir (nif

@@ -63,7 +63,7 @@ namespace Rtx::Testing
                 return scene.addMaterial(Material{
                     .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("checker.dds")),
                     .mAlphaRef = 0.5f,
-                    .mAlphaMode = AlphaMode::Cutout,
+                    .mAlphaMode = Surface::AlphaMode::Cutout,
                     .mAnimated = animated,
                 });
             }

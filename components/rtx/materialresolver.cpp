@@ -389,17 +389,7 @@ namespace Rtx
             material.mNormal = takeTexture(described->getTexture(Surface::TextureRole::NormalHeight));
 
         material.mAlphaRef = described->mAlphaRef;
-        switch (described->mAlphaMode)
-        {
-            case Surface::AlphaMode::Blend:
-                material.mAlphaMode = AlphaMode::Blend;
-                break;
-            case Surface::AlphaMode::Cutout:
-                material.mAlphaMode = AlphaMode::Cutout;
-                break;
-            case Surface::AlphaMode::Opaque:
-                break;
-        }
+        material.mAlphaMode = described->mAlphaMode;
 
         material.mTwoSided = described->mTwoSided;
         material.mDiffuseColour = described->mDiffuseColour;

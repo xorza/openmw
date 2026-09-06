@@ -5,8 +5,7 @@
 #include <span>
 
 #include <components/rtx/png.hpp>
-
-#include "views.hpp"
+#include <components/rtxbench/benchrun.hpp>
 
 namespace RtxTool
 {
@@ -63,5 +62,5 @@ namespace RtxTool
     /// with the build command that produced the binary. Zero where `against` is empty, which is a
     /// run that only wrote a reference for the next one.
     int compareRuns(
-        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const Place> places);
+        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const Rtx::Stop> stops);
 }

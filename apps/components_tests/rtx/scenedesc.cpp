@@ -177,21 +177,23 @@ namespace Rtx
             EXPECT_EQ(opaque.getAlphaCutoff(), 0.0f);
             EXPECT_FALSE(opaque.isCutout());
 
-            const Material tested{ .mDiffuse = texture, .mAlphaRef = 0.3f, .mAlphaMode = AlphaMode::Cutout };
+            const Material tested{ .mDiffuse = texture, .mAlphaRef = 0.3f, .mAlphaMode = Surface::AlphaMode::Cutout };
             EXPECT_EQ(tested.getAlphaCutoff(), 0.3f);
             EXPECT_TRUE(tested.isCutout());
 
-            const Material blended{ .mDiffuse = texture, .mAlphaMode = AlphaMode::Blend };
+            const Material blended{ .mDiffuse = texture, .mAlphaMode = Surface::AlphaMode::Blend };
             EXPECT_EQ(blended.getAlphaCutoff(), 0.5f);
             EXPECT_TRUE(blended.isCutout());
 
-            const Material blendedWithRef{ .mDiffuse = texture, .mAlphaRef = 0.8f, .mAlphaMode = AlphaMode::Blend };
+            const Material blendedWithRef{
+                .mDiffuse = texture, .mAlphaRef = 0.8f, .mAlphaMode = Surface::AlphaMode::Blend
+            };
             EXPECT_EQ(blendedWithRef.getAlphaCutoff(), 0.8f);
 
             // The mask lives in the diffuse map's alpha, so a cutoff with no map to read it from is
             // not a cutout — and marking it one would cost traversal a candidate loop that could
             // only ever say yes.
-            const Material untextured{ .mAlphaMode = AlphaMode::Blend };
+            const Material untextured{ .mAlphaMode = Surface::AlphaMode::Blend };
             EXPECT_EQ(untextured.getAlphaCutoff(), 0.5f);
             EXPECT_FALSE(untextured.isCutout());
         }
@@ -212,13 +214,13 @@ namespace Rtx
         {
             constexpr Index texture = 3;
 
-            const Material leaf{ .mDiffuse = texture, .mAlphaMode = AlphaMode::Blend };
+            const Material leaf{ .mDiffuse = texture, .mAlphaMode = Surface::AlphaMode::Blend };
             EXPECT_FALSE(leaf.isTranslucent()) << "a painted mask on an opaque material";
             EXPECT_TRUE(leaf.isCutout()) << "and it keeps the branch it has";
 
             const Material pane{ .mDiffuse = texture,
                 .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.3f),
-                .mAlphaMode = AlphaMode::Blend };
+                .mAlphaMode = Surface::AlphaMode::Blend };
             EXPECT_TRUE(pane.isTranslucent());
 
             // The mode is half of it: a faded material the content never asked to blend is drawn as
@@ -229,7 +231,7 @@ namespace Rtx
             const Material tested{ .mDiffuse = texture,
                 .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.3f),
                 .mAlphaRef = 0.3f,
-                .mAlphaMode = AlphaMode::Cutout };
+                .mAlphaMode = Surface::AlphaMode::Cutout };
             EXPECT_FALSE(tested.isTranslucent()) << "a mask the content asked to test is a mask";
 
             // And the texture is the other half of what tells a pane from a cloud. Neither of them
@@ -253,19 +255,24 @@ namespace Rtx
             constexpr Index texture = 3;
             const osg::Vec4f faint(1.0f, 1.0f, 1.0f, 0.3f);
 
-            const Material cloud{
-                .mDiffuse = texture, .mDiffuseColour = faint, .mAlphaMode = AlphaMode::Blend, .mDiffuseNeverSolid = true
-            };
+            const Material cloud{ .mDiffuse = texture,
+                .mDiffuseColour = faint,
+                .mAlphaMode = Surface::AlphaMode::Blend,
+                .mDiffuseNeverSolid = true };
             EXPECT_TRUE(cloud.isMedium());
             EXPECT_TRUE(cloud.getTraversed().mMedium) << "and the placements wearing it are told";
 
-            const Material stained{ .mDiffuse = texture, .mDiffuseColour = faint, .mAlphaMode = AlphaMode::Blend };
+            const Material stained{
+                .mDiffuse = texture, .mDiffuseColour = faint, .mAlphaMode = Surface::AlphaMode::Blend
+            };
             EXPECT_FALSE(stained.isMedium()) << "paint that closes is something to stop on";
 
-            const Material leaf{ .mDiffuse = texture, .mAlphaMode = AlphaMode::Blend, .mDiffuseNeverSolid = true };
+            const Material leaf{
+                .mDiffuse = texture, .mAlphaMode = Surface::AlphaMode::Blend, .mDiffuseNeverSolid = true
+            };
             EXPECT_FALSE(leaf.isMedium()) << "an opaque material, whatever its paint does";
 
-            const Material glass{ .mDiffuseColour = faint, .mAlphaMode = AlphaMode::Blend };
+            const Material glass{ .mDiffuseColour = faint, .mAlphaMode = Surface::AlphaMode::Blend };
             EXPECT_FALSE(glass.isMedium()) << "no map to have measured";
         }
 
@@ -511,7 +518,7 @@ namespace Rtx
             const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
             const Index glass = scene.addMaterial(Material{
                 .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f),
-                .mAlphaMode = AlphaMode::Blend,
+                .mAlphaMode = Surface::AlphaMode::Blend,
             });
 
             const Index one = scene.addInstance(MeshInstance{ .mMesh = mesh, .mMaterial = glass });

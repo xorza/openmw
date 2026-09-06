@@ -52,11 +52,11 @@ namespace Rtx
             const Index cutout = scene.addMaterial(Material{
                 .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("textures/leaf.dds")),
                 .mAlphaRef = 0.5f,
-                .mAlphaMode = AlphaMode::Cutout,
+                .mAlphaMode = Surface::AlphaMode::Cutout,
             });
             const Index glass = scene.addMaterial(Material{
                 .mDiffuseColour = osg::Vec4f(1.0f, 1.0f, 1.0f, 0.5f),
-                .mAlphaMode = AlphaMode::Blend,
+                .mAlphaMode = Surface::AlphaMode::Blend,
             });
             const Index sea = scene.addMaterial(Material{ .mKind = MaterialKind::Water });
             const Index ground = scene.addMaterial(Material{ .mKind = MaterialKind::Terrain });

@@ -182,11 +182,11 @@ namespace Rtx::Testing
             };
 
             const Rtx::Material blended = extractOne(true);
-            EXPECT_EQ(blended.mAlphaMode, Rtx::AlphaMode::Blend);
+            EXPECT_EQ(blended.mAlphaMode, Surface::AlphaMode::Blend);
             EXPECT_TRUE(blended.isCutout());
 
             const Rtx::Material plain = extractOne(false);
-            EXPECT_EQ(plain.mAlphaMode, Rtx::AlphaMode::Opaque);
+            EXPECT_EQ(plain.mAlphaMode, Surface::AlphaMode::Opaque);
             EXPECT_FALSE(plain.isCutout());
         }
 

@@ -244,33 +244,40 @@ hour = 19.25
 
             // Neither says anything: noon under a clear sky, which is how a picture of a place is
             // taken.
-            EXPECT_EQ(placeFrom(bare, std::nullopt, std::nullopt).mHour, sDefaultHour);
-            EXPECT_EQ(placeFrom(bare, std::nullopt, std::nullopt).mWeather, sDefaultWeather);
+            EXPECT_EQ(stopFor(bare, std::nullopt, std::nullopt, 0).mSky.mHour, sDefaultHour);
+            EXPECT_EQ(stopFor(bare, std::nullopt, std::nullopt, 0).mSky.mWeather, sDefaultWeather);
 
             // Only the place: the place decides, which is what makes a view id one frame.
-            EXPECT_EQ(placeFrom(entry, std::nullopt, std::nullopt).mHour, 6.5f);
-            EXPECT_EQ(placeFrom(entry, std::nullopt, std::nullopt).mWeather, "Overcast");
+            EXPECT_EQ(stopFor(entry, std::nullopt, std::nullopt, 0).mSky.mHour, 6.5f);
+            EXPECT_EQ(stopFor(entry, std::nullopt, std::nullopt, 0).mSky.mWeather, "Overcast");
 
             // The command line, over a place that fixes one and over a place that does not.
-            EXPECT_EQ(placeFrom(entry, 9.0f, std::string("Rain")).mHour, 9.0f);
-            EXPECT_EQ(placeFrom(entry, 9.0f, std::string("Rain")).mWeather, "Rain");
-            EXPECT_EQ(placeFrom(bare, 9.0f, std::string("Rain")).mHour, 9.0f);
-            EXPECT_EQ(placeFrom(bare, 9.0f, std::string("Rain")).mWeather, "Rain");
+            EXPECT_EQ(stopFor(entry, 9.0f, std::string("Rain"), 0).mSky.mHour, 9.0f);
+            EXPECT_EQ(stopFor(entry, 9.0f, std::string("Rain"), 0).mSky.mWeather, "Rain");
+            EXPECT_EQ(stopFor(bare, 9.0f, std::string("Rain"), 0).mSky.mHour, 9.0f);
+            EXPECT_EQ(stopFor(bare, 9.0f, std::string("Rain"), 0).mSky.mWeather, "Rain");
 
             // And the three answers differ, so the rule is doing something.
-            EXPECT_NE(placeFrom(entry, std::nullopt, std::nullopt).mHour, placeFrom(entry, 9.0f, std::nullopt).mHour);
-            EXPECT_NE(
-                placeFrom(bare, std::nullopt, std::nullopt).mHour, placeFrom(entry, std::nullopt, std::nullopt).mHour);
+            EXPECT_NE(stopFor(entry, std::nullopt, std::nullopt, 0).mSky.mHour,
+                stopFor(entry, 9.0f, std::nullopt, 0).mSky.mHour);
+            EXPECT_NE(stopFor(bare, std::nullopt, std::nullopt, 0).mSky.mHour,
+                stopFor(entry, std::nullopt, std::nullopt, 0).mSky.mHour);
 
             // Everything that is not a condition is the entry's, unchanged.
-            const Place settled = placeFrom(entry, std::nullopt, std::nullopt);
+            const Rtx::Stop settled = stopFor(entry, std::nullopt, std::nullopt, 3);
             EXPECT_EQ(settled.mName, "dawn-deck");
             EXPECT_EQ(settled.mCell, "Vivec, Foreign Quarter");
             EXPECT_EQ(settled.mNote, "a deck at dawn");
-            EXPECT_EQ(settled.mOrigin, entry.mOrigin);
-            EXPECT_EQ(settled.mTarget, entry.mTarget);
-            ASSERT_TRUE(settled.mRoute.has_value());
-            EXPECT_EQ(settled.mRoute->mSpeed, 400.0f);
+            EXPECT_EQ(settled.mStand.mCell, "Vivec, Foreign Quarter");
+            EXPECT_EQ(settled.mStand.mEye, entry.mOrigin);
+            EXPECT_EQ(settled.mStand.mLook, entry.mTarget);
+            EXPECT_EQ(settled.mSky.mDay, 3);
+            ASSERT_TRUE(settled.mSchedule.mRoute.has_value());
+            EXPECT_EQ(settled.mSchedule.mRoute->mSpeed, 400.0f);
+
+            // **A view with no id of its own is named after its cell**, because a report row and a
+            // hash file are keyed on the name and neither can be keyed on nothing.
+            EXPECT_EQ(stopFor(bare, std::nullopt, std::nullopt, 0).mName, "-2,-9");
         }
     }
 }

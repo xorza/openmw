@@ -387,7 +387,7 @@ namespace Rtx
             const Index cutout = scene.addMaterial(Material{
                 .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("mask.dds")),
                 .mAlphaRef = 0.5f,
-                .mAlphaMode = AlphaMode::Cutout,
+                .mAlphaMode = Surface::AlphaMode::Cutout,
             });
             const Index triangle = scene.addMesh(
                 Testing::sUnitTriangle, {}, uv, Testing::sTriangleIndices, {}, Deform::None, sNoIndex, cutout);
@@ -560,7 +560,7 @@ namespace Rtx
             const Index cutout = scene.addMaterial(Material{
                 .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("mask.dds")),
                 .mAlphaRef = 0.5f,
-                .mAlphaMode = AlphaMode::Cutout,
+                .mAlphaMode = Surface::AlphaMode::Cutout,
             });
             Material scrolling = scene.getMaterials()[cutout];
             scrolling.mAnimated = true;
@@ -666,7 +666,7 @@ namespace Rtx
             const Index cutout = scene.addMaterial(Material{
                 .mDiffuse = scene.addTexture(VFS::Path::NormalizedView("mask.dds")),
                 .mAlphaRef = 0.5f,
-                .mAlphaMode = AlphaMode::Cutout,
+                .mAlphaMode = Surface::AlphaMode::Cutout,
             });
             const Index baked = scene.addMesh(
                 Testing::sUnitTriangle, {}, sTriangleUv, Testing::sTriangleIndices, {}, Deform::None, sNoIndex, cutout);

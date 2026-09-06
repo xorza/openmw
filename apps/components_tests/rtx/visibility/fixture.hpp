@@ -139,7 +139,7 @@ namespace Rtx::Testing
     {
         const Index glass = scene.addMaterial(Material{
             .mDiffuseColour = colour,
-            .mAlphaMode = AlphaMode::Blend,
+            .mAlphaMode = Surface::AlphaMode::Blend,
         });
 
         scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),

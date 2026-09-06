@@ -11,6 +11,8 @@
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
+#include "alphamode.hpp"
+
 namespace osg
 {
     class StateSet;
@@ -58,18 +60,6 @@ namespace Surface
     /// The role a texture unit's name means, or nothing for a name that is not a role — `blendMap`
     /// and the shadow maps are bound the same way and are not what a surface is made of.
     std::optional<TextureRole> textureRoleNamed(std::string_view name);
-
-    /// What the alpha channel means here.
-    ///
-    /// `Cutout` and `Blend` are not exclusive in a NIF — `NiAlphaProperty` can ask for both — but no
-    /// renderer benefits from honouring both, and the rasterizer already resolves them this way:
-    /// blending wins, and the test threshold survives for a renderer that would rather cut out.
-    enum class AlphaMode
-    {
-        Opaque,
-        Cutout,
-        Blend,
-    };
 
     /// What a surface is, as the content said and before any renderer has an opinion.
     ///
