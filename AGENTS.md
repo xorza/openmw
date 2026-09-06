@@ -105,13 +105,15 @@ are the gates. What those do not tell you:
   Both debug directories override `CMAKE_{C,CXX}_FLAGS_RELWITHDEBINFO` to `-O2 -g` for that one
   reason, and `grep -c NDEBUG build-*/build.ninja` says which kind a directory is.
 - **Three build directories, configured by the scripts in `apps/rtxtool/`.** `debug.sh` makes
-  `build-debug/`, the everyday one. `debug-asan.sh` makes `build-debug-asan/` and runs the tests
-  under it — `tool` in front of an argument sends it to the harness instead — and it sets and
-  explains the required `ASAN_OPTIONS`. `release.sh` makes `build-release/`, which is `-O3 -DNDEBUG`
-  and is where a number is taken.
+  `build-debug/`. `debug-asan.sh` makes `build-debug-asan/` and runs the tests under it — `tool` in
+  front of an argument sends it to the harness instead — and it sets and explains the required
+  `ASAN_OPTIONS`. `release.sh` makes `build-release/`, which is `-O3 -DNDEBUG` and is where a number
+  is taken.
 - **`.refs/` is where a reference checkout goes, and nothing there is built.** NVIDIA's NGX SDK is
-  750 MB of prebuilt binaries under NVIDIA's own licence, so it is named rather than vendored.
-  `DLSS_SDK_DIR` points at it, and `components/rtxvulkan/CMakeLists.txt` states the clone command
+  750 MB of prebuilt binaries under NVIDIA's own licence, so it is named rather than vendored. The
+  build scripts want `OPENMW_DLSS_SDK` in the environment and refuse without it; CMake on its own
+  falls back to `DLSS_SDK_DIR`, then to `.refs/dlss`. This box points at `rtxmw`'s checkout, so this
+  tree has no `.refs/` of its own. `components/rtxvulkan/CMakeLists.txt` states the clone command
   and the pinned tag.
 - **`bullet-dp`, not `bullet`** — OpenMW needs a double-precision Bullet, the two Arch packages
   conflict, and the single-precision one has to come out first.
@@ -123,9 +125,10 @@ are the gates. What those do not tell you:
   `find <dir> -name '*.o' ! -newermt '<that time>' -delete`.
 - **CI pins clang-format 14**; this box has 22 and they disagree, so run
   `CLANG_FORMAT=clang-format-14 CI/check_clang_format.sh`.
-- **`components-tests` holds what is true without a world** — a spec, a record, a digest, a sheet.
-  What is true *of* a world is `openmw-rtxtool check`, which asks it of a running game at every
-  place of a suite and exits non-zero on the first failure.
+- **`components-tests` holds what is true without a world** — a spec, a record, a digest, a sheet;
+  `openmw-tests` holds what needs the game's own types. What is true *of* a world is
+  `openmw-rtxtool check`, which asks it of a running game at every place of a suite and exits
+  non-zero on the first failure.
 - **Tests are gtest binaries run directly**, with `--gtest_filter`; there is no ctest registration.
   Tests that need game data **skip** when it is absent and **fail** when the path is set and wrong —
   a silent skip looks like a pass.
@@ -138,9 +141,11 @@ Build the targets you touched, run the test binary that covers them with a filte
 Building the world for a one-line change in the harness is waste, and so is calling a change
 verified because it compiled.
 
-**Every verb drives a real game, headless.** `openmw-rtxtool` starts an engine, teleports to the
+**Every verb but `info` drives a real game.** `openmw-rtxtool` starts an engine, teleports to the
 place a view names and warms the world up, so cells are read by `MWWorld::Scene`, people are dressed
-by `NpcAnimation` and the sky is reported by `MWWorld::WeatherManager`.
+by `NpcAnimation` and the sky is reported by `MWWorld::WeatherManager`. `info` reports the device
+and stages no world. `shot` and `scene` open no window, and `bench` opens one unless
+`--window=false`.
 
 **Do not open the game window to check a rendering change.** `shot` writes one frame with no window
 and prints the hit fraction, the scene it was handed and the frame time. `scene` answers what the
@@ -161,7 +166,8 @@ it guards, and it starts each A/B leg from a different clock state. Warm with on
 `bench` of the same views, then run the legs back to back and interleaved. The harness prints the
 core clock and the temperature beside every result: a run whose clock or temperature differs from
 its neighbour's is the run to repeat. Buy confidence with repeats, not with waiting: a repeat of
-`--views=<one> --seconds=10` costs thirteen seconds, so six alternations come in under two minutes.
+`--views=<one>` costs twenty-three seconds at the default twenty, so six alternations come in under
+three minutes.
 
 **Profiling.** `apps/rtxtool/profile.sh` records the CPU with `perf` over the measured frames only.
 A GPU timeline is `nsys profile ./openmw-rtxtool bench ...`, and this driver needs no sudo for it.
