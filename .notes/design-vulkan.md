@@ -240,9 +240,29 @@ nothing. It is no longer an aperture question, so it is a VRAM saving rather tha
 carries a real hazard: the compact copy needs its own offset space, and a site that mixes the two
 would alias silently. It wants the mesh index rather than a raw offset at every call site.
 
-**Stage 3 — resource use.** `Use`, `Barriers`, then the 47 call sites, one file at a time, under the
-Stage 0 gate. `readBack()` lands here. Measure the frame's barrier count and recording cost.
-*Three to five days.*
+**Stage 3 — resource use. Done, and less of it than this said.**
+
+`Buffer::orderForHostRead` records the `HOST_READ` dependency a host read of device-written memory
+needs, and the three producers record it: the image readback, the frame's hit counters and the sprite
+bin report. The layers cannot catch this class — they see no `memcpy` — so the rule lives in the type.
+
+The two visibility scopes that named storage reads for consumers that sample are fixed: the
+G-buffer's handover, whose guides DLSS samples, and the upscaled frame, which the bloom binds as a
+combined image sampler.
+
+`Barriers` batches image dependencies into one command. The G-buffer's two handovers were twenty-eight
+`vkCmdPipelineBarrier2` calls a frame and are now two.
+
+**The state tracker was not built, and should not be.** The design justified it as three rules
+stopping being retyped at forty-seven sites. Reading those sites says otherwise: most encode a
+deliberate scope with its reason written beside it — `GBuffer::begin` sources at `ALL_COMMANDS`
+rather than at the compute stage, and says why a discard from `TOP_OF_PIPE` would buy a torn frame.
+A `Use` enum would either flatten those distinctions or need a case per site. Both outcomes that
+justified the tracker — the sampled-read class and the batching — are had without it, and the
+forty-seven sites keep their reasons.
+
+The fog volume's ten images are left unbatched: they interleave a transition, a clear and a
+transition apiece, and the loop runs once when the volume is made rather than on a frame.
 
 **Stage 4 — ownership.** Explicit `Batch::submit`, `~Batch` discards, `Graveyard::replace` for the
 wave spectra, the device `catch` resets its children, the presenter frees its old command buffers,

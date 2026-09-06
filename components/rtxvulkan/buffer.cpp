@@ -78,4 +78,31 @@ namespace Rtx
 
         return displaced;
     }
+
+    void Buffer::orderForHostRead(VkCommandBuffer commands) const
+    {
+        assert(mReadable && "a host-read dependency on memory nothing reads back");
+
+        const VkBufferMemoryBarrier2 written{
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            // Every way this renderer fills one: a copy out of an image, and a shader writing
+            // through the buffer's own address. Naming both here rather than at each of the three
+            // callers is what stops one of them naming the wrong one.
+            .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+                | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
+            .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = mHandle.get(),
+            .size = VK_WHOLE_SIZE,
+        };
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .bufferMemoryBarrierCount = 1,
+            .pBufferMemoryBarriers = &written,
+        };
+        vkCmdPipelineBarrier2(commands, &dependency);
+    }
 }

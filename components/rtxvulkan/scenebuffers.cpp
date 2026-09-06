@@ -271,6 +271,11 @@ namespace Rtx
                 .mCapacity = tables.mSpriteListSize.getCapacity(),
             },
             tables.mSpriteTileList, placing.mTimer);
+
+        // **What the next bin of this copy sizes its list from**, read on the host once the frame's
+        // fence has been waited on. A fence's access scope is the device's, so without this the
+        // figure is whatever the caches held.
+        tables.mSpriteBinReport.orderForHostRead(placing.mCommands);
     }
 
     void SceneBuffers::shade(const SceneDesc& scene, const std::uint32_t slot, Graveyard& graveyard)

@@ -79,6 +79,20 @@ namespace Rtx
             return mAddress;
         }
 
+        /// Records the dependency a host read of what the device wrote needs.
+        ///
+        /// **A fence does not make a device write visible to the host.** Its access scope covers
+        /// device access only, so a `map` after a wait can read what the caches happened to hold
+        /// rather than what the shader or the copy left. Host-coherent memory removes the
+        /// `vkInvalidateMappedMemoryRanges`; it does not remove this.
+        ///
+        /// **The rule lives here because nothing else can catch it.** Synchronization validation
+        /// sees no `memcpy`, so a missing dependency of this kind is invisible to the layers and
+        /// shows up as a figure that is occasionally wrong.
+        ///
+        /// Recorded by whoever wrote the buffer, into the submission the host then waits on.
+        void orderForHostRead(VkCommandBuffer commands) const;
+
         /// The whole buffer in main memory, for a caller that reads it back.
         ///
         /// **Only a staging buffer's, which is asserted.** Video memory the host writes is

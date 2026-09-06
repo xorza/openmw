@@ -19,29 +19,12 @@ as Ada, so `SceneMicromaps` passes. Vulkan 1.4 is reported on Linux from driver 
 micromaps run on pre-Ada hardware through the driver's own emulation, so the extension is real work
 rather than a stub.
 
-So the device baseline is not the problem people assume. One thing rejects a Turing card, and it is
-below.
+So the device baseline is not the problem people assume, and nothing below rejects a Turing card any
+more. What is left is defects the hardware does not decide.
 
 ---
 
 ## P1
-
-- [ ] **Host-visible video memory is 246 MiB on Turing, and every table, mesh and shader binding
-      table is put in it.** `buffer.cpp:15` defines `hostWritten` as
-      `DEVICE_LOCAL | HOST_VISIBLE | HOST_COHERENT`. `blockedbuffer.cpp:33` puts all vertices and
-      indices there, `tracepipeline.cpp:141` every SBT, `scenemicromaps.cpp:312` the micromap
-      triangle arrays, `guitextures.cpp:142` the GUI arena, and `commands.cpp:249` even the transient
-      source of `uploadBuffer`.
-
-      The heap that carries that memory type is 257,949,696 bytes on the RTX 2060 and 224,395,264 on
-      the RTX 2080 — a card without resizable BAR, which NVIDIA enables from the RTX 30 series only.
-      Morrowind's geometry alone passes that. This is a hard failure in the middle of a cell arrival,
-      not at startup.
-
-      `hostWritten` has to become a policy rather than a memory-property constant: direct writes into
-      video memory where the heap is large enough to hold the scene, a staged path into ordinary
-      device-local memory where it is not, chosen once when the device is picked. Nothing above the
-      allocator should have to know which was chosen.
 
 - [ ] **The pipeline compile workers race the memory allocator.** `visibilitypass.cpp:256` starts a
       worker per core. Each builds a `TracePipeline`, whose constructor reaches
@@ -54,15 +37,6 @@ below.
       and this bookkeeping is ours. Either lock the allocator or build the shader binding tables on
       the calling thread after the workers join. Keep the parallel compile.
 
-- [ ] **Nothing the device writes is made visible to the host.** Three sites read mapped memory
-      after a fence and no barrier: `image.cpp:252` for every screenshot, channel and map readback;
-      `framering.cpp:117` for the hit counters; `scenebuffers.cpp:246` for the sprite bin report,
-      which then sizes the next frame's tile list.
-
-      A fence's access scope covers device access only. Add a
-      `COPY / TRANSFER_WRITE → HOST / HOST_READ` dependency before the submit that the host waits
-      on. Host-coherent memory removes the `vkInvalidateMappedMemoryRanges`, not the barrier.
-
 - [ ] **A texture that fails half way submits commands naming an image it already destroyed.**
       `texture.cpp:176` creates the shading image after `uploadImage` has recorded the primary
       image's copy into the batch. If that allocation throws, `~Texture` never runs but `mImage`'s
@@ -72,15 +46,6 @@ below.
       Make submission explicit. An abandoned batch must drop its recording rather than submit it.
 
 ## P2
-
-- [ ] **The handover barriers cover storage reads and the consumers are sampling.**
-      `gbuffer.cpp:238` exposes the trace's writes as `SHADER_STORAGE_READ` at the compute stage,
-      and `dlsspass.cpp:59` asserts `SAMPLED_BIT` on every guide it hands NGX. `vulkanrenderer.cpp:1175`
-      does the same for the NGX output, which `bloompass.cpp:26` then binds as a combined image
-      sampler.
-
-      Add `SHADER_SAMPLED_READ` to both, and give the NGX handover a stage scope that covers work
-      whose stages we do not know. `GENERAL` layout is not a memory dependency.
 
 - [ ] **A device that fails to finish construction is destroyed before its children.**
       `device.cpp:169` builds the memory allocator after the pipeline cache; the `catch` at
@@ -145,13 +110,6 @@ below.
       fast trace and data access, and update only for deforming meshes, but never
       `ALLOW_COMPACTION`. No size query and no copy path exists. `mPositions` also keeps the build
       inputs of static meshes that position fetch could answer from the structure.
-
-- [ ] **A shared dependency point emits one barrier command per image.** `gbuffer.cpp:218` and
-      `gbuffer.cpp:238` each loop over 14 channels calling `Image::transition`, which emits one
-      `vkCmdPipelineBarrier2` apiece — 28 commands a frame where 2 would do. `fogvolume.cpp:183`
-      loops over 10 more.
-
-      Fill a fixed-size barrier array and emit one dependency per handover.
 
 - [ ] **Streaming and the interface drain the frame pipeline.** `vulkanrenderer.cpp:594` finishes
       every frame before extending the world, offscreen placement uses `submitAndWait` at

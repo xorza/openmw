@@ -229,10 +229,13 @@ namespace Rtx
         // everything before it on the queue rather than at the compute stage, because what NGX
         // reads them at is its own; discarding from `TOP_OF_PIPE` waits for nothing at all, and
         // buys a torn frame for a barrier saved.
+        Barriers barriers(commands);
         for (const Image* image : everyChannel())
-            image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
+
+        barriers.flush();
     }
 
     void GBuffer::handOver(VkCommandBuffer commands) const
@@ -240,10 +243,18 @@ namespace Rtx
         // **A read after a write, and nothing more.** Nothing after the trace writes a channel —
         // the accumulator blends into an image of its own — so every one of these is read-only from
         // here to the end of the frame.
+        //
+        // **Sampled as well as loaded.** The denoisers and the composite read a channel as a storage
+        // image; DLSS samples every guide it is handed, which is what `sUsage`'s `SAMPLED_BIT` is
+        // for and why a visibility scope of storage reads alone leaves its reads uncovered.
+        Barriers barriers(commands);
         for (const Image* image : everyChannel())
-            image->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
+
+        barriers.flush();
     }
 
     SetLayout GBuffer::describeLayout(const Device& device)

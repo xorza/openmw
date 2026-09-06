@@ -1188,10 +1188,14 @@ namespace Rtx
                 });
             historyAnswered = true;
 
-            // What NGX recorded is its own; nothing here knows which stages it used.
+            // What NGX recorded is its own; nothing here knows which stages it used. **And the
+            // bloom samples what it left**, rather than loading it — `BloomPass` binds the frame as
+            // a combined image sampler — so a visibility scope of storage reads alone would leave
+            // that read uncovered.
             mUpscaled->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 
             timer.close(commands);
             shown = mUpscaled.get();
@@ -1229,6 +1233,12 @@ namespace Rtx
         // **Submitted and not waited for.** The fence is what the frame after next waits on
         // before it writes over this frame's copy of the tables, and `finishFrame` is where the
         // count and the report come back — a frame late, which is the point.
+        // **What the trace summed, read on the host once this frame's fence has been waited on.**
+        // A fence's access scope is the device's, so the counters need a dependency of their own —
+        // recorded here, where every pass that could have added to them has been.
+        if (mCountHits || mCountCrossings)
+            frame.mHitCount.orderForHostRead(commands);
+
         mReadBy[mWorldSlot] = mRing.getRecording();
         mRing.submit(frame);
 

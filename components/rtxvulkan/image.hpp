@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <vector>
@@ -63,6 +65,11 @@ namespace Rtx
         std::uint32_t getTexelBytes() const { return mTexelBytes; }
 
         /// Moves every level of the image to `layout`, recording into `commands`.
+        /// The same dependency as `transition`, for a caller collecting a run of them into one
+        /// command. Every level, as `transition` is.
+        VkImageMemoryBarrier2 describeTransition(VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 srcStage,
+            VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage, VkAccessFlags2 dstAccess) const;
+
         void transition(VkCommandBuffer commands, VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 srcStage,
             VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage, VkAccessFlags2 dstAccess) const;
 
@@ -108,8 +115,48 @@ namespace Rtx
         std::uint32_t mHeight = 0;
         std::uint32_t mDepth = 1;
         VkFormat mFormat = VK_FORMAT_UNDEFINED;
+        /// `describeTransition`'s own answer over a run of levels, which is what `transitionLevels`
+        /// emits. One statement of the barrier, because the two differ only in the range.
+        VkImageMemoryBarrier2 describeLevels(std::uint32_t base, std::uint32_t count, VkImageLayout from,
+            VkImageLayout to, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
+            VkAccessFlags2 dstAccess) const;
+
         VkImageUsageFlags mUsage = 0;
         std::uint32_t mMipLevels = 1;
         std::uint32_t mTexelBytes = 0;
+    };
+
+    /// A run of image dependencies emitted as one command.
+    ///
+    /// **One `vkCmdPipelineBarrier2` for a handover, not one per image.** The G-buffer's fourteen
+    /// channels change state together twice a frame, and a `transition` apiece is twenty-eight
+    /// commands where two would say the same thing — which is what NVIDIA's own guidance says to
+    /// group. A batch that fills up emits what it holds and carries on, so a caller never has to
+    /// know how many it is about to add.
+    ///
+    /// **No allocation, because this is a frame path.** The longest run in this renderer is the
+    /// G-buffer's channels; the array is sized for that and flushing covers anything longer.
+    class Barriers
+    {
+    public:
+        explicit Barriers(VkCommandBuffer commands)
+            : mCommands(commands)
+        {
+        }
+
+        void add(const VkImageMemoryBarrier2& barrier);
+
+        /// Emits what has been added, and empties. Does nothing where nothing was added.
+        void flush();
+
+    private:
+        /// The longest run this renderer has: the G-buffer's channels, which change state together
+        /// twice a frame. A run longer than this emits what it holds and carries on, so the figure
+        /// bounds the array rather than the caller.
+        static constexpr std::size_t sMost = 16;
+
+        VkCommandBuffer mCommands = VK_NULL_HANDLE;
+        std::array<VkImageMemoryBarrier2, sMost> mBarriers{};
+        std::size_t mCount = 0;
     };
 }

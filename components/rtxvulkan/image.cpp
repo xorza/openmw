@@ -137,11 +137,18 @@ namespace Rtx
         transitionLevels(commands, 0, mMipLevels, from, to, srcStage, srcAccess, dstStage, dstAccess);
     }
 
-    void Image::transitionLevels(VkCommandBuffer commands, std::uint32_t base, std::uint32_t count, VkImageLayout from,
+    VkImageMemoryBarrier2 Image::describeTransition(VkImageLayout from, VkImageLayout to,
+        VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
+        VkAccessFlags2 dstAccess) const
+    {
+        return describeLevels(0, mMipLevels, from, to, srcStage, srcAccess, dstStage, dstAccess);
+    }
+
+    VkImageMemoryBarrier2 Image::describeLevels(std::uint32_t base, std::uint32_t count, VkImageLayout from,
         VkImageLayout to, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
         VkAccessFlags2 dstAccess) const
     {
-        const VkImageMemoryBarrier2 barrier{
+        return VkImageMemoryBarrier2{
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = srcStage,
             .srcAccessMask = srcAccess,
@@ -154,6 +161,37 @@ namespace Rtx
             .image = mHandle,
             .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, base, count, 0, 1 },
         };
+    }
+
+    void Barriers::add(const VkImageMemoryBarrier2& barrier)
+    {
+        if (mCount == mBarriers.size())
+            flush();
+
+        mBarriers[mCount++] = barrier;
+    }
+
+    void Barriers::flush()
+    {
+        if (mCount == 0)
+            return;
+
+        const VkDependencyInfo dependency{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = static_cast<std::uint32_t>(mCount),
+            .pImageMemoryBarriers = mBarriers.data(),
+        };
+        vkCmdPipelineBarrier2(mCommands, &dependency);
+
+        mCount = 0;
+    }
+
+    void Image::transitionLevels(VkCommandBuffer commands, std::uint32_t base, std::uint32_t count, VkImageLayout from,
+        VkImageLayout to, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
+        VkAccessFlags2 dstAccess) const
+    {
+        const VkImageMemoryBarrier2 barrier
+            = describeLevels(base, count, from, to, srcStage, srcAccess, dstStage, dstAccess);
 
         const VkDependencyInfo dependency{
             .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
@@ -240,6 +278,8 @@ namespace Rtx
             };
             vkCmdCopyImageToBuffer(
                 commands, mHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging.getHandle(), 1, &region);
+
+            staging.orderForHostRead(commands);
 
             // **Back where it was found.** Reading an image is not a change to it, and a caller that
             // has to know a read moved it is one that will forget: the GUI's own table is sampled
