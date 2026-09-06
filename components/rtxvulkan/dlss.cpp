@@ -144,6 +144,7 @@ namespace Rtx
         {
             // A constructor that throws gets no destructor, and NGX is up: leaving it that way
             // would refuse every later attempt for a reason that is no longer true.
+            NVSDK_NGX_VULKAN_DestroyParameters(mCapabilities);
             NVSDK_NGX_VULKAN_Shutdown1(mDevice);
             throw Unsupported("NGX started and would not say what it can do: " + describeNgxResult(asked));
         }
@@ -196,7 +197,12 @@ namespace Rtx
     {
         sLive = nullptr;
 
-        // The capability map is NGX's own and goes with it; nothing releases it separately.
+        // **Destroyed, and it is not NGX's to reclaim.** The SDK tells `GetCapabilityParameters`
+        // apart from the deprecated `GetParameters` on exactly this: a capability map is the
+        // caller's, and `DlssPass` releases the one it allocates for the same reason.
+        NVSDK_NGX_VULKAN_DestroyParameters(mCapabilities);
+        mCapabilities = nullptr;
+
         NVSDK_NGX_VULKAN_Shutdown1(mDevice);
     }
 }

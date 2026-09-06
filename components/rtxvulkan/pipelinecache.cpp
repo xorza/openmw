@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include <smhasher/MurmurHash3.h>
@@ -34,6 +35,14 @@ namespace Rtx
         /// What every file this renderer keeps in the cache directory is called, before its key.
         constexpr std::string_view sPrefix = "rtx-";
         constexpr std::string_view sSuffix = ".pipelinecache";
+
+        /// How many caches other than this run's are kept, oldest first to go.
+        ///
+        /// **A bound and not a purge.** A name carries the card, the driver and the shaders it was
+        /// compiled for, so another cache is not a stale copy of this one — it is what a second card,
+        /// or the shader tree before the last edit, compiled to. Sweeping them made every switch a
+        /// cold compile; keeping them all would grow without end as drivers arrive.
+        constexpr std::size_t sKeptCaches = 4;
 
         std::uint32_t readWord(std::span<const std::uint8_t> data, std::size_t at)
         {
@@ -228,20 +237,37 @@ namespace Rtx
 
         const std::filesystem::path::string_type mine = mPath.filename().native();
         const std::filesystem::path::string_type prefix = std::filesystem::path(sPrefix).native();
+        const std::filesystem::path::string_type suffix = std::filesystem::path(sSuffix).native();
+
+        std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> others;
 
         std::error_code failed;
         for (const std::filesystem::directory_entry& entry :
             std::filesystem::directory_iterator(mPath.parent_path(), failed))
         {
             const std::filesystem::path::string_type name = entry.path().filename().native();
-            if (name == mine || !name.starts_with(prefix))
+            if (name == mine || !name.starts_with(prefix) || !name.ends_with(suffix))
                 continue;
 
             // A directory somebody named `rtx-something` is not this renderer's to remove, and
             // neither is a link: what is swept is the kind of thing `write` leaves.
             std::error_code ignored;
-            if (entry.is_regular_file(ignored))
-                std::filesystem::remove(entry.path(), ignored);
+            if (!entry.is_regular_file(ignored))
+                continue;
+
+            others.emplace_back(entry.last_write_time(ignored), entry.path());
+        }
+
+        if (others.size() <= sKeptCaches)
+            return;
+
+        // Oldest first, and this run's own is not among them: it is written after this and is the
+        // newest there will be, so the bound counts the others.
+        std::sort(others.begin(), others.end());
+        for (std::size_t at = 0; at < others.size() - sKeptCaches; ++at)
+        {
+            std::error_code ignored;
+            std::filesystem::remove(others[at].second, ignored);
         }
     }
 

@@ -1122,6 +1122,14 @@ namespace Rtx
         // **The sprite tiles are screen space, so they belong to the frame and not to the scene.**
         // Binned on the device, into the copy this frame traces — which the frame before last is
         // done with — and ahead of the trace that reads them, in its own zone.
+        // **What the bin below writes may still be being traced.** `Renderer::renderFrame` promises
+        // a frame that needs no placement before it, and two of those in a row bin into the copy the
+        // one placement handed out — over the sprites the first is reading, and over the report it
+        // is still writing. `placeScene` waits the same way before it writes the other copy; on the
+        // ordinary path of a placement per frame this has already been waited and costs a compare.
+        if (mReadBy[mWorldSlot] != sNeverRead)
+            mRing.finishThrough(mReadBy[mWorldSlot]);
+
         mWorld.mBuffers->binSprites(mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
             Placing{
                 .mCommands = commands,

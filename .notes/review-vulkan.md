@@ -26,33 +26,17 @@ more. What is left is defects the hardware does not decide.
 
 ## P2
 
-- [ ] **Two renders from one placement write the sprite tables the first render is still tracing.**
-      `renderer.hpp:642` promises a `renderFrame` independent of `placeScene`, with two frames in
-      flight. `vulkanrenderer.cpp:1108` bins into `mWorldSlot`, and `scenebuffers.cpp:238` rewrites
-      that slot's mapped sprite data. The `mReadBy` wait is in `placeScene` only, so a second render
-      with no placement between reuses the slot. No current caller does it.
-
-      Give the camera-dependent sprite resources frame ownership rather than placement ownership.
-
 - [ ] **Presentation resources are retired on a queue-idle rather than on a present.**
       `presenter.cpp:94` waits the device, then destroys the present semaphores and the swapchain.
       `mPresenting` belongs to the blit's submit, not to `vkQueuePresentKHR`, and an unextended idle
       wait does not prove the presentation engine is done. `VK_EXT_swapchain_maintenance1` is present
       on both Turing reports, so present fences are available on every card this targets.
 
-- [ ] **The NGX capability parameter map is never destroyed.** `dlss.cpp:142` takes it with
-      `GetCapabilityParameters` and `dlss.cpp:200` only calls `Shutdown1`. `DlssPass` already does
-      the right thing at `dlsspass.cpp:134`, so the call is known here.
-
 ## P3 — performance, unmeasured
 
-- [ ] **The allocator never gives a block back.** `memory.cpp` releases suballocation ranges only;
-      blocks live until the device does. Pools are split by memory type and tiling, so free space in
-      one cannot serve another, and `blockBytes` still sizes from the static heap size rather than
-      from the budget it can now read. A 6 GiB card is where this stops being theoretical.
-
-      Retire an empty block incrementally rather than on a sweep, and size a new one against the
-      budget.
+- [ ] **A block is sized from the heap and not from the budget.** `blockBytes` takes a sixteenth of
+      the heap's static size, so a card most of whose memory another process holds is asked for a
+      block that cannot fit — and `take` has no smaller second try before it gives up.
 
 - [ ] **Static acceleration structures are never compacted.** `sceneacceleration.cpp:328` asks for
       fast trace and data access, and update only for deforming meshes, but never
@@ -66,12 +50,6 @@ more. What is left is defects the hardware does not decide.
 
       The waits cannot simply go: the texture set is shared and is not update-after-bind. Move that
       ownership first, then enqueue the independent work into the ordered submission path.
-
-- [ ] **Creating one pipeline cache deletes every other one.** `pipelinecache.cpp:224` removes each
-      regular file in the directory whose name starts with the RTX prefix. Cache names already carry
-      hardware, driver and shader identity, so alternating devices or shader builds pays a cold
-      compile every time — and "every card from Turing up" makes alternating devices a normal case
-      rather than a curiosity.
 
 ## Two facts worth writing down before Turing is claimed
 

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -138,7 +139,7 @@ namespace Rtx
         ///
         /// **And a file that is not ours survives**, because a cache directory is shared with
         /// whatever else the game keeps there.
-        TEST_F(RtxPipelineCacheTest, theNameCarriesTheShadersAndEveryOtherCacheIsSwept)
+        TEST_F(RtxPipelineCacheTest, theNameCarriesTheShadersAndOtherCachesAreKeptToABound)
         {
             const std::filesystem::path scratch = std::filesystem::temp_directory_path() / "openmw-rtx-cache-test";
             std::filesystem::remove_all(scratch);
@@ -179,10 +180,38 @@ namespace Rtx
             only(edited);
 
             after = filesIn(cacheDirectory);
-            ASSERT_EQ(after.size(), 2u) << "the edited run's cache, and the file that is not ours";
-            EXPECT_EQ(after.front(), "keep-me.txt") << "a file this renderer did not write is left alone";
-            EXPECT_NE(after.back(), first) << "one byte of one module is a different cache";
-            EXPECT_TRUE(after.back().starts_with("rtx-")) << after.back();
+
+            // **The other caches stay.** A name carries the card, the driver and the shaders it was
+            // compiled for, so a cache that is not this run's is another thing somebody runs — a
+            // second card, the shader tree before the edit — and deleting it made every switch a
+            // cold compile.
+            EXPECT_EQ(after.size(), 4u) << "the two runs' caches, the stale driver's, and the file that is not ours";
+            EXPECT_NE(std::find(after.begin(), after.end(), first), after.end())
+                << "the cache of the shaders before the edit was swept";
+            EXPECT_NE(std::find(after.begin(), after.end(), "rtx-some-other-driver.pipelinecache"), after.end())
+                << "another driver's cache was swept";
+            EXPECT_NE(std::find(after.begin(), after.end(), "keep-me.txt"), after.end())
+                << "a file this renderer did not write is left alone";
+
+            // **Bounded, because a driver arrives every few weeks.** Enough others to pass the
+            // bound, aged so the order is the file system's to state rather than the test's.
+            for (int at = 0; at < 6; ++at)
+            {
+                const std::filesystem::path old
+                    = cacheDirectory / ("rtx-older-" + std::to_string(at) + ".pipelinecache");
+                std::ofstream(old) << "stale";
+                std::filesystem::last_write_time(
+                    old, std::filesystem::file_time_type::clock::now() - std::chrono::hours(24 * (10 - at)));
+            }
+
+            only(Testing::getShaderDirectory());
+
+            after = filesIn(cacheDirectory);
+            EXPECT_EQ(after.size(), 6u) << "this run's cache, the four kept beside it, and the file that is not ours";
+            EXPECT_NE(std::find(after.begin(), after.end(), "keep-me.txt"), after.end())
+                << "a file this renderer did not write is left alone";
+            EXPECT_EQ(std::find(after.begin(), after.end(), "rtx-older-0.pipelinecache"), after.end())
+                << "the oldest cache was kept";
 
             std::filesystem::remove_all(scratch);
         }
