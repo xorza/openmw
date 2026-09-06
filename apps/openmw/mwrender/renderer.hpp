@@ -209,6 +209,16 @@ namespace MWRender
         /// else, so a screen that draws under it cannot reach it again.
         virtual void tickSchedule() {}
 
+        /// Opens the frame's clock and says how long the frame stands for, in seconds.
+        ///
+        /// **A renderer that has to repeat itself keeps the clock**, because how far the simulation
+        /// steps, how long the renderer is told the frame took and what the caches age by have to be
+        /// one number — `Rtx::FrameClock` says what three of them cost. The default is the
+        /// measurement it was handed, which is what the loop worked out for itself before.
+        ///
+        /// @param measured what the wall says the last frame took, in seconds.
+        virtual double beginFrame(double measured) { return measured; }
+
         /// Stamps the next frame. Simulation time stops when the game is paused; reference time
         /// does not.
         virtual void advance(double simulationTime) = 0;

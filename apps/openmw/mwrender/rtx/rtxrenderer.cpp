@@ -242,14 +242,14 @@ namespace MWRender
         if (const float exposure = Settings::rtx().mExposure; exposure > 0.0f)
             mExposure = exposure;
 
-        // **The last thing in a frame that would otherwise run on the wall clock.** The eye adapts
-        // in real time and the upscaler tunes itself against how fast a motion vector was
-        // travelled, so a played session leaves this empty and the renderer times itself. A
-        // measured run cannot: two runs of one build then adapt by different amounts and draw
-        // different pictures — measured, 48% of the frame moved by up to 29 of 255 between two runs
-        // of one binary. `[RTX] fixed step` is the same statement the simulation is stepped by.
+        // **The clock everything in the frame is measured by**, and the last thing that would
+        // otherwise run on the wall. The eye adapts in real time and the upscaler tunes itself
+        // against how fast a motion vector was travelled, so a played session leaves this empty and
+        // each reader times what it is about. A measured run cannot: two runs of one build then
+        // adapt by different amounts and draw different pictures — measured, 48% of the frame moved
+        // by up to 29 of 255 between two runs of one binary.
         if (const float step = Settings::rtx().mFixedStep; step > 0.0f)
-            mFixedStep = step;
+            mClock = Rtx::FrameClock(step);
     }
 
     // Out of line because the members it destroys are only forward declared in the header.
@@ -322,17 +322,29 @@ namespace MWRender
         mStage.setSceneRoot(root);
     }
 
+    double RtxRenderer::beginFrame(const double measured)
+    {
+        mClock.advance(measured);
+
+        return mClock.getStep();
+    }
+
     void RtxRenderer::advance(double simulationTime)
     {
         const double previousReferenceTime = mFrameStamp->getReferenceTime();
         const unsigned int previousFrame = mFrameStamp->getFrameNumber();
 
         mFrameStamp->setFrameNumber(previousFrame + 1);
-        mFrameStamp->setReferenceTime(osg::Timer::instance()->delta_s(mStartTick, osg::Timer::instance()->tick()));
+
+        // **What OpenMW ages its caches by**, which is why it comes from the frame's own clock and
+        // not from the wall. `Rtx::FrameClock` says what reading the wall here cost.
+        mFrameStamp->setReferenceTime(mClock.getNow());
         mFrameStamp->setSimulationTime(simulationTime);
 
         // The same two the viewer writes, because the profiler's own spans are reported against
-        // them and a frame with neither reads as a frame that took no time.
+        // them and a frame with neither reads as a frame that took no time. **A run that states a
+        // step reports that cadence here**, because these are read off the stamp and the stamp is
+        // what the run stated — what the frames really cost is what `Bench` prints beside them.
         if (mStats->collectStats("frame_rate"))
         {
             const double spent = mFrameStamp->getReferenceTime() - previousReferenceTime;
@@ -736,8 +748,9 @@ namespace MWRender
         // would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell got settled
         // it, and a second derivation at the frame is a second place to get the exception wrong.
         const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(constants,
-            Rtx::FrameOptions{
-                .mSinceLast = mFixedStep, .mExposureBias = described.mExposureBias, .mExposure = std::nullopt });
+            Rtx::FrameOptions{ .mSinceLast = mClock.getStatedStep(),
+                .mExposureBias = described.mExposureBias,
+                .mExposure = std::nullopt });
 
         // **The whole frame, measured between one trace and the next.** Everything the game does
         // in between is in it — update, cull, this — which is what a player feels and what the

@@ -123,6 +123,7 @@ if (OPENMW_RTX)
         rtx/dlss.cpp
         rtx/fogbuilder.cpp
         rtx/fognoise.cpp
+        rtx/frameclock.cpp
         rtx/frameimage.cpp
         rtx/framering.cpp
         rtx/frames.cpp

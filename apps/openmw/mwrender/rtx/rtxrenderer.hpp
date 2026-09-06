@@ -11,6 +11,7 @@
 #include <osg/ref_ptr>
 
 #include <components/myguiplatform/picture.hpp>
+#include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 
 #include "../renderer.hpp"
@@ -97,6 +98,7 @@ namespace MWRender
         bool toggleWorld() override { return mWorldToggled = !mWorldToggled; }
 
         void tickSchedule() override;
+        double beginFrame(double measured) override;
         void advance(double simulationTime) override;
         void eventTraversal() override;
         void updateTraversal() override;
@@ -352,10 +354,10 @@ namespace MWRender
         /// session. `MWRender::Session` says what one is and why it lives here.
         std::unique_ptr<Session> mSession;
 
-        /// How long every frame is told it stands for, or nothing for a session that lets the
-        /// renderer time itself. `[RTX] fixed step`, read once because it cannot change while a
-        /// run is being made.
-        std::optional<float> mFixedStep;
+        /// The one clock a frame is measured by: how far the simulation steps, how long the trace
+        /// is told the frame took, and what OpenMW ages its caches by. `[RTX] fixed step` fills it
+        /// once, because it cannot change while a run is being made.
+        Rtx::FrameClock mClock;
 
         /// The knobs a measurement turns, out of `[RTX]` and read once. They are what the harness
         /// used to take as command-line options and this used to hard-code, which is two renderers

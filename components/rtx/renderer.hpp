@@ -413,12 +413,13 @@ namespace Rtx
 
         /// How long this frame stands for, in seconds, or nothing to take it off the wall clock.
         ///
-        /// **The last thing in a frame that ran on the wall.** The eye adapts in real time and an
+        /// **The last thing in a frame that reads the wall.** The eye adapts in real time and an
         /// upscaler tunes itself against how fast a motion vector was travelled, so a game leaves
-        /// this empty and the renderer times itself. A measured run cannot: two runs of one build
-        /// then adapt by different amounts and draw different pictures, which is a run that cannot
-        /// be compared with itself — and everything else a run animates already steps by the frame
-        /// index for exactly that reason. A caller with a schedule states it here.
+        /// this empty and the renderer times the interval itself — which it must, because a loading
+        /// screen drives frames that draw no world and the vectors do not belong to those. A
+        /// measured run cannot: two runs of one build then adapt by different amounts and draw
+        /// different pictures, which is a run that cannot be compared with itself. `Rtx::FrameClock`
+        /// is what states it where a run has a schedule, and the only thing that does.
         std::optional<float> mSinceLast = std::nullopt;
 
         /// What to multiply the exposure this frame measures for itself by. One leaves it alone, and

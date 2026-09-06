@@ -672,14 +672,14 @@ void OMW::Engine::go()
     const std::chrono::steady_clock::duration maxSimulationInterval(std::chrono::milliseconds(200));
     while (!mRenderer->done() && !mStateManager->hasQuitRequest())
     {
-        // **The wall clock, or the step a measured run states.** `[RTX] fixed step` says why a run
-        // that has to be comparable with itself cannot animate by how long its last frame took.
+        // **What the wall says the last frame took, which the renderer may overrule.** A run that
+        // has to be comparable with itself cannot animate by how long its last frame took, and
+        // `MWRender::Renderer::beginFrame` is the one place that decides — see `Rtx::FrameClock`.
         const double measured = std::chrono::duration_cast<std::chrono::duration<double>>(
             std::min(frameRateLimiter.getLastFrameDuration(), maxSimulationInterval))
                                     .count();
 
-        const float fixedStep = Settings::rtx().mFixedStep;
-        const double dt = (fixedStep > 0.0f ? fixedStep : measured) * timeManager.getSimulationTimeScale();
+        const double dt = mRenderer->beginFrame(measured) * timeManager.getSimulationTimeScale();
 
         mRenderer->advance(timeManager.getRenderingSimulationTime());
 

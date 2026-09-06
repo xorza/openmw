@@ -997,9 +997,11 @@ namespace Rtx
         // distance; how fast that was depends on the time it took, and the upscaler tunes how hard
         // it denoises against exactly that. The exposure adapts over it too.
         //
-        // **Taken off the wall only where the caller has no schedule**, which is a window and the
-        // game. A run that steps its world by the frame index and reads the clock for this is a run
-        // whose pictures depend on how fast it drew them — `FrameOptions::mSinceLast` says the rest.
+        // **Taken off the wall only where the caller has no schedule**, which is a played session
+        // and a test driving this directly. A run that steps its world by the frame index and reads
+        // the clock for this is a run whose pictures depend on how fast it drew them —
+        // `Rtx::FrameClock` is what states the step where a run states one, and the only thing a
+        // game-side caller fills this from.
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
         const float sinceLastMs = options.mSinceLast.has_value()
             ? *options.mSinceLast * 1000.0f

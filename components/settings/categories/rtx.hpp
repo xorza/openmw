@@ -60,6 +60,12 @@ namespace Settings
         ///
         /// **Nought for anybody playing**, which is the wall clock and the only thing a played
         /// session should have.
+        ///
+        /// **Read once, into the one `Rtx::FrameClock` a renderer keeps**, which is where the
+        /// simulation's step, the renderer's reference time and the trace's `mSinceLast` all come
+        /// from. Three readers with three fallbacks is what this used to be, and two runs of one
+        /// build then mirrored different worlds. The rasterizer cannot honour the rest of the
+        /// statement, so it times every frame whatever this says.
         SettingValue<float> mFixedStep{ mIndex, "RTX", "fixed step" };
 
         /// A run to make instead of a session to play, as `Rtx::readSpec` spells one.

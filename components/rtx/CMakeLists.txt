@@ -39,6 +39,7 @@ set(RTX_FILES
     fogbuilder.hpp
     fognoise.cpp
     fognoise.hpp
+    frameclock.hpp
     frameimage.cpp
     frameimage.hpp
     frametimes.cpp
