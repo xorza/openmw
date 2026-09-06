@@ -42,6 +42,7 @@ namespace Rtx::Testing
             Graveyard graveyard(device, pool);
             Batch setup(pool);
             const SceneBuffers buffers(device, setup, empty, {}, 1, graveyard);
+            setup.flush();
 
             // **Every table this hands out, and not the three that were caught.** The rule was the
             // same for all of them; which ones happened to be empty on the day is not what decides

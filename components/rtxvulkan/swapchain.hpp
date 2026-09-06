@@ -36,6 +36,12 @@ namespace Rtx
         /// Rebuilds at a new size. The caller must have waited for every frame still in flight.
         void recreate(VkExtent2D extent);
 
+        /// Whether the surface has no extent at all, which is what a minimised window reports.
+        ///
+        /// **Asked of the surface and not of this**, because what this holds is the size it was last
+        /// built at: a window minimised after that still reports its old extent here and none there.
+        bool surfaceIsHidden() const;
+
         /// Says how the presented image should meet the refresh, and answers whether that changed
         /// the present mode — which is what says a rebuild is owed.
         ///

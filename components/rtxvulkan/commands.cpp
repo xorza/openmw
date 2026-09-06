@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <exception>
 #include <iterator>
 #include <utility>
 
@@ -106,6 +107,13 @@ namespace Rtx
         forgetDeferred();
     }
 
+    void CommandPool::discard(VkCommandBuffer commands)
+    {
+        // Neither ended nor submitted: a buffer still being recorded is not pending, so this is
+        // where a recording nobody wants goes back.
+        free(std::span<const VkCommandBuffer>(&commands, 1));
+    }
+
     void CommandPool::free(std::span<const VkCommandBuffer> commands)
     {
         if (!commands.empty())
@@ -168,9 +176,15 @@ namespace Rtx
 
     Batch::~Batch()
     {
-        // A submit fails when the device is lost, and terminating out of a destructor tells nobody
-        // which one it was. `tearDown` is where that rule lives.
-        tearDown("a command batch could not be submitted", [&] { flush(); });
+        if (mCommands != VK_NULL_HANDLE)
+        {
+            assert(
+                std::uncaught_exceptions() > 0 && "a batch that recorded something was neither flushed nor deferred");
+
+            mPool.discard(std::exchange(mCommands, VK_NULL_HANDLE));
+        }
+
+        release();
     }
 
     VkCommandBuffer Batch::getCommands()

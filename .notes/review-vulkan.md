@@ -24,45 +24,7 @@ more. What is left is defects the hardware does not decide.
 
 ---
 
-## P1
-
-- [ ] **The pipeline compile workers race the memory allocator.** `visibilitypass.cpp:256` starts a
-      worker per core. Each builds a `TracePipeline`, whose constructor reaches
-      `Buffer::hostWritten` at `tracepipeline.cpp:141` and so `MemoryAllocator::take` at
-      `memory.cpp:142`. `memory.hpp:99` states the allocator is not thread-safe, and `take` mutates
-      `mBlocks` — a `std::vector` that reallocates — and each block's `SpanAllocator`. `give` at
-      `memory.cpp:206` is equally unguarded.
-
-      This is new with the suballocator: `vkAllocateMemory` per resource was the driver's problem,
-      and this bookkeeping is ours. Either lock the allocator or build the shader binding tables on
-      the calling thread after the workers join. Keep the parallel compile.
-
-- [ ] **A texture that fails half way submits commands naming an image it already destroyed.**
-      `texture.cpp:176` creates the shading image after `uploadImage` has recorded the primary
-      image's copy into the batch. If that allocation throws, `~Texture` never runs but `mImage`'s
-      destructor does — and `Batch::~Batch` at `commands.cpp:173` then flushes the command buffer
-      that still names the destroyed image.
-
-      Make submission explicit. An abandoned batch must drop its recording rather than submit it.
-
 ## P2
-
-- [ ] **A device that fails to finish construction is destroyed before its children.**
-      `device.cpp:169` builds the memory allocator after the pipeline cache; the `catch` at
-      `device.cpp:171` calls `vkDestroyDevice` and rethrows, and member unwinding then runs
-      `~PipelineCache` — which reads the cache off the device — and `~MemoryAllocator`, whose blocks
-      call `vkFreeMemory`, both on a destroyed handle.
-
-      Reset both members inside the `catch`, before the device goes.
-
-- [ ] **Wave spectra are replaced while the last frame may still be reading them.**
-      `wavepass.cpp:150` assigns new amplitude and frequency buffers straight over the live ones, and
-      `vulkanrenderer.cpp:733` calls it before the placement's resource wait. Latent only because
-      `worldmirror.cpp:145` always hands over a default `SeaState`, so `describe` returns early after
-      the first call. It fires the moment weather drives the wind.
-
-      Bury the displaced buffers in the recording frame's graveyard, the way every other growth on
-      this path already does.
 
 - [ ] **Two renders from one placement write the sprite tables the first render is still tracing.**
       `renderer.hpp:642` promises a `renderFrame` independent of `placeScene`, with two frames in
@@ -71,20 +33,6 @@ more. What is left is defects the hardware does not decide.
       with no placement between reuses the slot. No current caller does it.
 
       Give the camera-dependent sprite resources frame ownership rather than placement ownership.
-
-- [ ] **A minimised window creates a swapchain of zero extent.** `swapchain.cpp:135` accepts
-      `currentExtent` as the surface reports it, and Wayland reports `0×0` while minimised.
-      `swapchain.cpp:155` also asks for `TRANSFER_DST` and opaque composite alpha without reading
-      `supportedUsageFlags` or `supportedCompositeAlpha`.
-
-      Suspend recreation while the extent is zero, and check the two masks before creation.
-
-- [ ] **Every swapchain rebuild orphans a set of command buffers.** `presenter.cpp:135` resets the
-      pool and `presenter.cpp:162` allocates a fresh set. `vkResetCommandPool` resets buffers; it
-      does not free them. Resize, vsync change and every out-of-date acquire adds another set for the
-      presenter's life.
-
-      Free the old buffers, or reuse them and only reallocate when the image count changes.
 
 - [ ] **Presentation resources are retired on a queue-idle rather than on a present.**
       `presenter.cpp:94` waits the device, then destroys the present semaphores and the swapchain.

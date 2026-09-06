@@ -172,6 +172,13 @@ namespace Rtx
         }
         catch (...)
         {
+            // **Before the device, and by name rather than by member order.** Unwinding runs these
+            // destructors after this block, and each calls into the device: the cache reads itself
+            // back out of it and a block hands its memory to it. A device destroyed first would be
+            // a handle they then use.
+            mMemory.reset();
+            mPipelineCache.reset();
+
             vkDestroyDevice(mHandle, nullptr);
             mHandle = VK_NULL_HANDLE;
             throw;

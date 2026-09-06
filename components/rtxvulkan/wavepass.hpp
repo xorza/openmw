@@ -19,6 +19,7 @@
 
 namespace Rtx
 {
+    class Graveyard;
     class CommandPool;
     class Device;
 
@@ -54,7 +55,9 @@ namespace Rtx
         ///
         /// Submits and waits. Does nothing where the sea is the one already described, which is what
         /// makes it safe to call from every scene placement.
-        void describe(const SeaState& sea);
+        /// @param graveyard where the spectrum this replaces goes. A frame in flight may still be
+        ///        synthesising from it, which is what a weather turning the wind makes happen.
+        void describe(const SeaState& sea, Graveyard& graveyard);
 
         /// Turns the phases to `seconds` and rebuilds every texture and every level from them.
         ///

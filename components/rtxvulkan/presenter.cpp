@@ -134,6 +134,13 @@ namespace Rtx
         // that target and make a new one at the new size.
         mPool->reset();
 
+        // **Freed and not merely reset.** `vkResetCommandPool` returns what a buffer recorded; the
+        // buffer itself stays allocated, so a rebuild that allocates a fresh set leaves the old one
+        // in the pool for the presenter's life — and a window resized or a vsync changed a few dozen
+        // times is a few dozen sets.
+        mPool->free(mCommands);
+        mCommands.clear();
+
         const std::uint32_t images = mSwapchain->getImageCount();
 
         // **Made again rather than reused**, because a slot can arrive here signalled with nothing
@@ -166,6 +173,16 @@ namespace Rtx
     {
         if (!mStale && extent.width == getExtent().width && extent.height == getExtent().height)
             return;
+
+        // **A window that is not on screen is left alone.** Its surface reports no extent, a
+        // swapchain of none is invalid usage, and rebuilding once a frame against a surface that
+        // will not take one is a rebuild a minimised game would pay for as long as it stayed
+        // minimised. The staleness stands, so the window coming back rebuilds then.
+        if (mSwapchain->surfaceIsHidden())
+        {
+            mStale = true;
+            return;
+        }
 
         mDevice.waitIdle();
         mSwapchain->recreate(extent);

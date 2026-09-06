@@ -140,9 +140,30 @@ namespace Rtx
                 std::clamp(extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
             };
 
+        // **A minimised window reports no extent at all, and a swapchain of none is invalid usage.**
+        // One pixel rather than a refusal, because a window comes back: `Presenter::resize` declines
+        // to rebuild while the surface is hidden, and what stands until then costs a blit of a
+        // single pixel.
+        mExtent.width = std::max(mExtent.width, 1u);
+        mExtent.height = std::max(mExtent.height, 1u);
+
         std::uint32_t images = capabilities.minImageCount + 1;
         if (capabilities.maxImageCount > 0)
             images = std::min(images, capabilities.maxImageCount);
+
+        // **What the surface will take, asked rather than assumed.** The frame reaches the screen
+        // as a blit, so a surface that will not be a transfer destination cannot be presented to at
+        // all — and this renderer has no second way of filling one.
+        if ((capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) == 0)
+            throw Unsupported("this surface will not take a transfer, and the frame reaches it as a blit");
+
+        // **Opaque, and refused rather than substituted.** What the alpha of a presented frame
+        // means is the compositor's to decide, and the other modes decide it differently — a frame
+        // whose alpha this renderer never set would be blended by one of them against whatever
+        // stands behind the window. Every surface this fork has met offers opaque, so one that does
+        // not is a case to look at rather than to guess at.
+        if ((capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) == 0)
+            throw Unsupported("this surface offers no opaque composite alpha, and the frame carries no alpha to blend");
 
         const VkSwapchainCreateInfoKHR create{
             .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -242,5 +263,15 @@ namespace Rtx
 
         checkVk(mDevice, result, "vkQueuePresentKHR");
         return true;
+    }
+
+    bool Swapchain::surfaceIsHidden() const
+    {
+        VkSurfaceCapabilitiesKHR capabilities{};
+        checkVk(
+            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mDevice.getPhysicalDevice().getHandle(), mSurface, &capabilities),
+            "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+
+        return capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0;
     }
 }

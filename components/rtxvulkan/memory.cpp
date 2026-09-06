@@ -162,6 +162,8 @@ namespace Rtx
     {
         assert(requirements.size > 0);
 
+        const std::lock_guard<std::mutex> held(mLock);
+
         const std::uint32_t type = findType(requirements.memoryTypeBits, properties);
         const std::uint32_t pool = poolOf(type, tiling);
         const std::uint32_t pages = pagesFor(requirements.size, requirements.alignment);
@@ -242,6 +244,8 @@ namespace Rtx
 
     void MemoryAllocator::give(std::uint32_t block, Span run)
     {
+        const std::lock_guard<std::mutex> locked(mLock);
+
         Block& held = mBlocks[block];
         held.mRuns.release(run);
 
@@ -258,6 +262,8 @@ namespace Rtx
 
     MemoryReport MemoryAllocator::report() const
     {
+        const std::lock_guard<std::mutex> held(mLock);
+
         MemoryReport out;
         out.mHeapCount = std::min<std::uint32_t>(mMemory.memoryHeapCount, MemoryReport::sMaxHeaps);
 
@@ -323,6 +329,8 @@ namespace Rtx
 
     std::size_t MemoryAllocator::getBlockCount() const
     {
+        const std::lock_guard<std::mutex> held(mLock);
+
         return static_cast<std::size_t>(
             std::count_if(mBlocks.begin(), mBlocks.end(), [](const Block& block) { return block.mPages > 0; }));
     }

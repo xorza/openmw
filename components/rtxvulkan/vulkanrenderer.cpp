@@ -521,15 +521,15 @@ namespace Rtx
         // be its own round trip, and Balmora's are 367 of them.
         Batch setup(mPool);
 
+        // The world is traced by two frames at once and so keeps two copies of what a frame writes;
+        // a picture inside the interface is traced and waited for, and keeps one.
+        Graveyard& graveyard = mRing.recording().mGraveyard;
+
         // **The world's, because there is one sea and every scene traces it.** A doll and a map tile
         // carry a sea state of their own only because they take the same argument, and letting one
         // of those redraw the spectrum would put the interface's water under the world.
         if (slot == sWorld)
-            mWaves.describe(sea);
-
-        // The world is traced by two frames at once and so keeps two copies of what a frame writes;
-        // a picture inside the interface is traced and waited for, and keeps one.
-        Graveyard& graveyard = mRing.recording().mGraveyard;
+            mWaves.describe(sea, graveyard);
         const std::uint32_t slots = slot == sWorld ? sFrameSlots : 1;
 
         held.mAcceleration = std::make_unique<SceneAcceleration>(mDevice, setup, scene, slots);
@@ -742,7 +742,7 @@ namespace Rtx
 
         // Does nothing where the sea is the one already drawn for, which is every frame but the
         // first and any on which the weather turned the wind.
-        mWaves.describe(sea);
+        mWaves.describe(sea, frame.mGraveyard);
 
         // **The copy this placement writes is the one the last frame did not trace**, and whatever
         // frame last traced it is waited for here. Usually that frame has long since signalled —

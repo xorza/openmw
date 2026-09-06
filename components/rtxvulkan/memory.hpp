@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 #include <vulkan/vulkan_core.h>
@@ -106,10 +107,11 @@ namespace Rtx
     /// `bufferImageGranularity` page, which is the whole of that rule and costs at most one more
     /// block per type.
     ///
-    /// **Not thread-safe.** Everything on the frame path reaches this from the thread that records
-    /// it, and `report` is asked at a place rather than at a frame. `VisibilityPass::compileEvery`
-    /// is the exception and is a race: it builds a shader binding table per worker, so `take` is
-    /// reached from a thread per core.
+    /// **Locked, because one caller is not on the frame's thread.** `VisibilityPass::compileEvery`
+    /// compiles a pipeline per core and each builds a shader binding table, so `take` is reached
+    /// from a thread apiece — and a `std::vector` that reallocates under two of them is a race the
+    /// layers cannot see. Everything else here is the recording thread's, so the lock is
+    /// uncontended on the frame path and costs what an uncontended lock costs.
     class MemoryAllocator
     {
     public:
@@ -191,6 +193,9 @@ namespace Rtx
         ///
         /// Called by `DeviceMemory` and by nothing else.
         void give(std::uint32_t block, Span run);
+
+        /// Held by everything that touches the list below.
+        mutable std::mutex mLock;
 
         VkDevice mDevice = VK_NULL_HANDLE;
         VkPhysicalDevice mPhysicalDevice = VK_NULL_HANDLE;

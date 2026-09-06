@@ -141,6 +141,7 @@ namespace Rtx
                 Batch setup(pool);
                 positions.reserve(setup, vertices);
                 normals.reserve(setup, vertices);
+                setup.flush();
             }
             for (std::uint32_t slot = 0; slot < 2; ++slot)
             {

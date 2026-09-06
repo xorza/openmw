@@ -95,6 +95,9 @@ namespace Rtx
         VkCommandBuffer begin();
         void endAndWait(VkCommandBuffer commands);
 
+        /// Gives back a recording nobody will submit. `Batch::~Batch` says when that happens.
+        void discard(VkCommandBuffer commands);
+
         /// Submits every deferred batch and then `commands`, as one submit signalling `fence`.
         ///
         /// **In that order and in one call, which is the whole of what deferring is for.** Command
@@ -170,8 +173,16 @@ namespace Rtx
         {
         }
 
-        /// Flushes. Failing to submit is logged rather than thrown: a destructor cannot let one out,
-        /// and a caller that wants to handle it calls `flush` itself.
+        /// Throws away anything still recorded.
+        ///
+        /// **A destructor is not where a submit belongs.** It runs during unwinding too, and a
+        /// constructor that fails half way leaves a recording naming resources its own members have
+        /// already let go of: `Texture` records the upload of its primary image, the shading image's
+        /// allocation throws, and the image is destroyed before a submit here would carry the copy
+        /// that names it. So a batch that leaves without `flush` or `defer` submits nothing.
+        ///
+        /// **Unwinding is the case this exists for**, and a caller that simply forgot is a contract
+        /// broken — which is the one an assert names, because the other is not a mistake.
         ~Batch();
 
         Batch(const Batch&) = delete;

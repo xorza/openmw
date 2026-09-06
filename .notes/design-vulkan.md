@@ -264,10 +264,25 @@ forty-seven sites keep their reasons.
 The fog volume's ten images are left unbatched: they interleave a transition, a clear and a
 transition apiece, and the loop runs once when the volume is made rather than on a frame.
 
-**Stage 4 — ownership.** Explicit `Batch::submit`, `~Batch` discards, `Graveyard::replace` for the
-wave spectra, the device `catch` resets its children, the presenter frees its old command buffers,
-the swapchain refuses a zero extent and checks its two masks.
-*Two to three days.*
+**Stage 4 — ownership. Done.**
+
+- **The allocator is locked.** `VisibilityPass::compileEvery` compiles a pipeline per core and each
+  builds a shader binding table, so `take` was reached from a thread apiece against a `std::vector`
+  that reallocates. The lock is uncontended on the frame path.
+- **A batch submits nothing from its destructor.** It throws the recording away instead, which is
+  what a constructor that fails half way needs: `Texture` records its primary image's upload, the
+  shading image's allocation throws, and the image is gone before a submit would have carried the
+  copy that names it. Unwinding is the case that exists for, so only a caller that simply forgot is
+  asserted.
+- **A device that fails to finish construction resets its children by name**, before the device they
+  call into is destroyed.
+- **The wave spectra are buried rather than dropped**, so a weather that turns the wind does not free
+  a buffer the frame in flight is still synthesising from.
+- **The presenter frees its old command buffers** rather than resetting them, so a window resized a
+  few dozen times does not leave a few dozen sets in the pool.
+- **The swapchain asks the surface** whether it takes a transfer and which composite alpha it
+  offers, rather than assuming both, and never asks for an extent of zero. A minimised window is
+  left alone rather than rebuilt once a frame against a surface that will not take one.
 
 **Stage 5 — the remainder.** NGX capability parameters, pipeline-cache retention, present fences
 through `VK_EXT_swapchain_maintenance1`, BLAS compaction, frame ownership for the sprite tables.

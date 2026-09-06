@@ -1,8 +1,10 @@
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <components/rtxvulkan/buffer.hpp>
 #include <components/rtxvulkan/commands.hpp>
 #include <components/rtxvulkan/device.hpp>
 
@@ -55,6 +57,47 @@ namespace Rtx
             EXPECT_EQ(alone.mOffset, 0u);
             EXPECT_NE(after.mBuffer, alone.mBuffer) << "an upload landed in a block with no room for it";
             EXPECT_EQ(after.mOffset, 0u);
+
+            batch.flush();
+        }
+
+        /// A batch that leaves during unwinding submits nothing.
+        ///
+        /// **What a constructor that fails half way leaves behind.** `Texture` records the upload of
+        /// its primary image and then makes a second one; where that allocation throws, the image is
+        /// destroyed by the unwinding and a destructor that submitted would carry a copy naming a
+        /// handle that has gone. The recording goes back to the pool instead.
+        TEST_F(RtxBatchTest, aBatchAbandonedByAnExceptionSubmitsNothing)
+        {
+            const Buffer source = Buffer::staging(getDevice(), sizeof(std::uint32_t),
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+            *static_cast<std::uint32_t*>(source.map()) = 0x5eaf00d;
+
+            const Buffer target = Buffer::staging(getDevice(), sizeof(std::uint32_t),
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+            *static_cast<std::uint32_t*>(target.map()) = 0;
+
+            struct Abandoned
+            {
+            };
+
+            EXPECT_THROW(
+                {
+                    Batch batch(getPool());
+
+                    const VkBufferCopy whole{ .size = sizeof(std::uint32_t) };
+                    vkCmdCopyBuffer(batch.getCommands(), source.getHandle(), target.getHandle(), 1, &whole);
+
+                    throw Abandoned{};
+                },
+                Abandoned);
+
+            // The pool is asked for a submit of its own, so anything the batch had left behind would
+            // have run by the time this returns.
+            getPool().submitAndWait([](VkCommandBuffer) {});
+
+            EXPECT_EQ(*static_cast<const std::uint32_t*>(target.map()), 0u)
+                << "an abandoned batch's copy reached the device";
         }
     }
 }
