@@ -2,24 +2,24 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 #include <osg/BoundingBox>
 #include <osg/Matrixf>
 #include <osg/Vec2f>
 #include <osg/Vec3f>
-#include <osg/Vec4f>
 
-#include <components/surface/alphamode.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "deformertable.hpp"
 #include "index.hpp"
+#include "material.hpp"
+#include "materialtable.hpp"
 #include "meshinstance.hpp"
+#include "meshrange.hpp"
 #include "placementtable.hpp"
 #include "shaders/scene.h"
 #include "shaders/skinning.h"
@@ -31,318 +31,6 @@
 
 namespace Rtx
 {
-    /// How a mesh's vertices are re-posed every frame, where they are.
-    ///
-    /// **The kind names the kernel and the pose it takes.** A skinned body is posed by bone rows
-    /// through a rig, a morphed face by target weights through a morph, and a mesh that stands is
-    /// neither. The loader never makes a geometry both: `NifOsg` skips the morpher where a skin
-    /// exists.
-    enum class Deform : std::uint8_t
-    {
-        None,
-        Rig,
-        Morph,
-    };
-
-    /// Where one mesh's vertices and indices sit in the scene's shared buffers.
-    ///
-    /// The buffers are shared rather than per-mesh because a cell holds thousands of meshes and a
-    /// `vector` of `vector`s would pay an allocation for each one — and because the GPU wants one
-    /// buffer anyway, so a per-mesh vector would only have to be flattened again on the way up.
-    struct MeshRange
-    {
-        Index mVertexOffset = 0;
-        Index mVertexCount = 0;
-        Index mIndexOffset = 0;
-        Index mIndexCount = 0;
-
-        /// What the fold found this mesh's triangles to be. `Rtx::FoldedShape` says what each half
-        /// means; the scene keeps them and draws nothing from them.
-        FoldedShape mShape;
-
-        /// Whether this mesh is re-posed by `poseRig` or `poseMorph` — a skinned body, a morphed
-        /// face — which is what tells a backend to build its structure so it can be refitted rather
-        /// than built again, and which kernel poses it. The caller's finding, like `mShape`.
-        Deform mDeform = Deform::None;
-
-        /// The rig or the morph that poses it, into `getRigs` or `getMorphs`. `sNoIndex` for a mesh
-        /// that stands.
-        Index mDeformer = sNoIndex;
-
-        /// The material this mesh arrived wearing, or `sNoIndex` for one that arrived with none.
-        ///
-        /// **A mesh's, and not a placement's, because a static mesh wears one material by
-        /// construction.** `SceneUtil::CopyOp` copies nodes and shares drawables and state sets, so
-        /// a hundred crates are a hundred nodes over one drawable and one state set — the material
-        /// the extractor keys on is the same object under every placement. What a backend bakes
-        /// against the mask a mesh is worn with, it bakes against this; a placement wearing
-        /// another is `ExtractionStats::mWornOtherwise`, and the loader says there is none. The
-        /// caller's finding, like `mShape`.
-        Index mMaterial = sNoIndex;
-
-        /// Where this mesh's bind pose sits among the deforming meshes' vertices, which is what a
-        /// backend's bind table is indexed by. **A run of `mVertexCount` beside the mesh's own**,
-        /// allocated only for a mesh that deforms: the shared vertex buffers hold every mesh, and a
-        /// bind table that mirrored them would hold megabytes of the cell for a few bodies.
-        Index mBindOffset = 0;
-
-        /// Where this mesh's bone rows or morph weights start in `getBones` or `getWeights`. The
-        /// count is the rig's or the morph's.
-        Index mPoseOffset = 0;
-
-        /// Whether a pose has been written since the mesh arrived. The first pose names the mesh
-        /// whatever it is, so a body whose first pose happens to equal the zeroed rows still
-        /// reaches the device.
-        bool mPosed = false;
-
-        /// The box this mesh's vertices fit in, in the space they are stated in. Invalid where the
-        /// slot is free.
-        ///
-        /// **Written where the vertices are, and nowhere else.** A mesh's own extent is a fact about
-        /// its positions, so it is taken once as they arrive — and for a mesh that deforms, taken
-        /// again from what the caller says the pose reaches, because the posed vertices are on the
-        /// device and nowhere else. That is what lets a question about where a scene reaches be
-        /// eight transforms per instance rather than a walk over every vertex in the table.
-        osg::BoundingBoxf mBounds;
-
-        Index getTriangleCount() const { return mIndexCount / 3; }
-    };
-
-    /// What skins one bind pose: a run word per vertex and the influences the runs name, laid in the
-    /// scene's shared tables. `Shaders::GpuInfluence` says what a run is.
-    ///
-    /// **Shared by every mesh built from one skin**, because that is what the content shares:
-    /// `SceneUtil::RigGeometry` copies keep one `InfluenceData` between them, and a body part worn by
-    /// a hundred people is one rig here and a hundred meshes. A rig outlives its last mesh by one
-    /// sweep and goes with it.
-    struct Rig
-    {
-        Index mRunOffset = 0;
-        Index mInfluenceOffset = 0;
-        Index mInfluenceCount = 0;
-
-        /// Rows one pose of this rig takes, which is what every mesh on it is given.
-        Index mBoneCount = 0;
-
-        /// Vertices this rig skins, which every mesh on it must have exactly.
-        Index mVertexCount = 0;
-
-        /// How many meshes stand on it. Nought is a free slot.
-        Index mUses = 0;
-    };
-
-    /// What morphs one base: every target's offsets laid end to end, target by target, in the
-    /// scene's shared table. A pose is one weight per target.
-    struct Morph
-    {
-        Index mOffsetsAt = 0;
-        Index mTargetCount = 0;
-        Index mVertexCount = 0;
-
-        /// How many meshes stand on it. Nought is a free slot.
-        Index mUses = 0;
-    };
-
-    /// What shading a hit takes, which is not a variation on one path but three different ones.
-    enum class MaterialKind
-    {
-        /// One diffuse texture over a lit surface, which is nearly everything in the game.
-        Surface,
-
-        /// A stack of tiling ground textures, each masked by its own grid of weights.
-        Terrain,
-
-        /// Water, which has no albedo at all: it reflects, refracts and absorbs, and its colour is
-        /// what is behind and above it rather than anything of its own.
-        Water,
-    };
-
-    /// How a surface is shaded, as recovered from the model.
-    ///
-    /// Vanilla textures are pre-lit, so `mDiffuse` is not an albedo yet; recovering one is M9. What
-    /// is here is what the file says.
-    struct Material
-    {
-        MaterialKind mKind = MaterialKind::Surface;
-
-        Index mDiffuse = sNoIndex;
-        Index mNormal = sNoIndex;
-        Index mEmissive = sNoIndex;
-
-        osg::Vec4f mDiffuseColour{ 1.0f, 1.0f, 1.0f, 1.0f };
-
-        /// How much the surface glows on its own, with the material's own multiplier folded in.
-        ///
-        /// The multiplier is not kept apart because nothing wants it apart: the game's own shader
-        /// only ever uses their product, and carrying two numbers would be carrying one of them for
-        /// the sake of it.
-        osg::Vec3f mEmissiveColour{ 0.0f, 0.0f, 0.0f };
-
-        float mAlphaRef = 0.0f;
-
-        Surface::AlphaMode mAlphaMode = Surface::AlphaMode::Opaque;
-
-        /// Sheet geometry lit and hit from both faces. Morrowind leans on this heavily and a ray
-        /// tracer has to be told, because back-face culling is not free the way a rasterizer's is.
-        bool mTwoSided = false;
-
-        /// Mesh texture coordinates to this material's, as `uv * xy + zw` — the same form the
-        /// terrain layers use, so one sampler helper serves both.
-        ///
-        /// **A surface whose shading animates by scrolling.** Morrowind moves lava, waterfalls,
-        /// banners and smoke by rewriting a texture matrix rather than by moving geometry, and
-        /// `NifOsg::UVController` rewrites it every frame — 432 surfaces in Vivec alone. Held on the
-        /// material rather than the instance because that is what changes: the same mesh under two
-        /// controllers is two materials and one geometry, and `setMaterial` is built for shading
-        /// that moves.
-        osg::Vec4f mTextureTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
-
-        /// Where this material's terrain layers sit in the scene's layer table.
-        ///
-        /// Empty for everything that is not terrain, which is all but a handful of materials in a
-        /// cell — so the layered path costs the rest of them one comparison and no indirection.
-        Index mLayerOffset = 0;
-        Index mLayerCount = 0;
-
-        /// Whether this chunk is wide enough that its stack is worth flattening into one texture.
-        ///
-        /// **Asked for here and answered later, which is the whole of why it is a flag.** A
-        /// composite costs tens of milliseconds and a cell boundary wants several, so the bake
-        /// cannot be done by the walk that meets the chunk. Until one arrives `mDiffuse` stays
-        /// unset and the chunk shades from the stack below — the branch the shader already takes for
-        /// every near chunk — so the picture is right throughout and only the cost per hit differs.
-        bool mFlatten = false;
-
-        /// Whether a controller rewrites this material's state set every frame, so what it says
-        /// now is not what it will say next frame.
-        ///
-        /// **Constant for the material's whole life**, because it is a fact about the state set the
-        /// material is keyed on: `SceneExtractor::animate` gives a node with a controller a state
-        /// set of its own, and every material read off that state set is read off it again each
-        /// frame. A backend bakes nothing against a mask that scrolls — the bake is against what
-        /// the texture coordinates land on, and a `UVController` moves that every frame — so this
-        /// is what refuses one. `MeshRange::mMaterial` says why a mesh has one material to ask.
-        bool mAnimated = false;
-
-        /// Whether the diffuse map's alpha never reaches solid anywhere on it — `reachesSolid`.
-        ///
-        /// **A fact about the texture, kept on the material because the material is what asks.**
-        /// It is what separates a cloud from a pane among surfaces that carry the same alpha mode
-        /// and the same kind of alpha, and it is measured once for an image however many materials
-        /// name it.
-        ///
-        /// False for a material with no diffuse map at all, which is an untextured pane: all glass,
-        /// no paint, and a surface wherever it stands.
-        bool mDiffuseNeverSolid = false;
-
-        /// Two materials are the same when every field is.
-        ///
-        /// **For telling a rewrite from a no-op.** A state set with a controller on it is re-read
-        /// every frame and usually says exactly what it said last time; treating that as a change
-        /// would write the row to the device for nothing.
-        bool operator==(const Material& other) const = default;
-
-        /// The alpha below which a texel is a hole, or zero where the surface has none.
-        ///
-        /// A blended material that never asked for a test gets a stand-in, because that is where
-        /// the game keeps its foliage. Right for a leaf and wrong for a pane of glass, until
-        /// ordered transparency gives the second one somewhere else to go.
-        float getAlphaCutoff() const;
-
-        /// Whether traversal has to stop and ask this material whether a hit is a hole.
-        ///
-        /// The one predicate: the build marks an instance non-opaque by this and the shader tests
-        /// against the same cutoff, so the two cannot disagree about which triangles reach the
-        /// candidate loop. A cutoff with no texture to sample is not one — the mask lives in the
-        /// diffuse map's alpha and there is nothing else to read.
-        bool isCutout() const { return getAlphaCutoff() > 0.0f && mDiffuse != sNoIndex; }
-
-        /// Whether what is behind this surface is meant to show through it.
-        ///
-        /// **`Surface::AlphaMode::Blend` alone does not say so, and this is the whole difficulty.** Morrowind
-        /// keeps its foliage under `NiAlphaProperty`, so a leaf card and a pane of glass carry the
-        /// same mode: the leaf is fully opaque where its painted mask is opaque, and the pane is
-        /// translucent everywhere. What tells them apart is the *material's* own alpha, which
-        /// `NiMaterialProperty` records and `NifOsg::AlphaController` animates.
-        ///
-        /// Told apart because the two want opposite answers from traversal. A mask averaged over the
-        /// ray cone and tested is right for the leaf and wrong for the pane; light attenuated as it
-        /// passes is right for the pane and turns the leaf to gauze.
-        ///
-        /// **Not the opposite of `isCutout`, and a pane is both.** `getAlphaCutoff` hands a blended
-        /// material a stand-in threshold, so the build marks a pane non-opaque and traversal stops
-        /// for it — which is what a transmittance needs anyway. A reader deciding what to do with a
-        /// candidate asks this one first.
-        bool isTranslucent() const { return mAlphaMode == Surface::AlphaMode::Blend && mDiffuseColour.a() < 1.0f; }
-
-        /// Whether the eye passes through this rather than meeting it: a medium, not a surface.
-        ///
-        /// **Two facts, and neither alone.** The material's own alpha says the content meant to be
-        /// seen through it everywhere, which a leaf's does not. The texture says the paint never
-        /// closes anywhere on it, which a pane's lead came does. Where both hold there is nothing
-        /// for a ray to stop on, and the layers are composited as depth along it — `mediumAlong`.
-        bool isMedium() const { return isTranslucent() && mDiffuseNeverSolid; }
-
-        /// What a placement's row tells traversal about the material it wears.
-        ///
-        /// **Stated once, because two things read it.** The record builder puts these three answers
-        /// into the acceleration structure's row, and `setMaterial` has to know whether a rewrite
-        /// changed any of them — a fade crossing opaque does, a flipbook turning does not — so the
-        /// placements wearing the material can be rewritten. Two lists of the same three fields
-        /// would drift.
-        struct Traversed
-        {
-            MaterialKind mKind = MaterialKind::Surface;
-            bool mCutout = false;
-            bool mTranslucent = false;
-
-            /// Whether the placements wearing this material go into the structure under
-            /// `MASK_MEDIUM` as well, which is the one ray that gathers them.
-            bool mMedium = false;
-
-            bool operator==(const Traversed& other) const = default;
-        };
-
-        Traversed getTraversed() const
-        {
-            return Traversed{
-                .mKind = mKind, .mCutout = isCutout(), .mTranslucent = isTranslucent(), .mMedium = isMedium()
-            };
-        }
-    };
-
-    /// One layer of a terrain material: a ground texture and the weights that place it.
-    ///
-    /// Morrowind's ground is a stack of tiling textures, each masked by a small grid of weights that
-    /// `ESMTerrain` derives from the land records — and OpenMW draws that stack as one alpha-blended
-    /// pass per layer over the same triangles. A ray tracer has one hit and shades it once, so the
-    /// stack is read back into layers and summed at the hit instead.
-    struct MaterialLayer
-    {
-        /// The ground texture, which tiles many times across a chunk.
-        Index mDiffuse = sNoIndex;
-
-        /// Where this layer's weights begin in the scene's mask table, and the grid they form.
-        ///
-        /// A zero-sized grid means the layer covers everything: a chunk of a single ground type is
-        /// given no mask at all, because there is nothing for it to blend against.
-        Index mMaskOffset = 0;
-        std::uint16_t mMaskWidth = 0;
-        std::uint16_t mMaskHeight = 0;
-
-        /// Chunk texture coordinates to this layer's, as `uv * xy + zw`.
-        ///
-        /// Read off the texture matrices the terrain builder attached rather than recomputed: the
-        /// mask's carries a half-texel inset and a nudge that exist to match the original game, and
-        /// deriving them again from the tile size is how the two quietly stop agreeing.
-        osg::Vec4f mDiffuseTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
-        osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
-
-        /// Two layers are the same when every field is, which is what says a chunk still stands
-        /// where a bake of it began.
-        bool operator==(const MaterialLayer& other) const = default;
-    };
-
     /// One point light, placed in the world.
     ///
     /// Everything here is derived rather than read. A `LIGH` record carries a colour and a radius
@@ -710,7 +398,8 @@ namespace Rtx
         /// Layers and masks have no keep set either: they belong to the material that owns them, so
         /// a freed material hands both runs back to their allocators on its way out. A terrain
         /// chunk's masks are tens of kilobytes and a player can cross the whole continent through
-        /// one `SceneDesc`, so leaving them until `clear` was a session-long growth.
+        /// one `SceneDesc`, so leaving them to the sweep that eventually drops the material was a
+        /// session-long growth.
         ///
         /// **Placements do not go**, and they no longer have to be carried anywhere either: a slot
         /// is a name, and what it names has stopped moving.
@@ -735,8 +424,8 @@ namespace Rtx
         /// **Every span below is into a table that grows, and lives until the table does.** A span
         /// is valid until the next `add` into its table — `addMesh` grows the geometry and the mesh
         /// table, `addEmitter` the sprites and the emitters, and each of the others the table it
-        /// names — and until `clear` or `clearPlacement`, which empty them. Take it after the add
-        /// and never in the same expression as one: `getMeshes()[addMesh(...)]` sequences the span
+        /// names — and until `clearPlacement`, which empties the per-frame ones. Take it after the
+        /// add and never in the same expression as one: `getMeshes()[addMesh(...)]` sequences the span
         /// before the add, and indexes a table that has moved.
         ///
         /// **A row read out of one by reference has the same lifetime as the span it came from**,
@@ -759,18 +448,18 @@ namespace Rtx
 
         /// Every rig slot, live or free — `Rig::mUses` tells them apart — and the two tables the rigs
         /// index.
-        std::span<const Rig> getRigs() const { return mRigs; }
-        std::span<const std::uint32_t> getRuns() const { return mRuns; }
-        std::span<const Shaders::GpuInfluence> getInfluences() const { return mInfluences; }
+        std::span<const Rig> getRigs() const { return mDeformers.getRigs(); }
+        std::span<const std::uint32_t> getRuns() const { return mDeformers.getRuns(); }
+        std::span<const Shaders::GpuInfluence> getInfluences() const { return mDeformers.getInfluences(); }
 
         /// The same for the morphs.
-        std::span<const Morph> getMorphs() const { return mMorphs; }
-        std::span<const osg::Vec3f> getMorphOffsets() const { return mMorphOffsets; }
+        std::span<const Morph> getMorphs() const { return mDeformers.getMorphs(); }
+        std::span<const osg::Vec3f> getMorphOffsets() const { return mDeformers.getMorphOffsets(); }
 
         /// Every deforming mesh's pose, laid end to end: a run of rows per skinned mesh, and a run
         /// of weights per morphed one. `MeshRange::mPoseOffset` says where each starts.
-        std::span<const Shaders::GpuBone> getBones() const { return mBones; }
-        std::span<const float> getWeights() const { return mWeights; }
+        std::span<const Shaders::GpuBone> getBones() const { return mDeformers.getBones(); }
+        std::span<const float> getWeights() const { return mDeformers.getWeights(); }
 
         /// One mesh's pose, for a backend writing that mesh's rows or a test reading them back.
         std::span<const Shaders::GpuBone> getMeshBones(Index mesh) const;
@@ -778,13 +467,13 @@ namespace Rtx
 
         /// How many vertices the deforming meshes' bind poses take between them, which is how long
         /// a backend's bind table has to be. `MeshRange::mBindOffset` says where each mesh's run is.
-        Index getBindVertexCount() const { return mBindRuns.getEnd(); }
+        Index getBindVertexCount() const { return mDeformers.getBindVertexCount(); }
 
         /// Which rig and morph slots have been written since the last `clearArrivals`, for a
         /// backend to upload. A freed slot is named by nothing: nothing reads it until the next
         /// arrival lands in it, and that arrival names it.
-        std::span<const Index> getArrivedRigs() const { return mArrivedRigs; }
-        std::span<const Index> getArrivedMorphs() const { return mArrivedMorphs; }
+        std::span<const Index> getArrivedRigs() const { return mDeformers.getArrivedRigs(); }
+        std::span<const Index> getArrivedMorphs() const { return mDeformers.getArrivedMorphs(); }
         /// Every slot, standing or empty, in slot order. `MeshInstance::isPlaced` tells them apart.
         std::span<const MeshInstance> getInstances() const { return mPlacements.getAll(); }
 
@@ -810,8 +499,8 @@ namespace Rtx
         /// after the move — which is a frame on which the slot did not move. Without this list a
         /// backend writing only `getMoved` would leave last frame's motion in the row for ever.
         std::span<const Index> getSettled() const { return mPlacements.getSettled(); }
-        std::span<const Material> getMaterials() const { return mMaterials; }
-        std::span<const MaterialLayer> getLayers() const { return mLayers; }
+        std::span<const Material> getMaterials() const { return mMaterialTable.getRows(); }
+        std::span<const MaterialLayer> getLayers() const { return mMaterialTable.getLayers(); }
         std::span<const Light> getLights() const { return mLights; }
 
         /// Puts the lights in an order that depends on the lights and not on the walk that found
@@ -837,7 +526,7 @@ namespace Rtx
         /// arrived, which is exactly what walking across a boundary does — and it misses a freed
         /// slot taken over by something else entirely, which is what one does now. Bumped by a mesh
         /// or a texture appearing, whether at the end of the table or into a slot something else
-        /// left, and by `clear`; never by a placement, which is rewritten every frame anyway.
+        /// left; never by a placement, which is rewritten every frame anyway.
         std::uint64_t getStructureRevision() const { return mStructureRevision + mTextures.getRevision(); }
 
         /// Forgets what has arrived and what has gone, for a caller that has applied both.
@@ -887,7 +576,7 @@ namespace Rtx
         /// every layer and every mask copied to the device — megabytes, every frame a flipbook
         /// turned, to change eighty bytes. A material the sweep freed is not here: nothing stands on
         /// it, so its row is never read and need not be written.
-        std::span<const Index> getWrittenMaterials() const { return mWrittenMaterials.getSlots(); }
+        std::span<const Index> getWrittenMaterials() const { return mMaterialTable.getWritten(); }
 
         /// The runs `addLayers` placed since the last `clearArrivals`, and the same for `addMask`.
         ///
@@ -895,12 +584,12 @@ namespace Rtx
         /// arriving writes its own layers and its own weights, and the rest of both tables is what
         /// it was. A run the sweep gave back is not named here either — nothing reads it until the
         /// next chunk lands in it, and that chunk's arrival is what names it.
-        std::span<const Span> getArrivedLayers() const { return mArrivedLayers; }
-        std::span<const Span> getArrivedMasks() const { return mArrivedMasks; }
+        std::span<const Span> getArrivedLayers() const { return mMaterialTable.getArrivedLayers(); }
+        std::span<const Span> getArrivedMasks() const { return mMaterialTable.getArrivedMasks(); }
 
         std::span<const Sprite> getSprites() const { return mSprites; }
         std::span<const SpriteEmitter> getEmitters() const { return mEmitters; }
-        std::span<const float> getMasks() const { return mMasks; }
+        std::span<const float> getMasks() const { return mMaterialTable.getMasks(); }
         /// The file each slot was read from, empty where it was not read from one.
         std::span<const VFS::Path::Normalized> getTextures() const { return mTextures.getPaths(); }
 
@@ -958,25 +647,10 @@ namespace Rtx
         /// placement.
         SlotSet mDeformed;
 
-        /// What poses the deforming meshes, and the poses themselves. `Rig` and `Morph` say what
-        /// each table holds; the runs behind them are handed out by the allocators below and given
-        /// back when the last mesh on a rig or a morph goes.
-        std::vector<Rig> mRigs;
-        std::vector<std::uint32_t> mRuns;
-        std::vector<Shaders::GpuInfluence> mInfluences;
-        std::vector<Morph> mMorphs;
-        std::vector<osg::Vec3f> mMorphOffsets;
-        std::vector<Shaders::GpuBone> mBones;
-        std::vector<float> mWeights;
-
-        std::vector<Index> mFreeRigs;
-        std::vector<Index> mFreeMorphs;
-        std::vector<Index> mArrivedRigs;
-        std::vector<Index> mArrivedMorphs;
-
-        /// Gives a deforming mesh's runs back: its bind run, its pose run, and its rig's or morph's
-        /// where this was the last mesh standing on it.
-        void releaseDeformer(MeshRange& range);
+        /// What poses the deforming meshes, and the poses themselves. Its own type, for the reason
+        /// the two tables below are: a rig, the meshes counted on it and the runs behind both are
+        /// one invariant.
+        DeformerTable mDeformers;
 
         /// What a pose that changed does beside its rows: the reach, and the mesh named for the
         /// frame, once.
@@ -986,17 +660,22 @@ namespace Rtx
         /// because slots that are never moved, a free list and two change lists are one invariant.
         PlacementTable mPlacements;
 
-        std::vector<Material> mMaterials;
-        std::vector<MaterialLayer> mLayers;
         std::vector<Light> mLights;
         std::vector<Sprite> mSprites;
         std::vector<SpriteEmitter> mEmitters;
-        std::vector<float> mMasks;
 
         /// Every texture the scene names, and what still names each. Its own type, because a
         /// reference-counted table with a free list and two lookups into it is a thing with an
         /// invariant rather than a set of parallel vectors.
+        ///
+        /// **Before the materials, which borrow it.** A material names texture slots and gives them
+        /// back as it is rewritten and as it is swept, and the count is this table's.
         TextureTable mTextures;
+
+        /// The materials, their terrain layers and the weights those place. Its own type, for the
+        /// reason the two above are: a row, the runs it names and what those name are one
+        /// invariant rather than ten members held in step by hand.
+        MaterialTable mMaterialTable{ mTextures };
 
         /// **The share of the structure revision this counts, and not the whole of it.** The rest
         /// belongs to `TextureTable`, which takes its own slots — `getStructureRevision` adds the
@@ -1010,50 +689,31 @@ namespace Rtx
             std::span<const osg::Vec3f> normals, std::span<const osg::Vec2f> texCoords,
             std::span<const std::uint32_t> indices);
 
-        /// Slots nothing stands in. **Any of them will do**, whichever table it is: a slot is one
-        /// row and every row is the same size, and what varies is the run of geometry, layers or
-        /// weights behind it — which `mVertexRuns` and the rest hand out separately. Taken from the
-        /// back, because there is no fit to find.
+        /// Mesh slots nothing stands in. `takeSlot` says how one is handed out.
         ///
-        /// **A list and not a hole map**, because what goes on them is what one departing ring left
-        /// — tens of entries, not the table. Nothing is ever moved, so a slot that is taken over
+        /// **A list and not a hole map**, because what goes on it is what one departing ring left —
+        /// tens of entries, not the table. Nothing is ever moved, so a slot that is taken over
         /// keeps its index and every placement standing on it stays where it is.
         std::vector<Index> mFreeMeshes;
-        std::vector<Index> mFreeMaterials;
 
-        /// Which slots a sweep was told to keep, one flag per row of the table beside it.
+        /// Which mesh slots a sweep must not free, one flag per row.
         ///
-        /// **Held rather than made, because a sweep runs on the frame a cell left** — the frame that
-        /// is already giving thousands of runs back to the allocators, and the last one that should
-        /// also be sizing two buffers to the whole table. Refilled by `release` and read by nobody
-        /// else.
+        /// **Held rather than made, because a sweep runs on the frame a cell left** — the frame
+        /// that is already giving thousands of runs back to the allocators, and the last one that
+        /// should also be sizing a buffer to the whole table. Refilled by `release` and read by
+        /// nobody else.
         std::vector<std::uint8_t> mKeptMeshes;
-        std::vector<std::uint8_t> mKeptMaterials;
 
-        /// Where a mesh's vertices and indices, a material's layers and a layer's weights live.
+        /// Where a mesh's vertices and its indices live.
         ///
-        /// **Runs and not slots**, which is why these are allocators and the three lists above are
-        /// not: a material is one material's worth of room and a mesh slot is one row of a table,
-        /// but the geometry behind a mesh is as long as the model, a terrain chunk's layer run is as
-        /// long as the ground types under it, and its masks are as big as the blend maps. A list of
-        /// slots cannot give a variable length back.
+        /// **Runs and not slots**, which is why these are allocators and `mFreeMeshes` is not: a
+        /// mesh slot is one row of a table, but the geometry behind it is as long as the model. A
+        /// list of slots cannot give a variable length back.
         ///
         /// One for the vertices because the position, normal and texture-coordinate buffers are
         /// parallel and a vertex id indexes all three.
         SpanAllocator mVertexRuns{ sVertexBlock };
         SpanAllocator mIndexRuns{ sIndexBlock };
-        SpanAllocator mLayerRuns;
-        SpanAllocator mMaskRuns;
-
-        /// The deforming meshes' bind poses and their bone rows and weights, and the rigs' and the
-        /// morphs' own runs. Unblocked: a backend reaches each run by an address it is handed per
-        /// dispatch, so nothing here has to keep an address across a growth.
-        SpanAllocator mBindRuns;
-        SpanAllocator mBoneRuns;
-        SpanAllocator mWeightRuns;
-        SpanAllocator mRigRuns;
-        SpanAllocator mInfluenceRuns;
-        SpanAllocator mMorphRuns;
 
         /// Calls `visit(instance, worldBox)` for every placement, which is what both extents walk.
         template <class Visit>
@@ -1062,42 +722,7 @@ namespace Rtx
         /// Records `slot` as having arrived or gone, and grows the list to reach it.
         void noteMesh(Index slot, SlotNews what);
 
-        /// Records that `slot`'s row was written, once however many times it is.
-        void noteMaterial(Index slot);
-
-        /// Every texture slot `material` names — its three roles, and every layer of its run.
-        ///
-        /// **One walk, because taking and giving back are the same four steps with one call
-        /// swapped.** A role added to one of that pair and forgotten in the other frees a slot
-        /// something still stands on, or holds one nothing gives back.
-        ///
-        /// The layer run is already in the layer table: a caller builds its layers, places them
-        /// with `addLayers` and then hands over a material naming where they landed.
-        template <class Visit>
-        void forEachMaterialTexture(const Material& material, Visit visit) const
-        {
-            visit(material.mDiffuse);
-            visit(material.mNormal);
-            visit(material.mEmissive);
-
-            for (Index at = 0; at < material.mLayerCount; ++at)
-                visit(mLayers[material.mLayerOffset + at].mDiffuse);
-        }
-
-        /// Takes and gives back those slots. Only ever called in that pair, and `setMaterial` is
-        /// why the order between them matters.
-        void holdMaterialTextures(const Material& material);
-        void dropMaterialTextures(const Material& material);
-
         /// Which mesh slots arrived and which were freed, since a backend last read them.
         SlotChanges mMeshChanges;
-
-        /// Material rows written since the last `clearArrivals` — a flipbook that is added and then
-        /// rewritten on one frame is one row, not two.
-        SlotSet mWrittenMaterials;
-
-        /// Runs placed in the layer and mask tables since the last `clearArrivals`.
-        std::vector<Span> mArrivedLayers;
-        std::vector<Span> mArrivedMasks;
     };
 }

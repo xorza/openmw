@@ -24,6 +24,8 @@ set(RTX_FILES
     colourblock.hpp
     compositequeue.cpp
     compositequeue.hpp
+    deformertable.cpp
+    deformertable.hpp
     distantland.cpp
     distantland.hpp
     distantlights.cpp
@@ -52,13 +54,18 @@ set(RTX_FILES
     lightbuilder.hpp
     lightgrid.cpp
     lightgrid.hpp
+    material.cpp
+    material.hpp
+    materialresolver.cpp
+    materialresolver.hpp
+    materialtable.cpp
+    materialtable.hpp
     meantexel.cpp
     meantexel.hpp
     memoryreport.cpp
     memoryreport.hpp
     meshinstance.hpp
-    materialresolver.cpp
-    materialresolver.hpp
+    meshrange.hpp
     meshresolver.cpp
     meshresolver.hpp
     mipchain.cpp
@@ -118,6 +125,7 @@ set(RTX_FILES
     terraincomposite.hpp
     terrainresidency.cpp
     terrainresidency.hpp
+    slotrows.hpp
     texelreader.cpp
     texelreader.hpp
     texturebuilder.cpp

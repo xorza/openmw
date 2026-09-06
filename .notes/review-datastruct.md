@@ -13,30 +13,19 @@ of scope. No measurements were taken.
 
 ---
 
-## `SceneDesc` holds four tables that share nothing but the class
+## `SceneDesc` still holds the mesh table loose
 
-`scenedesc.hpp` is 1151 lines. The class carries about forty members. Two of its tables already have
-types of their own — `PlacementTable` and `TextureTable` — and each says in its own header why a
-table, its free list and its change lists are one invariant. The rest of the tables have not been
-given the same treatment, so their free lists, keep sets, span allocators and arrival lists sit
-loose in one class beside each other.
+`scenedesc.hpp` is 736 lines. `PlacementTable`, `TextureTable`, `MaterialTable` and `DeformerTable`
+each say in their own header why a table, its free list and its change lists are one invariant. The
+meshes have not been given the same treatment, so their free list, keep set, span allocators and
+arrival list sit loose in the class.
 
-- [ ] **Give the mesh table its own type.** It is `mPositions`, `mNormals`, `mTexCoords`, `mIndices`,
-      `mMeshes`, `mFreeMeshes`, `mKeptMeshes`, `mMeshChanges`, `mVertexRuns`, `mIndexRuns` and
-      `mMeshRevision`. Eleven members and one invariant.
-
-- [ ] **Give the deformer tables their own type.** It is `mRigs`, `mRuns`, `mInfluences`, `mMorphs`,
-      `mMorphOffsets`, `mBones`, `mWeights`, `mFreeRigs`, `mFreeMorphs`, `mArrivedRigs`,
-      `mArrivedMorphs`, `mDeformed`, `mBindRuns`, `mBoneRuns`, `mWeightRuns`, `mRigRuns`,
-      `mInfluenceRuns` and `mMorphRuns`. Eighteen members, and `releaseDeformer` and `notePosed` are
-      already its private methods.
-
-- [ ] **Give the material table its own type.** It is `mMaterials`, `mLayers`, `mMasks`,
-      `mFreeMaterials`, `mKeptMaterials`, `mWrittenMaterials`, `mArrivedLayers`, `mArrivedMasks`,
-      `mLayerRuns` and `mMaskRuns`. `holdMaterialTextures`, `dropMaterialTextures`,
-      `forEachMaterialTexture` and `noteMaterial` go with it.
-
----
+- [ ] **Give the mesh table its own type.** It is `mPositions`, `mNormals`, `mTexCoords`,
+      `mIndices`, `mMeshes`, `mFreeMeshes`, `mKeptMeshes`, `mMeshChanges`, `mVertexRuns`,
+      `mIndexRuns`, `mMeshRevision` and `mDeformed`, with `writeMesh`, `noteMesh` and `notePosed`.
+      `MeshRange` already has its own header. What holds it back is that a mesh's arrival stands its
+      deformer and its sweep releases one, so the type would borrow a `DeformerTable&` the way
+      `MaterialTable` borrows a `TextureTable&`.
 
 ## A second host that no longer exists
 
