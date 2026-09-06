@@ -278,6 +278,7 @@ namespace Rtx
                 // Named rather than tallied, because a count says a texture is grey and nothing
                 // about which one. On the frame a cell arrives, which is a load and not a frame
                 // path.
+                //
                 // **Whichever of the two named the slot**, or a composite that could not be
                 // flattened reports itself as a file with no name — the one thing that would not
                 // help in finding it.

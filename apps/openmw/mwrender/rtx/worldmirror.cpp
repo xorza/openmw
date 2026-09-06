@@ -106,10 +106,6 @@ namespace MWRender
                     .mStarsFallback = Settings::models().mSkynight01 });
         }
 
-        // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror and
-        // the precipitation subtree below is part of it. The harness times the same stretch, which
-        // is what lets the two rows be read against each other.
-
         // **What the weather drops, walked as a second root**, which `Rtx::mirrorPrecipitation`
         // is the whole of: the sky's own mask keeps the world walk out of that subtree entirely,
         // and it is right that it does — a cloud deck is a texture on a ray that reached nothing,

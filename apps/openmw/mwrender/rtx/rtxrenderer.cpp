@@ -703,6 +703,7 @@ namespace MWRender
         // upscaler, which jitters whatever it is told, is handed the same sub-pixel offset every
         // frame and reconstructs from one sample taken repeatedly. The harness had exactly this, and
         // it cost a picture that looked plausible and carried none of the detail it was paying for.
+        //
         // **The stop's own count where a run is being made, and the game's frame number
         // otherwise.** `Session::getSampleFrame` says why: a measured run has to walk the same
         // sequence twice, and a game's frame number carries the loading screen's frames with it.
@@ -722,6 +723,7 @@ namespace MWRender
         // it is what a reference and a pixel test want, and the default is theirs. Without this an
         // interior lit by nothing but this placeholder's ambient reaches the screen at a few
         // hundredths and reads as black.
+        //
         // **The hour is held back only outdoors, because the bias is the hour's and an interior has
         // no hour.** A cell's `AMBI` is dark by the same measure a midnight is, and holding a room
         // back by two stops is not what an eye walking into one does — it adapts to the room.

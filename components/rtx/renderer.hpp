@@ -432,7 +432,6 @@ namespace Rtx
         std::optional<float> mExposure = 1.0f;
     };
 
-    /// What one traced frame came to.
     /// One stretch of a frame, measured by the device's own clock.
     ///
     /// **What a wall clock around a submit cannot tell you.** A frame is a handful of dispatches and
@@ -447,10 +446,12 @@ namespace Rtx
         double mMs = 0.0;
     };
 
+    /// What one traced frame came to.
     struct FrameResult
     {
         /// Primary rays that hit something, which is what tells "the cell rendered" from "the camera
         /// faced away from it" without anyone opening the image.
+        ///
         /// **Nought where `RendererOptions::mCountHits` was cleared**, which the game does and
         /// nothing else should: the trace is then specialized without the atomic entirely.
         std::uint32_t mHits = 0;

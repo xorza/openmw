@@ -435,8 +435,6 @@ namespace Rtx
         osg::Vec3f mDiscColour{ 1.0f, 1.0f, 1.0f };
     };
 
-    /// One mesh placed in the world: a row of the top-level acceleration structure.
-    ///
     /// One live particle, drawn as a disc facing the eye.
     ///
     /// **A particle system carries no triangles at all** — the sprites are the whole of the drawing —
@@ -1038,9 +1036,6 @@ namespace Rtx
         /// frame, once.
         void notePosed(Index mesh, const osg::BoundingBoxf& bounds);
 
-        // Slot-addressed and parallel: the placement, and where it stood before the last advance.
-        // Two flat arrays rather than one struct, because the previous transform is read only for
-        // what moved and a frame walks the placements for other reasons.
         /// Where everything stands and which rows a backend has to write again. Its own type,
         /// because slots that are never moved, a free list and two change lists are one invariant.
         PlacementTable mPlacements;
@@ -1125,9 +1120,27 @@ namespace Rtx
         /// Records that `slot`'s row was written, once however many times it is.
         void noteMaterial(Index slot);
 
-        /// Takes and gives back the textures a material names — its three roles and every layer's.
+        /// Every texture slot `material` names — its three roles, and every layer of its run.
         ///
-        /// Only ever called in that pair, and `setMaterial` is why the order between them matters.
+        /// **One walk, because taking and giving back are the same four steps with one call
+        /// swapped.** A role added to one of that pair and forgotten in the other frees a slot
+        /// something still stands on, or holds one nothing gives back.
+        ///
+        /// The layer run is already in the layer table: a caller builds its layers, places them
+        /// with `addLayers` and then hands over a material naming where they landed.
+        template <class Visit>
+        void forEachMaterialTexture(const Material& material, Visit visit) const
+        {
+            visit(material.mDiffuse);
+            visit(material.mNormal);
+            visit(material.mEmissive);
+
+            for (Index at = 0; at < material.mLayerCount; ++at)
+                visit(mLayers[material.mLayerOffset + at].mDiffuse);
+        }
+
+        /// Takes and gives back those slots. Only ever called in that pair, and `setMaterial` is
+        /// why the order between them matters.
         void holdMaterialTextures(const Material& material);
         void dropMaterialTextures(const Material& material);
 

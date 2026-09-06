@@ -48,6 +48,8 @@ namespace SceneUtil
 
 namespace MWRender
 {
+    class TracedView;
+
     /// The picture as rays find it: a window, a mirror of the scene graph, and a trace.
     ///
     /// **It names no graphics API.** Which one traces is settled a layer down, where
@@ -65,8 +67,6 @@ namespace MWRender
     /// everywhere, so a frustum has nothing to say about what must be reachable — which is also
     /// why the frame is not one late the way an interop path would be. The mirror runs
     /// after the update traversal and the present runs after the mirror, all inside one frame.
-    class TracedView;
-
     class RtxRenderer final : public Renderer
     {
     public:
@@ -328,10 +328,6 @@ namespace MWRender
         std::uint32_t mAskedHeight = 0;
         osg::Timer_t mAskedSince = 0;
 
-        /// The one sequence every mirror walk in this renderer poses at.
-        ///
-        /// **Before the extractors, because they hold a reference to it.** Shared with every
-        /// `TracedView`, which is the whole point: a subtree the world and a doll can both reach must
         /// The engine's scene graph mirrored into what a ray can meet, and the hand-over that
         /// puts it on the device.
         WorldMirror mMirror;

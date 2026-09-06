@@ -128,6 +128,7 @@ namespace Rtx
         // indexed past its end — which hands `vkQueueSubmit2` a semaphore made of whatever was next
         // on the heap. The layers say so at once; with them off it is a frozen window and an empty
         // log.
+        //
         // **Before the buffers are handed out again**, and the reason is not tidiness: a recording
         // that blitted from the renderer's target still names it, and the caller is about to destroy
         // that target and make a new one at the new size.

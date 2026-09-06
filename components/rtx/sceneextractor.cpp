@@ -76,11 +76,8 @@ namespace Rtx
         {
             return (key ^ std::hash<const osg::Node*>{}(node)) * 0x100000001b3ull;
         }
-
-        /// The texture bound at `unit`, or null.
     }
 
-    /// Walks the graph and hands every geometry it meets to the extractor.
     /// Runs an `osg::Sequence`'s clock, and reaches nothing. See `MirrorTraversal::descend`.
     ///
     /// **A visitor of its own, because the claim it makes is one the mirror may not carry.**
@@ -99,6 +96,7 @@ namespace Rtx
         void apply(osg::Node&) override {}
     };
 
+    /// Walks the graph and hands every geometry it meets to the extractor.
     class MirrorTraversal : public osg::NodeVisitor
     {
     public:
@@ -578,6 +576,7 @@ namespace Rtx
         // Freed rather than compacted: a slot index is the custom index a hit reads back, so
         // closing the gap would rename every placement above it. The gap is handed to the next
         // thing placed.
+        //
         // **Not run at all where every placement was reached**, which is a world that stands still —
         // see `mPlacementsReached`. The sweep below erases nothing then, and it costs a walk of the
         // whole map to say so.

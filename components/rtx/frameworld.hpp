@@ -23,30 +23,13 @@ namespace Rtx
 {
     class SceneExtractor;
 
-    /// What the world is doing this frame, in the units the renderer takes.
-    ///
-    /// **One list of the frame's world half, and one place that writes it.** The game and the
-    /// harness reach these numbers by different routes — one reports what a live weather system
-    /// settled on, the other derives them from the content files at an hour it was told — and that
-    /// difference is real and stays. What was not real is that each then wrote them into
-    /// `VisibilityConstants` itself, twenty-odd assignments apart, against no shared test: a field
-    /// added to one and forgotten in the other is a `shot` that quietly stops predicting the game.
-    ///
-    /// Three of those have already happened. The sea's clock was filled by the harness and left at
-    /// zero by the game, so every wave stood still in the game alone. Both moons had to be added
-    /// twice in one sitting. And `mAir.mUniform` — whether the air is an even
-    /// haze or banked — was written only by the harness, so every interior in the *game* ran the
-    /// outdoor coverage field a room is far too small for.
-    ///
-    /// **Everything here is already in the renderer's units**: colours linear, fog an extinction
-    /// rather than two distances, the weather blend the right way round, the moons placed. What each
-    /// side does to get here is its own business; what happens after is not.
     /// How hard a fall of weather rains on the water, from nought to one.
     ///
     /// **The precipitation's own alpha where its kind rings the surface, and nought where it does
     /// not** — which is the number the rasterizer hands its water as `rainIntensity`, and
     /// `Weather::Precipitation::ripplesEnabled` is what says whether a kind rings: rain does and snow
     /// settles, off the ini's own `Rain Ripples` and `Snow Ripples`.
+    ///
     /// @param fall what is falling, or null for a world with no weather over it.
     float rainOnWater(const Weather::Precipitation* fall);
 
@@ -95,9 +78,26 @@ namespace Rtx
     /// Six of those, which is the whole sky a world with none has.
     std::array<Shaders::SkyPatch, Shaders::SKY_PATCH_COUNT> noPatches();
 
+    /// What the world is doing this frame, in the units the renderer takes.
+    ///
+    /// **One list of the frame's world half, and one place that writes it.** The game and the
+    /// harness reach these numbers by different routes — one reports what a live weather system
+    /// settled on, the other derives them from the content files at an hour it was told — and that
+    /// difference is real and stays. What was not real is that each then wrote them into
+    /// `VisibilityConstants` itself, twenty-odd assignments apart, against no shared test: a field
+    /// added to one and forgotten in the other is a `shot` that quietly stops predicting the game.
+    ///
+    /// Three of those have already happened. The sea's clock was filled by the harness and left at
+    /// zero by the game, so every wave stood still in the game alone. Both moons had to be added
+    /// twice in one sitting. And `mAir.mUniform` — whether the air is an even
+    /// haze or banked — was written only by the harness, so every interior in the *game* ran the
+    /// outdoor coverage field a room is far too small for.
+    ///
+    /// **Everything here is already in the renderer's units**: colours linear, fog an extinction
+    /// rather than two distances, the weather blend the right way round, the moons placed. What each
+    /// side does to get here is its own business; what happens after is not.
     struct FrameWorld
     {
-
         /// The sun, and it is a sun or it is nothing.
         ///
         /// **Built by `makeSkylight` and never assembled field by field.** Its irradiance is zero

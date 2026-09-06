@@ -223,27 +223,54 @@ hour = 19.25
                 << "a chain, which would make the order things are read in decide what a view is";
         }
 
-        /// Which condition wins, which is the one rule the three commands that draw a view all read.
+        /// Which condition wins, which is the one rule every command that draws a view reads.
+        ///
+        /// **A settled place is what a run stands at, so neither condition is optional on it.** The
+        /// file's own entry keeps its optionals, because a listing prints only what a view fixes.
         TEST(RtxViewsTest, theConditionOnTheCommandLineBeatsTheOneAPlaceFixes)
         {
+            const View entry{
+                .mName = "dawn-deck",
+                .mCell = "Vivec, Foreign Quarter",
+                .mOrigin = osg::Vec3f(1.0f, 2.0f, 3.0f),
+                .mTarget = osg::Vec3f(4.0f, 5.0f, 6.0f),
+                .mHour = 6.5f,
+                .mWeather = std::string("Overcast"),
+                .mNote = "a deck at dawn",
+                .mRoute = Route{ .mOrigin = osg::Vec3f(7.0f, 8.0f, 9.0f), .mTarget = osg::Vec3f(), .mSpeed = 400.0f },
+            };
+
+            const View bare{ .mCell = "-2,-9" };
+
             // Neither says anything: noon under a clear sky, which is how a picture of a place is
             // taken.
-            EXPECT_EQ(hourFor(std::nullopt, std::nullopt), sDefaultHour);
-            EXPECT_EQ(weatherFor(std::nullopt, std::nullopt), sDefaultWeather);
+            EXPECT_EQ(placeFrom(bare, std::nullopt, std::nullopt).mHour, sDefaultHour);
+            EXPECT_EQ(placeFrom(bare, std::nullopt, std::nullopt).mWeather, sDefaultWeather);
 
             // Only the place: the place decides, which is what makes a view id one frame.
-            EXPECT_EQ(hourFor(std::nullopt, 6.5f), 6.5f);
-            EXPECT_EQ(weatherFor(std::nullopt, std::string("Overcast")), "Overcast");
+            EXPECT_EQ(placeFrom(entry, std::nullopt, std::nullopt).mHour, 6.5f);
+            EXPECT_EQ(placeFrom(entry, std::nullopt, std::nullopt).mWeather, "Overcast");
 
             // The command line, over a place that fixes one and over a place that does not.
-            EXPECT_EQ(hourFor(9.0f, 6.5f), 9.0f);
-            EXPECT_EQ(hourFor(9.0f, std::nullopt), 9.0f);
-            EXPECT_EQ(weatherFor(std::string("Rain"), std::string("Overcast")), "Rain");
-            EXPECT_EQ(weatherFor(std::string("Rain"), std::nullopt), "Rain");
+            EXPECT_EQ(placeFrom(entry, 9.0f, std::string("Rain")).mHour, 9.0f);
+            EXPECT_EQ(placeFrom(entry, 9.0f, std::string("Rain")).mWeather, "Rain");
+            EXPECT_EQ(placeFrom(bare, 9.0f, std::string("Rain")).mHour, 9.0f);
+            EXPECT_EQ(placeFrom(bare, 9.0f, std::string("Rain")).mWeather, "Rain");
 
-            // And the two disagree, or none of the above says anything.
-            EXPECT_NE(hourFor(std::nullopt, 6.5f), hourFor(9.0f, 6.5f));
-            EXPECT_NE(weatherFor(std::nullopt, std::string("Overcast")), weatherFor(std::string("Rain"), std::nullopt));
+            // And the three answers differ, so the rule is doing something.
+            EXPECT_NE(placeFrom(entry, std::nullopt, std::nullopt).mHour, placeFrom(entry, 9.0f, std::nullopt).mHour);
+            EXPECT_NE(
+                placeFrom(bare, std::nullopt, std::nullopt).mHour, placeFrom(entry, std::nullopt, std::nullopt).mHour);
+
+            // Everything that is not a condition is the entry's, unchanged.
+            const Place settled = placeFrom(entry, std::nullopt, std::nullopt);
+            EXPECT_EQ(settled.mName, "dawn-deck");
+            EXPECT_EQ(settled.mCell, "Vivec, Foreign Quarter");
+            EXPECT_EQ(settled.mNote, "a deck at dawn");
+            EXPECT_EQ(settled.mOrigin, entry.mOrigin);
+            EXPECT_EQ(settled.mTarget, entry.mTarget);
+            ASSERT_TRUE(settled.mRoute.has_value());
+            EXPECT_EQ(settled.mRoute->mSpeed, 400.0f);
         }
     }
 }

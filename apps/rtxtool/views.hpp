@@ -82,19 +82,42 @@ namespace RtxTool
         std::optional<Route> mRoute;
     };
 
-    /// The hour a place stands at, from what the command line named and what the view fixes.
+    /// A place a run actually stands at: a view file entry with its conditions settled.
+    ///
+    /// **A `View`'s two conditions are optional because the *file* may fix neither. A place's are
+    /// not, because a run always stands at some hour under some sky.** Two types rather than one is
+    /// what keeps every reader downstream from asking which of the file and the command line won,
+    /// and from dereferencing an optional that only a comment says is full.
+    struct Place
+    {
+        std::string mName;
+        std::string mCell;
+
+        /// Absent for a place that names only a cell, which then gets the default placement.
+        std::optional<osg::Vec3f> mOrigin;
+        std::optional<osg::Vec3f> mTarget;
+
+        float mHour = sDefaultHour;
+        std::string mWeather = std::string(sDefaultWeather);
+
+        std::string mNote;
+        std::optional<Route> mRoute;
+    };
+
+    /// `view` with whatever the command line named settled into it.
     ///
     /// **The command line wins over a view, as it already does for `pos` and `look`.** A view that
     /// fixes an hour names a condition its frame is about; it does not overrule the person running
-    /// the tool. Noon where neither says anything.
+    /// the tool. Noon under a clear sky where neither says anything.
     ///
-    /// @param given what `--hour` named, or nothing where it was left at its default.
-    /// @param fixed what the view fixes, or nothing where it fixes none.
-    float hourFor(const std::optional<float>& given, const std::optional<float>& fixed);
-
-    /// The weather a place stands under, from what the command line named and what the view fixes.
-    /// `hourFor`'s rule, over the other condition a place can fix.
-    std::string weatherFor(const std::optional<std::string>& given, const std::optional<std::string>& fixed);
+    /// **The one place that rule is applied.** A run of places applied it by overwriting each
+    /// view's own optionals before staging them, and a single place applied it again on the way
+    /// into the frame — two mechanisms for one sentence, and only the order they ran in made them
+    /// agree.
+    ///
+    /// @param hour what `--hour` named, or nothing where it was left at its default.
+    /// @param weather the same for `--weather`.
+    Place placeFrom(const View& view, const std::optional<float>& hour, const std::optional<std::string>& weather);
 
     /// Reads the view file. Throws when it is missing or malformed — a mistyped view should say so
     /// rather than quietly render somewhere else.

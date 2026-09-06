@@ -426,24 +426,12 @@ namespace Rtx
 
     void SceneDesc::holdMaterialTextures(const Material& material)
     {
-        holdTexture(material.mDiffuse);
-        holdTexture(material.mNormal);
-        holdTexture(material.mEmissive);
-
-        // The run is already in the layer table: a caller builds its layers, places them with
-        // `addLayers` and then hands over a material naming where they landed.
-        for (Index at = 0; at < material.mLayerCount; ++at)
-            holdTexture(mLayers[material.mLayerOffset + at].mDiffuse);
+        forEachMaterialTexture(material, [this](const Index texture) { holdTexture(texture); });
     }
 
     void SceneDesc::dropMaterialTextures(const Material& material)
     {
-        dropTexture(material.mDiffuse);
-        dropTexture(material.mNormal);
-        dropTexture(material.mEmissive);
-
-        for (Index at = 0; at < material.mLayerCount; ++at)
-            dropTexture(mLayers[material.mLayerOffset + at].mDiffuse);
+        forEachMaterialTexture(material, [this](const Index texture) { dropTexture(texture); });
     }
 
     Index SceneDesc::addMask(std::span<const float> weights)

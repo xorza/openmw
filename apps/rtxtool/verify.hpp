@@ -63,5 +63,5 @@ namespace RtxTool
     /// with the build command that produced the binary. Zero where `against` is empty, which is a
     /// run that only wrote a reference for the next one.
     int compareRuns(
-        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const View> views);
+        const std::filesystem::path& wrote, const std::filesystem::path& against, std::span<const Place> places);
 }

@@ -3,7 +3,6 @@ set(RTXTOOL_FILES
     benchsuite.hpp
     parsefloat.cpp
     parsefloat.hpp
-    framerequest.cpp
     framerequest.hpp
     options.cpp
     options.hpp

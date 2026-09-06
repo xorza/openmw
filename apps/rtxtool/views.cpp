@@ -142,16 +142,32 @@ namespace RtxTool
                 };
             }
         }
+
+        /// One condition, from what the command line named and what the view fixes. `placeFrom`
+        /// says which of the two wins and why.
+        float hourFor(const std::optional<float>& given, const std::optional<float>& fixed)
+        {
+            return given.has_value() ? *given : fixed.value_or(sDefaultHour);
+        }
+
+        std::string weatherFor(const std::optional<std::string>& given, const std::optional<std::string>& fixed)
+        {
+            return given.has_value() ? *given : fixed.value_or(std::string(sDefaultWeather));
+        }
     }
 
-    float hourFor(const std::optional<float>& given, const std::optional<float>& fixed)
+    Place placeFrom(const View& view, const std::optional<float>& hour, const std::optional<std::string>& weather)
     {
-        return given.has_value() ? *given : fixed.value_or(sDefaultHour);
-    }
-
-    std::string weatherFor(const std::optional<std::string>& given, const std::optional<std::string>& fixed)
-    {
-        return given.has_value() ? *given : fixed.value_or(std::string(sDefaultWeather));
+        return Place{
+            .mName = view.mName,
+            .mCell = view.mCell,
+            .mOrigin = view.mOrigin,
+            .mTarget = view.mTarget,
+            .mHour = hourFor(hour, view.mHour),
+            .mWeather = weatherFor(weather, view.mWeather),
+            .mNote = view.mNote,
+            .mRoute = view.mRoute,
+        };
     }
 
     std::vector<View> loadViews(const std::filesystem::path& path)

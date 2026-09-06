@@ -5,10 +5,7 @@
 #include <optional>
 #include <string>
 
-#include <osg/Vec3f>
-
 #include <components/rtx/reconstruction.hpp>
-#include <components/rtx/renderer.hpp>
 #include <components/rtx/reorder.hpp>
 #include <components/rtx/upscale.hpp>
 
@@ -30,25 +27,15 @@ namespace RtxTool
     inline constexpr Rtx::Upscale sUpscaleByDefault = Rtx::Upscale::Off;
 #endif
 
-    /// When and where a place stands, once a view file entry and a command line have met.
-    struct StagingRequest
-    {
-        std::string mWeather;
-        float mHour = sDefaultHour;
-
-        /// Which day, counted from the one a new game begins on. Only the moons read it.
-        int mDay = 0;
-
-        std::optional<osg::Vec3f> mOrigin;
-        std::optional<osg::Vec3f> mTarget;
-    };
-
-    /// What a command's frames are traced with, and when and where the world stands for them.
+    /// What a command's frames are traced with.
     ///
     /// **One block and not four.** A shot, a window, a profiling run and an A/B differ in what they
     /// keep — a PNG, a swapchain, a table of times, a comparison — and in nothing about the frame
-    /// itself. Held apart, each of the four named these fields itself, `dispatch` read the command
-    /// line into them four times, and the two conversions below were written out by hand at each.
+    /// itself. Held apart, each of the four named these fields itself and `dispatch` read the
+    /// command line into them four times.
+    ///
+    /// **Where a run stands is not here.** The hour and the sky belong to the place, because a view
+    /// may fix either and the command line may overrule it — `Place` is what that came to.
     struct FrameRequest
     {
         /// The size the frame is presented at. What it is traced at follows from `mUpscale`.
@@ -105,29 +92,7 @@ namespace RtxTool
         /// frame. A picture wants it measured; a reference wants it held still.
         std::optional<float> mExposure;
 
-        /// When and in what weather, for the exterior that has a sky. A weather is named as the
-        /// fallback settings spell it, and the hour is on a twenty-four hour clock.
-        ///
-        /// Both are what a place stands under where it fixes none of its own. `View::mHour` says
-        /// which wins, and `describeStaging` is where that rule is applied.
-        std::string mWeather = std::string(sDefaultWeather);
-        float mHour = sDefaultHour;
-
         /// Which day, counted from the one a new game begins on. Only the moons read it.
         int mDay = 0;
-
-        /// When and where the region stands, for a camera at `origin` looking at `target`.
-        ///
-        /// Both default to nothing, which is what a report wants: it is not taken from anywhere, and
-        /// the commands that read one derive the camera from the region's own bounds.
-        StagingRequest describeStaging(const std::optional<osg::Vec3f>& origin = std::nullopt,
-            const std::optional<osg::Vec3f>& target = std::nullopt) const;
-
-        /// The same for a place out of the view file, whose camera and whose conditions it takes.
-        ///
-        /// **One statement of which of the two wins, because a run measures and renders the same
-        /// frame.** `bench` and `verify` each stage a list of places, and a rule applied at one of
-        /// them and not the other would put a picture and a number under different skies.
-        StagingRequest describeStaging(const View& view) const;
     };
 }

@@ -358,7 +358,6 @@ namespace Rtx
     /// importer was never run for renders with no fog, no wind and black colours, and nothing says
     /// why — which is how two of the ten went unnoticed on a box that never ran the importer. A
     /// missing thing is a hard failure naming it: this names the weather and the first key it lacks.
-
     ///
     /// @param floats,strings the tables to look in — `Fallback::Map`'s own, or a test's.
     void requireWeather(std::string_view weather, const std::map<std::string, float, std::less<>>& floats,

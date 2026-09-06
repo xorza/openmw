@@ -266,6 +266,17 @@ namespace MWRender
         camera->setYaw(std::atan2(-along.x(), along.y()), true);
     }
 
+    void Session::standWhereThePlayerIs()
+    {
+        // The reference lives in the cell store rather than in the `Ptr`, which is what the named
+        // player says: the position outlives the handle it was reached through.
+        const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
+        const ESM::Position& stood = player.getRefData().getPosition();
+
+        mFrom = osg::Vec3f(stood.pos[0], stood.pos[1], stood.pos[2]);
+        mFromLook = mFrom + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
+    }
+
     void Session::beginStop()
     {
         const Stop& stop = mRequest.mStops[mAt];
@@ -359,12 +370,10 @@ namespace MWRender
             if (world.toggleCollisionMode())
                 world.toggleCollisionMode();
 
-            // The reference lives in the cell store rather than in the `Ptr`, which is what the
-            // named player says: the position outlives the handle it was reached through.
-            const MWWorld::Ptr player = world.getPlayerPtr();
-            const ESM::Position& stood = player.getRefData().getPosition();
-            mFrom = osg::Vec3f(stood.pos[0], stood.pos[1], stood.pos[2]);
-            mFromLook = mFrom + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
+            // **Read after that toggle and not before.** Turning collision on calls
+            // `World::adjustPosition`, which drops the player onto the ground — so a camera placed
+            // from a position read above this stands where nobody ended up.
+            standWhereThePlayerIs();
         }
         else if (stop.mStand.mEye.has_value())
         {
@@ -374,9 +383,7 @@ namespace MWRender
         }
         else
         {
-            const ESM::Position& stood = player.getRefData().getPosition();
-            mFrom = osg::Vec3f(stood.pos[0], stood.pos[1], stood.pos[2]);
-            mFromLook = mFrom + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
+            standWhereThePlayerIs();
         }
 
         // **A stop is a discontinuity, and only a worldspace change says so on its own.** A

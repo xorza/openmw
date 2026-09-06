@@ -371,6 +371,12 @@ namespace MWRender
         /// Whether the game has a world with a player in it. Nothing happens before it does.
         bool isPlaying() const;
 
+        /// Puts the camera where the player stands, facing the way they face.
+        ///
+        /// **What a stop that names no camera of its own falls back to**, and what a free-camera
+        /// stop starts from once the walls are down.
+        void standWhereThePlayerIs();
+
         /// Puts the world where `mAt` says and starts counting.
         void beginStop();
 

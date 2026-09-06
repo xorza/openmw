@@ -18,10 +18,6 @@ namespace MWRender
     WorldRead readWorld(const WorldState& world, const Rtx::SkyContent& sky, const Rtx::MoonFaces& faces,
         const float landReach, const float seconds)
     {
-        // **Decoded here, because the world does not know what a transport is.** Every colour on
-        // the frame is a content file's three bytes over 255 and no transfer function; the
-        // rasterizer samples them as they are and this light transport is linear, so the conversion
-        // belongs to whichever renderer needs it.
         // **Where the sun *is*, and the light comes back along it.** The world also reports
         // `mSunVector`, which is where the rasterizer's light travels and is not the negation of
         // this — `Sky::sunAt` says why, and why nothing that traces can hold both.
@@ -29,8 +25,6 @@ namespace MWRender
         if (discAt.length2() > 0.0f)
             discAt.normalize();
 
-        // The horizon is the fog and the zenith is the sky's own, which is the pair Morrowind
-        // records: one colour for the air, and one for the dome it fades into overhead.
         // **A room's light is built once, out of the record the cell wrote** — `Rtx::makeRoomLight`,
         // which is what `openmw-rtxtool` reads out of the content files — and not out of the
         // rasterizer's reading of it. `mAmbientColour` carries the lift `configureAmbient` gives an
@@ -45,6 +39,13 @@ namespace MWRender
                                                    .mFogDensity = world.mFogDepth },
                 osg::Vec3f(world.mNightEye.x(), world.mNightEye.y(), world.mNightEye.z())));
 
+        // The horizon is the fog and the zenith is the sky's own, which is the pair Morrowind
+        // records: one colour for the air, and one for the dome it fades into overhead.
+        //
+        // **Decoded here, because the world does not know what a transport is.** Every colour on
+        // the frame is a content file's three bytes over 255 and no transfer function; the
+        // rasterizer samples them as they are and this light transport is linear, so the conversion
+        // belongs to whichever renderer needs it.
         const osg::Vec3f haze = room.has_value() ? room->mSkyHorizon : Rtx::decodeColour(world.mAir.mColour);
 
         // **The sky's own colour, and an interior has none.** The weather system stops writing it
