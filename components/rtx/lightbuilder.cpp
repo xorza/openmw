@@ -3,23 +3,17 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <string>
 
 #include <components/esm3/loadcell.hpp>
-#include <components/esm3/loadregn.hpp>
-#include <components/fallback/fallback.hpp>
 #include <components/misc/constants.hpp>
 #include <components/sceneutil/lightcommon.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/lightutil.hpp>
 #include <components/sceneutil/util.hpp>
 #include <components/sceneutil/vismask.hpp>
-#include <components/sky/clouds.hpp>
 #include <components/sky/sun.hpp>
 #include <components/sky/timeofday.hpp>
-#include <components/weather/downpour.hpp>
 
-#include "error.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
 #include "shaders/scene.h"
@@ -109,95 +103,6 @@ namespace Rtx
             "Snow",
             "Blizzard",
         };
-
-        /// One weather's numbers at one hour, before any of them is converted.
-        ///
-        /// **Kept in the units the file records them in**, because a transition lerps *these* and not
-        /// what they become: the game blends the fog's recorded depth and converts once
-        /// (`apps/openmw/mwworld/weather.cpp:1090`), and blending two extinctions instead is a
-        /// different curve.
-        struct Reading
-        {
-            osg::Vec4f mHaze;
-            osg::Vec4f mSky;
-            osg::Vec4f mAmbient;
-            osg::Vec4f mSun;
-
-            /// The disc's own colour, in the space the file records it in. Built here rather than
-            /// in `settle` because the formula reads the ambient in that same space, and because a
-            /// transition blends what each weather's disc came to rather than the numbers behind it
-            /// — which is what `calculateTransitionResult` does. How much of the disc there is is
-            /// not a weather's business and is `Sky::sunShareAt`.
-            osg::Vec3f mSunDisc;
-
-            /// How much of the sun a weather lets through, which dims the disc under an overcast.
-            float mGlare = 1.0f;
-
-            float mFogDepth = 0.0f;
-
-            /// What the content files record this weather blowing at, which stands its fog layer up.
-            float mWindSpeed = 0.0f;
-        };
-
-        /// How much of the sun a weather lets through — `Weather_<name>_Glare_View`, which dims a
-        /// sun disc under an overcast and keeps the stars in behind one.
-        float glareView(std::string_view weather)
-        {
-            return Fallback::Map::getFloat("Weather_" + std::string(weather) + "_Glare_View");
-        }
-
-        /// One weather's numbers at `hour`, out of a record already read.
-        ///
-        /// **The game's own four-point ramp rather than a step between four phases.** Each quantity
-        /// crosses dawn over a window of its own — the sun can be up before the sky has finished
-        /// turning — so reading whichever phase an hour fell in got every hour inside a transition
-        /// wrong, which is most of sunrise and most of dusk.
-        Reading readHour(const WeatherRamps& ramps, const Sky::TimeOfDaySettings& times, float hour)
-        {
-            const osg::Vec4f ambient = ramps.mAmbient.getValue(hour, times, "Ambient");
-
-            return Reading{
-                .mHaze = ramps.mHaze.getValue(hour, times, "Fog"),
-                .mSky = ramps.mSky.getValue(hour, times, "Sky"),
-                .mAmbient = ambient,
-                .mSun = ramps.mSun.getValue(hour, times, "Sun"),
-                .mSunDisc = Sky::sunDiscAt(hour, times, ramps.mDiscSunset, ambient),
-                .mGlare = ramps.mGlare,
-                .mFogDepth = ramps.mFogDepth.getValue(hour, times, "Fog"),
-                .mWindSpeed = ramps.mWindSpeed,
-            };
-        }
-
-        Daylight settle(const Reading& read, const Sky::TimeOfDaySettings& times, float hour, float reach)
-        {
-            const Sky::SunPlacement sun = Sky::sunAt(hour, times);
-            const osg::Vec3f haze = decodeColour(read.mHaze);
-            const osg::Vec3f zenith = decodeColour(read.mSky);
-
-            // **The sun is not assembled here**, and the game does not assemble one either: both
-            // hand what their weather says to the one builder that knows what a sun may be.
-            const Skylight sky = makeSkylight(SkyReading{
-                .mSunPosition = sun.mPosition,
-                .mSunShare = sun.mShare,
-                .mSunShareAloft = sunShareAloft(hour, times),
-                .mSunColour = decodeColour(read.mSun),
-                .mAmbient = decodeColour(read.mAmbient),
-                .mDiscColour = decodeColour(read.mSunDisc),
-                .mGlare = read.mGlare,
-            });
-
-            return Daylight{
-                .mLight = sky,
-                .mSkyHorizon = haze,
-                .mSkyZenith = zenith,
-
-                // **The engine's own ramp for the stars**, which is four points like every other and
-                // crosses on the `Stars` window rather than the sky's: they outlast the sunset and
-                // are gone before the sun is up. Nothing but night has any of it.
-                .mStarFade = Sky::TimeOfDayInterpolator<float>(0.0f, 0.0f, 0.0f, 1.0f).getValue(hour, times, "Stars"),
-                .mFog = exteriorFog(haze, read.mFogDepth, read.mWindSpeed, reach),
-            };
-        }
 
         /// How much of the hour's own darkness the exposure keeps, as a power of the light it gives.
         ///
@@ -342,111 +247,6 @@ namespace Rtx
         return std::max(Sky::sunShareAt(hour - offset, times), Sky::sunShareAt(hour + offset, times));
     }
 
-    WeatherRamps readWeatherRamps(std::string_view weather)
-    {
-        // A name that is none of the ten is left to the map, which refuses it as a key it will
-        // not consider; one of the ten with nothing written for it is refused here, by name.
-        if (weatherIndex(weather).has_value())
-            requireWeather(weather, Fallback::Map::getFloatFallbackMap(), Fallback::Map::getNonNumericFallbackMap());
-
-        // `Sky::colourRamp` spells the four keys, and `MWWorld::Weather` builds its own out of the
-        // same call.
-        return WeatherRamps{
-            .mHaze = Sky::colourRamp(weather, "Fog"),
-            .mSky = Sky::colourRamp(weather, "Sky"),
-            .mAmbient = Sky::colourRamp(weather, "Ambient"),
-            .mSun = Sky::colourRamp(weather, "Sun"),
-            .mFogDepth = Sky::landFogRamp(weather),
-            .mDiscSunset = Fallback::Map::getColour("Weather_" + std::string(weather) + "_Sun_Disc_Sunset_Color"),
-            .mGlare = glareView(weather),
-
-            // **The recorded speed and not the gust.** What this decides is how deep the layer
-            // stands and how fast the field is carried, both of which are the weather's settled
-            // character rather than the number the engine wanders about it.
-            .mWindSpeed = Weather::windSpeed(weather),
-
-            .mCloudSpeed = Sky::cloudSpeed(weather),
-            .mCloudsMaximumPercent = Sky::cloudsMaximumPercent(weather),
-        };
-    }
-
-    Daylight makeDaylight(const WeatherRamps& ramps, float hour, float reach)
-    {
-        const Sky::TimeOfDaySettings& times = Sky::TimeOfDaySettings::shared();
-        return settle(readHour(ramps, times, hour), times, hour, reach);
-    }
-
-    Daylight makeDaylight(std::string_view weather, float hour, float reach)
-    {
-        return makeDaylight(readWeatherRamps(weather), hour, reach);
-    }
-
-    Daylight makeDaylight(const WeatherRamps& from, const WeatherRamps& to, float blend, float hour, float reach)
-    {
-        const Sky::TimeOfDaySettings& times = Sky::TimeOfDaySettings::shared();
-        const Reading a = readHour(from, times, hour);
-        const Reading b = readHour(to, times, hour);
-
-        const auto mix = [blend](const auto& x, const auto& y) { return x * (1.0f - blend) + y * blend; };
-
-        // Exactly the quantities `calculateTransitionResult` blends, and the depth among them rather
-        // than the extinction it becomes.
-        return settle(
-            Reading{
-                .mHaze = mix(a.mHaze, b.mHaze),
-                .mSky = mix(a.mSky, b.mSky),
-                .mAmbient = mix(a.mAmbient, b.mAmbient),
-                .mSun = mix(a.mSun, b.mSun),
-                .mSunDisc = mix(a.mSunDisc, b.mSunDisc),
-                .mGlare = mix(a.mGlare, b.mGlare),
-                .mFogDepth = mix(a.mFogDepth, b.mFogDepth),
-                .mWindSpeed = mix(a.mWindSpeed, b.mWindSpeed),
-            },
-            times, hour, reach);
-    }
-
-    void requireWeather(std::string_view weather, const std::map<std::string, float, std::less<>>& floats,
-        const std::map<std::string, std::string, std::less<>>& strings)
-    {
-        // What `readWeather`, the clouds and the wind read of a weather, and nothing a script or the
-        // sound engine does: the keys whose nought would be a picture rather than a silence.
-        constexpr std::array<std::string_view, 4> rampNames = { "Sky", "Fog", "Ambient", "Sun" };
-        constexpr std::array<std::string_view, 4> phases = { "Sunrise", "Day", "Sunset", "Night" };
-        constexpr std::array<std::string_view, 2> colours = { "Sun_Disc_Sunset_Color", "Cloud_Texture" };
-        constexpr std::array<std::string_view, 6> numbers = { "Land_Fog_Day_Depth", "Land_Fog_Night_Depth",
-            "Glare_View", "Wind_Speed", "Cloud_Speed", "Clouds_Maximum_Percent" };
-
-        const std::string prefix = "Weather_" + std::string(weather) + "_";
-        // **What it names is the data and not a tool.** `openmw-iniimporter` is what writes these
-        // keys on an ordinary install, and every build script in this fork turns that target off —
-        // so a message telling somebody to run it names a binary the tree did not produce. What
-        // always works is the line itself: `[Weather <name>]` of `Morrowind.ini` holds every key,
-        // one `fallback=` line apiece, spaces turned to underscores.
-        const auto refuse = [&weather](const std::string& key) {
-            throw Error("weather \"" + std::string(weather) + "\" has no \"" + key
-                + "\" in openmw.cfg: the shipped settings carry eight of the ten weathers, and the "
-                  "other two are in [Weather "
-                + std::string(weather) + "] of Morrowind.ini — one \"fallback=" + key
-                + ",<value>\" line apiece, or run openmw-iniimporter where that target is built");
-        };
-
-        for (const std::string_view ramp : rampNames)
-            for (const std::string_view phase : phases)
-            {
-                const std::string key = prefix + std::string(ramp) + "_" + std::string(phase) + "_Color";
-                if (!strings.contains(key))
-                    refuse(key);
-            }
-
-        for (const std::string_view colour : colours)
-            if (const std::string key = prefix + std::string(colour); !strings.contains(key))
-                refuse(key);
-
-        for (const std::string_view number : numbers)
-            if (const std::string key = prefix + std::string(number); !floats.contains(key))
-                refuse(key);
-    }
-
     std::optional<std::uint32_t> weatherIndex(std::string_view weather)
     {
         const auto found = std::find(sWeathers.begin(), sWeathers.end(), weather);
@@ -454,25 +254,6 @@ namespace Rtx
             return std::nullopt;
 
         return static_cast<std::uint32_t>(found - sWeathers.begin());
-    }
-
-    std::uint32_t nextRegionWeather(const ESM::Region* region, std::uint32_t weather, bool forward)
-    {
-        const std::uint32_t count = static_cast<std::uint32_t>(sWeathers.size());
-        const std::uint32_t step = forward ? 1u : count - 1u;
-
-        // Round once and no further: a region with nothing to offer hands back a step of the plain
-        // order rather than spinning, which is what a record of all zeroes would otherwise do.
-        std::uint32_t at = (weather + step) % count;
-        for (std::uint32_t tried = 0; tried < count; ++tried)
-        {
-            if (region == nullptr || region->mData.mProbabilities[at] > 0)
-                return at;
-
-            at = (at + step) % count;
-        }
-
-        return (weather + step) % count;
     }
 
     std::string_view weatherName(std::uint32_t weather)

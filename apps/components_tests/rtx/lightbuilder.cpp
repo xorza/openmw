@@ -1,13 +1,8 @@
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <optional>
-#include <stdexcept>
-#include <string>
-#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -16,10 +11,6 @@
 
 #include <components/esm3/loadcell.hpp>
 #include <components/esm3/loadligh.hpp>
-#include <components/esm3/loadregn.hpp>
-#include <components/fallback/fallback.hpp>
-#include <components/rtx/distantland.hpp>
-#include <components/rtx/error.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/shaders/look.h>
 #include <components/rtx/shaders/visibility.h>
@@ -30,9 +21,7 @@
 #include <components/sceneutil/util.hpp>
 #include <components/sceneutil/vismask.hpp>
 #include <components/sky/sun.hpp>
-#include <components/weather/downpour.hpp>
 
-#include "allocations.hpp"
 #include "graphlight.hpp"
 #include "statistics.hpp"
 
@@ -417,186 +406,6 @@ namespace Rtx
                 (larger->mSourceRadius / light->mSourceRadius) * (larger->mSourceRadius / light->mSourceRadius), 1e-4f);
         }
 
-        /// A record read once answers every hour, and reaches the heap for none of them.
-        ///
-        /// **A window turning its clock asks for the same weather sixty times a second.** Reading
-        /// the name each time built about a hundred strings out of the fallback settings, for
-        /// numbers that cannot have changed between two frames. What is left is arithmetic.
-        TEST(RtxLightBuilderTest, aWeatherRecordLightsAnHourWithoutReachingTheHeap)
-        {
-            const WeatherRamps clear = readWeatherRamps("Clear");
-
-            // Warmed up, because the first of anything may legitimately allocate.
-            const Daylight first = makeDaylight(clear, 12.0f, sReach);
-
-            const std::size_t before = Testing::getAllocationCount();
-            const Daylight again = makeDaylight(clear, 12.0f, sReach);
-            const Daylight later = makeDaylight(clear, 20.0f, sReach);
-            const std::size_t after = Testing::getAllocationCount();
-
-            EXPECT_EQ(after, before) << after - before << " allocations to light two hours";
-
-            // The same answer as the name took, so holding the record is not a second reading of it.
-            EXPECT_EQ(again.mLight.mSun.mIrradiance, first.mLight.mSun.mIrradiance);
-            EXPECT_EQ(again.mLight.mAmbient, makeDaylight("Clear", 12.0f, sReach).mLight.mAmbient);
-            EXPECT_EQ(later.mFog.mExtinction, makeDaylight("Clear", 20.0f, sReach).mFog.mExtinction);
-
-            // And the hour still reaches it: a record that ignored the clock would light noon and
-            // eight in the evening the same. The ambient is read off a four-point ramp whose day and
-            // night colours differ in both the ini and the defaults OpenMW ships.
-            EXPECT_EQ(later.mLight.mAmbient, makeDaylight("Clear", 20.0f, sReach).mLight.mAmbient);
-            EXPECT_NE(later.mLight.mAmbient, again.mLight.mAmbient);
-        }
-
-        /// The sun's arc, which is the engine's own and not an approximation of it.
-        ///
-        /// `(-400 * orbit, 75, -100)` with `orbit` running from one at sunrise to minus one at
-        /// nightfall — so the vector is where the light *goes*, west at dawn and east at dusk, and
-        /// Every quarter hour of the day, asked for.
-        ///
-        /// **A fallback key the game does not define throws rather than reading zero**, so this is a
-        /// test that `makeDaylight` asks only for settings that exist. It did not: the land fog
-        /// depth is recorded for day and night alone, and every hour inside sunrise or sunset asked
-        /// for a third that was never written, which took the whole tool down.
-        ///
-        /// `TestingOpenMW::fallbackSeed` plants Clear before any test runs and says what the numbers
-        /// are and are not: an expectation here is written against what `makeDaylight` says rather
-        /// than against a value the seed happens to carry.
-        TEST(RtxLightBuilderTest, everyHourAsksOnlyForSettingsTheGameDefines)
-        {
-            for (float hour = 0.0f; hour < 24.0f; hour += 0.25f)
-                EXPECT_NO_THROW(makeDaylight("Clear", hour, sReach)) << "at hour " << hour;
-
-            // A file records one depth for daylight and one for night, and the ramp hands the day
-            // value to three of its four points — sunrise, day and sunset all carry it.
-            //
-            // **The hours are the schedule's own.** Morrowind crosses each boundary over a window per
-            // quantity, so an hour has to be picked past one to read a phase outright: the fog's
-            // sunrise runs from 5.5 to 9 and its sunset from 16 to 21, which puts noon and ten in the
-            // evening clear of both. The middle of a window is the one point inside it that is not a
-            // blend, and 7.25 is the middle of that sunrise — where the ramp's own sunrise value is
-            // what comes back, and for this ramp that is the day's.
-            const float day = makeDaylight("Clear", 12.0f, sReach).mFog.mExtinction;
-            const float night = makeDaylight("Clear", 0.0f, sReach).mFog.mExtinction;
-            EXPECT_FLOAT_EQ(makeDaylight("Clear", 7.25f, sReach).mFog.mExtinction, day)
-                << "sunrise reads the day depth";
-            EXPECT_EQ(makeDaylight("Clear", 22.0f, sReach).mFog.mExtinction, night) << "and night has begun by ten";
-
-            // Deeper fog is thicker air. Morrowind ships `.69` for both of Clear's depths, and
-            // `TestingOpenMW::fallbackSeed` pins them apart for exactly this comparison.
-            EXPECT_GT(night, day);
-
-            // And the weather reaches its air through `exteriorFog` rather than assembling one,
-            // which is what keeps the extinction and the edge measured over one reach.
-            EXPECT_EQ(makeDaylight("Clear", 12.0f, sReach).mFog.mEdge, sReach);
-
-            // **Dusk is between the two rather than one of them**, which is the whole of what the
-            // engine's own ramp buys over reading whichever phase an hour falls in: the seeded
-            // sunset runs from eighteen to twenty, so half past seven is halfway across it.
-            //
-            const float dusk = makeDaylight("Clear", 19.5f, sReach).mFog.mExtinction;
-            EXPECT_GT(dusk, day);
-            EXPECT_LT(dusk, night);
-
-            // **A night has no sun in it at all**, which is one fact rather than the engine's two.
-            // Morrowind never switches its sunlight off — `WeatherManager` reads a colour off the
-            // same ramp all night and turns off only the sprite — and a tracer that kept that light
-            // cast hard shadows swinging back across the ground until dawn, from a disc nothing was
-            // drawing. There is no second field left to say otherwise.
-            EXPECT_NE(makeDaylight("Clear", 12.0f, sReach).mLight.mSun.mIrradiance, osg::Vec3f()) << "noon";
-            EXPECT_EQ(makeDaylight("Clear", 0.0f, sReach).mLight.mSun.mIrradiance, osg::Vec3f()) << "midnight";
-            EXPECT_EQ(makeDaylight("Clear", 22.0f, sReach).mLight.mSun.mIrradiance, osg::Vec3f())
-                << "night begins at twenty";
-            EXPECT_NE(makeDaylight("Clear", 7.0f, sReach).mLight.mSun.mIrradiance, osg::Vec3f())
-                << "and it is back after six";
-
-            // The disc is white for every hour the sun is up and only warms on the way down, which
-            // is the one thing the light never does.
-            for (const float hour : { 6.5f, 9.0f, 12.0f, 15.0f })
-                EXPECT_EQ(makeDaylight("Clear", hour, sReach).mLight.mSun.mDiscColour, osg::Vec3f(1.0f, 1.0f, 1.0f))
-                    << "at hour " << hour;
-
-            // Half past seven and not eighteen: the disc's colour is summed with the ambient and
-            // clipped, the way the original did it, and at the start of sunset the shipped ambient
-            // is still bright enough to clip all three channels to white. It warms once the
-            // ambient has gone down with it.
-            const Daylight down = makeDaylight("Clear", 19.5f, sReach);
-            EXPECT_FLOAT_EQ(down.mLight.mSun.mDiscColour.x(), 1.0f);
-            EXPECT_LT(down.mLight.mSun.mDiscColour.z(), down.mLight.mSun.mDiscColour.x())
-                << "warm on the way down, never blue";
-
-            // The wind comes off the same file and a key per weather, so a storm reading harder
-            // than fair weather is what says the name reached the lookup rather than a constant
-            // being handed back.
-            //
-            // **Compared rather than pinned**, because what this is about is that the name reaches
-            // the lookup. The two numbers themselves belong to `TestingOpenMW::fallbackSeed`.
-            EXPECT_GT(Weather::windSpeed("Ashstorm"), Weather::windSpeed("Clear"));
-            EXPECT_GT(Weather::windSpeed("Clear"), 0.0f);
-
-            // A name that is none of the ten is not a key the map will even consider, which is why
-            // `weatherIndex` is the thing to ask first.
-            EXPECT_THROW(makeDaylight("Drizzle", 12.0f, sReach), std::logic_error);
-        }
-
-        /// A weather the configuration left out is refused by name, before it can read as nought.
-        ///
-        /// **Every key the picture reads of a weather, removed one at a time**: each refusal names
-        /// the weather and the key, and with all of them present nothing is refused. Over tables of
-        /// the test's own rather than `Fallback::Map`'s, because that map is already planted by the
-        /// time any test runs — and a harness configuration that gained its two missing weathers
-        /// carries every one of the ten.
-        TEST(RtxLightBuilderTest, aWeatherTheConfigurationLeftOutIsRefusedByName)
-        {
-            constexpr std::array<std::string_view, 18> colours = { "Sky_Sunrise_Color", "Sky_Day_Color",
-                "Sky_Sunset_Color", "Sky_Night_Color", "Fog_Sunrise_Color", "Fog_Day_Color", "Fog_Sunset_Color",
-                "Fog_Night_Color", "Ambient_Sunrise_Color", "Ambient_Day_Color", "Ambient_Sunset_Color",
-                "Ambient_Night_Color", "Sun_Sunrise_Color", "Sun_Day_Color", "Sun_Sunset_Color", "Sun_Night_Color",
-                "Sun_Disc_Sunset_Color", "Cloud_Texture" };
-            constexpr std::array<std::string_view, 6> numbers = { "Land_Fog_Day_Depth", "Land_Fog_Night_Depth",
-                "Glare_View", "Wind_Speed", "Cloud_Speed", "Clouds_Maximum_Percent" };
-
-            std::map<std::string, std::string, std::less<>> strings;
-            for (const std::string_view colour : colours)
-                strings["Weather_Blight_" + std::string(colour)] = "128,019,019";
-
-            std::map<std::string, float, std::less<>> floats;
-            for (const std::string_view number : numbers)
-                floats["Weather_Blight_" + std::string(number)] = 1.0f;
-
-            EXPECT_NO_THROW(requireWeather("Blight", floats, strings));
-
-            const auto refusedFor = [](std::string_view key, const auto& check) {
-                try
-                {
-                    check();
-                    ADD_FAILURE() << "nothing refused " << key;
-                }
-                catch (const Error& error)
-                {
-                    const std::string what = error.what();
-                    EXPECT_NE(what.find("Blight"), std::string::npos) << what;
-                    EXPECT_NE(what.find(key), std::string::npos) << what;
-                }
-            };
-
-            for (const std::string_view colour : colours)
-            {
-                auto without = strings;
-                const std::string key = "Weather_Blight_" + std::string(colour);
-                without.erase(key);
-                refusedFor(key, [&] { requireWeather("Blight", floats, without); });
-            }
-
-            for (const std::string_view number : numbers)
-            {
-                auto without = floats;
-                const std::string key = "Weather_Blight_" + std::string(number);
-                without.erase(key);
-                refusedFor(key, [&] { requireWeather("Blight", without, strings); });
-            }
-        }
-
         /// A sun below the horizon is not a sun, in either term.
         ///
         /// **This is the one rule, and it is here so that a renderer cannot be written without it.**
@@ -740,46 +549,9 @@ namespace Rtx
 
             // **Case is not folded**, because the name goes on to spell a `Weather_<name>_*` key
             // and the fallback map's whitelist holds exactly one spelling of each. Accepting a
-            // second here would hand `makeDaylight` a name that throws.
+            // second here would turn a stop's sky to a weather the settings never wrote.
             EXPECT_FALSE(weatherIndex("clear").has_value());
             EXPECT_FALSE(weatherIndex("").has_value());
-        }
-
-        /// A region is offered only the weathers it ever gets.
-        ///
-        /// **A `REGN` record's ten chances add to a hundred and a zero means never**, in the order
-        /// `WEATHER_*` names them. The Bitter Coast has no ashstorms and the Ashlands no snow, so a
-        /// window that walked all ten would offer skies the game could not produce there.
-        TEST(RtxLightBuilderTest, steppingTheWeatherSkipsTheOnesTheRegionNeverGets)
-        {
-            // Clear, Cloudy and Rain only — the shape of a coastal region, with everything from
-            // Thunderstorm on left at nothing.
-            ESM::Region coast;
-            coast.mData.mProbabilities = { 50, 30, 0, 0, 20, 0, 0, 0, 0, 0 };
-
-            EXPECT_EQ(nextRegionWeather(&coast, Rtx::Shaders::WEATHER_CLEAR, true), Rtx::Shaders::WEATHER_CLOUDY);
-            EXPECT_EQ(nextRegionWeather(&coast, Rtx::Shaders::WEATHER_CLOUDY, true), Rtx::Shaders::WEATHER_RAIN)
-                << "Foggy and Overcast are skipped";
-            EXPECT_EQ(nextRegionWeather(&coast, Rtx::Shaders::WEATHER_RAIN, true), Rtx::Shaders::WEATHER_CLEAR)
-                << "and it wraps past the six it never gets";
-
-            // Backwards over the same three.
-            EXPECT_EQ(nextRegionWeather(&coast, Rtx::Shaders::WEATHER_CLEAR, false), Rtx::Shaders::WEATHER_RAIN);
-            EXPECT_EQ(nextRegionWeather(&coast, Rtx::Shaders::WEATHER_RAIN, false), Rtx::Shaders::WEATHER_CLOUDY);
-            EXPECT_EQ(nextRegionWeather(&coast, Rtx::Shaders::WEATHER_CLOUDY, false), Rtx::Shaders::WEATHER_CLEAR);
-
-            // **A step from a weather the region does not get still lands on one it does**, which is
-            // what a camera crossing out of one region into another leaves behind.
-            EXPECT_EQ(nextRegionWeather(&coast, Rtx::Shaders::WEATHER_BLIZZARD, true), Rtx::Shaders::WEATHER_CLEAR);
-
-            // No region — an interior, or a cell naming one nothing defines — offers all ten.
-            EXPECT_EQ(nextRegionWeather(nullptr, Rtx::Shaders::WEATHER_CLEAR, true), Rtx::Shaders::WEATHER_CLOUDY);
-            EXPECT_EQ(nextRegionWeather(nullptr, Rtx::Shaders::WEATHER_CLEAR, false), Rtx::Shaders::WEATHER_BLIZZARD);
-
-            // And a record that allows nothing at all steps once rather than spinning for ever.
-            ESM::Region nowhere;
-            nowhere.mData.mProbabilities = {};
-            EXPECT_EQ(nextRegionWeather(&nowhere, Rtx::Shaders::WEATHER_CLEAR, true), Rtx::Shaders::WEATHER_CLOUDY);
         }
 
         /// The hour holds an exposure back, and a noon does not.
@@ -900,24 +672,6 @@ namespace Rtx
             EXPECT_NEAR(tinted.mMean.x(), 0.9f, 1e-6f);
             EXPECT_NEAR(tinted.mMean.y(), 0.5f, 1e-6f);
             EXPECT_NEAR(tinted.mMean.z(), 0.5f, 1e-6f);
-        }
-
-        /// And the weather fills it, so a frame gets the hour it is at rather than a default.
-        ///
-        /// **The relation and not a number.** Which weather values this binary sees depends on
-        /// whether a test before it opened the real installation, which
-        /// `everyHourAsksOnlyForSettingsTheGameDefines` says more about. What holds either way is
-        /// that the field is this hour's own light put through the curve rather than a default left
-        /// standing.
-        TEST(RtxLightBuilderTest, aDaylightCarriesTheHoursOwnBias)
-        {
-            for (const float hour : { 0.0f, 6.0f, 12.0f, 18.0f })
-            {
-                const Daylight day = makeDaylight("Clear", hour, sReach);
-                EXPECT_FLOAT_EQ(
-                    day.mLight.mExposureBias, exposureBias(day.mLight.mSun.mIrradiance, day.mLight.mAmbient))
-                    << "at hour " << hour;
-            }
         }
 
         /// The sky settles its bias out of the terms it built, not the ones it was handed.

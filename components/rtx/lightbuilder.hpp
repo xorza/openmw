@@ -1,10 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <functional>
-#include <map>
 #include <optional>
-#include <string>
 #include <string_view>
 
 #include <osg/Vec3f>
@@ -18,11 +15,6 @@
 #include "fogbuilder.hpp"
 #include "scenedesc.hpp"
 #include "sun.hpp"
-
-namespace ESM
-{
-    struct Region;
-}
 
 namespace osg
 {
@@ -309,12 +301,12 @@ namespace Rtx
     SkyBudget skyBudget(
         const osg::Vec3f& horizon, const osg::Vec3f& zenith, const osg::Vec3f& sheets, const osg::Vec3f& ambient);
 
-    /// The sun and the sky at one hour, as the content files describe them.
+    /// The sun, the sky and the air of one cell, in the renderer's own units.
     ///
-    /// Every colour here is a fallback setting the game reads for itself, and the sun's arc, its
-    /// four-point ramps and its disc all come from `components/sky` — the same arithmetic the
-    /// weather manager runs, so a harness frame and a game frame stand under one sky rather than
-    /// under two that were written to agree.
+    /// **Two things build one**, and neither can do the other's: `makeRoomLight` out of an
+    /// interior's `AMBI` record, and a host out of what its weather system settled on. What is here
+    /// is already converted — colours linear, the fog an extinction — so nothing downstream reads a
+    /// content file again.
     struct Daylight
     {
         /// What the sky lights with, whole.
@@ -349,101 +341,12 @@ namespace Rtx
     /// settled on, and the two have to mean the same sky.
     std::optional<std::uint32_t> weatherIndex(std::string_view weather);
 
-    /// Refuses a weather whose keys the configuration never provided.
-    ///
-    /// **`Fallback::Map` answers an allowed key nobody wrote with nought**, so a weather the ini
-    /// importer was never run for renders with no fog, no wind and black colours, and nothing says
-    /// why — which is how two of the ten went unnoticed on a box that never ran the importer. A
-    /// missing thing is a hard failure naming it: this names the weather and the first key it lacks.
-    ///
-    /// @param floats,strings the tables to look in — `Fallback::Map`'s own, or a test's.
-    void requireWeather(std::string_view weather, const std::map<std::string, float, std::less<>>& floats,
-        const std::map<std::string, std::string, std::less<>>& strings);
-
-    /// The name that index spells, for whoever has to hand one back to `makeDaylight`. Empty for
-    /// an index past the ten.
+    /// The name that index spells, for whoever has to hand one back. Empty for an index past the
+    /// ten.
     std::string_view weatherName(std::uint32_t weather);
 
-    /// The weather one step either side of this one, skipping any the region never gets.
-    ///
-    /// **A region does not see all ten.** A `REGN` record carries ten chances that add to a hundred,
-    /// in the order `WEATHER_*` names them, and a zero is a weather that never happens there: the
-    /// ash wastes never snow, Solstheim never has an ashstorm, and offering either is offering a sky
-    /// the game would not produce.
-    ///
-    /// A null region — an interior, or a cell whose record names none — offers all ten, and so does
-    /// a region whose chances are all zero, since the alternative is a step that goes nowhere.
-    std::uint32_t nextRegionWeather(const ESM::Region* region, std::uint32_t weather, bool forward);
-
-    /// Everything one weather's own record says, read out of the fallback settings once.
-    ///
-    /// **The record is fixed and the hour is not.** Reading a weather builds about a hundred strings
-    /// — the four colour ramps' sixteen keys, the fog's two, the disc's, the wind's, the glare's, and
-    /// the two dozen `requireWeather` asks behind them — and none of them can answer differently
-    /// between two frames of one run. A caller that turns the clock holds one of these and evaluates
-    /// it, which is arithmetic on numbers already in hand.
-    ///
-    /// **Held by the caller and not cached here.** `Fallback::Map::init` merges rather than replaces,
-    /// so the settings a process reads can gain keys after something has already read a weather; a
-    /// table inside this component would answer from whenever it happened to be built first.
-    struct WeatherRamps
-    {
-        Sky::TimeOfDayInterpolator<osg::Vec4f> mHaze;
-        Sky::TimeOfDayInterpolator<osg::Vec4f> mSky;
-        Sky::TimeOfDayInterpolator<osg::Vec4f> mAmbient;
-        Sky::TimeOfDayInterpolator<osg::Vec4f> mSun;
-        Sky::TimeOfDayInterpolator<float> mFogDepth;
-
-        /// The disc's own colour at sunset, which the ramp for it is built from at the hour.
-        osg::Vec4f mDiscSunset;
-
-        float mGlare = 1.0f;
-        float mWindSpeed = 0.0f;
-
-        /// What the deck does: how fast it scrolls, and what share of a transition this weather
-        /// spreads its arrival over — `Sky::cloudSpeed` and `Sky::cloudsMaximumPercent`.
-        ///
-        /// **Here because they are the weather's record too**, and a caller turning a clock reads
-        /// them on the same frames it reads the light. Nothing in this file uses them; what does is
-        /// whatever draws the sky.
-        float mCloudSpeed = 0.0f;
-        float mCloudsMaximumPercent = 0.0f;
-    };
-
-    /// Reads one weather's record. Throws where the settings are short of a key it needs, naming it.
-    ///
-    /// @param weather a weather's name as the fallback settings spell it. One of the ten is checked
-    ///        by name; anything else is left to the map, which refuses a key it will not consider.
-    WeatherRamps readWeatherRamps(std::string_view weather);
-
-    /// The daylight `ramps` casts at `hour`, on a twenty-four hour clock.
-    ///
-    /// For a caller that turns a clock over one weather. `reach` is what `makeDaylight` takes.
-    Daylight makeDaylight(const WeatherRamps& ramps, float hour, float reach);
-
-    /// The daylight partway between two records, at `blend` from the first to the second.
-    ///
-    /// **What `WeatherManager::calculateTransitionResult` does, and it blends the same things.** Each
-    /// weather's numbers are read at the hour and then mixed — the fog's recorded *depth* among them
-    /// rather than the extinction it becomes, because those are two different curves and the engine
-    /// converts after blending.
-    Daylight makeDaylight(const WeatherRamps& from, const WeatherRamps& to, float blend, float hour, float reach);
-
-    /// The daylight a named weather casts at `hour`, on a twenty-four hour clock.
-    ///
-    /// Reads the record every time it is called. A caller on a frame path holds a `WeatherRamps` and
-    /// takes the overload above.
-    ///
-    /// @param weather a weather's name as the fallback settings spell it — "Clear", "Cloudy",
-    ///        "Overcast" and the rest. **A name that is none of the ten throws** `std::logic_error`
-    ///        out of the fallback map, which whitelists its keys one weather at a time; whoever
-    ///        takes a name from outside should put it through `weatherIndex` before this.
-    /// @param reach how much world is built, in units — `distantLandReach`. It is the air's and not
-    ///        the light's, and it is here because the air a weather makes is measured over it.
-    Daylight makeDaylight(std::string_view weather, float hour, float reach);
-
-    /// A room's light, out of its own `AMBI` record — with `makeDaylight`, the other of the two
-    /// places a `Daylight` is built, and the one every interior is lit by.
+    /// A room's light, out of its own `AMBI` record — the one place a `Daylight` is built without
+    /// a sky, and what every interior is lit by.
     ///
     /// **The record, and not the rasterizer's reading of it.** `RenderingManager::configureAmbient`
     /// lifts an interior's ambient to `minimum interior brightness` before its own lights see it,

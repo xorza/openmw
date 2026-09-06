@@ -13,21 +13,14 @@ of scope. No measurements were taken.
 
 ---
 
-## A second host that no longer exists
+## `Rtx::makeMoon` is the only test of a clock the game runs
 
-`openmw-rtxtool` drives a real game now. The harness no longer reads cells, derives a sky from the
-content files, or builds a scene of its own. Many headers still promise "one call and two callers",
-and the second caller is gone. What is left is production code that only the tests reach.
-
-- [ ] **`makeDaylight`, its three overloads, and the whole weather-record path have no production
-      caller.** `WeatherRamps`, `readWeatherRamps`, `requireWeather` and `nextRegionWeather` are
-      reached only from `lightbuilder.cpp` itself and from `apps/components_tests/rtx/`. The game
-      builds its `Daylight` field by field in `readworld.cpp` instead.
-
-- [ ] **`Rtx::makeMoon` derives a placement from a date, which no frame asks for.** The game calls
-      `placeMoon` with the angles the weather system settled on. What holds it is that
-      `moonbuilder`'s tests place a moon at an hour through it, so dropping it means teaching them
-      `Sky::MoonModel`'s clock — a second spelling of what `makeMoon` is.
+- [ ] **Move the moon clock's tests to `components/sky` and drop the adapter.** `Rtx::makeMoon` has
+      no production caller — the game hands `placeMoon` the angles `MWWorld::MoonModel` settled on.
+      What holds it is that `apps/components_tests/rtx/moonbuilder.cpp` is the only place
+      `Sky::MoonModel`'s clock is asserted at all, and the game reaches that clock through
+      `MWWorld`. The fix is a `components_tests/sky/moon.cpp` beside `sun.cpp`, which is outside
+      this review's scope.
 
 ---
 
@@ -136,10 +129,10 @@ Several headers do not use it.
 
 ---
 
-## `lightbuilder.hpp` is five subjects in one header
+## `lightbuilder.hpp` is four subjects in one header
 
-528 lines declare the light of a `LIGH` record, the sun, the sky budget, the weather record, the
-region's weather table, the air over a moon, and the colour decode.
+417 lines declare the light of a `LIGH` record, the sun, the sky budget, the air over a moon, the
+weather's name table, and the colour decode.
 
 - [ ] **Split it by subject.** A `LIGH` becoming a light, a weather becoming a sky, and a colour
       being decoded are three questions. `decodeColour` alone is named by nearly every file that

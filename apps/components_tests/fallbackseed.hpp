@@ -57,8 +57,8 @@ namespace TestingOpenMW
             { "Weather_Stars_Pre-Sunrise_Finish", "2" },
             { "Weather_Stars_Fading_Duration", "2" },
 
-            // Clear and Overcast, whole. `Rtx::requireWeather` refuses a weather short of one key by
-            // name, so a partial weather is no weather at all.
+            // Clear and Overcast, whole: a weather short of one key reads as nought rather than as
+            // an error, so a partial one is worse than none.
             { "Weather_Clear_Sky_Sunrise_Color", "117,141,164" },
             { "Weather_Clear_Sky_Day_Color", "095,135,203" },
             { "Weather_Clear_Sky_Sunset_Color", "056,089,129" },
