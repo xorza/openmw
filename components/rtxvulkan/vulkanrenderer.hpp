@@ -215,13 +215,14 @@ namespace Rtx
         /// it already reached on either axis.
         void growViewTargets(std::uint32_t width, std::uint32_t height);
 
-        // Declaration order is destruction order reversed, and everything below the device is built
-        // on it.
-        Instance mInstance;
         /// What the finished picture is encoded into, and so what the GUI pass is compiled against.
         /// Four bytes a pixel and not display-encoded by the hardware: the tone curve has already
         /// run by the time anything is written here.
         static constexpr VkFormat sTargetFormat = VK_FORMAT_R8G8B8A8_UNORM;
+
+        // Declaration order is destruction order reversed, and everything below the device is built
+        // on it.
+        Instance mInstance;
 
         Device mDevice;
         CommandPool mPool;

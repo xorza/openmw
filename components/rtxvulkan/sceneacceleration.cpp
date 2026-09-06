@@ -264,15 +264,8 @@ namespace Rtx
         mUpdatable.resize(slots, 0);
         mMicromapped.resize(slots, 0);
 
-        // The build reads these through pointers it keeps until the command is recorded, so they
-        // live across the whole function rather than inside the loop.
-        mBuildGeometries.assign(meshes.size(), VkAccelerationStructureGeometryKHR{});
-        mBuildMicromaps.assign(meshes.size(), VkAccelerationStructureTrianglesOpacityMicromapEXT{});
-        mBuilds.assign(meshes.size(), VkAccelerationStructureBuildGeometryInfoKHR{});
-        mBuildRanges.assign(meshes.size(), VkAccelerationStructureBuildRangeInfoKHR{});
-        mBuildRangePointers.clear();
+        mBuild.sizeTo(meshes.size());
         mLiveBuilds.clear();
-        mBuildRangePointers.reserve(meshes.size());
         mLiveBuilds.reserve(meshes.size());
 
         const VkDeviceSize scratchAlignment
@@ -285,6 +278,10 @@ namespace Rtx
         VkDeviceSize wanted = 0;
         VkDeviceSize scratchTotal = 0;
 
+        // **Sized together and every entry at nought**, which is what a mesh with no triangles is
+        // left at: nothing describes it, nothing builds it, and the gate below reads that nought.
+        mBuildSizes.clear();
+        mBuildSizes.resize(meshes.size());
         mBuildScratchOffsets.clear();
         mBuildScratchOffsets.resize(meshes.size());
 
@@ -310,16 +307,16 @@ namespace Rtx
             // mesh counts by it.
             mMicromapped[slot] = micromaps.has(slot) ? 1 : 0;
             if (mMicromapped[slot] != 0)
-                mBuildMicromaps[at] = micromaps.describe(slot);
+                mBuild.mMicromaps[at] = micromaps.describe(slot);
 
             // Indices are mesh-local, so each structure is handed the slice of the shared buffers
             // that belongs to it and addresses vertex zero as its own first vertex. The addresses
             // are guarded here as well: a freed slot's run is nothing, and `addressOf` would name
             // where it used to be.
-            mBuildGeometries[at]
+            mBuild.mGeometries[at]
                 = describeTriangles(mesh, mesh.mVertexCount > 0 ? mPositions.at(0).addressOf(mesh.mVertexOffset) : 0,
                     mesh.mIndexCount > 0 ? mIndices.addressOf(mesh.mIndexOffset) : 0,
-                    mMicromapped[slot] != 0 ? &mBuildMicromaps[at] : nullptr);
+                    mMicromapped[slot] != 0 ? &mBuild.mMicromaps[at] : nullptr);
 
             // **Only a mesh that deforms is built to be refitted.** The flag costs a structure its
             // tightness and the trace that reads it a little; a few dozen actors pay it and the
@@ -333,13 +330,13 @@ namespace Rtx
             if (mesh.mDeform != Deform::None)
                 flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
 
-            mBuilds[at] = VkAccelerationStructureBuildGeometryInfoKHR{
+            mBuild.mBuilds[at] = VkAccelerationStructureBuildGeometryInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
                 .flags = flags,
                 .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
                 .geometryCount = 1,
-                .pGeometries = &mBuildGeometries[at],
+                .pGeometries = &mBuild.mGeometries[at],
             };
 
             const std::uint32_t triangles = mesh.getTriangleCount();
@@ -351,18 +348,15 @@ namespace Rtx
             if (triangles == 0)
             {
                 mUpdateScratch[slot] = 0;
-                mBuildSizes.resize(meshes.size());
-                mBuildSizes[at] = 0;
                 continue;
             }
 
             VkAccelerationStructureBuildSizesInfoKHR sizes{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR,
             };
-            functions.mGetAccelerationStructureBuildSizes(
-                mDevice.getHandle(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &mBuilds[at], &triangles, &sizes);
+            functions.mGetAccelerationStructureBuildSizes(mDevice.getHandle(),
+                VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &mBuild.mBuilds[at], &triangles, &sizes);
 
-            mBuildSizes.resize(meshes.size());
             mBuildSizes[at] = sizes.accelerationStructureSize;
             wanted = alignUp(wanted + sizes.accelerationStructureSize, StructureStorage::sAlignment);
 
@@ -373,7 +367,7 @@ namespace Rtx
             // same geometry describes it, so the answer cannot have changed.
             mUpdateScratch[slot] = sizes.updateScratchSize;
 
-            mBuildRanges[at] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = triangles };
+            mBuild.mRanges[at] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = triangles };
         }
 
         if (scratchTotal == 0)
@@ -403,8 +397,8 @@ namespace Rtx
             checkVk(functions.mCreateAccelerationStructure(mDevice.getHandle(), &create, nullptr, &mBottomLevel[slot]),
                 "vkCreateAccelerationStructureKHR");
 
-            mBuilds[at].dstAccelerationStructure = mBottomLevel[slot];
-            mBuilds[at].scratchData.deviceAddress = scratchAddress + mBuildScratchOffsets[at];
+            mBuild.mBuilds[at].dstAccelerationStructure = mBottomLevel[slot];
+            mBuild.mBuilds[at].scratchData.deviceAddress = scratchAddress + mBuildScratchOffsets[at];
 
             // **Asked once each, here, and never again.** A handle lasts until the mesh is released
             // and its address with it, so the alternative is the same question per instance per
@@ -417,13 +411,13 @@ namespace Rtx
             mBottomLevelAddresses[slot]
                 = functions.mGetAccelerationStructureDeviceAddress(mDevice.getHandle(), &address);
 
-            mLiveBuilds.push_back(mBuilds[at]);
-            mBuildRangePointers.push_back(&mBuildRanges[at]);
+            mLiveBuilds.push_back(mBuild.mBuilds[at]);
+            mBuild.mRangePointers.push_back(&mBuild.mRanges[at]);
         }
 
         const VkCommandBuffer commands = batch.getCommands();
         functions.mCmdBuildAccelerationStructures(
-            commands, static_cast<std::uint32_t>(mLiveBuilds.size()), mLiveBuilds.data(), mBuildRangePointers.data());
+            commands, static_cast<std::uint32_t>(mLiveBuilds.size()), mLiveBuilds.data(), mBuild.mRangePointers.data());
         barrierAfterBuild(commands);
 
         batch.keep(std::move(scratch));
@@ -445,7 +439,7 @@ namespace Rtx
             // **Emptied and not left alone.** These still hold the last frame's rebuilds, and a
             // frame whose actors have all gone would otherwise leave a vector whose size claims work
             // that is not there.
-            mRefitBuilds.clear();
+            mRefit.sizeTo(0);
             return;
         }
 
@@ -469,11 +463,7 @@ namespace Rtx
 
         const VkDeviceAddress scratchAddress = mRefitScratch.getDeviceAddress();
 
-        mRefitGeometries.resize(count);
-        mRefitMicromaps.resize(count);
-        mRefitBuilds.resize(count);
-        mRefitRanges.resize(count);
-        mRefitRangePointers.resize(count);
+        mRefit.sizeTo(count);
 
         for (std::uint32_t i = 0; i < count; ++i)
         {
@@ -484,17 +474,17 @@ namespace Rtx
             // makes the structure it produces the same size as the one already sitting at this
             // mesh's offset — and what an update over a micromap requires.
             if (mMicromapped[index] != 0)
-                mRefitMicromaps[i] = micromaps.describe(index);
+                mRefit.mMicromaps[i] = micromaps.describe(index);
 
-            mRefitGeometries[i] = describeTriangles(mesh, positions.addressOf(mesh.mVertexOffset),
-                mIndices.addressOf(mesh.mIndexOffset), mMicromapped[index] != 0 ? &mRefitMicromaps[i] : nullptr);
+            mRefit.mGeometries[i] = describeTriangles(mesh, positions.addressOf(mesh.mVertexOffset),
+                mIndices.addressOf(mesh.mIndexOffset), mMicromapped[index] != 0 ? &mRefit.mMicromaps[i] : nullptr);
 
-            mRefitRanges[i] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = mesh.getTriangleCount() };
-            mRefitRangePointers[i] = &mRefitRanges[i];
+            mRefit.mRanges[i] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = mesh.getTriangleCount() };
+            mRefit.mRangePointers.push_back(&mRefit.mRanges[i]);
         }
 
-        // A second pass, because `pGeometries` is a pointer into a vector the first pass was still
-        // filling: a build info written beside a geometry that later moved would name freed memory.
+        // A second pass, for the reason `StructureBuildBatch` gives: the geometries are placed
+        // before any build info names one.
         VkDeviceSize scratchAt = 0;
         for (std::uint32_t i = 0; i < count; ++i)
         {
@@ -503,7 +493,7 @@ namespace Rtx
             // **Into the structure that is already there**, rather than into a new one beside it:
             // its handle is what every top-level row already points at. An update, with the same
             // flags as the build that allowed one, which the update requires.
-            mRefitBuilds[i] = VkAccelerationStructureBuildGeometryInfoKHR{
+            mRefit.mBuilds[i] = VkAccelerationStructureBuildGeometryInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
                 .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
@@ -513,7 +503,7 @@ namespace Rtx
                 .srcAccelerationStructure = mBottomLevel[index],
                 .dstAccelerationStructure = mBottomLevel[index],
                 .geometryCount = 1,
-                .pGeometries = &mRefitGeometries[i],
+                .pGeometries = &mRefit.mGeometries[i],
                 .scratchData = { .deviceAddress = scratchAddress + scratchAt },
             };
 
@@ -524,8 +514,8 @@ namespace Rtx
     void SceneAcceleration::recordRefit(VkCommandBuffer commands, GpuTimer* timer)
     {
         openZone(timer, commands, "refit");
-        mDevice.getFunctions().mCmdBuildAccelerationStructures(
-            commands, static_cast<std::uint32_t>(mRefitBuilds.size()), mRefitBuilds.data(), mRefitRangePointers.data());
+        mDevice.getFunctions().mCmdBuildAccelerationStructures(commands,
+            static_cast<std::uint32_t>(mRefit.mBuilds.size()), mRefit.mBuilds.data(), mRefit.mRangePointers.data());
         barrierAfterBuild(commands);
         closeZone(timer, commands);
     }
@@ -545,7 +535,7 @@ namespace Rtx
         // fence on every frame of a standing camera. A refit alone still rebuilds it, because a top
         // level caches the bounds of what it names.
         writeRows(records, changed);
-        if (!mRowTable.owes(placing.mSlot) && mRefitBuilds.empty())
+        if (!mRowTable.owes(placing.mSlot) && mRefit.mBuilds.empty())
             return false;
 
         prepareTopLevel(scene, placing.mSlot, placing.mGraveyard);
@@ -554,7 +544,7 @@ namespace Rtx
         // level is built over structures the refit has just rewritten, which is a dependency inside
         // a command buffer rather than a reason to go round the driver twice.
         barrierBeforeBuild(placing.mCommands);
-        if (!mRefitBuilds.empty())
+        if (!mRefit.mBuilds.empty())
             recordRefit(placing.mCommands, placing.mTimer);
 
         recordTopLevel(placing.mCommands, placing.mTimer);

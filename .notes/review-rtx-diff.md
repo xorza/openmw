@@ -29,42 +29,6 @@ shimmer.
   by design, so the check only ever runs with both off, which is why it is worth
   asking whether it earns its keep before it is built again.
 
-## Two parallel families of build scratch in `SceneAcceleration`
-
-- [ ] `components/rtxvulkan/sceneacceleration.hpp:313-365` — `mBuildGeometries`,
-  `mBuildMicromaps`, `mBuilds`, `mBuildRanges`, `mBuildSizes`,
-  `mBuildScratchOffsets`, `mLiveBuilds`, `mBuildRangePointers` and the parallel
-  `mRefitGeometries`, `mRefitMicromaps`, `mRefitBuilds`, `mRefitRanges`,
-  `mRefitRangePointers` are the same shape twice, filled by `buildMeshes` and
-  `prepareRefit` with the same sequencing rule ("the geometries are sized before
-  any build info names one"). One `StructureBuildBatch` holding the vectors and
-  that rule, instantiated twice, removes thirteen members and one of the two
-  places the rule can be got wrong.
-- [ ] `components/rtxvulkan/sceneacceleration.hpp:76-77` — the deleted copy
-  constructor and assignment sit after `build()`, away from the constructor and
-  destructor at lines 58-59.
-
-## Include blocks out of the order the tree states
-
-`AGENTS.md` fixes the order: own header, standard library, other libraries,
-`<components/...>`/`<apps/...>`, then quoted local headers. `.clang-format`
-preserves the blocks, so nothing checks this.
-
-- [ ] `components/rtx/texturebuilder.cpp:15-22` — `<components/debug/debuglog.hpp>`
-  and `<components/resource/imagemanager.hpp>` come after the quoted locals.
-- [ ] `apps/openmw/mwrender/renderingmanager.cpp` — `<components/weather/precipitation.hpp>`
-  was added inside the quoted-local block, after `"vismask.hpp"`.
-
-## Helpers with external linkage that every neighbour keeps internal
-
-- [ ] `components/rtx/lightbuilder.cpp:549-583` — `lightPhase`, `band` and
-  `flame` are defined at `Rtx` namespace scope and declared in no header, so
-  they have external linkage. Every other helper in the file sits in an
-  anonymous namespace. Move them into one.
-- [ ] `components/rtx/lightbuilder.cpp:31-113`, `:115-208`, `:210-240` — three
-  separate anonymous namespaces in one file, with `Rtx`-scope definitions
-  between the second and the third. One block, or a comment saying why not.
-
 ## One fact derived twice across the two hosts
 
 - [ ] `apps/openmw/mwrender/renderingmanager.cpp:809` computes the rain
@@ -76,14 +40,6 @@ preserves the blocks, so nothing checks this.
 
 ## Smaller things
 
-- [ ] `components/rtx/lightbuilder.cpp:448-450` — a blank line between
-  `weatherIndex`'s signature and its opening brace.
-- [ ] `components/rtxvulkan/vulkanrenderer.hpp:216-219` — `static constexpr
-  VkFormat sTargetFormat` is declared between `mInstance` and `mDevice`, inside
-  a member list whose opening comment states that declaration order is
-  destruction order. Move it above the data members.
-- [ ] `components/rtxvulkan/vulkanrenderer.cpp:124-125` — no blank line between
-  `deviceExtensionsFor` and `hasSea`'s doc comment.
 - [ ] `components/rtx/spanallocator.cpp:37-42` — the best-fit search ranks holes
   by `hole->mCount`, not by what is wasted after the block alignment `place()`
   applied. With `mBlock` set, a smaller hole can waste more than a larger one.

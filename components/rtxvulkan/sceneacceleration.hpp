@@ -34,6 +34,47 @@ namespace Rtx
     /// `toTransform3x4`, once, where a backend cannot get it wrong on its own.
     VkTransformMatrixKHR toVulkanTransform(const Transform3x4& transform);
 
+    /// The scratch one run of structure builds is described in.
+    ///
+    /// **Members and not locals, because Vulkan keeps the addresses.** A build info holds
+    /// `pGeometries` as a pointer and a range is handed over by address, so both have to outlive the
+    /// loop that filled them — and a cell arriving must not allocate five vectors to say so.
+    ///
+    /// **Two passes, because `sizeTo` is what makes the first one possible.** A vector grown while a
+    /// pointer already points into it moves its storage, so every geometry is placed before any
+    /// build info names one. `buildMeshes` and `prepareRefit` are each written that way, and this is
+    /// where the rule is stated rather than in both of them.
+    struct StructureBuildBatch
+    {
+        std::vector<VkAccelerationStructureGeometryKHR> mGeometries;
+
+        /// What each geometry chains for its micromap, where it has one. Beside the geometries
+        /// because the geometry keeps a pointer to it.
+        std::vector<VkAccelerationStructureTrianglesOpacityMicromapEXT> mMicromaps;
+
+        std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mBuilds;
+        std::vector<VkAccelerationStructureBuildRangeInfoKHR> mRanges;
+        std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> mRangePointers;
+
+        /// Room for `count` descriptions, each one cleared, and an empty list of range pointers.
+        ///
+        /// **Cleared and not merely sized**, because a filler may skip an entry — a mesh with no
+        /// triangles is described by nobody — and what is left behind is then the previous run's.
+        ///
+        /// The pointers are pushed rather than sized, because how many there are is what a filler
+        /// decides: every entry for a refit, and only what was really built otherwise.
+        void sizeTo(std::size_t count)
+        {
+            mGeometries.assign(count, VkAccelerationStructureGeometryKHR{});
+            mMicromaps.assign(count, VkAccelerationStructureTrianglesOpacityMicromapEXT{});
+            mBuilds.assign(count, VkAccelerationStructureBuildGeometryInfoKHR{});
+            mRanges.assign(count, VkAccelerationStructureBuildRangeInfoKHR{});
+
+            mRangePointers.clear();
+            mRangePointers.reserve(count);
+        }
+    };
+
     /// Every acceleration structure a scene needs, built once.
     ///
     /// One bottom-level structure per mesh, all of them inside a single buffer at offsets, and one
@@ -58,6 +99,9 @@ namespace Rtx
         SceneAcceleration(const Device& device, const SceneDesc& scene, std::uint32_t slots);
         ~SceneAcceleration();
 
+        SceneAcceleration(const SceneAcceleration&) = delete;
+        SceneAcceleration& operator=(const SceneAcceleration&) = delete;
+
         /// Builds every mesh's structure, writes every row, and builds the top level. Once, after
         /// the constructor.
         ///
@@ -72,9 +116,6 @@ namespace Rtx
         /// chains and why a refit chains the same.
         void build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records,
             const SceneMicromaps& micromaps, Graveyard& graveyard);
-
-        SceneAcceleration(const SceneAcceleration&) = delete;
-        SceneAcceleration& operator=(const SceneAcceleration&) = delete;
 
         /// Rebuilds what a moved world changed: every deformed mesh's structure, then the top level.
         ///
@@ -310,25 +351,18 @@ namespace Rtx
         /// arrival takes. Kept so that path allocates nothing per scene.
         std::vector<Index> mEveryMesh;
 
-        // What one run of `buildMeshes` describes. Members rather than locals because a build info
-        // keeps `pGeometries` as a pointer and a range is handed over by address, so both have to
-        // outlive the loop that filled them — and because a cell arriving must not allocate five
-        // vectors to say so.
-        std::vector<VkAccelerationStructureGeometryKHR> mBuildGeometries;
+        /// What one run of `buildMeshes` describes.
+        StructureBuildBatch mBuild;
 
-        /// What each geometry chains for its micromap, where it has one. Beside the geometries
-        /// because the geometry keeps a pointer to it.
-        std::vector<VkAccelerationStructureTrianglesOpacityMicromapEXT> mBuildMicromaps;
-
-        std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mBuilds;
-        std::vector<VkAccelerationStructureBuildRangeInfoKHR> mBuildRanges;
+        /// How big each mesh's structure comes out, and where in the one scratch buffer they share
+        /// its build takes its working room. Beside each other because both are filled in the same
+        /// pass and read in the next.
         std::vector<VkDeviceSize> mBuildSizes;
-
-        /// Where each mesh's build takes its working room in the one scratch buffer they share.
-        /// Beside the sizes because it is filled in the same pass and read in the next.
         std::vector<VkDeviceSize> mBuildScratchOffsets;
+
+        /// The builds actually recorded, which is `mBuild.mBuilds` without the meshes that came out
+        /// at nought bytes — a mesh with no triangles is described by nobody and built by nobody.
         std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mLiveBuilds;
-        std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> mBuildRangePointers;
 
         /// Kept across frames rather than made per refit: a device allocation on the frame path is a
         /// stall, and this settles at the high-water mark of whatever the world is showing. It never
@@ -356,13 +390,8 @@ namespace Rtx
         VkAccelerationStructureGeometryKHR mTopLevelGeometry{};
         VkAccelerationStructureBuildGeometryInfoKHR mTopLevelBuild{};
 
-        // Refilled per refit. The build reads `pGeometries` through a pointer, so the geometries are
-        // sized before any build info names one.
-        std::vector<VkAccelerationStructureGeometryKHR> mRefitGeometries;
-        std::vector<VkAccelerationStructureTrianglesOpacityMicromapEXT> mRefitMicromaps;
-        std::vector<VkAccelerationStructureBuildGeometryInfoKHR> mRefitBuilds;
-        std::vector<VkAccelerationStructureBuildRangeInfoKHR> mRefitRanges;
-        std::vector<const VkAccelerationStructureBuildRangeInfoKHR*> mRefitRangePointers;
+        /// What one run of `prepareRefit` describes.
+        StructureBuildBatch mRefit;
 
         /// What each row counts as — `sRowCutout`, `sRowWater` — so the counts below can be kept by
         /// the row that changed rather than recounted over every row a frame.

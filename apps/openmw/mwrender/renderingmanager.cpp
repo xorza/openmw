@@ -58,6 +58,7 @@
 #include <components/debug/debugdraw.hpp>
 #include <components/detournavigator/navigator.hpp>
 #include <components/detournavigator/navmeshcacheitem.hpp>
+#include <components/weather/precipitation.hpp>
 
 #include "../mwworld/cellstore.hpp"
 #include "../mwworld/class.hpp"
@@ -91,7 +92,6 @@
 #include "terrainstorage.hpp"
 #include "util.hpp"
 #include "vismask.hpp"
-#include <components/weather/precipitation.hpp>
 
 namespace
 {

@@ -122,6 +122,7 @@ namespace Rtx
 
             return { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
         }
+
         /// Whether the frame has a sea to synthesise.
         ///
         /// **The shader's own test**, so the two cannot disagree: a cell with no water carries a
