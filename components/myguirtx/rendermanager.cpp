@@ -178,13 +178,9 @@ namespace MyGUIRtx
 
     void RenderManager::end() {}
 
-    void RenderManager::update()
+    void RenderManager::update(const float step)
     {
-        const unsigned long now = mTimer.getMilliseconds();
-        const unsigned long elapsed = mLastTime.has_value() ? now - *mLastTime : 0;
-        mLastTime = now;
-
-        onFrameEvent(static_cast<float>(static_cast<double>(elapsed) / 1000));
+        onFrameEvent(step);
     }
 
     void RenderManager::collectDrawCalls()

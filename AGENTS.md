@@ -165,6 +165,10 @@ renderer is told a frame took, and a stop's own frame count is what the trace's 
 upscaler's jitter are walked by. A game's frame number counts loading-screen frames, which is why it
 is not that.
 
+**`apps/rtxtool/repeatable.sh` is what says it still is.** It walks `one-cell-walk` twice in two
+processes and compares the frame hashes. Two processes, because two walks in one share no world
+state and agree on nothing. Run it after touching anything a frame reads.
+
 **No benching and no frame times until the renderer draws everything the game has.**
 
 **Measure on a hot card, and never sleep between runs.** A cooldown costs more than the measurements

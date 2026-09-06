@@ -2,12 +2,10 @@
 
 #include <map>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
 #include <MyGUI_IRenderTarget.h>
-#include <MyGUI_Timer.h>
 
 #include <components/myguiplatform/guirendermanager.hpp>
 #include <components/rtx/renderer.hpp>
@@ -83,8 +81,15 @@ namespace MyGUIRtx
 
         /*internal:*/
 
-        /// One frame of widget animation. The other backend gets this from an update callback.
-        void update();
+        /// One frame of widget animation, `step` seconds of it.
+        ///
+        /// **The step is the caller's, because the interface ages with everything else.** MyGUI's
+        /// own timer is a wall clock read in whole milliseconds, and every animation hanging off
+        /// this call ages by it — the screen faders included, which are the red overlay a hit puts
+        /// up and the black one a fade uses. A run that steps its world by the frame index and its
+        /// interface by the wall draws that overlay at a different strength on the same frame in
+        /// every run. `Rtx::FrameClock` is what a caller answers from.
+        void update(float step);
 
         /// Gathers every layer's triangles and hands them to the renderer in one call.
         void collectDrawCalls();
@@ -116,12 +121,6 @@ namespace MyGUIRtx
 
         /// The clock `update` reads its frame delta from, and what it last read.
         ///
-        /// **The manager's own and not the process's.** Held in function statics, they would hand a
-        /// manager made after another one the whole gap since that one's last frame, as a single
-        /// delta — and every animation in the interface would jump. Empty until the first frame,
-        /// which is what stops the gap between construction and it becoming that same jump.
-        MyGUI::Timer mTimer;
-        std::optional<unsigned long> mLastTime;
     };
 
 }

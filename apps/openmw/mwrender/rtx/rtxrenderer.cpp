@@ -373,10 +373,16 @@ namespace MWRender
     void RtxRenderer::updateTraversal()
     {
         // **Before the early return, because a main menu has no scene root.** MyGUI's widget
-        // animation, its key repeat and its tooltip timers all hang off this one call, and the other
-        // backend gets it from an update callback on a node that is always in the graph.
+        // animation, its key repeat, its tooltip timers and its screen faders all hang off this one
+        // call, and the other backend gets it from an update callback on a node that is always in
+        // the graph.
+        //
+        // **The frame's own step, and not MyGUI's timer.** That timer is a wall clock read in whole
+        // milliseconds, and a hit's red overlay faded by it — so two runs of one build drew the
+        // overlay at different strengths on the same frame. Measured on `one-cell-walk`: 13 of 360
+        // frames differed, and none do now.
         if (MyGUIRtx::RenderManager* gui = MyGUIRtx::RenderManager::getInstancePtr())
-            gui->update();
+            gui->update(static_cast<float>(mClock.getStep()));
 
         if (mSceneRoot == nullptr)
             return;
@@ -739,10 +745,14 @@ namespace MWRender
         constants.mDelight = mDelight;
         constants.mShowAlbedo = mShowAlbedo ? 1u : 0u;
 
-        // **Measured, not held at one.** A picture wants the exposure the frame asks for; holding
-        // it is what a reference and a pixel test want, and the default is theirs. Without this an
-        // interior lit by nothing but this placeholder's ambient reaches the screen at a few
-        // hundredths and reads as black.
+        // **Measured, or held where `[RTX] exposure` names a number.** A picture wants the exposure
+        // the frame asks for; holding it is what a reference and a pixel test want. Without a
+        // measured one an interior lit by nothing but this placeholder's ambient reaches the screen
+        // at a few hundredths and reads as black.
+        //
+        // **`mExposure` and not `std::nullopt`, which is what this passed.** The setting was read
+        // into a member nothing then sent, so `--exposure=1` measured the frame like every other
+        // run and a pixel test could not hold the exposure at all.
         //
         // **Carried rather than worked out here**, because a room is the exception to the rule that
         // would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell got settled
@@ -750,7 +760,7 @@ namespace MWRender
         const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(constants,
             Rtx::FrameOptions{ .mSinceLast = mClock.getStatedStep(),
                 .mExposureBias = described.mExposureBias,
-                .mExposure = std::nullopt });
+                .mExposure = mExposure });
 
         // **The whole frame, measured between one trace and the next.** Everything the game does
         // in between is in it — update, cull, this — which is what a player feels and what the
