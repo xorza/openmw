@@ -61,11 +61,13 @@ namespace RtxTool
         // failure. A window somebody closes has finished no stop and owes no numbers.
         const bool scheduled = request.mQuitAtEnd;
 
-        // **The engine is destroyed before the result is read, and that is what makes the result
-        // exist.** `MWRender::Session` publishes from its own destructor, because a run that ends
+        // **Declared outside the block that builds the engine, because the run fills it from a
+        // destructor.** `MWRender::Session` writes here as it is cleared, because a run that ends
         // its last stop and a window somebody closes both have to be reported and only the first
-        // ever reaches `finish`. `OMW::Engine` declares the world before the renderer that holds
-        // the session, so the world is still standing when it is asked where the eye was left.
+        // ever reaches `finish`. `OMW::Engine` declares the world before the renderer that holds the
+        // session, so the world is still standing when it is asked where the eye was left.
+        Rtx::SessionResult result;
+
         {
             OMW::Engine engine(config);
             engine.setRecastMaxLogLevel(Debug::getRecastMaxLogLevel());
@@ -117,12 +119,11 @@ namespace RtxTool
             engine.setSoundUsage(false);
             engine.setGrabMouse(false);
 
-            MWRender::installSession(std::move(request));
+            MWRender::installSession(std::move(request), result);
 
             engine.go();
         }
 
-        const Rtx::SessionResult result = MWRender::takeSessionResult();
         out << result.mReport;
 
         // **Where it was left, so a session that ended somewhere worth keeping did not lose it.**

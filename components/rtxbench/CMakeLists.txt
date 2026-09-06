@@ -25,6 +25,8 @@ set(RTXBENCH_FILES
     gpuclock.hpp
     perfcontrol.cpp
     perfcontrol.hpp
+    runrecord.cpp
+    runrecord.hpp
     scenedigest.cpp
     scenedigest.hpp
 )

@@ -2,23 +2,19 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <memory>
 #include <optional>
-#include <string>
-#include <vector>
 
 #include <osg/Quat>
 #include <osg/Vec3d>
 #include <osg/Vec3f>
 
 #include <components/rtx/renderer.hpp>
-#include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
+#include <components/rtxbench/runrecord.hpp>
 
 namespace MWRender
 {
-    class OffscreenView;
     class RtxRenderer;
 
     /// The run `[RTX] session` asks for, or nothing where nobody asked for one.
@@ -28,21 +24,33 @@ namespace MWRender
     /// fly — where it stands is the savegame's.
     std::optional<Rtx::SessionRequest> readSessionSetting();
 
-    /// Hands a run to whichever renderer the engine is about to build.
+    /// A run to make, and where to leave what it came to.
+    struct InstalledSession
+    {
+        Rtx::SessionRequest mRequest;
+
+        /// The launcher's own slot, filled once by `~Session` and never read here.
+        ///
+        /// **Null for a run a settings file asked for**, which is a played binary measuring itself
+        /// with nobody waiting on the answer.
+        Rtx::SessionResult* mInto = nullptr;
+    };
+
+    /// Hands a run to whichever renderer the engine is about to build, and says where its answer
+    /// goes.
     ///
     /// **A slot and not a field of `RendererSpec`.** That struct is filled inside `Engine::go`,
     /// which is upstream's; a field there would be an edit to it for a value only one launcher ever
     /// sets. Filled once before the engine starts and taken once by the renderer's constructor.
-    void installSession(Rtx::SessionRequest request);
+    ///
+    /// **`into` is the caller's own and has to outlive `Engine::go`.** The session fills it from
+    /// its own destructor, which `~Engine` runs, so by the time `go` returns there is nothing left
+    /// to ask — an answer read afterwards is one that was written somewhere first.
+    void installSession(Rtx::SessionRequest request, Rtx::SessionResult& into);
 
     /// What was installed, or nothing for an ordinary session. Taken, so a second renderer in one
     /// process does not inherit the first one's run.
-    std::optional<Rtx::SessionRequest> takeInstalledSession();
-
-    /// What the run came to, published by the session as it ends and taken by the launcher after
-    /// `Engine::go` returns.
-    void publishSessionResult(Rtx::SessionResult result);
-    Rtx::SessionResult takeSessionResult();
+    std::optional<InstalledSession> takeInstalledSession();
 
     /// Drives a run of the game and measures it.
     ///
@@ -57,7 +65,7 @@ namespace MWRender
     class Session
     {
     public:
-        explicit Session(Rtx::SessionRequest request);
+        Session(Rtx::SessionRequest request, Rtx::SessionResult* into);
         ~Session();
 
         Session(const Session&) = delete;
@@ -117,38 +125,19 @@ namespace MWRender
         /// Closes the stop, records it, and moves to the next one — or ends the run.
         void endStop(RtxRenderer& owner);
 
-        /// What the renderer was handed, as `scene` reports it.
-        void reportScene(RtxRenderer& owner);
-
-        /// Every texture the scene holds, vanilla beside de-lit, as one sheet.
-        void writeSheet(RtxRenderer& owner, const std::filesystem::path& sheet);
-
-        /// One local-map tile of wherever the stop stands.
-        void writeMapTile(RtxRenderer& owner, const std::filesystem::path& file);
-
-        /// The inventory doll of one person.
-        void writeDoll(RtxRenderer& owner, const std::string& who, const std::filesystem::path& file);
-
-        /// Lists the textures whose path holds `needle`, and where the meshes wearing them stand.
-        void reportFound(RtxRenderer& owner, const std::string& needle);
-
-        /// Asks every check the stop named, and reports each one's answer.
-        void runChecks(RtxRenderer& owner);
-
-        /// Draws `view` and writes what it drew, right way up.
-        ///
-        /// **A picture inside the interface is written bottom row first**, which is what
-        /// `OffscreenView::getTexture` promises and what the widgets showing one invert V for. A
-        /// file wants the other order, so the rows are turned over on the way out.
-        bool writeView(OffscreenView& view, int width, int height, const std::filesystem::path& file);
-
         /// Writes what the run was asked to write and ends it.
         void finish();
 
         /// Everything a launcher reads back, including where the eye was left.
         ///
-        /// **Published from the destructor and nowhere else.** A run that ends its last stop and a
-        /// window somebody closes both come here, and only one of the two ever reaches `finish`.
+        /// **Written into `mInto` from the destructor and nowhere else.** A run that ends its last
+        /// stop and a window somebody closes both come here, and only one of the two ever reaches
+        /// `finish`.
+        ///
+        /// **The whole result and never a field at a time.** A launcher reads four of these and a
+        /// run fills all four, so a hand-over written out member by member loses whichever ones
+        /// nobody remembered — silently, since an unfilled `Rtx::SessionResult` is a valid one
+        /// describing a camera at the origin.
         ///
         /// **And it asks the world nothing.** `OMW::Engine::~Engine` clears its members in a body
         /// rather than leaving them to declaration order, and it clears the world and the state
@@ -170,6 +159,10 @@ namespace MWRender
         void aimCamera(const osg::Vec3f& eye, const osg::Vec3f& look);
 
         Rtx::SessionRequest mRequest;
+
+        /// Where the run's answer goes, or null where nobody asked for one. `installSession` says
+        /// what keeps it alive.
+        Rtx::SessionResult* mInto = nullptr;
 
         /// Which stop is running, and whether it has been started.
         std::size_t mAt = 0;
@@ -212,20 +205,11 @@ namespace MWRender
         std::size_t mTurnedTo = 0;
         float mTurned = 0.0f;
 
-        /// What every stop has come to so far, and what they all stood under.
-        std::vector<Rtx::BenchPlace> mPlaces;
-        Rtx::BenchHeader mHeader;
+        /// What the run has come to so far: the places, the report and the verdict. Its own type,
+        /// because everything with something to say writes into all of it.
+        Rtx::RunRecord mRecord;
 
-        /// The report as it is built, so a launcher gets the whole of it rather than the log's
-        /// timestamped halves.
-        std::string mReport;
-
-        int mExitStatus = 0;
         bool mDone = false;
-
-        /// How many checks the run asked and how many of them failed.
-        std::uint32_t mChecked = 0;
-        std::uint32_t mFailed = 0;
 
         /// Out of line so this header names no container of samples, and reserved once so the run
         /// itself does not allocate — a bench that stutters where it measures is measuring its own

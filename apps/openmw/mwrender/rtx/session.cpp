@@ -1,12 +1,7 @@
 #include "session.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
-#include <cstddef>
-#include <cstring>
-#include <format>
-#include <fstream>
 #include <span>
 #include <utility>
 #include <vector>
@@ -16,24 +11,12 @@
 #include <components/debug/debuglog.hpp>
 #include <components/esm/position.hpp>
 #include <components/esm/refid.hpp>
-#include <components/files/conversion.hpp>
-#include <components/misc/constants.hpp>
-#include <components/myguirtx/texture.hpp>
-#include <components/resource/resourcesystem.hpp>
 #include <components/rtx/frametimes.hpp>
 #include <components/rtx/lightbuilder.hpp>
-#include <components/rtx/png.hpp>
 #include <components/rtx/renderer.hpp>
-#include <components/rtx/scenedesc.hpp>
-#include <components/rtx/sceneextractor.hpp>
-#include <components/rtx/shaders/colour.h>
-#include <components/rtx/texturebuilder.hpp>
-#include <components/rtxbench/contactsheet.hpp>
-#include <components/rtxbench/framehashes.hpp>
+#include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/perfcontrol.hpp>
-#include <components/rtxbench/scenedigest.hpp>
-#include <components/sceneutil/offscreenframing.hpp>
 #include <components/settings/values.hpp>
 
 #include "../../mwbase/environment.hpp"
@@ -42,31 +25,26 @@
 #include "../../mwworld/cell.hpp"
 #include "../../mwworld/cellstore.hpp"
 #include "../../mwworld/datetimemanager.hpp"
-#include "../../mwworld/esmstore.hpp"
 #include "../../mwworld/globals.hpp"
-#include "../../mwworld/manualref.hpp"
 #include "../../mwworld/ptr.hpp"
 #include "../../mwworld/refdata.hpp"
 #include "../../mwworld/timestamp.hpp"
 
 #include "../camera.hpp"
-#include "../characterpreview.hpp"
-#include "../offscreenview.hpp"
 #include "../renderingmanager.hpp"
-#include "checks.hpp"
 #include "rtxrenderer.hpp"
+#include "stopwriter.hpp"
 
 namespace MWRender
 {
     namespace
     {
-        /// The run this process was asked to make, and what it came to.
+        /// The run this process was asked to make, and where its answer goes.
         ///
-        /// **Two slots rather than a channel through `RendererSpec`.** That struct is filled inside
+        /// **A slot rather than a channel through `RendererSpec`.** That struct is filled inside
         /// `Engine::go`, and a field there would be an edit to upstream for a value one launcher
         /// sets and every other caller leaves empty.
-        std::optional<Rtx::SessionRequest> sInstalled;
-        Rtx::SessionResult sResult;
+        std::optional<InstalledSession> sInstalled;
 
         /// How often a run that turns its sky asks for the next weather, in frames of world.
         ///
@@ -75,14 +53,6 @@ namespace MWRender
         /// cadence of the asking, off the frame index rather than the clock, so the same frame
         /// stands under the same sky on every machine.
         constexpr float sTurnFrames = 4.0f * Rtx::sStepRate;
-
-        /// How wide a map tile is written. The game's own resolution, because the size is not what
-        /// the picture is for.
-        constexpr int sMapTileSide = 512;
-
-        /// Where the tile's eye stands and how far it sees, both far enough to clear any cell.
-        constexpr float sMapEyeHeight = 50000.0f;
-        constexpr float sMapFar = 150000.0f;
 
         /// How far ahead the `look` a run reports points.
         ///
@@ -126,28 +96,14 @@ namespace MWRender
         return request;
     }
 
-    void installSession(Rtx::SessionRequest request)
+    void installSession(Rtx::SessionRequest request, Rtx::SessionResult& into)
     {
-        sInstalled = std::move(request);
+        sInstalled = InstalledSession{ .mRequest = std::move(request), .mInto = &into };
     }
 
-    std::optional<Rtx::SessionRequest> takeInstalledSession()
+    std::optional<InstalledSession> takeInstalledSession()
     {
         return std::exchange(sInstalled, std::nullopt);
-    }
-
-    void publishSessionResult(Rtx::SessionResult result)
-    {
-        sResult = std::move(result);
-    }
-
-    /// **The whole slot, and never a field at a time.** A launcher reads eight of these and a run
-    /// fills all eight, so a take written out member by member loses whichever ones nobody
-    /// remembered — silently, since an unfilled `Rtx::SessionResult` is a valid one describing a camera
-    /// at the origin.
-    Rtx::SessionResult takeSessionResult()
-    {
-        return std::exchange(sResult, Rtx::SessionResult{});
     }
 
     /// What a stop gathers, and the few things a whole run does. Out of line so the header names
@@ -159,24 +115,27 @@ namespace MWRender
         Rtx::Crossings mCrossings;
         Rtx::GpuClock mClock;
 
-        Rtx::FrameHashes mHashes;
-        Rtx::FrameHashes mReference;
-
         /// perf's control fifo, held for the whole run so every stop brackets its own frames.
         std::unique_ptr<Rtx::PerfControl> mProfiling;
 
-        /// What a read back lands in, refilled per frame and never freed.
+        StopWriter mWriter;
+
+        /// What a hashed frame lands in, refilled per measured frame and never freed.
+        ///
+        /// **Not shared with the writer's**, which reads at a doll's or a tile's extent rather than
+        /// the frame's — one buffer would grow to the largest of them and stay there.
         std::vector<std::uint8_t> mPixels;
     };
 
-    Session::Session(Rtx::SessionRequest request)
+    Session::Session(Rtx::SessionRequest request, Rtx::SessionResult* const into)
         : mRequest(std::move(request))
+        , mInto(into)
         , mHeld(std::make_unique<Held>())
     {
         mHeld->mProfiling = std::make_unique<Rtx::PerfControl>(mRequest.mPerfControl);
 
         if (!mRequest.mAgainst.empty())
-            mHeld->mReference = Rtx::FrameHashes::read(mRequest.mAgainst);
+            mRecord.readReference(mRequest.mAgainst);
 
         std::uint32_t longest = 0;
         for (const Rtx::Stop& stop : mRequest.mStops)
@@ -186,7 +145,7 @@ namespace MWRender
         // benchmark that stops to reallocate is measuring its own allocator.
         mHeld->mSamples.reserve(longest);
 
-        mPlaces.reserve(mRequest.mStops.size());
+        mRecord.reserve(mRequest.mStops.size());
 
         if (mRequest.mStops.empty())
             mDone = true;
@@ -194,7 +153,8 @@ namespace MWRender
 
     Session::~Session()
     {
-        publishSessionResult(describeRun());
+        if (mInto != nullptr)
+            *mInto = describeRun();
     }
 
     void Session::noteStanding()
@@ -215,9 +175,9 @@ namespace MWRender
     Rtx::SessionResult Session::describeRun() const
     {
         Rtx::SessionResult result;
-        result.mExitStatus = mExitStatus;
-        result.mPlaces = mPlaces;
-        result.mReport = mReport;
+        result.mExitStatus = mRecord.getExitStatus();
+        result.mPlaces.assign(mRecord.getPlaces().begin(), mRecord.getPlaces().end());
+        result.mReport = mRecord.getReport();
 
         if (!mStood.has_value())
             return result;
@@ -300,7 +260,7 @@ namespace MWRender
             if (found.empty())
             {
                 Log(Debug::Error) << "Ray tracing session: no cell is called \"" << stop.mStand.mCell << '"';
-                mExitStatus = 1;
+                mRecord.fail();
                 mDone = true;
                 MWBase::Environment::get().getStateManager()->requestQuit();
                 return;
@@ -600,7 +560,7 @@ namespace MWRender
         if (stop.mActions.mHash)
         {
             renderer.readPixels(mHeld->mPixels);
-            mHeld->mHashes.add(stop.mName, drawn, mHeld->mPixels);
+            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels);
         }
 
         if (drawn < measured)
@@ -622,116 +582,20 @@ namespace MWRender
 
         const Rtx::FrameExtents extents = renderer.getExtents();
 
-        // **The last measured frame, which is the one every figure above describes.** A picture
-        // taken from any other frame is a picture of a run this report is not about.
-        if (!stop.mActions.mCapture.empty())
-        {
-            renderer.readPixels(mHeld->mPixels);
-            try
-            {
-                Rtx::writePng(stop.mActions.mCapture, extents.mOutputWidth, extents.mOutputHeight, mHeld->mPixels);
-                mReport += std::format("wrote {} {}x{}", Files::pathToUnicodeString(stop.mActions.mCapture),
-                    extents.mOutputWidth, extents.mOutputHeight);
-
-                if (extents.mRenderWidth != extents.mOutputWidth || extents.mRenderHeight != extents.mOutputHeight)
-                    mReport += std::format(", traced at {}x{}", extents.mRenderWidth, extents.mRenderHeight);
-
-                mReport += '\n';
-            }
-            catch (const std::exception& failed)
-            {
-                mReport += std::format(
-                    "could not write {}: {}\n", Files::pathToUnicodeString(stop.mActions.mCapture), failed.what());
-                mExitStatus = 1;
-            }
-        }
-
-        // **The bounce's tail, in radiance and not in bytes.** A firefly is a bounce far enough
-        // above what the pixel has been seeing to be an outlier, and that is a statement about
-        // scene-referred light: the display curve has spent the range it lives in long before a
-        // pixel is a byte. Read off the channel the accumulator wrote, so what is counted is what
-        // the clamp has already been over.
-        if (stop.mActions.mTail)
-        {
-            std::vector<float> bounce;
-            renderer.readChannel(Rtx::Channel::Accumulated, bounce);
-
-            // The ladder the fork's own table was taken on. One is about where the signal ends — a
-            // surface seeing a full hemisphere of sky — and everything past it is the tail proper.
-            static constexpr std::array<float, 5> sThresholds{ 0.5f, 1.0f, 8.0f, 32.0f, 64.0f };
-            std::array<std::uint64_t, 5> over{};
-
-            const std::size_t counted = bounce.size() / 4;
-            for (std::size_t at = 0; at < counted; ++at)
-            {
-                // **The renderer's own weights and not a copy of them.** A second set would be a
-                // second idea of which of two things is brighter, and this is what decides which of
-                // a frame's pixels are outliers.
-                const float lit = bounce[at * 4] * Rtx::Shaders::LUMINANCE_WEIGHTS.x()
-                    + bounce[at * 4 + 1] * Rtx::Shaders::LUMINANCE_WEIGHTS.y()
-                    + bounce[at * 4 + 2] * Rtx::Shaders::LUMINANCE_WEIGHTS.z();
-
-                for (std::size_t step = 0; step < sThresholds.size(); ++step)
-                    if (lit > sThresholds[step])
-                        ++over[step];
-            }
-
-            mReport += "bounce tail:";
-            for (std::size_t step = 0; step < sThresholds.size(); ++step)
-                mReport += std::format("{}>{} {:.4f}%", step == 0 ? " " : ", ", sThresholds[step],
-                    counted > 0 ? static_cast<double>(over[step]) / static_cast<double>(counted) * 100.0 : 0.0);
-
-            mReport += '\n';
-        }
-
-        // **The frame a measurement is taken on**, which is not the frame a picture is looked at.
-        // Raw floats and no container: what reads this is a script computing an error against
-        // another one, and every image format that carries floats would have to be decoded first.
-        if (!stop.mActions.mDump.empty())
-        {
-            std::vector<float> radiance;
-            renderer.readChannel(Rtx::Channel::Radiance, radiance);
-
-            std::ofstream file(stop.mActions.mDump, std::ios::binary);
-            file.write(reinterpret_cast<const char*>(radiance.data()),
-                static_cast<std::streamsize>(radiance.size() * sizeof(float)));
-
-            if (!file)
-            {
-                mReport += "could not write " + Files::pathToUnicodeString(stop.mActions.mDump) + '\n';
-                mExitStatus = 1;
-            }
-        }
-
-        if (mPlaces.empty())
+        if (mRecord.empty())
         {
             // **Taken at the first stop, because every stop of a run is traced by one renderer.**
             // What the record's header states is the configuration the whole run stood under, and
             // asking the renderer is the only way to know what the upscaler settled on.
-            mHeader.mExtents = extents;
-            mHeader.mUpscale = renderer.getUpscale();
-            mHeader.mValidating = renderer.isValidating();
-            mHeader.mMeasured = stop.mSchedule.mSpec.getMeasured();
-            mHeader.mWarmup = stop.mSchedule.mSpec.getWarmup();
+            Rtx::BenchHeader& header = mRecord.getHeader();
+            header.mExtents = extents;
+            header.mUpscale = renderer.getUpscale();
+            header.mValidating = renderer.isValidating();
+            header.mMeasured = stop.mSchedule.mSpec.getMeasured();
+            header.mWarmup = stop.mSchedule.mSpec.getWarmup();
         }
 
-        if (stop.mActions.mDigest)
-            reportScene(owner);
-
-        if (!stop.mActions.mSheet.empty())
-            writeSheet(owner, stop.mActions.mSheet);
-
-        if (!stop.mActions.mMapTile.empty())
-            writeMapTile(owner, stop.mActions.mMapTile);
-
-        if (!stop.mActions.mDoll.empty())
-            writeDoll(owner, stop.mActions.mDoll, stop.mActions.mDollOut);
-
-        if (!stop.mActions.mFind.empty())
-            reportFound(owner, stop.mActions.mFind);
-
-        if (!stop.mActions.mChecks.empty())
-            runChecks(owner);
+        mHeld->mWriter.write(owner, stop.mActions, mHeld->mCrossings, mRecord);
 
         Rtx::BenchPlace place;
         place.mView = stop.mName;
@@ -754,8 +618,7 @@ namespace MWRender
         const std::span<const Rtx::GpuZone> zones = mHeld->mGpu.summariseZones();
         place.mGpu.assign(zones.begin(), zones.end());
 
-        mPlaces.push_back(std::move(place));
-        mReport += Rtx::describePlace(mPlaces.back());
+        mRecord.add(std::move(place));
 
         mStarted = false;
         ++mAt;
@@ -766,314 +629,10 @@ namespace MWRender
         finish();
     }
 
-    void Session::reportScene(RtxRenderer& owner)
-    {
-        const Rtx::SceneDesc& scene = owner.getMirror().getScene();
-        const Rtx::ExtractionStats& stats = owner.getWalkStats();
-
-        mReport += std::format(
-            "\nplaced\n"
-            "  instances:            {}\n"
-            "  meshes:               {}\n"
-            "  materials:            {}\n"
-            "  textures:             {}\n"
-            "  triangles:            {}\n"
-            "  vertex+index bytes:   {} KiB\n"
-            "  handed over:          {}\n",
-            scene.getPlacedCount(), scene.getMeshes().size(), scene.getMaterials().size(), scene.getTextures().size(),
-            scene.getTriangleCount(), scene.getGeometryBytes() / 1024, Rtx::digestScene(scene));
-
-        for (std::size_t at = 0; at < stats.mTextureFormats.size(); ++at)
-        {
-            const Rtx::FormatCount& count = stats.mTextureFormats[at];
-            const auto format = static_cast<Rtx::ImageFormat>(at);
-
-            if (count.mMipped > 0)
-                mReport += std::format("  {} x {}, with mips\n", count.mMipped, Rtx::nameOf(format));
-            if (count.mMet > count.mMipped)
-                mReport += std::format("  {} x {}, one level\n", count.mMet - count.mMipped, Rtx::nameOf(format));
-            if (count.mMet > 0 && format == Rtx::ImageFormat::Unnamed)
-                mReport += std::format("    which was pixel format {}\n", stats.mUnnamedFormat);
-        }
-
-        // Which materials traversal will have to stop and ask about, which of those asked for it
-        // outright, and which of them a cutoff cannot answer for at all. The second and third being
-        // the small ones is the point: Morrowind keeps its foliage under `NiAlphaProperty` rather
-        // than under an alpha test, and almost nothing it ships is translucent in its own right.
-        //
-        // **Counted off the scene and not off a walk's own account.** What a walk reports it met is
-        // what *that* walk met, and a chunk flattened once is nought in every walk after it. The
-        // scene carries both facts per row.
-        std::uint32_t cutouts = 0;
-        std::uint32_t tested = 0;
-        std::uint32_t translucent = 0;
-        std::uint32_t media = 0;
-        std::uint32_t glowing = 0;
-        std::uint32_t flattened = 0;
-        for (const Rtx::Material& material : scene.getMaterials())
-        {
-            cutouts += material.isCutout() ? 1 : 0;
-            tested += material.mAlphaMode == Surface::AlphaMode::Cutout ? 1 : 0;
-            translucent += material.isTranslucent() ? 1 : 0;
-            media += material.isMedium() ? 1 : 0;
-            glowing += material.mEmissiveColour.length2() > 0.0f || material.mEmissive != Rtx::sNoIndex ? 1 : 0;
-            flattened += material.mFlatten ? 1 : 0;
-        }
-
-        std::uint32_t sheets = 0;
-        for (const Rtx::MeshRange& mesh : scene.getMeshes())
-            sheets += mesh.mShape.mSheet ? 1 : 0;
-
-        mReport += std::format(
-            "  cutout materials:     {}, {} of them alpha-tested outright\n"
-            "  translucent:          {}, which a cutoff cannot answer for\n"
-            "  media:                {} of those are nowhere opaque\n"
-            "  emissive materials:   {}\n"
-            "  lights:               {} casting\n"
-            "  deforming drawables:  {}\n"
-            "  unbakeable cutouts:   {} placements of a mask a controller moves\n"
-            "  flattened ground:     {} chunks past a cell\n"
-            "  emitters:             {} holding {} live particles\n",
-            cutouts, tested, translucent, media, glowing, scene.getLights().size(), stats.mDeformed, stats.mUnbakeable,
-            flattened, stats.mEmitters, stats.mSprites);
-
-        mReport += std::format(
-            "\nnot placed\n"
-            "  unreadable drawables: {}\n"
-            "  unskinned rigs:       {} met before an update found their skeleton\n"
-            "  empty geometry:       {}\n"
-            "  undescribed surfaces: {} drawn as a default material\n"
-            "  undescribed ground:   {} passes left out of their chunk's stack\n"
-            "  spriteless emitters:  {} dropped whole\n"
-            "  worn otherwise:       {} placements wearing another material than their mesh\n"
-            "  sheets:               {} of the meshes, doubled for their backs\n",
-            stats.mSkippedUnknown, stats.mUnskinned, stats.mSkippedEmpty, stats.mUndescribedSurfaces,
-            stats.mUndescribedGround, stats.mSpritelessEmitters, stats.mWornOtherwise, sheets);
-
-        if (mRequest.mStops[mAt].mActions.mWalkTwice)
-        {
-            const Rtx::ExtractionStats& again = owner.getSecondWalkStats();
-            mReport += std::format(
-                "\nsecond pass over the same graph\n"
-                "  new meshes:           {} (should be 0)\n"
-                "  new materials:        {} (should be 0)\n"
-                "  drawables resolved:   {} to a known mesh\n",
-                again.mMeshesAdded, again.mMaterialsAdded, again.mMeshesReused);
-        }
-    }
-
-    void Session::writeSheet(RtxRenderer& owner, const std::filesystem::path& sheet)
-    {
-        Resource::ResourceSystem* resources = owner.getResources();
-        if (resources == nullptr)
-            return;
-
-        const Rtx::SceneDesc& scene = owner.getMirror().getScene();
-
-        Rtx::SceneTextures described;
-        described.describeAll(scene, *resources->getImageManager());
-
-        const Rtx::ContactSheet drawn
-            = Rtx::writeContactSheet(described.getDescriptions(), sheet, Settings::rtx().mDelight);
-        if (drawn.mCount == 0)
-        {
-            mReport += "the world uses no textures\n";
-            mExitStatus = 1;
-            return;
-        }
-
-        // The sheet carries no lettering, so the order is printed instead: left to right, top to
-        // bottom, the way it was drawn.
-        const std::span<const VFS::Path::Normalized> paths = scene.getTextures();
-        for (std::size_t at = 0; at < paths.size(); ++at)
-            mReport += std::format("  {}  {}\n", at, paths[at].value());
-
-        mReport += std::format("wrote {}, {} textures at delight {}\n", Files::pathToUnicodeString(sheet), drawn.mCount,
-            static_cast<float>(Settings::rtx().mDelight));
-    }
-
-    bool Session::writeView(OffscreenView& view, const int width, const int height, const std::filesystem::path& file)
-    {
-        view.keepCopy();
-        view.redraw();
-
-        const osg::Image* drawn = view.getCopy();
-        if (drawn == nullptr)
-        {
-            mReport += "the picture was not drawn\n";
-            mExitStatus = 1;
-            return false;
-        }
-
-        const auto stride = static_cast<std::size_t>(width) * 4;
-        std::vector<std::uint8_t>& pixels = mHeld->mPixels;
-        pixels.clear();
-        pixels.resize(stride * static_cast<std::size_t>(height));
-
-        for (int row = 0; row < height; ++row)
-            std::memcpy(
-                pixels.data() + stride * static_cast<std::size_t>(row), drawn->data(0, height - 1 - row), stride);
-
-        Rtx::writePng(file, static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height), pixels);
-        mReport += std::format("wrote {} {}x{}\n", Files::pathToUnicodeString(file), width, height);
-
-        return true;
-    }
-
-    void Session::writeMapTile(RtxRenderer& owner, const std::filesystem::path& file)
-    {
-        osg::Group* root = owner.getSceneRoot();
-        if (root == nullptr)
-            return;
-
-        const MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
-        const osg::Vec3f stood = player.getRefData().getPosition().asVec3();
-
-        // **The framing `MWRender::LocalMap` uses, because this is the same picture.** One cell
-        // across, straight down, under a flat light that makes no shadows: a chart is read for what
-        // is where, and the game's compass draws exactly this every frame a player walks.
-        OffscreenViewSpec spec{ *root };
-        spec.mWidth = sMapTileSide;
-        spec.mHeight = sMapTileSide;
-        spec.mProjection = OffscreenViewSpec::Orthographic{ .mWidth = static_cast<float>(Constants::CellSizeInUnits),
-            .mHeight = static_cast<float>(Constants::CellSizeInUnits) };
-        spec.mNear = SceneUtil::sMapNear;
-        spec.mFar = sMapFar;
-        spec.mClearColour = osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f);
-        spec.mSun = SceneUtil::mapLight();
-        spec.mFromWorld = true;
-
-        const std::unique_ptr<OffscreenView> view = owner.createOffscreenView(spec);
-        view->setView(osg::Matrixf::lookAt(osg::Vec3f(stood.x(), stood.y(), sMapEyeHeight),
-            osg::Vec3f(stood.x(), stood.y(), sMapEyeHeight - 1.0f), osg::Vec3f(0.0f, 1.0f, 0.0f)));
-
-        writeView(*view, spec.mWidth, spec.mHeight, file);
-    }
-
-    void Session::writeDoll(RtxRenderer& owner, const std::string& who, const std::filesystem::path& file)
-    {
-        MWBase::World& world = *MWBase::Environment::get().getWorld();
-        const ESM::RefId id = ESM::RefId::stringRefId(who);
-
-        // **Stood in the world and not assembled beside it.** `MWRender::NpcAnimation` is what
-        // dresses a body out of the parts a race calls for, equips what the record carries and
-        // finds the bone a weapon hangs on — and it needs a live reference to do any of it.
-        const MWWorld::Ptr player = world.getPlayerPtr();
-        MWWorld::ManualRef ref(*MWBase::Environment::get().getESMStore(), id, 1);
-        const MWWorld::Ptr subject
-            = world.placeObject(ref.getPtr(), player.getCell(), player.getRefData().getPosition());
-
-        if (subject.isEmpty())
-        {
-            mReport += std::format("no NPC record is called \"{}\"\n", who);
-            mExitStatus = 1;
-            return;
-        }
-
-        InventoryPreview preview(owner, owner.getResources(), subject);
-        preview.rebuild();
-        preview.redraw();
-
-        // **Through the texture the GUI already draws from**, which is the slot the trace wrote
-        // into. `MyGUIRtx::Texture` is what this renderer's MyGUI backend hands out, and its slot
-        // is the one thing about it a file needs.
-        auto& texture = static_cast<MyGUIRtx::Texture&>(preview.getTexture());
-        owner.getBackend().readGuiTexture(texture.getSlot(), mHeld->mPixels);
-
-        const auto width = static_cast<std::uint32_t>(preview.getTextureWidth());
-        const auto height = static_cast<std::uint32_t>(preview.getTextureHeight());
-        Rtx::writePng(file, width, height, mHeld->mPixels);
-        mReport += std::format("wrote {} {}x{}\n", Files::pathToUnicodeString(file), width, height);
-    }
-
-    void Session::reportFound(RtxRenderer& owner, const std::string& needle)
-    {
-        const Rtx::SceneDesc& scene = owner.getMirror().getScene();
-        const std::span<const VFS::Path::Normalized> paths = scene.getTextures();
-
-        // **Found by texture and reported by placement**, because a mesh carries no name of its own
-        // once it is a run of triangles: what a walk keeps is the material it arrived wearing, and a
-        // material names the file it samples.
-        std::uint32_t met = 0;
-        for (const Rtx::MeshInstance& instance : scene.getInstances())
-        {
-            if (!instance.isPlaced())
-                continue;
-
-            if (instance.mMaterial == Rtx::sNoIndex)
-                continue;
-
-            const Rtx::Material& material = scene.getMaterials()[instance.mMaterial];
-            if (material.mDiffuse == Rtx::sNoIndex)
-                continue;
-
-            const std::string_view path = paths[material.mDiffuse].value();
-            if (path.find(needle) == std::string_view::npos)
-                continue;
-
-            const osg::Vec3f at = instance.mTransform.getTrans();
-            mReport += std::format("  {:.0f}, {:.0f}, {:.0f}   {}\n", at.x(), at.y(), at.z(), path);
-            ++met;
-        }
-
-        mReport += std::format("{} placements wear a texture matching \"{}\"\n", met, needle);
-    }
-
-    void Session::runChecks(RtxRenderer& owner)
-    {
-        const Rtx::Stop& stop = mRequest.mStops[mAt];
-
-        for (const Rtx::Check check : stop.mActions.mChecks)
-        {
-            std::string found;
-            const bool held = checkHolds(owner, check, mHeld->mCrossings, found);
-
-            ++mChecked;
-            if (!held)
-            {
-                ++mFailed;
-                mExitStatus = 1;
-            }
-
-            mReport += std::format("  {:<20} {:<4} {}\n", checkName(check), held ? "ok" : "FAIL", found);
-        }
-    }
-
     void Session::finish()
     {
         mDone = true;
-
-        mReport += Rtx::describeTotal(mPlaces, false);
-
-        // **What a `check` run came to, in one line.** A suite asks every check at each of several
-        // places, so the verdict is otherwise something a reader counts by hand.
-        if (mChecked > 0)
-            mReport += std::format("\n{} checks asked, {} failed\n", mChecked, mFailed);
-
-        if (!mRequest.mHashes.empty())
-        {
-            mHeld->mHashes.write(mRequest.mHashes);
-            mReport += std::format("\nwrote {} frame hashes to {}\n", mHeld->mHashes.frameCount(),
-                Files::pathToUnicodeString(mRequest.mHashes));
-        }
-
-        if (!mRequest.mAgainst.empty())
-        {
-            mReport += std::format("\nagainst {}\n", Files::pathToUnicodeString(mRequest.mAgainst));
-            for (const Rtx::FrameHashes::ViewDifference& difference : mHeld->mHashes.against(mHeld->mReference))
-            {
-                mReport += std::format("  {:<28} {}\n", difference.mView, Rtx::describeDifference(difference));
-                if (!difference.same())
-                    mExitStatus = 1;
-            }
-        }
-
-        if (!mRequest.mJson.empty())
-        {
-            mHeader.mSuite = mRequest.mSuite;
-            Rtx::writeJson(mRequest.mJson, mHeader, mPlaces);
-            mReport += "wrote " + Files::pathToUnicodeString(mRequest.mJson) + '\n';
-        }
+        mRecord.finish(mRequest);
 
         // **The way the quit key ends a session, and not `exit`.** A run that tore the process down
         // where it stood would leave the save, the log and the device wherever they happened to be,

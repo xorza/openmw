@@ -109,12 +109,15 @@ namespace MWRender
         // **Taken before anything is built, because it decides how the window opens and what the
         // trace counts.** A launcher installs a whole run; a played binary can only name one in its
         // settings, and a session that asked for neither behaves exactly as it did.
-        std::optional<Rtx::SessionRequest> asked = takeInstalledSession();
+        std::optional<InstalledSession> asked = takeInstalledSession();
         if (!asked.has_value())
-            asked = readSessionSetting();
+        {
+            if (std::optional<Rtx::SessionRequest> setting = readSessionSetting())
+                asked = InstalledSession{ .mRequest = std::move(*setting) };
+        }
 
         if (asked.has_value())
-            mSession = std::make_unique<Session>(std::move(*asked));
+            mSession = std::make_unique<Session>(std::move(asked->mRequest), asked->mInto);
 
         // **Before any content is read, because it decides what reading one records.** This is the
         // only renderer that asks what the content says a surface is, and the answer is stored on

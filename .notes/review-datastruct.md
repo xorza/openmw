@@ -13,24 +13,7 @@ of scope. No measurements were taken.
 
 ---
 
-## `MWRender::Session` drives the run and writes everything the run produces
-
-`session.hpp` is 502 lines and `session.cpp` is 1082. One class holds the schedule, the camera, the
-weather turn, the checks, the report, the record, the hashes and seven writers.
-
-- [ ] **Split the writers off the session.** `writeSheet`, `writeMapTile`, `writeDoll`,
-      `reportFound`, `runChecks`, `writeView` and `finish` are what `Actions` asks for. They need a
-      renderer and a path, and they need nothing of the schedule. The session should hand an
-      `Actions` and a renderer to one object and stop.
-
-- [ ] **Split the report off the session.** `mPlaces`, `mHeader`, `mReport`, `mExitStatus`,
-      `mChecked`, `mFailed` and `Held` are one record under construction. `components/rtxbench`
-      already owns `BenchPlace` and `BenchHeader`.
-
-- [ ] **`installSession` and `publishSessionResult` are a global mailbox.** `session.cpp` keeps
-      `sInstalled` and `sResult` at file scope, and four free functions read and write them. The
-      header explains why `RendererSpec` cannot carry the request, and that reason covers the
-      request only. `SessionResult` travels back the same way for no stated reason.
+## A run reaches the renderer through a global
 
 - [ ] **`FrameRequest` reaches the renderer through the settings registry.**
       `main.cpp:391` writes eleven fields into `Settings::rtx()` and `Settings::video()`, and
