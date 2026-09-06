@@ -5,6 +5,9 @@
 #include <cstddef>
 #include <optional>
 #include <string_view>
+#include <utility>
+
+#include "namedenum.hpp"
 
 namespace Rtx
 {
@@ -41,29 +44,24 @@ namespace Rtx
         Dlaa,
     };
 
-    /// How `upscale` is spelled on a command line and in a setting file.
+    /// How an `Upscale` is spelled on a command line, in a setting file and in a report.
     ///
-    /// The other half of `upscaleNamed`, and the one a report needs: a run is only comparable
-    /// against another if what it says it did can be read back.
+    /// **The one list of the names**, so a mode added here reaches the parser, the report and every
+    /// line of prose that offers the modes at once.
+    inline constexpr NamedEnum sUpscaleNames{ std::array{
+        std::pair{ Upscale::Off, std::string_view("off") },
+        std::pair{ Upscale::UltraPerformance, std::string_view("ultraperformance") },
+        std::pair{ Upscale::Performance, std::string_view("performance") },
+        std::pair{ Upscale::Balanced, std::string_view("balanced") },
+        std::pair{ Upscale::Quality, std::string_view("quality") },
+        std::pair{ Upscale::Dlaa, std::string_view("dlaa") },
+    } };
+
+    /// How `upscale` is spelled. The half a report needs: a run is only comparable against another
+    /// if what it says it did can be read back.
     inline std::string_view upscaleName(Upscale upscale)
     {
-        switch (upscale)
-        {
-            case Upscale::Off:
-                return "off";
-            case Upscale::UltraPerformance:
-                return "ultraperformance";
-            case Upscale::Performance:
-                return "performance";
-            case Upscale::Balanced:
-                return "balanced";
-            case Upscale::Quality:
-                return "quality";
-            case Upscale::Dlaa:
-                return "dlaa";
-        }
-
-        return "off";
+        return sUpscaleNames.name(upscale);
     }
 
     /// The modes a menu offers, in the order it lists them: fewest pixels traced first, every pixel
@@ -106,26 +104,9 @@ namespace Rtx
     }
 
     /// The mode `name` spells, or nothing where it spells none of them.
-    ///
-    /// **Nothing rather than a default.** A setting file and a command line both reach this, and
-    /// silently rendering at a mode nobody asked for is how a typo becomes a performance measurement
-    /// of the wrong thing.
     inline std::optional<Upscale> upscaleNamed(std::string_view name)
     {
-        if (name == "off")
-            return Upscale::Off;
-        if (name == "ultraperformance")
-            return Upscale::UltraPerformance;
-        if (name == "performance")
-            return Upscale::Performance;
-        if (name == "balanced")
-            return Upscale::Balanced;
-        if (name == "quality")
-            return Upscale::Quality;
-        if (name == "dlaa")
-            return Upscale::Dlaa;
-
-        return std::nullopt;
+        return sUpscaleNames.named(name);
     }
 
     /// Where the mode `name` spells sits in the menu — nothing where it spells no mode at all, and

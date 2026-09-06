@@ -99,10 +99,6 @@ namespace Rtx
         /// The device NGX was brought up on, which is the one a feature is built for.
         VkDevice getDevice() const { return mDevice; }
 
-        /// NGX's own map, which answers questions. **Not the map a feature is built from** — that
-        /// one is allocated per feature and belongs to it.
-        NVSDK_NGX_Parameter* getCapabilities() const { return mCapabilities; }
-
     private:
         /// Whichever one is up, or null. **A tripwire and not an owner**: nothing reads it to find
         /// the runtime — the renderer holds that — and what it is for is making a second one a throw

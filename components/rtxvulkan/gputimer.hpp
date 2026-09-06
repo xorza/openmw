@@ -41,9 +41,6 @@ namespace Rtx
         GpuTimer(const GpuTimer&) = delete;
         GpuTimer& operator=(const GpuTimer&) = delete;
 
-        /// Whether this device and queue can timestamp at all. Everything below is a no-op when not.
-        bool isSupported() const { return mSupported; }
-
         /// Forgets the last frame's zones. Whatever is opened after this is one report.
         void beginFrame();
 

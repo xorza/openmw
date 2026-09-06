@@ -16,6 +16,20 @@
 
 namespace RtxTool
 {
+    /// What a frame is upscaled by when nobody names a mode.
+    ///
+    /// **It follows the build**, because the two are one decision: `-DOPENMW_RTX_DLSS=OFF` is a
+    /// deliberate opt-out, and a tool that then refused every default invocation would be telling
+    /// its user to turn on the thing they had just turned off.
+    ///
+    /// Quality rather than performance, so a plain run is the renderer with everything switched on
+    /// and not one that quietly quartered the pixels it traced.
+#ifdef OPENMW_RTX_DLSS
+    inline constexpr Rtx::Upscale sUpscaleByDefault = Rtx::Upscale::Quality;
+#else
+    inline constexpr Rtx::Upscale sUpscaleByDefault = Rtx::Upscale::Off;
+#endif
+
     /// When and where a place stands, once a view file entry and a command line have met.
     struct StagingRequest
     {
@@ -44,7 +58,7 @@ namespace RtxTool
 
         /// Whether Ray Reconstruction stands between the trace and the picture, and how hard it
         /// works. It denoises for itself, so `mFilter` stops meaning anything once this is on.
-        Rtx::Upscale mUpscale = Rtx::Upscale::Off;
+        Rtx::Upscale mUpscale = sUpscaleByDefault;
 
         /// Which network it runs. Pinned rather than left to the library, whose own default has
         /// moved between SDK versions, so that two runs are comparable.

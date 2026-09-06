@@ -12,7 +12,11 @@
 
 #include <components/fallback/validate.hpp>
 #include <components/files/configurationmanager.hpp>
+#include <components/rtx/reconstruction.hpp>
+#include <components/rtx/reorder.hpp>
+#include <components/rtx/upscale.hpp>
 
+#include "framerequest.hpp"
 #include "verbs.hpp"
 #include "views.hpp"
 
@@ -23,21 +27,6 @@ namespace RtxTool
     namespace
     {
         using StringsVector = std::vector<std::string>;
-
-        /// What `--upscale` reads when nobody names it.
-        ///
-        /// **It follows the build**, because the two are one decision: `-DOPENMW_RTX_DLSS=OFF` is a
-        /// deliberate opt-out, and a tool that then refused every default invocation would be
-        /// telling its user to turn on the thing they had just turned off.
-        ///
-        /// Quality rather than performance, so a plain run is the renderer with everything switched
-        /// on and not one that quietly quartered the pixels it traced. `--upscale=performance` is
-        /// the 1920x1080 to 3840x2160 the frame budget is written against.
-#ifdef OPENMW_RTX_DLSS
-        constexpr std::string_view sUpscaleByDefault = "quality";
-#else
-        constexpr std::string_view sUpscaleByDefault = "off";
-#endif
 
         /// The commands that stand at one place, which is what `chooseView` reads a camera for.
         /// A run of places — `bench` and `verify` — takes its cell and its camera from `--views`.
@@ -112,6 +101,12 @@ namespace RtxTool
                   addOption(name, semantic, std::format("{}, {}", describeOwnership(verbs), description).c_str());
               };
 
+        // **What a frame is when nobody says**, read from one statement rather than restated as a
+        // literal beside each option. The two had drifted: `--distant-cells` defaulted to five
+        // cells where the request and `settings-default.cfg` both said four, so a harness run built
+        // a world one cell wider than the game does and measured it.
+        const FrameRequest byDefault;
+
         addOption("help", "print this message and quit");
 
         // On unless this was built for release, and `--validation=false` turns any of them off
@@ -140,10 +135,10 @@ namespace RtxTool
 
         addOption("list-views", bpo::bool_switch(), "print the named viewpoints and quit");
 
-        addOption("delight", bpo::value<float>()->default_value(1.0f),
+        addOption("delight", bpo::value<float>()->default_value(byDefault.mDelight),
             "how much of the lighting painted into each texture to divide back out, from 0 to 1. "
             "Zero is the A/B that says what it did");
-        addOption("filter", bpo::value<bool>()->default_value(true)->implicit_value(true),
+        addOption("filter", bpo::value<bool>()->default_value(byDefault.mFilter)->implicit_value(true),
             "run the denoiser over the indirect light. Off shows the raw bounce, and is what a "
             "reference is made with");
         // Defaulted to an empty list rather than left absent, because `readConfiguration` walks
@@ -154,38 +149,46 @@ namespace RtxTool
             "Repeatable, and each one is written beside the last. They arrive dressed out of their "
             "own record, which is what the game equips them with");
 
-        addOption("upscale", bpo::value<std::string>()->default_value(std::string(sUpscaleByDefault)),
-            "put DLSS Ray Reconstruction between the trace and the picture: off, performance, "
-            "balanced, quality or dlaa. --size is what comes out, and what gets traced is DLSS's "
-            "answer for it. It denoises for itself, so --filter stops applying. Quality by default, "
-            "so a plain run is the renderer with everything switched on without quartering the "
-            "pixels it traced; --upscale=performance is the 1920x1080 to 3840x2160 the frame budget "
-            "is written against, and --upscale=off is what an A/B against the unupscaled path "
-            "needs. A reference cannot be "
-            "built through a denoiser");
+        addOption("upscale",
+            bpo::value<std::string>()->default_value(std::string(Rtx::upscaleName(byDefault.mUpscale))),
+            std::format("put DLSS Ray Reconstruction between the trace and the picture: {}. --size "
+                        "is what comes out, and what gets traced is DLSS's answer for it. It "
+                        "denoises for itself, so --filter stops applying. Quality by default, so a "
+                        "plain run is the renderer with everything switched on without quartering "
+                        "the pixels it traced; --upscale=performance is the 1920x1080 to 3840x2160 "
+                        "the frame budget is written against, and --upscale=off is what an A/B "
+                        "against the unupscaled path needs. A reference cannot be built through a "
+                        "denoiser",
+                Rtx::sUpscaleNames.list())
+                .c_str());
 
-        addOption("reorder", bpo::value<std::string>()->default_value("off"),
-            "how the trace sorts its threads between the traversal and the shader that resolves what "
-            "it found: off, hit, hint or both. Shader Execution Reordering regroups a warp so that "
-            "its lanes are about to run the same shader on the same data. `hit` sorts on the hit "
-            "object the traversal answered, `hint` sorts on a coherence hint instead and so keeps "
-            "the launch's own locality, and `both` is the two together. The shader a hit object "
-            "names is picked by traversal either way, so the frame is split across a closest-hit "
-            "shader per material kind whatever this says. Off by default because off is faster here: "
-            "every form of the call costs 7 to 17 percent at each view of the default suite and buys "
-            "nothing back, since the trace ends in eleven channel writes laid out along the launch's "
-            "own neighbourhood and a sort is what gives that neighbourhood up. It also moves the "
-            "picture on a handful of pixels rather than on none: the call is a barrier the driver "
-            "rebuilds the code around, and one bounce sample and one lamp draw a pixel turn a "
-            "last-bit difference into a different lamp");
+        addOption("reorder",
+            bpo::value<std::string>()->default_value(std::string(Rtx::reorderName(byDefault.mReorder))),
+            std::format("how the trace sorts its threads between the traversal and the shader that resolves "
+                        "what it found: {}. Shader Execution Reordering regroups a warp so that "
+                        "its lanes are about to run the same shader on the same data. `hit` sorts on the hit "
+                        "object the traversal answered, `hint` sorts on a coherence hint instead and so keeps "
+                        "the launch's own locality, and `both` is the two together. The shader a hit object "
+                        "names is picked by traversal either way, so the frame is split across a closest-hit "
+                        "shader per material kind whatever this says. Off by default because off is faster here: "
+                        "every form of the call costs 7 to 17 percent at each view of the default suite and buys "
+                        "nothing back, since the trace ends in eleven channel writes laid out along the launch's "
+                        "own neighbourhood and a sort is what gives that neighbourhood up. It also moves the "
+                        "picture on a handful of pixels rather than on none: the call is a barrier the driver "
+                        "rebuilds the code around, and one bounce sample and one lamp draw a pixel turn a "
+                        "last-bit difference into a different lamp",
+                Rtx::sReorderNames.list())
+                .c_str());
 
-        addOption("preset", bpo::value<std::string>()->default_value("d"),
-            "which Ray Reconstruction network to run: default, d or e. Ray Reconstruction keeps its "
-            "own presets, and they are not super-resolution's -- A through C are retired, d is the "
-            "default transformer model and e is the latest. `default` hands the choice to the "
-            "installed library, which has changed between SDK versions and between the "
-            "convolutional and transformer models, so two runs under it are not the same "
-            "measurement. Pinned to d so that they are");
+        addOption("preset", bpo::value<std::string>()->default_value(std::string(Rtx::presetName(byDefault.mPreset))),
+            std::format("which Ray Reconstruction network to run: {}. Ray Reconstruction keeps its "
+                        "own presets, and they are not super-resolution's -- A through C are retired, d is the "
+                        "default transformer model and e is the latest. `default` hands the choice to the "
+                        "installed library, which has changed between SDK versions and between the "
+                        "convolutional and transformer models, so two runs under it are not the same "
+                        "measurement. Pinned to d so that they are",
+                Rtx::sPresetNames.list())
+                .c_str());
 
         addOption("exposure", bpo::value<std::string>()->default_value("auto"),
             "what to scale the frame by before the display curve: auto measures it off the frame, "
@@ -219,7 +222,7 @@ namespace RtxTool
             "what time an exterior's sun is at, on a twenty-four hour clock. An interior is lit "
             "by its own lamps and does not care. Given, it beats an hour a view fixes for itself");
 
-        addOption("day", bpo::value<int>()->default_value(0),
+        addOption("day", bpo::value<int>()->default_value(byDefault.mDay),
             "which day the world stands on, counted from the one a new game starts — 16 Last Seed, "
             "where both moons are full. It is the moons this decides and nothing else: their phase "
             "runs on a three-day cycle and the hour they rise on a twenty-four day one");
@@ -270,15 +273,15 @@ namespace RtxTool
             "keeps no name of its own once it is a run of triangles, so the material it arrived "
             "wearing is what it is found by. How the coordinates in a view are found.");
 
-        addOption("distant-statics", bpo::value<bool>()->default_value(true)->implicit_value(true),
+        addOption("distant-statics", bpo::value<bool>()->default_value(byDefault.mDistantStatics)->implicit_value(true),
             "stand on the distant ground what the content files put there — the buildings, trees "
             "and rocks — which is the game's own `object paging`. **Off is the A/B that says what "
             "they cost**: the same ground with nothing on it. The ground itself is always paged, "
             "because `Renderer::wantsPagedTerrain` answers for a renderer that traces rather than "
             "draws");
 
-        addOption("distant-cells", bpo::value<float>()->default_value(5.0f),
-            "with `--distant-terrain`, how far out the quad tree may make ground, in cells. Past a "
+        addOption("distant-cells", bpo::value<float>()->default_value(byDefault.mDistantCells),
+            "with `--distant-statics`, how far out the quad tree may make ground, in cells. Past a "
             "cell a chunk's layer stack is flattened into one baked texture, so this is also what "
             "decides whether that path is reached at all. Zero hands `viewing distance` back the "
             "decision, which is 7168 against a cell of 8192 and so barely leaves the active grid");
@@ -300,8 +303,11 @@ namespace RtxTool
             bpo::value<std::string>()->default_value("shot.png"),
             "where to write the image, or with `verify` the directory to write every view into "
             "(\"verify\" unless named)");
-        addOption("size", bpo::value<std::string>()->default_value("1920x1080"), "image size, as WIDTHxHEIGHT");
-        owned(sFramed, "fov", bpo::value<float>()->default_value(60.0f), "vertical field of view, in degrees");
+        addOption("size",
+            bpo::value<std::string>()->default_value(std::format("{}x{}", byDefault.mWidth, byDefault.mHeight)),
+            "image size, as WIDTHxHEIGHT");
+        owned(sFramed, "fov", bpo::value<float>()->default_value(byDefault.mFieldOfView),
+            "vertical field of view, in degrees");
         owned(sPlaces | Verbs::Doll, "pos", bpo::value<std::string>()->default_value(""),
             "where to put the camera, as x,y,z. Defaults to a view of the whole cell from outside it, "
             "which is a poor view of an interior. Write --pos=-100,200,300, or a leading minus reads "
@@ -321,11 +327,11 @@ namespace RtxTool
             "thresholds. What a firefly is counted in, and the one thing bytes cannot say. Wants "
             "--upscale=off so the wavelet and its accumulator run at all");
 
-        addOption("jitter", bpo::value<bool>()->default_value(false)->implicit_value(true),
+        addOption("jitter", bpo::value<bool>()->default_value(byDefault.mJitter)->implicit_value(true),
             "sample a different point inside each pixel every frame. Only worth anything to "
             "something putting several frames together, and forced on whenever anything upscales");
 
-        addOption("crossings", bpo::value<bool>()->default_value(false)->implicit_value(true),
+        addOption("crossings", bpo::value<bool>()->default_value(byDefault.mCountCrossings)->implicit_value(true),
             "also count the see-through surfaces each primary ray crosses. A second traversal a "
             "pixel, so a frame time taken under it measures the census rather than the picture");
 

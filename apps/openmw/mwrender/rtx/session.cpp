@@ -1035,6 +1035,11 @@ namespace MWRender
 
         mReport += Rtx::describeTotal(mPlaces, false);
 
+        // **What a `check` run came to, in one line.** A suite asks seven checks at each of several
+        // places, so the verdict is otherwise something a reader counts by hand.
+        if (mChecked > 0)
+            mReport += std::format("\n{} checks asked, {} failed\n", mChecked, mFailed);
+
         if (!mRequest.mHashes.empty())
         {
             mHeld->mHashes.write(mRequest.mHashes);

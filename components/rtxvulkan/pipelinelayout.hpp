@@ -38,8 +38,6 @@ namespace Rtx
             std::uint32_t pushConstantBytes, VkShaderStageFlags pushStages,
             std::span<const VkDescriptorSetLayout> laterSets);
 
-        VkDescriptorSetLayout getSetLayout() const { return mSetLayout.get(); }
-
         /// What descriptors are pushed against and push constants are written through.
         VkPipelineLayout getHandle() const { return mHandle.get(); }
 

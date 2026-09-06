@@ -51,8 +51,6 @@ namespace Rtx
         /// Says which device the blocks are made on and what they are for. Once, before anything is
         /// reserved.
         void open(const Device& device, VkBufferUsageFlags usage, std::string_view name);
-
-        std::uint32_t getBlockSize() const { return mBlockSize; }
         std::uint32_t getStride() const { return mStride; }
 
         /// Bytes one whole block occupies, which is what every block is made at.

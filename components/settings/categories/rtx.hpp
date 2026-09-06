@@ -96,7 +96,7 @@ namespace Settings
         SettingValue<bool> mCountCrossings{ mIndex, "RTX", "count crossings" };
 
         /// How the trace sorts its threads between the traversal and the shader that resolves what
-        /// they found: `off`, `hit` or `hint`. Off is what the others are measured against.
+        /// they found: `off`, `hit`, `hint` or `both`. Off is what the others are measured against.
         SettingValue<std::string> mReorder{ mIndex, "RTX", "reorder" };
     };
 }

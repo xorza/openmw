@@ -65,6 +65,7 @@ set(RTX_FILES
     mirrorpass.hpp
     moonbuilder.cpp
     moonbuilder.hpp
+    namedenum.hpp
     nodelibrary.hpp
     nightsky.cpp
     nightsky.hpp

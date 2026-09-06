@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <format>
@@ -35,6 +36,7 @@
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
+#include <components/rtx/namedenum.hpp>
 #include <components/rtx/poseupdate.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/sceneuploader.hpp>
@@ -91,6 +93,21 @@ namespace MWRender
             const char* const value = std::getenv(name);
             return value != nullptr && *value != '\0' && std::strcmp(value, "0") != 0;
         }
+
+        /// The value `asked` names, refused rather than defaulted.
+        ///
+        /// **A typo that quietly renders at another mode is a measurement of the wrong thing**,
+        /// which is why `NamedEnum::named` answers nothing rather than a default. The modes the
+        /// message offers are the table's own, so it can neither name one the parser has stopped
+        /// taking nor miss one it has gained.
+        template <class Enum, std::size_t N>
+        Enum readSetting(const Rtx::NamedEnum<Enum, N>& names, const std::string& asked)
+        {
+            if (const std::optional<Enum> value = names.named(asked))
+                return *value;
+
+            throw std::runtime_error('"' + asked + "\" is not one of " + names.list());
+        }
     }
 
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
@@ -130,18 +147,8 @@ namespace MWRender
 
         mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mStats);
 
-        const std::string wanted = Settings::rtx().mUpscale;
-
-        // **Refused rather than defaulted**, for the reason `Rtx::upscaleNamed` gives: a typo that
-        // quietly renders at another mode is a measurement of the wrong thing.
-        const std::optional<Rtx::Upscale> upscale = Rtx::upscaleNamed(wanted);
-        if (!upscale.has_value())
-            throw std::runtime_error('"' + wanted + "\" is not one of off, performance, balanced, quality or dlaa");
-
-        const std::string wantedPreset = Settings::rtx().mPreset;
-        const std::optional<Rtx::Preset> preset = Rtx::presetNamed(wantedPreset);
-        if (!preset.has_value())
-            throw std::runtime_error('"' + wantedPreset + "\" is not one of default, d or e");
+        const Rtx::Upscale upscale = readSetting(Rtx::sUpscaleNames, Settings::rtx().mUpscale);
+        const Rtx::Preset preset = readSetting(Rtx::sPresetNames, Settings::rtx().mPreset);
 
         // The window's own size, which `fitToWindow` asks for again on every frame after this one.
         // Kept, so that the first of those sees a size that has already settled.
@@ -156,8 +163,8 @@ namespace MWRender
         options.mCacheDirectory = spec.mCachePath;
         options.mWidth = mAskedWidth;
         options.mHeight = mAskedHeight;
-        options.mUpscale = *upscale;
-        options.mPreset = *preset;
+        options.mUpscale = upscale;
+        options.mPreset = preset;
         options.mWindow = mWindow;
         // **The run's answer where a run was installed, and the build's otherwise.** A launcher
         // making a measurement says on its command line whether the layers load, because a figure
@@ -203,19 +210,14 @@ namespace MWRender
         // frame drawn by the other were traced by two differently configured renderers.
         options.mCountCrossings = Settings::rtx().mCountCrossings;
 
-        const std::string wantedReorder = Settings::rtx().mReorder;
-        const std::optional<Rtx::Reorder> reorder = Rtx::reorderNamed(wantedReorder);
-        if (!reorder.has_value())
-            throw std::runtime_error('"' + wantedReorder + "\" is not one of off, hit or hint");
-
-        options.mReorder = *reorder;
+        options.mReorder = readSetting(Rtx::sReorderNames, Settings::rtx().mReorder);
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the
         // one word a reader of any single line needs, and the rest — which network, at what pair of
         // sizes — is here, where it was chosen.
-        Log(Debug::Info) << "Ray tracing: upscale " << Rtx::upscaleName(*upscale) << ", Ray Reconstruction preset "
-                         << Rtx::presetName(*preset);
+        Log(Debug::Info) << "Ray tracing: upscale " << Rtx::upscaleName(upscale) << ", Ray Reconstruction preset "
+                         << Rtx::presetName(preset);
 
         std::string reason;
         mRenderer = Rtx::createRenderer(options, reason);
@@ -759,9 +761,16 @@ namespace MWRender
         mEntered = now;
         mEnteredOnce = true;
 
+        // **Counted where it is summed**, because `finishFrame` answers nothing until a frame it
+        // put in flight comes back. Counting every frame instead divided the total by frames that
+        // had contributed nothing to it, so the average read low by a factor nobody could see.
         if (result.has_value())
+        {
             mSpentMs += result->mWaitMs;
-        if (++mTimed == sReportEvery)
+            ++mTimed;
+        }
+
+        if (mTimed == sReportEvery)
         {
             // **The emitters among it, because they are the half a placement count does not carry.**
             // Sprites are not instances and never enter that number, so a cell whose every flame,

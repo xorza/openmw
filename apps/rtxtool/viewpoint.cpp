@@ -6,7 +6,6 @@
 
 #include <osg/Math>
 
-#include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 
 #include "views.hpp"
@@ -87,39 +86,5 @@ namespace RtxTool
             block += std::format("weather = {}\n", spot.mWeather);
 
         return block;
-    }
-
-    std::string describeProfile(const std::string& cell, const FrameRequest& frame,
-        const Rtx::ValidationOptions& validation, const osg::Vec3f& origin, const osg::Vec3f& target,
-        std::uint32_t width, std::uint32_t height)
-    {
-        // Shortest round-trip rather than the rounded form `describeSpot` uses: these numbers exist
-        // to be read back into the same floats, and a position rounded to the unit is a different
-        // frame when the camera is a hand's width from a wall.
-        //
-        // The cell is the only field quoted, because it is the only one that can hold a space.
-        // A measured exposure is a different frame *and* a different cost from a held one, which is
-        // both reasons a field is in this line.
-        //
-        // **The reconstruction is named for the same two reasons, and it was the omission that made
-        // this line not reproduce a frame.** `shot` upscales at quality unless told otherwise, so a
-        // window flown at another mode profiled into a command that rendered something else; and
-        // the network is a picture and a cost that the installed library was free to change out
-        // from under a corpus that never said which one it meant.
-        //
-        // **The reorder is named for both of those reasons as well.** It moves the trace by 7 to 17
-        // percent and it moves a scattering of pixels, so a line without it says one thing about two
-        // frames that cost different amounts.
-        const std::string exposure
-            = frame.mExposure.has_value() ? std::format("{}", *frame.mExposure) : std::string("auto");
-
-        return std::format(
-            "--cell=\"{}\" --pos={},{},{} --look={},{},{} --fov={} --size={}x{} --weather={}"
-            " --hour={} --day={} --exposure={} --upscale={} --preset={} --reorder={} --filter={}"
-            " --validation={} --sync-validation={} --gpu-validation={}{}",
-            cell, origin.x(), origin.y(), origin.z(), target.x(), target.y(), target.z(), frame.mFieldOfView, width,
-            height, frame.mWeather, frame.mHour, frame.mDay, exposure, Rtx::upscaleName(frame.mUpscale),
-            Rtx::presetName(frame.mPreset), Rtx::reorderName(frame.mReorder), frame.mFilter, validation.mEnabled,
-            validation.mSynchronization, validation.mGpuAssisted, frame.mShowAlbedo ? " --albedo" : "");
     }
 }

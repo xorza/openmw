@@ -1,7 +1,5 @@
-#include <cstddef>
 #include <filesystem>
 #include <fstream>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -9,30 +7,13 @@
 
 #include <osg/Vec3f>
 
-#include <apps/rtxtool/framerequest.hpp>
-#include <apps/rtxtool/parsefloat.hpp>
 #include <apps/rtxtool/viewpoint.hpp>
 #include <apps/rtxtool/views.hpp>
-#include <components/rtx/renderer.hpp>
 
 namespace RtxTool
 {
     namespace
     {
-        FrameRequest makeRequest()
-        {
-            FrameRequest request;
-            request.mFieldOfView = 60.0f;
-            request.mWeather = "Ashstorm";
-            request.mHour = 17.25f;
-            request.mFilter = false;
-            return request;
-        }
-
-        /// The cell every line below is about, passed rather than carried: `describeProfile` takes
-        /// it because a place and the frame it is traced with are two different things.
-        const std::string sCell = "Balmora, Guild of Fighters";
-
         Viewpoint makeSpot()
         {
             return Viewpoint{
@@ -46,65 +27,6 @@ namespace RtxTool
             };
         }
 
-        /// A held exposure names its number where a measured one names itself.
-        ///
-        /// **Both are in the line because both change the frame**, and one of them changes what it
-        /// costs: measuring is two dispatches over the finished image, about a tenth of a
-        /// millisecond at 4K.
-        TEST(RtxProfileLineTest, aHeldExposureIsInTheLineAsItsNumber)
-        {
-            FrameRequest request = makeRequest();
-            const Rtx::ValidationOptions validation{};
-            const osg::Vec3f origin(0.0f, 0.0f, 0.0f);
-            const osg::Vec3f target(0.0f, 100.0f, 0.0f);
-
-            EXPECT_NE(describeProfile(sCell, request, validation, origin, target, 64, 64).find("--exposure=auto"),
-                std::string::npos);
-
-            request.mExposure = 0.25f;
-            EXPECT_NE(describeProfile(sCell, request, validation, origin, target, 64, 64).find("--exposure=0.25"),
-                std::string::npos);
-        }
-
-        /// A profiling line has to be pasteable and it has to be exact, so both are asserted.
-        ///
-        /// The position is deliberately one that rounding would lose, and it survives because the
-        /// formatting is shortest-round-trip rather than fixed. The hour avoids sunrise and sunset
-        /// so that this line is one that actually runs.
-        TEST(RtxProfileLineTest, everyConditionTheFrameDependsOnIsInTheLine)
-        {
-            const FrameRequest request = makeRequest();
-            const Rtx::ValidationOptions validation{
-                .mEnabled = true, .mSynchronization = true, .mGpuAssisted = false
-            };
-            const osg::Vec3f origin(-19216.5f, -14896.25f, 160.0f);
-            const osg::Vec3f target(-19323.0f, -13903.0f, 109.5f);
-
-            EXPECT_EQ(describeProfile(sCell, request, validation, origin, target, 2560, 1440),
-                "--cell=\"Balmora, Guild of Fighters\" --pos=-19216.5,-14896.25,160 --look=-19323,-13903,109.5"
-                " --fov=60 --size=2560x1440 --weather=Ashstorm --hour=17.25 --day=0 --exposure=auto"
-                " --upscale=off --preset=d --reorder=off --filter=false"
-                " --validation=true --sync-validation=true --gpu-validation=false");
-        }
-
-        /// What the line is for: the tool's own parser reading it back to the same floats.
-        TEST(RtxProfileLineTest, thePositionItPrintsIsThePositionItParsesBack)
-        {
-            const osg::Vec3f origin(-19216.5f, -14896.25f, 160.0f);
-            const std::string line = describeProfile(
-                "-2,-9", makeRequest(), Rtx::ValidationOptions{}, origin, osg::Vec3f(1.0f, 2.0f, 3.0f), 8, 8);
-
-            const std::size_t start = line.find("--pos=") + 6;
-            const std::string printed = line.substr(start, line.find(' ', start) - start);
-
-            const std::optional<osg::Vec3f> parsed = parseVec3(printed, "--pos");
-            ASSERT_TRUE(parsed.has_value());
-            EXPECT_EQ(*parsed, origin);
-        }
-
-        /// Each of the fields that is a flag rather than a value, since a line that dropped one
-        /// would reproduce a different frame — or the same frame at a different price — while
-        /// looking correct.
         TEST(RtxViewpointTest, aSpotSaysWhichWayItFaces)
         {
             const auto facing = [](float x, float y, float z) {

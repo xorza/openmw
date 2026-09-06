@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstddef>
 #include <format>
 #include <limits>
 #include <utility>
@@ -13,6 +12,7 @@
 #include <osg/Vec3f>
 
 #include <components/misc/constants.hpp>
+#include <components/rtx/namedenum.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
 #include <components/rtxbench/benchrecord.hpp>
@@ -33,8 +33,9 @@ namespace MWRender
         /// Every check and the word it is asked for by.
         ///
         /// **The one list of the names**, so a check renamed here is renamed in the command line
-        /// and in the report at once.
-        constexpr std::array<std::pair<Check, std::string_view>, 7> sChecks{
+        /// and in the report at once, and a check added here reaches the runner without anybody
+        /// remembering to list it a second time.
+        constexpr Rtx::NamedEnum sChecks{ std::array{
             std::pair{ Check::WalkTwice, std::string_view("walk-twice") },
             std::pair{ Check::SurfacesDescribed, std::string_view("surfaces-described") },
             std::pair{ Check::LightsPlaced, std::string_view("lights-placed") },
@@ -42,17 +43,9 @@ namespace MWRender
             std::pair{ Check::LightsNotDoubled, std::string_view("lights-not-doubled") },
             std::pair{ Check::TexturesReadable, std::string_view("textures-readable") },
             std::pair{ Check::CrossingsAppend, std::string_view("crossings-append") },
-        };
+        } };
 
-        /// The same list as a run of checks, derived rather than restated: a check added above
-        /// reaches the runner without anybody remembering to come here.
-        constexpr auto sEvery = [] {
-            std::array<Check, sChecks.size()> every{};
-            for (std::size_t at = 0; at < sChecks.size(); ++at)
-                every[at] = sChecks[at].first;
-
-            return every;
-        }();
+        constexpr auto sEvery = sChecks.values();
 
         /// How wide the square of cells the simulation holds is, in units.
         ///
@@ -65,20 +58,12 @@ namespace MWRender
 
     std::string_view checkName(const Check check)
     {
-        for (const auto& [named, spelling] : sChecks)
-            if (named == check)
-                return spelling;
-
-        return {};
+        return sChecks.name(check);
     }
 
     std::optional<Check> checkNamed(const std::string_view name)
     {
-        for (const auto& [named, spelling] : sChecks)
-            if (spelling == name)
-                return named;
-
-        return std::nullopt;
+        return sChecks.named(name);
     }
 
     std::span<const Check> everyCheck()

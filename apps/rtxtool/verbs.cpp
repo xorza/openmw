@@ -6,6 +6,8 @@
 #include <string_view>
 #include <utility>
 
+#include <components/rtx/namedenum.hpp>
+
 namespace RtxTool
 {
     namespace
@@ -14,7 +16,7 @@ namespace RtxTool
         ///
         /// **The one list of the names**, which is what makes an option's ownership and the
         /// dispatch's table the same statement: a command renamed here is renamed in both.
-        constexpr std::array<std::pair<Verbs, std::string_view>, 10> sNames{
+        constexpr Rtx::NamedEnum sNames{ std::array{
             std::pair{ Verbs::Info, std::string_view("info") },
             std::pair{ Verbs::Scene, std::string_view("scene") },
             std::pair{ Verbs::Shot, std::string_view("shot") },
@@ -25,42 +27,25 @@ namespace RtxTool
             std::pair{ Verbs::Map, std::string_view("map") },
             std::pair{ Verbs::Verify, std::string_view("verify") },
             std::pair{ Verbs::Check, std::string_view("check") },
-        };
+        } };
     }
 
     std::string_view verbName(const Verbs one)
     {
-        for (const auto& [verb, name] : sNames)
-        {
-            if (verb == one)
-                return name;
-        }
-
-        return {};
+        return sNames.name(one);
     }
 
     Verbs verbNamed(const std::string_view name)
     {
-        for (const auto& [verb, spelling] : sNames)
-        {
-            if (spelling == name)
-                return verb;
-        }
-
-        return Verbs::None;
+        return sNames.named(name).value_or(Verbs::None);
     }
 
     std::string describeVerbs(const Verbs set)
     {
-        std::size_t left = 0;
-        for (const auto& [verb, name] : sNames)
-        {
-            if (holds(set, verb))
-                ++left;
-        }
+        std::size_t left = countVerbs(set);
 
         std::string result;
-        for (const auto& [verb, name] : sNames)
+        for (const auto& [verb, name] : sNames.mNames)
         {
             if (!holds(set, verb))
                 continue;

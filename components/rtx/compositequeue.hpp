@@ -94,10 +94,6 @@ namespace Rtx
         /// between those two calls is the only copy of the bytes a backend has to read.
         void releaseFinished() { mFinished.clear(); }
 
-        /// How many chunks are handed over and not yet collected, which is what says whether a
-        /// collect has anything to wait for.
-        std::size_t getWaitingCount() const { return mAsked.size(); }
-
     private:
         /// Which chunk asked: the material's slot and where its layers sat when it did.
         ///

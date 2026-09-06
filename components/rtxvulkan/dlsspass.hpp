@@ -116,9 +116,6 @@ namespace Rtx
         /// frame. Throws `Error` where NGX refuses the evaluation.
         void record(VkCommandBuffer commands, const DlssInputs& inputs) const;
 
-        VkExtent2D getRenderExtent() const { return mRenderExtent; }
-        VkExtent2D getOutputExtent() const { return mOutputExtent; }
-
     private:
         NVSDK_NGX_Handle* mHandle = nullptr;
         NVSDK_NGX_Parameter* mParameters = nullptr;

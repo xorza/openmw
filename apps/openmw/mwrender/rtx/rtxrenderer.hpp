@@ -342,7 +342,8 @@ namespace MWRender
         Rtx::ExtractionStats mFoundAgain;
         std::uint32_t mUnreadable = 0;
 
-        /// A running average of what the trace costs, reported every `sReportEvery` frames.
+        /// A running average of what the trace costs, reported every `sReportEvery` frames a frame
+        /// came back for.
         ///
         /// **The only instrument on this path.** The harness times a frame by tracing it thirty
         /// times and taking the best; a game cannot, so what it can say is what the last few hundred

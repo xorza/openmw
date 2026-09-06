@@ -1,8 +1,11 @@
 #pragma once
 
+#include <array>
 #include <optional>
 #include <string_view>
+#include <utility>
 
+#include "namedenum.hpp"
 #include "upscale.hpp"
 
 namespace Rtx
@@ -26,20 +29,18 @@ namespace Rtx
         RayReconstruction,
     };
 
+    /// How a `Denoiser` is spelled in a report. The one list of the names, for the reason
+    /// `sUpscaleNames` gives.
+    inline constexpr NamedEnum sDenoiserNames{ std::array{
+        std::pair{ Denoiser::None, std::string_view("none") },
+        std::pair{ Denoiser::Wavelet, std::string_view("wavelet") },
+        std::pair{ Denoiser::RayReconstruction, std::string_view("ray-reconstruction") },
+    } };
+
     /// How `denoiser` is spelled in a report.
     inline std::string_view denoiserName(Denoiser denoiser)
     {
-        switch (denoiser)
-        {
-            case Denoiser::None:
-                return "none";
-            case Denoiser::Wavelet:
-                return "wavelet";
-            case Denoiser::RayReconstruction:
-                return "ray-reconstruction";
-        }
-
-        return "none";
+        return sDenoiserNames.name(denoiser);
     }
 
     /// Which network Ray Reconstruction runs.
@@ -64,36 +65,24 @@ namespace Rtx
         E,
     };
 
-    /// How `preset` is spelled on a command line, in a setting file and in a report.
+    /// How a `Preset` is spelled on a command line, in a setting file and in a report. The one list
+    /// of the names, for the reason `sUpscaleNames` gives.
+    inline constexpr NamedEnum sPresetNames{ std::array{
+        std::pair{ Preset::Default, std::string_view("default") },
+        std::pair{ Preset::D, std::string_view("d") },
+        std::pair{ Preset::E, std::string_view("e") },
+    } };
+
+    /// How `preset` is spelled.
     inline std::string_view presetName(Preset preset)
     {
-        switch (preset)
-        {
-            case Preset::Default:
-                return "default";
-            case Preset::D:
-                return "d";
-            case Preset::E:
-                return "e";
-        }
-
-        return "default";
+        return sPresetNames.name(preset);
     }
 
     /// The preset `name` spells, or nothing where it spells none of them.
-    ///
-    /// Nothing rather than a default, for the reason `upscaleNamed` gives: a typo that silently
-    /// selects a different network is a measurement of something nobody asked for.
     inline std::optional<Preset> presetNamed(std::string_view name)
     {
-        if (name == "default")
-            return Preset::Default;
-        if (name == "d")
-            return Preset::D;
-        if (name == "e")
-            return Preset::E;
-
-        return std::nullopt;
+        return sPresetNames.named(name);
     }
 
     /// What a caller asked of the reconstruction, before the upscaler has its say.

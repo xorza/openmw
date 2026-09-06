@@ -1,18 +1,11 @@
 #pragma once
 
-#include <cstdint>
 #include <string>
 #include <string_view>
 
 #include <osg/Vec3f>
 
-#include "framerequest.hpp"
 #include "views.hpp"
-
-namespace Rtx
-{
-    struct ValidationOptions;
-}
 
 namespace RtxTool
 {
@@ -77,19 +70,9 @@ namespace RtxTool
     ///
     /// **The whole section and not two of its lines.** A block with no `cell` in it is one the view
     /// file refuses to load, so what was printed could never have gone where it was printed to go.
-    /// Numbers are shortest-round-trip for the reason `describeProfile` gives.
+    ///
+    /// **Shortest-round-trip numbers and not the rounded ones `describeSpot` prints**: these exist
+    /// to be read back into the same floats, and a position rounded to the unit is a different
+    /// frame when the camera is a hand's width from a wall.
     std::string describeBlock(const Viewpoint& spot);
-
-    /// One line of arguments that renders this frame again, wherever it is pasted.
-    ///
-    /// **Where the camera is, plus everything that changes what the frame costs.** The camera and
-    /// the size are passed rather than read off `frame` because both move while a session is
-    /// open; the rest of the conditions do not, and come off the request as they were given.
-    ///
-    /// The denoiser and the validation flags are in it deliberately, because both cost time a
-    /// profiling line has to account for: five wavelet levels are about 2 ms at 1080p, and a trace
-    /// timed under the layers is not a figure to compare against anything at all.
-    std::string describeProfile(const std::string& cell, const FrameRequest& frame,
-        const Rtx::ValidationOptions& validation, const osg::Vec3f& origin, const osg::Vec3f& target,
-        std::uint32_t width, std::uint32_t height);
 }

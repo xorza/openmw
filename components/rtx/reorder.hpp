@@ -1,7 +1,11 @@
 #pragma once
 
+#include <array>
 #include <optional>
 #include <string_view>
+#include <utility>
+
+#include "namedenum.hpp"
 
 namespace Rtx
 {
@@ -32,39 +36,25 @@ namespace Rtx
         Both,
     };
 
-    /// How `reorder` is spelled on a command line. The other half of `reorderNamed`, and the one a
-    /// report needs: a run is only comparable against another if what it says it did can be read
-    /// back.
+    /// How a `Reorder` is spelled on a command line, in a setting file and in a report. The one list
+    /// of the names, for the reason `sUpscaleNames` gives.
+    inline constexpr NamedEnum sReorderNames{ std::array{
+        std::pair{ Reorder::Off, std::string_view("off") },
+        std::pair{ Reorder::Hit, std::string_view("hit") },
+        std::pair{ Reorder::Hint, std::string_view("hint") },
+        std::pair{ Reorder::Both, std::string_view("both") },
+    } };
+
+    /// How `reorder` is spelled. The half a report needs: a run is only comparable against another
+    /// if what it says it did can be read back.
     inline std::string_view reorderName(Reorder reorder)
     {
-        switch (reorder)
-        {
-            case Reorder::Off:
-                return "off";
-            case Reorder::Hit:
-                return "hit";
-            case Reorder::Hint:
-                return "hint";
-            case Reorder::Both:
-                return "both";
-        }
-
-        return "off";
+        return sReorderNames.name(reorder);
     }
 
-    /// The mode `name` spells, or nothing where it spells none of them. Nothing rather than a
-    /// default, for the reason `upscaleNamed` gives.
+    /// The mode `name` spells, or nothing where it spells none of them.
     inline std::optional<Reorder> reorderNamed(std::string_view name)
     {
-        if (name == "off")
-            return Reorder::Off;
-        if (name == "hit")
-            return Reorder::Hit;
-        if (name == "hint")
-            return Reorder::Hint;
-        if (name == "both")
-            return Reorder::Both;
-
-        return std::nullopt;
+        return sReorderNames.named(name);
     }
 }

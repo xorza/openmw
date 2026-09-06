@@ -29,69 +29,6 @@ shimmer.
   by design, so the check only ever runs with both off, which is why it is worth
   asking whether it earns its keep before it is built again.
 
-## State that is written and never read
-
-- [ ] `apps/openmw/mwrender/rtx/session.hpp:461-462` — `mChecked` and `mFailed`
-  are incremented in `runChecks` (`session.cpp:1025-1029`) and read by nothing.
-  Either report them in `finish()` beside the check lines, or remove both.
-- [ ] `apps/openmw/mwrender/rtx/rtxrenderer.cpp:762-764` — `mSpentMs` is
-  accumulated only when `finishFrame` returned a result, but `mTimed` counts
-  every frame. The periodic line divides by frames that contributed nothing, so
-  "waited N ms a frame" is an underestimate by an unknown factor.
-
-## Public members with no caller anywhere
-
-Each of these is declared, defined, and reached by no production code and no
-test. Remove them.
-
-- [ ] `components/rtx/compositequeue.hpp:99` — `getWaitingCount`.
-- [ ] `components/rtxvulkan/blockedbuffer.hpp:55` — `getBlockSize`.
-- [ ] `components/rtxvulkan/dlss.hpp:104` — `getCapabilities`.
-- [ ] `components/rtxvulkan/dlsspass.hpp:119-120` — `getRenderExtent` and
-  `getOutputExtent`.
-- [ ] `components/rtxvulkan/pipelinelayout.hpp:41` — `getSetLayout`.
-- [ ] `components/rtxvulkan/gputimer.hpp:45` — `isSupported`.
-- [ ] `apps/rtxtool/viewpoint.cpp:92` / `viewpoint.hpp` — `describeProfile` has
-  no production caller; only the test suite reaches it. It is also incomplete
-  for what its comment claims: the line it builds omits `--delight`,
-  `--distant-cells`, `--distant-statics`, `--jitter` and `--crossings`, and
-  the first two change the picture. Either wire it to a verb or delete it.
-
-## An enum's spellings are restated in prose, and the copies have drifted
-
-Four enums each carry a hand-written `xName` switch and a hand-written `xNamed`
-if-chain over the same strings, and the list of strings is then restated in
-option help, in runtime error messages, in `rtx.hpp` and in
-`settings-default.cfg`. Two of those copies are already wrong.
-
-- [ ] `apps/rtxtool/options.cpp:157` and
-  `apps/openmw/mwrender/rtx/rtxrenderer.cpp:139` — both list "off, performance,
-  balanced, quality or dlaa" and omit `ultraperformance`, which
-  `Rtx::upscaleNamed` accepts and `files/settings-default.cfg:1286` documents.
-  A user who types the mode gets an error naming the modes without it.
-- [ ] `apps/openmw/mwrender/rtx/rtxrenderer.cpp:209` and
-  `components/settings/categories/rtx.hpp` (`mReorder`, line 100) — both say "off, hit or
-  hint" and omit `both`, which `Rtx::reorderNamed` accepts and
-  `apps/rtxtool/options.cpp:167` documents.
-- [ ] `components/rtx/upscale.hpp:48-129`, `components/rtx/reorder.hpp:38-68`,
-  `components/rtx/reconstruction.hpp:30-95` — replace each `xName`/`xNamed`
-  pair with one `constexpr std::array<std::pair<Enum, std::string_view>, N>`
-  and derive both directions and the printable list from it. `apps/rtxtool/verbs.cpp:17`
-  and `apps/openmw/mwrender/rtx/checks.cpp:37` already do exactly this, and say
-  in their comments why: "The one list of the names."
-
-## One knob, three defaults
-
-- [ ] `apps/rtxtool/options.cpp:280` defaults `--distant-cells` to `5.0f`;
-  `apps/rtxtool/framerequest.hpp:79` defaults `FrameRequest::mDistantCells` to
-  `4.0f`; `files/settings-default.cfg:1284` says `distant land cells = 4`. The
-  harness therefore builds a world a cell wider than the game does by default,
-  which is the exact class of drift `applyHostedSettings`'s own comment says the
-  settings channel exists to remove.
-- [ ] `apps/rtxtool/options.cpp:280` — the help text for `--distant-cells` opens
-  "with `--distant-terrain`", which is not an option. The one that exists is
-  `--distant-statics`.
-
 ## The option-ownership table covers one frame knob and not the rest
 
 `ToolOptions::complainAbout` exists so that "a run that names it under any other
