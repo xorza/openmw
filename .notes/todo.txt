@@ -7,3 +7,5 @@
 - async terrain loader
 - precompile shaders?
 - rtxtool - stats money, weather, time
+- fsr and other denoisers and upscalers
+- rtx 20xx
