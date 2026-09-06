@@ -10,6 +10,8 @@
 #include <components/rtx/terraincomposite.hpp>
 #include <components/rtx/texturedata.hpp>
 
+#include "allocations.hpp"
+
 namespace Rtx
 {
     namespace
@@ -67,6 +69,71 @@ namespace Rtx
             return channel(0) << 16 | channel(1) << 8 | channel(2);
         }
 
+        /// A second chunk handed the same scratch finds it grown, and spends the heap on its answer
+        /// alone.
+        ///
+        /// **What `CompositeScratch` is for, stated as a number.** A crossing queues dozens of
+        /// chunks, and one bake's working set is the sum in light, every layer's decoded levels and
+        /// the buffer the chain is reduced through — megabytes that a bake making its own would take
+        /// and give back once per chunk over a load. Held by the caller, a later chunk reaches the
+        /// heap twice and only twice: the chain's bytes, and the levels that index them. Those two
+        /// are the composite's own and leave with it.
+        TEST(RtxTerrainCompositeTest, aScratchTheCallerKeepsLeavesABakeNothingButItsAnswerToAllocate)
+        {
+            const Flat red(2, filled(2, 0xFF0000));
+            const Flat green(2, filled(2, 0x00FF00));
+            const std::array<float, 4> half{ 0.5f, 0.5f, 0.5f, 0.5f };
+
+            const std::array layers{
+                CompositeLayer{ .mDiffuse = red.describe(), .mMask = half, .mMaskWidth = 2, .mMaskHeight = 2 },
+                CompositeLayer{ .mDiffuse = green.describe(), .mMask = half, .mMaskWidth = 2, .mMaskHeight = 2 },
+            };
+
+            // **A chain of two reductions and one of one**, because the sum and the buffer it is
+            // reduced into change places at every one: an extent whose parity leaves the smaller of
+            // the two holding the sum grows it again on the chunk after.
+            //
+            // **A scratch each, and cold**, which is the whole of what the parity is about: one
+            // carried over from the wider extent is already grown past anything the narrower asks
+            // for, and would answer for neither.
+            for (const std::uint32_t extent : { 4u, 2u })
+            {
+                CompositeScratch scratch;
+
+                // The chunk that grows every buffer, which is the one this is not about.
+                const TerrainComposite warm(layers, extent, 0.0f, scratch);
+
+                const std::size_t before = Testing::getAllocationCount();
+                const TerrainComposite again(layers, extent, 0.0f, scratch);
+                const std::size_t spent = Testing::getAllocationCount() - before;
+
+                EXPECT_EQ(spent, 2u) << "extent " << extent << " reached the heap " << spent << " times";
+                EXPECT_EQ(again.getLevelCount(), warm.getLevelCount());
+                EXPECT_EQ(texelOf(again.describe(), 0, 0, 0), texelOf(warm.describe(), 0, 0, 0));
+            }
+        }
+
+        /// A ground that will not decode is weighed as nothing, however much the last chunk left in
+        /// the buffers it is handed.
+        ///
+        /// **The other half of what a kept scratch costs.** A layer whose diffuse carries no level
+        /// at all writes nothing into the decoded buffer it inherits, so a bake that did not empty
+        /// that buffer first would sum the texels of a chunk somewhere else entirely.
+        TEST(RtxTerrainCompositeTest, aGroundThatWillNotDecodeIsWeighedAsNothingAndNotAsWhatItInherits)
+        {
+            const Flat red(2, filled(2, 0xFF0000));
+            const std::array ground{ CompositeLayer{ .mDiffuse = red.describe() } };
+
+            CompositeScratch scratch;
+            const TerrainComposite before(ground, 4, 0.0f, scratch);
+            ASSERT_EQ(texelOf(before.describe(), 0, 0, 0), 0xFF0000u) << "the chunk this one inherits from";
+
+            const std::array undecodable{ CompositeLayer{ .mDiffuse = TextureData{} } };
+            const TerrainComposite after(undecodable, 4, 0.0f, scratch);
+
+            EXPECT_EQ(texelOf(after.describe(), 0, 0, 0), 0x000000u) << "the last chunk's ground came through";
+        }
+
         /// Two ground types, each showing at exactly half weight over the whole chunk.
         ///
         /// **In light, half of one and half of the other is 0.5 a channel**, which sRGB states as
@@ -84,7 +151,8 @@ namespace Rtx
                 CompositeLayer{ .mDiffuse = green.describe(), .mMask = half, .mMaskWidth = 1, .mMaskHeight = 1 },
             };
 
-            const TerrainComposite baked(layers, 4, 0.0f);
+            CompositeScratch scratch;
+            const TerrainComposite baked(layers, 4, 0.0f, scratch);
             const TextureData described = baked.describe();
 
             ASSERT_EQ(described.mWidth, 4u);
@@ -125,7 +193,8 @@ namespace Rtx
                 CompositeLayer{ .mDiffuse = green.describe(), .mMask = east, .mMaskWidth = 2, .mMaskHeight = 1 },
             };
 
-            const TerrainComposite baked(layers, 4, 0.0f);
+            CompositeScratch scratch;
+            const TerrainComposite baked(layers, 4, 0.0f, scratch);
             const TextureData described = baked.describe();
 
             // 0.75 encodes as 224.6 → 225 = 0xE1, and 0.25 as 137.0 → 137 = 0x89.
@@ -168,8 +237,10 @@ namespace Rtx
             const std::array rolled{ CompositeLayer{
                 .mDiffuse = ground.describe(), .mDiffuseTransform = osg::Vec4f(1.0f, 1.0f, 0.25f, 0.0f) } };
 
-            const TerrainComposite asIs(straight, 4, 0.0f);
-            const TerrainComposite shifted(rolled, 4, 0.0f);
+            // One scratch for both, which is what a queue does with every chunk it bakes.
+            CompositeScratch scratch;
+            const TerrainComposite asIs(straight, 4, 0.0f, scratch);
+            const TerrainComposite shifted(rolled, 4, 0.0f, scratch);
             const TextureData copied = asIs.describe();
             const TextureData moved = shifted.describe();
 
@@ -193,9 +264,10 @@ namespace Rtx
             const std::vector<float> twice(std::size_t{ ShadingMap::sExtent } * ShadingMap::sExtent, 2.0f);
             const std::array layers{ CompositeLayer{ .mDiffuse = white.describe(), .mShading = twice } };
 
-            const TerrainComposite untouched(layers, 2, 0.0f);
-            const TerrainComposite halved(layers, 2, 1.0f);
-            const TerrainComposite partly(layers, 2, 0.5f);
+            CompositeScratch scratch;
+            const TerrainComposite untouched(layers, 2, 0.0f, scratch);
+            const TerrainComposite halved(layers, 2, 1.0f, scratch);
+            const TerrainComposite partly(layers, 2, 0.5f, scratch);
 
             EXPECT_EQ(texelOf(untouched.describe(), 0, 0, 0), 0xFFFFFFu);
             EXPECT_EQ(texelOf(halved.describe(), 0, 0, 0), 0xBCBCBCu);

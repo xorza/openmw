@@ -229,18 +229,18 @@ namespace Rtx
         Baked baked{ .mRequest = std::move(request) };
         const Request& asked = baked.mRequest;
 
-        // **Reserved before anything points into it.** Every description below spans `levels`, so
+        // **Reserved before anything points into it.** Every description below spans `mLevelScratch`, so
         // a reallocation part way through would leave the bake reading where the earlier layers
         // used to be.
         std::size_t count = 0;
         for (const osg::ref_ptr<const osg::Image>& image : asked.mImages)
             count += image != nullptr ? image->getNumMipmapLevels() : 0;
 
-        std::vector<MipLevel> levels;
-        levels.reserve(count);
+        mLevelScratch.clear();
+        mLevelScratch.reserve(count);
 
-        std::vector<CompositeLayer> stack;
-        stack.reserve(asked.mLayers.size());
+        mStackScratch.clear();
+        mStackScratch.reserve(asked.mLayers.size());
 
         for (std::size_t index = 0; index < asked.mLayers.size(); ++index)
         {
@@ -251,7 +251,7 @@ namespace Rtx
             std::optional<TextureData> described;
             try
             {
-                described = describeImage(*image, levels);
+                described = describeImage(*image, mLevelScratch);
             }
             catch (const Error&)
             {
@@ -263,7 +263,7 @@ namespace Rtx
             const MaterialLayer& layer = asked.mLayers[index];
             const Span mask = asked.mMaskRuns[index];
 
-            stack.push_back(CompositeLayer{
+            mStackScratch.push_back(CompositeLayer{
                 .mDiffuse = *described,
                 .mShading = mPainted.estimate(*described, image->getFileName()).getValues(),
                 .mDiffuseTransform = layer.mDiffuseTransform,
@@ -276,12 +276,12 @@ namespace Rtx
 
         // Every layer unreadable is a chunk with nothing to flatten. It keeps its stack, which is
         // what it was already shading from, and asks again no more than the walk does.
-        if (stack.empty())
+        if (mStackScratch.empty())
             return baked;
 
         try
         {
-            baked.mComposite.emplace(stack, sCompositeExtent, sCompositeDelight);
+            baked.mComposite.emplace(mStackScratch, sCompositeExtent, sCompositeDelight, mScratch);
         }
         catch (const std::exception& error)
         {

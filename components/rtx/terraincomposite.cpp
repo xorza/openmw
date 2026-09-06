@@ -65,41 +65,24 @@ namespace Rtx
             return Tap{ hold(low), hold(low + 1), texel - static_cast<float>(low) };
         }
 
-        /// One level of a layer's diffuse, decoded to linear once.
-        ///
-        /// **Decoded up front rather than a block per tap.** The level a bake reads is the one whose
-        /// texels are the size of one composite texel, so for ground tiling sixty times across a
-        /// chunk it is a handful of texels square — while the composite takes a quarter of a million
-        /// samples from it. Reading a compressed block at every tap made a chunk cost 56 ms; reading
-        /// each level once makes every tap an array lookup and changes not one texel of the answer.
-        struct Decoded
+        void decodeLevel(const TextureData& texture, const MipLevel& level, DecodedLevel& into)
         {
-            std::vector<osg::Vec3f> mTexels;
-            std::uint32_t mWidth = 0;
-            std::uint32_t mHeight = 0;
+            into.mWidth = level.mWidth;
+            into.mHeight = level.mHeight;
 
-            bool isEmpty() const { return mTexels.empty(); }
-        };
-
-        Decoded decodeLevel(const TextureData& texture, const MipLevel& level)
-        {
-            Decoded made;
-            made.mWidth = level.mWidth;
-            made.mHeight = level.mHeight;
-            made.mTexels.reserve(std::size_t{ level.mWidth } * level.mHeight);
+            into.mTexels.clear();
+            into.mTexels.reserve(std::size_t{ level.mWidth } * level.mHeight);
 
             const bool encoded = isSrgb(texture.mFormat);
             for (std::uint32_t y = 0; y < level.mHeight; ++y)
                 for (std::uint32_t x = 0; x < level.mWidth; ++x)
                 {
                     const osg::Vec3f stored = texelAt(texture, level, x, y);
-                    made.mTexels.push_back(encoded ? toLinear(stored) : stored);
+                    into.mTexels.push_back(encoded ? toLinear(stored) : stored);
                 }
-
-            return made;
         }
 
-        osg::Vec3f sampleAt(const Decoded& level, const Tap& across, const Tap& down)
+        osg::Vec3f sampleAt(const DecodedLevel& level, const Tap& across, const Tap& down)
         {
             const auto fetch = [&](std::uint32_t column, std::uint32_t row) -> const osg::Vec3f& {
                 return level.mTexels[std::size_t{ row } * level.mWidth + column];
@@ -128,15 +111,6 @@ namespace Rtx
             return std::lerp(top, bottom, down.mAcross);
         }
 
-        /// One layer's diffuse, reduced to the two levels the whole bake will read and how far it
-        /// sits between them.
-        struct Ground
-        {
-            Decoded mFine;
-            Decoded mCoarse;
-            float mBetween = 0.0f;
-        };
-
         /// Decodes the two levels of a layer's diffuse whose texels are the size of a composite
         /// texel, which is all of it the bake will ever read.
         ///
@@ -147,13 +121,13 @@ namespace Rtx
         ///
         /// The level is constant across the whole composite because the transform is, which is what
         /// makes decoding it once possible at all.
-        Ground prepare(const CompositeLayer& layer, std::uint32_t extent)
+        void prepare(const CompositeLayer& layer, std::uint32_t extent, Ground& into)
         {
-            Ground made;
+            into.reuse();
 
             const TextureData& texture = layer.mDiffuse;
             if (texture.mLevels.empty())
-                return made;
+                return;
 
             const MipLevel& finest = texture.mLevels.front();
             const float texelsAcross = std::abs(layer.mDiffuseTransform.x()) * static_cast<float>(finest.mWidth);
@@ -169,13 +143,11 @@ namespace Rtx
             const auto fine = static_cast<std::uint32_t>(wanted);
             const std::uint32_t coarse = std::min(fine + 1, deepest);
 
-            made.mFine = decodeLevel(texture, texture.mLevels[fine]);
-            made.mBetween = wanted - static_cast<float>(fine);
+            decodeLevel(texture, texture.mLevels[fine], into.mFine);
+            into.mBetween = wanted - static_cast<float>(fine);
 
-            if (made.mBetween > 0.0f && coarse != fine)
-                made.mCoarse = decodeLevel(texture, texture.mLevels[coarse]);
-
-            return made;
+            if (into.mBetween > 0.0f && coarse != fine)
+                decodeLevel(texture, texture.mLevels[coarse], into.mCoarse);
         }
 
         /// Marks in `covered` the mask columns that hold anything on either row of `down`, and says
@@ -218,22 +190,28 @@ namespace Rtx
         }
     }
 
-    TerrainComposite::TerrainComposite(std::span<const CompositeLayer> layers, std::uint32_t extent, float delight)
+    TerrainComposite::TerrainComposite(
+        std::span<const CompositeLayer> layers, std::uint32_t extent, float delight, CompositeScratch& scratch)
         : mExtent(extent)
     {
         assert(!layers.empty() && "a composite of no layers is a chunk with no ground at all");
         assert(extent > 0 && std::has_single_bit(extent) && "a composite extent the chain cannot halve to one texel");
 
-        std::vector<Ground> grounds;
-        grounds.reserve(layers.size());
-        for (const CompositeLayer& layer : layers)
-            grounds.push_back(prepare(layer, extent));
+        // **Grown to the deepest stack met and never shrunk**, so a ground decodes into the buffers
+        // the last chunk left rather than into eighteen fresh ones. A shorter stack uses the front.
+        if (scratch.mGrounds.size() < layers.size())
+            scratch.mGrounds.resize(layers.size());
 
-        // The sum, in light, one entry a texel of the finest level.
-        std::vector<osg::Vec3f> light(std::size_t{ extent } * extent);
+        for (std::size_t index = 0; index < layers.size(); ++index)
+            prepare(layers[index], extent, scratch.mGrounds[index]);
 
-        // Held across the whole bake, so filling it a row at a time costs no allocation.
-        std::vector<std::uint8_t> covered;
+        // **`mCoarser` to the same size, because the reduction swaps the two.** Only `mLight` is
+        // ever assigned the whole extent, so without this the other leaves the first chunk holding a
+        // quarter of it — and where the swaps put that one under the next chunk's sum, it has to
+        // grow once more. Reserved, the first chunk pays for both and none after it pays at all.
+        const std::size_t texels = std::size_t{ extent } * extent;
+        scratch.mCoarser.reserve(texels);
+        scratch.mLight.assign(texels, osg::Vec3f());
 
         // **A layer at a time, and a row of it at a time.** Every tap down the V axis — the mask's
         // row pair, each diffuse level's row pair — belongs to the row rather than to the texel,
@@ -242,9 +220,9 @@ namespace Rtx
         //
         // **The stack has to stay in its own order**, because a float sum is the order it was added
         // in: this reaches one texel layer by layer, exactly as a loop over the texels would.
-        for (std::size_t index = 0; index < grounds.size(); ++index)
+        for (std::size_t index = 0; index < layers.size(); ++index)
         {
-            const Ground& ground = grounds[index];
+            const Ground& ground = scratch.mGrounds[index];
 
             // A layer whose diffuse would not decode has nothing but black to weigh, and black at
             // any weight leaves the sum where it was.
@@ -265,7 +243,7 @@ namespace Rtx
                 if (!everywhere)
                 {
                     maskDown = clampedTap(v * layer.mMaskTransform.y() + layer.mMaskTransform.w(), layer.mMaskHeight);
-                    if (!coveredColumns(layer, maskDown, covered))
+                    if (!coveredColumns(layer, maskDown, scratch.mCovered))
                         continue;
                 }
 
@@ -274,7 +252,7 @@ namespace Rtx
                 const bool trilinear = ground.mBetween > 0.0f && !ground.mCoarse.isEmpty();
                 const Tap coarseDown = trilinear ? wrappedTap(atV, ground.mCoarse.mHeight) : Tap{};
 
-                osg::Vec3f* const row = light.data() + std::size_t{ y } * extent;
+                osg::Vec3f* const row = scratch.mLight.data() + std::size_t{ y } * extent;
 
                 for (std::uint32_t x = 0; x < extent; ++x)
                 {
@@ -286,7 +264,7 @@ namespace Rtx
                         const Tap maskAcross
                             = clampedTap(u * layer.mMaskTransform.x() + layer.mMaskTransform.z(), layer.mMaskWidth);
 
-                        if (covered[maskAcross.mFirst] == 0 && covered[maskAcross.mSecond] == 0)
+                        if (scratch.mCovered[maskAcross.mFirst] == 0 && scratch.mCovered[maskAcross.mSecond] == 0)
                             continue;
 
                         showing = maskWeight(layer, maskAcross, maskDown);
@@ -314,11 +292,13 @@ namespace Rtx
             }
         }
 
-        buildChain(light);
+        buildChain(scratch);
     }
 
-    void TerrainComposite::buildChain(std::vector<osg::Vec3f>& light)
+    void TerrainComposite::buildChain(CompositeScratch& scratch)
     {
+        std::vector<osg::Vec3f>& light = scratch.mLight;
+
         const auto count = static_cast<std::uint32_t>(std::countr_zero(mExtent)) + 1;
 
         std::size_t total = 0;
@@ -328,7 +308,6 @@ namespace Rtx
         mBytes.resize(total);
         mLevels.reserve(count);
 
-        std::vector<osg::Vec3f> coarser;
         std::uint32_t offset = 0;
         for (std::uint32_t at = 0, side = mExtent; at < count; ++at, side /= 2)
         {
@@ -337,17 +316,17 @@ namespace Rtx
                 // Box-filtered in light for the reason the blend above is summed in it, and built
                 // here rather than left to whatever the file carried: a composite has no file.
                 const std::uint32_t finer = side * 2;
-                coarser.assign(std::size_t{ side } * side, osg::Vec3f());
+                scratch.mCoarser.assign(std::size_t{ side } * side, osg::Vec3f());
 
                 for (std::uint32_t y = 0; y < side; ++y)
                     for (std::uint32_t x = 0; x < side; ++x)
                     {
                         const std::size_t from = std::size_t{ y } * 2 * finer + std::size_t{ x } * 2;
-                        coarser[std::size_t{ y } * side + x]
+                        scratch.mCoarser[std::size_t{ y } * side + x]
                             = (light[from] + light[from + 1] + light[from + finer] + light[from + finer + 1]) * 0.25f;
                     }
 
-                light.swap(coarser);
+                light.swap(scratch.mCoarser);
             }
 
             mLevels.push_back(MipLevel{ offset, side, side });

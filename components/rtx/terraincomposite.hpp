@@ -63,6 +63,74 @@ namespace Rtx
         osg::Vec4f mMaskTransform{ 1.0f, 1.0f, 0.0f, 0.0f };
     };
 
+    /// One level of a layer's diffuse, decoded to linear once.
+    ///
+    /// **DecodedLevel up front rather than a block per tap.** The level a bake reads is the one whose
+    /// texels are the size of one composite texel, so for ground tiling sixty times across a chunk
+    /// it is a handful of texels square — while the composite takes a quarter of a million samples
+    /// from it. Reading a compressed block at every tap made a chunk cost 56 ms; reading each level
+    /// once makes every tap an array lookup and changes not one texel of the answer.
+    struct DecodedLevel
+    {
+        std::vector<osg::Vec3f> mTexels;
+        std::uint32_t mWidth = 0;
+        std::uint32_t mHeight = 0;
+
+        bool isEmpty() const { return mTexels.empty(); }
+
+        /// Empties it without giving its room back, so the next bake refills what the last one grew.
+        void reuse()
+        {
+            mTexels.clear();
+            mWidth = 0;
+            mHeight = 0;
+        }
+    };
+
+    /// One layer's diffuse, reduced to the two levels the whole bake will read and how far it sits
+    /// between them.
+    struct Ground
+    {
+        DecodedLevel mFine;
+        DecodedLevel mCoarse;
+        float mBetween = 0.0f;
+
+        void reuse()
+        {
+            mFine.reuse();
+            mCoarse.reuse();
+            mBetween = 0.0f;
+        }
+    };
+
+    /// Everything a bake writes that is not its answer, held by whoever bakes rather than made per
+    /// chunk.
+    ///
+    /// **A bake's working set is larger than what it produces.** The sum alone is one `osg::Vec3f` a
+    /// texel — three megabytes at `sCompositeExtent` — and a nine-layer stack decodes eighteen
+    /// levels beside it. A crossing queues dozens of chunks, so making that per chunk is the same
+    /// megabytes taken and given back dozens of times over a load.
+    ///
+    /// **One thread's, and it is the caller that says which.** `CompositeQueue` holds one on its
+    /// baker and hands it to every bake; nothing here is guarded, because nothing else may touch it.
+    struct CompositeScratch
+    {
+        /// One per layer of the deepest stack met so far, each keeping the levels it decoded. Never
+        /// shrunk: a shorter stack uses the front of it and leaves the rest holding their room.
+        std::vector<Ground> mGrounds;
+
+        /// The sum, in light, one entry a texel of the level being built.
+        std::vector<osg::Vec3f> mLight;
+
+        /// The level under it, while the chain is being reduced. **Swapped with `mLight` at every
+        /// level**, so the two take turns holding the finer half and both are reserved to the
+        /// finest.
+        std::vector<osg::Vec3f> mCoarser;
+
+        /// Which mask columns hold anything on the row being summed. See `coveredColumns`.
+        std::vector<std::uint8_t> mCovered;
+    };
+
     /// A chunk's whole layer stack, flattened into one texture.
     ///
     /// **The composite is the shading LOD and not only a way around a render target.** A distant
@@ -101,7 +169,10 @@ namespace Rtx
         ///        constant the shader reads. **Baked in rather than left to the shader**, because
         ///        the estimate repeats with the texture's tiling and the composite has none: this is
         ///        the last point at which the tiling is still known.
-        TerrainComposite(std::span<const CompositeLayer> layers, std::uint32_t extent, float delight);
+        /// @param scratch what the bake works in, which is the caller's so that a queue of them
+        ///        pays for it once. Cleared and refilled here, and read by nothing afterwards.
+        TerrainComposite(
+            std::span<const CompositeLayer> layers, std::uint32_t extent, float delight, CompositeScratch& scratch);
 
         /// Moved and never copied, like every other description that hands out spans of itself: two
         /// composites holding the same texels under one key is two answers to a question with one.
@@ -120,7 +191,7 @@ namespace Rtx
 
     private:
         /// Reduces the summed light to the chain of encoded bytes a backend uploads, spending it.
-        void buildChain(std::vector<osg::Vec3f>& light);
+        void buildChain(CompositeScratch& scratch);
 
         std::vector<std::byte> mBytes;
         std::vector<MipLevel> mLevels;

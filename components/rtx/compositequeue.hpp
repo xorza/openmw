@@ -203,6 +203,18 @@ namespace Rtx
         /// cache is not guarded. The estimate is node-based, which is what lets the stack span it.
         ShadingCache mPainted;
 
+        /// What `bake` reads a stack into, and what a bake works in.
+        ///
+        /// **The baker's thread too, and `bake`'s alone.** Nothing else here reads them, which is
+        /// what lets `mStackScratch` go on spanning `mLevelScratch` between chunks: the next bake
+        /// clears both before it fills either.
+        ///
+        /// Held rather than made, for the reason `mSpare` is: a crossing bakes dozens of chunks, and
+        /// a working set made per chunk is the same megabytes taken and given back dozens of times.
+        std::vector<MipLevel> mLevelScratch;
+        std::vector<CompositeLayer> mStackScratch;
+        CompositeScratch mScratch;
+
         /// **Last, so it is joined first.** A member declared above it would be destroyed while
         /// the baker was still reading it; the stop the join begins with is what wakes the wait.
         /// Started by the first chunk that asks rather than with the queue: every picture inside

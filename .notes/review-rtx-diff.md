@@ -18,27 +18,9 @@ persistent loader could keep the memory it already has.
 
 `SceneTextures` states the pattern this project wants. Its comment says it is
 "held for the life of its owner, and cleared and refilled per arrival", so that an
-arrival frame does not pay for the buffers. Three of its collaborators do not follow
+arrival frame does not pay for the buffers. Its remaining collaborators do not follow
 that pattern. Each allocates its working set, uses it once and frees it.
 
-A crossing queues dozens of bakes. The composite bake is the largest of these by a
-wide margin.
-
-- [ ] `components/rtx/terraincomposite.cpp:233` — `light` is one `osg::Vec3f` per
-  texel of the finest level. At `sCompositeExtent` of 512 that is 3 MB, allocated
-  and freed per bake.
-- [ ] `components/rtx/terraincomposite.cpp:227` — `grounds` holds one `Ground` per
-  layer, and each `Ground` holds two `Decoded` with a `std::vector<osg::Vec3f>`
-  inside. A nine-layer chunk allocates up to nineteen buffers per bake.
-- [ ] `components/rtx/terraincomposite.cpp:236` — `covered` grows once and serves every
-  row, which is what its comment claims. It then dies with the bake, so the next
-  chunk grows it again.
-- [ ] `components/rtx/terraincomposite.cpp:331` — `coarser` in `buildChain`,
-  allocated per bake.
-- [ ] `components/rtx/compositequeue.cpp:239` and `:242` — `levels` and `stack` are
-  locals of `bake`. The queue beside them already recycles its `Request` objects
-  through `mSpare`, and states why. One thread runs `bake`, so the same scratch can
-  live on the queue.
 - [ ] `components/rtx/texturebuilder.cpp:210` and `:214` — `MipChain built` and
   `AlphaImage alpha` are locals, three lines below `mSourceLevels`, which is a
   member for exactly this reason. Each allocates and frees per sprite source.
@@ -121,6 +103,6 @@ The map that would hold the answer is already there in two of the three cases.
 - [ ] `apps/components_tests/rtx/` — the allocation guard covers the frame path and
   stops there. `extractor/materials.cpp:630`, `extractor/skinning.cpp:111` and
   `lightbuilder.cpp:437` all assert zero allocations for a scene already walked. No
-  test measures `SceneTextures::describe`, `CompositeQueue::bake` or
-  `TerrainComposite`. Those are the paths this review found allocating, and a count
-  there is what would keep the persistent loaders persistent.
+  test measures `SceneTextures::describe` or `CompositeQueue::bake`. Those are the
+  paths this review found allocating, and a count there is what would keep the
+  persistent loaders persistent.
