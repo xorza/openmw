@@ -92,9 +92,9 @@ namespace Rtx
 
         VkMemoryRequirements requirements{};
         vkGetImageMemoryRequirements(device.getHandle(), mHandle, &requirements);
-        mMemory = DeviceMemory(
-            device, requirements.size, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
-        checkVk(vkBindImageMemory(device.getHandle(), mHandle, mMemory.getHandle(), 0), "vkBindImageMemory");
+        mMemory = device.getMemory().take(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal);
+        checkVk(vkBindImageMemory(device.getHandle(), mHandle, mMemory.getHandle(), mMemory.getOffset()),
+            "vkBindImageMemory");
 
         const VkImageViewCreateInfo view{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,

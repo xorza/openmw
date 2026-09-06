@@ -14,34 +14,11 @@ persistent loader could keep the memory it already has.
 
 ---
 
-## Every Vulkan buffer and image is its own device allocation
-
-`Buffer` and `Image` each construct a `DeviceMemory`, and `DeviceMemory` calls
-`vkAllocateMemory`. There is no suballocator. A cell arrival therefore spends one
-device allocation per texture image and one per shading map.
-
-- [ ] `components/rtxvulkan/memory.cpp:45` — one `vkAllocateMemory` per object, and
-  two objects per texture. `maxMemoryAllocationCount` is 4294967295 on this driver,
-  so the count is not the risk. The cost is the call itself and the padding: each
-  allocation is a kernel-visible operation and each is rounded up to the driver's
-  granularity, which a shading map of 2 KB pays in full. A suballocator behind
-  `DeviceMemory` is what removes it.
-
 ## Facts about a node are derived again every frame
 
-Each is asked once per node per frame. Two of the three turned out not to be facts
-about the content at all, and each says below what it is instead.
+Each is asked once per node per frame. Neither turned out to be a fact about the
+content at all, and each says below what it is instead.
 
-- [ ] `components/rtx/lightbuilder.cpp:666` — `lightColour` calls `decodeColour`
-  twice per light per frame. `decodeColour` calls `toLinear` per channel, and
-  `toLinear` is a `std::pow`. That is six `pow` calls per light per frame. The
-  colour comes from `LightController::getDiffuse`, which returns the record's own
-  colour and never the animated one, so it is constant for the life of the light.
-  Only `brightness` and `fade` change. **The table route is closed.** `toLinear` has
-  a byte overload now, and a light's colour is `colourFromRGB`'s `byte / 255` — but a
-  `mNegative` light's is `-byte / 255` (`lightutil.cpp:128`), which is not one of the
-  256 and takes the curve's other leg. Recovering the byte by rounding would be a
-  guess. What is left is caching the decoded colour where the light is first met.
 - [ ] `components/rtx/materialresolver.cpp:123` — `animate` calls `findUpdater` for
   every node that carries any callback, on every frame. `findUpdater` walks two
   callback chains and does a `dynamic_cast` per link. **Caching the answer is not
@@ -51,12 +28,26 @@ about the content at all, and each says below what it is instead.
   loses an enchanted weapon's glow, and a cached pointer outlives the callback the
   node let go of. Whether a node animates is not a property of the content. What is
   left is making the question itself cheaper than a `dynamic_cast` a link.
+  **Measured, `seyda-neen-ship`, release:** 1352 calls and 1780 casts a frame, of
+  which 25 find an updater. `__dynamic_cast` is 1.32% of the process's on-CPU time
+  and 1.21% of it is under `SceneExtractor::walk`, which is a third of the frame's
+  CPU. So this is of the order of a tenth of a millisecond a frame against a walk of
+  one to two. The only sound key is the callback object itself — a class's
+  `className()` does not identify it, because `StateSetUpdater` declares no
+  `META_Object` and its subclasses report their base's name.
 - [ ] `components/rtx/nodelibrary.hpp:18` — `isFrom` is a virtual call and a
   `strcmp`. `MirrorTraversal` asks it up to four times per node per frame — at
   `sceneextractor.cpp:254`, `:257`, `:374` twice — and twice more per drawable at
   `:659`. `libraryName()` returns a string literal whose address is stable for the
   class, so a small set of literal addresses that already answered yes or no turns
-  every call after the first per class into a pointer compare.
+  every call after the first per class into a pointer compare. **The memo is exactly
+  sound**, unlike the one above: what is remembered is what a *library name string*
+  says, so two classes whose literals the linker merged share the string and share
+  the answer. **Measured, `seyda-neen-ship`, release:** 6943 node visits a frame, so
+  of the order of 28000 calls. The `strcmp` is a real `.plt` call — five of them in
+  `MirrorTraversal::apply(osg::Node&)` — but it does not appear in the profile at a
+  0.02% limit, so it is worth less than the item above and the memo's own loop of
+  pointer compares has to be shown to beat a `strcmp` that fails on the first byte.
 
 ## Smaller items
 

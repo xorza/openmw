@@ -7,9 +7,59 @@
 
 namespace Rtx
 {
+    namespace
+    {
+        /// sRGB's transfer function itself.
+        ///
+        /// **Both overloads answer with this one**, so what a stored byte is worth and what a value
+        /// that was never a byte is worth cannot come from two spellings of the same three constants.
+        float curve(float encoded)
+        {
+            return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
+        }
+
+        /// The two hundred and fifty-six answers there are, worked out once.
+        ///
+        /// **Built on the first ask rather than at namespace scope**, so that no order between
+        /// translation units can put a reader before it: `terraincomposite.cpp` holds its one shared
+        /// shading map the same way and for the same reason.
+        const std::array<float, 256>& ofByte()
+        {
+            static const std::array<float, 256> sMade = [] {
+                std::array<float, 256> made{};
+                for (std::size_t at = 0; at < made.size(); ++at)
+                    made[at] = curve(static_cast<float>(at) / 255.0f);
+
+                return made;
+            }();
+
+            return sMade;
+        }
+    }
+
     float toLinear(float encoded)
     {
-        return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
+        // **The table where the value did arrive as a stored byte, and the curve where it did not.**
+        // Nearly everything the content states is `k / 255` — a light's colour, a weather record's,
+        // a decoded block's texel — and `std::pow` is a libm call no compiler inlines, which a
+        // light's colour would otherwise cost three of a frame for a value its record states once.
+        //
+        // **The byte is recovered and then divided back, which is what makes this exact rather than
+        // a guess.** The table is built from `k / 255.0f` and the comparison is that same
+        // expression, so a value that passes it *is* the table's own input and the answer is the
+        // same number. A value that is not one of the 256 — a negative light's colour, an endpoint
+        // some other arithmetic produced — fails it and takes the curve.
+        //
+        // The bounds are asked first so that a NaN, which every comparison refuses, never reaches
+        // the conversion to an integer.
+        if (encoded > 0.0f && encoded <= 1.0f)
+        {
+            const auto byte = static_cast<std::uint8_t>(encoded * 255.0f + 0.5f);
+            if (static_cast<float>(byte) / 255.0f == encoded)
+                return ofByte()[byte];
+        }
+
+        return curve(encoded);
     }
 
     float toEncoded(float linear)
@@ -22,18 +72,7 @@ namespace Rtx
 
     float toLinear(std::uint8_t encoded)
     {
-        // **Built on the first ask rather than at namespace scope**, so that no order between
-        // translation units can put a reader before it: `terraincomposite.cpp` holds its one shared
-        // shading map the same way and for the same reason.
-        static const std::array<float, 256> sOfByte = [] {
-            std::array<float, 256> made{};
-            for (std::size_t at = 0; at < made.size(); ++at)
-                made[at] = toLinear(static_cast<float>(at) / 255.0f);
-
-            return made;
-        }();
-
-        return sOfByte[encoded];
+        return ofByte()[encoded];
     }
 
     osg::Vec3f toLinear(const osg::Vec3f& encoded)

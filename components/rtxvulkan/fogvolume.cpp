@@ -25,7 +25,11 @@ namespace Rtx
         /// not reach here: nothing sums these.
         constexpr VkFormat sFormat = FOG_VOLUME_FORMAT;
 
-        constexpr VkImageUsageFlags sUsage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        /// `TRANSFER_DST` because the constructor empties every one of these, which is what a
+        /// history read before anything has written it needs and what an image made over a departed
+        /// cell's memory has no other way of getting.
+        constexpr VkImageUsageFlags sUsage
+            = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
         /// What the set holds, which `shaders/fogvolume.h` states for this side and the shaders
         /// that declare the same slots.
@@ -77,7 +81,8 @@ namespace Rtx
         , mSlice(device, mColumns, mRows, sFormat, sUsage, "fog slice", 1, Shaders::FOG_VOLUME_SLICES)
         , mSliceSunward(
               device, mColumns, mRows, FOG_SUNWARD_FORMAT, sUsage, "fog slice sunward", 1, Shaders::FOG_VOLUME_SLICES)
-        , mColumnDepth(device, mColumns, mRows, FOG_DEPTH_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT, "fog column depth")
+        , mColumnDepth(device, mColumns, mRows, FOG_DEPTH_FORMAT,
+              VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, "fog column depth")
     {
         try
         {
@@ -163,12 +168,32 @@ namespace Rtx
                 vkUpdateDescriptorSets(mDevice.getHandle(), sBindings, writes.data(), 0, nullptr);
             }
 
+            // **Emptied and in `GENERAL` from the moment they exist**, which `createTargets` says of
+            // the frame's own targets for the same reason. `begin` does not discard the point pair,
+            // so the first frame after this reads a history nothing has written — and what an image
+            // holds when it is made is whatever was last in that memory. That read was safe only
+            // while every resource had a `vkAllocateMemory` of its own and the driver handed back
+            // zeroed pages. Over a suballocator's range it is a departed image's bits instead, and
+            // what the frame draws is then a radiance nothing accounts for. Nothing scattered is the
+            // one history a first frame can reproject.
             pool.submitAndWait([&](VkCommandBuffer commands) {
+                constexpr VkClearColorValue nothing{ .float32 = { 0.0f, 0.0f, 0.0f, 0.0f } };
+                constexpr VkImageSubresourceRange whole{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+
                 for (const Image* image : { &mScatter[0], &mScatter[1], &mSunward[0], &mSunward[1], &mLamps, &mAir,
                          &mAirSunward, &mSlice, &mSliceSunward, &mColumnDepth })
-                    image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-                        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                {
+                    image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                        VK_ACCESS_2_TRANSFER_WRITE_BIT);
+
+                    vkCmdClearColorImage(
+                        commands, image->getHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &nothing, 1, &whole);
+
+                    image->transition(commands, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                        VK_PIPELINE_STAGE_2_CLEAR_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+                }
             });
         }
         catch (...)

@@ -60,11 +60,14 @@ namespace Rtx
     class FogVolume
     {
     public:
-        /// @param pool used once, to lay every image out. **A history has to exist before it is
-        ///        read**, and the copy a first frame reprojects into was never written by anything:
-        ///        without this it is still `VK_IMAGE_LAYOUT_UNDEFINED` when the first dispatch binds
-        ///        it. Its contents are never read — a first frame carries no basis to reproject
-        ///        with — so it is laid out and not cleared.
+        /// @param pool used once, to lay every image out and empty it. **A history has to exist
+        ///        before it is read**, and the copy a first frame reprojects into was never written
+        ///        by anything: without this it is still `VK_IMAGE_LAYOUT_UNDEFINED` when the first
+        ///        dispatch binds it. **Emptied and not merely laid out**, because it is read: a
+        ///        reset tells the shader to weigh the history at nothing, and nothing times a
+        ///        not-a-number is still one. What an image holds when it is made is whatever was
+        ///        last in that memory, which the driver zeroed only while every resource had a
+        ///        `vkAllocateMemory` of its own.
         /// @param width, height the camera's, in pixels. The grid covers them at `FOG_VOLUME_SCALE`.
         FogVolume(const Device& device, CommandPool& pool, const SetLayout& layout, std::uint32_t width,
             std::uint32_t height);

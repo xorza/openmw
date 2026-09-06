@@ -13,6 +13,7 @@
 namespace Rtx
 {
     class Instance;
+    class MemoryAllocator;
     class PipelineCache;
     struct PipelineCacheSpec;
 
@@ -64,6 +65,18 @@ namespace Rtx
         std::uint32_t getQueueFamily() const { return mPhysicalDevice.getQueueFamily(); }
         const PhysicalDevice& getPhysicalDevice() const { return mPhysicalDevice; }
         const DeviceFunctions& getFunctions() const { return mFunctions; }
+
+        /// Where every buffer's and every image's memory comes from.
+        ///
+        /// **One suballocator for the device and not one allocation per resource.** A cell brings a
+        /// few hundred textures and each is two images, so an allocation apiece is a call into the
+        /// kernel apiece for memory the driver then rounds up to its own granularity.
+        ///
+        /// Not const although the device is: handing out a range is what this is for, and every
+        /// resource that asks holds the device by const reference.
+        ///
+        /// Out of line because the allocator is only forward-declared here.
+        MemoryAllocator& getMemory() const;
 
         /// Handed to every `vkCreate*Pipelines` on this device, so that a shader is compiled once
         /// per change rather than once per pipeline.
@@ -171,8 +184,10 @@ namespace Rtx
         /// its feature.
         PFN_vkGetDeviceFaultInfoEXT mGetDeviceFaultInfo = nullptr;
 
-        // Last, so that it is torn down first: saving it reads from the device, which the members
-        // above are still holding open at that point.
+        // Last, so that they are torn down first: saving the cache reads from the device, and
+        // freeing a block writes to it, which the members above are still holding open at that
+        // point.
         std::unique_ptr<PipelineCache> mPipelineCache;
+        std::unique_ptr<MemoryAllocator> mMemory;
     };
 }

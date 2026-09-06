@@ -1,59 +1,68 @@
 #include "memory.hpp"
 
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <string>
 #include <utility>
 
 #include <components/rtx/error.hpp>
 
-#include "device.hpp"
 #include "result.hpp"
 
 namespace Rtx
 {
-    std::uint32_t findMemoryType(const Device& device, std::uint32_t typeBits, VkMemoryPropertyFlags properties)
+    namespace
     {
-        // Read when the device was chosen and never since: see `DeviceProperties::mMemory`.
-        const VkPhysicalDeviceMemoryProperties& memory = device.getPhysicalDevice().getProperties().mMemory;
+        /// The smallest block a pool starts with, and the largest it grows one to.
+        ///
+        /// **A pool doubles until it reaches the ceiling.** A pool that stands two kilobytes should
+        /// not reserve the whole ceiling for them, and a pool that stands a cell's textures — 62 MiB
+        /// at Seyda Neen, measured — should reach them in a handful of calls rather than in dozens.
+        /// Doubling from the floor is what answers both: 8, 16, 32, then 64 for ever after.
+        constexpr VkDeviceSize sSmallestBlock = 8 * 1024 * 1024;
+        constexpr VkDeviceSize sLargestBlock = 64 * 1024 * 1024;
 
-        for (std::uint32_t i = 0; i < memory.memoryTypeCount; ++i)
+        /// How many pages a resource of `size` needs, given where its `alignment` may push it.
+        ///
+        /// A page boundary is already a multiple of every alignment up to a page, so only a coarser
+        /// one costs anything: the range has to hold the resource wherever inside it the alignment
+        /// lands, which is at most a page short of one whole alignment further on.
+        std::uint32_t pagesFor(VkDeviceSize size, VkDeviceSize alignment)
         {
-            const bool allowed = (typeBits & (1u << i)) != 0;
-            const bool suitable = (memory.memoryTypes[i].propertyFlags & properties) == properties;
-            if (allowed && suitable)
-                return i;
-        }
+            assert(
+                alignment > 0 && (alignment & (alignment - 1)) == 0 && "Vulkan states an alignment as a power of two");
 
-        throw Unsupported("no memory type has properties " + std::to_string(properties) + " among the "
-            + std::to_string(memory.memoryTypeCount) + " this device offers");
+            const VkDeviceSize slack = alignment > MemoryAllocator::sPage ? alignment - MemoryAllocator::sPage : 0;
+
+            return static_cast<std::uint32_t>(alignUp(size + slack, MemoryAllocator::sPage) / MemoryAllocator::sPage);
+        }
     }
 
-    DeviceMemory::DeviceMemory(const Device& device, VkDeviceSize size, std::uint32_t typeBits,
-        VkMemoryPropertyFlags properties, bool deviceAddress)
+    DeviceMemory::DeviceMemory(
+        MemoryAllocator& owner, std::uint32_t block, Span run, VkDeviceMemory handle, VkDeviceSize offset, void* mapped)
+        : mOwner(&owner)
+        , mHandle(handle)
+        , mOffset(offset)
+        , mMapped(mapped)
+        , mRun(run)
+        , mBlock(block)
     {
-        const VkMemoryAllocateFlagsInfo flags{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
-            .flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT,
-        };
+    }
 
-        const VkMemoryAllocateInfo allocate{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            .pNext = deviceAddress ? &flags : nullptr,
-            .allocationSize = size,
-            .memoryTypeIndex = findMemoryType(device, typeBits, properties),
-        };
-
-        checkVk(vkAllocateMemory(device.getHandle(), &allocate, nullptr, mHandle.put(device.getHandle())),
-            "vkAllocateMemory");
-
-        // **Mapped here rather than by whoever holds this**, so the pointer goes when the allocation
-        // does: a buffer that kept its own would hand out an address into memory it had moved away.
-        if ((properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
-            checkVk(vkMapMemory(device.getHandle(), mHandle.get(), 0, VK_WHOLE_SIZE, 0, &mMapped), "vkMapMemory");
+    DeviceMemory::~DeviceMemory()
+    {
+        if (mOwner != nullptr)
+            mOwner->give(mBlock, mRun);
     }
 
     DeviceMemory::DeviceMemory(DeviceMemory&& other) noexcept
-        : mHandle(std::move(other.mHandle))
+        : mOwner(std::exchange(other.mOwner, nullptr))
+        , mHandle(std::exchange(other.mHandle, VK_NULL_HANDLE))
+        , mOffset(std::exchange(other.mOffset, 0))
         , mMapped(std::exchange(other.mMapped, nullptr))
+        , mRun(std::exchange(other.mRun, Span{}))
+        , mBlock(other.mBlock)
     {
     }
 
@@ -61,10 +70,141 @@ namespace Rtx
     {
         if (this != &other)
         {
-            mHandle = std::move(other.mHandle);
+            if (mOwner != nullptr)
+                mOwner->give(mBlock, mRun);
+
+            mOwner = std::exchange(other.mOwner, nullptr);
+            mHandle = std::exchange(other.mHandle, VK_NULL_HANDLE);
+            mOffset = std::exchange(other.mOffset, 0);
             mMapped = std::exchange(other.mMapped, nullptr);
+            mRun = std::exchange(other.mRun, Span{});
+            mBlock = other.mBlock;
         }
 
         return *this;
+    }
+
+    MemoryAllocator::MemoryAllocator(VkDevice device, const VkPhysicalDeviceMemoryProperties& memory)
+        : mDevice(device)
+        , mMemory(memory)
+    {
+    }
+
+    MemoryAllocator::~MemoryAllocator()
+    {
+        // Every resource this renderer makes is destroyed before the device it was made on, which is
+        // what lets a block be freed here rather than counted. A block still standing a range means
+        // something outlived the device, and freeing its memory would be the second thing wrong.
+        assert(std::all_of(mBlocks.begin(), mBlocks.end(), [](const Block& block) { return block.mRuns.getEnd() == 0; })
+            && "a device allocation was still standing a resource when the device went");
+    }
+
+    std::uint32_t MemoryAllocator::findType(std::uint32_t typeBits, VkMemoryPropertyFlags properties) const
+    {
+        for (std::uint32_t i = 0; i < mMemory.memoryTypeCount; ++i)
+        {
+            const bool allowed = (typeBits & (1u << i)) != 0;
+            const bool suitable = (mMemory.memoryTypes[i].propertyFlags & properties) == properties;
+            if (allowed && suitable)
+                return i;
+        }
+
+        throw Unsupported("no memory type has properties " + std::to_string(properties) + " among the "
+            + std::to_string(mMemory.memoryTypeCount) + " this device offers");
+    }
+
+    VkDeviceSize MemoryAllocator::blockBytes(std::uint32_t type, std::uint32_t held) const
+    {
+        // A sixteenth, so that a heap far smaller than this hardware's — the host-visible window of
+        // a card without resizable BAR is 256 MiB — is not carved into a handful of blocks.
+        const VkDeviceSize heap = mMemory.memoryHeaps[mMemory.memoryTypes[type].heapIndex].size;
+        const VkDeviceSize ceiling = std::min(sLargestBlock, heap / 16);
+
+        // Doubled once per block the pool already stands. Written as a loop that stops at the
+        // ceiling rather than as a shift, because a shift by the count would need a clamp of its
+        // own and the count is what a long-lived pool grows without bound.
+        VkDeviceSize wanted = sSmallestBlock;
+        for (std::uint32_t doubled = 0; doubled < held && wanted < ceiling; ++doubled)
+            wanted *= 2;
+
+        return std::min(ceiling, wanted);
+    }
+
+    DeviceMemory MemoryAllocator::place(std::uint32_t at, Span run, VkDeviceSize alignment)
+    {
+        const Block& block = mBlocks[at];
+        const VkDeviceSize offset = alignUp(VkDeviceSize{ run.mOffset } * sPage, alignment);
+        void* const mapped = block.mMapped == nullptr ? nullptr : static_cast<std::byte*>(block.mMapped) + offset;
+
+        return DeviceMemory(*this, at, run, block.mHandle.get(), offset, mapped);
+    }
+
+    DeviceMemory MemoryAllocator::take(
+        const VkMemoryRequirements& requirements, VkMemoryPropertyFlags properties, Tiling tiling)
+    {
+        assert(requirements.size > 0);
+
+        const std::uint32_t type = findType(requirements.memoryTypeBits, properties);
+        const std::uint32_t pool = 2 * type + (tiling == Tiling::Linear ? 0u : 1u);
+        const std::uint32_t pages = pagesFor(requirements.size, requirements.alignment);
+
+        std::uint32_t held = 0;
+        for (std::size_t at = 0; at < mBlocks.size(); ++at)
+        {
+            Block& block = mBlocks[at];
+            if (block.mPool != pool)
+                continue;
+
+            ++held;
+
+            // **Asked for and given back rather than measured first**, which is what
+            // `StructureStorage` says of the same allocator: where a run goes is best fit over a
+            // free list, and asking whether one would fit is that rule written a second time.
+            const Span run = block.mRuns.allocate(pages);
+            if (block.mRuns.getEnd() <= block.mPages)
+                return place(static_cast<std::uint32_t>(at), run, requirements.alignment);
+
+            block.mRuns.release(run);
+        }
+
+        const std::uint32_t made = std::max(static_cast<std::uint32_t>(blockBytes(type, held) / sPage), pages);
+
+        // **Built whole before it joins the list**, so that a device out of memory leaves the
+        // allocator holding what it held rather than a block with no allocation behind it.
+        Block block;
+        block.mPool = pool;
+        block.mPages = made;
+
+        // **Every block, because a pool cannot know what will be put in it.** The flag costs a
+        // device nothing it does not already pay for `bufferDeviceAddress`, which this renderer
+        // requires; a pool that carried it only where the first resource asked would refuse the
+        // second one that did.
+        const VkMemoryAllocateFlagsInfo flags{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO,
+            .flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT,
+        };
+        const VkMemoryAllocateInfo allocate{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .pNext = &flags,
+            .allocationSize = VkDeviceSize{ made } * sPage,
+            .memoryTypeIndex = type,
+        };
+        checkVk(vkAllocateMemory(mDevice, &allocate, nullptr, block.mHandle.put(mDevice)), "vkAllocateMemory");
+
+        // **Mapped here rather than by whoever holds a range of it**, so the pointer goes when the
+        // block does, and once for the whole block rather than once per resource in it.
+        if ((mMemory.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
+            checkVk(vkMapMemory(mDevice, block.mHandle.get(), 0, VK_WHOLE_SIZE, 0, &block.mMapped), "vkMapMemory");
+
+        mBlocks.push_back(std::move(block));
+
+        const auto at = static_cast<std::uint32_t>(mBlocks.size() - 1);
+
+        return place(at, mBlocks[at].mRuns.allocate(pages), requirements.alignment);
+    }
+
+    void MemoryAllocator::give(std::uint32_t block, Span run)
+    {
+        mBlocks[block].mRuns.release(run);
     }
 }

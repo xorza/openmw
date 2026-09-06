@@ -13,6 +13,7 @@
 
 #include "dlss.hpp"
 #include "instance.hpp"
+#include "memory.hpp"
 #include "pipelinecache.hpp"
 #include "result.hpp"
 
@@ -165,6 +166,7 @@ namespace Rtx
 
             mPipelineCache = std::make_unique<PipelineCache>(
                 mHandle, mPhysicalDevice.getProperties().mProperties2.properties, cache);
+            mMemory = std::make_unique<MemoryAllocator>(mHandle, mPhysicalDevice.getProperties().mMemory);
         }
         catch (...)
         {
@@ -186,8 +188,17 @@ namespace Rtx
             // it calls into the device, so it cannot outlive one this destructor is about to close.
             mPipelineCache.reset();
 
+            // Likewise, and after everything it stood has gone: a block is freed by a call on the
+            // device this is about to close.
+            mMemory.reset();
+
             vkDestroyDevice(mHandle, nullptr);
         }
+    }
+
+    MemoryAllocator& Device::getMemory() const
+    {
+        return *mMemory;
     }
 
     VkPipelineCache Device::getPipelineCache() const

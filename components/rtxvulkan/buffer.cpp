@@ -39,8 +39,9 @@ namespace Rtx
         VkMemoryRequirements requirements{};
         vkGetBufferMemoryRequirements(device.getHandle(), mHandle.get(), &requirements);
 
-        mMemory = DeviceMemory(device, requirements.size, requirements.memoryTypeBits, properties, mAddressable);
-        checkVk(vkBindBufferMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), 0), "vkBindBufferMemory");
+        mMemory = device.getMemory().take(requirements, properties, Tiling::Linear);
+        checkVk(vkBindBufferMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), mMemory.getOffset()),
+            "vkBindBufferMemory");
 
         if (mAddressable)
         {
