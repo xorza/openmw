@@ -29,26 +29,6 @@ shimmer.
   by design, so the check only ever runs with both off, which is why it is worth
   asking whether it earns its keep before it is built again.
 
-## A per-frame `dynamic_cast` chain the cache beside it already covers
-
-- [ ] `components/rtx/materialresolver.cpp:105-149` — `animate` is called for
-  every node of the graph every frame. For every node that has any callback it
-  runs `findUpdater`, which walks both callback chains and `dynamic_cast`s each
-  link, *before* looking the node up in `mAnimated`. The entry is already keyed
-  on the node and already lives across frames — store the `StateSetUpdater*` in
-  it and the chain walk happens once per node instead of once per node per
-  frame. Every other cast on this walk is gated on `isFrom(node, ...)` for
-  exactly this reason (`sceneextractor.cpp:257`, `:378`, `:662`).
-
-## Two contracts for one keep set, and they disagree
-
-- [ ] `components/rtx/scenedesc.cpp:610-624` — `release`'s early return compares
-  `meshes.size()` against the live count, which is only sound if the keep set
-  holds no duplicates. `markKept` (`:594-596`) documents the opposite:
-  "Duplicates and any order are fine." Today the callers happen to be
-  duplicate-free, so the code works and one of the two comments is a trap. Say
-  it once — assert the set is unique, or count uniques.
-
 ## Two parallel families of build scratch in `SceneAcceleration`
 
 - [ ] `components/rtxvulkan/sceneacceleration.hpp:313-365` — `mBuildGeometries`,
@@ -63,23 +43,6 @@ shimmer.
 - [ ] `components/rtxvulkan/sceneacceleration.hpp:76-77` — the deleted copy
   constructor and assignment sit after `build()`, away from the constructor and
   destructor at lines 58-59.
-
-## `SceneDesc::clear()` names forty-four members by hand
-
-- [ ] `components/rtx/scenedesc.cpp:718-764` — a member added to `SceneDesc` and
-  forgotten here is a scene that keeps a departed world's table with no
-  diagnostic. `mKeptMeshes` and `mKeptMaterials` are already absent from the
-  list; they happen to be safe because `markKept` clears them. Group the
-  members into sub-objects that clear themselves, the way `PlacementTable` and
-  `TextureTable` already do, so the list shrinks to the things that are really
-  `SceneDesc`'s own.
-- [ ] `components/rtx/scenedesc.cpp:718` — `SceneDesc::clear()` has no production
-  caller at all, and `components/rtx/renderer.hpp:554` states as much:
-  "`SceneDesc::clear` is never called on it". So `getResetRevision()` never
-  moves, `SceneUploader`'s `Kind::Rebuilt` path is reached only by an uploader
-  that has never seen the pair in front of it, and `CompositeQueue::gather`'s
-  whole reset branch is dead. Either delete the three of them, or say what is
-  meant to call `clear` and why nothing does.
 
 ## Include blocks out of the order the tree states
 

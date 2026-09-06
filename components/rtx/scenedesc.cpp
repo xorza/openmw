@@ -579,40 +579,48 @@ namespace Rtx
 
     namespace
     {
-        /// A byte per entry, set for everything `keep` names. Duplicates and any order are fine.
-        void markKept(std::vector<std::uint8_t>& flags, std::size_t count, std::span<const Index> keep)
+        /// A byte per entry, set for everything `keep` names, and how many distinct entries that
+        /// was.
+        ///
+        /// **Distinct, which is what lets duplicates and any order be fine.** `release` compares the
+        /// count against the live table to decide whether anything died, so a span measured by its
+        /// length would read as a larger set than it is the moment a caller named one entry twice.
+        std::size_t markKept(std::vector<std::uint8_t>& flags, std::size_t count, std::span<const Index> keep)
         {
             // Cleared before it is grown, so the fill reaches every row rather than only the rows
             // past the length the last sweep left.
             flags.clear();
             flags.resize(count, 0);
 
+            std::size_t distinct = 0;
             for (const Index index : keep)
             {
                 assert(index < count);
+                distinct += flags[index] == 0 ? 1 : 0;
                 flags[index] = 1;
             }
+
+            return distinct;
         }
     }
 
     bool SceneDesc::release(std::span<const Index> meshes, std::span<const Index> materials)
     {
-        // **The ordinary frame, and it costs two comparisons.** Both keep sets come from an identity
-        // map keyed one-to-one on what produced the entry, so a set as large as the live table is
-        // the whole of it — and a table with as many survivors as entries has nothing to free.
-        //
         // Only meshes and materials are asked, and that is now the whole of what this frees: a
         // texture goes when the last material or hold naming it lets go, wherever that happens.
-        assert(meshes.size() <= mMeshes.size());
-        assert(materials.size() <= mMaterials.size());
+        const std::size_t keptMeshes = markKept(mKeptMeshes, mMeshes.size(), meshes);
+        const std::size_t keptMaterials = markKept(mKeptMaterials, mMaterials.size(), materials);
 
+        // **The ordinary frame leaves here**: a table with as many survivors as live entries has
+        // nothing to free, and what it paid for the answer is the marking above.
+        //
+        // **Asked of the marks and not of the span's length.** Those two agree only while the keep
+        // set names each survivor once, which is a property of the identity map that fills it rather
+        // than of this call — so a second way of collecting survivors cannot get it wrong.
         const std::size_t liveMeshes = mMeshes.size() - mFreeMeshes.size();
         const std::size_t liveMaterials = mMaterials.size() - mFreeMaterials.size();
-        if (meshes.size() == liveMeshes && materials.size() == liveMaterials)
+        if (keptMeshes == liveMeshes && keptMaterials == liveMaterials)
             return false;
-
-        markKept(mKeptMeshes, mMeshes.size(), meshes);
-        markKept(mKeptMaterials, mMaterials.size(), materials);
 
         // A slot already free is not one to free again.
         for (const Index slot : mFreeMeshes)
@@ -701,54 +709,6 @@ namespace Rtx
         // either, so no table has to be written for them — the next thing to land in the slot or the
         // run is what names it.
         return freedMeshes > 0 || freedMaterials > 0;
-    }
-
-    void SceneDesc::clear()
-    {
-        ++mStructureRevision;
-        ++mMeshRevision;
-        ++mResetRevision;
-        mPositions.clear();
-        mNormals.clear();
-        mTexCoords.clear();
-        mIndices.clear();
-        mMeshes.clear();
-        mDeformed.clear();
-        mRigs.clear();
-        mRuns.clear();
-        mInfluences.clear();
-        mMorphs.clear();
-        mMorphOffsets.clear();
-        mBones.clear();
-        mWeights.clear();
-        mFreeRigs.clear();
-        mFreeMorphs.clear();
-        mArrivedRigs.clear();
-        mArrivedMorphs.clear();
-        mBindRuns.clear();
-        mBoneRuns.clear();
-        mWeightRuns.clear();
-        mRigRuns.clear();
-        mInfluenceRuns.clear();
-        mMorphRuns.clear();
-        mPlacements.clear();
-        mMaterials.clear();
-        mLayers.clear();
-        mMasks.clear();
-        mLights.clear();
-        mSprites.clear();
-        mEmitters.clear();
-        mTextures.clear();
-        mFreeMeshes.clear();
-        mFreeMaterials.clear();
-        mVertexRuns.clear();
-        mIndexRuns.clear();
-        mLayerRuns.clear();
-        mMaskRuns.clear();
-        mMeshChanges.clear();
-        mWrittenMaterials.clear();
-        mArrivedLayers.clear();
-        mArrivedMasks.clear();
     }
 
     void SceneDesc::clearArrivals()

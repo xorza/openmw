@@ -61,12 +61,6 @@ namespace Rtx
         // arrival for everything below even though nothing was walked.
         const bool arrived = !mine || scene.getStructureRevision() != mBuilt || baked > 0;
 
-        // **Grown, or replaced?** `clear` empties every table and starts the indices again, so
-        // everything built from them has to be built again; anything short of that is an append, and
-        // appending is what keeps a cell boundary from costing a fifth of a second. A renderer this
-        // has not built has nothing to append to, whatever it happens to be holding.
-        const bool reset = !mine || scene.getResetRevision() != mReset;
-
         SceneUpload done;
 
         if (!arrived)
@@ -90,10 +84,11 @@ namespace Rtx
             // both `extendScene` and `setScene` have finished reading them when they return. What
             // the loader holds after that is capacity for the next arrival.
             //
-            // **Everything on a reset and the arrivals otherwise.** A reset builds the array from
-            // nothing, so what it wants is the table in its own order; a frame that grew wants the
-            // slots that were written and no others, wherever in the table they sit.
-            if (reset)
+            // **The whole table where there is nothing to append to, and the arrivals
+            // otherwise.** An uploader that has not built this pair makes the array from nothing, so
+            // what it wants is the table in its own order; a frame that grew wants the slots that
+            // were written and no others, wherever in the table they sit.
+            if (!mine)
                 mTextures.describeAll(scene, images, &mComposites);
             else
                 mTextures.describe(scene, images, scene.getArrivedTextures(), &mComposites);
@@ -101,7 +96,7 @@ namespace Rtx
             done.mDescribed = mTextures.getDescriptions().size();
             done.mUnreadable = mTextures.getUnreadable();
 
-            if (reset)
+            if (!mine)
             {
                 renderer.setScene(slot, scene, mTextures.getDescriptions(), sea);
                 done.mKind = SceneUpload::Kind::Rebuilt;
@@ -109,8 +104,8 @@ namespace Rtx
             else
             {
                 // Order against the arrivals is free — `SceneDesc` keeps the two lists disjoint —
-                // and first is where the memory is given back soonest. A reset needs none of this:
-                // the array is made again from nothing and holds no image of what went.
+                // and first is where the memory is given back soonest. A build from nothing needs
+                // none of this: the array holds no image of what went.
                 done.mDropped = dropFreed(renderer, slot, scene);
                 renderer.extendScene(slot, scene, mTextures.getDescriptions(), sea);
                 done.mKind = SceneUpload::Kind::Extended;
@@ -138,7 +133,6 @@ namespace Rtx
         mScene = &scene;
         mUploaded = renderer.getTextureCount(slot);
         mBuilt = scene.getStructureRevision();
-        mReset = scene.getResetRevision();
         return done;
     }
 }

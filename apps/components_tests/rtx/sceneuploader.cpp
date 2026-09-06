@@ -126,36 +126,29 @@ namespace Rtx
             EXPECT_EQ(uploader.hand(renderer, Rtx::sWorld, scene, images, Rtx::SeaState{}).mDropped, std::size_t{ 0 });
             EXPECT_EQ(renderer.mDropped.size(), std::size_t{ 1 });
 
-            // **And replacing the scene outright is what a rebuild is for.** Travel, not a boundary:
-            // `clear` starts every index again, so everything built from one has to be built again.
-            scene.clear();
+            // **A ring arriving into the slot one left is still an append.** Nothing renumbered, so
+            // the rebuild that opened this test stays the only one — which is the whole of what an
+            // incremental mirror is worth.
             const Model fourth = addModel(scene, VFS::Path::NormalizedView("textures/four.dds"));
 
-            const SceneUpload travelled = uploader.hand(renderer, Rtx::sWorld, scene, images, Rtx::SeaState{});
-            EXPECT_EQ(travelled.mKind, SceneUpload::Kind::Rebuilt);
-            EXPECT_EQ(travelled.mDescribed, std::size_t{ 1 });
-            EXPECT_EQ(renderer.mRebuilt, 2u);
-            EXPECT_EQ(renderer.mTextures, 1u);
-            EXPECT_EQ(travelled.mDropped, std::size_t{ 0 }) << "a scene made again has no image of what went";
+            const SceneUpload grew = uploader.hand(renderer, Rtx::sWorld, scene, images, Rtx::SeaState{});
+            EXPECT_EQ(grew.mKind, SceneUpload::Kind::Extended);
+            EXPECT_EQ(grew.mDescribed, std::size_t{ 1 }) << "the arrival, and not the whole table";
+            EXPECT_EQ(renderer.mRebuilt, 1u) << "nothing renumbered, so nothing was built again";
 
-            // **The loader is the uploader's own and outlives the scene it last described**, so
-            // what it answers here has to be this scene's table and nothing carried over from the
-            // one before it. Four hand-overs stand behind this one.
+            // **The loader is the uploader's own and outlives every scene it describes**, so what
+            // it hands over here has to be this frame's arrival and nothing held from the frames
+            // behind it. Four hand-overs stand behind this one.
             EXPECT_EQ(renderer.mDescribedSlots, (std::vector<std::uint32_t>{ fourth.mTexture }))
-                << "the loader answered with what it held from the scene that went";
-
-            // And back to the ordinary frame, so the rebuild above left the uploader agreeing with
-            // the scene rather than one revision behind it.
-            EXPECT_EQ(
-                uploader.hand(renderer, Rtx::sWorld, scene, images, Rtx::SeaState{}).mKind, SceneUpload::Kind::Placed);
+                << "the loader answered with what it held from an earlier frame";
 
             // **A crossing, which is the two at once**: one ring arrives as another goes, on one
             // frame. Both lists are applied and neither costs a rebuild.
             const Model fifth = addModel(scene, VFS::Path::NormalizedView("textures/five.dds"));
             scene.dropInstance(fourth.mSlot);
 
-            const Rtx::Index stillHere[1] = { fifth.mMesh };
-            const Rtx::Index stillWorn[1] = { fifth.mMaterial };
+            const Rtx::Index stillHere[3] = { second.mMesh, third.mMesh, fifth.mMesh };
+            const Rtx::Index stillWorn[3] = { second.mMaterial, third.mMaterial, fifth.mMaterial };
             ASSERT_TRUE(scene.release(stillHere, stillWorn));
 
             const SceneUpload crossed = uploader.hand(renderer, Rtx::sWorld, scene, images, Rtx::SeaState{});

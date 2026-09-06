@@ -507,9 +507,14 @@ namespace Rtx
             EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh }), two);
             EXPECT_EQ(sorted(scene.getMoved()), (std::vector<Index>{ two }));
 
-            // Both lists go with the scene.
-            scene.clear();
+            // **An advance moves what was written into what settled, and leaves nothing behind
+            // it.** A row still named as moved on the frame after it was written is a row a backend
+            // writes twice, for ever.
+            scene.advancePlacement();
             EXPECT_TRUE(scene.getMoved().empty());
+            EXPECT_EQ(sorted(scene.getSettled()), (std::vector<Index>{ two }));
+
+            scene.advancePlacement();
             EXPECT_TRUE(scene.getSettled().empty());
         }
 
@@ -1345,51 +1350,6 @@ namespace Rtx
 
             // And exactly a block is not too many, so the refusal is a boundary and not a ban.
             EXPECT_NO_THROW(scene.addMesh(std::span(tooMany).first(SceneDesc::sVertexBlock), {}, {}, triangle));
-        }
-
-        TEST(RtxSceneDescTest, clearingEmptiesEveryTable)
-        {
-            SceneDesc scene;
-            const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
-            const Index material = scene.addMaterial(Material{});
-            scene.addTexture(VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
-            scene.addBakedTexture("composite/0,0/1");
-            scene.addInstance(
-                MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = material });
-            const Index body = scene.addMesh(
-                Testing::sUnitQuad, {}, {}, Testing::sQuadIndices, {}, Deform::Rig, Testing::addOneBoneRig(scene, 4));
-            scene.poseRig(body, std::array{ boneUp(1.0f) }, osg::BoundingBoxf());
-            scene.addEmitter(std::array{ Sprite{ .mRadius = 1.0f } }, 0, true);
-
-            scene.clear();
-
-            EXPECT_TRUE(scene.getMeshes().empty());
-            EXPECT_TRUE(scene.getInstances().empty());
-            EXPECT_TRUE(scene.getMaterials().empty());
-            EXPECT_TRUE(scene.getTextures().empty());
-            EXPECT_TRUE(scene.getBakedTextures().empty());
-            EXPECT_TRUE(scene.getPositions().empty());
-            EXPECT_TRUE(scene.getDeformed().empty());
-            EXPECT_TRUE(scene.getRigs().empty());
-            EXPECT_TRUE(scene.getRuns().empty());
-            EXPECT_TRUE(scene.getInfluences().empty());
-            EXPECT_TRUE(scene.getBones().empty());
-            EXPECT_TRUE(scene.getArrivedRigs().empty());
-            EXPECT_EQ(scene.getBindVertexCount(), 0u);
-            EXPECT_TRUE(scene.getSprites().empty());
-            EXPECT_TRUE(scene.getEmitters().empty());
-            EXPECT_EQ(scene.getTriangleCount(), 0u);
-
-            // A reset renumbers, so nothing that arrived or went under the old numbering means
-            // anything: a backend hearing this rebuilds rather than applying either list.
-            EXPECT_TRUE(scene.getArrivedMeshes().empty());
-            EXPECT_TRUE(scene.getFreedMeshes().empty());
-            EXPECT_TRUE(scene.getArrivedTextures().empty());
-            EXPECT_TRUE(scene.getFreedTextures().empty());
-
-            // And the lookups with them, or a key from the world before this one finds a slot in the
-            // world after it.
-            EXPECT_EQ(scene.addBakedTexture("composite/0,0/1"), 0u);
         }
 
         /// A camera is placed from what stands in a region, and the sea is not among it.

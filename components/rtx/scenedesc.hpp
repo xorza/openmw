@@ -769,10 +769,6 @@ namespace Rtx
         ///         comparisons: a scene that lost nothing has as many survivors as it had entries.
         bool release(std::span<const Index> meshes, std::span<const Index> materials);
 
-        /// Empties every table while keeping the capacity, so rebuilding a scene does not go back to
-        /// the allocator for buffers it already had.
-        void clear();
-
         /// Empties the per-frame lists a walk rebuilds wholesale: lights, deformed meshes, sprites
         /// and emitters.
         ///
@@ -926,13 +922,6 @@ namespace Rtx
         /// cost the structures of a whole cell.
         std::uint64_t getMeshRevision() const { return mMeshRevision; }
 
-        /// How many times the scene has been **replaced outright** by `clear`.
-        ///
-        /// **The one thing that still renumbers, and it is travel.** Walking out of the world you
-        /// were in — a door, a fast travel, a load — is not a ring arriving, and rebuilding is both
-        /// correct and what the player is already waiting for. Everything short of that appends.
-        std::uint64_t getResetRevision() const { return mResetRevision; }
-
         /// Which material slots `addMaterial` or `setMaterial` wrote since the last `clearArrivals`,
         /// each once.
         ///
@@ -1057,7 +1046,6 @@ namespace Rtx
         /// two.
         std::uint64_t mStructureRevision = 0;
         std::uint64_t mMeshRevision = 0;
-        std::uint64_t mResetRevision = 0;
 
         /// Copies one mesh's arrays into the room `range` names. Zero-fills an attribute the mesh
         /// did not bring, because a reused slot still holds its last tenant's.

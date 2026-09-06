@@ -37,31 +37,6 @@ namespace Rtx
 
     void CompositeQueue::gather(const SceneDesc& scene, Resource::ImageManager& images)
     {
-        // **A cleared scene renumbers everything, so nothing here still refers to anything.**
-        // `SceneDesc::clear` empties the material table and starts the indices again; a chunk that
-        // was waiting is waiting on a material that no longer exists. What is queued is dropped
-        // here; what is in flight comes back carrying the reset it was asked under, and `collect`
-        // drops it then.
-        if (mReset != scene.getResetRevision())
-        {
-            mReset = scene.getResetRevision();
-            mAsked.clear();
-            mFinished.clear();
-
-            const std::lock_guard<std::mutex> lock(mMutex);
-
-            // **Taken back rather than dropped**, for the reason `mSpare` gives: a scene replaced
-            // outright is exactly when a route is about to gather a region's worth again.
-            for (Request& dropped : mPending)
-            {
-                dropped.reuse();
-                mSpare.push_back(std::move(dropped));
-            }
-
-            mPending.clear();
-            mDone.clear();
-        }
-
         const std::span<const Material> materials = scene.getMaterials();
         for (const Index at : scene.getWrittenMaterials())
         {
@@ -114,7 +89,6 @@ namespace Rtx
             }
 
             request.mAsked = wanted;
-            request.mReset = mReset;
             request.mLayers.assign(layers.begin(), layers.end());
             request.mImages.reserve(layers.size());
             request.mMaskRuns.reserve(layers.size());
@@ -177,7 +151,7 @@ namespace Rtx
             if (const auto entry = std::find(mAsked.begin(), mAsked.end(), asked); entry != mAsked.end())
                 mAsked.erase(entry);
 
-            if (request.mReset != mReset || !baked.mComposite.has_value())
+            if (!baked.mComposite.has_value())
                 continue;
 
             const std::span<const Material> materials = scene.getMaterials();

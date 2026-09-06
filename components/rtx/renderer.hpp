@@ -552,9 +552,10 @@ namespace Rtx
         /// one room onto another.
         ///
         /// **Not derivable from what the renderer sees.** A world scene is built once and then grows
-        /// and recycles its slots — `SceneDesc::clear` is never called on it — so `setScene` fires at
-        /// startup and not again, and the mirror looks the same across a cell load as it does across
-        /// a step. Only the simulation knows, so only the simulation can say.
+        /// and recycles its slots — nothing replaces it outright, and travel retires what left the
+        /// same way a step does — so `setScene` fires at startup and not again, and the mirror looks
+        /// the same across a cell load as it does across a step. Only the simulation knows, so only
+        /// the simulation can say.
         ///
         /// Costs one frame of reconstruction, so it is for discontinuities and not for changes.
         virtual void resetHistory() = 0;

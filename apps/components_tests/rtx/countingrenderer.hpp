@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -46,7 +47,12 @@ namespace Rtx::Testing
             ++mExtended;
             mDescribed = arrived.size();
             recordSlots(arrived);
-            countAt(slot) += static_cast<std::uint32_t>(arrived.size());
+
+            // **The array reaches the highest slot written, and is not a count of what arrived.**
+            // A slot the table freed is handed out again, so an arrival can land below the end and
+            // lengthen nothing at all.
+            for (const Rtx::TextureData& one : arrived)
+                countAt(slot) = std::max(countAt(slot), one.mSlot + 1);
 
             // The contract `extendScene` is given rather than one it checks: appending only the
             // arrivals has to leave the array exactly as long as the scene's table.

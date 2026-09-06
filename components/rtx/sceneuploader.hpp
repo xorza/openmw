@@ -27,7 +27,8 @@ namespace Rtx
             /// Geometry arrived and was appended — new structures built, new textures added to the
             /// array, everything already there left where it was.
             Extended,
-            /// The indices moved, so everything built from them was built again.
+            /// This uploader had built nothing for this renderer and this scene, so there was
+            /// nothing to append to and every array was made from the whole table.
             Rebuilt,
         };
 
@@ -154,9 +155,5 @@ namespace Rtx
         /// exactly the case a size comparison misses, and the structures it kept describe geometry
         /// that has gone.
         std::uint64_t mBuilt = 0;
-
-        /// The reset those were built against, so a scene replaced outright is told from one that
-        /// grew.
-        std::uint64_t mReset = 0;
     };
 }

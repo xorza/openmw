@@ -82,7 +82,7 @@ namespace Rtx
         ///
         /// A composite taken takes a texture slot — which puts it among the scene's arrivals, so the
         /// upload that follows carries it — and goes onto the material that asked. One whose chunk
-        /// left the world while it baked, or whose scene was replaced outright, is dropped instead.
+        /// left the world while it baked is dropped instead.
         ///
         /// @return how many were taken.
         std::size_t collect(SceneDesc& scene, std::size_t limit);
@@ -119,9 +119,6 @@ namespace Rtx
         struct Request
         {
             Asked mAsked;
-
-            /// The reset this was gathered under, so a scene replaced outright takes it with it.
-            std::uint64_t mReset = 0;
 
             std::vector<MaterialLayer> mLayers;
 
@@ -180,9 +177,6 @@ namespace Rtx
 
         /// Collected this frame, by the slot they were given. Emptied by `releaseFinished`.
         std::unordered_map<Index, TerrainComposite> mFinished;
-
-        /// The reset `gather` last saw, so a cleared scene takes what was waiting with it.
-        std::uint64_t mReset = 0;
 
         /// Refilled per collect rather than built afresh: the frame a composite lands on is not
         /// one to spend an allocation on.
