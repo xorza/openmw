@@ -237,5 +237,17 @@ the posture behind them does.
 - **Allocation is a metric on the frame path.** Persistent scratch buffers refilled with `clear()`,
   results into an out-parameter, no `std::string` or `std::function` per frame, logging that
   compiles out. A test enforces it.
+- **Loading allocates no more freely than a frame does.** A loader is a persistent object owning
+  its own buffers, `clear()`ed and refilled for each thing it reads — never a function that builds
+  a fresh `std::vector` per mesh and drops it. Cells arrive while the game is running, so a spike
+  taken at load is a spike a player feels.
+- **Whatever can be computed once is computed once.** A derived value belongs to initialization or
+  to load: a transform, a table, a packed vertex, a decision a material has already made. A frame
+  reads what it was handed. That the work is cheap is not the argument — it is paid every frame,
+  against once.
+- **One path through a shader.** A branch lanes disagree on costs both sides, so a single
+  computation covering every case beats a tree that skips work per lane: a factor of zero, a table
+  lookup, a value selected without a jump. Divergence earns its place only where a measurement says
+  the branch pays for itself, and that number is named where the branch lands.
 - **Asserts** guard contracts the code must keep, not data the world might supply. Hot paths use the
   debug-only form; untrusted input is never an assert.
