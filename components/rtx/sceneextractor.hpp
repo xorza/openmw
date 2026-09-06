@@ -17,6 +17,7 @@
 #include "materialresolver.hpp"
 #include "meshresolver.hpp"
 #include "mirrorpass.hpp"
+#include "nodelibrary.hpp"
 #include "scenedesc.hpp"
 #include "shading.hpp"
 #include "traversals.hpp"
@@ -284,6 +285,12 @@ namespace Rtx
             std::size_t frame, std::span<Residency* const> hidden);
 
         SceneDesc& mScene;
+
+        /// Which library each class of *drawable* and of *geometry* this side of the walk meets
+        /// belongs to. A member because the answers are a fact about the classes in the world rather
+        /// than about one frame, and a set apart from `MirrorTraversal`'s: a drawable is dispatched
+        /// to its own `apply` and never reaches the one that asks about a node.
+        NodeLibrary mLibrary;
 
         /// The walk itself, made once rather than per call.
         ///

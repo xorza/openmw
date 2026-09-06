@@ -143,6 +143,7 @@ if (OPENMW_RTX)
         rtx/micromap.cpp
         rtx/mipchain.cpp
         rtx/moonbuilder.cpp
+        rtx/nodelibrary.cpp
         rtx/offscreentrace.cpp
         rtx/pipelinecache.cpp
         rtx/probe.cpp

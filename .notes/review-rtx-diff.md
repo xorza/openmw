@@ -16,8 +16,8 @@ persistent loader could keep the memory it already has.
 
 ## Facts about a node are derived again every frame
 
-Each is asked once per node per frame. Neither turned out to be a fact about the
-content at all, and each says below what it is instead.
+Asked once per node per frame, and not a fact about the content at all — what it is
+instead is below.
 
 - [ ] `components/rtx/materialresolver.cpp:123` — `animate` calls `findUpdater` for
   every node that carries any callback, on every frame. `findUpdater` walks two
@@ -28,26 +28,20 @@ content at all, and each says below what it is instead.
   loses an enchanted weapon's glow, and a cached pointer outlives the callback the
   node let go of. Whether a node animates is not a property of the content. What is
   left is making the question itself cheaper than a `dynamic_cast` a link.
-  **Measured, `seyda-neen-ship`, release:** 1352 calls and 1780 casts a frame, of
-  which 25 find an updater. `__dynamic_cast` is 1.32% of the process's on-CPU time
-  and 1.21% of it is under `SceneExtractor::walk`, which is a third of the frame's
-  CPU. So this is of the order of a tenth of a millisecond a frame against a walk of
-  one to two. The only sound key is the callback object itself — a class's
-  `className()` does not identify it, because `StateSetUpdater` declares no
-  `META_Object` and its subclasses report their base's name.
-- [ ] `components/rtx/nodelibrary.hpp:18` — `isFrom` is a virtual call and a
-  `strcmp`. `MirrorTraversal` asks it up to four times per node per frame — at
-  `sceneextractor.cpp:254`, `:257`, `:374` twice — and twice more per drawable at
-  `:659`. `libraryName()` returns a string literal whose address is stable for the
-  class, so a small set of literal addresses that already answered yes or no turns
-  every call after the first per class into a pointer compare. **The memo is exactly
-  sound**, unlike the one above: what is remembered is what a *library name string*
-  says, so two classes whose literals the linker merged share the string and share
-  the answer. **Measured, `seyda-neen-ship`, release:** 6943 node visits a frame, so
-  of the order of 28000 calls. The `strcmp` is a real `.plt` call — five of them in
-  `MirrorTraversal::apply(osg::Node&)` — but it does not appear in the profile at a
-  0.02% limit, so it is worth less than the item above and the memo's own loop of
-  pointer compares has to be shown to beat a `strcmp` that fails on the first byte.
+  **Built, measured and taken out again.** 1352 calls and 1780 casts a frame at
+  `seyda-neen-ship`, of which 25 find an updater; `__dynamic_cast` is 1.32% of the
+  process's on-CPU time and 1.21% of that is under `SceneExtractor::walk`. The only
+  sound key is the callback object itself — a class's `className()` does not identify
+  it, because `StateSetUpdater` declares no `META_Object` and its subclasses report
+  their base's name — so the memo is an `Identity<osg::Callback, ...>` swept beside
+  `mAnimated`, which is a probe of a thirteen-hundred-entry table and an epoch write
+  per callback per frame. That measured as a wash: a cold hash probe costs what the
+  failing cast costs, and the cast's hierarchy walk stays warm because it is the same
+  few classes every frame.
+
+  **What is left is a cheaper key, and nobody has one.** Anything keyed on the class
+  is unsound and anything keyed on the object is a table this size. Worth revisiting
+  only with a way to ask an `osg::Callback` its type for less than a hash probe.
 
 ## Smaller items
 

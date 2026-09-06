@@ -66,6 +66,7 @@ set(RTX_FILES
     moonbuilder.cpp
     moonbuilder.hpp
     namedenum.hpp
+    nodelibrary.cpp
     nodelibrary.hpp
     nightsky.cpp
     nightsky.hpp

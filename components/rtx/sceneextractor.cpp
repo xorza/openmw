@@ -124,7 +124,9 @@ namespace Rtx
         void pushShading(const osg::StateSet& stateSet, bool animated);
 
         /// Runs one node of an `osgParticle` simulation, if that is what this node is. See below.
-        bool stepParticles(osg::Node& node);
+        ///
+        /// @param from the node's library, which `apply` has already asked for.
+        bool stepParticles(osg::Node& node, Library from);
 
         /// Where the node being visited stands in the world.
         ///
@@ -134,6 +136,12 @@ namespace Rtx
         osg::Matrixf placed() const { return osg::Matrixf(mHere) * mRoot; }
 
         SceneExtractor& mExtractor;
+
+        /// Which library each class of *node* this walk meets belongs to. **A member for the reason
+        /// the walk is**: the answers are a fact about the classes in the world, not about one
+        /// frame. A drawable never reaches `apply(osg::Node&)`, so `SceneExtractor`'s own gate holds
+        /// a different set of classes rather than a copy of this one.
+        NodeLibrary mLibrary;
 
         /// The clock every controller under this walk reads. Its simulation time is the world's;
         /// its frame number is the walk's own, for the reason `begin` gives.
@@ -221,9 +229,13 @@ namespace Rtx
 
     void MirrorTraversal::apply(osg::Node& node)
     {
+        // **Asked once and handed on.** Three of the questions below are about this node's library,
+        // and `libraryName` is a virtual call apiece.
+        const Library from = mLibrary.of(node);
+
         if (mStepOnly)
         {
-            if (!stepParticles(node))
+            if (!stepParticles(node, from))
                 descend(node);
             return;
         }
@@ -248,16 +260,16 @@ namespace Rtx
             //
             // **Gated on the library before the cast**, here and below. Both classes are
             // `SceneUtil`'s, and a node from `osg` or `NifOsg` — which is nearly every node in a
-            // cell — answers the gate in a byte where a failed `dynamic_cast` walks the class
+            // cell — is ruled out by a compare where a failed `dynamic_cast` walks the class
             // hierarchy to say the same thing.
-            if (auto* skeleton = isFrom(node, "SceneUtil") ? dynamic_cast<SceneUtil::Skeleton*>(group) : nullptr)
+            if (auto* skeleton = from == Library::SceneUtil ? dynamic_cast<SceneUtil::Skeleton*>(group) : nullptr)
                 skeleton->markReached(static_cast<unsigned int>(mFrame));
         }
-        else if (auto* source = isFrom(node, "SceneUtil") ? dynamic_cast<SceneUtil::LightSource*>(&node) : nullptr)
+        else if (auto* source = from == Library::SceneUtil ? dynamic_cast<SceneUtil::LightSource*>(&node) : nullptr)
         {
             mExtractor.addLight(*source, placed(), mStamp->getSimulationTime());
         }
-        else if (stepParticles(node))
+        else if (stepParticles(node, from))
         {
             // Neither of the two is a drawable or has a child, so there is no state set below them
             // to carry and nothing under them to reach.
@@ -366,11 +378,11 @@ namespace Rtx
     ///
     /// This walk and not a cull of its own, for the same reason it is here at all: a processor reads
     /// its world transform off the visitor's node path, and this is the walk standing on one.
-    bool MirrorTraversal::stepParticles(osg::Node& node)
+    bool MirrorTraversal::stepParticles(osg::Node& node, Library from)
     {
         // The two libraries a processor or an updater can come from: `osgParticle`'s own, and
         // `NifOsg::Emitter` over them. A node from anywhere else fails both casts below.
-        if (!isFrom(node, "osgParticle") && !isFrom(node, "NifOsg"))
+        if (from != Library::OsgParticle && from != Library::NifOsg)
             return false;
 
         if (auto* processor = dynamic_cast<osgParticle::ParticleProcessor*>(&node))
@@ -654,11 +666,12 @@ namespace Rtx
         //
         // **Gated on the library before the cast**, which is what every other cast down this walk
         // does and for the reason `apply(osg::Node&)` states: a cell's drawables are `osg`'s and
-        // `Terrain`'s, and those answer in a byte where a failed `dynamic_cast` walks the class
-        // hierarchy to say the same thing. The two libraries are the ones a system can come from —
+        // `Terrain`'s, and those are ruled out by a compare where a failed `dynamic_cast` walks the
+        // class hierarchy to say the same thing. The two libraries are the ones a system can come from —
         // `osgParticle`'s own, and `NifOsg::ParticleSystem` over it — which is the pair
         // `stepParticles` already names.
-        const bool couldEmit = isFrom(drawable, "osgParticle") || isFrom(drawable, "NifOsg");
+        const Library from = mLibrary.of(drawable);
+        const bool couldEmit = from == Library::OsgParticle || from == Library::NifOsg;
         if (const auto* particles = couldEmit ? dynamic_cast<const osgParticle::ParticleSystem*>(&drawable) : nullptr)
         {
             mEmitters.add(*particles, shading, place);
@@ -676,8 +689,11 @@ namespace Rtx
 
         // Terrain keeps its material on the drawable rather than on the graph, so it is asked first
         // and the state-set walk never sees a chunk.
-        const auto* terrain
-            = isFrom(geometry, "Terrain") ? dynamic_cast<const Terrain::TerrainDrawable*>(&geometry) : nullptr;
+        // The geometry's own library and not the drawable's: a rigged mesh hands its source
+        // geometry back here, and that is a different object from the one `couldEmit` asked about.
+        const auto* terrain = mLibrary.of(geometry) == Library::Terrain
+            ? dynamic_cast<const Terrain::TerrainDrawable*>(&geometry)
+            : nullptr;
         // **Asked of the drawable and not of the path.** OpenMW marks the water geometry itself, and
         // the node above it is a plain transform shared with anything else hanging there.
         const bool water = isWater(drawable.getNodeMask());
