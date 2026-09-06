@@ -40,11 +40,10 @@ namespace Rtx
     /// Walks what the weather drops, which is a second root to whoever mirrors the world.
     ///
     /// **One call, because the shape of this walk is nobody's to choose.** Those nodes hang under
-    /// something that carries no translation — the sky's camera-relative transform in the game, a
-    /// group of its own in the harness — so their particles are placed about the origin and the eye
-    /// is what stands them back in the world. Where each host anchored, masked and gated that walk
-    /// for itself, the harness slid the box with a transform the game has no equivalent of, and the
-    /// wrap operator grew a line to undo it.
+    /// the sky's camera-relative transform, which carries no translation — so their particles are
+    /// placed about the origin and the eye is what stands them back in the world. Anchored, masked
+    /// and gated at the caller instead, that was four decisions a second caller could take
+    /// differently.
     ///
     /// **Stood at the eye the drops were driven with**, because that is the one place the box
     /// travels nowhere: every step of that eye is taken back out of the drops again, so a sprite's
@@ -84,12 +83,10 @@ namespace Rtx
 
     /// What the world is doing this frame, in the units the renderer takes.
     ///
-    /// **One list of the frame's world half, and one place that writes it.** The game and the
-    /// harness reach these numbers by different routes — one reports what a live weather system
-    /// settled on, the other derives them from the content files at an hour it was told — and that
-    /// difference is real and stays. What was not real is that each then wrote them into
-    /// `VisibilityConstants` itself, twenty-odd assignments apart, against no shared test: a field
-    /// added to one and forgotten in the other is a `shot` that quietly stops predicting the game.
+    /// **One list of the frame's world half, and one place that writes it.** These numbers were
+    /// once written into `VisibilityConstants` at each host that wanted a frame, twenty-odd
+    /// assignments apart and against no shared test — so a field added to one and forgotten in the
+    /// other was a `shot` that quietly stopped predicting the game.
     ///
     /// Three of those have already happened. The sea's clock was filled by the harness and left at
     /// zero by the game, so every wave stood still in the game alone. Both moons had to be added
@@ -173,10 +170,9 @@ namespace Rtx
 
     /// What a frame's sky, air and water are, as far as neither host can work it out for the other.
     ///
-    /// **A `Daylight` and the handful of things a `Daylight` does not carry.** How each host reaches
-    /// one is its own business and stays so: the game reports what a live weather system settled on,
-    /// and the harness derives it from the content files at an hour it was told. What follows is
-    /// arithmetic over that, and `describeWorld` is where it happens once.
+    /// **A `Daylight` and the handful of things a `Daylight` does not carry.** How a host reaches
+    /// one is its own business: the game reports what its live weather system settled on. What
+    /// follows is arithmetic over that, and `describeWorld` is where it happens once.
     struct WorldReading
     {
         Daylight mDaylight;
@@ -204,8 +200,7 @@ namespace Rtx
         SkyContent mSky;
 
         /// Masser and Secunda, placed and with their faces named. **An input and not a derivation**:
-        /// the game is handed the angles by its weather system and the harness works them out from a
-        /// date, and neither can do the other's.
+        /// the angles come from the weather system, and nothing here can work them out.
         std::array<MoonPlacement, 2> mMoons;
 
         std::uint32_t mWeather = Shaders::WEATHER_CLEAR;

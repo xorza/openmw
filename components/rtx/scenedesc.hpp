@@ -20,12 +20,10 @@
 #include "materialtable.hpp"
 #include "meshinstance.hpp"
 #include "meshrange.hpp"
+#include "meshtable.hpp"
 #include "placementtable.hpp"
-#include "shaders/scene.h"
 #include "shaders/skinning.h"
 #include "shapefold.hpp"
-#include "slotchanges.hpp"
-#include "slotset.hpp"
 #include "spanallocator.hpp"
 #include "texturetable.hpp"
 
@@ -177,15 +175,9 @@ namespace Rtx
     class SceneDesc
     {
     public:
-        /// How many vertices one block of the position, normal and texture-coordinate buffers holds.
-        ///
-        /// One block of the shared vertex buffers, and of the index buffer.
-        ///
-        /// **The shaders' own numbers**, because a run this places against a block is resolved back
-        /// to that block by a shader dividing by the same figure. `Shaders::VERTEX_BLOCK` says at
-        /// length what they are for.
-        static constexpr Index sVertexBlock = Shaders::VERTEX_BLOCK;
-        static constexpr Index sIndexBlock = Shaders::INDEX_BLOCK;
+        /// What a mesh's geometry may not straddle — `MeshTable::sVertexBlock` says why.
+        static constexpr Index sVertexBlock = MeshTable::sVertexBlock;
+        static constexpr Index sIndexBlock = MeshTable::sIndexBlock;
 
         /// Copies the vertex data into the shared buffers and returns the new mesh's index.
         ///
@@ -432,19 +424,19 @@ namespace Rtx
         /// which is what makes an index the only name for a row that outlives an add. A caller
         /// holding the scene `const` is safe by its type. A caller that builds one is not, and
         /// finishing the adds before the reads is the shape that does not have to remember it.
-        std::span<const osg::Vec3f> getPositions() const { return mPositions; }
-        std::span<const osg::Vec3f> getNormals() const { return mNormals; }
-        std::span<const osg::Vec2f> getTexCoords() const { return mTexCoords; }
-        std::span<const std::uint32_t> getIndices() const { return mIndices; }
+        std::span<const osg::Vec3f> getPositions() const { return mMeshTable.getPositions(); }
+        std::span<const osg::Vec3f> getNormals() const { return mMeshTable.getNormals(); }
+        std::span<const osg::Vec2f> getTexCoords() const { return mMeshTable.getTexCoords(); }
+        std::span<const std::uint32_t> getIndices() const { return mMeshTable.getIndices(); }
 
         /// Every mesh slot, live or free. A freed one has a zero count and keeps its room, so a
         /// backend that walks these builds a structure over nothing rather than over somebody else's
         /// triangles — and the top level a frame rebuilds is what stops it being traced.
-        std::span<const MeshRange> getMeshes() const { return mMeshes; }
+        std::span<const MeshRange> getMeshes() const { return mMeshTable.getRows(); }
 
         /// Which meshes changed shape since the last `clearPlacement`, each named once and in no
         /// particular order. Empty for a world that only moves.
-        std::span<const Index> getDeformed() const { return mDeformed.getSlots(); }
+        std::span<const Index> getDeformed() const { return mMeshTable.getDeformed(); }
 
         /// Every rig slot, live or free — `Rig::mUses` tells them apart — and the two tables the rigs
         /// index.
@@ -517,8 +509,8 @@ namespace Rtx
 
         /// How many times the scene's **structure** has changed: its meshes and its textures.
         ///
-        /// **What a rebuild costs is why this is separate from the tables.** A mesh appearing means
-        /// a bottom-level acceleration structure that does not exist yet, and a texture appearing
+        /// **What a rebuild costs is why only these two are counted.** A mesh appearing means a
+        /// bottom-level acceleration structure that does not exist yet, and a texture appearing
         /// means an array that has to be made again — hundreds of milliseconds between them, and
         /// the temporal history goes with them. Nothing else in the scene is worth that.
         ///
@@ -527,7 +519,7 @@ namespace Rtx
         /// slot taken over by something else entirely, which is what one does now. Bumped by a mesh
         /// or a texture appearing, whether at the end of the table or into a slot something else
         /// left; never by a placement, which is rewritten every frame anyway.
-        std::uint64_t getStructureRevision() const { return mStructureRevision + mTextures.getRevision(); }
+        std::uint64_t getStructureRevision() const { return mMeshTable.getRevision() + mTextures.getRevision(); }
 
         /// Forgets what has arrived and what has gone, for a caller that has applied both.
         ///
@@ -549,10 +541,10 @@ namespace Rtx
         /// The same list for the expensive half. `getMeshRevision` says *that* a mesh arrived and a
         /// backend hearing it had nothing to do but build the scene again; this says *which*, which
         /// is what lets it build those structures and leave the rest standing.
-        std::span<const Index> getArrivedMeshes() const { return mMeshChanges.getArrived(); }
+        std::span<const Index> getArrivedMeshes() const { return mMeshTable.getArrived(); }
 
         /// Which mesh slots `release` has given up since the last `clearArrivals`.
-        std::span<const Index> getFreedMeshes() const { return mMeshChanges.getFreed(); }
+        std::span<const Index> getFreedMeshes() const { return mMeshTable.getFreed(); }
 
         /// Which texture slots `release` has given up since the last `clearArrivals`.
         ///
@@ -566,7 +558,7 @@ namespace Rtx
         /// A texture arriving is an upload; a mesh arriving is a bottom-level acceleration structure
         /// that does not exist yet. Told apart because a body texture nobody has worn yet must not
         /// cost the structures of a whole cell.
-        std::uint64_t getMeshRevision() const { return mMeshRevision; }
+        std::uint64_t getMeshRevision() const { return mMeshTable.getRevision(); }
 
         /// Which material slots `addMaterial` or `setMaterial` wrote since the last `clearArrivals`,
         /// each once.
@@ -637,24 +629,16 @@ namespace Rtx
         std::size_t getGeometryBytes() const;
 
     private:
-        std::vector<osg::Vec3f> mPositions;
-        std::vector<osg::Vec3f> mNormals;
-        std::vector<osg::Vec2f> mTexCoords;
-        std::vector<std::uint32_t> mIndices;
-        std::vector<MeshRange> mMeshes;
-
-        /// Which meshes were posed this frame. Grown with `mMeshChanges` and emptied with the
-        /// placement.
-        SlotSet mDeformed;
-
         /// What poses the deforming meshes, and the poses themselves. Its own type, for the reason
-        /// the two tables below are: a rig, the meshes counted on it and the runs behind both are
-        /// one invariant.
+        /// the tables below are: a rig, the meshes counted on it and the runs behind both are one
+        /// invariant.
+        ///
+        /// **Before the meshes, which borrow it.** A mesh stands its deformer as it arrives and
+        /// releases one as it goes, and the count is this table's.
         DeformerTable mDeformers;
 
-        /// What a pose that changed does beside its rows: the reach, and the mesh named for the
-        /// frame, once.
-        void notePosed(Index mesh, const osg::BoundingBoxf& bounds);
+        /// Every mesh, and the shared buffers its triangles live in.
+        MeshTable mMeshTable{ mDeformers };
 
         /// Where everything stands and which rows a backend has to write again. Its own type,
         /// because slots that are never moved, a free list and two change lists are one invariant.
@@ -677,52 +661,8 @@ namespace Rtx
         /// invariant rather than ten members held in step by hand.
         MaterialTable mMaterialTable{ mTextures };
 
-        /// **The share of the structure revision this counts, and not the whole of it.** The rest
-        /// belongs to `TextureTable`, which takes its own slots — `getStructureRevision` adds the
-        /// two.
-        std::uint64_t mStructureRevision = 0;
-        std::uint64_t mMeshRevision = 0;
-
-        /// Copies one mesh's arrays into the room `range` names. Zero-fills an attribute the mesh
-        /// did not bring, because a reused slot still holds its last tenant's.
-        void writeMesh(const MeshRange& range, std::span<const osg::Vec3f> positions,
-            std::span<const osg::Vec3f> normals, std::span<const osg::Vec2f> texCoords,
-            std::span<const std::uint32_t> indices);
-
-        /// Mesh slots nothing stands in. `takeSlot` says how one is handed out.
-        ///
-        /// **A list and not a hole map**, because what goes on it is what one departing ring left —
-        /// tens of entries, not the table. Nothing is ever moved, so a slot that is taken over
-        /// keeps its index and every placement standing on it stays where it is.
-        std::vector<Index> mFreeMeshes;
-
-        /// Which mesh slots a sweep must not free, one flag per row.
-        ///
-        /// **Held rather than made, because a sweep runs on the frame a cell left** — the frame
-        /// that is already giving thousands of runs back to the allocators, and the last one that
-        /// should also be sizing a buffer to the whole table. Refilled by `release` and read by
-        /// nobody else.
-        std::vector<std::uint8_t> mKeptMeshes;
-
-        /// Where a mesh's vertices and its indices live.
-        ///
-        /// **Runs and not slots**, which is why these are allocators and `mFreeMeshes` is not: a
-        /// mesh slot is one row of a table, but the geometry behind it is as long as the model. A
-        /// list of slots cannot give a variable length back.
-        ///
-        /// One for the vertices because the position, normal and texture-coordinate buffers are
-        /// parallel and a vertex id indexes all three.
-        SpanAllocator mVertexRuns{ sVertexBlock };
-        SpanAllocator mIndexRuns{ sIndexBlock };
-
         /// Calls `visit(instance, worldBox)` for every placement, which is what both extents walk.
         template <class Visit>
         void forEachPlacement(Visit&& visit) const;
-
-        /// Records `slot` as having arrived or gone, and grows the list to reach it.
-        void noteMesh(Index slot, SlotNews what);
-
-        /// Which mesh slots arrived and which were freed, since a backend last read them.
-        SlotChanges mMeshChanges;
     };
 }

@@ -80,9 +80,10 @@ namespace Rtx
 
     /// The same light, from a colour and a radius rather than from a record.
     ///
-    /// **One conversion and two callers**, which is the point: the harness reads a cell's `LIGH`
-    /// records and the game reads the `SceneUtil::LightSource` nodes its own scene graph already
-    /// holds, and the two must not come to disagree about how bright a candle is.
+    /// **One conversion and two routes to it**, which is the point: `DistantLights` reads a cell's
+    /// `LIGH` records for the reach the paging leaves dark, and the mirror reads the
+    /// `SceneUtil::LightSource` nodes the graph already holds. The two must not come to disagree
+    /// about how bright a candle is.
     ///
     /// @param colour linear. `lightColour` and `decodeColour` are the two ways of getting one there.
     ///        Null where a channel of it is negative, which is what a light that subtracts looks
@@ -244,15 +245,6 @@ namespace Rtx
     /// the deck's *extent*, because the fade rings are the mesh's own and are measured from there.
     inline constexpr float sCloudAltitude = 500.0f * Constants::UnitsPerMeter;
 
-    /// A sun out of a weather's reading and however much of the disc the asker can see.
-    ///
-    /// **`makeSkylight` is the ground's asker and no longer the only one.** A cloud deck stands above
-    /// the ground's horizon and keeps the sun after it has set down here, so it reads the same
-    /// weather at its own share — `sunShareAloft`. Everything else about the sun is the same for
-    /// both of them: it is in the same place, and the content's own sunset colour is keyed on the
-    /// hour rather than on how much air the beam crossed.
-    Sun sunAbove(const SkyReading& sky, float share);
-
     /// How much of the sun a layer standing over the ground still has at `hour`.
     ///
     /// **The engine's sunset is a clock and not a horizon**, which is the whole of the shape here.
@@ -352,9 +344,9 @@ namespace Rtx
     /// A weather's index, as `MWWorld::WeatherManager` registers them and the shader's `WEATHER_*`
     /// name them, or nothing for a name that is none of the ten.
     ///
-    /// **One table, two callers**, which is the point it shares with `makeLight`: the game hands the
-    /// renderer a weather's script id and the harness hands it a name off a command line, and a
-    /// frame taken either way has to be under the same sky.
+    /// **One table, because a name and an index are asked for in different places.** A run names the
+    /// weather it wants to stand under and the renderer is handed the script id the weather system
+    /// settled on, and the two have to mean the same sky.
     std::optional<std::uint32_t> weatherIndex(std::string_view weather);
 
     /// Refuses a weather whose keys the configuration never provided.
@@ -382,17 +374,6 @@ namespace Rtx
     /// A null region — an interior, or a cell whose record names none — offers all ten, and so does
     /// a region whose chances are all zero, since the alternative is a step that goes nowhere.
     std::uint32_t nextRegionWeather(const ESM::Region* region, std::uint32_t weather, bool forward);
-
-    /// Where a storm drives what it carries, for an observer standing at `observer`.
-    ///
-    /// **Ash and blight blow off Red Mountain.** `apps/openmw/mwworld/weather.cpp:47` aims the
-    /// direction from the volcano at whoever is standing in it, flattened to the ground — which is
-    /// why an ashstorm comes at the player's face wherever they walk, and why this needs a position
-    /// at all. Every other weather takes the wind's own bearing and does not.
-    ///
-    /// The game reports what its own weather system computed, since it has a player to ask about;
-    /// this is the same rule for a harness that has only a camera.
-    osg::Vec3f stormDirection(std::uint32_t weather, const osg::Vec3f& observer);
 
     /// Everything one weather's own record says, read out of the fallback settings once.
     ///
@@ -462,7 +443,7 @@ namespace Rtx
     Daylight makeDaylight(std::string_view weather, float hour, float reach);
 
     /// A room's light, out of its own `AMBI` record — with `makeDaylight`, the other of the two
-    /// places a `Daylight` is built, and the one the game and the harness both light a room by.
+    /// places a `Daylight` is built, and the one every interior is lit by.
     ///
     /// **The record, and not the rasterizer's reading of it.** `RenderingManager::configureAmbient`
     /// lifts an interior's ambient to `minimum interior brightness` before its own lights see it,
@@ -489,7 +470,7 @@ namespace Rtx
     ///
     /// @param nightEye what the Night-Eye effect adds to every channel of the ambient, in the
     ///        file's own space — which is where `RenderingManager::updateAmbient` adds it, so it is
-    ///        added before the decode here as well. Nothing for the harness, which casts no spells.
+    ///        added before the decode here as well. Nothing for a caller with no spell in force.
     Daylight makeRoomLight(const ESM::Cell::AMBIstruct& room, const osg::Vec3f& nightEye = osg::Vec3f());
 
     /// What the air leaves of a body in the sky, per channel.

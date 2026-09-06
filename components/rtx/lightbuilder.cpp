@@ -213,6 +213,27 @@ namespace Rtx
         /// frame at once.
         constexpr float sHourStops = 0.314f;
 
+        /// A sun out of a weather's reading and however much of the disc the asker can see.
+        ///
+        /// **The ground's share and a layer's are the same sun**, which is what makes this one
+        /// function: a cloud deck stands above the ground's horizon and keeps the sun after it has
+        /// set down here, and everything else about it is the same — the same place, and the
+        /// content's own sunset colour, which is keyed on the hour rather than on how much air the
+        /// beam crossed.
+        Sun sunAbove(const SkyReading& sky, float share)
+        {
+            return Sun{
+                .mPosition = sky.mSunPosition,
+                .mIrradiance = sky.mSunColour * (Shaders::DAYLIGHT * std::clamp(share, 0.0f, 1.0f)),
+
+                // **The glare arrives here rather than being folded into the colour earlier**, and that
+                // is not tidiness: it is a blend factor the rasterizer applies to a sprite in the file's
+                // own space, and dimming radiance is a linear multiply. Applied before the decode it
+                // would come out a different colour, not merely a darker one.
+                .mDiscColour = sky.mDiscColour * sky.mGlare,
+            };
+        }
+
         /// Rayleigh optical depth at the zenith, at the three sRGB primaries.
         ///
         /// `0.008569 λ^-4` with its usual correction, at 600, 550 and 450 nanometres — which is near
@@ -301,20 +322,6 @@ namespace Rtx
         light.mExposureBias = exposureBias(light.mSun.mIrradiance, light.mAmbient);
 
         return light;
-    }
-
-    Sun sunAbove(const SkyReading& sky, float share)
-    {
-        return Sun{
-            .mPosition = sky.mSunPosition,
-            .mIrradiance = sky.mSunColour * (Shaders::DAYLIGHT * std::clamp(share, 0.0f, 1.0f)),
-
-            // **The glare arrives here rather than being folded into the colour earlier**, and that
-            // is not tidiness: it is a blend factor the rasterizer applies to a sprite in the file's
-            // own space, and dimming radiance is a linear multiply. Applied before the decode it
-            // would come out a different colour, not merely a darker one.
-            .mDiscColour = sky.mDiscColour * sky.mGlare,
-        };
     }
 
     float sunShareAloft(float hour, const Sky::TimeOfDaySettings& times)
@@ -471,15 +478,6 @@ namespace Rtx
     std::string_view weatherName(std::uint32_t weather)
     {
         return weather < sWeathers.size() ? sWeathers[weather] : std::string_view();
-    }
-
-    osg::Vec3f stormDirection(std::uint32_t weather, const osg::Vec3f& observer)
-    {
-        // **The rule is `Weather::stormDirection` and the index is this function's own.** The game
-        // asks it during a transition and so holds the effect rather than the name; everything here
-        // holds a script id, and the two must not be two rules — they aim the same storm at the
-        // same observer, one for the sky and one for the particles blowing past it.
-        return Weather::stormDirection(Weather::stormEffect(weatherName(weather)), observer);
     }
 
     osg::Vec3f decodeColour(const osg::Vec4f& encoded)

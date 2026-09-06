@@ -127,8 +127,8 @@ namespace Rtx
     /// Lights a deck by what stands over it.
     ///
     /// **One place, because a deck is lit like anything else and this is the only thing that knows
-    /// it.** The game and the harness each reach a sun, a sky and two moons their own way; what a
-    /// layer of water droplets does with the three is the same either way.
+    /// it.** However a sun, a sky and two moons were reached, what a layer of water droplets does
+    /// with the three is the same.
     ///
     /// @param skyMean what the sky over the deck delivers, as a radiance — `SkyBudget::mMean`.
     /// @param moons both of them, whether or not either is up: a moon that is down delivers nothing
@@ -137,9 +137,9 @@ namespace Rtx
 
     /// The cloud deck, in the units the shader takes.
     ///
-    /// **One conversion and two callers.** The game reports what its weather system settled on and
-    /// the harness derives the same numbers from the content files at an hour it was told; what a
-    /// deck *is* once they are known lives here, so a screenshot and the game stand under one sky.
+    /// **One conversion, wherever the numbers came from.** The weather system reports what it
+    /// settled on; what a deck *is* once those are known lives here, so a screenshot and a played
+    /// frame stand under one sky.
     ///
     /// @param light what the deck radiates, out of `deckLight` — worked out on the host rather than
     ///        in the shader because it is one answer for the whole frame.

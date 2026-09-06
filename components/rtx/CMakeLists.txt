@@ -66,6 +66,8 @@ set(RTX_FILES
     memoryreport.hpp
     meshinstance.hpp
     meshrange.hpp
+    meshtable.cpp
+    meshtable.hpp
     meshresolver.cpp
     meshresolver.hpp
     mipchain.cpp

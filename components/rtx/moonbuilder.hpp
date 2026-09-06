@@ -86,7 +86,7 @@ namespace Rtx
     ///
     /// **`Sky::MoonModel`'s clock, reached from an hour rather than from a weather system.** The
     /// game asks that same component through `MWWorld::MoonModel` and hands the answer down as a
-    /// `MoonState`; this asks it directly, because the harness has no weather system to ask. One
+    /// `MoonState`; this asks it directly, for a caller that holds a date and no world. One
     /// arithmetic, two routes to it.
     ///
     /// @param day days since the world began, on Morrowind's own count: the game starts on day 0,
@@ -111,9 +111,8 @@ namespace Rtx
 
     /// Adds `tx_masser_full.dds` and `tx_secunda_full.dds` to `scene` and holds them there.
     ///
-    /// **One call and two callers**, as ever: the game's scene and the harness's both need the faces
-    /// in the same table the trace reads, and a moon drawn from the mean of its portrait rather than
-    /// the portrait itself is a coloured circle.
+    /// **One call, because the faces have to be in the table the trace reads.** A moon drawn from
+    /// the mean of its portrait rather than from the portrait itself is a coloured circle.
     ///
     /// **Held for the life of the scene and never given back.** A moon is drawn by a ray that
     /// reached nothing, so no material can speak for the slot and the sweep would take it on the
@@ -122,10 +121,10 @@ namespace Rtx
 
     /// A moon placed from angles somebody else worked out.
     ///
-    /// **Two callers reach the same sky by different routes.** The game runs a weather system and
-    /// hands over the angles it settled on; the harness has none and derives them from the clock
-    /// through `makeMoon`. What a moon *is* once those angles are known — where its face points, how
-    /// wide it is, which way its terminator falls — is one answer and lives here.
+    /// **The angles are somebody else's and the moon is this one's.** The weather system settles
+    /// where a moon stands and `makeMoon` works the same out from a date. What a moon *is* once
+    /// those angles are known — where its face points, how wide it is, which way its terminator
+    /// falls — is one answer and lives here.
     ///
     /// @param alongArc degrees travelled from the horizon it rose at, zero to 180.
     /// @param axisOffset degrees the whole arc is swung about the zenith.
@@ -137,9 +136,9 @@ namespace Rtx
 
     /// A placement as the shader takes it.
     ///
-    /// **One conversion and two callers**, which is the point it shares with `makeLight`: the game
-    /// reads its moons off the weather system it already runs and the harness works them out from
-    /// the clock, and a frame taken either way has to be under the same moons.
+    /// **One conversion, wherever the placement came from**, which is the point it shares with
+    /// `makeLight`: a moon read off the weather system and one worked out from a date have to reach
+    /// the shader the same way.
     Shaders::MoonDisc describeMoon(const MoonPlacement& placement);
 
     /// The angular radius `makeMoon` gives that moon, in radians.

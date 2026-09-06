@@ -28,13 +28,8 @@
 #include <components/misc/constants.hpp>
 #include <components/platform/platform.hpp>
 #include <components/resource/scenemanager.hpp>
-#include <components/rtx/fogbuilder.hpp>
-#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/reorder.hpp>
-#include <components/rtx/scenedesc.hpp>
-#include <components/rtx/sceneextractor.hpp>
-#include <components/rtx/texturebuilder.hpp>
 #include <components/rtx/upscale.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>

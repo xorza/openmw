@@ -145,8 +145,8 @@ namespace Rtx
     ///
     /// **One place decides what the reach means.** Three of these four fields turn on how much world
     /// there is: the extinction is a half-life measured over it, the edge closes at it, and only a
-    /// landscape is large enough to bank. The game and the harness reach a weather by different
-    /// routes, and `FrameWorld` says what assembling a shared list on each of them costs.
+    /// landscape is large enough to bank, so a caller that assembled the four itself would be
+    /// deciding what the reach means a second time. `FrameWorld` says what that costs.
     ///
     /// @param reach how much world is built, in units — `distantLandReach`, which the host reads
     ///        out of its own configuration and hands down. Air tuned to a shorter one swallows every

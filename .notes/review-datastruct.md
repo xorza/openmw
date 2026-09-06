@@ -13,20 +13,6 @@ of scope. No measurements were taken.
 
 ---
 
-## `SceneDesc` still holds the mesh table loose
-
-`scenedesc.hpp` is 736 lines. `PlacementTable`, `TextureTable`, `MaterialTable` and `DeformerTable`
-each say in their own header why a table, its free list and its change lists are one invariant. The
-meshes have not been given the same treatment, so their free list, keep set, span allocators and
-arrival list sit loose in the class.
-
-- [ ] **Give the mesh table its own type.** It is `mPositions`, `mNormals`, `mTexCoords`,
-      `mIndices`, `mMeshes`, `mFreeMeshes`, `mKeptMeshes`, `mMeshChanges`, `mVertexRuns`,
-      `mIndexRuns`, `mMeshRevision` and `mDeformed`, with `writeMesh`, `noteMesh` and `notePosed`.
-      `MeshRange` already has its own header. What holds it back is that a mesh's arrival stands its
-      deformer and its sweep releases one, so the type would borrow a `DeformerTable&` the way
-      `MaterialTable` borrows a `TextureTable&`.
-
 ## A second host that no longer exists
 
 `openmw-rtxtool` drives a real game now. The harness no longer reads cells, derives a sky from the
@@ -38,25 +24,10 @@ and the second caller is gone. What is left is production code that only the tes
       reached only from `lightbuilder.cpp` itself and from `apps/components_tests/rtx/`. The game
       builds its `Daylight` field by field in `readworld.cpp` instead.
 
-- [ ] **`Rtx::makeMoon` and `Rtx::moonAngularRadius` have no caller.** The game calls `placeMoon`
-      with the angles the weather system settled on. `moonAngularRadius` is a one-line forwarder to
-      the private `angularRadiusOf`.
-
-- [ ] **`Rtx::stormDirection` has no caller and forwards to `Weather::stormDirection`.**
-      `lightbuilder.cpp:474` only turns a weather index into a name first.
-
-- [ ] **`Rtx::sunAbove` and `Rtx::castsWherePlaced` are exported and used only inside their own
-      `.cpp`.** Make them private, or drop them.
-
-- [ ] **`apps/rtxtool/main.cpp` includes five headers it does not use.** They are `fogbuilder.hpp`,
-      `lightbuilder.hpp`, `texturebuilder.hpp`, `scenedesc.hpp` and `sceneextractor.hpp`. The file
-      names no symbol from any of them. This drags OSG and the whole scene description into the
-      command-line parser.
-
-- [ ] **Correct the headers that name two hosts.** `frameworld.hpp:87`, `lightbuilder.hpp:146`,
-      `moonbuilder.hpp`, `skybuilder.hpp` and `fogbuilder.hpp` each say the game and the harness
-      reach a number by different routes. Only the game does. The prose now argues for a split that
-      the tree no longer has.
+- [ ] **`Rtx::makeMoon` derives a placement from a date, which no frame asks for.** The game calls
+      `placeMoon` with the angles the weather system settled on. What holds it is that
+      `moonbuilder`'s tests place a moon at an hour through it, so dropping it means teaching them
+      `Sky::MoonModel`'s clock — a second spelling of what `makeMoon` is.
 
 ---
 

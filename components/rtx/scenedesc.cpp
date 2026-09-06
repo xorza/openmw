@@ -6,140 +6,16 @@
 #include <cstddef>
 #include <tuple>
 
-#include "error.hpp"
-#include "slotrows.hpp"
-
 namespace Rtx
 {
-    namespace
-    {
-        /// The box every one of `positions` fits in.
-        osg::BoundingBoxf boundsOf(std::span<const osg::Vec3f> positions)
-        {
-            osg::BoundingBoxf bounds;
-            for (const osg::Vec3f& position : positions)
-                bounds.expandBy(position);
-
-            return bounds;
-        }
-    }
-
     Index SceneDesc::addMesh(std::span<const osg::Vec3f> positions, std::span<const osg::Vec3f> normals,
         std::span<const osg::Vec2f> texCoords, std::span<const std::uint32_t> indices, FoldedShape shape, Deform deform,
         Index deformer, Index material)
     {
-        assert(!positions.empty());
         assert(
             (material == sNoIndex || material < mMaterialTable.size()) && "a mesh wearing a material the scene lacks");
-        assert(normals.empty() || normals.size() == positions.size());
-        assert(texCoords.empty() || texCoords.size() == positions.size());
-        assert(indices.size() % 3 == 0);
-        assert(std::all_of(indices.begin(), indices.end(), [&](std::uint32_t i) { return i < positions.size(); }));
-        assert((deform == Deform::None) == (deformer == sNoIndex) && "a deforming mesh names what poses it");
-        assert(deform != Deform::Rig
-            || (deformer < mDeformers.getRigs().size()
-                && mDeformers.getRigs()[deformer].mVertexCount == positions.size()
-                && "a rig skins exactly the vertices of the mesh on it"));
-        assert(deform != Deform::Morph
-            || (deformer < mDeformers.getMorphs().size()
-                && mDeformers.getMorphs()[deformer].mVertexCount == positions.size()
-                && "a morph moves exactly the vertices of the mesh on it"));
 
-        if (positions.size() > sVertexBlock || indices.size() > sIndexBlock)
-            throw Error("a mesh of " + std::to_string(positions.size()) + " vertices and "
-                + std::to_string(indices.size()) + " indices is past the " + std::to_string(sVertexBlock) + " and "
-                + std::to_string(sIndexBlock) + " one block of the shared buffers holds");
-
-        ++mStructureRevision;
-        ++mMeshRevision;
-
-        const Span vertices = mVertexRuns.allocate(static_cast<Index>(positions.size()));
-        const Span elements = mIndexRuns.allocate(static_cast<Index>(indices.size()));
-
-        // Grown to what the allocators now reach, so the write below lands in room that exists, and
-        // never shrunk: a run given back at the end goes to the allocator and the next mesh lands in
-        // it rather than in a buffer that had to be resized twice. The attribute buffers stay
-        // parallel to the position buffer whether or not the mesh brought the attribute, so a shader
-        // can index all of them with one vertex id.
-        //
-        // **As long as the allocator reaches and no longer.** The blocks decide where a run may go,
-        // not how much room is held: rounding this up to a whole block would leave the tail of the
-        // last one uploaded to the device as well, which is megabytes of nothing per scene.
-        if (mPositions.size() < mVertexRuns.getEnd())
-        {
-            mPositions.resize(mVertexRuns.getEnd());
-            mNormals.resize(mPositions.size());
-            mTexCoords.resize(mPositions.size());
-        }
-
-        if (mIndices.size() < mIndexRuns.getEnd())
-            mIndices.resize(mIndexRuns.getEnd());
-
-        MeshRange range{
-            .mVertexOffset = vertices.mOffset,
-            .mVertexCount = vertices.mCount,
-            .mIndexOffset = elements.mOffset,
-            .mIndexCount = elements.mCount,
-            .mShape = shape,
-            .mDeform = deform,
-            .mDeformer = deformer,
-            .mMaterial = material,
-            .mBounds = boundsOf(positions),
-        };
-
-        mDeformers.stand(range);
-
-        writeMesh(range, positions, normals, texCoords, indices);
-
-        const Index index = takeSlot(mMeshes, mFreeMeshes, range);
-        noteMesh(index, SlotNews::Arrived);
-        return index;
-    }
-
-    void SceneDesc::noteMesh(Index slot, SlotNews what)
-    {
-        // Grown here rather than beside every push, so everything keyed on a mesh slot reaches the
-        // table's size in one place. A resize to the size it already is does not allocate, which is
-        // what the frame path pays.
-        mMeshChanges.grow(mMeshes.size());
-        mDeformed.grow(mMeshes.size());
-        mMeshChanges.note(slot, what);
-    }
-
-    void SceneDesc::writeMesh(const MeshRange& range, std::span<const osg::Vec3f> positions,
-        std::span<const osg::Vec3f> normals, std::span<const osg::Vec2f> texCoords,
-        std::span<const std::uint32_t> indices)
-    {
-        std::copy(positions.begin(), positions.end(), mPositions.begin() + range.mVertexOffset);
-        std::copy(indices.begin(), indices.end(), mIndices.begin() + range.mIndexOffset);
-
-        // **Zeroed where the mesh brought none**, rather than left holding whatever the slot's last
-        // tenant had. A reused slot is the only way that could happen and it would light a surface
-        // by somebody else's normals.
-        if (normals.empty())
-            std::fill_n(mNormals.begin() + range.mVertexOffset, range.mVertexCount, osg::Vec3f());
-        else
-            std::copy(normals.begin(), normals.end(), mNormals.begin() + range.mVertexOffset);
-
-        if (texCoords.empty())
-            std::fill_n(mTexCoords.begin() + range.mVertexOffset, range.mVertexCount, osg::Vec2f());
-        else
-            std::copy(texCoords.begin(), texCoords.end(), mTexCoords.begin() + range.mVertexOffset);
-    }
-
-    void SceneDesc::notePosed(Index mesh, const osg::BoundingBoxf& bounds)
-    {
-        MeshRange& range = mMeshes[mesh];
-        range.mPosed = true;
-
-        // **A pose the size of the last one still reaches somewhere else.** An arm that came down is
-        // the same count of vertices in a different place, and a box left where the bind pose put it
-        // is what a camera would then be framed from.
-        range.mBounds = bounds;
-
-        // Named once however many callers reach it, because a backend builds one structure per mesh
-        // and building it twice in a frame is the same answer for twice the cost.
-        mDeformed.add(mesh);
+        return mMeshTable.add(positions, normals, texCoords, indices, shape, deform, deformer, material);
     }
 
     Index SceneDesc::addRig(
@@ -155,28 +31,28 @@ namespace Rtx
 
     void SceneDesc::poseRig(Index mesh, std::span<const Shaders::GpuBone> bones, const osg::BoundingBoxf& bounds)
     {
-        assert(mesh < mMeshes.size());
-        if (mDeformers.poseRig(mMeshes[mesh], bones))
-            notePosed(mesh, bounds);
+        assert(mesh < mMeshTable.size());
+        if (mDeformers.poseRig(mMeshTable.getRows()[mesh], bones))
+            mMeshTable.notePosed(mesh, bounds);
     }
 
     void SceneDesc::poseMorph(Index mesh, std::span<const float> weights, const osg::BoundingBoxf& bounds)
     {
-        assert(mesh < mMeshes.size());
-        if (mDeformers.poseMorph(mMeshes[mesh], weights))
-            notePosed(mesh, bounds);
+        assert(mesh < mMeshTable.size());
+        if (mDeformers.poseMorph(mMeshTable.getRows()[mesh], weights))
+            mMeshTable.notePosed(mesh, bounds);
     }
 
     std::span<const Shaders::GpuBone> SceneDesc::getMeshBones(Index mesh) const
     {
-        assert(mesh < mMeshes.size());
-        return mDeformers.getMeshBones(mMeshes[mesh]);
+        assert(mesh < mMeshTable.size());
+        return mDeformers.getMeshBones(mMeshTable.getRows()[mesh]);
     }
 
     std::span<const float> SceneDesc::getMeshWeights(Index mesh) const
     {
-        assert(mesh < mMeshes.size());
-        return mDeformers.getMeshWeights(mMeshes[mesh]);
+        assert(mesh < mMeshTable.size());
+        return mDeformers.getMeshWeights(mMeshTable.getRows()[mesh]);
     }
 
     Index SceneDesc::addMaterial(const Material& material)
@@ -285,7 +161,7 @@ namespace Rtx
 
     Index SceneDesc::addInstance(const MeshInstance& instance)
     {
-        assert(instance.mMesh < mMeshes.size());
+        assert(instance.mMesh < mMeshTable.size());
         assert(instance.mMaterial == sNoIndex || instance.mMaterial < mMaterialTable.size());
 
         return mPlacements.add(instance);
@@ -331,7 +207,7 @@ namespace Rtx
     {
         mLights.clear();
 
-        mDeformed.clear();
+        mMeshTable.clearDeformed();
         mSprites.clear();
         mEmitters.clear();
     }
@@ -340,7 +216,7 @@ namespace Rtx
     {
         // Only meshes and materials are asked, and that is now the whole of what this frees: a
         // texture goes when the last material or hold naming it lets go, wherever that happens.
-        const std::size_t keptMeshes = markKept(mKeptMeshes, mMeshes.size(), meshes, mFreeMeshes);
+        const std::size_t keptMeshes = mMeshTable.mark(meshes);
         const std::size_t keptMaterials = mMaterialTable.mark(materials);
 
         // **The ordinary frame leaves here**: a table with as many survivors as live entries has
@@ -349,43 +225,10 @@ namespace Rtx
         // **Asked of the marks and not of the span's length.** Those two agree only while the keep
         // set names each survivor once, which is a property of the identity map that fills it rather
         // than of this call — so a second way of collecting survivors cannot get it wrong.
-        const std::size_t liveMeshes = mMeshes.size() - mFreeMeshes.size();
-        if (keptMeshes == liveMeshes && keptMaterials == mMaterialTable.getLiveCount())
+        if (keptMeshes == mMeshTable.getLiveCount() && keptMaterials == mMaterialTable.getLiveCount())
             return false;
 
-        std::size_t freedMeshes = 0;
-        for (Index index = 0; index < mMeshes.size(); ++index)
-        {
-            if (mKeptMeshes[index] != 0)
-                continue;
-
-            // **The slot stays where it is and only its geometry goes back.** Nothing is moved down
-            // over it, so every index above this one still means what it meant — which is the whole
-            // point, because each of them names a bottom-level acceleration structure that would
-            // otherwise have to be built again. The room the geometry occupied returns to the
-            // allocators, which merge it with whatever it touches: a cell arrived as thousands of
-            // runs laid end to end and it leaves as the one hole it came as.
-            MeshRange& range = mMeshes[index];
-            mVertexRuns.release(Span{ .mOffset = range.mVertexOffset, .mCount = range.mVertexCount });
-            mIndexRuns.release(Span{ .mOffset = range.mIndexOffset, .mCount = range.mIndexCount });
-            mDeformers.release(range);
-
-            range.mVertexCount = 0;
-            range.mIndexCount = 0;
-            range.mMaterial = sNoIndex;
-            range.mBounds = osg::BoundingBoxf();
-
-            // A slot given back names no structure to refit, however it was posed this frame: the
-            // structure has gone with it.
-            mDeformed.remove(index);
-
-            mFreeMeshes.push_back(index);
-            noteMesh(index, SlotNews::Freed);
-            ++freedMeshes;
-        }
-
-        mDeformed.compact();
-
+        const std::size_t freedMeshes = mMeshTable.sweep();
         const std::size_t freedMaterials = mMaterialTable.sweep();
 
         // **The per-frame lists are left as the walk left them.** Emptying them here read as "the
@@ -408,7 +251,7 @@ namespace Rtx
 
     void SceneDesc::clearArrivals()
     {
-        mMeshChanges.clearArrivals();
+        mMeshTable.clearArrivals();
         mTextures.clearArrivals();
         mMaterialTable.clearArrivals();
         mDeformers.clearArrivals();
@@ -416,21 +259,22 @@ namespace Rtx
 
     std::span<const osg::Vec3f> SceneDesc::getMeshPositions(Index mesh) const
     {
-        assert(mesh < mMeshes.size());
-        const MeshRange& range = mMeshes[mesh];
-        return std::span(mPositions).subspan(range.mVertexOffset, range.mVertexCount);
+        return mMeshTable.getMeshPositions(mesh);
     }
 
     std::span<const std::uint32_t> SceneDesc::getMeshIndices(Index mesh) const
     {
-        assert(mesh < mMeshes.size());
-        const MeshRange& range = mMeshes[mesh];
-        return std::span(mIndices).subspan(range.mIndexOffset, range.mIndexCount);
+        return mMeshTable.getMeshIndices(mesh);
     }
 
     std::uint32_t SceneDesc::getTriangleCount() const
     {
-        return static_cast<std::uint32_t>(mIndices.size() / 3);
+        return mMeshTable.getTriangleCount();
+    }
+
+    std::size_t SceneDesc::getGeometryBytes() const
+    {
+        return mMeshTable.getGeometryBytes();
     }
 
     template <class Visit>
@@ -444,7 +288,7 @@ namespace Rtx
             // **Each mesh's own box carried through its instances**, rather than every vertex of
             // every instance — the difference between eight transforms per instance and several
             // hundred. The mesh kept it as its vertices arrived, so nothing is walked here at all.
-            const osg::BoundingBoxf& box = mMeshes[instance.mMesh].mBounds;
+            const osg::BoundingBoxf& box = mMeshTable.getRows()[instance.mMesh].mBounds;
             if (!box.valid())
                 continue;
 
@@ -487,9 +331,4 @@ namespace Rtx
         return bounds;
     }
 
-    std::size_t SceneDesc::getGeometryBytes() const
-    {
-        return mPositions.size() * sizeof(osg::Vec3f) + mNormals.size() * sizeof(osg::Vec3f)
-            + mTexCoords.size() * sizeof(osg::Vec2f) + mIndices.size() * sizeof(std::uint32_t);
-    }
 }

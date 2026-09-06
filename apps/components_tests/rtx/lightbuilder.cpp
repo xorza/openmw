@@ -1018,41 +1018,6 @@ namespace Rtx
             EXPECT_FLOAT_EQ(bare.mFog.mExtinction, 0.0f);
         }
 
-        /// Ash and blight blow off Red Mountain at whoever is standing in them.
-        ///
-        /// `apps/openmw/mwworld/weather.cpp:47` takes the direction from the volcano at (25000,
-        /// 70000) to the player, flattened to the ground. Every other weather leaves it due north,
-        /// which is `Weather::defaultStormDirection`.
-        TEST(RtxLightBuilderTest, anAshStormBlowsAwayFromRedMountainAndNothingElseTurnsAtAll)
-        {
-            const osg::Vec3f north(0.0f, 1.0f, 0.0f);
-
-            // A three-four-five triangle off the summit, so the unit vector is exact: (3, 4) over a
-            // length of 5 is (0.6, 0.8). The height is thrown away rather than normalised with the
-            // rest, which is what keeps the wind on the ground.
-            const osg::Vec3f standing(25003.0f, 70004.0f, 999.0f);
-            for (const std::uint32_t weather : { Rtx::Shaders::WEATHER_ASHSTORM, Rtx::Shaders::WEATHER_BLIGHT })
-            {
-                const osg::Vec3f blowing = stormDirection(weather, standing);
-                EXPECT_FLOAT_EQ(blowing.x(), 0.6f) << "weather " << weather;
-                EXPECT_FLOAT_EQ(blowing.y(), 0.8f) << "weather " << weather;
-                EXPECT_FLOAT_EQ(blowing.z(), 0.0f) << "weather " << weather;
-            }
-
-            // Due south of the mountain it points south, which is the half of "away from" that a
-            // fixed bearing would get wrong.
-            EXPECT_EQ(stormDirection(Rtx::Shaders::WEATHER_ASHSTORM, osg::Vec3f(25000.0f, 60000.0f, 0.0f)),
-                osg::Vec3f(0.0f, -1.0f, 0.0f));
-
-            // Standing on the summit there is no away, and a normalised zero is a frame of NaN.
-            EXPECT_EQ(stormDirection(Rtx::Shaders::WEATHER_ASHSTORM, osg::Vec3f(25000.0f, 70000.0f, 4000.0f)), north);
-
-            // Everything the mountain does not send reads the wind's own bearing wherever it stands.
-            for (const std::uint32_t weather : { Rtx::Shaders::WEATHER_CLEAR, Rtx::Shaders::WEATHER_RAIN,
-                     Rtx::Shaders::WEATHER_BLIZZARD, Rtx::Shaders::WEATHER_SNOW })
-                EXPECT_EQ(stormDirection(weather, standing), north) << "weather " << weather;
-        }
-
         /// An unlit record places a mesh and no light, a negative one is nonsense, and a carryable
         /// one burns where it lies.
         ///
