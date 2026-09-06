@@ -114,6 +114,16 @@ namespace Rtx
             vkDestroySemaphore(mDevice.getHandle(), semaphore, nullptr);
         mRendered.clear();
 
+        // **Waited before the semaphores they guard go.** A present holds its wait semaphore until
+        // the presentation engine is done, and only this says when that is: the device-idle above
+        // proves the queue is empty and nothing more.
+        for (const VkFence fence : mPresented)
+        {
+            awaitVk(mDevice, fence, "the presentation engine letting go of an image");
+            vkDestroyFence(mDevice.getHandle(), fence, nullptr);
+        }
+        mPresented.clear();
+
         for (const VkFence fence : mPresenting)
             vkDestroyFence(mDevice.getHandle(), fence, nullptr);
         mPresenting.clear();
@@ -159,6 +169,13 @@ namespace Rtx
         mPresenting.assign(images, VK_NULL_HANDLE);
         for (VkFence& fence : mPresenting)
             fence = makeSignalledFence(mDevice.getHandle());
+
+        if (mDevice.hasPresentFences())
+        {
+            mPresented.assign(images, VK_NULL_HANDLE);
+            for (VkFence& fence : mPresented)
+                fence = makeSignalledFence(mDevice.getHandle());
+        }
 
         // The fences those entries name have just been destroyed, and forgetting is the whole of
         // what is owed: the device was waited idle to get here, so every one of them had signalled.
@@ -233,6 +250,15 @@ namespace Rtx
         // cover, because it counts frames rather than images.
         awaitVk(mDevice, mPresenting[index], "the present that last used this image");
         checkVk(vkResetFences(mDevice.getHandle(), 1, &mPresenting[index]), "vkResetFences");
+
+        // And the present itself, which is a different moment: the blit's fence says the queue has
+        // run the copy, and this says the compositor has let go of what it copied into. Without it
+        // the semaphore below is signalled again while a present still waits on it.
+        if (!mPresented.empty())
+        {
+            awaitVk(mDevice, mPresented[index], "the presentation engine letting go of this image");
+            checkVk(vkResetFences(mDevice.getHandle(), 1, &mPresented[index]), "vkResetFences");
+        }
 
         const VkCommandBuffer commands = mCommands[index];
         const VkCommandBufferBeginInfo begin{
@@ -323,7 +349,7 @@ namespace Rtx
         acquisition.mBlit = mPresenting[index];
         rememberUse(frame.getHandle(), mPresenting[index]);
 
-        if (mSwapchain->present(mRendered[index], index))
+        if (mSwapchain->present(mRendered[index], index, mPresented.empty() ? VK_NULL_HANDLE : mPresented[index]))
             return true;
 
         mStale = true;

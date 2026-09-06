@@ -284,7 +284,7 @@ transition apiece, and the loop runs once when the volume is made rather than on
   offers, rather than assuming both, and never asks for an extent of zero. A minimised window is
   left alone rather than rebuilt once a frame against a surface that will not take one.
 
-**Stage 5 — four of six.**
+**Stage 5 — five of six.**
 
 - **The NGX capability map is destroyed.** The SDK tells `GetCapabilityParameters` apart from the
   deprecated `GetParameters` on exactly that, and `DlssPass` already released the one it allocates.
@@ -297,14 +297,17 @@ transition apiece, and the loop runs once when the volume is made rather than on
   `Renderer::renderFrame`'s promise of a frame without a placement true. On the ordinary path of a
   placement per frame the wait is already satisfied and costs a compare.
 
-**Left, with reasons:**
+- **Present fences.** `VK_KHR_swapchain_maintenance1` is negotiated beside `VK_KHR_surface_maintenance1`
+  and `VK_KHR_get_surface_capabilities2`, and the presenter waits the fence the presentation engine
+  signals — before it reuses the semaphore a present is still waiting on, and before it destroys the
+  semaphores and the swapchain. A device without the extension presents as before. The gate found the
+  missing instance dependency on the first windowed run; 180 frames under synchronization validation
+  are clean after it.
 
-- **Present fences through `VK_KHR_swapchain_maintenance1`.** The plumbing reaches the instance (its
-  surface half is an instance extension), the profile, the device, the swapchain and the presenter —
-  and the path it guards is teardown and resize, which only a window exercises. It is worth doing
-  next, with `view --frames` as the check.
+**Left:**
+
 - **BLAS compaction.** A size query, a second structure, a copy and a retirement, for a saving
-  nothing has measured. `scene` now reports 226 MiB of structures at `island-crossing`, so the
+  nothing has measured. `scene` reports 226 MiB of structures at `island-crossing`, so the
   measurement is available before the work — and should come first.
 
 ## Cost

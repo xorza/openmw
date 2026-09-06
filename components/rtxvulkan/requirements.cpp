@@ -48,6 +48,10 @@ namespace Rtx
             // against — most of all on a card whose host-visible heap is a couple of hundred
             // megabytes. `MemoryAllocator::report` is what reads it.
             VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
+            // A fence the presentation engine signals, which is the only thing that says it has
+            // finished with an image. `Presenter` retires its semaphores and its swapchain against
+            // one where the driver has it, and against a device-idle where it does not.
+            VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
         };
 
         constexpr std::array sRequiredDeviceFeatures{

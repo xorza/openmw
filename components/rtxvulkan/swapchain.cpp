@@ -246,10 +246,17 @@ namespace Rtx
         return true;
     }
 
-    bool Swapchain::present(VkSemaphore finished, std::uint32_t index)
+    bool Swapchain::present(VkSemaphore finished, std::uint32_t index, VkFence presented)
     {
+        const VkSwapchainPresentFenceInfoKHR signalled{
+            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_KHR,
+            .swapchainCount = 1,
+            .pFences = &presented,
+        };
+
         const VkPresentInfoKHR present{
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = presented != VK_NULL_HANDLE ? &signalled : nullptr,
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &finished,
             .swapchainCount = 1,

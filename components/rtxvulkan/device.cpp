@@ -63,7 +63,16 @@ namespace Rtx
         for (const char* const name : getRequiredDeviceExtensions())
             extensions.push_back(name);
         for (const char* const name : mPhysicalDevice.getAvailableOptionalExtensions())
+        {
+            // **The swapchain half rests on the surface half**, which is an instance extension: a
+            // headless run loads neither, and a device that asked for this one without it is a
+            // device the driver may refuse.
+            if (std::strcmp(name, VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0
+                && !instance.hasSurfaceMaintenance())
+                continue;
+
             extensions.push_back(name);
+        }
 #ifdef OPENMW_RTX_DLSS
         // What NGX asks for, which it will not start without. Appended rather than added to the
         // required list because that list is what this renderer needs to trace at all, and a build
@@ -89,23 +98,53 @@ namespace Rtx
         DeviceFeatures features;
         requestRequiredFeatures(features);
 
-        // **Outside `DeviceFeatures`, because it is the one feature that is optional.** That type is
-        // what the renderer requires, asked and enabled as one list, and a feature it can do without
-        // has no place in a list a device is refused for lacking. Asked of the physical device here,
-        // because a driver may offer the extension without the feature, and chained ahead of the
-        // required ones where it has it.
+        // **Outside `DeviceFeatures`, because these are the features that are optional.** That type
+        // is what the renderer requires, asked and enabled as one list, and a feature it can do
+        // without has no place in a list a device is refused for lacking.
         VkPhysicalDeviceFaultFeaturesEXT fault{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT };
-        if (mPhysicalDevice.hasOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME))
+        VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR presentFences{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_KHR,
+        };
+
+        const bool offersFault = mPhysicalDevice.hasOptionalExtension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
+        const bool offersPresentFences = instance.hasSurfaceMaintenance()
+            && mPhysicalDevice.hasOptionalExtension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+
+        // **Only what the device offers is chained, into the query and into the creation alike.** A
+        // driver may offer an extension without the feature it provides, so each has to be asked;
+        // asking for one whose extension is not there is a structure the driver was never told to
+        // expect.
+        void* asked = nullptr;
+        const auto chain = [&asked](auto& structure) {
+            structure.pNext = asked;
+            asked = &structure;
+        };
+
+        if (offersFault)
+            chain(fault);
+        if (offersPresentFences)
+            chain(presentFences);
+
+        if (asked != nullptr)
         {
-            VkPhysicalDeviceFeatures2 offered{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &fault };
+            VkPhysicalDeviceFeatures2 offered{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = asked };
             vkGetPhysicalDeviceFeatures2(mPhysicalDevice.getHandle(), &offered);
 
             // The vendor binary is not asked for: nothing here could read it, and a feature enabled
             // for nothing is a feature to explain.
             fault.deviceFaultVendorBinary = VK_FALSE;
-            fault.pNext = &features.mFeatures2;
         }
-        const bool describesFault = fault.deviceFault == VK_TRUE;
+
+        const bool describesFault = offersFault && fault.deviceFault == VK_TRUE;
+        mPresentFences = offersPresentFences && presentFences.swapchainMaintenance1 == VK_TRUE;
+
+        // The same chain again, of what the device turned out to have rather than what it offered,
+        // in front of the features the renderer requires.
+        asked = &features.mFeatures2;
+        if (describesFault)
+            chain(fault);
+        if (mPresentFences)
+            chain(presentFences);
 
         const float priority = 1.0f;
         const VkDeviceQueueCreateInfo queue{
@@ -117,7 +156,7 @@ namespace Rtx
 
         const VkDeviceCreateInfo createInfo{
             .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-            .pNext = describesFault ? static_cast<const void*>(&fault) : &features.mFeatures2,
+            .pNext = asked,
             .queueCreateInfoCount = 1,
             .pQueueCreateInfos = &queue,
             .enabledExtensionCount = static_cast<std::uint32_t>(extensions.size()),

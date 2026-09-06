@@ -62,6 +62,10 @@ namespace Rtx
         /// instance the way its handle is.
         ValidationLog* getValidationLog() const { return mValidationLog.get(); }
 
+        /// Whether `VK_KHR_surface_maintenance1` was loaded, which the device's swapchain half needs
+        /// beside it. False for a headless instance, which has no surface to maintain.
+        bool hasSurfaceMaintenance() const { return mSurfaceMaintenance; }
+
         /// Whether `VK_EXT_debug_utils` was enabled, which is what object names and command-buffer
         /// labels need. True whenever this build names objects, not only under validation — a
         /// capture is worth having without paying for the layers.
@@ -72,6 +76,7 @@ namespace Rtx
 
     private:
         // Held by pointer so the address handed to the debug callback survives everything.
+        bool mSurfaceMaintenance = false;
         std::unique_ptr<ValidationLog> mValidationLog;
         VkInstance mHandle = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT mMessenger = VK_NULL_HANDLE;

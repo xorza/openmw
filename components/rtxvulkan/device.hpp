@@ -78,6 +78,14 @@ namespace Rtx
         /// Out of line because the allocator is only forward-declared here.
         MemoryAllocator& getMemory() const;
 
+        /// Whether `vkQueuePresentKHR` may be handed a fence it signals when the presentation
+        /// engine has finished with an image.
+        ///
+        /// **The only thing that says so.** A queue-idle proves the queue is empty, not that the
+        /// compositor has let go, so a presenter without this retires its semaphores against a wait
+        /// the specification does not promise covers them.
+        bool hasPresentFences() const { return mPresentFences; }
+
         /// Handed to every `vkCreate*Pipelines` on this device, so that a shader is compiled once
         /// per change rather than once per pipeline.
         ///
@@ -183,6 +191,8 @@ namespace Rtx
         /// Null where the driver offers no `VK_EXT_device_fault`, or offers the extension without
         /// its feature.
         PFN_vkGetDeviceFaultInfoEXT mGetDeviceFaultInfo = nullptr;
+
+        bool mPresentFences = false;
 
         // Last, so that they are torn down first: saving the cache reads from the device, and
         // freeing a block writes to it, which the members above are still holding open at that

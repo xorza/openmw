@@ -132,6 +132,20 @@ namespace Rtx
         /// present is still outstanding.
         std::vector<VkFence> mPresenting;
 
+        /// What the presentation engine signals when it has finished with each image, where the
+        /// device offers `VK_KHR_swapchain_maintenance1`. Empty where it does not.
+        ///
+        /// **The only thing that says a present is over.** `mPresenting` belongs to the blit's
+        /// submit, and a queue-idle proves the queue is empty rather than that the compositor has
+        /// let go — so without these the semaphore a present waits on is destroyed against a
+        /// guarantee the specification does not make.
+        ///
+        /// **A present that failed signals its fence too**, which is what makes waiting on every one
+        /// of these safe: the specification states that a request the presentation engine rejects
+        /// with `VK_ERROR_OUT_OF_DATE_KHR` leaves its queue operations enqueued, so the signal still
+        /// happens. A stale swapchain is the ordinary way a window is resized.
+        std::vector<VkFence> mPresented;
+
         std::vector<VkCommandBuffer> mCommands;
 
         /// Which present a frame image was last read by. One entry per image the renderer alternates

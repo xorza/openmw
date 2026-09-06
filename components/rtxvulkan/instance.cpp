@@ -78,6 +78,20 @@ namespace Rtx
 #else
         const bool wantDebugUtils = options.mValidation;
 #endif
+        // **What the device half of swapchain maintenance rests on.** A present fence is the only
+        // thing that says the presentation engine has finished with an image, and the device
+        // extension that provides one requires these alongside it — the second because the first is
+        // an extension of the capability query rather than of the surface. Taken where the loader
+        // has both, so a driver without them presents as before.
+        mSurfaceMaintenance = !options.mSurfaceExtensions.empty()
+            && hasInstanceExtension(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME)
+            && hasInstanceExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+        if (mSurfaceMaintenance)
+        {
+            extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+            extensions.push_back(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+        }
+
         mDebugUtils = wantDebugUtils && hasInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
         // Validation reaches us only through the messenger, so without the extension it would run

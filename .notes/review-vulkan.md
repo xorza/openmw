@@ -24,14 +24,6 @@ more. What is left is defects the hardware does not decide.
 
 ---
 
-## P2
-
-- [ ] **Presentation resources are retired on a queue-idle rather than on a present.**
-      `presenter.cpp:94` waits the device, then destroys the present semaphores and the swapchain.
-      `mPresenting` belongs to the blit's submit, not to `vkQueuePresentKHR`, and an unextended idle
-      wait does not prove the presentation engine is done. `VK_EXT_swapchain_maintenance1` is present
-      on both Turing reports, so present fences are available on every card this targets.
-
 ## P3 — performance, unmeasured
 
 - [ ] **A block is sized from the heap and not from the budget.** `blockBytes` takes a sixteenth of
