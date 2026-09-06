@@ -14,11 +14,11 @@ namespace Rtx
     {
         std::string mText;
 
-        /// The thread the offending Vulkan call was made on.
+        /// The thread this message is filed under: the one that made the call, or the one
+        /// `AdoptedThread` names in its place.
         ///
-        /// Validation callbacks fire synchronously on the calling thread, and the test binary runs
-        /// tests in parallel against one shared log. Without this, the first test to provoke an
-        /// error would fail every test that checked after it.
+        /// The test binary runs tests in parallel against one shared log, so without this the first
+        /// test to provoke an error would fail every test that collected after it.
         std::thread::id mThread;
     };
 
@@ -57,8 +57,15 @@ namespace Rtx
         /// Called from the Vulkan debug callback, on whichever thread it fires.
         void recordError(std::string&& text);
 
-        /// Errors raised by Vulkan calls made on the calling thread.
-        std::vector<ValidationMessage> getErrorsOnThisThread() const;
+        /// Appends the errors raised by Vulkan calls made on the calling thread, and removes them.
+        ///
+        /// **Taken rather than read, and under the one lock.** A message arriving between a read and
+        /// a separate clear is a message nobody ever sees, and a collector that reads without
+        /// removing hands the same error to the next caller as well.
+        ///
+        /// The text only: which thread a message was filed under is how this log finds it, and no
+        /// caller has anything to do with the answer.
+        void takeErrorsOnThisThread(std::vector<std::string>& out);
 
         void clear();
 
@@ -66,6 +73,26 @@ namespace Rtx
         const ValidationPolicy mPolicy;
         mutable std::mutex mMutex;
         std::vector<ValidationMessage> mErrors;
+    };
+
+    /// Files this thread's validation errors under `owner` for as long as it stands.
+    ///
+    /// **What keeps a worker's mistake with the caller that started it.** Pipeline compilation runs
+    /// a thread per core and the layers report on whichever thread made the call, so an error raised
+    /// inside a worker is filed under a thread nobody ever collects from. The log is filed by thread
+    /// at all because the test binary runs tests in parallel against one shared log, so the answer
+    /// is to move the message rather than to stop filing.
+    class AdoptedThread
+    {
+    public:
+        explicit AdoptedThread(std::thread::id owner);
+        ~AdoptedThread();
+
+        AdoptedThread(const AdoptedThread&) = delete;
+        AdoptedThread& operator=(const AdoptedThread&) = delete;
+
+    private:
+        std::thread::id mPrevious;
     };
 
     /// Fills in a messenger description that routes every severity to `log`.

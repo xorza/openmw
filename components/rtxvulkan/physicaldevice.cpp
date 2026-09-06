@@ -8,6 +8,7 @@
 
 #include <components/rtx/error.hpp>
 
+#include "memory.hpp"
 #include "result.hpp"
 
 namespace Rtx
@@ -72,11 +73,8 @@ namespace Rtx
         /// does not target.
         bool hasResizableBar(const VkPhysicalDeviceMemoryProperties& memory)
         {
-            constexpr VkMemoryPropertyFlags wanted = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-                | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
             for (std::uint32_t i = 0; i < memory.memoryTypeCount; ++i)
-                if ((memory.memoryTypes[i].propertyFlags & wanted) == wanted)
+                if ((memory.memoryTypes[i].propertyFlags & sHostWritten) == sHostWritten)
                     return true;
 
             return false;

@@ -166,7 +166,9 @@ namespace Rtx
 
             mPipelineCache = std::make_unique<PipelineCache>(
                 mHandle, mPhysicalDevice.getProperties().mProperties2.properties, cache);
-            mMemory = std::make_unique<MemoryAllocator>(mHandle, mPhysicalDevice.getProperties().mMemory);
+            mMemory = std::make_unique<MemoryAllocator>(mHandle, mPhysicalDevice.getHandle(),
+                mPhysicalDevice.getProperties().mMemory,
+                mPhysicalDevice.hasOptionalExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME));
         }
         catch (...)
         {

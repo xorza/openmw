@@ -11,10 +11,6 @@ namespace Rtx
 {
     namespace
     {
-        /// Video memory the host can write. Required rather than fallen back from — see `Requirements`.
-        constexpr VkMemoryPropertyFlags sResizableBar = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-            | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
         constexpr VkMemoryPropertyFlags sStaging
             = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     }
@@ -60,7 +56,7 @@ namespace Rtx
 
     Buffer Buffer::hostWritten(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage)
     {
-        return Buffer(device, size, usage, sResizableBar, false);
+        return Buffer(device, size, usage, sHostWritten, false);
     }
 
     Buffer Buffer::staging(const Device& device, VkDeviceSize size, VkBufferUsageFlags usage)

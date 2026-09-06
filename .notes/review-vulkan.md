@@ -142,15 +142,6 @@ are below.
 
       Free the old buffers, or reuse them and only reallocate when the image count changes.
 
-- [ ] **Validation can report clean because it never ran, and worker errors are dropped.**
-      `instance.cpp:87` continues with a warning when the layer or debug-utils extension is missing,
-      so `takeValidationErrors` returns nothing and a gate reads it as a pass. Separately,
-      `vulkanrenderer.cpp:1511` collects only the calling thread's messages and then clears the whole
-      log — so every error raised on a pipeline compile worker disappears.
-
-      Make a run that asked for validation fail by name when it cannot have it, and drain all
-      messages under the one lock.
-
 - [ ] **Presentation resources are retired on a queue-idle rather than on a present.**
       `presenter.cpp:94` waits the device, then destroys the present semaphores and the swapchain.
       `mPresenting` belongs to the blit's submit, not to `vkQueuePresentKHR`, and an unextended idle
@@ -163,14 +154,13 @@ are below.
 
 ## P3 — performance, unmeasured
 
-- [ ] **The allocator never gives a block back, and never asks what it may have.** `memory.cpp:206`
-      releases suballocation ranges only; blocks live until the device does. Pools are split by
-      memory type and tiling, so free space in one cannot serve another, and `blockBytes` sizes from
-      the static heap size with no `VK_EXT_memory_budget` query — the extension is present on both
-      Turing reports. A 6 GiB card is where this stops being theoretical.
+- [ ] **The allocator never gives a block back.** `memory.cpp` releases suballocation ranges only;
+      blocks live until the device does. Pools are split by memory type and tiling, so free space in
+      one cannot serve another, and `blockBytes` still sizes from the static heap size rather than
+      from the budget it can now read. A 6 GiB card is where this stops being theoretical.
 
-      Account reserved, live and budgeted bytes per heap, and retire an empty block incrementally
-      rather than on a sweep.
+      Retire an empty block incrementally rather than on a sweep, and size a new one against the
+      budget.
 
 - [ ] **Static acceleration structures are never compacted.** `sceneacceleration.cpp:328` asks for
       fast trace and data access, and update only for deforming meshes, but never

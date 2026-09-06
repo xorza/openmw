@@ -747,6 +747,7 @@ namespace MWRender
         place.mHitPercent = mHitPercent;
         place.mCrossings = mHeld->mCrossings;
         place.mScene = renderer.getSceneStats();
+        place.mMemory = renderer.getMemoryReport();
 
         const std::span<const Rtx::GpuZone> zones = mHeld->mGpu.summariseZones();
         place.mGpu.assign(zones.begin(), zones.end());

@@ -43,6 +43,11 @@ namespace Rtx
             // how precisely they are known, and what the vendor adds. `Device::describeFault` is
             // what reads it, and `Device` enables its feature where the driver has it.
             VK_EXT_DEVICE_FAULT_EXTENSION_NAME,
+            // **What the driver says is left, which the heap's own size does not.** A budget moves
+            // with whatever else is on the card, and it is the figure a residency decision belongs
+            // against — most of all on a card whose host-visible heap is a couple of hundred
+            // megabytes. `MemoryAllocator::report` is what reads it.
+            VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
         };
 
         constexpr std::array sRequiredDeviceFeatures{

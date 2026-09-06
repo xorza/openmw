@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <components/rtx/frametimes.hpp>
+#include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/reorder.hpp>
@@ -109,6 +110,13 @@ namespace Rtx
         double mTravelled = 1.0;
 
         SceneStats mScene;
+
+        /// What the device gave up for that scene, per heap.
+        ///
+        /// **A place and not a run**, because a route arrives at cells the last one did not: what
+        /// the allocators reserve is a high-water mark, so the figure belongs to the place the run
+        /// had reached when it was taken.
+        MemoryReport mMemory;
     };
 
     /// What every place of a run stood under, for the record's own header.

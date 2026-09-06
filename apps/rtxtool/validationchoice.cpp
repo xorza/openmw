@@ -24,6 +24,10 @@ namespace RtxTool
         // carries it.
         options.mEnabled = layers.mValue || options.mSynchronization || options.mGpuAssisted;
 
+        // **Named on the command line, and not merely left on by the build.** A run that asked is a
+        // run whose answer is worthless without the layers, so it fails rather than reports nothing.
+        options.mDemanded = layers.isAsked() || sync.isAsked() || gpu.isAsked();
+
         return options;
     }
 }

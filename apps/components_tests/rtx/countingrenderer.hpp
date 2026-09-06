@@ -76,6 +76,7 @@ namespace Rtx::Testing
         }
 
         const Rtx::SceneStats& getSceneStats() const override { return mStats; }
+        Rtx::MemoryReport getMemoryReport() const override { return {}; }
         void resize(std::uint32_t, std::uint32_t) override {}
         void setUpscale(Upscale upscale) override { mUpscale = upscale; }
         Upscale getUpscale() const override { return mUpscale; }

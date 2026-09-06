@@ -54,6 +54,8 @@ set(RTX_FILES
     lightgrid.hpp
     meantexel.cpp
     meantexel.hpp
+    memoryreport.cpp
+    memoryreport.hpp
     meshinstance.hpp
     materialresolver.cpp
     materialresolver.hpp

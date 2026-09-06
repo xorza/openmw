@@ -29,6 +29,9 @@ namespace Rtx
 
         ValidationPolicy mPolicy = ValidationPolicy::Abort;
 
+        /// Whether validation was asked for by name. `Rtx::ValidationOptions::mDemanded` says why.
+        bool mDemanded = false;
+
         /// Surface extensions, when there is a window. Empty for the headless path, which is why
         /// `openmw-rtxtool` works over ssh.
         std::vector<const char*> mSurfaceExtensions;

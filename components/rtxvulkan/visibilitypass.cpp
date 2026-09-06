@@ -23,6 +23,7 @@
 #include "gbuffer.hpp"
 #include "gputimer.hpp"
 #include "scenebuffers.hpp"
+#include "validation.hpp"
 #include "wavepass.hpp"
 
 namespace Rtx
@@ -204,7 +205,15 @@ namespace Rtx
         std::mutex kept;
         std::exception_ptr failed;
 
+        const std::thread::id caller = std::this_thread::get_id();
+
         const auto compile = [&] {
+            // **So that a worker's validation error reaches whoever asked for these pipelines.** The
+            // layers report on the thread that made the call, and the log files by thread because the
+            // test binary runs tests in parallel against one of them — an error left filed under a
+            // worker is one nobody ever collects.
+            const AdoptedThread adopted(caller);
+
             for (std::size_t at = next++; at < wanted.size(); at = next++)
             {
                 try

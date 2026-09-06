@@ -71,5 +71,29 @@ namespace RtxTool
             EXPECT_TRUE(chooseValidation(quiet, sAsked, quiet, false).mEnabled);
             EXPECT_TRUE(chooseValidation(quiet, quiet, sAsked, false).mEnabled);
         }
+
+        /// A run that named a layer demands it; a build that switched one on does not.
+        ///
+        /// **The difference decides whether a missing layer stops the run.** Without the layers
+        /// nothing reports, so a gate that asked for them and got none reads an empty log as a pass
+        /// — while a developer whose build turned them on by default still wants a renderer that
+        /// starts. `Rtx::ValidationOptions::mDemanded` is what tells the two apart.
+        TEST(RtxValidationChoiceTest, onlyASwitchNamedOnTheCommandLineDemandsTheLayers)
+        {
+            constexpr CommandSwitch quiet{ .mValue = false, .mGiven = false };
+
+            EXPECT_FALSE(chooseValidation(sDefaultOn, sDefaultOn, sDefaultOn, false).mDemanded)
+                << "a build default demanded the layers";
+            EXPECT_FALSE(chooseValidation(sRefused, quiet, quiet, false).mDemanded)
+                << "turning the layers down demanded them";
+
+            EXPECT_TRUE(chooseValidation(sAsked, quiet, quiet, false).mDemanded);
+            EXPECT_TRUE(chooseValidation(quiet, sAsked, quiet, false).mDemanded);
+            EXPECT_TRUE(chooseValidation(quiet, quiet, sAsked, false).mDemanded);
+
+            // A demand for the finer layer stands even against a refusal of the coarser one, which
+            // is the same rule `mEnabled` follows above.
+            EXPECT_TRUE(chooseValidation(sRefused, sAsked, quiet, false).mDemanded);
+        }
     }
 }

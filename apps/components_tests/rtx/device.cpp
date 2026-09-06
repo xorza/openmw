@@ -37,9 +37,10 @@ namespace Rtx
                 if (mHarness == nullptr)
                     return;
 
-                for (const ValidationMessage& message :
-                    mHarness->mInstance->getValidationLog()->getErrorsOnThisThread())
-                    ADD_FAILURE() << "validation error: " << message.mText;
+                std::vector<std::string> raised;
+                mHarness->mInstance->getValidationLog()->takeErrorsOnThisThread(raised);
+                for (const std::string& message : raised)
+                    ADD_FAILURE() << "validation error: " << message;
             }
         };
 

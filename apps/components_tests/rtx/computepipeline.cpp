@@ -1,6 +1,7 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -55,8 +56,10 @@ namespace Rtx
             log->clear();
             device.reset();
 
-            for (const ValidationMessage& message : log->getErrorsOnThisThread())
-                ADD_FAILURE() << "validation error at device teardown: " << message.mText;
+            std::vector<std::string> raised;
+            log->takeErrorsOnThisThread(raised);
+            for (const std::string& message : raised)
+                ADD_FAILURE() << "validation error at device teardown: " << message;
         }
     }
 }

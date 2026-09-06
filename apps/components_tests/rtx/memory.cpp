@@ -1,11 +1,15 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <components/rtx/memoryreport.hpp>
 #include <components/rtxvulkan/device.hpp>
 #include <components/rtxvulkan/memory.hpp>
+#include <components/rtxvulkan/physicaldevice.hpp>
 
 #include "harness.hpp"
 
@@ -181,6 +185,115 @@ namespace Rtx
                 EXPECT_EQ(other - one, static_cast<std::ptrdiff_t>(second.getOffset() - first.getOffset()))
                     << "a range's address is not its block's plus its offset";
             }
+        }
+
+        /// The report accounts for every block, and a range taken moves the live figure and not the
+        /// reserved one.
+        ///
+        /// **What Stage 0 of `.notes/design-vulkan.md` exists for.** A card whose host-visible heap
+        /// is a couple of hundred megabytes fails on a figure nothing in this renderer could state,
+        /// so the first thing to get right is that the figure is real: reserved is what
+        /// `vkAllocateMemory` asked for, live is what is inside it, and one never exceeds the other.
+        TEST_F(RtxMemoryTest, theReportCountsWhatWasReservedAndWhatIsLive)
+        {
+            MemoryAllocator& memory = getDevice().getMemory();
+
+            const MemoryReport before = memory.report();
+            ASSERT_GT(before.mHeapCount, 0u) << "a device with no memory heaps";
+
+            const auto live = [](const MemoryReport& report) {
+                std::uint64_t total = 0;
+                for (std::uint32_t heap = 0; heap < report.mHeapCount; ++heap)
+                    total += report.mHeaps[heap].mLive;
+
+                return total;
+            };
+
+            // Half a block, so the range cannot come out of a hole an earlier test left and cannot
+            // help but be visible in the live figure.
+            constexpr VkDeviceSize wanted = 4 * 1024 * 1024;
+            const DeviceMemory held
+                = memory.take(asks(wanted, 1024), VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal);
+
+            const MemoryReport during = memory.report();
+            EXPECT_EQ(during.mHeapCount, before.mHeapCount);
+            EXPECT_GE(live(during), live(before) + wanted)
+                << "a range of " << wanted << " bytes did not show in the live figure";
+
+            for (std::uint32_t heap = 0; heap < during.mHeapCount; ++heap)
+            {
+                const HeapUse& use = during.mHeaps[heap];
+                EXPECT_LE(use.mLive, use.mReserved) << "heap " << heap << " holds more than it reserved";
+                EXPECT_LE(use.mReserved, use.mSize) << "heap " << heap << " reserved more than it has";
+                EXPECT_EQ(use.mBlocks == 0, use.mReserved == 0) << "heap " << heap << " counted blocks and no bytes";
+            }
+
+            std::uint32_t blocks = 0;
+            for (std::uint32_t heap = 0; heap < during.mHeapCount; ++heap)
+                blocks += during.mHeaps[heap].mBlocks;
+            EXPECT_EQ(blocks, memory.getBlockCount()) << "the report left a block out";
+        }
+
+        /// A heap is called host-visible in the report when it carries a type `Buffer::hostWritten`
+        /// could take a range out of, and not otherwise.
+        ///
+        /// **The question a Turing card fails.** Its host-visible video memory heap is 246 MiB
+        /// beside six gigabytes of ordinary video memory, so which heap is which is the whole of
+        /// what a residency decision reads.
+        TEST_F(RtxMemoryTest, aHostVisibleHeapIsTheOneAHostWrittenBufferCouldComeOutOf)
+        {
+            const VkPhysicalDeviceMemoryProperties& properties
+                = getDevice().getPhysicalDevice().getProperties().mMemory;
+
+            std::vector<bool> expected(properties.memoryHeapCount, false);
+            for (std::uint32_t type = 0; type < properties.memoryTypeCount; ++type)
+                if ((properties.memoryTypes[type].propertyFlags & sHostWritten) == sHostWritten)
+                    expected[properties.memoryTypes[type].heapIndex] = true;
+
+            const MemoryReport report = getDevice().getMemory().report();
+            ASSERT_EQ(report.mHeapCount, properties.memoryHeapCount);
+            for (std::uint32_t heap = 0; heap < report.mHeapCount; ++heap)
+                EXPECT_EQ(report.mHeaps[heap].mHostVisible, expected[heap]) << "heap " << heap;
+
+            // The renderer requires such a heap, so a device that reached here has one.
+            EXPECT_NE(std::find(expected.begin(), expected.end(), true), expected.end())
+                << "no heap the host writes into, on a device this renderer accepted";
+        }
+
+        /// A budget the driver would not state is left out of the line rather than printed as none.
+        ///
+        /// **Zero and "would not say" are different answers**, and a reader who cannot tell them
+        /// apart reads a card with no budget extension as a card with no memory left.
+        TEST(RtxMemoryReportTest, aHeapWithNoBudgetLeavesTheBudgetColumnsOut)
+        {
+            MemoryReport report;
+            report.mHeapCount = 2;
+            report.mHeaps[0]
+                = HeapUse{ .mSize = 8ull << 30, .mReserved = 512ull << 20, .mLive = 256ull << 20, .mBlocks = 8 };
+            report.mHeaps[1] = HeapUse{ .mSize = 256ull << 20,
+                .mBudget = 240ull << 20,
+                .mHeld = 100ull << 20,
+                .mReserved = 128ull << 20,
+                .mLive = 120ull << 20,
+                .mBlocks = 4,
+                .mHostVisible = true };
+
+            report.mHostWrittenReserved = 128ull << 20;
+            report.mHostWrittenLive = 120ull << 20;
+
+            const std::string out = describeMemory(report);
+
+            EXPECT_EQ(out.find("budget"), out.rfind("budget")) << "the heap with no budget printed one";
+
+            // **The line that answers the Turing question**, and the only one that can on a card
+            // whose one video memory heap is host-visible throughout.
+            EXPECT_NE(out.find("host-written"), std::string::npos);
+            EXPECT_EQ(std::count(out.begin(), out.end(), '\n'), 3) << "a line a heap, and the one below them";
+            EXPECT_NE(out.find("device-only"), std::string::npos);
+            EXPECT_NE(out.find("host-visible"), std::string::npos);
+            EXPECT_NE(out.find("8192.0 MiB"), std::string::npos) << "the first heap's size";
+            EXPECT_NE(out.find("256.0 MiB"), std::string::npos) << "the second heap's size";
+            EXPECT_EQ(out.substr(0, 2), "  ") << "the lines were not indented as asked";
         }
     }
 }

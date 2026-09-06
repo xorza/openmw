@@ -99,9 +99,10 @@ namespace Rtx
 
                 mPass.reset();
 
-                for (const ValidationMessage& message :
-                    mHarness->mInstance->getValidationLog()->getErrorsOnThisThread())
-                    ADD_FAILURE() << "validation error: " << message.mText;
+                std::vector<std::string> raised;
+                mHarness->mInstance->getValidationLog()->takeErrorsOnThisThread(raised);
+                for (const std::string& message : raised)
+                    ADD_FAILURE() << "validation error: " << message;
             }
 
             /// Clears a target to `sBackground`, records `draws` over it, and hands back the pixels.

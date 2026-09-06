@@ -13,6 +13,7 @@
 
 #include <components/sdlutil/vsyncmode.hpp>
 
+#include "memoryreport.hpp"
 #include "reconstruction.hpp"
 #include "reorder.hpp"
 #include "shaders/visibility.h"
@@ -47,6 +48,14 @@ namespace Rtx
         /// Stop the process on the first error. Off for a test suite, which provokes errors
         /// deliberately and would otherwise take the whole run down with the first one.
         bool mAbortOnError = true;
+
+        /// Whether somebody asked for this by name, rather than a build turning it on.
+        ///
+        /// **A run that asked for the layers and could not have them fails naming what is missing.**
+        /// Without them the log stays empty, and a gate reads that as a clean pass — which is worse
+        /// than not checking at all. A build that switched them on by default only warns, because a
+        /// developer without the layers installed still has a renderer to run.
+        bool mDemanded = false;
     };
 
     /// Whether the validation layers load without anyone asking.
@@ -597,6 +606,15 @@ namespace Rtx
 
         /// Only meaningful once `setScene` has been called.
         virtual const SceneStats& getSceneStats() const = 0;
+
+        /// What the renderer has taken from each of the device's memory heaps.
+        ///
+        /// **Asked once at a place and never once a frame.** It walks every allocation the backend
+        /// holds, which costs nothing beside a cell arriving and is what answers "would this run fit
+        /// on a card whose host-visible heap is a couple of hundred megabytes" — a question
+        /// `SceneStats` cannot put, because that counts what the scene is and this counts what the
+        /// device gave up for it.
+        virtual MemoryReport getMemoryReport() const = 0;
 
         /// Resizes the **presented** image. What the trace runs at follows from the upscaler, and
         /// `getExtents` is what says. Kept by the backend, so nothing here allocates per frame.

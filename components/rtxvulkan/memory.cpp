@@ -23,6 +23,21 @@ namespace Rtx
         constexpr VkDeviceSize sSmallestBlock = 8 * 1024 * 1024;
         constexpr VkDeviceSize sLargestBlock = 64 * 1024 * 1024;
 
+        /// The pool a resource of `type` and `tiling` comes out of, and the type it was made from.
+        ///
+        /// **One number, because a block names its pool and nothing else about it.** Written here
+        /// rather than at the two places that pack and unpack it, so a report reading a block's type
+        /// back cannot disagree with what `take` put in.
+        std::uint32_t poolOf(std::uint32_t type, Tiling tiling)
+        {
+            return 2 * type + (tiling == Tiling::Linear ? 0u : 1u);
+        }
+
+        std::uint32_t typeOf(std::uint32_t pool)
+        {
+            return pool / 2;
+        }
+
         /// How many pages a resource of `size` needs, given where its `alignment` may push it.
         ///
         /// A page boundary is already a multiple of every alignment up to a page, so only a coarser
@@ -84,9 +99,12 @@ namespace Rtx
         return *this;
     }
 
-    MemoryAllocator::MemoryAllocator(VkDevice device, const VkPhysicalDeviceMemoryProperties& memory)
+    MemoryAllocator::MemoryAllocator(
+        VkDevice device, VkPhysicalDevice physicalDevice, const VkPhysicalDeviceMemoryProperties& memory, bool budget)
         : mDevice(device)
+        , mPhysicalDevice(physicalDevice)
         , mMemory(memory)
+        , mBudget(budget)
     {
     }
 
@@ -145,7 +163,7 @@ namespace Rtx
         assert(requirements.size > 0);
 
         const std::uint32_t type = findType(requirements.memoryTypeBits, properties);
-        const std::uint32_t pool = 2 * type + (tiling == Tiling::Linear ? 0u : 1u);
+        const std::uint32_t pool = poolOf(type, tiling);
         const std::uint32_t pages = pagesFor(requirements.size, requirements.alignment);
 
         std::uint32_t held = 0;
@@ -206,5 +224,67 @@ namespace Rtx
     void MemoryAllocator::give(std::uint32_t block, Span run)
     {
         mBlocks[block].mRuns.release(run);
+    }
+
+    MemoryReport MemoryAllocator::report() const
+    {
+        MemoryReport out;
+        out.mHeapCount = std::min<std::uint32_t>(mMemory.memoryHeapCount, MemoryReport::sMaxHeaps);
+
+        for (std::uint32_t heap = 0; heap < out.mHeapCount; ++heap)
+            out.mHeaps[heap].mSize = mMemory.memoryHeaps[heap].size;
+
+        // **What a heap is for, taken off its types rather than off the heap.** Vulkan states the
+        // host's access on the memory type and only the device's on the heap, so a heap is
+        // host-visible here when any type in it is — which is what makes the small aperture of a
+        // card without resizable BAR tell itself apart from the video memory beside it.
+        for (std::uint32_t type = 0; type < mMemory.memoryTypeCount; ++type)
+        {
+            const std::uint32_t heap = mMemory.memoryTypes[type].heapIndex;
+            if (heap < out.mHeapCount && (mMemory.memoryTypes[type].propertyFlags & sHostWritten) == sHostWritten)
+                out.mHeaps[heap].mHostVisible = true;
+        }
+
+        for (const Block& block : mBlocks)
+        {
+            const std::uint32_t type = typeOf(block.mPool);
+            const VkDeviceSize reserved = VkDeviceSize{ block.mPages } * sPage;
+            const VkDeviceSize live = VkDeviceSize{ block.mRuns.getEnd() - block.mRuns.getFree() } * sPage;
+
+            if ((mMemory.memoryTypes[type].propertyFlags & sHostWritten) == sHostWritten)
+            {
+                out.mHostWrittenReserved += reserved;
+                out.mHostWrittenLive += live;
+            }
+
+            const std::uint32_t heap = mMemory.memoryTypes[type].heapIndex;
+            if (heap >= out.mHeapCount)
+                continue;
+
+            HeapUse& use = out.mHeaps[heap];
+            use.mReserved += reserved;
+            use.mLive += live;
+            ++use.mBlocks;
+        }
+
+        if (mBudget)
+        {
+            VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT,
+            };
+            VkPhysicalDeviceMemoryProperties2 properties{
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
+                .pNext = &budget,
+            };
+            vkGetPhysicalDeviceMemoryProperties2(mPhysicalDevice, &properties);
+
+            for (std::uint32_t heap = 0; heap < out.mHeapCount; ++heap)
+            {
+                out.mHeaps[heap].mBudget = budget.heapBudget[heap];
+                out.mHeaps[heap].mHeld = budget.heapUsage[heap];
+            }
+        }
+
+        return out;
     }
 }

@@ -6,6 +6,7 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <components/rtx/memoryreport.hpp>
 #include <components/rtx/spanallocator.hpp>
 
 #include "owned.hpp"
@@ -24,6 +25,15 @@ namespace Rtx
     {
         return (value + alignment - 1) / alignment * alignment;
     }
+
+    /// Video memory the host writes into and the device reads.
+    ///
+    /// **One statement, because three places ask the same question of it.** `Buffer::hostWritten`
+    /// asks for memory that is this, `MemoryAllocator::report` counts what went into it, and a
+    /// device offering no such type is refused. A report counting a different set from the one the
+    /// buffers ask for would answer a question nobody put.
+    inline constexpr VkMemoryPropertyFlags sHostWritten = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
     /// Which side of `bufferImageGranularity` a resource sits on.
     ///
@@ -96,8 +106,10 @@ namespace Rtx
     /// `bufferImageGranularity` page, which is the whole of that rule and costs at most one more
     /// block per type.
     ///
-    /// **Not thread-safe, and nothing here asks it to be.** Every resource this renderer creates is
-    /// created on the thread that records the frame.
+    /// **Not thread-safe.** Everything on the frame path reaches this from the thread that records
+    /// it, and `report` is asked at a place rather than at a frame. `VisibilityPass::compileEvery`
+    /// is the exception and is a race: it builds a shader binding table per worker, so `take` is
+    /// reached from a thread per core.
     class MemoryAllocator
     {
     public:
@@ -110,8 +122,13 @@ namespace Rtx
         /// many extra pages as its alignment exceeds one by.
         static constexpr VkDeviceSize sPage = 1024;
 
+        /// @param physicalDevice the card, kept only so that the budget below can be asked of it.
         /// @param memory the device's heaps and types, read once when the device was chosen.
-        MemoryAllocator(VkDevice device, const VkPhysicalDeviceMemoryProperties& memory);
+        /// @param budget whether `VK_EXT_memory_budget` was enabled, so the driver will say how much
+        ///        of a heap this process may have. Optional, because a driver without it still lets
+        ///        the renderer run — it only stops it saying how close to the ceiling it is.
+        MemoryAllocator(VkDevice device, VkPhysicalDevice physicalDevice,
+            const VkPhysicalDeviceMemoryProperties& memory, bool budget);
         ~MemoryAllocator();
 
         MemoryAllocator(const MemoryAllocator&) = delete;
@@ -126,6 +143,15 @@ namespace Rtx
 
         /// How many calls to `vkAllocateMemory` stand behind everything handed out.
         std::size_t getBlockCount() const { return mBlocks.size(); }
+
+        /// Every heap of the device, what this allocator took out of each, and what the driver says
+        /// is left.
+        ///
+        /// **Walks every block, so it is asked once a place and never once a frame.** What it costs
+        /// is a walk of a few dozen blocks and a free list apiece; what it answers is whether a run
+        /// would fit on a card whose host-visible heap is a couple of hundred megabytes, which is a
+        /// question nothing else in this renderer could put.
+        MemoryReport report() const;
 
     private:
         friend class DeviceMemory;
@@ -156,7 +182,12 @@ namespace Rtx
         void give(std::uint32_t block, Span run);
 
         VkDevice mDevice = VK_NULL_HANDLE;
+        VkPhysicalDevice mPhysicalDevice = VK_NULL_HANDLE;
         const VkPhysicalDeviceMemoryProperties& mMemory;
+
+        /// Whether `report` may ask the driver what this process holds, rather than only counting
+        /// what it asked for itself.
+        bool mBudget = false;
 
         /// Every block of every pool, in one list. A block is never removed, so the index a range
         /// carries names the same block for the allocator's life — and a pool is the blocks whose

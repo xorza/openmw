@@ -51,6 +51,7 @@ namespace Rtx
             .mSynchronizationValidation = validation.mSynchronization,
             .mGpuAssistedValidation = validation.mGpuAssisted,
             .mPolicy = validation.mAbortOnError ? ValidationPolicy::Abort : ValidationPolicy::Log,
+            .mDemanded = validation.mDemanded,
         };
     }
 
@@ -84,8 +85,19 @@ namespace Rtx
         // as a pass.
         const bool validation = options.mValidation && mDebugUtils && hasLayer(sValidationLayer);
         if (options.mValidation && !validation)
-            Log(Debug::Warning) << "Vulkan validation was requested but " << sValidationLayer << " or "
-                                << VK_EXT_DEBUG_UTILS_EXTENSION_NAME << " is missing.";
+        {
+            const std::string missing = std::string(sValidationLayer) + " or " + VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+
+            // **A run that asked for validation and cannot have it fails, rather than reporting
+            // nothing.** The messenger is the only way a message reaches this side, so without it
+            // `takeValidationErrors` comes back empty and a gate reads that as a clean pass. A build
+            // that merely switched the layers on by default still warns: a developer with no layers
+            // installed has a renderer to run, and no claim resting on them.
+            if (options.mDemanded)
+                throw Unsupported("Vulkan validation was asked for and " + missing + " is missing");
+
+            Log(Debug::Warning) << "Vulkan validation was requested but " << missing << " is missing.";
+        }
 
         if (mDebugUtils)
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);

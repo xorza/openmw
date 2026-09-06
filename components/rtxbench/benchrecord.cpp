@@ -5,6 +5,8 @@
 #include <format>
 #include <fstream>
 
+#include <components/rtx/memoryreport.hpp>
+
 namespace Rtx
 {
     namespace
@@ -102,6 +104,11 @@ namespace Rtx
         // name what it cost; a run of a real game builds a little at every crossing and has no such
         // number. What both have is how much of the frame hit something, which is what tells "the
         // cell rendered" from "the camera faced away from it".
+        // **Under the scene's line, because it is the same fact from the device's side.** The line
+        // above says what the content came to; this says what the card gave up for it, and the
+        // second is the one a card with a small host-visible heap runs out of first.
+        out += describeMemory(place.mMemory);
+
         if (place.mBuildMs > 0.0)
             out += std::format("  build {:.0f} ms\n", place.mBuildMs);
 

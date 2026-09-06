@@ -287,8 +287,10 @@ namespace Rtx
             // **DLSS records its own commands into that buffer**, and success says only that NGX
             // liked the parameter map — not that what it recorded was valid. The layers are what
             // have an opinion about the resources it then touched.
-            for (const ValidationMessage& message : mHarness->mInstance->getValidationLog()->getErrorsOnThisThread())
-                ADD_FAILURE() << "validation error from the evaluation: " << message.mText;
+            std::vector<std::string> raised;
+            mHarness->mInstance->getValidationLog()->takeErrorsOnThisThread(raised);
+            for (const std::string& message : raised)
+                ADD_FAILURE() << "validation error from the evaluation: " << message;
         }
 
         /// The mean of one channel over a frame `readPixels` gave back.

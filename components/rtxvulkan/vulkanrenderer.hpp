@@ -131,6 +131,7 @@ namespace Rtx
         void dropTextures(std::uint32_t slot, std::span<const std::uint32_t> textures) override;
         void placeScene(std::uint32_t slot, const SceneDesc& scene, const SeaState& sea) override;
         const SceneStats& getSceneStats() const override { return mStats; }
+        MemoryReport getMemoryReport() const override;
         void resize(std::uint32_t width, std::uint32_t height) override;
         void setUpscale(Upscale upscale) override;
         Upscale getUpscale() const override { return mUpscale; }

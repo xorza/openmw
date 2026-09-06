@@ -1,5 +1,6 @@
 #include "validation.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <utility>
 
@@ -35,31 +36,53 @@ namespace Rtx
             // The spec reserves a true return for the layers' own use; applications must return false.
             return VK_FALSE;
         }
+
+        /// Which thread a message raised on this one is filed under.
+        ///
+        /// **This thread by default, and `AdoptedThread` is what moves it.** A thread-local rather
+        /// than a member of the log, because the callback reaches the log through `pUserData` and
+        /// knows nothing else, and because one process may hold more than one instance.
+        thread_local std::thread::id sFiledUnder = std::this_thread::get_id();
     }
 
     void ValidationLog::recordError(std::string&& text)
     {
         const std::lock_guard<std::mutex> lock(mMutex);
-        mErrors.push_back(ValidationMessage{ std::move(text), std::this_thread::get_id() });
+        mErrors.push_back(ValidationMessage{ std::move(text), sFiledUnder });
     }
 
-    std::vector<ValidationMessage> ValidationLog::getErrorsOnThisThread() const
+    void ValidationLog::takeErrorsOnThisThread(std::vector<std::string>& out)
     {
         const std::thread::id current = std::this_thread::get_id();
-        std::vector<ValidationMessage> result;
 
         const std::lock_guard<std::mutex> lock(mMutex);
-        for (const ValidationMessage& message : mErrors)
-            if (message.mThread == current)
-                result.push_back(message);
 
-        return result;
+        // Stable, so that messages come back in the order the layers raised them: the first is
+        // usually the mistake and the rest are what it led to.
+        const auto taken = std::stable_partition(mErrors.begin(), mErrors.end(),
+            [current](const ValidationMessage& message) { return message.mThread != current; });
+
+        for (auto at = taken; at != mErrors.end(); ++at)
+            out.push_back(std::move(at->mText));
+
+        mErrors.erase(taken, mErrors.end());
     }
 
     void ValidationLog::clear()
     {
         const std::lock_guard<std::mutex> lock(mMutex);
         mErrors.clear();
+    }
+
+    AdoptedThread::AdoptedThread(std::thread::id owner)
+        : mPrevious(sFiledUnder)
+    {
+        sFiledUnder = owner;
+    }
+
+    AdoptedThread::~AdoptedThread()
+    {
+        sFiledUnder = mPrevious;
     }
 
     VkDebugUtilsMessengerCreateInfoEXT makeMessengerCreateInfo(ValidationLog& log)

@@ -16,6 +16,7 @@
 
 #include "gbuffer.hpp"
 #include "image.hpp"
+#include "memory.hpp"
 #include "micromappass.hpp"
 #include "physicaldevice.hpp"
 #include "pipelinecache.hpp"
@@ -765,6 +766,11 @@ namespace Rtx
         readPlacedStats(held);
     }
 
+    MemoryReport VulkanRenderer::getMemoryReport() const
+    {
+        return mDevice.getMemory().report();
+    }
+
     void VulkanRenderer::readPlacedStats(const ViewScene& held)
     {
         mStats.mInstances = held.mAcceleration->getInstanceCount();
@@ -1508,10 +1514,7 @@ namespace Rtx
         if (log == nullptr)
             return;
 
-        for (const ValidationMessage& message : log->getErrorsOnThisThread())
-            errors.push_back(message.mText);
-
-        log->clear();
+        log->takeErrorsOnThisThread(errors);
     }
 
     std::unique_ptr<Renderer> createVulkanRenderer(const RendererOptions& options, std::string& reason)

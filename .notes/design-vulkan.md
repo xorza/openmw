@@ -166,9 +166,33 @@ whole device-side barrier class, permanently.
 
 Each stands alone and leaves the tree working.
 
-**Stage 0 — see it.** Memory report and the validation gate. Nothing is fixed; everything becomes
-observable, and stages 1 and 2 stop being guesses. Also the two validation-reporting fixes.
-*A day.*
+**Stage 0 — see it. Done.** `MemoryAllocator::report` walks every block and every heap,
+`VK_EXT_memory_budget` says what the driver will give, and `scene` and `bench` print the lines under
+the place they belong to. `CI/check_rtx_validation.sh` drives `check`, `shot`, `map`, `doll` and
+`bench` under synchronization validation. A run that asked for the layers and cannot have them now
+fails by name, and a pipeline compile worker's validation errors are filed under the thread that
+started it rather than lost.
+
+**One thing the design had wrong.** A per-heap line cannot answer the Turing question on this box: a
+card with resizable BAR states one video memory heap that is host-visible throughout, so every image
+lands in the same heap as the geometry and the heap's own figure says nothing about either. The
+report carries a `host-written` line beside the heaps, counted off the memory *type* the resource
+asked for, and that is the figure that has to fit an aperture.
+
+**The baseline, measured.** `scene` at `seyda-neen-ship`, one still cell:
+
+    heap 0  host-visible   16376.0 MiB   reserved   991.6   live   852.7   budget 12263.5   held  1332.4   21 blocks
+    heap 1  device-only    47931.1 MiB   reserved    56.0   live     0.0   budget 47931.1   held    78.8    3 blocks
+    host-written                         reserved   184.0   live   158.2
+
+And `bench --views=island-crossing --seconds=10`, twenty cell boundaries:
+
+    host-written                         reserved   248.0   live   212.1
+
+**184 MiB standing still, 248 MiB after a route, against 246 MiB on an RTX 2060 and 214 MiB on an
+RTX 2080.** So the P1 in `review-vulkan.md` is not a risk, it is a measurement: one Seyda Neen fills
+an RTX 2080's whole aperture before the player walks anywhere, and ten seconds of walking passes an
+RTX 2060's. Stage 2 has its number.
 
 **Stage 1 — `DeviceProfile`.** The type, the two synthetic fixtures, `physicaldevice.cpp` reduced to
 reporting. A Turing card is accepted at the end of this, and fails on memory rather than on policy.
@@ -205,5 +229,5 @@ one of the four types is a thing this renderer already decides implicitly, writt
 - **`Residency::Staged` puts a copy back on the cell-arrival path** that `BlockedBuffer` was written
   to remove. It is a load-path cost, not a frame one, and only on cards that need it — but it has to
   be measured at `island-crossing`, where an arrival already costs 120 ms in the worst frame.
-- **Stage 2 changes what a run reserves, so every memory figure before it is not comparable.** Take
-  the baseline in Stage 0.
+- **Stage 2 changes what a run reserves, so every memory figure before it is not comparable.** The
+  Stage 0 baseline above is the one to compare against.
