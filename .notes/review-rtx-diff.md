@@ -14,30 +14,6 @@ persistent loader could keep the memory it already has.
 
 ---
 
-## The load path allocates buffers a persistent loader could keep
-
-`SceneTextures` states the pattern this project wants. Its comment says it is
-"held for the life of its owner, and cleared and refilled per arrival", so that an
-arrival frame does not pay for the buffers. Its remaining collaborators do not follow
-that pattern. Each allocates its working set, uses it once and frees it.
-
-- [ ] `components/rtx/texturebuilder.cpp:210` and `:214` — `MipChain built` and
-  `AlphaImage alpha` are locals, three lines below `mSourceLevels`, which is a
-  member for exactly this reason. Each allocates and frees per sprite source.
-- [ ] `components/rtx/texturebuilder.cpp:257` — `mChains.emplace_back` gives every
-  chain its own `mTexels` and `mLevels`. `mChains.clear()` at the head of `describe`
-  frees all of them. The vector is recycled and its elements are not. A 512-square
-  texture decodes to 1.4 MB of loose texels here.
-- [ ] `components/rtx/texturebuilder.cpp:217` — `mSpriteLights.emplace_back` has the
-  same shape as the chains, and the same fault.
-- [ ] `components/rtx/alphaimage.cpp:161` — `reachesSolid` builds a
-  `std::vector<MipLevel>` and an `AlphaImage` per call. `MaterialResolver` caches the
-  answer, so the call is rare. The buffers are still new every time.
-- [ ] `components/rtx/distantlights.cpp:49` — `build` collects into a
-  `std::map<ESM::RefNum, Terrain::PagedCellRef>`. That is a heap node per reference,
-  over the eighty-one cells of the reach. `Terrain::ObjectStorage::collectLights`
-  fixes the container, so this needs an upstream signature or a copy out of the map.
-
 ## Every Vulkan buffer and image is its own device allocation
 
 `Buffer` and `Image` each construct a `DeviceMemory`, and `DeviceMemory` calls
@@ -50,10 +26,6 @@ device allocation per staging buffer, one per texture image and one per shading 
   hundred device allocations on the arrival frame, and buries all of them in the
   batch until the submit finishes. One growable staging ring, reused across the
   uploads of one batch, removes every one of them.
-- [ ] `components/rtxvulkan/memory.cpp:42` — `findMemoryType` calls
-  `vkGetPhysicalDeviceMemoryProperties` on every allocation. The properties never
-  change. `PhysicalDevice` already caches its other properties, so read this once
-  there.
 - [ ] `components/rtxvulkan/memory.cpp:45` — one `vkAllocateMemory` per object, and
   two objects per texture. `maxMemoryAllocationCount` is 4294967295 on this driver,
   so the count is not the risk. The cost is the call itself and the padding: each
@@ -98,6 +70,15 @@ The map that would hold the answer is already there in two of the three cases.
   to make a run repeat itself, and only the residency walks make the walk order
   uncertain. Sorting the residency's own contribution and merging it would leave the
   graph walk's order alone.
+- [ ] `components/rtx/distantlights.cpp:49` — `build` collects into a
+  `std::map<ESM::RefNum, Terrain::PagedCellRef>`. **Smaller than it reads.**
+  `collectPagedRefs` applies `wanted` before it inserts, and `collectLights` passes
+  `litType`, so only `REC_LIGH` reaches the map — a handful a cell, and `mCells`
+  keeps the answer for the life of the scene. That is a few hundred nodes once per
+  world. `Terrain::ObjectStorage` and `collectPagedRefs` are this fork's own files
+  rather than upstream's, so the container could be changed — but the same function
+  is what the lifted `objectpaging.cpp` collects every chunk through, and that is the
+  rasterizer's path. Not worth the reach for the count.
 - [ ] `components/rtx/texturebuilder.cpp:147` — `describeAll` fills `mEverything`
   with a hand-written loop. `std::iota` says the same thing.
 - [ ] `apps/components_tests/rtx/` — the allocation guard covers the frame path and

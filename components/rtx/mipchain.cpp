@@ -7,7 +7,6 @@
 
 #include <osg/Vec3f>
 
-#include "alphaimage.hpp"
 #include "srgb.hpp"
 #include "texelreader.hpp"
 
@@ -26,8 +25,15 @@ namespace Rtx
         }
     }
 
-    MipChain::MipChain(const TextureData& described)
+    void MipChain::build(const TextureData& described)
     {
+        mLevels.clear();
+        mTexels.clear();
+        mWidth = 0;
+        mHeight = 0;
+        mEncoded = true;
+        mName = {};
+
         if (described.mLevels.empty())
             return;
 
@@ -72,7 +78,7 @@ namespace Rtx
         // **The finest level, through the readers that already know every format.** Alpha is a byte
         // a texel in all of them and colour is one call apiece, so nothing here knows what a block
         // is.
-        const AlphaImage alpha(described);
+        mAlpha.build(described);
         for (std::uint32_t y = 0; y < mHeight; ++y)
             for (std::uint32_t x = 0; x < mWidth; ++x)
             {
@@ -82,7 +88,7 @@ namespace Rtx
                 for (int channel = 0; channel < 3; ++channel)
                     mTexels[at + static_cast<std::size_t>(channel)] = quantise(colour[channel]);
 
-                mTexels[at + 3] = static_cast<std::byte>(alpha.at(0, x, y));
+                mTexels[at + 3] = static_cast<std::byte>(mAlpha.at(0, x, y));
             }
 
         // **Each level from the one above it, with the colours weighed by the alpha they carry.** A

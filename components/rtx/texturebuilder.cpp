@@ -109,6 +109,21 @@ namespace Rtx
                 .mName = "unreadable",
             };
         }
+
+        /// The entry at `used` of a pool that grows and never shrinks.
+        ///
+        /// **What makes an entry the buffers the last arrival left in it.** The caller advances
+        /// `used` only for an entry it keeps, so one that came back empty is handed to the next
+        /// texture rather than held for ever. Growing moves the entries, which moves their buffers
+        /// with them — so a description already spanning one goes on pointing at the same bytes.
+        template <class T>
+        T& poolEntry(std::vector<T>& pool, std::size_t used)
+        {
+            if (used == pool.size())
+                pool.emplace_back();
+
+            return pool[used];
+        }
     }
 
     TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels)
@@ -157,16 +172,15 @@ namespace Rtx
         mImages.clear();
         mLevels.clear();
         mDescriptions.clear();
-        mSpriteLights.clear();
-        mChains.clear();
         mKept.clear();
         mLightOf.clear();
+        mSpriteLightCount = 0;
+        mChainCount = 0;
         mUnreadable = 0;
 
         mKept.reserve(slots.size());
         mImages.reserve(slots.size());
         mLightOf.reserve(slots.size());
-        mChains.reserve(slots.size());
 
         for (const Index slot : slots)
         {
@@ -207,15 +221,18 @@ namespace Rtx
                         // **The same chain the sprite's own slot gets**, because a bake is read at
                         // whatever level the ray can resolve and a source with one level would bake
                         // one answer for every distance.
-                        const MipChain built(painted);
-                        if (!built.isEmpty())
-                            painted = built.describe();
+                        mSourceChain.build(painted);
+                        if (!mSourceChain.isEmpty())
+                            painted = mSourceChain.describe();
 
-                        const AlphaImage alpha(painted);
-                        if (!alpha.isEmpty())
+                        mSourceAlpha.build(painted);
+                        if (!mSourceAlpha.isEmpty())
                         {
-                            mSpriteLights.emplace_back(alpha);
-                            light = static_cast<Index>(mSpriteLights.size() - 1);
+                            SpriteLightMap& bake = poolEntry(mSpriteLights, mSpriteLightCount);
+                            bake.build(mSourceAlpha);
+
+                            light = static_cast<Index>(mSpriteLightCount);
+                            ++mSpriteLightCount;
                         }
                     }
                     catch (const Error&)
@@ -254,9 +271,13 @@ namespace Rtx
 
                     // **What the file did not carry, built rather than done without.** `MipChain`
                     // says why almost nothing in the game needs this and why the rain does.
-                    mChains.emplace_back(*described);
-                    if (!mChains.back().isEmpty())
-                        described = mChains.back().describe();
+                    MipChain& chain = poolEntry(mChains, mChainCount);
+                    chain.build(*described);
+                    if (!chain.isEmpty())
+                    {
+                        described = chain.describe();
+                        ++mChainCount;
+                    }
                 }
                 catch (const Error&)
                 {

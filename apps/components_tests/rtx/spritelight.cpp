@@ -14,6 +14,8 @@
 #include <components/rtx/texturedata.hpp>
 #include <components/vfs/pathutil.hpp>
 
+#include "allocations.hpp"
+
 namespace Rtx
 {
     namespace
@@ -153,6 +155,34 @@ namespace Rtx
         }
 
         /// A bake's key names its source and nothing else's key does.
+        /// A map baked again is the sprite it was handed and nothing of the one before, and it
+        /// costs the heap nothing to say so.
+        ///
+        /// **What lets `SceneTextures` keep a pool of these.** A crossing bakes every emitter's
+        /// sheet in one arrival; a map that carried the last sprite's levels through would light one
+        /// plume by another's shape, and one that gave its room back would go to the heap twice a
+        /// sprite on the frame the cell lands.
+        TEST(RtxSpriteLightMapTest, aMapBakedAgainIsTheNewSpriteAndKeepsTheRoomOfTheLast)
+        {
+            const AlphaSheet sheet(2, 2, { 0, 128, 128, 0 });
+            const AlphaImage alpha(sheet.describe());
+
+            SpriteLightMap map;
+            map.build(alpha);
+            ASSERT_FALSE(map.isEmpty()) << "the sprite this one has to stop carrying";
+            ASSERT_EQ(map.describe().mLevels.size(), std::size_t{ 1 });
+
+            map.build(AlphaImage{});
+            EXPECT_TRUE(map.isEmpty()) << "the last sprite's levels came through";
+
+            const std::size_t before = Testing::getAllocationCount();
+            map.build(alpha);
+            const std::size_t spent = Testing::getAllocationCount() - before;
+
+            EXPECT_EQ(spent, 0u) << "a rebake reached the heap " << spent << " times";
+            EXPECT_FALSE(map.isEmpty());
+        }
+
         TEST(RtxSpriteLightMapTest, theKeyNamesTheSourceAndOtherBakesAreNotMistakenForOne)
         {
             const VFS::Path::NormalizedView source("textures/tx_smoke.dds");

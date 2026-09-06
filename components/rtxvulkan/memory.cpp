@@ -12,8 +12,8 @@ namespace Rtx
 {
     std::uint32_t findMemoryType(const Device& device, std::uint32_t typeBits, VkMemoryPropertyFlags properties)
     {
-        VkPhysicalDeviceMemoryProperties memory{};
-        vkGetPhysicalDeviceMemoryProperties(device.getPhysicalDevice().getHandle(), &memory);
+        // Read when the device was chosen and never since: see `DeviceProperties::mMemory`.
+        const VkPhysicalDeviceMemoryProperties& memory = device.getPhysicalDevice().getProperties().mMemory;
 
         for (std::uint32_t i = 0; i < memory.memoryTypeCount; ++i)
         {

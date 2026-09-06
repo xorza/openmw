@@ -7,6 +7,7 @@
 #include <components/rtx/mipchain.hpp>
 #include <components/rtx/texturedata.hpp>
 
+#include "allocations.hpp"
 #include "testtexture.hpp"
 
 namespace Rtx
@@ -165,6 +166,44 @@ namespace Rtx
             const TextureData built = chain.describe();
             EXPECT_EQ(built.mFormat, TextureFormat::Rgba8Srgb) << "what arrived encoded stays encoded";
             EXPECT_EQ(channelAt(built, 1, 0, 0, 0), 188u);
+        }
+
+        /// A chain built again is the texture it was handed and nothing of the one before, and it
+        /// costs the heap nothing to say so.
+        ///
+        /// **What lets `SceneTextures` keep a pool of these.** A loader that describes a cell's
+        /// worth builds a chain into the same object over and over; one that carried the last
+        /// texture's levels through would upload one texture's chain under another's name, and one
+        /// that gave its room back would take a megabyte and a half from the heap per chainless
+        /// texture on the frame the cell lands.
+        TEST(RtxMipChainTest, aChainBuiltAgainIsTheNewTextureAndKeepsTheRoomOfTheLast)
+        {
+            TestTexture single;
+            addLevel(single, 4, 4);
+            single.describe(4, 4, "single");
+
+            TestTexture whole;
+            addLevel(whole, 4, 4);
+            addLevel(whole, 2, 2);
+            addLevel(whole, 1, 1);
+            whole.describe(4, 4, "whole");
+
+            MipChain chain;
+            chain.build(single.mData);
+            ASSERT_FALSE(chain.isEmpty()) << "the texture this one has to stop carrying";
+            ASSERT_EQ(chain.describe().mLevels.size(), std::size_t{ 3 });
+
+            chain.build(whole.mData);
+            EXPECT_TRUE(chain.isEmpty()) << "the last texture's levels came through";
+
+            // **Back to the shape it already grew for**, which is the case the pool is made of: the
+            // levels, the texels and the alpha the colours are weighed by are all still here.
+            const std::size_t before = Testing::getAllocationCount();
+            chain.build(single.mData);
+            const std::size_t spent = Testing::getAllocationCount() - before;
+
+            EXPECT_EQ(spent, 0u) << "a rebuild reached the heap " << spent << " times";
+            EXPECT_FALSE(chain.isEmpty());
         }
     }
 }

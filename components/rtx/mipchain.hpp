@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "alphaimage.hpp"
 #include "texturedata.hpp"
 
 namespace Rtx
@@ -30,10 +31,18 @@ namespace Rtx
     class MipChain
     {
     public:
+        MipChain() = default;
+
+        /// For a caller with one texture to build and no chain to reuse. `build` is the whole of it.
+        explicit MipChain(const TextureData& described) { build(described); }
+
         /// Builds a chain for a description carrying a single level, and nothing for one carrying
         /// more: Morrowind's own chains stop at eight texels rather than at one, and that last level
         /// is already the texture's mean to within what a ray can tell.
-        explicit MipChain(const TextureData& described);
+        ///
+        /// **Refills this one rather than making another**, so a loader that describes a cell's
+        /// worth keeps the room the last chain grew. Whatever was here is gone, buffers apart.
+        void build(const TextureData& described);
 
         /// Whether there was nothing to build, which is the ordinary case.
         bool isEmpty() const { return mLevels.empty(); }
@@ -43,6 +52,13 @@ namespace Rtx
         TextureData describe() const;
 
     private:
+        /// The finest level's alpha, read to weigh the colours by it. Held rather than made per
+        /// build for the reason the texels are: a pool of these builds a cell's worth.
+        ///
+        /// **Deliberately not among what `build` resets**, because nothing reads it but the line
+        /// that fills it — and emptying it is exactly the room a build is meant to keep.
+        AlphaImage mAlpha;
+
         std::vector<MipLevel> mLevels;
 
         /// Every level, back to back, four bytes a texel. The levels index into this by byte.

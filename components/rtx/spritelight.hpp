@@ -49,8 +49,16 @@ namespace Rtx
         /// The source a key names, or nothing for a key that is some other bake's.
         static std::optional<VFS::Path::Normalized> sourceOf(std::string_view key);
 
+        SpriteLightMap() = default;
+
+        /// For a caller with one sprite to bake and no map to reuse. `build` is the whole of it.
+        explicit SpriteLightMap(const AlphaImage& alpha) { build(alpha); }
+
         /// Bakes every level `alpha` carries. An alpha with none leaves this empty.
-        explicit SpriteLightMap(const AlphaImage& alpha);
+        ///
+        /// **Refills this one rather than making another**, so a loader that bakes a cell's sprites
+        /// keeps the room the last one grew. Whatever was here is gone, buffers apart.
+        void build(const AlphaImage& alpha);
 
         bool isEmpty() const { return mLevels.empty(); }
 

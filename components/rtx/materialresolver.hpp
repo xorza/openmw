@@ -8,6 +8,7 @@
 #include <osg/Node>
 #include <osg/ref_ptr>
 
+#include "alphaimage.hpp"
 #include "index.hpp"
 #include "mirroridentity.hpp"
 #include "mirrorpass.hpp"
@@ -149,6 +150,10 @@ namespace Rtx
         /// Owning for the same reason the identity maps are: a node freed and replaced at the same
         /// address would otherwise be handed the state set the first one's controllers were writing.
         Identity<const osg::Node, Animated> mAnimated{ mPass };
+
+        /// What `diffuseReachesSolid` reads a texture's alpha in, refilled per image it is asked
+        /// about — which is once per translucent diffuse map a cell arrives with.
+        AlphaScratch mAlphaScratch;
 
         /// One blend map's weights as floats, refilled per terrain layer that carries one.
         std::vector<float> mMaskScratch;

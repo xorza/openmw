@@ -125,8 +125,11 @@ namespace Rtx
         }
     }
 
-    AlphaImage::AlphaImage(const TextureData& texture)
+    void AlphaImage::build(const TextureData& texture)
     {
+        mLevels.clear();
+        mValues.clear();
+
         std::size_t texels = 0;
         for (const MipLevel& level : texture.mLevels)
             texels += std::size_t{ level.mWidth } * level.mHeight;
@@ -156,9 +159,10 @@ namespace Rtx
         }
     }
 
-    bool reachesSolid(const osg::Image& image)
+    bool reachesSolid(const osg::Image& image, AlphaScratch& scratch)
     {
-        std::vector<MipLevel> levels;
+        std::vector<MipLevel>& levels = scratch.mLevels;
+        levels.clear();
 
         TextureData described;
         try
@@ -183,12 +187,12 @@ namespace Rtx
         // what says that in code rather than in a comment over a loop that reads `at(0, ...)`.
         described.mLevels = described.mLevels.subspan(0, 1);
 
-        const AlphaImage alpha(described);
+        scratch.mAlpha.build(described);
         const MipLevel& level = levels.front();
 
         for (std::uint32_t y = 0; y < level.mHeight; ++y)
             for (std::uint32_t x = 0; x < level.mWidth; ++x)
-                if (alpha.at(0, x, y) == 255)
+                if (scratch.mAlpha.at(0, x, y) == 255)
                     return true;
 
         return false;

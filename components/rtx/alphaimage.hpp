@@ -33,10 +33,18 @@ namespace Rtx
     class AlphaImage
     {
     public:
+        AlphaImage() = default;
+
+        /// For a caller with one texture to read and no image to reuse. `build` is the whole of it.
+        explicit AlphaImage(const TextureData& texture) { build(texture); }
+
         /// Decodes every level the description carries. A texture with none leaves this empty,
         /// which is a texture whose cutout could not be read — a caller that cannot answer for one
         /// has to leave it asking rather than decide on its behalf.
-        explicit AlphaImage(const TextureData& texture);
+        ///
+        /// **Refills this one rather than making another**, so a loader that reads a cell's worth
+        /// keeps the room the last texture grew. Whatever was here is gone, buffers apart.
+        void build(const TextureData& texture);
 
         std::uint32_t getLevelCount() const { return static_cast<std::uint32_t>(mLevels.size()); }
 
@@ -67,6 +75,19 @@ namespace Rtx
         std::vector<std::uint8_t> mValues;
     };
 
+    /// The buffers `reachesSolid` reads an image through, held by whoever asks rather than made
+    /// per call.
+    ///
+    /// **Once per translucent diffuse map a cell arrives with**, which `MaterialResolver`'s cache
+    /// is what makes it: a material asks per surface and the answer is kept per image. Each of
+    /// those readings is a levels table and a decoded alpha channel, and held they are the room the
+    /// image before grew.
+    struct AlphaScratch
+    {
+        std::vector<MipLevel> mLevels;
+        AlphaImage mAlpha;
+    };
+
     /// Whether any texel of `image` is fully opaque.
     ///
     /// **What tells a wisp from a mask, and it is a fact about the texture alone.** Morrowind keeps
@@ -83,5 +104,8 @@ namespace Rtx
     ///
     /// **True for an image nothing here can decode**, because a texture this cannot answer for is
     /// not one to turn into a volume on a guess.
-    bool reachesSolid(const osg::Image& image);
+    ///
+    /// @param scratch what the reading is done in, which is the caller's. Cleared and refilled here,
+    ///        and read by nothing afterwards.
+    bool reachesSolid(const osg::Image& image, AlphaScratch& scratch);
 }

@@ -53,11 +53,8 @@ namespace Rtx
             return -1;
         }
 
-        VkDeviceSize sumDeviceLocalHeaps(VkPhysicalDevice device)
+        VkDeviceSize sumDeviceLocalHeaps(const VkPhysicalDeviceMemoryProperties& memory)
         {
-            VkPhysicalDeviceMemoryProperties memory{};
-            vkGetPhysicalDeviceMemoryProperties(device, &memory);
-
             VkDeviceSize total = 0;
             for (std::uint32_t i = 0; i < memory.memoryHeapCount; ++i)
                 if (memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
@@ -73,13 +70,10 @@ namespace Rtx
         /// whole queue from each of them. Without it the renderer would need the staging path back,
         /// and a second way of doing this is a second thing to keep correct for hardware this fork
         /// does not target.
-        bool hasResizableBar(VkPhysicalDevice handle)
+        bool hasResizableBar(const VkPhysicalDeviceMemoryProperties& memory)
         {
             constexpr VkMemoryPropertyFlags wanted = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
                 | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-            VkPhysicalDeviceMemoryProperties memory{};
-            vkGetPhysicalDeviceMemoryProperties(handle, &memory);
 
             for (std::uint32_t i = 0; i < memory.memoryTypeCount; ++i)
                 if ((memory.memoryTypes[i].propertyFlags & wanted) == wanted)
@@ -140,7 +134,7 @@ namespace Rtx
             if (findQueueFamily(handle) < 0)
                 return "no queue family with graphics, compute and transfer";
 
-            if (!hasResizableBar(handle))
+            if (!hasResizableBar(properties.mMemory))
                 return "no video memory the host can write: resizable BAR is off in firmware, or the "
                        "driver does not expose it";
 
@@ -172,6 +166,7 @@ namespace Rtx
         {
             auto properties = std::make_unique<DeviceProperties>();
             vkGetPhysicalDeviceProperties2(handle, &properties->mProperties2);
+            vkGetPhysicalDeviceMemoryProperties(handle, &properties->mMemory);
 
             std::vector<std::string> available;
             const std::string reason = disqualify(handle, *properties, available);
@@ -198,7 +193,6 @@ namespace Rtx
             best.mProperties = std::move(properties);
             best.mQueueFamily = static_cast<std::uint32_t>(findQueueFamily(handle));
             best.mOptionalExtensions = std::move(optional);
-            best.mDeviceLocalMemory = sumDeviceLocalHeaps(handle);
             bestIsDiscrete = discrete;
         }
 
@@ -218,7 +212,7 @@ namespace Rtx
             << "driver:            " << mProperties->mVulkan12.driverName << ' ' << mProperties->mVulkan12.driverInfo
             << '\n'
             << "Vulkan:            " << versionString(base.apiVersion) << '\n'
-            << "device-local heap: " << mDeviceLocalMemory / (1024 * 1024) << " MiB\n"
+            << "device-local heap: " << sumDeviceLocalHeaps(mProperties->mMemory) / (1024 * 1024) << " MiB\n"
             << "queue family:      " << mQueueFamily << '\n'
             << "subgroup size:     " << mProperties->mVulkan11.subgroupSize << '\n';
 

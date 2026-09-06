@@ -52,6 +52,5 @@ namespace Rtx
 
         std::uint32_t mQueueFamily = 0;
         std::vector<const char*> mOptionalExtensions;
-        VkDeviceSize mDeviceLocalMemory = 0;
     };
 }

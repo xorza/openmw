@@ -50,10 +50,12 @@ namespace Rtx
         return VFS::Path::Normalized(key.substr(sPrefix.size()));
     }
 
-    SpriteLightMap::SpriteLightMap(const AlphaImage& alpha)
-        : mWidth(alpha.getWidth())
-        , mHeight(alpha.getHeight())
+    void SpriteLightMap::build(const AlphaImage& alpha)
     {
+        mLevels.clear();
+        mBytes.clear();
+        mWidth = alpha.getWidth();
+        mHeight = alpha.getHeight();
 
         const std::uint32_t count = alpha.getLevelCount();
         mLevels.reserve(count);

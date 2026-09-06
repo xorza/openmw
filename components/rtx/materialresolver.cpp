@@ -353,7 +353,7 @@ namespace Rtx
 
         std::optional<bool>& solid = known->second.mSolid;
         if (!solid.has_value())
-            solid = reachesSolid(*image);
+            solid = reachesSolid(*image, mAlphaScratch);
 
         return *solid;
     }

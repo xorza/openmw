@@ -64,7 +64,8 @@ namespace Rtx
         VkPhysicalDeviceOpacityMicromapFeaturesEXT mOpacityMicromap{};
     };
 
-    /// The properties worth reporting or budgeting against, read in one chained query.
+    /// The properties worth reporting or budgeting against: one chained query, and the memory
+    /// layout beside it.
     ///
     /// Non-copyable for the same reason as `DeviceFeatures`.
     struct DeviceProperties
@@ -90,6 +91,16 @@ namespace Rtx
         /// How finely a triangle may be cut, per format. `SceneMicromaps` checks its own cap
         /// against the four-state limit and refuses a device under it.
         VkPhysicalDeviceOpacityMicromapPropertiesEXT mOpacityMicromap{};
+
+        /// The device's heaps and memory types. **Its own query and not part of the chain above**,
+        /// because Vulkan states them through `vkGetPhysicalDeviceMemoryProperties` rather than
+        /// through `pNext`.
+        ///
+        /// **Read once for the device that is chosen, and read from here by everything after.**
+        /// What a device's memory is does not change while it is plugged in, and `findMemoryType`
+        /// runs on every allocation the renderer makes — a query apiece for an answer settled
+        /// before the window existed.
+        VkPhysicalDeviceMemoryProperties mMemory{};
     };
 
     /// A feature the renderer will not start without, and how to reach it in the chain.

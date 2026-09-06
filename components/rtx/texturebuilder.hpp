@@ -6,6 +6,7 @@
 
 #include <osg/Image>
 
+#include "alphaimage.hpp"
 #include "mipchain.hpp"
 #include "scenedesc.hpp"
 #include "spritelight.hpp"
@@ -122,12 +123,22 @@ namespace Rtx
 
         /// The bakes of the sprite textures the scene's emitters draw with, each made here from the
         /// alpha of the file its key names. `SpriteLightMap` says what one is.
+        ///
+        /// **Refilled rather than emptied.** An arrival builds into the front of it and
+        /// `mSpriteLightCount` says how far, so a bake writes into the room the last one grew
+        /// instead of taking that room from the heap again on the frame a cell lands.
         std::vector<SpriteLightMap> mSpriteLights;
+        std::size_t mSpriteLightCount = 0;
 
-        /// The levels the files did not carry, for the few textures that carry none. Empty entries
-        /// cost nothing and keep this parallel to nothing — a description either spans its image or
-        /// spans one of these.
+        /// The levels the files did not carry, for the few textures that carry none.
+        ///
+        /// **A pool of the chains that were built, and not one entry a texture.** Five thousand of
+        /// Morrowind's textures carry a chain and a hundred and eighty-seven do not, so an entry a
+        /// texture would be a pool the size of the cell — and each entry keeping its room means
+        /// every position that ever held a 512-square chain keeps 1.4 MB for ever. Counted instead,
+        /// the pool is as deep as the most chains one arrival built, which is a handful.
         std::vector<MipChain> mChains;
+        std::size_t mChainCount = 0;
 
         /// Which slots `describe` kept, because a free one is passed over and the descriptions are
         /// no longer one per entry of what it was asked for.
@@ -141,9 +152,12 @@ namespace Rtx
         /// built, because a rebuild is a fifth of a second and none of it should be this.
         std::vector<Index> mEverything;
 
-        /// One image's levels while its bake is read, and nothing after: a sprite light's source is
-        /// described only to reach its alpha, and no description outlives the call.
+        /// One sprite source while its bake is read, and nothing after: a source is described only
+        /// to reach its alpha, and no description of it outlives the call. Held for the reason
+        /// everything above is — a crossing bakes every emitter's sheet in one arrival.
         std::vector<MipLevel> mSourceLevels;
+        MipChain mSourceChain;
+        AlphaImage mSourceAlpha;
 
         std::uint32_t mUnreadable = 0;
     };

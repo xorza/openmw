@@ -12,6 +12,8 @@
 #include <components/rtx/alphaimage.hpp>
 #include <components/rtx/texturedata.hpp>
 
+#include "allocations.hpp"
+
 namespace Rtx
 {
     namespace
@@ -221,6 +223,44 @@ namespace Rtx
             EXPECT_EQ(alpha.getWidth(), 0u);
         }
 
+        /// An image read again is the texture it was handed and nothing of the one before, and it
+        /// costs the heap nothing to say so.
+        ///
+        /// **What lets `MipChain` and `SceneTextures` keep one of these.** Both read a cell's worth
+        /// of textures through a single image; one that carried the last texture's levels through
+        /// would weigh one texture's colours by another's alpha, and one that gave its room back
+        /// would go to the heap once a texture on the frame the cell lands.
+        TEST(RtxAlphaImageTest, anImageReadAgainIsTheNewTextureAndKeepsTheRoomOfTheLast)
+        {
+            std::vector<std::byte> bytes(2 * 2 * 4, std::byte{ 0 });
+            for (std::size_t texel = 0; texel < 4; ++texel)
+                bytes[texel * 4 + 3] = std::byte{ 77 };
+
+            const std::array<MipLevel, 1> levels{ MipLevel{ 0, 2, 2 } };
+            const TextureData texture{
+                .mFormat = TextureFormat::Rgba8Unorm,
+                .mWidth = 2,
+                .mHeight = 2,
+                .mBytes = bytes,
+                .mLevels = levels,
+            };
+
+            AlphaImage alpha;
+            alpha.build(texture);
+            ASSERT_EQ(alpha.getLevelCount(), 1u);
+            ASSERT_EQ(alpha.at(0, 0, 0), 77);
+
+            alpha.build(TextureData{});
+            EXPECT_TRUE(alpha.isEmpty()) << "the last texture's levels came through";
+
+            const std::size_t before = Testing::getAllocationCount();
+            alpha.build(texture);
+            const std::size_t spent = Testing::getAllocationCount() - before;
+
+            EXPECT_EQ(spent, 0u) << "a rebuild reached the heap " << spent << " times";
+            EXPECT_EQ(alpha.at(0, 1, 1), 77);
+        }
+
         /// Two texels by two, in the plain spelling `describeImage` reads.
         osg::ref_ptr<osg::Image> makeAlphaImage(std::array<std::uint8_t, 4> alphas)
         {
@@ -248,10 +288,40 @@ namespace Rtx
         /// The solid texel is last, so a walk that answered off the first texel it read fails.
         TEST(RtxAlphaImageTest, reachesSolidIsTrueOnlyWhereSomeTexelIsFullyOpaque)
         {
-            EXPECT_TRUE(reachesSolid(*makeAlphaImage({ 0, 119, 254, 255 }))) << "one solid texel is a mask";
-            EXPECT_FALSE(reachesSolid(*makeAlphaImage({ 0, 119, 254, 254 }))) << "one short of solid is a wisp";
-            EXPECT_FALSE(reachesSolid(*makeAlphaImage({ 119, 119, 119, 119 }))) << "the blight cloud's own peak";
-            EXPECT_TRUE(reachesSolid(*makeAlphaImage({ 255, 255, 255, 255 }))) << "an untextured surface's stand-in";
+            // One scratch for all four, which is how `MaterialResolver` holds it: a cell asks this
+            // once per translucent diffuse map it arrives with.
+            AlphaScratch scratch;
+
+            EXPECT_TRUE(reachesSolid(*makeAlphaImage({ 0, 119, 254, 255 }), scratch)) << "one solid texel is a mask";
+            EXPECT_FALSE(reachesSolid(*makeAlphaImage({ 0, 119, 254, 254 }), scratch))
+                << "one short of solid is a wisp";
+            EXPECT_FALSE(reachesSolid(*makeAlphaImage({ 119, 119, 119, 119 }), scratch))
+                << "the blight cloud's own peak";
+            EXPECT_TRUE(reachesSolid(*makeAlphaImage({ 255, 255, 255, 255 }), scratch))
+                << "an untextured surface's stand-in";
+        }
+
+        /// The second image a scratch reads costs the heap nothing, and reads as itself.
+        ///
+        /// **What holding one is for.** `MaterialResolver` asks this of every translucent diffuse
+        /// map a cell arrives with, and a reading that took its levels table and its decoded alpha
+        /// from the heap would take them again for each of those, on the frame the cell lands.
+        /// Reading as itself is the other half: a scratch that carried the last image's levels
+        /// through would answer for a texture it was never shown.
+        TEST(RtxAlphaImageTest, aScratchTheCallerKeepsAnswersForEachImageAndAllocatesForNone)
+        {
+            const osg::ref_ptr<osg::Image> mask = makeAlphaImage({ 0, 119, 254, 255 });
+            const osg::ref_ptr<osg::Image> wisp = makeAlphaImage({ 0, 119, 254, 254 });
+
+            AlphaScratch scratch;
+            ASSERT_TRUE(reachesSolid(*mask, scratch)) << "the image this one has to stop carrying";
+
+            const std::size_t before = Testing::getAllocationCount();
+            const bool answer = reachesSolid(*wisp, scratch);
+            const std::size_t spent = Testing::getAllocationCount() - before;
+
+            EXPECT_FALSE(answer) << "the last image's alpha came through";
+            EXPECT_EQ(spent, 0u) << "a second reading reached the heap " << spent << " times";
         }
 
         /// An image in a format nothing in the game produces is one this cannot answer for.
@@ -265,7 +335,8 @@ namespace Rtx
             luminance->setFileName("odd.dds");
             luminance->allocateImage(2, 2, 1, GL_LUMINANCE, GL_UNSIGNED_BYTE);
 
-            EXPECT_TRUE(reachesSolid(*luminance));
+            AlphaScratch scratch;
+            EXPECT_TRUE(reachesSolid(*luminance, scratch));
         }
     }
 }
