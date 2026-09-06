@@ -167,6 +167,7 @@ if (OPENMW_RTX)
         rtx/spritelight.cpp
         rtx/spritelistsize.cpp
         rtx/spriteshade.cpp
+        rtx/srgb.cpp
         rtx/statistics.hpp
         rtx/structurestorage.cpp
         rtx/terraincomposite.cpp

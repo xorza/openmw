@@ -29,27 +29,28 @@ device allocation per texture image and one per shading map.
 
 ## Facts about a node are derived again every frame
 
-Each of these is a property of the content. Each is asked once per node per frame.
-The map that would hold the answer is already there in two of the three cases.
+Each is asked once per node per frame. Two of the three turned out not to be facts
+about the content at all, and each says below what it is instead.
 
 - [ ] `components/rtx/lightbuilder.cpp:666` — `lightColour` calls `decodeColour`
   twice per light per frame. `decodeColour` calls `toLinear` per channel, and
   `toLinear` is a `std::pow`. That is six `pow` calls per light per frame. The
   colour comes from `LightController::getDiffuse`, which returns the record's own
   colour and never the animated one, so it is constant for the life of the light.
-  Only `brightness` and `fade` change. Two routes are open. Cache the decoded colour
-  where the light is first met. Or give `toLinear` a 256-entry table, which is exact
-  here because every input is a byte divided by 255.
-- [ ] `components/rtx/mipchain.cpp:121` and `:134` — the same `pow` per channel per
-  texel per level. The inputs at line 116 are `mTexels[...] / 255.0f`, so they are
-  byte-derived and a table is exact. A 512-square chain takes about two million
-  `pow` calls as it stands.
+  Only `brightness` and `fade` change. **The table route is closed.** `toLinear` has
+  a byte overload now, and a light's colour is `colourFromRGB`'s `byte / 255` — but a
+  `mNegative` light's is `-byte / 255` (`lightutil.cpp:128`), which is not one of the
+  256 and takes the curve's other leg. Recovering the byte by rounding would be a
+  guess. What is left is caching the decoded colour where the light is first met.
 - [ ] `components/rtx/materialresolver.cpp:123` — `animate` calls `findUpdater` for
   every node that carries any callback, on every frame. `findUpdater` walks two
-  callback chains and does a `dynamic_cast` per link. The `mAnimated` entry beside it
-  already caches the state set the updater writes into. Cache the updater in the same
-  entry, and record the negative answer as well, so that a node with callbacks and no
-  updater is asked once.
+  callback chains and does a `dynamic_cast` per link. **Caching the answer is not
+  open, either sign of it.** `SceneUtil::GlowUpdater` is a `StateSetUpdater` and
+  `Animation::addSpellCastGlow` hangs one on a live node and takes it off again when
+  its duration runs out (`animation.cpp:1679` and `:1687`) — so a cached negative
+  loses an enchanted weapon's glow, and a cached pointer outlives the callback the
+  node let go of. Whether a node animates is not a property of the content. What is
+  left is making the question itself cheaper than a `dynamic_cast` a link.
 - [ ] `components/rtx/nodelibrary.hpp:18` — `isFrom` is a virtual call and a
   `strcmp`. `MirrorTraversal` asks it up to four times per node per frame — at
   `sceneextractor.cpp:254`, `:257`, `:374` twice — and twice more per drawable at

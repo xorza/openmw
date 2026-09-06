@@ -579,7 +579,7 @@ namespace Rtx
 
     osg::Vec3f decodeColour(std::uint32_t packed)
     {
-        const auto channel = [](std::uint32_t bits) { return toLinear(static_cast<float>(bits & 0xFFu) / 255.0f); };
+        const auto channel = [](std::uint32_t bits) { return toLinear(static_cast<std::uint8_t>(bits & 0xFFu)); };
 
         return osg::Vec3f(channel(packed), channel(packed >> 8), channel(packed >> 16));
     }

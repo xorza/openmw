@@ -119,14 +119,18 @@ namespace Rtx
                             const std::size_t from = above.mOffset + (std::size_t{ sy } * above.mWidth + sx) * 4;
 
                             const auto stored = [&](std::size_t offset) {
-                                return std::to_integer<std::uint32_t>(mTexels[from + offset]) / 255.0f;
+                                return std::to_integer<std::uint8_t>(mTexels[from + offset]);
                             };
 
-                            osg::Vec3f texel(stored(0), stored(1), stored(2));
-                            if (mEncoded)
-                                texel = toLinear(texel);
+                            // **Through the byte and not through a float divided by 255**, which is
+                            // the same number by a table rather than by a `pow` a texel a channel a
+                            // level. Alpha is linear in every format and is the byte's own share.
+                            const auto channel = [&](std::size_t offset) {
+                                return mEncoded ? toLinear(stored(offset)) : stored(offset) / 255.0f;
+                            };
 
-                            const float alphaHere = stored(3);
+                            const osg::Vec3f texel(channel(0), channel(1), channel(2));
+                            const float alphaHere = stored(3) / 255.0f;
                             even += texel;
                             weighed += texel * alphaHere;
                             painted += alphaHere;
