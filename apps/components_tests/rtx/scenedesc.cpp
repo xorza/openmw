@@ -541,32 +541,34 @@ namespace Rtx
                 Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 0.0f), .mRadius = 1.0f },
                 Sprite{ .mPosition = osg::Vec3f(4.0f, 0.0f, 0.0f), .mRadius = 1.0f },
             };
-            scene.addEmitter(sPlume, texture, true, 0.0f, lighting);
+            const std::array sSmoke{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 10.0f), .mRadius = 2.0f } };
 
+            scene.addEmitter(sPlume, texture, true, 0.0f, lighting);
             ASSERT_EQ(scene.getEmitters().size(), 1u);
-            const SpriteEmitter& plume = scene.getEmitters().front();
-            EXPECT_EQ(plume.mCentre, osg::Vec3f(2.0f, 0.0f, 0.0f));
-            EXPECT_FLOAT_EQ(plume.mReach, 3.0f);
-            EXPECT_EQ(plume.mFirst, 0u);
-            EXPECT_EQ(plume.mCount, 3u);
-            EXPECT_EQ(plume.mTexture, texture);
-            EXPECT_EQ(plume.mLighting, lighting);
-            EXPECT_TRUE(plume.mAdditive);
 
             // An emitter with nothing alive in it is not an emitter, and the next one that has
             // something starts where the first left off rather than where a placeholder would have.
             scene.addEmitter({}, texture, false);
             EXPECT_EQ(scene.getEmitters().size(), 1u);
 
-            const std::array sSmoke{ Sprite{ .mPosition = osg::Vec3f(0.0f, 0.0f, 10.0f), .mRadius = 2.0f } };
             scene.addEmitter(sSmoke, texture, false);
-
             ASSERT_EQ(scene.getEmitters().size(), 2u);
-            EXPECT_EQ(scene.getEmitters()[1].mFirst, 3u);
-            EXPECT_EQ(scene.getEmitters()[1].mCount, 1u);
-            EXPECT_FALSE(scene.getEmitters()[1].mAdditive)
-                << "the blend the file asked for is what tells the two apart";
-            EXPECT_EQ(scene.getEmitters()[1].mLighting, sNoIndex) << "an emitter with no bake is lit as a card";
+
+            // Named once the adds are done, for the reason `SceneDesc`'s spans give.
+            const std::span<const SpriteEmitter> made = scene.getEmitters();
+
+            EXPECT_EQ(made[0].mCentre, osg::Vec3f(2.0f, 0.0f, 0.0f));
+            EXPECT_FLOAT_EQ(made[0].mReach, 3.0f);
+            EXPECT_EQ(made[0].mFirst, 0u);
+            EXPECT_EQ(made[0].mCount, 3u);
+            EXPECT_EQ(made[0].mTexture, texture);
+            EXPECT_EQ(made[0].mLighting, lighting);
+            EXPECT_TRUE(made[0].mAdditive);
+
+            EXPECT_EQ(made[1].mFirst, 3u);
+            EXPECT_EQ(made[1].mCount, 1u);
+            EXPECT_FALSE(made[1].mAdditive) << "the blend the file asked for is what tells the two apart";
+            EXPECT_EQ(made[1].mLighting, sNoIndex) << "an emitter with no bake is lit as a card";
             EXPECT_EQ(scene.getSprites().size(), 4u);
             EXPECT_EQ(scene.getSprites()[3].mPosition, osg::Vec3f(0.0f, 0.0f, 10.0f));
 
@@ -595,31 +597,37 @@ namespace Rtx
 
             // Facing the eye: a disc, and the reach is the radius.
             const std::array disc{ Sprite{ .mPosition = osg::Vec3f(), .mRadius = 10.0f } };
-            scene.addEmitter(disc, texture, false);
-            ASSERT_EQ(scene.getEmitters().size(), 1u);
-            EXPECT_FLOAT_EQ(scene.getEmitters()[0].mWidth, 0.0f) << "a width of nothing is a billboard";
-            EXPECT_FLOAT_EQ(scene.getEmitters()[0].mReach, 10.0f);
 
             // Morrowind's own rain shape. The quad runs `+-0.1 * 10` across and `+-1 * 10` down, so
             // its corner is `|(0.1, 0, -1)| * 10 = 10.0499` from the middle — and that, not the ten,
             // is what has to fit in the sphere.
             const std::array streak{ Sprite{
                 .mPosition = osg::Vec3f(), .mRadius = 10.0f, .mAxis = osg::Vec3f(0.0f, 0.0f, -1.0f) } };
-            scene.addEmitter(streak, texture, false, 0.1f);
 
-            ASSERT_EQ(scene.getEmitters().size(), 2u);
-            const SpriteEmitter& rain = scene.getEmitters()[1];
-            EXPECT_FLOAT_EQ(rain.mWidth, 0.1f) << "carried as authored, because the length is the shape";
-            EXPECT_NEAR(rain.mReach, 10.0499f, 1e-3f);
-            EXPECT_GT(rain.mReach, 10.0f) << "further than the radius alone would have reached";
+            // The same streak leant by the wind, which is what the last claim below is measured on.
+            const std::array leant{ Sprite{
+                .mPosition = osg::Vec3f(), .mRadius = 10.0f, .mAxis = osg::Vec3f(0.0f, 0.5f, -0.8660254f) } };
+
+            // **Every add before any read**, for the reason `SceneDesc`'s spans give: a row named
+            // while another emitter is still to come is a row the next `addEmitter` moves out from
+            // under the name.
+            scene.addEmitter(disc, texture, false);
+            scene.addEmitter(streak, texture, false, 0.1f);
+            scene.addEmitter(leant, texture, false, 0.1f);
+
+            ASSERT_EQ(scene.getEmitters().size(), 3u);
+            const std::span<const SpriteEmitter> made = scene.getEmitters();
+
+            EXPECT_FLOAT_EQ(made[0].mWidth, 0.0f) << "a width of nothing is a billboard";
+            EXPECT_FLOAT_EQ(made[0].mReach, 10.0f);
+
+            EXPECT_FLOAT_EQ(made[1].mWidth, 0.1f) << "carried as authored, because the length is the shape";
+            EXPECT_NEAR(made[1].mReach, 10.0499f, 1e-3f);
+            EXPECT_GT(made[1].mReach, 10.0f) << "further than the radius alone would have reached";
 
             // **And the axis is what the reach is measured on**, not the width beside it: a streak
             // leant by the wind reaches exactly as far as one falling straight down.
-            const std::array leant{ Sprite{
-                .mPosition = osg::Vec3f(), .mRadius = 10.0f, .mAxis = osg::Vec3f(0.0f, 0.5f, -0.8660254f) } };
-            scene.addEmitter(leant, texture, false, 0.1f);
-            ASSERT_EQ(scene.getEmitters().size(), 3u);
-            EXPECT_NEAR(scene.getEmitters()[2].mReach, rain.mReach, 1e-3f);
+            EXPECT_NEAR(made[2].mReach, made[1].mReach, 1e-3f);
         }
 
         /// The unit quad lifted to `z`, so a mesh can be told apart by what came back out of it.

@@ -786,6 +786,11 @@ namespace Rtx
         /// names — and until `clear` or `clearPlacement`, which empty them. Take it after the add
         /// and never in the same expression as one: `getMeshes()[addMesh(...)]` sequences the span
         /// before the add, and indexes a table that has moved.
+        ///
+        /// **A row read out of one by reference has the same lifetime as the span it came from**,
+        /// which is what makes an index the only name for a row that outlives an add. A caller
+        /// holding the scene `const` is safe by its type. A caller that builds one is not, and
+        /// finishing the adds before the reads is the shape that does not have to remember it.
         std::span<const osg::Vec3f> getPositions() const { return mPositions; }
         std::span<const osg::Vec3f> getNormals() const { return mNormals; }
         std::span<const osg::Vec2f> getTexCoords() const { return mTexCoords; }
