@@ -29,20 +29,6 @@ shimmer.
   by design, so the check only ever runs with both off, which is why it is worth
   asking whether it earns its keep before it is built again.
 
-## The option-ownership table covers one frame knob and not the rest
-
-`ToolOptions::complainAbout` exists so that "a run that names it under any other
-command is stopped rather than quietly rendering something else". Only `--fov`
-is registered under `sFramed`.
-
-- [ ] `apps/rtxtool/options.cpp` — `--size`, `--upscale`, `--preset`,
-  `--reorder`, `--delight`, `--filter`, `--albedo`, `--jitter`, `--exposure`,
-  `--crossings`, `--hour`, `--weather`, `--day`, `--distant-statics` and
-  `--distant-cells` all use the unowned `addOption`, so `readsOption` answers
-  `Verbs::Every`. `openmw-rtxtool info --size=800x600 --delight=0` is accepted
-  and ignored. Give them `sFramed` (or `sFramed | Verbs::Doll` where `doll`
-  builds a `FrameRequest`), which is what `--fov` already has.
-
 ## Comment blocks lost their paragraph breaks, so a paragraph documents the wrong line
 
 Two kinds, one cause: a `///` block that should be two paragraphs, or two
@@ -90,23 +76,34 @@ blank `///` between paragraphs):
 - [ ] `apps/openmw/mwrender/rtx/readworld.cpp:25` and `:34`
 - [ ] `apps/openmw/mwrender/rtx/rtxrenderer.cpp:717` and `:736`
 
-## Six harness commands repeat the same four-line preamble
+## `chooseView` returns a `View` whose optionals are never empty
 
-- [ ] `apps/rtxtool/main.cpp:524-596, 689-715, 726-753` — `commandTextures`,
-  `commandDoll`, `commandMap`, `commandScene`, `commandShot` and `commandView`
-  each open with `chooseView` / `frameFrom(*place.mHour, *place.mWeather)` /
-  `applyHostedSettings` / `stillStopAt`, then set one or two `Actions` fields.
-  One helper returning the `{place, frame, stop}` triple leaves each command as
-  the two lines that differ. It also states the unchecked `*place.mHour`
-  dereference once instead of six times.
-- [ ] `apps/rtxtool/main.cpp:628-630` and `:781-786` — `commandVerify` and
-  `commandCheck` open-code `stillStopAt`'s three assignments instead of calling
-  it, so a change to what "held still" means has three places to reach.
-- [ ] `apps/rtxtool/main.cpp:601-606, 647-652, 765-770` — `commandVerify`,
-  `commandBench` and `commandCheck` read the hour and the weather twice by two
-  different rules in one command: raw `variables["hour"]` for `frameFrom`, then
-  `applyConditions` which uses `hourGiven`/`weatherGiven`. A view that fixes an
-  hour therefore stands under one hour and is *framed* for another.
+`View::mHour` and `View::mWeather` are `std::optional` because a view file entry
+may fix neither. `chooseView` resolves both through `hourFor`/`weatherFor` and so
+always fills them, and every caller then dereferences without checking. The type
+says something untrue of what that function returns, and `stageOnePlace` now
+states the reason once rather than six times — which is a comment standing in for
+a type.
+
+- [ ] Give `chooseView` a return type whose two conditions are a `float` and a
+  `std::string`, so nothing has to know the optionals are full. It is `View`
+  minus the optionality plus `mRoute`, which is close enough to `View` that the
+  question is whether `View` should carry a resolved sibling or the file's own
+  entry should be a separate type from a chosen place.
+
+## One rule for "the command line beats a view", implemented twice
+
+`hourFor`/`weatherFor` say the command line wins. `FrameRequest::describeStaging`
+says `view.mHour.value_or(mHour)`, which reads as the opposite. The two compose
+to the documented answer in every case, because `chooseView` resolves before the
+frame is built and `applyConditions` pre-mutates the views a run stages — so this
+is not a bug, and the review entry that called it one was wrong. What is true is
+that a reader of `describeStaging` cannot tell which rule is in force.
+
+- [ ] Make `describeStaging(view)` apply `hourFor`/`weatherFor` itself, which
+  needs `FrameRequest` to carry what the command line *named* rather than what it
+  resolved to — two `std::optional`s. `applyConditions` then goes away, and the
+  rule has one home.
 
 ## Duplicated blocks inside one function
 

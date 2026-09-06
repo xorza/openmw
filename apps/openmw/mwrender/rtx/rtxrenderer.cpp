@@ -94,20 +94,6 @@ namespace MWRender
             return value != nullptr && *value != '\0' && std::strcmp(value, "0") != 0;
         }
 
-        /// The value `asked` names, refused rather than defaulted.
-        ///
-        /// **A typo that quietly renders at another mode is a measurement of the wrong thing**,
-        /// which is why `NamedEnum::named` answers nothing rather than a default. The modes the
-        /// message offers are the table's own, so it can neither name one the parser has stopped
-        /// taking nor miss one it has gained.
-        template <class Enum, std::size_t N>
-        Enum readSetting(const Rtx::NamedEnum<Enum, N>& names, const std::string& asked)
-        {
-            if (const std::optional<Enum> value = names.named(asked))
-                return *value;
-
-            throw std::runtime_error('"' + asked + "\" is not one of " + names.list());
-        }
     }
 
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
@@ -147,8 +133,9 @@ namespace MWRender
 
         mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mStats);
 
-        const Rtx::Upscale upscale = readSetting(Rtx::sUpscaleNames, Settings::rtx().mUpscale);
-        const Rtx::Preset preset = readSetting(Rtx::sPresetNames, Settings::rtx().mPreset);
+        const Rtx::Upscale upscale = Rtx::sUpscaleNames.require(Settings::rtx().mUpscale.get(), "an upscale mode");
+        const Rtx::Preset preset
+            = Rtx::sPresetNames.require(Settings::rtx().mPreset.get(), "a Ray Reconstruction preset");
 
         // The window's own size, which `fitToWindow` asks for again on every frame after this one.
         // Kept, so that the first of those sees a size that has already settled.
@@ -210,7 +197,7 @@ namespace MWRender
         // frame drawn by the other were traced by two differently configured renderers.
         options.mCountCrossings = Settings::rtx().mCountCrossings;
 
-        options.mReorder = readSetting(Rtx::sReorderNames, Settings::rtx().mReorder);
+        options.mReorder = Rtx::sReorderNames.require(Settings::rtx().mReorder.get(), "a reorder mode");
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the

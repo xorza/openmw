@@ -61,11 +61,6 @@ namespace MWRender
         return sChecks.name(check);
     }
 
-    std::optional<Check> checkNamed(const std::string_view name)
-    {
-        return sChecks.named(name);
-    }
-
     std::span<const Check> everyCheck()
     {
         return sEvery;

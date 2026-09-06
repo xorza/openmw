@@ -1,5 +1,3 @@
-- time `shot` in release against the 4.4 s the staged one took, and close the spike gate
-
 - audit includes
 - audit #pragmas
 - load time allocations

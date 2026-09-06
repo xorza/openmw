@@ -36,6 +36,10 @@ namespace RtxTool
         std::vector<OptionOwner> mOwners;
 
         /// Which commands read `name`. Every one of them where nothing said otherwise.
+        ///
+        /// **`makeOptions` leaves nothing to that fallback**, so what reaches it is the four
+        /// `Files::ConfigurationManager::addCommonOptions` puts on the same description — and those
+        /// really are every command's.
         Verbs readsOption(std::string_view name) const;
 
         /// What `verb` was given on `line` and does not read, as the lines to print — empty where

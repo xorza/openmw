@@ -2,7 +2,9 @@
 
 #include <array>
 #include <cstddef>
+#include <format>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -11,15 +13,12 @@ namespace Rtx
 {
     /// One enum's spellings, and the only place they are written.
     ///
-    /// **A table rather than a switch beside an if-chain.** Each of these enums carried both, over
-    /// the same strings and in the same order, and then the list of strings was restated a third
-    /// time in an option's help, a fourth in a runtime error and a fifth in `settings-default.cfg`.
-    /// Two of those copies had drifted: `--upscale` named five of the six modes it accepts, and
-    /// `[RTX] reorder` named three of its four. What a table adds over the pair is that the
-    /// printable list is derived as well, so the prose cannot drift from what the parser takes.
-    ///
-    /// **The first entry is the one a default means**, which is what makes an entry's position
-    /// worth keeping: `off`, `none` and `default` each open their own table.
+    /// **A table rather than a switch beside an if-chain.** An enum spelled by that pair states its
+    /// strings twice, and the list of them is then restated a third time in an option's help, a
+    /// fourth in a runtime error and a fifth in `settings-default.cfg`. Two of those copies drifted:
+    /// `--upscale` offered five of the six modes it accepts, and `[RTX] reorder` three of its four.
+    /// What a table adds over the pair is that the printable list is derived as well, so no prose
+    /// can name a mode the parser has stopped taking or miss one it has gained.
     template <class Enum, std::size_t N>
     struct NamedEnum
     {
@@ -32,8 +31,8 @@ namespace Rtx
         /// that is quietly wrong.
         constexpr std::string_view name(Enum value) const
         {
-            for (const auto& [named, spelling] : mNames)
-                if (named == value)
+            for (const auto& [held, spelling] : mNames)
+                if (held == value)
                     return spelling;
 
             return {};
@@ -46,11 +45,26 @@ namespace Rtx
         /// something else.
         constexpr std::optional<Enum> named(std::string_view spelling) const
         {
-            for (const auto& [value, named] : mNames)
-                if (named == spelling)
+            for (const auto& [value, held] : mNames)
+                if (held == spelling)
                     return value;
 
             return std::nullopt;
+        }
+
+        /// The value `spelling` names, refusing anything else with every spelling this does take.
+        ///
+        /// **Both hosts ask it here**, so a name the game rejects and one the harness rejects are
+        /// answered by one sentence — and by one that offers the modes rather than only naming the
+        /// typo.
+        ///
+        /// @param what the noun the message calls this, as "an upscale mode".
+        Enum require(std::string_view spelling, std::string_view what) const
+        {
+            if (const std::optional<Enum> value = named(spelling))
+                return *value;
+
+            throw std::runtime_error(std::format("\"{}\" is not {}: {}", spelling, what, list()));
         }
 
         /// The values, in the order they are listed.

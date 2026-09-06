@@ -1,6 +1,5 @@
 #pragma once
 
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -75,9 +74,6 @@ namespace MWRender
 
     /// What a check is called on a command line and in a report.
     std::string_view checkName(Check check);
-
-    /// The check called `name`, or nothing where nothing is called that.
-    std::optional<Check> checkNamed(std::string_view name);
 
     /// Every check there is, in the order they are run.
     std::span<const Check> everyCheck();

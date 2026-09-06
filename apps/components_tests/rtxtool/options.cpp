@@ -1,13 +1,16 @@
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 
 #include <apps/rtxtool/options.hpp>
 #include <apps/rtxtool/verbs.hpp>
+#include <components/files/configurationmanager.hpp>
 
 namespace RtxTool
 {
@@ -41,7 +44,8 @@ namespace RtxTool
             // The same mistake the other way round: a run of places takes its cell from `--views`,
             // and `--view` is what a command that stands at one place reads.
             EXPECT_EQ(options.complainAbout(parse(options, { "--view=balmora" }), Verbs::Bench),
-                "`bench` does not read --view, which belongs to `scene`, `shot`, `view`, `textures` and `map`.\n");
+                "`bench` does not read --view, which belongs to every command but `info`, `bench`, `verify` "
+                "and `check`.\n");
             EXPECT_EQ(options.complainAbout(parse(options, { "--view=balmora" }), Verbs::Shot), "");
         }
 
@@ -69,20 +73,47 @@ namespace RtxTool
                 "`bench` does not read --out, which belongs to `shot`, `textures`, `doll`, `map` and `verify`.\n");
         }
 
-        /// An option nobody restricted is every command's, and a command line that names none of
-        /// the restricted ones is nobody's complaint.
-        TEST(RtxToolOptionsTest, anUnrestrictedOptionIsEveryCommandsToRead)
+        /// Every option says which commands read it, and the ones that say "all of them" say it.
+        ///
+        /// The bug this holds shut: a knob that never named an owner answered `Verbs::Every` by
+        /// default, so `info --size=800x600 --delight=0` was taken and thrown away.
+        TEST(RtxToolOptionsTest, everyOptionSaysWhichCommandsReadIt)
         {
             const ToolOptions options = makeOptions(false);
 
-            EXPECT_EQ(options.readsOption("upscale"), Verbs::Every);
+            // Upstream's own — `--config` and its three siblings — reach the same description
+            // through `Files::ConfigurationManager` and are every command's by nature. They are the
+            // only names `readsOption` is allowed to answer by falling through.
+            bpo::options_description upstream("");
+            Files::ConfigurationManager::addCommonOptions(upstream);
+
+            std::set<std::string> owned;
+            for (const OptionOwner& owner : options.mOwners)
+                owned.insert(std::string(owner.mName));
+
+            for (const auto& declared : options.mDescription.options())
+            {
+                const std::string& name = declared->long_name();
+                const bool theirs = upstream.find_nothrow(name, false) != nullptr;
+
+                EXPECT_TRUE(theirs || owned.contains(name)) << name << " reached the description with no owner";
+            }
+
             EXPECT_EQ(options.readsOption("validation"), Verbs::Every);
-            EXPECT_EQ(options.readsOption("data"), Verbs::Every) << "nothing declared here is restricted either";
+            EXPECT_EQ(options.readsOption("data"), Verbs::Every) << "the engine's own, read by every command";
             EXPECT_EQ(options.readsOption("views"), Verbs::Bench | Verbs::Verify | Verbs::Check);
+
+            // Every command but `info` builds a frame, and `info` reports on a device.
+            EXPECT_EQ(options.readsOption("upscale"), otherThan(Verbs::Info));
+            EXPECT_EQ(options.readsOption("size"), otherThan(Verbs::Info));
+            EXPECT_EQ(options.complainAbout(parse(options, { "--size=8x8" }), Verbs::Info),
+                "`info` does not read --size, which belongs to every command but `info`.\n");
+            EXPECT_EQ(options.complainAbout(parse(options, { "--size=8x8" }), Verbs::Doll), "")
+                << "`doll` frames a camera through the same request every other command does";
 
             for (const std::string_view name :
                 { "info", "scene", "shot", "view", "bench", "textures", "doll", "map", "verify", "check" })
-                EXPECT_EQ(options.complainAbout(parse(options, { "--upscale=off" }), verbNamed(name)), "") << name;
+                EXPECT_EQ(options.complainAbout(parse(options, { "--validation=false" }), verbNamed(name)), "") << name;
         }
 
         /// The help line and the check are one statement, so a reader is told what the tool
@@ -97,11 +128,11 @@ namespace RtxTool
             EXPECT_TRUE(lineFor("views").starts_with("with `bench`, `verify` and `check`, ")) << lineFor("views");
             EXPECT_TRUE(lineFor("find").starts_with("with `scene`, ")) << lineFor("find");
 
-            // Most of the ten read a camera, so the line names the few that do not rather than
-            // the many that do.
-            EXPECT_TRUE(lineFor("fov").starts_with("with every command but `info` and `doll`, ")) << lineFor("fov");
+            // Nine of the ten read a camera, so the line names the one that does not rather than
+            // the nine that do.
+            EXPECT_TRUE(lineFor("fov").starts_with("with every command but `info`, ")) << lineFor("fov");
 
-            EXPECT_FALSE(lineFor("upscale").starts_with("with ")) << "nothing to say about a command that reads it";
+            EXPECT_FALSE(lineFor("validation").starts_with("with ")) << "nothing to say where every command reads it";
         }
 
         /// The names the two tables share: an option's owner and the dispatch's row are the same
