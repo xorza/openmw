@@ -114,22 +114,24 @@ namespace Rtx
     FrameWorld describeWorld(const WorldReading& reading)
     {
         const Daylight& day = reading.mDaylight;
+        const Skylight& light = day.mLight;
 
         const Shaders::StarField stars = reading.mOutdoors
             ? describeStars(day.mStarFade, reading.mGlare, reading.mStarRoll, reading.mSky)
             : noStars();
 
         const SkyBudget budget
-            = reading.mOutdoors ? skyBudget(day.mSkyHorizon, day.mSkyZenith, stars.mGlow, day.mAmbient) : SkyBudget{};
+            = reading.mOutdoors ? skyBudget(day.mSkyHorizon, day.mSkyZenith, stars.mGlow, light.mAmbient) : SkyBudget{};
 
         Fog air = day.mFog;
         if (reading.mFogFromSky)
             air.mColour = fogColour(budget.mMean, air.mColour);
 
         FrameWorld world{
-            .mSun = day.mSun,
-            .mAmbient = day.mAmbient,
+            .mSun = light.mSun,
+            .mAmbient = light.mAmbient,
             .mAmbientFromSky = reading.mOutdoors ? 1.0f : 0.0f,
+            .mExposureBias = light.mExposureBias,
             .mSkyHorizon = day.mSkyHorizon,
             .mSkyZenith = day.mSkyZenith,
             .mSkyFill = budget.mFill,
@@ -149,7 +151,7 @@ namespace Rtx
             world.mMoons = reading.mMoons;
 
             world.mClouds = describeClouds(reading.mWeather, reading.mNextWeather, reading.mCloudBlend,
-                deckLight(day.mSunAloft, budget.mMean, reading.mMoons), reading.mCloudDirection,
+                deckLight(light.mSunAloft, budget.mMean, reading.mMoons), reading.mCloudDirection,
                 reading.mNextCloudDirection, reading.mCloudRoll, reading.mSky);
 
             describePatches(reading.mStarRoll, reading.mSky, world.mSkyPatches);

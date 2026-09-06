@@ -187,17 +187,14 @@ namespace Rtx
             });
 
             return Daylight{
-                .mSun = sky.mSun,
-                .mSunAloft = sky.mSunAloft,
+                .mLight = sky,
                 .mSkyHorizon = haze,
                 .mSkyZenith = zenith,
-                .mAmbient = sky.mAmbient,
 
                 // **The engine's own ramp for the stars**, which is four points like every other and
                 // crosses on the `Stars` window rather than the sky's: they outlast the sunset and
                 // are gone before the sun is up. Nothing but night has any of it.
                 .mStarFade = Sky::TimeOfDayInterpolator<float>(0.0f, 0.0f, 0.0f, 1.0f).getValue(hour, times, "Stars"),
-                .mExposureBias = exposureBias(sky.mSun.mIrradiance, sky.mAmbient),
                 .mFog = exteriorFog(haze, read.mFogDepth, read.mWindSpeed, reach),
             };
         }
@@ -294,11 +291,16 @@ namespace Rtx
         // that does not read as one.
         const float dusk = 2.0f * share * (1.0f - share);
 
-        return Skylight{
+        Skylight light{
             .mSun = sunAbove(sky, share),
             .mSunAloft = sunAbove(sky, sky.mSunShareAloft),
             .mAmbient = sky.mAmbient + irradiance * (dusk * Shaders::INV_FOUR_PI),
         };
+
+        // After both terms, because it measures what they come to between them.
+        light.mExposureBias = exposureBias(light.mSun.mIrradiance, light.mAmbient);
+
+        return light;
     }
 
     Sun sunAbove(const SkyReading& sky, float share)
@@ -711,11 +713,10 @@ namespace Rtx
         const osg::Vec3f spread = decodeColour(room.mSunlight) * (Shaders::DAYLIGHT * Shaders::INV_FOUR_PI);
 
         return Daylight{
+            .mLight = Skylight{ .mAmbient = fill + spread, .mExposureBias = 1.0f },
             .mSkyHorizon = haze,
             .mSkyZenith = haze,
-            .mAmbient = fill + spread,
             .mStarFade = 0.0f,
-            .mExposureBias = 1.0f,
             .mFog = roomFog(haze, room.mFogDensity),
         };
     }

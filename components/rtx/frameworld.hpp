@@ -10,9 +10,9 @@
 #include "fogbuilder.hpp"
 #include "lightbuilder.hpp"
 #include "moonbuilder.hpp"
-#include "scenedesc.hpp"
 #include "shaders/visibility.h"
 #include "skybuilder.hpp"
+#include "sun.hpp"
 
 namespace Weather
 {
@@ -119,6 +119,12 @@ namespace Rtx
         /// How much of that arrives from the sky — one out of doors and nothing in a room.
         /// `Shaders::VisibilityConstants::mAmbientFromSky` says what turns on it.
         float mAmbientFromSky = 0.0f;
+
+        /// What to hold the frame's measured exposure back by — `Skylight::mExposureBias`, carried.
+        ///
+        /// **The one number of the world's half that is not a shader constant.** It reaches
+        /// `FrameOptions` instead, so `applyWorld` leaves it alone and the caller reads it here.
+        float mExposureBias = 1.0f;
 
         /// What a ray that hit nothing comes back with, at the horizon and overhead. The game
         /// records one colour for the fog and the sky's lower half because they are the same thing

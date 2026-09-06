@@ -349,14 +349,15 @@ namespace Rtx
         {
             return WorldReading{
                 .mDaylight = Daylight{
-                    .mSun = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
-                        .mIrradiance = osg::Vec3f(8.0f, 4.0f, 2.0f),
-                        .mDiscColour = osg::Vec3f(1.0f, 0.8f, 0.65f) },
-                    .mSunAloft = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
-                        .mIrradiance = osg::Vec3f(9.0f, 5.0f, 3.0f) },
+                    .mLight = { .mSun = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
+                                    .mIrradiance = osg::Vec3f(8.0f, 4.0f, 2.0f),
+                                    .mDiscColour = osg::Vec3f(1.0f, 0.8f, 0.65f) },
+                        .mSunAloft = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
+                            .mIrradiance = osg::Vec3f(9.0f, 5.0f, 3.0f) },
+                        .mAmbient = osg::Vec3f(0.11f, 0.12f, 0.13f),
+                        .mExposureBias = 0.75f },
                     .mSkyHorizon = osg::Vec3f(0.21f, 0.22f, 0.23f),
                     .mSkyZenith = osg::Vec3f(0.31f, 0.32f, 0.33f),
-                    .mAmbient = osg::Vec3f(0.11f, 0.12f, 0.13f),
                     .mStarFade = 1.0f,
                     .mFog = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f), .mExtinction = 1.5e-4f },
                 },
@@ -423,6 +424,26 @@ namespace Rtx
             EXPECT_EQ(open.mMoons[0].mIrradiance, osg::Vec3f(0.05f, 0.05f, 0.06f));
         }
 
+        /// The bias is the light's, and this is the only thing between it and `FrameOptions`.
+        ///
+        /// **Carried and never derived, because a room is the exception to the rule that would
+        /// derive it** — `Skylight::mExposureBias`. So `mOutdoors` must not reach this one: a
+        /// reader that held a room at one by testing the flag would hold a lit cellar there too.
+        TEST(RtxFrameWorldTest, theExposureBiasIsCarriedFromWhicheverLightTheCellGot)
+        {
+            WorldReading open = reading();
+            open.mDaylight.mLight.mExposureBias = 0.375f;
+
+            EXPECT_FLOAT_EQ(describeWorld(open).mExposureBias, 0.375f);
+
+            WorldReading room = open;
+            room.mOutdoors = false;
+            room.mFogFromSky = false;
+            room.mDaylight.mLight.mExposureBias = 0.625f;
+
+            EXPECT_FLOAT_EQ(describeWorld(room).mExposureBias, 0.625f) << "the flag reached a number that is not its";
+        }
+
         /// An exterior's air is the record's hue under the dome's own mean, and a quasi-exterior's
         /// is the record as it stands.
         ///
@@ -446,7 +467,7 @@ namespace Rtx
 
             const SkyBudget budget = skyBudget(open.mDaylight.mSkyHorizon, open.mDaylight.mSkyZenith,
                 describeStars(open.mDaylight.mStarFade, open.mGlare, open.mStarRoll, open.mSky).mGlow,
-                open.mDaylight.mAmbient);
+                open.mDaylight.mLight.mAmbient);
             EXPECT_EQ(outside.mAir.mColour, fogColour(budget.mMean, open.mDaylight.mFog.mColour));
 
             // And both are outdoors, which is what makes them the same case but for the air.
@@ -465,8 +486,8 @@ namespace Rtx
         TEST(RtxFrameWorldTest, whatTheStarsAddReachesTheDeckThatHangsUnderThem)
         {
             WorldReading dark = reading();
-            dark.mDaylight.mSun = Sun{};
-            dark.mDaylight.mSunAloft = Sun{};
+            dark.mDaylight.mLight.mSun = Sun{};
+            dark.mDaylight.mLight.mSunAloft = Sun{};
             dark.mDaylight.mStarFade = 0.0f;
 
             WorldReading starry = dark;

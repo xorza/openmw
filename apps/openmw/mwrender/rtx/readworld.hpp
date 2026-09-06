@@ -1,7 +1,5 @@
 #pragma once
 
-#include <optional>
-
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/skybuilder.hpp>
@@ -9,20 +7,6 @@
 namespace MWRender
 {
     struct WorldState;
-
-    /// What one frame's world comes to, once the game's reading of it has been turned into the
-    /// renderer's.
-    struct WorldRead
-    {
-        Rtx::WorldReading mReading;
-
-        /// A room's own exposure bias, and nothing for a frame under a sky.
-        ///
-        /// **A room is dark by the same measure a midnight is**, and holding one back by two stops
-        /// is not what an eye walking into a room does — it adapts. `Rtx::makeRoomLight` is where
-        /// the number is decided; a frame outdoors measures its own.
-        std::optional<float> mExposureBias;
-    };
 
     /// Turns what the game says about this frame's world into what the renderer builds a sky, an
     /// air and a sea out of.
@@ -38,6 +22,6 @@ namespace MWRender
     /// @param landReach how much world this renderer builds, in units. One reading for the whole
     ///        frame: the ground, the air and the distant lights are measured over the same number.
     /// @param seconds the world's clock, which the sea is animated by.
-    WorldRead readWorld(const WorldState& world, const Rtx::SkyContent& sky, const Rtx::MoonFaces& faces,
+    Rtx::WorldReading readWorld(const WorldState& world, const Rtx::SkyContent& sky, const Rtx::MoonFaces& faces,
         float landReach, float seconds);
 }

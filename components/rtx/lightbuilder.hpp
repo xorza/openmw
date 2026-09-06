@@ -17,6 +17,7 @@
 
 #include "fogbuilder.hpp"
 #include "scenedesc.hpp"
+#include "sun.hpp"
 
 namespace ESM
 {
@@ -136,8 +137,13 @@ namespace Rtx
 
     /// What to hold a measured exposure back by, for a sky delivering this much light.
     ///
-    /// One where the hour delivers a full sun's worth or more, falling from there. `Daylight`'s own
-    /// field says why an hour has to be told to the exposure rather than measured out of the frame.
+    /// One where the hour delivers a full sun's worth or more, falling from there.
+    ///
+    /// **Night is a thing the world knows and not a thing the picture can measure.** A histogram has
+    /// no absolute anchor: it normalises whatever it is shown toward the key, so a midnight and a
+    /// noon come out within a few per cent of each other and the renderer has no night in it at any
+    /// hour. The weather does know the hour, so it says how dark the hour is and the exposure pass
+    /// is told rather than left to guess.
     float exposureBias(const osg::Vec3f& sunIrradiance, const osg::Vec3f& ambient);
 
     /// What a weather says about the sky at one hour, in the renderer's own units.
@@ -176,6 +182,10 @@ namespace Rtx
 
     /// The sky's light, in the two forms a tracer can use it: one that comes from somewhere, and one
     /// that does not.
+    ///
+    /// **The whole of what lights a cell, and the unit a host picks between.** A room takes its own
+    /// out of an `AMBI` record and everything under a sky takes `makeSkylight`'s, so a reading is a
+    /// choice between two of these rather than an assembly of either.
     struct Skylight
     {
         Sun mSun;
@@ -186,6 +196,14 @@ namespace Rtx
         /// What a path is terminated with, which is the weather's own ambient plus whatever of the
         /// sun is not over the horizon. `makeSkylight` says why.
         osg::Vec3f mAmbient;
+
+        /// What to hold a measured exposure back by for this light. One leaves it alone.
+        ///
+        /// **A field and not `exposureBias` of the two above, because a room breaks that
+        /// derivation.** An interior's ambient is the whole of its light and the record is dark by
+        /// the same measure a midnight is — so the function would hold a cellar back by two stops,
+        /// which is not what an eye walking into one does. `makeRoomLight` states one instead.
+        float mExposureBias = 1.0f;
     };
 
     /// The sky's light, out of what a weather says — and the one place a sun is allowed to be built.
@@ -208,7 +226,7 @@ namespace Rtx
     /// every orientation a surface could take, a quarter of its irradiance — the mean of `max(0,
     /// cos)` over the sphere — and a uniform hemisphere of radiance `L` delivers `pi L` to all of
     /// them, so `E / 4pi` is the same light with the direction taken out of it. Nothing is invented
-    /// and nothing is lost; a night simply stops having a sun in it.
+    /// and nothing is lost. A night simply stops having a sun in it.
     Skylight makeSkylight(const SkyReading& sky);
 
     /// How high the cloud layer stands, in world units.
@@ -307,33 +325,20 @@ namespace Rtx
     /// under two that were written to agree.
     struct Daylight
     {
-        Sun mSun;
-
-        /// The same sun as a layer above the ground sees it — `Skylight::mSunAloft`, carried through
-        /// so a caller that took its whole sky from an hour has the deck's half of it too.
-        Sun mSunAloft;
+        /// What the sky lights with, whole.
+        ///
+        /// **Held rather than restated**, so a field added to a light reaches an hour's sky without
+        /// anyone carrying it across.
+        Skylight mLight;
 
         /// Sky radiance, linear, at the horizon and overhead. The horizon is the weather's fog
         /// colour, which is also the air the cloud deck hangs in and is lifted off.
         osg::Vec3f mSkyHorizon;
         osg::Vec3f mSkyZenith;
 
-        /// What an exterior gets in place of a cell's `AMBI`, which only interiors carry — the
-        /// weather's own ambient, and across dusk the sun's light with its direction taken away.
-        osg::Vec3f mAmbient;
-
         /// How far the stars have come out: the engine's `Stars` ramp at this hour, before the
         /// weather's glare is taken off it.
         float mStarFade = 0.0f;
-
-        /// What to hold the measured exposure back by, from this hour alone. One leaves it alone.
-        ///
-        /// **Night is a thing the world knows and not a thing the picture can measure.** A histogram
-        /// has no absolute anchor: it normalises whatever it is shown toward the key, so a midnight
-        /// and a noon come out within a few per cent of each other and the renderer has no night in
-        /// it at any hour. The weather does know the hour, so it says how dark the hour is here and
-        /// the exposure pass is told rather than left to guess. `settle` derives it.
-        float mExposureBias = 1.0f;
 
         /// The weather's own air.
         ///

@@ -692,9 +692,9 @@ namespace MWRender
 
         Rtx::Shaders::VisibilityConstants constants = *viewpoint;
 
-        const WorldRead read = readWorld(
+        const Rtx::WorldReading read = readWorld(
             world, mMirror.getSky(), mMirror.getMoonFaces(), landReach(), static_cast<float>(when.getSimulationTime()));
-        const Rtx::FrameWorld described = Rtx::describeWorld(read.mReading);
+        const Rtx::FrameWorld described = Rtx::describeWorld(read);
 
         Rtx::applyWorld(described, constants);
 
@@ -724,15 +724,12 @@ namespace MWRender
         // interior lit by nothing but this placeholder's ambient reaches the screen at a few
         // hundredths and reads as black.
         //
-        // **The hour is held back only outdoors, because the bias is the hour's and an interior has
-        // no hour.** A cell's `AMBI` is dark by the same measure a midnight is, and holding a room
-        // back by two stops is not what an eye walking into one does — it adapts to the room.
-        // `Rtx::makeRoomLight` is where a room's one is said.
-        const float bias
-            = read.mExposureBias.value_or(Rtx::exposureBias(described.mSun.mIrradiance, described.mAmbient));
-
-        const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(
-            constants, Rtx::FrameOptions{ .mSinceLast = mFixedStep, .mExposureBias = bias, .mExposure = std::nullopt });
+        // **Carried rather than worked out here**, because a room is the exception to the rule that
+        // would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell got settled
+        // it, and a second derivation at the frame is a second place to get the exception wrong.
+        const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(constants,
+            Rtx::FrameOptions{
+                .mSinceLast = mFixedStep, .mExposureBias = described.mExposureBias, .mExposure = std::nullopt });
 
         // **The whole frame, measured between one trace and the next.** Everything the game does
         // in between is in it — update, cull, this — which is what a player feels and what the

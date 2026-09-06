@@ -410,8 +410,9 @@ namespace Rtx
         /// What to multiply the exposure this frame measures for itself by. One leaves it alone, and
         /// a fixed `mExposure` is not touched by it at all.
         ///
-        /// **The hour, which the histogram cannot see.** `Rtx::Daylight::mExposureBias` is where it
-        /// comes from and says why there is one. An interior has no hour and keeps the one here.
+        /// **The hour, which the histogram cannot see.** `Rtx::Skylight::mExposureBias` is where it
+        /// comes from and says why there is one, and `Rtx::FrameWorld::mExposureBias` is what
+        /// carries it to a caller. An interior has no hour and keeps the one here.
         float mExposureBias = 1.0f;
 
         /// Whether to move the primary ray inside its pixel, by where the frame index falls in a

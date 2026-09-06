@@ -15,7 +15,7 @@
 
 namespace MWRender
 {
-    WorldRead readWorld(const WorldState& world, const Rtx::SkyContent& sky, const Rtx::MoonFaces& faces,
+    Rtx::WorldReading readWorld(const WorldState& world, const Rtx::SkyContent& sky, const Rtx::MoonFaces& faces,
         const float landReach, const float seconds)
     {
         // **Where the sun *is*, and the light comes back along it.** The world also reports
@@ -55,11 +55,14 @@ namespace MWRender
         const osg::Vec3f zenith = room.has_value() ? room->mSkyZenith : Rtx::decodeColour(world.mSkyColour);
 
         // **The sun is not assembled here.** Everything the world says about it goes to the one
-        // builder that decides what a sun may be — which is what keeps the game and the harness
-        // under the same sky, and what makes a sun that lights an empty night impossible to write.
-        // A room has none, and `Rtx::makeRoomLight` is where that is said for both hosts.
-        const Rtx::Skylight daylight = room.has_value()
-            ? Rtx::Skylight{ .mSun = room->mSun, .mSunAloft = room->mSunAloft, .mAmbient = room->mAmbient }
+        // builder that decides what a sun may be — which is what makes a sun that lights an empty
+        // night impossible to write. A room has none, and `Rtx::makeRoomLight` is where that is
+        // said.
+        //
+        // **Taken whole from whichever built it**, the exposure bias included: a light is one thing
+        // and this is the choice between two of them, not a place to reassemble either.
+        const Rtx::Skylight light = room.has_value()
+            ? room->mLight
             : Rtx::makeSkylight(Rtx::SkyReading{
                 .mSunPosition = discAt,
                 .mSunShare = world.mSunDiscColour.a(),
@@ -111,13 +114,11 @@ namespace MWRender
 
         const auto weatherId = static_cast<std::uint32_t>(world.mWeatherId);
 
-        return WorldRead{ .mReading = Rtx::WorldReading{
+        return Rtx::WorldReading{
             .mDaylight = Rtx::Daylight{
-                .mSun = daylight.mSun,
-                .mSunAloft = daylight.mSunAloft,
+                .mLight = light,
                 .mSkyHorizon = haze,
                 .mSkyZenith = zenith,
-                .mAmbient = daylight.mAmbient,
                 .mStarFade = world.mNightFade,
                 .mFog = air,
             },
@@ -147,7 +148,6 @@ namespace MWRender
             // slow down whenever the frame did.
             .mSeconds = seconds,
             .mRainOnWater = Rtx::rainOnWater(world.mPrecipitation),
-        },
-            .mExposureBias = room.has_value() ? std::optional(room->mExposureBias) : std::nullopt };
+        };
     }
 }

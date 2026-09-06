@@ -437,15 +437,15 @@ namespace Rtx
             EXPECT_EQ(after, before) << after - before << " allocations to light two hours";
 
             // The same answer as the name took, so holding the record is not a second reading of it.
-            EXPECT_EQ(again.mSun.mIrradiance, first.mSun.mIrradiance);
-            EXPECT_EQ(again.mAmbient, makeDaylight("Clear", 12.0f, sReach).mAmbient);
+            EXPECT_EQ(again.mLight.mSun.mIrradiance, first.mLight.mSun.mIrradiance);
+            EXPECT_EQ(again.mLight.mAmbient, makeDaylight("Clear", 12.0f, sReach).mLight.mAmbient);
             EXPECT_EQ(later.mFog.mExtinction, makeDaylight("Clear", 20.0f, sReach).mFog.mExtinction);
 
             // And the hour still reaches it: a record that ignored the clock would light noon and
             // eight in the evening the same. The ambient is read off a four-point ramp whose day and
             // night colours differ in both the ini and the defaults OpenMW ships.
-            EXPECT_EQ(later.mAmbient, makeDaylight("Clear", 20.0f, sReach).mAmbient);
-            EXPECT_NE(later.mAmbient, again.mAmbient);
+            EXPECT_EQ(later.mLight.mAmbient, makeDaylight("Clear", 20.0f, sReach).mLight.mAmbient);
+            EXPECT_NE(later.mLight.mAmbient, again.mLight.mAmbient);
         }
 
         /// The sun's arc, which is the engine's own and not an approximation of it.
@@ -503,15 +503,17 @@ namespace Rtx
             // same ramp all night and turns off only the sprite — and a tracer that kept that light
             // cast hard shadows swinging back across the ground until dawn, from a disc nothing was
             // drawing. There is no second field left to say otherwise.
-            EXPECT_NE(makeDaylight("Clear", 12.0f, sReach).mSun.mIrradiance, osg::Vec3f()) << "noon";
-            EXPECT_EQ(makeDaylight("Clear", 0.0f, sReach).mSun.mIrradiance, osg::Vec3f()) << "midnight";
-            EXPECT_EQ(makeDaylight("Clear", 22.0f, sReach).mSun.mIrradiance, osg::Vec3f()) << "night begins at twenty";
-            EXPECT_NE(makeDaylight("Clear", 7.0f, sReach).mSun.mIrradiance, osg::Vec3f()) << "and it is back after six";
+            EXPECT_NE(makeDaylight("Clear", 12.0f, sReach).mLight.mSun.mIrradiance, osg::Vec3f()) << "noon";
+            EXPECT_EQ(makeDaylight("Clear", 0.0f, sReach).mLight.mSun.mIrradiance, osg::Vec3f()) << "midnight";
+            EXPECT_EQ(makeDaylight("Clear", 22.0f, sReach).mLight.mSun.mIrradiance, osg::Vec3f())
+                << "night begins at twenty";
+            EXPECT_NE(makeDaylight("Clear", 7.0f, sReach).mLight.mSun.mIrradiance, osg::Vec3f())
+                << "and it is back after six";
 
             // The disc is white for every hour the sun is up and only warms on the way down, which
             // is the one thing the light never does.
             for (const float hour : { 6.5f, 9.0f, 12.0f, 15.0f })
-                EXPECT_EQ(makeDaylight("Clear", hour, sReach).mSun.mDiscColour, osg::Vec3f(1.0f, 1.0f, 1.0f))
+                EXPECT_EQ(makeDaylight("Clear", hour, sReach).mLight.mSun.mDiscColour, osg::Vec3f(1.0f, 1.0f, 1.0f))
                     << "at hour " << hour;
 
             // Half past seven and not eighteen: the disc's colour is summed with the ambient and
@@ -519,8 +521,9 @@ namespace Rtx
             // is still bright enough to clip all three channels to white. It warms once the
             // ambient has gone down with it.
             const Daylight down = makeDaylight("Clear", 19.5f, sReach);
-            EXPECT_FLOAT_EQ(down.mSun.mDiscColour.x(), 1.0f);
-            EXPECT_LT(down.mSun.mDiscColour.z(), down.mSun.mDiscColour.x()) << "warm on the way down, never blue";
+            EXPECT_FLOAT_EQ(down.mLight.mSun.mDiscColour.x(), 1.0f);
+            EXPECT_LT(down.mLight.mSun.mDiscColour.z(), down.mLight.mSun.mDiscColour.x())
+                << "warm on the way down, never blue";
 
             // The wind comes off the same file and a key per weather, so a storm reading harder
             // than fair weather is what says the name reached the lookup rather than a constant
@@ -911,9 +914,31 @@ namespace Rtx
             for (const float hour : { 0.0f, 6.0f, 12.0f, 18.0f })
             {
                 const Daylight day = makeDaylight("Clear", hour, sReach);
-                EXPECT_FLOAT_EQ(day.mExposureBias, exposureBias(day.mSun.mIrradiance, day.mAmbient))
+                EXPECT_FLOAT_EQ(
+                    day.mLight.mExposureBias, exposureBias(day.mLight.mSun.mIrradiance, day.mLight.mAmbient))
                     << "at hour " << hour;
             }
+        }
+
+        /// The sky settles its bias out of the terms it built, not the ones it was handed.
+        ///
+        /// **Which is the whole of what the statement order in `makeSkylight` carries.** A dusk has
+        /// most of its light in the ambient rather than in the disc, and that share is put there by
+        /// the spread — so a bias taken before it would hold a sunset back as though it were a
+        /// night. `theHourHoldsAnExposureBackAndANoonDoesNot` is what the curve itself is pinned by.
+        TEST(RtxSkylightTest, theSkySettlesItsBiasAfterTheDuskSpreadRatherThanBefore)
+        {
+            const osg::Vec3f recorded(0.05f, 0.05f, 0.05f);
+
+            const Skylight dusk = makeSkylight(SkyReading{ .mSunPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
+                .mSunShare = 0.5f,
+                .mSunColour = osg::Vec3f(1.0f, 1.0f, 1.0f),
+                .mAmbient = recorded });
+
+            ASSERT_GT(dusk.mAmbient.x(), recorded.x()) << "the spread moved nothing, so the order decides nothing";
+
+            EXPECT_FLOAT_EQ(dusk.mExposureBias, exposureBias(dusk.mSun.mIrradiance, dusk.mAmbient));
+            EXPECT_NE(dusk.mExposureBias, exposureBias(dusk.mSun.mIrradiance, recorded));
         }
 
         /// A room's `AMBI` record, as Berandas, Propylon Chamber writes it: ambient `15, 15, 15`,
@@ -951,12 +976,12 @@ namespace Rtx
             // **Nothing anywhere gates a room's sun on a second field**, so a zero irradiance is the
             // whole of it: no direct term, no shadow ray, no disc drawn, and the kernel's `HAS_SUN`
             // folds away. `Sun::mIrradiance` carries that invariant.
-            EXPECT_EQ(room.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
-            EXPECT_EQ(room.mSunAloft.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f)) << "and no deck over it";
+            EXPECT_EQ(room.mLight.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
+            EXPECT_EQ(room.mLight.mSunAloft.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f)) << "and no deck over it";
 
-            EXPECT_NEAR(room.mAmbient.x(), 0.0067093f, 1e-6f);
-            EXPECT_NEAR(room.mAmbient.y(), 0.0080756f, 1e-6f);
-            EXPECT_NEAR(room.mAmbient.z(), 0.0080756f, 1e-6f) << "blue shares the green byte";
+            EXPECT_NEAR(room.mLight.mAmbient.x(), 0.0067093f, 1e-6f);
+            EXPECT_NEAR(room.mLight.mAmbient.y(), 0.0080756f, 1e-6f);
+            EXPECT_NEAR(room.mLight.mAmbient.z(), 0.0080756f, 1e-6f) << "blue shares the green byte";
 
             EXPECT_EQ(room.mSkyHorizon, decodeColour(0x0015150Fu));
             EXPECT_EQ(room.mSkyZenith, room.mSkyHorizon);
@@ -966,21 +991,21 @@ namespace Rtx
             EXPECT_FLOAT_EQ(room.mFog.mExtinction, air.mExtinction);
 
             EXPECT_FLOAT_EQ(room.mStarFade, 0.0f);
-            EXPECT_FLOAT_EQ(room.mExposureBias, 1.0f) << "the game holds a room at one";
+            EXPECT_FLOAT_EQ(room.mLight.mExposureBias, 1.0f) << "the game holds a room at one";
 
             // **The spread is the sunlight's doing and nothing else's**: the same room with its
             // sunlight written black keeps the record's ambient exactly, so what the row above adds
             // came from the `AMBI` and not from a floor put under every interior.
             const Daylight unlit = makeRoomLight(makeRoom(0x000F0F0F, 0x00000000, 0x0015150F));
-            EXPECT_EQ(unlit.mAmbient, decodeColour(0x000F0F0Fu));
-            EXPECT_LT(unlit.mAmbient.x(), room.mAmbient.x()) << "and the sunlight is worth something";
+            EXPECT_EQ(unlit.mLight.mAmbient, decodeColour(0x000F0F0Fu));
+            EXPECT_LT(unlit.mLight.mAmbient.x(), room.mLight.mAmbient.x()) << "and the sunlight is worth something";
 
             // **Night-Eye is added where the game adds it**: to the file's own numbers, before the
             // decode, and to the ambient alone. `15 / 255 + 0.35 = 0.40882`, and
             // `((0.40882 + 0.055) / 1.055)^2.4 = 0.13914`, with the red channel's own share of the
             // sunlight on top.
             const Daylight seen = makeRoomLight(chamber, osg::Vec3f(0.35f, 0.35f, 0.35f));
-            EXPECT_NEAR(seen.mAmbient.x(), 0.13914f + 0.0019323f, 2e-4f);
+            EXPECT_NEAR(seen.mLight.mAmbient.x(), 0.13914f + 0.0019323f, 2e-4f);
 
             // **A cell that wrote no record is a black room**, in the game and here: its `mAmbi` is
             // the zeros the loader left, and both hosts hand those over rather than checking
@@ -988,8 +1013,8 @@ namespace Rtx
             ESM::Cell unwritten;
             unwritten.mHasAmbi = false;
             const Daylight bare = makeRoomLight(unwritten.mAmbi);
-            EXPECT_EQ(bare.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
-            EXPECT_EQ(bare.mAmbient, osg::Vec3f(0.0f, 0.0f, 0.0f));
+            EXPECT_EQ(bare.mLight.mSun.mIrradiance, osg::Vec3f(0.0f, 0.0f, 0.0f));
+            EXPECT_EQ(bare.mLight.mAmbient, osg::Vec3f(0.0f, 0.0f, 0.0f));
             EXPECT_FLOAT_EQ(bare.mFog.mExtinction, 0.0f);
         }
 

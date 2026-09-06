@@ -19,17 +19,6 @@ Each pair below states the same thing twice. The tree already counts one of thes
 canary instead of removing the second copy. Every item here is a place where a field added to one
 half reaches the other only if somebody remembers.
 
-- [ ] **`Rtx::Skylight` is a subset of `Rtx::Daylight`.** `Skylight` holds `mSun`, `mSunAloft` and
-      `mAmbient`. `Daylight` holds those three and five more. `readworld.cpp:61` builds a `Skylight`
-      and then copies its three fields into a `Daylight` at line 115. Give the sky's light one type.
-
-- [ ] **The exposure bias has three homes and the wrong one wins.** `Daylight::mExposureBias` is
-      filled by `makeDaylight` and by `makeRoomLight`. `readworld.cpp:114` builds its `Daylight` with
-      a designated initializer that omits the field, so an exterior carries the default. The room's
-      value is copied into `WorldRead::mExposureBias`, and `rtxrenderer.cpp:732` calls
-      `Rtx::exposureBias` again for an exterior. `FrameWorld` carries no bias at all. Put the number
-      in one place and let `describeWorld` carry it.
-
 - [ ] **`RtxTool::Route` and `MWRender::Route` are one fact under one name.** The first holds
       `mOrigin`, `mTarget` and `mSpeed`. The second holds `mTo`, `mLookTo` and `mSpeed`.
       `main.cpp:333` converts field by field. Two types with the same name in one build is also a
@@ -82,10 +71,6 @@ loose in one class beside each other.
       `mFreeMaterials`, `mKeptMaterials`, `mWrittenMaterials`, `mArrivedLayers`, `mArrivedMasks`,
       `mLayerRuns` and `mMaskRuns`. `holdMaterialTextures`, `dropMaterialTextures`,
       `forEachMaterialTexture` and `noteMaterial` go with it.
-
-- [ ] **`Rtx::Sun` is in `scenedesc.hpp` and `SceneDesc` never holds one.** It belongs with
-      `FrameWorld` or with the sky. Today `lightbuilder.hpp`, `skybuilder.hpp` and `frameworld.hpp`
-      include the whole scene description to reach it.
 
 ---
 
@@ -228,8 +213,8 @@ Several headers do not use it.
       `Index`, `sNoIndex` and a forward declaration of `SceneDesc`.** None of them names a member of
       the class.
 
-- [ ] **`lightbuilder.hpp` needs only `Light` and `Sun`.** Once `Sun` moves out of the scene
-      description, the include can go.
+- [ ] **`lightbuilder.hpp` needs only `Light`.** `Sun` has its own header now, so what is left is
+      the one type `SceneDesc` really holds.
 
 ---
 

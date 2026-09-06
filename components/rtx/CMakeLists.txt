@@ -113,6 +113,7 @@ set(RTX_FILES
     spriteshade.hpp
     srgb.cpp
     srgb.hpp
+    sun.hpp
     terraincomposite.cpp
     terraincomposite.hpp
     terrainresidency.cpp
