@@ -30,6 +30,11 @@ Priorities, in order:
 Nothing else ranks: no mod compatibility, no configurability for its own sake, no portability layer,
 no abstraction over hardware this does not target.
 
+**Turing and later — every card with hardware ray tracing.** What the frame path asks for exists on
+Turing, and a card below that floor is a hard failure naming what it lacks. Anything newer is an
+optional accelerator decided once at device creation — Ada's SER and its opacity micromaps are that
+— and a second path per architecture needs a measurement saying the gain is real.
+
 **Feature-complete first, then fast.** Land what is missing, note what it costs, act on the number
 later. A cost large enough to stop the work is the exception, and it is said out loud.
 
@@ -81,8 +86,9 @@ has beats one invented here. Most apparent gaps are a field the RT path stopped 
 
 ## Where the code lives
 
-**Vulkan on Ada-class NVIDIA**, behind an API-neutral core rather than a portability layer. A fact
-about Vulkan that leaks into the core is a bug whether or not a second backend ever arrives.
+**Vulkan on ray-tracing NVIDIA hardware, Turing and later**, behind an API-neutral core rather than
+a portability layer. A fact about Vulkan that leaks into the core is a bug whether or not a second
+backend ever arrives.
 
 - `components/rtx/` — the core: the scene description, the light transport, what the scene *is*. No
   graphics API, no game headers.
