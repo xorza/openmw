@@ -584,6 +584,37 @@ namespace Rtx
         /// the box's centre at 2. From the box the reach is 2 + 1 = 3 either way; from the mean it
         /// would have to be 8/3 + 1 = 3.67 to hold the far one, a sphere 22% wider for the same
         /// three particles.
+        /// **Which slot an arrival takes is a fact about the world and never about the sweep.** A
+        /// hit reads its slot back and a top-level structure is built in slot order, which is what
+        /// settles a tie between two surfaces at one distance. The free list was a stack, so the
+        /// slot followed the order the last sweep dropped in — and that order is a map walked in
+        /// bucket order over keys hashed from node addresses.
+        TEST(RtxSceneDescTest, theLowestFreeSlotIsTakenHoweverTheSlotsWereFreed)
+        {
+            const auto takeAfterDropping = [](const Index first, const Index second) {
+                SceneDesc scene;
+                const Index mesh = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
+
+                for (Index at = 0; at < 5; ++at)
+                    EXPECT_EQ(scene.addInstance(MeshInstance{ .mMesh = mesh }), at) << "a fresh table appends";
+
+                scene.dropInstance(first);
+                scene.dropInstance(second);
+
+                std::array<Index, 3> taken{};
+                for (Index& slot : taken)
+                    slot = scene.addInstance(MeshInstance{ .mMesh = mesh });
+
+                return taken;
+            };
+
+            // A stack answers with the slot dropped last — 1 one way round and 3 the other. The
+            // lowest is 1 either way, then 3, and then a slot past the end once none is free.
+            const std::array<Index, 3> expected{ 1, 3, 5 };
+            EXPECT_EQ(takeAfterDropping(3, 1), expected) << "the higher slot freed first";
+            EXPECT_EQ(takeAfterDropping(1, 3), expected) << "the lower slot freed first";
+        }
+
         TEST(RtxSceneDescTest, anEmitterCarriesItsSpritesAndTheSphereThatHoldsThem)
         {
             SceneDesc scene;

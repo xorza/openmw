@@ -1,6 +1,8 @@
 #include "placementtable.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <functional>
 
 namespace Rtx
 {
@@ -15,6 +17,7 @@ namespace Rtx
         }
         else
         {
+            std::pop_heap(mFree.begin(), mFree.end(), std::greater<>());
             slot = mFree.back();
             mFree.pop_back();
         }
@@ -63,6 +66,7 @@ namespace Rtx
 
         mInstances[slot] = MeshInstance{};
         mFree.push_back(slot);
+        std::push_heap(mFree.begin(), mFree.end(), std::greater<>());
         mMoved.push_back(slot);
         --mPlacedCount;
     }

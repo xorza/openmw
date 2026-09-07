@@ -21,6 +21,15 @@ namespace Rtx
     /// **The two change lists are the whole of what a backend rewrites.** A world is tens of
     /// thousands of placements and a frame changes hundreds; writing the row table whole was a
     /// millisecond of the game's CPU to change nothing.
+    ///
+    /// **An arrival takes the lowest free slot, and never the last one freed.** A slot decides two
+    /// things a picture depends on: the custom index a hit reads back, and where the placement sits
+    /// among the rows a top-level structure is built over — which is what settles a tie between two
+    /// surfaces at one distance, and Morrowind's foliage is coincident sheets. The free list was a
+    /// stack, so the slot an arrival took followed the order the last sweep dropped its slots in,
+    /// and that order is `SceneExtractor`'s map walked in bucket order over keys hashed from node
+    /// addresses. Taking the lowest instead makes the slot a function of which slots are free, and
+    /// that is a fact about the world rather than about the allocator.
     class PlacementTable
     {
     public:
@@ -72,6 +81,7 @@ namespace Rtx
         std::vector<osg::Matrixf> mPrevious;
         std::vector<Index> mMoved;
         std::vector<Index> mSettled;
+        /// A min-heap, so `add` answers with the lowest rather than the last one pushed.
         std::vector<Index> mFree;
         std::uint32_t mPlacedCount = 0;
     };

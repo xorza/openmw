@@ -332,6 +332,18 @@ namespace MWWorld
         preloadCells(duration);
     }
 
+    bool CompareCellStores::operator()(const CellStore* const left, const CellStore* const right) const
+    {
+        const MWWorld::Cell& one = *left->getCell();
+        const MWWorld::Cell& other = *right->getCell();
+
+        // **A location names an interior as well as an exterior**, which is what makes it the whole
+        // identity: `Cell::getWorldSpace` answers with the cell's own identifier where the cell is
+        // not an exterior, so the grid separates the exteriors of one worldspace and the worldspace
+        // separates everything else.
+        return one.getExteriorCellLocation() < other.getExteriorCellLocation();
+    }
+
     void Scene::unloadCell(CellStore* cell, const DetourNavigator::UpdateGuard* navigatorUpdateGuard)
     {
         if (mActiveCells.find(cell) == mActiveCells.end())

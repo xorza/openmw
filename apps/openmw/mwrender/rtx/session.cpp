@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -247,6 +248,7 @@ namespace MWRender
 
         mFrom = osg::Vec3f(stood.pos[0], stood.pos[1], stood.pos[2]);
         mFromLook = mFrom + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
+        mFlown = mFrom;
     }
 
     void Session::forgetHistory()
@@ -356,6 +358,7 @@ namespace MWRender
         {
             mFrom = *stop.mStand.mEye;
             mFromLook = stop.mStand.mLook.value_or(mFrom + osg::Vec3f(0.0f, 1.0f, 0.0f));
+            mFlown = mFrom;
             aimCamera(mFrom, mFromLook);
         }
         else
@@ -407,7 +410,9 @@ namespace MWRender
         // **The heading the engine measures**, which is clockwise from north rather than
         // counter-clockwise from east, and horizontal: a route follows the ground the cells are
         // laid out on, and the pitch a save happens to have left would fly it into the sky.
-        osg::Vec3f along = route.mTo.has_value() ? *route.mTo - standing
+        //
+        // **Measured from `mFlown` and never from the player**, which says why.
+        osg::Vec3f along = route.mTo.has_value() ? *route.mTo - mFlown
                                                  : osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
 
         const float left = along.length();
@@ -423,25 +428,20 @@ namespace MWRender
         if (route.mTo.has_value())
             step = std::min(step, left);
 
-        osg::Vec3f moved = along * step;
-
-        // **Held at the height the stop began at**, because nothing here flies: gravity would sink
-        // a route into the sea over ten seconds, and a route that ends underwater measures the
-        // wrong frame. The ground still rises through it, so a stretch of a long route is inside a
-        // hill.
-        if (!route.mTo.has_value())
-            moved.z() = mFrom.z() - standing.z();
+        // **The height needs no correction of its own.** A route with no destination has a heading
+        // flat in z, so it keeps the height it began at. One with a destination takes its height
+        // from the line between the two ends, which is what a view states when it names both.
+        mFlown += along * step;
 
         // **`moveObjectBy` and not `moveObject`, because the player is an actor.** The actor's
         // position lives in the physics world as well, and a move that writes only the world's
         // copy is written back over it on the next step.
-        world.moveObjectBy(player, moved, true);
+        world.moveObjectBy(player, mFlown - standing, true);
 
         if (stop.mStand.mEye.has_value())
         {
-            const osg::Vec3f eye = standing + moved;
-            const osg::Vec3f look = route.mLookTo.has_value() ? *route.mLookTo : eye + (mFromLook - mFrom);
-            aimCamera(eye, look);
+            const osg::Vec3f look = route.mLookTo.has_value() ? *route.mLookTo : mFlown + (mFromLook - mFrom);
+            aimCamera(mFlown, look);
         }
     }
 

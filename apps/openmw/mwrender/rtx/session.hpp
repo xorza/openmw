@@ -197,6 +197,16 @@ namespace MWRender
         osg::Vec3f mFrom;
         osg::Vec3f mFromLook;
 
+        /// Where the route has flown to, which is not where the player stands.
+        ///
+        /// **The route's own place, because deriving the next step from the player puts physics in
+        /// it.** `moveObjectBy` moves an actor, and the world then steps that actor: gravity pulls
+        /// it down between one frame and the next, and a step taken from where it landed carries
+        /// the fall forward and compounds it. `island-crossing` asks to be flown six thousand units
+        /// up and was flown at eighty-five to twelve hundred — along the ground and inside it — so
+        /// every number ever taken over it described a view nobody asked for.
+        osg::Vec3f mFlown;
+
         /// The cell the last flown frame was drawn in, so a change of it is a boundary crossed.
         /// Compared as an address and never read, which is all an identity needs.
         const void* mCell = nullptr;
