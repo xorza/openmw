@@ -22,6 +22,12 @@
 # temporal and carries state nothing below it can hold still. What is asserted here is that the
 # trace repeats, which is what a reconstruction is fed and what every one of these defects moved.
 #
+# **And Ray Reconstruction adds nothing of its own, which is worth stating because it looks as
+# though it does.** Its history is recurrent, so one frame the trace drew differently reaches every
+# frame after it and a run comes back disagreeing almost everywhere. Measured: `one-cell-walk`
+# agrees on all 360 frames through it at every warm-up tried, and `island-crossing` agreed on 1 of
+# 360 before the merge order was settled and on 79 after. It is faithful, not faulty.
+#
 # **Two columns, and only the first decides the exit status.** A hashes file names the picture and
 # the scene it was drawn from — `Rtx::digestLayout`. The picture is what this asserts, because it is
 # what the title says and what a reconstruction is fed. The scene is reported beside it and does not

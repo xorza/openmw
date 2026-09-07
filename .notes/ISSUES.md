@@ -20,11 +20,23 @@
   chunk's own viewing distance takes 5824 placements to 6175; holding both to the centre takes them
   to 6442, 227 MiB of structures to 284, and the p99 from 51 ms to 62.
 
-- `bench --views=one-cell-walk --exposure=1 --hashes` draws the same 360 pictures over eight runs
-  and is handed the same scene in six of them. The other two agree with each other and differ from
-  the six from frame 102 on, so one decision early in the walk goes one of two ways and everything
-  after it follows.
+- `SceneExtractor` names a placement by a hash folded from node **addresses**, so a node the paging
+  freed and a node the allocator later hands the same address to share one identity. A new drawable
+  then inherits a dead drawable's entry, and its slot with it, instead of taking a fresh one.
+  `identityWith` says a collision does not happen at sixty-four bits, which is true of a hash and
+  not of an address handed out twice.
 
-- Nothing that crosses a cell is repeatable through Ray Reconstruction, because the network's
-  history is recurrent and a frame the trace drew differently reaches every frame after it.
-  `one-cell-walk` agrees on all 360 frames at every warm-up tried.
+  Counted over fourteen runs of `one-cell-walk`, the walk met 1,259,742 drawables by frame 102 in
+  every one of them, and adds traded against hits exactly one for one: 5480 added and 1,254,262 hit
+  in eleven runs, 5477 and 1,254,265 in one, 5479 and 1,254,263 in another. Every other counter the
+  walk keeps is identical, and so is the entry list `QuadTreeWorld::collect` hands over and the
+  drawable count under it.
+
+  **The live scene is not affected and neither is the picture.** After the sweep the placement count
+  is 4267 in every run, and all fourteen drew the same 360 frames. What differs is the table's shape
+  — 5338, 5337 or 5335 slots — because a slot reused is a slot not retired, and slot numbers never
+  shrink. That is what moves the scene column of a hashed run.
+
+  A fix needs an identity that survives address reuse. A content key is not available for the reason
+  `identityWith` gives — a hundred crates share one geometry, and the node path is what tells them
+  apart — so it would have to be a serial the loader stamps on a node.
