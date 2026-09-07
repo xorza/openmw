@@ -40,6 +40,7 @@
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/contactsheet.hpp>
+#include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/runrecord.hpp>
 #include <components/rtxbench/scenedigest.hpp>
 #include <components/sceneutil/offscreenframing.hpp>
@@ -196,17 +197,19 @@ namespace MWRender
         const Rtx::SceneDesc& scene = into.mOwner.getMirror().getScene();
         const Rtx::ExtractionStats& stats = into.mOwner.getWalkStats();
 
-        into.mRecord.note(std::format(
-            "\nplaced\n"
-            "  instances:            {}\n"
-            "  meshes:               {}\n"
-            "  materials:            {}\n"
-            "  textures:             {}\n"
-            "  triangles:            {}\n"
-            "  vertex+index bytes:   {} KiB\n"
-            "  handed over:          {}\n",
-            scene.getPlacedCount(), scene.getMeshes().size(), scene.getMaterials().size(), scene.getTextures().size(),
-            scene.getTriangleCount(), scene.getGeometryBytes() / 1024, Rtx::digestScene(scene)));
+        into.mRecord.note(
+            std::format("\nplaced\n"
+                        "  instances:            {}\n"
+                        "  meshes:               {}\n"
+                        "  materials:            {}\n"
+                        "  textures:             {}\n"
+                        "  triangles:            {}\n"
+                        "  vertex+index bytes:   {} KiB\n"
+                        "  handed over:          {}\n"
+                        "  laid out as:          {}\n",
+                scene.getPlacedCount(), scene.getMeshes().size(), scene.getMaterials().size(),
+                scene.getTextures().size(), scene.getTriangleCount(), scene.getGeometryBytes() / 1024,
+                Rtx::spellHash(Rtx::digestScene(scene)), Rtx::spellHash(Rtx::digestLayout(scene))));
 
         for (std::size_t at = 0; at < stats.mTextureFormats.size(); ++at)
         {

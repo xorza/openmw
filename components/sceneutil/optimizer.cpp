@@ -35,6 +35,7 @@
 #include <osgUtil/MeshOptimizers>
 
 #include <algorithm>
+#include <cstddef>
 #include <numeric>
 
 #include <iterator>
@@ -1270,11 +1271,21 @@ bool Optimizer::MergeGeometryVisitor::mergeGroup(osg::Group& group)
 
         typedef std::vector< osg::ref_ptr<osg::Geometry> >                          DuplicateList;
         typedef std::vector< osg::ref_ptr<osg::Node> >                              Nodes;
-        typedef std::map< osg::ref_ptr<osg::Geometry> ,DuplicateList,LessGeometry>  GeometryDuplicateMap;
 
         typedef std::vector<DuplicateList> MergeList;
 
-        GeometryDuplicateMap geometryDuplicateMap;
+        // **Grouped through the map and walked through the list.** `LessGeometry` orders on the
+        // state set's address, so walking the map merged a group's children in whatever order the
+        // allocator had handed the state sets out. The merged index buffer followed, and so did how
+        // many degenerate triangles joined the strips. What that costs a rasterizer is nothing — a
+        // triangle is a triangle wherever its corners are stored. What it costs a ray tracer is a
+        // structure built over a different buffer in every process: two runs of one binary differed
+        // on 37 frames of 360 over `island-crossing`, by a byte, on foliage in shade. The map keeps
+        // the lookup it is good at, and the order is the group's own child order.
+        typedef std::map< osg::ref_ptr<osg::Geometry>, std::size_t, LessGeometry>   GeometryGroupMap;
+
+        GeometryGroupMap geometryGroups;
+        MergeList geometryDuplicates;
         Nodes standardChildren;
 
         unsigned int i;
@@ -1288,7 +1299,12 @@ bool Optimizer::MergeGeometryVisitor::mergeGroup(osg::Group& group)
                     geom->getDataVariance()!=osg::Object::DYNAMIC &&
                     isOperationPermissibleForObject(geom))
                 {
-                    geometryDuplicateMap[geom].push_back(geom);
+                    const std::pair<GeometryGroupMap::iterator, bool> found
+                        = geometryGroups.emplace(geom, geometryDuplicates.size());
+                    if (found.second)
+                        geometryDuplicates.push_back(DuplicateList());
+
+                    geometryDuplicates[found.first->second].push_back(geom);
                 }
                 else
                 {
@@ -1305,29 +1321,32 @@ bool Optimizer::MergeGeometryVisitor::mergeGroup(osg::Group& group)
         // (i.e. array types) to avoid loss of data during merging
         MergeList mergeListChecked;        // List of drawables just before merging, grouped by "compatibility" and vertex limit
         MergeList mergeList;            // Intermediate list of drawables, grouped ony by "compatibility"
-        for(GeometryDuplicateMap::iterator itr=geometryDuplicateMap.begin();
-            itr!=geometryDuplicateMap.end();
+        for(MergeList::iterator itr=geometryDuplicates.begin();
+            itr!=geometryDuplicates.end();
             ++itr)
         {
-            if (itr->second.empty()) continue;
-            if (itr->second.size()==1)
+            DuplicateList& duplicates = *itr;
+            if (duplicates.empty()) continue;
+            if (duplicates.size()==1)
             {
                 mergeList.push_back(DuplicateList());
                 DuplicateList* duplicateList = &mergeList.back();
-                duplicateList->push_back(itr->second[0]);
+                duplicateList->push_back(duplicates[0]);
                 continue;
             }
 
-            std::sort(itr->second.begin(),itr->second.end(),LessGeometryPrimitiveType());
+            // Stable, so that two geometries of one primitive type keep the order above rather than
+            // whichever one the sort happened to leave first.
+            std::stable_sort(duplicates.begin(),duplicates.end(),LessGeometryPrimitiveType());
 
             // initialize the temporary list by pushing the first geometry
             MergeList mergeListTmp;
             mergeListTmp.push_back(DuplicateList());
             DuplicateList* duplicateList = &mergeListTmp.back();
-            duplicateList->push_back(itr->second[0]);
+            duplicateList->push_back(duplicates[0]);
 
-            for(DuplicateList::iterator dupItr=itr->second.begin()+1;
-                dupItr!=itr->second.end();
+            for(DuplicateList::iterator dupItr=duplicates.begin()+1;
+                dupItr!=duplicates.end();
                 ++dupItr)
             {
                 osg::Geometry* geomToPush = dupItr->get();
@@ -1425,7 +1444,11 @@ bool Optimizer::MergeGeometryVisitor::mergeGroup(osg::Group& group)
                     {
                         LessGeometryViewPoint lgvp;
                         lgvp._viewPoint = _viewPoint;
-                        std::sort(duplicateList.begin(), duplicateList.end(), lgvp);
+
+                        // Stable, for the reason the sort above is: two geometries the same
+                        // distance away are ordered by nothing here, and were then ordered by
+                        // wherever the allocator had put them.
+                        std::stable_sort(duplicateList.begin(), duplicateList.end(), lgvp);
                     }
                     DuplicateList::iterator ditr = duplicateList.begin();
                     osg::ref_ptr<osg::Geometry> lhs = *ditr++;
@@ -2024,27 +2047,46 @@ void Optimizer::MergeGroupsVisitor::apply(osg::Group &group)
         traverse(group);
     else
     {
-        typedef std::map<osg::StateSet*, std::set<osg::Group*> > GroupMap;
-        GroupMap childGroups;
+        // **Which group survives and what order its new children arrive in is the child order, not
+        // the address order.** A `std::set<osg::Group*>` kept the lowest-addressed group and
+        // appended the others behind it in address order, which is `MergeGeometryVisitor`'s fault
+        // one level up and has the same cost: the buffer a ray tracer builds over is laid out
+        // differently in every process. The map still keys on the state set, which only has to
+        // gather.
+        typedef std::map<osg::StateSet*, std::size_t> GroupMap;
+        GroupMap groupIndex;
+        std::vector<std::vector<osg::Group*> > childOrder;
         for (unsigned int i=0; i<group.getNumChildren(); ++i)
         {
             osg::Node* child = group.getChild(i);
             osg::Group* childGroup = child->asGroup();
             if (childGroup && isOperationPermissible(*childGroup))
             {
-                childGroups[childGroup->getStateSet()].insert(childGroup);
+                const std::pair<GroupMap::iterator, bool> found
+                    = groupIndex.emplace(childGroup->getStateSet(), childOrder.size());
+                if (found.second)
+                    childOrder.push_back(std::vector<osg::Group*>());
+
+                // **Named once however many times it is a child**, which the set this replaced did
+                // for free and which is not decoration: the merge below empties every group after
+                // the first into it, so one named twice would be emptied into itself. A search and
+                // not a second container, because `isOperationPermissible` takes only a plain
+                // `osg::Group` and a parent has a handful of those.
+                std::vector<osg::Group*>& sharing = childOrder[found.first->second];
+                if (std::find(sharing.begin(), sharing.end(), childGroup) == sharing.end())
+                    sharing.push_back(childGroup);
             }
         }
 
-        for (GroupMap::iterator it = childGroups.begin(); it != childGroups.end(); ++it)
+        for (std::vector<std::vector<osg::Group*> >::iterator it = childOrder.begin(); it != childOrder.end(); ++it)
         {
-            const std::set<osg::Group*>& groupSet = it->second;
+            const std::vector<osg::Group*>& groupSet = *it;
             if (groupSet.size() <= 1)
                 continue;
             else
             {
                 osg::Group* first = *groupSet.begin();
-                for (std::set<osg::Group*>::const_iterator groupIt = ++groupSet.begin(); groupIt != groupSet.end(); ++groupIt)
+                for (std::vector<osg::Group*>::const_iterator groupIt = ++groupSet.begin(); groupIt != groupSet.end(); ++groupIt)
                 {
                     osg::Group* toMerge = *groupIt;
                     for (unsigned int i=0; i<toMerge->getNumChildren(); ++i)

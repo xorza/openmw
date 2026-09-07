@@ -12,6 +12,7 @@
 #include <osg/Vec3f>
 
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtxbench/framehashes.hpp>
 #include <components/rtxbench/scenedigest.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -50,11 +51,10 @@ namespace Rtx
                 positions, normals, texCoords, indices, {}, Rtx::Deform::None, Rtx::sNoIndex, material);
         }
 
-        /// A scene of the two boxes under one placement, added in the order given, and one lamp.
-        std::string digestOfBoxes(
-            const bool mirroredFirst, const float lift, const float aside, const bool shuffled = false)
+        /// The two boxes under one placement, added in the order given, and one lamp.
+        void fillBoxes(Rtx::SceneDesc& scene, const bool mirroredFirst, const float lift, const float aside,
+            const bool shuffled = false)
         {
-            Rtx::SceneDesc scene;
             Rtx::Material material;
             material.mDiffuse = scene.addTexture(VFS::Path::NormalizedView("textures/box.dds"));
             const Rtx::Index wearing = scene.addMaterial(material);
@@ -74,8 +74,22 @@ namespace Rtx
             lamp.mPosition = osg::Vec3f(1.0f, 2.0f, 3.0f);
             lamp.mIntensity = osg::Vec3f(4.0f, 5.0f, 6.0f);
             scene.addLight(lamp);
+        }
 
-            return digestScene(scene);
+        std::string digestOfBoxes(
+            const bool mirroredFirst, const float lift, const float aside, const bool shuffled = false)
+        {
+            Rtx::SceneDesc scene;
+            fillBoxes(scene, mirroredFirst, lift, aside, shuffled);
+            return spellHash(digestScene(scene));
+        }
+
+        std::string layoutOfBoxes(
+            const bool mirroredFirst, const float lift, const float aside, const bool shuffled = false)
+        {
+            Rtx::SceneDesc scene;
+            fillBoxes(scene, mirroredFirst, lift, aside, shuffled);
+            return spellHash(digestLayout(scene));
         }
 
         /// **Two siblings swapped is one scene, a shape stored in another order is one scene, and
@@ -86,11 +100,33 @@ namespace Rtx
             const std::string one = digestOfBoxes(false, 0.0f, 0.0f);
             EXPECT_EQ(one, digestOfBoxes(true, 0.0f, 0.0f)) << "siblings swapped";
             EXPECT_EQ(one, digestOfBoxes(false, 0.0f, 0.0f, true)) << "vertices stored in another order";
-            EXPECT_EQ(one.size(), 32u);
 
             EXPECT_NE(one, digestOfBoxes(false, 1.0f, 0.0f)) << "a vertex moved is a change";
             EXPECT_NE(one, digestOfBoxes(false, 0.0f, 1.0f)) << "a placement moved is a change";
             EXPECT_NE(digestOfBoxes(false, 1.0f, 0.0f), digestOfBoxes(false, 0.0f, 1.0f));
+        }
+
+        /// **The layout digest answers the two questions the other one refuses**, which is the whole
+        /// of why there are two. A structure is built over the index buffer as written, so a scene
+        /// stored two ways is two scenes to a ray tracer even where it is one cell to a reader.
+        TEST(RtxSceneDigestTest, layoutSeesStorageOrderAndEverythingTheOtherDoes)
+        {
+            const std::string one = layoutOfBoxes(false, 0.0f, 0.0f);
+            EXPECT_EQ(one, layoutOfBoxes(false, 0.0f, 0.0f)) << "one scene built twice";
+
+            EXPECT_NE(one, layoutOfBoxes(true, 0.0f, 0.0f)) << "siblings swapped";
+            EXPECT_NE(one, layoutOfBoxes(false, 0.0f, 0.0f, true)) << "vertices stored in another order";
+            EXPECT_NE(one, layoutOfBoxes(false, 1.0f, 0.0f)) << "a vertex moved";
+            EXPECT_NE(one, layoutOfBoxes(false, 0.0f, 1.0f)) << "a placement moved";
+        }
+
+        /// **Where the pair disagrees is the fault neither could name alone.** A run whose scene
+        /// digest holds while its layout digest moves has been handed one cell stored two ways, and
+        /// that is what a report has to be able to say.
+        TEST(RtxSceneDigestTest, storageOrderIsWhereTheTwoDigestsPartCompany)
+        {
+            EXPECT_EQ(digestOfBoxes(false, 0.0f, 0.0f), digestOfBoxes(false, 0.0f, 0.0f, true));
+            EXPECT_NE(layoutOfBoxes(false, 0.0f, 0.0f), layoutOfBoxes(false, 0.0f, 0.0f, true));
         }
     }
 }

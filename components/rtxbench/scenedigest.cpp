@@ -12,6 +12,7 @@
 #include <osg/Vec3f>
 
 #include <components/rtx/scenedesc.hpp>
+#include <components/vfs/pathutil.hpp>
 
 #include "framehashes.hpp"
 
@@ -133,7 +134,7 @@ namespace Rtx
         }
     }
 
-    std::string digestScene(const SceneDesc& scene)
+    std::array<std::uint64_t, 2> digestScene(const SceneDesc& scene)
     {
         Unordered whole;
 
@@ -176,6 +177,120 @@ namespace Rtx
             }
             whole.add(plume);
         }
-        return spellHash(whole.getWords());
+        return whole.getWords();
+    }
+
+    /// The tables `digestLayout` reads whole, held to having nothing between their fields.
+    ///
+    /// **A field added later that opens a gap trips this rather than the digest.** The bytes a
+    /// record pads with are whatever the allocator left, so a table read whole through one of them
+    /// would call two identical runs different — once, unrepeatably, and for a reason nothing in
+    /// the report could name.
+    static_assert(sizeof(Light) == 36, "Light is read whole and must have no padding");
+    static_assert(sizeof(Sprite) == 56, "Sprite is read whole and must have no padding");
+    static_assert(sizeof(MaterialLayer) == 44, "MaterialLayer is read whole and must have no padding");
+    static_assert(sizeof(Rig) == 24, "Rig is read whole and must have no padding");
+    static_assert(sizeof(Morph) == 16, "Morph is read whole and must have no padding");
+
+    std::array<std::uint64_t, 2> digestLayout(const SceneDesc& scene)
+    {
+        Digest whole;
+
+        // The shared buffers, which is where a merge that ran in heap order shows and the largest
+        // part of what this costs.
+        whole.add(scene.getPositions());
+        whole.add(scene.getNormals());
+        whole.add(scene.getTexCoords());
+        whole.add(scene.getIndices());
+
+        // **Every slot, standing or free.** A free one keeps the room and the offsets its last
+        // occupant left, so it is part of the state a run has to repeat — and a slot order that
+        // moved is exactly what `digestScene` sums away.
+        for (const MeshRange& mesh : scene.getMeshes())
+        {
+            whole.add(mesh.mVertexOffset);
+            whole.add(mesh.mVertexCount);
+            whole.add(mesh.mIndexOffset);
+            whole.add(mesh.mIndexCount);
+            whole.add(mesh.mShape.mSheet);
+            whole.add(mesh.mShape.mClosed);
+            whole.add(mesh.mDeform);
+            whole.add(mesh.mDeformer);
+            whole.add(mesh.mMaterial);
+            whole.add(mesh.mBindOffset);
+            whole.add(mesh.mPoseOffset);
+            whole.add(mesh.mPosed);
+            whole.add(mesh.mBounds._min);
+            whole.add(mesh.mBounds._max);
+        }
+
+        for (const MeshInstance& instance : scene.getInstances())
+        {
+            whole.add(std::span<const float>(instance.mTransform.ptr(), 16));
+            whole.add(instance.mMesh);
+            whole.add(instance.mMaterial);
+            whole.add(instance.mOpacity);
+            whole.add(instance.mFirstPerson);
+        }
+
+        // Where each slot stood last frame, which is what a motion vector is the difference of.
+        whole.add(scene.getPrevious());
+
+        for (const Material& material : scene.getMaterials())
+        {
+            whole.add(material.mKind);
+            whole.add(material.mDiffuse);
+            whole.add(material.mNormal);
+            whole.add(material.mEmissive);
+            whole.add(material.mDiffuseColour);
+            whole.add(material.mEmissiveColour);
+            whole.add(material.mAlphaRef);
+            whole.add(material.mAlphaMode);
+            whole.add(material.mTwoSided);
+            whole.add(material.mTextureTransform);
+            whole.add(material.mLayerOffset);
+            whole.add(material.mLayerCount);
+            whole.add(material.mFlatten);
+            whole.add(material.mAnimated);
+            whole.add(material.mDiffuseNeverSolid);
+        }
+
+        whole.add(scene.getLayers());
+        whole.add(scene.getMasks());
+
+        // By their paths and by their slots both, which is the difference from `digestScene`: which
+        // slot a texture landed in is what a material's index means.
+        for (const VFS::Path::Normalized& texture : scene.getTextures())
+        {
+            const std::string_view path = texture.value();
+            whole.add(std::span<const char>(path.data(), path.size()));
+        }
+
+        whole.add(scene.getLights());
+        whole.add(scene.getSprites());
+
+        for (const SpriteEmitter& emitter : scene.getEmitters())
+        {
+            whole.add(emitter.mCentre);
+            whole.add(emitter.mReach);
+            whole.add(emitter.mFirst);
+            whole.add(emitter.mCount);
+            whole.add(emitter.mTexture);
+            whole.add(emitter.mLighting);
+            whole.add(emitter.mAdditive);
+            whole.add(emitter.mWidth);
+        }
+
+        // What poses a mesh that deforms, and the pose itself. The trace reads the posed vertices,
+        // which live on the device and nowhere here, so these are what stands for them.
+        whole.add(scene.getRigs());
+        whole.add(scene.getRuns());
+        whole.add(scene.getInfluences());
+        whole.add(scene.getMorphs());
+        whole.add(scene.getMorphOffsets());
+        whole.add(scene.getBones());
+        whole.add(scene.getWeights());
+
+        return whole.getWords();
     }
 }

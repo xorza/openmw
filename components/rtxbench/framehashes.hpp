@@ -43,7 +43,8 @@ namespace Rtx
     /// Thirty-two hex digits, which is how a hashes file spells one and how `scene` reports one.
     std::string spellHash(const std::array<std::uint64_t, 2>& words);
 
-    /// One hash a frame of a run, and what a previous run's hashes say about this one.
+    /// Two hashes a frame of a run — what it drew and what it was handed — and what a previous
+    /// run's hashes say about this one.
     ///
     /// **`verify` for a run rather than a view.** `verify` renders sixteen standing views and
     /// compares every pixel against a stored reference, which settles anything a single frame can
@@ -52,10 +53,11 @@ namespace Rtx
     /// are. Judging a moving run by a summary of a frame instead is judging it by a number with no
     /// expected value, which cannot tell a stale table from a camera that moved.
     ///
-    /// **A run stays comparable with itself only while nothing in it reads the wall clock.**
-    /// `Rtx::FrameOptions::mSinceLast` and `Rtx::CompositeQueue::setSettled` are two that did, and
-    /// they are not all of them: two `bench --views=island-crossing --hashes` runs of one build
-    /// still differ on 355 of 360 frames, of which settling the terrain accounts for four.
+    /// **The scene beside the picture, because a picture that moved says nothing about why.** A run
+    /// that differs has either drawn one scene two ways or been handed two scenes, and those are
+    /// repaired in different places. `Rtx::digestLayout` is the second hash and answers which:
+    /// `island-crossing` differed on 37 frames of 360 while it differed on all 360, which named the
+    /// world rather than the renderer and was what the report could not say before.
     ///
     /// **A hash and not a picture**, because six hundred frames at 1920x1080 is a few hundred
     /// megabytes and the sixteen stills are kilobytes. What this answers is "did the run draw the
@@ -68,9 +70,12 @@ namespace Rtx
         /// reference that was truncated is a failure and not a run that silently matches nothing.
         static FrameHashes read(const std::filesystem::path& file);
 
-        /// **The pixels as the tool would write them to a PNG**, so a hash names the picture a
-        /// person would look at rather than an internal channel that may not survive a rebuild.
-        void add(std::string_view view, std::uint32_t frame, std::span<const std::uint8_t> pixels);
+        /// @param pixels **as the tool would write them to a PNG**, so a hash names the picture a
+        ///        person would look at rather than an internal channel that may not survive a
+        ///        rebuild.
+        /// @param scene what `Rtx::digestLayout` made of the description that drew them.
+        void add(std::string_view view, std::uint32_t frame, std::span<const std::uint8_t> pixels,
+            const std::array<std::uint64_t, 2>& scene);
 
         void write(const std::filesystem::path& file) const;
 
@@ -82,8 +87,15 @@ namespace Rtx
             std::string mView;
             std::uint32_t mFrames = 0;
 
-            /// Frames whose hash differs, in order.
+            /// Frames whose picture differs, in order.
             std::vector<std::uint32_t> mDiffering;
+
+            /// Frames whose scene differs, in order.
+            ///
+            /// **Reported and not judged.** Two builds are expected to lay a scene out differently
+            /// and to draw the same picture from it, so a difference here is what a reader needs to
+            /// know and never what fails a run — `same` says so by leaving it out.
+            std::vector<std::uint32_t> mSceneDiffering;
 
             /// Frames this run drew that the reference has no hash for, and the other way about.
             std::uint32_t mUnmatched = 0;
@@ -100,6 +112,7 @@ namespace Rtx
             std::string mView;
             std::uint32_t mFrame = 0;
             std::array<std::uint64_t, 2> mHash{};
+            std::array<std::uint64_t, 2> mScene{};
         };
 
         std::vector<Frame> mFrames;

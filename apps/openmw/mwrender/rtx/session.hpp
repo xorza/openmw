@@ -128,6 +128,12 @@ namespace MWRender
         /// stop starts from once the walls are down.
         void standWhereThePlayerIs();
 
+        /// Tells the renderer that nothing before this frame describes where it now stands.
+        ///
+        /// **Named once because two callers mean it for two reasons**, and because the reach to say
+        /// it is four hops through the game.
+        void forgetHistory();
+
         /// Puts the world where `mAt` says and starts counting.
         void beginStop();
 

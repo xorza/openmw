@@ -33,18 +33,20 @@ namespace Rtx
         return std::format("{:016x}{:016x}", words[0], words[1]);
     }
 
-    void FrameHashes::add(const std::string_view view, const std::uint32_t frame, std::span<const std::uint8_t> pixels)
+    void FrameHashes::add(const std::string_view view, const std::uint32_t frame, std::span<const std::uint8_t> pixels,
+        const std::array<std::uint64_t, 2>& scene)
     {
         Digest digest;
         digest.add(pixels);
-        mFrames.push_back(Frame{ .mView = std::string(view), .mFrame = frame, .mHash = digest.getWords() });
+        mFrames.push_back(
+            Frame{ .mView = std::string(view), .mFrame = frame, .mHash = digest.getWords(), .mScene = scene });
     }
 
     void FrameHashes::write(const std::filesystem::path& file) const
     {
         std::ofstream out(file);
         for (const Frame& held : mFrames)
-            out << std::format("{} {} {}\n", held.mView, held.mFrame, spellHash(held.mHash));
+            out << std::format("{} {} {} {}\n", held.mView, held.mFrame, spellHash(held.mHash), spellHash(held.mScene));
 
         // **Thrown and not reported**, the way `shot --dump` answers the same failure: a reference
         // that did not get written and a command that still succeeded is the next run comparing
@@ -68,18 +70,25 @@ namespace Rtx
 
             std::istringstream fields(line);
             Frame frame;
-            std::string hash;
-            fields >> frame.mView >> frame.mFrame >> hash;
+            std::string picture;
+            std::string scene;
+            fields >> frame.mView >> frame.mFrame >> picture >> scene;
 
             // **Every line or none.** A reference read half way is one that matches the frames it
-            // reached and says nothing about the rest, which reads as a pass.
-            if (!fields || hash.size() != 32)
+            // reached and says nothing about the rest, which reads as a pass. A file one column
+            // short is a run of a build from before the scene was hashed, and it fails here rather
+            // than comparing against a column nobody wrote.
+            if (!fields || picture.size() != 32 || scene.size() != 32)
                 throw Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
 
             for (int half = 0; half < 2; ++half)
             {
-                const char* from = hash.data() + half * 16;
+                const char* from = picture.data() + half * 16;
                 if (std::from_chars(from, from + 16, frame.mHash[half], 16).ec != std::errc{})
+                    throw Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+
+                from = scene.data() + half * 16;
+                if (std::from_chars(from, from + 16, frame.mScene[half], 16).ec != std::errc{})
                     throw Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
             }
 
@@ -105,9 +114,15 @@ namespace Rtx
                 [&](const Frame& was) { return was.mFrame == held.mFrame && was.mView == held.mView; });
 
             if (found == reference.mFrames.end())
+            {
                 ++difference.mUnmatched;
-            else if (found->mHash != held.mHash)
+                continue;
+            }
+
+            if (found->mHash != held.mHash)
                 difference.mDiffering.push_back(held.mFrame);
+            if (found->mScene != held.mScene)
+                difference.mSceneDiffering.push_back(held.mFrame);
         }
 
         // **What the reference drew and this run did not**, which is a schedule that changed rather
@@ -126,7 +141,10 @@ namespace Rtx
 
     std::string describeDifference(const FrameHashes::ViewDifference& difference)
     {
-        if (difference.same())
+        // **The scene is asked here too, though it does not fail the run.** Reporting only the
+        // picture is what let a run be called identical while the description behind it moved on
+        // every frame, which is the fault this column was added for.
+        if (difference.same() && difference.mSceneDiffering.empty())
             return std::format("{} frames, every one of them the same", difference.mFrames);
 
         std::string report;
@@ -139,6 +157,29 @@ namespace Rtx
             if (difference.mDiffering.size() > sNamed)
                 report += std::format(" and {} more", difference.mDiffering.size() - sNamed);
         }
+        else if (!difference.mSceneDiffering.empty())
+            report = std::format("{} frames, every picture the same", difference.mFrames);
+
+        // **Which of the two moved, which is what says where to look next.** A picture that differs
+        // where the scene differs is a world handed over twice, and belongs to whatever staged it.
+        // One that differs where the scene did not is the renderer under it.
+        if (!difference.mSceneDiffering.empty())
+        {
+            report += std::format("; the scene differs on {} frames", difference.mSceneDiffering.size());
+
+            if (!difference.mDiffering.empty())
+            {
+                const auto both = std::count_if(
+                    difference.mDiffering.begin(), difference.mDiffering.end(), [&](const std::uint32_t frame) {
+                        return std::binary_search(
+                            difference.mSceneDiffering.begin(), difference.mSceneDiffering.end(), frame);
+                    });
+
+                report += std::format(", {} of them among those", both);
+            }
+        }
+        else if (!difference.mDiffering.empty())
+            report += "; the scene was the same on every frame";
 
         if (difference.mUnmatched > 0)
             report += std::format(

@@ -17,6 +17,7 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/perfcontrol.hpp>
+#include <components/rtxbench/scenedigest.hpp>
 #include <components/settings/values.hpp>
 
 #include "../../mwbase/environment.hpp"
@@ -248,6 +249,11 @@ namespace MWRender
         mFromLook = mFrom + osg::Vec3f(std::sin(stood.rot[2]), std::cos(stood.rot[2]), 0.0f);
     }
 
+    void Session::forgetHistory()
+    {
+        MWBase::Environment::get().getWorld()->getRenderingManager()->notifyWorldSpaceChanged();
+    }
+
     void Session::beginStop()
     {
         const Rtx::Stop& stop = mRequest.mStops[mAt];
@@ -362,7 +368,7 @@ namespace MWRender
         // history describes somewhere else — and the exposure adapts toward its measurement over
         // seconds rather than taking it, so a room drawn after a noon exterior opens at the
         // exterior's brightness. The warm-up absorbs the frame it costs.
-        MWBase::Environment::get().getWorld()->getRenderingManager()->notifyWorldSpaceChanged();
+        forgetHistory();
 
         mSeen = 0;
         mTurnedTo = 0;
@@ -493,6 +499,21 @@ namespace MWRender
             return;
         }
 
+        // **The reset stands until a frame has been counted, and the one `beginStop` issued is not
+        // enough.** A stop opens with frames nobody counts: the first trace after the teleport has
+        // no predecessor to be timed against, so `frame` is never reached for it and `mSeen` stays
+        // at nought. The exposure adapts on every one of them all the same, and how many there are
+        // is a question about how long the world took to load rather than one the schedule answers
+        // — so two runs began counting from two exposures and drew the first thirty frames
+        // differently, with the same scene behind them. Reissued here, the last reset lands on the
+        // frame that becomes the first counted one, whatever went before it.
+        //
+        // **Both calls, and neither is the other's spare.** `beginStop` resets because a teleport
+        // is a discontinuity and the frames it opens with are drawn on a screen. This resets
+        // because those frames are not measured, and a measured run may not depend on them.
+        if (mSeen == 0)
+            forgetHistory();
+
         // **The route runs over the measured frames and not the warm-up.** Warming up is the GPU
         // coming off its idle clock; flying during it would start the measurement partway along
         // and leave the first crossing outside the numbers.
@@ -574,7 +595,7 @@ namespace MWRender
         if (stop.mActions.mHash)
         {
             renderer.readPixels(mHeld->mPixels);
-            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels);
+            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels, Rtx::digestLayout(owner.getMirror().getScene()));
         }
 
         if (drawn < measured)
