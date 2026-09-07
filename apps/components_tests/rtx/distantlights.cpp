@@ -77,12 +77,17 @@ namespace Rtx
         };
 
         /// Counts the lights a residency hands over.
-        struct CountLights : osg::NodeVisitor
+        struct CountLights : osg::NodeVisitor, Collector
         {
             CountLights()
                 : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
             {
             }
+
+            void take(osg::Node& node) override { node.accept(*this); }
+
+            /// Lights stand on nodes of their own, so this residency names nothing.
+            void takeChunk(const Terrain::ChunkName&, osg::Node&) override { FAIL() << "a light arrived as a chunk"; }
 
             void apply(osg::Node& node) override
             {

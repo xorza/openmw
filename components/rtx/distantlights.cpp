@@ -83,7 +83,7 @@ namespace Rtx
         return group;
     }
 
-    void DistantLights::collect(osg::NodeVisitor& visitor)
+    void DistantLights::collect(Collector& into)
     {
         if (mStorage == nullptr || !mOutdoors)
             return;
@@ -114,7 +114,7 @@ namespace Rtx
                     found = mCells.emplace(key, build(key)).first;
 
                 if (found->second != nullptr)
-                    found->second->accept(visitor);
+                    into.take(*found->second);
             }
     }
 }

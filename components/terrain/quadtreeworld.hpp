@@ -39,7 +39,7 @@ namespace Terrain
 
         void accept(osg::NodeVisitor& nv);
 
-        void collect(View* view, const osg::Vec3f& viewPoint, osg::NodeVisitor& visitor) override;
+        void collect(View* view, const osg::Vec3f& viewPoint, ChunkTaker& into) override;
 
         void enable(bool enabled) override;
 
@@ -90,11 +90,11 @@ namespace Terrain
         void addChunkManager(ChunkManager*);
 
     private:
-        /// Hands every chunk `vd` holds to `visitor`, building any that have not been built yet.
+        /// Hands every chunk `vd` holds to `into`, building any that have not been built yet.
         ///
         /// Shared by the cull and by `collect`, which differ over how the view is found and over
         /// nothing after that.
-        void handOver(ViewData* vd, osg::NodeVisitor& visitor);
+        void handOver(ViewData* vd, ChunkTaker& into);
 
         void ensureQuadTreeBuilt();
         void loadRenderingNode(

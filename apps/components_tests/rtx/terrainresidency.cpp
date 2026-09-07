@@ -6,7 +6,6 @@
 #include <gtest/gtest.h>
 
 #include <osg/Group>
-#include <osg/NodeVisitor>
 
 #include <components/esm3/loadcell.hpp>
 #include <components/loadinglistener/reporter.hpp>
@@ -36,6 +35,19 @@ namespace Rtx
 
         /// Frames the test drives. Each moves the eye, so each asks the thread for a new square.
         constexpr int sFrames = 30;
+
+        /// A collector for a test that is about the threading and not about what arrives.
+        struct NoChunks : Collector
+        {
+            void take(osg::Node&) override {}
+            void takeChunk(const Terrain::ChunkName&, osg::Node&) override {}
+        };
+
+        /// A collector a mask would have stopped at the terrain root.
+        struct Refused : NoChunks
+        {
+            bool wouldReach(const osg::Node&) const override { return false; }
+        };
 
         /// A view that only has to exist: nothing here resolves a quad tree into one.
         struct EmptyView : Terrain::View
@@ -79,15 +91,17 @@ namespace Rtx
                 }
             }
 
-            void collect(Terrain::View*, const osg::Vec3f&, osg::NodeVisitor&) override
+            void collect(Terrain::View*, const osg::Vec3f&, Terrain::ChunkTaker&) override
             {
                 const Inside held(*this);
+                ++mCollects;
                 std::this_thread::sleep_for(sCollectTime);
             }
 
             bool overlapped() const { return mOverlapped; }
             std::uint32_t getPasses() const { return mPasses; }
             std::uint32_t getCutShort() const { return mCutShort; }
+            std::uint32_t getCollects() const { return mCollects; }
 
         private:
             /// One caller's stay inside the builder, which is what makes a second one visible.
@@ -112,6 +126,7 @@ namespace Rtx
             std::atomic<bool> mOverlapped{ false };
             std::atomic<std::uint32_t> mPasses{ 0 };
             std::atomic<std::uint32_t> mCutShort{ 0 };
+            std::atomic<std::uint32_t> mCollects{ 0 };
         };
 
         /// The frame and the warming thread take the terrain's builder in turn, and the frame waits for
@@ -144,12 +159,12 @@ namespace Rtx
                 TerrainResidency resident;
                 resident.follow(&terrain);
 
-                osg::NodeVisitor visitor;
+                NoChunks taker;
                 for (int frame = 0; frame < sFrames; ++frame)
                 {
                     // Moved every frame, because an eye that stands still is one `ask` skips.
                     resident.setViewPoint(osg::Vec3f(static_cast<float>(frame) * 64.0f, 0.0f, 0.0f));
-                    resident.collect(visitor);
+                    resident.collect(taker);
                     std::this_thread::sleep_for(sRestOfFrame);
                 }
             }
@@ -157,6 +172,30 @@ namespace Rtx
             ASSERT_GT(terrain.getPasses(), 0u) << "the warming thread never ran, so this proves nothing";
             EXPECT_FALSE(terrain.overlapped()) << "the frame and the warming thread were in the builder at once";
             EXPECT_GT(terrain.getCutShort(), 0u) << "no pass was cut short, so the frames waited them out";
+        }
+
+        /// **A mask that hides the terrain hides the chunks hanging off nothing below it.**
+        /// `QuadTreeWorld::collect` goes around the graph, so the refusal a walk would have made at
+        /// the terrain root is one this residency makes on its behalf.
+        ///
+        /// **Both answers on one terrain**, because a count of nought proves nothing unless the same
+        /// residency hands a collector that is let past exactly one collect.
+        TEST(RtxTerrainResidencyTest, aCollectorTheMaskWouldStopAtTheRootIsHandedNoChunks)
+        {
+            const osg::ref_ptr<osg::Group> parent = new osg::Group;
+
+            WatchedTerrain terrain(parent);
+
+            TerrainResidency resident;
+            resident.follow(&terrain);
+
+            Refused refused;
+            resident.collect(refused);
+            EXPECT_EQ(terrain.getCollects(), 0u) << "the terrain was asked through a mask that hides it";
+
+            NoChunks reached;
+            resident.collect(reached);
+            EXPECT_EQ(terrain.getCollects(), 1u) << "nothing reached the terrain at all, so the refusal proves nothing";
         }
     }
 }

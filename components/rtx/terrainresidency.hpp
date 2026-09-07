@@ -57,7 +57,7 @@ namespace Rtx
         /// Where the detail is chosen from — the eye, which is what a cull would have used.
         void setViewPoint(const osg::Vec3f& viewPoint) { mViewPoint = viewPoint; }
 
-        void collect(osg::NodeVisitor& visitor) override;
+        void collect(Collector& into) override;
 
     private:
         /// How many view points ahead the warming thread aims.

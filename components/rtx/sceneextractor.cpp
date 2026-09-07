@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <optional>
 #include <span>
@@ -65,14 +66,41 @@ namespace Rtx
         /// **Folded on the way down rather than taken at the leaf**, which is the argument `mHere`
         /// makes for the matrix: the prefix every sibling under a node shares is worked out once as
         /// the walk enters that node, against a depth's worth per drawable.
+        std::size_t identityWith(std::size_t key, const std::size_t part)
+        {
+            return (key ^ part) * 0x100000001b3ull;
+        }
+
         std::size_t identitySeed(std::size_t anchor)
         {
-            return (0xcbf29ce484222325ull ^ anchor) * 0x100000001b3ull;
+            return identityWith(0xcbf29ce484222325ull, anchor);
         }
 
         std::size_t identityWith(std::size_t key, const osg::Node* node)
         {
-            return (key ^ std::hash<const osg::Node*>{}(node)) * 0x100000001b3ull;
+            return identityWith(key, std::hash<const osg::Node*>{}(node));
+        }
+
+        /// The same fold, over a number the content states rather than an address it happens to
+        /// sit at.
+        std::size_t identityWith(std::size_t key, const float part)
+        {
+            std::uint32_t bits = 0;
+            std::memcpy(&bits, &part, sizeof(bits));
+
+            return identityWith(key, static_cast<std::size_t>(bits));
+        }
+
+        /// The same fold, over what the terrain says a chunk is. `Terrain::ChunkName` says why a
+        /// chunk is named by its contents and not by the node it arrives on.
+        std::size_t identityWith(std::size_t key, const Terrain::ChunkName& name)
+        {
+            key = identityWith(key, name.mCentre.x());
+            key = identityWith(key, name.mCentre.y());
+            key = identityWith(key, name.mSize);
+            key = identityWith(key, static_cast<std::size_t>(name.mLodFlags));
+
+            return identityWith(key, static_cast<std::size_t>(name.mActiveGrid));
         }
     }
 
@@ -95,7 +123,7 @@ namespace Rtx
     };
 
     /// Walks the graph and hands every geometry it meets to the extractor.
-    class MirrorTraversal : public osg::NodeVisitor
+    class MirrorTraversal : public osg::NodeVisitor, public Collector
     {
     public:
         explicit MirrorTraversal(SceneExtractor& extractor);
@@ -116,7 +144,20 @@ namespace Rtx
         void apply(osg::Transform& node) override;
         void apply(osg::Drawable& drawable) override;
 
+        void take(osg::Node& node) override { node.accept(*this); }
+        void takeChunk(const Terrain::ChunkName& name, osg::Node& node) override;
+        bool wouldReach(const osg::Node& root) const override { return validNodeMask(root); }
+
     private:
+        /// Walks `node` and everything under it, under the identity the caller worked out for it.
+        ///
+        /// **The identity arrives rather than being taken here**, because a node's address is only
+        /// the name it has when nothing states a better one. A terrain chunk states one.
+        void enter(osg::Node& node, std::size_t identity);
+
+        /// The same, with `node`'s own transform composed into where the walk stands.
+        void enterTransform(osg::Transform& node, std::size_t identity);
+
         /// Descends into the children of `node` that are in the world. See below.
         void descend(osg::Node& node);
 
@@ -186,7 +227,7 @@ namespace Rtx
         osg::Matrix mHere;
 
         /// The identity of the path the walk is standing on, saved and restored around each
-        /// descent beside `mShading`. `identitySeed` says what it is made of and why it is carried.
+        /// descent beside `mShading`. `identityWith` says what it is made of and why it is carried.
         std::size_t mPathHash = 0;
 
         /// The state sets in force where the walk is standing, nearest it last. Kept across walks
@@ -228,6 +269,24 @@ namespace Rtx
     }
 
     void MirrorTraversal::apply(osg::Node& node)
+    {
+        enter(node, identityWith(mPathHash, &node));
+    }
+
+    void MirrorTraversal::takeChunk(const Terrain::ChunkName& name, osg::Node& node)
+    {
+        const std::size_t identity = identityWith(mPathHash, name);
+
+        // **The dispatch `accept` would have done, done here instead.** What arrives is the
+        // transform `loadRenderingNode` puts a chunk under, and its position is the chunk's place in
+        // the world; going through `accept` would name the node by its address on the way past.
+        if (osg::Transform* placed = node.asTransform())
+            enterTransform(*placed, identity);
+        else
+            enter(node, identity);
+    }
+
+    void MirrorTraversal::enter(osg::Node& node, const std::size_t identity)
     {
         // **Asked once and handed on.** Three of the questions below are about this node's library,
         // and `libraryName` is a virtual call apiece.
@@ -278,7 +337,7 @@ namespace Rtx
 
         const std::size_t held = mShading.size();
         const std::size_t above = mPathHash;
-        mPathHash = identityWith(mPathHash, &node);
+        mPathHash = identity;
 
         if (const osg::StateSet* own = node.getStateSet())
             pushShading(*own, false);
@@ -449,22 +508,27 @@ namespace Rtx
     /// visitor without checking it, to catch the eye point off a cull. A visitor that is not a cull
     /// visitor takes exactly the branch a null one would have — here and in `osg::AutoTransform`,
     /// the other one that looks — so nothing moves.
-    void MirrorTraversal::apply(osg::Transform& node)
+    void MirrorTraversal::enterTransform(osg::Transform& node, const std::size_t identity)
     {
         // Nothing an emitter needs is in the chain: a processor reads its world transform off the
         // node path, which `accept` keeps whatever this does.
         if (mStepOnly)
         {
-            apply(static_cast<osg::Node&>(node));
+            enter(node, identity);
             return;
         }
 
         const osg::Matrix above = mHere;
         node.computeLocalToWorldMatrix(mHere, this);
 
-        apply(static_cast<osg::Node&>(node));
+        enter(node, identity);
 
         mHere = above;
+    }
+
+    void MirrorTraversal::apply(osg::Transform& node)
+    {
+        enterTransform(node, identityWith(mPathHash, &node));
     }
 
     void MirrorTraversal::pushShading(const osg::StateSet& stateSet, const bool animated)

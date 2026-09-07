@@ -12,6 +12,8 @@
 #include <osg/Node>
 #include <osg/Vec3f>
 
+#include <components/terrain/chunktaker.hpp>
+
 #include "emitterresolver.hpp"
 #include "extractionstats.hpp"
 #include "materialresolver.hpp"
@@ -51,6 +53,26 @@ namespace Rtx
 {
     class MirrorTraversal;
 
+    /// What a residency hands its contents to.
+    ///
+    /// **A chunk arrives named and everything else arrives as itself.** A walk names a node by the
+    /// address it sits at, which is the only name a node has; a terrain chunk has a better one, and
+    /// `Terrain::ChunkTaker` says why the address will not do for it.
+    class Collector : public Terrain::ChunkTaker
+    {
+    public:
+        /// Walks `node` as though the graph had parented it where the residency was asked.
+        virtual void take(osg::Node& node) = 0;
+
+        /// Whether a walk of the graph would have been let past `root`.
+        ///
+        /// **Asked because a residency goes around the graph.** What it stands is parented under a
+        /// node the walk would have met and may have been refused at, and a collector that says yes
+        /// to everything would show what the mask hides. The default is the answer for a collector
+        /// with no mask to consult.
+        virtual bool wouldReach(const osg::Node& root) const { return true; }
+    };
+
     /// What a walk of the scene graph cannot reach, offered to the walk that asks for it.
     ///
     /// **`Terrain::QuadTreeWorld` is the reason this exists.** With `distant terrain` on it resolves
@@ -77,8 +99,8 @@ namespace Rtx
     public:
         virtual ~Residency() = default;
 
-        /// Hands `visitor` everything held that the graph does not parent.
-        virtual void collect(osg::NodeVisitor& visitor) = 0;
+        /// Hands `into` everything held that the graph does not parent.
+        virtual void collect(Collector& into) = 0;
     };
 
     /// Mirrors an OpenSceneGraph subtree into a `SceneDesc`.

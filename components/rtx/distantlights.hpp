@@ -83,7 +83,7 @@ namespace Rtx
         /// handed to somebody else. Whoever restarts the counter calls this in the same breath.
         void restart();
 
-        void collect(osg::NodeVisitor& visitor) override;
+        void collect(Collector& into) override;
 
     private:
         /// The cell a world position stands in, on the exterior grid.

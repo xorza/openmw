@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <span>
 #include <vector>
+
+#include <components/terrain/chunktaker.hpp>
 
 namespace Rtx::Testing
 {
@@ -68,6 +71,70 @@ namespace Rtx::Testing
             const Retirement went = mExtractor.retire();
             EXPECT_EQ(went.mMeshes, 1u);
             EXPECT_FALSE(watch.valid()) << "the sweep dropped the entry and kept the drawable alive";
+        }
+
+        /// A residency that names what it hands over, exactly as `QuadTreeWorld::handOver` does.
+        class NamedChunk : public Residency
+        {
+        public:
+            explicit NamedChunk(osg::Node& held)
+                : mHeld(&held)
+            {
+            }
+
+            void hold(osg::Node& held) { mHeld = &held; }
+
+            void collect(Collector& into) override
+            {
+                into.takeChunk(Terrain::ChunkName{ .mCentre = osg::Vec2f(-1.1875f, -9.1875f),
+                                   .mSize = 0.125f,
+                                   .mLodFlags = 0,
+                                   .mActiveGrid = true },
+                    *mHeld);
+            }
+
+        private:
+            osg::Node* mHeld;
+        };
+
+        /// **A chunk arriving on another node is the same chunk.** `Terrain::ChunkName` says why
+        /// the node is not the identity: an entry with no rendering node gets a fresh transform and
+        /// is handed whatever the chunk cache already held, so the ground comes back unchanged on an
+        /// address the allocator picked. A walk that folded that address placed the ground again and
+        /// left the old placement to be swept — and which frame that happened on was the allocator's
+        /// answer rather than the world's.
+        TEST_F(RtxSceneExtractorTest, aChunkNamedTheSameKeepsItsPlacementThroughANewNode)
+        {
+            osg::ref_ptr<osg::Geometry> ground = makeQuad();
+
+            osg::ref_ptr<osg::Group> arrivedOn = new osg::Group;
+            arrivedOn->addChild(ground);
+
+            NamedChunk chunk(*arrivedOn);
+            Residency* held = &chunk;
+            mExtractor.follow(std::span<Residency* const>(&held, 1));
+
+            osg::ref_ptr<osg::Group> nothing = new osg::Group;
+            ASSERT_EQ(mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 1).mInstances, 1u);
+            ASSERT_EQ(mScene.getPlacedCount(), 1u);
+            ASSERT_TRUE(mExtractor.retire().empty());
+
+            // The same ground, handed over on a transform that is not the one before it — which is
+            // what the terrain does whenever an entry has to make a rendering node again.
+            osg::ref_ptr<osg::Group> arrivedOnAnother = new osg::Group;
+            arrivedOnAnother->addChild(ground);
+            ASSERT_NE(arrivedOnAnother.get(), arrivedOn.get());
+            chunk.hold(*arrivedOnAnother);
+
+            const ExtractionStats again = mExtractor.extractWorld(*nothing, osg::Matrixf::identity(), 0, 2);
+            EXPECT_EQ(again.mInstances, 1u);
+            EXPECT_EQ(mScene.getPlacedCount(), 1u);
+
+            // **The slot, which is the whole of it.** A placement that was added again would stand
+            // in a second slot and leave the first to be swept, and a slot is the custom index a hit
+            // reads back and the row a top-level structure is built in.
+            EXPECT_EQ(mScene.getInstances().size(), 1u) << "the ground was placed a second time";
+            EXPECT_EQ(mExtractor.retire().mMeshes, 0u) << "nothing went stale";
         }
 
         TEST_F(RtxSceneExtractorTest, aSweepDropsWhatTheWalkNoLongerFindsAndCarriesTheRest)

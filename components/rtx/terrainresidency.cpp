@@ -39,9 +39,14 @@ namespace Rtx
             mWorker = std::jthread([this](std::stop_token stop) { warm(stop); });
     }
 
-    void TerrainResidency::collect(osg::NodeVisitor& visitor)
+    void TerrainResidency::collect(Collector& into)
     {
         if (mTerrain == nullptr || mView == nullptr)
+            return;
+
+        // **The mask, which the graph would have applied and this route goes around.** A walk that
+        // may not see the terrain root may not see the chunks hanging off nothing below it either.
+        if (!into.wouldReach(mTerrain->getTerrainRoot()))
             return;
 
         // **Before the collect and not after it.** What this asks for is where the eye is going, and
@@ -57,7 +62,7 @@ namespace Rtx
         std::lock_guard<std::mutex> building(mBuilding);
         mYield = false;
 
-        mTerrain->collect(mView.get(), mViewPoint, visitor);
+        mTerrain->collect(mView.get(), mViewPoint, into);
     }
 
     void TerrainResidency::ask()

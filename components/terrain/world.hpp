@@ -11,6 +11,7 @@
 #include <components/esm/refid.hpp>
 
 #include "cellborder.hpp"
+#include "chunktaker.hpp"
 
 namespace osg
 {
@@ -97,7 +98,7 @@ namespace Terrain
         }
 
         /// Every chunk this world holds for `view`, at the detail `viewPoint` asks for, handed to
-        /// `visitor`.
+        /// `into`.
         ///
         /// **Not a cull, and this is the whole reason it exists.** Nothing is rejected and no
         /// frustum is consulted: a ray tracer decides what exists, and the answer is everything
@@ -112,7 +113,7 @@ namespace Terrain
         /// to say where they are.
         ///
         /// @note Not thread safe. `view` must be one `createView` handed out.
-        virtual void collect(View* view, const osg::Vec3f& viewPoint, osg::NodeVisitor& visitor) {}
+        virtual void collect(View* view, const osg::Vec3f& viewPoint, ChunkTaker& into) {}
 
         virtual void rebuildViews() {}
 
@@ -126,6 +127,10 @@ namespace Terrain
 
         void enableHeightCullCallback(bool enable);
         osg::Callback* getHeightCullCallback(float highz, unsigned int mask);
+
+        /// The node a walk of the graph meets the terrain at, for a caller that reaches the chunks
+        /// through `collect` instead and owes the same answer about the mask.
+        const osg::Group& getTerrainRoot() const { return *mTerrainRoot; }
 
         void setActiveGrid(const osg::Vec4i& grid) { mActiveGrid = grid; }
 
