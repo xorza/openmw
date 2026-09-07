@@ -189,7 +189,7 @@ namespace Rtx
             // structure has gone with it.
             mDeformed.remove(index);
 
-            mFree.push_back(index);
+            freeSlot(mFree, index);
             note(index, SlotNews::Freed);
             ++freed;
         }

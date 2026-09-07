@@ -118,7 +118,7 @@ namespace Rtx
                 mLayerRuns.release(Span{ .mOffset = going.mLayerOffset, .mCount = going.mLayerCount });
 
             mRows[index] = Material{};
-            mFree.push_back(index);
+            freeSlot(mFree, index);
             ++freed;
         }
 

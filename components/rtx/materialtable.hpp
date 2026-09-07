@@ -104,8 +104,7 @@ namespace Rtx
         std::vector<MaterialLayer> mLayers;
         std::vector<float> mMasks;
 
-        /// Slots nothing stands in, taken from the back because there is no fit to find: a row is
-        /// one row and what varies in length is the runs the allocators below hand out.
+        /// Slots nothing stands in, as a min-heap. `Rtx::takeFreeSlot` says why the lowest.
         std::vector<Index> mFree;
 
         /// Which slots a sweep was told to keep, one flag per row.

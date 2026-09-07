@@ -81,7 +81,7 @@ namespace Rtx
         std::vector<osg::Matrixf> mPrevious;
         std::vector<Index> mMoved;
         std::vector<Index> mSettled;
-        /// A min-heap, so `add` answers with the lowest rather than the last one pushed.
+        /// A min-heap. `Rtx::takeFreeSlot` says why the lowest.
         std::vector<Index> mFree;
         std::uint32_t mPlacedCount = 0;
     };

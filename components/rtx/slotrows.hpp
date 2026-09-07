@@ -1,8 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -10,25 +12,48 @@
 
 namespace Rtx
 {
-    /// Puts `row` in a slot of `table` nothing stands in, or on the end where there is none, and
-    /// says which.
+    /// **The lowest free slot, and never the last one freed.** A slot is one row of a table and
+    /// every row is the same size, so any of them would hold the row — but which one it is decides
+    /// what a run draws, because a slot is what a material points at and what a structure is built
+    /// in. `Rtx::Identity` hashes by address, so a sweep retires in whatever order the allocator
+    /// left its map in, and a list taken from the back then hands the same live set different slots
+    /// in two processes. Taking the lowest makes the answer a function of what is standing rather
+    /// than of the order the dead left in. Measured on `one-cell-walk`: the `materials` and
+    /// `textures` columns differed from frame 2 on 89 frames of 90.
     ///
-    /// **Any free slot will do.** A slot is one row of a table and every row is the same size; what
-    /// varies in length — the geometry, the layers, the runs — the allocators have already placed.
-    /// Taken from the back, because there is no fit to find.
+    /// Every table takes its slots through this pair, `PlacementTable` included.
+    inline Index takeFreeSlot(std::vector<Index>& free)
+    {
+        assert(!free.empty() && "a slot taken from a list with none on it");
+
+        std::pop_heap(free.begin(), free.end(), std::greater<>());
+        const Index index = free.back();
+        free.pop_back();
+
+        return index;
+    }
+
+    /// Puts `index` back, so the next `takeFreeSlot` may answer with it.
+    inline void freeSlot(std::vector<Index>& free, const Index index)
+    {
+        free.push_back(index);
+        std::push_heap(free.begin(), free.end(), std::greater<>());
+    }
+
+    /// Puts `row` in a slot of `table` nothing stands in, or on the end where there is none.
     template <class Row>
     Index takeSlot(std::vector<Row>& table, std::vector<Index>& free, const Row& row)
     {
-        if (!free.empty())
+        if (free.empty())
         {
-            const Index index = free.back();
-            free.pop_back();
-            table[index] = row;
-            return index;
+            table.push_back(row);
+            return static_cast<Index>(table.size() - 1);
         }
 
-        table.push_back(row);
-        return static_cast<Index>(table.size() - 1);
+        const Index index = takeFreeSlot(free);
+        table[index] = row;
+
+        return index;
     }
 
     /// A byte per row of a table, set for everything a sweep must not free: what `keep` names, and

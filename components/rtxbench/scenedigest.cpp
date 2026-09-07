@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 #include <tuple>
 
@@ -320,12 +322,24 @@ namespace Rtx
         one.add(scene.getMasks());
         take(ScenePart::Masks);
 
-        // By their paths and by their slots both, which is the difference from `digestScene`: which
+        // By their names and by their slots both, which is the difference from `digestScene`: which
         // slot a texture landed in is what a material's index means.
-        for (const VFS::Path::Normalized& texture : scene.getTextures())
+        //
+        // **The baked names beside the paths, because a slot is one or the other.** A texture this
+        // renderer made has no path, so a column of paths alone reads every baked slot as the same
+        // empty string — and a run whose bakes landed in another order came out identical here
+        // while the materials naming them moved. Measured on `one-cell-walk`: `mDiffuse` differed
+        // on 5 frames of 6 with this column agreeing on all of them.
+        const std::span<const VFS::Path::Normalized> paths = scene.getTextures();
+        const std::span<const std::string> baked = scene.getBakedTextures();
+        assert(paths.size() == baked.size() && "a texture table whose two names disagree on how many slots it has");
+
+        for (std::size_t slot = 0; slot < paths.size(); ++slot)
         {
-            const std::string_view path = texture.value();
+            const std::string_view path = paths[slot].value();
             one.add(std::span<const char>(path.data(), path.size()));
+
+            one.add(std::span<const char>(baked[slot].data(), baked[slot].size()));
         }
         take(ScenePart::Textures);
 

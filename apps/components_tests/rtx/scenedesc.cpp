@@ -151,6 +151,43 @@ namespace Rtx
             EXPECT_EQ(scene.getTextures().size(), 2u);
         }
 
+        /// **Which slot a thing lands in cannot depend on the order the dead left in.**
+        /// `Rtx::Identity` hashes by address, so a sweep gives slots back in whatever order the
+        /// allocator left its map in — and a table that answered with the last one freed then handed
+        /// one live set two different layouts in two processes. Measured on `one-cell-walk` before
+        /// this: the `materials` and `textures` columns of the hashes table differed from frame 2 on
+        /// 89 frames of 90, and the picture followed at frame 39.
+        ///
+        /// **Both orders on one fixture**, because "the lowest" and "the last freed" agree wherever
+        /// the frees happen to run upwards.
+        TEST(RtxSceneDescTest, theSlotHandedOutIsTheSameHoweverTheSlotsWereGivenBack)
+        {
+            constexpr std::array<VFS::Path::NormalizedView, 4> named{
+                VFS::Path::NormalizedView("textures/tx_a.dds"),
+                VFS::Path::NormalizedView("textures/tx_b.dds"),
+                VFS::Path::NormalizedView("textures/tx_c.dds"),
+                VFS::Path::NormalizedView("textures/tx_d.dds"),
+            };
+
+            const auto after = [&](const std::vector<Index>& order) {
+                SceneDesc scene;
+                for (const VFS::Path::NormalizedView path : named)
+                    scene.holdTexture(scene.addTexture(path));
+
+                for (const Index slot : order)
+                    scene.dropTexture(slot);
+
+                return std::array<Index, 3>{ scene.addTexture(VFS::Path::NormalizedView("textures/tx_e.dds")),
+                    scene.addTexture(VFS::Path::NormalizedView("textures/tx_f.dds")),
+                    scene.addTexture(VFS::Path::NormalizedView("textures/tx_g.dds")) };
+            };
+
+            const std::array<Index, 3> expected{ 0u, 2u, 3u };
+            EXPECT_EQ(after({ 0u, 2u, 3u }), expected) << "given back lowest first";
+            EXPECT_EQ(after({ 3u, 2u, 0u }), expected) << "given back highest first";
+            EXPECT_EQ(after({ 2u, 0u, 3u }), expected) << "given back in no order at all";
+        }
+
         TEST(RtxSceneDescTest, theCountsAreWhatTheBuffersHold)
         {
             SceneDesc scene;
@@ -417,8 +454,10 @@ namespace Rtx
             EXPECT_EQ(mScene.getRuns().size(), 4u) << "the freed run is the one handed out";
             EXPECT_EQ(sorted(mScene.getArrivedRigs()), (std::vector<Index>{ mRig }));
 
+            // `mMoving` and not `mOther`, though `mOther` went last: `Rtx::takeFreeSlot` answers with
+            // the lowest free slot, so which of the two arrives next is not the sweep's to decide.
             const Index back = addSkin();
-            EXPECT_EQ(back, mOther) << "the freed mesh slot is the one handed out";
+            EXPECT_EQ(back, mMoving) << "the freed mesh slot is the one handed out";
             EXPECT_EQ(mScene.getMeshes()[back].mBindOffset, 0u) << "the freed bind run is the one handed out";
             EXPECT_EQ(mScene.getBindVertexCount(), 4u)
                 << "both runs went, so the table reaches only as far as this one";
@@ -898,9 +937,10 @@ namespace Rtx
             EXPECT_EQ(scene.getMeshes()[again].mVertexOffset, 4u);
             EXPECT_EQ(scene.getPositions().size(), vertices) << "a mesh that fitted a hole appended anyway";
 
-            // Both freed slots have been taken, in the order they were given back.
-            EXPECT_EQ(quad, snug);
-            EXPECT_EQ(again, roomy);
+            // Both freed slots have been taken, the lower one first — `Rtx::takeFreeSlot` says why a
+            // table answers with the lowest and never with the last one given back.
+            EXPECT_EQ(quad, roomy);
+            EXPECT_EQ(again, snug);
 
             // Nothing fits now, so this one goes on the end.
             EXPECT_EQ(scene.addMesh(big, {}, {}, bigIndices), 3u);

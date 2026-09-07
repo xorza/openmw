@@ -1,8 +1,8 @@
 #include "placementtable.hpp"
 
-#include <algorithm>
 #include <cassert>
-#include <functional>
+
+#include "slotrows.hpp"
 
 namespace Rtx
 {
@@ -16,11 +16,7 @@ namespace Rtx
             mPrevious.emplace_back();
         }
         else
-        {
-            std::pop_heap(mFree.begin(), mFree.end(), std::greater<>());
-            slot = mFree.back();
-            mFree.pop_back();
-        }
+            slot = takeFreeSlot(mFree);
 
         mInstances[slot] = instance;
 
@@ -65,8 +61,7 @@ namespace Rtx
         assert(mInstances[slot].isPlaced() && "a slot dropped twice, or one nothing stood in");
 
         mInstances[slot] = MeshInstance{};
-        mFree.push_back(slot);
-        std::push_heap(mFree.begin(), mFree.end(), std::greater<>());
+        freeSlot(mFree, slot);
         mMoved.push_back(slot);
         --mPlacedCount;
     }

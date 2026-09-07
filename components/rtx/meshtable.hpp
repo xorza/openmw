@@ -118,6 +118,8 @@ namespace Rtx
         /// **A list and not a hole map**, because what goes on it is what one departing ring left —
         /// tens of entries, not the table. Nothing is ever moved, so a slot that is taken over
         /// keeps its index and every placement standing on it stays where it is.
+        ///
+        /// A min-heap. `Rtx::takeFreeSlot` says why the lowest.
         std::vector<Index> mFree;
 
         /// Which slots a sweep must not free, one flag per row.

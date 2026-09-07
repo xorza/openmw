@@ -2,6 +2,8 @@
 
 #include <cassert>
 
+#include "slotrows.hpp"
+
 namespace Rtx
 {
     Index TextureTable::takeSlot()
@@ -19,8 +21,7 @@ namespace Rtx
             return static_cast<Index>(mPaths.size() - 1);
         }
 
-        const Index index = mFree.back();
-        mFree.pop_back();
+        const Index index = takeFreeSlot(mFree);
         assert(mRefs[index] == 0 && "a free slot something still names");
 
         return index;
@@ -91,7 +92,7 @@ namespace Rtx
             mBaked[texture].clear();
         }
 
-        mFree.push_back(texture);
+        freeSlot(mFree, texture);
         mChanges.note(texture, SlotNews::Freed);
     }
 

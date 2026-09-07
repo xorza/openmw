@@ -88,6 +88,7 @@ namespace Rtx
         /// to name what it returned.
         std::vector<std::uint32_t> mRefs;
 
+        /// A min-heap. `Rtx::takeFreeSlot` says why the lowest.
         std::vector<Index> mFree;
 
         SlotChanges mChanges;
