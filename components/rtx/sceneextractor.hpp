@@ -112,6 +112,7 @@ namespace Rtx
         /// Everything the content did not hide, by default. A host with more to leave out says so,
         /// and says it with the hidden bit still out — see the constructor.
         void setTraversalMask(osg::Node::NodeMask mask) { mTraversalMask = mask; }
+        osg::Node::NodeMask getTraversalMask() const { return mTraversalMask; }
 
         /// Which nodes are the world's water, as an `osg` node mask. None by default.
         ///

@@ -49,6 +49,10 @@
 #include <components/surface/material.hpp>
 #include <components/terrain/chunkmanager.hpp>
 
+#include "../../mwbase/environment.hpp"
+#include "../../mwbase/world.hpp"
+
+#include "../camera.hpp"
 #include "../offscreenview.hpp"
 #include "../renderingmanager.hpp"
 #include "../sceneframe.hpp"
@@ -610,6 +614,11 @@ namespace MWRender
             renderGui();
             return;
         }
+
+        // **Asked of the camera and not of the session**, because what settles it is whether the eye
+        // is the player's, and a session is only the thing that usually makes it not.
+        mMirror.setShowsPlayer(MWBase::Environment::get().getWorld()->getRenderingManager()->getCamera()->getMode()
+            != Camera::Mode::Static);
 
         // **Where the benchmark's `walk ms` starts**, because that row means the whole mirror. The
         // harness times the same stretch, which is what lets the two rows be read against each

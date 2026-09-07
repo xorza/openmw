@@ -65,12 +65,24 @@ namespace MWRender
         /// says which runs want that and what it costs them.
         void setSettled(bool settled) { mComposites.setSettled(settled); }
 
+        /// Whether the world walk includes the player's own model. True for a game somebody is
+        /// playing.
+        ///
+        /// **A camera that is not the player's eye stands inside the player.** `MWRender::Camera` in
+        /// `Mode::Static` takes the `VM_Normal` branch of `processViewChange`, so the game dresses
+        /// the whole third-person body — and a session flies the player to its route's point so that
+        /// cells load around it, then stands the camera on the same coordinates. What that traced
+        /// was a boot and a trouser leg thirteen units from the eye, filling a third of the frame.
+        void setShowsPlayer(bool shows);
+
         /// Catches the walk up and drops what it did not find.
         ///
         /// **After the trace and not before the walk.** Where everything stood this frame is what
         /// the next one measures its motion against, and the sweep bumps the epoch that measurement
         /// is made against.
         void settle();
+
+        const Rtx::SceneExtractor& getExtractor() const { return mExtractor; }
 
         const Rtx::SceneDesc& getScene() const { return mScene; }
         Rtx::SceneDesc& getScene() { return mScene; }
@@ -88,6 +100,8 @@ namespace MWRender
 
         Rtx::SceneDesc mScene;
         Rtx::SceneExtractor mExtractor;
+
+        bool mShowsPlayer = true;
 
         /// The moons' portraits and the sky's own meshes, added once and never given back.
         Rtx::MoonFaces mMoonFaces;

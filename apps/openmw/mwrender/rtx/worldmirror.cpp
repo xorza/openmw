@@ -39,6 +39,14 @@ namespace MWRender
             SceneUtil::Mask_Sky | SceneUtil::Mask_Sun | SceneUtil::Mask_SimpleWater);
     }
 
+    /// What the world walk may see. `WorldMirror::setShowsPlayer` says why the player is a question.
+    osg::Node::NodeMask worldTraversal(const bool showsPlayer)
+    {
+        const osg::Node::NodeMask player = showsPlayer ? 0 : static_cast<osg::Node::NodeMask>(SceneUtil::Mask_Player);
+
+        return sWorldTraversal & ~(NifOsg::Loader::getHiddenNodeMask() | player);
+    }
+
     float landReach()
     {
         return Rtx::distantLandReach(Settings::rtx().mDistantLandCells, Settings::camera().mViewingDistance);
@@ -64,11 +72,20 @@ namespace MWRender
         // `NifOsg::VisController` animating visibility swaps a node between it and every bit. It is
         // one bit rather than no bits at all so that the update traversal still reaches a hidden
         // bone to animate it — which is why a walk that ignores it traces what nothing draws.
-        mExtractor.setTraversalMask(sWorldTraversal & ~NifOsg::Loader::getHiddenNodeMask());
+        mExtractor.setTraversalMask(worldTraversal(mShowsPlayer));
 
         // What is left of the two is the world's own water, and it is the sea.
         mExtractor.setWaterMask(SceneUtil::Mask_Water);
         mExtractor.setFirstPersonMask(SceneUtil::Mask_FirstPerson);
+    }
+
+    void WorldMirror::setShowsPlayer(const bool shows)
+    {
+        if (shows == mShowsPlayer)
+            return;
+
+        mShowsPlayer = shows;
+        mExtractor.setTraversalMask(worldTraversal(mShowsPlayer));
     }
 
     Rtx::ExtractionStats WorldMirror::mirror(const SceneFrame& frame, const std::size_t frameNumber)
