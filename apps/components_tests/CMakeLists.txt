@@ -199,6 +199,7 @@ if (OPENMW_RTX)
         rtx/wavespectrum.cpp
         rtxbench/benchspec.cpp
         rtxbench/contactsheet.cpp
+        rtxbench/framehashes.cpp
         rtxbench/gpuclock.cpp
         rtxbench/perfcontrol.cpp
         rtxbench/scenedigest.cpp

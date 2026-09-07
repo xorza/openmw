@@ -4,7 +4,6 @@
 #include <charconv>
 #include <format>
 #include <fstream>
-#include <sstream>
 #include <utility>
 
 #include <smhasher/MurmurHash3.h>
@@ -18,6 +17,46 @@ namespace Rtx
     {
         /// How many differing frames a report names before it stops counting them out.
         constexpr std::size_t sNamed = 6;
+
+        /// The columns before the parts: the view, the frame and the picture.
+        constexpr std::size_t sNamedColumns = 3;
+
+        constexpr std::size_t sColumns = sNamedColumns + static_cast<std::size_t>(ScenePart::Count);
+
+        /// What a file opens with, and the one statement of what its columns are.
+        std::string headerLine()
+        {
+            std::string header = "view,frame,picture";
+            for (std::size_t part = 0; part < static_cast<std::size_t>(ScenePart::Count); ++part)
+                header += ',' + std::string(nameOf(static_cast<ScenePart>(part)));
+
+            return header;
+        }
+
+        /// Which parts moved and on how many frames, biggest first — or nothing where none did.
+        std::string namePartsDiffering(const FrameHashes::ViewDifference& difference)
+        {
+            std::vector<std::size_t> moved;
+            for (std::size_t part = 0; part < difference.mPartsDiffering.size(); ++part)
+                if (difference.mPartsDiffering[part] > 0)
+                    moved.push_back(part);
+
+            if (moved.empty())
+                return {};
+
+            // Stable, so that parts that moved on as many frames read in the order a scene is laid
+            // out rather than in whichever order the sort left them.
+            std::stable_sort(moved.begin(), moved.end(), [&](const std::size_t left, const std::size_t right) {
+                return difference.mPartsDiffering[left] > difference.mPartsDiffering[right];
+            });
+
+            std::string named = " — ";
+            for (std::size_t at = 0; at < moved.size(); ++at)
+                named += std::format("{}{} {}", at > 0 ? ", " : "", nameOf(static_cast<ScenePart>(moved[at])),
+                    difference.mPartsDiffering[moved[at]]);
+
+            return named;
+        }
     }
 
     void Digest::add(std::span<const std::byte> bytes)
@@ -34,19 +73,27 @@ namespace Rtx
     }
 
     void FrameHashes::add(const std::string_view view, const std::uint32_t frame, std::span<const std::uint8_t> pixels,
-        const std::array<std::uint64_t, 2>& scene)
+        const ScenePartDigests& parts)
     {
         Digest digest;
         digest.add(pixels);
         mFrames.push_back(
-            Frame{ .mView = std::string(view), .mFrame = frame, .mHash = digest.getWords(), .mScene = scene });
+            Frame{ .mView = std::string(view), .mFrame = frame, .mHash = digest.getWords(), .mParts = parts });
     }
 
     void FrameHashes::write(const std::filesystem::path& file) const
     {
         std::ofstream out(file);
+        out << headerLine() << '\n';
+
         for (const Frame& held : mFrames)
-            out << std::format("{} {} {} {}\n", held.mView, held.mFrame, spellHash(held.mHash), spellHash(held.mScene));
+        {
+            out << held.mView << ',' << held.mFrame << ',' << spellHash(held.mHash);
+            for (const std::array<std::uint64_t, 2>& part : held.mParts)
+                out << ',' << spellHash(part);
+
+            out << '\n';
+        }
 
         // **Thrown and not reported**, the way `shot --dump` answers the same failure: a reference
         // that did not get written and a command that still succeeded is the next run comparing
@@ -61,36 +108,66 @@ namespace Rtx
         if (!in)
             throw Error("could not read " + Files::pathToUnicodeString(file));
 
-        FrameHashes held;
+        const auto fail = [&](const std::string& line) {
+            return Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+        };
+
         std::string line;
+
+        // **The header has to be this build's, exactly.** A file written before a column existed
+        // would otherwise be compared column by column against one that has it, and every row would
+        // read as a difference in a table nobody changed.
+        if (!std::getline(in, line) || line != headerLine())
+            throw fail(line);
+
+        const auto readHash = [](const std::string_view field, std::array<std::uint64_t, 2>& into) {
+            if (field.size() != 32)
+                return false;
+
+            for (int half = 0; half < 2; ++half)
+            {
+                const char* const from = field.data() + half * 16;
+                if (std::from_chars(from, from + 16, into[half], 16).ec != std::errc{})
+                    return false;
+            }
+
+            return true;
+        };
+
+        // Cleared and refilled a line at a time, rather than allocated per line of a file a run
+        // reads in full.
+        std::vector<std::string_view> fields;
+
+        FrameHashes held;
         while (std::getline(in, line))
         {
             if (line.empty())
                 continue;
 
-            std::istringstream fields(line);
-            Frame frame;
-            std::string picture;
-            std::string scene;
-            fields >> frame.mView >> frame.mFrame >> picture >> scene;
+            fields.clear();
+            for (std::size_t at = 0; at <= line.size();)
+            {
+                const std::size_t comma = std::min(line.find(',', at), line.size());
+                fields.push_back(std::string_view(line).substr(at, comma - at));
+                at = comma + 1;
+            }
 
             // **Every line or none.** A reference read half way is one that matches the frames it
-            // reached and says nothing about the rest, which reads as a pass. A file one column
-            // short is a run of a build from before the scene was hashed, and it fails here rather
-            // than comparing against a column nobody wrote.
-            if (!fields || picture.size() != 32 || scene.size() != 32)
-                throw Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+            // reached and says nothing about the rest, which reads as a pass.
+            if (fields.size() != sColumns)
+                throw fail(line);
 
-            for (int half = 0; half < 2; ++half)
-            {
-                const char* from = picture.data() + half * 16;
-                if (std::from_chars(from, from + 16, frame.mHash[half], 16).ec != std::errc{})
-                    throw Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
+            Frame frame;
+            frame.mView = std::string(fields[0]);
+            if (std::from_chars(fields[1].data(), fields[1].data() + fields[1].size(), frame.mFrame).ec != std::errc{})
+                throw fail(line);
 
-                from = scene.data() + half * 16;
-                if (std::from_chars(from, from + 16, frame.mScene[half], 16).ec != std::errc{})
-                    throw Error("cannot read " + Files::pathToUnicodeString(file) + ": " + line);
-            }
+            if (!readHash(fields[2], frame.mHash))
+                throw fail(line);
+
+            for (std::size_t part = 0; part < frame.mParts.size(); ++part)
+                if (!readHash(fields[sNamedColumns + part], frame.mParts[part]))
+                    throw fail(line);
 
             held.mFrames.push_back(std::move(frame));
         }
@@ -121,7 +198,18 @@ namespace Rtx
 
             if (found->mHash != held.mHash)
                 difference.mDiffering.push_back(held.mFrame);
-            if (found->mScene != held.mScene)
+
+            bool anyPart = false;
+            for (std::size_t part = 0; part < held.mParts.size(); ++part)
+            {
+                if (found->mParts[part] == held.mParts[part])
+                    continue;
+
+                ++difference.mPartsDiffering[part];
+                anyPart = true;
+            }
+
+            if (anyPart)
                 difference.mSceneDiffering.push_back(held.mFrame);
         }
 
@@ -143,7 +231,7 @@ namespace Rtx
     {
         // **The scene is asked here too, though it does not fail the run.** Reporting only the
         // picture is what let a run be called identical while the description behind it moved on
-        // every frame, which is the fault this column was added for.
+        // every frame, which is the fault these columns were added for.
         if (difference.same() && difference.mSceneDiffering.empty())
             return std::format("{} frames, every one of them the same", difference.mFrames);
 
@@ -177,6 +265,9 @@ namespace Rtx
 
                 report += std::format(", {} of them among those", both);
             }
+
+            // Last, because it is a list and anything appended after it would read as part of it.
+            report += namePartsDiffering(difference);
         }
         else if (!difference.mDiffering.empty())
             report += "; the scene was the same on every frame";

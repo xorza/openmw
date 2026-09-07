@@ -9,6 +9,8 @@
 #include <string_view>
 #include <vector>
 
+#include "scenedigest.hpp"
+
 namespace Rtx
 {
     /// MurmurHash3 over whatever is fed to it, in the order it is fed.
@@ -55,9 +57,19 @@ namespace Rtx
     ///
     /// **The scene beside the picture, because a picture that moved says nothing about why.** A run
     /// that differs has either drawn one scene two ways or been handed two scenes, and those are
-    /// repaired in different places. `Rtx::digestLayout` is the second hash and answers which:
-    /// `island-crossing` differed on 37 frames of 360 while it differed on all 360, which named the
-    /// world rather than the renderer and was what the report could not say before.
+    /// repaired in different places. `island-crossing` differed on 37 frames of 360 while what it
+    /// was handed differed on all 360, which named the world rather than the renderer and was what
+    /// the report could not say before.
+    ///
+    /// **A column per part of the scene and not one number for the lot, because "the layout moved"
+    /// names no table.** `Rtx::ScenePart` says why. What a file holds is a header row and then a row
+    /// a frame, so two runs are compared column by column and a report says which of them moved.
+    ///
+    /// **The parts and nothing dearer than they are.** `Rtx::digestScene` answers the other
+    /// question — whether the two runs held one world or two — and it costs a walk of every triangle
+    /// of every placement: measured on `island-crossing`, a hashed run of 360 frames took 122
+    /// seconds with it against 8.6 without. `scene` and `verify` ask it once at a place, which is
+    /// where it is affordable.
     ///
     /// **A hash and not a picture**, because six hundred frames at 1920x1080 is a few hundred
     /// megabytes and the sixteen stills are kilobytes. What this answers is "did the run draw the
@@ -73,9 +85,10 @@ namespace Rtx
         /// @param pixels **as the tool would write them to a PNG**, so a hash names the picture a
         ///        person would look at rather than an internal channel that may not survive a
         ///        rebuild.
-        /// @param scene what `Rtx::digestLayout` made of the description that drew them.
+        /// @param parts what `Rtx::digestParts` made of the description that drew them, one column
+        ///        each.
         void add(std::string_view view, std::uint32_t frame, std::span<const std::uint8_t> pixels,
-            const std::array<std::uint64_t, 2>& scene);
+            const ScenePartDigests& parts);
 
         void write(const std::filesystem::path& file) const;
 
@@ -90,12 +103,15 @@ namespace Rtx
             /// Frames whose picture differs, in order.
             std::vector<std::uint32_t> mDiffering;
 
-            /// Frames whose scene differs, in order.
+            /// Frames where any part of the scene differs, in order.
             ///
             /// **Reported and not judged.** Two builds are expected to lay a scene out differently
             /// and to draw the same picture from it, so a difference here is what a reader needs to
             /// know and never what fails a run — `same` says so by leaving it out.
             std::vector<std::uint32_t> mSceneDiffering;
+
+            /// How many frames each part differs on, indexed by `ScenePart`.
+            std::array<std::uint32_t, static_cast<std::size_t>(ScenePart::Count)> mPartsDiffering{};
 
             /// Frames this run drew that the reference has no hash for, and the other way about.
             std::uint32_t mUnmatched = 0;
@@ -112,7 +128,7 @@ namespace Rtx
             std::string mView;
             std::uint32_t mFrame = 0;
             std::array<std::uint64_t, 2> mHash{};
-            std::array<std::uint64_t, 2> mScene{};
+            ScenePartDigests mParts{};
         };
 
         std::vector<Frame> mFrames;

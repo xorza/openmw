@@ -209,7 +209,7 @@ namespace MWRender
                         "  laid out as:          {}\n",
                 scene.getPlacedCount(), scene.getMeshes().size(), scene.getMaterials().size(),
                 scene.getTextures().size(), scene.getTriangleCount(), scene.getGeometryBytes() / 1024,
-                Rtx::spellHash(Rtx::digestScene(scene)), Rtx::spellHash(Rtx::digestLayout(scene))));
+                Rtx::spellHash(Rtx::digestScene(scene)), Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
 
         for (std::size_t at = 0; at < stats.mTextureFormats.size(); ++at)
         {

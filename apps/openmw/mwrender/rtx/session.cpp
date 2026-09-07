@@ -595,7 +595,8 @@ namespace MWRender
         if (stop.mActions.mHash)
         {
             renderer.readPixels(mHeld->mPixels);
-            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels, Rtx::digestLayout(owner.getMirror().getScene()));
+
+            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels, Rtx::digestParts(owner.getMirror().getScene()));
         }
 
         if (drawn < measured)

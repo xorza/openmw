@@ -89,7 +89,7 @@ namespace Rtx
         {
             Rtx::SceneDesc scene;
             fillBoxes(scene, mirroredFirst, lift, aside, shuffled);
-            return spellHash(digestLayout(scene));
+            return spellHash(digestLayout(digestParts(scene)));
         }
 
         /// **Two siblings swapped is one scene, a shape stored in another order is one scene, and

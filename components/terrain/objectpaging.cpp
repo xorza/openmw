@@ -674,7 +674,14 @@ namespace Terrain
             }
         }
 
-        const osg::Vec3f relativeViewPoint = viewPoint - worldCenter;
+        // **The chunk's own centre and not the eye.** `getChunk` keys its cache on the centre, the
+        // size and the grid, so a chunk is built once and read from every eye afterwards — which
+        // makes a sort taken from where the eye stood at the build stale for every frame but that
+        // one. It also made the merged vertex and index buffers a function of which frame asked
+        // first: two processes running one binary over `island-crossing` handed the ray tracer a
+        // different buffer on about three hundred frames of 360, and hold the sort here and three
+        // pairs of seven repeat exactly. The centre is the one reference the cache key covers.
+        const osg::Vec3f relativeViewPoint = osg::Vec3f();
 
         if (mergeGroup->getNumChildren())
         {

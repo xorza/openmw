@@ -180,7 +180,7 @@ namespace Rtx
         return whole.getWords();
     }
 
-    /// The tables `digestLayout` reads whole, held to having nothing between their fields.
+    /// The tables `digestParts` reads whole, held to having nothing between their fields.
     ///
     /// **A field added later that opens a gap trips this rather than the digest.** The bytes a
     /// record pads with are whatever the allocator left, so a table read whole through one of them
@@ -192,104 +192,185 @@ namespace Rtx
     static_assert(sizeof(Rig) == 24, "Rig is read whole and must have no padding");
     static_assert(sizeof(Morph) == 16, "Morph is read whole and must have no padding");
 
-    std::array<std::uint64_t, 2> digestLayout(const SceneDesc& scene)
+    std::string_view nameOf(const ScenePart part)
     {
-        Digest whole;
+        switch (part)
+        {
+            case ScenePart::Positions:
+                return "positions";
+            case ScenePart::Normals:
+                return "normals";
+            case ScenePart::TexCoords:
+                return "texcoords";
+            case ScenePart::Indices:
+                return "indices";
+            case ScenePart::Meshes:
+                return "meshes";
+            case ScenePart::Instances:
+                return "instances";
+            case ScenePart::Previous:
+                return "previous";
+            case ScenePart::Materials:
+                return "materials";
+            case ScenePart::Layers:
+                return "layers";
+            case ScenePart::Masks:
+                return "masks";
+            case ScenePart::Textures:
+                return "textures";
+            case ScenePart::Lights:
+                return "lights";
+            case ScenePart::Sprites:
+                return "sprites";
+            case ScenePart::Emitters:
+                return "emitters";
+            case ScenePart::Rigs:
+                return "rigs";
+            case ScenePart::Morphs:
+                return "morphs";
+            case ScenePart::Bones:
+                return "bones";
+            case ScenePart::Count:
+                break;
+        }
 
-        // The shared buffers, which is where a merge that ran in heap order shows and the largest
-        // part of what this costs.
-        whole.add(scene.getPositions());
-        whole.add(scene.getNormals());
-        whole.add(scene.getTexCoords());
-        whole.add(scene.getIndices());
+        return "no such part";
+    }
+
+    ScenePartDigests digestParts(const SceneDesc& scene)
+    {
+        ScenePartDigests parts{};
+        Digest one;
+
+        const auto take = [&](const ScenePart part) {
+            parts[static_cast<std::size_t>(part)] = one.getWords();
+            one = Digest();
+        };
+
+        one.add(scene.getPositions());
+        take(ScenePart::Positions);
+
+        one.add(scene.getNormals());
+        take(ScenePart::Normals);
+
+        one.add(scene.getTexCoords());
+        take(ScenePart::TexCoords);
+
+        one.add(scene.getIndices());
+        take(ScenePart::Indices);
 
         // **Every slot, standing or free.** A free one keeps the room and the offsets its last
         // occupant left, so it is part of the state a run has to repeat — and a slot order that
         // moved is exactly what `digestScene` sums away.
         for (const MeshRange& mesh : scene.getMeshes())
         {
-            whole.add(mesh.mVertexOffset);
-            whole.add(mesh.mVertexCount);
-            whole.add(mesh.mIndexOffset);
-            whole.add(mesh.mIndexCount);
-            whole.add(mesh.mShape.mSheet);
-            whole.add(mesh.mShape.mClosed);
-            whole.add(mesh.mDeform);
-            whole.add(mesh.mDeformer);
-            whole.add(mesh.mMaterial);
-            whole.add(mesh.mBindOffset);
-            whole.add(mesh.mPoseOffset);
-            whole.add(mesh.mPosed);
-            whole.add(mesh.mBounds._min);
-            whole.add(mesh.mBounds._max);
+            one.add(mesh.mVertexOffset);
+            one.add(mesh.mVertexCount);
+            one.add(mesh.mIndexOffset);
+            one.add(mesh.mIndexCount);
+            one.add(mesh.mShape.mSheet);
+            one.add(mesh.mShape.mClosed);
+            one.add(mesh.mDeform);
+            one.add(mesh.mDeformer);
+            one.add(mesh.mMaterial);
+            one.add(mesh.mBindOffset);
+            one.add(mesh.mPoseOffset);
+            one.add(mesh.mPosed);
+            one.add(mesh.mBounds._min);
+            one.add(mesh.mBounds._max);
         }
+        take(ScenePart::Meshes);
 
         for (const MeshInstance& instance : scene.getInstances())
         {
-            whole.add(std::span<const float>(instance.mTransform.ptr(), 16));
-            whole.add(instance.mMesh);
-            whole.add(instance.mMaterial);
-            whole.add(instance.mOpacity);
-            whole.add(instance.mFirstPerson);
+            one.add(std::span<const float>(instance.mTransform.ptr(), 16));
+            one.add(instance.mMesh);
+            one.add(instance.mMaterial);
+            one.add(instance.mOpacity);
+            one.add(instance.mFirstPerson);
         }
+        take(ScenePart::Instances);
 
-        // Where each slot stood last frame, which is what a motion vector is the difference of.
-        whole.add(scene.getPrevious());
+        one.add(scene.getPrevious());
+        take(ScenePart::Previous);
 
         for (const Material& material : scene.getMaterials())
         {
-            whole.add(material.mKind);
-            whole.add(material.mDiffuse);
-            whole.add(material.mNormal);
-            whole.add(material.mEmissive);
-            whole.add(material.mDiffuseColour);
-            whole.add(material.mEmissiveColour);
-            whole.add(material.mAlphaRef);
-            whole.add(material.mAlphaMode);
-            whole.add(material.mTwoSided);
-            whole.add(material.mTextureTransform);
-            whole.add(material.mLayerOffset);
-            whole.add(material.mLayerCount);
-            whole.add(material.mFlatten);
-            whole.add(material.mAnimated);
-            whole.add(material.mDiffuseNeverSolid);
+            one.add(material.mKind);
+            one.add(material.mDiffuse);
+            one.add(material.mNormal);
+            one.add(material.mEmissive);
+            one.add(material.mDiffuseColour);
+            one.add(material.mEmissiveColour);
+            one.add(material.mAlphaRef);
+            one.add(material.mAlphaMode);
+            one.add(material.mTwoSided);
+            one.add(material.mTextureTransform);
+            one.add(material.mLayerOffset);
+            one.add(material.mLayerCount);
+            one.add(material.mFlatten);
+            one.add(material.mAnimated);
+            one.add(material.mDiffuseNeverSolid);
         }
+        take(ScenePart::Materials);
 
-        whole.add(scene.getLayers());
-        whole.add(scene.getMasks());
+        one.add(scene.getLayers());
+        take(ScenePart::Layers);
+
+        one.add(scene.getMasks());
+        take(ScenePart::Masks);
 
         // By their paths and by their slots both, which is the difference from `digestScene`: which
         // slot a texture landed in is what a material's index means.
         for (const VFS::Path::Normalized& texture : scene.getTextures())
         {
             const std::string_view path = texture.value();
-            whole.add(std::span<const char>(path.data(), path.size()));
+            one.add(std::span<const char>(path.data(), path.size()));
         }
+        take(ScenePart::Textures);
 
-        whole.add(scene.getLights());
-        whole.add(scene.getSprites());
+        one.add(scene.getLights());
+        take(ScenePart::Lights);
+
+        one.add(scene.getSprites());
+        take(ScenePart::Sprites);
 
         for (const SpriteEmitter& emitter : scene.getEmitters())
         {
-            whole.add(emitter.mCentre);
-            whole.add(emitter.mReach);
-            whole.add(emitter.mFirst);
-            whole.add(emitter.mCount);
-            whole.add(emitter.mTexture);
-            whole.add(emitter.mLighting);
-            whole.add(emitter.mAdditive);
-            whole.add(emitter.mWidth);
+            one.add(emitter.mCentre);
+            one.add(emitter.mReach);
+            one.add(emitter.mFirst);
+            one.add(emitter.mCount);
+            one.add(emitter.mTexture);
+            one.add(emitter.mLighting);
+            one.add(emitter.mAdditive);
+            one.add(emitter.mWidth);
         }
+        take(ScenePart::Emitters);
 
         // What poses a mesh that deforms, and the pose itself. The trace reads the posed vertices,
         // which live on the device and nowhere here, so these are what stands for them.
-        whole.add(scene.getRigs());
-        whole.add(scene.getRuns());
-        whole.add(scene.getInfluences());
-        whole.add(scene.getMorphs());
-        whole.add(scene.getMorphOffsets());
-        whole.add(scene.getBones());
-        whole.add(scene.getWeights());
+        one.add(scene.getRigs());
+        one.add(scene.getRuns());
+        one.add(scene.getInfluences());
+        take(ScenePart::Rigs);
+
+        one.add(scene.getMorphs());
+        one.add(scene.getMorphOffsets());
+        take(ScenePart::Morphs);
+
+        one.add(scene.getBones());
+        one.add(scene.getWeights());
+        take(ScenePart::Bones);
+
+        return parts;
+    }
+
+    std::array<std::uint64_t, 2> digestLayout(const ScenePartDigests& parts)
+    {
+        Digest whole;
+        for (const std::array<std::uint64_t, 2>& part : parts)
+            whole.add(part);
 
         return whole.getWords();
     }

@@ -1,30 +1,33 @@
 # Open issues
 
-- `Terrain::ObjectPaging::getChunk` keys its cache on `(center, size, activeGrid)` and leaves out
-  the view point, so a chunk's contents are decided by which frame first asked for it.
-  `SceneUtil::Optimizer`'s `MergeGeometryVisitor` sorts alpha-blended geometry by distance from
-  `relativeViewPoint` before it concatenates, so the merged vertex and index buffers a chunk arrives
-  with are a function of where the eye stood at the build. `createChunk` reads the view point twice
-  more: `dSqr` drops references against `minSize` and against `minSizeMerged`. Measured on
-  `island-crossing`, the layout digest differed on 257, 281 and 345 frames of 360 as it stands, and
-  on 69 or 115 with the view point held to the chunk's centre. A digest of each mesh's own vertices,
-  which no slot order can tell, is identical over two runs with the view point held and differs
-  without it. Holding the culls as well takes 5824 placements to 6175, the structures from 227 MiB
-  to 284, and the p99 from 51 ms to 62.
+- One frame traced twice is not the same frame. `verify` run twice against one build moved 9 of 22
+  standing views, each by 1 of 255 on up to 0.11% of the pixels — one process, one scene, one
+  camera, no upscaler and no denoiser. A difference of a least significant bit over a scattering of
+  pixels is what a sum taken in another order looks like, and a floating-point sum is not
+  associative however it is taken. Through the accumulated history it reaches every frame after it:
+  `one-cell-walk` agreed on every column of the hashes table and differed on 175 to 342 pictures of
+  360. It is worse when the card is busy — the same binary and route repeated exactly on a card at
+  55 °C and 2325 MHz, and differs on most pairs at 76 °C and 1770 to 1905 MHz.
 
-- `island-crossing`'s layout digest still differs on 69 or on 115 frames of 360 with the view point
-  held to the chunk's centre — two states and nothing between them over eight runs. What the walk is
-  handed is the same either way: `Rtx::digestScene`, which sums per placement and reads a shape as
-  the multiset of its triangles, is identical on all 360 frames over two runs. So the same geometry,
-  the same materials and the same transforms reach the tables in a different order. The divergence
-  opens inside the first second of the flight: three one-frame runs of four repeat exactly.
+- `Terrain::ObjectPaging::getChunk` keys its cache on `(center, size, activeGrid)` and `createChunk`
+  still reads the view point twice: `dSqr` drops references against `minSize` and against
+  `minSizeMerged`. So which references a chunk holds is decided by where the eye stood when the
+  chunk was first built. On the pairs where it shows, every geometry column of `island-crossing`
+  moves together — positions, normals, texcoords, indices and the mesh rows on 279 frames of 360 —
+  while each mesh's own vertices agree, which is a relayout of the same meshes and not new ones.
+  Holding the culls to the chunk's own viewing distance took 5824 placements to 6175; holding them
+  to its centre took them to 6442, the structures from 227 MiB to 284, and the p99 from 51 ms to 62.
 
-- The picture is not certainly repeatable either. One pair of about thirty-five differed on 53
-  frames of 360 with the upscaler and the denoiser off, and nothing since has reproduced it.
+- The material and texture tables take different slots run to run. It is the one thing that moves on
+  every pair of `island-crossing`: the `materials` and `textures` columns differ on 64 to 115 frames
+  of 360 while the geometry, the mesh rows and the placements agree. `Rtx::TextureTable::takeSlot`
+  and `Rtx::takeSlot` hand out the last slot freed, so a free list built in another order is another
+  layout — and what fills those two tables that does not fill the others is the bake, which arrives
+  from `Rtx::CompositeQueue` on a budget of composites a frame.
 
 - `Terrain::QuadTreeWorld::preload` stops at `abort`, so how many chunks it builds is decided by how
   fast its thread ran. Two runs logged `preload 5 of 118` and `preload 16 of 118` at one view point.
   `MWWorld::Scene::preloadTerrain` queues it on a work queue and `CellPreloader` aborts it from the
-  next grid change, and neither is gated by `preload enabled`. It moves no digest: letting every
-  pass finish gave 191, 309 and 360 frames of 360 on its own, and the same 69 or 115 as the view
-  point alone when the two were held together.
+  next grid change, and neither is gated by `preload enabled`. It moves no column: letting every
+  pass finish gave 191, 309 and 360 frames of 360 on its own, and the same 69 or 115 as holding the
+  chunk sort did when the two were held together.
