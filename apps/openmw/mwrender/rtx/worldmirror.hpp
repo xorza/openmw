@@ -62,7 +62,7 @@ namespace MWRender
         Rtx::SceneUpload hand(Rtx::Renderer& renderer, Resource::ImageManager& images);
 
         /// Whether each hand-over waits for the ground it queued. `Rtx::CompositeQueue::setSettled`
-        /// says which runs want that and what it costs them.
+        /// says why a run would, and what waiting costs it.
         void setSettled(bool settled) { mComposites.setSettled(settled); }
 
         /// Whether the world walk includes the player's own model. True for a game somebody is

@@ -123,11 +123,6 @@ namespace MWRender
         if (asked.has_value())
             mSession = std::make_unique<Session>(std::move(asked->mRequest), asked->mInto);
 
-        // **A run judged against another one waits for its ground.** Which frame a flattened chunk
-        // lands on is otherwise the baker thread's answer rather than the schedule's, and a hashed
-        // run is the one that cannot have a thread deciding what it drew.
-        mMirror.setSettled(mSession != nullptr && mSession->hashesFrames());
-
         // **Before any content is read, because it decides what reading one records.** This is the
         // only renderer that asks what the content says a surface is, and the answer is stored on
         // every state set as it is built — so nothing else in the process pays for it.
@@ -254,6 +249,17 @@ namespace MWRender
         // by up to 29 of 255 between two runs of one binary.
         if (const float step = Settings::rtx().mFixedStep; step > 0.0f)
             mClock = Rtx::FrameClock(step);
+
+        // **The same step decides whether the ground waits.** A composite comes back whenever the
+        // baker finishes it, so which frame it lands on is a thread's answer rather than the
+        // schedule's, and a run whose pictures are compared with another's cannot have that.
+        //
+        // **The step and not what a run does with its frames.** `shot` and `verify` are what the
+        // reference pictures are made with and neither of them hashes a frame, so a condition
+        // asking about hashes would leave out the two runs that most need this: measured on
+        // `balmora`, four processes drew four different frames after half a second of warming and
+        // one frame after a tenth of one.
+        mMirror.setSettled(mClock.getStatedStep().has_value());
     }
 
     // Out of line because the members it destroys are only forward declared in the header.
