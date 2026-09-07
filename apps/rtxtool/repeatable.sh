@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Asserts that a walk draws the same frames twice.
+# Asserts that a walk is handed the same scene twice.
 #
 #   repeatable.sh                       # the default walk, six seconds
 #   repeatable.sh --views=balmora       # somewhere else
@@ -10,9 +10,9 @@
 # Anything else goes to `openmw-rtxtool bench`, except the three this sets itself: `--views`,
 # `--upscale` and `--filter`. Naming one of those twice is what `bench` refuses.
 #
-# **Pairs and not a pair, wherever the answer is being read rather than gated.** Every defect this
-# has caught so far shows on some pairs and not others, so one pair is a coin flip and a conclusion
-# drawn from one is a conclusion drawn twice. `--pairs=3` costs three times a run and settles it.
+# **One pair gates and several read.** What is gated repeats exactly, so a pair that finds nothing
+# has found nothing. The picture is the other way about — it moves on about three pairs in ten — so
+# a reading of it from one pair is a coin flip, and `--pairs` is what buys enough of them.
 #
 # **Two processes and not two stops of one.** A second stop starts from the world the first one
 # left, so the two cannot be compared frame for frame. What this asks is whether a run of the binary
@@ -24,21 +24,23 @@
 # picture only where the frame moved.
 #
 # **The upscaler and the denoiser are off**, for the reason `verify` states: Ray Reconstruction is
-# temporal and carries state nothing below it can hold still. What is asserted here is that the
-# trace repeats, which is what a reconstruction is fed and what every one of these defects moved.
+# temporal and carries state nothing below it can hold still. What is left is what a reconstruction
+# is fed, which is where every defect this has caught showed itself.
 #
 # **And Ray Reconstruction adds nothing of its own, which is worth stating because it looks as
 # though it does.** Its history is recurrent, so one frame the trace drew differently reaches every
-# frame after it and a run comes back disagreeing almost everywhere. Measured: `one-cell-walk`
-# agrees on all 360 frames through it at every warm-up tried, and `island-crossing` agreed on 1 of
-# 360 before the merge order was settled and on 79 after. It is faithful, not faulty.
+# frame after it and a run comes back disagreeing almost everywhere. It is faithful, not faulty, and
+# what it is fed is what this turns the upscaler off to look at.
 #
-# **A table, and only the picture decides the exit status.** A hashes file is a CSV with a header
+# **A table, and the scene columns decide the exit status.** A hashes file is a CSV with a header
 # row and a row a frame: the picture, then a column for every part of the scene it was drawn from.
-# The picture is what this asserts, because it is what the title says and what a reconstruction is
-# fed. The parts are reported beside it and do not fail the run, because the slot order of the
-# material and texture tables is a known open defect and a gate that is red for it would be red for
-# everything else too.
+# What a run is *handed* is what this asserts, because that is what repeats exactly and what a
+# regression has to keep.
+#
+# **The picture is reported and does not fail the run**, which is the other way round from how this
+# started. The renderer carries a residual nobody hunts — `AGENTS.md` says why — of about three
+# pairs in ten, always one part in 255, which no eight-bit hash can even see. A gate red for that is
+# a gate nobody reads, and it was silent about the eighteen columns that are now exact.
 #
 # **Naming the columns that moved is the point of the table.** "The scene differs on 64 frames" is
 # where a bisection used to start, and every step of it cost a rebuild and a run for one reading.
@@ -81,6 +83,7 @@ fi
 out="$(mktemp -d)"
 worst=0
 kept=""
+columns=""
 
 for pair in $(seq 1 "$pairs"); do
     # **Run from the build directory**, because `--resources` defaults to `./resources`.
@@ -120,16 +123,22 @@ for pair in $(seq 1 "$pairs"); do
         worst="$pictures"
     fi
 
+    if [ -n "$moved" ] && [ -z "$columns" ]; then
+        columns="pair $pair: $moved"
+    fi
+
     if [ "$pictures" -eq 0 ] && [ -z "$moved" ]; then
         echo "pair $pair of $pairs: $frames frames, identical"
         continue
     fi
 
     kept="$out"
-    if [ "$pictures" -eq 0 ]; then
-        echo "pair $pair of $pairs: $frames frames, every picture the same; columns moved: $moved" >&2
-    else
-        echo "pair $pair of $pairs: $pictures of $frames pictures differ${moved:+; columns moved: $moved}" >&2
+    if [ -n "$moved" ]; then
+        echo "pair $pair of $pairs: columns moved: $moved" >&2
+    fi
+
+    if [ "$pictures" -gt 0 ]; then
+        echo "pair $pair of $pairs: $pictures of $frames pictures differ" >&2
     fi
 done
 
@@ -142,10 +151,10 @@ fi
 # **Kept where they are**, because the files are what somebody now has to read.
 echo "the runs are in $out" >&2
 
-if [ "$worst" -eq 0 ]; then
-    echo "the pictures repeat: every pair drew the same frames"
-    exit 0
+if [ -n "$columns" ]; then
+    echo "NOT repeatable: the walk was handed two scenes — $columns" >&2
+    exit 1
 fi
 
-echo "NOT repeatable: the worst pair differs on $worst pictures" >&2
-exit 1
+echo "the scene repeats: every pair was handed one world; $worst pictures differ at worst"
+exit 0

@@ -39,8 +39,10 @@ namespace Terrain
         osg::ref_ptr<osg::Node> getChunk(float size, const osg::Vec2f& center, unsigned char lod, unsigned int lodFlags,
             bool activeGrid, const osg::Vec3f& viewPoint, bool compile) override;
 
-        osg::ref_ptr<osg::Node> createChunk(float size, const osg::Vec2f& center, bool activeGrid,
-            const osg::Vec3f& viewPoint, bool compile, unsigned char lod);
+        /// **No view point, which is what makes `getChunk`'s cache key the whole of what decides a
+        /// chunk.** `chunkReach` says what the culls measure by instead, and why.
+        osg::ref_ptr<osg::Node> createChunk(
+            float size, const osg::Vec2f& center, bool activeGrid, bool compile, unsigned char lod);
 
         unsigned int getNodeMask() override;
 

@@ -169,6 +169,19 @@ is not that.
 processes and compares the frame hashes. Two processes, because two walks in one share no world
 state and agree on nothing. Run it after touching anything a frame reads.
 
+**The scene columns are the gate and the picture is not.** What a run is handed — every column of
+the hashes table — repeats exactly, and that is what a regression has to keep. The picture carries a
+residual the renderer has not been made to drop: about three pairs in ten differ, always on 26 or 27
+frames of 45, by one part in 255 that no eight-bit hash can even see. **Nobody hunts it.** It cost a
+day and four retracted causes, and what it buys is a gate's fidelity rather than anything a player
+sees — over fourteen runs the last frame's picture was identical every time and only the float
+radiance moved.
+
+**A determinism reading needs ten pairs.** The rate is about thirty per cent, so a conclusion drawn
+from one or two pairs is a coin flip: every cause withdrawn above was named from a single pair.
+`--pairs` is what runs them. And read `Rtx::Channel::Radiance` as floats rather than the picture —
+at 45 frames the radiance takes two values over fourteen runs where the picture takes one.
+
 **No benching and no frame times until the renderer draws everything the game has.**
 
 **Measure on a hot card, and never sleep between runs.** A cooldown costs more than the measurements

@@ -34,7 +34,7 @@
 namespace Terrain
 {
     osg::ref_ptr<osg::Node> ObjectPaging::getChunk(float size, const osg::Vec2f& center, unsigned char /*lod*/,
-        unsigned int lodFlags, bool activeGrid, const osg::Vec3f& viewPoint, bool compile)
+        unsigned int lodFlags, bool activeGrid, const osg::Vec3f& /*viewPoint*/, bool compile)
     {
         if (activeGrid && !mActiveGrid)
             return nullptr;
@@ -45,7 +45,7 @@ namespace Terrain
             return static_cast<osg::Node*>(obj.get());
 
         const unsigned char lod = static_cast<unsigned char>(lodFlags >> (4 * 4));
-        osg::ref_ptr<osg::Node> node = createChunk(size, center, activeGrid, viewPoint, compile, lod);
+        osg::ref_ptr<osg::Node> node = createChunk(size, center, activeGrid, compile, lod);
         mCache->addEntryToObjectCache(id, node.get());
         return node;
     }
@@ -395,8 +395,8 @@ namespace Terrain
     {
     }
 
-    osg::ref_ptr<osg::Node> ObjectPaging::createChunk(float size, const osg::Vec2f& center, bool activeGrid,
-        const osg::Vec3f& viewPoint, bool compile, unsigned char lod)
+    osg::ref_ptr<osg::Node> ObjectPaging::createChunk(
+        float size, const osg::Vec2f& center, bool activeGrid, bool compile, unsigned char lod)
     {
         const osg::Vec2i startCell(static_cast<int>(std::floor(center.x() - size / 2.f)),
             static_cast<int>(std::floor(center.y() - size / 2.f)));
@@ -455,6 +455,17 @@ namespace Terrain
 
         const int cellSize = getCellSize(mWorldspace);
         const float smallestDistanceToChunk = (size > 1 / 8.f) ? (size * cellSize) : 0.f;
+
+        // **What every cull below measures by: the chunk's own reach, and never a distance to the
+        // eye.** `getChunk` keys its cache on the centre, the size and the grid, so a chunk is built
+        // once and read from every eye afterwards — and a cull measured from where the eye happened
+        // to stand at the build would decide for the chunk's whole life. A chunk first met from far
+        // away then keeps that distance's sparse clutter while the player walks about inside it.
+        //
+        // Held off nought, because a chunk small enough to have no distance of its own would
+        // otherwise drop every reference in it.
+        const float chunkReach = std::max(smallestDistanceToChunk, 1.0f);
+        const float chunkReachSquared = chunkReach * chunkReach;
         const float higherDistanceToChunk
             = activeGrid ? ((size < 1) ? 5 : 3) * cellSize * size + 1 : smallestDistanceToChunk + 1;
         const LODRange lodDistances = activeGrid ? LODRange{ 0.f, std::numeric_limits<float>::max() }
@@ -474,12 +485,11 @@ namespace Terrain
                     continue;
             }
 
-            const float dSqr = (viewPoint - ref.mPosition).length2();
             if (!activeGrid)
             {
                 std::lock_guard<std::mutex> lock(mSizeCacheMutex);
                 SizeCache::iterator found = mSizeCache.find(refNum);
-                if (found != mSizeCache.end() && found->second < dSqr * minSize * minSize)
+                if (found != mSizeCache.end() && found->second < chunkReachSquared * minSize * minSize)
                     continue;
             }
 
@@ -542,7 +552,7 @@ namespace Terrain
             }
 
             const float radius2 = cnode->getBound().radius2() * ref.mScale * ref.mScale;
-            if (radius2 < dSqr * minSize * minSize && !activeGrid)
+            if (radius2 < chunkReachSquared * minSize * minSize && !activeGrid)
             {
                 std::lock_guard<std::mutex> lock(mSizeCacheMutex);
                 mSizeCache[refNum] = radius2;
@@ -597,7 +607,7 @@ namespace Terrain
 
                 if (!activeGrid && minSizeMerged != minSize
                     && cnode->getBound().radius2() * ref.mScale * ref.mScale
-                        < (viewPoint - ref.mPosition).length2() * minSizeMerged * minSizeMerged)
+                        < chunkReachSquared * minSizeMerged * minSizeMerged)
                     continue;
 
                 const osg::Vec3f nodePos = ref.mPosition - worldCenter;
