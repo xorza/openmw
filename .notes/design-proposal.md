@@ -147,7 +147,8 @@ then `repeatable.sh`.
 ### D. The smaller shapes
 
 **D1. `FrameRecord`'s two submissions, `GpuBreakdown` flattened, `FrameSamples` and `BenchPlace` on
-one array, `Rtx::Pool<T>`, `MaterialTable`'s `ArrivedRuns`.**
+one array, `Rtx::Pool<T>`, `MaterialTable`'s `ArrivedRuns`, and `SceneDesc`'s member order stated
+where a reorder cannot break it.**
 *Verify:* `--gtest_filter='RtxFrameRingTest.*:RtxGpuBreakdownTest.*:RtxFrameTimesTest.*:RtxTextureBuilderTest.*:RtxSceneDescTest.*'`,
 then `repeatable.sh`.
 

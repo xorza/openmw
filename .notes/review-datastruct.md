@@ -20,9 +20,6 @@ done, and do not keep a history section.
   replaces structures in place — it is part of what a bottom-level store does. So the split is
   `BottomLevelStore` taking about twenty members and six methods with it, leaving the top level, the
   refit, the poses and the indices behind.
-- [ ] `Rtx::VulkanRenderer` has 55 members (`vulkanrenderer.hpp:61`) over a 1527-line `.cpp`. It
-  holds the device, the frame ring, ten passes, the GUI, the view scenes, the upscaler and the
-  presenter. The GUI half shares nothing with the trace half except the device.
 - [ ] `Rtx::Renderer` has 33 pure virtuals over four subjects: the scene, the frame, the GUI surface
   and the readback (`renderer.hpp`). A caller that only draws the GUI takes the whole of it.
 
