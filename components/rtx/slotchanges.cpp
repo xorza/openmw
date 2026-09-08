@@ -1,42 +1,18 @@
 #include "slotchanges.hpp"
 
-#include <cassert>
-
 namespace Rtx
 {
     void SlotChanges::note(const Index slot, const SlotNews what)
     {
-        assert(what != SlotNews::None);
-        assert(slot < mNews.size());
+        const bool arriving = what == SlotNews::Arrived;
+        SlotSet& taking = arriving ? mArrived : mFreed;
+        SlotSet& giving = arriving ? mFreed : mArrived;
 
-        SlotNews& standing = mNews[slot];
-        if (standing == what)
-            return;
+        // **Compacted here rather than left for the reader**, because the other set is asked for
+        // straight after this returns and a slot changes its news rarely enough to pay a pass then.
+        giving.remove(slot);
+        giving.compact();
 
-        if (standing == SlotNews::Arrived)
-            std::erase(mArrived, slot);
-        else if (standing == SlotNews::Freed)
-            std::erase(mFreed, slot);
-
-        standing = what;
-        (what == SlotNews::Arrived ? mArrived : mFreed).push_back(slot);
-    }
-
-    void SlotChanges::clearArrivals()
-    {
-        for (const Index slot : mArrived)
-            mNews[slot] = SlotNews::None;
-        for (const Index slot : mFreed)
-            mNews[slot] = SlotNews::None;
-
-        mArrived.clear();
-        mFreed.clear();
-    }
-
-    void SlotChanges::clear()
-    {
-        mNews.clear();
-        mArrived.clear();
-        mFreed.clear();
+        taking.add(slot);
     }
 }

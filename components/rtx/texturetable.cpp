@@ -109,7 +109,7 @@ namespace Rtx
         mBaked.clear();
         mSlots.clear();
         mFree.clear();
-        mChanges.clear();
+        mChanges.clearArrivals();
         mPathIndex.clear();
         mBakedIndex.clear();
     }

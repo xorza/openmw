@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -32,6 +33,12 @@ namespace Rtx
         /// read back at any sensible cost. What can be checked is the debt — which rows a copy is
         /// about to be given — and that is where every one of the failures this type replaced lived:
         /// a copy that was never told about a row it had to have.
+        /// A debt as a vector, in the order it was named, which is what a gtest comparison takes.
+        std::vector<Index> listed(std::span<const Index> owed)
+        {
+            return std::vector<Index>(owed.begin(), owed.end());
+        }
+
         class RtxSlotTableTest : public Testing::DeviceTest
         {
         protected:
@@ -52,8 +59,7 @@ namespace Rtx
             /// tests are asking about.
             std::vector<Index> owedBy(std::uint32_t slot)
             {
-                const std::span<const Index> owed = mTable.getOwed(slot);
-                std::vector<Index> sorted(owed.begin(), owed.end());
+                std::vector<Index> sorted = listed(mTable.getOwed(slot));
                 std::sort(sorted.begin(), sorted.end());
                 return sorted;
             }
@@ -245,6 +251,37 @@ namespace Rtx
             filled.clear();
             blocks.sync(1, [&](const Index at, BlockedBuffer&) { filled.push_back(at); });
             EXPECT_EQ(filled, (std::vector<Index>{ 2, 5, 9 })) << "the copy that was not filled forgot two runs";
+        }
+
+        /// A run named twice before its copy is filled is one run to copy, not two.
+        ///
+        /// A value settled in two steps names its run on both, and a block table's run is a mesh's
+        /// vertices — so the second copy is the whole mesh again for a picture that cannot differ.
+        TEST_F(RtxSlotTableTest, blocksCopyARunNamedTwiceOnce)
+        {
+            SlotBlocks blocks(64, sizeof(std::uint32_t));
+            blocks.open(getDevice(), 2, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, "test blocks");
+            Batch setup(getPool());
+            blocks.reserve(setup, 128);
+            setup.flush();
+
+            blocks.write(4);
+            blocks.write(4);
+
+            const std::array<Index, 2> again{ 4, 7 };
+            blocks.write(again);
+
+            EXPECT_EQ(listed(blocks.getOwed(0)), (std::vector<Index>{ 4, 7 })) << "a run was owed twice";
+
+            std::vector<Index> filled;
+            blocks.sync(0, [&](const Index at, BlockedBuffer&) { filled.push_back(at); });
+            EXPECT_EQ(filled, (std::vector<Index>{ 4, 7 })) << "a run named three times was copied more than once";
+
+            // The order is the order the runs were first named, so a debt reads as the work arrived
+            // rather than as whatever a set happened to hold.
+            blocks.write(9);
+            blocks.write(1);
+            EXPECT_EQ(listed(blocks.getOwed(0)), (std::vector<Index>{ 9, 1 }));
         }
 
         /// `settle` says a copy holds everything there is, which is how a load ends.

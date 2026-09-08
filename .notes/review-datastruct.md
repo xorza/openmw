@@ -13,19 +13,6 @@ of scope. No measurements were taken.
 
 ---
 
-## Four implementations of "a list of slots, each named once"
-
-- [ ] **Make one type and use it four times.** `Rtx::SlotSet` is a list, a flag byte and a stale
-      bit. `Rtx::SlotChanges` is two lists and a news byte. `Rtx::RowDebt` is a list, a
-      `vector<bool>` and an everything flag. Each header argues, correctly and at length, that the
-      list and the flag must live together. Three headers making one argument is one type missing.
-
-- [ ] **`SlotBlocks::mOwed` has no flag at all.** `SlotBlocks::write` at `slottable.hpp:232` pushes a run onto every copy's
-      list without asking whether it is already there. A run named twice in one frame is copied
-      twice. This is the exact failure the three types above exist to prevent.
-
----
-
 ## `Span` exists and no table stores one
 
 `SpanAllocator::allocate` returns a `Span`. Every caller takes it apart at once and stores the two

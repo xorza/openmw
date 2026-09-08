@@ -1,11 +1,10 @@
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
 #include <span>
-#include <vector>
 
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/slotset.hpp>
 
 namespace Rtx
 {
@@ -33,16 +32,7 @@ namespace Rtx
                 return;
 
             for (const Index at : rows)
-            {
-                if (at >= mNamed.size())
-                    mNamed.resize(std::size_t{ at } + 1, false);
-
-                if (mNamed[at])
-                    continue;
-
-                mNamed[at] = true;
-                mRows.push_back(at);
-            }
+                mRows.addMakingRoom(at);
         }
 
         void oweEverything() { mEverything = true; }
@@ -50,29 +40,22 @@ namespace Rtx
         bool owesEverything() const { return mEverything; }
         bool owesAnything() const { return mEverything || !mRows.empty(); }
 
-        std::span<const Index> getRows() const { return mRows; }
+        std::span<const Index> getRows() const { return mRows.getSlots(); }
 
         void settle()
         {
             mEverything = false;
-            for (const Index at : mRows)
-                mNamed[at] = false;
-
             mRows.clear();
         }
 
     private:
         bool mEverything = true;
 
-        /// Cleared and refilled, never freed; it settles at the busiest pair of frames so far.
-        std::vector<Index> mRows;
-
-        /// Which rows `mRows` already names, so a row owed twice is written once.
+        /// The rows this copy is behind on, each named once however often it is written.
         ///
-        /// **A bit beside the list rather than a search of it.** A value settled in two steps writes
-        /// its row twice before either copy is paid, and a debt that searched itself on every write
-        /// would cost the square of the rows a frame touches. Grown and cleared the way `mRows` is,
-        /// and private beside it because the two only mean anything together.
-        std::vector<bool> mNamed;
+        /// **A set and not a vector**, because a value settled in two steps writes its row twice
+        /// before either copy is paid, and a debt that searched itself on every write would cost
+        /// the square of the rows a frame touches.
+        SlotSet mRows;
     };
 }

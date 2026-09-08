@@ -13,6 +13,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/slotset.hpp>
 
 #include "blockedbuffer.hpp"
 #include "device.hpp"
@@ -228,17 +229,18 @@ namespace Rtx
                 mCopies[slot].reserve(batch, elements);
         }
 
-        /// Says that `at`'s run has changed, so every copy owes it.
+        /// Says that `at`'s run has changed, so every copy owes it — once, however often it is
+        /// named before that copy is filled.
         void write(Index at)
         {
             for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mOwed[slot].push_back(at);
+                mOwed[slot].addMakingRoom(at);
         }
 
         void write(std::span<const Index> runs)
         {
-            for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mOwed[slot].insert(mOwed[slot].end(), runs.begin(), runs.end());
+            for (const Index at : runs)
+                write(at);
         }
 
         /// Says that `slot`'s copy holds everything there is to hold, which is what a load ends
@@ -257,7 +259,7 @@ namespace Rtx
         void sync(std::uint32_t slot, Fill&& fill)
         {
             assert(slot < mSlots);
-            for (const Index at : mOwed[slot])
+            for (const Index at : mOwed[slot].getSlots())
                 fill(at, mCopies[slot]);
 
             mOwed[slot].clear();
@@ -295,19 +297,19 @@ namespace Rtx
         std::span<const Index> getOwed(std::uint32_t slot) const
         {
             assert(slot < mSlots);
-            return mOwed[slot];
+            return mOwed[slot].getSlots();
         }
 
     private:
         std::uint32_t mSlots = 1;
         std::array<BlockedBuffer, sFrameSlots> mCopies;
 
-        /// **Runs and not a `RowDebt`, because there is no "everything" here to owe.** A row table
+        /// **A set and not a `RowDebt`, because there is no "everything" here to owe.** A row table
         /// can fill a copy whole from the rows it holds; a block table's data is the scene's, and
         /// nothing here knows how many runs there are or how to read one. A copy starts owing
         /// nothing and a load fills it through `at`.
         ///
         /// Cleared and refilled, never freed: it settles at the busiest pair of frames so far.
-        std::array<std::vector<Index>, sFrameSlots> mOwed;
+        std::array<SlotSet, sFrameSlots> mOwed;
     };
 }

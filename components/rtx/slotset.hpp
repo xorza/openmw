@@ -22,13 +22,25 @@ namespace Rtx
     /// and asking a vector made that N²/2 comparisons for the N movers of a crowded cell — 55,000
     /// of them at Vivec, on every frame, for a count the cell decides rather than one this code
     /// sets.
+    ///
+    /// **One type, and everything that keeps such a list holds one.** What arrived and what went is
+    /// two of these; a copy's debt is one of these beside an everything flag; a block table's owed
+    /// runs are one per copy. Each is the same argument, and a place that makes it again is a place
+    /// that can make it wrong.
     class SlotSet
     {
     public:
-        /// Grows the per-slot bytes to `count`, which a table does as it takes a slot.
+        /// Makes room for at least `count` slots, which a table does as it takes one.
         ///
-        /// A resize to the size it already is does not allocate, which is what the frame path pays.
-        void grow(std::size_t count) { mFlags.resize(count, 0); }
+        /// **At least, so that a caller naming one slot at a time need not know the table's size.**
+        /// A debt is owed a row at a time and grows to that row; a table hands its whole size in.
+        /// Neither shrinks the bytes, and a table emptied is exactly when the next is about to be
+        /// filled.
+        void grow(std::size_t count)
+        {
+            if (count > mFlags.size())
+                mFlags.resize(count, 0);
+        }
 
         /// Puts `slot` in the set, once however many times it is named.
         void add(Index slot)
@@ -39,6 +51,17 @@ namespace Rtx
 
             mFlags[slot] = 1;
             mSlots.push_back(slot);
+        }
+
+        /// The same, for a caller that is told one slot at a time and never sees the table.
+        ///
+        /// **Because "grow before add" is a rule, and a rule is what this type exists to hold.** A
+        /// debt is named a row rather than a row count, so its alternative is a `grow` beside every
+        /// `add` — which the assert above only catches once somebody has already forgotten it.
+        void addMakingRoom(Index slot)
+        {
+            grow(std::size_t{ slot } + 1);
+            add(slot);
         }
 
         /// Takes `slot` out. Nothing where it was not in the set.
@@ -64,6 +87,8 @@ namespace Rtx
             assert(!mStale && "the list was read between a remove and the compact that settles it");
             return mSlots;
         }
+
+        bool empty() const { return getSlots().empty(); }
 
         /// Empties the set.
         ///
