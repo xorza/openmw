@@ -38,10 +38,11 @@ namespace Rtx
         std::string asJson(const SceneStats& scene)
         {
             return std::format(R"({{"instances": {}, "cutoutInstances": {}, "micromappedInstances": {}, )"
-                               R"("structureBytes": {}, "micromapBytes": {}, "tableBytes": {}, "textureCount": {}, )"
-                               R"("textureBytes": {}}})",
+                               R"("structureBytes": {}, "structureLiveBytes": {}, "micromapBytes": {}, )"
+                               R"("tableBytes": {}, "textureCount": {}, "textureBytes": {}}})",
                 scene.mInstances, scene.mCutoutInstances, scene.mMicromappedInstances, scene.mStructureBytes,
-                scene.mMicromapBytes, scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes);
+                scene.mStructureLiveBytes, scene.mMicromapBytes, scene.mTableBytes, scene.mTextureCount,
+                scene.mTextureBytes);
         }
 
         std::string asJson(const Crossings& crossings)
@@ -76,13 +77,15 @@ namespace Rtx
 
     namespace
     {
-        /// What compaction would give back, or nothing where the device would not say.
+        /// What compaction has left to give back, or nothing where there is none and where the
+        /// device would not say.
         ///
         /// **Left out rather than printed as nought**, because a pair reading "would compact to 0.0"
-        /// is a saving of everything rather than an answer nobody has.
+        /// is a saving of everything rather than an answer nobody has — and a pair reading "52.5 of
+        /// them would compact to 52.5" is a settled cell saying so at length.
         std::string describeCompaction(const SceneStats& scene)
         {
-            if (scene.mCompactableBytes == 0)
+            if (scene.mCompactableBytes == 0 || scene.mCompactableNowBytes <= scene.mCompactableBytes)
                 return {};
 
             return std::format(" ({:.1f} of them would compact to {:.1f})", megabytes(scene.mCompactableNowBytes),
@@ -109,12 +112,12 @@ namespace Rtx
 
         if (!place.mCell.empty())
             out += std::format(
-                "  cell {} at {} in {}   {} instances ({} cutouts, {} micromapped)   {:.1f} MiB structures{}, "
-                "{:.1f} MiB micromaps   {} textures, {:.1f} MiB\n",
+                "  cell {} at {} in {}   {} instances ({} cutouts, {} micromapped)   {:.1f} MiB structures in "
+                "{:.1f} reserved{}, {:.1f} MiB micromaps   {} textures, {:.1f} MiB\n",
                 place.mCell, describeHour(place.mHour), place.mWeather, place.mScene.mInstances,
                 place.mScene.mCutoutInstances, place.mScene.mMicromappedInstances,
-                megabytes(place.mScene.mStructureBytes), describeCompaction(place.mScene),
-                megabytes(place.mScene.mMicromapBytes), place.mScene.mTextureCount,
+                megabytes(place.mScene.mStructureLiveBytes), megabytes(place.mScene.mStructureBytes),
+                describeCompaction(place.mScene), megabytes(place.mScene.mMicromapBytes), place.mScene.mTextureCount,
                 megabytes(place.mScene.mTextureBytes));
 
         // **Two facts and not one line.** A staged place pays one build before its frames and can

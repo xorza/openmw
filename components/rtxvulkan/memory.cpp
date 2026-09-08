@@ -305,7 +305,7 @@ namespace Rtx
 
             const std::uint32_t type = typeOf(block.mPool);
             const VkDeviceSize reserved = VkDeviceSize{ block.mPages } * sPage;
-            const VkDeviceSize live = VkDeviceSize{ block.mRuns.getEnd() - block.mRuns.getFree() } * sPage;
+            const VkDeviceSize live = VkDeviceSize{ block.mRuns.getUsed() } * sPage;
 
             if ((mMemory.memoryTypes[type].propertyFlags & sHostWritten) == sHostWritten)
             {

@@ -14,13 +14,19 @@ not what stops a Turing card.
 
 ---
 
-- [ ] **The structures that refit pin the block compaction would give back.** `place` copies a static
-      structure tight and gives the loose room it stood in back, but `StructureStorage` retires a
-      block only when everything in it has left. One block holds every structure a cell loads, the
-      138 skinned ones among them, and a mesh that refits keeps its room for the life of the mesh.
-      So the tight copies take new blocks while the loose room stays inside the old one: at Seyda
-      Neen the structures grew from 136.7 MiB to 152.7 MiB. Storage of its own for the meshes that
-      refit is what lets the static block empty, and it reaches about eight call sites.
+- [ ] **Compaction reuses the loose room instead of returning it, and no route has been measured.**
+      `place` copies a static structure tight and gives the room it stood in back, but a block goes
+      to the device only when nothing is left in it. One block holds a whole cell, and `take` fills
+      the first block with room — so the tight copies land back in the very block they are draining,
+      and the reservation stays. Seyda Neen settles at 52.5 MiB of structures in 152.7 MiB reserved,
+      where the same cell reserved 136.7 MiB before compaction.
+
+      **Storage of its own for the meshes that refit does not fix this**, which an earlier note here
+      claimed: the tight copies are static and would go back into the draining block all the same.
+
+      What compaction is for is the high-water mark of a route, and that is a measurement rather
+      than a design. `bench --views=island-crossing --seconds=10` against the 249.1 MiB the route
+      reserved before compaction is the number that decides the item. Take it first.
 
 - [ ] **Streaming and the interface drain the frame pipeline.** `vulkanrenderer.cpp:558` finishes
       every frame in flight before it extends the world, offscreen placement waits at `:684`, and the
@@ -34,8 +40,17 @@ not what stops a Turing card.
 - [ ] **`VK_EXT_ray_tracing_invocation_reorder` sets a driver floor.** It is required at
       `requirements.cpp:28`. The RTX 2060 on 590.48.1 exposes only the `NV` spelling; the `EXT` one
       first appears around 595 on Turing and 582 on Ada. A user on the 580 branch is refused today,
-      for a feature that is off by default. Accepting the `NV` extension as an alias, or dropping the
-      hit-object path when nothing reorders, both remove that.
+      for a feature that is off by default because every mode of it measured slower.
+
+      **Neither fix an earlier note here proposed is host-side.** The compiled `visibility.rgen`
+      declares `SPV_EXT_shader_invocation_reorder` and `ShaderInvocationReorderEXT`, which only the
+      `EXT` Vulkan extension provides, so accepting the `NV` spelling needs a second binary.
+      `traceprobe.rgen` calls `reorderThreadEXT` outside any specialization constant, so building
+      without the extension needs a second binary too. Both are the fallback path `AGENTS.md`
+      forbids.
+
+      So the question is whether the driver floor stands. If it does, the refusal should name the
+      driver a Turing card needs rather than the extension it lacks.
 
 - [ ] **Opacity micromaps are emulated below Ada.** They work and they can still pay, but the Ada
       speedup is not transferable. Measure the micromap path against plain any-hit traversal on

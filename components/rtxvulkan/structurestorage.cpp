@@ -42,9 +42,7 @@ namespace Rtx
             Block& block = mBlocks[at];
             if (block.mUnits == 0)
             {
-                if (spare == mBlocks.size())
-                    spare = at;
-
+                spare = std::min(spare, at);
                 continue;
             }
 
@@ -118,6 +116,15 @@ namespace Rtx
         VkDeviceSize total = 0;
         for (const Block& block : mBlocks)
             total += block.mBuffer.getSize();
+
+        return total;
+    }
+
+    VkDeviceSize StructureStorage::getLiveBytes() const
+    {
+        VkDeviceSize total = 0;
+        for (const Block& block : mBlocks)
+            total += VkDeviceSize{ block.mRuns.getUsed() } * sAlignment;
 
         return total;
     }

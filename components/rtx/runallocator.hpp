@@ -60,6 +60,9 @@ namespace Rtx
         /// How many elements below `getEnd` are in holes.
         std::uint32_t getFree() const;
 
+        /// How many are handed out, which is what a report of a buffer built on this calls live.
+        std::uint32_t getUsed() const { return getEnd() - getFree(); }
+
         /// How many separate holes those elements are in. A measure of fragmentation, and what a
         /// test watches to know that releases merged.
         std::size_t getHoleCount() const { return mFree.size(); }

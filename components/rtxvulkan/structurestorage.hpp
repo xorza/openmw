@@ -71,8 +71,16 @@ namespace Rtx
         VkBuffer getBuffer(const StructureRoom& room) const { return mBlocks[room.mBlock].mBuffer.getHandle(); }
         VkDeviceSize getOffset(const StructureRoom& room) const;
 
-        /// How much storage exists, which is what a scene reports as its structures' size.
+        /// How much storage exists, which is what the device was asked for.
         VkDeviceSize getBytes() const;
+
+        /// What the structures standing in it occupy.
+        ///
+        /// **The pair is the question once anything is compacted.** A tight copy gives the loose
+        /// room it stood in back, and a block is returned whole or not at all — so the room asked
+        /// for stops being the room used, and a single figure would report either the saving or the
+        /// reservation and never both.
+        VkDeviceSize getLiveBytes() const;
 
     private:
         /// One buffer and what has been handed out inside it.

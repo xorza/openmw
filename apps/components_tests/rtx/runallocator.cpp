@@ -61,8 +61,13 @@ namespace Rtx
             EXPECT_EQ(allocator.getFree(), 7u);
             EXPECT_EQ(allocator.getHoleCount(), 1u);
 
+            // Three and the one above the hole, against a reach of eleven with seven of it free.
+            EXPECT_EQ(allocator.getEnd(), 11u);
+            EXPECT_EQ(allocator.getUsed(), 4u);
+
             EXPECT_EQ(allocator.allocate(7), (Rtx::Run{ .mOffset = 3, .mCount = 7 }));
             EXPECT_EQ(allocator.getFree(), 0u);
+            EXPECT_EQ(allocator.getUsed(), 11u) << "a hole filled leaves nothing between the runs";
             EXPECT_EQ(allocator.getEnd(), 11u);
         }
 

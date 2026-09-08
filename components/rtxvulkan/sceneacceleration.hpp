@@ -242,8 +242,14 @@ namespace Rtx
         /// Seyda Neen. `VisibilityConstants::mMediumInFrame` is what carries this to the shader.
         std::uint32_t getMediumInstanceCount() const { return mMediumInstanceCount; }
 
-        /// Bytes held by the structures themselves, not counting the geometry they were built from.
+        /// The room the structures were given, and what they occupy in it. Neither counts the
+        /// geometry they were built from.
+        ///
+        /// **A pair, because compaction moves the two apart.** A structure copied tight gives its
+        /// loose room back, and a block is returned to the device only when nothing is left in it —
+        /// so the reservation says what a cell asked for and the live figure says what it kept.
         VkDeviceSize getStructureBytes() const { return mBottomLevelStorage.getBytes() + mTopLevelBytes; }
+        VkDeviceSize getStructureLiveBytes() const { return mBottomLevelStorage.getLiveBytes() + mTopLevelBytes; }
 
         /// What the structures still to be copied tight would come to, or nought where there are
         /// none and where the device would not say.
