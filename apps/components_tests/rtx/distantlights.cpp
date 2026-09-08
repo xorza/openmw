@@ -1,6 +1,6 @@
 #include <cstdint>
-#include <map>
 #include <optional>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -50,6 +50,7 @@ namespace Rtx
                 std::vector<Terrain::PagedCellRef>& out) const override
             {
                 out.clear();
+                ++mReadings;
 
                 if (kind != Terrain::RefKind::Lit || startCell != osg::Vec2i(sCellX, sCellY))
                     return;
@@ -64,12 +65,18 @@ namespace Rtx
 
             std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId&) const override { return mLight; }
 
+            /// How many cells have been read off this, which is what says the memo remembers.
+            std::uint32_t getReadings() const { return mReadings; }
+
             VFS::Path::Normalized getModel(int, const ESM::RefId&) const override { return {}; }
 
             int getEsmVersion(int) const override { return 0; }
 
         private:
             std::optional<SceneUtil::LightCommon> mLight;
+
+            /// Mutable because the interface is const and this counts calls rather than answers.
+            mutable std::uint32_t mReadings = 0;
         };
 
         /// Counts the lights a residency hands over.
@@ -128,6 +135,42 @@ namespace Rtx
         {
             EXPECT_EQ(stood(0), 1u) << "the reach stood no lamp at all, so this proves nothing";
             EXPECT_EQ(stood(ESM::Light::OffDefault), 0u) << "an unlit lamp was stood out in the reach";
+        }
+
+        /// **A cell is read once for the life of the world, and the cells that stood nothing count.**
+        /// The reach is thirteen cells across and the active grid takes nine out of the middle, so
+        /// one `collect` reads 169 - 9 = 160 cells and the one after it reads none — 159 of which
+        /// answered with no light at all, which is the answer the memo has to hold on to. A
+        /// structure that remembered only what it found would read those 159 again every frame.
+        TEST(RtxDistantLightsTest, aCellIsReadOnceAndTheEmptyOnesAreRememberedToo)
+        {
+            const OneLamp storage(0);
+
+            DistantLights lights;
+            lights.follow(&storage, ESM::Cell::sDefaultWorldspaceId);
+            lights.setReach(sCellSize * 6.0f);
+            lights.setOutdoors(true);
+            lights.setViewPoint(osg::Vec3f());
+            lights.setActiveGrid(osg::Vec4i(-1, -1, 2, 2));
+
+            CountLights first;
+            lights.collect(first);
+            EXPECT_EQ(storage.getReadings(), 160u) << "thirteen cells square, less the nine the game stands";
+            EXPECT_EQ(first.mFound, 1u);
+
+            CountLights again;
+            lights.collect(again);
+            EXPECT_EQ(storage.getReadings(), 160u) << "a cell was read a second time";
+            EXPECT_EQ(again.mFound, 1u) << "what was read once was not handed over twice";
+
+            // What `restart` is for: an id counter that began again leaves every light this holds
+            // flickering at a phase from a sequence that has gone.
+            lights.restart();
+
+            CountLights afresh;
+            lights.collect(afresh);
+            EXPECT_EQ(storage.getReadings(), 320u) << "a restart kept what it was told to drop";
+            EXPECT_EQ(afresh.mFound, 1u);
         }
     }
 }

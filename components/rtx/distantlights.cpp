@@ -1,7 +1,9 @@
 #include "distantlights.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
+#include <vector>
 
 #include <osg/Group>
 #include <osg/MatrixTransform>
@@ -101,7 +103,8 @@ namespace Rtx
                     continue;
 
                 const osg::Vec2i key(x, y);
-                auto found = mCells.find(key);
+                auto found = std::lower_bound(mCells.begin(), mCells.end(), key,
+                    [](const ReadCell& held, const osg::Vec2i& wanted) { return held.mCell < wanted; });
 
                 // **Read here rather than on a rota, and never read twice.** What a `LIGH` says is
                 // content: it does not change with the hour, the weather or the eye, so a cell costs
@@ -110,11 +113,11 @@ namespace Rtx
                 // run-to-run noise of a still — see `.notes/rtx/performance.md`. **A budget per
                 // frame would be worse than the spike it avoided**: what a picture holds would then
                 // depend on how many frames had been drawn before it, and `verify` compares stills.
-                if (found == mCells.end())
-                    found = mCells.emplace(key, build(key)).first;
+                if (found == mCells.end() || found->mCell != key)
+                    found = mCells.insert(found, ReadCell{ .mCell = key, .mLights = build(key) });
 
-                if (found->second != nullptr)
-                    into.take(*found->second);
+                if (found->mLights != nullptr)
+                    into.take(*found->mLights);
             }
     }
 }

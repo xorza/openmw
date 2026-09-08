@@ -1,6 +1,6 @@
 #pragma once
 
-#include <map>
+#include <vector>
 
 #include <osg/Vec2i>
 #include <osg/Vec3f>
@@ -86,6 +86,13 @@ namespace Rtx
         void collect(Collector& into) override;
 
     private:
+        /// One cell that has been read, and what it stood — null where it stood nothing.
+        struct ReadCell
+        {
+            osg::Vec2i mCell;
+            osg::ref_ptr<osg::Group> mLights;
+        };
+
         /// The cell a world position stands in, on the exterior grid.
         static osg::Vec2i cellOf(const osg::Vec3f& position);
 
@@ -100,7 +107,7 @@ namespace Rtx
         float mReach = 0.0f;
         bool mOutdoors = true;
 
-        /// Every cell read so far, by grid position, holding null where the cell stands no light.
+        /// Every cell read so far, sorted by grid position.
         ///
         /// **Content, so a cell is read once for the life of the world.** What a `LIGH` reference
         /// says does not change with the hour or the weather — the flicker is a function of the
@@ -109,8 +116,17 @@ namespace Rtx
         /// reason: the absence is the answer, and reading the blocks again to find it out is the
         /// cost this avoids.
         ///
+        /// **Sorted and searched rather than keyed, because a frame looks up far more often than it
+        /// inserts.** `collect` asks about every cell of the reach on every frame — eighty-one of
+        /// them at the default — and inserts only the first time each is seen. A node-based map
+        /// spends an allocation on each cell and makes every one of those lookups a walk of
+        /// pointers; a binary search over one contiguous run costs neither, and the inner loop of
+        /// `collect` walks the same order the run is sorted in. The insert's shift is paid on the
+        /// frame that also reads the cell's blocks off the disk, which is the cost that frame is
+        /// actually about.
+        ///
         /// **Emptied by `follow` and by `restart`, and by nothing else**: the first is a world that
         /// changed, the second a scene that began again under the same world.
-        std::map<osg::Vec2i, osg::ref_ptr<osg::Group>> mCells;
+        std::vector<ReadCell> mCells;
     };
 }
