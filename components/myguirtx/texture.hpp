@@ -77,17 +77,15 @@ namespace MyGUIRtx
 
         /*internal:*/
 
-        /// Where this sits in the renderer's table, or `sNoSlot` while it holds nothing.
-        std::uint32_t getSlot() const { return mSlot; }
-
-        static constexpr std::uint32_t sNoSlot = ~0u;
+        /// Where this sits in the renderer's table, or nothing while it holds none.
+        Rtx::GuiSlot getSlot() const { return mSlot; }
 
     private:
         /// Takes the slot back and forgets the size, so that a second `createManual` starts clean.
         void release();
 
         /// The whole surface, which is what every write but the world map's covers.
-        Rtx::Renderer::GuiRegion whole() const;
+        Rtx::GuiRegion whole() const;
 
         /// Widens `mPixels` into the renderer's own bytes and sends them, four channels out of
         /// however few MyGUI asked for.
@@ -97,7 +95,7 @@ namespace MyGUIRtx
         Rtx::Renderer& mRenderer;
         Resource::ImageManager* mImageManager;
 
-        std::uint32_t mSlot = sNoSlot;
+        Rtx::GuiSlot mSlot;
         int mWidth = 0;
         int mHeight = 0;
         MyGUI::PixelFormat mFormat = MyGUI::PixelFormat::Unknow;

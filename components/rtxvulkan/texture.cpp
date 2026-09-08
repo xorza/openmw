@@ -249,19 +249,19 @@ namespace Rtx
 
         for (const TextureData& texture : arrived)
         {
-            reserveSlot(texture.mSlot);
+            reserveSlot(texture.mIndex);
 
             // Named only where a capture or a validation message could read it back. A local,
             // because a slot number is short enough that this never reaches the heap; the one that
             // does is the map's, inside `Texture`.
             std::string name;
             if constexpr (Device::wantsNames())
-                name = "texture " + std::to_string(texture.mSlot);
+                name = "texture " + std::to_string(texture.mIndex);
 
             // What the slot held is buried and not destroyed: its descriptor is the one a frame in
             // flight bound, and it stays valid until that frame's fence says nothing reads it.
             graveyard.bury(
-                std::exchange(mTextures[texture.mSlot], Texture(mDevice, batch, texture, name, mRegionScratch)));
+                std::exchange(mTextures[texture.mIndex], Texture(mDevice, batch, texture, name, mRegionScratch)));
         }
 
         describe(arrived);
@@ -297,9 +297,9 @@ namespace Rtx
 
         for (const TextureData& texture : arrived)
         {
-            const Texture& held = mTextures[texture.mSlot];
-            queueWrite(mSet, sTextureBinding, texture.mSlot, held.getView(), mImageScratch, mWriteScratch);
-            queueWrite(mSet, sShadingBinding, texture.mSlot, held.getShadingView(), mImageScratch, mWriteScratch);
+            const Texture& held = mTextures[texture.mIndex];
+            queueWrite(mSet, sTextureBinding, texture.mIndex, held.getView(), mImageScratch, mWriteScratch);
+            queueWrite(mSet, sShadingBinding, texture.mIndex, held.getShadingView(), mImageScratch, mWriteScratch);
         }
 
         vkUpdateDescriptorSets(

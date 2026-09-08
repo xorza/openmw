@@ -158,10 +158,10 @@ namespace MWRender
             // either way, which is deliberate here: a chart wants the ground and the buildings and
             // not the smoke over them.
             spec.mMask = Mask_Scene | Mask_SimpleWater | Mask_Terrain | Mask_Object | Mask_Static;
-            spec.mProjection = OffscreenViewSpec::Orthographic{ .mWidth = static_cast<float>(mMapWorldSize),
+            spec.mFraming.mProjection = SceneUtil::Orthographic{ .mWidth = static_cast<float>(mMapWorldSize),
                 .mHeight = static_cast<float>(mMapWorldSize) };
-            spec.mNear = SceneUtil::sMapNear;
-            spec.mFar = (zmax - zmin) + 10.f;
+            spec.mFraming.mNear = SceneUtil::sMapNear;
+            spec.mFraming.mFar = (zmax - zmin) + 10.f;
             spec.mClearColour = osg::Vec4f(0.f, 0.f, 0.f, 1.f);
             spec.mSun = SceneUtil::mapLight();
             spec.mFromWorld = true;

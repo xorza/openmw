@@ -48,7 +48,7 @@ namespace Rtx
                 VK_IMAGE_USAGE_STORAGE_BIT, i == 0 ? "accumulate-moments-0" : "accumulate-moments-1");
         }
 
-        // `TRANSFER_SRC` for `Channel::Accumulated`, which is the one figure `shot --tail` counts a
+        // `TRANSFER_SRC` for `FrameImage::Accumulated`, which is the one figure `shot --tail` counts a
         // firefly in and the only image in the frame that holds a clamped bounce.
         mBlended = std::make_unique<Image>(mDevice, width, height, ATROUS_CHANNEL,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "accumulate-blended");
@@ -91,11 +91,11 @@ namespace Rtx
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 
         const std::array<VkDescriptorImageInfo, sBindingCount> images{
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getIndirect().getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getMotion().getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getGuide().getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getDepth().getView(), VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getBiasMask().getView(), VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Indirect).getView(), VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Motion).getView(), VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Guide).getView(), VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Depth).getView(), VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::BiasMask).getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mColour[previous]->getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mSurface[previous]->getView(), VK_IMAGE_LAYOUT_GENERAL },
             VkDescriptorImageInfo{ VK_NULL_HANDLE, mMoments[previous]->getView(), VK_IMAGE_LAYOUT_GENERAL },

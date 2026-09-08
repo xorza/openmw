@@ -82,7 +82,7 @@ namespace Rtx
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list the rows
         ///        are driven by. Whether a copy is then behind is `mInstanceTable`'s to know.
         void place(const SceneDesc& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
-            std::uint32_t slot, Graveyard& graveyard);
+            FrameSlot slot, Graveyard& graveyard);
 
         SceneBuffers(const SceneBuffers&) = delete;
         SceneBuffers& operator=(const SceneBuffers&) = delete;
@@ -129,7 +129,7 @@ namespace Rtx
         ///
         /// **The two it leaves alone are not the scene's.** The blue-noise tile is the pass's and
         /// the index blocks are the acceleration structure's, and each of those writes its own.
-        void describeTables(std::uint32_t slot, Shaders::GpuTables& into) const;
+        void describeTables(FrameSlot slot, Shaders::GpuTables& into) const;
 
         VkDeviceSize getBytes() const;
 
@@ -186,7 +186,7 @@ namespace Rtx
 
         /// Writes the material rows `slot`'s copy owes, and the layer and mask runs that arrived into
         /// every copy — or a table whole where it had to be made again to hold them.
-        void shade(const SceneDesc& scene, std::uint32_t slot, Graveyard& graveyard);
+        void shade(const SceneDesc& scene, FrameSlot slot, Graveyard& graveyard);
 
         const Device* mDevice = nullptr;
         std::uint32_t mSlots = 1;

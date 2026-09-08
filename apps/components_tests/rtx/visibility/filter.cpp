@@ -359,7 +359,7 @@ namespace Rtx::Testing
             // Nothing to hit, so every pixel is the sky and the mean of the frame is the sky. The
             // scene is set once: setting it again would clear the previous camera and reset the eye.
             mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::sWorld, SceneDesc{}, {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), SceneDesc{}, {}, SeaState{});
 
             const double lit = shot(bright);
             ASSERT_GT(lit, 0.0) << "the bright sky rendered as black";
@@ -411,7 +411,7 @@ namespace Rtx::Testing
             camera.mAmbientFromSky = 1.0f;
 
             mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
 
             const auto renderOne = [&](std::uint32_t frame, bool filter) {
                 Shaders::VisibilityConstants sampled = camera;
@@ -421,7 +421,7 @@ namespace Rtx::Testing
 
             const auto radiance = [&] {
                 std::vector<float> values;
-                mRenderer->readChannel(Channel::Radiance, values);
+                mRenderer->readFrameImage(FrameImage::Composite, values);
                 return values;
             };
 

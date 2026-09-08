@@ -162,7 +162,8 @@ namespace Rtx
         return angularRadiusOf(moon);
     }
 
-    MoonPlacement placeMoon(Moon moon, float alongArcDegrees, float axisOffsetDegrees, int phase, float alpha)
+    MoonPlacement placeMoon(
+        Moon moon, float alongArcDegrees, float axisOffsetDegrees, Sky::MoonPhase phase, float alpha)
     {
         // `Moon::setState`'s own two rotations (`apps/openmw/mwrender/gl/skyutil.cpp:900`): the arc
         // tips the moon up from the horizon about +X, and the axis offset swings that whole arc

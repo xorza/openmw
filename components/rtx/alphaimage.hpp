@@ -46,17 +46,18 @@ namespace Rtx
         /// keeps the room the last texture grew. Whatever was here is gone, buffers apart.
         void build(const TextureData& texture);
 
-        std::uint32_t getLevelCount() const { return static_cast<std::uint32_t>(mLevels.size()); }
+        /// Where the levels sit in the values. `MipLevel::mOffset` counts texels here rather than
+        /// bytes, this being one byte a texel.
+        const MipPyramid& getShape() const { return mShape; }
 
-        /// Where one level sits in the values, and how big it is. `MipLevel::mOffset` counts texels
-        /// here rather than bytes, this being one byte a texel.
-        const MipLevel& getLevel(std::uint32_t level) const { return mLevels[level]; }
+        std::uint32_t getLevelCount() const { return mShape.getLevelCount(); }
+        const MipLevel& getLevel(std::uint32_t level) const { return mShape.getLevel(level); }
 
         /// The largest level's extent, which is what a bake made from this is sized to.
-        std::uint32_t getWidth() const { return mLevels.empty() ? 0 : mLevels.front().mWidth; }
-        std::uint32_t getHeight() const { return mLevels.empty() ? 0 : mLevels.front().mHeight; }
+        std::uint32_t getWidth() const { return mShape.getWidth(); }
+        std::uint32_t getHeight() const { return mShape.getHeight(); }
 
-        bool isEmpty() const { return mLevels.empty(); }
+        bool isEmpty() const { return mShape.isEmpty(); }
 
         /// Alpha at a texel of a level, both of which must be inside the image.
         ///
@@ -64,14 +65,11 @@ namespace Rtx
         /// across a translation unit for a vector index is most of what that walk costs.
         std::uint8_t at(std::uint32_t level, std::uint32_t x, std::uint32_t y) const
         {
-            const MipLevel& which = mLevels[level];
-            assert(x < which.mWidth && y < which.mHeight);
-
-            return mValues[which.mOffset + std::size_t{ y } * which.mWidth + x];
+            return mValues[mShape.offsetOf(level, x, y, 1)];
         }
 
     private:
-        std::vector<MipLevel> mLevels;
+        MipPyramid mShape;
         std::vector<std::uint8_t> mValues;
     };
 

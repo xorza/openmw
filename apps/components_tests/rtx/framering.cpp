@@ -20,7 +20,7 @@ namespace Rtx
             /// to whom, and a command buffer with work in it would only make the fences slower.
             void submitEmpty(FrameRing& ring)
             {
-                FrameSlot& frame = ring.begin();
+                FrameRecord& frame = ring.begin();
                 getPool().begin(frame.mCommands);
                 ring.submit(frame);
             }

@@ -6,11 +6,10 @@ namespace Sky
 {
     /// The eight phases a moon is painted in, counted from full.
     ///
-    /// **The order is the game's own and three things depend on it agreeing.** It is the order
-    /// `MWRender::MoonState::Phase` declares, the order the eight `tx_masser_*` faces are listed in,
-    /// and — because the steps are even — it is an angle: a phase is `index * 45 degrees` round the
-    /// cycle, zero at full and 180 at new, so the lit share of the disc is `(1 + cos) / 2` and the
-    /// sign of the sine says which limb keeps it.
+    /// **The order is the game's own and two things depend on it agreeing.** It is the order the
+    /// eight `tx_masser_*` faces are listed in, and — because the steps are even — it is an angle:
+    /// a phase is `index * 45 degrees` round the cycle, zero at full and 180 at new, so the lit
+    /// share of the disc is `(1 + cos) / 2` and the sign of the sine says which limb keeps it.
     enum class MoonPhase
     {
         Full,
@@ -24,6 +23,32 @@ namespace Sky
     };
 
     /// Where a moon stands and how much of it is lit, at one moment.
+    /// Which of the five faces a phase is drawn with, waxing and waning sharing one.
+    ///
+    /// **Beside the enum rather than in a renderer's struct**, because it is a fact about the eight
+    /// phases and not about either renderer.
+    constexpr unsigned int phaseToInt(MoonPhase phase)
+    {
+        switch (phase)
+        {
+            case MoonPhase::New:
+                return 0;
+            case MoonPhase::WaxingCrescent:
+            case MoonPhase::WaningCrescent:
+                return 1;
+            case MoonPhase::FirstQuarter:
+            case MoonPhase::ThirdQuarter:
+                return 2;
+            case MoonPhase::WaxingGibbous:
+            case MoonPhase::WaningGibbous:
+                return 3;
+            case MoonPhase::Full:
+                return 4;
+        }
+
+        return 0;
+    }
+
     struct MoonMoment
     {
         /// Degrees travelled from the horizon it rose at, zero to 180 — and zero again once it has

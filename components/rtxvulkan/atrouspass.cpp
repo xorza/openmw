@@ -104,8 +104,8 @@ namespace Rtx
             const std::array<VkDescriptorImageInfo, 5> images{
                 VkDescriptorImageInfo{ VK_NULL_HANDLE, source->getView(), VK_IMAGE_LAYOUT_GENERAL },
                 VkDescriptorImageInfo{ VK_NULL_HANDLE, target->getView(), VK_IMAGE_LAYOUT_GENERAL },
-                VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getGuide().getView(), VK_IMAGE_LAYOUT_GENERAL },
-                VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.getDepth().getView(), VK_IMAGE_LAYOUT_GENERAL },
+                VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Guide).getView(), VK_IMAGE_LAYOUT_GENERAL },
+                VkDescriptorImageInfo{ VK_NULL_HANDLE, buffer.get(Channel::Depth).getView(), VK_IMAGE_LAYOUT_GENERAL },
                 VkDescriptorImageInfo{ VK_NULL_HANDLE, moments.getView(), VK_IMAGE_LAYOUT_GENERAL },
             };
 

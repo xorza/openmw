@@ -10,6 +10,7 @@
 #include <components/rtx/offscreentrace.hpp>
 
 #include "../offscreenview.hpp"
+#include "viewhost.hpp"
 
 namespace MyGUI
 {
@@ -23,8 +24,6 @@ namespace osg
 
 namespace MWRender
 {
-    class RtxRenderer;
-
     /// An offscreen view as a ray tracer makes one: the GUI's side of `Rtx::OffscreenTrace`.
     ///
     /// **What is here is what the trace is not.** The picture itself — the camera, the subject's own
@@ -35,7 +34,10 @@ namespace MWRender
     class TracedView final : public OffscreenView
     {
     public:
-        TracedView(const OffscreenViewSpec& spec, RtxRenderer& owner);
+        /// **`traversals` is the one sequence every mirror walk here poses at** — the world's and
+        /// every view's. A subtree both can reach would otherwise be posed by whichever counter
+        /// got there first and frozen for the other.
+        TracedView(const OffscreenViewSpec& spec, ViewHost& host, Rtx::Traversals& traversals);
         ~TracedView() override;
 
         void setView(const osg::Matrixf& view) override { mTrace.setView(view); }
@@ -48,13 +50,13 @@ namespace MWRender
         MyGUI::ITexture& getTexture() const override { return *mTexture; }
 
     private:
-        RtxRenderer& mOwner;
+        ViewHost& mHost;
         Rtx::OffscreenTrace mTrace;
 
         /// Made through MyGUI's own factory, so which backend is behind it is not this class's
         /// business — but its slot in the renderer's table is, because that is what is traced into.
         MyGUI::ITexture* mTexture = nullptr;
-        std::uint32_t mSlot = 0;
+        Rtx::GuiSlot mSlot;
 
         int mWidth = 0;
         int mHeight = 0;

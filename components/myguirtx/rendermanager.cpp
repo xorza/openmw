@@ -157,7 +157,7 @@ namespace MyGUIRtx
     void RenderManager::doRender(MyGUI::IVertexBuffer* buffer, MyGUI::ITexture* texture, size_t count)
     {
         const auto* texel = static_cast<const Texture*>(texture);
-        if (texel == nullptr || texel->getSlot() == Texture::sNoSlot || count == 0)
+        if (texel == nullptr || texel->getSlot().isNone() || count == 0)
             return;
 
         const std::span<const MyGUI::Vertex> vertices = static_cast<const VertexBuffer*>(buffer)->get(count);

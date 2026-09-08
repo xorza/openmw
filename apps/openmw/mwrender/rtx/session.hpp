@@ -14,9 +14,10 @@
 #include <components/rtxbench/benchrun.hpp>
 #include <components/rtxbench/runrecord.hpp>
 
+#include "tracedrun.hpp"
+
 namespace MWRender
 {
-    class RtxRenderer;
 
     /// The run `[RTX] session` asks for, or nothing where nobody asked for one.
     ///
@@ -24,34 +25,6 @@ namespace MWRender
     /// binary has only a settings file, so what it can say is how long the run is and how fast to
     /// fly — where it stands is the savegame's.
     std::optional<Rtx::SessionRequest> readSessionSetting();
-
-    /// A run to make, and where to leave what it came to.
-    struct InstalledSession
-    {
-        Rtx::SessionRequest mRequest;
-
-        /// The launcher's own slot, filled once by `~Session` and never read here.
-        ///
-        /// **Null for a run a settings file asked for**, which is a played binary measuring itself
-        /// with nobody waiting on the answer. That run's report goes to the log instead.
-        Rtx::SessionResult* mInto = nullptr;
-    };
-
-    /// Hands a run to whichever renderer the engine is about to build, and says where its answer
-    /// goes.
-    ///
-    /// **A slot and not a field of `RendererSpec`.** That struct is filled inside `Engine::go`,
-    /// which is upstream's; a field there would be an edit to it for a value only one launcher ever
-    /// sets. Filled once before the engine starts and taken once by the renderer's constructor.
-    ///
-    /// **`into` is the caller's own and has to outlive `Engine::go`.** The session fills it from
-    /// its own destructor, which `~Engine` runs, so by the time `go` returns there is nothing left
-    /// to ask — an answer read afterwards is one that was written somewhere first.
-    void installSession(Rtx::SessionRequest request, Rtx::SessionResult& into);
-
-    /// What was installed, or nothing for an ordinary session. Taken, so a second renderer in one
-    /// process does not inherit the first one's run.
-    std::optional<InstalledSession> takeInstalledSession();
 
     /// Drives a run of the game and measures it.
     ///
@@ -104,7 +77,7 @@ namespace MWRender
         /// carries everything the game does between them — which is the number a player feels and
         /// the one `result.mWaitMs` cannot see. `walkMs` and `placeMs` are the two shares of it
         /// this fork owns.
-        void frame(RtxRenderer& owner, const Rtx::FrameResult& result, double frameMs, double walkMs, double placeMs,
+        void frame(const TracedRun& run, const Rtx::FrameResult& result, double frameMs, double walkMs, double placeMs,
             bool rebuilt);
 
         /// Whether the stop wants the graph walked a second time, so it can report what that added.
@@ -133,7 +106,7 @@ namespace MWRender
         ///
         /// @param reconstruction what put the last measured frame back together, which is the frame
         ///        every writer describes.
-        void endStop(RtxRenderer& owner, const Rtx::Reconstruction& reconstruction);
+        void endStop(const TracedRun& run, const Rtx::Reconstruction& reconstruction);
 
         /// Writes what the run was asked to write and ends it.
         void finish();
@@ -170,8 +143,9 @@ namespace MWRender
 
         Rtx::SessionRequest mRequest;
 
-        /// Where the run's answer goes, or null where nobody installed a run. `installSession`
-        /// says what keeps it alive, and `~Session` says where a null one's report goes.
+        /// Where the run's answer goes, or null where a settings file asked for the run and nobody
+        /// is waiting on it. `RtxSetup::mInto` says what keeps it alive, and `~Session` says where a
+        /// null one's report goes.
         Rtx::SessionResult* mInto = nullptr;
 
         /// Which stop is running, and whether it has been started.

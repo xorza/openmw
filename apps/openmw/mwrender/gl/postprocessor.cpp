@@ -252,7 +252,7 @@ namespace MWRender
             bin->setDrawCallback(nullptr);
     }
 
-    void PostProcessor::describe(const WorldState& world)
+    void PostProcessor::describe(const WorldState& world, const EyeState& eye)
     {
         mStateUpdater->setSunPos(world.mSunPosition, world.mSunAtNight);
         mStateUpdater->setSunVec(world.mSunVector);
@@ -268,9 +268,9 @@ namespace MWRender
 
         mStateUpdater->setFogColor(world.mFog.mColour);
         mStateUpdater->setFogRange(world.mFog.mStart, world.mFog.mEnd);
-        mStateUpdater->setNearFar(world.mNearClip, world.mViewDistance);
-        mStateUpdater->setProjectionMatrix(world.mProjectionMatrix);
-        mStateUpdater->setFov(world.mFieldOfView);
+        mStateUpdater->setNearFar(eye.mNearClip, eye.mViewDistance);
+        mStateUpdater->setProjectionMatrix(eye.mProjectionMatrix);
+        mStateUpdater->setFov(eye.mFieldOfView);
 
         mStateUpdater->setGameHour(world.mGameHour);
         mStateUpdater->setWeatherId(world.mWeatherId);

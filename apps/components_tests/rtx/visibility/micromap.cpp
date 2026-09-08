@@ -94,7 +94,7 @@ namespace Rtx::Testing
 
                 std::vector<std::uint8_t> pixels;
                 picture.mHits = countHits(scene, std::span(&mChecker.mData, 1), lookAtTheCard(), sSize, pixels);
-                mRenderer->readChannel(Channel::Radiance, picture.mRadiance);
+                mRenderer->readFrameImage(FrameImage::Composite, picture.mRadiance);
                 mRenderer->readChannel(Channel::Depth, picture.mDepth);
                 picture.mStats = mRenderer->getSceneStats();
 
@@ -197,7 +197,7 @@ namespace Rtx::Testing
             // is the last placement; the wall is the first.
             fading.clearPlacement();
             fading.fadeInstance(static_cast<Index>(fading.getInstances().size() - 1), 1.0f);
-            mRenderer->placeScene(Rtx::sWorld, fading, SeaState{});
+            mRenderer->placeScene(Rtx::SceneSlot::world(), fading, SeaState{});
 
             EXPECT_EQ(mRenderer->getSceneStats().mMicromappedInstances, 1u) << "the micromap was kept";
             EXPECT_EQ(mRenderer->getSceneStats().mCutoutInstances, 1u);
@@ -206,7 +206,7 @@ namespace Rtx::Testing
             EXPECT_EQ(mRenderer->finishFrame().value().mHits, sSize * sSize);
 
             std::vector<float> radiance;
-            mRenderer->readChannel(Channel::Radiance, radiance);
+            mRenderer->readFrameImage(FrameImage::Composite, radiance);
             EXPECT_EQ(radiance, whole.mRadiance) << "the frame after the fade is the frame before it";
         }
 
@@ -306,7 +306,7 @@ namespace Rtx::Testing
             poseByOneBone(scene, card, osg::Matrixf::translate(0.0f, 100.0f, 0.0f));
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = card, .mMaterial = cutout });
-            mRenderer->placeScene(Rtx::sWorld, scene, SeaState{});
+            mRenderer->placeScene(Rtx::SceneSlot::world(), scene, SeaState{});
 
             mRenderer->renderFrame(lookAtTheCard(), FrameOptions{ .mExposure = 1.0f });
             EXPECT_EQ(mRenderer->finishFrame().value().mHits, sSize * sSize / 8)

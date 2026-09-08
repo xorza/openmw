@@ -496,7 +496,7 @@ namespace MWRender
         mSun->setDirection(direction);
     }
 
-    void SkyManager::setMasserState(const MoonState& state)
+    void SkyManager::setMasserState(const Sky::MoonMoment& state)
     {
         if (!mCreated)
             return;
@@ -504,7 +504,7 @@ namespace MWRender
         mMasser->setState(state);
     }
 
-    void SkyManager::setSecundaState(const MoonState& state)
+    void SkyManager::setSecundaState(const Sky::MoonMoment& state)
     {
         if (!mCreated)
             return;

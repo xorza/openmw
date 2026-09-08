@@ -294,7 +294,7 @@ namespace Rtx
         /// what both the caller and `recordRefit` read: a count returned beside a vector that still
         /// held the last frame's entries would be two answers to one question.
         void prepareRefit(
-            const SceneDesc& scene, std::uint32_t slot, const SceneMicromaps& micromaps, Graveyard& graveyard);
+            const SceneDesc& scene, FrameSlot slot, const SceneMicromaps& micromaps, Graveyard& graveyard);
 
         /// Brings the host rows up to what `changed` names, and to whatever the table grew by.
         void writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed);
@@ -302,7 +302,7 @@ namespace Rtx
         /// Everything the top-level build needs before a command buffer exists: `slot`'s copy of the
         /// rows paid, the structure and its scratch made again where the count grew, and the build
         /// pointed at that copy. `writeRows` first, which is what leaves the copy owing anything.
-        void prepareTopLevel(const SceneDesc& scene, std::uint32_t slot, Graveyard& graveyard);
+        void prepareTopLevel(const SceneDesc& scene, FrameSlot slot, Graveyard& graveyard);
 
         /// Takes back what `slot`'s row counts as, and leaves the row counting as nothing.
         ///

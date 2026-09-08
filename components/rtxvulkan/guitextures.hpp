@@ -10,6 +10,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/slot.hpp>
 
 #include "buffer.hpp"
 #include "commands.hpp"
@@ -54,7 +55,7 @@ namespace Rtx
         GuiTextures& operator=(const GuiTextures&) = delete;
 
         /// A slot holding a texture of this size, cleared to nothing.
-        std::uint32_t add(std::uint32_t width, std::uint32_t height);
+        GuiSlot add(std::uint32_t width, std::uint32_t height);
 
         /// Bytes for a rectangle of a texture, to be filled and then handed back with `send`.
         ///
@@ -71,19 +72,19 @@ namespace Rtx
         /// **Write it and do not read it back.** This is host-visible device memory, which is write
         /// combined: filling it in order costs what a copy into main memory costs, and reading a
         /// byte of it back costs far more than either.
-        std::span<std::uint8_t> lend(std::uint32_t slot, const Renderer::GuiRegion& region);
+        std::span<std::uint8_t> lend(GuiSlot slot, const GuiRegion& region);
 
         /// Records the copy of what `lend` handed out. Nothing has run when this returns.
-        void send(std::uint32_t slot);
+        void send(GuiSlot slot);
 
         /// A rectangle of a texture, four bytes a pixel, tightly packed, row zero first.
         ///
         /// `rgba` is the region's own rows and not slices of a wider image. For a caller that
         /// already holds the pixels; one that is about to produce them wants `lend` instead, and
         /// this is that pair with a copy in front of it.
-        void write(std::uint32_t slot, const Renderer::GuiRegion& region, std::span<const std::uint8_t> rgba);
+        void write(GuiSlot slot, const GuiRegion& region, std::span<const std::uint8_t> rgba);
 
-        void drop(std::uint32_t slot);
+        void drop(GuiSlot slot);
 
         /// Opens an interface frame: hands `kept` every texture given back since the last one, and
         /// takes the staging that frame's fence has just freed.
@@ -98,10 +99,13 @@ namespace Rtx
         void startFrame(Graveyard& kept);
 
         /// What the pass samples, or null where nothing holds that slot.
-        VkImageView getView(std::uint32_t slot);
+        VkImageView getView(GuiSlot slot);
 
         /// Whether anything is in that slot.
-        bool holds(std::uint32_t slot) const { return slot < mImages.size() && mImages[slot] != nullptr; }
+        bool holds(GuiSlot slot) const
+        {
+            return !slot.isNone() && slot.get() < mImages.size() && mImages[slot.get()] != nullptr;
+        }
 
         /// Lends the texture in `slot` to a caller that writes it with transfer commands, rather
         /// than by handing over pixels: `record(image, layout)` is called with it ready to be
@@ -117,7 +121,7 @@ namespace Rtx
         /// Ordering *within* what is recorded stays the caller's: two transfer writes to one image
         /// are unordered unless something says otherwise.
         template <class Record>
-        void writeWith(std::uint32_t slot, VkCommandBuffer commands, Record&& record)
+        void writeWith(GuiSlot slot, VkCommandBuffer commands, Record&& record)
         {
             // First, and whatever the caller has already recorded into `commands`: what is pending
             // here writes this image, and left in the batch it would reach the queue after the
@@ -126,7 +130,7 @@ namespace Rtx
 
             assert(holds(slot) && "a write to a slot nothing holds");
 
-            const Image& image = *mImages[slot];
+            const Image& image = *mImages[slot.get()];
 
             image.transition(commands, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
@@ -140,7 +144,7 @@ namespace Rtx
         }
 
         /// The whole texture in main memory, four bytes a pixel. Costs a transfer off the device.
-        void read(std::uint32_t slot, std::vector<std::uint8_t>& pixels);
+        void read(GuiSlot slot, std::vector<std::uint8_t>& pixels);
 
         /// Submits what has been recorded, and what was already handed over, and waits for both.
         ///
@@ -167,7 +171,7 @@ namespace Rtx
         CommandPool& mPool;
 
         std::vector<std::unique_ptr<Image>> mImages;
-        std::vector<std::uint32_t> mFree;
+        std::vector<GuiSlot> mFree;
 
         /// **One more arena than there are frames in flight.**
         ///
@@ -196,11 +200,9 @@ namespace Rtx
         std::uint32_t mArena = 0;
         VkDeviceSize mStagingUsed = 0;
 
-        static constexpr std::uint32_t sNothingLent = ~0u;
-
         /// What `lend` handed bytes out of, until `send` records the copy back.
-        std::uint32_t mLentSlot = sNothingLent;
-        Renderer::GuiRegion mLentRegion;
+        GuiSlot mLentSlot;
+        GuiRegion mLentRegion;
         VkDeviceSize mLentAt = 0;
 
         /// Textures given back, held until `startFrame` hands them to a frame's graveyard.

@@ -10,6 +10,8 @@
 #include <osg/Vec4f>
 #include <osg/ref_ptr>
 
+#include <components/sceneutil/offscreenframing.hpp>
+
 #include "frameimage.hpp"
 #include "renderer.hpp"
 #include "sceneuploader.hpp"
@@ -78,11 +80,8 @@ namespace Rtx
         OffscreenTrace(const OffscreenTrace&) = delete;
         OffscreenTrace& operator=(const OffscreenTrace&) = delete;
 
-        /// A vertical field of view, in degrees.
-        void setPerspective(float fieldOfView, float near, float far);
-
-        /// A box this many world units across, centred on the view direction.
-        void setOrthographic(float width, float height, float near, float far);
+        /// How the picture is projected and where it is clipped. Takes effect on the next trace.
+        void setFraming(const SceneUtil::Framing& framing) { mFraming = framing; }
 
         /// The only light there is, in the numbers a rasterizer's object shaders were written for.
         ///
@@ -92,8 +91,8 @@ namespace Rtx
         /// `albedo * diffuse` at `cos = 1` is `diffuse * pi` — and with it a doll lit by the game's
         /// own numbers comes out the brightness those numbers were chosen for.
         ///
-        /// @param towardsSun where the light comes from, normalised here.
-        void setLight(const osg::Vec3f& towardsSun, const osg::Vec4f& diffuse, const osg::Vec4f& ambient);
+        /// `FlatLight::mDirection` is where the light comes from, normalised here.
+        void setLight(const SceneUtil::FlatLight& light);
 
         /// What the picture is left as where nothing was hit.
         ///
@@ -142,7 +141,7 @@ namespace Rtx
         bool rebuildSubject(const osg::FrameStamp& posing, std::size_t worldFrame, Resource::ImageManager& images);
 
         /// Traces the picture into `texture`, a slot from `Renderer::addGuiTexture`.
-        void traceInto(std::uint32_t texture);
+        void traceInto(GuiSlot texture);
 
         /// What is at this point of the picture, in normalised device coordinates, as the path
         /// through the subject to whatever was hit. Nothing for a picture of the world, which is
@@ -200,7 +199,7 @@ namespace Rtx
         /// acceleration structure and a texture array built from nothing sixty times a second.
         SceneUploader mUploader;
 
-        std::uint32_t mViewScene = 0;
+        SceneSlot mViewScene;
 
         /// The traversal number the subject's update last ran at. What `rebuildSubject` hands the
         /// update traversal, and what a pick's own cull is dated after.
@@ -215,12 +214,10 @@ namespace Rtx
 
         RowOrder mRowOrder = RowOrder::TopFirst;
 
-        bool mPerspective = true;
-        float mFieldOfView = 0.f;
-        float mBoxWidth = 0.f;
-        float mBoxHeight = 0.f;
-        float mNear = 1.f;
-        float mFar = 10000.f;
+        /// **One value, where this was a flag beside four floats** — three of which meant nothing
+        /// in whichever case the flag did not name, and all four of which the caller already held
+        /// as a `SceneUtil::Framing`.
+        SceneUtil::Framing mFraming;
 
         /// Where the light stands, unit — which is what the trace takes, and so already the sense
         /// `setLight` states it in.

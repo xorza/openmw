@@ -154,10 +154,10 @@ namespace RtxTool
 
         option(Verbs::Every, "list-views", bpo::bool_switch(), "print the named viewpoints and quit");
 
-        option(sFramed, "delight", bpo::value<float>()->default_value(byDefault.mDelight),
+        option(sFramed, "delight", bpo::value<float>()->default_value(byDefault.mProfile.mDelight),
             "how much of the lighting painted into each texture to divide back out, from 0 to 1. "
             "Zero is the A/B that says what it did");
-        option(sFramed, "filter", bpo::value<bool>()->default_value(byDefault.mFilter)->implicit_value(true),
+        option(sFramed, "filter", bpo::value<bool>()->default_value(byDefault.mProfile.mFilter)->implicit_value(true),
             "run the denoiser over the indirect light. Off shows the raw bounce, and is what a "
             "reference is made with");
         // Defaulted to an empty list rather than left absent, because `readConfiguration` walks
@@ -169,7 +169,7 @@ namespace RtxTool
             "own record, which is what the game equips them with");
 
         option(sFramed, "upscale",
-            bpo::value<std::string>()->default_value(std::string(Rtx::upscaleName(byDefault.mUpscale))),
+            bpo::value<std::string>()->default_value(std::string(Rtx::upscaleName(byDefault.mProfile.mUpscale))),
             std::format("put DLSS Ray Reconstruction between the trace and the picture: {}. --size "
                         "is what comes out, and what gets traced is DLSS's answer for it. It "
                         "denoises for itself, so --filter stops applying. Quality by default, so a "
@@ -181,7 +181,8 @@ namespace RtxTool
                 Rtx::sUpscaleNames.list())
                 .c_str());
 
-        option(sFramed, "micromaps", bpo::value<bool>()->default_value(byDefault.mMicromaps)->implicit_value(true),
+        option(sFramed, "micromaps",
+            bpo::value<bool>()->default_value(byDefault.mProfile.mMicromaps)->implicit_value(true),
             "bake each cutout's mask into an opacity micromap, so traversal resolves every "
             "microtriangle it knows about without stopping the ray. Off leaves every cutout to the "
             "any-hit shader, which is the leg a micromap has to be timed against — and below Ada a "
@@ -189,7 +190,7 @@ namespace RtxTool
             "not what it saves here. The picture is the same either way");
 
         option(sFramed, "reorder",
-            bpo::value<std::string>()->default_value(std::string(Rtx::reorderName(byDefault.mReorder))),
+            bpo::value<std::string>()->default_value(std::string(Rtx::reorderName(byDefault.mProfile.mReorder))),
             std::format("how the trace sorts its threads between the traversal and the shader that resolves "
                         "what it found: {}. Shader Execution Reordering regroups a warp so that "
                         "its lanes are about to run the same shader on the same data. `hit` sorts on the hit "
@@ -207,7 +208,7 @@ namespace RtxTool
                 .c_str());
 
         option(sFramed, "preset",
-            bpo::value<std::string>()->default_value(std::string(Rtx::presetName(byDefault.mPreset))),
+            bpo::value<std::string>()->default_value(std::string(Rtx::presetName(byDefault.mProfile.mPreset))),
             std::format("which Ray Reconstruction network to run: {}. Ray Reconstruction keeps its "
                         "own presets, and they are not super-resolution's -- A through C are retired, d is the "
                         "default transformer model and e is the latest. `default` hands the choice to the "
@@ -355,11 +356,12 @@ namespace RtxTool
             "thresholds. What a firefly is counted in, and the one thing bytes cannot say. Wants "
             "--upscale=off so the wavelet and its accumulator run at all");
 
-        option(sFramed, "jitter", bpo::value<bool>()->default_value(byDefault.mJitter)->implicit_value(true),
+        option(sFramed, "jitter", bpo::value<bool>()->default_value(byDefault.mProfile.mJitter)->implicit_value(true),
             "sample a different point inside each pixel every frame. Only worth anything to "
             "something putting several frames together, and forced on whenever anything upscales");
 
-        option(sFramed, "crossings", bpo::value<bool>()->default_value(byDefault.mCountCrossings)->implicit_value(true),
+        option(sFramed, "crossings",
+            bpo::value<bool>()->default_value(byDefault.mProfile.mCountCrossings)->implicit_value(true),
             "also count the see-through surfaces each primary ray crosses. A second traversal a "
             "pixel, so a frame time taken under it measures the census rather than the picture");
 

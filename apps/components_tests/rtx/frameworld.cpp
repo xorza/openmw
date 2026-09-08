@@ -60,47 +60,75 @@ namespace Rtx
             Weather::Precipitation mFall;
         };
 
-        /// A world where no two numbers are the same, so a field written from the wrong one shows.
-        FrameWorld distinct()
+        /// A sky to describe a world under, with every sheet the assembly can reach for.
+        SkyContent skyWithSheets()
         {
-            FrameWorld world{
-                .mSun = { .mPosition = osg::Vec3f(0.0f, -0.6f, 0.8f),
-                    .mIrradiance = osg::Vec3f(1.5f, 1.25f, 1.0f),
-                    .mDiscColour = osg::Vec3f(1.0f, 0.8f, 0.65f) },
-                .mAmbient = osg::Vec3f(0.11f, 0.12f, 0.13f),
-                .mSkyHorizon = osg::Vec3f(0.21f, 0.22f, 0.23f),
-                .mSkyZenith = osg::Vec3f(0.31f, 0.32f, 0.33f),
-                .mAir = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f),
-                    .mExtinction = 1.5e-4f,
-                    .mUniform = 0.75f,
-                    .mLift = 2.75f,
-                    .mWind = 0.45f,
-                    .mEdge = 24576.0f },
+            SkyContent textures;
+            textures.mClouds.fill(Rtx::sNoIndex);
+            textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
+            textures.mCloudMean[Rtx::Shaders::WEATHER_CLEAR] = 0.435f;
+            textures.mShell = Rtx::CloudShell{
+                .mTiles = osg::Vec2f(0.75f, -0.75f), .mCurvature = 0.06f, .mRings = osg::Vec3f(1.0f, 1.5f, 2.0f)
+            };
+            textures.mNight.mField = 5;
+            textures.mNight.mTile = 0.25f;
+            textures.mNight.mGlow = osg::Vec3f(0.02f, 0.03f, 0.04f);
+            textures.mNight.mPatches[0] = Rtx::NightSky::Patch{
+                .mTexture = 13, .mDirection = osg::Vec3f(0.0f, 1.0f, 0.0f), .mAngularRadius = 0.2f
+            };
+
+            return textures;
+        }
+
+        /// A reading whose numbers are distinct, so a field taken from the wrong one shows.
+        WorldReading reading()
+        {
+            return WorldReading{
+                .mDaylight = Daylight{
+                    .mLight = { .mSun = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
+                                    .mIrradiance = osg::Vec3f(8.0f, 4.0f, 2.0f),
+                                    .mDiscColour = osg::Vec3f(1.0f, 0.8f, 0.65f) },
+                        .mSunAloft = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
+                            .mIrradiance = osg::Vec3f(9.0f, 5.0f, 3.0f) },
+                        .mAmbient = osg::Vec3f(0.11f, 0.12f, 0.13f),
+                        .mExposureBias = 0.75f },
+                    .mSkyHorizon = osg::Vec3f(0.21f, 0.22f, 0.23f),
+                    .mSkyZenith = osg::Vec3f(0.31f, 0.32f, 0.33f),
+                    .mStarFade = 1.0f,
+                    .mFog = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f), .mExtinction = 1.5e-4f },
+                },
+                .mOutdoors = true,
+                .mFogFromSky = true,
+                .mGlare = 1.0f,
+                .mStarRoll = 0.125f,
+                .mCloudRoll = 0.25f,
+                .mSky = skyWithSheets(),
+                .mWeather = Rtx::Shaders::WEATHER_CLEAR,
+                .mNextWeather = Rtx::Shaders::WEATHER_CLEAR,
                 .mWaterLevel = -37.5f,
                 .mSeconds = 12.25f,
                 .mRainOnWater = 0.35f,
-
             };
+        }
 
-            world.mClouds = Rtx::Shaders::CloudDeck{
-                .mOpacity = 0.875f,
-                .mLit = osg::Vec3f(0.51f, 0.52f, 0.53f),
-                .mShadowed = osg::Vec3f(0.11f, 0.12f, 0.13f),
-                .mCover = 0.4375f,
-                .mAltitude = 34995.6f,
-                .mPerTile = osg::Vec2f(0.625f, -0.6875f),
-                .mBlend = 0.25f,
-                .mScroll = 3.5f,
-                .mBearing = osg::Vec2f(0.8f, 0.6f),
-                .mNextBearing = osg::Vec2f(0.28f, 0.96f),
-                .mCurvature = 0.09375f,
-                .mRings = osg::Vec3f(0.8125f, 1.3125f, 1.9375f),
-                .mTexture = 4u,
-                .mNext = 9u,
-            };
-            world.mStars = Rtx::Shaders::StarField{ .mFade = 0.75f, .mTurn = 2.5f, .mTexture = 11u };
+        /// The same, with every field the air and the moons carry filled in as well.
+        ///
+        /// **A bearing of `(0.8, 0.6)`, which the deck takes from a storm running `(0.6, 0.8)`** —
+        /// `bearingOf` holds the cosine and sine of the turn from north, which for a unit direction
+        /// is its components the other way round.
+        WorldReading distinctReading()
+        {
+            WorldReading read = reading();
 
-            world.mMoons[0] = MoonPlacement{
+            read.mDaylight.mFog.mUniform = 0.75f;
+            read.mDaylight.mFog.mLift = 2.75f;
+            read.mDaylight.mFog.mWind = 0.45f;
+            read.mDaylight.mFog.mEdge = 24576.0f;
+            read.mCloudDirection = osg::Vec3f(0.6f, 0.8f, 0.0f);
+            read.mNextCloudDirection = osg::Vec3f(0.96f, 0.28f, 0.0f);
+            read.mCloudBlend = 0.25f;
+
+            read.mMoons[0] = MoonPlacement{
                 .mDirection = osg::Vec3f(0.0f, 0.0f, 1.0f),
                 .mRight = osg::Vec3f(1.0f, 0.0f, 0.0f),
                 .mUp = osg::Vec3f(0.0f, 1.0f, 0.0f),
@@ -110,7 +138,7 @@ namespace Rtx
                 .mFace = 7,
                 .mColour = osg::Vec3f(0.0332f, 0.0099f, 0.0123f),
             };
-            world.mMoons[1] = MoonPlacement{
+            read.mMoons[1] = MoonPlacement{
                 .mDirection = osg::Vec3f(0.0f, 1.0f, 0.0f),
                 .mRight = osg::Vec3f(-1.0f, 0.0f, 0.0f),
                 .mUp = osg::Vec3f(0.0f, 0.0f, 1.0f),
@@ -121,7 +149,7 @@ namespace Rtx
                 .mColour = osg::Vec3f(0.0440f, 0.0373f, 0.0295f),
             };
 
-            return world;
+            return read;
         }
 
         /// A drop's own travel is its fall, and nothing falls where the eye is under water.
@@ -172,79 +200,82 @@ namespace Rtx
         /// left at zero by the other, and how the game's interiors came to run the outdoor fog field.
         /// One conversion is what fixed that; this is what says the conversion is complete.
         ///
-        /// Written against a zeroed frame so that a field `applyWorld` forgets stays zero and fails
-        /// here, rather than quietly carrying whatever the camera left behind.
+        /// Written against a zeroed frame so that a field `describeWorld` forgets stays zero and
+        /// fails here, rather than quietly carrying whatever the camera left behind.
         TEST(RtxFrameWorldTest, everyNumberTheWorldDecidesReachesTheFrame)
         {
-            const FrameWorld world = distinct();
+            const WorldReading read = distinctReading();
 
             Rtx::Shaders::VisibilityConstants constants{};
-            applyWorld(world, constants);
+            describeWorld(read, constants);
 
-            EXPECT_EQ(constants.mSunPosition, world.mSun.mPosition);
-            EXPECT_EQ(constants.mSunIrradiance, world.mSun.mIrradiance);
-            EXPECT_EQ(constants.mSunDiscColour, world.mSun.mDiscColour);
-            EXPECT_EQ(constants.mAmbient, world.mAmbient);
-            EXPECT_EQ(constants.mSkyHorizon, world.mSkyHorizon);
-            EXPECT_EQ(constants.mSkyZenith, world.mSkyZenith);
+            const Skylight& light = read.mDaylight.mLight;
+            EXPECT_EQ(constants.mSunPosition, light.mSun.mPosition);
+            EXPECT_EQ(constants.mSunIrradiance, light.mSun.mIrradiance);
+            EXPECT_EQ(constants.mSunDiscColour, light.mSun.mDiscColour);
+            EXPECT_EQ(constants.mAmbient, light.mAmbient);
+            EXPECT_EQ(constants.mSkyHorizon, read.mDaylight.mSkyHorizon);
+            EXPECT_EQ(constants.mSkyZenith, read.mDaylight.mSkyZenith);
 
-            EXPECT_EQ(constants.mFogColour, world.mAir.mColour);
-            EXPECT_EQ(constants.mFogExtinction, world.mAir.mExtinction);
-            EXPECT_EQ(constants.mFogUniform, world.mAir.mUniform) << "the game wrote this nowhere";
-            EXPECT_EQ(constants.mFogLift, world.mAir.mLift);
-            EXPECT_EQ(constants.mFogEdge, world.mAir.mEdge);
+            EXPECT_EQ(constants.mFogExtinction, read.mDaylight.mFog.mExtinction);
+            EXPECT_EQ(constants.mFogUniform, read.mDaylight.mFog.mUniform) << "the game wrote this nowhere";
+            EXPECT_EQ(constants.mFogLift, read.mDaylight.mFog.mLift);
+            EXPECT_EQ(constants.mFogEdge, read.mDaylight.mFog.mEdge);
 
             // **The wind blows the way the deck drifts**, because there is one wind over a
-            // landscape. The deck holds the cosine and sine of its turn from north, so a bearing of
-            // (0.8, 0.6) is a storm driving along (0.6, 0.8) — and 0.45 of a wind on it is
-            // (0.27, 0.36), not the pair the deck holds.
+            // landscape. The deck holds the cosine and sine of its turn from north, so a storm
+            // driving along (0.6, 0.8) is a bearing of (0.8, 0.6) — and 0.45 of a wind on the
+            // storm's own heading is (0.27, 0.36), not the pair the deck holds.
+            EXPECT_FLOAT_EQ(constants.mClouds.mBearing.x(), 0.8f);
+            EXPECT_FLOAT_EQ(constants.mClouds.mBearing.y(), 0.6f);
             EXPECT_FLOAT_EQ(constants.mFogWind.x(), 0.27f);
             EXPECT_FLOAT_EQ(constants.mFogWind.y(), 0.36f);
 
-            // And the sea runs the same way, as a unit heading: the deck's `(0.8, 0.6)` is a turn,
-            // whose heading is `(0.6, 0.8)`.
+            // And the sea runs the same way, as a unit heading.
             EXPECT_FLOAT_EQ(constants.mSeaHeading.x(), 0.6f);
             EXPECT_FLOAT_EQ(constants.mSeaHeading.y(), 0.8f);
 
             // A world with no deck over it — a room — has no wind, and its water runs as the tiles
             // were drawn rather than nowhere.
-            FrameWorld still = world;
-            still.mClouds.mBearing = osg::Vec2f();
-            Shaders::VisibilityConstants becalmed = constants;
-            applyWorld(still, becalmed);
+            WorldReading still = read;
+            still.mOutdoors = false;
+            still.mFogFromSky = false;
+            Shaders::VisibilityConstants becalmed{};
+            describeWorld(still, becalmed);
             EXPECT_EQ(becalmed.mSeaHeading, osg::Vec2f(1.0f, 0.0f));
+            EXPECT_EQ(becalmed.mFogWind, osg::Vec2f());
 
             // **The one field that does not pass through, and it is meant not to.** What the shader
             // is told is where the surface actually is, and the surface is placed a hair under its
             // nominal level so that ground authored at sea level is not fighting it —
             // `WATER_TIE_BREAK` says why. The two have to move together or the shader's idea of the
             // water and the water disagree.
-            EXPECT_EQ(constants.mWaterLevel, world.mWaterLevel - Shaders::WATER_TIE_BREAK);
-            EXPECT_EQ(constants.mTime, world.mSeconds) << "the game wrote this nowhere either";
-            EXPECT_EQ(constants.mRainOnWater, world.mRainOnWater);
+            EXPECT_EQ(constants.mWaterLevel, read.mWaterLevel - Shaders::WATER_TIE_BREAK);
+            EXPECT_EQ(constants.mTime, read.mSeconds) << "the game wrote this nowhere either";
+            EXPECT_EQ(constants.mRainOnWater, read.mRainOnWater);
 
-            EXPECT_EQ(constants.mClouds.mOpacity, world.mClouds.mOpacity);
-            EXPECT_EQ(constants.mClouds.mLit, world.mClouds.mLit);
-            EXPECT_EQ(constants.mClouds.mShadowed, world.mClouds.mShadowed);
-            EXPECT_EQ(constants.mClouds.mBlend, world.mClouds.mBlend);
-            EXPECT_EQ(constants.mClouds.mScroll, world.mClouds.mScroll);
-            EXPECT_EQ(constants.mClouds.mBearing, world.mClouds.mBearing);
-            EXPECT_EQ(constants.mClouds.mNextBearing, world.mClouds.mNextBearing);
-            EXPECT_EQ(constants.mClouds.mCover, world.mClouds.mCover);
-            EXPECT_EQ(constants.mClouds.mAltitude, world.mClouds.mAltitude);
-            EXPECT_EQ(constants.mClouds.mPerTile, world.mClouds.mPerTile);
-            EXPECT_EQ(constants.mClouds.mCurvature, world.mClouds.mCurvature);
-            EXPECT_EQ(constants.mClouds.mRings, world.mClouds.mRings);
-            EXPECT_EQ(constants.mClouds.mTexture, world.mClouds.mTexture);
-            EXPECT_EQ(constants.mClouds.mNext, world.mClouds.mNext);
+            // The deck and the stars come out of the builders both hosts share, and this is the one
+            // place that says the frame is handed what those built rather than a second reading.
+            const Shaders::StarField stars
+                = describeStars(read.mDaylight.mStarFade, read.mGlare, read.mStarRoll, read.mSky);
+            EXPECT_EQ(constants.mStars.mFade, stars.mFade);
+            EXPECT_EQ(constants.mStars.mTurn, stars.mTurn);
+            EXPECT_EQ(constants.mStars.mTexture, stars.mTexture);
+            EXPECT_EQ(constants.mStars.mGlow, stars.mGlow);
 
-            EXPECT_EQ(constants.mStars.mFade, world.mStars.mFade);
-            EXPECT_EQ(constants.mStars.mTurn, world.mStars.mTurn);
-            EXPECT_EQ(constants.mStars.mTexture, world.mStars.mTexture);
+            EXPECT_EQ(constants.mClouds.mBlend, read.mCloudBlend);
+            EXPECT_EQ(constants.mClouds.mTexture, read.mSky.cloudsOf(read.mWeather));
+            EXPECT_EQ(constants.mClouds.mScroll, read.mCloudRoll);
+            EXPECT_EQ(constants.mClouds.mCurvature, read.mSky.mShell.mCurvature);
+            EXPECT_EQ(constants.mClouds.mRings, read.mSky.mShell.mRings);
+            EXPECT_FLOAT_EQ(constants.mClouds.mNextBearing.x(), 0.28f);
+            EXPECT_FLOAT_EQ(constants.mClouds.mNextBearing.y(), 0.96f);
 
-            for (std::size_t moon = 0; moon < world.mMoons.size(); ++moon)
+            EXPECT_NE(constants.mSkyPatches[0].mTexture, Rtx::Shaders::NO_TEXTURE) << "no sheet reached the sky";
+
+            for (std::size_t moon = 0; moon < read.mMoons.size(); ++moon)
             {
-                const MoonPlacement& placed = world.mMoons[moon];
+                const MoonPlacement& placed = read.mMoons[moon];
                 const Rtx::Shaders::MoonDisc& disc = constants.mMoons[moon];
 
                 EXPECT_EQ(disc.mDirection, placed.mDirection) << "moon " << moon;
@@ -286,7 +317,7 @@ namespace Rtx
             constants.mShowAlbedo = 1;
             constants.mTransparentBackground = 1;
 
-            applyWorld(distinct(), constants);
+            describeWorld(distinctReading(), constants);
 
             EXPECT_EQ(constants.mOrigin, osg::Vec3f(1.0f, 2.0f, 3.0f));
             EXPECT_EQ(constants.mCamera.mForward, osg::Vec3f(0.0f, 1.0f, 0.0f));
@@ -303,11 +334,12 @@ namespace Rtx
             EXPECT_EQ(constants.mTransparentBackground, 1u);
         }
 
-        /// A default world is a frame with no sky in it, which is what an interface trace wants.
+        /// A reading nobody filled is a frame with no sky in it, which is what an interface trace
+        /// wants.
         TEST(RtxFrameWorldTest, aWorldNobodyFilledDrawsNoSunAndNoMoons)
         {
             Rtx::Shaders::VisibilityConstants constants{};
-            applyWorld(FrameWorld{}, constants);
+            describeWorld(WorldReading{}, constants);
 
             // **One statement of "no sun", and the disc reads it too.** There is no second field to
             // leave set: a frame with no irradiance draws no disc, casts nothing and lights no haze.
@@ -318,6 +350,7 @@ namespace Rtx
             EXPECT_EQ(constants.mClouds.mOpacity, 0.0f) << "and no deck over it";
             EXPECT_EQ(constants.mClouds.mTexture, Rtx::Shaders::NO_TEXTURE);
             EXPECT_EQ(constants.mStars.mTexture, Rtx::Shaders::NO_TEXTURE) << "and no stars in it";
+            EXPECT_EQ(constants.mSkyPatches[0].mTexture, Rtx::Shaders::NO_TEXTURE) << "and no sheets across it";
             EXPECT_EQ(constants.mMoons[1].mAlpha, 0.0f);
             EXPECT_EQ(constants.mFogExtinction, 0.0f) << "and air that costs nothing";
             EXPECT_EQ(constants.mFogEdge, 0.0f) << "and no edge for it to close over";
@@ -325,54 +358,6 @@ namespace Rtx
             // Minus infinity and not zero: zero is sea level, and a frame with no water has to
             // answer "how deep is this point" with never.
             EXPECT_LT(constants.mWaterLevel, -1.0e30f);
-        }
-
-        /// A sky to describe a world under, with every sheet the assembly can reach for.
-        SkyContent skyWithSheets()
-        {
-            SkyContent textures;
-            textures.mClouds.fill(Rtx::sNoIndex);
-            textures.mClouds[Rtx::Shaders::WEATHER_CLEAR] = 3;
-            textures.mCloudMean[Rtx::Shaders::WEATHER_CLEAR] = 0.435f;
-            textures.mShell = Rtx::CloudShell{
-                .mTiles = osg::Vec2f(0.75f, -0.75f), .mCurvature = 0.06f, .mRings = osg::Vec3f(1.0f, 1.5f, 2.0f)
-            };
-            textures.mNight.mField = 5;
-            textures.mNight.mTile = 0.25f;
-            textures.mNight.mGlow = osg::Vec3f(0.02f, 0.03f, 0.04f);
-
-            return textures;
-        }
-
-        /// A reading whose numbers are distinct, so a field taken from the wrong one shows.
-        WorldReading reading()
-        {
-            return WorldReading{
-                .mDaylight = Daylight{
-                    .mLight = { .mSun = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
-                                    .mIrradiance = osg::Vec3f(8.0f, 4.0f, 2.0f),
-                                    .mDiscColour = osg::Vec3f(1.0f, 0.8f, 0.65f) },
-                        .mSunAloft = { .mPosition = osg::Vec3f(0.0f, 0.0f, 1.0f),
-                            .mIrradiance = osg::Vec3f(9.0f, 5.0f, 3.0f) },
-                        .mAmbient = osg::Vec3f(0.11f, 0.12f, 0.13f),
-                        .mExposureBias = 0.75f },
-                    .mSkyHorizon = osg::Vec3f(0.21f, 0.22f, 0.23f),
-                    .mSkyZenith = osg::Vec3f(0.31f, 0.32f, 0.33f),
-                    .mStarFade = 1.0f,
-                    .mFog = { .mColour = osg::Vec3f(0.41f, 0.42f, 0.43f), .mExtinction = 1.5e-4f },
-                },
-                .mOutdoors = true,
-                .mFogFromSky = true,
-                .mGlare = 1.0f,
-                .mStarRoll = 0.125f,
-                .mCloudRoll = 0.25f,
-                .mSky = skyWithSheets(),
-                .mWeather = Rtx::Shaders::WEATHER_CLEAR,
-                .mNextWeather = Rtx::Shaders::WEATHER_CLEAR,
-                .mWaterLevel = -37.5f,
-                .mSeconds = 12.25f,
-                .mRainOnWater = 0.35f,
-            };
         }
 
         /// A room draws no sky at all, and keeps the air its own record states.
@@ -397,7 +382,8 @@ namespace Rtx
                 .mFace = 7,
                 .mIrradiance = osg::Vec3f(0.05f, 0.05f, 0.06f) };
 
-            const FrameWorld world = describeWorld(room);
+            Shaders::VisibilityConstants world{};
+            describeWorld(room, world);
 
             EXPECT_EQ(world.mClouds.mTexture, Rtx::Shaders::NO_TEXTURE);
             EXPECT_EQ(world.mStars.mTexture, Rtx::Shaders::NO_TEXTURE);
@@ -408,18 +394,19 @@ namespace Rtx
             // body that is not over it.
             EXPECT_EQ(world.mMoons[0].mAlpha, 0.0f) << "no moon drawn in a room";
             EXPECT_EQ(world.mMoons[0].mIrradiance, osg::Vec3f()) << "and none lighting one";
-            EXPECT_EQ(world.mMoons[0].mFace, Rtx::sNoIndex) << "and no portrait to draw";
+            EXPECT_EQ(world.mMoons[0].mFace, Rtx::Shaders::NO_TEXTURE) << "and no portrait to draw";
 
             EXPECT_EQ(world.mAmbientFromSky, 0.0f);
             EXPECT_EQ(world.mSkyFill, osg::Vec3f());
 
-            EXPECT_EQ(world.mAir.mColour, room.mDaylight.mFog.mColour)
+            EXPECT_EQ(world.mFogColour, room.mDaylight.mFog.mColour)
                 << "a room has no dome for its air to take a colour from";
 
             // The same reading out of doors keeps every one of them, so the rows above are the
             // flag's doing rather than the assembly dropping a moon it was handed.
             room.mOutdoors = true;
-            const FrameWorld open = describeWorld(room);
+            Shaders::VisibilityConstants open{};
+            describeWorld(room, open);
             EXPECT_EQ(open.mMoons[0].mAlpha, 1.0f);
             EXPECT_EQ(open.mMoons[0].mIrradiance, osg::Vec3f(0.05f, 0.05f, 0.06f));
         }
@@ -434,14 +421,16 @@ namespace Rtx
             WorldReading open = reading();
             open.mDaylight.mLight.mExposureBias = 0.375f;
 
-            EXPECT_FLOAT_EQ(describeWorld(open).mExposureBias, 0.375f);
+            Shaders::VisibilityConstants lit{};
+            EXPECT_FLOAT_EQ(describeWorld(open, lit), 0.375f);
 
             WorldReading room = open;
             room.mOutdoors = false;
             room.mFogFromSky = false;
             room.mDaylight.mLight.mExposureBias = 0.625f;
 
-            EXPECT_FLOAT_EQ(describeWorld(room).mExposureBias, 0.625f) << "the flag reached a number that is not its";
+            Shaders::VisibilityConstants inside{};
+            EXPECT_FLOAT_EQ(describeWorld(room, inside), 0.625f) << "the flag reached a number that is not its";
         }
 
         /// An exterior's air is the record's hue under the dome's own mean, and a quasi-exterior's
@@ -458,17 +447,19 @@ namespace Rtx
             WorldReading quasi = open;
             quasi.mFogFromSky = false;
 
-            const FrameWorld outside = describeWorld(open);
-            const FrameWorld inside = describeWorld(quasi);
+            Shaders::VisibilityConstants outside{};
+            Shaders::VisibilityConstants inside{};
+            describeWorld(open, outside);
+            describeWorld(quasi, inside);
 
-            EXPECT_NE(outside.mAir.mColour, inside.mAir.mColour) << "one flag, and it decided nothing";
+            EXPECT_NE(outside.mFogColour, inside.mFogColour) << "one flag, and it decided nothing";
 
-            EXPECT_EQ(inside.mAir.mColour, open.mDaylight.mFog.mColour);
+            EXPECT_EQ(inside.mFogColour, open.mDaylight.mFog.mColour);
 
             const SkyBudget budget = skyBudget(open.mDaylight.mSkyHorizon, open.mDaylight.mSkyZenith,
                 describeStars(open.mDaylight.mStarFade, open.mGlare, open.mStarRoll, open.mSky).mGlow,
                 open.mDaylight.mLight.mAmbient);
-            EXPECT_EQ(outside.mAir.mColour, fogColour(budget.mMean, open.mDaylight.mFog.mColour));
+            EXPECT_EQ(outside.mFogColour, fogColour(budget.mMean, open.mDaylight.mFog.mColour));
 
             // And both are outdoors, which is what makes them the same case but for the air.
             EXPECT_EQ(outside.mAmbientFromSky, 1.0f);
@@ -493,8 +484,10 @@ namespace Rtx
             WorldReading starry = dark;
             starry.mDaylight.mStarFade = 1.0f;
 
-            const FrameWorld night = describeWorld(dark);
-            const FrameWorld stars = describeWorld(starry);
+            Shaders::VisibilityConstants night{};
+            Shaders::VisibilityConstants stars{};
+            describeWorld(dark, night);
+            describeWorld(starry, stars);
 
             EXPECT_GT(stars.mStars.mGlow.x(), night.mStars.mGlow.x()) << "the fade decided nothing";
             EXPECT_GT(stars.mClouds.mShadowed.x(), night.mClouds.mShadowed.x())

@@ -606,6 +606,7 @@ void OMW::Engine::go()
             .mResourceDir = mResDir,
             .mScreenshotPath = mCfgMgr.getScreenshotPath(),
             .mCachePath = mCfgMgr.getCachePath(),
+            .mRtx = mRtxSetup,
         });
 
     mEnvironment.setFrameRateLimit(Settings::video().mFramerateLimit);

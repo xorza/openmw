@@ -1,11 +1,14 @@
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include "error.hpp"
+#include "index.hpp"
 
 namespace Rtx
 {
@@ -15,6 +18,51 @@ namespace Rtx
         std::uint32_t mOffset = 0;
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;
+    };
+
+    /// The shape of a chain of mip levels: where each one sits and how big it is.
+    ///
+    /// **The shape and not the texels**, because four types built the same chain of `MipLevel`s over
+    /// four different payloads — a byte a texel for an alpha, four for a colour — and each carried
+    /// its own copy of the walk and of the extent of the finest level.
+    struct MipPyramid
+    {
+        std::vector<MipLevel> mLevels;
+
+        void reuse() { mLevels.clear(); }
+
+        bool isEmpty() const { return mLevels.empty(); }
+
+        std::uint32_t getLevelCount() const { return static_cast<std::uint32_t>(mLevels.size()); }
+
+        const MipLevel& getLevel(std::uint32_t level) const
+        {
+            assert(level < mLevels.size() && "a level past the end of the chain");
+            return mLevels[level];
+        }
+
+        std::uint32_t getWidth() const { return mLevels.empty() ? 0 : mLevels.front().mWidth; }
+        std::uint32_t getHeight() const { return mLevels.empty() ? 0 : mLevels.front().mHeight; }
+
+        /// Where texel `(x, y)` of `level` begins, in a payload of `stride` bytes a texel.
+        std::size_t offsetOf(std::uint32_t level, std::uint32_t x, std::uint32_t y, std::size_t stride) const
+        {
+            const MipLevel& which = getLevel(level);
+            assert(x < which.mWidth && y < which.mHeight && "a texel outside its level");
+
+            return which.mOffset + (std::size_t{ y } * which.mWidth + x) * stride;
+        }
+
+        /// Lays out a chain from `width` by `height` down to one texel, and answers how many bytes
+        /// it needs at `stride` bytes a texel. Every level's offset is in that payload.
+        std::size_t layOutTo1x1(std::uint32_t width, std::uint32_t height, std::size_t stride);
+
+        /// Lays out one level per entry of `shape`, keeping their extents and renumbering their
+        /// offsets into a payload of `stride` bytes a texel. Answers how many bytes that needs.
+        ///
+        /// **Renumbered, because the source's offsets are in the source's payload** — a block
+        /// format's bytes, or four channels where this holds one.
+        std::size_t layOutLike(std::span<const MipLevel> shape, std::size_t stride);
     };
 
     /// Every format this renderer uploads.
@@ -89,12 +137,12 @@ namespace Rtx
     /// is a copy and never a conversion — and it is the same copy whichever API performs it.
     struct TextureData
     {
-        /// Which slot of the backend's array this is, which is the index a material holds.
+        /// Which row of the backend's texture array this is, which is the index a material holds.
         ///
         /// **Carried rather than implied by position.** Arrivals used to be a contiguous tail, so a
         /// backend could append and be right; a slot a departing cell freed is taken over wherever
         /// it sits, so an arrival has to say where it belongs.
-        std::uint32_t mSlot = 0;
+        Index mIndex = 0;
 
         TextureFormat mFormat = TextureFormat::Bc1RgbaSrgb;
         std::uint32_t mWidth = 0;
@@ -117,17 +165,4 @@ namespace Rtx
         std::string_view mName;
     };
 
-    /// The description of one slot among `textures`, or nothing where none of them is that slot.
-    ///
-    /// **Linear because the lists are short and unsorted.** A description carries its slot rather
-    /// than sitting at it, so there is no index to jump to — and what these lists hold is a cell's
-    /// arrivals or the cutout masks its meshes wear, tens of entries either way.
-    inline const TextureData* textureAt(std::span<const TextureData> textures, std::uint32_t slot)
-    {
-        for (const TextureData& texture : textures)
-            if (texture.mSlot == slot)
-                return &texture;
-
-        return nullptr;
-    }
 }

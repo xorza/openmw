@@ -29,7 +29,7 @@ namespace Rtx::Testing
         /// reaches the renderer at all, and this double has no history to throw away.
         void resetHistory() override { ++mHistoryResets; }
 
-        void setScene(std::uint32_t slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> textures,
+        void setScene(Rtx::SceneSlot slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> textures,
             const Rtx::SeaState&) override
         {
             ++mRebuilt;
@@ -41,7 +41,7 @@ namespace Rtx::Testing
             countAt(slot) = static_cast<std::uint32_t>(scene.getTextures().size());
         }
 
-        void extendScene(std::uint32_t slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> arrived,
+        void extendScene(Rtx::SceneSlot slot, const Rtx::SceneDesc& scene, std::span<const Rtx::TextureData> arrived,
             const Rtx::SeaState&) override
         {
             ++mExtended;
@@ -52,24 +52,24 @@ namespace Rtx::Testing
             // A slot the table freed is handed out again, so an arrival can land below the end and
             // lengthen nothing at all.
             for (const Rtx::TextureData& one : arrived)
-                countAt(slot) = std::max(countAt(slot), one.mSlot + 1);
+                countAt(slot) = std::max(countAt(slot), one.mIndex + 1);
 
             // The contract `extendScene` is given rather than one it checks: appending only the
             // arrivals has to leave the array exactly as long as the scene's table.
             mAppendedToWrongEnd |= countAt(slot) != scene.getTextures().size();
         }
 
-        void placeScene(std::uint32_t, const Rtx::SceneDesc&, const Rtx::SeaState&) override
+        void placeScene(Rtx::SceneSlot, const Rtx::SceneDesc&, const Rtx::SeaState&) override
         {
             ++mPlaced;
             mDescribed = 0;
         }
 
-        std::uint32_t getTextureCount(std::uint32_t slot) const override { return countAt(slot); }
+        std::uint32_t getTextureCount(Rtx::SceneSlot slot) const override { return countAt(slot); }
 
         /// **The texture array does not shrink**, which is what `mTextures` staying put records: a
         /// slot goes on being where an append begins from whether or not it holds an image.
-        void dropTextures(std::uint32_t, std::span<const std::uint32_t> slots) override
+        void dropTextures(Rtx::SceneSlot, std::span<const Rtx::Index> slots) override
         {
             ++mDropCalls;
             mDropped.insert(mDropped.end(), slots.begin(), slots.end());
@@ -90,44 +90,48 @@ namespace Rtx::Testing
         bool presentFrame() override { return true; }
 
         /// The GUI is not what this counts. Slots go up and nothing is drawn.
-        std::uint32_t addGuiTexture(std::uint32_t, std::uint32_t) override { return mGuiTextures++; }
-        void writeGuiTexture(std::uint32_t, const Rtx::Renderer::GuiRegion&, std::span<const std::uint8_t>) override {}
-        std::span<std::uint8_t> lendGuiTexture(std::uint32_t, const Rtx::Renderer::GuiRegion&) override { return {}; }
-        void sendGuiTexture(std::uint32_t) override {}
-        void dropGuiTexture(std::uint32_t) override {}
+        Rtx::GuiSlot addGuiTexture(std::uint32_t, std::uint32_t) override { return Rtx::GuiSlot::at(mGuiTextures++); }
+        void writeGuiTexture(Rtx::GuiSlot, const Rtx::GuiRegion&, std::span<const std::uint8_t>) override {}
+        std::span<std::uint8_t> lendGuiTexture(Rtx::GuiSlot, const Rtx::GuiRegion&) override { return {}; }
+        void sendGuiTexture(Rtx::GuiSlot) override {}
+        void dropGuiTexture(Rtx::GuiSlot) override {}
         void drawGui(std::span<const Rtx::GuiVertex>, std::span<const Rtx::GuiBatch>) override {}
         void traceGuiTexture(
-            std::uint32_t, const Rtx::Shaders::VisibilityConstants&, const Rtx::GuiTraceOptions&) override
+            Rtx::GuiSlot, const Rtx::Shaders::VisibilityConstants&, const Rtx::GuiTraceOptions&) override
         {
         }
-        std::uint32_t addViewScene() override
+        Rtx::SceneSlot addViewScene() override
         {
             mViewTextures.push_back(0);
-            return mViewScenes++;
+            return Rtx::SceneSlot::view(mViewScenes++);
         }
 
         /// **A table a slot, as a real backend keeps.** An uploader that mixed the world's count
         /// with a doll's would begin one scene's descriptions inside the other's table, which is the
         /// overrun `aSecondSceneOnOneRendererIsBuiltRatherThanAppendedTo` exists for.
-        std::uint32_t& countAt(std::uint32_t slot) { return slot == Rtx::sWorld ? mTextures : mViewTextures[slot]; }
+        std::uint32_t& countAt(Rtx::SceneSlot slot)
+        {
+            return slot.isWorld() ? mTextures : mViewTextures[slot.getViewIndex()];
+        }
 
         /// The same for a caller that only reads, so that `getTextureCount` needs no cast.
-        std::uint32_t countAt(std::uint32_t slot) const
+        std::uint32_t countAt(Rtx::SceneSlot slot) const
         {
-            return slot == Rtx::sWorld ? mTextures : mViewTextures[slot];
+            return slot.isWorld() ? mTextures : mViewTextures[slot.getViewIndex()];
         }
 
         void recordSlots(std::span<const Rtx::TextureData> described)
         {
             mDescribedSlots.clear();
             for (const Rtx::TextureData& texture : described)
-                mDescribedSlots.push_back(texture.mSlot);
+                mDescribedSlots.push_back(texture.mIndex);
         }
 
-        void dropViewScene(std::uint32_t) override {}
-        void readGuiTexture(std::uint32_t, std::vector<std::uint8_t>&) override {}
+        void dropViewScene(Rtx::SceneSlot) override {}
+        void readGuiTexture(Rtx::GuiSlot, std::vector<std::uint8_t>&) override {}
         void readPixels(std::vector<std::uint8_t>&) override {}
         void readChannel(Rtx::Channel, std::vector<float>&) override {}
+        void readFrameImage(Rtx::FrameImage, std::vector<float>&) override {}
         void takeValidationErrors(std::vector<std::string>&) override {}
 
         std::uint32_t mHistoryResets = 0;

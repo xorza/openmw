@@ -49,6 +49,7 @@ namespace MWRender
     class DistortionCallback;
     class Renderer;
     class Stage;
+    struct EyeState;
     struct WorldState;
 
     class PostProcessor : public osg::Group
@@ -175,7 +176,7 @@ namespace MWRender
         ///
         /// **A copy and not a cache.** Every value is settled somewhere in the world already, so
         /// the only thing said here is how a shader chain spells it.
-        void describe(const WorldState& world);
+        void describe(const WorldState& world, const EyeState& eye);
 
         void toggleMode();
 

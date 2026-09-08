@@ -157,6 +157,8 @@ namespace MWRender
 
         createWindow(spec.mResourceDir);
 
+        compileIncrementally();
+
         mScreenCaptureOperation = makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath);
 
         mScreenCaptureHandler = new osgViewer::ScreenCaptureHandler(mScreenCaptureOperation);
@@ -487,7 +489,7 @@ namespace MWRender
     {
         retireFreezeFrame();
 
-        mPostProcessor->describe(frame.mWorld);
+        mPostProcessor->describe(frame.mWorld, frame.mEye);
 
         mViewer->renderingTraversals();
     }
@@ -598,14 +600,43 @@ namespace MWRender
         mViewer->startThreading();
     }
 
+    void GlRenderer::compileIncrementally()
+    {
+        if (getenv("OPENMW_DONT_PRECOMPILE") != nullptr)
+            return;
+
+        const osg::ref_ptr<osgUtil::IncrementalCompileOperation> ico = new osgUtil::IncrementalCompileOperation;
+        ico->setTargetFrameRate(Settings::cells().mTargetFramerate);
+        mViewer->setIncrementalCompileOperation(ico);
+    }
+
     osgUtil::IncrementalCompileOperation* GlRenderer::getCompileOperation() const
     {
         return mViewer->getIncrementalCompileOperation();
     }
 
-    void GlRenderer::setCompileOperation(osgUtil::IncrementalCompileOperation* operation)
+    void GlRenderer::setPreparationBudget(const PreparationBudget& budget)
     {
-        mViewer->setIncrementalCompileOperation(operation);
+        osgUtil::IncrementalCompileOperation* const ico = mViewer->getIncrementalCompileOperation();
+        if (ico == nullptr)
+            return;
+
+        ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(budget.mSecondsPerFrame);
+        ico->setMaximumNumOfObjectsToCompilePerFrame(budget.mObjectsPerFrame);
+    }
+
+    void GlRenderer::resetPreparationBudget()
+    {
+        osgUtil::IncrementalCompileOperation* const ico = mViewer->getIncrementalCompileOperation();
+        if (ico == nullptr)
+            return;
+
+        // **What OSG's own defaults are**, which is what this held before a loading screen widened
+        // it. Read off a fresh operation rather than remembered, so nothing has to be saved.
+        const osg::ref_ptr<osgUtil::IncrementalCompileOperation> fresh = new osgUtil::IncrementalCompileOperation;
+        ico->setMinimumTimeAvailableForGLCompileAndDeletePerFrame(
+            fresh->getMinimumTimeAvailableForGLCompileAndDeletePerFrame());
+        ico->setMaximumNumOfObjectsToCompilePerFrame(fresh->getMaximumNumOfObjectsToCompilePerFrame());
     }
 
     void GlRenderer::setVSync(SDLUtil::VSyncMode mode)

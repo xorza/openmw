@@ -34,7 +34,7 @@ namespace Rtx
     {
         mOptions.mWidth = width;
         mOptions.mHeight = height;
-        mOptions.mScene = sWorld;
+        mOptions.mScene = SceneSlot::world();
     }
 
     OffscreenTrace::OffscreenTrace(Renderer& renderer, std::uint32_t width, std::uint32_t height, osg::Node& subject,
@@ -65,31 +65,14 @@ namespace Rtx
             mRenderer.dropViewScene(mViewScene);
     }
 
-    void OffscreenTrace::setPerspective(float fieldOfView, float near, float far)
+    void OffscreenTrace::setLight(const SceneUtil::FlatLight& light)
     {
-        mPerspective = true;
-        mFieldOfView = fieldOfView;
-        mNear = near;
-        mFar = far;
-    }
-
-    void OffscreenTrace::setOrthographic(float width, float height, float near, float far)
-    {
-        mPerspective = false;
-        mBoxWidth = width;
-        mBoxHeight = height;
-        mNear = near;
-        mFar = far;
-    }
-
-    void OffscreenTrace::setLight(const osg::Vec3f& towardsSun, const osg::Vec4f& diffuse, const osg::Vec4f& ambient)
-    {
-        mSunPosition = towardsSun;
+        mSunPosition = light.mDirection;
         if (mSunPosition.length2() > 0.f)
             mSunPosition.normalize();
 
-        mSunIrradiance = irradianceOf(diffuse);
-        mAmbient = irradianceOf(ambient);
+        mSunIrradiance = irradianceOf(light.mDiffuse);
+        mAmbient = irradianceOf(light.mAmbient);
     }
 
     void OffscreenTrace::setClearColour(const osg::Vec4f& colour)
@@ -111,10 +94,13 @@ namespace Rtx
 
     Shaders::VisibilityConstants OffscreenTrace::describeCamera() const
     {
-        Shaders::VisibilityConstants camera = mPerspective
-            ? makeCameraFromView(mView, mFieldOfView, mOptions.mWidth, mOptions.mHeight, mNear, mFar)
-            : makeOrthographicCameraFromView(
-                mView, mBoxWidth, mBoxHeight, mOptions.mWidth, mOptions.mHeight, mNear, mFar);
+        const auto* perspective = std::get_if<SceneUtil::Perspective>(&mFraming.mProjection);
+        Shaders::VisibilityConstants camera = perspective != nullptr
+            ? makeCameraFromView(
+                mView, perspective->mFieldOfView, mOptions.mWidth, mOptions.mHeight, mFraming.mNear, mFraming.mFar)
+            : makeOrthographicCameraFromView(mView, std::get<SceneUtil::Orthographic>(mFraming.mProjection).mWidth,
+                std::get<SceneUtil::Orthographic>(mFraming.mProjection).mHeight, mOptions.mWidth, mOptions.mHeight,
+                mFraming.mNear, mFraming.mFar);
 
         // `setRowOrder` says why the GUI's copy comes out the other way up.
         if (mRowOrder == RowOrder::BottomFirst)
@@ -185,7 +171,7 @@ namespace Rtx
         return mScene->getPlacedCount() > 0;
     }
 
-    void OffscreenTrace::traceInto(std::uint32_t texture)
+    void OffscreenTrace::traceInto(const GuiSlot texture)
     {
         mRenderer.traceGuiTexture(texture, describeCamera(), mOptions);
     }
@@ -198,8 +184,9 @@ namespace Rtx
         const Shaders::VisibilityConstants camera = describeCamera();
         const osg::Vec3f direction = camera.mCamera.mForward + camera.mCamera.mRight * x - camera.mCamera.mUp * y;
 
-        osg::ref_ptr<osgUtil::LineSegmentIntersector> intersector = new osgUtil::LineSegmentIntersector(
-            osgUtil::Intersector::MODEL, camera.mOrigin + direction * mNear, camera.mOrigin + direction * mFar);
+        osg::ref_ptr<osgUtil::LineSegmentIntersector> intersector
+            = new osgUtil::LineSegmentIntersector(osgUtil::Intersector::MODEL,
+                camera.mOrigin + direction * mFraming.mNear, camera.mOrigin + direction * mFraming.mFar);
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
         // **Posed here, on the processor, because the intersection reads the drawable's own copy.**

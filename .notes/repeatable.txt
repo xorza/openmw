@@ -5,6 +5,11 @@
 # wrong: `AGENTS.md` says why the measured exposure carries one frame's difference into every frame
 # after it, and why a count therefore scales with the walk it was taken over.
 
+2026-09-08  fceb5a81dd+  — eleven pairs of `one-cell-walk`, six seconds, build-debug: one with the
+  exposure measured and ten with `--exposure=1`. Every pair identical over 360 frames, the picture
+  included. Taken over the data-structure work `.notes/design-proposal.md` names — the slot types,
+  the owned texture, the channel table, `TracedRun`, and `FrameWorld` folded into `describeWorld`.
+
 2026-09-08  9487fbb3ac  — fifteen pairs of `one-cell-walk`, six seconds, build-debug: thirteen with
   the exposure measured and two with `--exposure=1`. Every pair identical over 360 frames, the
   picture included. Nothing differed on any column.

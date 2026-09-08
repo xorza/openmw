@@ -57,10 +57,10 @@ namespace Rtx
         /// Writes `mesh`'s rows into `slot`'s copy and returns where they landed, for the dispatch
         /// about to read them. A `hostWritten` copy, so the write is a `memcpy` and the submit that
         /// follows sees it.
-        VkDeviceAddress writeBones(const SceneDesc& scene, std::uint32_t slot, Index mesh);
+        VkDeviceAddress writeBones(const SceneDesc& scene, FrameSlot slot, Index mesh);
 
         /// The same for a morphed mesh's weights.
-        VkDeviceAddress writeWeights(const SceneDesc& scene, std::uint32_t slot, Index mesh);
+        VkDeviceAddress writeWeights(const SceneDesc& scene, FrameSlot slot, Index mesh);
 
         /// Where `mesh`'s bind pose starts, in each of the two bind tables.
         VkDeviceAddress getBindPositions(const MeshRange& mesh) const;

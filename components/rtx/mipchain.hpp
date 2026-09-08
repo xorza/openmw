@@ -1,11 +1,7 @@
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
-#include <string_view>
-#include <vector>
-
 #include "alphaimage.hpp"
+#include "ownedtexture.hpp"
 #include "texturedata.hpp"
 
 namespace Rtx
@@ -45,7 +41,7 @@ namespace Rtx
         void build(const TextureData& described);
 
         /// Whether there was nothing to build, which is the ordinary case.
-        bool isEmpty() const { return mLevels.empty(); }
+        bool isEmpty() const { return mTexture.isEmpty(); }
 
         /// What was built, spanning this object's own storage. Its slot is the caller's to fill in,
         /// exactly as `describeImage`'s is.
@@ -59,19 +55,11 @@ namespace Rtx
         /// that fills it — and emptying it is exactly the room a build is meant to keep.
         AlphaImage mAlpha;
 
-        std::vector<MipLevel> mLevels;
+        /// Every level, back to back, four bytes a texel, with the name and the format beside them.
+        OwnedTexture mTexture;
 
-        /// Every level, back to back, four bytes a texel. The levels index into this by byte.
-        std::vector<std::byte> mTexels;
-
-        std::uint32_t mWidth = 0;
-        std::uint32_t mHeight = 0;
-
-        /// Whether what was decoded is display-encoded, which decides both what the filter averages
-        /// in and which format the description names.
+        /// Whether what was decoded is display-encoded, which decides what the filter averages in
+        /// and which format the description names.
         bool mEncoded = true;
-
-        /// The file this came from, spanning what the source description spanned.
-        std::string_view mName;
     };
 }

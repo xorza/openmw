@@ -1,8 +1,6 @@
 #ifndef GAME_RENDER_OFFSCREENVIEW_H
 #define GAME_RENDER_OFFSCREENVIEW_H
 
-#include <variant>
-
 #include <osg/Matrixf>
 #include <osg/Node>
 #include <osg/Vec3f>
@@ -33,19 +31,6 @@ namespace MWRender
     ///
     struct OffscreenViewSpec
     {
-        /// A vertical field of view, in degrees.
-        struct Perspective
-        {
-            float mFieldOfView = 0.f;
-        };
-
-        /// A box this many world units across, centred on the view direction.
-        struct Orthographic
-        {
-            float mWidth = 0.f;
-            float mHeight = 0.f;
-        };
-
         /// The subtree to draw. Every `redraw()` updates it and then draws it, so an update
         /// callback here is where a view that follows something inside it works out where to look
         /// from — the only moment at which it can.
@@ -69,9 +54,7 @@ namespace MWRender
         /// holds, this field notwithstanding.
         unsigned int mMask = ~0u;
 
-        std::variant<Perspective, Orthographic> mProjection;
-        float mNear = 1.f;
-        float mFar = 10000.f;
+        SceneUtil::Framing mFraming;
 
         /// Behind everything, and seen through whatever the picture does not cover: the GUI
         /// composites the result rather than filling a widget with it.

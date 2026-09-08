@@ -127,35 +127,27 @@ namespace Rtx
 
     void AlphaImage::build(const TextureData& texture)
     {
-        mLevels.clear();
         mValues.clear();
 
-        std::size_t texels = 0;
-        for (const MipLevel& level : texture.mLevels)
-            texels += std::size_t{ level.mWidth } * level.mHeight;
-
+        const std::size_t texels = mShape.layOutLike(texture.mLevels, 1);
         if (texels == 0)
             return;
 
-        mLevels.reserve(texture.mLevels.size());
         mValues.assign(texels, std::uint8_t{ 255 });
 
-        std::uint32_t at = 0;
-        for (const MipLevel& level : texture.mLevels)
+        for (std::uint32_t at = 0; at < mShape.getLevelCount(); ++at)
         {
-            const std::size_t count = std::size_t{ level.mWidth } * level.mHeight;
+            const MipLevel& into = mShape.getLevel(at);
+            const std::size_t count = std::size_t{ into.mWidth } * into.mHeight;
             if (count == 0)
                 continue;
-
-            mLevels.push_back(MipLevel{ at, level.mWidth, level.mHeight });
 
             // Clamped rather than trusted: a level whose offset runs past the bytes decodes nothing
             // and keeps the fully opaque values it was filled with, which is the answer a texture
             // that could not be read gets already.
-            const std::size_t from = std::min<std::size_t>(level.mOffset, texture.mBytes.size());
-            decodeLevel(texture.mFormat, texture.mBytes.subspan(from), level.mWidth, level.mHeight,
-                std::span(mValues).subspan(at, count));
-            at += static_cast<std::uint32_t>(count);
+            const std::size_t from = std::min<std::size_t>(texture.mLevels[at].mOffset, texture.mBytes.size());
+            decodeLevel(texture.mFormat, texture.mBytes.subspan(from), into.mWidth, into.mHeight,
+                std::span(mValues).subspan(into.mOffset, count));
         }
     }
 

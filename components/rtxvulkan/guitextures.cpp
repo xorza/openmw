@@ -27,7 +27,7 @@ namespace Rtx
 
     GuiTextures::~GuiTextures() = default;
 
-    std::uint32_t GuiTextures::add(std::uint32_t width, std::uint32_t height)
+    GuiSlot GuiTextures::add(std::uint32_t width, std::uint32_t height)
     {
         auto image = std::make_unique<Image>(mDevice, width, height, VK_FORMAT_R8G8B8A8_UNORM,
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -51,22 +51,23 @@ namespace Rtx
 
         if (!mFree.empty())
         {
-            const std::uint32_t slot = mFree.back();
+            const GuiSlot slot = mFree.back();
             mFree.pop_back();
-            mImages[slot] = std::move(image);
+            mImages[slot.get()] = std::move(image);
             return slot;
         }
 
         mImages.push_back(std::move(image));
-        return static_cast<std::uint32_t>(mImages.size() - 1);
+        return GuiSlot::at(static_cast<std::uint32_t>(mImages.size() - 1));
     }
 
-    std::span<std::uint8_t> GuiTextures::lend(std::uint32_t slot, const Renderer::GuiRegion& region)
+    std::span<std::uint8_t> GuiTextures::lend(const GuiSlot slot, const GuiRegion& region)
     {
-        assert(mLentSlot == sNothingLent && "a second lend before the first was sent");
+        assert(mLentSlot.isNone() && "a second lend before the first was sent");
         assert(holds(slot) && "a write to a slot nothing holds");
-        assert(region.mX + region.mWidth <= mImages[slot]->getWidth()
-            && region.mY + region.mHeight <= mImages[slot]->getHeight() && "a region past the edge of the texture");
+        assert(region.mX + region.mWidth <= mImages[slot.get()]->getWidth()
+            && region.mY + region.mHeight <= mImages[slot.get()]->getHeight()
+            && "a region past the edge of the texture");
 
         const VkDeviceSize bytes = VkDeviceSize{ region.mWidth } * region.mHeight * 4;
 
@@ -80,12 +81,12 @@ namespace Rtx
         return mStaging[mArena].writable<std::uint8_t>(mLentAt, bytes);
     }
 
-    void GuiTextures::send(std::uint32_t slot)
+    void GuiTextures::send(const GuiSlot slot)
     {
         assert(mLentSlot == slot && "a send of a slot nothing was lent for");
 
-        const Renderer::GuiRegion region = mLentRegion;
-        mLentSlot = sNothingLent;
+        const GuiRegion region = mLentRegion;
+        mLentSlot = GuiSlot::none();
 
         if (region.mWidth == 0 || region.mHeight == 0)
             return;
@@ -95,7 +96,7 @@ namespace Rtx
         // the whole surface and then a corner of it — would land in whichever order the device
         // chose. The barriers chain: this copy's leading barrier waits on the sampling stage the
         // previous copy's trailing barrier released to.
-        const Image& image = *mImages[slot];
+        const Image& image = *mImages[slot.get()];
         const VkCommandBuffer commands = mBatch.getCommands();
 
         image.transition(commands, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -116,7 +117,7 @@ namespace Rtx
             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
     }
 
-    void GuiTextures::write(std::uint32_t slot, const Renderer::GuiRegion& region, std::span<const std::uint8_t> rgba)
+    void GuiTextures::write(const GuiSlot slot, const GuiRegion& region, std::span<const std::uint8_t> rgba)
     {
         const std::span<std::uint8_t> into = lend(slot, region);
         assert(rgba.size() == into.size() && "the region's own rows, four bytes a pixel, tightly packed");
@@ -149,14 +150,14 @@ namespace Rtx
 
     void GuiTextures::handOver()
     {
-        assert(mLentSlot == sNothingLent && "a hand over with a lend outstanding");
+        assert(mLentSlot.isNone() && "a hand over with a lend outstanding");
 
         mBatch.defer();
     }
 
     void GuiTextures::finish()
     {
-        assert(mLentSlot == sNothingLent && "a finish with a lend outstanding");
+        assert(mLentSlot.isNone() && "a finish with a lend outstanding");
 
         // Two calls, because the batch's own submit carries what was handed over before it only
         // when there is something left in the batch to submit.
@@ -168,7 +169,7 @@ namespace Rtx
 
     void GuiTextures::startFrame(Graveyard& kept)
     {
-        assert(mLentSlot == sNothingLent && "an interface frame that began with a lend outstanding");
+        assert(mLentSlot.isNone() && "an interface frame that began with a lend outstanding");
 
         for (std::unique_ptr<Image>& image : mRetired)
             kept.bury(std::move(image));
@@ -179,37 +180,37 @@ namespace Rtx
         mStagingUsed = 0;
     }
 
-    void GuiTextures::drop(std::uint32_t slot)
+    void GuiTextures::drop(const GuiSlot slot)
     {
-        assert(slot < mImages.size() && mImages[slot] != nullptr && "a slot given back twice");
+        assert(holds(slot) && "a slot given back twice");
 
         // **Put aside rather than destroyed, so giving a texture back costs no submit.** A clear or
         // a copy recorded against this image has not run yet, and destroying it under a recorded
         // command is a use after free; flushing here instead would put a round trip on every window
         // that closes, and a load closes a great many. What was drawn with it is on the queue too,
         // which is why the wait that frees it is a frame's and not this class's — see `startFrame`.
-        mRetired.push_back(std::move(mImages[slot]));
+        mRetired.push_back(std::move(mImages[slot.get()]));
         mFree.push_back(slot);
     }
 
-    void GuiTextures::read(std::uint32_t slot, std::vector<std::uint8_t>& pixels)
+    void GuiTextures::read(const GuiSlot slot, std::vector<std::uint8_t>& pixels)
     {
-        assert(slot < mImages.size() && mImages[slot] != nullptr && "a read of a slot nothing holds");
+        assert(holds(slot) && "a read of a slot nothing holds");
 
         // The read back submits and waits for itself, and carries what is handed over here ahead of
         // its own copy — so the bytes it takes off the device are the ones just written.
         handOver();
 
-        mImages[slot]->read(mPool, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pixels);
+        mImages[slot.get()]->read(mPool, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, pixels);
     }
 
-    VkImageView GuiTextures::getView(std::uint32_t slot)
+    VkImageView GuiTextures::getView(const GuiSlot slot)
     {
         handOver();
 
-        if (slot >= mImages.size() || mImages[slot] == nullptr)
+        if (!holds(slot))
             return VK_NULL_HANDLE;
 
-        return mImages[slot]->getView();
+        return mImages[slot.get()]->getView();
     }
 }

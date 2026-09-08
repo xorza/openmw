@@ -13,10 +13,13 @@
 #include <components/myguiplatform/picture.hpp>
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
+#include <components/rtx/renderprofile.hpp>
 
 #include "../renderer.hpp"
 #include "framecapture.hpp"
 #include "session.hpp"
+#include "tracedrun.hpp"
+#include "viewhost.hpp"
 #include "worldmirror.hpp"
 
 namespace Resource
@@ -68,7 +71,7 @@ namespace MWRender
     /// everywhere, so a frustum has nothing to say about what must be reachable — which is also
     /// why the frame is not one late the way an interop path would be. The mirror runs
     /// after the update traversal and the present runs after the mirror, all inside one frame.
-    class RtxRenderer final : public Renderer
+    class RtxRenderer final : public Renderer, public ViewHost
     {
     public:
         /// Throws `std::runtime_error` naming what stopped it — no loader for the backend's API,
@@ -131,8 +134,6 @@ namespace MWRender
 
         /// No OpenGL objects exist to compile over several frames, and `LoadingScreen` already
         /// reads null as "there is no such thing here".
-        osgUtil::IncrementalCompileOperation* getCompileOperation() const override { return nullptr; }
-        void setCompileOperation(osgUtil::IncrementalCompileOperation* operation) override {}
 
         /// **A present mode, which is what a swapchain calls this.** Off is mailbox rather than
         /// immediate — the newest frame and no tearing — and adaptive is relaxed FIFO. Costs a
@@ -158,73 +159,14 @@ namespace MWRender
 
         /*internal:*/
 
-        /// Whether the world has reached the backend yet, so a picture traced against it would be a
-        /// picture of something.
-        bool hasScene() const { return mHasScene; }
+        /// What a measured stop is allowed to look at. `TracedRun` says why it is a value.
+        TracedRun describeRun();
 
-        /// Draws `view` on the next frame that has a world in it.
-        ///
-        /// **A cell asks for its map tile as it loads**, which is the frame before the one that
-        /// first mirrors it. Without this the tile the player starts on stays blank until a
-        /// neighbour arriving makes the local map ask for it again.
-        void deferRedraw(TracedView& view);
-
-        /// Takes a view off that list, because it is going away.
-        void forgetView(TracedView& view);
-
-        /// The engine's scene graph as this renderer holds it, for whatever asks what it was
-        /// handed rather than what it drew.
-        WorldMirror& getMirror() { return mMirror; }
-
-        /// Whatever is topmost, for a picture of the world that has to be told what to draw.
-        osg::Group* getSceneRoot() const { return mSceneRoot.get(); }
-
-        /// What this frame's walk found, and what a second walk over the same graph added.
-        ///
-        /// **A second walk should add nothing**, which is the property the incremental mirror rests
-        /// on and the only way to ask it is to ask twice. It is made only where a run asked for it.
-        const Rtx::ExtractionStats& getWalkStats() const { return mFound; }
-
-        /// How many textures this renderer has failed to read since it was built, and drew grey.
-        ///
-        /// **Summed and never the last hand-over's own count**, because almost every frame places
-        /// rather than describes: a figure that reset on the next of those would be nought by the
-        /// time anything looked at it. Should be nought outright — a live graph holding textures
-        /// that were never files is what makes it worth counting.
-        std::uint32_t getUnreadableTextures() const { return mUnreadable; }
-        const Rtx::ExtractionStats& getSecondWalkStats() const { return mFoundAgain; }
-
-        /// The one sequence every mirror walk here poses at — the world's, and every traced view's.
-        ///
-        /// **Shared rather than each keeping its own**, because a subtree both can reach would
-        /// otherwise be posed by whichever counter got there first and frozen for the other.
-        /// See `Rtx::Traversals`.
-        Rtx::Traversals& getTraversals() { return mMirror.getTraversals(); }
-
-        /// The game's frame number, which is which of a `SceneUtil::LightSource`'s two buffers
-        /// update has just written. Not a pose number; see `getTraversals`.
-        std::size_t getFrame() const { return mFrame; }
-
-        /// Where a picture of its own subject gets its textures from. Null before there is a world.
-        Resource::ResourceSystem* getResources() const { return mResources; }
-
-        /// The backend this owns, for the one thing a view asks of it that its trace does not do:
-        /// reading a picture back into main memory.
-        ///
-        /// **Asked for rather than held**, because a view's lifetime and the backend's are this
-        /// class's, and a view holding a second reference to something its owner already has is two
-        /// ways for the pair to disagree.
-        Rtx::Renderer& getBackend() { return *mRenderer; }
-
-        /// The clock an update traversal runs on: this renderer's own, which advances once per
-        /// drawn frame whether or not the world's does.
-        ///
-        /// **What a picture of its own subject is posed against.** The rasterizer hangs an offscreen
-        /// view's camera off the scene graph, so the viewer's update traversal reaches the subtree
-        /// under it; there is no such graph here, and `Rtx::OffscreenTrace` runs the traversal
-        /// itself against this. Not `getFrame`, which stops when the game is paused — a doll posed
-        /// against a stopped clock is a doll frozen the first time it was drawn.
-        const osg::FrameStamp& getUpdateStamp() const { return *mFrameStamp; }
+        Rtx::Renderer& getBackend() override { return *mRenderer; }
+        bool hasScene() const override { return mHasScene; }
+        std::optional<PoseMoment> describePose() override;
+        void deferRedraw(TracedView& view) override;
+        void forgetView(TracedView& view) override;
 
     private:
         /// Makes the SDL window the backend builds its surface on. No GL attribute is set and no GL
@@ -366,17 +308,10 @@ namespace MWRender
         /// once, because it cannot change while a run is being made.
         Rtx::FrameClock mClock;
 
-        /// The knobs a measurement turns, out of `[RTX]` and read once. They are what the harness
-        /// used to take as command-line options and this used to hard-code, which is two renderers
-        /// configured two ways drawing what was meant to be one picture.
-        float mDelight = 1.0f;
-        bool mShowAlbedo = false;
-        bool mFilter = true;
-        bool mJitter = false;
-
-        /// What to scale the frame by before the display curve, or nothing to measure it off the
-        /// frame. A picture wants it measured, and a reference wants it held still.
-        std::optional<float> mExposure;
+        /// The knobs a measurement turns, read once at construction. The harness hands them over
+        /// in `RendererSpec::mRtx` and a played binary reads `[RTX]`, so the two hosts cannot come
+        /// to draw one picture through two differently configured renderers.
+        Rtx::RenderProfile mProfile;
 
         /// When the last frame was handed over, so what `Bench` measures is the whole frame and not
         /// this renderer's slice of it.

@@ -10,6 +10,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "memory.hpp"
+#include "owned.hpp"
 
 namespace Rtx
 {
@@ -32,15 +33,20 @@ namespace Rtx
         Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format, VkImageUsageFlags usage,
             std::string_view name, std::uint32_t mipLevels = 1, std::uint32_t depth = 1);
 
-        ~Image();
-
         Image(const Image&) = delete;
         Image& operator=(const Image&) = delete;
 
-        VkImage getHandle() const { return mHandle; }
+        /// **Movable, because the channels of a g-buffer are built by a loop over a table rather
+        /// than by a member list.** `Owned` is what makes the moves defaultable: the three handles
+        /// below used to need a destructor written by hand, and that destructor is what made this
+        /// type immovable.
+        Image(Image&&) noexcept = default;
+        Image& operator=(Image&&) noexcept = default;
+
+        VkImage getHandle() const { return mHandle.get(); }
 
         /// The view a sampler reads, which covers every level.
-        VkImageView getView() const { return mView; }
+        VkImageView getView() const { return mView.get(); }
 
         /// The view a storage descriptor takes, which is the first level alone.
         ///
@@ -48,7 +54,10 @@ namespace Rtx
         /// through a second view of its own — and an image without one hands back the only view it
         /// has, so nothing that never asked for levels has anything to know about this. An image
         /// with a chain and no storage usage has none either: nothing may name it there.
-        VkImageView getStorageView() const { return mStorageView != VK_NULL_HANDLE ? mStorageView : mView; }
+        VkImageView getStorageView() const
+        {
+            return mStorageView.get() != VK_NULL_HANDLE ? mStorageView.get() : mView.get();
+        }
         std::uint32_t getWidth() const { return mWidth; }
         std::uint32_t getHeight() const { return mHeight; }
         VkFormat getFormat() const { return mFormat; }
@@ -106,10 +115,10 @@ namespace Rtx
             VkImageLayout to, VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess, VkPipelineStageFlags2 dstStage,
             VkAccessFlags2 dstAccess) const;
 
-        const Device& mDevice;
-        VkImage mHandle = VK_NULL_HANDLE;
-        VkImageView mView = VK_NULL_HANDLE;
-        VkImageView mStorageView = VK_NULL_HANDLE;
+        const Device* mDevice = nullptr;
+        Owned<VkImage, vkDestroyImage> mHandle;
+        Owned<VkImageView, vkDestroyImageView> mView;
+        Owned<VkImageView, vkDestroyImageView> mStorageView;
         DeviceMemory mMemory;
         std::uint32_t mWidth = 0;
         std::uint32_t mHeight = 0;

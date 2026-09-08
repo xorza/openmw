@@ -50,7 +50,7 @@ namespace Rtx::Testing
             // address off what its reference claims is a load the device may split or fault on, with
             // no message either.
             Shaders::GpuTables addressed{};
-            buffers.describeTables(0, addressed);
+            buffers.describeTables(FrameSlot{}, addressed);
 
             struct Named
             {
@@ -108,7 +108,7 @@ namespace Rtx::Testing
 
             mRenderer->resize(size, size);
             const TextureData first = describeTexel(redTexel, 0);
-            mRenderer->setScene(Rtx::sWorld, scene, std::span(&first, 1), SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1), SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
 
             // **A hue rather than a pair of exact bytes.** The tone curve rolls a saturated colour
@@ -121,7 +121,7 @@ namespace Rtx::Testing
 
             mRenderer->readPixels(shown);
             ASSERT_TRUE(wearsRed(centre)) << "the wall did not start out red";
-            ASSERT_EQ(mRenderer->getTextureCount(Rtx::sWorld), 1u);
+            ASSERT_EQ(mRenderer->getTextureCount(Rtx::SceneSlot::world()), 1u);
 
             // A second texture and a second material, on a wall nearer the eye. The mesh table is
             // untouched, so this is the append path and not a rebuild.
@@ -134,8 +134,8 @@ namespace Rtx::Testing
             // written where it belongs rather than after whatever is already there.
             const Index blueTexture = scene.getMaterials()[blue].mDiffuse;
             const TextureData second = describeTexel(blueTexel, blueTexture);
-            mRenderer->extendScene(Rtx::sWorld, scene, std::span(&second, 1), SeaState{});
-            EXPECT_EQ(mRenderer->getTextureCount(Rtx::sWorld), 2u);
+            mRenderer->extendScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1), SeaState{});
+            EXPECT_EQ(mRenderer->getTextureCount(Rtx::SceneSlot::world()), 2u);
 
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
@@ -148,7 +148,7 @@ namespace Rtx::Testing
             // And the first texture is still where it was: move the near wall out of the way and the
             // one behind it has to be red again, sampled from a descriptor nothing rewrote.
             scene.dropInstance(1);
-            mRenderer->placeScene(Rtx::sWorld, scene, SeaState{});
+            mRenderer->placeScene(Rtx::SceneSlot::world(), scene, SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 
@@ -166,9 +166,9 @@ namespace Rtx::Testing
             ASSERT_TRUE(scene.isTextureFree(blueTexture));
             ASSERT_EQ(scene.getTextures().size(), 2u) << "the table does not shrink";
 
-            mRenderer->setScene(Rtx::sWorld, scene, std::span(&first, 1), SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&first, 1), SeaState{});
 
-            EXPECT_EQ(mRenderer->getTextureCount(Rtx::sWorld), 2u)
+            EXPECT_EQ(mRenderer->getTextureCount(Rtx::SceneSlot::world()), 2u)
                 << "the array stopped at the last texture it was handed rather than at the table";
 
             // **And what the report says is what is stood, not how long the table is.** The two are
@@ -201,7 +201,7 @@ namespace Rtx::Testing
             ASSERT_TRUE(scene.release(keptMeshes, keptAgain));
             ASSERT_TRUE(scene.isTextureFree(0u));
 
-            mRenderer->setScene(Rtx::sWorld, scene, std::span(&second, 1), SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, std::span(&second, 1), SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mExposure = 1.0f });
             mRenderer->readPixels(shown);
 

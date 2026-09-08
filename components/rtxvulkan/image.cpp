@@ -61,7 +61,7 @@ namespace Rtx
 
     Image::Image(const Device& device, std::uint32_t width, std::uint32_t height, VkFormat format,
         VkImageUsageFlags usage, std::string_view name, std::uint32_t mipLevels, std::uint32_t depth)
-        : mDevice(device)
+        : mDevice(&device)
         , mWidth(width)
         , mHeight(height)
         , mDepth(depth)
@@ -88,22 +88,23 @@ namespace Rtx
             .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         };
-        checkVk(vkCreateImage(device.getHandle(), &create, nullptr, &mHandle), "vkCreateImage");
+        checkVk(vkCreateImage(device.getHandle(), &create, nullptr, mHandle.put(device.getHandle())), "vkCreateImage");
 
         VkMemoryRequirements requirements{};
-        vkGetImageMemoryRequirements(device.getHandle(), mHandle, &requirements);
+        vkGetImageMemoryRequirements(device.getHandle(), mHandle.get(), &requirements);
         mMemory = device.getMemory().take(requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Tiling::Optimal);
-        checkVk(vkBindImageMemory(device.getHandle(), mHandle, mMemory.getHandle(), mMemory.getOffset()),
+        checkVk(vkBindImageMemory(device.getHandle(), mHandle.get(), mMemory.getHandle(), mMemory.getOffset()),
             "vkBindImageMemory");
 
         const VkImageViewCreateInfo view{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = mHandle,
+            .image = mHandle.get(),
             .viewType = volume ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D,
             .format = format,
             .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0, 1 },
         };
-        checkVk(vkCreateImageView(device.getHandle(), &view, nullptr, &mView), "vkCreateImageView");
+        checkVk(
+            vkCreateImageView(device.getHandle(), &view, nullptr, mView.put(device.getHandle())), "vkCreateImageView");
 
         // **Only where something will write through it.** A storage descriptor is what this second
         // view exists for, and an image without the usage bit can have none — a chain that is only
@@ -112,22 +113,13 @@ namespace Rtx
         {
             VkImageViewCreateInfo first = view;
             first.subresourceRange.levelCount = 1;
-            checkVk(vkCreateImageView(device.getHandle(), &first, nullptr, &mStorageView), "vkCreateImageView");
-            device.setName(VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<std::uint64_t>(mStorageView), name);
+            checkVk(vkCreateImageView(device.getHandle(), &first, nullptr, mStorageView.put(device.getHandle())),
+                "vkCreateImageView");
+            device.setName(VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<std::uint64_t>(mStorageView.get()), name);
         }
 
-        device.setName(VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>(mHandle), name);
-        device.setName(VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<std::uint64_t>(mView), name);
-    }
-
-    Image::~Image()
-    {
-        if (mStorageView != VK_NULL_HANDLE)
-            vkDestroyImageView(mDevice.getHandle(), mStorageView, nullptr);
-        if (mView != VK_NULL_HANDLE)
-            vkDestroyImageView(mDevice.getHandle(), mView, nullptr);
-        if (mHandle != VK_NULL_HANDLE)
-            vkDestroyImage(mDevice.getHandle(), mHandle, nullptr);
+        device.setName(VK_OBJECT_TYPE_IMAGE, reinterpret_cast<std::uint64_t>(mHandle.get()), name);
+        device.setName(VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<std::uint64_t>(mView.get()), name);
     }
 
     void Image::transition(VkCommandBuffer commands, VkImageLayout from, VkImageLayout to,
@@ -158,7 +150,7 @@ namespace Rtx
             .newLayout = to,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = mHandle,
+            .image = mHandle.get(),
             .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, base, count, 0, 1 },
         };
     }
@@ -235,7 +227,7 @@ namespace Rtx
                 .dstOffsets
                 = { {}, { static_cast<std::int32_t>(halfWidth), static_cast<std::int32_t>(halfHeight), 1 } },
             };
-            vkCmdBlitImage(commands, mHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mHandle,
+            vkCmdBlitImage(commands, mHandle.get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mHandle.get(),
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
 
             // What was just written is the next blit's source, which is the whole of the ordering:
@@ -266,7 +258,7 @@ namespace Rtx
         const std::uint32_t width = getWidthAt(level);
         const std::uint32_t height = getHeightAt(level);
         const VkDeviceSize bytes = VkDeviceSize{ width } * height * mTexelBytes;
-        const Buffer staging = Buffer::staging(mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+        const Buffer staging = Buffer::staging(*mDevice, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
         pool.submitAndWait([&](VkCommandBuffer commands) {
             transition(commands, layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -277,7 +269,7 @@ namespace Rtx
                 .imageExtent = { width, height, 1 },
             };
             vkCmdCopyImageToBuffer(
-                commands, mHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging.getHandle(), 1, &region);
+                commands, mHandle.get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging.getHandle(), 1, &region);
 
             staging.orderForHostRead(commands);
 

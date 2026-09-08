@@ -257,26 +257,29 @@ namespace MWRender
         {
             const bool reversed = SceneUtil::AutoDepth::isReversed();
 
-            if (const auto* perspective = std::get_if<OffscreenViewSpec::Perspective>(&spec.mProjection))
+            if (const auto* perspective = std::get_if<SceneUtil::Perspective>(&spec.mFraming.mProjection))
             {
                 const double aspect = static_cast<double>(spec.mWidth) / static_cast<double>(spec.mHeight);
 
-                mCameraProjection = osg::Matrixf::perspective(perspective->mFieldOfView, aspect, spec.mNear, spec.mFar);
+                mCameraProjection = osg::Matrixf::perspective(
+                    perspective->mFieldOfView, aspect, spec.mFraming.mNear, spec.mFraming.mFar);
                 mShaderProjection = reversed
                     ? static_cast<osg::Matrixf>(SceneUtil::getReversedZProjectionMatrixAsPerspective(
-                        perspective->mFieldOfView, aspect, spec.mNear, spec.mFar))
+                        perspective->mFieldOfView, aspect, spec.mFraming.mNear, spec.mFraming.mFar))
                     : mCameraProjection;
             }
             else
             {
-                const auto& box = std::get<OffscreenViewSpec::Orthographic>(spec.mProjection);
+                const auto& box = std::get<SceneUtil::Orthographic>(spec.mFraming.mProjection);
                 const double halfWidth = box.mWidth / 2.0;
                 const double halfHeight = box.mHeight / 2.0;
 
-                mCameraProjection.makeOrtho(-halfWidth, halfWidth, -halfHeight, halfHeight, spec.mNear, spec.mFar);
-                mShaderProjection = reversed ? static_cast<osg::Matrixf>(SceneUtil::getReversedZProjectionMatrixAsOrtho(
-                                        -halfWidth, halfWidth, -halfHeight, halfHeight, spec.mNear, spec.mFar))
-                                             : mCameraProjection;
+                mCameraProjection.makeOrtho(
+                    -halfWidth, halfWidth, -halfHeight, halfHeight, spec.mFraming.mNear, spec.mFraming.mFar);
+                mShaderProjection = reversed
+                    ? static_cast<osg::Matrixf>(SceneUtil::getReversedZProjectionMatrixAsOrtho(
+                        -halfWidth, halfWidth, -halfHeight, halfHeight, spec.mFraming.mNear, spec.mFraming.mFar))
+                    : mCameraProjection;
             }
         }
 
@@ -349,7 +352,7 @@ namespace MWRender
             material->updateStateSet(lit);
             lit->setAttribute(material);
 
-            lit->addUniform(new osg::Uniform("near", spec.mNear));
+            lit->addUniform(new osg::Uniform("near", spec.mFraming.mNear));
 
             // The two the object shaders scale every fragment's alpha by. Nothing here fades, and an
             // unwritten uniform is not the same as one holding a one.

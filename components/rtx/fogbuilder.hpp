@@ -31,7 +31,7 @@ namespace Rtx
         /// What the weather records blowing at, which carries the field downwind.
         ///
         /// The heading is not here: there is one wind over a landscape and the cloud deck already
-        /// carries its bearing, so `applyWorld` is where the two meet.
+        /// carries its bearing, so `describeWorld` is where the two meet.
         /// `Shaders::VisibilityConstants::mFogWind` says the rest.
         float mWind = 0.0f;
 
@@ -146,7 +146,7 @@ namespace Rtx
     /// **One place decides what the reach means.** Three of these four fields turn on how much world
     /// there is: the extinction is a half-life measured over it, the edge closes at it, and only a
     /// landscape is large enough to bank, so a caller that assembled the four itself would be
-    /// deciding what the reach means a second time. `FrameWorld` says what that costs.
+    /// deciding what the reach means a second time. `describeWorld` says what that costs.
     ///
     /// @param reach how much world is built, in units — `distantLandReach`, which the host reads
     ///        out of its own configuration and hands down. Air tuned to a shorter one swallows every

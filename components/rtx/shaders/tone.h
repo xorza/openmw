@@ -57,7 +57,7 @@ namespace Rtx::Shaders
         ///
         /// **The lens is applied here because everything before this pass is the trace's own frame.**
         /// A veil written back over the radiance image would be a measurement nobody could hand
-        /// compute, and would have made `Channel::Radiance` mean one thing with an upscaler in the
+        /// compute, and would have made `FrameImage::Composite` mean one thing with an upscaler in the
         /// frame and another without one. `BloomPass` builds the pyramid and this spreads its finest
         /// level over the picture — which also saves the full-resolution pass a separate blend would
         /// have cost.

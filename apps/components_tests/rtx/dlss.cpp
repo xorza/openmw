@@ -371,14 +371,14 @@ namespace Rtx
 
             std::vector<std::uint8_t> reference;
             mRenderer->resize(extents.mRenderWidth, extents.mRenderHeight);
-            mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
             mRenderer->renderFrame(camera, FrameOptions{ .mFilter = false });
             mRenderer->readPixels(reference);
 
             // **Several frames, because a temporal upscaler has nothing on the first.** The camera
             // does not move, so what the run buys is history rather than a different picture.
             constexpr std::uint32_t sFrames = 8;
-            upscaling->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            upscaling->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
             for (std::uint32_t frame = 0; frame < sFrames; ++frame)
             {
                 camera.mFrame = frame;
@@ -421,7 +421,7 @@ namespace Rtx
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
-            upscaling->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            upscaling->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
 
             const auto drawTwice = [&] {
                 const FrameExtents extents = upscaling->getExtents();
@@ -475,7 +475,7 @@ namespace Rtx
             SceneDesc scene;
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = scene.addMesh(Testing::sWallQuad, {}, {}, Testing::sQuadIndices) });
-            upscaling->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            upscaling->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
 
             const auto drawAndRead = [&] {
                 const FrameExtents extents = upscaling->getExtents();
@@ -586,7 +586,7 @@ namespace Rtx
                     .mPosition = osg::Vec3f(0.0f, -ahead, 0.0f), .mRadius = 20.0f, .mAlpha = 0.2f, .mMoved = moved } };
                 scene.addEmitter(sprites, cut, false);
 
-                upscaling->setScene(Rtx::sWorld, scene, puff, SeaState{});
+                upscaling->setScene(Rtx::SceneSlot::world(), scene, puff, SeaState{});
                 upscaling->renderFrame(camera, FrameOptions{ .mFilter = false });
                 upscaling->renderFrame(camera, FrameOptions{ .mFilter = false });
 

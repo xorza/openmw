@@ -14,7 +14,7 @@ namespace Rtx
     /// header says what goes wrong when they are set apart.
     ///
     /// **Its own header because a scene has no sun in it.** `SceneDesc` holds no such member: a sun
-    /// is what the frame's *world* is doing, which is `Skylight` and `FrameWorld`. Kept in
+    /// is what the frame's *world* is doing, which is `Skylight` and `describeWorld`. Kept in
     /// `scenedesc.hpp`, it cost every reader of three vectors the whole scene description — its
     /// tables, its allocators and two shader headers.
     struct Sun

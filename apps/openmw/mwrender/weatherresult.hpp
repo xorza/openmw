@@ -69,56 +69,6 @@ namespace MWRender
         osg::Vec3f mStormDirection;
         osg::Vec3f mNextStormDirection;
     };
-
-    struct MoonState
-    {
-        enum class Phase
-        {
-            Full,
-            WaningGibbous,
-            ThirdQuarter,
-            WaningCrescent,
-            New,
-            WaxingCrescent,
-            FirstQuarter,
-            WaxingGibbous,
-            Unspecified
-        };
-
-        static constexpr unsigned int phaseToInt(Phase phase)
-        {
-            switch (phase)
-            {
-                case Phase::New:
-                    return 0;
-                case Phase::WaxingCrescent:
-                case Phase::WaningCrescent:
-                    return 1;
-                case Phase::FirstQuarter:
-                case Phase::ThirdQuarter:
-                    return 2;
-                case Phase::WaxingGibbous:
-                case Phase::WaningGibbous:
-                    return 3;
-                case Phase::Full:
-                    return 4;
-                case Phase::Unspecified:
-                    return 0;
-            }
-            return 0;
-        }
-
-        float mRotationFromHorizon;
-        float mRotationFromNorth;
-        Phase mPhase;
-        float mShadowBlend;
-        float mMoonAlpha;
-
-        /// What the hour alone fades it by. `Sky::MoonMoment::mDaylightFade` says why it is stated
-        /// apart from `mMoonAlpha`, and only the ray tracer reads it.
-        float mDaylightFade;
-    };
-
 }
 
 #endif

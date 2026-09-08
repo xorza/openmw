@@ -97,18 +97,14 @@ namespace MWRender
         std::array<Rtx::MoonPlacement, 2> moons{};
         for (std::size_t moon = 0; moon < moons.size(); ++moon)
         {
-            const MoonState& state = world.mMoons[moon];
-
-            // `Unspecified` is a ninth value and not a phase; the weather system uses it to mean it
-            // has not spoken, and a moon it has not spoken about is one with no alpha anyway.
-            const int phase = state.mPhase == MoonState::Phase::Unspecified ? 0 : static_cast<int>(state.mPhase);
+            const Sky::MoonMoment& state = world.mMoons[moon];
 
             // **The glare is applied here and not by the weather system**, which is where the
             // rasterizer applies it too: `SkyManager::setWeather` calls `Moon::adjustTransparency`
             // with it after the state has been handed over. A thunderstorm hides its moons the same
             // way it hides its stars.
-            moons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mRotationFromHorizon,
-                state.mRotationFromNorth, phase, state.mDaylightFade * world.mSunGlare);
+            moons[moon] = Rtx::placeMoon(static_cast<Rtx::Moon>(moon), state.mAlongArc, state.mAxisOffset, state.mPhase,
+                state.mDaylightFade * world.mSunGlare);
             moons[moon].mFace = faces.of(static_cast<Rtx::Moon>(moon));
         }
 

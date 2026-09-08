@@ -13,7 +13,7 @@ namespace Rtx
     namespace
     {
         /// Hands over the texture slots the scene has given up, and says how many there were.
-        std::size_t dropFreed(Renderer& renderer, std::uint32_t slot, const SceneDesc& scene)
+        std::size_t dropFreed(Renderer& renderer, SceneSlot slot, const SceneDesc& scene)
         {
             const std::span<const Index> freed = scene.getFreedTextures();
             if (!freed.empty())
@@ -24,12 +24,12 @@ namespace Rtx
     }
 
     bool SceneUploader::recognises(
-        const Renderer& renderer, std::uint32_t slot, const SceneDesc& scene, std::uint32_t textures) const
+        const Renderer& renderer, const SceneSlot slot, const SceneDesc& scene, std::uint32_t textures) const
     {
         return mRenderer == &renderer && mSlot == slot && mScene == &scene && mUploaded == textures;
     }
 
-    SceneUpload SceneUploader::hand(Renderer& renderer, std::uint32_t slot, SceneDesc& scene,
+    SceneUpload SceneUploader::hand(Renderer& renderer, const SceneSlot slot, SceneDesc& scene,
         Resource::ImageManager& images, CompositeQueue* const composites, const SeaState& sea)
     {
         const bool mine = recognises(renderer, slot, scene, renderer.getTextureCount(slot));

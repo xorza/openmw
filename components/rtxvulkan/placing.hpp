@@ -4,6 +4,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "frameslots.hpp"
+
 namespace Rtx
 {
     class GpuTimer;
@@ -21,7 +23,7 @@ namespace Rtx
 
         /// Which copy of the per-slot tables this writes. The caller has made sure no frame in
         /// flight is still reading it.
-        std::uint32_t mSlot = 0;
+        FrameSlot mSlot;
 
         /// Null for a picture inside the interface, which is not timed —
         /// `VulkanRenderer::placeScene` says why.

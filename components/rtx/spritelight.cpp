@@ -4,7 +4,6 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <span>
 
 #include "alphaimage.hpp"
 
@@ -52,36 +51,22 @@ namespace Rtx
 
     void SpriteLightMap::build(const AlphaImage& alpha)
     {
-        mLevels.clear();
-        mBytes.clear();
-        mWidth = alpha.getWidth();
-        mHeight = alpha.getHeight();
+        mTexture.reuse();
+        mTexture.openLike(alpha.getShape().mLevels, TextureFormat::Rgba8Unorm);
+        mTexture.setName("sprite light");
 
         const std::uint32_t count = alpha.getLevelCount();
-        mLevels.reserve(count);
 
-        std::size_t bytes = 0;
-        for (std::uint32_t level = 0; level < count; ++level)
-        {
-            const MipLevel& shape = alpha.getLevel(level);
-            bytes += std::size_t{ shape.mWidth } * shape.mHeight * 4;
-        }
-        mBytes.resize(bytes);
-
-        std::uint32_t offset = 0;
         for (std::uint32_t level = 0; level < count; ++level)
         {
             const MipLevel& shape = alpha.getLevel(level);
             const std::uint32_t width = shape.mWidth;
             const std::uint32_t height = shape.mHeight;
-            mLevels.push_back(MipLevel{ offset, width, height });
 
             const std::array<float, 256> alongRow = stepsAcross(width);
             const std::array<float, 256> alongColumn = stepsAcross(height);
 
-            const auto texel = [&](std::uint32_t x, std::uint32_t y) -> std::uint8_t* {
-                return mBytes.data() + offset + (std::size_t{ y } * width + x) * 4;
-            };
+            const auto texel = [&](std::uint32_t x, std::uint32_t y) { return mTexture.at(level, x, y); };
 
             // Each channel is a running product from the edge the light comes in at, written to a
             // texel *before* that texel's own alpha is multiplied in: what reaches a texel is what
@@ -91,14 +76,14 @@ namespace Rtx
                 float through = 1.0f;
                 for (std::uint32_t x = width; x-- > 0;)
                 {
-                    texel(x, y)[0] = quantize(through);
+                    texel(x, y)[0] = std::byte{ quantize(through) };
                     through *= alongRow[alpha.at(level, x, y)];
                 }
 
                 through = 1.0f;
                 for (std::uint32_t x = 0; x < width; ++x)
                 {
-                    texel(x, y)[1] = quantize(through);
+                    texel(x, y)[1] = std::byte{ quantize(through) };
                     through *= alongRow[alpha.at(level, x, y)];
                 }
             }
@@ -108,39 +93,29 @@ namespace Rtx
                 float through = 1.0f;
                 for (std::uint32_t y = height; y-- > 0;)
                 {
-                    texel(x, y)[2] = quantize(through);
+                    texel(x, y)[2] = std::byte{ quantize(through) };
                     through *= alongColumn[alpha.at(level, x, y)];
                 }
 
                 through = 1.0f;
                 for (std::uint32_t y = 0; y < height; ++y)
                 {
-                    texel(x, y)[3] = quantize(through);
+                    texel(x, y)[3] = std::byte{ quantize(through) };
                     through *= alongColumn[alpha.at(level, x, y)];
                 }
             }
-
-            offset += width * height * 4;
         }
     }
 
     TextureData SpriteLightMap::describe() const
     {
-        return TextureData{
-            .mFormat = TextureFormat::Rgba8Unorm,
-            .mWidth = mWidth,
-            .mHeight = mHeight,
-            .mBytes = std::as_bytes(std::span(mBytes)),
-            .mLevels = mLevels,
-            .mName = "sprite light",
-        };
+        return mTexture.describe();
     }
 
     std::uint8_t SpriteLightMap::at(std::uint32_t level, std::uint32_t x, std::uint32_t y, std::uint32_t channel) const
     {
-        const MipLevel& shape = mLevels[level];
-        assert(x < shape.mWidth && y < shape.mHeight && channel < 4);
+        assert(channel < OwnedTexture::sStride);
 
-        return mBytes[shape.mOffset + (std::size_t{ y } * shape.mWidth + x) * 4 + channel];
+        return std::to_integer<std::uint8_t>(mTexture.at(level, x, y)[channel]);
     }
 }

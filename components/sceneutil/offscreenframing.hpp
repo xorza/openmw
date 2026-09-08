@@ -1,5 +1,7 @@
 #pragma once
 
+#include <variant>
+
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
@@ -19,6 +21,31 @@ namespace SceneUtil
         osg::Vec3f mDirection;
         osg::Vec4f mDiffuse;
         osg::Vec4f mAmbient;
+    };
+
+    /// A vertical field of view, in degrees.
+    struct Perspective
+    {
+        float mFieldOfView = 0.f;
+    };
+
+    /// A box this many world units across, centred on the view direction.
+    struct Orthographic
+    {
+        float mWidth = 0.f;
+        float mHeight = 0.f;
+    };
+
+    /// How an offscreen picture is projected, and the near and far it is clipped at.
+    ///
+    /// **One pair, because the spec a caller fills in and the trace that reads it each had their
+    /// own.** The trace's was `mPerspective` beside four floats, three of which meant nothing in
+    /// the case the flag did not name.
+    struct Framing
+    {
+        std::variant<Perspective, Orthographic> mProjection;
+        float mNear = 1.f;
+        float mFar = 10000.f;
     };
 
     /// Where a picture of one figure is taken from.

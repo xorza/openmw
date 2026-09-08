@@ -20,7 +20,7 @@ namespace Rtx::Testing
     inline TextureData describeTexel(std::span<const std::uint8_t> texel, std::uint32_t slot = 0)
     {
         return TextureData{
-            .mSlot = slot,
+            .mIndex = slot,
             .mFormat = TextureFormat::Rgba8Unorm,
             .mWidth = 1,
             .mHeight = 1,

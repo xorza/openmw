@@ -66,12 +66,12 @@ namespace Rtx
         /// says which angles an hour comes to; this is what a moon *is* once they are known.
         TEST(RtxMoonBuilderTest, aMoonStandsWhereItsArcAndItsOffsetPutIt)
         {
-            const MoonPlacement risen = placeMoon(Moon::Masser, 0.0f, 35.0f, 0, 1.0f);
+            const MoonPlacement risen = placeMoon(Moon::Masser, 0.0f, 35.0f, Sky::MoonPhase::Full, 1.0f);
             EXPECT_NEAR(risen.mDirection.z(), 0.0f, 1e-6f) << "no height at the horizon it rises from";
 
             constexpr float sAlong = 47.0f;
             constexpr float sOffset = 35.0f;
-            const MoonPlacement up = placeMoon(Moon::Masser, sAlong, sOffset, 0, 1.0f);
+            const MoonPlacement up = placeMoon(Moon::Masser, sAlong, sOffset, Sky::MoonPhase::Full, 1.0f);
 
             const float along = osg::DegreesToRadians(sAlong);
             const float swung = osg::DegreesToRadians(sOffset);
@@ -83,7 +83,7 @@ namespace Rtx
             EXPECT_NEAR(up.mDirection.y(), std::cos(along) * std::cos(swung), 1e-5f);
 
             // A wider swing puts the same arc somewhere else, which is what separates the two moons.
-            const MoonPlacement other = placeMoon(Moon::Secunda, sAlong, 50.0f, 0, 1.0f);
+            const MoonPlacement other = placeMoon(Moon::Secunda, sAlong, 50.0f, Sky::MoonPhase::Full, 1.0f);
             EXPECT_GT(std::abs(other.mDirection.x() - up.mDirection.x()), 0.1f);
         }
 
@@ -92,7 +92,7 @@ namespace Rtx
         {
             for (const float along : { 8.0f, 47.0f, 94.0f })
             {
-                const MoonPlacement at = placeMoon(Moon::Masser, along, 35.0f, 0, 1.0f);
+                const MoonPlacement at = placeMoon(Moon::Masser, along, 35.0f, Sky::MoonPhase::Full, 1.0f);
                 EXPECT_NEAR(at.mDirection.length(), 1.0f, 1e-5f) << "along " << along;
                 EXPECT_NEAR(at.mRight.length(), 1.0f, 1e-5f) << "along " << along;
                 EXPECT_NEAR(at.mUp.length(), 1.0f, 1e-5f) << "along " << along;
@@ -104,8 +104,8 @@ namespace Rtx
 
             // **And it turns against the horizon as the moon crosses**, which is what a locked moon
             // does and what a billboard does not: the face's up is not the world's.
-            const osg::Vec3f early = placeMoon(Moon::Masser, 8.0f, 35.0f, 0, 1.0f).mUp;
-            const osg::Vec3f late = placeMoon(Moon::Masser, 94.0f, 35.0f, 0, 1.0f).mUp;
+            const osg::Vec3f early = placeMoon(Moon::Masser, 8.0f, 35.0f, Sky::MoonPhase::Full, 1.0f).mUp;
+            const osg::Vec3f late = placeMoon(Moon::Masser, 94.0f, 35.0f, Sky::MoonPhase::Full, 1.0f).mUp;
             EXPECT_LT(early * late, 0.99f) << "the portrait would be pinned to the horizon";
         }
 
@@ -120,11 +120,12 @@ namespace Rtx
         {
             // **Nought until it is on its arc**, which the engine states by leaving the angle there
             // until a moon rises and returning it there once it sets.
-            EXPECT_EQ(placeMoon(Moon::Masser, 0.0f, 35.0f, 0, 1.0f).mAlpha, 0.0f);
+            EXPECT_EQ(placeMoon(Moon::Masser, 0.0f, 35.0f, Sky::MoonPhase::Full, 1.0f).mAlpha, 0.0f);
 
-            EXPECT_FLOAT_EQ(placeMoon(Moon::Masser, 47.0f, 35.0f, 0, 0.5f).mAlpha, 0.5f);
-            EXPECT_FLOAT_EQ(placeMoon(Moon::Masser, 47.0f, 35.0f, 0, 0.25f).mAlpha, 0.25f);
-            EXPECT_EQ(placeMoon(Moon::Masser, 47.0f, 35.0f, 0, 0.0f).mIrradiance, osg::Vec3f()) << "a thunderstorm";
+            EXPECT_FLOAT_EQ(placeMoon(Moon::Masser, 47.0f, 35.0f, Sky::MoonPhase::Full, 0.5f).mAlpha, 0.5f);
+            EXPECT_FLOAT_EQ(placeMoon(Moon::Masser, 47.0f, 35.0f, Sky::MoonPhase::Full, 0.25f).mAlpha, 0.25f);
+            EXPECT_EQ(placeMoon(Moon::Masser, 47.0f, 35.0f, Sky::MoonPhase::Full, 0.0f).mIrradiance, osg::Vec3f())
+                << "a thunderstorm";
         }
 
         /// It rises out of the horizon, dimmed and reddened by the air rather than switched off.
@@ -138,7 +139,7 @@ namespace Rtx
         /// Masser rises, by `Sky::MoonModel`'s clock.
         TEST(RtxMoonBuilderTest, aMoonRisesOutOfTheHorizonRatherThanArrivingAboveIt)
         {
-            const MoonPlacement low = placeMoon(Moon::Masser, 7.826f, 35.0f, 0, 1.0f);
+            const MoonPlacement low = placeMoon(Moon::Masser, 7.826f, 35.0f, Sky::MoonPhase::Full, 1.0f);
             EXPECT_NEAR(osg::RadiansToDegrees(std::asin(low.mDirection.z())), 7.826f, 0.01f);
 
             EXPECT_FLOAT_EQ(low.mAlpha, 1.0f) << "the engine's own arc gate is still in the way";
@@ -153,7 +154,8 @@ namespace Rtx
             float below = 0.0f;
             for (int step = 1; step <= 90; ++step)
             {
-                const MoonPlacement at = placeMoon(Moon::Masser, float(step), 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+                const MoonPlacement at
+                    = placeMoon(Moon::Masser, float(step), 35.0f, Sky::MoonPhase::Full, /*alpha=*/1.0f);
                 const float carried = luminanceOf(at.mThroughAir);
 
                 EXPECT_GT(carried, below) << "at " << step << " degrees along";
@@ -162,7 +164,7 @@ namespace Rtx
 
             // A moon that is not on its arc is not in the sky, which the engine says by leaving the
             // angle at nought both before it rises and after it sets.
-            const MoonPlacement down = placeMoon(Moon::Masser, 0.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+            const MoonPlacement down = placeMoon(Moon::Masser, 0.0f, 35.0f, Sky::MoonPhase::Full, /*alpha=*/1.0f);
             EXPECT_EQ(down.mAlpha, 0.0f);
             EXPECT_EQ(down.mIrradiance, osg::Vec3f());
         }
@@ -174,21 +176,22 @@ namespace Rtx
         /// over them is asserted; what is here is the angle each of them becomes.
         TEST(RtxMoonBuilderTest, aPaintedPhaseIsAnAngleFromFull)
         {
-            const auto angleOf
-                = [](const int phase) { return placeMoon(Moon::Masser, 47.0f, 35.0f, phase, 1.0f).mPhaseAngle; };
+            const auto angleOf = [](const Sky::MoonPhase phase) {
+                return placeMoon(Moon::Masser, 47.0f, 35.0f, phase, 1.0f).mPhaseAngle;
+            };
 
-            EXPECT_FLOAT_EQ(angleOf(0), 0.0f) << "full";
-            EXPECT_FLOAT_EQ(angleOf(1), 0.25f * osg::PIf);
-            EXPECT_FLOAT_EQ(angleOf(2), 0.5f * osg::PIf);
-            EXPECT_FLOAT_EQ(angleOf(4), osg::PIf) << "new, halfway round";
-            EXPECT_FLOAT_EQ(angleOf(7), 1.75f * osg::PIf);
+            EXPECT_FLOAT_EQ(angleOf(Sky::MoonPhase::Full), 0.0f) << "full";
+            EXPECT_FLOAT_EQ(angleOf(Sky::MoonPhase::WaningGibbous), 0.25f * osg::PIf);
+            EXPECT_FLOAT_EQ(angleOf(Sky::MoonPhase::ThirdQuarter), 0.5f * osg::PIf);
+            EXPECT_FLOAT_EQ(angleOf(Sky::MoonPhase::New), osg::PIf) << "new, halfway round";
+            EXPECT_FLOAT_EQ(angleOf(Sky::MoonPhase::WaxingGibbous), 1.75f * osg::PIf);
 
             // **The lit share is the cosine, and it is what the shader carves the terminator with.**
             // Full is all of it, the two quarters are half, and new is none.
             const auto lit = [](float phaseAngle) { return 0.5f * (1.0f + std::cos(phaseAngle)); };
-            EXPECT_FLOAT_EQ(lit(angleOf(0)), 1.0f);
-            EXPECT_NEAR(lit(angleOf(2)), 0.5f, 1e-6f);
-            EXPECT_NEAR(lit(angleOf(4)), 0.0f, 1e-6f);
+            EXPECT_FLOAT_EQ(lit(angleOf(Sky::MoonPhase::Full)), 1.0f);
+            EXPECT_NEAR(lit(angleOf(Sky::MoonPhase::ThirdQuarter)), 0.5f, 1e-6f);
+            EXPECT_NEAR(lit(angleOf(Sky::MoonPhase::New)), 0.0f, 1e-6f);
         }
 
         /// A full Masser delivers what a lit disc of its size and albedo delivers, and no more.
@@ -209,7 +212,7 @@ namespace Rtx
             const float sine = std::sin(moonAngularRadius(Moon::Masser));
             const float facing = radiance * osg::PIf * sine * sine;
 
-            const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
+            const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, Sky::MoonPhase::Full, /*alpha=*/1.0f);
             EXPECT_NEAR(luminanceOf(sentBy(full)), facing, 1e-6f);
 
             // And it is red, which is the only reason to draw Masser rather than a bright dot: its
@@ -257,8 +260,8 @@ namespace Rtx
         /// both are something else and the ratio between them is the same 2.54.
         TEST(RtxMoonBuilderTest, secundaDeliversTheShareOfTheSkyItCovers)
         {
-            const MoonPlacement masser = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
-            const MoonPlacement secunda = placeMoon(Moon::Secunda, 90.0f, -50.0f, /*phase=*/0, /*alpha=*/1.0f);
+            const MoonPlacement masser = placeMoon(Moon::Masser, 90.0f, 35.0f, Sky::MoonPhase::Full, /*alpha=*/1.0f);
+            const MoonPlacement secunda = placeMoon(Moon::Secunda, 90.0f, -50.0f, Sky::MoonPhase::Full, /*alpha=*/1.0f);
 
             const float wide = std::sin(moonAngularRadius(Moon::Masser));
             const float narrow = std::sin(moonAngularRadius(Moon::Secunda));
@@ -281,19 +284,20 @@ namespace Rtx
         /// magnitudes, which is `10^-1.041` of full.
         TEST(RtxMoonBuilderTest, aQuarterMoonLightsATenthOfWhatAFullOneDoes)
         {
-            const auto lightAt = [](int phase) {
+            const auto lightAt = [](Sky::MoonPhase phase) {
                 return luminanceOf(placeMoon(Moon::Masser, 90.0f, 35.0f, phase, /*alpha=*/1.0f).mIrradiance);
             };
 
-            EXPECT_NEAR(lightAt(2) / lightAt(0), 0.090997f, 1e-5f);
-            EXPECT_LT(lightAt(2) / lightAt(0), 0.2f) << "the lit fraction of the disc, rather than the photometry";
+            EXPECT_NEAR(lightAt(Sky::MoonPhase::ThirdQuarter) / lightAt(Sky::MoonPhase::Full), 0.090997f, 1e-5f);
+            EXPECT_LT(lightAt(Sky::MoonPhase::ThirdQuarter) / lightAt(Sky::MoonPhase::Full), 0.2f)
+                << "the lit fraction of the disc, rather than the photometry";
 
             // 180 degrees comes to 8.879 magnitudes, which is three parts in ten thousand.
-            EXPECT_LT(lightAt(4) / lightAt(0), 0.001f);
+            EXPECT_LT(lightAt(Sky::MoonPhase::New) / lightAt(Sky::MoonPhase::Full), 0.001f);
 
             // Waxing and waning quarters deliver the same. Which limb keeps the light is the disc's
             // business, and how far from full the moon is is the light's.
-            EXPECT_FLOAT_EQ(lightAt(6), lightAt(2));
+            EXPECT_FLOAT_EQ(lightAt(Sky::MoonPhase::FirstQuarter), lightAt(Sky::MoonPhase::ThirdQuarter));
         }
 
         /// A moon the game has faded out lights nothing at all.
@@ -303,11 +307,12 @@ namespace Rtx
         /// whether a moon is worth a ray is this being nothing.
         TEST(RtxMoonBuilderTest, aFadedMoonLightsNothing)
         {
-            EXPECT_EQ(placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.0f).mIrradiance, osg::Vec3f());
+            EXPECT_EQ(
+                placeMoon(Moon::Masser, 90.0f, 35.0f, Sky::MoonPhase::Full, /*alpha=*/0.0f).mIrradiance, osg::Vec3f());
 
             // The fade is a plain multiplier on it, so half hidden is half lit.
-            const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/1.0f);
-            const MoonPlacement half = placeMoon(Moon::Masser, 90.0f, 35.0f, /*phase=*/0, /*alpha=*/0.5f);
+            const MoonPlacement full = placeMoon(Moon::Masser, 90.0f, 35.0f, Sky::MoonPhase::Full, /*alpha=*/1.0f);
+            const MoonPlacement half = placeMoon(Moon::Masser, 90.0f, 35.0f, Sky::MoonPhase::Full, /*alpha=*/0.5f);
             EXPECT_NEAR(luminanceOf(half.mIrradiance), 0.5f * luminanceOf(full.mIrradiance), 1e-7f);
         }
 
@@ -318,10 +323,10 @@ namespace Rtx
         /// number that is fixed for the run.
         TEST(RtxMoonBuilderTest, placingAMoonReadsNothingItHasAlreadyRead)
         {
-            const MoonPlacement first = placeMoon(Moon::Masser, 47.0f, 35.0f, 3, 1.0f);
+            const MoonPlacement first = placeMoon(Moon::Masser, 47.0f, 35.0f, Sky::MoonPhase::WaningCrescent, 1.0f);
 
             const std::size_t before = Testing::getAllocationCount();
-            const MoonPlacement again = placeMoon(Moon::Masser, 47.0f, 35.0f, 3, 1.0f);
+            const MoonPlacement again = placeMoon(Moon::Masser, 47.0f, 35.0f, Sky::MoonPhase::WaningCrescent, 1.0f);
             const std::size_t after = Testing::getAllocationCount();
 
             EXPECT_EQ(after, before) << after - before << " allocations to place a moon";

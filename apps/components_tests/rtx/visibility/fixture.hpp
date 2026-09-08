@@ -325,7 +325,7 @@ namespace Rtx::Testing
             const std::function<void()>& afterEach = {})
         {
             mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::sWorld, scene, inSceneOrder(textures), shot.mSea);
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, inSceneOrder(textures), shot.mSea);
 
             if (shot.mResetHistory)
                 mRenderer->resetHistory();
@@ -630,7 +630,7 @@ namespace Rtx::Testing
         /// The last frame's radiance, checked against the extent it was drawn at.
         void readRadiance(std::uint32_t size, std::vector<float>& values)
         {
-            mRenderer->readChannel(Channel::Radiance, values);
+            mRenderer->readFrameImage(FrameImage::Composite, values);
             requireFrame(values, size);
         }
 
@@ -662,7 +662,7 @@ namespace Rtx::Testing
         {
             mNumbered.assign(textures.begin(), textures.end());
             for (std::size_t at = 0; at < mNumbered.size(); ++at)
-                mNumbered[at].mSlot = static_cast<std::uint32_t>(at);
+                mNumbered[at].mIndex = static_cast<std::uint32_t>(at);
 
             return mNumbered;
         }

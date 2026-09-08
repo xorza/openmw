@@ -6,6 +6,6 @@
 - tracy
 - async terrain loader
 - precompile shaders?
-- rtxtool - stats money, weather, time
+- rtxtool - stats money, weather, time, tgm
 - fsr and other denoisers and upscalers
 - rtx 20xx

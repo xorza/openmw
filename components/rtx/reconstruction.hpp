@@ -138,7 +138,7 @@ namespace Rtx
         /// Whether the wavelet ran over the indirect channel.
         ///
         /// **One comparison, because two things turn on it.** The backend records the accumulator
-        /// and the cascade where this holds, and `Channel::Accumulated` exists only where it did —
+        /// and the cascade where this holds, and `FrameImage::Accumulated` exists only where it did —
         /// so a second spelling of it is a frame that filtered and a channel that disagrees.
         bool filtered() const { return mDenoiser == Denoiser::Wavelet; }
 

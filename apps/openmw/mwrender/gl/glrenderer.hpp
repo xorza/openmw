@@ -100,7 +100,8 @@ namespace MWRender
         void resumeDraw() override;
 
         osgUtil::IncrementalCompileOperation* getCompileOperation() const override;
-        void setCompileOperation(osgUtil::IncrementalCompileOperation* operation) override;
+        void setPreparationBudget(const PreparationBudget& budget) override;
+        void resetPreparationBudget() override;
 
         void setVSync(SDLUtil::VSyncMode mode) override;
 
@@ -119,6 +120,12 @@ namespace MWRender
         /// Makes the SDL window and the OpenGL context in it, retrying at half the antialiasing
         /// each time the driver refuses. Upstream's loop, unchanged.
         void createWindow(const std::filesystem::path& resourceDir);
+
+        /// Spreads the compiling of what a loader hands over across frames.
+        ///
+        /// **Decided here, because whether there is anything to compile is this renderer's own
+        /// question**: a ray tracer builds no OpenGL objects and keeps none.
+        void compileIncrementally();
 
         /// Takes the framebuffer copy back out of the frame once it has run. Left in, it would copy
         /// the whole screen into a texture on every frame from the first loading screen onwards.

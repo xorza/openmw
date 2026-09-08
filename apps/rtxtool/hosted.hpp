@@ -4,6 +4,7 @@
 
 #include <boost/program_options/variables_map.hpp>
 
+#include <components/rtx/renderprofile.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
 namespace Files
@@ -35,5 +36,6 @@ namespace RtxTool
     ///        block — which is what a window is for as much as the picture is.
     /// @return a process exit status.
     int runHosted(const boost::program_options::variables_map& variables, Files::ConfigurationManager& config,
-        const std::filesystem::path& resources, Rtx::SessionRequest request, const Viewpoint* spot = nullptr);
+        const std::filesystem::path& resources, Rtx::RenderProfile profile, Rtx::SessionRequest request,
+        const Viewpoint* spot = nullptr);
 }

@@ -1,12 +1,8 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
-#include <optional>
-#include <string>
 
-#include <components/rtx/reconstruction.hpp>
-#include <components/rtx/reorder.hpp>
+#include <components/rtx/renderprofile.hpp>
 #include <components/rtx/upscale.hpp>
 
 #include "views.hpp"
@@ -38,43 +34,10 @@ namespace RtxTool
     /// may fix either and the command line may overrule it — `stopFor` is where the two meet.
     struct FrameRequest
     {
-        /// The size the frame is presented at. What it is traced at follows from `mUpscale`.
+        /// The size the frame is presented at. What it is traced at follows from `mProfile.mUpscale`.
         std::uint32_t mWidth = 1920;
         std::uint32_t mHeight = 1080;
         float mFieldOfView = 60.0f;
-
-        /// Whether Ray Reconstruction stands between the trace and the picture, and how hard it
-        /// works. It denoises for itself, so `mFilter` stops meaning anything once this is on.
-        Rtx::Upscale mUpscale = sUpscaleByDefault;
-
-        /// Which network it runs. Pinned rather than left to the library, whose own default has
-        /// moved between SDK versions, so that two runs are comparable.
-        Rtx::Preset mPreset = Rtx::Preset::D;
-
-        /// How the trace sorts its threads between the traversal and the shader that resolves what
-        /// they found. Off by default, because off is what the others are measured against.
-        Rtx::Reorder mReorder = Rtx::Reorder::Off;
-
-        /// Whether a cutout's mask is baked into an opacity micromap. Off is the leg the micromap
-        /// is timed against, and the picture is the same either way.
-        bool mMicromaps = true;
-
-        /// How much of the lighting painted into each texture to divide back out, from zero to one.
-        /// Zero shows the textures as they were drawn, with their lighting still in them.
-        float mDelight = 1.0f;
-
-        /// Whether the denoiser runs. Off is how a reference is made, and how the noise the filter
-        /// is meant to remove can be looked at.
-        bool mFilter = true;
-
-        /// Write the albedo with no shading over it.
-        bool mShowAlbedo = false;
-
-        /// Whether each frame samples a different point inside its pixel.
-        bool mJitter = false;
-
-        /// Whether the trace also counts the see-through surfaces each primary ray crosses.
-        bool mCountCrossings = false;
 
         /// How far out from the eye the world is built, in cells.
         ///
@@ -92,11 +55,14 @@ namespace RtxTool
         /// it.
         bool mDistantStatics = true;
 
-        /// What to scale the frame by before the display curve, or nothing to measure it off the
-        /// frame. A picture wants it measured; a reference wants it held still.
-        std::optional<float> mExposure;
-
         /// Which day, counted from the one a new game begins on. Only the moons read it.
         int mDay = 0;
+
+        /// What the trace itself is configured by, handed to the renderer through `RendererSpec`.
+        ///
+        /// **Held whole rather than spelled out again.** Everything above is the engine's — a
+        /// window, a camera, how much world to build — and everything the trace decides is one type
+        /// that the game reads out of `[RTX]` and this fills from the command line.
+        Rtx::RenderProfile mProfile{ .mUpscale = sUpscaleByDefault };
     };
 }

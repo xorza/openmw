@@ -163,12 +163,12 @@ namespace Rtx
         // Every copy of the normals holds every mesh from here, so what a copy owes from now on is
         // the poses it missed.
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-            mNormalTable.settle(slot);
+            mNormalTable.settle(FrameSlot{ slot });
 
         // The frame tables come from `place`, which is also where they are written when a material
         // changes. Every copy is empty here, so the first write of each makes its buffer and fills
         // it whole.
-        place(scene, records, {}, 0, graveyard);
+        place(scene, records, {}, FrameSlot{}, graveyard);
     }
 
     void SceneBuffers::extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
@@ -193,7 +193,7 @@ namespace Rtx
 
             const std::span<const osg::Vec3f> normals = range.mVertices.in(scene.getNormals());
             for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mNormalTable.at(slot).writeAt(batch, range.mVertices.mOffset, normals);
+                mNormalTable.at(FrameSlot{ slot }).writeAt(batch, range.mVertices.mOffset, normals);
 
             mTexCoords.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.getTexCoords()));
         }
@@ -230,9 +230,9 @@ namespace Rtx
     void SceneBuffers::binSprites(const SpriteBinPass& pass, const osg::Vec3f& origin, const Shaders::Camera& camera,
         const osg::Vec3f& toSun, const Placing& placing)
     {
-        assert(placing.mSlot < mSlots && "a frame slot this scene has no copy of the tables for");
+        assert(placing.mSlot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
 
-        Tables& tables = mTables[placing.mSlot];
+        Tables& tables = mTables[placing.mSlot.get()];
 
         // **The sprites go over from here and not from `place`**, because what each is shaded by is
         // the frame's sun, which a placement does not know — and a doll or a map bins against a
@@ -276,7 +276,7 @@ namespace Rtx
         tables.mSpriteBinReport.orderForHostRead(placing.mCommands);
     }
 
-    void SceneBuffers::shade(const SceneDesc& scene, const std::uint32_t slot, Graveyard& graveyard)
+    void SceneBuffers::shade(const SceneDesc& scene, const FrameSlot slot, Graveyard& graveyard)
     {
         const std::span<const Material> materials = scene.getMaterials();
         const std::span<const MaterialLayer> layers = scene.getLayers();
@@ -356,13 +356,13 @@ namespace Rtx
     }
 
     void SceneBuffers::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
-        std::span<const Index> changed, const std::uint32_t slot, Graveyard& graveyard)
+        std::span<const Index> changed, const FrameSlot slot, Graveyard& graveyard)
     {
-        assert(slot < mSlots && "a frame slot this scene has no copy of the tables for");
+        assert(slot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
 
         shade(scene, slot, graveyard);
 
-        Tables& tables = mTables[slot];
+        Tables& tables = mTables[slot.get()];
 
         // The sentinel material sits one past the real ones, which is where `shade` put it.
         const auto sentinel = static_cast<std::uint32_t>(scene.getMaterials().size());
@@ -450,11 +450,11 @@ namespace Rtx
         // frame to the next, and a body's are what `SkinPass` computed into this copy ahead of this.
     }
 
-    void SceneBuffers::describeTables(const std::uint32_t slot, Shaders::GpuTables& into) const
+    void SceneBuffers::describeTables(const FrameSlot slot, Shaders::GpuTables& into) const
     {
-        assert(slot < mSlots && "a frame slot this scene has no copy of the tables for");
+        assert(slot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
 
-        const Tables& tables = mTables[slot];
+        const Tables& tables = mTables[slot.get()];
 
         into.mNormalBlocks = mNormalTable.at(slot).getTableAddress();
         into.mTexCoordBlocks = mTexCoords.getTableAddress();

@@ -39,9 +39,9 @@ namespace Rtx
     /// while frame N is traced; what N+1 writes is this frame's copy of every table, and what N
     /// may still read is the other's. The frame after next takes this one's place, and waits
     /// its fence first.
-    struct FrameSlot
+    struct FrameRecord
     {
-        FrameSlot(const Device& device, CommandPool& pool);
+        FrameRecord(const Device& device, CommandPool& pool);
 
         /// The placements' commands and the trace's, submitted apart because a picture inside
         /// the interface is traced between the two and needs the first to have reached the
@@ -105,7 +105,7 @@ namespace Rtx
         /// @param countHits,countCrossings whether either of a frame's counts is worth reading
         ///        back. Borrowed from the renderer, which decides both once and compiles its
         ///        pipeline against the same answers.
-        FrameRing(const Device& device, CommandPool& pool, const bool& countHits, const bool& countCrossings);
+        FrameRing(const Device& device, CommandPool& pool, bool countHits, bool countCrossings);
         ~FrameRing();
 
         FrameRing(const FrameRing&) = delete;
@@ -124,23 +124,23 @@ namespace Rtx
         ///
         /// **It does not open the frame, which `begin` is for.** A picture inside the interface
         /// takes a graveyard and must not start the frame's timer.
-        FrameSlot& recording();
+        FrameRecord& recording();
 
         /// The slot `frame` used, for a caller counting on a ring of its own — the interface's.
-        FrameSlot& slotOf(std::uint64_t frame) { return mSlots[frame % sFrameSlots]; }
+        FrameRecord& slotOf(std::uint64_t frame) { return mSlots[frame % sFrameSlots]; }
 
         /// How many frames have been submitted, which is the number the next one will carry.
         std::uint64_t getRecording() const { return mFrame; }
 
         /// The frame being recorded, begun if it was not: the frame that last used its slot is
         /// waited for, its fence reset, its timer and hit count cleared.
-        FrameSlot& begin();
+        FrameRecord& begin();
 
         /// A command buffer for one placement of `frame`, made on the frame that first needs it.
-        VkCommandBuffer takePlaceCommands(FrameSlot& frame);
+        VkCommandBuffer takePlaceCommands(FrameRecord& frame);
 
         /// Submits what a frame recorded, under its own fence, and counts it as in flight.
-        void submit(FrameSlot& frame);
+        void submit(FrameRecord& frame);
 
         /// The oldest report in hand, waiting a frame out for one where there is none.
         std::optional<FrameResult> collect();
@@ -170,10 +170,13 @@ namespace Rtx
         const Device& mDevice;
         CommandPool& mPool;
 
-        const bool& mCountHits;
-        const bool& mCountCrossings;
+        /// **By value, because both are settled at construction and never move.** They used to be
+        /// references into the renderer's own members, which tied this ring's correctness to where
+        /// two booleans happened to live.
+        bool mCountHits = false;
+        bool mCountCrossings = false;
 
-        std::array<FrameSlot, sFrameSlots> mSlots;
+        std::array<FrameRecord, sFrameSlots> mSlots;
 
         /// The next frame to record and the next to finish. Everything from `mFinished` to `mFrame`
         /// is in flight, and there are never more of those than there are slots.

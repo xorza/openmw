@@ -41,8 +41,8 @@ namespace Rtx
     {
     }
 
-    bool SkinPass::record(VkCommandBuffer commands, const SceneDesc& scene, const std::uint32_t slot,
-        SkinTables& tables, SlotBlocks& poses, SlotBlocks& normals, GpuTimer* const timer) const
+    bool SkinPass::record(VkCommandBuffer commands, const SceneDesc& scene, const FrameSlot slot, SkinTables& tables,
+        SlotBlocks& poses, SlotBlocks& normals, GpuTimer* const timer) const
     {
         // **Owed to every copy, and paid to this one.** A mesh that moved this frame reaches this
         // copy now and the other on the frame after next; a mesh that moved last frame and stands

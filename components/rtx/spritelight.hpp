@@ -8,6 +8,7 @@
 
 #include <components/vfs/pathutil.hpp>
 
+#include "ownedtexture.hpp"
 #include "texturedata.hpp"
 
 namespace Rtx
@@ -60,7 +61,7 @@ namespace Rtx
         /// keeps the room the last one grew. Whatever was here is gone, buffers apart.
         void build(const AlphaImage& alpha);
 
-        bool isEmpty() const { return mLevels.empty(); }
+        bool isEmpty() const { return mTexture.isEmpty(); }
 
         /// The bake as a backend uploads it: linear, four bytes a texel, every level. Spans this
         /// object's own storage, so it must outlive the upload.
@@ -74,10 +75,7 @@ namespace Rtx
         std::uint8_t at(std::uint32_t level, std::uint32_t x, std::uint32_t y, std::uint32_t channel) const;
 
     private:
-        std::vector<MipLevel> mLevels;
-        std::vector<std::uint8_t> mBytes;
-        std::uint32_t mWidth = 0;
-        std::uint32_t mHeight = 0;
+        OwnedTexture mTexture;
     };
 
 }

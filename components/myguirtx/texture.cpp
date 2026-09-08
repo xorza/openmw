@@ -49,10 +49,10 @@ namespace MyGUIRtx
 
     void Texture::release()
     {
-        if (mSlot != sNoSlot)
+        if (!mSlot.isNone())
             mRenderer.dropGuiTexture(mSlot);
 
-        mSlot = sNoSlot;
+        mSlot = Rtx::GuiSlot::none();
         mWidth = 0;
         mHeight = 0;
         mFormat = MyGUI::PixelFormat::Unknow;
@@ -116,7 +116,7 @@ namespace MyGUIRtx
 
     void* Texture::lock(MyGUI::TextureUsage /*access*/)
     {
-        if (mSlot == sNoSlot)
+        if (mSlot.isNone())
             throw std::runtime_error("Texture is not created");
         if (mLocked)
             throw std::runtime_error("Texture already locked");
@@ -182,13 +182,12 @@ namespace MyGUIRtx
             && "a region past the edge of the texture");
         assert(rows.size() == std::size_t{ width } * height * 4 && "the region's own rows, tightly packed");
 
-        mRenderer.writeGuiTexture(mSlot, Rtx::Renderer::GuiRegion{ x, y, width, height }, rows);
+        mRenderer.writeGuiTexture(mSlot, Rtx::GuiRegion{ x, y, width, height }, rows);
     }
 
-    Rtx::Renderer::GuiRegion Texture::whole() const
+    Rtx::GuiRegion Texture::whole() const
     {
-        return Rtx::Renderer::GuiRegion{ 0, 0, static_cast<std::uint32_t>(mWidth),
-            static_cast<std::uint32_t>(mHeight) };
+        return Rtx::GuiRegion{ 0, 0, static_cast<std::uint32_t>(mWidth), static_cast<std::uint32_t>(mHeight) };
     }
 
     void Texture::setShader(const std::string& /*shaderName*/)

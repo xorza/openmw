@@ -1,7 +1,7 @@
 #include "gbuffer.hpp"
+
 #include <algorithm>
 #include <array>
-#include <cassert>
 
 #include <components/rtx/shaders/gbuffer.h>
 
@@ -108,28 +108,61 @@ namespace Rtx
         /// The channels a caller can ask to read back: the bounce, the three motion fields, the
         /// depth and the two masks. See `Rtx::Channel`.
         constexpr VkImageUsageFlags sReadable = sUsage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+        struct ChannelFormat
+        {
+            VkFormat mFormat;
+            VkImageUsageFlags mUsage;
+        };
+
+        /// What each channel is made of, at its own binding.
+        ///
+        /// **One table, because the constructor used to say it in a member list of fourteen and the
+        /// binding was decided by the order somebody happened to write them in.** Placed by name
+        /// here, so a channel added to `Rtx::Channel` and forgotten here is a compile error in the
+        /// switch rather than an image bound at the wrong number.
+        const ChannelFormat& formatOf(const Channel channel)
+        {
+            static constexpr auto sFormats = [] {
+                std::array<ChannelFormat, sChannelCount> every{};
+                every[bindingOf(Channel::Direct)] = { sRadiance, sUsage };
+                every[bindingOf(Channel::Indirect)] = { sRadiance, sReadable };
+                every[bindingOf(Channel::Albedo)] = { sAlbedo, sUsage };
+                every[bindingOf(Channel::Specular)] = { sAlbedo, sUsage };
+                every[bindingOf(Channel::Guide)] = { sGuide, sUsage };
+                every[bindingOf(Channel::Motion)] = { sMotion, sReadable };
+                every[bindingOf(Channel::Depth)] = { sDepth, sReadable };
+                every[bindingOf(Channel::ReflectionMotion)] = { sMotion, sReadable };
+                every[bindingOf(Channel::ParticleMask)] = { sMask, sReadable };
+                every[bindingOf(Channel::BiasMask)] = { sMask, sReadable };
+                every[bindingOf(Channel::StarsShown)] = { sStars, sUsage };
+                every[bindingOf(Channel::Transparency)] = { sLayer, sUsage };
+                every[bindingOf(Channel::TransparencyOpacity)] = { sLayerOpacity, sUsage };
+                every[bindingOf(Channel::TransparencyMotion)] = { sMotion, sReadable };
+
+                return every;
+            }();
+
+            static_assert(std::ranges::none_of(sFormats, [](const ChannelFormat& one) { return one.mUsage == 0; }),
+                "a channel the format table did not fill");
+
+            return sFormats[bindingOf(channel)];
+        }
     }
 
     GBuffer::GBuffer(const Device& device, const SetLayout& layout, std::uint32_t width, std::uint32_t height)
         : mDevice(device)
-        , mDirect(device, width, height, sRadiance, sUsage, "g-direct")
-        , mIndirect(device, width, height, sRadiance, sReadable, "g-indirect")
-        , mAlbedo(device, width, height, sAlbedo, sUsage, "g-albedo")
-        , mSpecular(device, width, height, sAlbedo, sUsage, "g-specular")
-        , mGuide(device, width, height, sGuide, sUsage, "g-guide")
-        , mMotion(device, width, height, sMotion, sReadable, "g-motion")
-        , mDepth(device, width, height, sDepth, sReadable, "g-depth")
-        , mReflectionMotion(device, width, height, sMotion, sReadable, "g-reflection-motion")
-        , mParticleMask(device, width, height, sMask, sReadable, "g-particle-mask")
-        , mBiasMask(device, width, height, sMask, sReadable, "g-bias-mask")
-        , mStarsShown(device, width, height, sStars, sUsage, "g-stars-shown")
-        , mTransparency(device, width, height, sLayer, sUsage, "g-transparency")
-        , mTransparencyOpacity(device, width, height, sLayerOpacity, sUsage, "g-transparency-opacity")
-        , mTransparencyMotion(device, width, height, sMotion, sReadable, "g-transparency-motion")
     {
+        mChannels.reserve(sChannelCount);
+        for (const Channel channel : sEveryChannel)
+        {
+            const ChannelFormat& described = formatOf(channel);
+            mChannels.emplace_back(device, width, height, described.mFormat, described.mUsage, channelName(channel));
+        }
+
         try
         {
-            const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, sChannels };
+            const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, sChannelCount };
             const VkDescriptorPoolCreateInfo describePool{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                 .maxSets = 1,
@@ -148,14 +181,12 @@ namespace Rtx
             };
             checkVk(vkAllocateDescriptorSets(mDevice.getHandle(), &allocate, &mSet), "vkAllocateDescriptorSets");
 
-            const std::array<const Image*, sChannels> every = everyChannel();
-
-            std::array<VkDescriptorImageInfo, sChannels> views{};
-            std::array<VkWriteDescriptorSet, sChannels> writes{};
-            for (std::uint32_t channel = 0; channel < sChannels; ++channel)
+            std::array<VkDescriptorImageInfo, sChannelCount> views{};
+            std::array<VkWriteDescriptorSet, sChannelCount> writes{};
+            for (std::uint32_t channel = 0; channel < sChannelCount; ++channel)
             {
                 views[channel]
-                    = VkDescriptorImageInfo{ VK_NULL_HANDLE, every[channel]->getView(), VK_IMAGE_LAYOUT_GENERAL };
+                    = VkDescriptorImageInfo{ VK_NULL_HANDLE, mChannels[channel].getView(), VK_IMAGE_LAYOUT_GENERAL };
                 writes[channel] = VkWriteDescriptorSet{
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                     .dstSet = mSet,
@@ -166,7 +197,7 @@ namespace Rtx
                 };
             }
 
-            vkUpdateDescriptorSets(mDevice.getHandle(), sChannels, writes.data(), 0, nullptr);
+            vkUpdateDescriptorSets(mDevice.getHandle(), sChannelCount, writes.data(), 0, nullptr);
         }
         catch (...)
         {
@@ -187,34 +218,6 @@ namespace Rtx
             vkDestroyDescriptorPool(mDevice.getHandle(), mPool, nullptr);
     }
 
-    std::array<const Image*, GBuffer::sChannels> GBuffer::everyChannel() const
-    {
-        // **Placed by name and not by position.** The binding a channel is written to is its index
-        // here, and an initializer list said that only by the order somebody happened to write it
-        // in — so reordering the list rebound every channel, which compiles, runs, and hands each
-        // pass a different image than it declared.
-        std::array<const Image*, sChannels> every{};
-        every[Shaders::CHANNEL_DIRECT] = &mDirect;
-        every[Shaders::CHANNEL_INDIRECT] = &mIndirect;
-        every[Shaders::CHANNEL_ALBEDO] = &mAlbedo;
-        every[Shaders::CHANNEL_SPECULAR] = &mSpecular;
-        every[Shaders::CHANNEL_GUIDE] = &mGuide;
-        every[Shaders::CHANNEL_MOTION] = &mMotion;
-        every[Shaders::CHANNEL_DEPTH] = &mDepth;
-        every[Shaders::CHANNEL_REFLECTION_MOTION] = &mReflectionMotion;
-        every[Shaders::CHANNEL_PARTICLE_MASK] = &mParticleMask;
-        every[Shaders::CHANNEL_BIAS_MASK] = &mBiasMask;
-        every[Shaders::CHANNEL_STARS_SHOWN] = &mStarsShown;
-        every[Shaders::CHANNEL_TRANSPARENCY] = &mTransparency;
-        every[Shaders::CHANNEL_TRANSPARENCY_OPACITY] = &mTransparencyOpacity;
-        every[Shaders::CHANNEL_TRANSPARENCY_MOTION] = &mTransparencyMotion;
-
-        // A channel this forgot is a null the sweeps below would walk off, and nothing else says so.
-        assert(std::find(every.begin(), every.end(), nullptr) == every.end() && "a channel slot the list did not fill");
-
-        return every;
-    }
-
     void GBuffer::begin(VkCommandBuffer commands) const
     {
         // From undefined, because every pixel of all of them is written before any is read and there is
@@ -230,8 +233,8 @@ namespace Rtx
         // reads them at is its own; discarding from `TOP_OF_PIPE` waits for nothing at all, and
         // buys a torn frame for a barrier saved.
         Barriers barriers(commands);
-        for (const Image* image : everyChannel())
-            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+        for (const Image& image : mChannels)
+            barriers.add(image.describeTransition(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT));
 
@@ -248,8 +251,8 @@ namespace Rtx
         // image; DLSS samples every guide it is handed, which is what `sUsage`'s `SAMPLED_BIT` is
         // for and why a visibility scope of storage reads alone leaves its reads uncovered.
         Barriers barriers(commands);
-        for (const Image* image : everyChannel())
-            barriers.add(image->describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+        for (const Image& image : mChannels)
+            barriers.add(image.describeTransition(VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT));
@@ -265,7 +268,7 @@ namespace Rtx
         // **Both stages, because both kinds of pass are handed this set.** The trace is a launch and
         // everything that reads what it left — the accumulator, the wavelet, the composite — is a
         // dispatch.
-        std::array<VkDescriptorSetLayoutBinding, sChannels> bindings{};
+        std::array<VkDescriptorSetLayoutBinding, sChannelCount> bindings{};
         for (std::uint32_t channel = 0; channel < bindings.size(); ++channel)
             bindings[channel] = VkDescriptorSetLayoutBinding{ channel, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1,
                 VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_RAYGEN_BIT_KHR, nullptr };

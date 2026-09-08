@@ -68,7 +68,7 @@ namespace Rtx
         /// what the three branches differ over is what to do *besides* placing.
         /// Takes the scene by mutable reference because it consumes its arrivals: what a walk added
         /// is uploaded here and forgotten here, so a caller cannot upload it twice or lose it.
-        /// @param slot which of the renderer's scenes: `sWorld`, or one `addViewScene` gave
+        /// @param slot which of the renderer's scenes: the world's, or one `addViewScene` gave
         ///        out. **A doll takes the same three branches a cell does** — a race-creation slider
         ///        drag redraws the same subject sixty times a second, and rebuilding it each time is
         ///        what this exists to stop.
@@ -77,7 +77,7 @@ namespace Rtx
         ///        hand-over's**: a doll and a map tile go through the same three branches and
         ///        neither has ground to flatten, so an uploader of its own would carry a mutex, a
         ///        thread and a shading cache to bake nothing.
-        SceneUpload hand(Renderer& renderer, std::uint32_t slot, SceneDesc& scene, Resource::ImageManager& images,
+        SceneUpload hand(Renderer& renderer, SceneSlot slot, SceneDesc& scene, Resource::ImageManager& images,
             CompositeQueue* composites, const SeaState& sea = SeaState{});
 
     private:
@@ -93,8 +93,7 @@ namespace Rtx
         /// Compared and never dereferenced. The count is what carries the argument — an array
         /// somebody else left behind is not one to append to whatever its address was — and the two
         /// pointers are what stop a coincidence in it from mattering.
-        bool recognises(
-            const Renderer& renderer, std::uint32_t slot, const SceneDesc& scene, std::uint32_t textures) const;
+        bool recognises(const Renderer& renderer, SceneSlot slot, const SceneDesc& scene, std::uint32_t textures) const;
 
         /// What an arrival is described into, and the storage the descriptions point at.
         ///
@@ -108,7 +107,7 @@ namespace Rtx
         const SceneDesc* mScene = nullptr;
 
         /// Which of that renderer's scenes, so an uploader cannot append a doll onto the world.
-        std::uint32_t mSlot = sWorld;
+        SceneSlot mSlot;
 
         /// How long the renderer's texture array was when this last left it.
         std::uint32_t mUploaded = 0;

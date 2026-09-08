@@ -64,7 +64,7 @@ namespace Rtx
                 if (mRenderer == nullptr)
                     return;
 
-                for (std::uint32_t texture : mHeld)
+                for (const GuiSlot texture : mHeld)
                     mRenderer->dropGuiTexture(texture);
                 mHeld.clear();
 
@@ -72,15 +72,15 @@ namespace Rtx
             }
 
             /// A one-texel texture of this colour, dropped when the test ends.
-            std::uint32_t makeTexel(std::array<std::uint8_t, 4> colour)
+            GuiSlot makeTexel(std::array<std::uint8_t, 4> colour)
             {
-                const std::uint32_t texture = mRenderer->addGuiTexture(1, 1);
+                const GuiSlot texture = mRenderer->addGuiTexture(1, 1);
                 mHeld.push_back(texture);
-                mRenderer->writeGuiTexture(texture, Renderer::GuiRegion{ 0, 0, 1, 1 }, colour);
+                mRenderer->writeGuiTexture(texture, GuiRegion{ 0, 0, 1, 1 }, colour);
                 return texture;
             }
 
-            void drawQuad(std::uint32_t texture, float left, float top, float right, float bottom, std::uint32_t colour)
+            void drawQuad(GuiSlot texture, float left, float top, float right, float bottom, std::uint32_t colour)
             {
                 const std::array<GuiVertex, 6> quad = makeQuad(left, top, right, bottom, colour);
                 const std::array<GuiBatch, 1> batches{ GuiBatch{ texture, 0, quad.size() } };
@@ -89,7 +89,7 @@ namespace Rtx
 
             /// The four bytes at a pixel of a GUI texture, row zero at the top.
             std::array<std::uint8_t, 4> inTexture(
-                std::uint32_t texture, std::uint32_t extent, std::uint32_t x, std::uint32_t y)
+                GuiSlot texture, std::uint32_t extent, std::uint32_t x, std::uint32_t y)
             {
                 mRenderer->readGuiTexture(texture, mPixels);
                 EXPECT_EQ(mPixels.size(), std::size_t{ extent } * extent * 4);
@@ -108,7 +108,7 @@ namespace Rtx
                 return { mPixels[offset], mPixels[offset + 1], mPixels[offset + 2], mPixels[offset + 3] };
             }
 
-            std::vector<std::uint32_t> mHeld;
+            std::vector<GuiSlot> mHeld;
             std::vector<std::uint8_t> mPixels;
         };
 
@@ -117,7 +117,7 @@ namespace Rtx
         {
             // Halves that divide exactly, so the multiply has nothing to round: 200 × 128/255 is not
             // an integer, but 200 × 1 and 100 × 1 are.
-            const std::uint32_t texture = makeTexel({ 200, 100, 50, 255 });
+            const GuiSlot texture = makeTexel({ 200, 100, 50, 255 });
 
             drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
 
@@ -131,7 +131,7 @@ namespace Rtx
         /// each time would show only the last thing drawn.
         TEST_F(RtxGuiDrawTest, aSecondDrawLandsOverTheFirst)
         {
-            const std::uint32_t white = makeTexel({ 255, 255, 255, 255 });
+            const GuiSlot white = makeTexel({ 255, 255, 255, 255 });
 
             drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, packColour(0, 0, 255, 255));
             drawQuad(white, -1.0f, 1.0f, 0.0f, -1.0f, packColour(255, 0, 0, 128));
@@ -146,13 +146,13 @@ namespace Rtx
         /// frame and a fog of war need.
         TEST_F(RtxGuiDrawTest, rewritingATextureChangesWhatIsDrawn)
         {
-            const std::uint32_t texture = makeTexel({ 255, 0, 0, 255 });
+            const GuiSlot texture = makeTexel({ 255, 0, 0, 255 });
 
             drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
             EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 255, 0, 0, 255 })) << "as written";
 
             constexpr std::array<std::uint8_t, 4> sGreen{ 0, 255, 0, 255 };
-            mRenderer->writeGuiTexture(texture, Renderer::GuiRegion{ 0, 0, 1, 1 }, sGreen);
+            mRenderer->writeGuiTexture(texture, GuiRegion{ 0, 0, 1, 1 }, sGreen);
 
             drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
             EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 0, 255, 0, 255 })) << "as rewritten";
@@ -173,7 +173,7 @@ namespace Rtx
         TEST_F(RtxGuiDrawTest, aRegionWriteChangesItsRectangleAndNothingElse)
         {
             constexpr std::uint32_t side = 4;
-            const std::uint32_t texture = mRenderer->addGuiTexture(side, side);
+            const GuiSlot texture = mRenderer->addGuiTexture(side, side);
             mHeld.push_back(texture);
 
             std::array<std::uint8_t, side * side * 4> red{};
@@ -182,13 +182,13 @@ namespace Rtx
                 red[at] = 255;
                 red[at + 3] = 255;
             }
-            mRenderer->writeGuiTexture(texture, Renderer::GuiRegion{ 0, 0, side, side }, red);
+            mRenderer->writeGuiTexture(texture, GuiRegion{ 0, 0, side, side }, red);
 
             // Two texels wide and one tall, at the second column of the second row: a write that
             // ignored the offset, took it as a row count, or transposed it lands somewhere the sweep
             // below looks.
             constexpr std::array<std::uint8_t, 8> green{ 0, 255, 0, 255, 0, 255, 0, 255 };
-            mRenderer->writeGuiTexture(texture, Renderer::GuiRegion{ 1, 2, 2, 1 }, green);
+            mRenderer->writeGuiTexture(texture, GuiRegion{ 1, 2, 2, 1 }, green);
 
             for (std::uint32_t row = 0; row < side; ++row)
                 for (std::uint32_t column = 0; column < side; ++column)
@@ -209,13 +209,13 @@ namespace Rtx
         /// textures. A table that only ever grew would be a slow leak with a number on it.
         TEST_F(RtxGuiDrawTest, aSlotGivenBackIsTakenOverBeforeTheTableGrows)
         {
-            const std::uint32_t first = mRenderer->addGuiTexture(1, 1);
-            const std::uint32_t second = mRenderer->addGuiTexture(1, 1);
+            const GuiSlot first = mRenderer->addGuiTexture(1, 1);
+            const GuiSlot second = mRenderer->addGuiTexture(1, 1);
             EXPECT_NE(first, second);
 
             mRenderer->dropGuiTexture(first);
 
-            const std::uint32_t third = mRenderer->addGuiTexture(1, 1);
+            const GuiSlot third = mRenderer->addGuiTexture(1, 1);
             EXPECT_EQ(third, first) << "the freed slot, not a new one";
 
             mRenderer->dropGuiTexture(second);
@@ -229,10 +229,10 @@ namespace Rtx
         /// draw can name the slot.
         TEST_F(RtxGuiDrawTest, aTextureIsBlankBeforeItIsWritten)
         {
-            const std::uint32_t texture = mRenderer->addGuiTexture(1, 1);
+            const GuiSlot texture = mRenderer->addGuiTexture(1, 1);
             mHeld.push_back(texture);
 
-            const std::uint32_t white = makeTexel({ 255, 255, 255, 255 });
+            const GuiSlot white = makeTexel({ 255, 255, 255, 255 });
             drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, packColour(0, 0, 255, 255));
 
             // Nothing times anything is nothing: transparent black leaves the blue underneath.
@@ -255,7 +255,7 @@ namespace Rtx
             {
                 std::uint32_t mSide;
                 std::array<std::uint8_t, 4> mColour;
-                std::uint32_t mSlot = 0;
+                GuiSlot mSlot;
             };
 
             // A megabyte, a kilobyte and four bytes: the largest is what the staging settles at, and
@@ -277,7 +277,7 @@ namespace Rtx
                 for (std::uint32_t texel = 0; texel < one.mSide * one.mSide; ++texel)
                     rows.insert(rows.end(), one.mColour.begin(), one.mColour.end());
 
-                mRenderer->writeGuiTexture(one.mSlot, Renderer::GuiRegion{ 0, 0, one.mSide, one.mSide }, rows);
+                mRenderer->writeGuiTexture(one.mSlot, GuiRegion{ 0, 0, one.mSide, one.mSide }, rows);
             }
 
             // The corners, because a run that overlapped its neighbour's is wrong at an edge before
@@ -303,11 +303,10 @@ namespace Rtx
         {
             constexpr std::uint32_t side = 4;
 
-            const std::uint32_t texture = mRenderer->addGuiTexture(side, side);
+            const GuiSlot texture = mRenderer->addGuiTexture(side, side);
             mHeld.push_back(texture);
 
-            const std::span<std::uint8_t> into
-                = mRenderer->lendGuiTexture(texture, Renderer::GuiRegion{ 0, 0, side, side });
+            const std::span<std::uint8_t> into = mRenderer->lendGuiTexture(texture, GuiRegion{ 0, 0, side, side });
             ASSERT_EQ(into.size(), std::size_t{ side } * side * 4);
 
             for (std::uint32_t texel = 0; texel < side * side; ++texel)
@@ -346,7 +345,7 @@ namespace Rtx
         /// reason for them to come back any later than that.
         TEST_F(RtxGuiDrawTest, theStagingComesRoundNoSoonerThanTheFenceThatFreesIt)
         {
-            const std::uint32_t texture = makeTexel(sWhite);
+            const GuiSlot texture = makeTexel(sWhite);
 
             // An arena is replaced the first time it is asked for more than it holds, and only keeps
             // its address after that, so the first lap of them is warmed rather than measured.
@@ -356,8 +355,7 @@ namespace Rtx
             std::array<const std::uint8_t*, measured> lent{};
             for (std::uint32_t frame = 0; frame < warmed + measured; ++frame)
             {
-                const std::span<std::uint8_t> into
-                    = mRenderer->lendGuiTexture(texture, Renderer::GuiRegion{ 0, 0, 1, 1 });
+                const std::span<std::uint8_t> into = mRenderer->lendGuiTexture(texture, GuiRegion{ 0, 0, 1, 1 });
                 std::copy(sWhite.begin(), sWhite.end(), into.begin());
                 mRenderer->sendGuiTexture(texture);
 
@@ -384,7 +382,7 @@ namespace Rtx
         /// which is a use after free unless what was recorded is submitted first.
         TEST_F(RtxGuiDrawTest, aTextureDroppedWithAWritePendingIsLetGoCleanly)
         {
-            const std::uint32_t texture = mRenderer->addGuiTexture(2, 2);
+            const GuiSlot texture = mRenderer->addGuiTexture(2, 2);
 
             std::array<std::uint8_t, 2 * 2 * 4> red{};
             for (std::size_t at = 0; at < red.size(); at += 4)
@@ -392,11 +390,11 @@ namespace Rtx
                 red[at] = 255;
                 red[at + 3] = 255;
             }
-            mRenderer->writeGuiTexture(texture, Renderer::GuiRegion{ 0, 0, 2, 2 }, red);
+            mRenderer->writeGuiTexture(texture, GuiRegion{ 0, 0, 2, 2 }, red);
 
             mRenderer->dropGuiTexture(texture);
 
-            const std::uint32_t again = mRenderer->addGuiTexture(2, 2);
+            const GuiSlot again = mRenderer->addGuiTexture(2, 2);
             EXPECT_EQ(again, texture) << "the freed slot, not a new one";
             mRenderer->dropGuiTexture(again);
         }
@@ -413,7 +411,7 @@ namespace Rtx
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = scene.addMesh(Testing::wallAt(200.0f), {}, {}, Testing::sQuadIndices) });
 
-            mRenderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
 
             const Shaders::VisibilityConstants camera
                 = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sExtent, sExtent, 1000000.0f);
@@ -425,7 +423,7 @@ namespace Rtx
             // of it.
             mRenderer->renderFrame(camera, FrameOptions{});
 
-            const std::uint32_t texture = makeTexel({ 17, 34, 51, 255 });
+            const GuiSlot texture = makeTexel({ 17, 34, 51, 255 });
             drawQuad(texture, -1.0f, 1.0f, 0.0f, -1.0f, packColour(255, 255, 255, 255));
 
             EXPECT_EQ(at(1, 4), (std::array<std::uint8_t, 4>{ 17, 34, 51, 255 })) << "where the GUI drew";
@@ -470,9 +468,9 @@ namespace Rtx
         {
             constexpr std::uint32_t extent = 16;
 
-            mRenderer->setScene(Rtx::sWorld, makeSheet(25.0f), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f), {}, SeaState{});
 
-            const std::uint32_t texture = mRenderer->addGuiTexture(extent, extent);
+            const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);
 
             Shaders::VisibilityConstants camera = makeMapCamera(extent);
@@ -528,9 +526,9 @@ namespace Rtx
             constexpr std::uint32_t extent = 16;
             constexpr std::uint32_t filled = 8;
 
-            mRenderer->setScene(Rtx::sWorld, makeSheet(25.0f), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f), {}, SeaState{});
 
-            const std::uint32_t texture = mRenderer->addGuiTexture(extent, extent);
+            const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);
 
             Shaders::VisibilityConstants camera = makeMapCamera(filled);
@@ -561,18 +559,18 @@ namespace Rtx
             constexpr std::uint32_t extent = 16;
 
             // Two hundred across is the whole box, so the world's sheet covers every pixel.
-            mRenderer->setScene(Rtx::sWorld, makeSheet(100.0f), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(100.0f), {}, SeaState{});
 
-            const std::uint32_t doll = mRenderer->addViewScene();
+            const SceneSlot doll = mRenderer->addViewScene();
             mRenderer->setScene(doll, makeSheet(25.0f), {}, SeaState{});
 
-            const std::uint32_t texture = mRenderer->addGuiTexture(extent, extent);
+            const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);
 
             Shaders::VisibilityConstants camera = makeMapCamera(extent);
             camera.mTransparentBackground = 1;
 
-            const auto covered = [&](std::uint32_t scene) {
+            const auto covered = [&](SceneSlot scene) {
                 mRenderer->traceGuiTexture(
                     texture, camera, GuiTraceOptions{ .mWidth = extent, .mHeight = extent, .mScene = scene });
 
@@ -584,11 +582,11 @@ namespace Rtx
                 return across;
             };
 
-            EXPECT_EQ(covered(sWorld), extent) << "the world fills the box";
+            EXPECT_EQ(covered(SceneSlot::world()), extent) << "the world fills the box";
             EXPECT_EQ(covered(doll), 4u) << "and the doll is a quarter of it";
 
             // The world is still the world afterwards: building one scene did not replace the other.
-            EXPECT_EQ(covered(sWorld), extent) << "the world, still there";
+            EXPECT_EQ(covered(SceneSlot::world()), extent) << "the world, still there";
 
             mRenderer->dropViewScene(doll);
         }
@@ -609,18 +607,18 @@ namespace Rtx
             const SceneDesc world = makeSheet(100.0f);
             SceneDesc doll = makeSheet(25.0f);
 
-            mRenderer->setScene(Rtx::sWorld, world, {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), world, {}, SeaState{});
 
-            const std::uint32_t slot = mRenderer->addViewScene();
+            const SceneSlot slot = mRenderer->addViewScene();
             mRenderer->setScene(slot, doll, {}, SeaState{});
 
-            const std::uint32_t texture = mRenderer->addGuiTexture(extent, extent);
+            const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);
 
             Shaders::VisibilityConstants camera = makeMapCamera(extent);
             camera.mTransparentBackground = 1;
 
-            const auto covered = [&](std::uint32_t scene) {
+            const auto covered = [&](SceneSlot scene) {
                 mRenderer->traceGuiTexture(
                     texture, camera, GuiTraceOptions{ .mWidth = extent, .mHeight = extent, .mScene = scene });
 
@@ -654,7 +652,7 @@ namespace Rtx
             mRenderer->placeScene(slot, doll, SeaState{});
 
             EXPECT_EQ(covered(slot), 4u) << "a placement brought it back";
-            EXPECT_EQ(covered(sWorld), extent) << "and none of it took the world with it";
+            EXPECT_EQ(covered(SceneSlot::world()), extent) << "and none of it took the world with it";
 
             mRenderer->dropViewScene(slot);
         }
@@ -665,9 +663,9 @@ namespace Rtx
         {
             constexpr std::uint32_t extent = 16;
 
-            mRenderer->setScene(Rtx::sWorld, makeSheet(25.0f), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f), {}, SeaState{});
 
-            const std::uint32_t texture = mRenderer->addGuiTexture(extent, extent);
+            const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);
 
             Shaders::VisibilityConstants camera = makeMapCamera(extent);
@@ -677,7 +675,7 @@ namespace Rtx
             // Blue underneath, then the traced picture over the whole frame. The middle samples the
             // sheet, which is opaque and covers the blue; the corner samples where the trace stopped,
             // which is transparent and leaves it.
-            const std::uint32_t white = makeTexel({ 255, 255, 255, 255 });
+            const GuiSlot white = makeTexel({ 255, 255, 255, 255 });
             drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, packColour(0, 0, 255, 255));
             drawQuad(texture, -1.0f, 1.0f, 1.0f, -1.0f, packColour(255, 255, 255, 255));
 
@@ -688,7 +686,7 @@ namespace Rtx
         /// Nothing to draw is not an error and does not touch the frame.
         TEST_F(RtxGuiDrawTest, anEmptyGuiLeavesTheFrameAlone)
         {
-            const std::uint32_t white = makeTexel({ 255, 255, 255, 255 });
+            const GuiSlot white = makeTexel({ 255, 255, 255, 255 });
             drawQuad(white, -1.0f, 1.0f, 1.0f, -1.0f, packColour(17, 34, 51, 255));
 
             mRenderer->drawGui({}, {});
@@ -707,8 +705,8 @@ namespace Rtx
         {
             // Given back in the middle of the test rather than at the end of it, so it is not one
             // of the fixture's to hold.
-            const std::uint32_t closing = mRenderer->addGuiTexture(1, 1);
-            mRenderer->writeGuiTexture(closing, Renderer::GuiRegion{ 0, 0, 1, 1 }, sWhite);
+            const GuiSlot closing = mRenderer->addGuiTexture(1, 1);
+            mRenderer->writeGuiTexture(closing, GuiRegion{ 0, 0, 1, 1 }, sWhite);
 
             // Two draws, neither waited for, which is both slots of the ring in flight at once.
             drawQuad(closing, -1.0f, 1.0f, 0.0f, 0.0f, packColour(255, 0, 0, 255));
@@ -718,7 +716,7 @@ namespace Rtx
             // what used to submit, wait for its own batch alone, and destroy the one above.
             mRenderer->dropGuiTexture(closing);
 
-            const std::uint32_t opening = makeTexel(sWhite);
+            const GuiSlot opening = makeTexel(sWhite);
             drawQuad(opening, -1.0f, 1.0f, 1.0f, -1.0f, packColour(0, 0, 255, 255));
 
             EXPECT_EQ(at(4, 4), (std::array<std::uint8_t, 4>{ 0, 0, 255, 255 }));

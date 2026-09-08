@@ -2,6 +2,8 @@
 
 #include <osg/Vec3f>
 
+#include <components/sky/moonmodel.hpp>
+
 #include "index.hpp"
 #include "shaders/look.h"
 #include "shaders/visibility.h"
@@ -120,7 +122,7 @@ namespace Rtx
     /// @param alpha the daylight fade, with the weather's `Glare_View` on it —
     ///        `MoonMoment::mDaylightFade`. What decides whether the moon is up at all is `alongArc`,
     ///        which the engine leaves at nought until it rises and returns to nought once it sets.
-    MoonPlacement placeMoon(Moon moon, float alongArc, float axisOffset, int phase, float alpha);
+    MoonPlacement placeMoon(Moon moon, float alongArc, float axisOffset, Sky::MoonPhase phase, float alpha);
 
     /// A placement as the shader takes it.
     ///

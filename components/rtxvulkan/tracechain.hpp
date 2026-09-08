@@ -91,7 +91,7 @@ namespace Rtx
         const FogVolume& getFogVolume() const { return *mFogVolume; }
 
         /// What the accumulator blended, which is a channel a measurement can be read out of. It
-        /// asserts where nothing denoised, so a caller asks `Rtx::hasChannel` before it comes to
+        /// asserts where nothing denoised, so a caller asks `Rtx::hasFrameImage` before it comes to
         /// that.
         const Image& getBlended() const { return mAccumulate.getBlended(); }
 

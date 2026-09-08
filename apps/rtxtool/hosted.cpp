@@ -17,7 +17,7 @@
 #include <components/toutf8/toutf8.hpp>
 
 #include <apps/openmw/engine.hpp>
-#include <apps/openmw/mwrender/rtx/session.hpp>
+#include <apps/openmw/mwrender/rtx/setup.hpp>
 
 #include "viewpoint.hpp"
 
@@ -31,7 +31,8 @@ namespace RtxTool
     }
 
     int runHosted(const bpo::variables_map& variables, Files::ConfigurationManager& config,
-        const std::filesystem::path& resources, Rtx::SessionRequest request, const Viewpoint* spot)
+        const std::filesystem::path& resources, Rtx::RenderProfile profile, Rtx::SessionRequest request,
+        const Viewpoint* spot)
     {
         std::ostream& out = Debug::getRawStdout();
 
@@ -119,7 +120,10 @@ namespace RtxTool
             engine.setSoundUsage(false);
             engine.setGrabMouse(false);
 
-            MWRender::installSession(std::move(request), result);
+            const MWRender::RtxSetup setup{
+                .mProfile = std::move(profile), .mSession = std::move(request), .mInto = &result
+            };
+            engine.setRtxSetup(&setup);
 
             engine.go();
         }

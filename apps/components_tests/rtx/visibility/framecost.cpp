@@ -75,7 +75,7 @@ namespace Rtx::Testing
             poseByOneBone(scene, body, osg::Matrixf::identity());
 
             renderer->resize(size, size);
-            renderer->setScene(Rtx::sWorld, scene, {}, SeaState{});
+            renderer->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
 
             Shaders::VisibilityConstants camera = makeCamera(
                 osg::Vec3f(0.0f, -100.0f, 0.0f), osg::Vec3f(0.0f, 0.0f, 0.0f), 60.0f, size, size, 10000.0f);
@@ -95,7 +95,7 @@ namespace Rtx::Testing
                         walked += 1.0f;
                         scene.clearPlacement();
                         poseByOneBone(scene, body, osg::Matrixf::translate(0.0f, walked, 0.0f));
-                        renderer->placeScene(Rtx::sWorld, scene, SeaState{});
+                        renderer->placeScene(Rtx::SceneSlot::world(), scene, SeaState{});
                     }
 
                     camera.mFrame = index++;
@@ -167,7 +167,7 @@ namespace Rtx::Testing
 
             const auto describe = [&](std::uint32_t slot) {
                 return TextureData{
-                    .mSlot = slot,
+                    .mIndex = slot,
                     .mFormat = TextureFormat::Rgba8Unorm,
                     .mWidth = extent,
                     .mHeight = extent,

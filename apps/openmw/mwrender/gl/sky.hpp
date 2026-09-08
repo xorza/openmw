@@ -9,6 +9,7 @@
 #include <osg/ref_ptr>
 
 #include <components/sky/clouds.hpp>
+#include <components/sky/moonmodel.hpp>
 #include <components/sky/skyroll.hpp>
 #include <components/vfs/pathutil.hpp>
 
@@ -89,8 +90,8 @@ namespace MWRender
 
         void setSunDirection(const osg::Vec3f& direction);
 
-        void setMasserState(const MoonState& state);
-        void setSecundaState(const MoonState& state);
+        void setMasserState(const Sky::MoonMoment& state);
+        void setSecundaState(const Sky::MoonMoment& state);
 
         void setGlareTimeOfDayFade(float val);
 

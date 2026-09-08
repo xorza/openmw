@@ -5,6 +5,9 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <span>
+#include <utility>
+
 #include <osg/Vec3f>
 
 #include "srgb.hpp"
@@ -14,11 +17,6 @@ namespace Rtx
 {
     namespace
     {
-        std::uint32_t halved(std::uint32_t side)
-        {
-            return std::max(side / 2, 1u);
-        }
-
         std::byte quantise(float value)
         {
             return static_cast<std::byte>(std::clamp(std::lround(value * 255.0f), 0L, 255L));
@@ -27,12 +25,8 @@ namespace Rtx
 
     void MipChain::build(const TextureData& described)
     {
-        mLevels.clear();
-        mTexels.clear();
-        mWidth = 0;
-        mHeight = 0;
+        mTexture.reuse();
         mEncoded = true;
-        mName = {};
 
         if (described.mLevels.empty())
             return;
@@ -51,44 +45,30 @@ namespace Rtx
         if (finest.mWidth == 0 || finest.mHeight == 0 || (finest.mWidth == 1 && finest.mHeight == 1))
             return;
 
-        mWidth = finest.mWidth;
-        mHeight = finest.mHeight;
         mEncoded = isSrgb(described.mFormat);
-        mName = described.mName;
 
         // The whole shape first, so the texels are asked for once and the levels never move.
-        std::size_t bytes = 0;
-        for (MipLevel level{ .mOffset = 0, .mWidth = mWidth, .mHeight = mHeight };;)
-        {
-            mLevels.push_back(level);
-            bytes += std::size_t{ level.mWidth } * level.mHeight * 4;
+        mTexture.openChain(
+            finest.mWidth, finest.mHeight, mEncoded ? TextureFormat::Rgba8Srgb : TextureFormat::Rgba8Unorm);
+        mTexture.setName(described.mName);
 
-            if (level.mWidth == 1 && level.mHeight == 1)
-                break;
-
-            level = MipLevel{
-                .mOffset = static_cast<std::uint32_t>(bytes),
-                .mWidth = halved(level.mWidth),
-                .mHeight = halved(level.mHeight),
-            };
-        }
-
-        mTexels.resize(bytes);
+        const std::uint32_t width = mTexture.getWidth();
+        const std::uint32_t height = mTexture.getHeight();
 
         // **The finest level, through the readers that already know every format.** Alpha is a byte
         // a texel in all of them and colour is one call apiece, so nothing here knows what a block
         // is.
         mAlpha.build(described);
-        for (std::uint32_t y = 0; y < mHeight; ++y)
-            for (std::uint32_t x = 0; x < mWidth; ++x)
+        for (std::uint32_t y = 0; y < height; ++y)
+            for (std::uint32_t x = 0; x < width; ++x)
             {
                 const osg::Vec3f colour = texelAt(described, finest, x, y);
-                const std::size_t at = (std::size_t{ y } * mWidth + x) * 4;
+                const std::span<std::byte, OwnedTexture::sStride> into = mTexture.at(0, x, y);
 
                 for (int channel = 0; channel < 3; ++channel)
-                    mTexels[at + static_cast<std::size_t>(channel)] = quantise(colour[channel]);
+                    into[static_cast<std::size_t>(channel)] = quantise(colour[channel]);
 
-                mTexels[at + 3] = static_cast<std::byte>(mAlpha.at(0, x, y));
+                into[3] = static_cast<std::byte>(mAlpha.at(0, x, y));
             }
 
         // **Each level from the one above it, with the colours weighed by the alpha they carry.** A
@@ -99,10 +79,10 @@ namespace Rtx
         //
         // In light and not in bytes, for the reason `Rtx::toLinear` gives: the mean of two stored
         // bytes is not the byte of their mean.
-        for (std::size_t at = 1; at < mLevels.size(); ++at)
+        for (std::uint32_t at = 1; at < mTexture.getShape().getLevelCount(); ++at)
         {
-            const MipLevel& above = mLevels[at - 1];
-            const MipLevel& level = mLevels[at];
+            const MipLevel above = mTexture.getShape().getLevel(at - 1);
+            const MipLevel level = mTexture.getShape().getLevel(at);
 
             for (std::uint32_t y = 0; y < level.mHeight; ++y)
                 for (std::uint32_t x = 0; x < level.mWidth; ++x)
@@ -116,11 +96,11 @@ namespace Rtx
                         {
                             const std::uint32_t sx = std::min(2 * x + dx, above.mWidth - 1);
                             const std::uint32_t sy = std::min(2 * y + dy, above.mHeight - 1);
-                            const std::size_t from = above.mOffset + (std::size_t{ sy } * above.mWidth + sx) * 4;
+                            const std::span<const std::byte, OwnedTexture::sStride> from
+                                = std::as_const(mTexture).at(at - 1, sx, sy);
 
-                            const auto stored = [&](std::size_t offset) {
-                                return std::to_integer<std::uint8_t>(mTexels[from + offset]);
-                            };
+                            const auto stored
+                                = [&](std::size_t offset) { return std::to_integer<std::uint8_t>(from[offset]); };
 
                             // **Through the byte and not through a float divided by 255**, which is
                             // the same number by a table rather than by a `pow` a texel a channel a
@@ -138,25 +118,18 @@ namespace Rtx
 
                     const osg::Vec3f mean = painted > 0.0f ? weighed / painted : even / 4.0f;
 
-                    const std::size_t into = level.mOffset + (std::size_t{ y } * level.mWidth + x) * 4;
+                    const std::span<std::byte, OwnedTexture::sStride> into = mTexture.at(at, x, y);
                     for (int channel = 0; channel < 3; ++channel)
-                        mTexels[into + static_cast<std::size_t>(channel)]
+                        into[static_cast<std::size_t>(channel)]
                             = quantise(mEncoded ? toEncoded(mean[channel]) : mean[channel]);
 
-                    mTexels[into + 3] = quantise(painted / 4.0f);
+                    into[3] = quantise(painted / 4.0f);
                 }
         }
     }
 
     TextureData MipChain::describe() const
     {
-        return TextureData{
-            .mFormat = mEncoded ? TextureFormat::Rgba8Srgb : TextureFormat::Rgba8Unorm,
-            .mWidth = mWidth,
-            .mHeight = mHeight,
-            .mBytes = mTexels,
-            .mLevels = mLevels,
-            .mName = mName,
-        };
+        return mTexture.describe();
     }
 }

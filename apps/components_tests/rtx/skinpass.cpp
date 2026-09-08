@@ -154,8 +154,8 @@ namespace Rtx
             }
             for (std::uint32_t slot = 0; slot < 2; ++slot)
             {
-                poses.settle(slot);
-                normals.settle(slot);
+                poses.settle(FrameSlot{ slot });
+                normals.settle(FrameSlot{ slot });
             }
 
             Graveyard graveyard(device, pool);
@@ -168,7 +168,7 @@ namespace Rtx
             const Buffer readNormals = Buffer::staging(device, normalBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
             /// Poses what `slot` owes and copies its whole first block back.
-            const auto poseAndRead = [&](std::uint32_t slot) {
+            const auto poseAndRead = [&](FrameSlot slot) {
                 bool recorded = false;
                 pool.submitAndWait([&](VkCommandBuffer commands) {
                     recorded = pass.record(commands, scene, slot, tables, poses, normals, nullptr);
@@ -198,7 +198,7 @@ namespace Rtx
                 return recorded;
             };
 
-            EXPECT_TRUE(poseAndRead(0)) << "four meshes owed and nothing recorded";
+            EXPECT_TRUE(poseAndRead(FrameSlot{ 0 })) << "four meshes owed and nothing recorded";
 
             const auto positionOf = [&](Index mesh, std::uint32_t vertex) {
                 return readVector(readPositions, scene.getMeshes()[mesh].mBindOffset + vertex);
@@ -249,11 +249,11 @@ namespace Rtx
             // nothing new still has to bring the second copy level, and a copy that is level
             // records nothing.
             scene.clearPlacement();
-            EXPECT_TRUE(poseAndRead(1)) << "the second copy owed four poses and nothing was recorded";
+            EXPECT_TRUE(poseAndRead(FrameSlot{ 1 })) << "the second copy owed four poses and nothing was recorded";
             EXPECT_EQ(positionOf(raised, 2), osg::Vec3f(1.0f, 1.0f, 5.0f)) << "the pose reached the second copy";
             EXPECT_EQ(positionOf(blended, 2), osg::Vec3f(1.0f, 1.0f, 7.0f));
 
-            EXPECT_FALSE(poseAndRead(0)) << "a copy that owed nothing recorded a dispatch";
+            EXPECT_FALSE(poseAndRead(FrameSlot{ 0 })) << "a copy that owed nothing recorded a dispatch";
         }
     }
 }

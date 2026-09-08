@@ -121,13 +121,13 @@ namespace Rtx
         bool isValidating() const override;
         void resetHistory() override { mDenoiserStale = mAirStale = true; }
 
-        void setScene(std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> textures,
+        void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures,
             const SeaState& sea) override;
-        void extendScene(std::uint32_t slot, const SceneDesc& scene, std::span<const TextureData> arrived,
-            const SeaState& sea) override;
-        std::uint32_t getTextureCount(std::uint32_t slot) const override;
-        void dropTextures(std::uint32_t slot, std::span<const std::uint32_t> textures) override;
-        void placeScene(std::uint32_t slot, const SceneDesc& scene, const SeaState& sea) override;
+        void extendScene(
+            SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea) override;
+        std::uint32_t getTextureCount(SceneSlot slot) const override;
+        void dropTextures(SceneSlot slot, std::span<const Index> textures) override;
+        void placeScene(SceneSlot slot, const SceneDesc& scene, const SeaState& sea) override;
         const SceneStats& getSceneStats() const override { return mStats; }
         MemoryReport getMemoryReport() const override;
         void resize(std::uint32_t width, std::uint32_t height) override;
@@ -140,39 +140,42 @@ namespace Rtx
         std::optional<FrameResult> finishFrame() override;
         bool presentFrame() override;
 
-        std::uint32_t addViewScene() override;
-        void dropViewScene(std::uint32_t scene) override;
+        SceneSlot addViewScene() override;
+        void dropViewScene(SceneSlot scene) override;
 
-        std::uint32_t addGuiTexture(std::uint32_t width, std::uint32_t height) override;
-        void writeGuiTexture(
-            std::uint32_t texture, const GuiRegion& region, std::span<const std::uint8_t> rgba) override;
-        std::span<std::uint8_t> lendGuiTexture(std::uint32_t texture, const GuiRegion& region) override;
-        void sendGuiTexture(std::uint32_t texture) override;
-        void dropGuiTexture(std::uint32_t texture) override;
+        GuiSlot addGuiTexture(std::uint32_t width, std::uint32_t height) override;
+        void writeGuiTexture(GuiSlot texture, const GuiRegion& region, std::span<const std::uint8_t> rgba) override;
+        std::span<std::uint8_t> lendGuiTexture(GuiSlot texture, const GuiRegion& region) override;
+        void sendGuiTexture(GuiSlot texture) override;
+        void dropGuiTexture(GuiSlot texture) override;
         void drawGui(std::span<const GuiVertex> vertices, std::span<const GuiBatch> batches) override;
         void traceGuiTexture(
-            std::uint32_t texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options) override;
-        void readGuiTexture(std::uint32_t texture, std::vector<std::uint8_t>& pixels) override;
+            GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options) override;
+        void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) override;
         void readPixels(std::vector<std::uint8_t>& pixels) override;
         void readChannel(Channel channel, std::vector<float>& values) override;
+        void readFrameImage(FrameImage image, std::vector<float>& values) override;
         void takeValidationErrors(std::vector<std::string>& errors) override;
 
     private:
-        /// The scene a slot names — `sWorld`'s, or a picture's. A slot nothing holds is a caller
+        /// The scene a slot names — the world's, or a picture's. A slot nothing holds is a caller
         /// bug, so it is asserted rather than reported.
         ///
         /// **The const one does the work.** Casting the other way round takes the constness off an
         /// object that may really have it, which is the one direction of this pair that is not
         /// always sound.
-        const ViewScene& sceneAt(std::uint32_t slot) const;
-        ViewScene& sceneAt(std::uint32_t slot);
+        /// Widens a channel stored as bytes or as halves on the way out.
+        void readImage(const Image& image, std::vector<float>& values);
+
+        const ViewScene& sceneAt(SceneSlot slot) const;
+        ViewScene& sceneAt(SceneSlot slot);
 
         /// What the trace reads a scene through, for whichever copy `slot` names.
         ///
         /// **Ten fields, and a frame and a picture inside the interface each used to name them.**
         /// The two differ in the copy they read and in the fog volume they march, and in nothing
         /// else — so a field added for one of them reached the other only if somebody remembered.
-        VisibilityInputs describeInputs(const ViewScene& held, std::uint32_t slot, const FogVolume* volume) const;
+        VisibilityInputs describeInputs(const ViewScene& held, FrameSlot slot, const FogVolume* volume) const;
 
         /// Everything a placement of `held` is, recorded and written where `placing` says. True
         /// where anything was recorded, which is what says whether its command buffer is worth
@@ -235,7 +238,7 @@ namespace Rtx
         /// **A placement's parity and not a frame's**, because a frame need not place: a test that
         /// traces the same placement twice reads the same copy twice, and the copy a placement is
         /// about to write is guarded by the frame that last traced it, not by the frame count.
-        std::uint32_t mWorldSlot = 0;
+        FrameSlot mWorldSlot;
 
         /// The last frame that traced each copy of the world's tables, or `sNeverRead`.
         static constexpr std::uint64_t sNeverRead = ~std::uint64_t{ 0 };
@@ -357,7 +360,7 @@ namespace Rtx
         /// which the shader reads as "there is no previous frame" and answers with no motion at all.
         Shaders::VisibilityConstants mPreviousCamera{};
 
-        /// The world's, which is one of these like any other: what `sWorld` names.
+        /// The world's, which is one of these like any other: what `SceneSlot::world` names.
         ViewScene mWorld;
 
         std::unique_ptr<VisibilityPass> mPass;
@@ -401,7 +404,7 @@ namespace Rtx
         /// Scenes belonging to pictures rather than to the world, by slot, and the slots nothing
         /// holds.
         std::vector<std::unique_ptr<ViewScene>> mViewScenes;
-        std::vector<std::uint32_t> mFreeViewScenes;
+        std::vector<SceneSlot> mFreeViewScenes;
 
         /// The picture as bytes, which is what the interface's texture is copied out of. Null
         /// until something asks for a picture, and grown with `mView`.

@@ -128,28 +128,28 @@ namespace Rtx
         }
     }
 
-    VkDeviceAddress SkinTables::writeBones(const SceneDesc& scene, const std::uint32_t slot, const Index mesh)
+    VkDeviceAddress SkinTables::writeBones(const SceneDesc& scene, const FrameSlot slot, const Index mesh)
     {
-        assert(slot < mSlots);
+        assert(slot.get() < mSlots);
 
         const MeshRange& range = scene.getMeshes()[mesh];
         const VkDeviceSize at = VkDeviceSize{ range.mPoseOffset } * sizeof(Shaders::GpuBone);
-        mBones[slot].writeAt(at, scene.getMeshBones(mesh));
+        mBones[slot.get()].writeAt(at, scene.getMeshBones(mesh));
 
-        const VkDeviceAddress address = mBones[slot].getDeviceAddress() + at;
+        const VkDeviceAddress address = mBones[slot.get()].getDeviceAddress() + at;
         assert(address % sBoneAlignment == 0 && "a run of rows the kernel's reference claims more of than is true");
         return address;
     }
 
-    VkDeviceAddress SkinTables::writeWeights(const SceneDesc& scene, const std::uint32_t slot, const Index mesh)
+    VkDeviceAddress SkinTables::writeWeights(const SceneDesc& scene, const FrameSlot slot, const Index mesh)
     {
-        assert(slot < mSlots);
+        assert(slot.get() < mSlots);
 
         const MeshRange& range = scene.getMeshes()[mesh];
         const VkDeviceSize at = VkDeviceSize{ range.mPoseOffset } * sizeof(float);
-        mWeights[slot].writeAt(at, scene.getMeshWeights(mesh));
+        mWeights[slot.get()].writeAt(at, scene.getMeshWeights(mesh));
 
-        return mWeights[slot].getDeviceAddress() + at;
+        return mWeights[slot.get()].getDeviceAddress() + at;
     }
 
     VkDeviceAddress SkinTables::getBindPositions(const MeshRange& mesh) const

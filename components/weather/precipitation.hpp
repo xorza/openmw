@@ -155,8 +155,8 @@ namespace Weather
         /// own answer in the content files and the rest of the weathers have none.
         bool ripplesEnabled() const;
 
-        float getPrecipitationAlpha() const { return mPrecipitationAlpha; }
-        float getBaseWindSpeed() const { return mBaseWindSpeed; }
+        float getPrecipitationAlpha() const { return mWeather.mPrecipitationAlpha; }
+        float getBaseWindSpeed() const { return mWeather.mBaseWindSpeed; }
 
         /// How far a particle travels before the wrap carries it back — the box an occlusion pass
         /// has to cover, which is why anything outside asks.
@@ -190,22 +190,16 @@ namespace Weather
         osg::ref_ptr<osg::Node> mParticleEffect;
         VFS::Path::Normalized mCurrentParticleEffect;
 
-        std::string mRainEffect;
-        float mRainSpeed = 0.f;
-        float mRainDiameter = 0.f;
-        float mRainMinHeight = 0.f;
-        float mRainMaxHeight = 0.f;
-        float mRainEntranceSpeed = 1.f;
-        int mRainMaxRaindrops = 0;
+        /// What the weather system last said is falling.
+        ///
+        /// **Held whole rather than unpacked into eleven members.** `setWeather` copied every field
+        /// of it across, which is one fact in two places and a field added to the record that
+        /// nothing here would carry.
+        Downpour mWeather;
 
         bool mRainRipplesEnabled;
         bool mSnowRipplesEnabled;
 
-        float mPrecipitationAlpha = 0.f;
-        float mWindSpeed = 0.f;
-        float mBaseWindSpeed = 0.f;
-
-        bool mIsStorm = false;
         osg::Vec3f mStormDirection = defaultStormDirection();
 
         bool mUnderwater = false;

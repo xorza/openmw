@@ -74,18 +74,14 @@ namespace Rtx
             EXPECT_FALSE(raw.filtered()) << "nothing denoised it, which is what a reference is built from";
             EXPECT_FALSE(upscaled.filtered()) << "Ray Reconstruction is the denoiser, and it is not this one";
 
-            EXPECT_TRUE(hasChannel(wavelet, Channel::Accumulated));
-            EXPECT_FALSE(hasChannel(raw, Channel::Accumulated));
-            EXPECT_FALSE(hasChannel(upscaled, Channel::Accumulated)) << "the same ask, and no channel to read";
+            EXPECT_TRUE(hasFrameImage(wavelet, FrameImage::Accumulated));
+            EXPECT_FALSE(hasFrameImage(raw, FrameImage::Accumulated));
+            EXPECT_FALSE(hasFrameImage(upscaled, FrameImage::Accumulated)) << "the same ask, and no channel to read";
 
-            // Every other channel is the trace's or the composite's, so it is there whatever put the
-            // frame back together.
+            // The composite's own output is there whatever put the frame back together, and every
+            // g-buffer channel is the trace's, so `hasFrameImage` has one question to answer.
             for (const Reconstruction& put : { wavelet, raw, upscaled })
-            {
-                EXPECT_TRUE(hasChannel(put, Channel::Radiance));
-                EXPECT_TRUE(hasChannel(put, Channel::Indirect));
-                EXPECT_TRUE(hasChannel(put, Channel::Depth));
-            }
+                EXPECT_TRUE(hasFrameImage(put, FrameImage::Composite));
         }
 
         /// Every name round-trips, because a report is only worth anything if it reads back.

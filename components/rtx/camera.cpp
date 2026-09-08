@@ -64,7 +64,7 @@ namespace Rtx
         /// A viewpoint before anything has described the world over it.
         ///
         /// **One statement for the three builders**, because what each of them leaves for
-        /// `FrameWorld` to overwrite has to be one answer. `Shaders::VisibilityConstants` is a
+        /// `describeWorld` to overwrite has to be one answer. `Shaders::VisibilityConstants` is a
         /// header `glslc` reads as well, so it can hold no default member initialisers of its own
         /// and the defaults have to live on this side.
         Shaders::VisibilityConstants beforeWorld(const osg::Vec3f& origin, float near, float far)
@@ -85,7 +85,7 @@ namespace Rtx
 
                 // **The layer `FOG_HEIGHT` names, until a weather says otherwise.** A camera is
                 // built before anything has described the air over it, and a lift of nothing is a
-                // layer of no height at all rather than an absence of one. `FrameWorld` overwrites
+                // layer of no height at all rather than an absence of one. `describeWorld` overwrites
                 // this with what the cell's own weather stands its fog up to.
                 .mFogLift = 1.0f,
             };

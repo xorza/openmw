@@ -96,7 +96,7 @@ namespace Rtx
         std::array<std::unique_ptr<Image>, 2> mMoments;
 
         /// Where the blend goes, in the cascade's format because the cascade both reads and
-        /// overwrites it. Readable, so `Channel::Accumulated` can hand it back. Null until `resize`.
+        /// overwrites it. Readable, so `FrameImage::Accumulated` can hand it back. Null until `resize`.
         std::unique_ptr<Image> mBlended;
 
         /// Which half of each pair this frame writes. Flipped by `record`.

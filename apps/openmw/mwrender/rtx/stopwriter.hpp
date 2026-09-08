@@ -10,6 +10,8 @@
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/benchrun.hpp>
 
+#include "tracedrun.hpp"
+
 namespace Rtx
 {
     class RunRecord;
@@ -18,7 +20,6 @@ namespace Rtx
 namespace MWRender
 {
     class OffscreenView;
-    class RtxRenderer;
 
     /// Writes what `Rtx::Actions` asks of the place a stop stood at.
     ///
@@ -39,9 +40,9 @@ namespace MWRender
         /// describes those frames, so a picture taken after them is a picture of a different run.
         ///
         /// @param reconstruction what put that frame back together, which decides what channels it
-        ///        has. `Rtx::hasChannel` is where that rule lives.
+        ///        has. `Rtx::hasFrameImage` is where that rule lives.
         /// @param crossings what the stop's route came to, which only a check reads.
-        void write(RtxRenderer& owner, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
+        void write(const TracedRun& run, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
             const Rtx::Crossings& crossings, Rtx::RunRecord& record);
 
     private:
@@ -53,7 +54,7 @@ namespace MWRender
         /// Bundling them keeps the three off every writer's signature.
         struct Writing
         {
-            RtxRenderer& mOwner;
+            const TracedRun& mRun;
             Rtx::Reconstruction mReconstruction;
             Rtx::RunRecord& mRecord;
         };

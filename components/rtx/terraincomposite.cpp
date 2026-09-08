@@ -192,7 +192,6 @@ namespace Rtx
 
     TerrainComposite::TerrainComposite(
         std::span<const CompositeLayer> layers, std::uint32_t extent, float delight, CompositeScratch& scratch)
-        : mExtent(extent)
     {
         assert(!layers.empty() && "a composite of no layers is a chunk with no ground at all");
         assert(extent > 0 && std::has_single_bit(extent) && "a composite extent the chain cannot halve to one texel");
@@ -292,25 +291,21 @@ namespace Rtx
             }
         }
 
-        buildChain(scratch);
+        buildChain(extent, scratch);
     }
 
-    void TerrainComposite::buildChain(CompositeScratch& scratch)
+    void TerrainComposite::buildChain(const std::uint32_t extent, CompositeScratch& scratch)
     {
         std::vector<osg::Vec3f>& light = scratch.mLight;
 
-        const auto count = static_cast<std::uint32_t>(std::countr_zero(mExtent)) + 1;
+        mTexture.openChain(extent, extent, TextureFormat::Rgba8Srgb);
 
-        std::size_t total = 0;
-        for (std::uint32_t at = 0, side = mExtent; at < count; ++at, side /= 2)
-            total += std::size_t{ side } * side * 4;
+        const MipPyramid& shape = mTexture.getShape();
 
-        mBytes.resize(total);
-        mLevels.reserve(count);
-
-        std::uint32_t offset = 0;
-        for (std::uint32_t at = 0, side = mExtent; at < count; ++at, side /= 2)
+        for (std::uint32_t at = 0; at < shape.getLevelCount(); ++at)
         {
+            const std::uint32_t side = shape.getLevel(at).mWidth;
+
             if (at > 0)
             {
                 // Box-filtered in light for the reason the blend above is summed in it, and built
@@ -329,20 +324,18 @@ namespace Rtx
                 light.swap(scratch.mCoarser);
             }
 
-            mLevels.push_back(MipLevel{ offset, side, side });
+            const std::span<std::byte> level = mTexture.level(at);
 
             for (std::size_t texel = 0; texel < std::size_t{ side } * side; ++texel)
             {
                 const osg::Vec3f& colour = light[texel];
-                std::byte* into = mBytes.data() + offset + texel * 4;
+                const std::span<std::byte> into = level.subspan(texel * OwnedTexture::sStride);
 
                 into[0] = encodeByte(colour.x());
                 into[1] = encodeByte(colour.y());
                 into[2] = encodeByte(colour.z());
                 into[3] = std::byte{ 255 };
             }
-
-            offset += side * side * 4;
         }
     }
 
@@ -354,13 +347,9 @@ namespace Rtx
         // the only place the tiling was still known.
         static const ShadingMap sNeutral;
 
-        return TextureData{
-            .mFormat = TextureFormat::Rgba8Srgb,
-            .mWidth = mExtent,
-            .mHeight = mExtent,
-            .mBytes = mBytes,
-            .mLevels = mLevels,
-            .mShading = sNeutral.getValues(),
-        };
+        TextureData described = mTexture.describe();
+        described.mShading = sNeutral.getValues();
+
+        return described;
     }
 }

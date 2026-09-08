@@ -198,20 +198,23 @@ namespace RtxTool
             request.mWidth = width;
             request.mHeight = height;
             request.mFieldOfView = variables["fov"].as<float>();
-            request.mUpscale = Rtx::sUpscaleNames.require(variables["upscale"].as<std::string>(), "an upscale mode");
-            request.mPreset
-                = Rtx::sPresetNames.require(variables["preset"].as<std::string>(), "a Ray Reconstruction preset");
-            request.mReorder = Rtx::sReorderNames.require(variables["reorder"].as<std::string>(), "a reorder mode");
-            request.mMicromaps = variables["micromaps"].as<bool>();
-            request.mDelight = variables["delight"].as<float>();
-            request.mFilter = variables["filter"].as<bool>();
-            request.mShowAlbedo = variables["albedo"].as<bool>();
-            request.mJitter = variables["jitter"].as<bool>();
-            request.mCountCrossings = variables["crossings"].as<bool>();
             request.mDistantCells = variables["distant-cells"].as<float>();
             request.mDistantStatics = variables["distant-statics"].as<bool>();
-            request.mExposure = parseExposure(variables["exposure"].as<std::string>());
             request.mDay = variables["day"].as<int>();
+
+            request.mProfile.mUpscale
+                = Rtx::sUpscaleNames.require(variables["upscale"].as<std::string>(), "an upscale mode");
+            request.mProfile.mPreset
+                = Rtx::sPresetNames.require(variables["preset"].as<std::string>(), "a Ray Reconstruction preset");
+            request.mProfile.mReorder
+                = Rtx::sReorderNames.require(variables["reorder"].as<std::string>(), "a reorder mode");
+            request.mProfile.mMicromaps = variables["micromaps"].as<bool>();
+            request.mProfile.mDelight = variables["delight"].as<float>();
+            request.mProfile.mFilter = variables["filter"].as<bool>();
+            request.mProfile.mShowAlbedo = variables["albedo"].as<bool>();
+            request.mProfile.mJitter = variables["jitter"].as<bool>();
+            request.mProfile.mCountCrossings = variables["crossings"].as<bool>();
+            request.mProfile.mExposure = parseExposure(variables["exposure"].as<std::string>());
 
             return request;
         }
@@ -318,7 +321,8 @@ namespace RtxTool
             request.mStops.push_back(std::move(stop));
             request.mValidation = validationFrom(command.mVariables, false);
 
-            return runHosted(command.mVariables, command.mConfig, command.mResources, std::move(request));
+            return runHosted(command.mVariables, command.mConfig, command.mResources, frameFrom(command).mProfile,
+                std::move(request));
         }
 
         /// How long every stop of a run lasts, from what the command line asked for.
@@ -340,9 +344,8 @@ namespace RtxTool
         /// window it is presented in, and the knobs the trace is made with.
         ///
         /// **These are settings and not a second command line**, because both binaries have to
-        /// reach one renderer configured one way. The game used to hard-code every one of them and
-        /// the harness used to take each as an option, so a picture taken here and a frame played
-        /// were traced by two differently configured renderers.
+        /// reach one engine configured one way. What the *trace* is configured by is
+        /// `FrameRequest::mProfile`, which the renderer is handed directly.
         void applyHostedSettings(const FrameRequest& frame)
         {
             Settings::video().mResolutionX.set(static_cast<int>(frame.mWidth));
@@ -350,21 +353,11 @@ namespace RtxTool
             Settings::video().mWindowMode.set(Settings::WindowMode::Windowed);
             Settings::camera().mFieldOfView.set(frame.mFieldOfView);
 
-            Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(frame.mUpscale)));
-            Settings::rtx().mPreset.set(std::string(Rtx::presetName(frame.mPreset)));
-            Settings::rtx().mReorder.set(std::string(Rtx::reorderName(frame.mReorder)));
-            Settings::rtx().mMicromaps.set(frame.mMicromaps);
-            Settings::rtx().mDelight.set(frame.mDelight);
-            Settings::rtx().mShowAlbedo.set(frame.mShowAlbedo);
-            Settings::rtx().mFilter.set(frame.mFilter);
-
-            // **Nought means measure it, which is what `--exposure=auto` says.** A setting has no
-            // way to be absent, so the number the absence stands for is the one nothing multiplies.
-            Settings::rtx().mExposure.set(frame.mExposure.value_or(0.0f));
-            Settings::rtx().mJitter.set(frame.mJitter);
+            // **What the engine reads and the renderer does not.** Everything the trace itself is
+            // configured by travels as a `Rtx::RenderProfile` through `RendererSpec`, so these are
+            // the settings a harness genuinely overrides rather than a channel between two objects.
             Settings::rtx().mDistantLandCells.set(frame.mDistantCells);
             Settings::terrain().mObjectPaging.set(frame.mDistantStatics);
-            Settings::rtx().mCountCrossings.set(frame.mCountCrossings);
         }
 
         /// Everything a command that renders one place opens with.
@@ -577,7 +570,8 @@ namespace RtxTool
 
             request.mValidation = validationForMeasuring(variables, false);
 
-            if (const int status = runHosted(variables, command.mConfig, command.mResources, std::move(request));
+            if (const int status
+                = runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
                 status != 0)
                 return status;
 
@@ -618,7 +612,7 @@ namespace RtxTool
             request.mHeadless = !variables["window"].as<bool>();
             request.mValidation = validationForMeasuring(variables, !request.mHeadless);
 
-            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
+            return runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
         }
 
         /// A screenshot of the game's own world, taken headless.
@@ -679,7 +673,8 @@ namespace RtxTool
             request.mQuitAtEnd = frames > 0;
             request.mValidation = validationFrom(variables, true);
 
-            return runHosted(variables, command.mConfig, command.mResources, std::move(request), &staged.mSpot);
+            return runHosted(variables, command.mConfig, command.mResources, frameFrom(command).mProfile,
+                std::move(request), &staged.mSpot);
         }
 
         /// Whether a place staged this way can answer `check` at all, which is a different question
@@ -756,7 +751,7 @@ namespace RtxTool
             request.mSuite = suite;
             request.mValidation = validationFrom(variables, false);
 
-            return runHosted(variables, command.mConfig, command.mResources, std::move(request));
+            return runHosted(variables, command.mConfig, command.mResources, frame.mProfile, std::move(request));
         }
 
         /// One verb: which command it is, the line `--help` prints for it, and what it does.

@@ -57,8 +57,8 @@
 
 #include "../characterpreview.hpp"
 #include "../offscreenview.hpp"
+#include "../renderer.hpp"
 #include "checks.hpp"
-#include "rtxrenderer.hpp"
 
 namespace MWRender
 {
@@ -73,10 +73,10 @@ namespace MWRender
         constexpr float sMapFar = 150000.0f;
     }
 
-    void StopWriter::write(RtxRenderer& owner, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
+    void StopWriter::write(const TracedRun& run, const Rtx::Reconstruction& reconstruction, const Rtx::Actions& actions,
         const Rtx::Crossings& crossings, Rtx::RunRecord& record)
     {
-        const Writing into{ owner, reconstruction, record };
+        const Writing into{ run, reconstruction, record };
 
         if (!actions.mCapture.empty())
             writeCapture(into, actions.mCapture);
@@ -108,7 +108,7 @@ namespace MWRender
 
     void StopWriter::writeCapture(const Writing& into, const std::filesystem::path& file)
     {
-        Rtx::Renderer& renderer = into.mOwner.getBackend();
+        Rtx::Renderer& renderer = into.mRun.mBackend;
         const Rtx::FrameExtents extents = renderer.getExtents();
 
         renderer.readPixels(mPixels);
@@ -132,7 +132,7 @@ namespace MWRender
 
     void StopWriter::reportTail(const Writing& into)
     {
-        if (!Rtx::hasChannel(into.mReconstruction, Rtx::Channel::Accumulated))
+        if (!Rtx::hasFrameImage(into.mReconstruction, Rtx::FrameImage::Accumulated))
         {
             into.mRecord.note(
                 std::format("no bounce tail: only the wavelet writes one, and {} put this frame back together\n",
@@ -141,10 +141,10 @@ namespace MWRender
             return;
         }
 
-        Rtx::Renderer& renderer = into.mOwner.getBackend();
+        Rtx::Renderer& renderer = into.mRun.mBackend;
 
         std::vector<float> bounce;
-        renderer.readChannel(Rtx::Channel::Accumulated, bounce);
+        renderer.readFrameImage(Rtx::FrameImage::Accumulated, bounce);
 
         // The ladder the fork's own table was taken on. One is about where the signal ends — a
         // surface seeing a full hemisphere of sky — and everything past it is the tail proper.
@@ -176,10 +176,10 @@ namespace MWRender
 
     void StopWriter::writeDump(const Writing& into, const std::filesystem::path& file)
     {
-        Rtx::Renderer& renderer = into.mOwner.getBackend();
+        Rtx::Renderer& renderer = into.mRun.mBackend;
 
         std::vector<float> radiance;
-        renderer.readChannel(Rtx::Channel::Radiance, radiance);
+        renderer.readFrameImage(Rtx::FrameImage::Composite, radiance);
 
         std::ofstream out(file, std::ios::binary);
         out.write(reinterpret_cast<const char*>(radiance.data()),
@@ -194,8 +194,8 @@ namespace MWRender
 
     void StopWriter::reportScene(const Writing& into, const bool walkedTwice)
     {
-        const Rtx::SceneDesc& scene = into.mOwner.getMirror().getScene();
-        const Rtx::ExtractionStats& stats = into.mOwner.getWalkStats();
+        const Rtx::SceneDesc& scene = into.mRun.mScene;
+        const Rtx::ExtractionStats& stats = into.mRun.mWalked;
 
         into.mRecord.note(
             std::format("\nplaced\n"
@@ -281,7 +281,7 @@ namespace MWRender
 
         if (walkedTwice)
         {
-            const Rtx::ExtractionStats& again = into.mOwner.getSecondWalkStats();
+            const Rtx::ExtractionStats& again = into.mRun.mWalkedAgain;
             into.mRecord.note(
                 std::format("\nsecond pass over the same graph\n"
                             "  new meshes:           {} (should be 0)\n"
@@ -293,11 +293,11 @@ namespace MWRender
 
     void StopWriter::writeSheet(const Writing& into, const std::filesystem::path& sheet)
     {
-        Resource::ResourceSystem* resources = into.mOwner.getResources();
+        Resource::ResourceSystem* resources = into.mRun.mResources;
         if (resources == nullptr)
             return;
 
-        const Rtx::SceneDesc& scene = into.mOwner.getMirror().getScene();
+        const Rtx::SceneDesc& scene = into.mRun.mScene;
 
         Rtx::SceneTextures described;
         described.describeAll(scene, *resources->getImageManager());
@@ -348,7 +348,7 @@ namespace MWRender
 
     void StopWriter::writeMapTile(const Writing& into, const std::filesystem::path& file)
     {
-        osg::Group* root = into.mOwner.getSceneRoot();
+        osg::Group* root = into.mRun.mSceneRoot;
         if (root == nullptr)
             return;
 
@@ -361,15 +361,15 @@ namespace MWRender
         OffscreenViewSpec spec{ *root };
         spec.mWidth = sMapTileSide;
         spec.mHeight = sMapTileSide;
-        spec.mProjection = OffscreenViewSpec::Orthographic{ .mWidth = static_cast<float>(Constants::CellSizeInUnits),
+        spec.mFraming.mProjection = SceneUtil::Orthographic{ .mWidth = static_cast<float>(Constants::CellSizeInUnits),
             .mHeight = static_cast<float>(Constants::CellSizeInUnits) };
-        spec.mNear = SceneUtil::sMapNear;
-        spec.mFar = sMapFar;
+        spec.mFraming.mNear = SceneUtil::sMapNear;
+        spec.mFraming.mFar = sMapFar;
         spec.mClearColour = osg::Vec4f(0.0f, 0.0f, 0.0f, 1.0f);
         spec.mSun = SceneUtil::mapLight();
         spec.mFromWorld = true;
 
-        const std::unique_ptr<OffscreenView> view = into.mOwner.createOffscreenView(spec);
+        const std::unique_ptr<OffscreenView> view = into.mRun.mViews.createOffscreenView(spec);
         view->setView(osg::Matrixf::lookAt(osg::Vec3f(stood.x(), stood.y(), sMapEyeHeight),
             osg::Vec3f(stood.x(), stood.y(), sMapEyeHeight - 1.0f), osg::Vec3f(0.0f, 1.0f, 0.0f)));
 
@@ -396,7 +396,7 @@ namespace MWRender
             return;
         }
 
-        InventoryPreview preview(into.mOwner, into.mOwner.getResources(), subject);
+        InventoryPreview preview(into.mRun.mViews, into.mRun.mResources, subject);
         preview.rebuild();
         preview.redraw();
 
@@ -404,7 +404,7 @@ namespace MWRender
         // into. `MyGUIRtx::Texture` is what this renderer's MyGUI backend hands out, and its slot
         // is the one thing about it a file needs.
         auto& texture = static_cast<MyGUIRtx::Texture&>(preview.getTexture());
-        into.mOwner.getBackend().readGuiTexture(texture.getSlot(), mPixels);
+        into.mRun.mBackend.readGuiTexture(texture.getSlot(), mPixels);
 
         const auto width = static_cast<std::uint32_t>(preview.getTextureWidth());
         const auto height = static_cast<std::uint32_t>(preview.getTextureHeight());
@@ -414,7 +414,7 @@ namespace MWRender
 
     void StopWriter::reportFound(const Writing& into, const std::string& needle)
     {
-        const Rtx::SceneDesc& scene = into.mOwner.getMirror().getScene();
+        const Rtx::SceneDesc& scene = into.mRun.mScene;
         const std::span<const VFS::Path::Normalized> paths = scene.getTextures();
 
         // **Found by texture and reported by placement**, because a mesh carries no name of its own
@@ -451,7 +451,7 @@ namespace MWRender
         for (const Rtx::Check check : checks)
         {
             std::string found;
-            const bool held = checkHolds(into.mOwner, check, crossings, found);
+            const bool held = checkHolds(into.mRun, check, crossings, found);
 
             into.mRecord.checked(held);
             into.mRecord.note(std::format("  {:<20} {:<4} {}\n", checkName(check), held ? "ok" : "FAIL", found));

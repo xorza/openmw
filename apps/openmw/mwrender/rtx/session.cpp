@@ -41,13 +41,6 @@ namespace MWRender
 {
     namespace
     {
-        /// The run this process was asked to make, and where its answer goes.
-        ///
-        /// **A slot rather than a channel through `RendererSpec`.** That struct is filled inside
-        /// `Engine::go`, and a field there would be an edit to upstream for a value one launcher
-        /// sets and every other caller leaves empty.
-        std::optional<InstalledSession> sInstalled;
-
         /// How often a run that turns its sky asks for the next weather, in frames of world.
         ///
         /// **How long the crossing itself takes is the weather's own `Transition_Delta`**, which
@@ -96,16 +89,6 @@ namespace MWRender
         request.mValidation.mEnabled = Rtx::sValidationByDefault;
 
         return request;
-    }
-
-    void installSession(Rtx::SessionRequest request, Rtx::SessionResult& into)
-    {
-        sInstalled = InstalledSession{ .mRequest = std::move(request), .mInto = &into };
-    }
-
-    std::optional<InstalledSession> takeInstalledSession()
-    {
-        return std::exchange(sInstalled, std::nullopt);
     }
 
     /// What a stop gathers, and the few things a whole run does. Out of line so the header names
@@ -535,10 +518,10 @@ namespace MWRender
         return !mDone && mStarted && mRequest.mStops[mAt].mActions.mWalkTwice;
     }
 
-    void Session::frame(RtxRenderer& owner, const Rtx::FrameResult& result, const double frameMs, const double walkMs,
+    void Session::frame(const TracedRun& run, const Rtx::FrameResult& result, const double frameMs, const double walkMs,
         const double placeMs, const bool rebuilt)
     {
-        Rtx::Renderer& renderer = owner.getBackend();
+        Rtx::Renderer& renderer = run.mBackend;
 
         if (mDone || !mStarted)
             return;
@@ -591,19 +574,19 @@ namespace MWRender
         {
             renderer.readPixels(mHeld->mPixels);
 
-            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels, Rtx::digestParts(owner.getMirror().getScene()));
+            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels, Rtx::digestParts(run.mScene));
         }
 
         if (drawn < measured)
             return;
 
-        endStop(owner, result.mReconstruction);
+        endStop(run, result.mReconstruction);
     }
 
-    void Session::endStop(RtxRenderer& owner, const Rtx::Reconstruction& reconstruction)
+    void Session::endStop(const TracedRun& run, const Rtx::Reconstruction& reconstruction)
     {
         const Rtx::Stop& stop = mRequest.mStops[mAt];
-        Rtx::Renderer& renderer = owner.getBackend();
+        Rtx::Renderer& renderer = run.mBackend;
 
         mHeld->mProfiling->disable();
 
@@ -626,7 +609,7 @@ namespace MWRender
             header.mWarmup = stop.mSchedule.mSpec.getWarmup();
         }
 
-        mHeld->mWriter.write(owner, reconstruction, stop.mActions, mHeld->mCrossings, mRecord);
+        mHeld->mWriter.write(run, reconstruction, stop.mActions, mHeld->mCrossings, mRecord);
 
         Rtx::BenchPlace place;
         place.mView = stop.mName;

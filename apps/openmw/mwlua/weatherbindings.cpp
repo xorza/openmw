@@ -271,7 +271,7 @@ namespace MWLua
         // Provide access to the store.
         api["records"] = WeatherStore{};
 
-        using Phase = MWRender::MoonState::Phase;
+        using Phase = Sky::MoonPhase;
         api["MOON_PHASE"] = LuaUtil::makeStrictReadOnly(LuaUtil::tableFromPairs<std::string_view, Phase>(lua,
             { { "Full", Phase::Full }, { "WaningGibbous", Phase::WaningGibbous },
                 { "ThirdQuarter", Phase::ThirdQuarter }, { "WaningCrescent", Phase::WaningCrescent },

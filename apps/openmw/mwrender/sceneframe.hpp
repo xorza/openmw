@@ -10,6 +10,7 @@
 #include <osg/Vec3f>
 #include <osg/Vec4f>
 
+#include <components/sky/moonmodel.hpp>
 #include <components/sky/skyroll.hpp>
 
 namespace osg
@@ -201,11 +202,6 @@ namespace MWRender
         /// the rasterizer's and there is one of it. Nought without the effect.
         osg::Vec4f mNightEye;
 
-        float mNearClip = 0.0f;
-        float mViewDistance = 0.0f;
-        osg::Matrixf mProjectionMatrix;
-        float mFieldOfView = 0.0f;
-
         float mGameHour = 0.0f;
 
         /// Which weather the sky is under, as a script id — an index into the ten
@@ -242,7 +238,7 @@ namespace MWRender
         /// of the ray tracer's types: none of that code is built at all with the option off, and
         /// this is a header the rasterizer reads. An alpha of nothing is a moon that is not drawn,
         /// which is what a value-initialised pair says before the weather system has spoken.
-        MoonState mMoons[2] = {};
+        Sky::MoonMoment mMoons[2] = {};
 
         /// Which way each of the two cloud decks is driven.
         ///
@@ -280,6 +276,22 @@ namespace MWRender
     /// know `RenderingManager`, which sits above it; a renderer given one frame's worth of world
     /// knows only what a frame is. Where there is no world — the main menu, a loading screen, a
     /// video — there is no frame either, and `Renderer::renderGui` is what gets called instead.
+    /// Where the frame is seen from, and how far it can see.
+    ///
+    /// **Not a fact about the world**, which is why it left `WorldState`: a near plane and a field
+    /// of view are the eye's, and the same world is drawn through several of them — the frame's, a
+    /// map tile's, an inventory doll's.
+    struct EyeState
+    {
+        float mNearClip = 0.0f;
+        float mViewDistance = 0.0f;
+        osg::Matrixf mProjectionMatrix;
+
+        /// The one the world settled on: the override wherever something asked for one — a zoom, a
+        /// cutscene, a script — and the setting only where nothing did.
+        float mFieldOfView = 0.0f;
+    };
+
     struct SceneFrame
     {
         /// The whole world, from the top. Not the cull's results: rays go everywhere, so anything a
@@ -293,6 +305,8 @@ namespace MWRender
         const osg::FrameStamp& mWhen;
 
         const WorldState& mWorld;
+
+        const EyeState& mEye;
 
         /// Where a texture the mirror has not seen before is read from.
         Resource::ImageManager& mImages;

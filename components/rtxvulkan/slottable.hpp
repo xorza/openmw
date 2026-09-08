@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <string>
 #include <string_view>
 #include <vector>
 
@@ -112,23 +111,23 @@ namespace Rtx
         /// **What an early return asks.** A caller that skips work when nothing has changed has to
         /// ask the copy it would have written, not the scene it would have read: a copy can carry a
         /// debt from frames ago while the scene stands perfectly still.
-        bool owes(std::uint32_t slot) const
+        bool owes(FrameSlot slot) const
         {
-            assert(slot < mSlots);
-            return mOwed[slot].owesAnything();
+            assert(slot.get() < mSlots);
+            return mOwed[slot.get()].owesAnything();
         }
 
         /// Writes what `slot`'s copy owes and clears the debt.
         ///
         /// @param graveyard takes the buffer a growth displaced, which a frame in flight may still
         ///        be reading.
-        void sync(std::uint32_t slot, Graveyard& graveyard)
+        void sync(FrameSlot slot, Graveyard& graveyard)
         {
-            assert(slot < mSlots);
+            assert(slot.get() < mSlots);
             assert(mDevice != nullptr && "sync before open");
 
-            Buffer& copy = mCopies[slot];
-            RowDebt& owed = mOwed[slot];
+            Buffer& copy = mCopies[slot.get()];
+            RowDebt& owed = mOwed[slot.get()];
             const VkDeviceSize needed = mRows.size() * sizeof(Row);
 
             // **A copy made again is empty whatever the debt says**, so a growth that reallocates
@@ -162,17 +161,17 @@ namespace Rtx
             owed.settle();
         }
 
-        VkDeviceAddress getDeviceAddress(std::uint32_t slot) const
+        VkDeviceAddress getDeviceAddress(FrameSlot slot) const
         {
-            assert(slot < mSlots);
-            return mCopies[slot].getDeviceAddress();
+            assert(slot.get() < mSlots);
+            return mCopies[slot.get()].getDeviceAddress();
         }
 
         /// What one copy's buffer occupies, for a test that asks whether it keeps growing.
-        VkDeviceSize getCopyBytes(std::uint32_t slot) const
+        VkDeviceSize getCopyBytes(FrameSlot slot) const
         {
-            assert(slot < mSlots);
-            return mCopies[slot].getSize();
+            assert(slot.get() < mSlots);
+            return mCopies[slot.get()].getSize();
         }
 
         VkDeviceSize getBytes() const
@@ -186,23 +185,24 @@ namespace Rtx
 
         /// What `slot` would write if it were synced now, for a test that asks whether the
         /// bookkeeping is right rather than whether the picture is.
-        std::span<const Index> getOwed(std::uint32_t slot) const
+        std::span<const Index> getOwed(FrameSlot slot) const
         {
-            assert(slot < mSlots);
-            return mOwed[slot].getRows();
+            assert(slot.get() < mSlots);
+            return mOwed[slot.get()].getRows();
         }
 
-        bool owesEverything(std::uint32_t slot) const
+        bool owesEverything(FrameSlot slot) const
         {
-            assert(slot < mSlots);
-            return mOwed[slot].owesEverything();
+            assert(slot.get() < mSlots);
+            return mOwed[slot.get()].owesEverything();
         }
 
     private:
         const Device* mDevice = nullptr;
         std::uint32_t mSlots = 1;
         VkBufferUsageFlags mUsage = 0;
-        std::string mName;
+        /// A literal, which is what every caller passes and all a debug name is asked to be.
+        std::string_view mName;
 
         std::vector<Row> mRows;
         std::array<Buffer, sFrameSlots> mCopies;
@@ -259,10 +259,10 @@ namespace Rtx
 
         /// Says that `slot`'s copy holds everything there is to hold, which is what a load ends
         /// with: a load writes every copy through `at` and this is what tells the account.
-        void settle(std::uint32_t slot)
+        void settle(FrameSlot slot)
         {
-            assert(slot < mSlots);
-            mOwed[slot].clear();
+            assert(slot.get() < mSlots);
+            mOwed[slot.get()].clear();
         }
 
         /// Writes the runs `slot`'s copy owes and clears the debt.
@@ -270,13 +270,13 @@ namespace Rtx
         /// @param fill `void(Index at, BlockedBuffer& into)`, which copies that one run in. Called
         ///        once per owed run and never for a run this copy already has.
         template <class Fill>
-        void sync(std::uint32_t slot, Fill&& fill)
+        void sync(FrameSlot slot, Fill&& fill)
         {
-            assert(slot < mSlots);
-            for (const Index at : mOwed[slot].getSlots())
-                fill(at, mCopies[slot]);
+            assert(slot.get() < mSlots);
+            for (const Index at : mOwed[slot.get()].getSlots())
+                fill(at, mCopies[slot.get()]);
 
-            mOwed[slot].clear();
+            mOwed[slot.get()].clear();
         }
 
         /// One copy, written or read behind the account's back.
@@ -287,16 +287,16 @@ namespace Rtx
         /// this and does not settle has left the account describing a copy that no longer matches
         /// it, which is the whole failure this replaced. Per-frame writes go through `write` and
         /// `sync`.
-        BlockedBuffer& at(std::uint32_t slot)
+        BlockedBuffer& at(FrameSlot slot)
         {
-            assert(slot < mSlots);
-            return mCopies[slot];
+            assert(slot.get() < mSlots);
+            return mCopies[slot.get()];
         }
 
-        const BlockedBuffer& at(std::uint32_t slot) const
+        const BlockedBuffer& at(FrameSlot slot) const
         {
-            assert(slot < mSlots);
-            return mCopies[slot];
+            assert(slot.get() < mSlots);
+            return mCopies[slot.get()];
         }
 
         VkDeviceSize getBytes() const
@@ -308,10 +308,10 @@ namespace Rtx
             return total;
         }
 
-        std::span<const Index> getOwed(std::uint32_t slot) const
+        std::span<const Index> getOwed(FrameSlot slot) const
         {
-            assert(slot < mSlots);
-            return mOwed[slot].getSlots();
+            assert(slot.get() < mSlots);
+            return mOwed[slot.get()].getSlots();
         }
 
     private:

@@ -255,35 +255,11 @@ namespace MWWorld
         mWeather = 0;
     }
 
-    MWRender::MoonState MoonModel::calculateState(const TimeStamp& gameTime) const
-    {
-        const Sky::MoonMoment moment = mModel.at(gameTime.getDay(), gameTime.getHour());
-
-        // **The two orders have to agree and neither owns the other**, so this pins them rather than
-        // trusting them: the phases are eight even steps counted from full, which is what makes the
-        // index an angle for whoever wants one.
-        static_assert(static_cast<int>(Sky::MoonPhase::Full) == static_cast<int>(MWRender::MoonState::Phase::Full));
-        static_assert(static_cast<int>(Sky::MoonPhase::New) == static_cast<int>(MWRender::MoonState::Phase::New));
-        static_assert(static_cast<int>(Sky::MoonPhase::WaxingGibbous)
-            == static_cast<int>(MWRender::MoonState::Phase::WaxingGibbous));
-
-        return MWRender::MoonState{
-            .mRotationFromHorizon = moment.mAlongArc,
-
-            // Reverse engineered from Morrowind's scene graph rotation matrices.
-            .mRotationFromNorth = moment.mAxisOffset,
-            .mPhase = static_cast<MWRender::MoonState::Phase>(moment.mPhase),
-            .mShadowBlend = moment.mShadowBlend,
-            .mMoonAlpha = moment.mAlpha,
-            .mDaylightFade = moment.mDaylightFade,
-        };
-    }
-
     std::vector<Moon> WeatherManager::getCurrentMoons(const TimeStamp& time) const
     {
-        const auto makeMoon = [](std::string_view name, const MoonModel& model, const TimeStamp& timestamp) {
-            const MWRender::MoonState state = model.calculateState(timestamp);
-            return Moon{ name, state.mPhase, MWRender::MoonState::phaseToInt(state.mPhase), state.mMoonAlpha };
+        const auto makeMoon = [](std::string_view name, const Sky::MoonModel& model, const TimeStamp& when) {
+            const Sky::MoonMoment state = model.at(when.getDay(), when.getHour());
+            return Moon{ name, state.mPhase, Sky::phaseToInt(state.mPhase), state.mAlpha };
         };
 
         return { makeMoon("Masser", mMasser, time), makeMoon("Secunda", mSecunda, time) };
@@ -550,7 +526,7 @@ namespace MWWorld
 
         mRendering.setGlareTimeOfDayFade(glareFade);
 
-        mRendering.setMoonStates(mMasser.calculateState(time), mSecunda.calculateState(time));
+        mRendering.setMoonStates(mMasser.at(time.getDay(), time.getHour()), mSecunda.at(time.getDay(), time.getHour()));
 
         mRendering.configureFog(
             mResult.mFogDepth, underwaterFog, mResult.mDLFogFactor, mResult.mDLFogOffset / 100.0f, mResult.mFogColor);

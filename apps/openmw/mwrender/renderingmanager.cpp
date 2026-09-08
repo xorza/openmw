@@ -300,15 +300,6 @@ namespace MWRender
 
         mObjects = std::make_unique<Objects>(mResourceSystem, sceneRoot, unrefQueue);
 
-        if (getenv("OPENMW_DONT_PRECOMPILE") == nullptr)
-        {
-            // Offered rather than installed: a renderer with no OpenGL objects to build has nothing
-            // to spread over several frames and keeps none of it.
-            mRenderer.setCompileOperation(new osgUtil::IncrementalCompileOperation);
-            if (osgUtil::IncrementalCompileOperation* ico = mRenderer.getCompileOperation())
-                ico->setTargetFrameRate(Settings::cells().mTargetFramerate);
-        }
-
         mDebugDraw = new Debug::DebugDrawer(mResourceSystem->getSceneManager()->getShaderManager());
         mDebugDraw->setNodeMask(Mask_Debug);
         sceneRoot->addChild(mDebugDraw);
@@ -712,7 +703,7 @@ namespace MWRender
         mSky->setGlareTimeOfDayFade(fade);
     }
 
-    void RenderingManager::setMoonStates(const MoonState& masser, const MoonState& secunda)
+    void RenderingManager::setMoonStates(const Sky::MoonMoment& masser, const Sky::MoonMoment& secunda)
     {
         mWorld.mMoons[0] = masser;
         mWorld.mMoons[1] = secunda;
@@ -863,6 +854,16 @@ namespace MWRender
         mStage.getCamera().setClearColor(isUnderwater ? fogUnderwaterColor : fogColor);
     }
 
+    EyeState RenderingManager::describeEye() const
+    {
+        return EyeState{
+            .mNearClip = mNearClip,
+            .mViewDistance = mViewDistance,
+            .mProjectionMatrix = mPerViewUniformStateUpdater->getProjectionMatrix(),
+            .mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView,
+        };
+    }
+
     WorldState RenderingManager::describeWorld() const
     {
         const MWBase::World& simulation = *MWBase::Environment::get().getWorld();
@@ -888,11 +889,6 @@ namespace MWRender
         described.mUnderwater = underwater;
         described.mFog = { mFog->getFogColor(underwater), mFog->getFogStart(underwater), mFog->getFogEnd(underwater) };
         described.mAir = { mFog->getFogColor(false), mFog->getFogStart(false), mFog->getFogEnd(false) };
-
-        described.mNearClip = mNearClip;
-        described.mViewDistance = mViewDistance;
-        described.mProjectionMatrix = mPerViewUniformStateUpdater->getProjectionMatrix();
-        described.mFieldOfView = mFieldOfViewOverridden ? mFieldOfViewOverride : mFieldOfView;
 
         described.mGameHour = simulation.getTimeStamp().getHour();
         described.mWeatherId = simulation.getCurrentWeatherScriptId();
@@ -924,12 +920,14 @@ namespace MWRender
         });
 
         const WorldState world = describeWorld();
+        const EyeState seenFrom = describeEye();
 
         const SceneFrame frame{
             .mScene = *mSceneRoot,
             .mCamera = mStage.getCamera(),
             .mWhen = mStage.getFrameStamp(),
             .mWorld = world,
+            .mEye = seenFrom,
             .mImages = *mResourceSystem->getImageManager(),
             .mTerrain = *mTerrain,
             .mObjectStorage = mObjectStorage,

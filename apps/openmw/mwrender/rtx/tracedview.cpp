@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <optional>
 #include <variant>
 
 #include <MyGUI_ITexture.h>
@@ -11,9 +12,8 @@
 
 #include <components/myguiplatform/picture.hpp>
 #include <components/myguirtx/texture.hpp>
-#include <components/resource/resourcesystem.hpp>
 
-#include "rtxrenderer.hpp"
+#include "viewhost.hpp"
 
 namespace MWRender
 {
@@ -29,34 +29,27 @@ namespace MWRender
         /// **By value, and `Rtx::OffscreenTrace` neither copies nor moves.** Both returns are
         /// prvalues and so is the call, so guaranteed elision constructs it straight into the member
         /// — which is what lets the two constructors be the two kinds instead of a boolean.
-        Rtx::OffscreenTrace makeTrace(const OffscreenViewSpec& spec, RtxRenderer& owner)
+        Rtx::OffscreenTrace makeTrace(const OffscreenViewSpec& spec, ViewHost& host, Rtx::Traversals& traversals)
         {
             const std::uint32_t width = static_cast<std::uint32_t>(spec.mWidth);
             const std::uint32_t height = static_cast<std::uint32_t>(spec.mHeight);
-            Rtx::Renderer& renderer = owner.getBackend();
+            Rtx::Renderer& renderer = host.getBackend();
 
             if (spec.mFromWorld)
                 return Rtx::OffscreenTrace(renderer, width, height);
 
-            return Rtx::OffscreenTrace(renderer, width, height, spec.mScene, spec.mMask, &owner.getTraversals());
+            return Rtx::OffscreenTrace(renderer, width, height, spec.mScene, spec.mMask, &traversals);
         }
     }
 
-    TracedView::TracedView(const OffscreenViewSpec& spec, RtxRenderer& owner)
-        : mOwner(owner)
-        , mTrace(makeTrace(spec, owner))
+    TracedView::TracedView(const OffscreenViewSpec& spec, ViewHost& host, Rtx::Traversals& traversals)
+        : mHost(host)
+        , mTrace(makeTrace(spec, host, traversals))
         , mWidth(spec.mWidth)
         , mHeight(spec.mHeight)
     {
-        if (const auto* perspective = std::get_if<OffscreenViewSpec::Perspective>(&spec.mProjection))
-            mTrace.setPerspective(perspective->mFieldOfView, spec.mNear, spec.mFar);
-        else
-        {
-            const auto& box = std::get<OffscreenViewSpec::Orthographic>(spec.mProjection);
-            mTrace.setOrthographic(box.mWidth, box.mHeight, spec.mNear, spec.mFar);
-        }
-
-        mTrace.setLight(spec.mSun.mDirection, spec.mSun.mDiffuse, spec.mSun.mAmbient);
+        mTrace.setFraming(spec.mFraming);
+        mTrace.setLight(spec.mSun);
         mTrace.setClearColour(spec.mClearColour);
 
         // What `OffscreenView::getTexture` promises, and what the widgets showing one invert V for.
@@ -83,7 +76,7 @@ namespace MWRender
 
     TracedView::~TracedView()
     {
-        mOwner.forgetView(*this);
+        mHost.forgetView(*this);
 
         MyGUI::RenderManager::getInstance().destroyTexture(mTexture);
     }
@@ -112,19 +105,19 @@ namespace MWRender
             // map tile as it loads, which is the frame before the one that first mirrors it; the
             // tile is drawn when there is something to draw it against rather than left blank until
             // the local map happens to ask again.
-            if (!mOwner.hasScene())
+            if (!mHost.hasScene())
             {
-                mOwner.deferRedraw(*this);
+                mHost.deferRedraw(*this);
                 return;
             }
         }
         else
         {
-            Resource::ResourceSystem* resources = mOwner.getResources();
-            if (resources == nullptr)
+            const std::optional<PoseMoment> moment = mHost.describePose();
+            if (!moment.has_value())
                 return;
 
-            if (!mTrace.rebuildSubject(mOwner.getUpdateStamp(), mOwner.getFrame(), *resources->getImageManager()))
+            if (!mTrace.rebuildSubject(moment->mStamp, moment->mFrame, moment->mImages))
                 return;
         }
 
@@ -136,7 +129,7 @@ namespace MWRender
         // **The whole texture and not the extent**, because the copy is what the global map paints
         // a cell from and a cell is the whole tile. The read is the only time a picture inside the
         // interface comes back to main memory, which is why it is asked for rather than always done.
-        mOwner.getBackend().readGuiTexture(mSlot, mPixels);
+        mHost.getBackend().readGuiTexture(mSlot, mPixels);
         std::memcpy(mCopy->data(), mPixels.data(), std::min<std::size_t>(mPixels.size(), mCopy->getTotalSizeInBytes()));
 
         mCopyIsCurrent = true;

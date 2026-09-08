@@ -163,7 +163,7 @@ namespace Rtx
         // Every copy holds a bind pose for every body the scene arrived with, so what a copy owes
         // from now on is the poses it missed.
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-            mPoses.settle(slot);
+            mPoses.settle(FrameSlot{ slot });
     }
 
     void SceneAcceleration::build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records,
@@ -174,7 +174,7 @@ namespace Rtx
         // The rows after the structures, because a row names the address of the structure it places.
         buildMeshes(batch, scene, mEveryMesh, micromaps, graveyard);
         writeRows(records, {});
-        prepareTopLevel(scene, 0, graveyard);
+        prepareTopLevel(scene, FrameSlot{}, graveyard);
         recordTopLevel(batch.getCommands(), nullptr);
     }
 
@@ -210,7 +210,7 @@ namespace Rtx
             // run here at all: `buildMeshes` stages its vertices for the build and nothing else.
             if (range.mDeform != Deform::None)
                 for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                    mPoses.at(slot).writeAt(batch, range.mBindOffset, scene.getMeshPositions(mesh));
+                    mPoses.at(FrameSlot{ slot }).writeAt(batch, range.mBindOffset, scene.getMeshPositions(mesh));
 
             mIndices.writeAt(batch, range.mIndices.mOffset, range.mIndices.in(scene.getIndices()));
         }
@@ -381,7 +381,7 @@ namespace Rtx
             // vertices staged above.
             VkDeviceAddress vertices = 0;
             if (!mesh.mVertices.empty())
-                vertices = mesh.mDeform != Deform::None ? mPoses.at(0).addressOf(mesh.mBindOffset)
+                vertices = mesh.mDeform != Deform::None ? mPoses.at(FrameSlot{}).addressOf(mesh.mBindOffset)
                                                         : arrivedAddress + mArrivedAt[at];
 
             // Indices are mesh-local, so each structure is handed the slice of the shared buffers
@@ -516,7 +516,7 @@ namespace Rtx
     }
 
     void SceneAcceleration::prepareRefit(
-        const SceneDesc& scene, const std::uint32_t slot, const SceneMicromaps& micromaps, Graveyard& graveyard)
+        const SceneDesc& scene, const FrameSlot slot, const SceneMicromaps& micromaps, Graveyard& graveyard)
     {
         const std::span<const Index> deformed = scene.getDeformed();
 
@@ -615,7 +615,7 @@ namespace Rtx
     bool SceneAcceleration::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
         std::span<const Index> changed, const SceneMicromaps& micromaps, const Placing& placing)
     {
-        assert(placing.mSlot < mSlots && "a frame slot this scene has no copy of the rows for");
+        assert(placing.mSlot.get() < mSlots && "a frame slot this scene has no copy of the rows for");
 
         ++mPlacements;
 
@@ -680,7 +680,7 @@ namespace Rtx
             placeRow(at, records[at]);
     }
 
-    void SceneAcceleration::prepareTopLevel(const SceneDesc& scene, const std::uint32_t slot, Graveyard& graveyard)
+    void SceneAcceleration::prepareTopLevel(const SceneDesc& scene, const FrameSlot slot, Graveyard& graveyard)
     {
         // **Checked here rather than left to the driver.** A scene that grew a mesh since `setScene`
         // built the structures is a caller breaking `placeScene`'s contract, and the only symptom is

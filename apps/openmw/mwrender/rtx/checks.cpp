@@ -20,7 +20,6 @@
 #include "../../mwworld/ptr.hpp"
 #include "../../mwworld/refdata.hpp"
 
-#include "rtxrenderer.hpp"
 #include "worldmirror.hpp"
 
 namespace MWRender
@@ -37,16 +36,16 @@ namespace MWRender
             = static_cast<float>(Constants::CellSizeInUnits) * (2 * Constants::CellGridRadius + 1);
     }
 
-    bool checkHolds(RtxRenderer& owner, const Rtx::Check check, const Rtx::Crossings& crossings, std::string& found)
+    bool checkHolds(const TracedRun& run, const Rtx::Check check, const Rtx::Crossings& crossings, std::string& found)
     {
-        const Rtx::SceneDesc& scene = owner.getMirror().getScene();
-        const Rtx::ExtractionStats& stats = owner.getWalkStats();
+        const Rtx::SceneDesc& scene = run.mScene;
+        const Rtx::ExtractionStats& stats = run.mWalked;
 
         switch (check)
         {
             case Rtx::Check::WalkTwice:
             {
-                const Rtx::ExtractionStats& again = owner.getSecondWalkStats();
+                const Rtx::ExtractionStats& again = run.mWalkedAgain;
                 found = std::format("{} meshes and {} materials added by the second walk, {} drawables resolved",
                     again.mMeshesAdded, again.mMaterialsAdded, again.mMeshesReused);
                 return again.mMeshesAdded == 0 && again.mMaterialsAdded == 0 && again.mMeshesReused > 0;
@@ -114,8 +113,8 @@ namespace MWRender
 
             case Rtx::Check::TexturesReadable:
                 found = std::format(
-                    "{} of {} textures could not be read", owner.getUnreadableTextures(), scene.getTextures().size());
-                return owner.getUnreadableTextures() == 0;
+                    "{} of {} textures could not be read", run.mUnreadableTextures, scene.getTextures().size());
+                return run.mUnreadableTextures == 0;
 
             case Rtx::Check::CrossingsAppend:
                 found = std::format("{} crossings, {} of them rebuilds", crossings.mCount, crossings.mRebuilds);

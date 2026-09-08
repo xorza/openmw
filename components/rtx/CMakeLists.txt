@@ -18,6 +18,8 @@ set(RTX_FILES
     bluenoise.hpp
     camera.cpp
     camera.hpp
+    channel.cpp
+    channel.hpp
     cloudshell.cpp
     cloudshell.hpp
     colourblock.cpp
@@ -85,6 +87,8 @@ set(RTX_FILES
     nightsky.hpp
     offscreentrace.cpp
     offscreentrace.hpp
+    ownedtexture.cpp
+    ownedtexture.hpp
     placementtable.cpp
     placementtable.hpp
     png.cpp
@@ -93,6 +97,7 @@ set(RTX_FILES
     poseupdate.hpp
     reconstruction.hpp
     renderer.hpp
+    renderprofile.hpp
     reorder.hpp
     run.hpp
     runallocator.cpp
@@ -133,11 +138,13 @@ set(RTX_FILES
     terraincomposite.hpp
     terrainresidency.cpp
     terrainresidency.hpp
+    slot.hpp
     slotrows.hpp
     texelreader.cpp
     texelreader.hpp
     texturebuilder.cpp
     texturebuilder.hpp
+    texturedata.cpp
     texturedata.hpp
     texturetable.cpp
     texturetable.hpp

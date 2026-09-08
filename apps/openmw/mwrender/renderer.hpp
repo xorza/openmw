@@ -65,6 +65,15 @@ namespace MWRender
     class Stage;
 
     /// What every renderer needs to exist, whatever it draws with.
+    struct RtxSetup;
+
+    /// What a renderer may spend per frame on preparing what a loader handed it.
+    struct PreparationBudget
+    {
+        double mSecondsPerFrame = 0.0;
+        unsigned int mObjectsPerFrame = 0;
+    };
+
     struct RendererSpec
     {
         /// The frame, the eye and the input queue. Made before any renderer and outliving it: the
@@ -83,6 +92,9 @@ namespace MWRender
         /// Where a renderer keeps what it compiled — `ConfigurationManager::getCachePath`. What goes
         /// there is regenerable, so it is the cache directory and not the user's data.
         std::filesystem::path mCachePath;
+
+        /// What a harness run asks of the ray tracer, or null. `GlRenderer` ignores it.
+        const RtxSetup* mRtx = nullptr;
     };
 
     /// One image of the world on the screen, and the window it goes in.
@@ -287,8 +299,20 @@ namespace MWRender
 
         /// Compiles arriving resources over several frames instead of stalling on first use. Null
         /// where `OPENMW_DONT_PRECOMPILE` asked for none, which is why this one is a pointer.
-        virtual osgUtil::IncrementalCompileOperation* getCompileOperation() const = 0;
-        virtual void setCompileOperation(osgUtil::IncrementalCompileOperation* operation) = 0;
+        /// **A budget and not a compile operation.** The loading screen used to read the operation
+        /// off the renderer three times — once to save what it held, once to widen it, once to put
+        /// it back — which is an OpenGL object in the interface's hands and a null the ray tracer
+        /// answered with. What the screen actually asks for is "spend more while I am up", and that
+        /// is a number.
+        ///
+        /// Nothing restores whatever the renderer chose for itself. A renderer with nothing to
+        /// prepare ignores both.
+        virtual void setPreparationBudget(const PreparationBudget& budget) {}
+        virtual void resetPreparationBudget() {}
+
+        /// The operation an OSG loader compiles through, or null. **Not the frame path's**: this is
+        /// what `Resource::SceneManager` and the paging hand their new nodes to.
+        virtual osgUtil::IncrementalCompileOperation* getCompileOperation() const { return nullptr; }
 
         virtual void setVSync(SDLUtil::VSyncMode mode) = 0;
 

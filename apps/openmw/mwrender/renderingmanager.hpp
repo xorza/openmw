@@ -10,6 +10,7 @@
 #include "weatherresult.hpp"
 
 #include <components/settings/settings.hpp>
+#include <components/sky/moonmodel.hpp>
 #include <components/vfs/pathutil.hpp>
 
 #include <osg/ref_ptr>
@@ -215,7 +216,7 @@ namespace MWRender
         void setStormParticleDirection(const osg::Vec3f& direction);
         void setSunVisible(bool visible);
         void setGlareTimeOfDayFade(float fade);
-        void setMoonStates(const MoonState& masser, const MoonState& secunda);
+        void setMoonStates(const Sky::MoonMoment& masser, const Sky::MoonMoment& secunda);
 
         bool toggleRenderMode(RenderMode mode);
 
@@ -334,6 +335,9 @@ namespace MWRender
         /// the sky twice a frame through two channels pointing opposite ways. There is one channel
         /// and it points down.
         WorldState describeWorld() const;
+
+        /// Where this frame is seen from, which `WorldState` is not about.
+        EyeState describeEye() const;
 
         void updateTextureFiltering();
         void updateAmbient();

@@ -14,6 +14,7 @@
 
 #include "buffer.hpp"
 #include "computepipeline.hpp"
+#include "frameslots.hpp"
 #include "tracepipeline.hpp"
 
 namespace Rtx
@@ -35,8 +36,8 @@ namespace Rtx
         const SceneBuffers* mBuffers = nullptr;
 
         /// Which copy of the frame's tables in `mBuffers` this trace reads: the one the frame's
-        /// placement wrote. Nought for a scene that is traced and waited for.
-        std::uint32_t mSlot = 0;
+        /// placement wrote. The first for a scene that is traced and waited for.
+        FrameSlot mSlot;
 
         /// Where the index blocks are, which is `SceneAcceleration`'s: the build had to have the
         /// indices first, and a shader needs the same ones at a hit.

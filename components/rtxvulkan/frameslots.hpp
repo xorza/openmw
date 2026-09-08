@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -16,6 +17,32 @@ namespace Rtx
     /// placement of frame N+1 run while frame N is traced, so the tables N+1 writes cannot be the
     /// ones N reads; a third copy would buy nothing, since the CPU has nothing to do that far ahead.
     inline constexpr std::uint32_t sFrameSlots = 2;
+
+    /// Which copy of a double-buffered table a frame writes.
+    ///
+    /// **A type and not a `std::uint32_t`**, because a scene slot, a GUI texture and this were one
+    /// spelling between them — and `traceGuiTexture` chose between a scene's and a frame's in one
+    /// expression.
+    class FrameSlot
+    {
+    public:
+        constexpr FrameSlot() = default;
+
+        constexpr explicit FrameSlot(std::uint32_t index)
+            : mIndex(index)
+        {
+            assert(index < sFrameSlots && "a frame slot past the copies there are");
+        }
+
+        constexpr std::uint32_t get() const { return mIndex; }
+
+        constexpr FrameSlot next() const { return FrameSlot{ (mIndex + 1) % sFrameSlots }; }
+
+        constexpr bool operator==(const FrameSlot& other) const = default;
+
+    private:
+        std::uint32_t mIndex = 0;
+    };
 
     /// What one copy of a double-buffered table still has to be told.
     ///

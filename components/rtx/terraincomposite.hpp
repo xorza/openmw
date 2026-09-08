@@ -10,6 +10,7 @@
 
 #include <components/misc/constants.hpp>
 
+#include "ownedtexture.hpp"
 #include "texturedata.hpp"
 
 namespace Rtx
@@ -187,14 +188,12 @@ namespace Rtx
         /// and what key found it.
         TextureData describe() const;
 
-        std::uint32_t getLevelCount() const { return static_cast<std::uint32_t>(mLevels.size()); }
+        std::uint32_t getLevelCount() const { return mTexture.getShape().getLevelCount(); }
 
     private:
         /// Reduces the summed light to the chain of encoded bytes a backend uploads, spending it.
-        void buildChain(CompositeScratch& scratch);
+        void buildChain(std::uint32_t extent, CompositeScratch& scratch);
 
-        std::vector<std::byte> mBytes;
-        std::vector<MipLevel> mLevels;
-        std::uint32_t mExtent = 0;
+        OwnedTexture mTexture;
     };
 }

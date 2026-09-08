@@ -1,5 +1,7 @@
 #include "rtxrenderer.hpp"
 
+#include "setup.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -67,6 +69,31 @@ namespace MWRender
 {
     namespace
     {
+        /// What `[RTX]` says the trace is configured by, which is what a played binary runs.
+        ///
+        /// **Here and not in `components/rtx`**, because the settings registry is a global the core
+        /// has no other reason to read: a harness hands its profile over in `RendererSpec::mRtx`.
+        Rtx::RenderProfile profileFromSettings()
+        {
+            Rtx::RenderProfile profile;
+
+            profile.mUpscale = Rtx::sUpscaleNames.require(Settings::rtx().mUpscale.get(), "an upscale mode");
+            profile.mPreset = Rtx::sPresetNames.require(Settings::rtx().mPreset.get(), "a Ray Reconstruction preset");
+            profile.mReorder = Rtx::sReorderNames.require(Settings::rtx().mReorder.get(), "a reorder mode");
+            profile.mMicromaps = Settings::rtx().mMicromaps;
+            profile.mCountCrossings = Settings::rtx().mCountCrossings;
+            profile.mDelight = Settings::rtx().mDelight;
+            profile.mShowAlbedo = Settings::rtx().mShowAlbedo;
+            profile.mFilter = Settings::rtx().mFilter;
+            profile.mJitter = Settings::rtx().mJitter;
+
+            // Nought is how a settings file says "measure it", there being no way to write nothing.
+            if (const float exposure = Settings::rtx().mExposure; exposure > 0.0f)
+                profile.mExposure = exposure;
+
+            return profile;
+        }
+
         /// A quarter of a Morrowind foot. Nothing is clipped against it — see `mNear` — so it only
         /// has to be nearer than anything the eye can find itself inside of.
         constexpr float sNear = 1.0f;
@@ -109,18 +136,16 @@ namespace MWRender
         , mStats(new osg::Stats("Viewer"))
         , mStartTick(osg::Timer::instance()->tick())
     {
-        // **Taken before anything is built, because it decides how the window opens and what the
-        // trace counts.** A launcher installs a whole run; a played binary can only name one in its
-        // settings, and a session that asked for neither behaves exactly as it did.
-        std::optional<InstalledSession> asked = takeInstalledSession();
-        if (!asked.has_value())
-        {
-            if (std::optional<Rtx::SessionRequest> setting = readSessionSetting())
-                asked = InstalledSession{ .mRequest = std::move(*setting) };
-        }
+        // **Read before anything is built, because it decides how the window opens and what the
+        // trace counts.** A harness hands a whole run over in the spec; a played binary can only
+        // name one in its settings, and a session that asked for neither behaves exactly as it did.
+        mProfile
+            = spec.mRtx != nullptr && spec.mRtx->mProfile.has_value() ? *spec.mRtx->mProfile : profileFromSettings();
 
-        if (asked.has_value())
-            mSession = std::make_unique<Session>(std::move(asked->mRequest), asked->mInto);
+        if (spec.mRtx != nullptr && spec.mRtx->mSession.has_value())
+            mSession = std::make_unique<Session>(*spec.mRtx->mSession, spec.mRtx->mInto);
+        else if (std::optional<Rtx::SessionRequest> setting = readSessionSetting())
+            mSession = std::make_unique<Session>(std::move(*setting), nullptr);
 
         // **Before any content is read, because it decides what reading one records.** This is the
         // only renderer that asks what the content says a surface is, and the answer is stored on
@@ -139,9 +164,8 @@ namespace MWRender
 
         mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mStats);
 
-        const Rtx::Upscale upscale = Rtx::sUpscaleNames.require(Settings::rtx().mUpscale.get(), "an upscale mode");
-        const Rtx::Preset preset
-            = Rtx::sPresetNames.require(Settings::rtx().mPreset.get(), "a Ray Reconstruction preset");
+        const Rtx::Upscale upscale = mProfile.mUpscale;
+        const Rtx::Preset preset = mProfile.mPreset;
 
         // The window's own size, which `fitToWindow` asks for again on every frame after this one.
         // Kept, so that the first of those sees a size that has already settled.
@@ -201,10 +225,9 @@ namespace MWRender
         // **The knobs a measurement turns, read where the renderer is built.** They were hard-coded
         // here and taken as command-line options by the harness, so a picture taken by one and a
         // frame drawn by the other were traced by two differently configured renderers.
-        options.mCountCrossings = Settings::rtx().mCountCrossings;
-
-        options.mReorder = Rtx::sReorderNames.require(Settings::rtx().mReorder.get(), "a reorder mode");
-        options.mMicromaps = Settings::rtx().mMicromaps;
+        options.mCountCrossings = mProfile.mCountCrossings;
+        options.mReorder = mProfile.mReorder;
+        options.mMicromaps = mProfile.mMicromaps;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the
@@ -230,16 +253,6 @@ namespace MWRender
         // `osgViewer` that slipped back in. A context that exists is one something is paying for.
         if (SDL_GL_GetCurrentContext() != nullptr)
             throw std::runtime_error("something initialised OpenGL under the ray tracing renderer");
-
-        // **Read once, because none of them changes while a run is being made.** A frame that asked
-        // the settings registry per knob per frame would be asking six questions a frame for
-        // answers that were settled before the window opened.
-        mDelight = Settings::rtx().mDelight;
-        mShowAlbedo = Settings::rtx().mShowAlbedo;
-        mFilter = Settings::rtx().mFilter;
-        mJitter = Settings::rtx().mJitter;
-        if (const float exposure = Settings::rtx().mExposure; exposure > 0.0f)
-            mExposure = exposure;
 
         // **The clock everything in the frame is measured by**, and the last thing that would
         // otherwise run on the wall. The eye adapts in real time and the upscaler tunes itself
@@ -459,6 +472,28 @@ namespace MWRender
             gui->collectDrawCalls();
     }
 
+    TracedRun RtxRenderer::describeRun()
+    {
+        return TracedRun{
+            .mBackend = *mRenderer,
+            .mViews = *this,
+            .mScene = mMirror.getScene(),
+            .mWalked = mFound,
+            .mWalkedAgain = mFoundAgain,
+            .mResources = mResources,
+            .mSceneRoot = mSceneRoot.get(),
+            .mUnreadableTextures = mUnreadable,
+        };
+    }
+
+    std::optional<PoseMoment> RtxRenderer::describePose()
+    {
+        if (mResources == nullptr)
+            return std::nullopt;
+
+        return PoseMoment{ .mStamp = *mFrameStamp, .mFrame = mFrame, .mImages = *mResources->getImageManager() };
+    }
+
     void RtxRenderer::deferRedraw(TracedView& view)
     {
         if (std::find(mDeferred.begin(), mDeferred.end(), &view) == mDeferred.end())
@@ -528,7 +563,7 @@ namespace MWRender
 
     std::unique_ptr<OffscreenView> RtxRenderer::createOffscreenView(const OffscreenViewSpec& spec)
     {
-        return std::make_unique<TracedView>(spec, *this);
+        return std::make_unique<TracedView>(spec, *this, mMirror.getTraversals());
     }
 
     void RtxRenderer::setVSync(SDLUtil::VSyncMode mode)
@@ -719,7 +754,7 @@ namespace MWRender
         std::optional<Rtx::Shaders::VisibilityConstants> viewpoint;
         try
         {
-            viewpoint = Rtx::makeCameraFromView(camera.getViewMatrix(), world.mFieldOfView, extents.mRenderWidth,
+            viewpoint = Rtx::makeCameraFromView(camera.getViewMatrix(), frame.mEye.mFieldOfView, extents.mRenderWidth,
                 extents.mRenderHeight, sNear, Rtx::sFarPlane);
         }
         catch (const Rtx::Error& what)
@@ -740,9 +775,8 @@ namespace MWRender
 
         const Rtx::WorldReading read = readWorld(
             world, mMirror.getSky(), mMirror.getMoonFaces(), landReach(), static_cast<float>(when.getSimulationTime()));
-        const Rtx::FrameWorld described = Rtx::describeWorld(read);
 
-        Rtx::applyWorld(described, constants);
+        const float exposureBias = Rtx::describeWorld(read, constants);
 
         // **What the sampler and the jitter are walked by, and leaving it at zero is a bug with two
         // faces.** The bounce samples the same point every frame, so nothing ever converges; and the
@@ -762,8 +796,8 @@ namespace MWRender
         // short-circuits on, handing the trace Bethesda's textures with their painted lighting
         // still in them. The harness set it from `--delight` and defaulted to one, so the two hosts
         // had been lighting the same world by different rules.
-        constants.mDelight = mDelight;
-        constants.mShowAlbedo = mShowAlbedo ? 1u : 0u;
+        constants.mDelight = mProfile.mDelight;
+        constants.mShowAlbedo = mProfile.mShowAlbedo ? 1u : 0u;
 
         // **Measured, or held where `[RTX] exposure` names a number.** A picture wants the exposure
         // the frame asks for; holding it is what a reference and a pixel test want. Without a
@@ -778,9 +812,8 @@ namespace MWRender
         // would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell got settled
         // it, and a second derivation at the frame is a second place to get the exception wrong.
         const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(constants,
-            Rtx::FrameOptions{ .mSinceLast = mClock.getStatedStep(),
-                .mExposureBias = described.mExposureBias,
-                .mExposure = mExposure });
+            Rtx::FrameOptions{
+                .mSinceLast = mClock.getStatedStep(), .mExposureBias = exposureBias, .mExposure = mProfile.mExposure });
 
         // **The whole frame, measured between one trace and the next.** Everything the game does
         // in between is in it — update, cull, this — which is what a player feels and what the
@@ -792,7 +825,7 @@ namespace MWRender
             const bool rebuilt = handed.mKind == Rtx::SceneUpload::Kind::Rebuilt;
 
             if (mSession != nullptr)
-                mSession->frame(*this, *result, frameMs, walkMs, placeMs, rebuilt);
+                mSession->frame(describeRun(), *result, frameMs, walkMs, placeMs, rebuilt);
         }
 
         mEntered = now;

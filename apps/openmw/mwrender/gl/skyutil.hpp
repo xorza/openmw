@@ -13,6 +13,7 @@
 #include <components/sceneutil/material.hpp>
 #include <components/sceneutil/nodecallback.hpp>
 #include <components/sceneutil/statesetupdater.hpp>
+#include <components/sky/moonmodel.hpp>
 
 #include "../weatherresult.hpp"
 
@@ -207,7 +208,7 @@ namespace MWRender
         ~Moon();
 
         void adjustTransparency(const float ratio) override;
-        void setState(const MoonState state);
+        void setState(const Sky::MoonMoment state);
         void setAtmosphereColor(const osg::Vec4f& color);
         void setColor(const osg::Vec4f& color);
 
@@ -215,10 +216,10 @@ namespace MWRender
 
     private:
         Type mType;
-        MoonState::Phase mPhase;
+        Sky::MoonPhase mPhase;
         osg::ref_ptr<MoonUpdater> mUpdater;
 
-        void setPhase(const MoonState::Phase& phase);
+        void setPhase(Sky::MoonPhase phase);
     };
 
     class RainCounter : public osgParticle::ConstantRateCounter

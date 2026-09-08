@@ -30,7 +30,7 @@ namespace Rtx
     ///
     /// **This builds the pyramid and `TonePass` spreads it**, so nothing here writes the frame.
     /// Everything before the display pass is the trace's own answer — which is what
-    /// `Channel::Radiance` is copied out of and what every measurement in the suite is taken on —
+    /// `FrameImage::Composite` is copied out of and what every measurement in the suite is taken on —
     /// and a veil written back over it would be a reading nobody could hand compute. Handing the
     /// finest level to the pass that is already reading every pixel also saves a full-resolution
     /// pass of its own.

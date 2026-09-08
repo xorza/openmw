@@ -11,7 +11,7 @@
 
 namespace Rtx
 {
-    FrameSlot::FrameSlot(const Device& device, CommandPool& pool)
+    FrameRecord::FrameRecord(const Device& device, CommandPool& pool)
         : mTimer(device)
         , mHitCount(Buffer::staging(
               device, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
@@ -20,22 +20,22 @@ namespace Rtx
     {
     }
 
-    FrameRing::FrameRing(const Device& device, CommandPool& pool, const bool& countHits, const bool& countCrossings)
+    FrameRing::FrameRing(const Device& device, CommandPool& pool, const bool countHits, const bool countCrossings)
         : mDevice(device)
         , mPool(pool)
         , mCountHits(countHits)
         , mCountCrossings(countCrossings)
-        , mSlots{ { FrameSlot{ device, pool }, FrameSlot{ device, pool } } }
+        , mSlots{ { FrameRecord{ device, pool }, FrameRecord{ device, pool } } }
     {
         // Three command buffers a frame to begin with — the first placement's, the trace's, the
         // interface's — allocated once and recorded into again, and a fence for each of the two that
         // are waited on. A frame placed more than once takes another from the same pool and keeps
-        // it, which `FrameSlot::mPlaceCommands` explains.
+        // it, which `FrameRecord::mPlaceCommands` explains.
         const std::vector<VkCommandBuffer> commands = mPool.allocate(3 * sFrameSlots);
         const VkFenceCreateInfo fence{ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
         for (std::uint32_t slot = 0; slot < sFrameSlots; ++slot)
         {
-            FrameSlot& frame = mSlots[slot];
+            FrameRecord& frame = mSlots[slot];
             frame.mPlaceCommands.push_back(commands[3 * slot]);
             frame.mCommands = commands[3 * slot + 1];
             frame.mGuiCommands = commands[3 * slot + 2];
@@ -49,14 +49,14 @@ namespace Rtx
         // **Whatever the frames are still holding goes first.** A room is a pointer into a scene's
         // structure storage, and the renderer empties the graveyards before it takes its scenes
         // apart; this is the fences the slots themselves own.
-        for (FrameSlot& frame : mSlots)
+        for (FrameRecord& frame : mSlots)
         {
             vkDestroyFence(mDevice.getHandle(), frame.mFence, nullptr);
             vkDestroyFence(mDevice.getHandle(), frame.mGuiFence, nullptr);
         }
     }
 
-    FrameSlot& FrameRing::recording()
+    FrameRecord& FrameRing::recording()
     {
         // **The frame that last used this slot has to be out of the way** — its fence waited, its
         // graveyard emptied, its results read or dropped — which is what caps the frames in flight
@@ -67,9 +67,9 @@ namespace Rtx
         return slotOf(mFrame);
     }
 
-    FrameSlot& FrameRing::begin()
+    FrameRecord& FrameRing::begin()
     {
-        FrameSlot& frame = recording();
+        FrameRecord& frame = recording();
         if (frame.mBegun)
             return frame;
 
@@ -80,7 +80,7 @@ namespace Rtx
         return frame;
     }
 
-    VkCommandBuffer FrameRing::takePlaceCommands(FrameSlot& frame)
+    VkCommandBuffer FrameRing::takePlaceCommands(FrameRecord& frame)
     {
         if (frame.mPlacements == frame.mPlaceCommands.size())
             frame.mPlaceCommands.push_back(mPool.allocate(1).front());
@@ -88,7 +88,7 @@ namespace Rtx
         return frame.mPlaceCommands[frame.mPlacements++];
     }
 
-    void FrameRing::submit(FrameSlot& frame)
+    void FrameRing::submit(FrameRecord& frame)
     {
         mPool.submit(frame.mCommands, frame.mFence, frame.mGraveyard);
 
@@ -101,7 +101,7 @@ namespace Rtx
     {
         assert(mFinished < mFrame && "nothing in flight to finish");
 
-        FrameSlot& frame = slotOf(mFinished);
+        FrameRecord& frame = slotOf(mFinished);
         assert(frame.mPending && "a frame in flight that was never submitted");
 
         const auto start = std::chrono::steady_clock::now();
@@ -171,7 +171,7 @@ namespace Rtx
 
     void FrameRing::emptyGraveyards()
     {
-        for (FrameSlot& frame : mSlots)
+        for (FrameRecord& frame : mSlots)
         {
             frame.mGraveyard.clear();
             frame.mGuiGraveyard.clear();
