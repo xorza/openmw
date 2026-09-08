@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -100,6 +101,17 @@ namespace Rtx
         /// the drawable, because the skin is.
         Index resolveRig(const SceneUtil::RigGeometry& rig);
 
+        /// The same for a morph's targets, keyed on the base target every copy shares.
+        Index resolveMorph(const SceneUtil::MorphGeometry& morph);
+
+        /// Hands the scene this frame's bone rows for `mesh`: `RigGeometry::cull`'s own composition
+        /// of each bone's inverse bind, its skeleton-space matrix and the skin transform, from the
+        /// matrices the update traversal left.
+        void poseRig(Index mesh, const SceneUtil::RigGeometry& rig);
+
+        /// The same with the morph's weights, which its controller wrote under the update traversal.
+        void poseMorph(Index mesh, const SceneUtil::MorphGeometry& morph);
+
         /// What poses one drawable, as the mirror already holds it.
         ///
         /// **The entry and not only the index**, because the stamp wants the one the lookup found:
@@ -114,13 +126,26 @@ namespace Rtx
             Identity<const osg::Vec3Array>::Entry mMorph;
         };
 
-        /// The deformer this drawable stands on, where the mirror holds one.
+        /// The deformer this drawable stands on, where the mirror holds one — and `sNoIndex`
+        /// where it does not, which is what a slot that stands holds too, so the fit test compares
+        /// the two without a case of its own.
         ///
         /// **Stamps nothing.** Whether the slot still fits is decided after this, and a stamp in
         /// front of that decision would keep a deformer the sweep is about to be told to drop.
         Held holdDeformer(const Read& read);
 
+        /// The same for a drawable the mirror is meeting afresh: the deformer added and stamped,
+        /// or `sNoIndex` where the drawable stands.
+        ///
+        /// Throws where it does not pose exactly `vertices`. **Named rather than asserted**,
+        /// because a vertex count comes out of a content file and a mesh posed by a deformer of
+        /// another length is a kernel writing past the run it was handed.
+        Index addDeformer(const Read& read, std::size_t vertices);
+
         /// Says the walk met what `holdDeformer` found, for a slot the fit test has kept.
+        ///
+        /// **Stamped with the mesh, which is what keeps the sweep's two answers one answer**: a
+        /// deformer the sweep did not see go is one it keeps for as long as a mesh stands on it.
         ///
         /// The arrival path needs none of this: `resolveRig` and `resolveMorph` stamp through
         /// `reach` as they go.
@@ -128,17 +153,6 @@ namespace Rtx
 
         /// Poses `mesh` where the drawable deforms, and counts it. Nothing where it stands.
         void pose(Index mesh, const Read& read, ExtractionStats& stats);
-
-        /// The same for a morph's targets, keyed on the base target every copy shares.
-        Index resolveMorph(const SceneUtil::MorphGeometry& morph);
-
-        /// Hands the scene this frame's bone rows for `mesh`: `RigGeometry::cull`'s own composition
-        /// of each bone's inverse bind, its skeleton-space matrix and the skin transform, from the
-        /// matrices the update traversal left.
-        void poseRig(Index mesh, const SceneUtil::RigGeometry& rig);
-
-        /// The same with the morph's weights, which its controller wrote under the update traversal.
-        void poseMorph(Index mesh, const SceneUtil::MorphGeometry& morph);
 
         SceneDesc& mScene;
         const MirrorPass& mPass;

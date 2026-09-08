@@ -226,9 +226,6 @@ namespace Rtx
             {
                 ++stats.mMeshesReused;
                 mMeshes.stamp(known);
-
-                // The deformer is stamped with the mesh, which is what keeps the sweep's two
-                // answers one answer.
                 stampDeformer(read, held);
                 pose(mesh, read, stats);
 
@@ -284,22 +281,7 @@ namespace Rtx
         if (shape.mSheet)
             ++stats.mSheets;
 
-        // What poses it, added once per skin and once per set of targets however many drawables
-        // share them, and stamped here so the sweep keeps it for as long as a mesh stands on it.
-        Index deformer = sNoIndex;
-        if (read.mDeform == Deform::Rig)
-            deformer = resolveRig(*read.mRig);
-        else if (read.mDeform == Deform::Morph)
-            deformer = resolveMorph(*read.mMorph);
-
-        if (deformer != sNoIndex)
-        {
-            const Index skinned = read.mDeform == Deform::Rig ? mScene.getRigs()[deformer].getVertexCount()
-                                                              : mScene.getMorphs()[deformer].getVertexCount();
-            if (skinned != arrays.mPositions.size())
-                throw Error("a deforming mesh of " + std::to_string(arrays.mPositions.size())
-                    + " vertices on a rig or morph of " + std::to_string(skinned));
-        }
+        const Index deformer = addDeformer(read, arrays.mPositions.size());
 
         const Index mesh = mScene.addMesh(
             arrays.mPositions, arrays.mNormals, texCoords, mIndexScratch, shape, read.mDeform, deformer, material);
@@ -313,10 +295,27 @@ namespace Rtx
         return mesh;
     }
 
+    /// Added once per skin and once per set of targets however many drawables share them, and
+    /// stamped through `reach` as it goes — so the sweep keeps it for as long as a mesh stands on it.
+    Index MeshResolver::addDeformer(const Read& read, const std::size_t vertices)
+    {
+        if (read.mDeform == Deform::None)
+            return sNoIndex;
+
+        const bool rigged = read.mDeform == Deform::Rig;
+        const Index deformer = rigged ? resolveRig(*read.mRig) : resolveMorph(*read.mMorph);
+        const std::size_t skins
+            = rigged ? mScene.getRigs()[deformer].getVertexCount() : mScene.getMorphs()[deformer].getVertexCount();
+
+        if (skins != vertices)
+            throw Error("a deforming mesh of " + std::to_string(vertices) + " vertices on a rig or morph of "
+                + std::to_string(skins));
+
+        return deformer;
+    }
+
     MeshResolver::Held MeshResolver::holdDeformer(const Read& read)
     {
-        // `sNoIndex` where the mirror has not met the deformer and where the drawable stands, which
-        // is what a slot that stands holds too.
         Held held;
 
         if (read.mDeform == Deform::Rig)
@@ -324,11 +323,8 @@ namespace Rtx
             held.mRig = mRigs.find(read.mRig->getInfluenceData());
             if (held.mRig != mRigs.end())
                 held.mIndex = held.mRig->second.mIndex;
-
-            return held;
         }
-
-        if (read.mDeform == Deform::Morph)
+        else if (read.mDeform == Deform::Morph)
         {
             // A morph whose targets changed count under the same base is another morph, so the
             // count is asked beside the identity.
@@ -344,10 +340,9 @@ namespace Rtx
 
     void MeshResolver::stampDeformer(const Read& read, const Held& held)
     {
-        // The entry `holdDeformer` found is what stamps it, and it is there: the fit test agreed
-        // that the slot's deformer is this drawable's, and neither `resolveRig` nor `resolveMorph`
-        // ever hands back `sNoIndex` — so a deformer the sweep took would have failed that test
-        // rather than reach here.
+        // **The entry is there, and the fit test is why.** It agreed that the slot's deformer is
+        // this drawable's, and neither `resolveRig` nor `resolveMorph` ever hands back `sNoIndex` —
+        // so a deformer the sweep had taken would have failed that test rather than reach here.
         if (read.mDeform == Deform::Rig)
         {
             assert(held.mRig != mRigs.end() && "a rigged mesh reused on a skin the mirror has lost");
@@ -364,12 +359,13 @@ namespace Rtx
     /// is actually moving.
     void MeshResolver::pose(const Index mesh, const Read& read, ExtractionStats& stats)
     {
+        if (read.mDeform == Deform::None)
+            return;
+
         if (read.mDeform == Deform::Rig)
             poseRig(mesh, *read.mRig);
-        else if (read.mDeform == Deform::Morph)
-            poseMorph(mesh, *read.mMorph);
         else
-            return;
+            poseMorph(mesh, *read.mMorph);
 
         ++stats.mDeformed;
     }
