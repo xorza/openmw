@@ -114,7 +114,11 @@ namespace Weather
         ~Precipitation();
 
         /// What this weather drops, how hard, and how fast the wind drives it.
-        void setWeather(const Downpour& weather);
+        ///
+        /// **Named for what it takes and not for what changed.** Every other `setWeather` in the
+        /// tree is handed a weather; this one is handed the falling half of one, and the rest —
+        /// the fog, the sky, the sun — is nothing this draws.
+        void setDownpour(const Downpour& downpour);
 
         /// One frame's worth of driving: slides the box of drops to the eye, holds them still under
         /// water, and turns the storm's own effect to face where it is driving.
@@ -155,8 +159,8 @@ namespace Weather
         /// own answer in the content files and the rest of the weathers have none.
         bool ripplesEnabled() const;
 
-        float getPrecipitationAlpha() const { return mWeather.mPrecipitationAlpha; }
-        float getBaseWindSpeed() const { return mWeather.mBaseWindSpeed; }
+        float getPrecipitationAlpha() const { return mDownpour.mPrecipitationAlpha; }
+        float getBaseWindSpeed() const { return mDownpour.mBaseWindSpeed; }
 
         /// How far a particle travels before the wrap carries it back — the box an occlusion pass
         /// has to cover, which is why anything outside asks.
@@ -192,10 +196,10 @@ namespace Weather
 
         /// What the weather system last said is falling.
         ///
-        /// **Held whole rather than unpacked into eleven members.** `setWeather` copied every field
+        /// **Held whole rather than unpacked into eleven members.** `setDownpour` copied every field
         /// of it across, which is one fact in two places and a field added to the record that
         /// nothing here would carry.
-        Downpour mWeather;
+        Downpour mDownpour;
 
         bool mRainRipplesEnabled;
         bool mSnowRipplesEnabled;

@@ -289,7 +289,7 @@ namespace MWRender
         // which is what the dirty flag makes `setWeather` do rather than finding nothing changed.
         if (!enabled)
         {
-            mPrecipitation->setWeather(Weather::Downpour{});
+            mPrecipitation->setDownpour(Weather::Downpour{});
             mPrecipitationOccluder->disable();
             mDirtyParticlesEffect = true;
         }
@@ -357,7 +357,7 @@ namespace MWRender
         // roof, the cull callback that hides it under water, and the shader hints a generated
         // pipeline reads — none of which survive a rebuild, which is what the revision is for.
         const unsigned int was = mPrecipitation->getRevision();
-        mPrecipitation->setWeather(weather.mDownpour);
+        mPrecipitation->setDownpour(weather.mDownpour);
         if (mPrecipitation->getRevision() != was || mDirtyParticlesEffect)
         {
             mDirtyParticlesEffect = false;

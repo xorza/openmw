@@ -293,8 +293,8 @@ namespace Weather
         mRainNode = new osg::Group;
 
         mRainParticleSystem = new NifOsg::ParticleSystem;
-        osg::Vec3 rainRange = osg::Vec3(
-            mWeather.mRainDiameter, mWeather.mRainDiameter, (mWeather.mRainMinHeight + mWeather.mRainMaxHeight) / 2.f);
+        osg::Vec3 rainRange = osg::Vec3(mDownpour.mRainDiameter, mDownpour.mRainDiameter,
+            (mDownpour.mRainMinHeight + mDownpour.mRainMaxHeight) / 2.f);
 
         mRainParticleSystem->setParticleAlignment(osgParticle::ParticleSystem::FIXED);
         // Vertical placement with some horizontal compression.
@@ -352,7 +352,7 @@ namespace Weather
         // (near 1-2). Since the rain is a regular geometry, it produces water ripples, also in theory it can be removed
         // if collides with something.
         osg::ref_ptr<RainCounter> counter = new RainCounter;
-        counter->setNumberOfParticlesPerSecondToCreate(mWeather.mRainMaxRaindrops / mWeather.mRainEntranceSpeed * 20);
+        counter->setNumberOfParticlesPerSecondToCreate(mDownpour.mRainMaxRaindrops / mDownpour.mRainEntranceSpeed * 20);
         emitter->setCounter(counter);
         mCounter = counter;
 
@@ -365,7 +365,7 @@ namespace Weather
 
         osg::ref_ptr<osgParticle::ModularProgram> program = new osgParticle::ModularProgram;
         program->addOperator(new WrapAroundOperator(mEye, rainRange));
-        program->addOperator(new WeatherAlphaOperator(mWeather.mPrecipitationAlpha, true));
+        program->addOperator(new WeatherAlphaOperator(mDownpour.mPrecipitationAlpha, true));
         program->setParticleSystem(mRainParticleSystem);
         mRainNode->addChild(program);
 
@@ -404,9 +404,9 @@ namespace Weather
         if (!mRainShooter)
             return;
 
-        float angle = -std::atan(mWeather.mWindSpeed / 50.f);
+        float angle = -std::atan(mDownpour.mWindSpeed / 50.f);
         mRainShooter->setVelocity(
-            osg::Vec3f(0, mWeather.mRainSpeed * std::sin(angle), -mWeather.mRainSpeed / std::cos(angle)));
+            osg::Vec3f(0, mDownpour.mRainSpeed * std::sin(angle), -mDownpour.mRainSpeed / std::cos(angle)));
         mRainShooter->setAngle(angle);
 
         const osg::Vec3f rainRange = getWrapRange();
@@ -415,21 +415,22 @@ namespace Weather
         mPlacer->setYRange(-rainRange.y() / 2, rainRange.y() / 2);
         mPlacer->setZRange(-rainRange.z() / 2, rainRange.z() / 2);
 
-        mCounter->setNumberOfParticlesPerSecondToCreate(mWeather.mRainMaxRaindrops / mWeather.mRainEntranceSpeed * 20);
+        mCounter->setNumberOfParticlesPerSecondToCreate(
+            mDownpour.mRainMaxRaindrops / mDownpour.mRainEntranceSpeed * 20);
     }
 
     osg::Vec3f Precipitation::getWrapRange() const
     {
         if (mRainNode)
-            return osg::Vec3f(mWeather.mRainDiameter, mWeather.mRainDiameter,
-                (mWeather.mRainMinHeight + mWeather.mRainMaxHeight) / 2.f);
+            return osg::Vec3f(mDownpour.mRainDiameter, mDownpour.mRainDiameter,
+                (mDownpour.mRainMinHeight + mDownpour.mRainMaxHeight) / 2.f);
 
         return sEffectWrapRange;
     }
 
     bool Precipitation::wantsOcclusion() const
     {
-        return !mWeather.mRainEffect.empty() || mCurrentParticleEffect == Settings::models().mWeathersnow.get();
+        return !mDownpour.mRainEffect.empty() || mCurrentParticleEffect == Settings::models().mWeathersnow.get();
     }
 
     bool Precipitation::ripplesEnabled() const
@@ -443,16 +444,16 @@ namespace Weather
         return false;
     }
 
-    void Precipitation::setWeather(const Downpour& weather)
+    void Precipitation::setDownpour(const Downpour& downpour)
     {
         // **The two names are compared before the record is taken over**, because each decides
         // whether something has to be made or thrown away rather than only what it looks like.
-        const bool rainChanged = mWeather.mRainEffect != weather.mRainEffect;
-        mWeather = weather;
+        const bool rainChanged = mDownpour.mRainEffect != downpour.mRainEffect;
+        mDownpour = downpour;
 
         if (rainChanged)
         {
-            if (!mWeather.mRainEffect.empty())
+            if (!mDownpour.mRainEffect.empty())
                 createRain();
             else
                 destroyRain();
@@ -460,10 +461,10 @@ namespace Weather
 
         updateRainParameters();
 
-        if (mCurrentParticleEffect == weather.mParticleEffect)
+        if (mCurrentParticleEffect == downpour.mParticleEffect)
             return;
 
-        mCurrentParticleEffect = weather.mParticleEffect;
+        mCurrentParticleEffect = downpour.mParticleEffect;
 
         // cleanup old particles
         if (mParticleEffect)
@@ -496,7 +497,7 @@ namespace Weather
         SceneUtil::AssignControllerSourcesVisitor assignVisitor(std::make_shared<SceneUtil::FrameTimeSource>());
         mParticleEffect->accept(assignVisitor);
 
-        SetupVisitor alphaFaderSetupVisitor(mWeather.mPrecipitationAlpha);
+        SetupVisitor alphaFaderSetupVisitor(mDownpour.mPrecipitationAlpha);
         mParticleEffect->accept(alphaFaderSetupVisitor);
 
         SceneUtil::FindByClassVisitor findPSVisitor("ParticleSystem");
@@ -511,7 +512,7 @@ namespace Weather
             osg::ref_ptr<osgParticle::ModularProgram> program = new osgParticle::ModularProgram;
             if (occluded)
                 program->addOperator(new WrapAroundOperator(mEye, sEffectWrapRange));
-            program->addOperator(new WeatherAlphaOperator(mWeather.mPrecipitationAlpha, false));
+            program->addOperator(new WeatherAlphaOperator(mDownpour.mPrecipitationAlpha, false));
             program->setParticleSystem(ps);
 
             // **Before the effect, so the box slides before its particles integrate — the order the
@@ -527,7 +528,7 @@ namespace Weather
             for (int particleIndex = 0; particleIndex < ps->numParticles(); ++particleIndex)
             {
                 ps->getParticle(particleIndex)
-                    ->setAlphaRange(osgParticle::rangef(mWeather.mPrecipitationAlpha, mWeather.mPrecipitationAlpha));
+                    ->setAlphaRange(osgParticle::rangef(mDownpour.mPrecipitationAlpha, mDownpour.mPrecipitationAlpha));
                 ps->getParticle(particleIndex)->update(0, true);
             }
         }
@@ -546,7 +547,7 @@ namespace Weather
         if (mRainParticleSystem)
             mRainParticleSystem->setFrozen(mUnderwater);
 
-        if (!mWeather.mIsStorm || !mParticleNode)
+        if (!mDownpour.mIsStorm || !mParticleNode)
             return;
 
         osg::Quat quat;
