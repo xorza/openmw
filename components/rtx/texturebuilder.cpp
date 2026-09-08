@@ -169,18 +169,14 @@ namespace Rtx
     void SceneTextures::describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
         const CompositeQueue* composites)
     {
-        mImages.clear();
         mLevels.clear();
         mDescriptions.clear();
         mKept.clear();
-        mLightOf.clear();
         mSpriteLightCount = 0;
         mChainCount = 0;
         mUnreadable = 0;
 
         mKept.reserve(slots.size());
-        mImages.reserve(slots.size());
-        mLightOf.reserve(slots.size());
 
         for (const Index slot : slots)
         {
@@ -243,9 +239,7 @@ namespace Rtx
                 }
             }
 
-            mKept.push_back(slot);
-            mLightOf.push_back(light);
-            mImages.push_back(std::move(image));
+            mKept.push_back(Kept{ .mSlot = slot, .mLight = light, .mImage = std::move(image) });
         }
 
         // **Reserved before anything points into it, and that is what makes the spans safe.** Every
@@ -253,21 +247,19 @@ namespace Rtx
         // every level count is known before the first description is built. A table kept from the
         // last arrival is usually large enough already, and then this asks for nothing.
         std::size_t levels = 0;
-        for (const osg::ref_ptr<const osg::Image>& image : mImages)
-            levels += image != nullptr ? image->getNumMipmapLevels() : 1u;
+        for (const Kept& kept : mKept)
+            levels += kept.mImage != nullptr ? kept.mImage->getNumMipmapLevels() : 1u;
         mLevels.reserve(levels);
 
-        mDescriptions.reserve(mImages.size());
-        for (std::size_t at = 0; at < mImages.size(); ++at)
+        mDescriptions.reserve(mKept.size());
+        for (const Kept& kept : mKept)
         {
-            const osg::ref_ptr<const osg::Image>& image = mImages[at];
-
             std::optional<TextureData> described;
-            if (image != nullptr)
+            if (kept.mImage != nullptr)
             {
                 try
                 {
-                    described = describeImage(*image, mLevels);
+                    described = describeImage(*kept.mImage, mLevels);
 
                     // **What the file did not carry, built rather than done without.** `MipChain`
                     // says why almost nothing in the game needs this and why the rain does.
@@ -284,11 +276,11 @@ namespace Rtx
                     described.reset();
                 }
             }
-            else if (mLightOf[at] != sNoIndex)
+            else if (kept.mLight != sNoIndex)
             {
-                described = mSpriteLights[mLightOf[at]].describe();
+                described = mSpriteLights[kept.mLight].describe();
             }
-            else if (const TerrainComposite* baked = composites != nullptr ? composites->find(mKept[at]) : nullptr)
+            else if (const TerrainComposite* baked = composites != nullptr ? composites->find(kept.mSlot) : nullptr)
             {
                 described = baked->describe();
             }
@@ -304,14 +296,14 @@ namespace Rtx
                 // **Whichever of the two named the slot**, or a composite that could not be
                 // flattened reports itself as a file with no name — the one thing that would not
                 // help in finding it.
-                const std::string_view baked = scene.getBakedTextures()[mKept[at]];
-                Log(Debug::Warning) << "Texture \"" << (baked.empty() ? scene.getTextures()[mKept[at]].value() : baked)
+                const std::string_view baked = scene.getBakedTextures()[kept.mSlot];
+                Log(Debug::Warning) << "Texture \"" << (baked.empty() ? scene.getTextures()[kept.mSlot].value() : baked)
                                     << "\" could not be read; drawing the stand-in";
 
                 described = standIn(mLevels);
             }
 
-            described->mSlot = mKept[at];
+            described->mSlot = kept.mSlot;
             mDescriptions.push_back(*described);
         }
 

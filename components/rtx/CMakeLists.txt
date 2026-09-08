@@ -42,8 +42,6 @@ set(RTX_FILES
     frameclock.hpp
     frameimage.cpp
     frameimage.hpp
-    frametimes.cpp
-    frametimes.hpp
     frameworld.cpp
     frameworld.hpp
     imageformat.cpp

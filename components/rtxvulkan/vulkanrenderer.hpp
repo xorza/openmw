@@ -13,8 +13,6 @@
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/renderer.hpp>
 
-#include "accumulatepass.hpp"
-#include "atrouspass.hpp"
 #include "bloompass.hpp"
 #include "buffer.hpp"
 #include "commands.hpp"
@@ -25,16 +23,17 @@
 #include "fogvolume.hpp"
 #include "framering.hpp"
 #include "frameslots.hpp"
-#include "gbuffer.hpp"
 #include "gputimer.hpp"
 #include "graveyard.hpp"
 #include "guipass.hpp"
 #include "guitextures.hpp"
 #include "instance.hpp"
 #include "placing.hpp"
+#include "setlayout.hpp"
 #include "skinpass.hpp"
 #include "spritebinpass.hpp"
 #include "tonepass.hpp"
+#include "tracechain.hpp"
 #include "visibilitypass.hpp"
 #include "wavepass.hpp"
 
@@ -44,7 +43,6 @@ namespace Rtx
     class Dlss;
     class DlssPass;
 #endif
-    class GBuffer;
     class Image;
 
     class MicromapPass;
@@ -212,8 +210,8 @@ namespace Rtx
         /// guard is a build with the option off that does not compile at all.
         bool upscaling() const;
 
-        /// Makes the picture-inside-the-interface chain at least this big, keeping whatever extent
-        /// it already reached on either axis.
+        /// Makes the picture-inside-the-interface chain at least this big, and the byte image the
+        /// interface is handed with it.
         void growViewTargets(std::uint32_t width, std::uint32_t height);
 
         /// What the finished picture is encoded into, and so what the GUI pass is compiled against.
@@ -292,17 +290,8 @@ namespace Rtx
         /// stale in another, and wrong in both without anything saying so.
         std::optional<std::chrono::steady_clock::time_point> mLastFrameAt;
 
-        /// What the trace runs at, and so what every G-buffer channel and the composite are sized
-        /// to. Equal to the output extent wherever nothing upscales.
-        std::uint32_t mRenderWidth = 0;
-        std::uint32_t mRenderHeight = 0;
-
         std::uint32_t mOutputWidth = 0;
         std::uint32_t mOutputHeight = 0;
-
-        /// The composite's output at the render extent: one frame in linear radiance, before
-        /// anything upscales it and before the display curve.
-        std::unique_ptr<Image> mColour;
 
         /// The frame as bytes at the output extent, which is what anything outside this reads.
         ///
@@ -338,19 +327,26 @@ namespace Rtx
         /// What every `GBuffer` here is shaped by — one description, however many of them the
         /// frame's size brings and takes away. `GBuffer` says why the channels have a set.
         ///
-        /// **Declared before both of them**, because the trace's pipeline names it when it is built
+        /// **Declared before both chains**, because the trace's pipeline names it when it is built
         /// and every buffer allocates from it.
         SetLayout mChannelLayout;
 
-        /// What the trace writes and the composite reads: one frame's light, still in pieces.
-        std::unique_ptr<GBuffer> mChannels;
-
         /// The same for the air, which is a camera's the way the channels are. Declared before both
-        /// volumes for the reason `mChannelLayout` is.
+        /// chains for the reason `mChannelLayout` is.
         SetLayout mFogVolumeLayout;
 
-        /// Where the frame's air is integrated, one column to a block of pixels.
-        std::unique_ptr<FogVolume> mFogVolume;
+        /// What the frame is traced into, at the render extent — which is the output extent
+        /// wherever nothing upscales.
+        TraceChain mFrame;
+
+        /// What a picture inside the interface is traced into: a map tile, the inventory doll, the
+        /// race preview.
+        ///
+        /// **Its own chain and not the frame's.** Nothing here upscales, averages or measures an
+        /// exposure — a doll is a still picture of a subject rather than a frame in a sequence —
+        /// and borrowing the frame's images would mean resizing them away from the frame and back
+        /// between two of them.
+        TraceChain mView;
 
         /// The camera the last frame was traced with, for reprojecting this one against.
         ///
@@ -363,17 +359,6 @@ namespace Rtx
 
         std::unique_ptr<VisibilityPass> mPass;
         SceneStats mStats;
-
-        /// Held by value rather than built with the scene, because they depend on neither the
-        /// scene nor the size of the image: what they read is pushed at record time. The filter is
-        /// not const only because it keeps a channel the size of the frame.
-        AccumulatePass mAccumulate;
-        AtrousPass mFilter;
-
-        /// The same wavelet over the pictures inside the interface, which need it for the same
-        /// reason a frame does: one bounce a pixel is noisy, and a doll is looked at closely.
-        AccumulatePass mViewAccumulate;
-        AtrousPass mViewFilter;
 
         CompositePass mComposite;
         BloomPass mBloom;
@@ -415,23 +400,9 @@ namespace Rtx
         std::vector<std::unique_ptr<ViewScene>> mViewScenes;
         std::vector<std::uint32_t> mFreeViewScenes;
 
-        /// What a picture inside the interface is traced through: a map tile, the inventory doll,
-        /// the race preview. Null until something asks for one.
-        ///
-        /// **Its own chain and not the frame's.** Nothing here upscales, averages or measures an
-        /// exposure — a doll is a still picture of a subject rather than a frame in a sequence — and
-        /// borrowing the frame's images would mean resizing them away from the frame and back
-        /// between two of them.
-        ///
-        /// **Grown to the largest picture asked for and never shrunk.** There are three or four
-        /// sizes in the whole game and every pass here takes the extent it is dispatched over, so a
-        /// smaller picture uses a corner of a larger one's images rather than rebuilding them.
-        std::unique_ptr<GBuffer> mViewChannels;
-        std::unique_ptr<FogVolume> mViewFogVolume;
-        std::unique_ptr<Image> mViewColour;
+        /// The picture as bytes, which is what the interface's texture is copied out of. Null
+        /// until something asks for a picture, and grown with `mView`.
         std::unique_ptr<Image> mViewTarget;
-        std::uint32_t mViewWidth = 0;
-        std::uint32_t mViewHeight = 0;
 
         /// Null where nothing asked for a window.
         ///

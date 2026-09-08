@@ -12,10 +12,10 @@
 #include <components/debug/debuglog.hpp>
 #include <components/esm/position.hpp>
 #include <components/esm/refid.hpp>
-#include <components/rtx/frametimes.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtxbench/benchrecord.hpp>
+#include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/gpuclock.hpp>
 #include <components/rtxbench/perfcontrol.hpp>
 #include <components/rtxbench/scenedigest.hpp>

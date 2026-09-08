@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-#include <components/rtx/frametimes.hpp>
+#include <components/rtxbench/frametimes.hpp>
 
 namespace Rtx
 {

@@ -5,6 +5,21 @@
 
 namespace Rtx
 {
+    /// Milliseconds between two readings of the steady clock, which is what every timed figure in
+    /// this fork is.
+    ///
+    /// **One spelling, because it was written seven times.** `std::chrono::duration<double,
+    /// std::milli>(to - from).count()` says nothing a reader needs and hides which way round the
+    /// subtraction goes; every timed stretch in this fork now reads the same way.
+    ///
+    /// **Beside the clock rather than beside the report it feeds.** A backend times a wait and the
+    /// game times a walk; neither of them summarises a run, and neither should reach the report to
+    /// subtract two time points.
+    inline double since(std::chrono::steady_clock::time_point from, std::chrono::steady_clock::time_point to)
+    {
+        return std::chrono::duration<double, std::milli>(to - from).count();
+    }
+
     /// How long a frame stands for, and what time it is once it has.
     ///
     /// **One clock for a run, because a run that reads two cannot repeat itself.** How far the

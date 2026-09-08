@@ -16,13 +16,13 @@ namespace Rtx
         {
             mPaths.emplace_back();
             mBaked.emplace_back();
-            mRefs.push_back(0);
-            mChanges.grow(mPaths.size());
-            return static_cast<Index>(mPaths.size() - 1);
+            mSlots.emplace_back();
+            mChanges.grow(mSlots.size());
+            return static_cast<Index>(mSlots.size() - 1);
         }
 
         const Index index = takeFreeSlot(mFree);
-        assert(mRefs[index] == 0 && "a free slot something still names");
+        assert(mSlots[index].mRefs == 0 && "a free slot something still names");
 
         return index;
     }
@@ -35,6 +35,7 @@ namespace Rtx
 
         const Index index = takeSlot();
         mPaths[index] = path;
+        mSlots[index].mKind = Kind::File;
 
         mPathIndex.emplace(path, index);
         mChanges.note(index, SlotNews::Arrived);
@@ -51,6 +52,7 @@ namespace Rtx
 
         const Index index = takeSlot();
         mBaked[index] = key;
+        mSlots[index].mKind = Kind::Baked;
 
         mBakedIndex.emplace(key, index);
         mChanges.note(index, SlotNews::Arrived);
@@ -62,8 +64,8 @@ namespace Rtx
         if (texture == sNoIndex)
             return;
 
-        assert(texture < mRefs.size());
-        ++mRefs[texture];
+        assert(texture < mSlots.size());
+        ++mSlots[texture].mRefs;
     }
 
     void TextureTable::drop(const Index texture)
@@ -71,27 +73,32 @@ namespace Rtx
         if (texture == sNoIndex)
             return;
 
-        assert(texture < mRefs.size());
-        assert(mRefs[texture] > 0 && "a texture given back more often than it was taken");
+        assert(texture < mSlots.size());
 
-        if (--mRefs[texture] > 0)
+        Slot& slot = mSlots[texture];
+        assert(slot.mRefs > 0 && "a texture given back more often than it was taken");
+
+        if (--slot.mRefs > 0)
             return;
 
         // The name leaves the lookup with the slot, or the next reference to it resolves to a slot
-        // nothing is standing in. Whichever of the two named it, and never both: a slot is a file or
-        // it is something this renderer made.
-        if (!mPaths[texture].empty())
+        // nothing is standing in.
+        switch (slot.mKind)
         {
-            mPathIndex.erase(mPaths[texture]);
-            mPaths[texture] = VFS::Path::Normalized();
-        }
-        else
-        {
-            assert(!mBaked[texture].empty() && "a slot with a reference to give back that nothing ever named");
-            mBakedIndex.erase(mBaked[texture]);
-            mBaked[texture].clear();
+            case Kind::File:
+                mPathIndex.erase(mPaths[texture]);
+                mPaths[texture] = VFS::Path::Normalized();
+                break;
+            case Kind::Baked:
+                mBakedIndex.erase(mBaked[texture]);
+                mBaked[texture].clear();
+                break;
+            case Kind::Free:
+                assert(false && "a slot with a reference to give back that nothing ever named");
+                break;
         }
 
+        slot.mKind = Kind::Free;
         freeSlot(mFree, texture);
         mChanges.note(texture, SlotNews::Freed);
     }
@@ -100,7 +107,7 @@ namespace Rtx
     {
         mPaths.clear();
         mBaked.clear();
-        mRefs.clear();
+        mSlots.clear();
         mFree.clear();
         mChanges.clear();
         mPathIndex.clear();

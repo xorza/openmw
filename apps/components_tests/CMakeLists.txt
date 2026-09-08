@@ -127,7 +127,6 @@ if (OPENMW_RTX)
         rtx/frameimage.cpp
         rtx/framering.cpp
         rtx/frames.cpp
-        rtx/frametimes.cpp
         rtx/frameworld.cpp
         rtx/geometry.hpp
         rtx/graphlight.hpp
@@ -200,6 +199,7 @@ if (OPENMW_RTX)
         rtxbench/benchspec.cpp
         rtxbench/contactsheet.cpp
         rtxbench/framehashes.cpp
+        rtxbench/frametimes.cpp
         rtxbench/gpuclock.cpp
         rtxbench/perfcontrol.cpp
         rtxbench/scenedigest.cpp

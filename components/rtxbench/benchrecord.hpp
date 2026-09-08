@@ -7,13 +7,13 @@
 #include <string>
 #include <vector>
 
-#include <components/rtx/frametimes.hpp>
 #include <components/rtx/memoryreport.hpp>
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/reorder.hpp>
 #include <components/rtx/upscale.hpp>
 
+#include "frametimes.hpp"
 #include "gpuclock.hpp"
 
 namespace Rtx

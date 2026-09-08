@@ -31,8 +31,8 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
+#include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
-#include <components/rtx/frametimes.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>

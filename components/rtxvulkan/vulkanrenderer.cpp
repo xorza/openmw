@@ -1,6 +1,5 @@
 #include "vulkanrenderer.hpp"
 
-#include <algorithm>
 #include <bit>
 #include <cassert>
 #include <chrono>
@@ -67,44 +66,6 @@ namespace Rtx
 
             // Bias 15 to bias 127, and ten mantissa bits to twenty-three.
             return std::bit_cast<float>(sign | ((exponent + 112u) << 23) | (mantissa << 13));
-        }
-
-        /// The bounce resolved: the temporal mean, and then the cascade over it.
-        ///
-        /// **The barrier between them is the reason this is one call.** Two compute dispatches are
-        /// unordered inside a command buffer, so the cascade reads what the accumulator wrote only
-        /// where something says so — and the picture-inside-the-interface copy of this chain said
-        /// nothing at all.
-        ///
-        /// @param timer null where the run is not being timed, which a picture is not.
-        const Image& recordDenoise(VkCommandBuffer commands, const GBuffer& channels, AccumulatePass& accumulate,
-            const AtrousPass& filter, const Shaders::Camera& camera, const float far, const bool historyLost,
-            GpuTimer* const timer)
-        {
-            // **The temporal half first, and the cascade is what fills in where it was rejected.**
-            // The accumulator replaces the trace's single sample with the mean of the frames this
-            // surface has been seen over, and hands on the variance of that mean — which is what
-            // lets the levels below stop at an edge in the light rather than only at an edge in the
-            // geometry.
-            openZone(timer, commands, "accumulate");
-            const Image& moments = accumulate.record(commands, channels, camera, far, historyLost);
-            const Image& blended = accumulate.getBlended();
-            closeZone(timer, commands);
-
-            // The cascade reads what the accumulator just wrote, in both images. The history it
-            // writes for the next frame is ordered by the discard `AccumulatePass::record` made of
-            // it, which named a compute write as what would come next.
-            for (const Image* written : { &blended, &moments })
-                written->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-
-            openZone(timer, commands, "filter");
-            const Image& indirect
-                = filter.record(commands, channels, blended, moments, accumulate.getHistory(), camera);
-            closeZone(timer, commands);
-
-            return indirect;
         }
 
         /// The instance a window needs, which is the headless one plus whatever SDL asks for.
@@ -179,10 +140,14 @@ namespace Rtx
         , mPreset(options.mPreset)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
         , mFogVolumeLayout(FogVolume::describeLayout(mDevice))
-        , mAccumulate(mDevice, options.mShaderDirectory)
-        , mFilter(mDevice, options.mShaderDirectory)
-        , mViewAccumulate(mDevice, options.mShaderDirectory)
-        , mViewFilter(mDevice, options.mShaderDirectory)
+        // `SAMPLED` because an upscaler samples what it is handed, and one bit short of that is a
+        // black frame nothing reports. See `GBuffer`, which carries it for the same reason.
+        // `TRANSFER_SRC` because `Channel::Radiance` copies this out: it is the frame a measurement
+        // is taken on, where `readPixels` gives the one a display would show.
+        , mFrame(mDevice, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory,
+              VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "colour")
+        , mView(mDevice, mPool, mChannelLayout, mFogVolumeLayout, options.mShaderDirectory, VK_IMAGE_USAGE_STORAGE_BIT,
+              "view colour")
         , mComposite(mDevice, mPool, options.mShaderDirectory)
         , mBloom(mDevice, options.mShaderDirectory)
         , mWaves(mDevice, mPool, options.mShaderDirectory)
@@ -303,15 +268,7 @@ namespace Rtx
         if (upscaling())
             render = mNgx->getRenderSize(VkExtent2D{ width, height }, mUpscale);
 #endif
-        mRenderWidth = render.width;
-        mRenderHeight = render.height;
-
-        // `SAMPLED` because an upscaler samples what it is handed, and one bit short of that is a
-        // black frame nothing reports. See `GBuffer`, which carries it for the same reason.
-        // `TRANSFER_SRC` because `Channel::Radiance` copies this out: it is the frame a measurement
-        // is taken on, where `readPixels` gives the one a display would show.
-        mColour = std::make_unique<Image>(mDevice, mRenderWidth, mRenderHeight, VK_FORMAT_R32G32B32A32_SFLOAT,
-            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "colour");
+        mFrame.resize(render.width, render.height);
 
         // **Two, and interchangeable**, because the frame after this one must not rewrite the image
         // the present is still blitting out of. They swap roles every present; anything that told
@@ -353,11 +310,6 @@ namespace Rtx
             }
         });
 
-        mChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mRenderWidth, mRenderHeight);
-        mFogVolume = std::make_unique<FogVolume>(mDevice, mPool, mFogVolumeLayout, mRenderWidth, mRenderHeight);
-        mAccumulate.resize(mRenderWidth, mRenderHeight);
-        mFilter.resize(mRenderWidth, mRenderHeight);
-
 #ifdef OPENMW_RTX_DLSS
         // Released before the next is built: the feature holds the network's weights for one pair
         // of resolutions, which is most of what it occupies.
@@ -386,8 +338,8 @@ namespace Rtx
         // **Over whatever the frame is by the time the curve maps it**, which is the upscaler's
         // output where one runs and the trace's own extent where none does. The same test the frame
         // path makes, because a pyramid built at the other extent is a bloom at the wrong scale.
-        const std::uint32_t shownWidth = upscaling() ? mOutputWidth : mRenderWidth;
-        const std::uint32_t shownHeight = upscaling() ? mOutputHeight : mRenderHeight;
+        const std::uint32_t shownWidth = upscaling() ? mOutputWidth : mFrame.getWidth();
+        const std::uint32_t shownHeight = upscaling() ? mOutputHeight : mFrame.getHeight();
         mBloom.resize(shownWidth, shownHeight);
 
         // A frame of a different size is not one this one can be reprojected against.
@@ -967,8 +919,8 @@ namespace Rtx
     FrameExtents VulkanRenderer::getExtents() const
     {
         return FrameExtents{
-            .mRenderWidth = mRenderWidth,
-            .mRenderHeight = mRenderHeight,
+            .mRenderWidth = mFrame.getWidth(),
+            .mRenderHeight = mFrame.getHeight(),
             .mOutputWidth = mOutputWidth,
             .mOutputHeight = mOutputHeight,
         };
@@ -977,7 +929,7 @@ namespace Rtx
     Reconstruction VulkanRenderer::renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options)
     {
         assert(mPass != nullptr && "renderFrame before setScene");
-        assert(camera.mCamera.mWidth == mRenderWidth && camera.mCamera.mHeight == mRenderHeight
+        assert(camera.mCamera.mWidth == mFrame.getWidth() && camera.mCamera.mHeight == mFrame.getHeight()
             && "the camera has to be built for the render extent; ask getExtents");
 
         // **Coverage and an upscaler do not meet, and the interface says so rather than the code
@@ -1048,13 +1000,13 @@ namespace Rtx
         sampled.mPreviousRight = mPreviousCamera.mCamera.mRight;
         sampled.mPreviousUp = mPreviousCamera.mCamera.mUp;
 
-        const VisibilityInputs inputs = describeInputs(mWorld, mWorldSlot, mFogVolume.get());
+        const VisibilityInputs inputs = describeInputs(mWorld, mWorldSlot, &mFrame.getFogVolume());
 
         // Made by the first frame that averages, and that frame is the one that fills it.
         const bool fresh = options.mAccumulate > 0 && mSum == nullptr;
         if (fresh)
-            mSum = std::make_unique<Image>(
-                mDevice, mRenderWidth, mRenderHeight, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "sum");
+            mSum = std::make_unique<Image>(mDevice, mFrame.getWidth(), mFrame.getHeight(),
+                VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "sum");
 
         // **A history is worthless after a jump no motion vector can describe.** A zero basis catches
         // the frames that have no past at all — a resize, a rebuild, the first one — and nothing
@@ -1088,7 +1040,8 @@ namespace Rtx
         // output is what the interface draws over and the presenter blits, the colour is what the
         // upscaler and the curve read — so the discard is sourced at everything before it on the
         // queue rather than at the top of the pipe, which would wait for nothing.
-        for (const Image* image : { mColour.get(), mTarget.get() })
+        const Image& bytes = *mTarget;
+        for (const Image* image : { &mFrame.getColour(), &bytes })
             image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
@@ -1142,38 +1095,39 @@ namespace Rtx
                 .mGraveyard = frame.mGraveyard,
             });
 
-        mChannels->begin(commands);
-        mPass->record(commands, inputs, *mChannels, frame.mHitCount, sampled, airLost, &timer);
-        mChannels->handOver(commands);
+        const GBuffer& channels = mFrame.getChannels();
+
+        channels.begin(commands);
+        mPass->record(commands, inputs, channels, frame.mHitCount, sampled, airLost, &timer);
+        channels.handOver(commands);
 
         // Where the bounce ended up: the filter's last level, or the channel the trace wrote
         // when nothing filtered it. **Ray Reconstruction is itself the denoiser**, and handing
         // it a frame the wavelet already blurred is asking it to recover what was thrown away —
         // which is why `resolve` never answers with both.
         const bool filtering = reconstruction.filtered();
-        const Image* indirect = &mChannels->getIndirect();
+        const Image* indirect = &channels.getIndirect();
         if (filtering)
         {
-            indirect = &recordDenoise(
-                commands, *mChannels, mAccumulate, mFilter, sampled.mCamera, sampled.mFar, historyLost, &timer);
+            indirect = &mFrame.recordDenoise(commands, sampled.mCamera, sampled.mFar, historyLost, &timer);
             historyAnswered = true;
         }
 
         timer.open(commands, "composite");
-        mComposite.record(commands, *mChannels, *indirect, mSum.get(), *mColour,
+        mComposite.record(commands, channels, *indirect, mSum.get(), mFrame.getColour(),
             Shaders::CompositeConstants{
-                .mWidth = mRenderWidth,
-                .mHeight = mRenderHeight,
+                .mWidth = mFrame.getWidth(),
+                .mHeight = mFrame.getHeight(),
                 .mAccumulate = options.mAccumulate,
             });
         timer.close(commands);
 
         // Whatever comes next reads what the composite just wrote.
-        mColour->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+        mFrame.getColour().transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
             VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
 
-        const Image* shown = mColour.get();
+        const Image* shown = &mFrame.getColour();
 
 #ifdef OPENMW_RTX_DLSS
         if (upscaling())
@@ -1181,18 +1135,18 @@ namespace Rtx
             timer.open(commands, "upscale");
             mUpscaler->record(commands,
                 DlssInputs{
-                    .mColour = *mColour,
-                    .mDiffuseAlbedo = mChannels->getAlbedo(),
-                    .mSpecularAlbedo = mChannels->getSpecular(),
-                    .mNormalRoughness = mChannels->getGuide(),
-                    .mDepth = mChannels->getDepth(),
-                    .mMotion = mChannels->getMotion(),
-                    .mReflectionMotion = mChannels->getReflectionMotion(),
-                    .mParticleMask = mChannels->getParticleMask(),
-                    .mTransparency = mChannels->getTransparency(),
-                    .mTransparencyOpacity = mChannels->getTransparencyOpacity(),
-                    .mTransparencyMotion = mChannels->getTransparencyMotion(),
-                    .mBiasMask = mChannels->getBiasMask(),
+                    .mColour = mFrame.getColour(),
+                    .mDiffuseAlbedo = channels.getAlbedo(),
+                    .mSpecularAlbedo = channels.getSpecular(),
+                    .mNormalRoughness = channels.getGuide(),
+                    .mDepth = channels.getDepth(),
+                    .mMotion = channels.getMotion(),
+                    .mReflectionMotion = channels.getReflectionMotion(),
+                    .mParticleMask = channels.getParticleMask(),
+                    .mTransparency = channels.getTransparency(),
+                    .mTransparencyOpacity = channels.getTransparencyOpacity(),
+                    .mTransparencyMotion = channels.getTransparencyMotion(),
+                    .mBiasMask = channels.getBiasMask(),
                     .mOutput = *mUpscaled,
                     .mJitter = sampled.mCamera.mJitter,
                     .mFrameDeltaMs = sinceLastMs,
@@ -1237,9 +1191,9 @@ namespace Rtx
         timer.close(commands);
 
         timer.open(commands, "tone");
-        mTone->record(commands, *shown, mExposure.getExposure(), mChannels->getStarsShown(), mBloom.getPyramid(),
+        mTone->record(commands, *shown, mExposure.getExposure(), channels.getStarsShown(), mBloom.getPyramid(),
             inputs.mTextures, *mTarget,
-            toneFor(sampled, mOutputWidth, mOutputHeight, mChannels->getWidth(), mChannels->getHeight()));
+            toneFor(sampled, mOutputWidth, mOutputHeight, channels.getWidth(), channels.getHeight()));
         timer.close(commands);
 
         // **Submitted and not waited for.** The fence is what the frame after next waits on
@@ -1300,24 +1254,11 @@ namespace Rtx
 
     void VulkanRenderer::growViewTargets(std::uint32_t width, std::uint32_t height)
     {
-        if (mViewTarget != nullptr && width <= mViewWidth && height <= mViewHeight)
+        if (!mView.grow(width, height))
             return;
 
-        // Each axis to the larger of what was there and what is wanted, so a wide picture after a
-        // tall one does not throw the tall one's height away and build it again next time.
-        mViewWidth = std::max(mViewWidth, width);
-        mViewHeight = std::max(mViewHeight, height);
-
-        mViewColour = std::make_unique<Image>(
-            mDevice, mViewWidth, mViewHeight, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_STORAGE_BIT, "view colour");
-
-        mViewTarget = std::make_unique<Image>(mDevice, mViewWidth, mViewHeight, sTargetFormat,
+        mViewTarget = std::make_unique<Image>(mDevice, mView.getWidth(), mView.getHeight(), sTargetFormat,
             VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "view target");
-
-        mViewChannels = std::make_unique<GBuffer>(mDevice, mChannelLayout, mViewWidth, mViewHeight);
-        mViewFogVolume = std::make_unique<FogVolume>(mDevice, mPool, mFogVolumeLayout, mViewWidth, mViewHeight);
-        mViewAccumulate.resize(mViewWidth, mViewHeight);
-        mViewFilter.resize(mViewWidth, mViewHeight);
     }
 
     void VulkanRenderer::traceGuiTexture(
@@ -1351,7 +1292,7 @@ namespace Rtx
         // camera, which is not the frame's.
         const std::uint32_t slot = options.mScene == sWorld ? mWorldSlot : 0;
 
-        const VisibilityInputs inputs = describeInputs(traced, slot, mViewFogVolume.get());
+        const VisibilityInputs inputs = describeInputs(traced, slot, &mView.getFogVolume());
 
         // **The scene's own, filled here rather than by the caller.** A doll and a map tile are
         // handed constants that describe a camera, and whether the scene behind that camera holds a
@@ -1364,7 +1305,8 @@ namespace Rtx
         // the shader writes it whatever anyone does with the number, and it is the frame's, which
         // `renderFrame` zeroes before it counts.
         mPool.submitAndWait([&](VkCommandBuffer commands) {
-            for (const Image* image : { mViewColour.get(), mViewTarget.get() })
+            const Image& bytes = *mViewTarget;
+            for (const Image* image : { &mView.getColour(), &bytes })
                 image->transition(commands, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                     VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                     VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
@@ -1375,23 +1317,24 @@ namespace Rtx
             traced.mBuffers->binSprites(mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
                 Placing{ .mCommands = commands, .mSlot = slot, .mGraveyard = mRing.recording().mGraveyard });
 
-            mViewChannels->begin(commands);
-            mPass->record(commands, inputs, *mViewChannels, mRing.recording().mHitCount, shown, true, nullptr);
-            mViewChannels->handOver(commands);
+            const GBuffer& channels = mView.getChannels();
+
+            channels.begin(commands);
+            mPass->record(commands, inputs, channels, mRing.recording().mHitCount, shown, true, nullptr);
+            channels.handOver(commands);
 
             // A doll and a map tile are one frame with no frame before them, so the accumulator is
             // a pass-through that says so: no history, and the largest variance there is, which is
             // what tells the cascade to filter as widely as it can.
-            const Image& indirect = recordDenoise(
-                commands, *mViewChannels, mViewAccumulate, mViewFilter, camera.mCamera, camera.mFar, true, nullptr);
+            const Image& indirect = mView.recordDenoise(commands, camera.mCamera, camera.mFar, true, nullptr);
 
-            mComposite.record(commands, *mViewChannels, indirect, nullptr, *mViewColour,
+            mComposite.record(commands, channels, indirect, nullptr, mView.getColour(),
                 Shaders::CompositeConstants{
                     .mWidth = options.mWidth,
                     .mHeight = options.mHeight,
                 });
 
-            mViewColour->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+            mView.getColour().transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 
@@ -1402,10 +1345,9 @@ namespace Rtx
             // **No lens on a picture inside the interface.** A map tile is a diagram and a doll is
             // looked at beside the widgets around it, and neither is a frame the pyramid was built
             // over — `TonePass::record` reads a null one as no veil.
-            mTone->record(commands, *mViewColour, mExposure.getExposure(), mViewChannels->getStarsShown(), nullptr,
+            mTone->record(commands, mView.getColour(), mExposure.getExposure(), channels.getStarsShown(), nullptr,
                 inputs.mTextures, *mViewTarget,
-                toneFor(
-                    camera, options.mWidth, options.mHeight, mViewChannels->getWidth(), mViewChannels->getHeight()));
+                toneFor(camera, options.mWidth, options.mHeight, channels.getWidth(), channels.getHeight()));
 
             mViewTarget->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
@@ -1462,7 +1404,9 @@ namespace Rtx
 
     void VulkanRenderer::readChannel(Channel channel, std::vector<float>& values)
     {
-        assert(mChannels != nullptr);
+        assert(mFrame.isBuilt());
+
+        const GBuffer& channels = mFrame.getChannels();
 
         // **A switch and not a pair of ternaries**, so that a channel added and not handled here is
         // a compiler warning rather than a read of whichever one the last `else` happened to name.
@@ -1470,36 +1414,36 @@ namespace Rtx
         switch (channel)
         {
             case Channel::Motion:
-                image = &mChannels->getMotion();
+                image = &channels.getMotion();
                 break;
             case Channel::Depth:
-                image = &mChannels->getDepth();
+                image = &channels.getDepth();
                 break;
             case Channel::ReflectionMotion:
-                image = &mChannels->getReflectionMotion();
+                image = &channels.getReflectionMotion();
                 break;
             case Channel::ParticleMask:
-                image = &mChannels->getParticleMask();
+                image = &channels.getParticleMask();
                 break;
             case Channel::TransparencyMotion:
-                image = &mChannels->getTransparencyMotion();
+                image = &channels.getTransparencyMotion();
                 break;
             case Channel::BiasMask:
-                image = &mChannels->getBiasMask();
+                image = &channels.getBiasMask();
                 break;
             case Channel::Indirect:
-                image = &mChannels->getIndirect();
+                image = &channels.getIndirect();
                 break;
             case Channel::Accumulated:
                 // The denoiser's own, so a frame nothing denoised has no answer here — `getBlended`
                 // asserts on one rather than handing back whatever the allocation held, and
                 // `hasChannel` is where a caller asks before it comes to that.
-                image = &mAccumulate.getBlended();
+                image = &mFrame.getBlended();
                 break;
             case Channel::Radiance:
                 // The one channel that is not the trace's: the composite's own output, which is the
                 // frame every other channel was gathered to make.
-                image = mColour.get();
+                image = &mFrame.getColour();
                 break;
         }
 

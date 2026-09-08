@@ -3,7 +3,7 @@
 #include <cassert>
 #include <chrono>
 
-#include <components/rtx/frametimes.hpp>
+#include <components/rtx/frameclock.hpp>
 
 #include "commands.hpp"
 #include "device.hpp"

@@ -7,7 +7,6 @@
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
 #include <components/rtx/distantland.hpp>
-#include <components/rtx/frametimes.hpp>
 #include <components/rtx/frameworld.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/sceneutil/vismask.hpp>

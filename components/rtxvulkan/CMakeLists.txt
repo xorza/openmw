@@ -244,6 +244,8 @@ set(RTX_VULKAN_FILES
     texture.hpp
     tonepass.cpp
     tonepass.hpp
+    tracechain.cpp
+    tracechain.hpp
     tracepipeline.cpp
     tracepipeline.hpp
     validation.cpp

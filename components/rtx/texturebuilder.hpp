@@ -55,8 +55,8 @@ namespace Rtx
     /// it is a member of whatever hands scenes over rather than a value passed about.
     ///
     /// **Held for the life of its owner, and cleared and refilled per arrival.** Every buffer here
-    /// settles at the busiest cell so far. Built and thrown away instead, it would spend seven
-    /// vectors on the frame a cell arrives — which is the frame with the least room for them.
+    /// settles at the busiest cell so far. Built and thrown away instead, it would grow every one
+    /// of them on the frame a cell arrives — which is the frame with the least room for that.
     class SceneTextures
     {
     public:
@@ -104,10 +104,30 @@ namespace Rtx
         std::uint32_t getUnreadable() const { return mUnreadable; }
 
     private:
+        /// One slot `describe` decided to describe, and what resolving it found.
+        ///
+        /// **One row and not three arrays sharing an index.** A slot, its image and which bake it
+        /// is are decided together in one pass and read together in the next, and three vectors
+        /// pushed in step are a rule a reader has to keep rather than a shape that keeps it.
+        struct Kept
+        {
+            Index mSlot = sNoIndex;
+
+            /// Which of `mSpriteLights` this slot's bake is, or `sNoIndex` where it is no such
+            /// bake.
+            Index mLight = sNoIndex;
+
+            /// The file's image, or null where the slot names no file or nothing could be read
+            /// there.
+            osg::ref_ptr<const osg::Image> mImage;
+        };
+
         // Refilled by every `describe` and never freed, so each settles at the busiest arrival so
         // far — which is where the room to grow one is least.
 
-        std::vector<osg::ref_ptr<const osg::Image>> mImages;
+        /// The slots `describe` kept, because a free one is passed over and the descriptions are
+        /// no longer one per entry of what it was asked for.
+        std::vector<Kept> mKept;
 
         /// Every texture's estimated lighting, back to back and `SHADING_EXTENT` squared apiece.
         ///
@@ -139,14 +159,6 @@ namespace Rtx
         /// the pool is as deep as the most chains one arrival built, which is a handful.
         std::vector<MipChain> mChains;
         std::size_t mChainCount = 0;
-
-        /// Which slots `describe` kept, because a free one is passed over and the descriptions are
-        /// no longer one per entry of what it was asked for.
-        std::vector<Index> mKept;
-
-        /// Which of `mSpriteLights` each kept slot is, or `sNoIndex` for a slot that is not a bake
-        /// of that kind. Parallel to `mKept` for the same reason `mImages` is.
-        std::vector<Index> mLightOf;
 
         /// Every slot of the scene's table, which is what a rebuild asks about. Held rather than
         /// built, because a rebuild is a fifth of a second and none of it should be this.

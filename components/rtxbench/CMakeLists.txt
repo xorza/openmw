@@ -21,6 +21,8 @@ set(RTXBENCH_FILES
     contactsheet.hpp
     framehashes.cpp
     framehashes.hpp
+    frametimes.cpp
+    frametimes.hpp
     gpuclock.cpp
     gpuclock.hpp
     perfcontrol.cpp
@@ -35,8 +37,8 @@ source_group(components\\rtxbench FILES ${RTXBENCH_FILES})
 
 add_library(openmw-rtx-bench STATIC ${RTXBENCH_FILES})
 
-# `PUBLIC`, because `benchrecord.hpp` names `Rtx::FrameTimes`, `Rtx::SceneStats` and the three
-# reconstruction enums: every consumer needs the core's include paths.
+# `PUBLIC`, because `benchrecord.hpp` names `Rtx::SceneStats` and the three reconstruction enums,
+# and `frametimes.hpp` names `Rtx::GpuSpan`: every consumer needs the core's include paths.
 target_link_libraries(openmw-rtx-bench PUBLIC openmw-rtx)
 
 target_compile_options(openmw-rtx-bench PRIVATE ${OPENMW_RTX_COMPILE_OPTIONS})

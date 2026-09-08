@@ -13,29 +13,6 @@ of scope. No measurements were taken.
 
 ---
 
-## Ownership placed for convenience rather than for what needs it
-
-- [ ] **The frame's target chain and the interface picture's chain are written twice.** The frame
-      has `mColour`, `mTarget`, `mSpare`, `mPresented`, `mSum`, `mChannels` and `mFogVolume`. The
-      picture has `mViewChannels`, `mViewFogVolume`, `mViewColour`, `mViewTarget`, `mViewWidth` and
-      `mViewHeight`. `createTargets` and `growViewTargets` are two spellings of one operation, and
-      `mAccumulate`/`mFilter` are doubled as `mViewAccumulate`/`mViewFilter`. Name the chain once.
-
-- [ ] **`components/rtx/frametimes.hpp` holds the report and one clock helper.** `FrameTimes`,
-      `FrameSamples`, `GpuZone`, `GpuBreakdown` and the five `describe*` functions are read only by
-      `components/rtxbench` and by the session. `framering.cpp` and `worldmirror.cpp` include the
-      file for `since()` alone, and the file includes `renderer.hpp` for `GpuSpan`. Move the report
-      to `components/rtxbench` and put `since()` where a backend can reach it cheaply.
-
-- [ ] **`SceneTextures` keeps three arrays that share one index.** `mImages`, `mKept` and `mLightOf`
-      are parallel, and the header says so. One vector of a per-slot struct removes the rule.
-
-- [ ] **`TextureTable` asks two strings whether a slot is free.** A slot is a file or a bake and
-      never both, and `isFree` tests `mPaths[t].empty() && mBaked[t].empty()`. A kind field beside
-      one name says the same thing once. The two spans the backend reads can still be handed out.
-
----
-
 ## Four implementations of "a list of slots, each named once"
 
 - [ ] **Make one type and use it four times.** `Rtx::SlotSet` is a list, a flag byte and a stale
