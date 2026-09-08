@@ -82,20 +82,16 @@ namespace Rtx
         VkDeviceSize mBytes = 0;
     };
 
-    /// A set of the array's layout that someone other than the array binds: the pool it came
-    /// from, which is what frees it, and the set itself.
-    struct SetApart
-    {
-        VkDescriptorPool mPool = VK_NULL_HANDLE;
-        VkDescriptorSet mSet = VK_NULL_HANDLE;
-    };
-
     /// Every texture a scene uses, in one descriptor array a shader indexes by material, and every
     /// texture's shading map in a second array beside it at the same slot.
     ///
     /// A separate set from the per-frame one: this is written once and bound for the run, while the
     /// other is pushed every frame. A bindless array cannot be a push descriptor anyway — there is
     /// no pushing four thousand of them per frame.
+    ///
+    /// **Update after bind, so a cell landing may write it while work bound to it is still on the
+    /// queue.** That is what lets a bake read the textures through this set rather than through one
+    /// made and buried for the arrival.
     ///
     /// **The maps are an array and not a buffer**, because a map is a grid the texture unit filters:
     /// one fetch where a shader reading one out of a buffer paid four loads and the wrap by hand,
@@ -172,16 +168,6 @@ namespace Rtx
             return slot < mTextures.size() ? mTextures[slot].getExtent() : VkExtent2D{};
         }
 
-        /// A set of the array's layout holding the textures in `slots` and nothing else, from a
-        /// pool of its own, for a dispatch recorded ahead of a write to the array's set.
-        ///
-        /// **Filled once, here, and never written again.** A set a pending dispatch is bound to may
-        /// be written only under update-after-bind, which the array does not declare; a dispatch
-        /// that has to outlast the array's next write reads through one of these instead. The
-        /// caller buries the pool with the work that binds the set. Every slot must hold a texture,
-        /// which `getExtent` says.
-        SetApart describeApart(std::span<const std::uint32_t> slots) const;
-
     private:
         /// Writes the descriptors for the slots `arrived` names, the texture's and its map's.
         void describe(std::span<const TextureData> arrived);
@@ -198,12 +184,8 @@ namespace Rtx
 
         /// Cleared and refilled by every describe and every write, never freed. Each settles at the
         /// busiest arrival so far, and an arrival is the frame with the least room to grow one.
-        ///
-        /// **`mutable` because `describeApart` is a question and not a change.** The array's state
-        /// is the same before and after it; these are workings, and nothing else describes while one
-        /// is running.
-        mutable std::vector<VkDescriptorImageInfo> mImageScratch;
-        mutable std::vector<VkWriteDescriptorSet> mWriteScratch;
+        std::vector<VkDescriptorImageInfo> mImageScratch;
+        std::vector<VkWriteDescriptorSet> mWriteScratch;
         std::vector<VkBufferImageCopy> mRegionScratch;
 
         /// Indexed by slot. A slot the scene has freed holds nothing until something takes it over —

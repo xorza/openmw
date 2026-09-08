@@ -34,23 +34,14 @@ not what stops a Turing card.
       player feels. The composite landing's own submit and fence are already gone — that batch rides
       the placement's submit.
 
-      The waits cannot simply go: the texture set is shared and is not update-after-bind. Move that
-      ownership first, then enqueue the independent work into the ordered submission path.
+      **The texture set is no longer what holds it.** The array's bindings are update-after-bind, so
+      an arrival writes it while a bake bound to it is still on the queue, and the set and pool that
+      bake needed are deleted.
 
-- [ ] **`VK_EXT_ray_tracing_invocation_reorder` sets a driver floor.** It is required at
-      `requirements.cpp:28`. The RTX 2060 on 590.48.1 exposes only the `NV` spelling; the `EXT` one
-      first appears around 595 on Turing and 582 on Ada. A user on the 580 branch is refused today,
-      for a feature that is off by default because every mode of it measured slower.
-
-      **Neither fix an earlier note here proposed is host-side.** The compiled `visibility.rgen`
-      declares `SPV_EXT_shader_invocation_reorder` and `ShaderInvocationReorderEXT`, which only the
-      `EXT` Vulkan extension provides, so accepting the `NV` spelling needs a second binary.
-      `traceprobe.rgen` calls `reorderThreadEXT` outside any specialization constant, so building
-      without the extension needs a second binary too. Both are the fallback path `AGENTS.md`
-      forbids.
-
-      So the question is whether the driver floor stands. If it does, the refusal should name the
-      driver a Turing card needs rather than the extension it lacks.
+      What the wait still guards is the geometry and the tables. `SceneAcceleration::extend` and
+      `SkinTables::extend` each state "with nothing in flight, which the caller guarantees": an
+      arrival writes every copy of the poses, the indices, the normals and the rows. Each has to
+      keep an account of what a copy owes, the way `SlotBlocks` already does, before the wait can go.
 
 - [ ] **Opacity micromaps are emulated below Ada.** They work and they can still pay, but the Ada
       speedup is not transferable. Measure the micromap path against plain any-hit traversal on

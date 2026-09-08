@@ -25,6 +25,13 @@ namespace Rtx
             // be a ray tracing pipeline, because `reorderThreadEXT` is defined for the ray
             // generation stage and for no other.
             VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+            // **A driver floor and not a hardware one, and it is required all the same.** Turing
+            // reorders nothing and says so in the hint, but the shaders name `reorderThreadEXT` and
+            // compile to `SPV_EXT_shader_invocation_reorder` whatever the hint answers — so the
+            // device has to offer the `EXT` spelling, which arrives around driver 595 on Turing and
+            // 582 on Ada. The `NV` extension is not a substitute: it carries the `NV` SPIR-V
+            // capability, so taking it would mean a second binary of every shader that reorders,
+            // and `AGENTS.md` keeps no second path.
             VK_EXT_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME,
             // **Asking the driver what it made of a shader.** Occupancy is a register count and a
             // workgroup size, and the register count belongs to the driver's own compiler — no
@@ -75,8 +82,6 @@ namespace Rtx
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.runtimeDescriptorArray; } },
             RequiredFeature{ "descriptorBindingPartiallyBound",
                 +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.descriptorBindingPartiallyBound; } },
-            RequiredFeature{ "descriptorBindingVariableDescriptorCount",
-                +[](DeviceFeatures& f) -> VkBool32& { return f.mVulkan12.descriptorBindingVariableDescriptorCount; } },
             RequiredFeature{ "descriptorBindingSampledImageUpdateAfterBind",
                 +[](DeviceFeatures& f) -> VkBool32& {
                     return f.mVulkan12.descriptorBindingSampledImageUpdateAfterBind;

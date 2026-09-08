@@ -176,7 +176,6 @@ namespace Rtx
         std::vector<Planned> mPlanned;
         std::vector<VkMicromapTriangleEXT> mTriangleScratch;
         std::vector<VkMicromapBuildInfoEXT> mBuildScratch;
-        std::vector<std::uint32_t> mSlotScratch;
 
         /// One flag per material slot, for `check` to find the rewritten ones in one pass.
         std::vector<std::uint8_t> mWrittenScratch;

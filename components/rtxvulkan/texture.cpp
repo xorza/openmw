@@ -73,8 +73,8 @@ namespace Rtx
         /// counted the scene's textures made every cell's array incompatible with the pipeline
         /// layout built from the last one's — and a renderer that keeps its pass across scenes, as
         /// this one does because building one compiles a shader, would bind a set the pipeline
-        /// cannot accept. The count moves to the allocation, where it costs what the scene actually
-        /// uses.
+        /// cannot accept. What the maximum costs is a few hundred kilobytes of pool, paid
+        /// once.
         SetLayout makeLayout(const Device& device)
         {
             const std::array<VkDescriptorSetLayoutBinding, 2> bindings{
@@ -86,34 +86,43 @@ namespace Rtx
 
             // Partially bound because a scene with fewer textures than the array can hold leaves the
             // tail unwritten, and a shader that never indexes there must not be told it is an error.
-            // Variable count is what keeps the declared maximum from being what gets allocated, and
-            // it is allowed on the last binding of a set alone, which is the one it is on.
-            constexpr std::array<VkDescriptorBindingFlags, 2> flags{
-                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
-                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT,
-            };
+            //
+            // **Update after bind, because an arrival writes this set while work that named it is
+            // still on the queue.** A cell landing writes the slots it brought, and a bake recorded
+            // a moment earlier is bound to the same set — legal here because a descriptor may be
+            // written after the bind as long as no pending command reads that descriptor, and a
+            // slot nothing has described is a slot no material names. Without it the bake had to
+            // read through a set and a pool of its own, made and buried per arrival.
+            constexpr VkDescriptorBindingFlags sBound
+                = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+            constexpr std::array<VkDescriptorBindingFlags, 2> flags{ sBound, sBound };
             const VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
                 .bindingCount = static_cast<std::uint32_t>(flags.size()),
                 .pBindingFlags = flags.data(),
             };
 
-            return SetLayout(device, bindings, 0, &bindingFlags);
+            return SetLayout(
+                device, bindings, VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT, &bindingFlags);
         }
 
-        /// A set of `layout` from a pool of its own: the texture binding at the maximum the layout
-        /// declares, and the shading binding — the variable one — at `shadingCount`.
-        ///
-        /// What the layout left open: the arrays are declared at their maximum, and the count an
-        /// allocation names is what says how many of the last binding's descriptors this set pays
-        /// for.
-        SetApart allocateSet(const Device& device, VkDescriptorSetLayout layout, std::uint32_t shadingCount)
+        /// A descriptor set and the pool it was taken from, which is what frees it.
+        struct SetPool
         {
-            SetApart set;
+            VkDescriptorPool mPool = VK_NULL_HANDLE;
+            VkDescriptorSet mSet = VK_NULL_HANDLE;
+        };
 
-            const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, sMaxTextures + shadingCount };
+        /// A set of `layout` from a pool of its own, both bindings at the maximum the layout
+        /// declares.
+        SetPool allocateSet(const Device& device, VkDescriptorSetLayout layout)
+        {
+            SetPool set;
+
+            const VkDescriptorPoolSize size{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * sMaxTextures };
             const VkDescriptorPoolCreateInfo describePool{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT,
                 .maxSets = 1,
                 .poolSizeCount = 1,
                 .pPoolSizes = &size,
@@ -121,14 +130,8 @@ namespace Rtx
             checkVk(vkCreateDescriptorPool(device.getHandle(), &describePool, nullptr, &set.mPool),
                 "vkCreateDescriptorPool");
 
-            const VkDescriptorSetVariableDescriptorCountAllocateInfo variable{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
-                .descriptorSetCount = 1,
-                .pDescriptorCounts = &shadingCount,
-            };
             const VkDescriptorSetAllocateInfo allocate{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                .pNext = &variable,
                 .descriptorPool = set.mPool,
                 .descriptorSetCount = 1,
                 .pSetLayouts = &layout,
@@ -214,7 +217,7 @@ namespace Rtx
         // the set to the cell is what made a texture arriving mean a new set, a new pool and every
         // image uploaded again; four thousand descriptors is a few hundred kilobytes of pool and it
         // is paid once. `extend` then only ever writes the range that is new.
-        const SetApart own = allocateSet(device, mLayout.getHandle(), sMaxTextures);
+        const SetPool own = allocateSet(device, mLayout.getHandle());
         mPool = own.mPool;
         mSet = own.mSet;
 
@@ -301,31 +304,6 @@ namespace Rtx
 
         vkUpdateDescriptorSets(
             mDevice.getHandle(), static_cast<std::uint32_t>(mWriteScratch.size()), mWriteScratch.data(), 0, nullptr);
-    }
-
-    SetApart TextureArray::describeApart(std::span<const std::uint32_t> slots) const
-    {
-        // The shading binding is the variable one, and nothing reads a map through this set.
-        const SetApart apart = allocateSet(mDevice, mLayout.getHandle(), 1);
-
-        // Reserved before any write points into it, for the reason `describe` gives. The array's own
-        // scratch, because this is the array's answer and nothing else is describing while it runs.
-        mImageScratch.clear();
-        mWriteScratch.clear();
-        mImageScratch.reserve(slots.size());
-        mWriteScratch.reserve(slots.size());
-
-        for (const std::uint32_t slot : slots)
-        {
-            assert(slot < mTextures.size() && mTextures[slot].getView() != VK_NULL_HANDLE
-                && "a set described over a slot holding no texture");
-            queueWrite(apart.mSet, sTextureBinding, slot, mTextures[slot].getView(), mImageScratch, mWriteScratch);
-        }
-
-        vkUpdateDescriptorSets(
-            mDevice.getHandle(), static_cast<std::uint32_t>(mWriteScratch.size()), mWriteScratch.data(), 0, nullptr);
-
-        return apart;
     }
 
     void TextureArray::queueWrite(const VkDescriptorSet set, const std::uint32_t binding, const std::uint32_t slot,

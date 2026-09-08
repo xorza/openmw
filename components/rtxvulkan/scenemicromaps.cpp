@@ -375,26 +375,14 @@ namespace Rtx
             mBuildScratch[at].scratchData.deviceAddress = scratch.getDeviceAddress() + plan.mScratch;
         }
 
-        // Every slot this bake reads, once each, for the set of its own it reads them through.
-        mSlotScratch.clear();
-        for (const Planned& plan : mPlanned)
-            mSlotScratch.push_back(materials[ranges[plan.mMesh].mMaterial].mDiffuse);
-        std::sort(mSlotScratch.begin(), mSlotScratch.end());
-        mSlotScratch.erase(std::unique(mSlotScratch.begin(), mSlotScratch.end()), mSlotScratch.end());
-
-        // **A set of its own and not the array's, because the array is written while the bake is
-        // pending.** An arrival's batch rides the next submit rather than waiting, and a composite
-        // landing in the same frame — the walk hands the scene over twice at a crossing — writes
-        // the array's set before that submit has run. `TextureArray::describeApart` says what a
-        // pending dispatch may read through; the pool goes to the graveyard with the batch, and
-        // the frame's fence frees it.
-        const SetApart masks = textures.describeApart(mSlotScratch);
-        graveyard.bury(masks.mPool);
-
+        // **The array's own set, which the arrival that follows may write while this bake is still
+        // on the queue.** The bindings are update-after-bind, so a slot described after the bind is
+        // legal as long as no pending command reads it — and a slot the bake reads is one a material
+        // already named.
         const VkCommandBuffer commands = batch.getCommands();
         openZone(timer, commands, "micromap");
 
-        pass.begin(commands, masks.mSet);
+        pass.begin(commands, textures.getSet());
         for (const Planned& plan : mPlanned)
         {
             const MeshRange& mesh = ranges[plan.mMesh];
