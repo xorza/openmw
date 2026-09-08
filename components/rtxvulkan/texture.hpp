@@ -82,6 +82,14 @@ namespace Rtx
         VkDeviceSize mBytes = 0;
     };
 
+    /// A set of the array's layout that someone other than the array binds: the pool it came
+    /// from, which is what frees it, and the set itself.
+    struct SetApart
+    {
+        VkDescriptorPool mPool = VK_NULL_HANDLE;
+        VkDescriptorSet mSet = VK_NULL_HANDLE;
+    };
+
     /// Every texture a scene uses, in one descriptor array a shader indexes by material, and every
     /// texture's shading map in a second array beside it at the same slot.
     ///
@@ -94,14 +102,6 @@ namespace Rtx
     /// half the memory, and no table to rewrite whole when it grows. Measured, the loads cost
     /// nothing the trace can see, so this is the shape and not a saving. And an array of their own
     /// rather than slots among the textures, for the reason `texturearray.glsl` gives.
-    /// A set of the array's layout that someone other than the array binds: the pool it came
-    /// from, which is what frees it, and the set itself.
-    struct SetApart
-    {
-        VkDescriptorPool mPool = VK_NULL_HANDLE;
-        VkDescriptorSet mSet = VK_NULL_HANDLE;
-    };
-
     class TextureArray
     {
     public:
@@ -196,12 +196,12 @@ namespace Rtx
 
         const Device& mDevice;
 
-        // Cleared and refilled by every describe and every write, never freed. Each settles at the
-        // busiest arrival so far, and an arrival is the frame with the least room to grow one.
-        //
-        // **`mutable` because `describeApart` is a question and not a change.** The array's state is
-        // the same before and after it; these are workings, and nothing else describes while one is
-        // running.
+        /// Cleared and refilled by every describe and every write, never freed. Each settles at the
+        /// busiest arrival so far, and an arrival is the frame with the least room to grow one.
+        ///
+        /// **`mutable` because `describeApart` is a question and not a change.** The array's state
+        /// is the same before and after it; these are workings, and nothing else describes while one
+        /// is running.
         mutable std::vector<VkDescriptorImageInfo> mImageScratch;
         mutable std::vector<VkWriteDescriptorSet> mWriteScratch;
         std::vector<VkBufferImageCopy> mRegionScratch;

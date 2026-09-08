@@ -67,11 +67,12 @@ namespace Rtx
 
         /// Which rays are interested: `Shaders::MASK_SOLID`; `MASK_WATER` for a surface a shadow
         /// ray must pass straight through; or `MASK_FIRST_PERSON` for the player's own arms, which
-        /// only the eye may meet. Sunlight reaching a seabed has come through the surface,
-
-        /// so a sea that occluded would black out every shallow in the game — and saying it in the
-        /// mask costs traversal nothing, where building the water non-opaque so a candidate loop
-        /// could wave shadow rays past was measured at half the frame rate.
+        /// only the eye may meet.
+        ///
+        /// Sunlight reaching a seabed has come through the surface, so a sea that occluded would
+        /// black out every shallow in the game — and saying it in the mask costs traversal nothing,
+        /// where building the water non-opaque so a candidate loop could wave shadow rays past was
+        /// measured at half the frame rate.
         std::uint32_t mMask = 0;
 
         /// Whether traversal must stop and ask the shader whether a hit is a hole.
@@ -114,15 +115,14 @@ namespace Rtx
     /// must not go back to the allocator for a buffer it already had.
     void makeInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records);
 
-    /// Rewrites the rows of the slots the scene says changed — `getMoved` and `getSettled` — and
-    /// leaves every other row as the last call left it.
+    /// Rewrites the rows of the slots the scene says changed — `getMoved` and `getSettled` — leaves
+    /// every other row as the last call left it, and names in `changed` every slot it wrote.
     ///
     /// **What a frame costs, and it is what moved.** A record carries a matrix inverse and a
     /// nine-by-nine exterior is fifty thousand of them; building all of them again to change a
     /// hundred was most of what placing the world cost the CPU. `records` must be what
     /// `makeInstanceRecords` filled for this scene, and is grown here where the scene grew — a slot
     /// that arrived is in `getMoved`.
-    /// Brings `records` up to what the scene now says, and names in `changed` every slot it wrote.
     ///
     /// **The one place the scene's change lists are read, and so the one place their order can be
     /// got wrong.** Every table a frame writes is derived from these records, and each used to

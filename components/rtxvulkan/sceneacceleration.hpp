@@ -299,22 +299,13 @@ namespace Rtx
         void recordRefit(VkCommandBuffer commands, GpuTimer* timer);
         void recordTopLevel(VkCommandBuffer commands, GpuTimer* timer);
 
+        /// Writes what a tight copy of each structure the last build made would come to.
+        void askWhatCompactionWouldSave(VkCommandBuffer commands);
+
         const Device& mDevice;
 
-        /// Host-written on arrival, and written by `SkinPass` for a skinned body every frame it
-        /// moves — into the copy the refit reads, in the same command buffer, with a barrier
-        /// between.
-        ///
-        /// **Blocked, so a scene that grows keeps every address it has already handed out.** Nothing
-        /// reads these at a hit: a hit gets its vertices back out of the structure through position
-        /// fetch, so they are a build input and a pose's destination and nothing else — which is
-        /// why there is no table of their addresses beside them.
-        ///
-        /// **A mesh that never deforms is written into the first copy alone**: its structure is
-        /// built from there once and never refitted, so the copies past it would hold a pose nothing
-        /// ever reads. A mesh that deforms is written into every copy on arrival, holding its bind
-        /// pose until the pass writes over it.
-        /// One slot per mesh, filled by the build with what a tight copy of each would come to.
+        /// One query per compactable structure — every built mesh that does not refit — holding
+        /// what a tight copy of it would come to.
         ///
         /// Made again when the scene outgrows it, which loses what it held: a figure is a figure
         /// about the build that wrote it.
@@ -334,9 +325,19 @@ namespace Rtx
         /// Refilled per build, so the walk that gathers them allocates nothing.
         std::vector<VkAccelerationStructureKHR> mCompactableHandles;
 
-        /// Writes what a tight copy of each structure the last build made would come to.
-        void askWhatCompactionWouldSave(VkCommandBuffer commands);
-
+        /// Host-written on arrival, and written by `SkinPass` for a skinned body every frame it
+        /// moves — into the copy the refit reads, in the same command buffer, with a barrier
+        /// between.
+        ///
+        /// **Blocked, so a scene that grows keeps every address it has already handed out.** Nothing
+        /// reads these at a hit: a hit gets its vertices back out of the structure through position
+        /// fetch, so they are a build input and a pose's destination and nothing else — which is
+        /// why there is no table of their addresses beside them.
+        ///
+        /// **A mesh that never deforms is written into the first copy alone**: its structure is
+        /// built from there once and never refitted, so the copies past it would hold a pose nothing
+        /// ever reads. A mesh that deforms is written into every copy on arrival, holding its bind
+        /// pose until the pass writes over it.
         SlotBlocks mPositions{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
         std::uint32_t mSlots = 1;
 
