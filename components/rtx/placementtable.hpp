@@ -50,8 +50,6 @@ namespace Rtx
         /// Catches every moved slot up, so that a frame after a move carries no motion.
         void advance();
 
-        void clear();
-
         /// Every slot, standing or empty, in slot order. `MeshInstance::isPlaced` tells them apart.
         std::span<const MeshInstance> getAll() const { return mInstances; }
 

@@ -102,15 +102,4 @@ namespace Rtx
         freeSlot(mFree, texture);
         mChanges.note(texture, SlotNews::Freed);
     }
-
-    void TextureTable::clear()
-    {
-        mPaths.clear();
-        mBaked.clear();
-        mSlots.clear();
-        mFree.clear();
-        mChanges.clearArrivals();
-        mPathIndex.clear();
-        mBakedIndex.clear();
-    }
 }

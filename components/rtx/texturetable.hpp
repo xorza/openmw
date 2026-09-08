@@ -64,15 +64,12 @@ namespace Rtx
         /// How many slots this has ever taken, which is the share of the scene's structure revision
         /// that textures decide.
         ///
-        /// **A revision and not a count of what is here.** `clear` leaves it alone on purpose: a
-        /// scene emptied and refilled has to read as a change to whoever built from it, and a
-        /// counter that went back to nought could read as no change at all.
+        /// **A revision and not a count of what is here.** A slot freed and taken again has to read
+        /// as a change to whoever built from it, and a counter that followed what the table holds
+        /// would be back where it started.
         std::uint64_t getRevision() const { return mRevision; }
 
         void clearArrivals() { mChanges.clearArrivals(); }
-
-        /// Empties the table. The revision above survives it.
-        void clear();
 
     private:
         /// What stands in a slot, and so which of the two name tables carries its name.

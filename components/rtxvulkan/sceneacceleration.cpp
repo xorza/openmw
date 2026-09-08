@@ -271,8 +271,12 @@ namespace Rtx
         const DeviceFunctions& functions = mDevice.getFunctions();
         const std::size_t slots = scene.getMeshes().size();
 
-        // Grown to what the scene now holds, never shrunk: a slot the scene took back keeps its
-        // index, and the tables below are indexed by it.
+        // Grown to what the scene now holds, and the scene never shrinks: a slot it took back keeps
+        // its index, and the tables below are indexed by it. **Asserted and not guarded**, because
+        // a mesh table that shrank has no right answer — the `resize` below drops the handles above
+        // the new end and leaks their structures, and a guard keeps structures for meshes that are
+        // gone.
+        assert(slots >= mBottomLevel.size() && "the scene's mesh table shrank under the structures");
         mBottomLevel.resize(slots, VK_NULL_HANDLE);
         mBottomLevelAddresses.resize(slots, 0);
         mBottomLevelRooms.resize(slots);

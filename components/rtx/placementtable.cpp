@@ -75,14 +75,4 @@ namespace Rtx
         mSettled.swap(mMoved);
         mMoved.clear();
     }
-
-    void PlacementTable::clear()
-    {
-        mInstances.clear();
-        mPrevious.clear();
-        mMoved.clear();
-        mSettled.clear();
-        mFree.clear();
-        mPlacedCount = 0;
-    }
 }
