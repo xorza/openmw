@@ -45,6 +45,14 @@ namespace MWRender
 
         MyGUI::ITexture& getTexture();
 
+        /// The picture this is taken into, for a caller that wants the image rather than the widget.
+        ///
+        /// **Because `getTexture` is Y-up and a file is not.** `OffscreenView::getCopy` is the one
+        /// route from a picture to main memory that carries the row order in its type, and a caller
+        /// reading the texture instead has to remember a convention — which is how the doll came out
+        /// of `openmw-rtxtool doll --out=` upside down.
+        OffscreenView& getView() { return *mView; }
+
     private:
         CharacterPreview(const CharacterPreview&);
         CharacterPreview& operator=(const CharacterPreview&);

@@ -129,6 +129,7 @@ if (OPENMW_RTX)
         rtx/frameimage.cpp
         rtx/framering.cpp
         rtx/frames.cpp
+        rtx/frameoptions.cpp
         rtx/frameworld.cpp
         rtx/geometry.hpp
         rtx/graphlight.hpp

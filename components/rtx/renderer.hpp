@@ -18,6 +18,7 @@
 #include "instancecounts.hpp"
 #include "memoryreport.hpp"
 #include "reconstruction.hpp"
+#include "renderprofile.hpp"
 #include "reorder.hpp"
 #include "shaders/visibility.h"
 #include "slot.hpp"
@@ -407,6 +408,31 @@ namespace Rtx
         /// still across the frames it averages. A picture wants it measured, so the harness turns it
         /// on and the tests leave it alone.
         std::optional<float> mExposure = 1.0f;
+
+        /// What a run decided once, and what this frame stands for.
+        ///
+        /// **Made and not filled in field by field.** Three of the fields above are a
+        /// `RenderProfile`'s, and the one call site that wrote them out one at a time carried the
+        /// exposure and dropped the filter, the jitter and the accumulation — three switches a
+        /// player and the harness could both ask for and neither could get. A field the profile
+        /// gains reaches a frame here or nowhere.
+        ///
+        /// @param accumulate how many frames have gone into the running sum, which is the schedule's
+        ///        to count rather than the profile's: a warm-up is not averaged in.
+        /// @param sinceLast and @param exposureBias are the frame's own — the clock's step and the
+        ///        hour's bias — and are the two things a profile cannot know.
+        static FrameOptions forFrame(const RenderProfile& profile, const std::uint32_t accumulate,
+            const std::optional<float> sinceLast, const float exposureBias)
+        {
+            return FrameOptions{
+                .mAccumulate = accumulate,
+                .mSinceLast = sinceLast,
+                .mExposureBias = exposureBias,
+                .mJitter = profile.mJitter,
+                .mFilter = profile.mFilter,
+                .mExposure = profile.mExposure,
+            };
+        }
     };
 
     /// One stretch of a frame, measured by the device's own clock.

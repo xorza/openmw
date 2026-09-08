@@ -246,7 +246,9 @@ namespace Rtx
         // and the table is filled by the one below, through branches that push a different number
         // of levels each — so the two agree by argument and nothing checked it. A growth is the
         // failure, and a growth is exactly what moves the capacity.
-        const std::size_t reserved = mLevels.capacity();
+        //
+        // The assert is the only reader, so a release build has none.
+        [[maybe_unused]] const std::size_t reserved = mLevels.capacity();
 
         mDescriptions.reserve(mKept.size());
         for (const Kept& kept : mKept)

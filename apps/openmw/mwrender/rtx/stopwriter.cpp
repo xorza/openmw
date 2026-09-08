@@ -24,7 +24,6 @@
 #include <components/esm/refid.hpp>
 #include <components/files/conversion.hpp>
 #include <components/misc/constants.hpp>
-#include <components/myguirtx/texture.hpp>
 #include <components/resource/resourcesystem.hpp>
 #include <components/rtx/extractionstats.hpp>
 #include <components/rtx/imageformat.hpp>
@@ -400,18 +399,11 @@ namespace MWRender
 
         InventoryPreview preview(into.mRun.mViews, into.mRun.mResources, subject);
         preview.rebuild();
-        preview.redraw();
 
-        // **Through the texture the GUI already draws from**, which is the slot the trace wrote
-        // into. `MyGUIRtx::Texture` is what this renderer's MyGUI backend hands out, and its slot
-        // is the one thing about it a file needs.
-        auto& texture = static_cast<MyGUIRtx::Texture&>(preview.getTexture());
-        into.mRun.mBackend.readGuiTexture(texture.getSlot(), mPixels);
-
-        const auto width = static_cast<std::uint32_t>(preview.getTextureWidth());
-        const auto height = static_cast<std::uint32_t>(preview.getTextureHeight());
-        Rtx::writePng(file, width, height, mPixels);
-        into.mRecord.note(std::format("wrote {} {}x{}\n", Files::pathToUnicodeString(file), width, height));
+        // **Through the view and not through the texture the GUI draws from**, which is the one
+        // route that carries the row order: `OffscreenView::getTexture` is Y-up and a PNG is not, so
+        // a writer reading the texture had to remember a convention and this one did not.
+        writeView(into, preview.getView(), preview.getTextureWidth(), preview.getTextureHeight(), file);
     }
 
     void StopWriter::reportFound(const Writing& into, const std::string& needle)

@@ -5,6 +5,29 @@
 # wrong: `AGENTS.md` says why the measured exposure carries one frame's difference into every frame
 # after it, and why a count therefore scales with the walk it was taken over.
 
+
+- The picture a walk draws does not repeat between two runs, and what makes it differ is not known.
+  `.notes/repeatable.txt` holds the readings: the rate moves between sessions by more than any
+  change measured against it, and three readings an hour apart over one binary ran from ten pairs of
+  ten identical to none of four. The scene columns repeat on every pair, which is why this is a
+  report and not a gate.
+
+2026-09-09  0457a7d662+  — three readings of `one-cell-walk`, six seconds, build-debug, the exposure
+  measured. The first taken with `--filter` reaching the backend at all: `RtxRenderer::traceWorld`
+  built its `Rtx::FrameOptions` field by field and left `mFilter` out, so every reading above this
+  line was taken with the denoiser on against a script that says it is off.
+
+  Ten pairs, all identical. Four pairs, none identical, on 117 to 356 pictures. Ten pairs, two
+  identical, on 49 to 295. Same binary, same walk, same machine, an hour apart.
+
+  **So the filter is not what makes the picture differ, and one ten-pair reading is not enough to
+  say what does.** The first of the three above was written down here as an A/B and it was a
+  sample: the rate moves between sessions by more than the change did, and the busiest of the three
+  followed a full release build. Whatever the cause is, it is something the machine's state reaches
+  — which is what `AGENTS.md` says of the composite baker's own thread.
+
+  Every scene column repeated on every pair of all three, which is the gate.
+
 2026-09-08  61e2962dec+  — ten pairs of `one-cell-walk`, six seconds, build-debug, the exposure
   measured. Every scene column identical on every pair. Five pairs identical over the picture too,
   and the other five differed on 12, 49 and 51 pictures of 360. Taken over the rest of the

@@ -796,6 +796,10 @@ namespace MWRender
         const std::optional<std::uint32_t> sample = mSession != nullptr ? mSession->getSampleFrame() : std::nullopt;
         constants.mFrame = sample.value_or(static_cast<std::uint32_t>(mFrame));
 
+        // **The schedule's and not the profile's**, because a warm-up is not averaged in — a picture
+        // of a half-built cell in the sum is what `Session::getAccumulated` exists to keep out.
+        const std::uint32_t accumulated = mSession != nullptr ? mSession->getAccumulated() : 0;
+
         // **The game set neither of these, and the de-lighting is what that cost.**
         // `Rtx::makeCameraFromView` names every field it fills and leaves the rest
         // value-initialised, so a played frame ran at `mDelight` nought — which `texturing.glsl`
@@ -810,16 +814,12 @@ namespace MWRender
         // measured one an interior lit by nothing but this placeholder's ambient reaches the screen
         // at a few hundredths and reads as black.
         //
-        // **`mExposure` and not `std::nullopt`, which is what this passed.** The setting was read
-        // into a member nothing then sent, so `--exposure=1` measured the frame like every other
-        // run and a pixel test could not hold the exposure at all.
-        //
-        // **Carried rather than worked out here**, because a room is the exception to the rule that
-        // would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell got settled
-        // it, and a second derivation at the frame is a second place to get the exception wrong.
-        const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(constants,
-            Rtx::FrameOptions{
-                .mSinceLast = mClock.getStatedStep(), .mExposureBias = exposureBias, .mExposure = mProfile.mExposure });
+        // **The bias is carried rather than worked out here**, because a room is the exception to
+        // the rule that would derive it — `Rtx::Skylight::mExposureBias`. Whichever light this cell
+        // got settled it, and a second derivation at the frame is a second place to get the
+        // exception wrong.
+        const Rtx::Reconstruction reconstruction = mRenderer->renderFrame(
+            constants, Rtx::FrameOptions::forFrame(mProfile, accumulated, mClock.getStatedStep(), exposureBias));
 
         // **The whole frame, measured between one trace and the next.** Everything the game does
         // in between is in it — update, cull, this — which is what a player feels and what the

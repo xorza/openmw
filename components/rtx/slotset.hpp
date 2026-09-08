@@ -57,10 +57,25 @@ namespace Rtx
         ///
         /// **Because "grow before add" is a rule, and a rule is what this type exists to hold.** A
         /// debt is named a row rather than a row count, so its alternative is a `grow` beside every
-        /// `add` — which the assert above only catches once somebody has already forgotten it.
+        /// `add` — which the assert in `add` only catches once somebody has already forgotten it.
+        ///
+        /// **The pragma is a GCC 16 false positive and not a bound this code is unsure of.** With
+        /// `NDEBUG` set, `add`'s assert is gone and the optimiser inlines the whole chain — the
+        /// `resize` below, the `_M_fill_append` inside it, and the uninitialised move that grows the
+        /// buffer — and then reports that move as writing past a region it deduced from nothing.
+        /// The write it names is `std::vector`'s own and not this one: `mFlags[slot]` is in range by
+        /// the `grow` on the line above it, whatever the optimiser can see. Suppressed here rather
+        /// than at the one test file it happened to fire in, because the cause is this function.
         void addMakingRoom(Index slot)
         {
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
             grow(std::size_t{ slot } + 1);
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
             add(slot);
         }
 
@@ -93,7 +108,10 @@ namespace Rtx
         /// Whether `slot` is in the set. **Answers while a `remove` is outstanding**, where
         /// `getSlots` will not: the flags are exact from the moment a slot is taken out, and it is
         /// the list that has to wait for `compact`.
-        bool has(Index slot) const { return slot < mFlags.size() && mFlags[slot] != 0; }
+        bool has(Index slot) const
+        {
+            return slot < mFlags.size() && mFlags[slot] != 0;
+        }
 
         std::span<const Index> getSlots() const
         {
@@ -101,7 +119,10 @@ namespace Rtx
             return mSlots;
         }
 
-        bool empty() const { return getSlots().empty(); }
+        bool empty() const
+        {
+            return getSlots().empty();
+        }
 
         /// Empties the set.
         ///
