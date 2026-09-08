@@ -52,9 +52,10 @@ exists because an arrival and a release have to cancel. Four lists still do it b
   vectors. `deformertable.cpp:138` and `:152` call `std::erase` on them once per released deformer.
   That is a linear scan and an erase from the middle, per rig, on the frame a cell leaves — the
   frame with the least room. Use `SlotChanges`.
-- [ ] `DeformerTable` reports arrivals and never reports what it freed. Every other table has a
-  `getFreed`. A backend therefore cannot reclaim what a departed rig held; it waits for the next
-  arrival to take the slot over.
+- [ ] `SlotSet` is the right container for the two above, and `SlotChanges` is not. A rig's storage
+  is a run in a shared buffer, so `SkinTables::writeRigs` never has to be told a rig went — the
+  next rig to land in the run is what writes it. There is nothing to free and so nothing to report.
+  What the arrivals need is de-duplication and a cheap removal, which is `SlotSet` alone.
 - [ ] `components/rtx/placementtable.hpp:80-81` keeps `mMoved` and `mSettled` as plain vectors that
   hold duplicates. The header states the cost — "one row written twice" — but the crowded cell is
   exactly the case `SlotSet` was measured on. Either use `SlotSet` or say why the placement table is
