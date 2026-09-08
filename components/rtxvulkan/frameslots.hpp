@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 
@@ -36,6 +37,12 @@ namespace Rtx
         }
 
         void oweEverything() { mEverything = true; }
+
+        /// Forgets the rows at or past `rows`, which is a table that shrank saying they are gone.
+        ///
+        /// **Not a settlement.** What is owed below the new end is still owed, and a copy owing the
+        /// whole table still owes the whole of what is left of it.
+        void shrinkTo(std::size_t rows) { mRows.shrinkTo(rows); }
 
         bool owesEverything() const { return mEverything; }
         bool owesAnything() const { return mEverything || !mRows.empty(); }

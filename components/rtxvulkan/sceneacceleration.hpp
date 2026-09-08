@@ -304,6 +304,13 @@ namespace Rtx
         /// pointed at that copy. `writeRows` first, which is what leaves the copy owing anything.
         void prepareTopLevel(const SceneDesc& scene, std::uint32_t slot, Graveyard& graveyard);
 
+        /// Takes back what `slot`'s row counts as, and leaves the row counting as nothing.
+        ///
+        /// **What a row leaving owes.** The counts are kept by the row that changed rather than
+        /// recounted over the table, so a row overwritten and a row dropped both have to discount
+        /// themselves — and a drop has no record to write afterwards.
+        void discountRow(Index slot);
+
         /// Writes one row from its record, keeping the counts in step.
         void placeRow(Index slot, const InstanceRecord& record);
 

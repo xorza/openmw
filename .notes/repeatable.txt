@@ -1,0 +1,22 @@
+# Picture determinism, `apps/rtxtool/repeatable.sh`. Newest first.
+#
+# The scene columns are the gate and they are exact at every reading here, so what a line records is
+# the picture. A count of differing pictures is how early one divergence landed and not how much went
+# wrong: `AGENTS.md` says why the measured exposure carries one frame's difference into every frame
+# after it, and why a count therefore scales with the walk it was taken over.
+
+2026-09-08  9487fbb3ac  — fifteen pairs of `one-cell-walk`, six seconds, build-debug: thirteen with
+  the exposure measured and two with `--exposure=1`. Every pair identical over 360 frames, the
+  picture included. Nothing differed on any column.
+
+2026-09-08  ce607d584c  — six pairs of the same walk, carried over from `.notes/ISSUES.md`.
+  Every pair differed, on 204 to 343 pictures of 360.
+
+2026-09-08  ce607d584c  — about three pairs in ten differed, on 26 or 27 pictures of 45 frames.
+  Taken over 45 frames, which `repeatable.sh` has never walked: it has defaulted to six seconds, and
+  so to 360 frames, since 4c1c37ce19 made it. `AGENTS.md` carried this as a standing property of the
+  renderer, which is what the reading above contradicted.
+
+  The two are one defect and not two. Thirty per cent of pairs differing over 45 frames is a hazard
+  near 0.008 a frame, which leaves six per cent of pairs clean over 360 — so six pairs of six
+  differing is what the first reading predicts of the second.

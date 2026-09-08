@@ -653,6 +653,15 @@ namespace Rtx
     void SceneAcceleration::writeRows(std::span<const InstanceRecord> records, std::span<const Index> changed)
     {
         const std::size_t had = mRowTable.size();
+
+        // **A row that leaves discounts itself before its flags go.** `mRowFlags` is what says what
+        // a row counted as, and the resize below drops the flags of the rows past the new end — so
+        // a cutout or a medium that left with them would stay in the totals for the rest of the
+        // scene.
+        assert(mRowFlags.size() == had && "the row flags and the rows fell out of step");
+        for (std::size_t at = records.size(); at < had; ++at)
+            discountRow(static_cast<Index>(at));
+
         mRowTable.resize(records.size());
         mRowFlags.resize(records.size(), 0);
 
@@ -691,7 +700,7 @@ namespace Rtx
         mInstanceCount = scene.getPlacedCount();
     }
 
-    void SceneAcceleration::placeRow(const Index slot, const InstanceRecord& record)
+    void SceneAcceleration::discountRow(const Index slot)
     {
         std::uint8_t& counted = mRowFlags[slot];
         if ((counted & sRowCutout) != 0)
@@ -703,6 +712,11 @@ namespace Rtx
         if ((counted & sRowMedium) != 0)
             --mMediumInstanceCount;
         counted = 0;
+    }
+
+    void SceneAcceleration::placeRow(const Index slot, const InstanceRecord& record)
+    {
+        discountRow(slot);
 
         // **A gap is an inactive row and not a row left out.** Its slot is the custom index a hit
         // reads back, so the rows cannot close up around it; a reference of nought is what the
@@ -712,6 +726,8 @@ namespace Rtx
             mRowTable.write(slot) = VkAccelerationStructureInstanceKHR{};
             return;
         }
+
+        std::uint8_t& counted = mRowFlags[slot];
 
         // **A test on the bit and not on the whole mask.** A row carries `MASK_MEDIUM` beside
         // whichever of the three it is, so an equality here would stop counting the day anything

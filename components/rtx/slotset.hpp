@@ -82,6 +82,14 @@ namespace Rtx
         /// Drops what `remove` took, in one pass over the list rather than one per slot.
         void compact();
 
+        /// Takes out every slot at or past `count`, and holds room for exactly that many.
+        ///
+        /// **`grow`'s counterpart, for a table that shrank.** A slot above the new end names a row
+        /// that is gone, so a reader walking the list indexes past it — and the assert in `add`
+        /// accepts such a slot, because the flags still stretch that far. So the flags shrink here
+        /// where `grow` never shrinks them, and the bytes behind them stay where they are.
+        void shrinkTo(std::size_t count);
+
         /// Whether `slot` is in the set. **Answers while a `remove` is outstanding**, where
         /// `getSlots` will not: the flags are exact from the moment a slot is taken out, and it is
         /// the list that has to wait for `compact`.

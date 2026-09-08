@@ -6,13 +6,14 @@
 #   repeatable.sh --seconds=20          # for longer
 #   repeatable.sh --build=build-release # against another build
 #   repeatable.sh --pairs=3             # three pairs, and the spread of them
+#   repeatable.sh --exposure=1          # the eye held still, to read a difference in the picture
 #
 # Anything else goes to `openmw-rtxtool bench`, except the three this sets itself: `--views`,
 # `--upscale` and `--filter`. Naming one of those twice is what `bench` refuses.
 #
 # **One pair gates and several read.** What is gated repeats exactly, so a pair that finds nothing
-# has found nothing. The picture is the other way about — it moves on about three pairs in ten — so
-# a reading of it from one pair is a coin flip, and `--pairs` is what buys enough of them.
+# has found nothing. A reading of the picture from one pair is a coin flip whatever it says, and
+# `--pairs` is what buys enough of them. `.notes/repeatable.txt` holds the readings.
 #
 # **Two processes and not two stops of one.** A second stop starts from the world the first one
 # left, so the two cannot be compared frame for frame. What this asks is whether a run of the binary
@@ -38,9 +39,9 @@
 # regression has to keep.
 #
 # **The picture is reported and does not fail the run**, which is the other way round from how this
-# started. The renderer carries a residual nobody hunts — `AGENTS.md` says why — of about three
-# pairs in ten, always one part in 255, which no eight-bit hash can even see. A gate red for that is
-# a gate nobody reads, and it was silent about the eighteen columns that are now exact.
+# started. It carried a residual nobody hunted, and a gate red for that is a gate nobody reads while
+# it says nothing about the seventeen columns that are now exact. `AGENTS.md` says what a count of
+# differing pictures means, and what to hold still to read one.
 #
 # **Naming the columns that moved is the point of the table.** "The scene differs on 64 frames" is
 # where a bisection used to start, and every step of it cost a rebuild and a run for one reading.

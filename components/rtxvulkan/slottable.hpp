@@ -77,6 +77,12 @@ namespace Rtx
         /// when the table grows, so a copy that has row seven still has it; only the rows past its
         /// old end are news to it. A copy whose *buffer* has to be made again is a different
         /// question, and `sync` is where that one is asked.
+        ///
+        /// **And what is dropped is forgotten, because a debt is what `sync` reads the rows with.**
+        /// A copy still owing row five when the table falls to two rows sends `sync` indexing past
+        /// the end of `mRows`, and the debt's own flags still reach that far, so `SlotSet` catches
+        /// nothing either. This is the one place the row count changes, and so the only place that
+        /// can say so.
         void resize(std::size_t rows)
         {
             const std::size_t had = mRows.size();
@@ -85,7 +91,12 @@ namespace Rtx
 
             mRows.resize(rows);
             if (rows < had)
+            {
+                for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+                    mOwed[slot].shrinkTo(rows);
+
                 return;
+            }
 
             mAppended.clear();
             mAppended.reserve(rows - had);
@@ -143,7 +154,10 @@ namespace Rtx
                 copy.write(std::span<const Row>(mRows));
             else
                 for (const Index at : owed.getRows())
+                {
+                    assert(at < mRows.size() && "a debt naming a row the table no longer has");
                     copy.writeAt(at * sizeof(Row), std::span<const Row>(&mRows[at], 1));
+                }
 
             owed.settle();
         }

@@ -169,18 +169,33 @@ is not that.
 processes and compares the frame hashes. Two processes, because two walks in one share no world
 state and agree on nothing. Run it after touching anything a frame reads.
 
-**The scene columns are the gate and the picture is not.** What a run is handed — every column of
-the hashes table — repeats exactly, and that is what a regression has to keep. The picture carries a
-residual the renderer has not been made to drop: about three pairs in ten differ, always on 26 or 27
-frames of 45, by one part in 255 that no eight-bit hash can even see. **Nobody hunts it.** It cost a
-day and four retracted causes, and what it buys is a gate's fidelity rather than anything a player
-sees — over fourteen runs the last frame's picture was identical every time and only the float
-radiance moved.
+**The scene columns are the gate and the picture is a report.** What a run is handed — every column
+of the hashes table — repeats exactly, and that is what a regression has to keep. The picture is
+printed beside it and does not fail the run, because it carried a residual nobody hunted and a gate
+red for that is a gate nobody reads. It is exact at the moment, and `.notes/repeatable.txt` says over
+how many pairs — enough of them and the picture earns the gate as well.
 
-**A determinism reading needs ten pairs.** The rate is about thirty per cent, so a conclusion drawn
-from one or two pairs is a coin flip: every cause withdrawn above was named from a single pair.
-`--pairs` is what runs them. And read `Rtx::Channel::Radiance` as floats rather than the picture —
-at 45 frames the radiance takes two values over fourteen runs where the picture takes one.
+**A count of differing pictures says when, and never how much.** The exposure is measured off the
+frame and approaches its target from the value it held, so every pixel depends on the whole frame and
+every frame depends on the one before it. One frame the trace drew differently therefore moves every
+frame after it, by the one part in 255 an eight-bit hash can barely hold — and the count is how early
+that single event landed rather than how much went wrong. So a count is not a property of the
+renderer: it scales with the walk. This file carried "26 or 27 frames of 45" taken over 45 frames,
+while `repeatable.sh` has walked 360 since the day it was written — so the number never described
+what the gate reports, and six pairs of the walk it does run differed on 204 to 343 pictures.
+
+**The readings live in `.notes/repeatable.txt`**, dated and stamped with the commit they were taken
+at, the way `.notes/bench.txt` holds a frame time. `repeatable.sh` prints the current one on every
+run, and a number in prose here would go stale the next time the walk changed length.
+
+**A determinism reading needs ten pairs.** A pair that finds nothing has found nothing, and every
+cause this fork has withdrawn was named from a single pair. `--pairs` is what runs them.
+
+**And read a difference with `--exposure=1`.** A measured exposure couples every pixel of a frame to
+every other and every frame to the one before it, so it is the one term that turns a single
+divergence into a whole run of them. Held, the count comes nearer the frames that actually differ —
+nearer and not exact, because the fog volume reprojects too. And read `Rtx::Channel::Radiance` as
+floats, which carries what no eight-bit hash can show.
 
 **No benching and no frame times until the renderer draws everything the game has.**
 
