@@ -233,6 +233,15 @@ namespace Rtx
         VkDeviceSize mFilled = 0;
     };
 
+    /// Stages `bytes` through the batch's own staging and copies them into `into` at `offset`.
+    ///
+    /// **The one place host bytes reach a device-local buffer inside a batch.** Nothing is ordered
+    /// here: a run of these is made readable together by `orderStagedWrites`, which is what a load
+    /// records once for every table it filled. `uploadBuffer` is the other shape, for a buffer whose
+    /// reader may be the very next command.
+    void stageInto(
+        Batch& batch, const Device& device, const Buffer& into, VkDeviceSize offset, std::span<const std::byte> bytes);
+
     /// A device-local buffer holding `bytes`, staged through host-visible memory.
     ///
     /// The copy is recorded into `batch` and the staging left in its keeping, so nothing has run

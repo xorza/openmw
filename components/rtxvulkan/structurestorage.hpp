@@ -63,7 +63,9 @@ namespace Rtx
         ///        enough for itself.
         StructureRoom take(const Device& device, VkDeviceSize bytes, VkDeviceSize least);
 
-        /// Gives a structure's room back. The structure itself is the caller's to destroy.
+        /// Gives a structure's room back, and gives the block to the device where that was the last
+        /// room in it. The structure itself is the caller's to destroy, and a `Graveyard` destroys
+        /// every structure it holds before it gives back a single room.
         void give(const StructureRoom& room);
 
         VkBuffer getBuffer(const StructureRoom& room) const { return mBlocks[room.mBlock].mBuffer.getHandle(); }
@@ -81,8 +83,14 @@ namespace Rtx
         {
             Buffer mBuffer;
             RunAllocator mRuns;
+
+            /// How long the block is, and nought where it has been given back: a retired block
+            /// keeps its place so that no room is renumbered, and `take` fills the place again.
             std::uint32_t mUnits = 0;
         };
+
+        /// How many places hold a block, which is what says whether this is the last one.
+        std::size_t countLive() const;
 
         std::vector<Block> mBlocks;
 

@@ -82,6 +82,11 @@ namespace Rtx
         /// Drops what `remove` took, in one pass over the list rather than one per slot.
         void compact();
 
+        /// Whether `slot` is in the set. **Answers while a `remove` is outstanding**, where
+        /// `getSlots` will not: the flags are exact from the moment a slot is taken out, and it is
+        /// the list that has to wait for `compact`.
+        bool has(Index slot) const { return slot < mFlags.size() && mFlags[slot] != 0; }
+
         std::span<const Index> getSlots() const
         {
             assert(!mStale && "the list was read between a remove and the compact that settles it");

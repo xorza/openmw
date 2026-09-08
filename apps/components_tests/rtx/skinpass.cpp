@@ -52,7 +52,8 @@ namespace Rtx
         ///
         /// **Five meshes in one scene, because the offsets are half of what is being tested.** A
         /// mesh posed into a neighbour's run would look right on its own and wrong beside it, so
-        /// the static quad stands between two posed ones and is asserted untouched. Every expected
+        /// every vertex of every posed run is asserted, and the static quad stands between two of
+        /// them: it holds a run among the normals and none at all among the poses. Every expected
         /// value is exact in float: translations, a quarter-and-three-quarters blend of two of
         /// them, a rotation of nought-and-one entries, and a half of a unit offset.
         TEST_F(RtxSkinPassTest, theKernelsPoseEachMeshIntoItsOwnRunAndLeaveTheRestAlone)
@@ -127,25 +128,33 @@ namespace Rtx
 
             // The pass's destination, owned here so it can be copied back: the renderer's own blocks
             // are build input and never a transfer source.
+            //
+            // **Two lengths, because the pass writes two spaces.** A hit reads a normal, so every
+            // mesh has a run among them; nothing reads a position at a hit, so the poses hold the
+            // four deforming quads and not the static one between them.
             const auto vertices = static_cast<std::uint32_t>(scene.getPositions().size());
+            const std::uint32_t posedVertices = scene.getBindVertexCount();
+            EXPECT_EQ(vertices, 20u) << "five quads of four vertices";
+            EXPECT_EQ(posedVertices, 16u) << "the static quad took a run in the pose table";
+
             constexpr VkBufferUsageFlags readable
                 = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
-            SlotBlocks positions{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+            SlotBlocks poses{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
             SlotBlocks normals{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
-            positions.open(device, 2, readable, "posed positions");
+            poses.open(device, 2, readable, "posed positions");
             normals.open(device, 2, readable, "posed normals");
             // Its own scope, because the blocks are device memory: the fills have to reach the
             // queue before the dispatch below reads what they left.
             {
                 Batch setup(pool);
-                positions.reserve(setup, vertices);
+                poses.reserve(setup, posedVertices);
                 normals.reserve(setup, vertices);
                 setup.flush();
             }
             for (std::uint32_t slot = 0; slot < 2; ++slot)
             {
-                positions.settle(slot);
+                poses.settle(slot);
                 normals.settle(slot);
             }
 
@@ -153,15 +162,16 @@ namespace Rtx
             SkinTables tables(device, scene, 2, graveyard);
             const SkinPass pass(device, Testing::getShaderDirectory());
 
-            const VkDeviceSize bytes = VkDeviceSize{ vertices } * sizeof(osg::Vec3f);
-            const Buffer readPositions = Buffer::staging(device, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-            const Buffer readNormals = Buffer::staging(device, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+            const VkDeviceSize poseBytes = VkDeviceSize{ posedVertices } * sizeof(osg::Vec3f);
+            const VkDeviceSize normalBytes = VkDeviceSize{ vertices } * sizeof(osg::Vec3f);
+            const Buffer readPositions = Buffer::staging(device, poseBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+            const Buffer readNormals = Buffer::staging(device, normalBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
             /// Poses what `slot` owes and copies its whole first block back.
             const auto poseAndRead = [&](std::uint32_t slot) {
                 bool recorded = false;
                 pool.submitAndWait([&](VkCommandBuffer commands) {
-                    recorded = pass.record(commands, scene, slot, tables, positions, normals, nullptr);
+                    recorded = pass.record(commands, scene, slot, tables, poses, normals, nullptr);
 
                     const VkMemoryBarrier2 barrier{
                         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -177,11 +187,12 @@ namespace Rtx
                     };
                     vkCmdPipelineBarrier2(commands, &dependency);
 
-                    const VkBufferCopy whole{ .size = bytes };
+                    const VkBufferCopy wholePoses{ .size = poseBytes };
+                    const VkBufferCopy wholeNormals{ .size = normalBytes };
                     vkCmdCopyBuffer(
-                        commands, positions.at(slot).getBlock(0).getHandle(), readPositions.getHandle(), 1, &whole);
+                        commands, poses.at(slot).getBlock(0).getHandle(), readPositions.getHandle(), 1, &wholePoses);
                     vkCmdCopyBuffer(
-                        commands, normals.at(slot).getBlock(0).getHandle(), readNormals.getHandle(), 1, &whole);
+                        commands, normals.at(slot).getBlock(0).getHandle(), readNormals.getHandle(), 1, &wholeNormals);
                 });
 
                 return recorded;
@@ -190,7 +201,7 @@ namespace Rtx
             EXPECT_TRUE(poseAndRead(0)) << "four meshes owed and nothing recorded";
 
             const auto positionOf = [&](Index mesh, std::uint32_t vertex) {
-                return readVector(readPositions, scene.getMeshes()[mesh].mVertices.mOffset + vertex);
+                return readVector(readPositions, scene.getMeshes()[mesh].mBindOffset + vertex);
             };
             const auto normalOf = [&](Index mesh, std::uint32_t vertex) {
                 return readVector(readNormals, scene.getMeshes()[mesh].mVertices.mOffset + vertex);
@@ -214,6 +225,7 @@ namespace Rtx
 
             // The quarter turn: `(1, 0)` to `(0, 1)`, `(1, 1)` to `(-1, 1)`, and the normal along x
             // to along y — the linear part alone, and no inverse transpose.
+            EXPECT_EQ(positionOf(turned, 0), osg::Vec3f(0.0f, 0.0f, 0.0f));
             EXPECT_EQ(positionOf(turned, 1), osg::Vec3f(0.0f, 1.0f, 0.0f));
             EXPECT_EQ(positionOf(turned, 2), osg::Vec3f(-1.0f, 1.0f, 0.0f));
             EXPECT_EQ(positionOf(turned, 3), osg::Vec3f(-1.0f, 0.0f, 0.0f));
@@ -226,14 +238,12 @@ namespace Rtx
                     << vertex;
             EXPECT_EQ(normalOf(lifted, 0), osg::Vec3f()) << "a morph moved a normal";
 
-            // **And the quad between them is untouched.** Its run holds what the block was made
-            // with, which is nothing: a kernel that wrote past its mesh would have landed here.
+            // **And the quad between them is untouched among the normals.** Its run holds what the
+            // block was made with, which is nothing: a kernel that wrote past its mesh would have
+            // landed here. It has no run among the poses at all, which the bind count above says,
+            // and the sixteen that are there are each asserted exactly.
             for (std::uint32_t vertex = 0; vertex < 4; ++vertex)
-            {
-                EXPECT_EQ(positionOf(still, vertex), osg::Vec3f())
-                    << "a pose landed in a static neighbour at " << vertex;
-                EXPECT_EQ(normalOf(still, vertex), osg::Vec3f()) << vertex;
-            }
+                EXPECT_EQ(normalOf(still, vertex), osg::Vec3f()) << "a pose landed in a static neighbour at " << vertex;
 
             // **The account: what one copy was paid the other still owes.** A frame that poses
             // nothing new still has to bring the second copy level, and a copy that is level

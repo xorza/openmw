@@ -519,7 +519,7 @@ namespace Rtx
         // positions, and a skinned body's bind pose is not where the body is; the pass writes the
         // pose into that copy and the build then reads it. The other copy is owed the same pose and
         // takes it on the first placement that writes it.
-        mSkinPass.record(setup.getCommands(), scene, 0, *held.mSkinTables, held.mAcceleration->getPositions(),
+        mSkinPass.record(setup.getCommands(), scene, 0, *held.mSkinTables, held.mAcceleration->getPoses(),
             held.mBuffers->getNormals(), nullptr);
         held.mMicromaps->bake(setup, *mMicromapPass, scene, *held.mBuffers, *held.mAcceleration, *held.mTextures,
             held.mAcceleration->getEveryMesh(), nullptr, graveyard);
@@ -584,7 +584,7 @@ namespace Rtx
             // the placement below poses the copy the frame traces. Untimed, so the frame's report
             // carries one `skin` zone and it is the placement's. The bake is timed, as the builds
             // are: what an arrival adds to the frame it lands in is the question its zone answers.
-            mSkinPass.record(setup.getCommands(), scene, 0, *held.mSkinTables, held.mAcceleration->getPositions(),
+            mSkinPass.record(setup.getCommands(), scene, 0, *held.mSkinTables, held.mAcceleration->getPoses(),
                 held.mBuffers->getNormals(), nullptr);
             held.mMicromaps->bake(setup, *mMicromapPass, scene, *held.mBuffers, *held.mAcceleration, *held.mTextures,
                 scene.getArrivedMeshes(), timer, graveyard);
@@ -653,7 +653,7 @@ namespace Rtx
         // copy owes is computed into it here, and the barrier the pass ends in is what the refit
         // and the trace wait on.
         const bool posed = skin.record(placing.mCommands, scene, placing.mSlot, *held.mSkinTables,
-            held.mAcceleration->getPositions(), held.mBuffers->getNormals(), placing.mTimer);
+            held.mAcceleration->getPoses(), held.mBuffers->getNormals(), placing.mTimer);
 
         const bool built
             = held.mAcceleration->place(scene, held.mRecords, held.mChangedRecords, *held.mMicromaps, placing);

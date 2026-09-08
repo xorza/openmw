@@ -258,6 +258,18 @@ namespace Rtx
         release();
     }
 
+    void stageInto(
+        Batch& batch, const Device& device, const Buffer& into, VkDeviceSize offset, std::span<const std::byte> bytes)
+    {
+        const StagingRun staged = batch.stage(device, bytes);
+        const VkBufferCopy region{
+            .srcOffset = staged.mOffset,
+            .dstOffset = offset,
+            .size = bytes.size(),
+        };
+        vkCmdCopyBuffer(batch.getCommands(), staged.mBuffer, into.getHandle(), 1, &region);
+    }
+
     Buffer uploadBuffer(const Device& device, Batch& batch, std::span<const std::byte> bytes, VkBufferUsageFlags usage)
     {
         // **Host memory and not the aperture.** These bytes are written once and read once by the

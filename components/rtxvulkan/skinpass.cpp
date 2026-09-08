@@ -46,13 +46,13 @@ namespace Rtx
     }
 
     bool SkinPass::record(VkCommandBuffer commands, const SceneDesc& scene, const std::uint32_t slot,
-        SkinTables& tables, SlotBlocks& positions, SlotBlocks& normals, GpuTimer* const timer) const
+        SkinTables& tables, SlotBlocks& poses, SlotBlocks& normals, GpuTimer* const timer) const
     {
         // **Owed to every copy, and paid to this one.** A mesh that moved this frame reaches this
         // copy now and the other on the frame after next; a mesh that moved last frame and stands
         // still now is still owed here, or this copy would carry a pose two frames old the next
         // time it was traced.
-        positions.write(scene.getDeformed());
+        poses.write(scene.getDeformed());
 
         // One pipeline bound at a time, and a bind only where the kind changes: a crowd is one
         // kind for most of its length.
@@ -60,11 +60,11 @@ namespace Rtx
         bool recorded = false;
 
         BlockedBuffer& normalsInto = normals.at(slot);
-        positions.sync(slot, [&](const Index index, BlockedBuffer& into) {
+        poses.sync(slot, [&](const Index index, BlockedBuffer& into) {
             const MeshRange& mesh = scene.getMeshes()[index];
 
             // A slot owed from before it went, or one taken over by a mesh that stands: nothing
-            // to pose. Its run in the positions holds what the arrival wrote.
+            // to pose. Its run in the poses holds what the arrival wrote.
             if (mesh.mDeform == Deform::None || mesh.mVertices.empty())
                 return;
 
@@ -74,7 +74,10 @@ namespace Rtx
                 recorded = true;
             }
 
-            const VkDeviceAddress posed = into.addressOf(mesh.mVertices.mOffset);
+            // **The pose table is indexed by the bind offset and the normals by the scene's own.**
+            // A hit reads a normal out of the shared table, so every mesh has a run there; nothing
+            // reads a position at a hit, so only the bodies have one here.
+            const VkDeviceAddress posed = into.addressOf(mesh.mBindOffset);
             const VkDeviceAddress shaded = normalsInto.addressOf(mesh.mVertices.mOffset);
 
             if (mesh.mDeform == Deform::Rig)

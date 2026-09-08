@@ -9,6 +9,7 @@
 #include "index.hpp"
 #include "meshrange.hpp"
 #include "runallocator.hpp"
+#include "shaders/scene.h"
 #include "shaders/skinning.h"
 
 namespace Rtx
@@ -128,10 +129,19 @@ namespace Rtx
         std::vector<Index> mArrivedRigs;
         std::vector<Index> mArrivedMorphs;
 
-        /// The deforming meshes' bind poses and their bone rows and weights, and the rigs' and the
-        /// morphs' own runs. Unblocked: a backend reaches each run by an address it is handed per
-        /// dispatch, so nothing here has to keep an address across a growth.
-        RunAllocator mBindRuns;
+        /// Where each deforming mesh's vertices sit among the deforming meshes alone, which is what
+        /// both a bind table and a pose table are indexed by.
+        ///
+        /// **Blocked like the scene's own vertices**, because a backend holds the poses in a table
+        /// blocked the same way: a pose that straddled a block would be a run split across two
+        /// allocations, and the address handed to a refit covers one. The tail of a block too short
+        /// for the next body is a hole like any other, and a block is a quarter of a million
+        /// vertices against a body's couple of thousand.
+        RunAllocator mBindRuns{ Shaders::VERTEX_BLOCK };
+
+        /// The bone rows and weights, and the rigs' and the morphs' own runs. Unblocked: a backend
+        /// reaches each run by an address it is handed per dispatch, so nothing here has to keep an
+        /// address across a growth.
         RunAllocator mBoneRuns;
         RunAllocator mWeightRuns;
         RunAllocator mRigRuns;

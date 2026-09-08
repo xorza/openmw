@@ -76,12 +76,6 @@ namespace Rtx
     {
         assert(blockOf(element) < mBlocks.size());
 
-        const StagingRun staged = batch.stage(*mDevice, bytes);
-        const VkBufferCopy region{
-            .srcOffset = staged.mOffset,
-            .dstOffset = offsetOf(element),
-            .size = bytes.size(),
-        };
-        vkCmdCopyBuffer(batch.getCommands(), staged.mBuffer, mBlocks[blockOf(element)].getHandle(), 1, &region);
+        stageInto(batch, *mDevice, mBlocks[blockOf(element)], offsetOf(element), bytes);
     }
 }

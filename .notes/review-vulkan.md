@@ -1,4 +1,4 @@
-Delete an item when it is addressed. The list below holds open findings only.
+Delete an item when it is addressed. This file lists open findings only.
 
 # Vulkan review: RTX 20-series, stability, performance
 
@@ -14,28 +14,13 @@ not what stops a Turing card.
 
 ---
 
-## Open
-
-- [ ] **The compaction copy.** `ALLOW_COMPACTION` and the size query landed, and the pair they print
-      says the copy is worth building: **118.0 MiB would compact to 46.6 at Seyda Neen, and 145.6 to
-      56.6 on the route — 60% off**, against 0.6% of the structures spent on the flag itself. What
-      is left is the two-frame half. Read the query on a later frame, allocate the tight room, copy
-      with `MODE_COMPACT_KHR`, swap the handle and the address, mark every instance that names the
-      mesh changed so the top level is rebuilt from the new address, and bury the original while the
-      frame in flight still traces it. `MODE_COMPACT_KHR` appears nowhere in the tree.
-
-- [ ] **A static mesh keeps its positions after its structure is built.** `mPositions` is a build
-      input and a pose's destination and nothing else — `sceneacceleration.hpp` says so, because a
-      hit reads its vertices back out of the structure through position fetch. A mesh that never
-      refits has no second reader, so its run could go once the build has read it.
-
-- [ ] **`SlotBlocks::reserve` grows every copy to the whole scene.** `sceneacceleration.cpp:187`
-      reserves the scene's positions in both copies, and `:201` writes copy 1 only for a mesh that
-      deforms — 138 drawables of 2800 at Seyda Neen when it was last measured, and about 21 MiB of
-      video memory bought for nothing. A compact second table needs its own offset space, and a site
-      that mixed the two would alias silently, so it wants the mesh index rather than a raw offset at
-      every call site. `SceneBuffers::mNormalTable` is not this: a hit reads a normal out of the
-      frame's own copy, so every copy there owes every mesh.
+- [ ] **The structures that refit pin the block compaction would give back.** `place` copies a static
+      structure tight and gives the loose room it stood in back, but `StructureStorage` retires a
+      block only when everything in it has left. One block holds every structure a cell loads, the
+      138 skinned ones among them, and a mesh that refits keeps its room for the life of the mesh.
+      So the tight copies take new blocks while the loose room stays inside the old one: at Seyda
+      Neen the structures grew from 136.7 MiB to 152.7 MiB. Storage of its own for the meshes that
+      refit is what lets the static block empty, and it reaches about eight call sites.
 
 - [ ] **Streaming and the interface drain the frame pipeline.** `vulkanrenderer.cpp:558` finishes
       every frame in flight before it extends the world, offscreen placement waits at `:684`, and the
@@ -56,27 +41,6 @@ not what stops a Turing card.
       speedup is not transferable. Measure the micromap path against plain any-hit traversal on
       Turing before assuming it is the faster of the two. The extension is required, so there is no
       second path to fall to.
-
-## Settled — do not propose these again
-
-- **A Vulkan proxy.** A call-forwarding layer catches "you called the wrong function", and every
-  finding here was "the right function, with the wrong scope, at the wrong time, or against the wrong
-  memory". `Owned<>` already covers handle lifetime, and more Vulkan surface is the opposite of what
-  `AGENTS.md` asks for.
-- **A render graph.** The passes are a fixed sequence decided at build time. Automatic pass ordering
-  is the part of a graph that does not pay here.
-- **A resource state tracker behind a `Use` enum.** The forty-seven transition sites mostly encode a
-  deliberate scope with its reason written beside it — `GBuffer::begin` sources at `ALL_COMMANDS` and
-  says why a discard from `TOP_OF_PIPE` would buy a torn frame. An enum would flatten those or need a
-  case each. Both things that justified it, the sampled-read class and the batching, were had without
-  it through `Buffer::orderForHostRead` and `Barriers`.
-- **Hand-written barrier validation.** `CI/check_rtx_validation.sh` drives the layer, which knows
-  several hundred rules more than we would write.
-- **A `Residency` the device profile chooses between.** The copies past the first are written by the
-  skinning shader, and an arrival write is a load-path event, so there is no choice to make: every
-  blocked table is device memory, staged through the batch a load already records, on every card.
-- **A second code path for Turing.** `AGENTS.md` forbids it, and the profile changes numbers and
-  residency rather than the shape of a frame.
 
 Sources: [Vulkan Hardware Database](https://vulkan.gpuinfo.org/), reports 51568 and 46422;
 [Khronos synchronization examples](https://docs.vulkan.org/guide/latest/synchronization_examples.html);

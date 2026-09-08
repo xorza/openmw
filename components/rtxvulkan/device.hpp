@@ -32,6 +32,10 @@ namespace Rtx
         /// What a structure would come to if it were copied tight. `SceneAcceleration` writes the
         /// answers into a query pool after a build and reports their sum.
         PFN_vkCmdWriteAccelerationStructuresPropertiesKHR mCmdWriteAccelerationStructuresProperties = nullptr;
+
+        /// The copy those answers are for, which is the only way a structure is made tight.
+        PFN_vkCmdCopyAccelerationStructureKHR mCmdCopyAccelerationStructure = nullptr;
+
         PFN_vkGetAccelerationStructureDeviceAddressKHR mGetAccelerationStructureDeviceAddress = nullptr;
 
         PFN_vkCreateRayTracingPipelinesKHR mCreateRayTracingPipelines = nullptr;

@@ -9,6 +9,7 @@
 
 #include <components/rtx/instancerecord.hpp>
 #include <components/rtx/shaders/scene.h>
+#include <components/rtx/slotset.hpp>
 
 #include "blockedbuffer.hpp"
 #include "buffer.hpp"
@@ -209,9 +210,9 @@ namespace Rtx
         /// walk.
         std::span<const Index> getEveryMesh() const { return mEveryMesh; }
 
-        /// The positions, for the pass that writes a deforming mesh's pose into a slot's copy of
+        /// The poses, for the pass that writes a deforming mesh's vertices into a slot's copy of
         /// them — and their account, which is what tells that pass which meshes each copy owes.
-        SlotBlocks& getPositions() { return mPositions; }
+        SlotBlocks& getPoses() { return mPoses; }
 
         std::uint32_t getInstanceCount() const { return mInstanceCount; }
 
@@ -244,23 +245,28 @@ namespace Rtx
         /// Bytes held by the structures themselves, not counting the geometry they were built from.
         VkDeviceSize getStructureBytes() const { return mBottomLevelStorage.getBytes() + mTopLevelBytes; }
 
-        /// What the last build's structures would come to if each were copied tight, or nought where
-        /// nothing was built or the device would not say.
+        /// What the structures still to be copied tight would come to, or nought where there are
+        /// none and where the device would not say.
         ///
-        /// **The measurement compaction is worth doing on the strength of.** A structure is built
-        /// loose because the builder cannot know the answer until it has finished; copying it into
-        /// the size it turned out to need is a saving nobody here has a figure for, and the copy is
-        /// a two-frame affair over the structures every ray traces. So the figure comes first.
+        /// **What is left to save, and so nought once a cell has settled.** A structure is built
+        /// loose because the builder cannot know the answer until it has finished, and `place`
+        /// copies each into the size it turned out to need at a budget per placement. So this falls
+        /// to nothing over the placements after an arrival, while `getStructureBytes` falls by what
+        /// it named.
         ///
-        /// **Every structure the scene holds**, asked afresh whenever anything is built: a route
-        /// that builds at every crossing would otherwise report whatever the last crossing brought,
-        /// which is nought where it brought only actors.
+        /// **Every structure the scene holds that is still loose**, asked afresh whenever anything
+        /// is built: a route that builds at every crossing would otherwise report whatever the last
+        /// crossing brought, which is nought where it brought only actors.
         VkDeviceSize getCompactableBytes() const;
 
-        /// What those same structures occupy now. The pair says what compaction would give back.
+        /// What those same structures occupy now. The pair says what compaction has left to give
+        /// back.
         VkDeviceSize getCompactableNowBytes() const { return mCompactableNow; }
 
     private:
+        /// No placement, which is what `mQueriedAt` holds while nothing has been asked.
+        static constexpr std::uint64_t sNoPlacement = ~std::uint64_t{ 0 };
+
         /// Reserves room for the scene's geometry and copies in the runs `meshes` names.
         ///
         /// **Per mesh and not per scene**, because that is what an arrival is: the blocks already
@@ -302,6 +308,15 @@ namespace Rtx
         /// Writes what a tight copy of each structure the last build made would come to.
         void askWhatCompactionWouldSave(VkCommandBuffer commands);
 
+        /// Reads those answers, once the placement that asked for them has certainly run, and makes
+        /// a tight structure for as many as this placement's budget takes. Every row that placed one
+        /// is written again, because the address it named has moved. True where anything is left for
+        /// `recordCompaction` to copy.
+        bool prepareCompaction(std::span<const InstanceRecord> records, Graveyard& graveyard);
+
+        /// Copies each structure `prepareCompaction` made room for into it.
+        void recordCompaction(VkCommandBuffer commands, GpuTimer* timer);
+
         const Device& mDevice;
 
         /// One query per compactable structure — every built mesh that does not refit — holding
@@ -315,8 +330,8 @@ namespace Rtx
         std::uint32_t mCompactablePool = 0;
         std::uint32_t mCompactableCount = 0;
 
-        /// What those same structures occupy as they were built, so the pair the report prints is a
-        /// saving rather than a number on its own.
+        /// What the structures the last question named occupy as they stand, so the pair the report
+        /// prints is a saving rather than a number on its own.
         VkDeviceSize mCompactableNow = 0;
 
         /// What each mesh's structure was created at, by slot.
@@ -325,20 +340,53 @@ namespace Rtx
         /// Refilled per build, so the walk that gathers them allocates nothing.
         std::vector<VkAccelerationStructureKHR> mCompactableHandles;
 
-        /// Host-written on arrival, and written by `SkinPass` for a skinned body every frame it
-        /// moves — into the copy the refit reads, in the same command buffer, with a barrier
-        /// between.
+        /// The mesh each of those belongs to. Beside the handles because the pool is packed over
+        /// what is compactable, so a query's index is not a mesh slot.
+        std::vector<Index> mCompactableSlots;
+
+        /// What the driver said each would come to, and how far through them the copies have got.
+        /// Empty where nothing is outstanding.
+        std::vector<VkDeviceSize> mCompactedSizes;
+        std::size_t mCompactionAt = 0;
+
+        /// Whether each mesh's structure has already been copied tight, so the next build's question
+        /// passes over it and nothing is copied twice. Cleared where a slot is built again.
+        std::vector<std::uint8_t> mCompacted;
+
+        /// What this placement copies, refilled each time. Kept so a compaction allocates nothing.
+        std::vector<VkCopyAccelerationStructureInfoKHR> mCompactionCopies;
+
+        /// The meshes those copies moved, for the walk that writes the rows placing them again.
+        SlotSet mMovedMeshes;
+
+        /// How many placements this scene has been through, and which one asked the compaction
+        /// questions — `sNoPlacement` where none are outstanding.
         ///
-        /// **Blocked, so a scene that grows keeps every address it has already handed out.** Nothing
-        /// reads these at a hit: a hit gets its vertices back out of the structure through position
-        /// fetch, so they are a build input and a pose's destination and nothing else — which is
-        /// why there is no table of their addresses beside them.
+        /// **What stands in for a fence.** The ring waits for the frame `mSlots` back before it
+        /// records this one, so a placement that far behind has finished on the queue and its
+        /// answers are there to be read. Asking with `WAIT_BIT` instead would stall the frame a
+        /// cell arrives in, which is the one frame that can least afford it.
+        std::uint64_t mPlacements = 0;
+        std::uint64_t mQueriedAt = sNoPlacement;
+
+        /// Every deforming mesh's vertices as the frame tracing them sees them: the bind pose on
+        /// arrival, and afterwards what `SkinPass` writes for a body every frame it moves — into
+        /// the copy the refit reads, in the same command buffer, with a barrier between.
         ///
-        /// **A mesh that never deforms is written into the first copy alone**: its structure is
-        /// built from there once and never refitted, so the copies past it would hold a pose nothing
-        /// ever reads. A mesh that deforms is written into every copy on arrival, holding its bind
-        /// pose until the pass writes over it.
-        SlotBlocks mPositions{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
+        /// **Indexed by `MeshRange::mBindOffset`, so the table is as long as the bodies rather than
+        /// as long as the cell.** A static mesh has no run here at all: its vertices are a build
+        /// input that does not outlive the build, and `buildMeshes` is where they are staged. Seyda
+        /// Neen is 138 deforming drawables of 2800, and every copy of this used to be reserved for
+        /// all of them.
+        ///
+        /// **Blocked, so a scene that grows keeps the poses it was already given.** A pose is on the
+        /// device and nowhere else — the host holds a bind pose and a set of bone rows — so a table
+        /// remade would show every standing body its bind pose until something moved it again.
+        ///
+        /// Nothing reads these at a hit: a hit gets its vertices back out of the structure through
+        /// position fetch, so they are a build input and a pose's destination and nothing else,
+        /// which is why there is no table of their addresses beside them.
+        SlotBlocks mPoses{ Shaders::VERTEX_BLOCK, sizeof(osg::Vec3f) };
         std::uint32_t mSlots = 1;
 
         BlockedBuffer mIndices{ Shaders::INDEX_BLOCK, sizeof(std::uint32_t) };
@@ -400,6 +448,10 @@ namespace Rtx
         /// pass and read in the next.
         std::vector<VkDeviceSize> mBuildSizes;
         std::vector<VkDeviceSize> mBuildScratchOffsets;
+
+        /// Where each arriving static mesh's vertices sit in the buffer `buildMeshes` stages them
+        /// into, in bytes. Meaningless for a mesh that deforms, which is built from its pose.
+        std::vector<VkDeviceSize> mArrivedAt;
 
         /// The builds actually recorded, which is `mBuild.mBuilds` without the meshes that came out
         /// at nought bytes — a mesh with no triangles is described by nobody and built by nobody.

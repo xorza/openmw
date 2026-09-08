@@ -41,6 +41,17 @@ namespace Rtx
         constexpr VkBufferUsageFlags sScratchUsage
             = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
+        /// How much a placement copies tight before it leaves the rest to the next one.
+        ///
+        /// **A budget and not the lot, because a copy needs the tight room while the loose room is
+        /// still standing.** Compacting a cell in one placement would ask the storage for the whole
+        /// saving on top of what it was saving, and give the old rooms back only once the frame
+        /// retired — so the high-water mark would be the sum rather than the difference, and the
+        /// frame that did it would carry the whole copy. At this rate Seyda Neen's 133 MiB are
+        /// tight within twenty placements of arriving, and what is outstanding at any moment is a
+        /// block rather than a cell.
+        constexpr VkDeviceSize sCompactionPerPlacement = 8 * 1024 * 1024;
+
         /// One mesh's triangles as the builder takes them, out of addresses a caller worked out.
         ///
         /// **`maxVertex` is guarded, because a freed slot has no vertices.** A slot the scene has
@@ -138,7 +149,7 @@ namespace Rtx
     {
         assert(slots >= 1 && slots <= sFrameSlots && "more frames in flight than there are copies of the rows");
 
-        mPositions.open(device, slots, sBuildInputUsage, "positions");
+        mPoses.open(device, slots, sBuildInputUsage, "poses");
         mRowTable.open(device, slots, sBuildInputUsage, "instances");
         mIndices.open(device, sBuildInputUsage, "indices");
 
@@ -149,10 +160,10 @@ namespace Rtx
 
         writeGeometry(batch, scene, mEveryMesh);
 
-        // Every copy of the positions holds what it will ever read from here, so what a copy owes
+        // Every copy holds a bind pose for every body the scene arrived with, so what a copy owes
         // from now on is the poses it missed.
         for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-            mPositions.settle(slot);
+            mPoses.settle(slot);
     }
 
     void SceneAcceleration::build(Batch& batch, const SceneDesc& scene, std::span<const InstanceRecord> records,
@@ -181,10 +192,10 @@ namespace Rtx
 
     void SceneAcceleration::writeGeometry(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes)
     {
-        // The scene's own reach, so a block exists for every run it has handed out. Blocks already
+        // Each table's own reach, so a block exists for every run it has handed out. Blocks already
         // made are left exactly where they are, and one call reaches every copy — `SlotBlocks` is
         // what holds one per frame in flight.
-        mPositions.reserve(batch, static_cast<std::uint32_t>(scene.getPositions().size()));
+        mPoses.reserve(batch, scene.getBindVertexCount());
         mIndices.reserve(batch, static_cast<std::uint32_t>(scene.getIndices().size()));
 
         for (const Index mesh : meshes)
@@ -193,14 +204,13 @@ namespace Rtx
             if (range.mVertices.empty())
                 continue;
 
-            // The first copy is what a structure is built from; a mesh that deforms is refitted from
-            // whichever copy its frame owns, so its bind pose goes into every one until the pass
-            // writes a pose over it.
-            const std::span<const osg::Vec3f> positions = range.mVertices.in(scene.getPositions());
-            mPositions.at(0).writeAt(batch, range.mVertices.mOffset, positions);
+            // **The bind pose into every copy, and only for a mesh that has one.** A body stands in
+            // whatever pose the copy being traced was last given, so a copy the pass has never
+            // dispatched for it still has to hold something a refit can read. A static mesh has no
+            // run here at all: `buildMeshes` stages its vertices for the build and nothing else.
             if (range.mDeform != Deform::None)
-                for (std::uint32_t slot = 1; slot < mSlots; ++slot)
-                    mPositions.at(slot).writeAt(batch, range.mVertices.mOffset, positions);
+                for (std::uint32_t slot = 0; slot < mSlots; ++slot)
+                    mPoses.at(slot).writeAt(batch, range.mBindOffset, scene.getMeshPositions(mesh));
 
             mIndices.writeAt(batch, range.mIndices.mOffset, range.mIndices.in(scene.getIndices()));
         }
@@ -270,6 +280,7 @@ namespace Rtx
         mUpdatable.resize(slots, 0);
         mBuiltSize.resize(slots, 0);
         mMicromapped.resize(slots, 0);
+        mCompacted.resize(slots, 0);
 
         mBuild.sizeTo(meshes.size());
         mLiveBuilds.clear();
@@ -291,6 +302,50 @@ namespace Rtx
         mBuildSizes.resize(meshes.size());
         mBuildScratchOffsets.clear();
         mBuildScratchOffsets.resize(meshes.size());
+
+        // **A static mesh's vertices are a build input and nothing else, so they go with the
+        // submit.** A hit reads its triangle's vertices back out of the structure through position
+        // fetch and it is never refitted, so the builder is the last thing that ever looks at them.
+        // Held in a table for the life of the cell they were the whole scene's vertices standing
+        // for one read apiece — a quarter of what a world reserved. A mesh that deforms is not
+        // here: it is built over the pose in `mPoses`, which is its own destination every frame.
+        mArrivedAt.clear();
+        mArrivedAt.resize(meshes.size());
+
+        VkDeviceSize arrivedBytes = 0;
+        for (std::size_t at = 0; at < meshes.size(); ++at)
+        {
+            const MeshRange& mesh = scene.getMeshes()[meshes[at]];
+            if (mesh.mDeform != Deform::None || mesh.mVertices.empty())
+                continue;
+
+            mArrivedAt[at] = arrivedBytes;
+            arrivedBytes += VkDeviceSize{ mesh.mVertices.mCount } * sizeof(osg::Vec3f);
+        }
+
+        // A byte where nothing static arrived, because a buffer of nothing cannot be created. The
+        // address outlives the move: it belongs to the handle, which the batch now holds until its
+        // submit has run — the same keeping the build's own scratch gets below.
+        Buffer arrived = Buffer::deviceLocal(
+            mDevice, std::max(arrivedBytes, VkDeviceSize{ 1 }), sBuildInputUsage | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+        mDevice.setName(
+            VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(arrived.getHandle()), "arrived positions");
+        const VkDeviceAddress arrivedAddress = arrived.getDeviceAddress();
+
+        for (std::size_t at = 0; at < meshes.size(); ++at)
+        {
+            const Index mesh = meshes[at];
+            const MeshRange& range = scene.getMeshes()[mesh];
+            if (range.mDeform != Deform::None || range.mVertices.empty())
+                continue;
+
+            stageInto(batch, mDevice, arrived, mArrivedAt[at], std::as_bytes(scene.getMeshPositions(mesh)));
+        }
+
+        batch.keep(std::move(arrived));
+
+        if (arrivedBytes > 0)
+            orderStagedWrites(batch);
 
         for (std::size_t at = 0; at < meshes.size(); ++at)
         {
@@ -316,12 +371,20 @@ namespace Rtx
             if (mMicromapped[slot] != 0)
                 mBuild.mMicromaps[at] = micromaps.describe(slot);
 
+            // **A pose or an arrival's staging, and which one is what the mesh is.** A deforming
+            // mesh is built over what `SkinPass` wrote into the first copy ahead of this, so its
+            // structure carries the pose rather than the bind; a static one is built over the
+            // vertices staged above.
+            VkDeviceAddress vertices = 0;
+            if (!mesh.mVertices.empty())
+                vertices = mesh.mDeform != Deform::None ? mPoses.at(0).addressOf(mesh.mBindOffset)
+                                                        : arrivedAddress + mArrivedAt[at];
+
             // Indices are mesh-local, so each structure is handed the slice of the shared buffers
             // that belongs to it and addresses vertex zero as its own first vertex. The addresses
             // are guarded here as well: a freed slot's run is nothing, and `addressOf` would name
             // where it used to be.
-            mBuild.mGeometries[at] = describeTriangles(mesh,
-                !mesh.mVertices.empty() ? mPositions.at(0).addressOf(mesh.mVertices.mOffset) : 0,
+            mBuild.mGeometries[at] = describeTriangles(mesh, vertices,
                 !mesh.mIndices.empty() ? mIndices.addressOf(mesh.mIndices.mOffset) : 0,
                 mMicromapped[slot] != 0 ? &mBuild.mMicromaps[at] : nullptr);
 
@@ -329,6 +392,9 @@ namespace Rtx
             // tightness and the trace that reads it a little; a few dozen actors pay it and the
             // thousands of static meshes around them do not.
             mUpdatable[slot] = mesh.mDeform != Deform::None ? 1 : 0;
+
+            // What is built here is built loose, whatever stood in the slot before was.
+            mCompacted[slot] = 0;
 
             // ALLOW_DATA_ACCESS is what lets a shader read a hit triangle's vertices back out of
             // the structure, which is the whole reason nothing here binds a vertex buffer.
@@ -451,10 +517,10 @@ namespace Rtx
         const std::span<const Index> deformed = scene.getDeformed();
 
         // **This frame's copy, which the pass has already posed into.** `SkinPass::record` runs
-        // ahead of this in the same command buffer and pays the positions' account — every pose this
+        // ahead of this in the same command buffer and pays the poses' account — every pose this
         // copy owed, this frame's and the ones it missed — so what the refit reads is the pose and
         // not the bind.
-        BlockedBuffer& positions = mPositions.at(slot);
+        BlockedBuffer& poses = mPoses.at(slot);
 
         if (deformed.empty())
         {
@@ -498,7 +564,7 @@ namespace Rtx
             if (mMicromapped[index] != 0)
                 mRefit.mMicromaps[i] = micromaps.describe(index);
 
-            mRefit.mGeometries[i] = describeTriangles(mesh, positions.addressOf(mesh.mVertices.mOffset),
+            mRefit.mGeometries[i] = describeTriangles(mesh, poses.addressOf(mesh.mBindOffset),
                 mIndices.addressOf(mesh.mIndices.mOffset), mMicromapped[index] != 0 ? &mRefit.mMicromaps[i] : nullptr);
 
             mRefit.mRanges[i] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = mesh.getTriangleCount() };
@@ -547,6 +613,8 @@ namespace Rtx
     {
         assert(placing.mSlot < mSlots && "a frame slot this scene has no copy of the rows for");
 
+        ++mPlacements;
+
         prepareRefit(scene, placing.mSlot, micromaps, placing.mGraveyard);
 
         // **What this copy owes, and not what the scene moved.** The top level is built from this
@@ -557,7 +625,13 @@ namespace Rtx
         // fence on every frame of a standing camera. A refit alone still rebuilds it, because a top
         // level caches the bounds of what it names.
         writeRows(records, changed);
-        if (!mRowTable.owes(placing.mSlot) && mRefit.mBuilds.empty())
+
+        // **After the rows are grown to the scene and before the copy they are synced from.** A
+        // structure copied tight has moved, and the rows naming it are written again here — into
+        // the same table, so every copy owes them the way it owes anything else.
+        const bool compacting = prepareCompaction(records, placing.mGraveyard);
+
+        if (!compacting && !mRowTable.owes(placing.mSlot) && mRefit.mBuilds.empty())
             return false;
 
         prepareTopLevel(scene, placing.mSlot, placing.mGraveyard);
@@ -566,6 +640,9 @@ namespace Rtx
         // level is built over structures the refit has just rewritten, which is a dependency inside
         // a command buffer rather than a reason to go round the driver twice.
         barrierBeforeBuild(placing.mCommands);
+        if (compacting)
+            recordCompaction(placing.mCommands, placing.mTimer);
+
         if (!mRefit.mBuilds.empty())
             recordRefit(placing.mCommands, placing.mTimer);
 
@@ -789,19 +866,32 @@ namespace Rtx
         // structure built earlier costs the query and nothing else.
         //
         // Only the ones built to allow it, which is every one that does not refit: a mesh that
-        // deforms keeps its slack, because a refit writes back into it.
+        // deforms keeps its slack, because a refit writes back into it. And only the ones still
+        // loose: a structure already copied tight would answer with its own size and be copied
+        // again for nothing, so what the pair reports is what is left to save rather than what was
+        // saved once.
+        // **What is outstanding is dropped, not carried.** The handles and slots below are refilled,
+        // so an answer from the round before would be read against another structure's slot — and a
+        // tight size that belongs to a different mesh is a destination too small for the copy. What
+        // that round had not reached is still loose, so this question asks about it again.
+        mCompactedSizes.clear();
+        mCompactionAt = 0;
+
         mCompactableHandles.clear();
+        mCompactableSlots.clear();
         mCompactableNow = 0;
         for (std::size_t slot = 0; slot < mBottomLevel.size(); ++slot)
         {
-            if (mBottomLevel[slot] == VK_NULL_HANDLE || mUpdatable[slot] != 0)
+            if (mBottomLevel[slot] == VK_NULL_HANDLE || mUpdatable[slot] != 0 || mCompacted[slot] != 0)
                 continue;
 
             mCompactableHandles.push_back(mBottomLevel[slot]);
+            mCompactableSlots.push_back(static_cast<Index>(slot));
             mCompactableNow += mBuiltSize[slot];
         }
 
         mCompactableCount = 0;
+        mQueriedAt = sNoPlacement;
 
         if (mCompactableHandles.empty())
             return;
@@ -830,6 +920,144 @@ namespace Rtx
             VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR, mCompactable.get(), 0);
 
         mCompactableCount = wanted;
+
+        // What says the answers are readable. `prepareCompaction` gives the rule.
+        mQueriedAt = mPlacements;
+    }
+
+    bool SceneAcceleration::prepareCompaction(std::span<const InstanceRecord> records, Graveyard& graveyard)
+    {
+        mCompactionCopies.clear();
+
+        // **Read once the placement that recorded the questions has certainly run.** The ring waits
+        // for the frame `mSlots` back before it records this one, so a placement one further behind
+        // than the submit that carried the questions has finished on the queue. That is the fence
+        // this would otherwise have to keep, and `WAIT_BIT` in its place would stall the frame a
+        // cell arrives in — the one frame that can least afford it.
+        if (mQueriedAt != sNoPlacement && mPlacements > mQueriedAt + mSlots)
+        {
+            assert(mCompactableCount > 0 && "a question outstanding with no queries in it");
+
+            mCompactedSizes.resize(mCompactableCount);
+            const VkResult read = vkGetQueryPoolResults(mDevice.getHandle(), mCompactable.get(), 0, mCompactableCount,
+                mCompactedSizes.size() * sizeof(VkDeviceSize), mCompactedSizes.data(), sizeof(VkDeviceSize),
+                VK_QUERY_RESULT_64_BIT);
+
+            // Asked again next placement where the answers are simply not there yet. A driver that
+            // refuses outright leaves its structures as they were built, and the next build asks.
+            if (read == VK_NOT_READY)
+                mCompactedSizes.clear();
+            else
+            {
+                mQueriedAt = sNoPlacement;
+                mCompactionAt = 0;
+                if (read != VK_SUCCESS)
+                    mCompactedSizes.clear();
+            }
+        }
+
+        const DeviceFunctions& functions = mDevice.getFunctions();
+
+        VkDeviceSize taken = 0;
+        while (mCompactionAt < mCompactedSizes.size() && taken < sCompactionPerPlacement)
+        {
+            const std::size_t at = mCompactionAt++;
+            const Index slot = mCompactableSlots[at];
+            const VkDeviceSize tight = mCompactedSizes[at];
+
+            // **The slot may have been handed out again since the question was asked.** A cell that
+            // left took its meshes with it, and whatever stands here now is not what this answer is
+            // about — the next build asks about that one.
+            if (mBottomLevel[slot] != mCompactableHandles[at])
+                continue;
+
+            // A structure the driver says is no smaller stays where it was built, and is not asked
+            // about again: the copy would spend a room and a command to change nothing.
+            if (tight == 0 || tight >= mBuiltSize[slot])
+            {
+                mCompacted[slot] = 1;
+                continue;
+            }
+
+            const StructureRoom room = mBottomLevelStorage.take(mDevice, tight, sCompactionPerPlacement);
+            const VkAccelerationStructureCreateInfoKHR create{
+                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
+                .buffer = mBottomLevelStorage.getBuffer(room),
+                .offset = mBottomLevelStorage.getOffset(room),
+                .size = tight,
+                .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
+            };
+
+            VkAccelerationStructureKHR made = VK_NULL_HANDLE;
+            checkVk(functions.mCreateAccelerationStructure(mDevice.getHandle(), &create, nullptr, &made),
+                "vkCreateAccelerationStructureKHR");
+
+            mCompactionCopies.push_back(VkCopyAccelerationStructureInfoKHR{
+                .sType = VK_STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_INFO_KHR,
+                .src = mBottomLevel[slot],
+                .dst = made,
+                .mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR,
+            });
+
+            // **Buried and not destroyed, though the copy below reads it.** The graveyard lets go
+            // once the frame this is recorded into retires, and the copy runs inside that frame —
+            // so what the fence covers is both this read and whatever earlier frame is still
+            // tracing the structure through the top level it was named in.
+            graveyard.bury(mBottomLevel[slot]);
+            graveyard.bury(mBottomLevelStorage, mBottomLevelRooms[slot]);
+
+            // The pair the report prints follows the copy, so what it says is what is left to save
+            // rather than what was saved once.
+            mCompactableNow -= mBuiltSize[slot];
+            mCompactableNow += tight;
+
+            mBottomLevel[slot] = made;
+            mBottomLevelRooms[slot] = room;
+            mBuiltSize[slot] = tight;
+            mCompacted[slot] = 1;
+
+            // Asked before the copy has run, which is what makes the top level buildable in this
+            // same command buffer: an address belongs to the structure from the moment it is
+            // created, and what the barrier orders is the contents arriving.
+            const VkAccelerationStructureDeviceAddressInfoKHR address{
+                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
+                .accelerationStructure = made,
+            };
+            mBottomLevelAddresses[slot]
+                = functions.mGetAccelerationStructureDeviceAddress(mDevice.getHandle(), &address);
+
+            mMovedMeshes.addMakingRoom(slot);
+            taken += tight;
+        }
+
+        if (mCompactionCopies.empty())
+            return false;
+
+        // **Every row that placed one of these names an address that has moved.** Nothing indexes
+        // the instances by the mesh they place, so the records are walked — only on a placement that
+        // compacted something, which is the twenty or so after a cell arrives and never again for
+        // those meshes.
+        for (std::size_t at = 0; at < records.size(); ++at)
+        {
+            const InstanceRecord& record = records[at];
+            if (record.mPlaced && mMovedMeshes.has(record.mMesh))
+                placeRow(static_cast<Index>(at), record);
+        }
+
+        mMovedMeshes.clear();
+        return true;
+    }
+
+    void SceneAcceleration::recordCompaction(VkCommandBuffer commands, GpuTimer* const timer)
+    {
+        openZone(timer, commands, "compact");
+
+        const DeviceFunctions& functions = mDevice.getFunctions();
+        for (const VkCopyAccelerationStructureInfoKHR& copy : mCompactionCopies)
+            functions.mCmdCopyAccelerationStructure(commands, &copy);
+
+        barrierAfterBuild(commands);
+        closeZone(timer, commands);
     }
 
     VkDeviceSize SceneAcceleration::getCompactableBytes() const

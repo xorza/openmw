@@ -32,9 +32,21 @@ namespace Rtx
         assert(bytes > 0);
         const std::uint32_t units = unitsFor(bytes);
 
+        // **A place a retired block left, remembered on the way past.** A room names its block by
+        // index, so nothing is ever erased from this list; without filling the empty places again, a
+        // route that compacts at every crossing would grow one place per block it ever made.
+        std::size_t spare = mBlocks.size();
+
         for (std::size_t at = 0; at < mBlocks.size(); ++at)
         {
             Block& block = mBlocks[at];
+            if (block.mUnits == 0)
+            {
+                if (spare == mBlocks.size())
+                    spare = at;
+
+                continue;
+            }
 
             // **Asked for and given back rather than measured first.** The allocator's rule for
             // where a run goes is best fit over a free list, and reimplementing it here to ask
@@ -49,13 +61,16 @@ namespace Rtx
 
         const std::uint32_t made = std::max(unitsFor(least), units);
 
-        Block& block = mBlocks.emplace_back();
+        if (spare == mBlocks.size())
+            mBlocks.emplace_back();
+
+        Block& block = mBlocks[spare];
         block.mUnits = made;
         block.mBuffer = Buffer::deviceLocal(device, VkDeviceSize{ made } * sAlignment, mUsage);
         device.setName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(block.mBuffer.getHandle()),
-            mName + " " + std::to_string(mBlocks.size() - 1));
+            mName + " " + std::to_string(spare));
 
-        return StructureRoom{ static_cast<std::uint32_t>(mBlocks.size() - 1), block.mRuns.allocate(units) };
+        return StructureRoom{ static_cast<std::uint32_t>(spare), block.mRuns.allocate(units) };
     }
 
     void StructureStorage::give(const StructureRoom& room)
@@ -63,7 +78,34 @@ namespace Rtx
         if (room.empty())
             return;
 
-        mBlocks[room.mBlock].mRuns.release(room.mRun);
+        Block& block = mBlocks[room.mBlock];
+        block.mRuns.release(room.mRun);
+
+        // **A block that empties goes back to the device, one at a time and never a sweep.**
+        // Compaction is what leaves whole blocks empty: a structure copied tight gives the loose
+        // room it stood in back, and a block holding nothing else has nothing left to hold.
+        //
+        // **A block empties only where everything in it could leave**, so what a caller mixes into
+        // one block decides whether this ever fires: a structure that is refitted rather than
+        // replaced stays for the life of its mesh and pins the block it sits in.
+        //
+        // **The last one standing stays**, so a scene that empties and fills does not give its only
+        // block back and ask for another on the next arrival.
+        if (block.mRuns.getEnd() == 0 && countLive() > 1)
+        {
+            block.mBuffer = Buffer();
+            block.mUnits = 0;
+        }
+    }
+
+    std::size_t StructureStorage::countLive() const
+    {
+        std::size_t live = 0;
+        for (const Block& block : mBlocks)
+            if (block.mUnits > 0)
+                ++live;
+
+        return live;
     }
 
     VkDeviceSize StructureStorage::getOffset(const StructureRoom& room) const
