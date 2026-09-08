@@ -136,6 +136,7 @@ namespace Rtx
         , mCountHits(options.mCountHits)
         , mCountCrossings(options.mCountCrossings)
         , mReorder(options.mReorder)
+        , mMicromaps(options.mMicromaps)
         , mUpscale(options.mUpscale)
         , mPreset(options.mPreset)
         , mChannelLayout(GBuffer::describeLayout(mDevice))
@@ -493,7 +494,7 @@ namespace Rtx
         // structures are built over what it decided — three stretches of one command buffer.
         held.mTextures = std::make_unique<TextureArray>(
             mDevice, setup, static_cast<std::uint32_t>(scene.getTextures().size()), textures, graveyard);
-        held.mMicromaps = std::make_unique<SceneMicromaps>(mDevice);
+        held.mMicromaps = std::make_unique<SceneMicromaps>(mDevice, mMicromaps);
 
         // **Built once and kept, because building one compiles every kernel the trace can ever
         // need — 6.3 s on a cold cache, measured.** Nothing about the pass depends on the scene: it
@@ -540,24 +541,23 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
 
-        // **An arrival waits.** What arrives is written into every copy of the geometry and the
-        // tables — the normals, the positions, the mesh table, the layers — and a frame still
-        // reading any of them would see it torn. A cell crossing is tens of milliseconds of work
-        // in any case, and the frame it lands in is not one this renderer keeps smooth. A picture
-        // inside the interface is traced and waited for, so it has nothing to wait.
+        // **An arrival does not wait for the frames in flight.** It used to drain the ring, on the
+        // grounds that what arrives is written into every copy of the geometry and the tables. What
+        // it is really written into is room no frame in flight holds: a block is only ever appended
+        // to, `growTo` buries the buffer a growth displaced so an address already handed out stays
+        // good, and a run an arrival fills is one no placed instance names. The writes ride the
+        // placement's submit behind the frame before them, and end in the barrier
+        // `orderStagedWrites` records. What still waits is the copy of the rows and the poses this
+        // placement is about to write, in `placeScene`, against the frame that last traced it.
         //
-        // **And it opens the frame it lands in, so that its builds have a zone.** The batch below
-        // rides that frame's placement submit, ahead of the refit and the top level, so the bracket
-        // around the builds has to be written against that frame's timer — and `beginFrame` clears
-        // the timer, so a zone opened before it would be forgotten. Nothing is in flight to wait
-        // for by then. A picture inside the interface opens no frame and is not timed, which is the
-        // rule `placeScene` states.
+        // **It opens the frame it lands in, so that its builds have a zone.** The batch below rides
+        // that frame's placement submit, ahead of the refit and the top level, so the bracket around
+        // the builds has to be written against that frame's timer — and `beginFrame` clears the
+        // timer, so a zone opened before it would be forgotten. A picture inside the interface opens
+        // no frame and is not timed, which is the rule `placeScene` states.
         GpuTimer* timer = nullptr;
         if (slot == sWorld)
-        {
-            mRing.finishAll();
             timer = &mRing.begin().mTimer;
-        }
 
         Graveyard& graveyard = mRing.recording().mGraveyard;
 
@@ -675,15 +675,24 @@ namespace Rtx
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "placeScene before setScene");
 
-        // **A picture inside the interface is placed between frames and waited for.** It has one
-        // copy of everything and no ring: it is neither timed nor allowed to open the frame's
-        // report, and its placement is a submit of its own.
+        // **A picture inside the interface is placed into the trace's submit and waited for once.**
+        // It has one copy of everything and no ring: it is neither timed nor allowed to open the
+        // frame's report.
+        //
+        // **Deferred and not submitted here**, so the trace that follows carries both. A doll pays
+        // this pair on every equipment change and on every mouse move of a race preview's drag, and
+        // it used to be two round trips through the driver where the trace was already paying one.
+        // What orders the two is the barrier `place` ends in, which is what orders a deferred
+        // arrival against the world's placement in the same way. A placement with no trace after it
+        // rides whichever submit comes next, and `GuiTextures::finish` drains what is left.
         if (slot != sWorld)
         {
             Graveyard& graveyard = mRing.recording().mGraveyard;
-            mPool.submitAndWait([&](VkCommandBuffer commands) {
-                recordPlacement(mSkinPass, held, scene, Placing{ .mCommands = commands, .mGraveyard = graveyard });
-            });
+
+            Batch placement(mPool);
+            recordPlacement(
+                mSkinPass, held, scene, Placing{ .mCommands = placement.getCommands(), .mGraveyard = graveyard });
+            placement.defer();
             return;
         }
 

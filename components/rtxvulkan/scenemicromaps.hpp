@@ -51,7 +51,10 @@ namespace Rtx
     public:
         /// Throws where the device cannot cut a triangle as finely as `MICROMAP_LEVEL_MAX`, which
         /// is the one limit the bake reads and is refused rather than clamped to.
-        explicit SceneMicromaps(const Device& device);
+        ///
+        /// @param bakes whether a mask is baked at all. False leaves every cutout to the any-hit,
+        ///        which is what `RendererOptions::mMicromaps` is for.
+        explicit SceneMicromaps(const Device& device, bool bakes = true);
         ~SceneMicromaps();
 
         SceneMicromaps(const SceneMicromaps&) = delete;
@@ -165,6 +168,10 @@ namespace Rtx
         void drop(Index mesh, Graveyard& graveyard);
 
         const Device& mDevice;
+
+        /// Whether `bake` bakes. False holds nothing, so every other method answers as it does for
+        /// a scene whose masks were all refused, and every cutout reaches the any-hit.
+        bool mBakes = true;
 
         StructureStorage mStorage{ VK_BUFFER_USAGE_MICROMAP_STORAGE_BIT_EXT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
             "micromaps" };

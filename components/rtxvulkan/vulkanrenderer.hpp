@@ -263,6 +263,9 @@ namespace Rtx
         /// pass compiles every kernel before a frame runs.
         Reorder mReorder = Reorder::Off;
 
+        /// Whether a scene bakes its cutouts. `RendererOptions::mMicromaps` says why it is a switch.
+        bool mMicromaps = true;
+
         /// What the frames are traced under. **Changing it rebuilds every target**, which is what
         /// `setUpscale` is for and why it is a setting rather than a frame option.
         Upscale mUpscale = Upscale::Off;

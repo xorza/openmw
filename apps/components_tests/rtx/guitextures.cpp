@@ -593,6 +593,72 @@ namespace Rtx
             mRenderer->dropViewScene(doll);
         }
 
+        /// A placement into a view scene reaches the picture traced from it afterwards.
+        ///
+        /// **The pair a doll pays, and nothing else here drives it.** `placeScene` submits and waits
+        /// and the trace submits and waits again, so what makes the second read what the first wrote
+        /// is the order of two submits. The world's placement rides a frame instead, and
+        /// `OffscreenTrace`'s own tests hand their calls to a renderer that counts them.
+        ///
+        /// **And a placement names one scene.** Moving the doll must leave the world's sheet where
+        /// it is, which is the other half of the assertion.
+        TEST_F(RtxGuiDrawTest, aPlacementIntoAViewSceneReachesThePictureAndLeavesTheWorldAlone)
+        {
+            constexpr std::uint32_t extent = 16;
+
+            const SceneDesc world = makeSheet(100.0f);
+            SceneDesc doll = makeSheet(25.0f);
+
+            mRenderer->setScene(Rtx::sWorld, world, {}, SeaState{});
+
+            const std::uint32_t slot = mRenderer->addViewScene();
+            mRenderer->setScene(slot, doll, {}, SeaState{});
+
+            const std::uint32_t texture = mRenderer->addGuiTexture(extent, extent);
+            mHeld.push_back(texture);
+
+            Shaders::VisibilityConstants camera = makeMapCamera(extent);
+            camera.mTransparentBackground = 1;
+
+            const auto covered = [&](std::uint32_t scene) {
+                mRenderer->traceGuiTexture(
+                    texture, camera, GuiTraceOptions{ .mWidth = extent, .mHeight = extent, .mScene = scene });
+
+                std::uint32_t across = 0;
+                for (std::uint32_t x = 0; x < extent; ++x)
+                    if (inTexture(texture, extent, x, 8)[3] != 0)
+                        ++across;
+
+                return across;
+            };
+
+            EXPECT_EQ(covered(slot), 4u) << "the doll before anything moved";
+
+            // Out of the camera's box of two hundred altogether, so what the placement did shows as
+            // the picture emptying rather than as a sheet a pixel narrower.
+            ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::translate(1000.0f, 0.0f, 0.0f)));
+            mRenderer->placeScene(slot, doll, SeaState{});
+
+            EXPECT_EQ(covered(slot), 0u) << "the placement did not reach the trace";
+
+            // **Two placements before one trace**, which is what a drag does. The picture is the
+            // second, so a scheme that carried only the first would show the sheet back in the box.
+            ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::identity()));
+            mRenderer->placeScene(slot, doll, SeaState{});
+            ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::translate(1000.0f, 0.0f, 0.0f)));
+            mRenderer->placeScene(slot, doll, SeaState{});
+
+            EXPECT_EQ(covered(slot), 0u) << "the trace showed the first of two placements";
+
+            ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::identity()));
+            mRenderer->placeScene(slot, doll, SeaState{});
+
+            EXPECT_EQ(covered(slot), 4u) << "a placement brought it back";
+            EXPECT_EQ(covered(sWorld), extent) << "and none of it took the world with it";
+
+            mRenderer->dropViewScene(slot);
+        }
+
         /// The picture the trace made is the picture the GUI draws with, which is the whole point of
         /// it going into a slot rather than coming back to main memory.
         TEST_F(RtxGuiDrawTest, theGuiDrawsWithAPictureTheTraceMade)

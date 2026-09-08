@@ -204,6 +204,7 @@ namespace MWRender
         options.mCountCrossings = Settings::rtx().mCountCrossings;
 
         options.mReorder = Rtx::sReorderNames.require(Settings::rtx().mReorder.get(), "a reorder mode");
+        options.mMicromaps = Settings::rtx().mMicromaps;
 
         // **Said once, where it is decided.** What reconstructs the frame does not change while the
         // session runs, so it does not belong in the periodic line; what that line carries is the

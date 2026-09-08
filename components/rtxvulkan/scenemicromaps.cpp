@@ -100,8 +100,9 @@ namespace Rtx
         }
     }
 
-    SceneMicromaps::SceneMicromaps(const Device& device)
+    SceneMicromaps::SceneMicromaps(const Device& device, const bool bakes)
         : mDevice(device)
+        , mBakes(bakes)
     {
         // A contract and not a capability test: `profileOf` refuses a device that cuts no finer
         // than the bake needs, so one that reached here cuts finely enough.
@@ -209,6 +210,12 @@ namespace Rtx
         const SceneBuffers& buffers, const SceneAcceleration& acceleration, const TextureArray& textures,
         std::span<const Index> meshes, GpuTimer* const timer, Graveyard& graveyard)
     {
+        // **Nothing baked and nothing to drop.** With the switch off no mesh was ever given a
+        // micromap, so every slot is empty and every cutout reaches the any-hit — which is the leg
+        // `RendererOptions::mMicromaps` exists to time against this one.
+        if (!mBakes)
+            return;
+
         const std::span<const MeshRange> ranges = scene.getMeshes();
         const std::span<const Material> materials = scene.getMaterials();
         const std::span<const osg::Vec2f> texCoords = scene.getTexCoords();

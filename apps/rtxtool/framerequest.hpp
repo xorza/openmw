@@ -55,6 +55,10 @@ namespace RtxTool
         /// they found. Off by default, because off is what the others are measured against.
         Rtx::Reorder mReorder = Rtx::Reorder::Off;
 
+        /// Whether a cutout's mask is baked into an opacity micromap. Off is the leg the micromap
+        /// is timed against, and the picture is the same either way.
+        bool mMicromaps = true;
+
         /// How much of the lighting painted into each texture to divide back out, from zero to one.
         /// Zero shows the textures as they were drawn, with their lighting still in them.
         float mDelight = 1.0f;

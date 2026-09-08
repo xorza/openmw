@@ -47,6 +47,12 @@ namespace Rtx::Testing
             // Tests provoke errors deliberately and assert on them; aborting would take the suite
             // down with the first one.
             options.mPolicy = ValidationPolicy::Log;
+            // **The same switch `describeRenderer` sets, for the same reason.** A test that drives
+            // Vulkan directly supplies its own ordering with a submit and a wait, so a missing
+            // barrier in the code under it shows as nothing at all — and a suite validated one way
+            // through the renderer and another way beside it answers a different question in each
+            // file. It costs no measurable time here either.
+            options.mSynchronizationValidation = validation;
 
             auto harness = std::make_unique<Harness>();
             harness->mInstance = std::make_unique<Instance>(options);

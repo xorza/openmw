@@ -181,6 +181,13 @@ namespace RtxTool
                 Rtx::sUpscaleNames.list())
                 .c_str());
 
+        option(sFramed, "micromaps", bpo::value<bool>()->default_value(byDefault.mMicromaps)->implicit_value(true),
+            "bake each cutout's mask into an opacity micromap, so traversal resolves every "
+            "microtriangle it knows about without stopping the ray. Off leaves every cutout to the "
+            "any-hit shader, which is the leg a micromap has to be timed against — and below Ada a "
+            "micromap is the driver's emulation rather than the hardware, so what it saves there is "
+            "not what it saves here. The picture is the same either way");
+
         option(sFramed, "reorder",
             bpo::value<std::string>()->default_value(std::string(Rtx::reorderName(byDefault.mReorder))),
             std::format("how the trace sorts its threads between the traversal and the shader that resolves "

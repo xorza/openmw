@@ -166,8 +166,10 @@ namespace Rtx
         /// handed to the next one that fits. The top level is rebuilt every frame regardless and
         /// picks the change up for nothing.
         ///
-        /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
-        /// the positions, and what it replaces goes to `graveyard` all the same.
+        /// **Safe with frames in flight**, because nothing it writes is room one of them holds: a
+        /// block is only appended to, a mesh's run is one no placed instance names, and what an
+        /// arrival replaces goes to `graveyard`. `CI/check_rtx_validation.sh` is what says so — a
+        /// route of nineteen crossings under synchronization validation, with the ring undrained.
         void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
 
         /// Builds the structures of the meshes that arrived, over the first copy of the positions

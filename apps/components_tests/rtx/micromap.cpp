@@ -604,6 +604,17 @@ namespace Rtx
             EXPECT_FALSE(micromaps.has(plain)) << "a mesh with no material has no mask";
             EXPECT_EQ(micromaps.getUntexturedCount(), 1u);
 
+            // **And the same scene with the switch off bakes nothing**, which is the leg a micromap
+            // has to be timed against: every cutout reaches the any-hit instead, and nothing is
+            // examined, so the mask nobody uploaded is not counted either.
+            SceneMicromaps none(device, false);
+            none.bake(
+                setup, pass, scene, buffers, acceleration, textures, acceleration.getEveryMesh(), nullptr, graveyard);
+
+            EXPECT_FALSE(none.has(baked)) << "a mask was baked with micromaps off";
+            EXPECT_EQ(none.getBytes(), 0u);
+            EXPECT_EQ(none.getUntexturedCount(), 0u);
+
             const VkAccelerationStructureTrianglesOpacityMicromapEXT described = micromaps.describe(baked);
             EXPECT_EQ(described.indexType, VK_INDEX_TYPE_NONE_KHR) << "every triangle owns the entry at its own index";
             EXPECT_NE(described.micromap, VK_NULL_HANDLE);

@@ -94,6 +94,42 @@ namespace Rtx
             EXPECT_FALSE(mRenderer->finishFrame().has_value()) << "a frame came back twice";
         }
 
+        /// A cell arriving while a frame is in flight leaves that frame the world it was placed in.
+        ///
+        /// **What the wait in `extendScene` is for, driven rather than assumed.** An arrival appends
+        /// geometry and grows every table a frame in flight may be reading, so the renderer drains
+        /// the ring before it extends. This is the case that says whether it must: the suite runs
+        /// under the layers' synchronization validation, so a hazard between what the arrival writes
+        /// and what the frame in flight traces is reported rather than left to chance.
+        ///
+        /// **A hundred rigged meshes and not one, because the count is what makes a table move.**
+        /// A block is only ever appended to, so one arrival proves nothing about it; a bind table,
+        /// a rig's runs and the instance rows are remade by `growTo`, which doubles — so a hundred
+        /// crosses several of those and each is made again while a frame still reads the one it
+        /// displaced. That is the shape a cell crossing has.
+        TEST_F(RtxFramesTest, aCellArrivingWhileAFrameIsInFlightLeavesThatFrameItsOwnWorld)
+        {
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+
+            // Behind the camera, so what the second frame sees is decided by the wall that walks
+            // away rather than by a hundred quads landing over it.
+            for (int at = 0; at < 100; ++at)
+            {
+                const Index arrived = mScene.addMesh(Testing::wallAt(-1000.0f), {}, {}, Testing::sQuadIndices, {},
+                    Deform::Rig, Testing::addOneBoneRig(mScene, 4));
+                mScene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = arrived });
+                Testing::poseByOneBone(mScene, arrived, osg::Matrixf::identity());
+            }
+
+            mScene.moveInstance(mInstance, osg::Matrixf::translate(0.0f, -1000.0f, 0.0f));
+            mRenderer->extendScene(Rtx::sWorld, mScene, {}, SeaState{});
+
+            mRenderer->renderFrame(ahead(), FrameOptions{});
+
+            EXPECT_EQ(finishedHits(), sEveryPixel) << "the frame in flight lost its wall to the arrival";
+            EXPECT_EQ(finishedHits(), 0u) << "the frame after the arrival kept the wall the arrival moved";
+        }
+
         /// A third frame waits for the first, whose slot it takes, and the first still reports.
         ///
         /// **Whichever call did the waiting, the report belongs to the frame.** The ring drains

@@ -14,39 +14,22 @@ not what stops a Turing card.
 
 ---
 
-- [ ] **Compaction reuses the loose room instead of returning it, and no route has been measured.**
-      `place` copies a static structure tight and gives the room it stood in back, but a block goes
-      to the device only when nothing is left in it. One block holds a whole cell, and `take` fills
-      the first block with room — so the tight copies land back in the very block they are draining,
-      and the reservation stays. Seyda Neen settles at 52.5 MiB of structures in 152.7 MiB reserved,
-      where the same cell reserved 136.7 MiB before compaction.
+- [ ] **Opacity micromaps are emulated below Ada, and the two legs have never been timed.** They
+      work and they can still pay, but the Ada speedup is not transferable.
 
-      **Storage of its own for the meshes that refit does not fix this**, which an earlier note here
-      claimed: the tight copies are static and would go back into the draining block all the same.
+      **`--micromaps=false` is the other leg.** It sets `RendererOptions::mMicromaps`, and with it
+      off nothing is baked and every cutout reaches the any-hit. At Seyda Neen the report goes from
+      1369 micromapped and 23.4 MiB of micromaps to none, and the picture is the same either way —
+      `RtxMicromapBakeTest` asserts that nothing is held and `RtxMicromapPictureTest` that a
+      micromapped card traces as the any-hit traces it. So `bench --micromaps=true` against
+      `--micromaps=false` over the same views is the measurement, on any card.
 
-      What compaction is for is the high-water mark of a route, and that is a measurement rather
-      than a design. `bench --views=island-crossing --seconds=10` against the 249.1 MiB the route
-      reserved before compaction is the number that decides the item. Take it first.
+      **What it could change is dropping micromaps for every card**, and not adding a path for
+      Turing. The extension is required and `AGENTS.md` keeps no second path, so a micromap that
+      loses is an argument about which single path the tree keeps.
 
-- [ ] **Streaming and the interface drain the frame pipeline.** `vulkanrenderer.cpp:558` finishes
-      every frame in flight before it extends the world, offscreen placement waits at `:684`, and the
-      offscreen trace drains again at `:1307`. Cells arrive while the game runs, so each is a stall a
-      player feels. The composite landing's own submit and fence are already gone — that batch rides
-      the placement's submit.
-
-      **The texture set is no longer what holds it.** The array's bindings are update-after-bind, so
-      an arrival writes it while a bake bound to it is still on the queue, and the set and pool that
-      bake needed are deleted.
-
-      What the wait still guards is the geometry and the tables. `SceneAcceleration::extend` and
-      `SkinTables::extend` each state "with nothing in flight, which the caller guarantees": an
-      arrival writes every copy of the poses, the indices, the normals and the rows. Each has to
-      keep an account of what a copy owes, the way `SlotBlocks` already does, before the wait can go.
-
-- [ ] **Opacity micromaps are emulated below Ada.** They work and they can still pay, but the Ada
-      speedup is not transferable. Measure the micromap path against plain any-hit traversal on
-      Turing before assuming it is the faster of the two. The extension is required, so there is no
-      second path to fall to.
+      Take it on an idle card, warm, with the legs interleaved. Turing is the card the item is
+      really about, and there is none here.
 
 Sources: [Vulkan Hardware Database](https://vulkan.gpuinfo.org/), reports 51568 and 46422;
 [Khronos synchronization examples](https://docs.vulkan.org/guide/latest/synchronization_examples.html);

@@ -202,6 +202,7 @@ namespace RtxTool
             request.mPreset
                 = Rtx::sPresetNames.require(variables["preset"].as<std::string>(), "a Ray Reconstruction preset");
             request.mReorder = Rtx::sReorderNames.require(variables["reorder"].as<std::string>(), "a reorder mode");
+            request.mMicromaps = variables["micromaps"].as<bool>();
             request.mDelight = variables["delight"].as<float>();
             request.mFilter = variables["filter"].as<bool>();
             request.mShowAlbedo = variables["albedo"].as<bool>();
@@ -352,6 +353,7 @@ namespace RtxTool
             Settings::rtx().mUpscale.set(std::string(Rtx::upscaleName(frame.mUpscale)));
             Settings::rtx().mPreset.set(std::string(Rtx::presetName(frame.mPreset)));
             Settings::rtx().mReorder.set(std::string(Rtx::reorderName(frame.mReorder)));
+            Settings::rtx().mMicromaps.set(frame.mMicromaps);
             Settings::rtx().mDelight.set(frame.mDelight);
             Settings::rtx().mShowAlbedo.set(frame.mShowAlbedo);
             Settings::rtx().mFilter.set(frame.mFilter);

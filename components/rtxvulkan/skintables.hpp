@@ -46,7 +46,12 @@ namespace Rtx
         SkinTables& operator=(const SkinTables&) = delete;
 
         /// Takes in what the scene says arrived: the bind poses of the deforming meshes, the rigs
-        /// and the morphs. **With nothing in flight**, which the caller guarantees.
+        /// and the morphs.
+        ///
+        /// **Safe with frames in flight.** A table this grows is remade by `growTo`, which buries
+        /// the buffer it displaced — so a dispatch already recorded keeps reading the address it was
+        /// handed — and what is written into a table that stayed is a run the arrival was just
+        /// given. `CI/check_rtx_validation.sh` is what says so.
         void extend(const SceneDesc& scene, Graveyard& graveyard);
 
         /// Writes `mesh`'s rows into `slot`'s copy and returns where they landed, for the dispatch
