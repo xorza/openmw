@@ -40,7 +40,7 @@ namespace Rtx
             // where a run goes is best fit over a free list, and reimplementing it here to ask
             // whether it would fit is two answers to one question; a run given back at the end
             // shrinks the reach it just extended.
-            const Span run = block.mRuns.allocate(units);
+            const Run run = block.mRuns.allocate(units);
             if (block.mRuns.getEnd() <= block.mUnits)
                 return StructureRoom{ static_cast<std::uint32_t>(at), run };
 

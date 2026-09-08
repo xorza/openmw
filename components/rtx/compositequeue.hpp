@@ -15,9 +15,9 @@
 #include <osg/Image>
 #include <osg/ref_ptr>
 
+#include "run.hpp"
 #include "scenedesc.hpp"
 #include "shadingcache.hpp"
-#include "spanallocator.hpp"
 #include "terraincomposite.hpp"
 
 namespace Resource
@@ -129,8 +129,7 @@ namespace Rtx
         struct Asked
         {
             Index mMaterial = sNoIndex;
-            Index mLayerOffset = 0;
-            Index mLayerCount = 0;
+            Run mLayers;
 
             bool operator==(const Asked& other) const = default;
         };
@@ -154,7 +153,7 @@ namespace Rtx
             /// Every layer's weights end to end, and where each layer's run sits in them — a count
             /// of nought for a layer that covers the chunk.
             std::vector<float> mMasks;
-            std::vector<Span> mMaskRuns;
+            std::vector<Run> mMaskRuns;
 
             /// Empties the four without giving their room back, so a request taken off `mSpare`
             /// starts empty and keeps the buffers the last chunk grew.

@@ -400,7 +400,7 @@ namespace Rtx::Testing
             ASSERT_EQ(mScene.getMeshes().size(), 1u);
             EXPECT_TRUE(mScene.getMeshes()[0].mShape.mSheet);
             EXPECT_EQ(mScene.getMeshes()[0].getTriangleCount(), 2u) << "the back is gone";
-            EXPECT_EQ(mScene.getMeshes()[0].mVertexCount, 8u) << "its vertices stay; nothing points at them";
+            EXPECT_EQ(mScene.getMeshes()[0].mVertices.mCount, 8u) << "its vertices stay; nothing points at them";
 
             // A plain quad is a quad: nothing paired, nothing dropped, not a sheet.
             osg::ref_ptr<osg::Geometry> quad = makeQuad();
@@ -755,16 +755,15 @@ namespace Rtx::Testing
             ASSERT_EQ(mScene.getMaterials().size(), 1u);
             const Material& material = mScene.getMaterials()[0];
             ASSERT_EQ(material.mKind, MaterialKind::Terrain);
-            ASSERT_EQ(material.mLayerCount, 2u);
+            ASSERT_EQ(material.mLayers.mCount, 2u);
 
-            const std::span<const MaterialLayer> layers
-                = mScene.getLayers().subspan(material.mLayerOffset, material.mLayerCount);
+            const std::span<const MaterialLayer> layers = material.mLayers.in(mScene.getLayers());
 
             const auto readsAs = [&](const MaterialLayer& layer, const osg::Image& image) {
                 ASSERT_EQ(layer.mMaskWidth, 16u);
                 ASSERT_EQ(layer.mMaskHeight, 16u);
 
-                const std::span<const float> weights = mScene.getMasks().subspan(layer.mMaskOffset, 16u * 16u);
+                const std::span<const float> weights = layer.mMask.in(mScene.getMasks());
                 for (int row = 0; row < 16; ++row)
                     for (int column = 0; column < 16; ++column)
                         ASSERT_EQ(weights[static_cast<std::size_t>(row) * 16 + column], image.getColor(column, row).a())
@@ -776,7 +775,7 @@ namespace Rtx::Testing
 
             // And the two ends of the range by hand, which is the one claim `getColor` cannot be
             // asked to make about itself: an empty texel is no weight and a full one is all of it.
-            const std::span<const float> game = mScene.getMasks().subspan(layers[0].mMaskOffset, 16u * 16u);
+            const std::span<const float> game = layers[0].mMask.in(mScene.getMasks());
             EXPECT_EQ(game.front(), 0.0f);
             EXPECT_EQ(game.back(), 1.0f);
         }

@@ -8,7 +8,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <components/rtx/memoryreport.hpp>
-#include <components/rtx/spanallocator.hpp>
+#include <components/rtx/runallocator.hpp>
 
 #include "owned.hpp"
 
@@ -84,21 +84,21 @@ namespace Rtx
     private:
         friend class MemoryAllocator;
 
-        DeviceMemory(MemoryAllocator& owner, std::uint32_t block, Span run, VkDeviceMemory handle, VkDeviceSize offset,
+        DeviceMemory(MemoryAllocator& owner, std::uint32_t block, Run run, VkDeviceMemory handle, VkDeviceSize offset,
             void* mapped);
 
         MemoryAllocator* mOwner = nullptr;
         VkDeviceMemory mHandle = VK_NULL_HANDLE;
         VkDeviceSize mOffset = 0;
         void* mMapped = nullptr;
-        Span mRun;
+        Run mRun;
         std::uint32_t mBlock = 0;
     };
 
     /// Every `vkAllocateMemory` the renderer holds, and the ranges of them nothing is using.
     ///
     /// **The same shape as `StructureStorage`, over device memory rather than over one buffer.** A
-    /// block is made once and never moved or freed, a `SpanAllocator` says where inside it a
+    /// block is made once and never moved or freed, a `RunAllocator` says where inside it a
     /// resource goes, and a range given back is merged with what it touches — so a cell that leaves
     /// hands its textures' memory to the cell that arrives without another call into the driver.
     ///
@@ -169,7 +169,7 @@ namespace Rtx
         {
             Owned<VkDeviceMemory, vkFreeMemory> mHandle;
             void* mMapped = nullptr;
-            SpanAllocator mRuns;
+            RunAllocator mRuns;
             std::uint32_t mPages = 0;
             std::uint32_t mPool = 0;
         };
@@ -181,7 +181,7 @@ namespace Rtx
         VkDeviceSize blockBytes(std::uint32_t type, std::uint32_t held) const;
 
         /// `run` in block `at`, as the range a resource of `alignment` is bound in.
-        DeviceMemory place(std::uint32_t at, Span run, VkDeviceSize alignment);
+        DeviceMemory place(std::uint32_t at, Run run, VkDeviceSize alignment);
 
         /// Gives a range back, and hands the block behind it to the device where that was the last
         /// range in it.
@@ -192,7 +192,7 @@ namespace Rtx
         /// emptied and refilled would otherwise free and allocate on alternate frames.
         ///
         /// Called by `DeviceMemory` and by nothing else.
-        void give(std::uint32_t block, Span run);
+        void give(std::uint32_t block, Run run);
 
         /// Held by everything that touches the list below.
         mutable std::mutex mLock;

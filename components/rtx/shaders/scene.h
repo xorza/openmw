@@ -67,7 +67,7 @@ namespace Rtx::Shaders
     /// **Bounded below by the largest run one mesh can ask for**, because a run may not straddle a
     /// block. A terrain chunk at full detail is a 65×65 grid and Morrowind's models are far smaller,
     /// so this leaves four orders of magnitude of headroom; what it costs is the tail of a block too
-    /// short for the next run, which `Rtx::SpanAllocator` hands out again like any other hole. Three
+    /// short for the next run, which `Rtx::RunAllocator` hands out again like any other hole. Three
     /// megabytes of positions a block.
     const uint VERTEX_BLOCK = 256u * 1024u;
 

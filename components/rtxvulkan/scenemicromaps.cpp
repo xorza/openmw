@@ -201,7 +201,7 @@ namespace Rtx
                     + "," + std::to_string(rewritten.mTransform.w()) + ", animated " + std::to_string(now.mAnimated)
                     + ", kind " + std::to_string(static_cast<int>(now.mKind)) + ", the mesh wears "
                     + std::to_string(scene.getMeshes()[mesh].mMaterial) + " with "
-                    + std::to_string(scene.getMeshes()[mesh].mVertexCount) + " vertices");
+                    + std::to_string(scene.getMeshes()[mesh].mVertices.mCount) + " vertices");
         }
     }
 
@@ -230,7 +230,7 @@ namespace Rtx
             drop(slot, graveyard);
 
             const MeshRange& mesh = ranges[slot];
-            if (mesh.mVertexCount == 0 || mesh.mMaterial == sNoIndex)
+            if (mesh.mVertices.mCount == 0 || mesh.mMaterial == sNoIndex)
                 continue;
 
             const Material& material = materials[mesh.mMaterial];
@@ -261,10 +261,10 @@ namespace Rtx
             std::uint32_t bytes = 0;
             for (std::uint32_t triangle = 0; triangle < triangles; ++triangle)
             {
-                const std::uint32_t* corner = &indices[mesh.mIndexOffset + std::size_t{ triangle } * 3];
-                const osg::Vec2f a = onSheet(texCoords[mesh.mVertexOffset + corner[0]], material.mTextureTransform);
-                const osg::Vec2f b = onSheet(texCoords[mesh.mVertexOffset + corner[1]], material.mTextureTransform);
-                const osg::Vec2f c = onSheet(texCoords[mesh.mVertexOffset + corner[2]], material.mTextureTransform);
+                const std::uint32_t* corner = &indices[mesh.mIndices.mOffset + std::size_t{ triangle } * 3];
+                const osg::Vec2f a = onSheet(texCoords[mesh.mVertices.mOffset + corner[0]], material.mTextureTransform);
+                const osg::Vec2f b = onSheet(texCoords[mesh.mVertices.mOffset + corner[1]], material.mTextureTransform);
+                const osg::Vec2f c = onSheet(texCoords[mesh.mVertices.mOffset + corner[2]], material.mTextureTransform);
 
                 const float doubled = std::abs((b.x() - a.x()) * (c.y() - a.y()) - (c.x() - a.x()) * (b.y() - a.y()));
                 const std::uint32_t level = levelFor(0.5f * doubled * texelsOnSheet);

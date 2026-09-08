@@ -54,11 +54,11 @@ namespace Rtx
         forEachTexture(material, [this](const Index texture) { mTextures.drop(texture); });
     }
 
-    Index MaterialTable::addMask(std::span<const float> weights)
+    Run MaterialTable::addMask(std::span<const float> weights)
     {
         assert(!weights.empty());
 
-        const Span run = mMaskRuns.allocate(static_cast<std::uint32_t>(weights.size()));
+        const Run run = mMaskRuns.allocate(static_cast<std::uint32_t>(weights.size()));
 
         // Grown and never shrunk: a hole at the end gives its room back to the allocator, and the
         // next chunk to arrive lands in it rather than in a table that had to be resized twice.
@@ -67,14 +67,14 @@ namespace Rtx
 
         std::copy(weights.begin(), weights.end(), mMasks.begin() + run.mOffset);
         mArrivedMasks.push_back(run);
-        return run.mOffset;
+        return run;
     }
 
-    Span MaterialTable::addLayers(std::span<const MaterialLayer> layers)
+    Run MaterialTable::addLayers(std::span<const MaterialLayer> layers)
     {
         assert(!layers.empty());
 
-        const Span run = mLayerRuns.allocate(static_cast<std::uint32_t>(layers.size()));
+        const Run run = mLayerRuns.allocate(static_cast<std::uint32_t>(layers.size()));
 
         if (mLayers.size() < mLayerRuns.getEnd())
             mLayers.resize(mLayerRuns.getEnd());
@@ -107,15 +107,11 @@ namespace Rtx
             // a terrain chunk, so without this what accumulates is a blend map per chunk walked
             // past; the runs are variable length, which is why they are given back to an allocator
             // rather than to a list of slots.
-            for (Index at = 0; at < going.mLayerCount; ++at)
-            {
-                const MaterialLayer& layer = mLayers[going.mLayerOffset + at];
-                mMaskRuns.release(Span{ .mOffset = layer.mMaskOffset,
-                    .mCount = static_cast<std::uint32_t>(layer.mMaskWidth) * layer.mMaskHeight });
-            }
+            for (const MaterialLayer& layer : going.mLayers.in(getLayers()))
+                mMaskRuns.release(layer.mMask);
 
-            if (going.mLayerCount > 0)
-                mLayerRuns.release(Span{ .mOffset = going.mLayerOffset, .mCount = going.mLayerCount });
+            if (!going.mLayers.empty())
+                mLayerRuns.release(going.mLayers);
 
             mRows[index] = Material{};
             freeSlot(mFree, index);

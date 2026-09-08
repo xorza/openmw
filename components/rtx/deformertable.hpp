@@ -8,8 +8,8 @@
 
 #include "index.hpp"
 #include "meshrange.hpp"
+#include "runallocator.hpp"
 #include "shaders/skinning.h"
-#include "spanallocator.hpp"
 
 namespace Rtx
 {
@@ -22,30 +22,41 @@ namespace Rtx
     /// sweep and goes with it.
     struct Rig
     {
-        Index mRunOffset = 0;
-        Index mInfluenceOffset = 0;
-        Index mInfluenceCount = 0;
+        /// One run word per vertex this rig skins.
+        Run mRuns;
+
+        /// The influences those runs name.
+        ///
+        /// **Never empty, and that is why the run is kept rather than the count.** An allocator
+        /// hands out no run of nothing, so a mesh whose every vertex follows no bone still holds one
+        /// influence it never reads — and a stored count of nought would have the upload and the
+        /// release disagree with what was taken.
+        Run mInfluences;
 
         /// Rows one pose of this rig takes, which is what every mesh on it is given.
         Index mBoneCount = 0;
 
-        /// Vertices this rig skins, which every mesh on it must have exactly.
-        Index mVertexCount = 0;
-
         /// How many meshes stand on it. Nought is a free slot.
         Index mUses = 0;
+
+        /// Vertices this rig skins, which every mesh on it must have exactly. One run word apiece.
+        Index getVertexCount() const { return mRuns.mCount; }
     };
 
     /// What morphs one base: every target's offsets laid end to end, target by target, in the
     /// scene's shared table. A pose is one weight per target.
     struct Morph
     {
-        Index mOffsetsAt = 0;
+        /// Every target's offsets, target by target and `getVertexCount` apiece.
+        Run mOffsets;
+
         Index mTargetCount = 0;
-        Index mVertexCount = 0;
 
         /// How many meshes stand on it. Nought is a free slot.
         Index mUses = 0;
+
+        /// Vertices this morph moves, which every mesh on it must have exactly.
+        Index getVertexCount() const { return mTargetCount > 0 ? mOffsets.mCount / mTargetCount : 0; }
     };
 
     /// What poses the meshes that deform: the rigs, the morphs, and the pose each mesh on one holds.
@@ -120,11 +131,11 @@ namespace Rtx
         /// The deforming meshes' bind poses and their bone rows and weights, and the rigs' and the
         /// morphs' own runs. Unblocked: a backend reaches each run by an address it is handed per
         /// dispatch, so nothing here has to keep an address across a growth.
-        SpanAllocator mBindRuns;
-        SpanAllocator mBoneRuns;
-        SpanAllocator mWeightRuns;
-        SpanAllocator mRigRuns;
-        SpanAllocator mInfluenceRuns;
-        SpanAllocator mMorphRuns;
+        RunAllocator mBindRuns;
+        RunAllocator mBoneRuns;
+        RunAllocator mWeightRuns;
+        RunAllocator mRigRuns;
+        RunAllocator mInfluenceRuns;
+        RunAllocator mMorphRuns;
     };
 }

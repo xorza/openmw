@@ -13,25 +13,6 @@ of scope. No measurements were taken.
 
 ---
 
-## `Span` exists and no table stores one
-
-`SpanAllocator::allocate` returns a `Span`. Every caller takes it apart at once and stores the two
-halves as separate fields. Every release builds a `Span` again from those fields.
-
-- [ ] **`MeshRange` restates a span four times.** It holds `mVertexOffset`, `mVertexCount`,
-      `mIndexOffset` and `mIndexCount`. Two `Span` members say it.
-
-- [ ] **`Material` stores `mLayerOffset` and `mLayerCount`.** `materialresolver.cpp:222` receives a
-      `Span` from `addLayers` and splits it on the next two lines. `scenedesc.cpp:692` puts it back
-      together to release it.
-
-- [ ] **`Rig`, `Morph`, `MaterialLayer` and `SpriteEmitter` do the same.** `Rig` holds
-      `mRunOffset`, `mInfluenceOffset` and `mInfluenceCount`, and its run length is implied by
-      `mVertexCount`. `MaterialLayer` holds `mMaskOffset` with the grid sides. `SpriteEmitter` holds
-      `mFirst` and `mCount`.
-
----
-
 ## Headers reach for the whole scene description to get one typedef
 
 `index.hpp` exists so that a table can name an `Index` without including the file that includes it.

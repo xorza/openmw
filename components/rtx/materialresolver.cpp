@@ -203,11 +203,11 @@ namespace Rtx
                 const osg::Image& image = *mask->getImage(0);
                 readMask(image, mMaskScratch);
 
-                // The two sides are what `SceneDesc::release` reconstructs the run's length from,
-                // so a mask that is not as long as its own grid leaks the difference.
+                // The two sides are what a shader walks the run with, so a mask shorter than its
+                // own grid is read past its end.
                 assert(mMaskScratch.size() == static_cast<std::size_t>(image.s()) * image.t());
 
-                layer.mMaskOffset = mScene.addMask(mMaskScratch);
+                layer.mMask = mScene.addMask(mMaskScratch);
                 layer.mMaskWidth = static_cast<std::uint16_t>(image.s());
                 layer.mMaskHeight = static_cast<std::uint16_t>(image.t());
                 layer.mMaskTransform = getTextureTransform(*pass, 1);
@@ -219,9 +219,7 @@ namespace Rtx
         if (mLayerScratch.empty())
             return sNoIndex;
 
-        const Span run = mScene.addLayers(mLayerScratch);
-        material.mLayerOffset = run.mOffset;
-        material.mLayerCount = run.mCount;
+        material.mLayers = mScene.addLayers(mLayerScratch);
 
         // **A chunk this wide is a shading question and not only a texturing one.** It covers whole
         // cells and carries every ground type in them, so shading it live costs a mask lookup and a

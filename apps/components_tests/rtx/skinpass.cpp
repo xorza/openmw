@@ -190,10 +190,10 @@ namespace Rtx
             EXPECT_TRUE(poseAndRead(0)) << "four meshes owed and nothing recorded";
 
             const auto positionOf = [&](Index mesh, std::uint32_t vertex) {
-                return readVector(readPositions, scene.getMeshes()[mesh].mVertexOffset + vertex);
+                return readVector(readPositions, scene.getMeshes()[mesh].mVertices.mOffset + vertex);
             };
             const auto normalOf = [&](Index mesh, std::uint32_t vertex) {
-                return readVector(readNormals, scene.getMeshes()[mesh].mVertexOffset + vertex);
+                return readVector(readNormals, scene.getMeshes()[mesh].mVertices.mOffset + vertex);
             };
 
             // One bone at five: every corner five up, and an upward normal left as it was.

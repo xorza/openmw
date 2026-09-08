@@ -55,7 +55,7 @@ namespace Rtx
     }
 
     DeviceMemory::DeviceMemory(
-        MemoryAllocator& owner, std::uint32_t block, Span run, VkDeviceMemory handle, VkDeviceSize offset, void* mapped)
+        MemoryAllocator& owner, std::uint32_t block, Run run, VkDeviceMemory handle, VkDeviceSize offset, void* mapped)
         : mOwner(&owner)
         , mHandle(handle)
         , mOffset(offset)
@@ -76,7 +76,7 @@ namespace Rtx
         , mHandle(std::exchange(other.mHandle, VK_NULL_HANDLE))
         , mOffset(std::exchange(other.mOffset, 0))
         , mMapped(std::exchange(other.mMapped, nullptr))
-        , mRun(std::exchange(other.mRun, Span{}))
+        , mRun(std::exchange(other.mRun, Run{}))
         , mBlock(other.mBlock)
     {
     }
@@ -92,7 +92,7 @@ namespace Rtx
             mHandle = std::exchange(other.mHandle, VK_NULL_HANDLE);
             mOffset = std::exchange(other.mOffset, 0);
             mMapped = std::exchange(other.mMapped, nullptr);
-            mRun = std::exchange(other.mRun, Span{});
+            mRun = std::exchange(other.mRun, Run{});
             mBlock = other.mBlock;
         }
 
@@ -148,7 +148,7 @@ namespace Rtx
         return std::min(ceiling, wanted);
     }
 
-    DeviceMemory MemoryAllocator::place(std::uint32_t at, Span run, VkDeviceSize alignment)
+    DeviceMemory MemoryAllocator::place(std::uint32_t at, Run run, VkDeviceSize alignment)
     {
         const Block& block = mBlocks[at];
         const VkDeviceSize offset = alignUp(VkDeviceSize{ run.mOffset } * sPage, alignment);
@@ -192,7 +192,7 @@ namespace Rtx
             // **Asked for and given back rather than measured first**, which is what
             // `StructureStorage` says of the same allocator: where a run goes is best fit over a
             // free list, and asking whether one would fit is that rule written a second time.
-            const Span run = block.mRuns.allocate(pages);
+            const Run run = block.mRuns.allocate(pages);
             if (block.mRuns.getEnd() <= block.mPages)
                 return place(static_cast<std::uint32_t>(at), run, requirements.alignment);
 
@@ -259,7 +259,7 @@ namespace Rtx
         return place(at, mBlocks[at].mRuns.allocate(pages), requirements.alignment);
     }
 
-    void MemoryAllocator::give(std::uint32_t block, Span run)
+    void MemoryAllocator::give(std::uint32_t block, Run run)
     {
         const std::lock_guard<std::mutex> locked(mLock);
 

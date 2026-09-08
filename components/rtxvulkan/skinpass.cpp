@@ -65,7 +65,7 @@ namespace Rtx
 
             // A slot owed from before it went, or one taken over by a mesh that stands: nothing
             // to pose. Its run in the positions holds what the arrival wrote.
-            if (mesh.mDeform == Deform::None || mesh.mVertexCount == 0)
+            if (mesh.mDeform == Deform::None || mesh.mVertices.empty())
                 return;
 
             if (!recorded)
@@ -74,8 +74,8 @@ namespace Rtx
                 recorded = true;
             }
 
-            const VkDeviceAddress posed = into.addressOf(mesh.mVertexOffset);
-            const VkDeviceAddress shaded = normalsInto.addressOf(mesh.mVertexOffset);
+            const VkDeviceAddress posed = into.addressOf(mesh.mVertices.mOffset);
+            const VkDeviceAddress shaded = normalsInto.addressOf(mesh.mVertices.mOffset);
 
             if (mesh.mDeform == Deform::Rig)
             {
@@ -88,7 +88,7 @@ namespace Rtx
                     .mBones = tables.writeBones(scene, slot, index),
                     .mPositions = posed,
                     .mNormals = shaded,
-                    .mCount = mesh.mVertexCount,
+                    .mCount = mesh.mVertices.mCount,
                     .mPadding = 0,
                 };
 
@@ -108,7 +108,7 @@ namespace Rtx
                     .mOffsets = tables.getMorphOffsets(morph),
                     .mWeights = tables.writeWeights(scene, slot, index),
                     .mPositions = posed,
-                    .mCount = mesh.mVertexCount,
+                    .mCount = mesh.mVertices.mCount,
                     .mTargets = morph.mTargetCount,
                 };
 
@@ -121,7 +121,7 @@ namespace Rtx
                 vkCmdPushConstants(commands, mMorph.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
             }
 
-            vkCmdDispatch(commands, groupsFor(mesh.mVertexCount), 1, 1);
+            vkCmdDispatch(commands, groupsFor(mesh.mVertices.mCount), 1, 1);
         });
 
         if (!recorded)

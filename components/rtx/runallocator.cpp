@@ -1,11 +1,11 @@
-#include "spanallocator.hpp"
+#include "runallocator.hpp"
 
 #include <algorithm>
 #include <cassert>
 
 namespace Rtx
 {
-    Span SpanAllocator::place(const Span& hole, std::uint32_t count) const
+    Run RunAllocator::place(const Run& hole, std::uint32_t count) const
     {
         std::uint32_t at = hole.mOffset;
 
@@ -15,22 +15,22 @@ namespace Rtx
             at = (at / mBlock + 1) * mBlock;
 
         if (at + count > hole.getEnd())
-            return Span{};
+            return Run{};
 
-        return Span{ .mOffset = at, .mCount = count };
+        return Run{ .mOffset = at, .mCount = count };
     }
 
-    Span SpanAllocator::allocate(std::uint32_t count)
+    Run RunAllocator::allocate(std::uint32_t count)
     {
         assert(count > 0);
         assert(mBlock == 0 || count <= mBlock);
 
         auto best = mFree.end();
-        Span taken;
+        Run taken;
 
         for (auto hole = mFree.begin(); hole != mFree.end(); ++hole)
         {
-            const Span here = place(*hole, count);
+            const Run here = place(*hole, count);
             if (here.empty())
                 continue;
 
@@ -49,8 +49,8 @@ namespace Rtx
         {
             // Up to two leftovers, because a run pushed to a boundary leaves the tail of the block
             // it skipped as well as whatever follows it.
-            const Span before{ .mOffset = best->mOffset, .mCount = taken.mOffset - best->mOffset };
-            const Span after{ .mOffset = taken.getEnd(), .mCount = best->getEnd() - taken.getEnd() };
+            const Run before{ .mOffset = best->mOffset, .mCount = taken.mOffset - best->mOffset };
+            const Run after{ .mOffset = taken.getEnd(), .mCount = best->getEnd() - taken.getEnd() };
 
             if (before.empty())
                 best = mFree.erase(best);
@@ -72,15 +72,15 @@ namespace Rtx
             const std::uint32_t boundary = (at / mBlock + 1) * mBlock;
 
             // The tail is a hole and not waste: something shorter will fit in it later.
-            mFree.push_back(Span{ .mOffset = at, .mCount = boundary - at });
+            mFree.push_back(Run{ .mOffset = at, .mCount = boundary - at });
             at = boundary;
         }
 
         mEnd = at + count;
-        return Span{ .mOffset = at, .mCount = count };
+        return Run{ .mOffset = at, .mCount = count };
     }
 
-    void SpanAllocator::release(Span span)
+    void RunAllocator::release(Run span)
     {
         if (span.empty())
             return;
@@ -88,7 +88,7 @@ namespace Rtx
         assert(span.getEnd() <= mEnd);
 
         const auto after = std::lower_bound(mFree.begin(), mFree.end(), span.mOffset,
-            [](const Span& hole, std::uint32_t offset) { return hole.mOffset < offset; });
+            [](const Run& hole, std::uint32_t offset) { return hole.mOffset < offset; });
 
         assert(after == mFree.end() || span.getEnd() <= after->mOffset);
         assert(after == mFree.begin() || (after - 1)->getEnd() <= span.mOffset);
@@ -118,16 +118,16 @@ namespace Rtx
         }
     }
 
-    void SpanAllocator::clear()
+    void RunAllocator::clear()
     {
         mFree.clear();
         mEnd = 0;
     }
 
-    std::uint32_t SpanAllocator::getFree() const
+    std::uint32_t RunAllocator::getFree() const
     {
         std::uint32_t free = 0;
-        for (const Span& hole : mFree)
+        for (const Run& hole : mFree)
             free += hole.mCount;
 
         return free;

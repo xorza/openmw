@@ -12,11 +12,11 @@
 #include "deformertable.hpp"
 #include "index.hpp"
 #include "meshrange.hpp"
+#include "runallocator.hpp"
 #include "shaders/scene.h"
 #include "shapefold.hpp"
 #include "slotchanges.hpp"
 #include "slotset.hpp"
-#include "spanallocator.hpp"
 
 namespace Rtx
 {
@@ -144,8 +144,8 @@ namespace Rtx
         ///
         /// One for the vertices because the position, normal and texture-coordinate buffers are
         /// parallel and a vertex id indexes all three.
-        SpanAllocator mVertexRuns{ sVertexBlock };
-        SpanAllocator mIndexRuns{ sIndexBlock };
+        RunAllocator mVertexRuns{ sVertexBlock };
+        RunAllocator mIndexRuns{ sIndexBlock };
 
         /// How many times a mesh has appeared. `SceneDesc::getStructureRevision` says what it is
         /// read for and why a texture arriving is counted apart from it.

@@ -7,8 +7,8 @@
 
 #include "index.hpp"
 #include "material.hpp"
+#include "runallocator.hpp"
 #include "slotset.hpp"
-#include "spanallocator.hpp"
 #include "texturetable.hpp"
 
 namespace Rtx
@@ -46,18 +46,18 @@ namespace Rtx
         bool set(Index material, const Material& what);
 
         /// Copies `weights` into the shared mask table and returns where they landed.
-        Index addMask(std::span<const float> weights);
+        Run addMask(std::span<const float> weights);
 
         /// Copies a material's layers into the shared layer table and returns where they landed.
-        Span addLayers(std::span<const MaterialLayer> layers);
+        Run addLayers(std::span<const MaterialLayer> layers);
 
         std::span<const Material> getRows() const { return mRows; }
         std::span<const MaterialLayer> getLayers() const { return mLayers; }
         std::span<const float> getMasks() const { return mMasks; }
 
         std::span<const Index> getWritten() const { return mWritten.getSlots(); }
-        std::span<const Span> getArrivedLayers() const { return mArrivedLayers; }
-        std::span<const Span> getArrivedMasks() const { return mArrivedMasks; }
+        std::span<const Run> getArrivedLayers() const { return mArrivedLayers; }
+        std::span<const Run> getArrivedMasks() const { return mArrivedMasks; }
 
         /// Notes every slot a sweep must not free, and says how many distinct ones `keep` named.
         ///
@@ -89,8 +89,8 @@ namespace Rtx
             visit(material.mNormal);
             visit(material.mEmissive);
 
-            for (Index at = 0; at < material.mLayerCount; ++at)
-                visit(mLayers[material.mLayerOffset + at].mDiffuse);
+            for (const MaterialLayer& layer : material.mLayers.in(getLayers()))
+                visit(layer.mDiffuse);
         }
 
         /// Takes and gives back those slots. Only ever called in that pair, and `set` is why the
@@ -119,8 +119,8 @@ namespace Rtx
         SlotSet mWritten;
 
         /// Runs placed since the last `clearArrivals`.
-        std::vector<Span> mArrivedLayers;
-        std::vector<Span> mArrivedMasks;
+        std::vector<Run> mArrivedLayers;
+        std::vector<Run> mArrivedMasks;
 
         /// Where a material's layers and a layer's weights live.
         ///
@@ -128,7 +128,7 @@ namespace Rtx
         /// is one material's worth of room, but a terrain chunk's layer run is as long as the
         /// ground types under it and its masks are as big as the blend maps. A list of slots cannot
         /// give a variable length back.
-        SpanAllocator mLayerRuns;
-        SpanAllocator mMaskRuns;
+        RunAllocator mLayerRuns;
+        RunAllocator mMaskRuns;
     };
 }

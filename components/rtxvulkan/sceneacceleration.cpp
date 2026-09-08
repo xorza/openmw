@@ -66,7 +66,7 @@ namespace Rtx
                                   .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
                                   .vertexData = { .deviceAddress = positions },
                                   .vertexStride = sizeof(osg::Vec3f),
-                                  .maxVertex = mesh.mVertexCount > 0 ? mesh.mVertexCount - 1 : 0,
+                                  .maxVertex = mesh.mVertices.mCount > 0 ? mesh.mVertices.mCount - 1 : 0,
                                   .indexType = VK_INDEX_TYPE_UINT32,
                                   .indexData = { .deviceAddress = indices },
                               } },
@@ -190,21 +190,19 @@ namespace Rtx
         for (const Index mesh : meshes)
         {
             const MeshRange& range = scene.getMeshes()[mesh];
-            if (range.mVertexCount == 0)
+            if (range.mVertices.empty())
                 continue;
 
             // The first copy is what a structure is built from; a mesh that deforms is refitted from
             // whichever copy its frame owns, so its bind pose goes into every one until the pass
             // writes a pose over it.
-            const std::span<const osg::Vec3f> positions
-                = scene.getPositions().subspan(range.mVertexOffset, range.mVertexCount);
-            mPositions.at(0).writeAt(batch, range.mVertexOffset, positions);
+            const std::span<const osg::Vec3f> positions = range.mVertices.in(scene.getPositions());
+            mPositions.at(0).writeAt(batch, range.mVertices.mOffset, positions);
             if (range.mDeform != Deform::None)
                 for (std::uint32_t slot = 1; slot < mSlots; ++slot)
-                    mPositions.at(slot).writeAt(batch, range.mVertexOffset, positions);
+                    mPositions.at(slot).writeAt(batch, range.mVertices.mOffset, positions);
 
-            mIndices.writeAt(
-                batch, range.mIndexOffset, scene.getIndices().subspan(range.mIndexOffset, range.mIndexCount));
+            mIndices.writeAt(batch, range.mIndices.mOffset, range.mIndices.in(scene.getIndices()));
         }
 
         // **What is built out of these was copied a moment ago.** The blocks are device memory, so a
@@ -322,10 +320,10 @@ namespace Rtx
             // that belongs to it and addresses vertex zero as its own first vertex. The addresses
             // are guarded here as well: a freed slot's run is nothing, and `addressOf` would name
             // where it used to be.
-            mBuild.mGeometries[at]
-                = describeTriangles(mesh, mesh.mVertexCount > 0 ? mPositions.at(0).addressOf(mesh.mVertexOffset) : 0,
-                    mesh.mIndexCount > 0 ? mIndices.addressOf(mesh.mIndexOffset) : 0,
-                    mMicromapped[slot] != 0 ? &mBuild.mMicromaps[at] : nullptr);
+            mBuild.mGeometries[at] = describeTriangles(mesh,
+                !mesh.mVertices.empty() ? mPositions.at(0).addressOf(mesh.mVertices.mOffset) : 0,
+                !mesh.mIndices.empty() ? mIndices.addressOf(mesh.mIndices.mOffset) : 0,
+                mMicromapped[slot] != 0 ? &mBuild.mMicromaps[at] : nullptr);
 
             // **Only a mesh that deforms is built to be refitted.** The flag costs a structure its
             // tightness and the trace that reads it a little; a few dozen actors pay it and the
@@ -500,8 +498,8 @@ namespace Rtx
             if (mMicromapped[index] != 0)
                 mRefit.mMicromaps[i] = micromaps.describe(index);
 
-            mRefit.mGeometries[i] = describeTriangles(mesh, positions.addressOf(mesh.mVertexOffset),
-                mIndices.addressOf(mesh.mIndexOffset), mMicromapped[index] != 0 ? &mRefit.mMicromaps[i] : nullptr);
+            mRefit.mGeometries[i] = describeTriangles(mesh, positions.addressOf(mesh.mVertices.mOffset),
+                mIndices.addressOf(mesh.mIndices.mOffset), mMicromapped[index] != 0 ? &mRefit.mMicromaps[i] : nullptr);
 
             mRefit.mRanges[i] = VkAccelerationStructureBuildRangeInfoKHR{ .primitiveCount = mesh.getTriangleCount() };
             mRefit.mRangePointers.push_back(&mRefit.mRanges[i]);

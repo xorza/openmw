@@ -39,8 +39,8 @@ namespace Rtx
                 // One where the surface is all there, so traversal branches on a number rather than
                 // on a mode it was never sent.
                 .mOpacity = material.isTranslucent() ? material.mDiffuseColour.a() : 1.0f,
-                .mLayerOffset = material.mLayerOffset,
-                .mLayerCount = material.mLayerCount,
+                .mLayerOffset = material.mLayers.mOffset,
+                .mLayerCount = material.mLayers.mCount,
                 .mEmissive = material.mEmissive,
                 .mDiffuseColour
                 = osg::Vec3f(material.mDiffuseColour.r(), material.mDiffuseColour.g(), material.mDiffuseColour.b()),
@@ -78,8 +78,8 @@ namespace Rtx
             return Shaders::GpuEmitter{
                 .mCentre = emitter.mCentre,
                 .mReach = emitter.mReach,
-                .mFirst = emitter.mFirst,
-                .mCount = emitter.mCount,
+                .mFirst = emitter.mSprites.mOffset,
+                .mCount = emitter.mSprites.mCount,
                 .mTexture = emitter.mTexture,
                 .mAdditive = emitter.mAdditive ? 1u : 0u,
                 .mWidth = emitter.mWidth,
@@ -91,7 +91,7 @@ namespace Rtx
         {
             return Shaders::GpuLayer{
                 .mDiffuse = layer.mDiffuse,
-                .mMaskOffset = layer.mMaskOffset,
+                .mMaskOffset = layer.mMask.mOffset,
                 .mMaskWidth = layer.mMaskWidth,
                 .mMaskHeight = layer.mMaskHeight,
                 .mDiffuseTransform = layer.mDiffuseTransform,
@@ -188,16 +188,14 @@ namespace Rtx
         for (const Index mesh : meshes)
         {
             const MeshRange& range = scene.getMeshes()[mesh];
-            if (range.mVertexCount == 0)
+            if (range.mVertices.empty())
                 continue;
 
-            const std::span<const osg::Vec3f> normals
-                = scene.getNormals().subspan(range.mVertexOffset, range.mVertexCount);
+            const std::span<const osg::Vec3f> normals = range.mVertices.in(scene.getNormals());
             for (std::uint32_t slot = 0; slot < mSlots; ++slot)
-                mNormalTable.at(slot).writeAt(batch, range.mVertexOffset, normals);
+                mNormalTable.at(slot).writeAt(batch, range.mVertices.mOffset, normals);
 
-            mTexCoords.writeAt(
-                batch, range.mVertexOffset, scene.getTexCoords().subspan(range.mVertexOffset, range.mVertexCount));
+            mTexCoords.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.getTexCoords()));
         }
 
         // **What is built out of these was copied a moment ago.** The blocks are device memory, so a
@@ -213,8 +211,8 @@ namespace Rtx
         mMeshScratch.reserve(scene.getMeshes().size());
         for (const MeshRange& mesh : scene.getMeshes())
             mMeshScratch.push_back(Shaders::GpuMesh{
-                .mVertexOffset = mesh.mVertexOffset,
-                .mIndexOffset = mesh.mIndexOffset,
+                .mVertexOffset = mesh.mVertices.mOffset,
+                .mIndexOffset = mesh.mIndices.mOffset,
                 .mShape
                 = (mesh.mShape.mSheet ? Shaders::MESH_SHEET : 0u) | (mesh.mShape.mClosed ? Shaders::MESH_CLOSED : 0u),
             });
@@ -336,11 +334,11 @@ namespace Rtx
             {
                 // Each run as the chunk placed it: converted into the scratch and written at the
                 // run's own offset, so a table of a thousand layers pays for the five that arrived.
-                for (const Span run : scene.getArrivedLayers())
+                for (const Run run : scene.getArrivedLayers())
                 {
                     mLayerScratch.clear();
                     mLayerScratch.reserve(run.mCount);
-                    for (const MaterialLayer& layer : layers.subspan(run.mOffset, run.mCount))
+                    for (const MaterialLayer& layer : run.in(layers))
                         mLayerScratch.push_back(toGpu(layer));
 
                     copy.mLayers.writeAt(
@@ -352,8 +350,8 @@ namespace Rtx
                     graveyard))
                 copy.mMasks.write(masks.empty() ? std::span<const float>(&noMask, 1) : masks);
             else
-                for (const Span run : scene.getArrivedMasks())
-                    copy.mMasks.writeAt(run.mOffset * sizeof(float), masks.subspan(run.mOffset, run.mCount));
+                for (const Run run : scene.getArrivedMasks())
+                    copy.mMasks.writeAt(run.mOffset * sizeof(float), run.in(masks));
         }
     }
 

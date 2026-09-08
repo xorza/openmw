@@ -114,7 +114,10 @@ namespace Rtx
 
         /// Where `mesh`'s texture coordinates start, for the bake that reads a cutout's mask
         /// through them. One address covers the run: a mesh never straddles a block.
-        VkDeviceAddress getTexCoords(const MeshRange& mesh) const { return mTexCoords.addressOf(mesh.mVertexOffset); }
+        VkDeviceAddress getTexCoords(const MeshRange& mesh) const
+        {
+            return mTexCoords.addressOf(mesh.mVertices.mOffset);
+        }
 
         /// Where every table this owns is, for the frame's block: the twelve of `GpuTables` that are
         /// the scene's, with `slot`'s copy wherever a table has one per frame in flight.

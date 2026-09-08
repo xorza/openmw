@@ -91,6 +91,9 @@ set(RTX_FILES
     reconstruction.hpp
     renderer.hpp
     reorder.hpp
+    run.hpp
+    runallocator.cpp
+    runallocator.hpp
     runlist.hpp
     scenedesc.cpp
     scenedesc.hpp
@@ -111,8 +114,6 @@ set(RTX_FILES
     slotchanges.hpp
     slotset.cpp
     slotset.hpp
-    spanallocator.cpp
-    spanallocator.hpp
     spritelight.cpp
     spritelight.hpp
     spritelistsize.cpp

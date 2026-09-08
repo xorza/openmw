@@ -203,7 +203,7 @@ namespace Rtx
 
         /// Where `mesh`'s indices start, for the bake that reads a cutout's triangles through
         /// them. One address covers the run: a mesh never straddles a block.
-        VkDeviceAddress getIndices(const MeshRange& mesh) const { return mIndices.addressOf(mesh.mIndexOffset); }
+        VkDeviceAddress getIndices(const MeshRange& mesh) const { return mIndices.addressOf(mesh.mIndices.mOffset); }
 
         /// Every mesh slot the constructor was handed, which is what a whole-scene bake and build
         /// walk.

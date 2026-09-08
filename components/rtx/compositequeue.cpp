@@ -54,11 +54,7 @@ namespace Rtx
             if (material.mKind != MaterialKind::Terrain || !material.mFlatten || material.mDiffuse != sNoIndex)
                 continue;
 
-            const Asked wanted{
-                .mMaterial = at,
-                .mLayerOffset = material.mLayerOffset,
-                .mLayerCount = material.mLayerCount,
-            };
+            const Asked wanted{ .mMaterial = at, .mLayers = material.mLayers };
 
             const auto asked
                 = std::find_if(mAsked.begin(), mAsked.end(), [&](const Asked& one) { return one.mMaterial == at; });
@@ -84,8 +80,7 @@ namespace Rtx
                 });
             }
 
-            const std::span<const MaterialLayer> layers
-                = scene.getLayers().subspan(material.mLayerOffset, material.mLayerCount);
+            const std::span<const MaterialLayer> layers = material.mLayers.in(scene.getLayers());
 
             // **Off the spare list where one has come back.** A request is four vectors and a
             // crossing gathers dozens, so building each here and freeing it in `collect` is a
@@ -109,11 +104,10 @@ namespace Rtx
                 // the thread that owns it; the baker reads what the reference keeps alive.
                 request.mImages.push_back(openImage(images, scene.getTextures()[layer.mDiffuse]));
 
-                const std::uint32_t weights = std::uint32_t{ layer.mMaskWidth } * layer.mMaskHeight;
                 request.mMaskRuns.push_back(
-                    Span{ .mOffset = static_cast<std::uint32_t>(request.mMasks.size()), .mCount = weights });
+                    Run{ .mOffset = static_cast<std::uint32_t>(request.mMasks.size()), .mCount = layer.mMask.mCount });
 
-                const std::span<const float> mask = scene.getMasks().subspan(layer.mMaskOffset, weights);
+                const std::span<const float> mask = layer.mMask.in(scene.getMasks());
                 request.mMasks.insert(request.mMasks.end(), mask.begin(), mask.end());
             }
 
@@ -175,10 +169,8 @@ namespace Rtx
             // another's. The layers themselves are compared and not only where they sit, because a
             // run given back is handed out again to the next chunk that fits it.
             const bool wanted = material.mKind == MaterialKind::Terrain && material.mFlatten
-                && material.mDiffuse == sNoIndex && material.mLayerOffset == asked.mLayerOffset
-                && material.mLayerCount == asked.mLayerCount
-                && std::ranges::equal(
-                    request.mLayers, scene.getLayers().subspan(material.mLayerOffset, material.mLayerCount));
+                && material.mDiffuse == sNoIndex && material.mLayers == asked.mLayers
+                && std::ranges::equal(request.mLayers, material.mLayers.in(scene.getLayers()));
 
             if (!wanted)
                 continue;
@@ -271,13 +263,13 @@ namespace Rtx
             }
 
             const MaterialLayer& layer = asked.mLayers[index];
-            const Span mask = asked.mMaskRuns[index];
+            const Run mask = asked.mMaskRuns[index];
 
             mStackScratch.push_back(CompositeLayer{
                 .mDiffuse = *described,
                 .mShading = mPainted.estimate(*described, image->getFileName()).getValues(),
                 .mDiffuseTransform = layer.mDiffuseTransform,
-                .mMask = std::span<const float>(asked.mMasks).subspan(mask.mOffset, mask.mCount),
+                .mMask = mask.in(std::span<const float>(asked.mMasks)),
                 .mMaskWidth = layer.mMaskWidth,
                 .mMaskHeight = layer.mMaskHeight,
                 .mMaskTransform = layer.mMaskTransform,

@@ -150,6 +150,7 @@ if (OPENMW_RTX)
         rtx/probe.cpp
         rtx/reconstruction.cpp
         rtx/requirements.cpp
+        rtx/runallocator.cpp
         rtx/scenedesc.cpp
         rtx/extractor/fixture.hpp
         rtx/extractor/lights.cpp
@@ -165,7 +166,6 @@ if (OPENMW_RTX)
         rtx/skinpass.cpp
         rtx/skybuilder.cpp
         rtx/slottable.cpp
-        rtx/spanallocator.cpp
         rtx/spritebinpass.cpp
         rtx/spritelight.cpp
         rtx/spritelistsize.cpp

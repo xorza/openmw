@@ -175,7 +175,7 @@ namespace Rtx::Testing
             // in place is what lets a cell leave without renumbering every mesh in the world, and
             // renumbering is what made a boundary cost a full rebuild.
             ASSERT_EQ(mScene.getMeshes().size(), 3u);
-            EXPECT_EQ(mScene.getMeshes()[1].mVertexCount, 0u) << "the middle slot should be free";
+            EXPECT_EQ(mScene.getMeshes()[1].mVertices.mCount, 0u) << "the middle slot should be free";
             EXPECT_EQ(mScene.getMeshPositions(2)[0].z(), 7.0f) << "a survivor moved";
 
             mScene.clearPlacement();
@@ -212,7 +212,7 @@ namespace Rtx::Testing
             walk(*more);
 
             EXPECT_EQ(mScene.getMeshes().size(), 3u) << "the free slot was passed over and the table grew";
-            EXPECT_EQ(mScene.getMeshes()[1].mVertexCount, 4u);
+            EXPECT_EQ(mScene.getMeshes()[1].mVertices.mCount, 4u);
         }
 
         /// A cell that unloads takes its creatures with it, and the cell beside it keeps its own.
@@ -323,7 +323,7 @@ namespace Rtx::Testing
 
             ASSERT_EQ(arrived.mMeshesAdded, 2u);
             ASSERT_EQ(mScene.getMeshes().size(), 2u);
-            ASSERT_EQ(mScene.getMeshes()[0].mVertexCount, 4u) << "the actor is the first drawable under the root";
+            ASSERT_EQ(mScene.getMeshes()[0].mVertices.mCount, 4u) << "the actor is the first drawable under the root";
 
             // **The rig re-pointed at a longer mesh, which is the same rig.** Posing six vertices
             // into a run of four is not a wrong pose: the run lives in one shared vertex buffer, so
@@ -353,9 +353,9 @@ namespace Rtx::Testing
             EXPECT_TRUE(went.empty()) << "the sweep erased an entry that was still being reached";
 
             ASSERT_EQ(mScene.getMeshes().size(), 3u);
-            EXPECT_EQ(mScene.getMeshes()[0].mVertexCount, 0u) << "the abandoned slot was left standing";
-            EXPECT_EQ(mScene.getMeshes()[1].mVertexCount, 4u) << "the crate lost its slot";
-            EXPECT_EQ(mScene.getMeshes()[2].mVertexCount, 6u);
+            EXPECT_EQ(mScene.getMeshes()[0].mVertices.mCount, 0u) << "the abandoned slot was left standing";
+            EXPECT_EQ(mScene.getMeshes()[1].mVertices.mCount, 4u) << "the crate lost its slot";
+            EXPECT_EQ(mScene.getMeshes()[2].mVertices.mCount, 6u);
         }
 
         /// Everything under the node the caller calls first person is placed for the eye alone.
@@ -419,7 +419,7 @@ namespace Rtx::Testing
             // renumbered — there is nothing above them here, but the rule is what a cell boundary
             // depends on — and what they held is gone.
             ASSERT_EQ(mScene.getMeshes().size(), 1u);
-            EXPECT_EQ(mScene.getMeshes()[0].mVertexCount, 0u);
+            EXPECT_EQ(mScene.getMeshes()[0].mVertices.mCount, 0u);
             EXPECT_EQ(mScene.getMaterials().size(), 1u);
             EXPECT_EQ(mScene.getMaterials()[0].mDiffuse, Rtx::sNoIndex);
 

@@ -341,7 +341,7 @@ namespace Rtx::Testing
 
             SceneDesc single;
             const Index alone = addWall(single);
-            ASSERT_EQ(single.getMeshes()[alone].mVertexOffset, 0u);
+            ASSERT_EQ(single.getMeshes()[alone].mVertices.mOffset, 0u);
 
             // **One filler that fills both blocks**, because the vertex and index tables are blocked
             // at different sizes and a mesh pushed past one is not thereby past the other.
@@ -361,8 +361,8 @@ namespace Rtx::Testing
             // and 1,048,575 of 1,048,576 indices leaves a tail of one, which six will not fit into.
             // Asserted, because a test whose subject quietly moved back into block zero would pass
             // while testing nothing.
-            ASSERT_EQ(crossed.getMeshes()[beyond].mVertexOffset, SceneDesc::sVertexBlock);
-            ASSERT_EQ(crossed.getMeshes()[beyond].mIndexOffset, SceneDesc::sIndexBlock);
+            ASSERT_EQ(crossed.getMeshes()[beyond].mVertices.mOffset, SceneDesc::sVertexBlock);
+            ASSERT_EQ(crossed.getMeshes()[beyond].mIndices.mOffset, SceneDesc::sIndexBlock);
 
             std::vector<std::uint8_t> alonePixels;
             std::vector<std::uint8_t> crossedPixels;
@@ -600,24 +600,23 @@ namespace Rtx::Testing
                 const std::array layers{
                     MaterialLayer{
                         .mDiffuse = 0,
-                        .mMaskOffset = scene.addMask(firstMask),
+                        .mMask = scene.addMask(firstMask),
                         .mMaskWidth = 2,
                         .mMaskHeight = 1,
                     },
                     MaterialLayer{
                         .mDiffuse = second,
-                        .mMaskOffset = scene.addMask(secondMask),
+                        .mMask = scene.addMask(secondMask),
                         .mMaskWidth = 2,
                         .mMaskHeight = 1,
                         .mDiffuseTransform = secondTransform,
                     },
                 };
-                const Span run = scene.addLayers(layers);
+                const Rtx::Run run = scene.addLayers(layers);
 
                 Material material;
                 material.mKind = MaterialKind::Terrain;
-                material.mLayerOffset = run.mOffset;
-                material.mLayerCount = run.mCount;
+                material.mLayers = run;
 
                 scene.addInstance(MeshInstance{
                     .mTransform = osg::Matrixf::identity(), .mMesh = mesh, .mMaterial = scene.addMaterial(material) });

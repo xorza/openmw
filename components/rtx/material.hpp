@@ -8,6 +8,7 @@
 #include <components/surface/alphamode.hpp>
 
 #include "index.hpp"
+#include "run.hpp"
 
 namespace Rtx
 {
@@ -69,8 +70,7 @@ namespace Rtx
         ///
         /// Empty for everything that is not terrain, which is all but a handful of materials in a
         /// cell — so the layered path costs the rest of them one comparison and no indirection.
-        Index mLayerOffset = 0;
-        Index mLayerCount = 0;
+        Run mLayers;
 
         /// Whether this chunk is wide enough that its stack is worth flattening into one texture.
         ///
@@ -190,11 +190,13 @@ namespace Rtx
         /// The ground texture, which tiles many times across a chunk.
         Index mDiffuse = sNoIndex;
 
-        /// Where this layer's weights begin in the scene's mask table, and the grid they form.
+        /// This layer's weights in the scene's mask table, and the grid they form.
         ///
-        /// A zero-sized grid means the layer covers everything: a chunk of a single ground type is
-        /// given no mask at all, because there is nothing for it to blend against.
-        Index mMaskOffset = 0;
+        /// An empty run means the layer covers everything: a chunk of a single ground type is given
+        /// no mask at all, because there is nothing for it to blend against. The run holds
+        /// `mMaskWidth * mMaskHeight` weights, and it is kept rather than rebuilt from the sides so
+        /// that what is given back is what was taken.
+        Run mMask;
         std::uint16_t mMaskWidth = 0;
         std::uint16_t mMaskHeight = 0;
 

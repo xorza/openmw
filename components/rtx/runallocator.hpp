@@ -4,20 +4,10 @@
 #include <cstdint>
 #include <vector>
 
+#include "run.hpp"
+
 namespace Rtx
 {
-    /// A run inside a buffer: where it starts, and how many elements it holds.
-    struct Span
-    {
-        std::uint32_t mOffset = 0;
-        std::uint32_t mCount = 0;
-
-        std::uint32_t getEnd() const { return mOffset + mCount; }
-        bool empty() const { return mCount == 0; }
-
-        bool operator==(const Span& other) const = default;
-    };
-
     /// Hands out runs inside a buffer whose contents never move.
     ///
     /// **What a table of fixed-size slots cannot do.** Nearly everything the scene holds is a *run*
@@ -31,7 +21,7 @@ namespace Rtx
     /// entries and walking it costs nothing; first fit would spend a cathedral's hole on a crate and
     /// leave the next cathedral to append. Freed runs that touch are merged, which is what turns a
     /// cell's thousands of small releases back into the one large hole it arrived as.
-    class SpanAllocator
+    class RunAllocator
     {
     public:
         /// @param block a boundary no run may straddle, or zero for a buffer with no such rule.
@@ -42,7 +32,7 @@ namespace Rtx
         /// list of allocations that are made once and never moved, so growing costs one more block
         /// and nothing already in it shifts. The price is that a run has to fit inside a block, and
         /// the tail of a block too short for the next run becomes a hole like any other.
-        explicit SpanAllocator(std::uint32_t block = 0)
+        explicit RunAllocator(std::uint32_t block = 0)
             : mBlock(block)
         {
         }
@@ -51,14 +41,14 @@ namespace Rtx
         ///
         /// Taken from the smallest hole that can hold it, and appended past the end when none can.
         /// `count` must be at least one and, where there is a block size, no larger than it.
-        Span allocate(std::uint32_t count);
+        Run allocate(std::uint32_t count);
 
         /// Gives a run back. Merged with whatever it touches, and an empty run is not a run.
         ///
         /// The run must be one `allocate` returned and must not already be free, which is a contract
         /// on the caller rather than something checked: the free list is walked per allocation and
         /// not per release.
-        void release(Span span);
+        void release(Run span);
 
         /// Forgets every run. The buffer behind it is emptied by whoever owns it.
         void clear();
@@ -77,11 +67,11 @@ namespace Rtx
     private:
         /// Where in `hole` a run of `count` can go without straddling a block, or a count of zero
         /// where it cannot go there at all.
-        Span place(const Span& hole, std::uint32_t count) const;
+        Run place(const Run& hole, std::uint32_t count) const;
 
         /// The holes, ordered by offset and never touching one another. Ordered so that a release
         /// can find its neighbours, and disjoint-and-separated so that finding them is enough.
-        std::vector<Span> mFree;
+        std::vector<Run> mFree;
 
         std::uint32_t mEnd = 0;
         std::uint32_t mBlock = 0;

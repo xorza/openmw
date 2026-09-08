@@ -24,8 +24,8 @@ namespace Rtx
         // **A rig with no influence at all still takes a run of one**, because an allocator hands
         // out no run of nothing and a backend addresses the run whether or not it is read: a mesh
         // whose every vertex follows no bone is the zero matrix everywhere, as the rasterizer has it.
-        const Span words = mRigRuns.allocate(static_cast<Index>(runs.size()));
-        const Span shares = mInfluenceRuns.allocate(std::max<Index>(1, static_cast<Index>(influences.size())));
+        const Run words = mRigRuns.allocate(static_cast<Index>(runs.size()));
+        const Run shares = mInfluenceRuns.allocate(std::max<Index>(1, static_cast<Index>(influences.size())));
 
         if (mRuns.size() < mRigRuns.getEnd())
             mRuns.resize(mRigRuns.getEnd());
@@ -37,11 +37,9 @@ namespace Rtx
 
         const Index index = takeSlot(mRigs, mFreeRigs,
             Rig{
-                .mRunOffset = words.mOffset,
-                .mInfluenceOffset = shares.mOffset,
-                .mInfluenceCount = static_cast<Index>(influences.size()),
+                .mRuns = words,
+                .mInfluences = shares,
                 .mBoneCount = boneCount,
-                .mVertexCount = static_cast<Index>(runs.size()),
             });
 
         mArrivedRigs.push_back(index);
@@ -52,7 +50,7 @@ namespace Rtx
     {
         assert(targets > 0 && offsets.size() % targets == 0 && !offsets.empty());
 
-        const Span run = mMorphRuns.allocate(static_cast<Index>(offsets.size()));
+        const Run run = mMorphRuns.allocate(static_cast<Index>(offsets.size()));
         if (mMorphOffsets.size() < mMorphRuns.getEnd())
             mMorphOffsets.resize(mMorphRuns.getEnd());
 
@@ -60,9 +58,8 @@ namespace Rtx
 
         const Index index = takeSlot(mMorphs, mFreeMorphs,
             Morph{
-                .mOffsetsAt = run.mOffset,
+                .mOffsets = run,
                 .mTargetCount = targets,
-                .mVertexCount = static_cast<Index>(offsets.size() / targets),
             });
 
         mArrivedMorphs.push_back(index);
@@ -107,13 +104,13 @@ namespace Rtx
     std::span<const Shaders::GpuBone> DeformerTable::getMeshBones(const MeshRange& range) const
     {
         assert(range.mDeform == Deform::Rig);
-        return std::span(mBones).subspan(range.mPoseOffset, mRigs[range.mDeformer].mBoneCount);
+        return getBones().subspan(range.mPoseOffset, mRigs[range.mDeformer].mBoneCount);
     }
 
     std::span<const float> DeformerTable::getMeshWeights(const MeshRange& range) const
     {
         assert(range.mDeform == Deform::Morph);
-        return std::span(mWeights).subspan(range.mPoseOffset, mMorphs[range.mDeformer].mTargetCount);
+        return getWeights().subspan(range.mPoseOffset, mMorphs[range.mDeformer].mTargetCount);
     }
 
     void DeformerTable::release(MeshRange& range)
@@ -121,7 +118,7 @@ namespace Rtx
         if (range.mDeform == Deform::None)
             return;
 
-        mBindRuns.release(Span{ .mOffset = range.mBindOffset, .mCount = range.mVertexCount });
+        mBindRuns.release(Run{ .mOffset = range.mBindOffset, .mCount = range.mVertices.mCount });
 
         // **The rig or the morph goes with its last mesh**, and its runs with it. Nothing downstream
         // is told: what a backend holds of a rig is data at an offset, read by no frame once no mesh
@@ -129,14 +126,13 @@ namespace Rtx
         if (range.mDeform == Deform::Rig)
         {
             Rig& rig = mRigs[range.mDeformer];
-            mBoneRuns.release(Span{ .mOffset = range.mPoseOffset, .mCount = rig.mBoneCount });
+            mBoneRuns.release(Run{ .mOffset = range.mPoseOffset, .mCount = rig.mBoneCount });
 
             assert(rig.mUses > 0 && "a rig given back more often than it was stood on");
             if (--rig.mUses == 0)
             {
-                mRigRuns.release(Span{ .mOffset = rig.mRunOffset, .mCount = rig.mVertexCount });
-                mInfluenceRuns.release(
-                    Span{ .mOffset = rig.mInfluenceOffset, .mCount = std::max<Index>(1, rig.mInfluenceCount) });
+                mRigRuns.release(rig.mRuns);
+                mInfluenceRuns.release(rig.mInfluences);
                 rig = Rig{};
                 mFreeRigs.push_back(range.mDeformer);
                 std::erase(mArrivedRigs, range.mDeformer);
@@ -145,13 +141,12 @@ namespace Rtx
         else
         {
             Morph& morph = mMorphs[range.mDeformer];
-            mWeightRuns.release(Span{ .mOffset = range.mPoseOffset, .mCount = morph.mTargetCount });
+            mWeightRuns.release(Run{ .mOffset = range.mPoseOffset, .mCount = morph.mTargetCount });
 
             assert(morph.mUses > 0 && "a morph given back more often than it was stood on");
             if (--morph.mUses == 0)
             {
-                mMorphRuns.release(
-                    Span{ .mOffset = morph.mOffsetsAt, .mCount = morph.mTargetCount * morph.mVertexCount });
+                mMorphRuns.release(morph.mOffsets);
                 morph = Morph{};
                 mFreeMorphs.push_back(range.mDeformer);
                 std::erase(mArrivedMorphs, range.mDeformer);
@@ -173,7 +168,7 @@ namespace Rtx
         {
             Rig& rig = mRigs[range.mDeformer];
             ++rig.mUses;
-            range.mBindOffset = mBindRuns.allocate(range.mVertexCount).mOffset;
+            range.mBindOffset = mBindRuns.allocate(range.mVertices.mCount).mOffset;
             range.mPoseOffset = mBoneRuns.allocate(rig.mBoneCount).mOffset;
             if (mBones.size() < mBoneRuns.getEnd())
                 mBones.resize(mBoneRuns.getEnd());
@@ -184,7 +179,7 @@ namespace Rtx
         {
             Morph& morph = mMorphs[range.mDeformer];
             ++morph.mUses;
-            range.mBindOffset = mBindRuns.allocate(range.mVertexCount).mOffset;
+            range.mBindOffset = mBindRuns.allocate(range.mVertices.mCount).mOffset;
             range.mPoseOffset = mWeightRuns.allocate(morph.mTargetCount).mOffset;
             if (mWeights.size() < mWeightRuns.getEnd())
                 mWeights.resize(mWeightRuns.getEnd());

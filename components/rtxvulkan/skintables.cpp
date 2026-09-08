@@ -89,12 +89,12 @@ namespace Rtx
         for (const Index index : whole ? everyBelow(ranges.size(), mEvery) : meshes)
         {
             const MeshRange& mesh = ranges[index];
-            if (mesh.mDeform == Deform::None || mesh.mVertexCount == 0)
+            if (mesh.mDeform == Deform::None || mesh.mVertices.mCount == 0)
                 continue;
 
             const VkDeviceSize at = VkDeviceSize{ mesh.mBindOffset } * sizeof(osg::Vec3f);
             mBindPositions.writeAt(at, scene.getMeshPositions(index));
-            mBindNormals.writeAt(at, scene.getNormals().subspan(mesh.mVertexOffset, mesh.mVertexCount));
+            mBindNormals.writeAt(at, mesh.mVertices.in(scene.getNormals()));
         }
     }
 
@@ -105,13 +105,12 @@ namespace Rtx
         {
             // A freed slot skins nothing and holds no run to write.
             const Rig& rig = table[index];
-            if (rig.mVertexCount == 0)
+            if (rig.mRuns.empty())
                 continue;
 
-            mRuns.writeAt(VkDeviceSize{ rig.mRunOffset } * sizeof(std::uint32_t),
-                scene.getRuns().subspan(rig.mRunOffset, rig.mVertexCount));
-            mInfluences.writeAt(VkDeviceSize{ rig.mInfluenceOffset } * sizeof(Shaders::GpuInfluence),
-                scene.getInfluences().subspan(rig.mInfluenceOffset, rig.mInfluenceCount));
+            mRuns.writeAt(VkDeviceSize{ rig.mRuns.mOffset } * sizeof(std::uint32_t), rig.mRuns.in(scene.getRuns()));
+            mInfluences.writeAt(VkDeviceSize{ rig.mInfluences.mOffset } * sizeof(Shaders::GpuInfluence),
+                rig.mInfluences.in(scene.getInfluences()));
         }
     }
 
@@ -121,11 +120,11 @@ namespace Rtx
         for (const Index index : whole ? everyBelow(table.size(), mEvery) : morphs)
         {
             const Morph& morph = table[index];
-            if (morph.mVertexCount == 0)
+            if (morph.mOffsets.empty())
                 continue;
 
-            mMorphOffsets.writeAt(VkDeviceSize{ morph.mOffsetsAt } * sizeof(osg::Vec3f),
-                scene.getMorphOffsets().subspan(morph.mOffsetsAt, morph.mTargetCount * morph.mVertexCount));
+            mMorphOffsets.writeAt(VkDeviceSize{ morph.mOffsets.mOffset } * sizeof(osg::Vec3f),
+                morph.mOffsets.in(scene.getMorphOffsets()));
         }
     }
 
@@ -165,17 +164,17 @@ namespace Rtx
 
     VkDeviceAddress SkinTables::getRuns(const Rig& rig) const
     {
-        return mRuns.getDeviceAddress() + VkDeviceSize{ rig.mRunOffset } * sizeof(std::uint32_t);
+        return mRuns.getDeviceAddress() + VkDeviceSize{ rig.mRuns.mOffset } * sizeof(std::uint32_t);
     }
 
     VkDeviceAddress SkinTables::getInfluences(const Rig& rig) const
     {
-        return mInfluences.getDeviceAddress() + VkDeviceSize{ rig.mInfluenceOffset } * sizeof(Shaders::GpuInfluence);
+        return mInfluences.getDeviceAddress() + VkDeviceSize{ rig.mInfluences.mOffset } * sizeof(Shaders::GpuInfluence);
     }
 
     VkDeviceAddress SkinTables::getMorphOffsets(const Morph& morph) const
     {
-        return mMorphOffsets.getDeviceAddress() + VkDeviceSize{ morph.mOffsetsAt } * sizeof(osg::Vec3f);
+        return mMorphOffsets.getDeviceAddress() + VkDeviceSize{ morph.mOffsets.mOffset } * sizeof(osg::Vec3f);
     }
 
     VkDeviceSize SkinTables::getBytes() const

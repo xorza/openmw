@@ -86,12 +86,12 @@ namespace Rtx
         mTextures.drop(texture);
     }
 
-    Index SceneDesc::addMask(std::span<const float> weights)
+    Run SceneDesc::addMask(std::span<const float> weights)
     {
         return mMaterialTable.addMask(weights);
     }
 
-    Span SceneDesc::addLayers(std::span<const MaterialLayer> layers)
+    Run SceneDesc::addLayers(std::span<const MaterialLayer> layers)
     {
         return mMaterialTable.addLayers(layers);
     }
@@ -138,8 +138,8 @@ namespace Rtx
         mEmitters.push_back(SpriteEmitter{
             .mCentre = centre,
             .mReach = reach,
-            .mFirst = static_cast<Index>(mSprites.size()),
-            .mCount = static_cast<Index>(sprites.size()),
+            .mSprites
+            = Run{ .mOffset = static_cast<Index>(mSprites.size()), .mCount = static_cast<Index>(sprites.size()) },
             .mTexture = texture,
             .mLighting = lighting,
             .mAdditive = additive,

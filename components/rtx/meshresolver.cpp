@@ -236,7 +236,7 @@ namespace Rtx
                     deformer = morph->second.mIndex;
             }
 
-            if (vertices == range.mVertexCount && read.mDeform == range.mDeform && deformer == range.mDeformer)
+            if (vertices == range.mVertices.mCount && read.mDeform == range.mDeform && deformer == range.mDeformer)
             {
                 ++stats.mMeshesReused;
                 mMeshes.stamp(known);
@@ -326,8 +326,8 @@ namespace Rtx
 
         if (deformer != sNoIndex)
         {
-            const Index skinned = read.mDeform == Deform::Rig ? mScene.getRigs()[deformer].mVertexCount
-                                                              : mScene.getMorphs()[deformer].mVertexCount;
+            const Index skinned = read.mDeform == Deform::Rig ? mScene.getRigs()[deformer].getVertexCount()
+                                                              : mScene.getMorphs()[deformer].getVertexCount();
             if (skinned != arrays.mPositions.size())
                 throw Error("a deforming mesh of " + std::to_string(arrays.mPositions.size())
                     + " vertices on a rig or morph of " + std::to_string(skinned));
@@ -366,7 +366,7 @@ namespace Rtx
         // holds describes a mesh of another length; the rig it named stays for the meshes still on
         // it and goes with the last of them, and this drawable gets one of its own.
         const auto [known, arrived] = mRigs.reach(skin);
-        if (!arrived && mScene.getRigs()[known->second.mIndex].mVertexCount == vertices)
+        if (!arrived && mScene.getRigs()[known->second.mIndex].getVertexCount() == vertices)
             return known->second.mIndex;
 
         // **The groups flattened into a run per vertex.** `RigGeometry::setInfluences` gathers the
@@ -417,7 +417,7 @@ namespace Rtx
         if (!arrived)
         {
             const Morph& held = mScene.getMorphs()[known->second.mIndex];
-            if (held.mTargetCount == targets.size() && held.mVertexCount == vertices)
+            if (held.mTargetCount == targets.size() && held.getVertexCount() == vertices)
                 return known->second.mIndex;
         }
 

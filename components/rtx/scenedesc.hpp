@@ -22,9 +22,9 @@
 #include "meshrange.hpp"
 #include "meshtable.hpp"
 #include "placementtable.hpp"
+#include "runallocator.hpp"
 #include "shaders/skinning.h"
 #include "shapefold.hpp"
-#include "spanallocator.hpp"
 #include "texturetable.hpp"
 
 namespace Rtx
@@ -130,8 +130,8 @@ namespace Rtx
         /// Far enough from `mCentre` to contain every sprite in the range, rim included.
         float mReach = 0.0f;
 
-        Index mFirst = 0;
-        Index mCount = 0;
+        /// Where they sit in `getSprites`, laid end to end as the emitter placed them.
+        Run mSprites;
 
         /// The sprite texture, or `sNoIndex` where the emitter had none — which draws nothing, since
         /// a particle's whole silhouette is in that texture's alpha.
@@ -262,18 +262,16 @@ namespace Rtx
         /// texels and a whole cell's worth is tens of kilobytes, which is not worth requiring
         /// 8-bit storage of the device for.
         ///
-        /// How long the run is is not stored beside the offset: a mask is a grid, and the layer
-        /// that names this carries the two sides of it. `release` reconstructs the length from
-        /// them, so a caller whose weights are not `mMaskWidth * mMaskHeight` long leaks the
-        /// difference.
-        Index addMask(std::span<const float> weights);
+        /// The whole run comes back, so a layer gives back exactly what it took rather than what
+        /// its two sides multiply to.
+        Run addMask(std::span<const float> weights);
 
         /// Copies a material's layers into the shared layer table and returns where they landed.
         ///
         /// **All of them at once, because a run is allocated as a run.** They were appended one at
         /// a time when the table only ever grew and a material took whatever length the table
         /// happened to be at; a run that can be given back has to be asked for by length.
-        Span addLayers(std::span<const MaterialLayer> layers);
+        Run addLayers(std::span<const MaterialLayer> layers);
 
         void addLight(const Light& light);
 
@@ -576,8 +574,8 @@ namespace Rtx
         /// arriving writes its own layers and its own weights, and the rest of both tables is what
         /// it was. A run the sweep gave back is not named here either — nothing reads it until the
         /// next chunk lands in it, and that chunk's arrival is what names it.
-        std::span<const Span> getArrivedLayers() const { return mMaterialTable.getArrivedLayers(); }
-        std::span<const Span> getArrivedMasks() const { return mMaterialTable.getArrivedMasks(); }
+        std::span<const Run> getArrivedLayers() const { return mMaterialTable.getArrivedLayers(); }
+        std::span<const Run> getArrivedMasks() const { return mMaterialTable.getArrivedMasks(); }
 
         std::span<const Sprite> getSprites() const { return mSprites; }
         std::span<const SpriteEmitter> getEmitters() const { return mEmitters; }

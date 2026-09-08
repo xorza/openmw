@@ -5,6 +5,7 @@
 #include <osg/BoundingBox>
 
 #include "index.hpp"
+#include "run.hpp"
 #include "shapefold.hpp"
 
 namespace Rtx
@@ -29,10 +30,17 @@ namespace Rtx
     /// buffer anyway, so a per-mesh vector would only have to be flattened again on the way up.
     struct MeshRange
     {
-        Index mVertexOffset = 0;
-        Index mVertexCount = 0;
-        Index mIndexOffset = 0;
-        Index mIndexCount = 0;
+        /// Where this mesh's vertices sit, which the positions, the normals and the texture
+        /// coordinates are all indexed by.
+        ///
+        /// **The run the allocator handed out, kept as it was handed out.** It is given back exactly
+        /// as it stands, so taking it apart into an offset and a count only means building it again
+        /// to release it.
+        Run mVertices;
+
+        /// Where its indices sit. They are mesh-local, so a triangle's vertex is
+        /// `mVertices.mOffset` plus what the index says.
+        Run mIndices;
 
         /// What the fold found this mesh's triangles to be. `Rtx::FoldedShape` says what each half
         /// means; the scene keeps them and draws nothing from them.
@@ -59,9 +67,9 @@ namespace Rtx
         Index mMaterial = sNoIndex;
 
         /// Where this mesh's bind pose sits among the deforming meshes' vertices, which is what a
-        /// backend's bind table is indexed by. **A run of `mVertexCount` beside the mesh's own**,
-        /// allocated only for a mesh that deforms: the shared vertex buffers hold every mesh, and a
-        /// bind table that mirrored them would hold megabytes of the cell for a few bodies.
+        /// backend's bind table is indexed by. **A run as long as `mVertices` beside the mesh's
+        /// own**, allocated only for a mesh that deforms: the shared vertex buffers hold every mesh,
+        /// and a bind table that mirrored them would hold megabytes of the cell for a few bodies.
         Index mBindOffset = 0;
 
         /// Where this mesh's bone rows or morph weights start in `getBones` or `getWeights`. The
@@ -83,6 +91,6 @@ namespace Rtx
         /// eight transforms per instance rather than a walk over every vertex in the table.
         osg::BoundingBoxf mBounds;
 
-        Index getTriangleCount() const { return mIndexCount / 3; }
+        Index getTriangleCount() const { return mIndices.mCount / 3; }
     };
 }

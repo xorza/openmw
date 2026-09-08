@@ -21,9 +21,9 @@ namespace Rtx
     namespace
     {
         /// The runs a list names, as a vector a matcher can compare.
-        std::vector<Span> runs(std::span<const Span> spans)
+        std::vector<Rtx::Run> runs(std::span<const Rtx::Run> spans)
         {
-            return std::vector<Span>(spans.begin(), spans.end());
+            return std::vector<Rtx::Run>(spans.begin(), spans.end());
         }
 
         /// What a news list names, sorted, so a set can be compared without depending on the order
@@ -98,8 +98,8 @@ namespace Rtx
             // where the first left off.
             EXPECT_EQ(scene.getPositions().size(), 8u);
             EXPECT_EQ(scene.getIndices().size(), 12u);
-            EXPECT_EQ(scene.getMeshes()[1].mVertexOffset, 4u);
-            EXPECT_EQ(scene.getMeshes()[1].mIndexOffset, 6u);
+            EXPECT_EQ(scene.getMeshes()[1].mVertices.mOffset, 4u);
+            EXPECT_EQ(scene.getMeshes()[1].mIndices.mOffset, 6u);
 
             EXPECT_EQ(scene.getMeshPositions(second)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
             EXPECT_EQ(scene.getMeshIndices(second)[5], 3u);
@@ -134,7 +134,7 @@ namespace Rtx
             ASSERT_EQ(scene.getTexCoords().size(), scene.getPositions().size());
 
             const MeshRange& range = scene.getMeshes()[withNormals];
-            EXPECT_EQ(scene.getNormals()[range.mVertexOffset], osg::Vec3f(0.0f, 0.0f, 1.0f));
+            EXPECT_EQ(scene.getNormals()[range.mVertices.mOffset], osg::Vec3f(0.0f, 0.0f, 1.0f));
             EXPECT_EQ(scene.getNormals()[0], osg::Vec3f(0.0f, 0.0f, 0.0f));
         }
 
@@ -368,7 +368,7 @@ namespace Rtx
 
             // The rig's tables: four run words and one influence, and one bone per mesh on it.
             ASSERT_EQ(mScene.getRigs().size(), 1u);
-            EXPECT_EQ(mScene.getRigs()[mRig].mVertexCount, 4u);
+            EXPECT_EQ(mScene.getRigs()[mRig].getVertexCount(), 4u);
             EXPECT_EQ(mScene.getRigs()[mRig].mBoneCount, 1u);
             EXPECT_EQ(mScene.getRigs()[mRig].mUses, 2u);
             EXPECT_EQ(mScene.getRuns().size(), 4u);
@@ -404,7 +404,7 @@ namespace Rtx
 
             // The bind pose stays where it arrived, and so does everything beside it.
             EXPECT_EQ(mScene.getPositions().size(), 12u);
-            EXPECT_EQ(mScene.getMeshes()[mMoving].mVertexOffset, 4u);
+            EXPECT_EQ(mScene.getMeshes()[mMoving].mVertices.mOffset, 4u);
             EXPECT_EQ(mScene.getMeshPositions(mMoving)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
             EXPECT_EQ(mScene.getMeshPositions(mStill)[2], osg::Vec3f(1.0f, 1.0f, 0.0f));
             EXPECT_EQ(mScene.getMeshBones(mOther)[0], Shaders::GpuBone{}) << "the neighbour's rows are untouched";
@@ -438,7 +438,7 @@ namespace Rtx
             const std::array keepTwo{ mStill, mOther };
             ASSERT_TRUE(mScene.release(keepTwo, {}));
             EXPECT_EQ(mScene.getRigs()[mRig].mUses, 1u);
-            EXPECT_EQ(mScene.getRigs()[mRig].mVertexCount, 4u) << "a rig with a mesh on it stays";
+            EXPECT_EQ(mScene.getRigs()[mRig].getVertexCount(), 4u) << "a rig with a mesh on it stays";
             EXPECT_EQ(std::vector<Index>(mScene.getDeformed().begin(), mScene.getDeformed().end()),
                 (std::vector<Index>{ mOther }))
                 << "the freed slot left the list and the survivor stayed where it was named";
@@ -446,7 +446,7 @@ namespace Rtx
             const std::array keepOne{ mStill };
             ASSERT_TRUE(mScene.release(keepOne, {}));
             EXPECT_EQ(mScene.getRigs()[mRig].mUses, 0u);
-            EXPECT_EQ(mScene.getRigs()[mRig].mVertexCount, 0u) << "a rig nothing stands on is free";
+            EXPECT_EQ(mScene.getRigs()[mRig].getVertexCount(), 0u) << "a rig nothing stands on is free";
             EXPECT_TRUE(mScene.getArrivedRigs().empty());
             EXPECT_TRUE(mScene.getDeformed().empty()) << "a slot given back still named a structure to refit";
 
@@ -484,7 +484,7 @@ namespace Rtx
             const Index morph = scene.addMorph(offsets, 2);
             ASSERT_EQ(scene.getMorphs().size(), 1u);
             EXPECT_EQ(scene.getMorphs()[morph].mTargetCount, 2u);
-            EXPECT_EQ(scene.getMorphs()[morph].mVertexCount, 4u);
+            EXPECT_EQ(scene.getMorphs()[morph].getVertexCount(), 4u);
             EXPECT_EQ(scene.getMorphOffsets().size(), 8u);
             EXPECT_EQ(scene.getMorphOffsets()[6], osg::Vec3f(0.0f, 0.0f, 1.0f));
             EXPECT_EQ(sorted(scene.getArrivedMorphs()), (std::vector<Index>{ morph }));
@@ -512,7 +512,7 @@ namespace Rtx
             // lands where they were.
             ASSERT_TRUE(scene.release({}, {}));
             EXPECT_EQ(scene.getMorphs()[morph].mUses, 0u);
-            EXPECT_EQ(scene.getMorphs()[morph].mVertexCount, 0u);
+            EXPECT_EQ(scene.getMorphs()[morph].getVertexCount(), 0u);
             EXPECT_EQ(scene.addMorph(offsets, 2), morph);
             EXPECT_EQ(scene.getMorphOffsets().size(), 8u);
         }
@@ -541,7 +541,7 @@ namespace Rtx
             const std::array<Index, 1> keptMaterials{ worn };
             ASSERT_TRUE(scene.release(keptMeshes, keptMaterials));
             EXPECT_EQ(scene.getMeshes()[dressed].mMaterial, sNoIndex);
-            EXPECT_EQ(scene.getMeshes()[dressed].mVertexCount, 0u);
+            EXPECT_EQ(scene.getMeshes()[dressed].mVertices.mCount, 0u);
         }
 
         /// Every change to a placement's row is reported, and nothing else is.
@@ -687,14 +687,12 @@ namespace Rtx
 
             EXPECT_EQ(made[0].mCentre, osg::Vec3f(2.0f, 0.0f, 0.0f));
             EXPECT_FLOAT_EQ(made[0].mReach, 3.0f);
-            EXPECT_EQ(made[0].mFirst, 0u);
-            EXPECT_EQ(made[0].mCount, 3u);
+            EXPECT_EQ(made[0].mSprites, (Rtx::Run{ .mOffset = 0, .mCount = 3 }));
             EXPECT_EQ(made[0].mTexture, texture);
             EXPECT_EQ(made[0].mLighting, lighting);
             EXPECT_TRUE(made[0].mAdditive);
 
-            EXPECT_EQ(made[1].mFirst, 3u);
-            EXPECT_EQ(made[1].mCount, 1u);
+            EXPECT_EQ(made[1].mSprites, (Rtx::Run{ .mOffset = 3, .mCount = 1 }));
             EXPECT_FALSE(made[1].mAdditive) << "the blend the file asked for is what tells the two apart";
             EXPECT_EQ(made[1].mLighting, sNoIndex) << "an emitter with no bake is lit as a card";
             EXPECT_EQ(scene.getSprites().size(), 4u);
@@ -799,7 +797,7 @@ namespace Rtx
 
             ASSERT_EQ(scene.getPositions().size(), 11u);
             ASSERT_EQ(scene.getIndices().size(), 15u);
-            ASSERT_EQ(scene.getMeshes()[last].mVertexOffset, 7u);
+            ASSERT_EQ(scene.getMeshes()[last].mVertices.mOffset, 7u);
 
             const std::uint64_t was = scene.getStructureRevision();
             const std::array keep{ first, last };
@@ -810,14 +808,14 @@ namespace Rtx
             EXPECT_EQ(scene.getMeshes().size(), 3u);
             EXPECT_EQ(scene.getPositions().size(), 11u);
             EXPECT_EQ(scene.getIndices().size(), 15u);
-            EXPECT_EQ(scene.getMeshes()[last].mVertexOffset, 7u);
+            EXPECT_EQ(scene.getMeshes()[last].mVertices.mOffset, 7u);
             EXPECT_EQ(scene.getMeshPositions(first)[0].z(), 0.0f);
             EXPECT_EQ(scene.getMeshPositions(last)[0].z(), 2.0f);
 
             // The freed one describes nothing until something takes it, so a backend that walks the
             // table builds a structure over no triangles rather than over somebody else's.
-            EXPECT_EQ(scene.getMeshes()[middle].mVertexCount, 0u);
-            EXPECT_EQ(scene.getMeshes()[middle].mIndexCount, 0u);
+            EXPECT_EQ(scene.getMeshes()[middle].mVertices.mCount, 0u);
+            EXPECT_EQ(scene.getMeshes()[middle].mIndices.mCount, 0u);
 
             EXPECT_EQ(scene.getStructureRevision(), was)
                 << "nothing arrived, so nothing built from these indices is out of date";
@@ -832,8 +830,8 @@ namespace Rtx
             // old one had.
             const Index moved = scene.addMesh(triangleAt(5.0f), {}, {}, Testing::sTriangleIndices);
             EXPECT_EQ(moved, middle);
-            EXPECT_EQ(scene.getMeshes()[moved].mVertexOffset, 4u);
-            EXPECT_EQ(scene.getMeshes()[moved].mVertexCount, 3u);
+            EXPECT_EQ(scene.getMeshes()[moved].mVertices.mOffset, 4u);
+            EXPECT_EQ(scene.getMeshes()[moved].mVertices.mCount, 3u);
             EXPECT_EQ(scene.getPositions().size(), 11u) << "a reused slot appended";
             EXPECT_GT(scene.getStructureRevision(), was) << "a slot taken over holds different geometry";
 
@@ -913,9 +911,9 @@ namespace Rtx
             const Index snug = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
             const Index kept = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
 
-            ASSERT_EQ(scene.getMeshes()[roomy].mVertexOffset, 0u);
-            ASSERT_EQ(scene.getMeshes()[snug].mVertexOffset, 8u);
-            ASSERT_EQ(scene.getMeshes()[kept].mVertexOffset, 12u);
+            ASSERT_EQ(scene.getMeshes()[roomy].mVertices.mOffset, 0u);
+            ASSERT_EQ(scene.getMeshes()[snug].mVertices.mOffset, 8u);
+            ASSERT_EQ(scene.getMeshes()[kept].mVertices.mOffset, 12u);
 
             const std::array keep{ kept };
             ASSERT_TRUE(scene.release(keep, {}));
@@ -929,12 +927,12 @@ namespace Rtx
 
             // The quad takes the front of the merged hole and leaves eight vertices behind it.
             const Index quad = scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices);
-            EXPECT_EQ(scene.getMeshes()[quad].mVertexOffset, 0u);
+            EXPECT_EQ(scene.getMeshes()[quad].mVertices.mOffset, 0u);
 
             // **Which is what the eight-vertex mesh then fits into.** Unmerged, the two holes were
             // eight and four and the four had just been spent, so this would have appended.
             const Index again = scene.addMesh(big, {}, {}, bigIndices);
-            EXPECT_EQ(scene.getMeshes()[again].mVertexOffset, 4u);
+            EXPECT_EQ(scene.getMeshes()[again].mVertices.mOffset, 4u);
             EXPECT_EQ(scene.getPositions().size(), vertices) << "a mesh that fitted a hole appended anyway";
 
             // Both freed slots have been taken, the lower one first — `Rtx::takeFreeSlot` says why a
@@ -963,12 +961,12 @@ namespace Rtx
                 osg::Vec2f(0.5f, 0.5f) };
 
             const Index slot = scene.addMesh(Testing::sUnitQuad, normals, uvs, Testing::sQuadIndices);
-            ASSERT_EQ(scene.getNormals()[scene.getMeshes()[slot].mVertexOffset], osg::Vec3f(1.0f, 0.0f, 0.0f));
+            ASSERT_EQ(scene.getNormals()[scene.getMeshes()[slot].mVertices.mOffset], osg::Vec3f(1.0f, 0.0f, 0.0f));
 
             ASSERT_TRUE(scene.release({}, {}));
             EXPECT_EQ(scene.addMesh(Testing::sUnitQuad, {}, {}, Testing::sQuadIndices), slot);
 
-            EXPECT_EQ(scene.getNormals()[scene.getMeshes()[slot].mVertexOffset], osg::Vec3f())
+            EXPECT_EQ(scene.getNormals()[scene.getMeshes()[slot].mVertices.mOffset], osg::Vec3f())
                 << "the slot kept the last tenant's normals";
             EXPECT_EQ(scene.getTexCoords()[0], osg::Vec2f());
         }
@@ -1013,25 +1011,20 @@ namespace Rtx
 
             ReleasedTerrain()
             {
-                const std::array droppedLayers{ MaterialLayer{ .mDiffuse = mGround,
-                    .mMaskOffset = mScene.addMask(sGroundWeights),
-                    .mMaskWidth = 2,
-                    .mMaskHeight = 2 } };
-                const Span droppedRun = mScene.addLayers(droppedLayers);
-                mDropped = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain,
-                    .mLayerOffset = droppedRun.mOffset,
-                    .mLayerCount = droppedRun.mCount });
+                const std::array droppedLayers{ MaterialLayer{
+                    .mDiffuse = mGround, .mMask = mScene.addMask(sGroundWeights), .mMaskWidth = 2, .mMaskHeight = 2 } };
+                const Rtx::Run droppedRun = mScene.addLayers(droppedLayers);
+                mDropped = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = droppedRun });
 
                 mPlain = mScene.addMaterial(Material{ .mDiffuse = mStone });
 
-                const std::array keptLayers{ MaterialLayer{ .mDiffuse = mSand,
-                                                 .mMaskOffset = mScene.addMask(sSandWeights),
-                                                 .mMaskWidth = 3,
-                                                 .mMaskHeight = 3 },
-                    MaterialLayer{ .mDiffuse = mMoss } };
-                const Span keptRun = mScene.addLayers(keptLayers);
-                mKept = mScene.addMaterial(Material{
-                    .mKind = MaterialKind::Terrain, .mLayerOffset = keptRun.mOffset, .mLayerCount = keptRun.mCount });
+                const std::array keptLayers{
+                    MaterialLayer{
+                        .mDiffuse = mSand, .mMask = mScene.addMask(sSandWeights), .mMaskWidth = 3, .mMaskHeight = 3 },
+                    MaterialLayer{ .mDiffuse = mMoss }
+                };
+                const Rtx::Run keptRun = mScene.addLayers(keptLayers);
+                mKept = mScene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = keptRun });
 
                 mLayersBefore = mScene.getLayers().size();
                 mMasksBefore = mScene.getMasks().size();
@@ -1054,8 +1047,7 @@ namespace Rtx
             // Every survivor is at the index it was given, which is what nothing moving means.
             EXPECT_EQ(scene.getMaterials().size(), 3u);
             EXPECT_EQ(scene.getMaterials()[terrain.mPlain].mDiffuse, terrain.mStone);
-            EXPECT_EQ(scene.getMaterials()[terrain.mKept].mLayerOffset, 1u);
-            EXPECT_EQ(scene.getMaterials()[terrain.mKept].mLayerCount, 2u);
+            EXPECT_EQ(scene.getMaterials()[terrain.mKept].mLayers, (Rtx::Run{ .mOffset = 1, .mCount = 2 }));
 
             EXPECT_EQ(scene.getLayers().size(), terrain.mLayersBefore)
                 << "the tables never shrink, they are reused in place";
@@ -1067,13 +1059,13 @@ namespace Rtx
             // and four weights, which is exactly what went: both come back at zero and neither table
             // is any longer than it was.
             const std::array arrivingLayers{ MaterialLayer{ .mDiffuse = terrain.mMoss,
-                .mMaskOffset = scene.addMask(ReleasedTerrain::sGroundWeights),
+                .mMask = scene.addMask(ReleasedTerrain::sGroundWeights),
                 .mMaskWidth = 2,
                 .mMaskHeight = 2 } };
-            const Span arrivingRun = scene.addLayers(arrivingLayers);
+            const Rtx::Run arrivingRun = scene.addLayers(arrivingLayers);
 
-            EXPECT_EQ(arrivingLayers[0].mMaskOffset, 0u) << "the freed mask run";
-            EXPECT_EQ(arrivingRun, (Span{ .mOffset = 0, .mCount = 1 })) << "the freed layer run";
+            EXPECT_EQ(arrivingLayers[0].mMask, (Rtx::Run{ .mOffset = 0, .mCount = 4 })) << "the freed mask run";
+            EXPECT_EQ(arrivingRun, (Rtx::Run{ .mOffset = 0, .mCount = 1 })) << "the freed layer run";
             EXPECT_EQ(scene.getLayers().size(), terrain.mLayersBefore)
                 << "the layer table grew past a hole that fitted";
             EXPECT_EQ(scene.getMasks().size(), terrain.mMasksBefore) << "the mask table grew past a hole that fitted";
@@ -1181,32 +1173,32 @@ namespace Rtx
             SceneDesc scene;
 
             const std::array<float, 4> weights{ 1.0f, 0.0f, 0.0f, 1.0f };
-            const Index mask = scene.addMask(weights);
-            EXPECT_EQ(mask, 0u);
-            EXPECT_EQ(runs(scene.getArrivedMasks()), (std::vector<Span>{ Span{ .mOffset = 0, .mCount = 4 } }));
+            const Rtx::Run mask = scene.addMask(weights);
+            EXPECT_EQ(mask, (Rtx::Run{ .mOffset = 0, .mCount = 4 }));
+            EXPECT_EQ(runs(scene.getArrivedMasks()), (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 0, .mCount = 4 } }));
 
             const std::array layers{
-                MaterialLayer{ .mMaskOffset = mask, .mMaskWidth = 2, .mMaskHeight = 2 },
+                MaterialLayer{ .mMask = mask, .mMaskWidth = 2, .mMaskHeight = 2 },
                 MaterialLayer{},
             };
-            const Span run = scene.addLayers(layers);
-            EXPECT_EQ(run, (Span{ .mOffset = 0, .mCount = 2 }));
-            EXPECT_EQ(runs(scene.getArrivedLayers()), (std::vector<Span>{ run }));
+            const Rtx::Run run = scene.addLayers(layers);
+            EXPECT_EQ(run, (Rtx::Run{ .mOffset = 0, .mCount = 2 }));
+            EXPECT_EQ(runs(scene.getArrivedLayers()), (std::vector<Rtx::Run>{ run }));
 
-            scene.addMaterial(
-                Material{ .mKind = MaterialKind::Terrain, .mLayerOffset = run.mOffset, .mLayerCount = run.mCount });
+            scene.addMaterial(Material{ .mKind = MaterialKind::Terrain, .mLayers = run });
             scene.clearArrivals();
             EXPECT_TRUE(scene.getArrivedMasks().empty());
             EXPECT_TRUE(scene.getArrivedLayers().empty());
 
             // A second chunk lands past the first: its runs are its own and say where they are.
             const std::array<float, 2> more{ 0.5f, 0.5f };
-            EXPECT_EQ(scene.addMask(more), 4u);
-            EXPECT_EQ(runs(scene.getArrivedMasks()), (std::vector<Span>{ Span{ .mOffset = 4, .mCount = 2 } }));
+            EXPECT_EQ(scene.addMask(more), (Rtx::Run{ .mOffset = 4, .mCount = 2 }));
+            EXPECT_EQ(runs(scene.getArrivedMasks()), (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 4, .mCount = 2 } }));
 
-            const std::array one{ MaterialLayer{ .mMaskOffset = 4, .mMaskWidth = 2, .mMaskHeight = 1 } };
-            EXPECT_EQ(scene.addLayers(one), (Span{ .mOffset = 2, .mCount = 1 }));
-            EXPECT_EQ(runs(scene.getArrivedLayers()), (std::vector<Span>{ Span{ .mOffset = 2, .mCount = 1 } }));
+            const std::array one{ MaterialLayer{
+                .mMask = Rtx::Run{ .mOffset = 4, .mCount = 2 }, .mMaskWidth = 2, .mMaskHeight = 1 } };
+            EXPECT_EQ(scene.addLayers(one), (Rtx::Run{ .mOffset = 2, .mCount = 1 }));
+            EXPECT_EQ(runs(scene.getArrivedLayers()), (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 2, .mCount = 1 } }));
             scene.clearArrivals();
 
             // The first chunk goes and its runs go with it — reported to nobody, because nothing
@@ -1220,8 +1212,9 @@ namespace Rtx
             EXPECT_TRUE(scene.getArrivedLayers().empty());
             EXPECT_TRUE(scene.getWrittenMaterials().empty());
 
-            EXPECT_EQ(scene.addMask(weights), 0u) << "the freed run was not the one handed out";
-            EXPECT_EQ(runs(scene.getArrivedMasks()), (std::vector<Span>{ Span{ .mOffset = 0, .mCount = 4 } }));
+            EXPECT_EQ(scene.addMask(weights), (Rtx::Run{ .mOffset = 0, .mCount = 4 }))
+                << "the freed run was not the one handed out";
+            EXPECT_EQ(runs(scene.getArrivedMasks()), (std::vector<Rtx::Run>{ Rtx::Run{ .mOffset = 0, .mCount = 4 } }));
         }
 
         /// A scene that lost nothing is left entirely alone, and a sprite's texture is the caller's
@@ -1449,16 +1442,16 @@ namespace Rtx
 
             SceneDesc scene;
             const Index first = scene.addMesh(vertices(200000), {}, {}, triangle);
-            EXPECT_EQ(scene.getMeshes()[first].mVertexOffset, 0u);
+            EXPECT_EQ(scene.getMeshes()[first].mVertices.mOffset, 0u);
 
             const Index second = scene.addMesh(vertices(100000), {}, {}, triangle);
-            EXPECT_EQ(scene.getMeshes()[second].mVertexOffset, SceneDesc::sVertexBlock)
+            EXPECT_EQ(scene.getMeshes()[second].mVertices.mOffset, SceneDesc::sVertexBlock)
                 << "a run was laid across a block boundary";
             EXPECT_EQ(scene.getPositions().size(), std::size_t{ 362144 });
 
             // And the 62,144 the second one stepped over is a hole like any other.
             const Index third = scene.addMesh(vertices(60000), {}, {}, triangle);
-            EXPECT_EQ(scene.getMeshes()[third].mVertexOffset, 200000u) << "the tail of a block was not reused";
+            EXPECT_EQ(scene.getMeshes()[third].mVertices.mOffset, 200000u) << "the tail of a block was not reused";
             EXPECT_EQ(scene.getPositions().size(), std::size_t{ 362144 }) << "a mesh that fitted the tail appended";
 
             // None of the three crosses a boundary, which is the property rather than the three
@@ -1466,8 +1459,8 @@ namespace Rtx
             for (const Index mesh : { first, second, third })
             {
                 const MeshRange& range = scene.getMeshes()[mesh];
-                EXPECT_EQ(range.mVertexOffset / SceneDesc::sVertexBlock,
-                    (range.mVertexOffset + range.mVertexCount - 1) / SceneDesc::sVertexBlock)
+                EXPECT_EQ(range.mVertices.mOffset / SceneDesc::sVertexBlock,
+                    (range.mVertices.mOffset + range.mVertices.mCount - 1) / SceneDesc::sVertexBlock)
                     << "mesh " << mesh << " straddles a block";
             }
         }

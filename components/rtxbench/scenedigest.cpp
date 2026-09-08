@@ -65,16 +65,14 @@ namespace Rtx
             digest.add(material.mAlphaMode);
             digest.add(material.mTwoSided);
             digest.add(material.mTextureTransform);
-            digest.add(material.mLayerCount);
+            digest.add(material.mLayers.mCount);
 
-            for (Index at = 0; at < material.mLayerCount; ++at)
+            for (const Rtx::MaterialLayer& layer : material.mLayers.in(scene.getLayers()))
             {
-                const Rtx::MaterialLayer& layer = scene.getLayers()[material.mLayerOffset + at];
                 addTexture(digest, scene, layer.mDiffuse);
                 digest.add(layer.mDiffuseTransform);
                 digest.add(layer.mMaskTransform);
-                digest.add(scene.getMasks().subspan(
-                    layer.mMaskOffset, static_cast<std::size_t>(layer.mMaskWidth) * layer.mMaskHeight));
+                digest.add(layer.mMask.in(scene.getMasks()));
             }
         }
 
@@ -104,14 +102,13 @@ namespace Rtx
         Unordered digestTriangles(const SceneDesc& scene, const MeshRange& mesh)
         {
             Unordered triangles;
-            const std::span<const std::uint32_t> indices
-                = scene.getIndices().subspan(mesh.mIndexOffset, mesh.mIndexCount);
+            const std::span<const std::uint32_t> indices = mesh.mIndices.in(scene.getIndices());
             for (std::size_t at = 0; at + 2 < indices.size(); at += 3)
             {
                 std::array<Corner, 3> corners;
                 for (std::size_t corner = 0; corner < 3; ++corner)
                 {
-                    const std::size_t vertex = mesh.mVertexOffset + indices[at + corner];
+                    const std::size_t vertex = mesh.mVertices.mOffset + indices[at + corner];
                     corners[corner] = Corner{ scene.getPositions()[vertex], scene.getNormals()[vertex],
                         scene.getTexCoords()[vertex] };
                 }
@@ -170,7 +167,7 @@ namespace Rtx
             plume.add(emitter.mReach);
             plume.add(emitter.mAdditive);
             addTexture(plume, scene, emitter.mTexture);
-            for (const Rtx::Sprite& sprite : scene.getSprites().subspan(emitter.mFirst, emitter.mCount))
+            for (const Rtx::Sprite& sprite : emitter.mSprites.in(scene.getSprites()))
             {
                 plume.add(sprite.mPosition);
                 plume.add(sprite.mRadius);
@@ -190,7 +187,7 @@ namespace Rtx
     /// the report could name.
     static_assert(sizeof(Light) == 36, "Light is read whole and must have no padding");
     static_assert(sizeof(Sprite) == 56, "Sprite is read whole and must have no padding");
-    static_assert(sizeof(MaterialLayer) == 44, "MaterialLayer is read whole and must have no padding");
+    static_assert(sizeof(MaterialLayer) == 48, "MaterialLayer is read whole and must have no padding");
     static_assert(sizeof(Rig) == 24, "Rig is read whole and must have no padding");
     static_assert(sizeof(Morph) == 16, "Morph is read whole and must have no padding");
 
@@ -266,10 +263,10 @@ namespace Rtx
         // moved is exactly what `digestScene` sums away.
         for (const MeshRange& mesh : scene.getMeshes())
         {
-            one.add(mesh.mVertexOffset);
-            one.add(mesh.mVertexCount);
-            one.add(mesh.mIndexOffset);
-            one.add(mesh.mIndexCount);
+            one.add(mesh.mVertices.mOffset);
+            one.add(mesh.mVertices.mCount);
+            one.add(mesh.mIndices.mOffset);
+            one.add(mesh.mIndices.mCount);
             one.add(mesh.mShape.mSheet);
             one.add(mesh.mShape.mClosed);
             one.add(mesh.mDeform);
@@ -308,8 +305,8 @@ namespace Rtx
             one.add(material.mAlphaMode);
             one.add(material.mTwoSided);
             one.add(material.mTextureTransform);
-            one.add(material.mLayerOffset);
-            one.add(material.mLayerCount);
+            one.add(material.mLayers.mOffset);
+            one.add(material.mLayers.mCount);
             one.add(material.mFlatten);
             one.add(material.mAnimated);
             one.add(material.mDiffuseNeverSolid);
@@ -353,8 +350,8 @@ namespace Rtx
         {
             one.add(emitter.mCentre);
             one.add(emitter.mReach);
-            one.add(emitter.mFirst);
-            one.add(emitter.mCount);
+            one.add(emitter.mSprites.mOffset);
+            one.add(emitter.mSprites.mCount);
             one.add(emitter.mTexture);
             one.add(emitter.mLighting);
             one.add(emitter.mAdditive);

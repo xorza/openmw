@@ -6,7 +6,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/spanallocator.hpp>
+#include <components/rtx/runallocator.hpp>
 
 #include "buffer.hpp"
 
@@ -20,7 +20,7 @@ namespace Rtx
     struct StructureRoom
     {
         std::uint32_t mBlock = 0;
-        Span mRun;
+        Run mRun;
 
         bool empty() const { return mRun.empty(); }
     };
@@ -33,7 +33,7 @@ namespace Rtx
     /// and built again. Here the buffers are only ever added to the list, so a structure made in one
     /// outlives every later arrival.
     ///
-    /// **A `SpanAllocator` over each block, in units of the structure alignment.** A released mesh
+    /// **A `RunAllocator` over each block, in units of the structure alignment.** A released mesh
     /// gives its run back and the next structure that fits takes it, which is the same "slots, not
     /// compaction" rule the scene itself is built on — nothing is moved, so nothing is renumbered.
     ///
@@ -80,7 +80,7 @@ namespace Rtx
         struct Block
         {
             Buffer mBuffer;
-            SpanAllocator mRuns;
+            RunAllocator mRuns;
             std::uint32_t mUnits = 0;
         };
 

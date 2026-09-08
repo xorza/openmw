@@ -34,11 +34,11 @@ namespace Rtx
         assert((deform == Deform::None) == (deformer == sNoIndex) && "a deforming mesh names what poses it");
         assert(deform != Deform::Rig
             || (deformer < mDeformers.getRigs().size()
-                && mDeformers.getRigs()[deformer].mVertexCount == positions.size()
+                && mDeformers.getRigs()[deformer].getVertexCount() == positions.size()
                 && "a rig skins exactly the vertices of the mesh on it"));
         assert(deform != Deform::Morph
             || (deformer < mDeformers.getMorphs().size()
-                && mDeformers.getMorphs()[deformer].mVertexCount == positions.size()
+                && mDeformers.getMorphs()[deformer].getVertexCount() == positions.size()
                 && "a morph moves exactly the vertices of the mesh on it"));
 
         if (positions.size() > sVertexBlock || indices.size() > sIndexBlock)
@@ -48,8 +48,8 @@ namespace Rtx
 
         ++mRevision;
 
-        const Span vertices = mVertexRuns.allocate(static_cast<Index>(positions.size()));
-        const Span elements = mIndexRuns.allocate(static_cast<Index>(indices.size()));
+        const Run vertices = mVertexRuns.allocate(static_cast<Index>(positions.size()));
+        const Run elements = mIndexRuns.allocate(static_cast<Index>(indices.size()));
 
         // Grown to what the allocators now reach, so the write below lands in room that exists, and
         // never shrunk: a run given back at the end goes to the allocator and the next mesh lands in
@@ -71,10 +71,8 @@ namespace Rtx
             mIndices.resize(mIndexRuns.getEnd());
 
         MeshRange range{
-            .mVertexOffset = vertices.mOffset,
-            .mVertexCount = vertices.mCount,
-            .mIndexOffset = elements.mOffset,
-            .mIndexCount = elements.mCount,
+            .mVertices = vertices,
+            .mIndices = elements,
             .mShape = shape,
             .mDeform = deform,
             .mDeformer = deformer,
@@ -105,21 +103,21 @@ namespace Rtx
         std::span<const osg::Vec3f> normals, std::span<const osg::Vec2f> texCoords,
         std::span<const std::uint32_t> indices)
     {
-        std::copy(positions.begin(), positions.end(), mPositions.begin() + range.mVertexOffset);
-        std::copy(indices.begin(), indices.end(), mIndices.begin() + range.mIndexOffset);
+        std::copy(positions.begin(), positions.end(), mPositions.begin() + range.mVertices.mOffset);
+        std::copy(indices.begin(), indices.end(), mIndices.begin() + range.mIndices.mOffset);
 
         // **Zeroed where the mesh brought none**, rather than left holding whatever the slot's last
         // tenant had. A reused slot is the only way that could happen and it would light a surface
         // by somebody else's normals.
         if (normals.empty())
-            std::fill_n(mNormals.begin() + range.mVertexOffset, range.mVertexCount, osg::Vec3f());
+            std::fill_n(mNormals.begin() + range.mVertices.mOffset, range.mVertices.mCount, osg::Vec3f());
         else
-            std::copy(normals.begin(), normals.end(), mNormals.begin() + range.mVertexOffset);
+            std::copy(normals.begin(), normals.end(), mNormals.begin() + range.mVertices.mOffset);
 
         if (texCoords.empty())
-            std::fill_n(mTexCoords.begin() + range.mVertexOffset, range.mVertexCount, osg::Vec2f());
+            std::fill_n(mTexCoords.begin() + range.mVertices.mOffset, range.mVertices.mCount, osg::Vec2f());
         else
-            std::copy(texCoords.begin(), texCoords.end(), mTexCoords.begin() + range.mVertexOffset);
+            std::copy(texCoords.begin(), texCoords.end(), mTexCoords.begin() + range.mVertices.mOffset);
     }
 
     void MeshTable::notePosed(Index mesh, const osg::BoundingBoxf& bounds)
@@ -141,14 +139,14 @@ namespace Rtx
     {
         assert(mesh < mRows.size());
         const MeshRange& range = mRows[mesh];
-        return std::span(mPositions).subspan(range.mVertexOffset, range.mVertexCount);
+        return range.mVertices.in(getPositions());
     }
 
     std::span<const std::uint32_t> MeshTable::getMeshIndices(Index mesh) const
     {
         assert(mesh < mRows.size());
         const MeshRange& range = mRows[mesh];
-        return std::span(mIndices).subspan(range.mIndexOffset, range.mIndexCount);
+        return range.mIndices.in(getIndices());
     }
 
     std::uint32_t MeshTable::getTriangleCount() const
@@ -176,12 +174,12 @@ namespace Rtx
             // allocators, which merge it with whatever it touches: a cell arrived as thousands of
             // runs laid end to end and it leaves as the one hole it came as.
             MeshRange& range = mRows[index];
-            mVertexRuns.release(Span{ .mOffset = range.mVertexOffset, .mCount = range.mVertexCount });
-            mIndexRuns.release(Span{ .mOffset = range.mIndexOffset, .mCount = range.mIndexCount });
+            mVertexRuns.release(range.mVertices);
+            mIndexRuns.release(range.mIndices);
             mDeformers.release(range);
 
-            range.mVertexCount = 0;
-            range.mIndexCount = 0;
+            range.mVertices.mCount = 0;
+            range.mIndices.mCount = 0;
             range.mMaterial = sNoIndex;
             range.mBounds = osg::BoundingBoxf();
 

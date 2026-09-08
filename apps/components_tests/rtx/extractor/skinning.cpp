@@ -45,7 +45,7 @@ namespace Rtx::Testing
                 << "the bind pose, never a vertex posed";
             ASSERT_EQ(mScene.getRigs().size(), 1u);
             EXPECT_EQ(mScene.getRigs()[0].mBoneCount, 1u);
-            EXPECT_EQ(mScene.getRigs()[0].mVertexCount, 4u);
+            EXPECT_EQ(mScene.getRigs()[0].getVertexCount(), 4u);
             EXPECT_EQ(mScene.getRuns().size(), 4u);
             EXPECT_EQ(mScene.getRuns()[3], 1u) << "first nought, count one";
             ASSERT_EQ(mScene.getInfluences().size(), 1u);
@@ -177,7 +177,7 @@ namespace Rtx::Testing
             EXPECT_EQ(again.mMeshesAdded, 1u) << "the rig is met as something the mirror has not seen";
             EXPECT_EQ(mScene.getMeshes().size(), 3u) << "and takes a slot of its own rather than the old one";
             EXPECT_EQ(mScene.getRigs().size(), 2u) << "on a rig of its own, because the skin is six vertices now";
-            EXPECT_EQ(mScene.getRigs()[1].mVertexCount, 6u);
+            EXPECT_EQ(mScene.getRigs()[1].getVertexCount(), 6u);
             EXPECT_EQ(mScene.getMeshes()[2].mDeformer, 1u);
 
             const std::vector<osg::Vec3f> after(mScene.getMeshPositions(1).begin(), mScene.getMeshPositions(1).end());
