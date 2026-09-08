@@ -117,6 +117,7 @@ if (OPENMW_RTX)
         rtx/cloudshell.cpp
         rtx/commands.cpp
         rtx/computepipeline.cpp
+        rtx/decodecolour.cpp
         rtx/device.cpp
         rtx/deviceprofile.cpp
         rtx/distantlights.cpp
@@ -165,6 +166,7 @@ if (OPENMW_RTX)
         rtx/shapefold.cpp
         rtx/skinpass.cpp
         rtx/skybuilder.cpp
+        rtx/skylight.cpp
         rtx/slottable.cpp
         rtx/spritebinpass.cpp
         rtx/spritelight.cpp

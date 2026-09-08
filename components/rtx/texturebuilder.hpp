@@ -7,8 +7,8 @@
 #include <osg/Image>
 
 #include "alphaimage.hpp"
+#include "index.hpp"
 #include "mipchain.hpp"
-#include "scenedesc.hpp"
 #include "spritelight.hpp"
 #include "texturedata.hpp"
 
@@ -20,6 +20,7 @@ namespace Resource
 namespace Rtx
 {
     class CompositeQueue;
+    class SceneDesc;
 
     /// Describes one image for a backend's uploader without copying a byte of it.
     ///

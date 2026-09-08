@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include "lightbuilder.hpp"
-
 namespace Rtx
 {
     float fogExtinction(float depth, float over)

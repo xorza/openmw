@@ -9,15 +9,17 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "cloudshell.hpp"
-#include "lightbuilder.hpp"
+#include "index.hpp"
 #include "moonbuilder.hpp"
 #include "nightsky.hpp"
-#include "scenedesc.hpp"
 #include "shaders/look.h"
 #include "shaders/visibility.h"
+#include "sun.hpp"
 
 namespace Rtx
 {
+    class SceneDesc;
+
     /// Which meshes the sky's two surfaces are read off.
     ///
     /// **Named by the host and not read here.** `Models/skyclouds` and the two star domes are

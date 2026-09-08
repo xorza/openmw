@@ -8,6 +8,7 @@
 #include <components/rtx/cloudshell.hpp>
 #include <components/rtx/shaders/scene.h>
 #include <components/rtx/skybuilder.hpp>
+#include <components/rtx/skylight.hpp>
 
 namespace Rtx
 {

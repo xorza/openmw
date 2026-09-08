@@ -12,10 +12,11 @@
 #include <components/vfs/pathutil.hpp>
 
 #include "error.hpp"
-#include "lightbuilder.hpp"
+#include "scenedesc.hpp"
 #include "shaders/colour.h"
 #include "shaders/look.h"
 #include "shaders/scene.h"
+#include "skylight.hpp"
 
 namespace Rtx
 {

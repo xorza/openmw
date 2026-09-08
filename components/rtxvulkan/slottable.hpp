@@ -12,7 +12,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/index.hpp>
 #include <components/rtx/slotset.hpp>
 
 #include "blockedbuffer.hpp"

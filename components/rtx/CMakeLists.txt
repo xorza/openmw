@@ -24,6 +24,8 @@ set(RTX_FILES
     colourblock.hpp
     compositequeue.cpp
     compositequeue.hpp
+    decodecolour.cpp
+    decodecolour.hpp
     deformertable.cpp
     deformertable.hpp
     distantland.cpp
@@ -49,6 +51,7 @@ set(RTX_FILES
     index.hpp
     instancerecord.cpp
     instancerecord.hpp
+    light.hpp
     lightbuilder.cpp
     lightbuilder.hpp
     lightgrid.cpp
@@ -110,6 +113,8 @@ set(RTX_FILES
     shapefold.hpp
     skybuilder.cpp
     skybuilder.hpp
+    skylight.cpp
+    skylight.hpp
     slotchanges.cpp
     slotchanges.hpp
     slotset.cpp

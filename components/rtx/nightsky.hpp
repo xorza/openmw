@@ -7,7 +7,7 @@
 
 #include <components/vfs/pathutil.hpp>
 
-#include "scenedesc.hpp"
+#include "index.hpp"
 #include "shaders/visibility.h"
 
 namespace Resource
@@ -17,6 +17,8 @@ namespace Resource
 
 namespace Rtx
 {
+    class SceneDesc;
+
     /// Morrowind's night sky, read off the mesh the rasterizer draws it with.
     ///
     /// **Seven layers and only one of them is the stars.** `Models/skynight01` holds a star field

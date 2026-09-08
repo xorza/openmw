@@ -12,8 +12,8 @@
 #include <components/debug/debuglog.hpp>
 #include <components/esm/position.hpp>
 #include <components/esm/refid.hpp>
-#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/renderer.hpp>
+#include <components/rtx/skylight.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 #include <components/rtxbench/frametimes.hpp>
 #include <components/rtxbench/gpuclock.hpp>

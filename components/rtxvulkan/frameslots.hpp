@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <span>
 
-#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/index.hpp>
 #include <components/rtx/slotset.hpp>
 
 namespace Rtx

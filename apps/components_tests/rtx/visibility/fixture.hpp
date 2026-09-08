@@ -19,7 +19,6 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/frameworld.hpp>
-#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>

@@ -6,7 +6,7 @@
 #include <utility>
 
 #include <components/files/conversion.hpp>
-#include <components/rtx/lightbuilder.hpp>
+#include <components/rtx/skylight.hpp>
 #include <components/settings/categories.hpp>
 #include <components/settings/parser.hpp>
 

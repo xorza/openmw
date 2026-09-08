@@ -34,7 +34,6 @@
 #include <components/rtx/frameclock.hpp>
 #include <components/rtx/frameimage.hpp>
 #include <components/rtx/frameworld.hpp>
-#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/rtx/namedenum.hpp>
 #include <components/rtx/poseupdate.hpp>

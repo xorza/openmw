@@ -13,36 +13,6 @@ of scope. No measurements were taken.
 
 ---
 
-## Headers reach for the whole scene description to get one typedef
-
-`index.hpp` exists so that a table can name an `Index` without including the file that includes it.
-Several headers do not use it.
-
-- [ ] **`components/rtxvulkan/frameslots.hpp` includes `scenedesc.hpp` for `Index` alone.** So does
-      `components/rtxvulkan/slottable.hpp`. Both are template headers included widely in the
-      backend, and both pull 1151 lines, OSG, `shaders/scene.h` and `shaders/skinning.h`.
-
-- [ ] **`moonbuilder.hpp`, `nightsky.hpp`, `skybuilder.hpp` and `texturebuilder.hpp` need only
-      `Index`, `sNoIndex` and a forward declaration of `SceneDesc`.** None of them names a member of
-      the class.
-
-- [ ] **`lightbuilder.hpp` needs only `Light`.** `Sun` has its own header now, so what is left is
-      the one type `SceneDesc` really holds.
-
----
-
-## `lightbuilder.hpp` is four subjects in one header
-
-417 lines declare the light of a `LIGH` record, the sun, the sky budget, the air over a moon, the
-weather's name table, and the colour decode.
-
-- [ ] **Split it by subject.** A `LIGH` becoming a light, a weather becoming a sky, and a colour
-      being decoded are three questions. `decodeColour` alone is named by nearly every file that
-      includes this header, and it drags `esm3/loadcell.hpp`, `sceneutil/lightcontroller.hpp` and
-      `sky/timeofday.hpp` in with it.
-
----
-
 ## Documentation blocks that describe the wrong member
 
 Each of these reads as the member's contract and belongs to a different one. A reader who trusts them

@@ -8,10 +8,10 @@
 #include <osg/Vec3f>
 
 #include "fogbuilder.hpp"
-#include "lightbuilder.hpp"
 #include "moonbuilder.hpp"
 #include "shaders/visibility.h"
 #include "skybuilder.hpp"
+#include "skylight.hpp"
 #include "sun.hpp"
 
 namespace Weather

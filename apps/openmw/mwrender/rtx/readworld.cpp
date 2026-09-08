@@ -6,8 +6,8 @@
 #include <limits>
 
 #include <components/esm3/loadcell.hpp>
+#include <components/rtx/decodecolour.hpp>
 #include <components/rtx/fogbuilder.hpp>
-#include <components/rtx/lightbuilder.hpp>
 #include <components/rtx/moonbuilder.hpp>
 #include <components/sky/timeofday.hpp>
 

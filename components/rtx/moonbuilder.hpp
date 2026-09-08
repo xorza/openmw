@@ -2,12 +2,14 @@
 
 #include <osg/Vec3f>
 
-#include "scenedesc.hpp"
+#include "index.hpp"
 #include "shaders/look.h"
 #include "shaders/visibility.h"
 
 namespace Rtx
 {
+    class SceneDesc;
+
     /// Which of the two moons over Vvardenfell.
     enum class Moon
     {
