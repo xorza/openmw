@@ -129,13 +129,24 @@ namespace MWRender
     RtxRenderer::RtxRenderer(const RendererSpec& spec)
         : mStage(spec.mStage)
         , mCapture(makeScreenshotWriter(spec.mWorkQueue, spec.mScreenshotPath))
-        , mCamera(new osg::Camera)
-        , mFrameStamp(new osg::FrameStamp)
-        , mEvents(new osgGA::EventQueue)
         , mUpdateVisitor(new Rtx::PoseUpdate)
-        , mStats(new osg::Stats("Viewer"))
         , mStartTick(osg::Timer::instance()->tick())
     {
+        // **Made here and handed straight over, because the stage is where they live.** Every
+        // renderer needs the four and one built on `osgViewer` gets them already wired together, so
+        // the one that owns its own surface builds them and the stage holds them for both.
+        const osg::ref_ptr<osg::Camera> camera = new osg::Camera;
+        const osg::ref_ptr<osg::FrameStamp> frameStamp = new osg::FrameStamp;
+        const osg::ref_ptr<osgGA::EventQueue> events = new osgGA::EventQueue;
+        const osg::ref_ptr<osg::Stats> stats = new osg::Stats("Viewer");
+
+        frameStamp->setFrameNumber(0);
+        frameStamp->setReferenceTime(0.0);
+        frameStamp->setSimulationTime(0.0);
+        mUpdateVisitor->setFrameStamp(frameStamp);
+
+        mStage.adopt(*camera, *frameStamp, *events, *stats);
+
         // **Read before anything is built, because it decides how the window opens and what the
         // trace counts.** A harness hands a whole run over in the spec; a played binary can only
         // name one in its settings, and a session that asked for neither behaves exactly as it did.
@@ -155,14 +166,7 @@ namespace MWRender
         // **One name with the harness, because neither host has a GL context to ask.**
         mMaxTextureUnits = Surface::sAssumedTextureUnits;
 
-        mFrameStamp->setFrameNumber(0);
-        mFrameStamp->setReferenceTime(0.0);
-        mFrameStamp->setSimulationTime(0.0);
-        mUpdateVisitor->setFrameStamp(mFrameStamp);
-
         createWindow(spec.mResourceDir, mSession != nullptr && mSession->isHeadless());
-
-        mStage.adopt(*mCamera, *mFrameStamp, *mEvents, *mStats);
 
         const Rtx::Upscale upscale = mProfile.mUpscale;
         const Rtx::Preset preset = mProfile.mPreset;
@@ -338,8 +342,6 @@ namespace MWRender
 
     void RtxRenderer::setSceneRoot(osg::Group& root)
     {
-        mSceneRoot = &root;
-
         // Which is also what puts the root under the camera an intersection visitor is accepted on;
         // see `Stage::setSceneRoot`.
         mStage.setSceneRoot(root);
@@ -354,26 +356,27 @@ namespace MWRender
 
     void RtxRenderer::advance(double simulationTime)
     {
-        const double previousReferenceTime = mFrameStamp->getReferenceTime();
-        const unsigned int previousFrame = mFrameStamp->getFrameNumber();
+        const double previousReferenceTime = mStage.getFrameStamp().getReferenceTime();
+        const unsigned int previousFrame = mStage.getFrameStamp().getFrameNumber();
 
-        mFrameStamp->setFrameNumber(previousFrame + 1);
+        mStage.getFrameStamp().setFrameNumber(previousFrame + 1);
 
         // **What OpenMW ages its caches by**, which is why it comes from the frame's own clock and
         // not from the wall. `Rtx::FrameClock` says what reading the wall here cost.
-        mFrameStamp->setReferenceTime(mClock.getNow());
-        mFrameStamp->setSimulationTime(simulationTime);
+        mStage.getFrameStamp().setReferenceTime(mClock.getNow());
+        mStage.getFrameStamp().setSimulationTime(simulationTime);
 
         // The same two the viewer writes, because the profiler's own spans are reported against
         // them and a frame with neither reads as a frame that took no time. **A run that states a
         // step reports that cadence here**, because these are read off the stamp and the stamp is
         // what the run stated — what the frames really cost is what `Bench` prints beside them.
-        if (mStats->collectStats("frame_rate"))
+        if (mStage.getStats().collectStats("frame_rate"))
         {
-            const double spent = mFrameStamp->getReferenceTime() - previousReferenceTime;
-            mStats->setAttribute(previousFrame, "Frame duration", spent);
-            mStats->setAttribute(previousFrame, "Frame rate", spent > 0.0 ? 1.0 / spent : 0.0);
-            mStats->setAttribute(mFrameStamp->getFrameNumber(), "Reference time", mFrameStamp->getReferenceTime());
+            const double spent = mStage.getFrameStamp().getReferenceTime() - previousReferenceTime;
+            mStage.getStats().setAttribute(previousFrame, "Frame duration", spent);
+            mStage.getStats().setAttribute(previousFrame, "Frame rate", spent > 0.0 ? 1.0 / spent : 0.0);
+            mStage.getStats().setAttribute(
+                mStage.getFrameStamp().getFrameNumber(), "Reference time", mStage.getFrameStamp().getReferenceTime());
         }
     }
 
@@ -384,7 +387,7 @@ namespace MWRender
         // came through `SDLUtil::InputWrapper` and MyGUI long before this. Leaving the queue to grow
         // is the only way to get this wrong.
         osgGA::EventQueue::Events events;
-        mEvents->takeEvents(events);
+        mStage.getEvents().takeEvents(events);
     }
 
     void RtxRenderer::tickSchedule()
@@ -407,18 +410,18 @@ namespace MWRender
         if (MyGUIRtx::RenderManager* gui = MyGUIRtx::RenderManager::getInstancePtr())
             gui->update(static_cast<float>(mClock.getStep()));
 
-        if (mSceneRoot == nullptr)
+        if (!mStage.hasSceneRoot())
             return;
 
         mUpdateVisitor->reset();
-        mUpdateVisitor->setFrameStamp(mFrameStamp);
-        mUpdateVisitor->setTraversalNumber(mFrameStamp->getFrameNumber());
+        mUpdateVisitor->setFrameStamp(&mStage.getFrameStamp());
+        mUpdateVisitor->setTraversalNumber(mStage.getFrameStamp().getFrameNumber());
 
         // **Not behind a loading screen.** What the rasterizer says with a blanked traversal mask
         // this says by not walking. The eye below still updates, as it does under that blanked mask:
         // the master camera's own bits are not among the ones it clears.
         if (drawsWorld())
-            mSceneRoot->accept(*mUpdateVisitor);
+            mStage.getSceneRoot().accept(*mUpdateVisitor);
 
         // **And the eye, which is not in the graph.** `MWRender::Camera` puts where the player is
         // looking onto the master camera from an update callback, exactly as the viewer's own update
@@ -460,7 +463,8 @@ namespace MWRender
 
         // Whatever the backend settled on, which is what the trace and the GUI are both sized to.
         const Rtx::FrameExtents extents = mRenderer->getExtents();
-        mCamera->setViewport(0, 0, static_cast<int>(extents.mOutputWidth), static_cast<int>(extents.mOutputHeight));
+        mStage.getCamera().setViewport(
+            0, 0, static_cast<int>(extents.mOutputWidth), static_cast<int>(extents.mOutputHeight));
     }
 
     void RtxRenderer::drawGui()
@@ -481,7 +485,7 @@ namespace MWRender
             .mWalked = mFound,
             .mWalkedAgain = mFoundAgain,
             .mResources = mResources,
-            .mSceneRoot = mSceneRoot.get(),
+            .mSceneRoot = mStage.hasSceneRoot() ? &mStage.getSceneRoot() : nullptr,
             .mUnreadableTextures = mUnreadable,
         };
     }
@@ -491,7 +495,9 @@ namespace MWRender
         if (mResources == nullptr)
             return std::nullopt;
 
-        return PoseMoment{ .mStamp = *mFrameStamp, .mFrame = mFrame, .mImages = *mResources->getImageManager() };
+        return PoseMoment{
+            .mStamp = mStage.getFrameStamp(), .mFrame = mFrame, .mImages = *mResources->getImageManager()
+        };
     }
 
     void RtxRenderer::deferRedraw(TracedView& view)
@@ -694,7 +700,7 @@ namespace MWRender
         const osg::Camera& camera = frame.mCamera;
         const WorldState& world = frame.mWorld;
 
-        if (mMirror.getScene().getPlacedCount() == 0)
+        if (mMirror.getScene().getTables().mPlacements.getPlacedCount() == 0)
             return;
 
         // **Waited for here, ahead of the placement that would otherwise absorb it.** `placeScene`
@@ -718,10 +724,10 @@ namespace MWRender
         mHasScene = true;
 
         if (handed.mKind == Rtx::SceneUpload::Kind::Rebuilt)
-            Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().getMeshes().size() << " meshes into "
-                             << found.mInstances << " instances with " << found.mLights << " lights, "
-                             << found.mDeformed << " of them deforming, and skipped " << found.mSkippedUnknown
-                             << " it cannot read";
+            Log(Debug::Info) << "Ray tracing built " << mMirror.getScene().getTables().mMeshes.getRows().size()
+                             << " meshes into " << found.mInstances << " instances with " << found.mLights
+                             << " lights, " << found.mDeformed << " of them deforming, and skipped "
+                             << found.mSkippedUnknown << " it cannot read";
 
         mUnreadable += handed.mUnreadable;
 
@@ -842,15 +848,16 @@ namespace MWRender
 
         if (mTimed == sReportEvery)
         {
+            const Rtx::SceneTables scene = mMirror.getScene().getTables();
+
             // **The emitters among it, because they are the half a placement count does not carry.**
             // Sprites are not instances and never enter that number, so a cell whose every flame,
             // brazier and raindrop had stopped read exactly like one whose emitters were running.
             Log(Debug::Info) << "Ray tracing: waited " << mSpentMs / mTimed
                              << " ms a frame for the device over the last " << mTimed << ", tracing "
-                             << mMirror.getScene().getPlacedCount() << " instances and "
-                             << mMirror.getScene().getEmitters().size() << " emitters holding "
-                             << mMirror.getScene().getSprites().size() << " sprites at " << extents.mRenderWidth << "x"
-                             << extents.mRenderHeight << ", reconstructed by "
+                             << scene.mPlacements.getPlacedCount() << " instances and " << scene.mEmitters.size()
+                             << " emitters holding " << scene.mSprites.size() << " sprites at " << extents.mRenderWidth
+                             << "x" << extents.mRenderHeight << ", reconstructed by "
                              << Rtx::denoiserName(reconstruction.mDenoiser) << " to " << extents.mOutputWidth << "x"
                              << extents.mOutputHeight;
             mSpentMs = 0.0;

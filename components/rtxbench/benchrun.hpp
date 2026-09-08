@@ -295,10 +295,6 @@ namespace Rtx
         /// What the report prints beside the name.
         std::string mNote;
 
-        /// The cell as `--cell` spells it, for the report only — where the run actually stands is
-        /// `mStand`.
-        std::string mCell;
-
         Stand mStand;
         StopSky mSky;
         Schedule mSchedule;

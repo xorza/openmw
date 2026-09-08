@@ -168,7 +168,7 @@ namespace Rtx
         // It consumes the arrivals, so nothing here clears them.
         mUploader.hand(mRenderer, mViewScene, *mScene, images, nullptr);
 
-        return mScene->getPlacedCount() > 0;
+        return mScene->getTables().mPlacements.getPlacedCount() > 0;
     }
 
     void OffscreenTrace::traceInto(const GuiSlot texture)

@@ -59,7 +59,7 @@ namespace MWRender
         Rtx::ExtractionStats mirror(const SceneFrame& frame, std::size_t frameNumber);
 
         /// Hands the scene to `renderer`, building only what has to be built.
-        Rtx::SceneUpload hand(Rtx::Renderer& renderer, Resource::ImageManager& images);
+        Rtx::SceneUpload hand(Rtx::SceneSink& renderer, Resource::ImageManager& images);
 
         /// Whether each hand-over waits for the ground it queued. `Rtx::CompositeQueue::setSettled`
         /// says why a run would, and what waiting costs it.

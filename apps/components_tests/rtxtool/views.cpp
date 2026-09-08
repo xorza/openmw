@@ -266,7 +266,6 @@ hour = 19.25
             // Everything that is not a condition is the entry's, unchanged.
             const Rtx::Stop settled = stopFor(entry, std::nullopt, std::nullopt, 3);
             EXPECT_EQ(settled.mName, "dawn-deck");
-            EXPECT_EQ(settled.mCell, "Vivec, Foreign Quarter");
             EXPECT_EQ(settled.mNote, "a deck at dawn");
             EXPECT_EQ(settled.mStand.mCell, "Vivec, Foreign Quarter");
             EXPECT_EQ(settled.mStand.mEye, entry.mOrigin);

@@ -163,6 +163,8 @@ set(RTX_VULKAN_FILES
     blockedbuffer.hpp
     bloompass.cpp
     bloompass.hpp
+    bottomlevelstore.cpp
+    bottomlevelstore.hpp
     buffer.cpp
     buffer.hpp
     commands.cpp
@@ -237,6 +239,8 @@ set(RTX_VULKAN_FILES
     skintables.hpp
     slottable.hpp
     specialization.hpp
+    structurebuild.cpp
+    structurebuild.hpp
     structurestorage.cpp
     structurestorage.hpp
     swapchain.cpp

@@ -35,7 +35,7 @@ namespace MyGUIRtx
         }
     }
 
-    Texture::Texture(std::string name, Rtx::Renderer& renderer, Resource::ImageManager* imageManager)
+    Texture::Texture(std::string name, Rtx::GuiSurface& renderer, Resource::ImageManager* imageManager)
         : mName(std::move(name))
         , mRenderer(renderer)
         , mImageManager(imageManager)

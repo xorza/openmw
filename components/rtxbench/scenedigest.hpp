@@ -7,7 +7,7 @@
 
 namespace Rtx
 {
-    class SceneDesc;
+    struct SceneTables;
 
     /// One thing a scene holds, and one column of a hashes file.
     ///
@@ -85,7 +85,7 @@ namespace Rtx
     /// tables say which meshes deformed and not which arrived, and a second idea of when a slot
     /// changed is the copy of a fact this tree does not keep. A per-slot digest kept by `MeshTable`
     /// is what makes it incremental, and it is a change to the table rather than to this.
-    ScenePartDigests digestParts(const SceneDesc& scene);
+    ScenePartDigests digestParts(const SceneTables& scene);
 
     /// One number for what a scene is made of, the same for two stagings of one cell.
     ///
@@ -113,7 +113,7 @@ namespace Rtx
     ///
     /// **Words and not a spelling, as below**: a caller keeps one beside a picture's hash as often
     /// as it prints one, and `spellHash` is the one way either becomes a file.
-    std::array<std::uint64_t, 2> digestScene(const SceneDesc& scene);
+    std::array<std::uint64_t, 2> digestScene(const SceneTables& scene);
 
     /// One number for the whole layout: every part of `parts`, folded in the order they are laid
     /// out.

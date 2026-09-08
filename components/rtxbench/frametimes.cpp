@@ -68,34 +68,35 @@ namespace Rtx
 
         for (const GpuSpan& span : spans)
         {
-            // The index and not the iterator: adding a name invalidates whatever `find` returned,
+            // The index and not the iterator: adding a row invalidates whatever `find_if` returned,
             // and the row about to be pushed to is the one that name is at.
-            const auto at
-                = static_cast<std::size_t>(std::find(mNames.begin(), mNames.end(), span.mName) - mNames.begin());
+            const auto at = static_cast<std::size_t>(std::find_if(mRows.begin(), mRows.end(), [&](const ZoneRow& row) {
+                return row.mName == span.mName;
+            }) - mRows.begin());
 
-            if (at == mNames.size())
+            if (at == mRows.size())
             {
-                mNames.emplace_back(span.mName);
-                mTimes.emplace_back();
-                mSeen.push_back(0u);
+                mRows.push_back(ZoneRow{ .mName = span.mName });
 
                 // **Room for the run taken on the frame the zone first appears.** A row that grows
                 // does it inside a frame it is timing, and what a growth costs is a copy of every
                 // sample taken so far — landing on one frame of the run and reported as its worst.
-                mTimes.back().reserve(sExpectedFrames);
+                mRows.back().mTimes.reserve(sExpectedFrames);
             }
+
+            ZoneRow& row = mRows[at];
 
             // **One sample a frame, whatever a frame opened the zone.** A pass recorded in
             // batches — the structure builds are — opens its zone several times over one frame, and
             // a row longer than the run then reported a zone as running on more frames than there
             // were: `tlas 0.24 on 620 of 601`. What a frame's budget is spent on is what the frame
             // spent there, so the spans of one frame are that frame's sample.
-            if (mSeen[at] == mFrames)
-                mTimes[at].back() += span.mMs;
+            if (row.mSeen == mFrames)
+                row.mTimes.back() += span.mMs;
             else
             {
-                mTimes[at].push_back(span.mMs);
-                mSeen[at] = mFrames;
+                row.mTimes.push_back(span.mMs);
+                row.mSeen = mFrames;
             }
         }
     }
@@ -103,16 +104,16 @@ namespace Rtx
     std::span<const GpuZone> GpuBreakdown::summariseZones()
     {
         mZones.clear();
-        mZones.reserve(mNames.size());
+        mZones.reserve(mRows.size());
 
-        for (std::size_t at = 0; at < mNames.size(); ++at)
+        for (ZoneRow& row : mRows)
         {
-            const double spent = std::accumulate(mTimes[at].begin(), mTimes[at].end(), 0.0);
+            const double spent = std::accumulate(row.mTimes.begin(), row.mTimes.end(), 0.0);
 
             mZones.push_back(GpuZone{
-                .mName = mNames[at],
-                .mTimes = summarise(mTimes[at]),
-                .mFrames = static_cast<std::uint32_t>(mTimes[at].size()),
+                .mName = row.mName,
+                .mTimes = summarise(row.mTimes),
+                .mFrames = static_cast<std::uint32_t>(row.mTimes.size()),
                 .mOfFrames = mFrames,
                 .mShareMs = spent / static_cast<double>(mFrames),
             });

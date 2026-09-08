@@ -12,6 +12,7 @@
 #include <components/misc/constants.hpp>
 #include <components/rtx/scenedesc.hpp>
 #include <components/rtx/sceneextractor.hpp>
+#include <components/rtx/scenetables.hpp>
 #include <components/rtxbench/benchrecord.hpp>
 
 #include "../../mwbase/environment.hpp"
@@ -38,7 +39,7 @@ namespace MWRender
 
     bool checkHolds(const TracedRun& run, const Rtx::Check check, const Rtx::Crossings& crossings, std::string& found)
     {
-        const Rtx::SceneDesc& scene = run.mScene;
+        const Rtx::SceneTables scene = run.mScene.getTables();
         const Rtx::ExtractionStats& stats = run.mWalked;
 
         switch (check)
@@ -62,9 +63,9 @@ namespace MWRender
             case Rtx::Check::LightsPlaced:
             {
                 const bool indoors = !MWBase::Environment::get().getWorld()->isCellExterior();
-                found = std::format("{} lights casting {}", scene.getLights().size(),
+                found = std::format("{} lights casting {}", scene.mLights.size(),
                     indoors ? "in a room" : "under a sky, where none is a fair answer");
-                return !indoors || !scene.getLights().empty();
+                return !indoors || !scene.mLights.empty();
             }
 
             case Rtx::Check::GroundReaches:
@@ -96,8 +97,8 @@ namespace MWRender
             case Rtx::Check::LightsNotDoubled:
             {
                 std::vector<osg::Vec3f> where;
-                where.reserve(scene.getLights().size());
-                for (const Rtx::Light& light : scene.getLights())
+                where.reserve(scene.mLights.size());
+                for (const Rtx::Light& light : scene.mLights)
                     where.push_back(light.mPosition);
 
                 // `osg::Vec3f` orders lexicographically already, which is what a sort for
@@ -113,7 +114,7 @@ namespace MWRender
 
             case Rtx::Check::TexturesReadable:
                 found = std::format(
-                    "{} of {} textures could not be read", run.mUnreadableTextures, scene.getTextures().size());
+                    "{} of {} textures could not be read", run.mUnreadableTextures, scene.mTextures.getPaths().size());
                 return run.mUnreadableTextures == 0;
 
             case Rtx::Check::CrossingsAppend:

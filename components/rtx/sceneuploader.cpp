@@ -13,9 +13,9 @@ namespace Rtx
     namespace
     {
         /// Hands over the texture slots the scene has given up, and says how many there were.
-        std::size_t dropFreed(Renderer& renderer, SceneSlot slot, const SceneDesc& scene)
+        std::size_t dropFreed(SceneSink& renderer, SceneSlot slot, const SceneTables& scene)
         {
-            const std::span<const Index> freed = scene.getFreedTextures();
+            const std::span<const Index> freed = scene.mTextures.getFreed();
             if (!freed.empty())
                 renderer.dropTextures(slot, freed);
 
@@ -24,12 +24,12 @@ namespace Rtx
     }
 
     bool SceneUploader::recognises(
-        const Renderer& renderer, const SceneSlot slot, const SceneDesc& scene, std::uint32_t textures) const
+        const SceneSink& renderer, const SceneSlot slot, const SceneDesc& scene, std::uint32_t textures) const
     {
         return mRenderer == &renderer && mSlot == slot && mScene == &scene && mUploaded == textures;
     }
 
-    SceneUpload SceneUploader::hand(Renderer& renderer, const SceneSlot slot, SceneDesc& scene,
+    SceneUpload SceneUploader::hand(SceneSink& renderer, const SceneSlot slot, SceneDesc& scene,
         Resource::ImageManager& images, CompositeQueue* const composites, const SeaState& sea)
     {
         const bool mine = recognises(renderer, slot, scene, renderer.getTextureCount(slot));
@@ -42,13 +42,16 @@ namespace Rtx
 
         const std::size_t baked = composites != nullptr ? composites->advance(scene, images) : 0;
 
+        // **After the two calls above, because both rewrite what the spans reach.**
+        const SceneTables tables = scene.getTables();
+
         // Geometry the walk has not met before has no bottom-level structure and no uploaded
         // texture. **Which is a cell change and a load, not a frame** — a door opening moves
         // instances the walk already knows.
         //
         // A frame that only finished a bake has no new geometry and a new texture, which is an
         // arrival for everything below even though nothing was walked.
-        const bool arrived = !mine || scene.getStructureRevision() != mBuilt || baked > 0;
+        const bool arrived = !mine || tables.getStructureRevision() != mBuilt || baked > 0;
 
         SceneUpload done;
 
@@ -58,13 +61,13 @@ namespace Rtx
             // the frame that must not wait for an arrival to give the memory back: walking away from
             // a ring frees its slots and nothing takes them over until the walk reaches the far side
             // of the next one.
-            done.mDropped = dropFreed(renderer, slot, scene);
+            done.mDropped = dropFreed(renderer, slot, tables);
 
             // **Placed before the lists are forgotten**, because placing is what consumes the meshes
             // that went: their structures are destroyed and their storage given back there. Clearing
             // first would hand the renderer an empty list and hold a departed ring's structures
             // until something arrived to take the slots over.
-            renderer.placeScene(slot, scene, sea);
+            renderer.placeScene(slot, tables, sea);
             done.mKind = SceneUpload::Kind::Placed;
         }
         else
@@ -78,16 +81,16 @@ namespace Rtx
             // what it wants is the table in its own order; a frame that grew wants the slots that
             // were written and no others, wherever in the table they sit.
             if (!mine)
-                mTextures.describeAll(scene, images, composites);
+                mTextures.describeAll(tables, images, composites);
             else
-                mTextures.describe(scene, images, scene.getArrivedTextures(), composites);
+                mTextures.describe(tables, images, tables.mTextures.getArrived(), composites);
 
             done.mDescribed = mTextures.getDescriptions().size();
             done.mUnreadable = mTextures.getUnreadable();
 
             if (!mine)
             {
-                renderer.setScene(slot, scene, mTextures.getDescriptions(), sea);
+                renderer.setScene(slot, tables, mTextures.getDescriptions(), sea);
                 done.mKind = SceneUpload::Kind::Rebuilt;
             }
             else
@@ -95,8 +98,8 @@ namespace Rtx
                 // Order against the arrivals is free — `SceneDesc` keeps the two lists disjoint —
                 // and first is where the memory is given back soonest. A build from nothing needs
                 // none of this: the array holds no image of what went.
-                done.mDropped = dropFreed(renderer, slot, scene);
-                renderer.extendScene(slot, scene, mTextures.getDescriptions(), sea);
+                done.mDropped = dropFreed(renderer, slot, tables);
+                renderer.extendScene(slot, tables, mTextures.getDescriptions(), sea);
                 done.mKind = SceneUpload::Kind::Extended;
             }
         }
@@ -122,7 +125,7 @@ namespace Rtx
         mSlot = slot;
         mScene = &scene;
         mUploaded = renderer.getTextureCount(slot);
-        mBuilt = scene.getStructureRevision();
+        mBuilt = tables.getStructureRevision();
         return done;
     }
 }

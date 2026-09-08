@@ -118,7 +118,7 @@ namespace Rtx::Testing
     inline void poseByOneBone(SceneDesc& scene, Index mesh, const osg::Matrixf& bone)
     {
         osg::BoundingBoxf reach;
-        for (const osg::Vec3f& vertex : scene.getMeshPositions(mesh))
+        for (const osg::Vec3f& vertex : scene.getTables().mMeshes.getMeshPositions(mesh))
             reach.expandBy(vertex * bone);
 
         const std::array rows{ toGpuBone(bone) };

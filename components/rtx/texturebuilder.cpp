@@ -117,14 +117,6 @@ namespace Rtx
         /// `used` only for an entry it keeps, so one that came back empty is handed to the next
         /// texture rather than held for ever. Growing moves the entries, which moves their buffers
         /// with them — so a description already spanning one goes on pointing at the same bytes.
-        template <class T>
-        T& poolEntry(std::vector<T>& pool, std::size_t used)
-        {
-            if (used == pool.size())
-                pool.emplace_back();
-
-            return pool[used];
-        }
     }
 
     TextureData describeImage(const osg::Image& image, std::vector<MipLevel>& levels)
@@ -158,22 +150,22 @@ namespace Rtx
     }
 
     void SceneTextures::describeAll(
-        const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites)
+        const SceneTables& scene, Resource::ImageManager& images, const CompositeQueue* composites)
     {
-        mEverything.resize(scene.getTextures().size());
+        mEverything.resize(scene.mTextures.getPaths().size());
         std::iota(mEverything.begin(), mEverything.end(), Index{ 0 });
 
         describe(scene, images, mEverything, composites);
     }
 
-    void SceneTextures::describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
+    void SceneTextures::describe(const SceneTables& scene, Resource::ImageManager& images, std::span<const Index> slots,
         const CompositeQueue* composites)
     {
         mLevels.clear();
         mDescriptions.clear();
         mKept.clear();
-        mSpriteLightCount = 0;
-        mChainCount = 0;
+        mSpriteLights.reset();
+        mChains.reset();
         mUnreadable = 0;
 
         mKept.reserve(slots.size());
@@ -184,7 +176,7 @@ namespace Rtx
             // gave back and leaves it in the table until something takes it over; describing it
             // would build an image, a shading map and a descriptor write for a slot no material can
             // reach — and count it as a texture that arrived.
-            if (scene.isTextureFree(slot))
+            if (scene.mTextures.isFree(slot))
                 continue;
 
             // Already decoded and still resident: the scene manager keeps image data on the CPU
@@ -198,9 +190,9 @@ namespace Rtx
             osg::ref_ptr<const osg::Image> image;
             Index light = sNoIndex;
 
-            const std::string& baked = scene.getBakedTextures()[slot];
+            const std::string& baked = scene.mTextures.getBaked()[slot];
             if (baked.empty())
-                image = openImage(images, scene.getTextures()[slot]);
+                image = openImage(images, scene.mTextures.getPaths()[slot]);
             else if (const std::optional<VFS::Path::Normalized> source = SpriteLightMap::sourceOf(baked))
             {
                 // **Baked from the sprite texture's alpha, here, because here is where a file is
@@ -224,11 +216,10 @@ namespace Rtx
                         mSourceAlpha.build(painted);
                         if (!mSourceAlpha.isEmpty())
                         {
-                            SpriteLightMap& bake = poolEntry(mSpriteLights, mSpriteLightCount);
+                            SpriteLightMap& bake = mSpriteLights.next();
                             bake.build(mSourceAlpha);
 
-                            light = static_cast<Index>(mSpriteLightCount);
-                            ++mSpriteLightCount;
+                            light = static_cast<Index>(mSpriteLights.keep());
                         }
                     }
                     catch (const Error&)
@@ -269,12 +260,12 @@ namespace Rtx
 
                     // **What the file did not carry, built rather than done without.** `MipChain`
                     // says why almost nothing in the game needs this and why the rain does.
-                    MipChain& chain = poolEntry(mChains, mChainCount);
+                    MipChain& chain = mChains.next();
                     chain.build(*described);
                     if (!chain.isEmpty())
                     {
                         described = chain.describe();
-                        ++mChainCount;
+                        mChains.keep();
                     }
                 }
                 catch (const Error&)
@@ -302,8 +293,9 @@ namespace Rtx
                 // **Whichever of the two named the slot**, or a composite that could not be
                 // flattened reports itself as a file with no name — the one thing that would not
                 // help in finding it.
-                const std::string_view baked = scene.getBakedTextures()[kept.mSlot];
-                Log(Debug::Warning) << "Texture \"" << (baked.empty() ? scene.getTextures()[kept.mSlot].value() : baked)
+                const std::string_view baked = scene.mTextures.getBaked()[kept.mSlot];
+                Log(Debug::Warning) << "Texture \""
+                                    << (baked.empty() ? scene.mTextures.getPaths()[kept.mSlot].value() : baked)
                                     << "\" could not be read; drawing the stand-in";
 
                 described = standIn(mLevels);

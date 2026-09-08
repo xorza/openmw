@@ -198,7 +198,7 @@ namespace Rtx
             addModel(scene, path);
 
             SceneTextures described;
-            described.describeAll(scene, images);
+            described.describeAll(scene.getTables(), images);
             ASSERT_EQ(described.getUnreadable(), 0u) << "the image did not come back from the cache";
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
 
@@ -207,7 +207,7 @@ namespace Rtx
             ASSERT_EQ(described.getDescriptions()[0].mLevels.size(), std::size_t{ 3 });
 
             const std::size_t before = Testing::getAllocationCount();
-            described.describeAll(scene, images);
+            described.describeAll(scene.getTables(), images);
             const std::size_t spent = Testing::getAllocationCount() - before;
 
             EXPECT_EQ(spent, 0u) << "a second description reached the heap " << spent << " times";
@@ -245,8 +245,8 @@ namespace Rtx
 
             ASSERT_TRUE(scene.release(keptMeshes, keptMaterials));
             ASSERT_EQ(going.mTexture, 0u) << "the gap has to be below something to be a gap";
-            ASSERT_TRUE(scene.isTextureFree(going.mTexture));
-            ASSERT_FALSE(scene.isTextureFree(staying.mTexture));
+            ASSERT_TRUE(scene.getTables().mTextures.isFree(going.mTexture));
+            ASSERT_FALSE(scene.getTables().mTextures.isFree(staying.mTexture));
 
             // The VFS is empty, so the one that is described does not resolve — which is the other
             // half of the statement: a slot that named a file and failed at it is a failure, and a
@@ -263,10 +263,10 @@ namespace Rtx
             // One loader for both, which is how the uploader holds it: the second call clears what
             // the first left and answers on its own.
             SceneTextures described;
-            described.describe(scene, images, both);
+            described.describe(scene.getTables(), images, both);
             check(described, "described by arrival");
 
-            described.describeAll(scene, images);
+            described.describeAll(scene.getTables(), images);
             check(described, "described from the whole table");
         }
 
@@ -283,7 +283,7 @@ namespace Rtx
                 = scene.addBakedTexture(SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_smoke.dds")));
 
             SceneTextures described;
-            described.describeAll(scene, images);
+            described.describeAll(scene.getTables(), images);
             ASSERT_EQ(described.getDescriptions().size(), std::size_t{ 1 });
             EXPECT_EQ(described.getDescriptions()[0].mIndex, bake);
             EXPECT_EQ(described.getDescriptions()[0].mName, "unreadable");

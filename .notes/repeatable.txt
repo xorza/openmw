@@ -5,6 +5,12 @@
 # wrong: `AGENTS.md` says why the measured exposure carries one frame's difference into every frame
 # after it, and why a count therefore scales with the walk it was taken over.
 
+2026-09-08  61e2962dec+  — ten pairs of `one-cell-walk`, six seconds, build-debug, the exposure
+  measured. Every scene column identical on every pair. Five pairs identical over the picture too,
+  and the other five differed on 12, 49 and 51 pictures of 360. Taken over the rest of the
+  data-structure work: `SceneTables`, `BottomLevelStore` and `InstanceCounts`, the four renderer
+  interfaces, and the terrain store's one `collect` over a flat list.
+
 2026-09-08  fceb5a81dd+  — eleven pairs of `one-cell-walk`, six seconds, build-debug: one with the
   exposure measured and ten with `--exposure=1`. Every pair identical over 360 frames, the picture
   included. Taken over the data-structure work `.notes/design-proposal.md` names — the slot types,

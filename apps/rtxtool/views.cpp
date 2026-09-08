@@ -143,7 +143,7 @@ namespace RtxTool
             }
         }
 
-        /// One condition, from what the command line named and what the view fixes. `placeFrom`
+        /// One condition, from what the command line named and what the view fixes. `stopFor`
         /// says which of the two wins and why.
         float hourFor(const std::optional<float>& given, const std::optional<float>& fixed)
         {
@@ -166,7 +166,6 @@ namespace RtxTool
         // what says whether the block a window prints opens a section of its own.
         stop.mName = view.mName.empty() ? view.mCell : view.mName;
         stop.mNote = view.mNote;
-        stop.mCell = view.mCell;
 
         stop.mStand.mCell = view.mCell;
         stop.mStand.mEye = view.mOrigin;

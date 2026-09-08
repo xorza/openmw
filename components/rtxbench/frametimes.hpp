@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -36,53 +38,74 @@ namespace Rtx
         double getLowRate() const;
     };
 
+    /// Which of a measured frame's four figures a row holds.
+    ///
+    /// **`Wait` is the CPU standing still for the device, `Walk` is the world being mirrored, and
+    /// `Place` is the renderer being told what moved.** What is left of `Frame` is the frame's own
+    /// record. Lumping them would hide which of them a place is slow because of; a wait near the
+    /// frame is a device that cannot keep up, and a wait near nought is a CPU that cannot.
+    enum class Timing : std::uint32_t
+    {
+        Frame,
+        Wait,
+        Walk,
+        Place,
+    };
+
+    inline constexpr std::size_t sTimingCount = 4;
+
+    /// What a report heads each row with, and — with `Ms` after it — what the JSON names it.
+    inline constexpr std::array<std::string_view, sTimingCount> sTimingNames{ "frame", "wait", "walk", "place" };
+
+    inline constexpr std::size_t indexOf(const Timing timing)
+    {
+        return static_cast<std::size_t>(timing);
+    }
+
     /// The four figures a measured frame contributes, gathered over one run.
     ///
     /// **One object because they are cleared, filled and summarised together.** Four vectors kept
     /// apart are four chances for a frame to reach three of them, and rows out of step with each
-    /// other are rows that cannot be read against each other at all.
+    /// other are rows that cannot be read against each other at all. **One array**, because four
+    /// named members are four edits wherever a fifth figure is wanted.
     ///
     /// **Shared by the harness and the game**, whose two reports only mean something beside each
     /// other: a crossing in one is measured against a crossing in the other, and a row one of them
     /// gathered differently would be a difference read as a finding.
     struct FrameSamples
     {
-        std::vector<double> mFrame;
-        std::vector<double> mWait;
-        std::vector<double> mWalk;
-        std::vector<double> mPlace;
+        std::array<std::vector<double>, sTimingCount> mRows;
+
+        std::vector<double>& at(const Timing timing) { return mRows[indexOf(timing)]; }
+        const std::vector<double>& at(const Timing timing) const { return mRows[indexOf(timing)]; }
 
         void reserve(std::uint32_t frames)
         {
-            mFrame.reserve(frames);
-            mWait.reserve(frames);
-            mWalk.reserve(frames);
-            mPlace.reserve(frames);
+            for (std::vector<double>& row : mRows)
+                row.reserve(frames);
         }
 
         /// Cleared and refilled per place, never freed.
         void clear()
         {
-            mFrame.clear();
-            mWait.clear();
-            mWalk.clear();
-            mPlace.clear();
+            for (std::vector<double>& row : mRows)
+                row.clear();
         }
 
         /// What one measured frame cost, and the two shares of it this fork itself owns.
         void add(double frameMs, double walkMs, double placeMs)
         {
-            mFrame.push_back(frameMs);
-            mWalk.push_back(walkMs);
-            mPlace.push_back(placeMs);
+            at(Timing::Frame).push_back(frameMs);
+            at(Timing::Walk).push_back(walkMs);
+            at(Timing::Place).push_back(placeMs);
         }
 
         /// What the device reported for the frame behind, which arrives on its own schedule and on
         /// the first frames of a run does not arrive at all.
-        void addWait(double waitMs) { mWait.push_back(waitMs); }
+        void addWait(double waitMs) { at(Timing::Wait).push_back(waitMs); }
 
-        bool empty() const { return mFrame.empty(); }
-        std::uint32_t size() const { return static_cast<std::uint32_t>(mFrame.size()); }
+        bool empty() const { return at(Timing::Frame).empty(); }
+        std::uint32_t size() const { return static_cast<std::uint32_t>(at(Timing::Frame).size()); }
     };
 
     /// Sorts `times` and summarises it. At least one time, which every caller has by construction.
@@ -144,19 +167,32 @@ namespace Rtx
         /// the question "where did the frame go" wants read. Empty where no frame reported a zone.
         std::span<const GpuZone> summariseZones();
 
-        bool empty() const { return mNames.empty(); }
+        bool empty() const { return mRows.empty(); }
 
     private:
-        /// The backend's own literals — see `GpuSpan::mName` for why a view over one is kept.
-        std::vector<std::string_view> mNames;
+        /// One zone's name and what it has cost.
+        ///
+        /// **One row and not three vectors kept level by hand.** A zone met for the first time has
+        /// to reach all three, and a name pushed without its row is an index that reads another
+        /// zone's samples.
+        struct ZoneRow
+        {
+            /// The backend's own literal — see `GpuSpan::mName` for why a view over one is kept.
+            std::string_view mName;
 
-        /// One row of samples per name, indexed alongside `mNames`: one sample a frame, never one
-        /// a span.
-        std::vector<std::vector<double>> mTimes;
+            /// One sample a frame, never one a span.
+            ///
+            /// **Its own vector, because the rows are pushed to independently.** A zone runs on the
+            /// frames it runs on, so a flat buffer shared by all of them would have to be laid out
+            /// again whenever one outgrew its share — inside a frame it is timing.
+            std::vector<double> mTimes;
 
-        /// Which frame each name was last given a sample on, so the spans of one frame land in one
-        /// of them. Nought for a name nothing has reported yet, which is an index no frame has.
-        std::vector<std::uint32_t> mSeen;
+            /// Which frame this was last given a sample on, so the spans of one frame land in one
+            /// of them. Nought for a zone nothing has reported yet, which is an index no frame has.
+            std::uint32_t mSeen = 0;
+        };
+
+        std::vector<ZoneRow> mRows;
 
         /// Frames `add` was called for, which is what a zone's row is short against.
         std::uint32_t mFrames = 0;

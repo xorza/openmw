@@ -15,6 +15,7 @@
 
 #include "channel.hpp"
 #include "index.hpp"
+#include "instancecounts.hpp"
 #include "memoryreport.hpp"
 #include "reconstruction.hpp"
 #include "reorder.hpp"
@@ -28,7 +29,7 @@ struct SDL_Window;
 
 namespace Rtx
 {
-    class SceneDesc;
+    struct SceneTables;
 
     /// Developer instrumentation. Nobody enables any of this in a run they care about the frame rate
     /// of, and a backend reads whichever of it its API offers.
@@ -245,23 +246,7 @@ namespace Rtx
     /// What a backend reports about the scene it took. The harness's summary line, as a struct.
     struct SceneStats
     {
-        std::uint32_t mInstances = 0;
-
-        /// How many of those traversal has to stop and ask where the holes are — the cost of the
-        /// cutout, as a number, so a material change that marks half a cell non-opaque shows up
-        /// before a frame time does.
-        ///
-        /// **Not every instance traversal stops for.** A translucent one is stopped for as well, and
-        /// is counted here nowhere: what it costs is a different question, since it never ends the
-        /// ray.
-        std::uint32_t mCutoutInstances = 0;
-
-        /// How many of those place a mesh whose structure carries an opacity micromap, so traversal
-        /// resolves every known microtriangle without stopping and asks only about the unknown
-        /// ones. A cutout that is not among them is a mask nothing could bake — an animated one —
-        /// or a placement the game is fading, which reads its leaves through the any-hit for as
-        /// long as it fades. `Rtx::SceneMicromaps` says which meshes get one.
-        std::uint32_t mMicromappedInstances = 0;
+        InstanceCounts mInstances;
 
         /// What the renderer holds in acceleration structures and in scene tables.
         ///
@@ -479,7 +464,7 @@ namespace Rtx
         Reconstruction mReconstruction;
     };
 
-    /// One traced image, whichever API produced it.
+    /// What a scene is handed to, and what it says about the one it holds.
     ///
     /// **Nothing below this line is abstracted:** buffers, images, memory, command buffers,
     /// descriptors and pipelines belong to a backend outright and are shared with nothing. An
@@ -487,23 +472,16 @@ namespace Rtx
     /// call inside a frame. So a method here is worth a whole scene or a whole frame, and none is
     /// reached per instance, per light or per pixel.
     ///
-    /// A backend that owns a window presents through it. There is no second route off the device
-    /// for a frame: `readPixels` copies one back to the host, and nothing exports an allocation.
-    class Renderer
+    /// **`slot` says which scene** throughout: the world's for the one the frame is traced against,
+    /// or a slot `addViewScene` handed out for a picture inside the interface. `SceneUploader` is
+    /// where the decision between them is made once for both.
+    class SceneSink
     {
     public:
-        virtual ~Renderer() = default;
+        virtual ~SceneSink() = default;
 
-        Renderer(const Renderer&) = delete;
-        Renderer& operator=(const Renderer&) = delete;
-
-        /// Multi-line report: the device and what it can trace with.
-        virtual std::string describeDevice() const = 0;
-
-        /// Whether instrumentation is actually running, which is not the same as having asked for
-        /// it — a layer can be missing. Anything quoting a frame time has to say so, because a
-        /// figure measured under validation is not one to compare against anything.
-        virtual bool isValidating() const = 0;
+        SceneSink(const SceneSink&) = delete;
+        SceneSink& operator=(const SceneSink&) = delete;
 
         /// Builds everything a scene needs, replacing whatever was there.
         ///
@@ -511,12 +489,10 @@ namespace Rtx
         /// uploads, which is what keeps this library free of a graphics API. They are indexed by the
         /// scene's texture index, so their order is the scene's, and they must outlive the call.
         ///
-        /// **`slot` says which scene**: the world's for the one the frame is traced against, or a
-        /// slot `addViewScene` handed out for a picture inside the interface. The three calls below
-        /// take it too, so a doll gets the same decision a cell does — see `SceneUploader`, which is
-        /// where that decision is made once for both.
+        /// Every call of this interface takes `slot`, so a doll gets the same decision a cell
+        /// does — the class comment above says where that decision is made.
         virtual void setScene(
-            SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures, const SeaState& sea)
+            SceneSlot slot, const SceneTables& scene, std::span<const TextureData> textures, const SeaState& sea)
             = 0;
 
         /// The same scene with more in it: geometry and textures appended, nothing renumbered.
@@ -533,24 +509,8 @@ namespace Rtx
         /// Only for a scene whose tables **grew**. A `retain` that closed the gaps renumbers every
         /// index, and the answer to that is still `setScene`.
         virtual void extendScene(
-            SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
+            SceneSlot slot, const SceneTables& scene, std::span<const TextureData> arrived, const SeaState& sea)
             = 0;
-
-        /// Say that the next frame has no usable past.
-        ///
-        /// **A reconstruction accumulates over several frames, and a jump no motion vector can
-        /// describe makes every one of them a lie.** Walking through a door, a teleport, a cut: the
-        /// camera moves somewhere its previous basis says nothing about, and what is reprojected is
-        /// one room onto another.
-        ///
-        /// **Not derivable from what the renderer sees.** A world scene is built once and then grows
-        /// and recycles its slots — nothing replaces it outright, and travel retires what left the
-        /// same way a step does — so `setScene` fires at startup and not again, and the mirror looks
-        /// the same across a cell load as it does across a step. Only the simulation knows, so only
-        /// the simulation can say.
-        ///
-        /// Costs one frame of reconstruction, so it is for discontinuities and not for changes.
-        virtual void resetHistory() = 0;
 
         /// How long the renderer's texture table is, which is where `extendScene`'s `arrived` begins.
         ///
@@ -583,93 +543,47 @@ namespace Rtx
         /// which is where a skinned body and a morphed face come in: their triangles are the same
         /// triangles and their vertices are new ones.
         ///
-        /// `scene` must be the one `setScene` was given, with `clearPlacement` called and the
+        /// `scene` must be the tables of the scene `setScene` was given, with `clearPlacement` called and the
         /// instances re-walked: the placements index into structures this already holds.
-        virtual void placeScene(SceneSlot slot, const SceneDesc& scene, const SeaState& sea) = 0;
+        virtual void placeScene(SceneSlot slot, const SceneTables& scene, const SeaState& sea) = 0;
 
         /// Only meaningful once `setScene` has been called.
         virtual const SceneStats& getSceneStats() const = 0;
 
-        /// What the renderer has taken from each of the device's memory heaps.
+        /// A scene of its own for a picture inside the interface to be traced against.
         ///
-        /// **Asked once at a place and never once a frame.** It walks every allocation the backend
-        /// holds, which costs nothing beside a cell arriving and is what answers "would this run fit
-        /// on a card whose host-visible heap is a couple of hundred megabytes" — a question
-        /// `SceneStats` cannot put, because that counts what the scene is and this counts what the
-        /// device gave up for it.
-        virtual MemoryReport getMemoryReport() const = 0;
-
-        /// Resizes the **presented** image. What the trace runs at follows from the upscaler, and
-        /// `getExtents` is what says. Kept by the backend, so nothing here allocates per frame.
-        virtual void resize(std::uint32_t width, std::uint32_t height) = 0;
-
-        /// How hard the upscaler works, which decides what the frame is traced at.
+        /// **Not the world, and not reachable from it.** The inventory doll and the race preview are
+        /// groups the game assembled for one picture: nothing in them stands in a cell, they are lit
+        /// by a rig of their own, and a ray the frame sends must not be able to find them. Each gets
+        /// acceleration structures of its own.
         ///
-        /// **Rebuilds every target, which is what makes it a setting and not a per-frame option.**
-        /// The extent a frame is traced at is the upscaler's answer for the presented one, so a mode
-        /// is as big a change as a resize and costs the same: `getExtents` reports the new pair
-        /// afterwards, and a caller holding the old one is holding a camera nothing will accept.
-        ///
-        /// Throws where the mode cannot be reached — a build with no upscaler in it, or a machine
-        /// whose driver cannot run one. **Which is the answer to a setting and not a fault**, so a
-        /// caller that offers the mode to somebody catches it and stays where it was.
-        virtual void setUpscale(Upscale upscale) = 0;
+        /// Slots a scene gave back are taken over before the table grows, as the texture table does.
+        virtual SceneSlot addViewScene() = 0;
 
-        /// Which mode the frames are being traced under, which is not always the one that was asked
-        /// for: a mode this machine refused leaves the renderer where it was.
-        virtual Upscale getUpscale() const = 0;
+        virtual void dropViewScene(SceneSlot slot) = 0;
 
-        /// How the presented image should meet the monitor's refresh.
-        ///
-        /// **`SDLUtil::VSyncMode` and not a spelling of this fork's own**, because it is the setting
-        /// the game already reads and the rasterizer already acts on. A second enum over the same
-        /// three values is a second thing to keep in step for nothing.
-        ///
-        /// Costs a swapchain rebuild where it changes anything, so it is a settings-change call and
-        /// not a frame one.
-        virtual void setVerticalSync(SDLUtil::VSyncMode mode) = 0;
+    protected:
+        SceneSink() = default;
+    };
 
-        /// What the last `resize` settled on. **The camera has to be built for the render extent**,
-        /// because the trace's per-pixel ray spread comes from it.
+    /// The interface's own images, and the call that draws them over the frame.
+    ///
+    /// A texture here is one MyGUI asked for. `traceGuiTexture` is the exception that fills one from
+    /// a scene rather than from bytes, which is what an inventory doll and a map are.
+    class GuiSurface
+    {
+    public:
+        virtual ~GuiSurface() = default;
+
+        GuiSurface(const GuiSurface&) = delete;
+        GuiSurface& operator=(const GuiSurface&) = delete;
+
+        /// What the last `FrameSource::resize` settled on. **The camera has to be built for the
+        /// render extent**, because the trace's per-pixel ray spread comes from it.
+        ///
+        /// Here because a GUI texture is sized against it, and in one interface alone because a
+        /// second declaration would make the call ambiguous in `Renderer`.
         virtual FrameExtents getExtents() const = 0;
-
-        /// Traces one frame. `setScene` first, which is a contract and so an assert.
-        ///
-        /// **Returns before the device has drawn it.** The frame is submitted and the call comes
-        /// back, so the caller can walk and place the next one while this one is traced; what the
-        /// frame came to is read back by `finishFrame`. At most two frames are in flight: the third
-        /// waits for the first. What the call decided about reconstruction is returned here because
-        /// it is known here.
-        virtual Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) = 0;
-
-        /// What the oldest frame nothing has asked about came to, waiting for it where it is still
-        /// in flight, or nothing where every frame drawn has been reported.
-        ///
-        /// **A frame's report belongs to the frame and not to whichever call did the waiting.** The
-        /// ring drains itself when a new frame wants a slot, and what it drained is reported here
-        /// like anything else — a caller asking once a frame is answered once a frame.
-        ///
-        /// **Where the pipeline is paid for and where it pays, and the submit is what divides the
-        /// two.** Called after `renderFrame` the oldest frame in flight is the one just submitted,
-        /// so the wait is that frame waited out — which is what a screenshot and a pixel test want.
-        /// Called before it, the oldest is the frame behind, the walk and the placement have
-        /// already run beside the device drawing it, and the fence has usually signalled by the
-        /// time the wait is reached. Only the second of those puts two frames in the ring, and a
-        /// caller that wants one frame of overlap has to ask for it that way round.
-        ///
-        /// A caller that never calls it loses nothing but the numbers: a frame's resources are
-        /// reclaimed when a later frame needs its slot.
-        virtual std::optional<FrameResult> finishFrame() = 0;
-
-        /// Shows the frame `renderFrame` just produced, where this renderer was given a window.
-        ///
-        /// False means the surface stopped matching the window — a resize, a monitor change, a
-        /// compositor restart — and the caller should `resize` and carry on. None of those is an
-        /// error, which is why this is not one.
-        ///
-        /// **A contract and so an assert**: a renderer built without a window has nothing to
-        /// present into, and asking it to is a caller's mistake rather than a condition.
-        virtual bool presentFrame() = 0;
 
         /// A texture the GUI draws with, sized once and written whenever it changes.
         ///
@@ -734,23 +648,142 @@ namespace Rtx
             GuiSlot texture, const Shaders::VisibilityConstants& camera, const GuiTraceOptions& options)
             = 0;
 
-        /// A scene of its own for a picture inside the interface to be traced against.
-        ///
-        /// **Not the world, and not reachable from it.** The inventory doll and the race preview are
-        /// groups the game assembled for one picture: nothing in them stands in a cell, they are lit
-        /// by a rig of their own, and a ray the frame sends must not be able to find them. Each gets
-        /// acceleration structures of its own.
-        ///
-        /// Slots a scene gave back are taken over before the table grows, as the texture table does.
-        virtual SceneSlot addViewScene() = 0;
-
-        virtual void dropViewScene(SceneSlot slot) = 0;
-
         /// The whole of a GUI texture, four bytes a pixel, tightly packed, row zero first.
         ///
         /// **Off the device and so asked for rather than always done.** The global map compositing
         /// what the local map drew is the only caller, and it wants the tile once per cell.
         virtual void readGuiTexture(GuiSlot texture, std::vector<std::uint8_t>& pixels) = 0;
+
+    protected:
+        GuiSurface() = default;
+    };
+
+    /// What produces a frame, and everything that decides what one costs.
+    ///
+    /// A backend that owns a window presents through it. There is no second route off the device
+    /// for a frame: `Instrument::readPixels` copies one back to the host, and nothing exports an
+    /// allocation.
+    class FrameSource
+    {
+    public:
+        virtual ~FrameSource() = default;
+
+        FrameSource(const FrameSource&) = delete;
+        FrameSource& operator=(const FrameSource&) = delete;
+
+        /// Say that the next frame has no usable past.
+        ///
+        /// **A reconstruction accumulates over several frames, and a jump no motion vector can
+        /// describe makes every one of them a lie.** Walking through a door, a teleport, a cut: the
+        /// camera moves somewhere its previous basis says nothing about, and what is reprojected is
+        /// one room onto another.
+        ///
+        /// **Not derivable from what the renderer sees.** A world scene is built once and then grows
+        /// and recycles its slots — nothing replaces it outright, and travel retires what left the
+        /// same way a step does — so `setScene` fires at startup and not again, and the mirror looks
+        /// the same across a cell load as it does across a step. Only the simulation knows, so only
+        /// the simulation can say.
+        ///
+        /// Costs one frame of reconstruction, so it is for discontinuities and not for changes.
+        virtual void resetHistory() = 0;
+
+        /// Resizes the **presented** image. What the trace runs at follows from the upscaler, and
+        /// `GuiSurface::getExtents` is what says. Kept by the backend, so nothing here allocates per frame.
+        virtual void resize(std::uint32_t width, std::uint32_t height) = 0;
+
+        /// How hard the upscaler works, which decides what the frame is traced at.
+        ///
+        /// **Rebuilds every target, which is what makes it a setting and not a per-frame option.**
+        /// The extent a frame is traced at is the upscaler's answer for the presented one, so a mode
+        /// is as big a change as a resize and costs the same: `GuiSurface::getExtents` reports it
+        /// afterwards, and a caller holding the old one is holding a camera nothing will accept.
+        ///
+        /// Throws where the mode cannot be reached — a build with no upscaler in it, or a machine
+        /// whose driver cannot run one. **Which is the answer to a setting and not a fault**, so a
+        /// caller that offers the mode to somebody catches it and stays where it was.
+        virtual void setUpscale(Upscale upscale) = 0;
+
+        /// Which mode the frames are being traced under, which is not always the one that was asked
+        /// for: a mode this machine refused leaves the renderer where it was.
+        virtual Upscale getUpscale() const = 0;
+
+        /// How the presented image should meet the monitor's refresh.
+        ///
+        /// **`SDLUtil::VSyncMode` and not a spelling of this fork's own**, because it is the setting
+        /// the game already reads and the rasterizer already acts on. A second enum over the same
+        /// three values is a second thing to keep in step for nothing.
+        ///
+        /// Costs a swapchain rebuild where it changes anything, so it is a settings-change call and
+        /// not a frame one.
+        virtual void setVerticalSync(SDLUtil::VSyncMode mode) = 0;
+
+        /// Traces one frame. `setScene` first, which is a contract and so an assert.
+        ///
+        /// **Returns before the device has drawn it.** The frame is submitted and the call comes
+        /// back, so the caller can walk and place the next one while this one is traced; what the
+        /// frame came to is read back by `finishFrame`. At most two frames are in flight: the third
+        /// waits for the first. What the call decided about reconstruction is returned here because
+        /// it is known here.
+        virtual Reconstruction renderFrame(const Shaders::VisibilityConstants& camera, const FrameOptions& options) = 0;
+
+        /// What the oldest frame nothing has asked about came to, waiting for it where it is still
+        /// in flight, or nothing where every frame drawn has been reported.
+        ///
+        /// **A frame's report belongs to the frame and not to whichever call did the waiting.** The
+        /// ring drains itself when a new frame wants a slot, and what it drained is reported here
+        /// like anything else — a caller asking once a frame is answered once a frame.
+        ///
+        /// **Where the pipeline is paid for and where it pays, and the submit is what divides the
+        /// two.** Called after `renderFrame` the oldest frame in flight is the one just submitted,
+        /// so the wait is that frame waited out — which is what a screenshot and a pixel test want.
+        /// Called before it, the oldest is the frame behind, the walk and the placement have
+        /// already run beside the device drawing it, and the fence has usually signalled by the
+        /// time the wait is reached. Only the second of those puts two frames in the ring, and a
+        /// caller that wants one frame of overlap has to ask for it that way round.
+        ///
+        /// A caller that never calls it loses nothing but the numbers: a frame's resources are
+        /// reclaimed when a later frame needs its slot.
+        virtual std::optional<FrameResult> finishFrame() = 0;
+
+        /// Shows the frame `renderFrame` just produced, where this renderer was given a window.
+        ///
+        /// False means the surface stopped matching the window — a resize, a monitor change, a
+        /// compositor restart — and the caller should `resize` and carry on. None of those is an
+        /// error, which is why this is not one.
+        ///
+        /// **A contract and so an assert**: a renderer built without a window has nothing to
+        /// present into, and asking it to is a caller's mistake rather than a condition.
+        virtual bool presentFrame() = 0;
+
+    protected:
+        FrameSource() = default;
+    };
+
+    /// What a run is measured and inspected through. Nothing here is on the frame path.
+    class Instrument
+    {
+    public:
+        virtual ~Instrument() = default;
+
+        Instrument(const Instrument&) = delete;
+        Instrument& operator=(const Instrument&) = delete;
+
+        /// Multi-line report: the device and what it can trace with.
+        virtual std::string describeDevice() const = 0;
+
+        /// Whether instrumentation is actually running, which is not the same as having asked for
+        /// it — a layer can be missing. Anything quoting a frame time has to say so, because a
+        /// figure measured under validation is not one to compare against anything.
+        virtual bool isValidating() const = 0;
+
+        /// What the renderer has taken from each of the device's memory heaps.
+        ///
+        /// **Asked once at a place and never once a frame.** It walks every allocation the backend
+        /// holds, which costs nothing beside a cell arriving and is what answers "would this run fit
+        /// on a card whose host-visible heap is a couple of hundred megabytes" — a question
+        /// `SceneStats` cannot put, because that counts what the scene is and this counts what the
+        /// device gave up for it.
+        virtual MemoryReport getMemoryReport() const = 0;
 
         /// Copies the traced image into `pixels`, four bytes per pixel, tightly packed.
         /// Not const: it submits a copy and waits for it.
@@ -779,6 +812,21 @@ namespace Rtx
         /// same call. Empty where nothing is instrumented, which is the only reason a suite can ask
         /// unconditionally.
         virtual void takeValidationErrors(std::vector<std::string>& errors) = 0;
+
+    protected:
+        Instrument() = default;
+    };
+
+    /// One traced image, whichever API produced it: `Renderer` is the four interfaces above, and
+    /// a backend implements all four.
+    ///
+    /// **Split so that a caller takes what it uses.** `MyGUIRtx` draws an interface and cannot
+    /// reach a scene; `SceneUploader` hands scenes over and cannot present a frame. Nothing gains a
+    /// call by the split and nothing loses one — what it removes is the reach a caller never wanted.
+    class Renderer : public SceneSink, public GuiSurface, public FrameSource, public Instrument
+    {
+    public:
+        ~Renderer() override = default;
 
     protected:
         Renderer() = default;

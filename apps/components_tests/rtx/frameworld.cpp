@@ -173,7 +173,7 @@ namespace Rtx
             SceneExtractor extractor(scene);
             mirrorPrecipitation(extractor, &falling.get(), 0);
 
-            ASSERT_EQ(scene.getPlacedCount(), 1u) << "the drop was not walked at all";
+            ASSERT_EQ(scene.getTables().mPlacements.getPlacedCount(), 1u) << "the drop was not walked at all";
             EXPECT_EQ(Testing::placedAt(scene, 0), eye) << "the drops were stood somewhere other than the eye";
 
             // Held still where the eye is submerged, which is a walk that does not happen rather
@@ -183,14 +183,14 @@ namespace Rtx
             falling.get().update(Weather::Conditions{ .mEye = eye, .mUnderwater = true });
             mirrorPrecipitation(beneath, &falling.get(), 0);
 
-            EXPECT_EQ(under.getPlacedCount(), 0u);
+            EXPECT_EQ(under.getTables().mPlacements.getPlacedCount(), 0u);
 
             // And a world with no weather over it at all is the third case the one call answers.
             SceneDesc dry;
             SceneExtractor none(dry);
             mirrorPrecipitation(none, nullptr, 0);
 
-            EXPECT_EQ(dry.getPlacedCount(), 0u);
+            EXPECT_EQ(dry.getTables().mPlacements.getPlacedCount(), 0u);
         }
 
         /// Every number the world decides reaches the constants, and reaches the right one.

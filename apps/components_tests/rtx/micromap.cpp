@@ -394,8 +394,8 @@ namespace Rtx
 
             Graveyard graveyard(device, pool);
             Batch setup(pool);
-            const SceneAcceleration acceleration(device, setup, scene, 1);
-            const SceneBuffers buffers(device, setup, scene, {}, 1, graveyard);
+            const SceneAcceleration acceleration(device, setup, scene.getTables(), 1);
+            const SceneBuffers buffers(device, setup, scene.getTables(), {}, 1, graveyard);
             const TextureArray textures(device, setup, 1, std::span(&mask.mData, 1), graveyard);
             const MicromapPass pass(device, textures.getLayout(), Testing::getShaderDirectory());
 
@@ -414,8 +414,8 @@ namespace Rtx
             const Buffer data = Buffer::deviceLocal(device, bytes, addressable | VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
             const Buffer read = Buffer::staging(device, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
-            const MeshRange& mesh = scene.getMeshes()[triangle];
-            const Material& material = scene.getMaterials()[cutout];
+            const MeshRange& mesh = scene.getTables().mMeshes.getRows()[triangle];
+            const Material& material = scene.getTables().mMaterials.getRows()[cutout];
 
             const VkCommandBuffer commands = setup.getCommands();
             pass.begin(commands, textures.getSet());
@@ -562,12 +562,12 @@ namespace Rtx
                 .mAlphaRef = 0.5f,
                 .mAlphaMode = Surface::AlphaMode::Cutout,
             });
-            Material scrolling = scene.getMaterials()[cutout];
+            Material scrolling = scene.getTables().mMaterials.getRows()[cutout];
             scrolling.mAnimated = true;
             const Index animated = scene.addMaterial(scrolling);
 
             // A mask the scene names and nothing describes: a slot the array does not hold.
-            Material unopened = scene.getMaterials()[cutout];
+            Material unopened = scene.getTables().mMaterials.getRows()[cutout];
             unopened.mDiffuse = scene.addTexture(VFS::Path::NormalizedView("nowhere.dds"));
             const Index untextured = scene.addMaterial(unopened);
 
@@ -582,21 +582,21 @@ namespace Rtx
             for (const Index mesh : { baked, refused, bare, plain })
                 scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                     .mMesh = mesh,
-                    .mMaterial = scene.getMeshes()[mesh].mMaterial });
+                    .mMaterial = scene.getTables().mMeshes.getRows()[mesh].mMaterial });
 
             std::vector<InstanceRecord> records;
-            makeInstanceRecords(scene, records);
+            makeInstanceRecords(scene.getTables(), records);
 
             Graveyard graveyard(device, pool);
             Batch setup(pool);
-            SceneAcceleration acceleration(device, setup, scene, 1);
-            const SceneBuffers buffers(device, setup, scene, records, 1, graveyard);
+            SceneAcceleration acceleration(device, setup, scene.getTables(), 1);
+            const SceneBuffers buffers(device, setup, scene.getTables(), records, 1, graveyard);
             const TextureArray textures(device, setup, 1, std::span(&mask.mData, 1), graveyard);
             const MicromapPass pass(device, textures.getLayout(), Testing::getShaderDirectory());
             SceneMicromaps micromaps(device);
 
-            micromaps.bake(
-                setup, pass, scene, buffers, acceleration, textures, acceleration.getEveryMesh(), nullptr, graveyard);
+            micromaps.bake(setup, pass, scene.getTables(), buffers, acceleration, textures, acceleration.getEveryMesh(),
+                nullptr, graveyard);
 
             EXPECT_TRUE(micromaps.has(baked));
             EXPECT_FALSE(micromaps.has(refused)) << "a mask a controller scrolls cannot be baked";
@@ -608,8 +608,8 @@ namespace Rtx
             // has to be timed against: every cutout reaches the any-hit instead, and nothing is
             // examined, so the mask nobody uploaded is not counted either.
             SceneMicromaps none(device, false);
-            none.bake(
-                setup, pass, scene, buffers, acceleration, textures, acceleration.getEveryMesh(), nullptr, graveyard);
+            none.bake(setup, pass, scene.getTables(), buffers, acceleration, textures, acceleration.getEveryMesh(),
+                nullptr, graveyard);
 
             EXPECT_FALSE(none.has(baked)) << "a mask was baked with micromaps off";
             EXPECT_EQ(none.getBytes(), 0u);
@@ -629,13 +629,13 @@ namespace Rtx
 
             // And a structure built over it, which is what the layers check the description
             // against: the counts must match the triangles and the micromap must be built first.
-            acceleration.build(setup, scene, records, micromaps, graveyard);
+            acceleration.build(setup, scene.getTables(), records, micromaps, graveyard);
             setup.flush();
 
             const VkDeviceSize held = micromaps.getBytes();
             EXPECT_GT(held, 0u);
-            EXPECT_EQ(acceleration.getMicromappedInstanceCount(), 1u);
-            EXPECT_EQ(acceleration.getCutoutInstanceCount(), 3u) << "the cutouts nothing could bake still stop rays";
+            EXPECT_EQ(acceleration.getInstanceCounts().mMicromapped, 1u);
+            EXPECT_EQ(acceleration.getInstanceCounts().mCutout, 3u) << "the cutouts nothing could bake still stop rays";
 
             // Given back through the graveyard, and only once the graveyard says so.
             const std::array<Index, 1> going{ baked };
@@ -650,8 +650,8 @@ namespace Rtx
             graveyard.clear();
 
             Batch again(pool);
-            micromaps.bake(again, pass, scene, buffers, acceleration, textures, going, nullptr, graveyard);
-            acceleration.buildArrived(again, scene, micromaps, nullptr, graveyard);
+            micromaps.bake(again, pass, scene.getTables(), buffers, acceleration, textures, going, nullptr, graveyard);
+            acceleration.buildArrived(again, scene.getTables(), micromaps, nullptr, graveyard);
             again.flush();
 
             EXPECT_TRUE(micromaps.has(baked));
@@ -684,33 +684,33 @@ namespace Rtx
 
             Graveyard graveyard(device, pool);
             Batch setup(pool);
-            const SceneAcceleration acceleration(device, setup, scene, 1);
-            const SceneBuffers buffers(device, setup, scene, {}, 1, graveyard);
+            const SceneAcceleration acceleration(device, setup, scene.getTables(), 1);
+            const SceneBuffers buffers(device, setup, scene.getTables(), {}, 1, graveyard);
             const TextureArray textures(device, setup, 1, std::span(&mask.mData, 1), graveyard);
             const MicromapPass pass(device, textures.getLayout(), Testing::getShaderDirectory());
             SceneMicromaps micromaps(device);
 
-            micromaps.bake(
-                setup, pass, scene, buffers, acceleration, textures, acceleration.getEveryMesh(), nullptr, graveyard);
+            micromaps.bake(setup, pass, scene.getTables(), buffers, acceleration, textures, acceleration.getEveryMesh(),
+                nullptr, graveyard);
             setup.flush();
             ASSERT_TRUE(micromaps.has(baked));
 
             // The arrival's own writes: the material was added this frame, and it is what was baked.
-            EXPECT_NO_THROW(micromaps.check(scene));
+            EXPECT_NO_THROW(micromaps.check(scene.getTables()));
             scene.clearArrivals();
 
             // A rewrite the bake cannot see — the glow — is not a rewrite of the mask.
-            Material glowing = scene.getMaterials()[cutout];
+            Material glowing = scene.getTables().mMaterials.getRows()[cutout];
             glowing.mEmissiveColour = osg::Vec3f(1.0f, 0.0f, 0.0f);
             scene.setMaterial(cutout, glowing);
-            EXPECT_NO_THROW(micromaps.check(scene));
+            EXPECT_NO_THROW(micromaps.check(scene.getTables()));
             scene.clearArrivals();
 
             // A rewrite of the cutoff is.
             Material tightened = glowing;
             tightened.mAlphaRef = 0.75f;
             scene.setMaterial(cutout, tightened);
-            EXPECT_THROW(micromaps.check(scene), Error);
+            EXPECT_THROW(micromaps.check(scene.getTables()), Error);
 
             device.waitIdle();
         }

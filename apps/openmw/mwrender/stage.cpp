@@ -55,6 +55,11 @@ namespace MWRender
         return *mSceneRoot;
     }
 
+    bool Stage::hasSceneRoot() const
+    {
+        return mSceneRoot != nullptr;
+    }
+
     void Stage::setSceneRoot(osg::Group& root)
     {
         mSceneRoot = &root;

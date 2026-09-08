@@ -72,6 +72,10 @@ namespace MWRender
         /// top have to land above that too.
         osg::Group& getSceneRoot() const;
 
+        /// Whether anything is. Nothing is until a world is loaded, and a frame before that has no
+        /// scene to walk.
+        bool hasSceneRoot() const;
+
         /// Also parents `root` under the camera, which is what makes the world reachable to an
         /// intersection visitor and so to everything that asks what the player is looking at.
         ///

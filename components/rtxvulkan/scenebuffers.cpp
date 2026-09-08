@@ -6,7 +6,7 @@
 #include <string>
 
 #include <components/rtx/instancerecord.hpp>
-#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/scenetables.hpp>
 #include <components/rtx/shaders/scene.h>
 
 #include "commands.hpp"
@@ -119,7 +119,7 @@ namespace Rtx
         }
     }
 
-    SceneBuffers::SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
+    SceneBuffers::SceneBuffers(const Device& device, Batch& batch, const SceneTables& scene,
         std::span<const InstanceRecord> records, const std::uint32_t slots, Graveyard& graveyard)
         : mDevice(&device)
         , mSlots(slots)
@@ -154,7 +154,7 @@ namespace Rtx
         }
 
         // Every mesh the scene holds, which is the same path an arrival takes with a shorter list.
-        std::vector<Index> every(scene.getMeshes().size());
+        std::vector<Index> every(scene.mMeshes.getRows().size());
         for (std::size_t at = 0; at < every.size(); ++at)
             every[at] = static_cast<Index>(at);
 
@@ -171,31 +171,31 @@ namespace Rtx
         place(scene, records, {}, FrameSlot{}, graveyard);
     }
 
-    void SceneBuffers::extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard)
+    void SceneBuffers::extend(Batch& batch, const SceneTables& scene, Graveyard& graveyard)
     {
-        writeMeshes(batch, scene, scene.getArrivedMeshes(), graveyard);
+        writeMeshes(batch, scene, scene.mMeshes.getArrived(), graveyard);
     }
 
     void SceneBuffers::writeMeshes(
-        Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard)
+        Batch& batch, const SceneTables& scene, std::span<const Index> meshes, Graveyard& graveyard)
     {
         // **Whole runs here and a mesh at a time afterwards.** Only a skinned body's normals change,
         // so filling these when the mesh arrives is a load's cost and every frame after it pays for
         // what actually moved.
-        mTexCoords.reserve(batch, static_cast<std::uint32_t>(scene.getTexCoords().size()));
-        mNormalTable.reserve(batch, static_cast<std::uint32_t>(scene.getNormals().size()));
+        mTexCoords.reserve(batch, static_cast<std::uint32_t>(scene.mMeshes.getTexCoords().size()));
+        mNormalTable.reserve(batch, static_cast<std::uint32_t>(scene.mMeshes.getNormals().size()));
 
         for (const Index mesh : meshes)
         {
-            const MeshRange& range = scene.getMeshes()[mesh];
+            const MeshRange& range = scene.mMeshes.getRows()[mesh];
             if (range.mVertices.empty())
                 continue;
 
-            const std::span<const osg::Vec3f> normals = range.mVertices.in(scene.getNormals());
+            const std::span<const osg::Vec3f> normals = range.mVertices.in(scene.mMeshes.getNormals());
             for (std::uint32_t slot = 0; slot < mSlots; ++slot)
                 mNormalTable.at(FrameSlot{ slot }).writeAt(batch, range.mVertices.mOffset, normals);
 
-            mTexCoords.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.getTexCoords()));
+            mTexCoords.writeAt(batch, range.mVertices.mOffset, range.mVertices.in(scene.mMeshes.getTexCoords()));
         }
 
         // **What is built out of these was copied a moment ago.** The blocks are device memory, so a
@@ -208,8 +208,8 @@ namespace Rtx
         // but sizing it to the scene means growing it, and growing means writing it — so the rows
         // that did not change are written again for the price of not having to know which did.
         mMeshScratch.clear();
-        mMeshScratch.reserve(scene.getMeshes().size());
-        for (const MeshRange& mesh : scene.getMeshes())
+        mMeshScratch.reserve(scene.mMeshes.getRows().size());
+        for (const MeshRange& mesh : scene.mMeshes.getRows())
             mMeshScratch.push_back(Shaders::GpuMesh{
                 .mVertexOffset = mesh.mVertices.mOffset,
                 .mIndexOffset = mesh.mIndices.mOffset,
@@ -276,11 +276,11 @@ namespace Rtx
         tables.mSpriteBinReport.orderForHostRead(placing.mCommands);
     }
 
-    void SceneBuffers::shade(const SceneDesc& scene, const FrameSlot slot, Graveyard& graveyard)
+    void SceneBuffers::shade(const SceneTables& scene, const FrameSlot slot, Graveyard& graveyard)
     {
-        const std::span<const Material> materials = scene.getMaterials();
-        const std::span<const MaterialLayer> layers = scene.getLayers();
-        const std::span<const float> masks = scene.getMasks();
+        const std::span<const Material> materials = scene.mMaterials.getRows();
+        const std::span<const MaterialLayer> layers = scene.mMaterials.getLayers();
+        const std::span<const float> masks = scene.mMaterials.getMasks();
 
         // **Every row where the table changed length, and the rows the scene wrote otherwise.** The
         // sentinel sits one past the real materials, so a table that grew has a real material where
@@ -299,7 +299,7 @@ namespace Rtx
         else
         {
             // A material a flipbook rewrote is one row; the table around it is what it was.
-            for (const Index at : scene.getWrittenMaterials())
+            for (const Index at : scene.mMaterials.getWritten())
                 mMaterialTable.write(at) = toGpu(materials[at]);
         }
 
@@ -334,7 +334,7 @@ namespace Rtx
             {
                 // Each run as the chunk placed it: converted into the scratch and written at the
                 // run's own offset, so a table of a thousand layers pays for the five that arrived.
-                for (const Run run : scene.getArrivedLayers())
+                for (const Run run : scene.mMaterials.getArrived().mLayers)
                 {
                     mLayerScratch.clear();
                     mLayerScratch.reserve(run.mCount);
@@ -350,12 +350,12 @@ namespace Rtx
                     graveyard))
                 copy.mMasks.write(masks.empty() ? std::span<const float>(&noMask, 1) : masks);
             else
-                for (const Run run : scene.getArrivedMasks())
+                for (const Run run : scene.mMaterials.getArrived().mMasks)
                     copy.mMasks.writeAt(run.mOffset * sizeof(float), run.in(masks));
         }
     }
 
-    void SceneBuffers::place(const SceneDesc& scene, std::span<const InstanceRecord> records,
+    void SceneBuffers::place(const SceneTables& scene, std::span<const InstanceRecord> records,
         std::span<const Index> changed, const FrameSlot slot, Graveyard& graveyard)
     {
         assert(slot.get() < mSlots && "a frame slot this scene has no copy of the tables for");
@@ -365,12 +365,12 @@ namespace Rtx
         Tables& tables = mTables[slot.get()];
 
         // The sentinel material sits one past the real ones, which is where `shade` put it.
-        const auto sentinel = static_cast<std::uint32_t>(scene.getMaterials().size());
+        const auto sentinel = static_cast<std::uint32_t>(scene.mMaterials.getRows().size());
 
         // **Indexed by slot, gaps included.** A hit reads its slot back as the custom index and
         // looks the row up here directly, so a table that closed its gaps would answer for the
         // wrong placement. A gap's row is never read, so it is never written either.
-        const std::span<const MeshInstance> placements = scene.getInstances();
+        const std::span<const MeshInstance> placements = scene.mPlacements.getAll();
 
         const std::size_t had = mInstanceTable.size();
         mInstanceTable.resize(records.size());
@@ -403,18 +403,18 @@ namespace Rtx
         mInstanceTable.sync(slot, graveyard);
 
         mLightScratch.clear();
-        mLightScratch.reserve(scene.getLights().size());
-        for (const Light& light : scene.getLights())
+        mLightScratch.reserve(scene.mLights.size());
+        for (const Light& light : scene.mLights)
             mLightScratch.push_back(toGpu(light));
 
         mSpriteScratch.clear();
-        mSpriteScratch.reserve(scene.getSprites().size());
-        for (const Sprite& sprite : scene.getSprites())
+        mSpriteScratch.reserve(scene.mSprites.size());
+        for (const Sprite& sprite : scene.mSprites)
             mSpriteScratch.push_back(toGpu(sprite));
 
         mEmitterScratch.clear();
-        mEmitterScratch.reserve(scene.getEmitters().size());
-        for (const SpriteEmitter& emitter : scene.getEmitters())
+        mEmitterScratch.reserve(scene.mEmitters.size());
+        for (const SpriteEmitter& emitter : scene.mEmitters)
             mEmitterScratch.push_back(toGpu(emitter));
 
         // **Which emitter placed a sprite, written from this side because only this side knows.**
@@ -427,7 +427,7 @@ namespace Rtx
                 mSpriteScratch[sprite].mEmitter = at;
         }
 
-        mLightGrid.rebuild(scene.getLights());
+        mLightGrid.rebuild(scene.mLights);
 
         // **The tables go over as they are, empty ones included.** Something has to stand at every
         // address the frame carries, and `growTo` is what guarantees it — each of these used to

@@ -1,6 +1,7 @@
 #include "objectstorage.hpp"
 
 #include <algorithm>
+#include <cstdint>
 
 #include <components/debug/debuglog.hpp>
 #include <components/esm3/cellref.hpp>
@@ -10,19 +11,73 @@
 
 namespace Terrain
 {
-    void collectPagedRefs(float size, const osg::Vec2i& startCell,
-        const std::function<const ESM::Cell*(int, int)>& cellAt, const std::function<int(const ESM::RefId&)>& typeOf,
-        const std::function<bool(int, bool)>& wanted, std::map<ESM::RefNum, PagedCellRef>& out)
+    namespace
+    {
+        /// One reference as the blocks stated it, with what it takes to reduce the statements.
+        ///
+        /// **A flat list and a sort rather than a map keyed by reference number.** A chunk of a
+        /// nine-cell square is several thousand references, and a node-based map spends an
+        /// allocation on each — on a loading thread, for an answer that is read once in order.
+        struct Statement
+        {
+            PagedCellRef mRef;
+
+            /// Where in the reading this was said, so the last word about a reference number is the
+            /// one the content files meant. `std::sort` is not stable, and this is what makes the
+            /// order it cannot keep explicit.
+            std::uint32_t mAt = 0;
+
+            /// Whether the file said the reference is gone. A deletion is kept rather than applied
+            /// as it is read, because what it deletes may not have been read yet: a later file can
+            /// delete what an earlier one placed, and the blocks of one cell are read in file order.
+            bool mDeleted = false;
+        };
+
+        void state(std::vector<Statement>& into, const PagedCellRef& ref, const bool deleted)
+        {
+            into.push_back(Statement{
+                .mRef = ref,
+                .mAt = static_cast<std::uint32_t>(into.size()),
+                .mDeleted = deleted,
+            });
+        }
+
+        /// Appends the last word about each reference number, in that order.
+        void reduce(std::vector<Statement>& said, std::vector<PagedCellRef>& out)
+        {
+            std::sort(said.begin(), said.end(), [](const Statement& a, const Statement& b) {
+                if (a.mRef.mRefNum < b.mRef.mRefNum)
+                    return true;
+                if (b.mRef.mRefNum < a.mRef.mRefNum)
+                    return false;
+                return a.mAt < b.mAt;
+            });
+
+            for (std::size_t at = 0; at < said.size(); ++at)
+            {
+                const bool lastOfRun = at + 1 == said.size() || !(said[at].mRef.mRefNum == said[at + 1].mRef.mRefNum);
+
+                if (lastOfRun && !said[at].mDeleted)
+                    out.push_back(said[at].mRef);
+            }
+        }
+    }
+
+    void collectPagedRefs(const float size, const osg::Vec2i& startCell, const CellSource& source, const RefKind kind,
+        std::vector<PagedCellRef>& out)
     {
         // **Its own, because chunks are built on the paging's working threads.** A cache shared with
         // the caller would be two threads seeking one file handle.
         ESM::ReadersCache readers;
 
+        std::vector<Statement> said;
+        const bool far = size >= 2;
+
         for (int cellX = startCell.x(); cellX < startCell.x() + size; ++cellX)
         {
             for (int cellY = startCell.y(); cellY < startCell.y() + size; ++cellY)
             {
-                const ESM::Cell* found = cellAt(cellX, cellY);
+                const ESM::Cell* found = source.getCell(cellX, cellY);
                 if (found == nullptr)
                     continue;
 
@@ -53,16 +108,11 @@ namespace Terrain
                             if (moved || departed(ref.mRefNum))
                                 continue;
 
-                            const int recordType = typeOf(ref.mRefID);
-                            if (!wanted(recordType, size >= 2))
+                            const int recordType = source.getType(ref.mRefID);
+                            if (!wantedType(kind, recordType, far))
                                 continue;
-                            if (deleted)
-                            {
-                                out.erase(ref.mRefNum);
-                                continue;
-                            }
 
-                            out.insert_or_assign(ref.mRefNum,
+                            state(said,
                                 PagedCellRef{
                                     .mRefId = ref.mRefID,
                                     .mRefNum = ref.mRefNum,
@@ -70,7 +120,8 @@ namespace Terrain
                                     .mRotation = ref.mPos.asRotationVec3(),
                                     .mScale = ref.mScale,
                                     .mType = recordType,
-                                });
+                                },
+                                deleted);
                         }
                     }
                     catch (const std::exception& e)
@@ -86,15 +137,15 @@ namespace Terrain
                 {
                     if (deleted)
                     {
-                        out.erase(leased.mRefNum);
+                        state(said, PagedCellRef{ .mRefNum = leased.mRefNum }, true);
                         continue;
                     }
 
-                    const int recordType = typeOf(leased.mRefID);
-                    if (!wanted(recordType, size >= 2))
+                    const int recordType = source.getType(leased.mRefID);
+                    if (!wantedType(kind, recordType, far))
                         continue;
 
-                    out.insert_or_assign(leased.mRefNum,
+                    state(said,
                         PagedCellRef{
                             .mRefId = leased.mRefID,
                             .mRefNum = leased.mRefNum,
@@ -102,9 +153,12 @@ namespace Terrain
                             .mRotation = leased.mPos.asRotationVec3(),
                             .mScale = leased.mScale,
                             .mType = recordType,
-                        });
+                        },
+                        false);
                 }
             }
         }
+
+        reduce(said, out);
     }
 }

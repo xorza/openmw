@@ -33,11 +33,12 @@ namespace Rtx
         std::string asJson(const SceneStats& scene)
         {
             return std::format(R"({{"instances": {}, "cutoutInstances": {}, "micromappedInstances": {}, )"
+                               R"("waterInstances": {}, "mediumInstances": {}, )"
                                R"("structureBytes": {}, "structureLiveBytes": {}, "micromapBytes": {}, )"
                                R"("tableBytes": {}, "textureCount": {}, "textureBytes": {}}})",
-                scene.mInstances, scene.mCutoutInstances, scene.mMicromappedInstances, scene.mStructureBytes,
-                scene.mStructureLiveBytes, scene.mMicromapBytes, scene.mTableBytes, scene.mTextureCount,
-                scene.mTextureBytes);
+                scene.mInstances.mPlaced, scene.mInstances.mCutout, scene.mInstances.mMicromapped,
+                scene.mInstances.mWater, scene.mInstances.mMedium, scene.mStructureBytes, scene.mStructureLiveBytes,
+                scene.mMicromapBytes, scene.mTableBytes, scene.mTextureCount, scene.mTextureBytes);
         }
 
         std::string asJson(const Crossings& crossings)
@@ -109,8 +110,8 @@ namespace Rtx
             out += std::format(
                 "  cell {} at {} in {}   {} instances ({} cutouts, {} micromapped)   {:.1f} MiB structures in "
                 "{:.1f} reserved{}, {:.1f} MiB micromaps   {} textures, {:.1f} MiB\n",
-                place.mCell, describeHour(place.mHour), place.mWeather, place.mScene.mInstances,
-                place.mScene.mCutoutInstances, place.mScene.mMicromappedInstances,
+                place.mCell, describeHour(place.mHour), place.mWeather, place.mScene.mInstances.mPlaced,
+                place.mScene.mInstances.mCutout, place.mScene.mInstances.mMicromapped,
                 megabytes(place.mScene.mStructureLiveBytes), megabytes(place.mScene.mStructureBytes),
                 describeCompaction(place.mScene), megabytes(place.mScene.mMicromapBytes), place.mScene.mTextureCount,
                 megabytes(place.mScene.mTextureBytes));
@@ -131,10 +132,8 @@ namespace Rtx
             out += std::format("  {:.1f}% of primary rays hit\n", place.mHitPercent);
 
         out += describeHeadings();
-        out += describeTimes("frame ms", place.mFrame);
-        out += describeTimes("wait ms", place.mWait);
-        out += describeTimes("walk ms", place.mWalk);
-        out += describeTimes("place ms", place.mPlace);
+        for (std::size_t at = 0; at < sTimingCount; ++at)
+            out += describeTimes(std::format("{} ms", sTimingNames[at]), place.mRows[at]);
 
         // **The device's own account of the same frame, one figure each.** Six distributions would
         // be a wall; what this row answers is "which of them is the expensive one", and the row
@@ -157,7 +156,7 @@ namespace Rtx
                 place.mTravelled < 1.0 ? std::format(", {:.0f}% of the route flown", place.mTravelled * 100.0) : "");
 
         out += std::format("  {} frames in {:.2f} s — {:.1f} fps, {:.1f} at the 1% low\n", place.mFrames,
-            place.mWallSeconds, place.mFrame.getRate(), place.mFrame.getLowRate());
+            place.mWallSeconds, place.at(Timing::Frame).getRate(), place.at(Timing::Frame).getLowRate());
 
         return out;
     }
@@ -207,9 +206,12 @@ namespace Rtx
                  << std::format(R"(, "frames": {}, "wallSeconds": {:.4f}, "hitPercent": {:.2f}, )", place.mFrames,
                         place.mWallSeconds, place.mHitPercent)
                  << R"("crossings": )" << asJson(place.mCrossings)
-                 << std::format(R"(, "travelled": {:.4f}, )", place.mTravelled) << R"("frameMs": )"
-                 << asJson(place.mFrame) << R"(, "waitMs": )" << asJson(place.mWait) << R"(, "walkMs": )"
-                 << asJson(place.mWalk) << R"(, "placeMs": )" << asJson(place.mPlace) << R"(, "gpuMs": {)";
+                 << std::format(R"(, "travelled": {:.4f}, )", place.mTravelled);
+
+            for (std::size_t timing = 0; timing < sTimingCount; ++timing)
+                file << std::format(R"("{}Ms": )", sTimingNames[timing]) << asJson(place.mRows[timing]) << ", ";
+
+            file << R"("gpuMs": {)";
 
             for (std::size_t zone = 0; zone < place.mGpu.size(); ++zone)
                 file << std::format(

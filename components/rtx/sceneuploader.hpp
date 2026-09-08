@@ -16,6 +16,7 @@ namespace Rtx
 {
     class CompositeQueue;
     class SceneDesc;
+    class SceneSink;
 
     /// What handing a mirrored scene to a renderer came to.
     struct SceneUpload
@@ -77,7 +78,7 @@ namespace Rtx
         ///        hand-over's**: a doll and a map tile go through the same three branches and
         ///        neither has ground to flatten, so an uploader of its own would carry a mutex, a
         ///        thread and a shading cache to bake nothing.
-        SceneUpload hand(Renderer& renderer, SceneSlot slot, SceneDesc& scene, Resource::ImageManager& images,
+        SceneUpload hand(SceneSink& renderer, SceneSlot slot, SceneDesc& scene, Resource::ImageManager& images,
             CompositeQueue* composites, const SeaState& sea = SeaState{});
 
     private:
@@ -93,7 +94,8 @@ namespace Rtx
         /// Compared and never dereferenced. The count is what carries the argument — an array
         /// somebody else left behind is not one to append to whatever its address was — and the two
         /// pointers are what stop a coincidence in it from mattering.
-        bool recognises(const Renderer& renderer, SceneSlot slot, const SceneDesc& scene, std::uint32_t textures) const;
+        bool recognises(
+            const SceneSink& renderer, SceneSlot slot, const SceneDesc& scene, std::uint32_t textures) const;
 
         /// What an arrival is described into, and the storage the descriptions point at.
         ///
@@ -103,7 +105,7 @@ namespace Rtx
         /// return.
         SceneTextures mTextures;
 
-        const Renderer* mRenderer = nullptr;
+        const SceneSink* mRenderer = nullptr;
         const SceneDesc* mScene = nullptr;
 
         /// Which of that renderer's scenes, so an uploader cannot append a doll onto the world.

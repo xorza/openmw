@@ -51,6 +51,7 @@ set(RTX_FILES
     imageformat.cpp
     imageformat.hpp
     index.hpp
+    instancecounts.hpp
     instancerecord.cpp
     instancerecord.hpp
     light.hpp
@@ -91,6 +92,7 @@ set(RTX_FILES
     ownedtexture.hpp
     placementtable.cpp
     placementtable.hpp
+    pool.hpp
     png.cpp
     png.hpp
     posecull.hpp
@@ -131,6 +133,7 @@ set(RTX_FILES
     spritelistsize.hpp
     spriteshade.cpp
     spriteshade.hpp
+    sprite.hpp
     srgb.cpp
     srgb.hpp
     sun.hpp
@@ -140,6 +143,8 @@ set(RTX_FILES
     terrainresidency.hpp
     slot.hpp
     slotrows.hpp
+    scenetables.cpp
+    scenetables.hpp
     texelreader.cpp
     texelreader.hpp
     texturebuilder.cpp

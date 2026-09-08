@@ -106,7 +106,7 @@ namespace Rtx
         /// composite can appear; the table itself is never scanned. Everything the bake reads — the
         /// images, the weights, the transforms — is taken here, so the thread reads nothing the next
         /// walk can change.
-        void gather(const SceneDesc& scene, Resource::ImageManager& images);
+        void gather(const SceneTables& scene, Resource::ImageManager& images);
 
         /// Waits until nothing handed over is still baking.
         void finish();

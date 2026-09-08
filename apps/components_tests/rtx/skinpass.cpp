@@ -124,7 +124,7 @@ namespace Rtx
             const std::array halfway{ 1.0f, 0.5f };
             scene.poseMorph(lifted, halfway, anywhere);
 
-            ASSERT_EQ(scene.getDeformed().size(), 4u);
+            ASSERT_EQ(scene.getTables().mMeshes.getDeformed().size(), 4u);
 
             // The pass's destination, owned here so it can be copied back: the renderer's own blocks
             // are build input and never a transfer source.
@@ -132,8 +132,8 @@ namespace Rtx
             // **Two lengths, because the pass writes two spaces.** A hit reads a normal, so every
             // mesh has a run among them; nothing reads a position at a hit, so the poses hold the
             // four deforming quads and not the static one between them.
-            const auto vertices = static_cast<std::uint32_t>(scene.getPositions().size());
-            const std::uint32_t posedVertices = scene.getBindVertexCount();
+            const auto vertices = static_cast<std::uint32_t>(scene.getTables().mMeshes.getPositions().size());
+            const std::uint32_t posedVertices = scene.getTables().mDeformers.getBindVertexCount();
             EXPECT_EQ(vertices, 20u) << "five quads of four vertices";
             EXPECT_EQ(posedVertices, 16u) << "the static quad took a run in the pose table";
 
@@ -159,7 +159,7 @@ namespace Rtx
             }
 
             Graveyard graveyard(device, pool);
-            SkinTables tables(device, scene, 2, graveyard);
+            SkinTables tables(device, scene.getTables(), 2, graveyard);
             const SkinPass pass(device, Testing::getShaderDirectory());
 
             const VkDeviceSize poseBytes = VkDeviceSize{ posedVertices } * sizeof(osg::Vec3f);
@@ -171,7 +171,7 @@ namespace Rtx
             const auto poseAndRead = [&](FrameSlot slot) {
                 bool recorded = false;
                 pool.submitAndWait([&](VkCommandBuffer commands) {
-                    recorded = pass.record(commands, scene, slot, tables, poses, normals, nullptr);
+                    recorded = pass.record(commands, scene.getTables(), slot, tables, poses, normals, nullptr);
 
                     const VkMemoryBarrier2 barrier{
                         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -201,10 +201,10 @@ namespace Rtx
             EXPECT_TRUE(poseAndRead(FrameSlot{ 0 })) << "four meshes owed and nothing recorded";
 
             const auto positionOf = [&](Index mesh, std::uint32_t vertex) {
-                return readVector(readPositions, scene.getMeshes()[mesh].mBindOffset + vertex);
+                return readVector(readPositions, scene.getTables().mMeshes.getRows()[mesh].mBindOffset + vertex);
             };
             const auto normalOf = [&](Index mesh, std::uint32_t vertex) {
-                return readVector(readNormals, scene.getMeshes()[mesh].mVertices.mOffset + vertex);
+                return readVector(readNormals, scene.getTables().mMeshes.getRows()[mesh].mVertices.mOffset + vertex);
             };
 
             // One bone at five: every corner five up, and an upward normal left as it was.

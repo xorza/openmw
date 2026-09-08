@@ -411,7 +411,7 @@ namespace Rtx
             scene.addInstance(MeshInstance{ .mTransform = osg::Matrixf::identity(),
                 .mMesh = scene.addMesh(Testing::wallAt(200.0f), {}, {}, Testing::sQuadIndices) });
 
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), {}, SeaState{});
 
             const Shaders::VisibilityConstants camera
                 = makeCamera(osg::Vec3f(), osg::Vec3f(0.0f, 100.0f, 0.0f), 60.0f, sExtent, sExtent, 1000000.0f);
@@ -468,7 +468,7 @@ namespace Rtx
         {
             constexpr std::uint32_t extent = 16;
 
-            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f).getTables(), {}, SeaState{});
 
             const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);
@@ -526,7 +526,7 @@ namespace Rtx
             constexpr std::uint32_t extent = 16;
             constexpr std::uint32_t filled = 8;
 
-            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f).getTables(), {}, SeaState{});
 
             const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);
@@ -559,10 +559,10 @@ namespace Rtx
             constexpr std::uint32_t extent = 16;
 
             // Two hundred across is the whole box, so the world's sheet covers every pixel.
-            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(100.0f), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(100.0f).getTables(), {}, SeaState{});
 
             const SceneSlot doll = mRenderer->addViewScene();
-            mRenderer->setScene(doll, makeSheet(25.0f), {}, SeaState{});
+            mRenderer->setScene(doll, makeSheet(25.0f).getTables(), {}, SeaState{});
 
             const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);
@@ -607,10 +607,10 @@ namespace Rtx
             const SceneDesc world = makeSheet(100.0f);
             SceneDesc doll = makeSheet(25.0f);
 
-            mRenderer->setScene(Rtx::SceneSlot::world(), world, {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), world.getTables(), {}, SeaState{});
 
             const SceneSlot slot = mRenderer->addViewScene();
-            mRenderer->setScene(slot, doll, {}, SeaState{});
+            mRenderer->setScene(slot, doll.getTables(), {}, SeaState{});
 
             const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);
@@ -635,21 +635,21 @@ namespace Rtx
             // Out of the camera's box of two hundred altogether, so what the placement did shows as
             // the picture emptying rather than as a sheet a pixel narrower.
             ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::translate(1000.0f, 0.0f, 0.0f)));
-            mRenderer->placeScene(slot, doll, SeaState{});
+            mRenderer->placeScene(slot, doll.getTables(), SeaState{});
 
             EXPECT_EQ(covered(slot), 0u) << "the placement did not reach the trace";
 
             // **Two placements before one trace**, which is what a drag does. The picture is the
             // second, so a scheme that carried only the first would show the sheet back in the box.
             ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::identity()));
-            mRenderer->placeScene(slot, doll, SeaState{});
+            mRenderer->placeScene(slot, doll.getTables(), SeaState{});
             ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::translate(1000.0f, 0.0f, 0.0f)));
-            mRenderer->placeScene(slot, doll, SeaState{});
+            mRenderer->placeScene(slot, doll.getTables(), SeaState{});
 
             EXPECT_EQ(covered(slot), 0u) << "the trace showed the first of two placements";
 
             ASSERT_TRUE(doll.moveInstance(0, osg::Matrixf::identity()));
-            mRenderer->placeScene(slot, doll, SeaState{});
+            mRenderer->placeScene(slot, doll.getTables(), SeaState{});
 
             EXPECT_EQ(covered(slot), 4u) << "a placement brought it back";
             EXPECT_EQ(covered(SceneSlot::world()), extent) << "and none of it took the world with it";
@@ -663,7 +663,7 @@ namespace Rtx
         {
             constexpr std::uint32_t extent = 16;
 
-            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f), {}, SeaState{});
+            mRenderer->setScene(Rtx::SceneSlot::world(), makeSheet(25.0f).getTables(), {}, SeaState{});
 
             const GuiSlot texture = mRenderer->addGuiTexture(extent, extent);
             mHeld.push_back(texture);

@@ -12,7 +12,7 @@
 #include <components/rtx/camera.hpp>
 #include <components/rtx/error.hpp>
 #include <components/rtx/reorder.hpp>
-#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/scenetables.hpp>
 #include <components/rtx/shaders/gbuffer.h>
 
 #include "gbuffer.hpp"
@@ -422,12 +422,12 @@ namespace Rtx
             .mWaves = &mWaves,
             .mFog = &mFog,
             .mFogVolume = volume,
-            .mWater = held.mAcceleration->getWaterInstanceCount() > 0,
+            .mWater = held.mAcceleration->getInstanceCounts().mWater > 0,
         };
     }
 
     void VulkanRenderer::setScene(
-        const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures, const SeaState& sea)
+        const SceneSlot slot, const SceneTables& scene, std::span<const TextureData> textures, const SeaState& sea)
     {
         ViewScene& held = sceneAt(slot);
 
@@ -477,7 +477,7 @@ namespace Rtx
 
         // The world is traced by two frames at once and so keeps two copies of what a frame writes;
         // a picture inside the interface is traced and waited for, and keeps one.
-        Graveyard& graveyard = mRing.recording().mGraveyard;
+        Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
 
         // **The world's, because there is one sea and every scene traces it.** A doll and a map tile
         // carry a sea state of their own only because they take the same argument, and letting one
@@ -494,7 +494,7 @@ namespace Rtx
         // masks.** The uploads are recorded first, the bake reads what they wrote, and the
         // structures are built over what it decided — three stretches of one command buffer.
         held.mTextures = std::make_unique<TextureArray>(
-            mDevice, setup, static_cast<std::uint32_t>(scene.getTextures().size()), textures, graveyard);
+            mDevice, setup, static_cast<std::uint32_t>(scene.mTextures.getPaths().size()), textures, graveyard);
         held.mMicromaps = std::make_unique<SceneMicromaps>(mDevice, mMicromaps);
 
         // **Built once and kept, because building one compiles every kernel the trace can ever
@@ -526,7 +526,7 @@ namespace Rtx
         held.mMicromaps->bake(setup, *mMicromapPass, scene, *held.mBuffers, *held.mAcceleration, *held.mTextures,
             held.mAcceleration->getEveryMesh(), nullptr, graveyard);
         held.mAcceleration->build(setup, scene, held.mRecords, *held.mMicromaps, graveyard);
-        held.mBuiltMeshes = scene.getMeshRevision();
+        held.mBuiltMeshes = scene.mMeshes.getRevision();
 
         // By hand rather than left to the destructor, so a submit that fails throws out of here
         // instead of being logged on the way past.
@@ -537,7 +537,7 @@ namespace Rtx
     }
 
     void VulkanRenderer::extendScene(
-        const SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea)
+        const SceneSlot slot, const SceneTables& scene, std::span<const TextureData> arrived, const SeaState& sea)
     {
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "extendScene before setScene");
@@ -560,7 +560,7 @@ namespace Rtx
         if (slot.isWorld())
             timer = &mRing.begin().mTimer;
 
-        Graveyard& graveyard = mRing.recording().mGraveyard;
+        Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
 
         Batch setup(mPool);
         held.mTextures->write(setup, arrived, graveyard);
@@ -573,12 +573,12 @@ namespace Rtx
         // **The revision and not the count.** A slot a departing cell freed is taken over by the
         // next mesh that fits, so the table can hold different geometry at the same size — and a
         // guard on the size would send that here without noticing.
-        if (scene.getMeshRevision() != held.mBuiltMeshes)
+        if (scene.mMeshes.getRevision() != held.mBuiltMeshes)
         {
             held.mBuffers->extend(setup, scene, graveyard);
             held.mSkinTables->extend(scene, graveyard);
             held.mAcceleration->extend(setup, scene, graveyard);
-            held.mMicromaps->release(scene.getFreedMeshes(), graveyard);
+            held.mMicromaps->release(scene.mMeshes.getFreed(), graveyard);
 
             // **Posed before it is built**, as `setScene` does: an actor walking in is built over
             // its pose and not over its bind. Into the first copy, which is what the build reads;
@@ -588,9 +588,9 @@ namespace Rtx
             mSkinPass.record(setup.getCommands(), scene, FrameSlot{}, *held.mSkinTables, held.mAcceleration->getPoses(),
                 held.mBuffers->getNormals(), nullptr);
             held.mMicromaps->bake(setup, *mMicromapPass, scene, *held.mBuffers, *held.mAcceleration, *held.mTextures,
-                scene.getArrivedMeshes(), timer, graveyard);
+                scene.mMeshes.getArrived(), timer, graveyard);
             held.mAcceleration->buildArrived(setup, scene, *held.mMicromaps, timer, graveyard);
-            held.mBuiltMeshes = scene.getMeshRevision();
+            held.mBuiltMeshes = scene.mMeshes.getRevision();
         }
 
         // **Deferred to the placement's submit, not flushed ahead of it.** `placeScene` submits
@@ -627,18 +627,18 @@ namespace Rtx
         if (held.mTextures == nullptr)
             return;
 
-        held.mTextures->drop(textures, mRing.recording().mGraveyard);
+        held.mTextures->drop(textures, mRing.recording().mWorld.mGraveyard);
     }
 
     bool VulkanRenderer::recordPlacement(
-        const SkinPass& skin, ViewScene& held, const SceneDesc& scene, const Placing& placing)
+        const SkinPass& skin, ViewScene& held, const SceneTables& scene, const Placing& placing)
     {
         // **What the scene let go of, given back here.** Walking away from a ring frees its meshes
         // and nothing arrives to take them over until the walk reaches the far side of the next one,
         // so a frame that only places is the one that must not hold their structures. Already done
         // where `extendScene` came through, and asking twice costs two comparisons a slot.
-        held.mAcceleration->release(scene.getFreedMeshes(), placing.mGraveyard);
-        held.mMicromaps->release(scene.getFreedMeshes(), placing.mGraveyard);
+        held.mAcceleration->release(scene.mMeshes.getFreed(), placing.mGraveyard);
+        held.mMicromaps->release(scene.mMeshes.getFreed(), placing.mGraveyard);
 
         // A material rewritten under the micromap baked against it is the one thing a placement
         // cannot carry, and `SceneMicromaps::check` says why it is a throw and not a rebuild.
@@ -671,7 +671,7 @@ namespace Rtx
         return posed || built;
     }
 
-    void VulkanRenderer::placeScene(const SceneSlot slot, const SceneDesc& scene, const SeaState& sea)
+    void VulkanRenderer::placeScene(const SceneSlot slot, const SceneTables& scene, const SeaState& sea)
     {
         ViewScene& held = sceneAt(slot);
         assert(held.mAcceleration != nullptr && "placeScene before setScene");
@@ -688,7 +688,7 @@ namespace Rtx
         // rides whichever submit comes next, and `GuiTextures::finish` drains what is left.
         if (!slot.isWorld())
         {
-            Graveyard& graveyard = mRing.recording().mGraveyard;
+            Graveyard& graveyard = mRing.recording().mWorld.mGraveyard;
 
             Batch placement(mPool);
             recordPlacement(
@@ -704,7 +704,7 @@ namespace Rtx
 
         // Does nothing where the sea is the one already drawn for, which is every frame but the
         // first and any on which the weather turned the wind.
-        mWaves.describe(sea, frame.mGraveyard);
+        mWaves.describe(sea, frame.mWorld.mGraveyard);
 
         // **The copy this placement writes is the one the last frame did not trace**, and whatever
         // frame last traced it is waited for here. Usually that frame has long since signalled —
@@ -728,9 +728,9 @@ namespace Rtx
                     .mCommands = placement,
                     .mSlot = into,
                     .mTimer = &frame.mTimer,
-                    .mGraveyard = frame.mGraveyard,
+                    .mGraveyard = frame.mWorld.mGraveyard,
                 }))
-            mPool.submit(placement, VK_NULL_HANDLE, frame.mGraveyard);
+            mPool.submit(placement, VK_NULL_HANDLE, frame.mWorld.mGraveyard);
         else
             checkVk(vkEndCommandBuffer(placement), "vkEndCommandBuffer");
 
@@ -746,9 +746,7 @@ namespace Rtx
 
     void VulkanRenderer::readPlacedStats(const ViewScene& held)
     {
-        mStats.mInstances = held.mAcceleration->getInstanceCount();
-        mStats.mCutoutInstances = held.mAcceleration->getCutoutInstanceCount();
-        mStats.mMicromappedInstances = held.mAcceleration->getMicromappedInstanceCount();
+        mStats.mInstances = held.mAcceleration->getInstanceCounts();
         mStats.mTableBytes = held.mBuffers->getBytes() + held.mSkinTables->getBytes();
     }
 
@@ -849,11 +847,11 @@ namespace Rtx
         // The interface drawn two frames ago drew out of this slot; its fence is what says the
         // vertices may be written over.
         FrameRecord& gui = mRing.slotOf(mGuiFrame);
-        if (gui.mGuiPending)
+        if (gui.mGui.mPending)
         {
-            awaitVk(mDevice, gui.mGuiFence, "the interface drawn two frames ago");
-            gui.mGuiPending = false;
-            gui.mGuiGraveyard.clear();
+            awaitVk(mDevice, gui.mGui.mFence, "the interface drawn two frames ago");
+            gui.mGui.mPending = false;
+            gui.mGui.mGraveyard.clear();
         }
 
         // **After the clear and before anything is handed over, which is what both halves of it
@@ -861,9 +859,9 @@ namespace Rtx
         // queue, and this frame's fence is the first one that says every one of those draws has
         // finished; the staging turns on the same signal, for the reason `GuiTextures::mStaging`
         // gives.
-        mGuiTextures.startFrame(gui.mGuiGraveyard);
+        mGuiTextures.startFrame(gui.mGui.mGraveyard);
 
-        gui.mGuiGraveyard.bury(
+        gui.mGui.mGraveyard.bury(
             growTo(gui.mGuiVertices, mDevice, vertices.size_bytes(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT));
         gui.mGuiVertices.write(vertices);
 
@@ -885,9 +883,9 @@ namespace Rtx
         // world has been drawn and there is nothing to gain by holding the frame open for it; the
         // queue draws it after the frame, the present blits after both, and the fence is for the
         // vertices alone.
-        mPool.begin(gui.mGuiCommands);
+        mPool.begin(gui.mGui.mCommands);
 
-        const VkCommandBuffer commands = gui.mGuiCommands;
+        const VkCommandBuffer commands = gui.mGui.mCommands;
         mTarget->transition(commands, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -901,8 +899,8 @@ namespace Rtx
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
             VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT);
 
-        mPool.submit(commands, gui.mGuiFence, gui.mGuiGraveyard);
-        gui.mGuiPending = true;
+        mPool.submit(commands, gui.mGui.mFence, gui.mGui.mGraveyard);
+        gui.mGui.mPending = true;
         ++mGuiFrame;
     }
 
@@ -1001,7 +999,7 @@ namespace Rtx
         // The scene's answer and not the camera's, for the reason `VisibilityInputs::mWater` is one:
         // a cell with no cloud in it has nothing for the medium walk to find, wherever it is looked
         // at from.
-        sampled.mMediumInFrame = mWorld.mAcceleration->getMediumInstanceCount() > 0 ? 1 : 0;
+        sampled.mMediumInFrame = mWorld.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
 
         // **The one subtraction of two world points, and it happens here.** Two camera positions a
         // step apart subtract exactly in a float; the same difference taken on the device, between
@@ -1043,7 +1041,7 @@ namespace Rtx
         bool historyAnswered = false;
 
         GpuTimer& timer = frame.mTimer;
-        const VkCommandBuffer commands = frame.mCommands;
+        const VkCommandBuffer commands = frame.mWorld.mCommands;
         mPool.begin(commands);
 
         // All written whole before anything reads them, so none needs its contents carried over
@@ -1103,7 +1101,7 @@ namespace Rtx
                 .mCommands = commands,
                 .mSlot = mWorldSlot,
                 .mTimer = &timer,
-                .mGraveyard = frame.mGraveyard,
+                .mGraveyard = frame.mWorld.mGraveyard,
             });
 
         const GBuffer& channels = mFrame.getChannels();
@@ -1310,7 +1308,7 @@ namespace Rtx
         // handed constants that describe a camera, and whether the scene behind that camera holds a
         // cloud is this renderer's to answer. Copied because the caller's block is theirs.
         Shaders::VisibilityConstants shown = camera;
-        shown.mMediumInFrame = traced.mAcceleration->getMediumInstanceCount() > 0 ? 1 : 0;
+        shown.mMediumInFrame = traced.mAcceleration->getInstanceCounts().mMedium > 0 ? 1 : 0;
 
         // **Not counted, and not timed.** The hit count and the frame report are the frame's; a
         // picture drawn between two of them would overwrite both. The buffer is still bound because
@@ -1327,7 +1325,7 @@ namespace Rtx
                 mWaves.record(commands, camera.mTime);
 
             traced.mBuffers->binSprites(mSpriteBin, camera.mOrigin, camera.mCamera, camera.mSunPosition,
-                Placing{ .mCommands = commands, .mSlot = slot, .mGraveyard = mRing.recording().mGraveyard });
+                Placing{ .mCommands = commands, .mSlot = slot, .mGraveyard = mRing.recording().mWorld.mGraveyard });
 
             const GBuffer& channels = mView.getChannels();
 

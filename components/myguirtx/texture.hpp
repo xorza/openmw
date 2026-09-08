@@ -33,7 +33,7 @@ namespace MyGUIRtx
     class Texture final : public MyGUI::ITexture, public MyGUIPlatform::RegionTexture
     {
     public:
-        Texture(std::string name, Rtx::Renderer& renderer, Resource::ImageManager* imageManager);
+        Texture(std::string name, Rtx::GuiSurface& renderer, Resource::ImageManager* imageManager);
         ~Texture() override;
 
         Texture(const Texture&) = delete;
@@ -92,7 +92,7 @@ namespace MyGUIRtx
         void widen();
 
         std::string mName;
-        Rtx::Renderer& mRenderer;
+        Rtx::GuiSurface& mRenderer;
         Resource::ImageManager* mImageManager;
 
         Rtx::GuiSlot mSlot;

@@ -325,7 +325,7 @@ namespace Rtx::Testing
             const std::function<void()>& afterEach = {})
         {
             mRenderer->resize(size, size);
-            mRenderer->setScene(Rtx::SceneSlot::world(), scene, inSceneOrder(textures), shot.mSea);
+            mRenderer->setScene(Rtx::SceneSlot::world(), scene.getTables(), inSceneOrder(textures), shot.mSea);
 
             if (shot.mResetHistory)
                 mRenderer->resetHistory();

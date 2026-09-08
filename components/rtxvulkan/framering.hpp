@@ -39,6 +39,28 @@ namespace Rtx
     /// while frame N is traced; what N+1 writes is this frame's copy of every table, and what N
     /// may still read is the other's. The frame after next takes this one's place, and waits
     /// its fence first.
+    /// One command buffer, the fence it is submitted with, and what that fence guards.
+    ///
+    /// **Named once and held twice**, because a frame submits twice: the world, and the interface
+    /// over it. The two were eight fields whose only difference was a `mGui` prefix, so a field
+    /// added to one was a field the other went without.
+    struct Submission
+    {
+        Submission(const Device& device, CommandPool& pool)
+            : mGraveyard(device, pool)
+        {
+        }
+
+        VkCommandBuffer mCommands = VK_NULL_HANDLE;
+        VkFence mFence = VK_NULL_HANDLE;
+
+        /// Submitted with its fence and not yet waited for.
+        bool mPending = false;
+
+        /// What this submission may still be reading, destroyed when its fence says it is not.
+        Graveyard mGraveyard;
+    };
+
     struct FrameRecord
     {
         FrameRecord(const Device& device, CommandPool& pool);
@@ -59,35 +81,27 @@ namespace Rtx
         std::vector<VkCommandBuffer> mPlaceCommands;
         std::size_t mPlacements = 0;
 
-        VkCommandBuffer mCommands = VK_NULL_HANDLE;
-        VkFence mFence = VK_NULL_HANDLE;
+        /// The world's: every placement of this frame, then the trace.
+        Submission mWorld;
+
+        /// The interface's own ring beside the frame's: it is drawn after the frame is submitted
+        /// and fenced on its own, so its vertices are guarded by its own fence.
+        Submission mGui;
 
         /// Begun by a placement or a trace and not yet submitted with its fence.
         bool mBegun = false;
-
-        /// Submitted with its fence and not yet waited for.
-        bool mPending = false;
 
         /// Its own timer and its own counters, because both are read after the fence, when the
         /// next frame is already writing its own.
         GpuTimer mTimer;
         Buffer mHitCount;
 
-        /// What this frame may still be reading, destroyed when its fence says it is not.
-        Graveyard mGraveyard;
         Reconstruction mReconstruction;
-
-        /// The interface's own ring beside the frame's: it is drawn after the frame is submitted
-        /// and fenced on its own, so its vertices are guarded by its own fence.
-        VkCommandBuffer mGuiCommands = VK_NULL_HANDLE;
-        VkFence mGuiFence = VK_NULL_HANDLE;
-        bool mGuiPending = false;
 
         /// What the GUI is drawn out of, rewritten every frame it has anything in it and grown
         /// to the busiest frame so far. Host-visible device memory, so writing it is a memcpy
         /// and there is no staging copy and no transfer to record.
         Buffer mGuiVertices;
-        Graveyard mGuiGraveyard;
     };
 
     /// The frames in flight, and the discipline that keeps them apart.

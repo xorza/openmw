@@ -36,6 +36,7 @@
 #include <components/rtx/reconstruction.hpp>
 #include <components/rtx/renderer.hpp>
 #include <components/rtx/scenedesc.hpp>
+#include <components/rtx/scenetables.hpp>
 #include <components/rtx/shaders/colour.h>
 #include <components/rtx/texturebuilder.hpp>
 #include <components/rtxbench/benchrecord.hpp>
@@ -194,7 +195,7 @@ namespace MWRender
 
     void StopWriter::reportScene(const Writing& into, const bool walkedTwice)
     {
-        const Rtx::SceneDesc& scene = into.mRun.mScene;
+        const Rtx::SceneTables scene = into.mRun.mScene.getTables();
         const Rtx::ExtractionStats& stats = into.mRun.mWalked;
 
         into.mRecord.note(
@@ -207,9 +208,10 @@ namespace MWRender
                         "  vertex+index bytes:   {} KiB\n"
                         "  handed over:          {}\n"
                         "  laid out as:          {}\n",
-                scene.getPlacedCount(), scene.getMeshes().size(), scene.getMaterials().size(),
-                scene.getTextures().size(), scene.getTriangleCount(), scene.getGeometryBytes() / 1024,
-                Rtx::spellHash(Rtx::digestScene(scene)), Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
+                scene.mPlacements.getPlacedCount(), scene.mMeshes.getRows().size(), scene.mMaterials.getRows().size(),
+                scene.mTextures.getPaths().size(), scene.mMeshes.getTriangleCount(),
+                scene.mMeshes.getGeometryBytes() / 1024, Rtx::spellHash(Rtx::digestScene(scene)),
+                Rtx::spellHash(Rtx::digestLayout(Rtx::digestParts(scene)))));
 
         for (std::size_t at = 0; at < stats.mTextureFormats.size(); ++at)
         {
@@ -239,7 +241,7 @@ namespace MWRender
         std::uint32_t media = 0;
         std::uint32_t glowing = 0;
         std::uint32_t flattened = 0;
-        for (const Rtx::Material& material : scene.getMaterials())
+        for (const Rtx::Material& material : scene.mMaterials.getRows())
         {
             cutouts += material.isCutout() ? 1 : 0;
             tested += material.mAlphaMode == Surface::AlphaMode::Cutout ? 1 : 0;
@@ -250,7 +252,7 @@ namespace MWRender
         }
 
         std::uint32_t sheets = 0;
-        for (const Rtx::MeshRange& mesh : scene.getMeshes())
+        for (const Rtx::MeshRange& mesh : scene.mMeshes.getRows())
             sheets += mesh.mShape.mSheet ? 1 : 0;
 
         into.mRecord.note(
@@ -263,8 +265,8 @@ namespace MWRender
                         "  unbakeable cutouts:   {} placements of a mask a controller moves\n"
                         "  flattened ground:     {} chunks past a cell\n"
                         "  emitters:             {} holding {} live particles\n",
-                cutouts, tested, translucent, media, glowing, scene.getLights().size(), stats.mDeformed,
-                stats.mUnbakeable, flattened, stats.mEmitters, stats.mSprites));
+                cutouts, tested, translucent, media, glowing, scene.mLights.size(), stats.mDeformed, stats.mUnbakeable,
+                flattened, stats.mEmitters, stats.mSprites));
 
         into.mRecord.note(
             std::format("\nnot placed\n"
@@ -297,7 +299,7 @@ namespace MWRender
         if (resources == nullptr)
             return;
 
-        const Rtx::SceneDesc& scene = into.mRun.mScene;
+        const Rtx::SceneTables scene = into.mRun.mScene.getTables();
 
         Rtx::SceneTextures described;
         described.describeAll(scene, *resources->getImageManager());
@@ -313,7 +315,7 @@ namespace MWRender
 
         // The sheet carries no lettering, so the order is printed instead: left to right, top to
         // bottom, the way it was drawn.
-        const std::span<const VFS::Path::Normalized> paths = scene.getTextures();
+        const std::span<const VFS::Path::Normalized> paths = scene.mTextures.getPaths();
         for (std::size_t at = 0; at < paths.size(); ++at)
             into.mRecord.note(std::format("  {}  {}\n", at, paths[at].value()));
 
@@ -414,14 +416,14 @@ namespace MWRender
 
     void StopWriter::reportFound(const Writing& into, const std::string& needle)
     {
-        const Rtx::SceneDesc& scene = into.mRun.mScene;
-        const std::span<const VFS::Path::Normalized> paths = scene.getTextures();
+        const Rtx::SceneTables scene = into.mRun.mScene.getTables();
+        const std::span<const VFS::Path::Normalized> paths = scene.mTextures.getPaths();
 
         // **Found by texture and reported by placement**, because a mesh carries no name of its own
         // once it is a run of triangles: what a walk keeps is the material it arrived wearing, and a
         // material names the file it samples.
         std::uint32_t met = 0;
-        for (const Rtx::MeshInstance& instance : scene.getInstances())
+        for (const Rtx::MeshInstance& instance : scene.mPlacements.getAll())
         {
             if (!instance.isPlaced())
                 continue;
@@ -429,7 +431,7 @@ namespace MWRender
             if (instance.mMaterial == Rtx::sNoIndex)
                 continue;
 
-            const Rtx::Material& material = scene.getMaterials()[instance.mMaterial];
+            const Rtx::Material& material = scene.mMaterials.getRows()[instance.mMaterial];
             if (material.mDiffuse == Rtx::sNoIndex)
                 continue;
 

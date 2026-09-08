@@ -400,22 +400,14 @@ namespace Terrain
     {
         const osg::Vec2i startCell(static_cast<int>(std::floor(center.x() - size / 2.f)),
             static_cast<int>(std::floor(center.y() - size / 2.f)));
-        std::map<ESM::RefNum, PagedCellRef> refs;
-        mStorage->collectReferences(size, startCell, mWorldspace, refs);
+        std::vector<PagedCellRef> refs;
+        mStorage->collect(RefKind::Paged, size, startCell, mWorldspace, refs);
 
         if (activeGrid && !refs.empty())
         {
             std::lock_guard<std::mutex> lock(mRefTrackerMutex);
             const std::set<ESM::RefNum>& blacklist = getRefTracker().mBlacklist;
-            if (blacklist.size() < refs.size())
-            {
-                for (ESM::RefNum ref : blacklist)
-                    refs.erase(ref);
-            }
-            else
-            {
-                std::erase_if(refs, [&](const auto& ref) { return blacklist.contains(ref.first); });
-            }
+            std::erase_if(refs, [&](const PagedCellRef& ref) { return blacklist.contains(ref.mRefNum); });
         }
 
         const osg::Vec2f minBound = (center - osg::Vec2f(size / 2.f, size / 2.f));
@@ -473,7 +465,7 @@ namespace Terrain
 
         AnalyzeVisitor analyzeVisitor(copyMask);
         const float minSize = mMinSizeMergeFactor ? mMinSize * mMinSizeMergeFactor : mMinSize;
-        for (const auto& [refNum, ref] : refs)
+        for (const PagedCellRef& ref : refs)
         {
             if (size < 1.f)
             {
@@ -488,7 +480,7 @@ namespace Terrain
             if (!activeGrid)
             {
                 std::lock_guard<std::mutex> lock(mSizeCacheMutex);
-                SizeCache::iterator found = mSizeCache.find(refNum);
+                SizeCache::iterator found = mSizeCache.find(ref.mRefNum);
                 if (found != mSizeCache.end() && found->second < chunkReachSquared * minSize * minSize)
                     continue;
             }
@@ -526,8 +518,9 @@ namespace Terrain
                 else
                     model = mLODNameCache
                                 .emplace_hint(found, std::move(key),
-                                    Misc::ResourceHelpers::getLODMeshName(mStorage->getEsmVersion(refNum.mContentFile),
-                                        model, *mSceneManager->getVFS(), lod))
+                                    Misc::ResourceHelpers::getLODMeshName(
+                                        mStorage->getEsmVersion(ref.mRefNum.mContentFile), model,
+                                        *mSceneManager->getVFS(), lod))
                                 ->second;
             }
 
@@ -542,12 +535,12 @@ namespace Terrain
                         && dynamic_cast<const osgAnimation::BasicAnimationManager*>(cnode->getUpdateCallback())))
                     continue;
                 else
-                    refnumSet->mRefnums.push_back(refNum);
+                    refnumSet->mRefnums.push_back(ref.mRefNum);
             }
 
             {
                 std::lock_guard<std::mutex> lock(mRefTrackerMutex);
-                if (getRefTracker().mDisabled.count(refNum))
+                if (getRefTracker().mDisabled.count(ref.mRefNum))
                     continue;
             }
 
@@ -555,7 +548,7 @@ namespace Terrain
             if (radius2 < chunkReachSquared * minSize * minSize && !activeGrid)
             {
                 std::lock_guard<std::mutex> lock(mSizeCacheMutex);
-                mSizeCache[refNum] = radius2;
+                mSizeCache[ref.mRefNum] = radius2;
                 continue;
             }
 

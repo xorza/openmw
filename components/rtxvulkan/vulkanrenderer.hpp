@@ -121,13 +121,13 @@ namespace Rtx
         bool isValidating() const override;
         void resetHistory() override { mDenoiserStale = mAirStale = true; }
 
-        void setScene(SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> textures,
+        void setScene(SceneSlot slot, const SceneTables& scene, std::span<const TextureData> textures,
             const SeaState& sea) override;
-        void extendScene(
-            SceneSlot slot, const SceneDesc& scene, std::span<const TextureData> arrived, const SeaState& sea) override;
+        void extendScene(SceneSlot slot, const SceneTables& scene, std::span<const TextureData> arrived,
+            const SeaState& sea) override;
         std::uint32_t getTextureCount(SceneSlot slot) const override;
         void dropTextures(SceneSlot slot, std::span<const Index> textures) override;
-        void placeScene(SceneSlot slot, const SceneDesc& scene, const SeaState& sea) override;
+        void placeScene(SceneSlot slot, const SceneTables& scene, const SeaState& sea) override;
         const SceneStats& getSceneStats() const override { return mStats; }
         MemoryReport getMemoryReport() const override;
         void resize(std::uint32_t width, std::uint32_t height) override;
@@ -184,7 +184,7 @@ namespace Rtx
         /// **What differs between the world's placement and a picture's is around this and not in
         /// it**: which copy, whether a frame is opened and timed, and whether the submit waits.
         static bool recordPlacement(
-            const SkinPass& skin, ViewScene& held, const SceneDesc& scene, const Placing& placing);
+            const SkinPass& skin, ViewScene& held, const SceneTables& scene, const Placing& placing);
 
         /// Reads into `mStats` what a placement can have moved, which is every figure but the three
         /// a build settles.

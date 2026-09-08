@@ -8,7 +8,7 @@
 #include <osg/Vec4f>
 #include <vulkan/vulkan_core.h>
 
-#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/scenetables.hpp>
 #include <components/rtx/shaders/micromap.h>
 
 #include "structurestorage.hpp"
@@ -73,7 +73,7 @@ namespace Rtx
         /// @param timer the frame the arrival lands in, so the bake and the builds are one zone of
         ///        that frame's report — `SceneAcceleration::buildArrived` says why — or null for a
         ///        load and for a picture inside the interface, which are not timed.
-        void bake(Batch& batch, const MicromapPass& pass, const SceneDesc& scene, const SceneBuffers& buffers,
+        void bake(Batch& batch, const MicromapPass& pass, const SceneTables& scene, const SceneBuffers& buffers,
             const SceneAcceleration& acceleration, const TextureArray& textures, std::span<const Index> meshes,
             GpuTimer* timer, Graveyard& graveyard);
 
@@ -106,7 +106,7 @@ namespace Rtx
         /// row that places it, on the frame path, for a case the loader rules out — so the number
         /// that says the rule holds is a throw naming the material, once a frame and costing
         /// nothing on the frames a flipbook turns.
-        void check(const SceneDesc& scene);
+        void check(const SceneTables& scene);
 
         /// What the micromaps hold, apart from the structures they are attached to.
         VkDeviceSize getBytes() const { return mStorage.getBytes(); }

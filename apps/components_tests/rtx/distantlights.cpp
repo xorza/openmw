@@ -46,24 +46,20 @@ namespace Rtx
                 mLight.emplace(record);
             }
 
-            void collectReferences(
-                float, const osg::Vec2i&, ESM::RefId, std::map<ESM::RefNum, Terrain::PagedCellRef>&) const override
+            void collect(Terrain::RefKind kind, float, const osg::Vec2i& startCell, ESM::RefId,
+                std::vector<Terrain::PagedCellRef>& out) const override
             {
-            }
+                out.clear();
 
-            void collectLights(float, const osg::Vec2i& startCell, ESM::RefId,
-                std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const override
-            {
-                if (startCell != osg::Vec2i(sCellX, sCellY))
+                if (kind != Terrain::RefKind::Lit || startCell != osg::Vec2i(sCellX, sCellY))
                     return;
 
-                out.emplace(ESM::RefNum{ 1, 0 },
-                    Terrain::PagedCellRef{
-                        .mRefId = ESM::RefId::stringRefId("lamp"),
-                        .mRefNum = ESM::RefNum{ 1, 0 },
-                        .mPosition = osg::Vec3f(sCellX * sCellSize, sCellY * sCellSize, 0.0f),
-                        .mType = ESM::REC_LIGH,
-                    });
+                out.push_back(Terrain::PagedCellRef{
+                    .mRefId = ESM::RefId::stringRefId("lamp"),
+                    .mRefNum = ESM::RefNum{ 1, 0 },
+                    .mPosition = osg::Vec3f(sCellX * sCellSize, sCellY * sCellSize, 0.0f),
+                    .mType = ESM::REC_LIGH,
+                });
             }
 
             std::optional<SceneUtil::LightCommon> getLight(const ESM::RefId&) const override { return mLight; }

@@ -24,6 +24,23 @@ namespace Rtx
     ///
     /// **The textures are borrowed and not owned.** A slot is named by materials and by holds
     /// nothing here can see, so the count lives with the table that hands slots out.
+    /// The runs a material table has placed since the last `clearArrivals`.
+    ///
+    /// **Two lists and not a `SlotSet`**, because a run is an offset and a count rather than a slot
+    /// and the set cannot hold one. Named together because they are filled together, cleared
+    /// together and read together by whatever uploads them.
+    struct ArrivedRuns
+    {
+        std::vector<Run> mLayers;
+        std::vector<Run> mMasks;
+
+        void clear()
+        {
+            mLayers.clear();
+            mMasks.clear();
+        }
+    };
+
     class MaterialTable
     {
     public:
@@ -57,8 +74,7 @@ namespace Rtx
         std::span<const float> getMasks() const { return mMasks.getAll(); }
 
         std::span<const Index> getWritten() const { return mWritten.getSlots(); }
-        std::span<const Run> getArrivedLayers() const { return mArrivedLayers; }
-        std::span<const Run> getArrivedMasks() const { return mArrivedMasks; }
+        const ArrivedRuns& getArrived() const { return mArrived; }
 
         /// Notes every slot a sweep must not free, and says how many distinct ones `keep` named.
         ///
@@ -107,9 +123,7 @@ namespace Rtx
         /// rewritten on one frame is one row, not two.
         SlotSet mWritten;
 
-        /// Runs placed since the last `clearArrivals`.
-        std::vector<Run> mArrivedLayers;
-        std::vector<Run> mArrivedMasks;
+        ArrivedRuns mArrived;
 
         /// A material's layers, and the weights a layer places.
         ///

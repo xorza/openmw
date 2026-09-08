@@ -12,11 +12,11 @@
 namespace Rtx
 {
     FrameRecord::FrameRecord(const Device& device, CommandPool& pool)
-        : mTimer(device)
+        : mWorld(device, pool)
+        , mGui(device, pool)
+        , mTimer(device)
         , mHitCount(Buffer::staging(
               device, sizeof(FrameCounts), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT))
-        , mGraveyard(device, pool)
-        , mGuiGraveyard(device, pool)
     {
     }
 
@@ -37,10 +37,10 @@ namespace Rtx
         {
             FrameRecord& frame = mSlots[slot];
             frame.mPlaceCommands.push_back(commands[3 * slot]);
-            frame.mCommands = commands[3 * slot + 1];
-            frame.mGuiCommands = commands[3 * slot + 2];
-            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, &frame.mFence), "vkCreateFence");
-            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, &frame.mGuiFence), "vkCreateFence");
+            frame.mWorld.mCommands = commands[3 * slot + 1];
+            frame.mGui.mCommands = commands[3 * slot + 2];
+            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, &frame.mWorld.mFence), "vkCreateFence");
+            checkVk(vkCreateFence(mDevice.getHandle(), &fence, nullptr, &frame.mGui.mFence), "vkCreateFence");
         }
     }
 
@@ -51,8 +51,8 @@ namespace Rtx
         // apart; this is the fences the slots themselves own.
         for (FrameRecord& frame : mSlots)
         {
-            vkDestroyFence(mDevice.getHandle(), frame.mFence, nullptr);
-            vkDestroyFence(mDevice.getHandle(), frame.mGuiFence, nullptr);
+            vkDestroyFence(mDevice.getHandle(), frame.mWorld.mFence, nullptr);
+            vkDestroyFence(mDevice.getHandle(), frame.mGui.mFence, nullptr);
         }
     }
 
@@ -90,10 +90,10 @@ namespace Rtx
 
     void FrameRing::submit(FrameRecord& frame)
     {
-        mPool.submit(frame.mCommands, frame.mFence, frame.mGraveyard);
+        mPool.submit(frame.mWorld.mCommands, frame.mWorld.mFence, frame.mWorld.mGraveyard);
 
         frame.mBegun = false;
-        frame.mPending = true;
+        frame.mWorld.mPending = true;
         ++mFrame;
     }
 
@@ -102,13 +102,13 @@ namespace Rtx
         assert(mFinished < mFrame && "nothing in flight to finish");
 
         FrameRecord& frame = slotOf(mFinished);
-        assert(frame.mPending && "a frame in flight that was never submitted");
+        assert(frame.mWorld.mPending && "a frame in flight that was never submitted");
 
         const auto start = std::chrono::steady_clock::now();
-        awaitVk(mDevice, frame.mFence, "a frame");
+        awaitVk(mDevice, frame.mWorld.mFence, "a frame");
         const double waited = since(start, std::chrono::steady_clock::now());
 
-        frame.mPending = false;
+        frame.mWorld.mPending = false;
 
         // Read after the fence and never before: the count is the device's sum, and the queries
         // are the device's clock.
@@ -117,7 +117,7 @@ namespace Rtx
             counted = *static_cast<const FrameCounts*>(frame.mHitCount.map());
 
         // What this frame may still have been reading is nothing's now.
-        frame.mGraveyard.clear();
+        frame.mWorld.mGraveyard.clear();
 
         ++mFinished;
 
@@ -173,8 +173,8 @@ namespace Rtx
     {
         for (FrameRecord& frame : mSlots)
         {
-            frame.mGraveyard.clear();
-            frame.mGuiGraveyard.clear();
+            frame.mWorld.mGraveyard.clear();
+            frame.mGui.mGraveyard.clear();
         }
     }
 

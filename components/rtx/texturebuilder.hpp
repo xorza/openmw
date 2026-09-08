@@ -9,6 +9,7 @@
 #include "alphaimage.hpp"
 #include "index.hpp"
 #include "mipchain.hpp"
+#include "pool.hpp"
 #include "spritelight.hpp"
 #include "texturedata.hpp"
 
@@ -20,7 +21,7 @@ namespace Resource
 namespace Rtx
 {
     class CompositeQueue;
-    class SceneDesc;
+    struct SceneTables;
 
     /// Describes one image for a backend's uploader without copying a byte of it.
     ///
@@ -77,7 +78,7 @@ namespace Rtx
         ///        has not finished, and it is passed over rather than described — nothing points at
         ///        it until it has bytes.
         void describeAll(
-            const SceneDesc& scene, Resource::ImageManager& images, const CompositeQueue* composites = nullptr);
+            const SceneTables& scene, Resource::ImageManager& images, const CompositeQueue* composites = nullptr);
 
         /// The same, for `slots` and nothing else.
         ///
@@ -89,7 +90,7 @@ namespace Rtx
         /// **A list and not an offset**, because a slot a departing cell freed is taken over
         /// wherever it sits: what arrived is no longer the end of the table. Each description
         /// carries the slot it belongs to, and a slot that has since been given back is skipped.
-        void describe(const SceneDesc& scene, Resource::ImageManager& images, std::span<const Index> slots,
+        void describe(const SceneTables& scene, Resource::ImageManager& images, std::span<const Index> slots,
             const CompositeQueue* composites = nullptr);
 
         /// What the last `describe` found, each carrying the slot it goes to in `TextureData::mSlot`.
@@ -144,22 +145,16 @@ namespace Rtx
 
         /// The bakes of the sprite textures the scene's emitters draw with, each made here from the
         /// alpha of the file its key names. `SpriteLightMap` says what one is.
-        ///
-        /// **Refilled rather than emptied.** An arrival builds into the front of it and
-        /// `mSpriteLightCount` says how far, so a bake writes into the room the last one grew
-        /// instead of taking that room from the heap again on the frame a cell lands.
-        std::vector<SpriteLightMap> mSpriteLights;
-        std::size_t mSpriteLightCount = 0;
+        Pool<SpriteLightMap> mSpriteLights;
 
         /// The levels the files did not carry, for the few textures that carry none.
         ///
         /// **A pool of the chains that were built, and not one entry a texture.** Five thousand of
         /// Morrowind's textures carry a chain and a hundred and eighty-seven do not, so an entry a
         /// texture would be a pool the size of the cell — and each entry keeping its room means
-        /// every position that ever held a 512-square chain keeps 1.4 MB for ever. Counted instead,
-        /// the pool is as deep as the most chains one arrival built, which is a handful.
-        std::vector<MipChain> mChains;
-        std::size_t mChainCount = 0;
+        /// every position that ever held a 512-square chain keeps 1.4 MB for ever. Pooled instead,
+        /// it is as deep as the most chains one arrival built, which is a handful.
+        Pool<MipChain> mChains;
 
         /// Every slot of the scene's table, which is what a rebuild asks about. Held rather than
         /// built, because a rebuild is a fifth of a second and none of it should be this.

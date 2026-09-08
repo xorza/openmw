@@ -29,9 +29,6 @@ namespace Rtx
             = VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         constexpr VkDeviceSize sInputAlignment = 256;
 
-        constexpr VkBufferUsageFlags sScratchUsage
-            = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-
         /// The level a triangle covering `texels` texels of its mask is cut at: one microtriangle
         /// about two texels across, which is the SDK's and Indiana Jones' number, between the floor
         /// `micromap.h` gives a reason for and the cap the memory arithmetic makes necessary.
@@ -164,10 +161,10 @@ namespace Rtx
         };
     }
 
-    void SceneMicromaps::check(const SceneDesc& scene)
+    void SceneMicromaps::check(const SceneTables& scene)
     {
-        const std::span<const Index> written = scene.getWrittenMaterials();
-        const std::span<const Material> materials = scene.getMaterials();
+        const std::span<const Index> written = scene.mMaterials.getWritten();
+        const std::span<const Material> materials = scene.mMaterials.getRows();
 
         // The ordinary frame: a few flipbooks and scrolls, none of which anything bakes against.
         bool suspect = false;
@@ -201,12 +198,12 @@ namespace Rtx
                     + "," + std::to_string(rewritten.mTransform.y()) + "," + std::to_string(rewritten.mTransform.z())
                     + "," + std::to_string(rewritten.mTransform.w()) + ", animated " + std::to_string(now.mAnimated)
                     + ", kind " + std::to_string(static_cast<int>(now.mKind)) + ", the mesh wears "
-                    + std::to_string(scene.getMeshes()[mesh].mMaterial) + " with "
-                    + std::to_string(scene.getMeshes()[mesh].mVertices.mCount) + " vertices");
+                    + std::to_string(scene.mMeshes.getRows()[mesh].mMaterial) + " with "
+                    + std::to_string(scene.mMeshes.getRows()[mesh].mVertices.mCount) + " vertices");
         }
     }
 
-    void SceneMicromaps::bake(Batch& batch, const MicromapPass& pass, const SceneDesc& scene,
+    void SceneMicromaps::bake(Batch& batch, const MicromapPass& pass, const SceneTables& scene,
         const SceneBuffers& buffers, const SceneAcceleration& acceleration, const TextureArray& textures,
         std::span<const Index> meshes, GpuTimer* const timer, Graveyard& graveyard)
     {
@@ -216,10 +213,10 @@ namespace Rtx
         if (!mBakes)
             return;
 
-        const std::span<const MeshRange> ranges = scene.getMeshes();
-        const std::span<const Material> materials = scene.getMaterials();
-        const std::span<const osg::Vec2f> texCoords = scene.getTexCoords();
-        const std::span<const std::uint32_t> indices = scene.getIndices();
+        const std::span<const MeshRange> ranges = scene.mMeshes.getRows();
+        const std::span<const Material> materials = scene.mMaterials.getRows();
+        const std::span<const osg::Vec2f> texCoords = scene.mMeshes.getTexCoords();
+        const std::span<const std::uint32_t> indices = scene.mMeshes.getIndices();
 
         // Grown to what the scene now holds, never shrunk: a slot the scene took back keeps its
         // index. **Here and nowhere else**, for the reason `describe` gives.

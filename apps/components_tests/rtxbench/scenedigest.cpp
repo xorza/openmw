@@ -83,7 +83,7 @@ namespace Rtx
         {
             Rtx::SceneDesc scene;
             fillBoxes(scene, mirroredFirst, lift, aside, shuffled);
-            return spellHash(digestScene(scene));
+            return spellHash(digestScene(scene.getTables()));
         }
 
         std::string layoutOfBoxes(
@@ -91,7 +91,7 @@ namespace Rtx
         {
             Rtx::SceneDesc scene;
             fillBoxes(scene, mirroredFirst, lift, aside, shuffled);
-            return spellHash(digestLayout(digestParts(scene)));
+            return spellHash(digestLayout(digestParts(scene.getTables())));
         }
 
         /// **Two siblings swapped is one scene, a shape stored in another order is one scene, and
@@ -145,7 +145,8 @@ namespace Rtx
             instance.mMesh = addBox(scene, false, instance.mMaterial);
             scene.addInstance(instance);
 
-            return { spellHash(digestScene(scene)), spellHash(digestLayout(digestParts(scene))) };
+            return { spellHash(digestScene(scene.getTables())),
+                spellHash(digestLayout(digestParts(scene.getTables()))) };
         }
 
         /// **Every field of a material reaches both digests**, which is what one field list buys.

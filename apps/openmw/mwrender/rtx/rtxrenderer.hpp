@@ -256,12 +256,7 @@ namespace MWRender
 
         /// What the stage was handed. Made here because there is no viewer to make them, and held
         /// because the frame is driven from them.
-        osg::ref_ptr<osg::Camera> mCamera;
-        osg::ref_ptr<osg::FrameStamp> mFrameStamp;
-        osg::ref_ptr<osgGA::EventQueue> mEvents;
         osg::ref_ptr<Rtx::PoseUpdate> mUpdateVisitor;
-        osg::ref_ptr<osg::Stats> mStats;
-        osg::ref_ptr<osg::Group> mSceneRoot;
 
         /// Where `advance` measures reference time from, and the origin the profiler's spans are
         /// stamped against.

@@ -574,7 +574,7 @@ namespace MWRender
         {
             renderer.readPixels(mHeld->mPixels);
 
-            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels, Rtx::digestParts(run.mScene));
+            mRecord.getHashes().add(stop.mName, drawn, mHeld->mPixels, Rtx::digestParts(run.mScene.getTables()));
         }
 
         if (drawn < measured)
@@ -613,16 +613,14 @@ namespace MWRender
 
         Rtx::BenchPlace place;
         place.mView = stop.mName;
-        place.mCell = stop.mCell;
+        place.mCell = stop.mStand.mCell;
         place.mNote = stop.mNote;
         place.mHour = MWBase::Environment::get().getWorld()->getTimeStamp().getHour();
         place.mWeather = stop.mSky.mWeather.value_or(std::string());
         place.mFrames = mHeld->mSamples.size();
         place.mWallSeconds = mWallMs / 1000.0;
-        place.mFrame = Rtx::summarise(mHeld->mSamples.mFrame);
-        place.mWait = Rtx::summarise(mHeld->mSamples.mWait);
-        place.mWalk = Rtx::summarise(mHeld->mSamples.mWalk);
-        place.mPlace = Rtx::summarise(mHeld->mSamples.mPlace);
+        for (std::size_t at = 0; at < Rtx::sTimingCount; ++at)
+            place.mRows[at] = Rtx::summarise(mHeld->mSamples.mRows[at]);
         place.mClock = mHeld->mClock;
         place.mHitPercent = mHitPercent;
         place.mCrossings = mHeld->mCrossings;

@@ -1,5 +1,7 @@
 #include "objectstorage.hpp"
 
+#include <algorithm>
+
 #include <components/esm3/loadacti.hpp>
 #include <components/esm3/loadcell.hpp>
 #include <components/esm3/loadcont.hpp>
@@ -43,16 +45,28 @@ namespace MWRender
             };
         }
 
-        void collectESM3References(float size, const osg::Vec2i& startCell, const MWWorld::ESMStore& store,
-            const std::function<bool(int, bool)>& wanted, std::map<ESM::RefNum, Terrain::PagedCellRef>& refs)
+        /// The running game's cells and record types, which is the whole of what a collection asks.
+        class GameCells final : public Terrain::CellSource
         {
-            Terrain::collectPagedRefs(
-                size, startCell, [&](int x, int y) { return store.get<ESM::Cell>().searchStatic(x, y); },
-                [&](const ESM::RefId& id) { return store.findStatic(id); }, wanted, refs);
-        }
+        public:
+            explicit GameCells(const MWWorld::ESMStore& store)
+                : mStore(store)
+            {
+            }
+
+            const ESM::Cell* getCell(const int x, const int y) const override
+            {
+                return mStore.get<ESM::Cell>().searchStatic(x, y);
+            }
+
+            int getType(const ESM::RefId& id) const override { return mStore.findStatic(id); }
+
+        private:
+            const MWWorld::ESMStore& mStore;
+        };
 
         void collectESM4References(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-            const MWWorld::ESMStore& store, std::map<ESM::RefNum, Terrain::PagedCellRef>& refs)
+            const MWWorld::ESMStore& store, std::vector<Terrain::PagedCellRef>& refs)
         {
             for (int cellX = startCell.x(); cellX < startCell.x() + size; ++cellX)
             {
@@ -81,39 +95,36 @@ namespace MWRender
                                     continue;
                             }
                         }
-                        refs.insert_or_assign(ref4->mId, makePagedCellRef(*ref4, type));
+                        refs.push_back(makePagedCellRef(*ref4, type));
                     }
                 }
             }
+
+            // The order a reduction leaves, since nothing here says a reference twice.
+            std::sort(refs.begin(), refs.end(),
+                [](const Terrain::PagedCellRef& a, const Terrain::PagedCellRef& b) { return a.mRefNum < b.mRefNum; });
         }
     }
 
-    void ObjectStorage::collectReferences(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-        std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const
+    void ObjectStorage::collect(Terrain::RefKind kind, float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
+        std::vector<Terrain::PagedCellRef>& out) const
     {
         out.clear();
 
         const MWWorld::ESMStore& store = MWBase::Environment::get().getWorld()->getStore();
 
         if (worldspace == ESM::Cell::sDefaultWorldspaceId)
-            collectESM3References(size, startCell, store, Terrain::pagedType, out);
-        else
-            collectESM4References(size, startCell, worldspace, store, out);
-    }
-
-    void ObjectStorage::collectLights(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-        std::map<ESM::RefNum, Terrain::PagedCellRef>& out) const
-    {
-        out.clear();
-
-        // **ESM3 alone, and empty rather than a failure for anything else.** A `LIGH` is a Morrowind
-        // record and `collectESM4References` walks a different store with a different reference
-        // shape; a worldspace out of ESM4 content keeps exactly the lighting it has today.
-        if (worldspace != ESM::Cell::sDefaultWorldspaceId)
+        {
+            const GameCells cells(store);
+            Terrain::collectPagedRefs(size, startCell, cells, kind, out);
             return;
+        }
 
-        collectESM3References(
-            size, startCell, MWBase::Environment::get().getWorld()->getStore(), Terrain::litType, out);
+        // **ESM3 alone for the lights, and empty rather than a failure for anything else.** A `LIGH`
+        // is a Morrowind record and `collectESM4References` walks a different store with a different
+        // reference shape; a worldspace out of ESM4 content keeps exactly the lighting it has today.
+        if (kind == Terrain::RefKind::Paged)
+            collectESM4References(size, startCell, worldspace, store, out);
     }
 
     std::optional<SceneUtil::LightCommon> ObjectStorage::getLight(const ESM::RefId& id) const

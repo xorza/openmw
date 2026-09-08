@@ -779,10 +779,10 @@ namespace Rtx
         // every placement of it; a placement wearing anything but the material its mesh arrived
         // with is the canary — `SceneUtil::CopyOp` shares the state set under every copy, so the
         // only material a mesh can be seen in two of is one a controller made per node.
-        const Index arrivedWearing = mScene.getMeshes()[mesh].mMaterial;
+        const Index arrivedWearing = mScene.getTables().mMeshes.getRows()[mesh].mMaterial;
         if (arrivedWearing != sNoIndex)
         {
-            const Material& worn = mScene.getMaterials()[arrivedWearing];
+            const Material& worn = mScene.getTables().mMaterials.getRows()[arrivedWearing];
             if (worn.mAnimated)
                 stats.mUnbakeable += worn.isCutout() ? 1 : 0;
             else if (material != arrivedWearing)

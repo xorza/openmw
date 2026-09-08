@@ -24,112 +24,41 @@
 #include "meshtable.hpp"
 #include "placementtable.hpp"
 #include "runallocator.hpp"
+#include "scenetables.hpp"
 #include "shaders/skinning.h"
 #include "shapefold.hpp"
+#include "sprite.hpp"
 #include "texturetable.hpp"
 
 namespace Rtx
 {
-    /// One live particle, drawn as a disc facing the eye.
+    /// The two tables that the mesh table and the material table borrow.
     ///
-    /// **A particle system carries no triangles at all** — the sprites are the whole of the drawing —
-    /// so nothing here reaches an acceleration structure. The layer is marched against the primary
-    /// ray and composited instead, which is also what lets it blend in depth order without the
-    /// candidate loop an alpha-blended hit would cost traversal.
-    struct Sprite
+    /// **A base and not two more members, because a base is constructed before every member of the
+    /// class that carries it, whatever order those members are declared in.** `MeshTable` takes a
+    /// `DeformerTable&` and `MaterialTable` a `TextureTable&`, so as plain members these two had to
+    /// be declared before their borrowers and nothing but a comment said so — and a member moved
+    /// would have bound a reference to storage no constructor had reached.
+    struct LentTables
     {
-        osg::Vec3f mPosition;
-
-        /// Half the sprite's width in world units, which is what `osgParticle` means by a size: its
-        /// quad runs from `-size` to `+size` about the particle and its bounds are expanded by it.
-        float mRadius = 0.0f;
-
-        /// The streak's own axis in the world, per unit of `mRadius` — or **zero for a sprite that
-        /// faces the eye**, which is nearly every one. `SpriteEmitter::mWidth` is the other half of
-        /// the shape and is the emitter's, because a rotation cannot change it.
+        /// What poses the deforming meshes, and the poses themselves. Its own type, for the reason
+        /// the tables that borrow it are: a rig, the meshes counted on it and the runs behind both
+        /// are one invariant.
         ///
-        /// **Per particle, because the rotation is.** `osgParticle` turns both of a quad's axes by
-        /// the angle the particle carries before it draws them, and `Weather::RainShooter` is what
-        /// leans a raindrop into the wind with it — so two drops fired under different winds hang at
-        /// different angles in one frame, and an axis held once for the emitter drew the whole storm
-        /// falling straight down.
+        /// A mesh stands its deformer as it arrives and releases one as it goes, and the count is
+        /// this table's.
+        DeformerTable mDeformers;
+
+        /// Every texture the scene names, and what still names each. Its own type, because a
+        /// reference-counted table with a free list and two lookups into it is a thing with an
+        /// invariant rather than a set of parallel vectors.
         ///
-        /// **Not normalised**, because its length is the shape: rain's is a whole radius against a
-        /// width of a tenth, which is what makes a drop a streak.
-        osg::Vec3f mAxis;
-
-        /// Linear, and already carrying wherever the particle's own colour ramp has reached.
-        osg::Vec3f mColour{ 1.0f, 1.0f, 1.0f };
-
-        /// What the particle's own fade left of it, multiplied into the texture's alpha at the hit.
-        float mAlpha = 1.0f;
-
-        /// Where the particle stood on the previous frame, less where it stands now — see
-        /// `Shaders::GpuSprite::mMoved` for why it is the difference that is carried.
-        ///
-        /// **The particle's own answer.** `osgParticle` keeps a previous position per particle for
-        /// its own line rendering, so nothing here has to track a particle across frames or care
-        /// that births and deaths reshuffle the array.
-        osg::Vec3f mMoved;
+        /// A material names texture slots and gives them back as it is rewritten and as it is
+        /// swept, and the count is this table's.
+        TextureTable mTextures;
     };
 
-    /// One particle system: what its sprites are drawn with, and a sphere that holds all of them.
-    ///
-    /// **The sphere is the whole spatial structure and it is enough.** A light is asked for by a
-    /// shading *point*, which the uniform grid answers in a lookup; an emitter is asked for by a
-    /// whole *ray*, which would have to walk that grid cell by cell. There are tens of emitters in a
-    /// cell against hundreds of lamps and each is small, so one rejection throws an emitter away for
-    /// almost every pixel of the frame.
-    struct SpriteEmitter
-    {
-        osg::Vec3f mCentre;
-
-        /// Far enough from `mCentre` to contain every sprite in the range, rim included.
-        float mReach = 0.0f;
-
-        /// Where they sit in `getSprites`, laid end to end as the emitter placed them.
-        Run mSprites;
-
-        /// The sprite texture, or `sNoIndex` where the emitter had none — which draws nothing, since
-        /// a particle's whole silhouette is in that texture's alpha.
-        Index mTexture = sNoIndex;
-
-        /// What that texture's alpha leaves of the light crossing a sprite — a `SpriteLightMap` —
-        /// or `sNoIndex` for one lit as a flat card.
-        Index mLighting = sNoIndex;
-
-        /// `SRC_ALPHA, ONE`: a flame, which adds light and hides nothing behind it. The rest blend
-        /// over, which is smoke and needs its colour ramp to fade it.
-        bool mAdditive = false;
-
-        /// How wide this emitter's quads are against their own axis, per unit of `Sprite::mRadius`
-        /// — or **nought for sprites that face the eye**, which is nearly every emitter in the game.
-        ///
-        /// `osgParticle` draws a particle as `position ± axisX * size ± axisY * size` and offers two
-        /// ways of choosing those axes. A `BILLBOARD` system's are the screen's, transformed into
-        /// view space every frame — that is a disc facing the eye and needs nothing carried here. A
-        /// `FIXED` one's are used as they were authored, so the quad hangs in the world at an
-        /// orientation of its own, and Morrowind's rain is the reason the mode exists: an X axis
-        /// squashed to a tenth against a Y axis pointing straight down is a falling streak rather
-        /// than a round drop.
-        ///
-        /// **The length of that X axis and not its direction**, because the march swings the width
-        /// about the sprite's own axis to meet the ray rather than committing it to the plane the
-        /// content picked. `Sprite::mAxis` carries the rest of the shape, and carries it per
-        /// particle because a particle's own rotation turns it.
-        float mWidth = 0.0f;
-    };
-
-    /// Everything the renderer needs to know about a world, with no Vulkan and no scene graph in it.
-    ///
-    /// Lights come from ESM `Light` records rather than from the graph: `NifOsg` never reads
-    /// `NiLight`, so a model carries none — a candle's mesh and the light it casts arrive by
-    /// different routes and are placed by the same reference.
-    ///
-    /// Deliberately dumb: it appends and it dedups paths, and nothing else. Deciding that two
-    /// drawables are the same mesh belongs to whoever is reading the scene graph, which knows what
-    /// identity means there; this type would have to guess.
-    class SceneDesc
+    class SceneDesc : private LentTables
     {
     public:
         /// What a mesh's geometry may not straddle — `MeshTable::sVertexBlock` says why.
@@ -267,14 +196,6 @@ namespace Rtx
         /// Gives back one `holdTexture`. The slot is freed here where nothing else names it.
         void dropTexture(Index texture);
 
-        /// Whether nothing stands in `slot`: the last thing naming it gave it back, and it is
-        /// waiting for the next `addTexture` to take it over.
-        ///
-        /// **The name and not the reference count**, which is the same answer except for the window
-        /// between a slot being handed out and whatever is about to name it doing so. A reader that
-        /// asked the count would find a texture it was in the middle of building.
-        bool isTextureFree(Index texture) const { return mTextures.isFree(texture); }
-
         /// Places `instance` in a slot and returns it.
         ///
         /// **The slot is the placement's name for as long as it stands.** It is the custom index a
@@ -368,230 +289,40 @@ namespace Rtx
         /// than reconciling it.
         void clearPlacement();
 
-        /// **Every span below is into a table that grows, and lives until the table does.** A span
-        /// is valid until the next `add` into its table — `addMesh` grows the geometry and the mesh
-        /// table, `addEmitter` the sprites and the emitters, and each of the others the table it
-        /// names — and until `clearPlacement`, which empties the per-frame ones. Take it after the
-        /// add and never in the same expression as one: `getMeshes()[addMesh(...)]` sequences the span
-        /// before the add, and indexes a table that has moved.
+        /// The read side, for whoever is handed the scene rather than building it. `SceneTables`
+        /// says what a reader may do with it.
         ///
-        /// **A row read out of one by reference has the same lifetime as the span it came from**,
-        /// which is what makes an index the only name for a row that outlives an add. A caller
-        /// holding the scene `const` is safe by its type. A caller that builds one is not, and
-        /// finishing the adds before the reads is the shape that does not have to remember it.
-        std::span<const osg::Vec3f> getPositions() const { return mMeshTable.getPositions(); }
-        std::span<const osg::Vec3f> getNormals() const { return mMeshTable.getNormals(); }
-        std::span<const osg::Vec2f> getTexCoords() const { return mMeshTable.getTexCoords(); }
-        std::span<const std::uint32_t> getIndices() const { return mMeshTable.getIndices(); }
+        /// **Every span a table hands out is into storage that grows, and lives until it does.** A
+        /// span is valid until the next `add` into its table — `addMesh` grows the geometry and the
+        /// mesh table, `addEmitter` the sprites and the emitters — and until `clearPlacement`, which
+        /// empties the per-frame ones. Take it after the add and never in the same expression as
+        /// one: a span read beside an add is sequenced before it, and indexes a table that has
+        /// moved.
+        SceneTables getTables() const
+        {
+            return SceneTables{
+                .mMeshes = mMeshTable,
+                .mDeformers = mDeformers,
+                .mPlacements = mPlacements,
+                .mMaterials = mMaterialTable,
+                .mTextures = mTextures,
+                .mLights = mLights,
+                .mSprites = mSprites,
+                .mEmitters = mEmitters,
+            };
+        }
 
-        /// Every mesh slot, live or free. A freed one has a zero count and keeps its room, so a
-        /// backend that walks these builds a structure over nothing rather than over somebody else's
-        /// triangles — and the top level a frame rebuilds is what stops it being traced.
-        std::span<const MeshRange> getMeshes() const { return mMeshTable.getRows(); }
-
-        /// Which meshes changed shape since the last `clearPlacement`, each named once and in no
-        /// particular order. Empty for a world that only moves.
-        std::span<const Index> getDeformed() const { return mMeshTable.getDeformed(); }
-
-        /// Every rig slot, live or free — `Rig::mUses` tells them apart — and the two tables the rigs
-        /// index.
-        std::span<const Rig> getRigs() const { return mDeformers.getRigs(); }
-        std::span<const std::uint32_t> getRuns() const { return mDeformers.getRuns(); }
-        std::span<const Shaders::GpuInfluence> getInfluences() const { return mDeformers.getInfluences(); }
-
-        /// The same for the morphs.
-        std::span<const Morph> getMorphs() const { return mDeformers.getMorphs(); }
-        std::span<const osg::Vec3f> getMorphOffsets() const { return mDeformers.getMorphOffsets(); }
-
-        /// Every deforming mesh's pose, laid end to end: a run of rows per skinned mesh, and a run
-        /// of weights per morphed one. `MeshRange::mPoseOffset` says where each starts.
-        std::span<const Shaders::GpuBone> getBones() const { return mDeformers.getBones(); }
-        std::span<const float> getWeights() const { return mDeformers.getWeights(); }
-
-        /// One mesh's pose, for a backend writing that mesh's rows or a test reading them back.
-        std::span<const Shaders::GpuBone> getMeshBones(Index mesh) const;
-        std::span<const float> getMeshWeights(Index mesh) const;
-
-        /// How many vertices the deforming meshes' bind poses take between them, which is how long
-        /// a backend's bind table has to be. `MeshRange::mBindOffset` says where each mesh's run is.
-        Index getBindVertexCount() const { return mDeformers.getBindVertexCount(); }
-
-        /// Which rig and morph slots have been written since the last `clearArrivals`, for a
-        /// backend to upload. A freed slot is named by nothing: nothing reads it until the next
-        /// arrival lands in it, and that arrival names it.
-        std::span<const Index> getArrivedRigs() const { return mDeformers.getArrivedRigs(); }
-        std::span<const Index> getArrivedMorphs() const { return mDeformers.getArrivedMorphs(); }
-        /// Every slot, standing or empty, in slot order. `MeshInstance::isPlaced` tells them apart.
-        std::span<const MeshInstance> getInstances() const { return mPlacements.getAll(); }
-
-        /// How many slots hold a placement, which is what reaches an acceleration structure.
-        std::uint32_t getPlacedCount() const { return mPlacements.getPlacedCount(); }
-
-        /// Where each slot stood before the last `advancePlacement`, indexed alongside the slots.
-        std::span<const osg::Matrixf> getPrevious() const { return mPlacements.getPrevious(); }
-
-        /// The slots whose row changed since the last `advancePlacement`: placed, moved, faded,
-        /// dropped, or wearing a material that changed what traversal is told.
+        /// Sorts the lights so that a frame's own order is a fact about the world.
         ///
-        /// **What a backend rewrites, and all it rewrites.** A world is tens of thousands of
-        /// placements and a frame changes hundreds; a row table written whole every frame was a
-        /// millisecond of the game's CPU to change nothing. A slot can appear more than once where
-        /// two facts about it changed in one frame, which costs one row written twice.
-        std::span<const Index> getMoved() const { return mPlacements.getMoved(); }
-
-        /// The slots the last `advancePlacement` caught up, whose motion is now still.
-        ///
-        /// **The other half of what a backend rewrites.** A row carries the motion between where a
-        /// placement stood and where it stands, and that motion goes back to nothing on the frame
-        /// after the move — which is a frame on which the slot did not move. Without this list a
-        /// backend writing only `getMoved` would leave last frame's motion in the row for ever.
-        std::span<const Index> getSettled() const { return mPlacements.getSettled(); }
-        std::span<const Material> getMaterials() const { return mMaterialTable.getRows(); }
-        std::span<const MaterialLayer> getLayers() const { return mMaterialTable.getLayers(); }
-        std::span<const Light> getLights() const { return mLights; }
-
-        /// Puts the lights in an order that depends on the lights and not on the walk that found
-        /// them. Once, where a walk ends.
-        ///
-        /// **A picture must not depend on the order cells were loaded in.** A walk meets lights in
-        /// graph order, and a graph gains and loses cells as a player moves — so the same place
-        /// walked twice hands the same lights over in a different order. Every one of them is still
-        /// there, and the picture still changes: the grid bins them in that order and a reservoir
-        /// streams them in it, so one cell's sample falls on a different lamp and its neighbourhood
-        /// moves by a level or two. It is a handful of pixels around one lamp, which is small enough
-        /// to be read as noise and is not.
+        /// **The one call a reader needs that is not a table.** `SceneUploader` makes it at the one
+        /// point every path passes, because a walk may run twice and a light met by the second
+        /// would otherwise stand outside an order the first had settled.
         void orderLights();
 
-        /// How many times the scene's **structure** has changed: its meshes and its textures.
-        ///
-        /// **What a rebuild costs is why only these two are counted.** A mesh appearing means a
-        /// bottom-level acceleration structure that does not exist yet, and a texture appearing
-        /// means an array that has to be made again — hundreds of milliseconds between them, and
-        /// the temporal history goes with them. Nothing else in the scene is worth that.
-        ///
-        /// **The only honest test for it**: comparing table sizes misses a cell that left as another
-        /// arrived, which is exactly what walking across a boundary does — and it misses a freed
-        /// slot taken over by something else entirely, which is what one does now. Bumped by a mesh
-        /// or a texture appearing, whether at the end of the table or into a slot something else
-        /// left; never by a placement, which is rewritten every frame anyway.
-        std::uint64_t getStructureRevision() const { return mMeshTable.getRevision() + mTextures.getRevision(); }
-
-        /// Forgets what has arrived and what has gone, for a caller that has applied both.
-        ///
-        /// **Whoever hands the scene to a backend owns this**, not the frame: an arrival lives from
-        /// the walk that made it until something has taken it, and a walk that is never handed over
-        /// must not lose what it added.
+        /// Forgets what arrived and what was freed, which a hand-over does once it has read both.
         void clearArrivals();
 
-        /// Which texture slots have been written since the last `clearArrivals`.
-        ///
-        /// **A list and not a count, because a slot is taken over wherever it sits.** A backend used
-        /// to be handed the tail of the table and told to append; reclaiming a slot means an arrival
-        /// can be anywhere, so the arrivals say where each one goes and the backend writes those and
-        /// nothing else.
-        std::span<const Index> getArrivedTextures() const { return mTextures.getArrived(); }
-
-        /// Which mesh slots have been written since the last `clearArrivals`.
-        ///
-        /// The same list for the expensive half. `getMeshRevision` says *that* a mesh arrived and a
-        /// backend hearing it had nothing to do but build the scene again; this says *which*, which
-        /// is what lets it build those structures and leave the rest standing.
-        std::span<const Index> getArrivedMeshes() const { return mMeshTable.getArrived(); }
-
-        /// Which mesh slots `release` has given up since the last `clearArrivals`.
-        std::span<const Index> getFreedMeshes() const { return mMeshTable.getFreed(); }
-
-        /// Which texture slots `release` has given up since the last `clearArrivals`.
-        ///
-        /// **What lets a backend stop holding a departed cell's images.** An array that is never
-        /// told a slot went keeps whatever was in it until something takes the slot over, so a
-        /// region walked away from goes on costing its texture memory.
-        std::span<const Index> getFreedTextures() const { return mTextures.getFreed(); }
-
-        /// How many times a **mesh** has appeared, which is the expensive half of the above.
-        ///
-        /// A texture arriving is an upload; a mesh arriving is a bottom-level acceleration structure
-        /// that does not exist yet. Told apart because a body texture nobody has worn yet must not
-        /// cost the structures of a whole cell.
-        std::uint64_t getMeshRevision() const { return mMeshTable.getRevision(); }
-
-        /// Which material slots `addMaterial` or `setMaterial` wrote since the last `clearArrivals`,
-        /// each once.
-        ///
-        /// **Rows and not a revision, because a row is what a backend writes.** A counter that moved
-        /// on any material said "the shading changed" and the answer to that was every material,
-        /// every layer and every mask copied to the device — megabytes, every frame a flipbook
-        /// turned, to change eighty bytes. A material the sweep freed is not here: nothing stands on
-        /// it, so its row is never read and need not be written.
-        std::span<const Index> getWrittenMaterials() const { return mMaterialTable.getWritten(); }
-
-        /// The runs `addLayers` placed since the last `clearArrivals`, and the same for `addMask`.
-        ///
-        /// **Runs and not a flag over the table**, for the reason the materials are rows: a chunk
-        /// arriving writes its own layers and its own weights, and the rest of both tables is what
-        /// it was. A run the sweep gave back is not named here either — nothing reads it until the
-        /// next chunk lands in it, and that chunk's arrival is what names it.
-        std::span<const Run> getArrivedLayers() const { return mMaterialTable.getArrivedLayers(); }
-        std::span<const Run> getArrivedMasks() const { return mMaterialTable.getArrivedMasks(); }
-
-        std::span<const Sprite> getSprites() const { return mSprites; }
-        std::span<const SpriteEmitter> getEmitters() const { return mEmitters; }
-        std::span<const float> getMasks() const { return mMaterialTable.getMasks(); }
-        /// The file each slot was read from, empty where it was not read from one.
-        std::span<const VFS::Path::Normalized> getTextures() const { return mTextures.getPaths(); }
-
-        /// What made each slot, for the ones nothing opened — empty for every slot that is a file.
-        ///
-        /// **Parallel to `getTextures` and not instead of it**, because the two are different facts
-        /// about a slot and nearly every reader wants only the first. A slot with neither is one
-        /// nothing stands in, which is what `isTextureFree` answers.
-        std::span<const std::string> getBakedTextures() const { return mTextures.getBaked(); }
-
-        /// The vertices of one mesh, for a test or a build that wants to read back what it appended.
-        std::span<const osg::Vec3f> getMeshPositions(Index mesh) const;
-        std::span<const std::uint32_t> getMeshIndices(Index mesh) const;
-
-        std::uint32_t getTriangleCount() const;
-
-        /// The world-space extent of everything placed. Invalid when nothing is.
-        ///
-        /// Computed from each mesh's local box carried through its instances rather than from every
-        /// vertex of every instance, which is the difference between eight transforms per instance
-        /// and several hundred.
-        ///
-        /// **Backdrops included, and a far plane is what wants that**: a ray has to reach the sea,
-        /// so what the frame must span is everything there is. `getContentBounds` is the other
-        /// question.
-        osg::BoundingBoxf getBounds() const;
-
-        /// The extent of what stands inside `region`, backdrops left out. Invalid where nothing does.
-        ///
-        /// **What a camera is placed from, and neither half of it is optional.** The sea is one sheet
-        /// a hundred and fifty cells across and the ground now reaches four cells past the one being
-        /// looked at, so a camera framing the whole scene went a million and a half units out and
-        /// photographed water — and framing everything that is not the sea would still go two hundred
-        /// thousand out and photograph a region. A view of a place is a view of that place.
-        ///
-        /// `region` is asked in world units and clips what it meets, so a chunk straddling its edge
-        /// contributes the part inside it rather than dragging the answer a cell wide. Its height is
-        /// the caller's to leave open: how high the ground is there is exactly what this is for.
-        ///
-        /// Water is the only backdrop today and `MaterialKind` is what says so; a sky dome would join
-        /// it here rather than teaching every caller a second exception.
-        osg::BoundingBoxf getContentBoundsWithin(const osg::BoundingBoxf& region) const;
-
-        /// Bytes held by the vertex and index buffers. What the upload at M3 will cost.
-        std::size_t getGeometryBytes() const;
-
     private:
-        /// What poses the deforming meshes, and the poses themselves. Its own type, for the reason
-        /// the tables below are: a rig, the meshes counted on it and the runs behind both are one
-        /// invariant.
-        ///
-        /// **Before the meshes, which borrow it.** A mesh stands its deformer as it arrives and
-        /// releases one as it goes, and the count is this table's.
-        DeformerTable mDeformers;
-
         /// Every mesh, and the shared buffers its triangles live in.
         MeshTable mMeshTable{ mDeformers };
 
@@ -603,21 +334,9 @@ namespace Rtx
         std::vector<Sprite> mSprites;
         std::vector<SpriteEmitter> mEmitters;
 
-        /// Every texture the scene names, and what still names each. Its own type, because a
-        /// reference-counted table with a free list and two lookups into it is a thing with an
-        /// invariant rather than a set of parallel vectors.
-        ///
-        /// **Before the materials, which borrow it.** A material names texture slots and gives them
-        /// back as it is rewritten and as it is swept, and the count is this table's.
-        TextureTable mTextures;
-
         /// The materials, their terrain layers and the weights those place. Its own type, for the
-        /// reason the two above are: a row, the runs it names and what those name are one
+        /// reason the tables above are: a row, the runs it names and what those name are one
         /// invariant rather than ten members held in step by hand.
         MaterialTable mMaterialTable{ mTextures };
-
-        /// Calls `visit(instance, worldBox)` for every placement, which is what both extents walk.
-        template <class Visit>
-        void forEachPlacement(Visit&& visit) const;
     };
 }

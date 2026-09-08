@@ -53,14 +53,14 @@ namespace Rtx
     Run MaterialTable::addMask(std::span<const float> weights)
     {
         const Run run = mMasks.allocate(weights);
-        mArrivedMasks.push_back(run);
+        mArrived.mMasks.push_back(run);
         return run;
     }
 
     Run MaterialTable::addLayers(std::span<const MaterialLayer> layers)
     {
         const Run run = mLayers.allocate(layers);
-        mArrivedLayers.push_back(run);
+        mArrived.mLayers.push_back(run);
         return run;
     }
 
@@ -94,7 +94,6 @@ namespace Rtx
     void MaterialTable::clearArrivals()
     {
         mWritten.clear();
-        mArrivedLayers.clear();
-        mArrivedMasks.clear();
+        mArrived.clear();
     }
 }

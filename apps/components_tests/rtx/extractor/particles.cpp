@@ -83,11 +83,11 @@ namespace Rtx::Testing
             EXPECT_EQ(stats.mInstances, 0u) << "sprites are the drawing, so there is nothing to build over";
             EXPECT_EQ(stats.mMeshesAdded, 0u);
 
-            ASSERT_EQ(mScene.getSprites().size(), 2u);
+            ASSERT_EQ(mScene.getTables().mSprites.size(), 2u);
 
             // (0, 0, 5) scaled by two is (0, 0, 10), then moved to x = 100. The radius is the file's
             // three by the same two.
-            const Rtx::Sprite& low = mScene.getSprites()[0];
+            const Rtx::Sprite& low = mScene.getTables().mSprites[0];
             EXPECT_EQ(low.mPosition, osg::Vec3f(100.0f, 0.0f, 10.0f));
             EXPECT_FLOAT_EQ(low.mRadius, 6.0f);
             EXPECT_EQ(low.mColour, osg::Vec3f(1.0f, 0.5f, 0.25f));
@@ -97,22 +97,22 @@ namespace Rtx::Testing
             // the two being read and the other dropped.
             EXPECT_FLOAT_EQ(low.mAlpha, 0.25f);
 
-            EXPECT_EQ(mScene.getSprites()[1].mPosition, osg::Vec3f(100.0f, 0.0f, 18.0f));
-            EXPECT_FLOAT_EQ(mScene.getSprites()[1].mRadius, 2.0f);
+            EXPECT_EQ(mScene.getTables().mSprites[1].mPosition, osg::Vec3f(100.0f, 0.0f, 18.0f));
+            EXPECT_FLOAT_EQ(mScene.getTables().mSprites[1].mRadius, 2.0f);
 
             // Two sprites four apart before the scale and eight after, each one wider than the
             // other: the box runs z = 4 to 20, so the centre is 12 and the reach 8.
-            ASSERT_EQ(mScene.getEmitters().size(), 1u);
-            EXPECT_EQ(mScene.getEmitters().front().mCentre, osg::Vec3f(100.0f, 0.0f, 12.0f));
-            EXPECT_FLOAT_EQ(mScene.getEmitters().front().mReach, 8.0f);
+            ASSERT_EQ(mScene.getTables().mEmitters.size(), 1u);
+            EXPECT_EQ(mScene.getTables().mEmitters.front().mCentre, osg::Vec3f(100.0f, 0.0f, 12.0f));
+            EXPECT_FLOAT_EQ(mScene.getTables().mEmitters.front().mReach, 8.0f);
 
             // The texture, and beside it the bake of its alpha the sprites are lit by.
-            ASSERT_EQ(mScene.getTextures().size(), 2u);
-            EXPECT_EQ(mScene.getTextures()[0], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
-            EXPECT_EQ(mScene.getBakedTextures()[1],
+            ASSERT_EQ(mScene.getTables().mTextures.getPaths().size(), 2u);
+            EXPECT_EQ(mScene.getTables().mTextures.getPaths()[0], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            EXPECT_EQ(mScene.getTables().mTextures.getBaked()[1],
                 SpriteLightMap::keyFor(VFS::Path::NormalizedView("textures/tx_fire_00.dds")));
-            EXPECT_EQ(mScene.getEmitters().front().mTexture, 0u);
-            EXPECT_EQ(mScene.getEmitters().front().mLighting, 1u);
+            EXPECT_EQ(mScene.getTables().mEmitters.front().mTexture, 0u);
+            EXPECT_EQ(mScene.getTables().mEmitters.front().mLighting, 1u);
         }
 
         /// A quad that hangs in the world hangs on the axis its own particle carries.
@@ -145,16 +145,16 @@ namespace Rtx::Testing
 
             walk(*rain.mRoot);
 
-            ASSERT_EQ(mScene.getEmitters().size(), 1u);
-            ASSERT_EQ(mScene.getSprites().size(), 2u);
+            ASSERT_EQ(mScene.getTables().mEmitters.size(), 1u);
+            ASSERT_EQ(mScene.getTables().mSprites.size(), 2u);
 
             // The width is the across axis's own length, and neither the turn nor the scale reaches
             // it — which is why it is the emitter's and is read once.
-            EXPECT_FLOAT_EQ(mScene.getEmitters().front().mWidth, 0.1f);
+            EXPECT_FLOAT_EQ(mScene.getTables().mEmitters.front().mWidth, 0.1f);
 
             // A drop with no angle hangs where the content put it: a quarter turn about z leaves an
             // axis pointing down where it was, and the scale is the radius's alone.
-            const Rtx::Sprite& straight = mScene.getSprites()[0];
+            const Rtx::Sprite& straight = mScene.getTables().mSprites[0];
             EXPECT_NEAR(straight.mAxis.x(), 0.0f, 1e-6f);
             EXPECT_NEAR(straight.mAxis.y(), 0.0f, 1e-6f);
             EXPECT_NEAR(straight.mAxis.z(), -1.0f, 1e-6f);
@@ -162,7 +162,7 @@ namespace Rtx::Testing
 
             // Thirty degrees about x takes (0, 0, -1) to (0, sin 30, -cos 30), and the quarter turn
             // about z takes that to (-sin 30, 0, -cos 30).
-            const Rtx::Sprite& leaning = mScene.getSprites()[1];
+            const Rtx::Sprite& leaning = mScene.getTables().mSprites[1];
             EXPECT_NEAR(leaning.mAxis.x(), -0.5f, 1e-6f);
             EXPECT_NEAR(leaning.mAxis.y(), 0.0f, 1e-6f);
             EXPECT_NEAR(leaning.mAxis.z(), -0.8660254f, 1e-6f);
@@ -188,8 +188,8 @@ namespace Rtx::Testing
                 SceneExtractor extractor(scene);
                 extractor.extract(*plume.mRoot, osg::Matrixf::identity(), 0);
 
-                EXPECT_EQ(scene.getEmitters().size(), 1u);
-                return scene.getEmitters().front().mAdditive;
+                EXPECT_EQ(scene.getTables().mEmitters.size(), 1u);
+                return scene.getTables().mEmitters.front().mAdditive;
             };
 
             EXPECT_TRUE(extractOne(true));
@@ -212,12 +212,12 @@ namespace Rtx::Testing
 
             EXPECT_EQ(stats.mEmitters, 0u);
             EXPECT_EQ(stats.mSprites, 0u);
-            EXPECT_TRUE(mScene.getEmitters().empty());
+            EXPECT_TRUE(mScene.getTables().mEmitters.empty());
 
             // The texture is registered the moment the emitter is met, alive or not: it is what the
             // array is built from, and one that turns up two hundred frames later has nowhere to go.
             // The bake of its alpha arrives with it, for the same reason.
-            EXPECT_EQ(mScene.getTextures().size(), 2u);
+            EXPECT_EQ(mScene.getTables().mTextures.getPaths().size(), 2u);
 
             // A particle's whole silhouette is that texture's alpha, so an emitter with none draws
             // nothing rather than a white disc.
@@ -229,7 +229,7 @@ namespace Rtx::Testing
             Rtx::SceneDesc bareScene;
             SceneExtractor bareExtractor(bareScene);
             EXPECT_EQ(bareExtractor.extract(*bare, osg::Matrixf::identity(), 0).mEmitters, 0u);
-            EXPECT_TRUE(bareScene.getTextures().empty());
+            EXPECT_TRUE(bareScene.getTables().mTextures.getPaths().empty());
         }
 
         /// An emitter's sprite is on no material, so the sweep has to speak for it itself.
@@ -249,7 +249,8 @@ namespace Rtx::Testing
             both->addChild(plume.mRoot);
 
             walk(*both);
-            ASSERT_EQ(mScene.getTextures().size(), 3u) << "the stone's, the sprite's and the sprite's bake";
+            ASSERT_EQ(mScene.getTables().mTextures.getPaths().size(), 3u)
+                << "the stone's, the sprite's and the sprite's bake";
             ASSERT_TRUE(mExtractor.retire().empty());
 
             mScene.clearPlacement();
@@ -264,19 +265,21 @@ namespace Rtx::Testing
             // that the sprite's texture is still *named*, which is the thing the emitter map exists
             // for: a sprite hangs off no material, so nothing else holds it. The stone's went with
             // the stone's material, which is the other half of the same statement.
-            ASSERT_EQ(mScene.getTextures().size(), 3u);
-            EXPECT_TRUE(mScene.getTextures()[0].value().empty()) << "the stone's texture outlived the stone";
-            EXPECT_EQ(mScene.getTextures()[1], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
-            EXPECT_FALSE(mScene.getBakedTextures()[2].empty()) << "the sprite's bake went with the stone";
+            ASSERT_EQ(mScene.getTables().mTextures.getPaths().size(), 3u);
+            EXPECT_TRUE(mScene.getTables().mTextures.getPaths()[0].value().empty())
+                << "the stone's texture outlived the stone";
+            EXPECT_EQ(mScene.getTables().mTextures.getPaths()[1], VFS::Path::NormalizedView("textures/tx_fire_00.dds"));
+            EXPECT_FALSE(mScene.getTables().mTextures.getBaked()[2].empty()) << "the sprite's bake went with the stone";
 
             // And the emitter still draws with it.
             mScene.clearPlacement();
             walk(*plume.mRoot);
 
-            ASSERT_EQ(mScene.getEmitters().size(), 1u);
-            EXPECT_EQ(mScene.getEmitters().front().mTexture, 1u) << "the sprite lost the slot it was given";
-            EXPECT_EQ(mScene.getEmitters().front().mLighting, 2u) << "the bake lost the slot it was given";
-            EXPECT_EQ(mScene.getTextures().size(), 3u) << "the sprite's path was added a second time";
+            ASSERT_EQ(mScene.getTables().mEmitters.size(), 1u);
+            EXPECT_EQ(mScene.getTables().mEmitters.front().mTexture, 1u) << "the sprite lost the slot it was given";
+            EXPECT_EQ(mScene.getTables().mEmitters.front().mLighting, 2u) << "the bake lost the slot it was given";
+            EXPECT_EQ(mScene.getTables().mTextures.getPaths().size(), 3u)
+                << "the sprite's path was added a second time";
 
             // **And the other way round, on the frame the sweep does not look at.** The stone comes
             // back and then the emitter goes, taking no mesh and no material with it — which is
@@ -285,14 +288,16 @@ namespace Rtx::Testing
             mScene.clearPlacement();
             walk(*both);
             ASSERT_TRUE(mExtractor.retire().empty());
-            ASSERT_EQ(mScene.getTextures()[0], VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
+            ASSERT_EQ(
+                mScene.getTables().mTextures.getPaths()[0], VFS::Path::NormalizedView("textures/tx_stone_01.dds"));
 
             mScene.clearPlacement();
             walk(*stone);
 
             EXPECT_TRUE(mExtractor.retire().empty()) << "an emitter is neither a mesh nor a material";
-            EXPECT_TRUE(mScene.getTextures()[1].value().empty()) << "the sprite outlived the emitter";
-            EXPECT_TRUE(mScene.getBakedTextures()[2].empty()) << "the bake outlived the emitter";
+            EXPECT_TRUE(mScene.getTables().mTextures.getPaths()[1].value().empty())
+                << "the sprite outlived the emitter";
+            EXPECT_TRUE(mScene.getTables().mTextures.getBaked()[2].empty()) << "the bake outlived the emitter";
         }
 
         /// Gives a plume what makes it run: something emitting at a fixed rate, and the updater
@@ -346,7 +351,7 @@ namespace Rtx::Testing
         std::vector<float> spriteHeights(const Rtx::SceneDesc& scene)
         {
             std::vector<float> heights;
-            for (const Rtx::Sprite& sprite : scene.getSprites())
+            for (const Rtx::Sprite& sprite : scene.getTables().mSprites)
                 heights.push_back(sprite.mPosition.z());
 
             std::sort(heights.begin(), heights.end());
@@ -467,7 +472,7 @@ namespace Rtx::Testing
                 mExtractor.stepEmitters(*plume.mRoot);
             }
 
-            EXPECT_EQ(mScene.getSprites().size(), 0u) << "stepping is not mirroring: nothing was placed";
+            EXPECT_EQ(mScene.getTables().mSprites.size(), 0u) << "stepping is not mirroring: nothing was placed";
 
             // Two of those three turns emitted — the first only started the clock — and the walk that
             // finally mirrors them adds none of its own, because its turn is already spent.

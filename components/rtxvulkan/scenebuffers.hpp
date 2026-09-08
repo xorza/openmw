@@ -27,7 +27,7 @@ namespace Rtx
     class Device;
     class GpuTimer;
     class Graveyard;
-    class SceneDesc;
+    struct SceneTables;
     class SpriteBinPass;
 
     /// The tables a shader reads at a hit: what the triangle was, and how it is shaded.
@@ -41,7 +41,7 @@ namespace Rtx
         /// @param slots how many frames may be tracing this scene at once: `sFrameSlots` for the
         ///        world, and one for a picture inside the interface, which is traced and waited for
         ///        before anything else touches it.
-        SceneBuffers(const Device& device, Batch& batch, const SceneDesc& scene,
+        SceneBuffers(const Device& device, Batch& batch, const SceneTables& scene,
             std::span<const InstanceRecord> records, std::uint32_t slots, Graveyard& graveyard);
 
         /// Takes in the attributes of the meshes the scene says arrived.
@@ -52,7 +52,7 @@ namespace Rtx
         ///
         /// **With nothing in flight**, which the caller guarantees: an arrival writes every copy of
         /// the normals and the whole mesh table, and a frame still reading either would see it torn.
-        void extend(Batch& batch, const SceneDesc& scene, Graveyard& graveyard);
+        void extend(Batch& batch, const SceneTables& scene, Graveyard& graveyard);
 
         /// Rewrites what a moving world changes, leaving what it is made of alone.
         ///
@@ -81,7 +81,7 @@ namespace Rtx
         ///
         /// @param changed the slots `updateInstanceRecords` wrote, which is the one list the rows
         ///        are driven by. Whether a copy is then behind is `mInstanceTable`'s to know.
-        void place(const SceneDesc& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
+        void place(const SceneTables& scene, std::span<const InstanceRecord> records, std::span<const Index> changed,
             FrameSlot slot, Graveyard& graveyard);
 
         SceneBuffers(const SceneBuffers&) = delete;
@@ -182,11 +182,11 @@ namespace Rtx
         ///
         /// **Per mesh and not per scene**, because that is what an arrival is: the blocks already
         /// hold everything else, and rewriting them would be rewriting what nothing changed.
-        void writeMeshes(Batch& batch, const SceneDesc& scene, std::span<const Index> meshes, Graveyard& graveyard);
+        void writeMeshes(Batch& batch, const SceneTables& scene, std::span<const Index> meshes, Graveyard& graveyard);
 
         /// Writes the material rows `slot`'s copy owes, and the layer and mask runs that arrived into
         /// every copy — or a table whole where it had to be made again to hold them.
-        void shade(const SceneDesc& scene, FrameSlot slot, Graveyard& graveyard);
+        void shade(const SceneTables& scene, FrameSlot slot, Graveyard& graveyard);
 
         const Device* mDevice = nullptr;
         std::uint32_t mSlots = 1;
@@ -202,7 +202,7 @@ namespace Rtx
         // **Host-visible and rewritten from `place`, not uploaded once.** Anything that animates a
         // state set gives the mirror a new material every frame — OpenMW's water cycles thirty-two
         // of them — and a table that could only be filled at construction made that a reason to
-        // rebuild the whole scene. The rows the scene says it wrote are what go over, and only
+        // rebuild the whole table. The rows the scene says it wrote are what go over, and only
         // those: the masks are megabytes and a flipbook turning changes none of them.
         std::array<Tables, sFrameSlots> mTables;
 

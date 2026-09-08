@@ -20,13 +20,13 @@ namespace MyGUIRtx
 
     class Texture;
 
-    /// MyGUI over `Rtx::Renderer`, whichever graphics API is behind that.
+    /// MyGUI over `Rtx::GuiSurface`, whichever graphics API is behind that.
     ///
     /// **Written once for every backend, and that is the whole design.** MyGUI's own interface is
     /// thirty functions and most of them are bookkeeping no API has an opinion about: a name-to-
     /// texture map, a view size, a lock and unlock contract, the batching. What is left is a table
-    /// of textures and one call that draws a list of triangles, and those are the four things
-    /// `Rtx::Renderer` offers.
+    /// of textures and one call that draws a list of triangles, and those are what `Rtx::GuiSurface`
+    /// offers. The scene, the frame and the instruments are three interfaces this cannot reach.
     ///
     /// **Nothing here is driven by a scene graph.** The other backend hangs its update on an OSG
     /// update callback and its draw on a cull callback; this one is called by the renderer's frame
@@ -35,7 +35,7 @@ namespace MyGUIRtx
     {
     public:
         /// @param scalingFactor how many device pixels a GUI pixel is worth. Zero means one.
-        RenderManager(Rtx::Renderer& renderer, Resource::ImageManager* imageManager, float scalingFactor);
+        RenderManager(Rtx::GuiSurface& renderer, Resource::ImageManager* imageManager, float scalingFactor);
         ~RenderManager() override;
 
         RenderManager(const RenderManager&) = delete;
@@ -95,7 +95,7 @@ namespace MyGUIRtx
         void collectDrawCalls();
 
     private:
-        Rtx::Renderer& mRenderer;
+        Rtx::GuiSurface& mRenderer;
         Resource::ImageManager* mImageManager;
 
         MyGUI::IntSize mViewSize;

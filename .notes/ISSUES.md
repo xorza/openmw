@@ -11,3 +11,7 @@
   `--filter=false`, so the determinism gate has been running with the wavelet on against a header
   that says the denoiser is off. `mExposure` carried the same defect and was fixed; these two were
   left with it.
+
+- `build-release` does not compile. `components/rtx/texturebuilder.cpp:258` declares `reserved` for
+  the assert at `:316` alone, so `-DNDEBUG` leaves it unused and `-Werror=unused-variable` stops the
+  build.

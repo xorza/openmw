@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <span>
@@ -78,17 +79,12 @@ namespace Rtx
         std::uint32_t mFrames = 0;
         double mWallSeconds = 0.0;
 
-        /// The whole per-frame cost, and the three shares of it worth telling apart.
-        ///
-        /// **`mWait` is the CPU standing still for the device, `mWalk` is the world being mirrored,
-        /// and `mPlace` is the renderer being told what moved.** What is left over is the frame's
-        /// own record. Lumping them would hide which of them a place is slow because of; a wait
-        /// near the frame is a device that cannot keep up, and a wait near nought is a CPU that
-        /// cannot.
-        FrameTimes mFrame;
-        FrameTimes mWait;
-        FrameTimes mWalk;
-        FrameTimes mPlace;
+        /// The whole per-frame cost and the three shares of it worth telling apart, indexed by
+        /// `Timing` — which is where the four are named and where a fifth would be.
+        std::array<FrameTimes, sTimingCount> mRows;
+
+        const FrameTimes& at(const Timing timing) const { return mRows[indexOf(timing)]; }
+        FrameTimes& at(const Timing timing) { return mRows[indexOf(timing)]; }
 
         /// What the device itself says each stretch of the frame cost, most expensive first. Empty
         /// where the device cannot write timestamps.

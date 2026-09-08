@@ -46,12 +46,12 @@ namespace Rtx
 
     osg::ref_ptr<osg::Group> DistantLights::build(const osg::Vec2i& cell) const
     {
-        std::map<ESM::RefNum, Terrain::PagedCellRef> refs;
-        mStorage->collectLights(1.0f, cell, mWorldspace, refs);
+        std::vector<Terrain::PagedCellRef> refs;
+        mStorage->collect(Terrain::RefKind::Lit, 1.0f, cell, mWorldspace, refs);
 
         osg::ref_ptr<osg::Group> group;
 
-        for (const auto& [refNum, ref] : refs)
+        for (const Terrain::PagedCellRef& ref : refs)
         {
             const std::optional<SceneUtil::LightCommon> light = mStorage->getLight(ref.mRefId);
 

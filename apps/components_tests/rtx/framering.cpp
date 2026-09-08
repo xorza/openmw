@@ -21,7 +21,7 @@ namespace Rtx
             void submitEmpty(FrameRing& ring)
             {
                 FrameRecord& frame = ring.begin();
-                getPool().begin(frame.mCommands);
+                getPool().begin(frame.mWorld.mCommands);
                 ring.submit(frame);
             }
         };
@@ -52,9 +52,9 @@ namespace Rtx
                 submitEmpty(ring);
 
             EXPECT_EQ(ring.getRecording(), sFrameSlots) << "the ring did not take the frames";
-            EXPECT_TRUE(ring.slotOf(0).mPending) << "the first frame was finished by something";
+            EXPECT_TRUE(ring.slotOf(0).mWorld.mPending) << "the first frame was finished by something";
 
-            EXPECT_FALSE(ring.recording().mPending) << "the slot handed out is a frame still on the queue";
+            EXPECT_FALSE(ring.recording().mWorld.mPending) << "the slot handed out is a frame still on the queue";
 
             // And the same answer to the same question, which is what a caller taking a graveyard
             // and then beginning the frame asks.

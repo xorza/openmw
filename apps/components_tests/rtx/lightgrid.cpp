@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <components/rtx/lightgrid.hpp>
-#include <components/rtx/scenedesc.hpp>
+#include <components/rtx/scenetables.hpp>
 
 #include "allocations.hpp"
 

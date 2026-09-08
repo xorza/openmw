@@ -37,7 +37,7 @@ namespace Rtx
 
     std::size_t CompositeQueue::advance(SceneDesc& scene, Resource::ImageManager& images)
     {
-        gather(scene, images);
+        gather(scene.getTables(), images);
 
         if (mSettled)
             finish();
@@ -45,10 +45,10 @@ namespace Rtx
         return collect(scene, sCompositesPerFrame);
     }
 
-    void CompositeQueue::gather(const SceneDesc& scene, Resource::ImageManager& images)
+    void CompositeQueue::gather(const SceneTables& scene, Resource::ImageManager& images)
     {
-        const std::span<const Material> materials = scene.getMaterials();
-        for (const Index at : scene.getWrittenMaterials())
+        const std::span<const Material> materials = scene.mMaterials.getRows();
+        for (const Index at : scene.mMaterials.getWritten())
         {
             const Material& material = materials[at];
             if (material.mKind != MaterialKind::Terrain || !material.mFlatten || material.mDiffuse != sNoIndex)
@@ -80,7 +80,7 @@ namespace Rtx
                 });
             }
 
-            const std::span<const MaterialLayer> layers = material.mLayers.in(scene.getLayers());
+            const std::span<const MaterialLayer> layers = material.mLayers.in(scene.mMaterials.getLayers());
 
             // **Off the spare list where one has come back.** A request is four vectors and a
             // crossing gathers dozens, so building each here and freeing it in `collect` is a
@@ -102,12 +102,12 @@ namespace Rtx
             {
                 // Opened here and not on the baker, so the image manager is only ever asked from
                 // the thread that owns it; the baker reads what the reference keeps alive.
-                request.mImages.push_back(openImage(images, scene.getTextures()[layer.mDiffuse]));
+                request.mImages.push_back(openImage(images, scene.mTextures.getPaths()[layer.mDiffuse]));
 
                 request.mMaskRuns.push_back(
                     Run{ .mOffset = static_cast<std::uint32_t>(request.mMasks.size()), .mCount = layer.mMask.mCount });
 
-                const std::span<const float> mask = layer.mMask.in(scene.getMasks());
+                const std::span<const float> mask = layer.mMask.in(scene.mMaterials.getMasks());
                 request.mMasks.insert(request.mMasks.end(), mask.begin(), mask.end());
             }
 
@@ -158,7 +158,7 @@ namespace Rtx
             if (!baked.mComposite.has_value())
                 continue;
 
-            const std::span<const Material> materials = scene.getMaterials();
+            const std::span<const Material> materials = scene.getTables().mMaterials.getRows();
             assert(asked.mMaterial < materials.size() && "a composite waiting on a material the scene has forgotten");
 
             const Material& material = materials[asked.mMaterial];
@@ -170,7 +170,7 @@ namespace Rtx
             // run given back is handed out again to the next chunk that fits it.
             const bool wanted = material.mKind == MaterialKind::Terrain && material.mFlatten
                 && material.mDiffuse == sNoIndex && material.mLayers == asked.mLayers
-                && std::ranges::equal(request.mLayers, material.mLayers.in(scene.getLayers()));
+                && std::ranges::equal(request.mLayers, material.mLayers.in(scene.getTables().mMaterials.getLayers()));
 
             if (!wanted)
                 continue;

@@ -138,12 +138,12 @@ namespace Rtx::Testing
             EXPECT_EQ(baked.mHits, sSize * sSize);
             EXPECT_EQ(asked.mHits, sSize * sSize);
 
-            EXPECT_EQ(baked.mStats.mCutoutInstances, 1u);
-            EXPECT_EQ(baked.mStats.mMicromappedInstances, 1u);
+            EXPECT_EQ(baked.mStats.mInstances.mCutout, 1u);
+            EXPECT_EQ(baked.mStats.mInstances.mMicromapped, 1u);
             EXPECT_GT(baked.mStats.mMicromapBytes, 0u);
             EXPECT_EQ(baked.mStats.mMicromapsUntextured, 0u);
-            EXPECT_EQ(asked.mStats.mCutoutInstances, 1u);
-            EXPECT_EQ(asked.mStats.mMicromappedInstances, 0u) << "an animated mask cannot be baked";
+            EXPECT_EQ(asked.mStats.mInstances.mCutout, 1u);
+            EXPECT_EQ(asked.mStats.mInstances.mMicromapped, 0u) << "an animated mask cannot be baked";
 
             EXPECT_EQ(baked.mDepth, asked.mDepth);
             EXPECT_EQ(baked.mRadiance, asked.mRadiance);
@@ -189,18 +189,18 @@ namespace Rtx::Testing
             EXPECT_NE(bakedFaded.mRadiance, whole.mRadiance) << "a fade changes the picture";
 
             // A fading row is translucent and not a cutout, and its micromap is off — but held.
-            EXPECT_EQ(bakedFaded.mStats.mCutoutInstances, 0u);
-            EXPECT_EQ(bakedFaded.mStats.mMicromappedInstances, 0u);
+            EXPECT_EQ(bakedFaded.mStats.mInstances.mCutout, 0u);
+            EXPECT_EQ(bakedFaded.mStats.mInstances.mMicromapped, 0u);
             EXPECT_EQ(bakedFaded.mStats.mMicromapBytes, whole.mStats.mMicromapBytes);
 
             // The fade ends, as it does in the game: the same placement, its row rewritten. The card
             // is the last placement; the wall is the first.
             fading.clearPlacement();
-            fading.fadeInstance(static_cast<Index>(fading.getInstances().size() - 1), 1.0f);
-            mRenderer->placeScene(Rtx::SceneSlot::world(), fading, SeaState{});
+            fading.fadeInstance(static_cast<Index>(fading.getTables().mPlacements.getAll().size() - 1), 1.0f);
+            mRenderer->placeScene(Rtx::SceneSlot::world(), fading.getTables(), SeaState{});
 
-            EXPECT_EQ(mRenderer->getSceneStats().mMicromappedInstances, 1u) << "the micromap was kept";
-            EXPECT_EQ(mRenderer->getSceneStats().mCutoutInstances, 1u);
+            EXPECT_EQ(mRenderer->getSceneStats().mInstances.mMicromapped, 1u) << "the micromap was kept";
+            EXPECT_EQ(mRenderer->getSceneStats().mInstances.mCutout, 1u);
 
             mRenderer->renderFrame(lookAtTheCard(), FrameOptions{ .mExposure = 1.0f });
             EXPECT_EQ(mRenderer->finishFrame().value().mHits, sSize * sSize);
@@ -292,7 +292,7 @@ namespace Rtx::Testing
 
             const Picture built = take(scene);
             EXPECT_EQ(built.mHits, sSize * sSize / 2) << "two opaque quadrants of a card filling the frame";
-            EXPECT_EQ(built.mStats.mMicromappedInstances, 1u);
+            EXPECT_EQ(built.mStats.mInstances.mMicromapped, 1u);
 
             // Pixels sixteen and forty-seven sit at the same angle off the axis, and both are inside
             // the card after the move as well: the quadrant that stops the ray is whichever is nearer.
@@ -306,7 +306,7 @@ namespace Rtx::Testing
             poseByOneBone(scene, card, osg::Matrixf::translate(0.0f, 100.0f, 0.0f));
             scene.addInstance(
                 MeshInstance{ .mTransform = osg::Matrixf::identity(), .mMesh = card, .mMaterial = cutout });
-            mRenderer->placeScene(Rtx::SceneSlot::world(), scene, SeaState{});
+            mRenderer->placeScene(Rtx::SceneSlot::world(), scene.getTables(), SeaState{});
 
             mRenderer->renderFrame(lookAtTheCard(), FrameOptions{ .mExposure = 1.0f });
             EXPECT_EQ(mRenderer->finishFrame().value().mHits, sSize * sSize / 8)

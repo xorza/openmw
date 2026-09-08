@@ -113,7 +113,7 @@ namespace Rtx
     ///
     /// An out-parameter refilled in place, because a cell is thousands of instances and a rebuild
     /// must not go back to the allocator for a buffer it already had.
-    void makeInstanceRecords(const SceneDesc& scene, std::vector<InstanceRecord>& records);
+    void makeInstanceRecords(const SceneTables& scene, std::vector<InstanceRecord>& records);
 
     /// Rewrites the rows of the slots the scene says changed — `getMoved` and `getSettled` — leaves
     /// every other row as the last call left it, and names in `changed` every slot it wrote.
@@ -134,5 +134,5 @@ namespace Rtx
     /// `changed` is cleared and refilled, so a caller keeps one across frames and allocates none.
     /// A slot named twice is a row written twice, which costs a memcpy of one row.
     void updateInstanceRecords(
-        const SceneDesc& scene, std::vector<InstanceRecord>& records, std::vector<Index>& changed);
+        const SceneTables& scene, std::vector<InstanceRecord>& records, std::vector<Index>& changed);
 }

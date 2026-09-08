@@ -22,8 +22,8 @@ namespace Rtx::Testing
 
             EXPECT_EQ(stats.mUndescribedSurfaces, 1u);
             EXPECT_EQ(stats.mInstances, 1u) << "the geometry is still placed; only its shading is unknown";
-            ASSERT_EQ(mScene.getMaterials().size(), 1u);
-            EXPECT_EQ(mScene.getMaterials()[0].mDiffuse, Rtx::sNoIndex);
+            ASSERT_EQ(mScene.getTables().mMaterials.getRows().size(), 1u);
+            EXPECT_EQ(mScene.getTables().mMaterials.getRows()[0].mDiffuse, Rtx::sNoIndex);
         }
 
         /// A texture arrives under the format it was decoded in, and its mip chain is counted beside

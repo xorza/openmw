@@ -12,7 +12,7 @@ namespace Rtx
 {
     class Device;
     class GpuTimer;
-    class SceneDesc;
+    struct SceneTables;
     class SkinTables;
 
     /// Poses every deforming mesh a slot's copies owe, on the device, ahead of the refit over them.
@@ -50,7 +50,7 @@ namespace Rtx
         /// before the refit that reads what this wrote. The write-after-read against the copy's
         /// previous reader is the fence the caller waited; the read-after-write into the refit and
         /// the trace is the barrier here.
-        bool record(VkCommandBuffer commands, const SceneDesc& scene, FrameSlot slot, SkinTables& tables,
+        bool record(VkCommandBuffer commands, const SceneTables& scene, FrameSlot slot, SkinTables& tables,
             SlotBlocks& poses, SlotBlocks& normals, GpuTimer* timer) const;
 
     private:

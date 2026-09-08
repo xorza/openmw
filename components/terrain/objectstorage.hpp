@@ -1,9 +1,8 @@
 #ifndef OPENMW_COMPONENTS_TERRAIN_OBJECTSTORAGE_H
 #define OPENMW_COMPONENTS_TERRAIN_OBJECTSTORAGE_H
 
-#include <functional>
-#include <map>
 #include <optional>
+#include <vector>
 
 #include <osg/Vec2i>
 #include <osg/Vec3f>
@@ -72,35 +71,61 @@ namespace Terrain
     /// a different world. This asks a different question of the same references: which of them carry
     /// light that nobody has placed, because the model they hang on was never paged.
     ///
-    /// Takes `pagedType`'s two arguments so that either may be handed to `collectPagedRefs`. A light
-    /// is a light however wide the chunk is.
+    /// Takes `pagedType`'s two arguments so that `wantedType` can ask either. A light is a light
+    /// however wide the chunk is.
     inline bool litType(int type, bool /*far*/)
     {
         return type == ESM::REC_LIGH;
     }
 
-    /// Every reference that pages in a square of ESM3 exterior cells, merged into `out`.
+    /// Which references a collection is asking about.
+    ///
+    /// **One question with a kind, and not two functions.** The two read the same blocks in the same
+    /// order, and the reduction by reference number that makes a later content file win has to be
+    /// the same one for both — which is what a second copy of the walk could not promise.
+    enum class RefKind
+    {
+        /// What a chunk stands — `pagedType`.
+        Paged,
+
+        /// What lights it and nothing stands — `litType`.
+        Lit,
+    };
+
+    /// Whether a record type belongs to `kind`, at a chunk `far` cells wide.
+    inline bool wantedType(RefKind kind, int type, bool far)
+    {
+        return kind == RefKind::Paged ? pagedType(type, far) : litType(type, far);
+    }
+
+    /// What `collectPagedRefs` asks of the content files.
+    ///
+    /// **An interface and not two `std::function`s.** Both closed over one `ESMStore`, so the caller
+    /// was taking a store apart into two lambdas for a callee that wanted the store.
+    class CellSource
+    {
+    public:
+        virtual ~CellSource() = default;
+
+        /// The cell at a grid position, or null where the content files define none — open sea,
+        /// which is skipped rather than missing.
+        virtual const ESM::Cell* getCell(int x, int y) const = 0;
+
+        /// What record a reference names, which the two worlds answer out of different stores.
+        virtual int getType(const ESM::RefId& id) const = 0;
+    };
+
+    /// Every reference of `kind` that pages in a square of ESM3 exterior cells, appended to `out`.
     ///
     /// **The reduction both worlds read one hillside through.** A later content file can move,
     /// delete or add to what an earlier one placed, and only that file says so — so the blocks are
     /// read in the order they were written and merged by reference number before anything is drawn.
     /// Two spellings of that is one world with a building the other has not got.
     ///
-    /// `out` is added to rather than cleared, so a caller reading more than one worldspace keeps
-    /// what the others found.
-    ///
-    /// @param cellAt the cell at a grid position, or null where the content files define none —
-    ///        open sea, which is skipped rather than missing.
-    /// @param typeOf what record a reference names, which the two worlds answer out of different
-    ///        stores. Read through `std::function` because this runs once per chunk built and
-    ///        never on a frame.
-    /// @param wanted which record types the caller is asking about — `pagedType` for what a chunk
-    ///        stands, `litType` for what lights it. **The caller's and not this function's**: the
-    ///        two questions read the same blocks in the same order, and the reduction by reference
-    ///        number that makes a later content file win has to be the same one for both.
-    void collectPagedRefs(float size, const osg::Vec2i& startCell,
-        const std::function<const ESM::Cell*(int, int)>& cellAt, const std::function<int(const ESM::RefId&)>& typeOf,
-        const std::function<bool(int, bool)>& wanted, std::map<ESM::RefNum, PagedCellRef>& out);
+    /// `out` is appended to rather than cleared, so a caller reading more than one square keeps
+    /// what the others found. What one call appends is one reduced run, sorted by reference number.
+    void collectPagedRefs(float size, const osg::Vec2i& startCell, const CellSource& source, RefKind kind,
+        std::vector<PagedCellRef>& out);
 
     /// What the paging and the ray tracer ask of the content files.
     ///
@@ -114,27 +139,20 @@ namespace Terrain
     public:
         virtual ~ObjectStorage() = default;
 
-        /// Every reference that pages in the square of `size` cells whose lowest corner is
+        /// Every reference of `kind` in the square of `size` cells whose lowest corner is
         /// `startCell`, reduced by reference number the way the content files stack: a later file
-        /// moving or deleting what an earlier one placed wins.
+        /// moving or deleting what an earlier one placed wins. Sorted by reference number.
         ///
-        /// `out` is cleared first. Called from the paging's own working threads, so an
-        /// implementation must be safe to call on several at once.
-        virtual void collectReferences(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-            std::map<ESM::RefNum, PagedCellRef>& out) const = 0;
-
-        /// Every `LIGH` reference in that same square, reduced the same way.
-        ///
-        /// **The one thing the paging does not stand, asked for separately.** `pagedType` leaves
+        /// **`RefKind::Lit` is the one thing the paging does not stand.** `pagedType` leaves
         /// `REC_LIGH` out, so a distant lantern has no model in either renderer — but the ray tracer
         /// lights the world with what it can reach rather than with what a camera can see, and a
         /// town four cells away that goes dark at dusk is the world stating something the content
         /// files do not.
         ///
-        /// `out` is cleared first. Called from a worker thread, so an implementation must be safe to
-        /// call on several at once.
-        virtual void collectLights(float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
-            std::map<ESM::RefNum, PagedCellRef>& out) const = 0;
+        /// `out` is cleared first. Called from the paging's own working threads, so an
+        /// implementation must be safe to call on several at once.
+        virtual void collect(RefKind kind, float size, const osg::Vec2i& startCell, ESM::RefId worldspace,
+            std::vector<PagedCellRef>& out) const = 0;
 
         /// What a `LIGH` record says its light is, or nothing where the id names no such record.
         ///
